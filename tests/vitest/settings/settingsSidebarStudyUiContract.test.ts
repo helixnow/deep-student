@@ -26,6 +26,12 @@ describe('settings sidebar study-ui contract', () => {
     expect(settingsSidebarSource).not.toContain('text-[color:var(--sidebar-quiet-active-foreground)]');
   });
 
+  it('collapses the desktop settings sidebar fully out of view instead of leaving an icon rail', () => {
+    expect(settingsSidebarSource).toContain("'overflow-hidden transition-[width] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)]'");
+    expect(settingsSidebarSource).toContain("globalLeftPanelCollapsed ? 'w-0' : 'w-[17rem]'");
+    expect(settingsSidebarSource).not.toContain("globalLeftPanelCollapsed ? 'w-14' : 'w-[17rem]'");
+  });
+
   it('keeps the shared settings sidebar constants aligned with study-ui', () => {
     expect(sidebarSettingsSource).toContain('SETTINGS_BACK_BUTTON_LABEL');
     expect(sidebarSettingsSource).toContain('"返回主页"');

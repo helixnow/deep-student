@@ -25,13 +25,23 @@ body {
 }
 
 .desktop-shell-titlebar {
-  background: var(--shell-titlebar-surface);
-  border-bottom: 1px solid var(--shell-chrome-border);
+  background: transparent;
+  border-bottom: none;
 }
 
 .desktop-shell-header-cell {
   min-width: 0;
   min-height: var(--shell-titlebar-height);
+  background: transparent;
+}
+
+.desktop-shell-header-hotzone {
+  cursor: pointer;
+}
+
+.desktop-shell-header-hotzone:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
 }
 
 .desktop-shell-header-cell--nav {
@@ -114,7 +124,9 @@ body {
   color: var(--shell-navigation-foreground);
 }
 
-.desktop-shell-nav-row {
+.desktop-shell-sidebar-row,
+.desktop-shell-nav-row,
+.desktop-shell-thread-row {
   min-height: 36px !important;
   justify-content: flex-start !important;
   border-radius: var(--shell-nav-row-radius) !important;
@@ -126,34 +138,21 @@ body {
   font-weight: 400 !important;
 }
 
+.desktop-shell-sidebar-row:hover,
+.desktop-shell-sidebar-row:focus-visible,
 .desktop-shell-nav-row:hover,
-.desktop-shell-nav-row:focus-visible {
-  background: var(--interactive-hover) !important;
-  color: var(--shell-navigation-foreground) !important;
-}
-
-.desktop-shell-nav-row--active {
-  background: var(--interactive-selected) !important;
-  color: var(--shell-nav-item-active-foreground) !important;
-  font-weight: 400 !important;
-}
-
-.desktop-shell-thread-row {
-  min-height: 34px !important;
-  justify-content: flex-start !important;
-  border-radius: var(--shell-nav-row-radius) !important;
-  border: 1px solid transparent !important;
-  background: transparent !important;
-  color: var(--shell-navigation-muted) !important;
-  box-shadow: none !important;
-  font-size: 14px !important;
-  font-weight: 400 !important;
-}
-
+.desktop-shell-nav-row:focus-visible,
 .desktop-shell-thread-row:hover,
 .desktop-shell-thread-row:focus-visible {
   background: var(--interactive-hover) !important;
   color: var(--shell-navigation-foreground) !important;
+}
+
+.desktop-shell-sidebar-row--active,
+.desktop-shell-nav-row--active {
+  background: var(--interactive-selected) !important;
+  color: var(--shell-nav-item-active-foreground) !important;
+  font-weight: 400 !important;
 }
 
 .desktop-shell-thread-row--active {
@@ -171,8 +170,8 @@ body {
 }
 
 .desktop-shell-workspace {
-  background: var(--shell-workspace-surface);
-  box-shadow: inset 0 1px 0 var(--shell-workspace-border);
+  background: hsl(var(--background));
+  box-shadow: none;
 }
 
 .desktop-shell-view-layer {
@@ -11127,7 +11126,7 @@ body {
   background: hsl(var(--background));
   /* 恢复圆角在暗色下的描边，以增强可见度 */
   border-left: 1px solid hsl(var(--border) / 0.35);
-  border-top: 1px solid hsl(var(--border) / 0.35);
+  border-top: none;
 }
 
 /* 暗色模式下的顶栏边框 */
@@ -11194,7 +11193,7 @@ body {
   border-left: none;
   /* 为固定定位的 content-header 留出空间（桌面端 40px，由内联样式动态控制） */
   margin-top: 0;
-  border-top: 1px solid hsl(var(--border) / 0.2);
+  border-top: none;
   /* 确保内容区域可以正确显示，避免被裁剪 */
   contain: layout style;
 }

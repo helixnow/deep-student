@@ -34,4 +34,24 @@ describe('app chat header title contract', () => {
     expect(appSource).toContain('(state, prevState) => {');
     expect(appSource).toContain('if (state.title !== prevState.title) {');
   });
+
+  it('keeps desktop header nav and title cells as explicit hotzones beyond the inner icon buttons', () => {
+    expect(appSource).toContain('data-shell-hotzone="desktop-nav"');
+    expect(appSource).toContain('data-shell-hotzone="desktop-title"');
+    expect(appSource).toContain('const desktopHeaderNavHotzoneLabel = t(\'chatV2:page.newSession\', \'新建会话\')');
+    expect(appSource).toContain('const desktopHeaderTitleHotzoneLabel = t(\'common:command_palette_label\', \'命令面板\')');
+    expect(appSource).toContain('const handleDesktopTitlebarMouseDown = useCallback((event: React.MouseEvent<HTMLElement>) => {');
+    expect(appSource).toContain("const dragExclusionTarget = (event.target as HTMLElement).closest('[data-no-drag]');");
+    expect(appSource).toContain('void startDragging(event);');
+    expect(appSource).toContain('onMouseDown={handleDesktopTitlebarMouseDown}');
+    expect(appSource).toContain('onMouseDown={handleHeaderHotzoneMouseDown}');
+    expect(appSource).toContain('onMouseMove={handleHeaderHotzoneMouseMove}');
+    expect(appSource).toContain('onMouseUp={handleHeaderHotzoneMouseUp}');
+    expect(appSource).toContain('onMouseLeave={handleHeaderHotzoneMouseLeave}');
+    expect(appSource).toContain('onClick={(event) => handleHeaderHotzoneClick(event, handleCreateChatSession)}');
+    expect(appSource).toContain('onClick={(event) => handleHeaderHotzoneClick(event, openCommandPalette)}');
+    expect(appSource).toContain('onKeyDown={(event) => handleHeaderHotzoneKeyDown(event, handleCreateChatSession)}');
+    expect(appSource).toContain('onKeyDown={(event) => handleHeaderHotzoneKeyDown(event, openCommandPalette)}');
+    expect(appSource).not.toContain('data-tauri-drag-region');
+  });
 });

@@ -2,6 +2,7 @@ import React, { useState, useContext } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { getSidebarStudyRowClassName } from '@/chat-v2/pages/sessionSidebarStyles';
 import { UnifiedSidebarContext } from './UnifiedSidebar';
 
 export interface UnifiedSidebarSectionProps {
@@ -79,10 +80,10 @@ export const UnifiedSidebarSection: React.FC<UnifiedSidebarSectionProps> = ({
       <div className={cn('mb-1', containerClasses, className)}>
         <div
           {...(dragHandleProps ?? {})}
-          className={cn(
-            'group/sidebar-section flex items-center justify-between px-3 py-1.5 rounded-2xl transition-colors',
-            collapsible && 'cursor-pointer hover:bg-[var(--sidebar-study-hover)]'
-          )}
+          className={getSidebarStudyRowClassName({
+            variant: 'section',
+            clickable: collapsible,
+          })}
           onClick={() => collapsible && setIsOpen(!isOpen)}
           onContextMenu={onHeaderContextMenu}
         >

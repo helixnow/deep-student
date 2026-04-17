@@ -573,6 +573,13 @@
     "openSource": {
       "title": "Open Source Acknowledgements",
       "description": "DeepStudent grows thanks to the open-source communities listed below. Thank you for keeping the ecosystem moving forward.",
+      "openDialog": "View acknowledgements",
+      "closeDialog": "Close",
+      "expand": "Expand {{category}}",
+      "collapse": "Collapse {{category}}",
+      "previewLabel": "Showing {{count}} items first",
+      "itemCount": "{{count}} items",
+      "moreCount": "+{{count}}",
       "categories": {
         "coreStack": "Core Framework & Build Stack",
         "uiAndInteraction": "UI & Interaction",

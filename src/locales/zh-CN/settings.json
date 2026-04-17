@@ -573,6 +573,13 @@
     "openSource": {
       "title": "开源项目致谢",
       "description": "DeepStudent 依托以下成熟的开源生态快速发展，感谢所有社区长期的维护与创新。",
+      "openDialog": "查看致谢名单",
+      "closeDialog": "关闭",
+      "expand": "展开 {{category}}",
+      "collapse": "收起 {{category}}",
+      "previewLabel": "先展示 {{count}} 项",
+      "itemCount": "{{count}} 项",
+      "moreCount": "+{{count}}",
       "categories": {
         "coreStack": "核心框架与构建",
         "uiAndInteraction": "界面与交互",

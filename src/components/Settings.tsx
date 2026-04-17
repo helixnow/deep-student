@@ -942,7 +942,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   const renderSettingsSidebar = () => (
     <SettingsSidebar
       isSmallScreen={isSmallScreen}
-      globalLeftPanelCollapsed={isSmallScreen ? globalLeftPanelCollapsed : false}
+      globalLeftPanelCollapsed={globalLeftPanelCollapsed}
       sidebarSearchQuery={sidebarSearchQuery}
       setSidebarSearchQuery={setSidebarSearchQuery}
       sidebarSearchFocused={sidebarSearchFocused}

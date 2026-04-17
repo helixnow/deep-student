@@ -50,7 +50,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
       'study-shell-sidebar-frame font-sidebar-study-ui h-full flex flex-col bg-[color:var(--shell-navigation-panel)] text-[color:var(--shell-navigation-foreground)]',
       !isSmallScreen && 'border-r border-[color:var(--shell-navigation-border)]'
     )}>
-      <div className={cn('shrink-0 px-2 py-1', isCollapsed ? 'flex justify-center' : 'space-y-0.5')}>
+      <div className={cn('shrink-0 px-2 py-1', isCollapsed ? 'opacity-0' : 'space-y-0.5')}>
         {!isCollapsed && onBack ? (
           <NotionButton
             variant="nav"
@@ -68,7 +68,7 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
 
       <nav
         aria-label={t('sidebar.navigation_label', { defaultValue: '设置导航' })}
-        className={cn('flex-1 overflow-y-auto py-1', isCollapsed ? 'px-1.5' : 'px-2')}
+        className={cn('flex-1 overflow-y-auto py-1', isCollapsed ? 'pointer-events-none opacity-0 px-0' : 'px-2')}
       >
         <ul className="space-y-0.5">
           {sidebarNavItems.map((item) => {
@@ -87,12 +87,10 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
                   }}
                   className={cn(
                     'desktop-shell-nav-row !w-full rounded-2xl',
-                    isCollapsed 
-                      ? '!justify-center !p-2.5'
-                      : '!justify-start gap-2.5 !px-2.5 !py-1.5',
+                    '!justify-start gap-2.5 !px-2.5 !py-1.5',
                     isActive && 'desktop-shell-nav-row--active cursor-default'
                   )}
-                  title={isCollapsed ? item.label : undefined}
+                  title={undefined}
                 >
                   <Icon className="h-[18px] w-[18px] flex-shrink-0" />
                   {!isCollapsed && (
@@ -118,9 +116,11 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
   return (
     <div
       className={cn(
-        'h-full flex-shrink-0 transition-[width] duration-200',
-        globalLeftPanelCollapsed ? 'w-14' : 'w-[17rem]'
+        'h-full flex-shrink-0',
+        'overflow-hidden transition-[width] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)]',
+        globalLeftPanelCollapsed ? 'w-0' : 'w-[17rem]'
       )}
+      aria-hidden={globalLeftPanelCollapsed ? 'true' : undefined}
     >
       {sidebarContent}
     </div>

@@ -1,18 +1,23 @@
-import React, { useMemo, useCallback, useEffect, useState } from 'react';
+import React, { useMemo, useCallback, useEffect, useRef, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import {
   Atom,
+  Archive,
   BookOpen,
   Bookmark,
   Brain,
   Calculator,
   Camera,
+  Check,
+  ChevronsDown,
+  ChevronsUp,
   ChevronRight,
   Code,
   FileText,
   FlaskConical,
   Folder,
+  FolderPlus,
   FolderOpen,
   Globe,
   GraduationCap,
@@ -22,6 +27,8 @@ import {
   MessageSquare,
   Music,
   Palette,
+  Edit2,
+  Pin,
   Rocket,
   Sparkles,
   Star,
@@ -36,12 +43,21 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { sessionManager } from '@/chat-v2/core/session/sessionManager';
 import type { ChatSession } from '@/chat-v2/types/session';
 import type { SessionGroup } from '@/chat-v2/types/group';
+import { buildPinnedSessionMetadata, isSessionPinned } from '@/chat-v2/utils/sessionPin';
 import { getSessionTitleText } from '@/chat-v2/utils/sessionTitle';
 import { SessionGroupActions } from '@/chat-v2/pages/SessionGroupActions';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
+import type { AppUpdaterController } from '@/hooks/useAppUpdater';
 import type { CurrentView } from '@/types/navigation';
 import { pageLifecycleTracker } from '@/debug-panel/services/pageLifecycleTracker';
 import { StudySettingsIcon } from './icons/StudySidebarIcons';
+import {
+  AppMenu,
+  AppMenuContent,
+  AppMenuGroup,
+  AppMenuItem,
+  AppMenuTrigger,
+} from '@/components/ui/app-menu/AppMenu';
 
 interface NavigationHistory {
   canGoBack: boolean;
@@ -58,6 +74,7 @@ interface ModernSidebarProps {
   startDragging?: (e: React.MouseEvent) => void;
   navigationHistory?: NavigationHistory;
   topbarTopMargin?: number;
+  updater?: Pick<AppUpdaterController, 'checking' | 'available' | 'info' | 'downloading' | 'performUpdateAction'>;
 }
 
 const UNGROUPED_RECENT_GROUP_ID = '__ungrouped__';
@@ -107,6 +124,9 @@ function isSessionGroup(value: unknown): value is SessionGroup {
 
 function sortSessionsByUpdatedAt(sessions: ChatSession[]): ChatSession[] {
   return [...sessions].sort((left, right) => {
+    const pinDelta = Number(isSessionPinned(right)) - Number(isSessionPinned(left));
+    if (pinDelta !== 0) return pinDelta;
+
     const leftTimestamp = left.updatedAt ?? left.createdAt ?? '';
     const rightTimestamp = right.updatedAt ?? right.createdAt ?? '';
     return rightTimestamp.localeCompare(leftTimestamp);
@@ -122,14 +142,105 @@ function sortGroups(groups: SessionGroup[]): SessionGroup[] {
   });
 }
 
+function getSidebarRowClassName({
+  rowType,
+  isActive,
+  className,
+}: {
+  rowType: 'nav' | 'thread';
+  isActive: boolean;
+  className?: string;
+}) {
+  return cn(
+    'desktop-shell-sidebar-row',
+    rowType === 'thread' ? 'desktop-shell-thread-row' : 'desktop-shell-nav-row',
+    '!w-full !justify-start !px-2.5 !py-1.5 text-left',
+    isActive
+      ? rowType === 'thread' ? 'desktop-shell-thread-row--active' : 'desktop-shell-nav-row--active'
+      : null,
+    className
+  );
+}
+
+function SidebarRowLabel({ children }: { children: React.ReactNode }) {
+  return (
+    <span className="block min-w-0 flex-1 truncate leading-4">
+      {children}
+    </span>
+  );
+}
+
+function SidebarRow({
+  rowType,
+  isActive,
+  className,
+  leftSlot,
+  rightSlot,
+  children,
+  ...buttonProps
+}: React.ButtonHTMLAttributes<HTMLButtonElement> & {
+  rowType: 'nav' | 'thread';
+  isActive: boolean;
+  leftSlot?: React.ReactNode;
+  rightSlot?: React.ReactNode;
+}) {
+  return (
+    <NotionButton
+      variant="nav"
+      size="md"
+      className={getSidebarRowClassName({ rowType, isActive, className })}
+      {...buttonProps}
+    >
+      <span className="flex min-w-0 flex-1 items-center gap-2.5">
+        <span className="flex w-4 shrink-0 items-center justify-center text-[color:inherit]">
+          {leftSlot}
+        </span>
+        <span className="min-w-0 flex-1">
+          {children}
+        </span>
+        <span className="flex min-w-[24px] shrink-0 items-center justify-end gap-0.5">
+          {rightSlot}
+        </span>
+      </span>
+    </NotionButton>
+  );
+}
+
+export function reorderSidebarSessionGroups(groups: SessionGroup[], sourceGroupId: string, targetGroupId: string): SessionGroup[] {
+  const sourceIndex = groups.findIndex((group) => group.id === sourceGroupId);
+  const targetIndex = groups.findIndex((group) => group.id === targetGroupId);
+
+  if (sourceIndex === -1 || targetIndex === -1 || sourceIndex === targetIndex) {
+    return groups;
+  }
+
+  const next = [...groups];
+  const [movedGroup] = next.splice(sourceIndex, 1);
+  next.splice(targetIndex, 0, movedGroup);
+
+  return next.map((group, index) => ({
+    ...group,
+    sortOrder: index,
+  }));
+}
+
 export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   currentView,
   onViewChange,
+  sidebarCollapsed = false,
+  updater,
 }) => {
+  void sidebarCollapsed;
   const { t } = useTranslation(['sidebar', 'common', 'chatV2']);
   const [recentSessions, setRecentSessions] = useState<ChatSession[]>([]);
   const [recentGroups, setRecentGroups] = useState<SessionGroup[]>([]);
   const [collapsedRecentGroupIds, setCollapsedRecentGroupIds] = useState<Set<string>>(() => new Set());
+  const [draggedRecentGroupId, setDraggedRecentGroupId] = useState<string | null>(null);
+  const [dragOverRecentGroupId, setDragOverRecentGroupId] = useState<string | null>(null);
+  const [hoveredRecentSessionId, setHoveredRecentSessionId] = useState<string | null>(null);
+  const [openRecentSessionMenuId, setOpenRecentSessionMenuId] = useState<string | null>(null);
+  const [confirmingArchiveSessionId, setConfirmingArchiveSessionId] = useState<string | null>(null);
+  const draggedRecentGroupIdRef = useRef<string | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(() => {
     try {
       return sessionManager.getCurrentSessionId() || localStorage.getItem('chat-v2-last-session-id');
@@ -147,6 +258,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     [navItems]
   );
   const chatNavLabel = t('sidebar:navigation.chat_v2', '智能会话');
+  const shouldShowUpdateBadge = Boolean(updater && !updater.checking && updater.available && updater.info);
   // 包装 onViewChange，添加点击追踪
   const handleViewChange = useCallback((view: CurrentView) => {
     if (view !== currentView) {
@@ -220,10 +332,31 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     },
     {
       target: 'window',
+      type: 'chat-v2:groups-updated',
+      listener: refreshSessions,
+    },
+    {
+      target: 'window',
       type: 'focus',
       listener: refreshSessions,
     },
   ], [refreshSessions, syncActiveSession]);
+
+  useEffect(() => {
+    if (draggedRecentGroupId === null) {
+      return undefined;
+    }
+
+    const previousBodyCursor = document.body.style.cursor;
+    const previousRootCursor = document.documentElement.style.cursor;
+    document.body.style.cursor = 'grabbing';
+    document.documentElement.style.cursor = 'grabbing';
+
+    return () => {
+      document.body.style.cursor = previousBodyCursor;
+      document.documentElement.style.cursor = previousRootCursor;
+    };
+  }, [draggedRecentGroupId]);
 
   const handleRecentSessionOpen = useCallback((sessionId: string) => {
     setActiveSessionId(sessionId);
@@ -232,6 +365,59 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     }
     window.dispatchEvent(new CustomEvent('navigate-to-session', { detail: { sessionId } }));
   }, [currentView, handleViewChange]);
+
+  const handleRecentSessionPinToggle = useCallback(async (session: ChatSession) => {
+    const nextMetadata = buildPinnedSessionMetadata(session.metadata, !isSessionPinned(session));
+
+    try {
+      await invoke('chat_v2_update_session_settings', {
+        sessionId: session.id,
+        settings: { metadata: nextMetadata ?? null },
+      });
+
+      setRecentSessions((previous) =>
+        sortSessionsByUpdatedAt(
+          previous.map((item) =>
+            item.id === session.id ? { ...item, metadata: nextMetadata } : item
+          )
+        )
+      );
+      window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
+    } catch (error) {
+      console.warn('[ModernSidebar] Failed to toggle recent session pin:', error);
+    }
+  }, []);
+
+  const dispatchRecentSessionAction = useCallback((action: 'rename-session', session: ChatSession) => {
+    const dispatch = () => {
+      window.dispatchEvent(new CustomEvent('modern-sidebar:session-action', {
+        detail: { action, session, sessionId: session.id },
+      }));
+    };
+
+    if (currentView !== 'chat-v2') {
+      handleViewChange('chat-v2');
+      window.setTimeout(dispatch, 0);
+      return;
+    }
+
+    dispatch();
+  }, [currentView, handleViewChange]);
+
+  const handleRecentSessionArchive = useCallback(async (sessionId: string) => {
+    try {
+      await invoke('chat_v2_archive_session', { sessionId });
+      setRecentSessions((previous) => previous.filter((item) => item.id !== sessionId));
+      if (activeSessionId === sessionId) {
+        setActiveSessionId(null);
+      }
+      setConfirmingArchiveSessionId((current) => (current === sessionId ? null : current));
+      window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
+    } catch (error) {
+      console.warn('[ModernSidebar] Failed to archive recent session:', error);
+      void loadSidebarData();
+    }
+  }, [activeSessionId, loadSidebarData]);
 
   const toggleRecentGroup = useCallback((groupId: string) => {
     setCollapsedRecentGroupIds((previous) => {
@@ -245,38 +431,104 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     });
   }, []);
 
+  const handleCreateRecentGroup = useCallback(() => {
+    window.dispatchEvent(new CustomEvent('modern-sidebar:group-action', {
+      detail: { action: 'create-group' },
+    }));
+  }, []);
+
+  const clearRecentGroupDragState = useCallback(() => {
+    draggedRecentGroupIdRef.current = null;
+    setDraggedRecentGroupId(null);
+    setDragOverRecentGroupId(null);
+  }, []);
+
+  const handleRecentGroupDragStart = useCallback((event: React.DragEvent<HTMLButtonElement>, groupId: string) => {
+    if (event.dataTransfer) {
+      event.dataTransfer.effectAllowed = 'move';
+      event.dataTransfer.setData('application/x-modern-sidebar-group-id', groupId);
+      event.dataTransfer.setData('text/plain', groupId);
+    }
+    draggedRecentGroupIdRef.current = groupId;
+    setDraggedRecentGroupId(groupId);
+    setDragOverRecentGroupId(groupId);
+  }, []);
+
+  const handleRecentGroupDragOver = useCallback((event: React.DragEvent<HTMLButtonElement>, groupId: string) => {
+    const draggingGroupId = draggedRecentGroupIdRef.current;
+    if (draggingGroupId === null || draggingGroupId === groupId) {
+      return;
+    }
+
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.dataTransfer) {
+      event.dataTransfer.dropEffect = 'move';
+    }
+    setDragOverRecentGroupId((current) => (current === groupId ? current : groupId));
+  }, []);
+
+  const handleRecentGroupDrop = useCallback(async (event: React.DragEvent<HTMLButtonElement>, targetGroupId: string) => {
+    event.preventDefault();
+    event.stopPropagation();
+
+    const draggingGroupId =
+      draggedRecentGroupIdRef.current
+      ?? event.dataTransfer?.getData('application/x-modern-sidebar-group-id')
+      ?? event.dataTransfer?.getData('text/plain')
+      ?? null;
+    if (draggingGroupId === null || draggingGroupId === targetGroupId) {
+      clearRecentGroupDragState();
+      return;
+    }
+
+    let reorderedIds: string[] = [];
+
+    setRecentGroups((previous) => {
+      const next = reorderSidebarSessionGroups(previous, draggingGroupId, targetGroupId);
+      reorderedIds = next.map((group) => group.id);
+      return next;
+    });
+
+    clearRecentGroupDragState();
+
+    if (reorderedIds.length === 0) {
+      return;
+    }
+
+    try {
+      await invoke('chat_v2_reorder_groups', { groupIds: reorderedIds });
+      window.dispatchEvent(new CustomEvent('chat-v2:groups-updated'));
+    } catch (error) {
+      console.warn('[ModernSidebar] Failed to reorder recent groups:', error);
+      void loadSidebarData();
+    }
+  }, [clearRecentGroupDragState, loadSidebarData]);
+
   const renderNavRow = useCallback((view: CurrentView, label: string, Icon: React.ComponentType<any>) => {
     const isActive = currentView === view;
 
     return (
-      <NotionButton
+      <SidebarRow
         key={view}
-        variant="nav"
-        size="md"
+        rowType="nav"
         onClick={() => handleViewChange(view)}
         aria-label={label}
         aria-current={isActive ? 'page' : undefined}
-        className={cn(
-            'desktop-shell-nav-row !w-full !justify-start !px-2.5 !py-1.5 text-left',
-            isActive && 'desktop-shell-nav-row--active'
-        )}
+        isActive={isActive}
         data-tour-id={`nav-${view}`}
-        >
-          <span className="flex min-w-0 flex-1 items-center gap-2.5">
-            <span className="flex shrink-0 items-center justify-center text-[color:inherit]">
-              <Icon className="size-[18px]" strokeWidth={2} />
-            </span>
-            <span className="min-w-0 flex-1">
-              <span className="block truncate">{label}</span>
-            </span>
-          </span>
-      </NotionButton>
+        leftSlot={<Icon className="size-[18px]" strokeWidth={2} />}
+      >
+        <SidebarRowLabel>{label}</SidebarRowLabel>
+      </SidebarRow>
     );
   }, [currentView, handleViewChange]);
 
   const renderRecentSessionRow = useCallback((session: ChatSession, collapsed = false) => {
     const isActive = currentView === 'chat-v2' && activeSessionId === session.id;
     const sessionTitle = getSessionTitleText(session.title, t('chatV2:page.untitled', '未命名对话'));
+    const pinned = isSessionPinned(session);
+    const isHovered = hoveredRecentSessionId === session.id;
 
     const relativeTime = (() => {
       const ts = new Date(session.updatedAt ?? session.createdAt).getTime();
@@ -294,28 +546,141 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     })();
 
     return (
-      <NotionButton
+      <div
         key={session.id}
-        variant="nav"
-        size="md"
-        onClick={() => handleRecentSessionOpen(session.id)}
-        aria-label={sessionTitle}
-        aria-current={isActive ? 'page' : undefined}
-        tabIndex={collapsed ? -1 : undefined}
-        className={cn(
-          'desktop-shell-thread-row !w-full !justify-start !px-3 !py-1.5 text-left',
-          isActive && 'desktop-shell-thread-row--active'
-        )}
+        className="group/thread-row relative"
+        onMouseEnter={() => setHoveredRecentSessionId(session.id)}
+        onMouseLeave={() => {
+          setHoveredRecentSessionId((current) => (current === session.id ? null : current));
+          setConfirmingArchiveSessionId((current) => (current === session.id ? null : current));
+        }}
       >
-        <span className="block min-w-0 flex-1 truncate leading-4">
-          {sessionTitle}
-        </span>
-        <span className="ml-1 shrink-0 text-[11px] font-normal tabular-nums text-[color:var(--shell-navigation-muted)]">
-          {relativeTime}
-        </span>
-      </NotionButton>
+        <AppMenu
+          mode="context"
+          className="flex w-full"
+          open={openRecentSessionMenuId === session.id}
+          onOpenChange={(open) => {
+            setOpenRecentSessionMenuId((current) => {
+              if (open) return session.id;
+              return current === session.id ? null : current;
+            });
+          }}
+        >
+          <AppMenuTrigger asChild>
+            <SidebarRow
+              rowType="thread"
+              onClick={() => handleRecentSessionOpen(session.id)}
+              onContextMenu={(event) => {
+                event.preventDefault();
+                event.stopPropagation();
+              }}
+              aria-label={sessionTitle}
+              aria-current={isActive ? 'page' : undefined}
+              tabIndex={collapsed ? -1 : undefined}
+              isActive={isActive}
+              leftSlot={isHovered ? (
+                <span
+                  role="button"
+                  tabIndex={-1}
+                  aria-label={pinned ? '取消置顶会话' : '置顶会话'}
+                  className={cn(
+                    'flex h-4 w-4 items-center justify-center rounded-sm text-[color:var(--shell-navigation-muted)] transition-colors hover:text-[color:var(--shell-navigation-foreground)]',
+                    pinned && 'text-[color:var(--shell-navigation-foreground)]'
+                  )}
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    setConfirmingArchiveSessionId(null);
+                    void handleRecentSessionPinToggle(session);
+                  }}
+                >
+                  <Pin data-testid="recent-session-pin-icon" className="h-3.5 w-3.5" />
+                </span>
+              ) : pinned ? (
+                <Pin data-testid="recent-session-pin-icon" className="h-3.5 w-3.5 text-[color:var(--shell-navigation-foreground)]" />
+              ) : undefined}
+              rightSlot={isHovered ? (
+                confirmingArchiveSessionId === session.id ? (
+                  <span
+                    role="button"
+                    tabIndex={-1}
+                    aria-label="确认归档会话"
+                    className="flex h-5 min-w-[20px] items-center justify-center rounded-md bg-red-500/14 px-1 text-red-600 transition-colors hover:bg-red-500/20"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setOpenRecentSessionMenuId(null);
+                      void handleRecentSessionArchive(session.id);
+                    }}
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                  </span>
+                ) : (
+                  <span
+                    role="button"
+                    tabIndex={-1}
+                    aria-label="归档会话"
+                    className="flex h-4 w-4 items-center justify-center rounded-sm text-[color:var(--shell-navigation-muted)] transition-colors hover:text-red-600"
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setOpenRecentSessionMenuId(null);
+                      setConfirmingArchiveSessionId(session.id);
+                    }}
+                  >
+                    <Archive className="h-3.5 w-3.5" />
+                  </span>
+                )
+              ) : (
+                <span className="ml-1 shrink-0 text-[11px] font-normal tabular-nums text-[color:var(--shell-navigation-muted)]">
+                  {relativeTime}
+                </span>
+              )}
+            >
+              <SidebarRowLabel>{sessionTitle}</SidebarRowLabel>
+            </SidebarRow>
+          </AppMenuTrigger>
+          <AppMenuContent align="end" width={180}>
+            <AppMenuGroup>
+              <AppMenuItem
+                icon={<Edit2 className="h-4 w-4" />}
+                onClick={() => {
+                  setOpenRecentSessionMenuId(null);
+                  dispatchRecentSessionAction('rename-session', session);
+                }}
+              >
+                重命名会话
+              </AppMenuItem>
+              <AppMenuItem
+                icon={<Pin className="h-4 w-4" />}
+                onClick={() => {
+                  setOpenRecentSessionMenuId(null);
+                  void handleRecentSessionPinToggle(session);
+                }}
+              >
+                {pinned ? t('chatV2:page.unpinSession', '取消置顶') : t('chatV2:page.pinSession', '置顶线程')}
+              </AppMenuItem>
+              <AppMenuItem
+                icon={<Archive className="h-4 w-4" />}
+                onClick={() => {
+                  setOpenRecentSessionMenuId(null);
+                  void handleRecentSessionArchive(session.id);
+                }}
+              >
+                {t('chatV2:page.archiveSession', '归档线程')}
+              </AppMenuItem>
+            </AppMenuGroup>
+          </AppMenuContent>
+        </AppMenu>
+
+      </div>
     );
-  }, [activeSessionId, currentView, handleRecentSessionOpen, t]);
+  }, [confirmingArchiveSessionId, currentView, dispatchRecentSessionAction, handleRecentSessionArchive, handleRecentSessionOpen, handleRecentSessionPinToggle, hoveredRecentSessionId, openRecentSessionMenuId, t]);
+
+  const pinnedRecentSessions = useMemo(
+    () => sortSessionsByUpdatedAt(recentSessions.filter((session) => isSessionPinned(session))),
+    [recentSessions]
+  );
 
   const recentSessionGroups = useMemo<RecentSessionGroup[]>(() => {
     const sessionsByGroup = new Map<string, ChatSession[]>();
@@ -323,6 +688,10 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     const ungroupedSessions: ChatSession[] = [];
 
     recentSessions.forEach((session) => {
+      if (isSessionPinned(session)) {
+        return;
+      }
+
       if (session.groupId && groupLookup.has(session.groupId)) {
         const groupSessions = sessionsByGroup.get(session.groupId) ?? [];
         groupSessions.push(session);
@@ -333,7 +702,6 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     });
 
     const groupedSections: RecentSessionGroup[] = recentGroups
-      .filter((group) => (sessionsByGroup.get(group.id) ?? []).length > 0)
       .map((group) => ({
         id: group.id,
         label: group.name,
@@ -352,6 +720,23 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
 
     return groupedSections;
   }, [recentGroups, recentSessions, t]);
+
+  const areAllRecentGroupsExpanded = useMemo(
+    () => recentSessionGroups.length > 0 && recentSessionGroups.every((group) => !collapsedRecentGroupIds.has(group.id)),
+    [collapsedRecentGroupIds, recentSessionGroups]
+  );
+
+  const handleToggleAllRecentGroups = useCallback(() => {
+    if (recentSessionGroups.length === 0) {
+      return;
+    }
+
+    setCollapsedRecentGroupIds(
+      areAllRecentGroupsExpanded
+        ? new Set(recentSessionGroups.map((group) => group.id))
+        : new Set()
+    );
+  }, [areAllRecentGroupsExpanded, recentSessionGroups]);
 
   const renderRecentGroupIcon = useCallback((group: RecentSessionGroup) => {
     if (!group.icon || group.isUngrouped) {
@@ -373,7 +758,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
 
   const renderRecentGroup = useCallback((group: RecentSessionGroup) => {
     const isExpanded = !collapsedRecentGroupIds.has(group.id);
-    const hasActiveSession = currentView === 'chat-v2' && group.sessions.some((session) => session.id === activeSessionId);
+    const isActive = false;
     const sessionGroup = !group.isUngrouped ? recentGroups.find(g => g.id === group.id) : null;
 
     const sessionList = (
@@ -386,7 +771,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
         <div
           aria-hidden={!isExpanded}
           className={cn(
-            'space-y-0.5 overflow-hidden pl-4',
+            'space-y-0.5 overflow-hidden',
             !isExpanded && 'pointer-events-none'
           )}
           role="list"
@@ -436,32 +821,29 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
             }}
           >
             {({ quickAction, onContextMenu }) => (
-              <NotionButton
-                variant="nav"
-                size="md"
+              <SidebarRow
+                rowType="nav"
                 onClick={() => toggleRecentGroup(group.id)}
                 onContextMenu={onContextMenu}
+                onDragEnd={clearRecentGroupDragState}
+                onDragOver={(event) => handleRecentGroupDragOver(event, group.id)}
+                onDragStart={(event) => handleRecentGroupDragStart(event, group.id)}
+                onDrop={(event) => void handleRecentGroupDrop(event, group.id)}
                 aria-label={group.label}
                 aria-expanded={isExpanded}
+                aria-grabbed={draggedRecentGroupId === group.id}
+                draggable
+                isActive={isActive}
                 className={cn(
-                  'group/sidebar-section desktop-shell-nav-row !w-full !justify-start !px-2.5 !py-1.5 text-left select-none',
-                  hasActiveSession && 'desktop-shell-nav-row--active'
+                  'group/sidebar-section select-none',
+                  draggedRecentGroupId === group.id && 'cursor-grabbing opacity-60',
+                  dragOverRecentGroupId === group.id && draggedRecentGroupId !== group.id && 'bg-[color:var(--sidebar-quiet-hover)] ring-1 ring-black/8'
                 )}
+                leftSlot={renderRecentGroupIcon(group)}
+                rightSlot={quickAction}
               >
-                <span className="flex min-w-0 flex-1 items-center gap-2.5">
-                  <span className="flex shrink-0 items-center justify-center text-[color:inherit]">
-                    {renderRecentGroupIcon(group)}
-                  </span>
-                  <span className="flex min-w-0 flex-1 items-center gap-2">
-                    <span className="block min-w-0 flex-1 truncate leading-4">
-                      {group.label}
-                    </span>
-                  </span>
-                  <span className="flex shrink-0 items-center gap-0.5">
-                    {quickAction}
-                  </span>
-                </span>
-              </NotionButton>
+                <SidebarRowLabel>{group.label}</SidebarRowLabel>
+              </SidebarRow>
             )}
           </SessionGroupActions>
           {sessionList}
@@ -471,26 +853,15 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
 
     return (
       <section key={group.id} className="space-y-0.5">
-        <NotionButton
-          variant="nav"
-          size="md"
+        <SidebarRow
+          rowType="nav"
           onClick={() => toggleRecentGroup(group.id)}
           aria-label={group.label}
           aria-expanded={isExpanded}
-          className={cn(
-            'desktop-shell-nav-row !w-full !justify-start !px-2.5 !py-1.5 text-left select-none',
-            hasActiveSession && 'desktop-shell-nav-row--active'
-          )}
-        >
-          <span className="flex min-w-0 flex-1 items-center gap-2.5">
-            <span className="flex shrink-0 items-center justify-center text-[color:inherit]">
-              {renderRecentGroupIcon(group)}
-            </span>
-            <span className="flex min-w-0 flex-1 items-center gap-2">
-              <span className="block min-w-0 flex-1 truncate leading-4">
-                {group.label}
-              </span>
-            </span>
+          isActive={isActive}
+          className="select-none"
+          leftSlot={renderRecentGroupIcon(group)}
+          rightSlot={
             <span className="flex shrink-0 items-center justify-center text-[color:var(--shell-navigation-muted)]">
               <ChevronRight
                 className={cn(
@@ -500,12 +871,14 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                 strokeWidth={2.25}
               />
             </span>
-          </span>
-        </NotionButton>
+          }
+        >
+          <SidebarRowLabel>{group.label}</SidebarRowLabel>
+        </SidebarRow>
         {sessionList}
       </section>
     );
-  }, [activeSessionId, collapsedRecentGroupIds, currentView, handleViewChange, recentGroups, renderRecentGroupIcon, renderRecentSessionRow, t, toggleRecentGroup]);
+  }, [clearRecentGroupDragState, collapsedRecentGroupIds, dragOverRecentGroupId, draggedRecentGroupId, handleRecentGroupDragOver, handleRecentGroupDragStart, handleRecentGroupDrop, handleViewChange, recentGroups, renderRecentGroupIcon, renderRecentSessionRow, t, toggleRecentGroup]);
 
   return (
     <aside
@@ -513,7 +886,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       aria-label={t('sidebar:aria.sidebar_navigation', '主导航')}
       data-shell-layer="navigation"
       data-shell-surface="navigation"
-      className="font-sidebar-study-ui relative z-20 flex h-full w-[var(--shell-navigation-width)] shrink-0 flex-col bg-[color:var(--shell-navigation-surface)] text-[color:var(--shell-navigation-foreground)] transition-colors duration-500"
+      className="font-sidebar-study-ui relative z-20 flex h-full w-full min-w-0 flex-col bg-[color:var(--shell-navigation-surface)] text-[color:var(--shell-navigation-foreground)] transition-colors duration-500"
       style={{ paddingTop: 'calc(var(--shell-titlebar-height) + var(--shell-layout-gap))' }}
     >
       <div className="px-2 pb-1 pt-1" data-no-drag />
@@ -534,12 +907,54 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
             </nav>
           </div>
 
+          {pinnedRecentSessions.length > 0 ? (
+            <section className="space-y-0.5 pt-1">
+              <nav aria-label={t('sidebar:aria.pinned_sessions', '置顶会话')}>
+                <div className="space-y-0.5" role="list">
+                  {pinnedRecentSessions.map((session) => renderRecentSessionRow(session))}
+                </div>
+              </nav>
+            </section>
+          ) : null}
+
           {recentSessionGroups.length > 0 ? (
             <section className="space-y-0.5 pt-1">
-              <div className="px-3">
+              <div className="flex items-center justify-between gap-2 px-3">
                 <p className="desktop-shell-nav-section-label">
                   {t('sidebar:sections.recent', '最近')}
                 </p>
+                <div className="flex items-center gap-1">
+                  <NotionButton
+                    variant="ghost"
+                    size="icon"
+                    iconOnly
+                    aria-label={areAllRecentGroupsExpanded
+                      ? t('sidebar:actions.collapse_all_recent_sessions', '收起所有会话')
+                      : t('sidebar:actions.expand_all_recent_sessions', '展开所有会话')}
+                    title={areAllRecentGroupsExpanded
+                      ? t('sidebar:actions.collapse_all_recent_sessions', '收起所有会话')
+                      : t('sidebar:actions.expand_all_recent_sessions', '展开所有会话')}
+                    className="!h-6 !w-6 text-[color:var(--shell-navigation-muted)]"
+                    onClick={handleToggleAllRecentGroups}
+                  >
+                    {areAllRecentGroupsExpanded ? (
+                      <ChevronsUp className="size-3.5" strokeWidth={2} />
+                    ) : (
+                      <ChevronsDown className="size-3.5" strokeWidth={2} />
+                    )}
+                  </NotionButton>
+                  <NotionButton
+                    variant="ghost"
+                    size="icon"
+                    iconOnly
+                    aria-label={t('sidebar:actions.create_recent_group', '新建文件夹')}
+                    title={t('sidebar:actions.create_recent_group', '新建文件夹')}
+                    className="!h-6 !w-6 text-[color:var(--shell-navigation-muted)]"
+                    onClick={handleCreateRecentGroup}
+                  >
+                    <FolderPlus className="size-3.5" strokeWidth={2} />
+                  </NotionButton>
+                </div>
               </div>
               <nav aria-label={t('sidebar:aria.recent_sessions', '最近会话')}>
                 <div className="space-y-0.5" role="list">
@@ -552,28 +967,34 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       </CustomScrollArea>
 
       <div className="mt-auto px-2 pb-3 pt-1" data-no-drag>
-        <div className="flex justify-start">
-          <NotionButton
-            variant="nav"
-            size="md"
+        <div className="relative flex justify-start">
+          <SidebarRow
+            rowType="nav"
             onClick={() => handleViewChange('settings')}
             aria-label={t('sidebar:navigation.settings', '设置')}
             aria-current={currentView === 'settings' ? 'page' : undefined}
-            className={cn(
-              'desktop-shell-nav-row !w-full !justify-start !px-2.5 !py-1.5 text-left',
-              currentView === 'settings' && 'desktop-shell-nav-row--active'
-            )}
+            isActive={currentView === 'settings'}
             data-tour-id="nav-settings"
+            leftSlot={<StudySettingsIcon className="size-[18px]" strokeWidth={2} />}
           >
-            <span className="flex min-w-0 flex-1 items-center gap-2.5">
-              <span className="flex shrink-0 items-center justify-center text-[color:inherit]">
-                <StudySettingsIcon className="size-[18px]" strokeWidth={2} />
-              </span>
-              <span className="min-w-0 flex-1">
-                <span className="block truncate">{t('sidebar:navigation.settings', '设置')}</span>
-              </span>
-            </span>
-          </NotionButton>
+            <SidebarRowLabel>{t('sidebar:navigation.settings', '设置')}</SidebarRowLabel>
+          </SidebarRow>
+
+          {shouldShowUpdateBadge ? (
+            <button
+              type="button"
+              data-slot="sidebar-update-badge"
+              className="desktop-shell-update-badge absolute right-2 top-1 inline-flex h-5 min-w-8 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-medium leading-none text-primary-foreground shadow-sm transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-70"
+              onClick={(event) => {
+                event.stopPropagation();
+                void updater.performUpdateAction();
+              }}
+              aria-label={updater?.downloading ? t('sidebar:update.downloading', '下载中...') : t('sidebar:update.available', '点击更新')}
+              disabled={updater?.downloading}
+            >
+              {updater?.downloading ? t('sidebar:update.short_downloading', '下载中') : t('sidebar:update.short', '更新')}
+            </button>
+          ) : null}
         </div>
       </div>
     </aside>

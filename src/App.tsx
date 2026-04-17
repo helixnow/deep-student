@@ -1,5 +1,6 @@
 import React, { Suspense } from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef, startTransition } from 'react';
+import { NotePencil } from '@phosphor-icons/react';
 import './i18n';
 import { useTranslation } from 'react-i18next';
 // getCurrentWebviewWindow 已无使用（2026-02 清理）
@@ -57,6 +58,7 @@ import { CustomScrollArea } from './components/custom-scroll-area';
 import { getErrorMessage } from './utils/errorUtils';
 import { useAppInitialization } from './hooks/useAppInitialization';
 import { useAppUpdater } from './hooks/useAppUpdater';
+import type { AppUpdaterController } from './hooks/useAppUpdater';
 import { UpdateNotificationDialog } from './components/settings/UpdateNotificationDialog';
 import { UserAgreementDialog, useUserAgreement } from './components/legal/UserAgreementDialog';
 import { useMigrationStatusListener } from './hooks/useMigrationStatusListener';
@@ -116,9 +118,7 @@ const LazyGlobalDebugPanel = React.lazy(() => import('./components/dev/GlobalDeb
  * 启动时自动更新检查弹窗
  * 仅在启动静默检查发现新版本时显示。
  */
-function StartupUpdateNotification() {
-  const updater = useAppUpdater();
-
+function StartupUpdateNotification({ updater }: { updater: AppUpdaterController }) {
   // 仅在启动检查发现更新时显示弹窗
   const shouldShow = updater.isStartupCheck && updater.available && !!updater.info;
 
@@ -142,13 +142,73 @@ function StartupUpdateNotification() {
   );
 }
 
+const HEADER_HOTZONE_INTERACTIVE_SELECTOR = [
+  'button',
+  '[role="button"]',
+  'a',
+  'input',
+  'textarea',
+  'select',
+  'summary',
+  '[data-shell-hotzone-ignore="true"]',
+].join(', ');
+const HEADER_HOTZONE_DRAG_THRESHOLD = 4;
+
+function shouldIgnoreHeaderHotzoneTarget(target: EventTarget | null) {
+  return target instanceof Element && target.closest(HEADER_HOTZONE_INTERACTIVE_SELECTOR) !== null;
+}
+
+function handleHeaderHotzoneClick(
+  event: React.MouseEvent<HTMLElement>,
+  activate: () => void,
+) {
+  if (event.currentTarget.dataset.shellHotzoneSuppressClick === 'true') {
+    delete event.currentTarget.dataset.shellHotzoneSuppressClick;
+    return;
+  }
+
+  if (shouldIgnoreHeaderHotzoneTarget(event.target)) {
+    return;
+  }
+
+  activate();
+}
+
+function handleHeaderHotzoneKeyDown(
+  event: React.KeyboardEvent<HTMLElement>,
+  activate: () => void,
+) {
+  if (shouldIgnoreHeaderHotzoneTarget(event.target)) {
+    return;
+  }
+
+  if (event.key === 'Enter' || event.key === ' ') {
+    event.preventDefault();
+    activate();
+  }
+}
+
 /**
  * 命令面板按钮 - 用于顶部栏
  */
-function CommandPaletteButton({ className }: { className?: string }) {
+function CommandPaletteButton({
+  className,
+  onOpenReady,
+}: {
+  className?: string;
+  onOpenReady?: (trigger: (() => void) | null) => void;
+}) {
   const { open } = useCommandPalette();
   const { t } = useTranslation('common');
   const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+
+  useEffect(() => {
+    onOpenReady?.(open);
+
+    return () => {
+      onOpenReady?.(null);
+    };
+  }, [onOpenReady, open]);
   
   return (
     <CommonTooltip content={`${t('common:command_palette_label', '命令面板')} (${isMac ? '⌘' : 'Ctrl'}+K)`} position="bottom">
@@ -172,14 +232,147 @@ function SidebarDockIcon() {
   );
 }
 
-function SidebarUpdateBadge() {
+function SidebarUpdateBadge({
+  visible,
+  onClick,
+  downloading,
+}: {
+  visible: boolean;
+  onClick: () => void;
+  downloading: boolean;
+}) {
+  if (!visible) return null;
+
   return (
-    <span
+    <button
+      type="button"
       data-slot="sidebar-update-badge"
       className="desktop-shell-update-badge"
+      onClick={onClick}
+      disabled={downloading}
+      aria-label={downloading ? '下载中...' : '点击更新'}
     >
-      更新
-    </span>
+      {downloading ? '下载中' : '更新'}
+    </button>
+  );
+}
+
+function DesktopSidebarAccessory({
+  onToggle,
+  label,
+  collapsed,
+  updateVisible,
+  onUpdate,
+  updateDownloading,
+}: {
+  onToggle: () => void;
+  label: string;
+  collapsed: boolean;
+  updateVisible: boolean;
+  onUpdate: () => void;
+  updateDownloading: boolean;
+}) {
+  return (
+    <div className="desktop-shell-accessory-group flex min-w-0 items-center">
+      <NotionButton
+        variant="ghost"
+        size="icon"
+        onClick={onToggle}
+        className="desktop-shell-toolbar-button desktop-shell-accessory-button"
+        title={label}
+        aria-label={label}
+      >
+        <SidebarDockIcon />
+      </NotionButton>
+      <div
+        aria-hidden={collapsed}
+        className={cn(
+          'overflow-hidden transition-[width,opacity,margin-left] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none',
+          collapsed ? 'ml-0 w-0 opacity-0' : 'ml-1.5 w-[3.125rem] opacity-100'
+        )}
+      >
+        <div
+          className={cn(
+            'flex items-center justify-start transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none',
+            collapsed ? '-translate-x-1 opacity-0' : 'translate-x-0 opacity-100'
+          )}
+        >
+          <SidebarUpdateBadge
+            visible={updateVisible}
+            onClick={onUpdate}
+            downloading={updateDownloading}
+          />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function DesktopHeaderNavControls({
+  canGoBack,
+  canGoForward,
+  onGoBack,
+  onGoForward,
+  onNewSession,
+  newSessionLabel,
+  backTitle,
+  backLabel,
+  forwardTitle,
+  forwardLabel,
+  collapsed,
+}: {
+  canGoBack: boolean;
+  canGoForward: boolean;
+  onGoBack: () => void;
+  onGoForward: () => void;
+  onNewSession: () => void;
+  newSessionLabel: string;
+  backTitle: string;
+  backLabel: string;
+  forwardTitle: string;
+  forwardLabel: string;
+  collapsed: boolean;
+}) {
+  return (
+    <div
+      className={cn(
+        'desktop-shell-toolbar-group transition-[transform,opacity,margin-right] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none',
+        collapsed ? 'mr-0 translate-x-0 opacity-100' : 'mr-1 translate-x-1 opacity-100'
+      )}
+    >
+      <NotionButton
+        variant="ghost"
+        size="icon"
+        onClick={onNewSession}
+        className="desktop-shell-toolbar-button"
+        title={newSessionLabel}
+        aria-label={newSessionLabel}
+      >
+        <NotePencil size={18} weight="regular" />
+      </NotionButton>
+      <NotionButton
+        variant="ghost"
+        size="icon"
+        onClick={onGoBack}
+        disabled={!canGoBack}
+        className="desktop-shell-toolbar-button"
+        title={backTitle}
+        aria-label={backLabel}
+      >
+        <ChevronLeft className="h-4 w-4" />
+      </NotionButton>
+      <NotionButton
+        variant="ghost"
+        size="icon"
+        onClick={onGoForward}
+        disabled={!canGoForward}
+        className="desktop-shell-toolbar-button"
+        title={forwardTitle}
+        aria-label={forwardLabel}
+      >
+        <ChevronRight className="h-4 w-4" />
+      </NotionButton>
+    </div>
   );
 }
 
@@ -309,6 +502,7 @@ function App() {
 
   // 🌍 国际化支持（提前至此处，后续 useEffect 依赖 t）
   const { t, i18n } = useTranslation(['common', 'analysis', 'sidebar', 'command_palette']);
+  const updater = useAppUpdater();
 
   // 🆕 维护模式：从 store 读取全局状态
   const maintenanceMode = useSystemStatusStore((s) => s.maintenanceMode);
@@ -402,19 +596,6 @@ function App() {
     };
   }, [isSmallScreen]); // 响应窗口大小变化，自动切换移动端/桌面端默认值
   
-  const shellSidebarWidth = getShellSidebarWidth(isSmallScreen);
-  const appShellCustomProperties = useMemo(() => ({
-    ...getMobileShellCssVars(),
-    '--sidebar-width': `${shellSidebarWidth}px`,
-    '--sidebar-expanded-width': `${shellSidebarWidth}px`,
-    '--sidebar-collapsed-width': `${shellSidebarWidth}px`,
-    '--shell-navigation-width': `${shellSidebarWidth}px`,
-    '--shell-titlebar-height': `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
-    '--desktop-titlebar-height': `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
-    '--topbar-safe-area': `${topbarTopMargin}px`,
-    '--sidebar-header-height': '65px', // 左侧导航栏第一个图标到分隔线的高度
-  }) as React.CSSProperties, [shellSidebarWidth, topbarTopMargin]);
-
   // 🎯 命令面板：注册内置命令
   useEffect(() => {
     const unregister = registerBuiltinCommands();
@@ -443,6 +624,42 @@ function App() {
   const [currentView, setCurrentViewRaw] = useState<CurrentView>('chat-v2');
   // ★ previousView 用于模板选择返回
   const [previousView, setPreviousView] = useState<CurrentView>('chat-v2');
+  const leftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);
+  const shellSidebarWidth = getShellSidebarWidth(isSmallScreen);
+  const desktopNavigationWidth = !isSmallScreen && currentView !== 'settings' && leftPanelCollapsed ? 0 : shellSidebarWidth;
+  const shouldUseDesktopFloatingAccessory = !isSmallScreen && currentView !== 'settings';
+  const desktopFloatingAccessoryOffset = isMacOS() ? DESKTOP_SHELL.macTrafficLightsSpacer + 16 : 16;
+  const desktopSidebarToggleLabel = t('common:navigation.toggle_left_panel', '切换左侧面板');
+  const desktopHeaderNavHotzoneLabel = t('chatV2:page.newSession', '新建会话');
+  const desktopHeaderTitleHotzoneLabel = t('common:command_palette_label', '命令面板');
+  const desktopCollapsedLeadingWidth = 180;
+  const desktopTitlebarLeadingInset = !isSmallScreen && currentView !== 'settings' && leftPanelCollapsed
+    ? (isMacOS() ? DESKTOP_SHELL.macTrafficLightsSpacer : 0) + 16 + desktopCollapsedLeadingWidth
+    : 0;
+  const desktopFloatingAccessoryWidth = leftPanelCollapsed
+    ? Math.max(desktopTitlebarLeadingInset - desktopFloatingAccessoryOffset, 0)
+    : Math.max(desktopNavigationWidth - desktopFloatingAccessoryOffset - 16, 0);
+  const desktopSidebarAccessoryContent = (
+    <DesktopSidebarAccessory
+      onToggle={useUIStore.getState().toggleLeftPanel}
+      label={desktopSidebarToggleLabel}
+      collapsed={leftPanelCollapsed}
+      updateVisible={!updater.checking && updater.available && !!updater.info}
+      onUpdate={() => void updater.performUpdateAction()}
+      updateDownloading={updater.downloading}
+    />
+  );
+  const appShellCustomProperties = useMemo(() => ({
+    ...getMobileShellCssVars(),
+    '--sidebar-width': `${desktopNavigationWidth}px`,
+    '--sidebar-expanded-width': `${shellSidebarWidth}px`,
+    '--sidebar-collapsed-width': `${desktopNavigationWidth}px`,
+    '--shell-navigation-width': `${desktopNavigationWidth}px`,
+    '--shell-titlebar-height': `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
+    '--desktop-titlebar-height': `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
+    '--topbar-safe-area': `${topbarTopMargin}px`,
+    '--sidebar-header-height': '65px', // 左侧导航栏第一个图标到分隔线的高度
+  }) as React.CSSProperties, [desktopNavigationWidth, shellSidebarWidth, topbarTopMargin]);
   const [templateManagementRefreshTick, setTemplateManagementRefreshTick] = useState(0);
   const currentViewRef = useRef<CurrentView>('chat-v2');
   const viewSwitchStartRef = useRef<{ from: CurrentView; to: CurrentView; startTime: number } | null>(null);
@@ -595,8 +812,6 @@ function App() {
     }
   }, [t]);
   
-  const [sidebarCollapsed] = useState(true); // 固定为收起状态，禁用展开
-
   // [Phase 3 清理] 教材侧栏状态已迁移到 TextbookContext
   // 旧的 useState、事件监听、回调函数已移除，现在由以下组件统一处理：
   // - TextbookProvider (App 顶层) - 状态管理
@@ -1243,13 +1458,13 @@ function App() {
     <ModernSidebar
       currentView={currentView}
       onViewChange={handleViewChange}
-      sidebarCollapsed={sidebarCollapsed}
+      sidebarCollapsed={leftPanelCollapsed}
       onToggleSidebar={noopToggle}
       startDragging={startDragging}
       topbarTopMargin={topbarTopMargin}
     />
     // navigationHistory 已从 deps 中移除：ModernSidebar 仅解构 currentView/onViewChange/topbarTopMargin
-  ), [currentView, handleViewChange, sidebarCollapsed, noopToggle, startDragging, topbarTopMargin]);
+  ), [currentView, handleViewChange, leftPanelCollapsed, noopToggle, startDragging, topbarTopMargin]);
 
   // ★ 分析模式已废弃（旧错题系统已移除）- handleCoreStateUpdate, handleSaveRequest, analysisHostProps 已移除
   // const renderAnalysisView = () => null; // 已废弃
@@ -1291,6 +1506,91 @@ function App() {
   }, []);
 
   const navigationShortcuts = getNavigationShortcutText();
+  const commandPaletteTriggerRef = useRef<(() => void) | null>(null);
+  const handleDesktopTitlebarMouseDown = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    const dragExclusionTarget = (event.target as HTMLElement).closest('[data-no-drag]');
+    if (dragExclusionTarget) {
+      return;
+    }
+
+    event.preventDefault();
+    void startDragging(event);
+  }, [startDragging]);
+  const clearHeaderHotzonePress = useCallback((element: HTMLElement) => {
+    delete element.dataset.shellHotzoneStartX;
+    delete element.dataset.shellHotzoneStartY;
+  }, []);
+  const handleHeaderHotzoneMouseDown = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    if (event.button !== 0 || shouldIgnoreHeaderHotzoneTarget(event.target)) {
+      return;
+    }
+
+    event.currentTarget.dataset.shellHotzoneStartX = String(event.clientX);
+    event.currentTarget.dataset.shellHotzoneStartY = String(event.clientY);
+    delete event.currentTarget.dataset.shellHotzoneSuppressClick;
+  }, []);
+  const handleHeaderHotzoneMouseMove = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    if (event.buttons !== 1) {
+      return;
+    }
+
+    const { shellHotzoneStartX, shellHotzoneStartY } = event.currentTarget.dataset;
+    if (!shellHotzoneStartX || !shellHotzoneStartY) {
+      return;
+    }
+
+    const deltaX = event.clientX - Number(shellHotzoneStartX);
+    const deltaY = event.clientY - Number(shellHotzoneStartY);
+    if (Math.hypot(deltaX, deltaY) < HEADER_HOTZONE_DRAG_THRESHOLD) {
+      return;
+    }
+
+    clearHeaderHotzonePress(event.currentTarget);
+    event.currentTarget.dataset.shellHotzoneSuppressClick = 'true';
+    void startDragging(event);
+  }, [clearHeaderHotzonePress, startDragging]);
+  const handleHeaderHotzoneMouseUp = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    const hotzoneElement = event.currentTarget;
+    clearHeaderHotzonePress(hotzoneElement);
+
+    if (hotzoneElement.dataset.shellHotzoneSuppressClick === 'true') {
+      window.setTimeout(() => {
+        delete hotzoneElement.dataset.shellHotzoneSuppressClick;
+      }, 0);
+    }
+  }, [clearHeaderHotzonePress]);
+  const handleHeaderHotzoneMouseLeave = useCallback((event: React.MouseEvent<HTMLElement>) => {
+    clearHeaderHotzonePress(event.currentTarget);
+  }, [clearHeaderHotzonePress]);
+  const handleCreateChatSession = useCallback(() => {
+    if (currentView !== 'chat-v2') {
+      setCurrentView('chat-v2');
+      requestAnimationFrame(() => {
+        window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.CHAT_NEW_SESSION));
+      });
+      return;
+    }
+
+    window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.CHAT_NEW_SESSION));
+  }, [currentView, setCurrentView]);
+  const openCommandPalette = useCallback(() => {
+    commandPaletteTriggerRef.current?.();
+  }, []);
+  const desktopHeaderNavControls = (
+    <DesktopHeaderNavControls
+      canGoBack={unifiedCanGoBack}
+      canGoForward={unifiedCanGoForward}
+      onGoBack={unifiedGoBack}
+      onGoForward={unifiedGoForward}
+      onNewSession={handleCreateChatSession}
+      newSessionLabel={desktopHeaderNavHotzoneLabel}
+      backTitle={t('common:navigation.back_tooltip', { shortcut: navigationShortcuts.back })}
+      backLabel={t('common:navigation.back')}
+      forwardTitle={t('common:navigation.forward_tooltip', { shortcut: navigationShortcuts.forward })}
+      forwardLabel={t('common:navigation.forward')}
+      collapsed={leftPanelCollapsed}
+    />
+  );
   const [currentChatHeaderTitle, setCurrentChatHeaderTitle] = useState(() =>
     t('sidebar:navigation.chat_v2', '智能会话')
   );
@@ -1572,58 +1872,75 @@ function App() {
         <header
           data-shell-layer="window-chrome"
           className="desktop-shell-titlebar fixed top-0 left-0 right-0 z-[1100] grid"
-          data-tauri-drag-region
           style={{
             paddingTop: `${topbarTopMargin}px`,
             height: `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
             minHeight: `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
-            gridTemplateColumns: 'var(--shell-navigation-width) minmax(0, 1fr)',
+            gridTemplateColumns: `${desktopNavigationWidth}px minmax(0, 1fr)`,
           }}
+          onMouseDown={handleDesktopTitlebarMouseDown}
         >
-          <div className="desktop-shell-header-cell desktop-shell-header-cell--nav flex min-w-0 items-center px-4" data-no-drag>
-            {isMacOS() && <div className="flex-shrink-0" style={{ width: DESKTOP_SHELL.macTrafficLightsSpacer }} />}
-            <div className="desktop-shell-accessory-group flex min-w-0 items-center gap-1.5">
-              <NotionButton
-                variant="ghost"
-                size="icon"
-                onClick={useUIStore.getState().toggleLeftPanel}
-                className="desktop-shell-toolbar-button desktop-shell-accessory-button"
-                title={t('common:navigation.toggle_left_panel', '切换左侧面板')}
-                aria-label={t('common:navigation.toggle_left_panel', '切换左侧面板')}
-              >
-                <SidebarDockIcon />
-              </NotionButton>
-              <div className="desktop-shell-toolbar-group">
-                <NotionButton
-                  variant="ghost"
-                  size="icon"
-                  onClick={unifiedGoBack}
-                  disabled={!unifiedCanGoBack}
-                  className="desktop-shell-toolbar-button"
-                  title={t('common:navigation.back_tooltip', { shortcut: navigationShortcuts.back })}
-                  aria-label={t('common:navigation.back')}
-                >
-                  <ChevronLeft className="h-4 w-4" />
-                </NotionButton>
-                <NotionButton
-                  variant="ghost"
-                  size="icon"
-                  onClick={unifiedGoForward}
-                  disabled={!unifiedCanGoForward}
-                  className="desktop-shell-toolbar-button"
-                  title={t('common:navigation.forward_tooltip', { shortcut: navigationShortcuts.forward })}
-                  aria-label={t('common:navigation.forward')}
-                >
-                  <ChevronRight className="h-4 w-4" />
-                </NotionButton>
+          {shouldUseDesktopFloatingAccessory ? (
+            <div
+              className="pointer-events-none absolute z-20 transition-[width,opacity] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none"
+              style={{
+                left: `${desktopFloatingAccessoryOffset}px`,
+                top: `${topbarTopMargin}px`,
+                height: `${DESKTOP_SHELL.titlebarBaseHeight}px`,
+                width: `${desktopFloatingAccessoryWidth}px`,
+                opacity: 1,
+              }}
+            >
+              <div className="pointer-events-auto inline-flex h-full max-w-full items-center justify-between gap-1.5 overflow-hidden pr-1.5">
+                <div className="flex items-center">
+                  {desktopSidebarAccessoryContent}
+                </div>
+                {leftPanelCollapsed ? desktopHeaderNavControls : null}
               </div>
-              <SidebarUpdateBadge />
+            </div>
+          ) : null}
+
+          <div
+            className="desktop-shell-header-cell desktop-shell-header-cell--nav flex min-w-0 items-center justify-end overflow-visible px-4"
+          >
+            <div
+              className="desktop-shell-header-hotzone flex min-w-0 items-center justify-end"
+              data-no-drag
+              data-shell-hotzone="desktop-nav"
+              role="button"
+              tabIndex={0}
+              aria-label={desktopHeaderNavHotzoneLabel}
+              onMouseDown={handleHeaderHotzoneMouseDown}
+              onMouseMove={handleHeaderHotzoneMouseMove}
+              onMouseUp={handleHeaderHotzoneMouseUp}
+              onMouseLeave={handleHeaderHotzoneMouseLeave}
+              onClick={(event) => handleHeaderHotzoneClick(event, handleCreateChatSession)}
+              onKeyDown={(event) => handleHeaderHotzoneKeyDown(event, handleCreateChatSession)}
+            >
+              {isMacOS() && <div className="flex-shrink-0" style={{ width: DESKTOP_SHELL.macTrafficLightsSpacer }} />}
+              {!leftPanelCollapsed ? desktopHeaderNavControls : null}
             </div>
           </div>
 
-          <div className="desktop-shell-header-cell flex min-w-0 items-center justify-between px-5" data-no-drag>
-            <div className="flex min-w-0 items-center gap-3">
-              <CommandPaletteButton />
+          <div
+            className="desktop-shell-header-cell flex min-w-0 items-center justify-between px-5 transition-[padding-left] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none"
+            style={{ paddingLeft: `${20 + desktopTitlebarLeadingInset}px` }}
+          >
+            <div
+              className="desktop-shell-header-hotzone flex min-w-0 items-center gap-3"
+              data-no-drag
+              data-shell-hotzone="desktop-title"
+              role="button"
+              tabIndex={0}
+              aria-label={desktopHeaderTitleHotzoneLabel}
+              onMouseDown={handleHeaderHotzoneMouseDown}
+              onMouseMove={handleHeaderHotzoneMouseMove}
+              onMouseUp={handleHeaderHotzoneMouseUp}
+              onMouseLeave={handleHeaderHotzoneMouseLeave}
+              onClick={(event) => handleHeaderHotzoneClick(event, openCommandPalette)}
+              onKeyDown={(event) => handleHeaderHotzoneKeyDown(event, openCommandPalette)}
+            >
+              <CommandPaletteButton onOpenReady={(trigger) => { commandPaletteTriggerRef.current = trigger; }} />
 
               <div className="min-w-0 pl-1">
                 <div className="min-w-0 desktop-shell-header-title">
@@ -1644,7 +1961,17 @@ function App() {
         )}
 
         {/* 桌面端：主导航侧边栏 */}
-        {!isSmallScreen && sidebarElement}
+        {!isSmallScreen && currentView !== 'settings' ? (
+          <div
+            className={cn(
+              'h-full flex-shrink-0',
+              'overflow-hidden transition-[width] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)]',
+              leftPanelCollapsed ? 'w-0' : 'w-[var(--shell-navigation-width)]'
+            )}
+          >
+            {sidebarElement}
+          </div>
+        ) : null}
 
         <div
           data-shell-layer="workspace"
@@ -1805,7 +2132,7 @@ function App() {
       <NotificationContainer />
 
       {/* 启动时自动更新检查弹窗 */}
-      <StartupUpdateNotification />
+      <StartupUpdateNotification updater={updater} />
       
       {/* 云存储配置弹窗 - 移到全局位置避免被 renderViewLayer 的 visibility 影响 */}
       <NotionDialog open={showCloudStorageSettings} onOpenChange={setShowCloudStorageSettings} maxWidth="max-w-[560px]">
