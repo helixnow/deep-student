@@ -80,6 +80,7 @@ function SessionItemHarness({ currentSessionId }: { currentSessionId: string | n
     hoveredSessionId: null,
     currentSessionId,
     pendingDeleteSessionId: null,
+    pendingArchiveSessionId: null,
     editingTitle: '',
     renamingSessionId: null,
     renameError: null,
@@ -104,6 +105,9 @@ function SessionItemHarness({ currentSessionId }: { currentSessionId: string | n
     cancelEditSession: vi.fn(),
     moveSessionToGroup: vi.fn(),
     deleteSession: vi.fn(),
+    archiveSession: vi.fn(),
+    togglePinSession: vi.fn(),
+    formatTime: () => '2h',
   });
 
   return (
@@ -149,6 +153,7 @@ describe('session sidebar typography alignment', () => {
     const selectedItemRow = selectedItem.closest('[role="button"]');
     expect(selectedItemRow).toHaveClass('rounded-2xl');
     expect(selectedItemRow).toHaveClass('bg-[var(--sidebar-study-selected)]');
+    expect(selectedItemRow).toHaveClass('text-foreground');
     expect(selectedItemRow).not.toHaveClass('ring-1');
     expect(selectedItem).toHaveClass('font-normal');
     expect(selectedItem).toHaveClass('hover:font-normal');
@@ -163,15 +168,21 @@ describe('session sidebar typography alignment', () => {
     const selectedItemRow = selectedItem.closest('.group');
     expect(selectedItemRow).toHaveClass('rounded-2xl');
     expect(selectedItemRow).toHaveClass('bg-[var(--sidebar-study-selected)]');
+    expect(selectedItemRow).toHaveClass('hover:bg-[var(--sidebar-study-selected)]');
+    expect(selectedItemRow).toHaveClass('text-foreground');
     expect(selectedItemRow).not.toHaveClass('bg-accent');
     expect(selectedItem).toHaveClass('font-normal');
     expect(selectedItem).toHaveClass('hover:font-normal');
     expect(selectedItem).toHaveClass('text-[13px]');
     expect(selectedItem).not.toHaveClass('font-medium');
+    expect(screen.queryByLabelText('page.pinSession')).not.toBeInTheDocument();
+    expect(screen.queryByLabelText('page.archiveSession')).not.toBeInTheDocument();
 
     const regularItem = screen.getByText('Regular session');
     const regularItemRow = regularItem.closest('.group');
     expect(regularItemRow).toHaveClass('rounded-2xl');
+    expect(regularItemRow).toHaveClass('text-foreground/80');
+    expect(regularItemRow).toHaveClass('hover:text-foreground');
     expect(regularItemRow).toHaveClass('hover:bg-[var(--sidebar-study-hover)]');
     expect(regularItem).toHaveClass('font-normal');
     expect(regularItem).toHaveClass('hover:font-normal');

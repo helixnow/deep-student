@@ -4,7 +4,7 @@
 //! 所有类型必须与前端 `src/chat-v2/core/types/` 目录中的定义完全对齐。
 
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
 
@@ -2065,8 +2065,20 @@ pub struct SessionSettings {
     pub title: Option<String>,
 
     /// 扩展元数据
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<Value>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_optional_value"
+    )]
+    pub metadata: Option<Option<Value>>,
+}
+
+fn deserialize_optional_value<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
 }
 
 // ============================================================================

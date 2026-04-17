@@ -25,8 +25,6 @@ import {
   verticalListSortingStrategy,
   sortableKeyboardCoordinates,
 } from '@dnd-kit/sortable';
-import { UnifiedSidebar, UnifiedSidebarHeader, UnifiedSidebarContent } from '@/components/ui/unified-sidebar/UnifiedSidebar';
-import { UnifiedSidebarSection } from '@/components/ui/unified-sidebar/UnifiedSidebarSection';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
@@ -94,6 +92,7 @@ import { useChatPageEvents } from './useChatPageEvents';
 import { useSessionItemRenderer, resolveDragStyle } from './SessionItemRenderer';
 import { useSessionSidebarContent } from './SessionSidebarContent';
 import { getSessionTitleText } from '../utils/sessionTitle';
+import { compareSessionsForSidebar } from '../utils/sessionPin';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -128,8 +127,6 @@ const LAST_SESSION_KEY = 'chat-v2-last-session-id';
 
 export const ChatV2Page: React.FC = () => {
   const { t } = useTranslation(['chatV2', 'learningHub', 'common']);
-  const workspaceLabel = t('workspace.title', { ns: 'chatV2', defaultValue: '工作区' });
-  const recentLabel = t('page.recentLabel', { defaultValue: '最近' });
 
   // ========== 页面生命周期监控 ==========
   usePageMount('chat-v2', 'ChatV2Page');
@@ -198,6 +195,7 @@ export const ChatV2Page: React.FC = () => {
     }
   }, [globalLeftPanelCollapsed]);
   const [pendingDeleteSessionId, setPendingDeleteSessionId] = useState<string | null>(null);
+  const [pendingArchiveSessionId, setPendingArchiveSessionId] = useState<string | null>(null);
   const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
   const deleteConfirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearDeleteConfirmTimeout = useCallback(() => {
@@ -287,8 +285,10 @@ export const ChatV2Page: React.FC = () => {
 
   // 过滤会话
   const filteredSessions = useMemo(() => {
-    if (!normalizedSearchQuery) return sessions;
-    return sessions.filter((s) => (s.title || '').toLowerCase().includes(normalizedSearchQuery));
+    const filtered = !normalizedSearchQuery
+      ? sessions
+      : sessions.filter((s) => (s.title || '').toLowerCase().includes(normalizedSearchQuery));
+    return [...filtered].sort(compareSessionsForSidebar);
   }, [normalizedSearchQuery, sessions]);
 
   // 按分组归类会话
@@ -479,12 +479,12 @@ export const ChatV2Page: React.FC = () => {
 
   // ===== 会话编辑 hook =====
   const {
-    startEditSession, saveSessionTitle, cancelEditSession,
+    startEditSession, saveSessionTitle, cancelEditSession, archiveSession, togglePinSession,
     openCreateGroup, openEditGroup, openRenameGroup, closeGroupEditor,
     handleSubmitGroup, confirmDeleteGroup,
     moveSessionToGroup, handleGroupReorder, handleDragEnd, formatTime,
   } = useSessionEdit({
-    resetDeleteConfirmation, setEditingSessionId, setEditingTitle,
+    resetDeleteConfirmation, currentSessionId, setCurrentSessionId, setEditingSessionId, setEditingTitle,
     setRenamingSessionId, setRenameError, setSessions,
     setGroupEditorOpen, setEditingGroup, setGroupEditorAutoFocusField, setShowTrash, setShowChatControl,
     setViewMode, setSessionSheetOpen, setPendingDeleteGroup,
@@ -500,6 +500,9 @@ export const ChatV2Page: React.FC = () => {
     const handler = (event: Event) => {
       const { action, groupId, group } = (event as CustomEvent).detail ?? {};
       switch (action) {
+        case 'create-group':
+          openCreateGroup();
+          break;
         case 'create-session':
           if (groupId) void createSession(groupId);
           break;
@@ -516,7 +519,32 @@ export const ChatV2Page: React.FC = () => {
     };
     window.addEventListener('modern-sidebar:group-action', handler);
     return () => window.removeEventListener('modern-sidebar:group-action', handler);
-  }, [createSession, openRenameGroup, openEditGroup, setPendingDeleteGroup]);
+  }, [createSession, openCreateGroup, openRenameGroup, openEditGroup, setPendingDeleteGroup]);
+
+  useEffect(() => {
+    const handler = (event: Event) => {
+      const { action, session, sessionId } = (event as CustomEvent).detail ?? {};
+      if (action !== 'rename-session') {
+        return;
+      }
+
+      const targetSession =
+        sessionsRef.current.find((item) => item.id === sessionId)
+        ?? (session && typeof session.id === 'string' ? session : null);
+
+      if (!targetSession) {
+        return;
+      }
+
+      setCurrentSessionId(targetSession.id);
+      setViewMode('sidebar');
+      setSessionSheetOpen(false);
+      startEditSession(targetSession, { stopPropagation() {} } as React.MouseEvent);
+    };
+
+    window.addEventListener('modern-sidebar:session-action', handler);
+    return () => window.removeEventListener('modern-sidebar:session-action', handler);
+  }, [setCurrentSessionId, setSessionSheetOpen, setViewMode, startEditSession]);
 
   // ===== 页面布局 hook =====
   useChatPageLayout({
@@ -542,13 +570,13 @@ export const ChatV2Page: React.FC = () => {
   const {
     renderSessionItem, handleBrowserSelectSession, handleBrowserRenameSession,
   } = useSessionItemRenderer({
-    editingSessionId, hoveredSessionId, currentSessionId, pendingDeleteSessionId,
+    editingSessionId, hoveredSessionId, currentSessionId, pendingDeleteSessionId, pendingArchiveSessionId,
     editingTitle, renamingSessionId, renameError, groups, sessions, totalSessionCount,
     t, resetDeleteConfirmation, setCurrentSessionId, setHoveredSessionId,
-    setEditingTitle, setPendingDeleteSessionId, setSessions, setViewMode,
+    setEditingTitle, setPendingDeleteSessionId, setPendingArchiveSessionId, setSessions, setViewMode,
     clearDeleteConfirmTimeout, deleteConfirmTimeoutRef,
     startEditSession, saveSessionTitle, cancelEditSession,
-    moveSessionToGroup, deleteSession,
+    moveSessionToGroup, deleteSession, archiveSession, togglePinSession, formatTime,
   });
 
   // ===== 侧边栏内容 hook =====
@@ -862,381 +890,7 @@ export const ChatV2Page: React.FC = () => {
             renderMainContent()
           )}
         </MobileSlidingLayout>
-      ) : (
-        /* ===== 桌面端布局：传统侧边栏 + 面板 ===== */
-        <>
-          <UnifiedSidebar
-            collapsed={sidebarCollapsed}
-            onCollapsedChange={handleSidebarCollapsedChange}
-            searchQuery={searchQuery}
-            onSearchQueryChange={setSearchQuery}
-            showMacSafeZone={false}
-            displayMode="panel"
-            autoResponsive={false}
-          >
-            <UnifiedSidebarHeader
-              title=""
-              icon={MessageSquare}
-              showSearch={false}
-              showCreate={false}
-              collapseTitle={t('page.collapseSidebar')}
-              expandTitle={t('page.expandSidebar')}
-            >
-              {!sidebarCollapsed && (
-                <div className="px-2 pb-2 pt-1">
-                  <div className="space-y-0.5">
-                    <NotionButton
-                      variant="nav"
-                      size="md"
-                      onClick={() => createSession()}
-                      className="w-full justify-start rounded-2xl border border-[color:var(--shell-navigation-border)] bg-[color:var(--sidebar-quiet-active)] !px-3 !py-2.5 text-[14px] font-medium text-[color:var(--sidebar-quiet-active-foreground)]"
-                    >
-                      <MessageSquare className="h-[18px] w-[18px]" />
-                      <span>{t('page.newSession')}</span>
-                    </NotionButton>
-                  </div>
-                </div>
-              )}
-            </UnifiedSidebarHeader>
-
-            {!sidebarCollapsed && (viewMode === 'browser' || showTrash || showChatControl) && (
-              <div className="px-3 py-2 shrink-0 space-y-1">
-                <div className="px-1 pb-1">
-                  <p className="text-[11px] font-normal text-[color:var(--shell-navigation-muted)]">
-                    {workspaceLabel}
-                  </p>
-                </div>
-                <NotionButton
-                  variant="nav"
-                  size="md"
-                  onClick={() => { setShowTrash(false); setViewMode(viewMode === 'browser' ? 'sidebar' : 'browser'); }}
-                  className={cn(
-                    'w-full justify-between rounded-2xl !px-3 !py-2.5 group',
-                    viewMode === 'browser'
-                      ? 'border border-[color:var(--shell-navigation-border)] bg-[color:var(--sidebar-quiet-active)] text-[color:var(--sidebar-quiet-active-foreground)]'
-                      : 'text-[color:var(--shell-navigation-muted)] hover:bg-[color:var(--sidebar-quiet-hover)] hover:text-[color:var(--shell-navigation-foreground)]'
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    <LayoutGrid className="w-4 h-4" />
-                    <span className="text-sm font-normal">{t('browser.allSessions')}</span>
-                    <span className="text-xs text-[color:var(--shell-navigation-muted)]">{totalSessionCount ?? sessions.length}</span>
-                  </div>
-                  <ChevronRight className="w-4 h-4" />
-                </NotionButton>
-
-                <NotionButton
-                  variant="nav"
-                  size="md"
-                  onClick={toggleTrash}
-                  className={cn(
-                    'w-full justify-between rounded-2xl !px-3 !py-2 group',
-                    showTrash
-                      ? 'border border-[color:var(--shell-navigation-border)] bg-[color:var(--sidebar-quiet-active)] text-[color:var(--sidebar-quiet-active-foreground)]'
-                      : 'text-[color:var(--shell-navigation-muted)] hover:bg-[color:var(--sidebar-quiet-hover)] hover:text-[color:var(--shell-navigation-foreground)]'
-                  )}
-                >
-                  <div className="flex items-center gap-2">
-                    <Trash2 className="w-4 h-4" />
-                    <span className="text-sm font-normal">
-                      {t('page.trash')}
-                    </span>
-                    {deletedSessions.length > 0 && (
-                      <span className="text-xs text-[color:var(--shell-navigation-muted)]">{deletedSessions.length}</span>
-                    )}
-                  </div>
-                  <ChevronRight className={cn('w-4 h-4 transition-transform', showTrash && 'rotate-90')} />
-                </NotionButton>
-
-              </div>
-            )}
-
-            <UnifiedSidebarContent
-              isEmpty={isInitialLoading ? false : showTrash ? deletedSessions.length === 0 : showChatControl ? false : sessions.length === 0}
-              emptyIcon={showTrash ? Trash2 : showChatControl ? SlidersHorizontal : MessageSquare}
-              emptyTitle={showTrash ? t('page.trashEmpty') : showChatControl ? '' : t('page.noSessions')}
-              emptyActionText={showTrash || showChatControl ? undefined : t('page.createFirst')}
-              onEmptyAction={showTrash || showChatControl ? undefined : createSession}
-            >
-              {/* 🆕 对话控制视图 */}
-              {showChatControl ? (
-                <div className="px-2 py-2 h-full">
-                  {/* 对话控制面板内容 - 使用侧栏模式（单列布局，无头部） */}
-                  {currentSessionId && sessionManager.get(currentSessionId) ? (
-                    <AdvancedPanel
-                      store={sessionManager.get(currentSessionId)!}
-                      onClose={() => setShowChatControl(false)}
-                      sidebarMode
-                    />
-                  ) : (
-                    <div className="text-sm text-muted-foreground text-center py-4">
-                      {t('page.selectSessionFirst')}
-                    </div>
-                  )}
-                </div>
-              ) : showTrash ? (
-                <>
-                  {/* 回收站标题和清空按钮 */}
-                  <div className="px-3 py-2 flex items-center justify-between border-b border-border/40 mb-2">
-                    <span className="text-sm font-medium text-muted-foreground">
-                      {t('page.trashTitle')}
-                    </span>
-                    {deletedSessions.length > 0 && (
-                      <NotionButton
-                        variant="danger"
-                        size="sm"
-                        onClick={() => setShowEmptyTrashConfirm(true)}
-                        title={t('page.emptyTrash')}
-                      >
-                        {t('page.emptyTrash')}
-                      </NotionButton>
-                    )}
-                  </div>
-
-                  {/* 已删除会话列表 */}
-                  {isLoadingTrash ? (
-                    <div className="flex items-center justify-center py-8">
-                      <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
-                    </div>
-                  ) : (
-                    <div className="space-y-0.5">
-                      {deletedSessions.map((session) => (
-                        <div
-                          key={session.id}
-                          onMouseLeave={() => {
-                            if (pendingDeleteSessionId === session.id) {
-                              resetDeleteConfirmation();
-                            }
-                          }}
-                          className="group flex items-center gap-2.5 px-2.5 py-1.5 mx-1 rounded-2xl hover:bg-[var(--sidebar-study-hover)] transition-[background-color,color,box-shadow] duration-150"
-                        >
-                          <div className="flex-1 min-w-0">
-                            <div className="text-sm text-foreground/80 line-clamp-1">
-                              {getSessionTitleText(session.title, t('page.untitled'))}
-                            </div>
-                          </div>
-                          <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity">
-                            {/* 恢复按钮 */}
-                            <NotionButton variant="success" size="icon" iconOnly onClick={() => restoreSession(session.id)} aria-label={t('page.restoreSession')} title={t('page.restoreSession')} className="!h-6 !w-6">
-                              <RefreshCw className="w-3.5 h-3.5" />
-                            </NotionButton>
-                            {/* 永久删除按钮 - 二次确认 */}
-                            <NotionButton
-                              variant="ghost"
-                              size="icon"
-                              iconOnly
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                if (pendingDeleteSessionId === session.id) {
-                                  resetDeleteConfirmation();
-                                  permanentlyDeleteSession(session.id);
-                                  return;
-                                }
-                                setPendingDeleteSessionId(session.id);
-                                clearDeleteConfirmTimeout();
-                                deleteConfirmTimeoutRef.current = setTimeout(() => {
-                                  resetDeleteConfirmation();
-                                }, 2500);
-                              }}
-                              className={cn(
-                                '!h-6 !w-6 hover:bg-destructive/20 text-muted-foreground hover:text-destructive',
-                                pendingDeleteSessionId === session.id && 'text-destructive'
-                              )}
-                              aria-label={
-                                pendingDeleteSessionId === session.id
-                                  ? t('common:confirm_delete')
-                                  : t('page.permanentDelete')
-                              }
-                              title={
-                                pendingDeleteSessionId === session.id
-                                  ? t('common:confirm_delete')
-                                  : t('page.permanentDelete')
-                              }
-                            >
-                              {pendingDeleteSessionId === session.id ? (
-                                <Trash2 className="w-3.5 h-3.5" />
-                              ) : (
-                                <X className="w-3.5 h-3.5" />
-                              )}
-                            </NotionButton>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </>
-              ) : (
-                <>
-                  <div className="py-1 space-y-2">
-                    <div className="px-3 pt-1">
-                      <p className="text-[11px] font-normal text-[color:var(--shell-navigation-muted)]">
-                        {recentLabel}
-                      </p>
-                    </div>
-                    {/* 分组区域 */}
-                    <div className="flex items-center justify-between px-3 py-1">
-                      <span className="text-[11px] font-normal text-[color:var(--shell-navigation-muted)]">
-                        {t('page.groups', { defaultValue: '分组' })}
-                      </span>
-                      <NotionButton
-                        variant="nav"
-                        size="sm"
-                        iconOnly
-                        onClick={openCreateGroup}
-                        title={t('page.createGroup')}
-                        className="!h-7 !w-7"
-                      >
-                        <Plus className="w-3.5 h-3.5" />
-                      </NotionButton>
-                    </div>
-
-                    {isGroupsLoading ? (
-                      <div className="px-3 py-2 text-xs text-muted-foreground">
-                        {t('common:loading')}
-                      </div>
-                    ) : (
-                      <DndKitContext
-                        sensors={groupDragSensors}
-                        collisionDetection={closestCenter}
-                        onDragEnd={handleGroupReorder}
-                      >
-                        <SortableContext
-                          items={visibleGroups.map(g => g.id)}
-                          strategy={verticalListSortingStrategy}
-                        >
-                          <DragDropContext onDragEnd={handleDragEnd}>
-                            <div className="space-y-2">
-                              {visibleGroups.map((group) => (
-                                <SortableGroupItem
-                                  key={group.id}
-                                  group={group}
-                                  groupSessions={sessionsByGroup.get(group.id) || []}
-                                  isCollapsed={collapsedMap[group.id] ?? false}
-                                  groupDragDisabled={groupDragDisabled}
-                                  toggleGroupCollapse={toggleGroupCollapse}
-                                  openEditGroup={openEditGroup}
-                                  openRenameGroup={openRenameGroup}
-                                  requestDeleteGroup={setPendingDeleteGroup}
-                                  createSession={createSession}
-                                  renderSessionItem={renderSessionItem}
-                                  t={t}
-                                />
-                              ))}
-                            </div>
-
-                        {/* 未分组区域 */}
-                        <Droppable droppableId="session-ungrouped" type="SESSION">
-                          {(provided, snapshot) => (
-                            <div
-                              ref={provided.innerRef}
-                              {...provided.droppableProps}
-                              className={cn(snapshot.isDraggingOver && 'bg-[var(--sidebar-study-hover)] rounded-2xl')}
-                            >
-                              <UnifiedSidebarSection
-                                id="ungrouped"
-                                title={t('page.ungrouped')}
-                                icon={Folder}
-                                count={ungroupedSessionCount ?? ungroupedSessions.length}
-                                open={!(collapsedMap.ungrouped ?? false)}
-                                onOpenChange={() => toggleGroupCollapse('ungrouped')}
-                                twoLineLayout
-                                quickAction={
-                                  <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); createSession(); }} aria-label={t('page.newSession')} title={t('page.newSession')} className="!h-6 !w-6">
-                                    <Plus className="w-3.5 h-3.5" />
-                                  </NotionButton>
-                                }
-                              >
-                                {(ungroupedSessionCount ?? ungroupedSessions.length) === 0 ? (
-                                  <div className="px-3 py-2 text-xs text-muted-foreground">
-                                    {t('page.noUngroupedSessions')}
-                                  </div>
-                                ) : (
-                                  (() => {
-                                    let ungroupedIndex = 0;
-                                    return (['today', 'yesterday', 'previous7Days', 'previous30Days', 'older'] as TimeGroup[]).map((timeGroup) => {
-                                      const groupSessions = groupedSessions.get(timeGroup) || [];
-                                      if (groupSessions.length === 0) return null;
-
-                                      return (
-                                        <div key={timeGroup} className="mb-1">
-                                          <div className="px-3 py-1.5">
-                                            <span className="text-[11px] font-normal text-muted-foreground/60">
-                                              {timeGroupLabels[timeGroup]}
-                                            </span>
-                                          </div>
-                                          <div className="space-y-0.5">
-                                            {groupSessions.map((session) => {
-                                              const index = ungroupedIndex;
-                                              ungroupedIndex += 1;
-                                              return (
-                                                <Draggable
-                                                  key={`session:${session.id}`}
-                                                  draggableId={`session:${session.id}`}
-                                                  index={index}
-                                                >
-                                                  {(sessionProvided, sessionSnapshot) =>
-                                                    renderSessionItem(session, {
-                                                      provided: sessionProvided,
-                                                      snapshot: sessionSnapshot,
-                                                    })
-                                                  }
-                                                </Draggable>
-                                              );
-                                            })}
-                                          </div>
-                                        </div>
-                                      );
-                                    });
-                                  })()
-                                )}
-                              </UnifiedSidebarSection>
-                              {provided.placeholder}
-                            </div>
-                          )}
-                        </Droppable>
-                          </DragDropContext>
-                        </SortableContext>
-                      </DndKitContext>
-                    )}
-                  </div>
-
-                  {/* P1-22: 加载更多按钮（无限滚动分页） */}
-                  {hasMoreSessions && sessions.length > 0 && (
-                    <div className="px-3 py-2">
-                      <NotionButton
-                        variant="ghost"
-                        size="sm"
-                        onClick={loadMoreSessions}
-                        disabled={isLoadingMore}
-                        className="w-full"
-                      >
-                        {isLoadingMore ? (
-                          <>
-                            <Loader2 className="w-3 h-3 animate-spin" />
-                            {t('page.loading')}
-                          </>
-                        ) : (
-                          t('page.loadMore')
-                        )}
-                      </NotionButton>
-                    </div>
-                  )}
-                </>
-              )}
-            </UnifiedSidebarContent>
-
-            <div className="shrink-0 border-t border-[color:var(--shell-navigation-border)] p-2">
-              {sidebarCollapsed ? (
-                <div className="flex flex-col items-center gap-1">
-                  <NotionButton variant="nav" size="icon" iconOnly onClick={() => createSession()} disabled={isLoading} aria-label={t('page.newSession')} title={t('page.newSession')}>
-                    <Plus className="w-4 h-4" />
-                  </NotionButton>
-                </div>
-              ) : null}
-            </div>
-          </UnifiedSidebar>
-        </>
-      )}
+      ) : null}
 
       {/* 桌面端：主聊天区域 + Canvas 侧边栏 */}
       {!isSmallScreen && (

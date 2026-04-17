@@ -1,13 +1,18 @@
 import React, { useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Edit2, Check, X, Loader2, Trash2, Folder } from 'lucide-react';
+import { Edit2, Check, X, Loader2, Pin, Archive } from 'lucide-react';
 import { type DraggableProvided, type DraggableStateSnapshot } from '@hello-pangea/dnd';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
-import { NotionButton } from '@/components/ui/NotionButton';
+import {
+  AppMenu,
+  AppMenuContent,
+  AppMenuGroup,
+  AppMenuItem,
+  AppMenuTrigger,
+} from '@/components/ui/app-menu/AppMenu';
 import { cn } from '@/lib/utils';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { PRESET_ICONS } from '../components/groups/GroupEditorDialog';
-import { shouldShowSessionActionButtons } from './sessionItemActionVisibility';
+import { getSidebarStudyRowClassName } from './sessionSidebarStyles';
 import { getSessionTitleText } from '../utils/sessionTitle';
 import type { SessionGroup } from '../types/group';
 import type { ChatSession } from '../types/session';
@@ -26,6 +31,7 @@ export interface UseSessionItemRendererDeps {
   hoveredSessionId: string | null;
   currentSessionId: string | null;
   pendingDeleteSessionId: string | null;
+  pendingArchiveSessionId: string | null;
   editingTitle: string;
   renamingSessionId: string | null;
   renameError: string | null;
@@ -38,6 +44,7 @@ export interface UseSessionItemRendererDeps {
   setHoveredSessionId: React.Dispatch<React.SetStateAction<string | null>>;
   setEditingTitle: React.Dispatch<React.SetStateAction<string>>;
   setPendingDeleteSessionId: React.Dispatch<React.SetStateAction<string | null>>;
+  setPendingArchiveSessionId: React.Dispatch<React.SetStateAction<string | null>>;
   setSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>;
   setViewMode: React.Dispatch<React.SetStateAction<'sidebar' | 'browser'>>;
   clearDeleteConfirmTimeout: () => void;
@@ -47,6 +54,9 @@ export interface UseSessionItemRendererDeps {
   cancelEditSession: () => void;
   moveSessionToGroup: (sessionId: string, groupId?: string) => Promise<void>;
   deleteSession: (sessionId: string) => Promise<void>;
+  archiveSession: (sessionId: string) => Promise<void>;
+  togglePinSession: (sessionId: string, pinned: boolean, metadata?: ChatSession['metadata']) => Promise<void>;
+  formatTime: (isoString: string) => string;
 }
 
 export const resolveDragStyle = (
@@ -56,55 +66,43 @@ export const resolveDragStyle = (
 
 export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
   const {
-    editingSessionId, hoveredSessionId, currentSessionId, pendingDeleteSessionId,
+    editingSessionId, currentSessionId,
     editingTitle, renamingSessionId, renameError, groups, sessions, totalSessionCount,
-    t, resetDeleteConfirmation, setCurrentSessionId, setHoveredSessionId,
-    setEditingTitle, setPendingDeleteSessionId, setSessions, setViewMode,
-    clearDeleteConfirmTimeout, deleteConfirmTimeoutRef,
+    t, resetDeleteConfirmation, setCurrentSessionId,
+    setEditingTitle, setSessions, setViewMode,
     startEditSession, saveSessionTitle, cancelEditSession,
-    moveSessionToGroup, deleteSession,
+    archiveSession, togglePinSession, formatTime,
   } = deps;
 
   // 渲染单个会话项 - Notion 风格
   const renderSessionItem = (session: ChatSession, drag?: SessionDragState) => {
     const sessionTitle = getSessionTitleText(session.title, t('page.untitled'));
-    const showActionButtons = shouldShowSessionActionButtons({
-      isEditing: editingSessionId === session.id,
-      isHovered: hoveredSessionId === session.id,
-      isSelected: currentSessionId === session.id,
-    });
+    const pinned = !!session.metadata?.pinned;
 
     return (
-      <div
-      ref={drag?.provided.innerRef}
-      {...drag?.provided.draggableProps}
-      {...drag?.provided.dragHandleProps}
-      style={resolveDragStyle(drag?.provided.draggableProps.style, !!drag?.snapshot.isDragging)}
-      onClick={() => {
-        if (editingSessionId !== session.id) {
-          resetDeleteConfirmation();
-          setCurrentSessionId(session.id);
-        }
-      }}
-      onMouseLeave={() => {
-        setHoveredSessionId((prev) => (prev === session.id ? null : prev));
-        if (pendingDeleteSessionId === session.id) {
-          resetDeleteConfirmation();
-        }
-      }}
-      onMouseEnter={() => {
-        setHoveredSessionId(session.id);
-      }}
-      className={cn(
-        'group mx-1 flex items-start gap-2.5 rounded-2xl border border-transparent px-3 py-2 cursor-pointer transition-all duration-150',
-        drag && 'cursor-grab active:cursor-grabbing',
-        currentSessionId === session.id
-          ? 'bg-[var(--sidebar-study-selected)] text-foreground'
-          : 'hover:bg-[var(--sidebar-study-hover)]',
-        editingSessionId === session.id && 'ring-1 ring-primary/60 bg-[var(--sidebar-study-selected)]',
-        drag?.snapshot.isDragging && 'shadow-lg ring-1 ring-border bg-card z-50'
-      )}
-    >
+      <AppMenu mode="context">
+        <AppMenuTrigger asChild>
+          <div
+            ref={drag?.provided.innerRef}
+            {...drag?.provided.draggableProps}
+            {...drag?.provided.dragHandleProps}
+            style={resolveDragStyle(drag?.provided.draggableProps.style, !!drag?.snapshot.isDragging)}
+            onClick={() => {
+              if (editingSessionId !== session.id) {
+                resetDeleteConfirmation();
+                setCurrentSessionId(session.id);
+              }
+            }}
+            className={getSidebarStudyRowClassName({
+              variant: 'session',
+              selected: currentSessionId === session.id,
+              draggable: !!drag,
+              dragging: !!drag?.snapshot.isDragging,
+              className: cn(
+                editingSessionId === session.id && 'ring-1 ring-primary/60 bg-[var(--sidebar-study-selected)]'
+              ),
+            })}
+          >
       <div className="flex-1 min-w-0 overflow-hidden">
         {editingSessionId === session.id ? (
           <div className="flex flex-col gap-1.5 w-full">
@@ -176,139 +174,47 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
           </div>
         ) : (
           <div className={cn(
-            'text-[13px] transition-colors',
-            currentSessionId === session.id
-              ? 'text-foreground font-normal hover:font-normal line-clamp-2 break-words'
-              : 'text-foreground/80 font-normal hover:font-normal truncate'
-          )}>
-            {sessionTitle}
+              'min-w-0 flex-1 text-[13px] transition-colors',
+              currentSessionId === session.id
+                ? 'text-foreground font-normal hover:font-normal line-clamp-2 break-words'
+                : 'text-foreground/80 font-normal hover:font-normal truncate'
+            )}>
+              {sessionTitle}
           </div>
         )}
       </div>
       {editingSessionId !== session.id && (
-        <div className={cn(
-          "flex gap-1 shrink-0 transition-opacity duration-150",
-          showActionButtons ? "opacity-100" : "opacity-0 pointer-events-none"
-        )}>
-          <NotionButton
-            variant="ghost"
-            size="icon"
-            iconOnly
-            onClick={(e) => startEditSession(session, e)}
-            aria-label={t('page.renameSession')}
-            title={t('page.renameSession')}
-            className="!h-6 !w-6"
-          >
-            <Edit2 className="w-3 h-3" />
-          </NotionButton>
-          <Popover>
-            <PopoverTrigger asChild>
-              <NotionButton
-                variant="ghost"
-                size="icon"
-                iconOnly
-                onClick={(e) => e.stopPropagation()}
-                aria-label={t('page.moveToGroup')}
-                title={t('page.moveToGroup')}
-                className="!h-6 !w-6"
-              >
-                <Folder className="w-3 h-3" />
-              </NotionButton>
-            </PopoverTrigger>
-            <PopoverContent align="end" className="w-44 p-1">
-              <NotionButton
-                variant="ghost"
-                size="sm"
-                onClick={(e) => {
-                  e.stopPropagation();
-                  moveSessionToGroup(session.id, undefined);
-                }}
-                className={cn(
-                  'w-full justify-between',
-                  !session.groupId && 'text-primary'
-                )}
-              >
-                <span>{t('page.ungrouped')}</span>
-                {!session.groupId && <Check className="w-3 h-3" />}
-              </NotionButton>
-              <div className="my-1 border-t border-border/40/60" />
-              {groups.length === 0 ? (
-                <div className="px-2 py-1.5 text-xs text-muted-foreground">
-                  {t('page.noGroups')}
-                </div>
-              ) : (
-                groups.map((group) => {
-                  const active = session.groupId === group.id;
-                  // 判断 icon 是预设图标名称还是 emoji，只有 emoji 才添加到标签前面
-                  const presetIcon = group.icon ? PRESET_ICONS.find(p => p.name === group.icon) : null;
-                  const label = (group.icon && !presetIcon) ? `${group.icon} ${group.name}` : group.name;
-                  return (
-                    <NotionButton
-                      key={group.id}
-                      variant="ghost"
-                      size="sm"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        moveSessionToGroup(session.id, group.id);
-                      }}
-                      className={cn(
-                        'w-full justify-between',
-                        active && 'text-primary'
-                      )}
-                    >
-                      <span className="truncate">{label}</span>
-                      {active && <Check className="w-3 h-3" />}
-                    </NotionButton>
-                  );
-                })
-              )}
-            </PopoverContent>
-          </Popover>
-          {/* 🔧 全局最后一个会话不允许删除 */}
-          {(totalSessionCount ?? sessions.length) > 1 && (
-          <NotionButton
-            variant="ghost"
-            size="icon"
-            iconOnly
-            onClick={(e) => {
-              e.stopPropagation();
-              if (pendingDeleteSessionId === session.id) {
-                resetDeleteConfirmation();
-                deleteSession(session.id);
-                return;
-              }
-
-              setPendingDeleteSessionId(session.id);
-              clearDeleteConfirmTimeout();
-              deleteConfirmTimeoutRef.current = setTimeout(() => {
-                resetDeleteConfirmation();
-              }, 2500);
-            }}
-            className={cn(
-              '!h-6 !w-6 hover:bg-destructive/20 text-muted-foreground hover:text-destructive',
-              pendingDeleteSessionId === session.id && 'text-destructive'
-            )}
-            aria-label={
-              pendingDeleteSessionId === session.id
-                ? t('common:confirm_delete')
-                : t('page.deleteSession')
-            }
-            title={
-              pendingDeleteSessionId === session.id
-                ? t('common:confirm_delete')
-                : t('page.deleteSession')
-            }
-          >
-            {pendingDeleteSessionId === session.id ? (
-              <Trash2 className="w-3 h-3" />
-            ) : (
-              <X className="w-3 h-3" />
-            )}
-          </NotionButton>
-          )}
+        <div className="ml-2 flex min-h-6 shrink-0 items-center justify-end gap-1 transition-opacity duration-150 opacity-100">
+          <span className="text-[11px] tabular-nums text-muted-foreground/80">
+            {formatTime(session.updatedAt)}
+          </span>
         </div>
       )}
-    </div>
+          </div>
+        </AppMenuTrigger>
+        <AppMenuContent align="end" width={180}>
+          <AppMenuGroup>
+            <AppMenuItem
+              icon={<Edit2 className="w-4 h-4" />}
+              onClick={() => startEditSession(session, { stopPropagation() {} } as React.MouseEvent)}
+            >
+              {t('page.renameSession')}
+            </AppMenuItem>
+            <AppMenuItem
+              icon={<Pin className="w-4 h-4" />}
+              onClick={() => togglePinSession(session.id, !pinned, session.metadata)}
+            >
+              {pinned ? t('page.unpinSession') : t('page.pinSession')}
+            </AppMenuItem>
+            <AppMenuItem
+              icon={<Archive className="w-4 h-4" />}
+              onClick={() => archiveSession(session.id)}
+            >
+              {t('page.archiveSession')}
+            </AppMenuItem>
+          </AppMenuGroup>
+        </AppMenuContent>
+      </AppMenu>
     );
   };
 

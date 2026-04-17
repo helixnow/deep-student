@@ -828,7 +828,7 @@ fn update_session_settings_in_db(
         persist_status: existing.persist_status,
         created_at: existing.created_at,
         updated_at: now,
-        metadata: settings.metadata.clone().or(existing.metadata),
+        metadata: merge_session_metadata(existing.metadata, &settings.metadata),
         group_id: existing.group_id,
         tags_hash: existing.tags_hash,
         tags: None,
@@ -838,6 +838,17 @@ fn update_session_settings_in_db(
     ChatV2Repo::update_session_v2(db, &updated_session)?;
 
     Ok(updated_session)
+}
+
+fn merge_session_metadata(
+    existing_metadata: Option<Value>,
+    incoming_metadata: &Option<Option<Value>>,
+) -> Option<Value> {
+    match incoming_metadata {
+        Some(Some(metadata)) => Some(metadata.clone()),
+        Some(None) => None,
+        None => existing_metadata,
+    }
 }
 
 /// 归档会话
@@ -1434,6 +1445,33 @@ mod tests {
         // 无效的会话 ID
         assert!(!"session_12345".starts_with("sess_"));
         assert!(!"invalid".starts_with("sess_"));
+    }
+
+    #[test]
+    fn test_merge_session_metadata_preserves_existing_when_omitted() {
+        let existing = Some(serde_json::json!({ "pinned": true }));
+        let merged = merge_session_metadata(existing.clone(), &None);
+
+        assert_eq!(merged, existing);
+    }
+
+    #[test]
+    fn test_merge_session_metadata_clears_existing_when_null() {
+        let existing = Some(serde_json::json!({ "pinned": true }));
+        let merged = merge_session_metadata(existing, &Some(None));
+
+        assert_eq!(merged, None);
+    }
+
+    #[test]
+    fn test_merge_session_metadata_replaces_existing_when_value_present() {
+        let existing = Some(serde_json::json!({ "pinned": true }));
+        let merged = merge_session_metadata(
+            existing,
+            &Some(Some(serde_json::json!({ "starred": true }))),
+        );
+
+        assert_eq!(merged, Some(serde_json::json!({ "starred": true })));
     }
 
     #[test]

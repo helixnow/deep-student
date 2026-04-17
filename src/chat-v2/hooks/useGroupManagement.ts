@@ -4,6 +4,11 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import type { CreateGroupRequest, SessionGroup, UpdateGroupRequest } from '../types/group';
 import { setGroupsCache } from '../core/store/groupCache';
 
+const emitGroupListUpdated = () => {
+  if (typeof window === 'undefined') return;
+  window.dispatchEvent(new CustomEvent('chat-v2:groups-updated'));
+};
+
 function sortGroups(groups: SessionGroup[]): SessionGroup[] {
   return [...groups].sort((a, b) => {
     if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
@@ -49,6 +54,7 @@ export function useGroupManagement(workspaceId?: string) {
         setGroupsCache(next);
         return next;
       });
+      emitGroupListUpdated();
       return group;
     } catch (error: unknown) {
       console.error('[useGroupManagement] Failed to create group:', getErrorMessage(error));
@@ -70,6 +76,7 @@ export function useGroupManagement(workspaceId?: string) {
         setGroupsCache(next);
         return next;
       });
+      emitGroupListUpdated();
       return group;
     } catch (error: unknown) {
       console.error('[useGroupManagement] Failed to update group:', getErrorMessage(error));
@@ -85,6 +92,7 @@ export function useGroupManagement(workspaceId?: string) {
         setGroupsCache(next);
         return next;
       });
+      emitGroupListUpdated();
     } catch (error: unknown) {
       console.error('[useGroupManagement] Failed to delete group:', getErrorMessage(error));
       throw error;
@@ -116,6 +124,7 @@ export function useGroupManagement(workspaceId?: string) {
 
     try {
       await invoke('chat_v2_reorder_groups', { groupIds });
+      emitGroupListUpdated();
     } catch (error: unknown) {
       console.error('[useGroupManagement] Failed to reorder groups:', getErrorMessage(error));
       await loadGroups();

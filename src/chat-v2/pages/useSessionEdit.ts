@@ -4,6 +4,7 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { sessionManager } from '../core/session/sessionManager';
 import { groupCache } from '../core/store/groupCache';
 import { getSessionTitleText } from '../utils/sessionTitle';
+import { buildPinnedSessionMetadata } from '../utils/sessionPin';
 import type { CreateGroupRequest, SessionGroup, UpdateGroupRequest } from '../types/group';
 import type { ChatSession } from '../types/session';
 import type { DropResult } from '@hello-pangea/dnd';
@@ -19,6 +20,8 @@ const emitSessionListUpdated = () => {
 
 export interface UseSessionEditDeps {
   resetDeleteConfirmation: () => void;
+  currentSessionId: string | null;
+  setCurrentSessionId: (id: string | null | ((prev: string | null) => string | null)) => void;
   setEditingSessionId: React.Dispatch<React.SetStateAction<string | null>>;
   setEditingTitle: React.Dispatch<React.SetStateAction<string>>;
   setRenamingSessionId: React.Dispatch<React.SetStateAction<string | null>>;
@@ -51,7 +54,7 @@ export interface UseSessionEditDeps {
 
 export function useSessionEdit(deps: UseSessionEditDeps) {
   const {
-    resetDeleteConfirmation, setEditingSessionId, setEditingTitle,
+    resetDeleteConfirmation, currentSessionId, setCurrentSessionId, setEditingSessionId, setEditingTitle,
     setRenamingSessionId, setRenameError, setSessions,
     setGroupEditorOpen, setEditingGroup, setGroupEditorAutoFocusField, setShowTrash, setShowChatControl,
     setViewMode, setSessionSheetOpen, setPendingDeleteGroup,
@@ -122,6 +125,46 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     setEditingSessionId(null);
     setEditingTitle('');
   }, []);
+
+  const togglePinSession = useCallback(async (sessionId: string, pinned: boolean, metadata?: ChatSession['metadata']) => {
+    try {
+      const nextMetadata = buildPinnedSessionMetadata(metadata, pinned);
+      await invoke('chat_v2_update_session_settings', {
+        sessionId,
+        settings: { metadata: nextMetadata ?? null },
+      });
+
+      setSessions((prev) =>
+        prev.map((session) =>
+          session.id === sessionId
+            ? { ...session, metadata: nextMetadata }
+            : session
+        )
+      );
+      emitSessionListUpdated();
+    } catch (error) {
+      console.error('[ChatV2Page] Failed to toggle session pin:', getErrorMessage(error));
+    }
+  }, [setSessions]);
+
+  const archiveSession = useCallback(async (sessionId: string) => {
+    try {
+      await invoke('chat_v2_archive_session', { sessionId });
+
+      const nextCurrentSessionId =
+        currentSessionId === sessionId
+          ? sessionsRef.current.find((session) => session.id !== sessionId)?.id ?? null
+          : currentSessionId;
+
+      setSessions((prev) => prev.filter((session) => session.id !== sessionId));
+      if (currentSessionId === sessionId) {
+        setCurrentSessionId(nextCurrentSessionId);
+      }
+      emitSessionListUpdated();
+    } catch (error) {
+      console.error('[ChatV2Page] Failed to archive session:', getErrorMessage(error));
+    }
+  }, [currentSessionId, setCurrentSessionId, setSessions, sessionsRef]);
 
   // ===== 分组管理 =====
   const openCreateGroup = useCallback(() => {
@@ -317,6 +360,8 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     startEditSession,
     saveSessionTitle,
     cancelEditSession,
+    archiveSession,
+    togglePinSession,
     openCreateGroup,
     openEditGroup,
     openRenameGroup,
