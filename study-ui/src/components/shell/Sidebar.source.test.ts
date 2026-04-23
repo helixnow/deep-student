@@ -93,20 +93,22 @@ test("settings entry stays in a quiet footer zone without a divider line", () =>
   assert.doesNotMatch(source, /border-t border-sidebar-border\/80/u);
 });
 
-test("app mode footer no longer renders a duplicate settings action", () => {
+test("app mode footer keeps the settings entry reachable", () => {
   const source = readFileSync(sidebarPath, "utf8");
   const footerStart = source.indexOf('<div aria-label="侧边栏底部"');
-  const footerEnd = source.indexOf("</div>", footerStart);
+  const footerEnd = source.indexOf("</aside>", footerStart);
 
   assert.notEqual(footerStart, -1);
   assert.notEqual(footerEnd, -1);
 
   const footerBlock = source.slice(footerStart, footerEnd);
 
-  assert.doesNotMatch(footerBlock, /currentMode === "app"/u);
-  assert.doesNotMatch(footerBlock, /onOpenSettings/u);
-  assert.doesNotMatch(footerBlock, /GearSix/u);
-  assert.doesNotMatch(footerBlock, />设置</u);
+  assert.match(footerBlock, /currentMode === "app"/u);
+  assert.match(footerBlock, /data-slot="sidebar-app-settings-action"/u);
+  assert.match(footerBlock, /onClick=\{onOpenSettings\}/u);
+  assert.match(footerBlock, /GearSix size=\{18\}/u);
+  assert.match(footerBlock, />设置</u);
+  assert.doesNotMatch(footerBlock, /border-t border-sidebar-border\/80/u);
 });
 
 test("sidebar section labels do not have an extra divider line above them", () => {

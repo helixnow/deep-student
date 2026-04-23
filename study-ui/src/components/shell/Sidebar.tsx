@@ -5,6 +5,7 @@ import {
   CaretRight,
   CheckSquare,
   ChatCenteredText,
+  GearSix,
   Plus,
   PushPinSimple,
   SidebarSimple,
@@ -51,6 +52,7 @@ export function Sidebar({
   folderItems,
   isSidebarClosing = false,
   isSidebarVisible,
+  onOpenSettings,
   onReturnToApp,
   onSelectSettingsTab,
   onToggleSidebar,
@@ -361,7 +363,19 @@ export function Sidebar({
           )}
         </div>
 
-        <div aria-label="侧边栏底部" className="mt-auto px-2 pb-2 pt-1.5" />
+        <div aria-label="侧边栏底部" className="mt-auto px-2 pb-2 pt-1.5">
+          {currentMode === "app" ? (
+            <ShellButton
+              variant="nav"
+              data-slot="sidebar-app-settings-action"
+              onClick={onOpenSettings}
+              className="rounded-2xl text-sidebar-muted hover:bg-interactive-hover hover:text-sidebar-foreground lg:min-h-8 lg:gap-2 lg:py-1"
+            >
+              <GearSix size={18} />
+              <span>设置</span>
+            </ShellButton>
+          ) : null}
+        </div>
       </div>
     </aside>
   );
