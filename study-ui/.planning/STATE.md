@@ -60,6 +60,8 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 - UAT file: `.planning/phases/04-content-surface-adaptation/04-UAT.md`.
 - 2026-04-23: Phase 5 context gathered for touch targets and verification.
 - Resume file: `.planning/phases/05-touch-targets-and-verification/05-CONTEXT.md`.
+- 2026-04-23: Phase 5 UI design contract approved.
+- Resume file: `.planning/phases/05-touch-targets-and-verification/05-UI-SPEC.md`.
 
 ### Important Decisions
 
@@ -71,6 +73,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 - Use existing density/form-factor tokens, especially `--touch-target-size`, as the Phase 5 touch target source of truth.
 - Preserve compact desktop controls instead of globally forcing desktop UI to 44px.
 - Treat stale Phase 4 source tests as part of Phase 5 verification hardening.
+- Do not use `md:` as the first touch-target compaction breakpoint; tablets remain touch density until `1024px`.
 
 ### Known Risks
 
@@ -78,6 +81,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 - Mobile keyboard and safe-area behavior require real-device or WebView manual validation; source tests cannot fully prove it.
 - SettingsPanel is large and dense, so responsive degradation should be done carefully to avoid incidental regressions.
 - Switch and icon/small button variants need careful Phase 5 handling because their visual boxes can be smaller than the required phone/tablet touch target.
+- Existing `md:` height overrides on controls may shrink tablet targets and must be audited during Phase 5 planning.
 
 ## Current Phase Queue
 
@@ -87,7 +91,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 | 2 Root State And Layout Tokens | Complete |
 | 3 Shell And Sidebar Adaptation | Complete |
 | 4 Content Surface Adaptation | Verified |
-| 5 Touch Targets And Verification | Context gathered |
+| 5 Touch Targets And Verification | UI-SPEC approved |
 
 ---
-*Last updated: 2026-04-23 after Phase 5 discussion*
+*Last updated: 2026-04-23 after Phase 5 UI-SPEC*

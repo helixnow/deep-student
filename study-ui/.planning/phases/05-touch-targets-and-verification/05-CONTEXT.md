@@ -55,9 +55,9 @@ Phase 5 finalizes the responsive migration by locking control hit targets and ve
 | Area | Finding | Phase 5 Consequence |
 |------|---------|---------------------|
 | `src/styles/app.css` | `--touch-target-size` already switches to `2.75rem` for phone/tablet density. | Reuse this token instead of inventing new responsive sizing primitives. |
-| `src/components/ui/button.tsx` | Default buttons are `h-11` mobile-first, but `sm` and `icon` variants still rely on compact button tokens. | Audit `sm`/`icon` hit targets for phone/tablet and preserve compact desktop sizing. |
-| `src/components/shell/ShellButton.tsx` | Nav buttons are already `min-h-[2.75rem]` on compact, while icon buttons inherit the compact icon size. | Make shell icon controls touch-safe in compact mode without bloating desktop chrome. |
-| `src/components/ui/input.tsx` | Input uses `h-11` then `md:h-10`. | Keep as the expected mobile-first pattern and retain source coverage. |
+| `src/components/ui/button.tsx` | Default buttons are `h-11` mobile-first, but `md:h-[var(--button-height)]`, `sm`, and `icon` variants can shrink in the tablet range. | Audit all variants for phone/tablet hit targets and preserve compact desktop sizing at `lg` or via density tokens. |
+| `src/components/shell/ShellButton.tsx` | Nav buttons use compact `min-h-[2.75rem]` but also include `md:min-h-9`; icon buttons inherit compact icon size. | Make shell nav/icon controls touch-safe through the full `<1024` compact range without bloating desktop chrome. |
+| `src/components/ui/input.tsx` | Input uses `h-11` then `md:h-10`, which is phone-safe but can shrink tablets below 44px. | Keep the mobile-first pattern, but move compaction to desktop-only behavior and expand source coverage. |
 | `src/components/ui/textarea.tsx` | Textarea uses a large `min-h-28`. | Add source contract coverage rather than changing sizing unless planning finds a gap. |
 | `src/components/ui/switch.tsx` | Switch track is `h-8`, below 44px by visual box size. | Decide whether to enlarge hit target around the switch, adjust density behavior, or document row-level target coverage. |
 | `src/components/content/ThreadCanvas.tsx` | Composer send button is already `h-11 w-11`; secondary `Button size="sm"` controls depend on shared button sizing. | Shared button fix can protect composer secondary actions. |
@@ -66,7 +66,7 @@ Phase 5 finalizes the responsive migration by locking control hit targets and ve
 ## Test Signals
 
 - `src/components/ui/button.source.test.ts` already covers default mobile-first button height, but not all compact-sensitive variants.
-- `src/components/ui/input.source.test.ts` already covers mobile and desktop input heights.
+- `src/components/ui/input.source.test.ts` covers phone and desktop heights but should also guard against tablet shrink caused by `md:` compaction.
 - `src/components/ui/switch.source.test.ts` covers the current switch visual sizing but not 44px touch-target policy.
 - No `src/components/ui/textarea.source.test.ts` exists yet.
 - `src/components/shell/ShellButton.source.test.ts` contains stale expectations after the Phase 4 shell button class split.
