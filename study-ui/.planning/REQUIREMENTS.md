@@ -7,10 +7,10 @@
 
 ### Responsive Policy
 
-- [ ] **RESP-01**: The app exposes a single responsive environment model that classifies `phone < 640`, `tablet 640-1023`, and `desktop >= 1024`.
-- [ ] **RESP-02**: The app exposes `isCompact` for widths below `1024` and uses it for the initial compact-vs-desktop interaction split.
-- [ ] **RESP-03**: Breakpoint boundary behavior is covered by tests for `639`, `640`, `767`, `768`, `1023`, and `1024` viewport widths.
-- [ ] **RESP-04**: App layout decisions are centralized in a layout policy that outputs at least `formFactor`, `isCompact`, `sidebarMode`, and `density`.
+- [x] **RESP-01**: The app exposes a single responsive environment model that classifies `phone < 640`, `tablet 640-1023`, and `desktop >= 1024`.
+- [x] **RESP-02**: The app exposes `isCompact` for widths below `1024` and uses it for the initial compact-vs-desktop interaction split.
+- [x] **RESP-03**: Breakpoint boundary behavior is covered by tests for `639`, `640`, `767`, `768`, `1023`, and `1024` viewport widths.
+- [x] **RESP-04**: App layout decisions are centralized in a layout policy that outputs at least `formFactor`, `isCompact`, `sidebarMode`, and `density`.
 
 ### Shell And Sidebar
 
@@ -80,10 +80,10 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| RESP-01 | Phase 1 | Pending |
-| RESP-02 | Phase 1 | Pending |
-| RESP-03 | Phase 1 | Pending |
-| RESP-04 | Phase 1 | Pending |
+| RESP-01 | Phase 1 | Complete |
+| RESP-02 | Phase 1 | Complete |
+| RESP-03 | Phase 1 | Complete |
+| RESP-04 | Phase 1 | Complete |
 | SHELL-01 | Phase 2 | Pending |
 | SHELL-02 | Phase 2 | Pending |
 | SHELL-03 | Phase 3 | Pending |
@@ -119,4 +119,4 @@
 
 ---
 *Requirements defined: 2026-04-23*
-*Last updated: 2026-04-23 after initialization*
+*Last updated: 2026-04-23 after Phase 1 execution*

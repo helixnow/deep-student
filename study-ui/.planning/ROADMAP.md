@@ -8,7 +8,7 @@
 
 | Phase | Name | Goal | Requirements | Status |
 |-------|------|------|--------------|--------|
-| 1 | Responsive Policy Foundation | Centralize responsive facts and layout decisions | RESP-01, RESP-02, RESP-03, RESP-04 | Not planned |
+| 1 | Responsive Policy Foundation | Centralize responsive facts and layout decisions | RESP-01, RESP-02, RESP-03, RESP-04 | Complete |
 | 2 | Root State And Layout Tokens | Expose policy state to CSS and split sidebar semantics | SHELL-01, SHELL-02, TOKN-01, TOKN-02 | Not planned |
 | 3 | Shell And Sidebar Adaptation | Make AppChrome/Titlebar/Sidebar work across compact and desktop modes | SHELL-03, SHELL-04, SHELL-05, SHELL-06 | Not planned |
 | 4 | Content Surface Adaptation | Make ThreadCanvas and SettingsPanel mobile/tablet-safe through tokens and responsive degradation | TOKN-03, THRD-01, THRD-02, THRD-03, THRD-04, THRD-05, SETT-01, SETT-02, SETT-03, SETT-04, SETT-05, SETT-06 | Not planned |
@@ -17,6 +17,8 @@
 ## Phase 1: Responsive Policy Foundation
 
 **Goal:** Replace scattered viewport assumptions with a tested responsive environment and app layout policy.
+
+**Status:** Complete
 
 **UI hint:** yes
 
@@ -152,4 +154,4 @@ All v1 requirements from `.planning/REQUIREMENTS.md` are mapped to exactly one r
 
 ## Next Step
 
-Run `$gsd-discuss-phase 1` or `$gsd-ui-phase 1` before planning the first implementation phase.
+Run `$gsd-discuss-phase 2` before planning root datasets, sidebar state semantics, and token exposure.
