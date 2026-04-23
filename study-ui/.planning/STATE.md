@@ -58,6 +58,8 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 - Summary file: `.planning/phases/04-content-surface-adaptation/04-01-SUMMARY.md`.
 - 2026-04-23: Phase 4 UAT complete with 6/6 automated checks passed and 0 gaps.
 - UAT file: `.planning/phases/04-content-surface-adaptation/04-UAT.md`.
+- 2026-04-23: Phase 5 context gathered for touch targets and verification.
+- Resume file: `.planning/phases/05-touch-targets-and-verification/05-CONTEXT.md`.
 
 ### Important Decisions
 
@@ -66,12 +68,16 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 - Use root datasets and CSS tokens as the main responsive presentation mechanism.
 - Preserve existing desktop Tauri shell behavior while adapting mobile/tablet layout.
 - Keep compact drawer close-after-selection in `Sidebar` behind AppChrome's drawer-mode `closeOnSelect` prop.
+- Use existing density/form-factor tokens, especially `--touch-target-size`, as the Phase 5 touch target source of truth.
+- Preserve compact desktop controls instead of globally forcing desktop UI to 44px.
+- Treat stale Phase 4 source tests as part of Phase 5 verification hardening.
 
 ### Known Risks
 
 - `gsd-sdk` is unavailable, so future `$gsd-*` commands may also need manual fallback unless the SDK is installed or added to `PATH`.
 - Mobile keyboard and safe-area behavior require real-device or WebView manual validation; source tests cannot fully prove it.
 - SettingsPanel is large and dense, so responsive degradation should be done carefully to avoid incidental regressions.
+- Switch and icon/small button variants need careful Phase 5 handling because their visual boxes can be smaller than the required phone/tablet touch target.
 
 ## Current Phase Queue
 
@@ -81,7 +87,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 | 2 Root State And Layout Tokens | Complete |
 | 3 Shell And Sidebar Adaptation | Complete |
 | 4 Content Surface Adaptation | Verified |
-| 5 Touch Targets And Verification | Pending |
+| 5 Touch Targets And Verification | Context gathered |
 
 ---
-*Last updated: 2026-04-23 after Phase 4 UAT*
+*Last updated: 2026-04-23 after Phase 5 discussion*
