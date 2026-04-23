@@ -1,6 +1,7 @@
-import React, { useCallback } from 'react';
+import React, { useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { Edit2, Check, X, Loader2, Pin, Archive } from 'lucide-react';
+import { PushPinSimple } from '@phosphor-icons/react';
 import { type DraggableProvided, type DraggableStateSnapshot } from '@hello-pangea/dnd';
 import {
   AppMenu,
@@ -11,7 +12,7 @@ import {
 } from '@/components/ui/app-menu/AppMenu';
 import { cn } from '@/lib/utils';
 import { getErrorMessage } from '@/utils/errorUtils';
-import { PRESET_ICONS } from '../components/groups/GroupEditorDialog';
+import { NotionButton } from '@/components/ui/NotionButton';
 import { getSidebarStudyRowClassName } from './sessionSidebarStyles';
 import { getSessionTitleText } from '../utils/sessionTitle';
 import type { SessionGroup } from '../types/group';
@@ -67,17 +68,26 @@ export const resolveDragStyle = (
 export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
   const {
     editingSessionId, currentSessionId,
-    editingTitle, renamingSessionId, renameError, groups, sessions, totalSessionCount,
+    editingTitle, renamingSessionId, renameError, groups,
     t, resetDeleteConfirmation, setCurrentSessionId,
     setEditingTitle, setSessions, setViewMode,
     startEditSession, saveSessionTitle, cancelEditSession,
     archiveSession, togglePinSession, formatTime,
   } = deps;
 
+  const groupNameById = useMemo(() => {
+    const map = new Map<string, string>();
+    groups.forEach((group) => map.set(group.id, group.name));
+    return map;
+  }, [groups]);
+
   // 渲染单个会话项 - Notion 风格
   const renderSessionItem = (session: ChatSession, drag?: SessionDragState) => {
     const sessionTitle = getSessionTitleText(session.title, t('page.untitled'));
     const pinned = !!session.metadata?.pinned;
+    const groupLabel = session.groupId
+      ? (groupNameById.get(session.groupId) ?? '未分类')
+      : '未分类';
 
     return (
       <AppMenu mode="context">
@@ -173,19 +183,33 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
             </div>
           </div>
         ) : (
-          <div className={cn(
-              'min-w-0 flex-1 text-[13px] transition-colors',
+          pinned ? (
+            <div className="min-w-0 flex-1 space-y-0.5">
+              <div className="flex min-w-0 items-center gap-2 text-[16px] font-normal leading-5 text-foreground/90">
+                <PushPinSimple size={12} weight="fill" className="h-3 w-3 shrink-0 text-[color:var(--sidebar-muted)]" />
+                <span className="min-w-0 flex-1 truncate">{sessionTitle}</span>
+              </div>
+              <div className="flex min-w-0 items-center gap-1.5 text-[13px] font-normal leading-4 text-muted-foreground">
+                <span className="truncate">{groupLabel}</span>
+                <span aria-hidden="true">·</span>
+                <span className="shrink-0 tabular-nums">{formatTime(session.updatedAt)}</span>
+              </div>
+            </div>
+          ) : (
+            <div className={cn(
+              'min-w-0 flex-1 text-[16px] font-normal leading-5 transition-colors',
               currentSessionId === session.id
-                ? 'text-foreground font-normal hover:font-normal line-clamp-2 break-words'
-                : 'text-foreground/80 font-normal hover:font-normal truncate'
+                ? 'line-clamp-1 break-words text-foreground'
+                : 'truncate text-foreground/88'
             )}>
-              {sessionTitle}
-          </div>
+                {sessionTitle}
+            </div>
+          )
         )}
       </div>
-      {editingSessionId !== session.id && (
+      {editingSessionId !== session.id && !pinned && (
         <div className="ml-2 flex min-h-6 shrink-0 items-center justify-end gap-1 transition-opacity duration-150 opacity-100">
-          <span className="text-[11px] tabular-nums text-muted-foreground/80">
+          <span className="text-[13px] tabular-nums text-muted-foreground/80">
             {formatTime(session.updatedAt)}
           </span>
         </div>

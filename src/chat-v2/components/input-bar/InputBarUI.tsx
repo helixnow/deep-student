@@ -129,8 +129,8 @@ const INPUT_BAR_CONFIG = {
   gaps: {
     /** 桌面端底部间距 */
     desktop: 0,
-    /** 移动端底部间距（使用共享配置，确保与 BottomTabBar 高度一致） */
-    mobile: MOBILE_LAYOUT.bottomTabBar.defaultHeight,
+    /** 移动端底部间距：应用导航已进入侧边栏，只保留系统安全区 */
+    mobile: 0,
   },
 };
 

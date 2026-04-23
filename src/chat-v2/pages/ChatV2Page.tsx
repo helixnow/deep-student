@@ -11,20 +11,6 @@ import React, { useState, useCallback, useEffect, useMemo, useDeferredValue, use
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { Plus, MessageSquare, Trash2, Edit2, Check, X, LayoutGrid, Library, FileText, BookOpen, ClipboardList, Image, File, Loader2, GripVertical, Menu, ChevronRight, RefreshCw, SlidersHorizontal, Folder, ExternalLink } from 'lucide-react';
-import { DragDropContext, Droppable, Draggable, type DropResult, type DraggableProvided, type DraggableStateSnapshot } from '@hello-pangea/dnd';
-import {
-  DndContext as DndKitContext,
-  closestCenter,
-  PointerSensor as DndKitPointerSensor,
-  KeyboardSensor as DndKitKeyboardSensor,
-  useSensor as useDndKitSensor,
-  useSensors as useDndKitSensors,
-} from '@dnd-kit/core';
-import {
-  SortableContext,
-  verticalListSortingStrategy,
-  sortableKeyboardCoordinates,
-} from '@dnd-kit/sortable';
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
@@ -49,7 +35,6 @@ import { lazy, Suspense } from 'react';
 
 import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { GroupEditorPanel, PRESET_ICONS } from '../components/groups/GroupEditorDialog';
-import { SortableGroupItem } from '../components/SortableGroupItem';
 import { SessionGroupActions } from './SessionGroupActions';
 import { createSessionWithDefaults } from '../core/session/createSessionWithDefaults';
 import { useGroupManagement } from '../hooks/useGroupManagement';
@@ -59,7 +44,6 @@ import type { ChatSession } from '../types/session';
 import { usePageMount, pageLifecycleTracker } from '@/debug-panel/hooks/usePageLifecycle';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useMobileHeader, MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
-import { MOBILE_LAYOUT } from '@/config/mobileLayout';
 import { SidebarDrawer } from '@/components/ui/unified-sidebar/SidebarDrawer';
 // P1-07: 导入命令面板事件 hook
 import { useCommandEvents, COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
@@ -89,7 +73,7 @@ import { useSessionLifecycle } from './useSessionLifecycle';
 import { useSessionEdit } from './useSessionEdit';
 import { useChatPageLayout } from './useChatPageLayout';
 import { useChatPageEvents } from './useChatPageEvents';
-import { useSessionItemRenderer, resolveDragStyle } from './SessionItemRenderer';
+import { useSessionItemRenderer } from './SessionItemRenderer';
 import { useSessionSidebarContent } from './SessionSidebarContent';
 import { getSessionTitleText } from '../utils/sessionTitle';
 import { compareSessionsForSidebar } from '../utils/sessionPin';
@@ -328,16 +312,6 @@ export const ChatV2Page: React.FC = () => {
 
   const groupDragDisabled = normalizedSearchQuery.length > 0;
 
-  // @dnd-kit sensors: long-press 300ms to trigger group drag
-  const groupDragSensors = useDndKitSensors(
-    useDndKitSensor(DndKitPointerSensor, {
-      activationConstraint: { delay: 300, tolerance: 5 },
-    }),
-    useDndKitSensor(DndKitKeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    }),
-  );
-
   const sessionsForBrowser = useMemo(() => {
     return sessions.map((s) => ({
       ...s,
@@ -482,7 +456,7 @@ export const ChatV2Page: React.FC = () => {
     startEditSession, saveSessionTitle, cancelEditSession, archiveSession, togglePinSession,
     openCreateGroup, openEditGroup, openRenameGroup, closeGroupEditor,
     handleSubmitGroup, confirmDeleteGroup,
-    moveSessionToGroup, handleGroupReorder, handleDragEnd, formatTime,
+    moveSessionToGroup, formatTime,
   } = useSessionEdit({
     resetDeleteConfirmation, currentSessionId, setCurrentSessionId, setEditingSessionId, setEditingTitle,
     setRenamingSessionId, setRenameError, setSessions,
@@ -581,18 +555,17 @@ export const ChatV2Page: React.FC = () => {
 
   // ===== 侧边栏内容 hook =====
   const { renderSessionSidebarContent } = useSessionSidebarContent({
-    searchQuery, setSearchQuery, viewMode, setViewMode, setSessionSheetOpen,
+    searchQuery, setSearchQuery, setViewMode, setSessionSheetOpen,
     setShowEmptyTrashConfirm, setShowChatControl, setPendingDeleteSessionId,
     showTrash, showChatControl, deletedSessions, isLoadingTrash,
-    isInitialLoading, sessions, groups, isGroupsLoading,
-    currentSessionId, totalSessionCount, ungroupedSessionCount, ungroupedSessions,
+    isInitialLoading, sessions, visibleGroups, sessionsByGroup, ungroupedSessions,
+    currentSessionId, totalSessionCount,
     hasMoreSessions, isLoadingMore, pendingDeleteSessionId,
-    collapsedMap, sessionsByGroup, visibleGroups, groupDragDisabled,
-    groupedSessions, timeGroupLabels, t,
-    toggleTrash, toggleGroupCollapse,
+    t,
+    toggleTrash,
     resetDeleteConfirmation, clearDeleteConfirmTimeout, deleteConfirmTimeoutRef,
     createSession, restoreSession, permanentlyDeleteSession, loadMoreSessions,
-    openCreateGroup, openEditGroup, openRenameGroup, requestDeleteGroup: setPendingDeleteGroup, handleGroupReorder, handleDragEnd, renderSessionItem,
+    renderSessionItem,
   });
 
   const handleOpenApp = useCallback((item: ResourceListItem) => {
@@ -769,13 +742,7 @@ export const ChatV2Page: React.FC = () => {
       {isSmallScreen ? (
         <MobileSlidingLayout
           sidebar={
-            <div 
-              className="study-shell-panel h-full flex flex-col"
-              style={{
-                // 使用统一常量计算底部间距：安全区域 + 底部导航栏高度
-                paddingBottom: `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${MOBILE_LAYOUT.bottomTabBar.defaultHeight}px)`,
-              }}
-            >
+            <div className="study-shell-sidebar-frame font-sidebar-study-ui h-full flex flex-col bg-[color:var(--shell-navigation-surface)] text-[color:var(--shell-navigation-foreground)]">
               {renderSessionSidebarContent()}
             </div>
           }
@@ -783,7 +750,7 @@ export const ChatV2Page: React.FC = () => {
             <div
               className="study-shell-panel h-full flex flex-col"
               style={{
-                paddingBottom: `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${MOBILE_LAYOUT.bottomTabBar.defaultHeight}px)`,
+                paddingBottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
               }}
             >
               {openApp ? (
@@ -868,6 +835,9 @@ export const ChatV2Page: React.FC = () => {
             setMobileResourcePanelOpen(pos === 'right');
           }}
           rightPanelEnabled={true}
+          sidebarWidth={304}
+          showSidebarAppNavigation={false}
+          showContentOverlay
           enableGesture={true}
           edgeWidth={20}
           threshold={0.3}

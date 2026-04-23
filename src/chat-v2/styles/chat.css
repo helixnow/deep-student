@@ -1380,16 +1380,16 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
  * 3. 避免使用 @supports 检测（Android 可能声称支持但返回错误值）
  * 4. 移除了基于媒体查询的 hack（会影响所有触摸设备）
  *
- * ★ 2026-02: InputBarUI 现在通过 inline paddingBottom (= safe-area + tabBar) 统一处理底部间距，
+ * ★ 2026-02: InputBarUI 现在通过 inline paddingBottom (= safe-area) 统一处理底部间距，
  *   不再需要 CSS bottom 偏移。此处仅保留 chat-history-viewport 的 Android padding 修复。
  */
 html.is-android .chat-v2 .chat-history-viewport {
-  padding-bottom: calc(var(--unified-input-docked-height, 120px) + var(--android-safe-area-bottom, 15px) + 56px + 16px) !important;
+  padding-bottom: calc(var(--unified-input-docked-height, 120px) + var(--android-safe-area-bottom, 15px) + 16px) !important;
 }
 
 /* 旧版 @supports 检测作为最后防线 - 仅在完全不支持 env() 时生效 */
 @supports not (padding: env(safe-area-inset-bottom)) {
   .chat-v2 .chat-history-viewport {
-    padding-bottom: calc(var(--unified-input-docked-height, 120px) + var(--android-safe-area-bottom, 15px) + 56px + 16px) !important;
+    padding-bottom: calc(var(--unified-input-docked-height, 120px) + var(--android-safe-area-bottom, 15px) + 16px) !important;
   }
 }

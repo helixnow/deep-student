@@ -65,7 +65,6 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { MOBILE_LAYOUT } from '@/config/mobileLayout';
 import { skillRegistry, subscribeToSkillRegistry } from '../../skills/registry';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { CreateGroupRequest, SessionGroup, UpdateGroupRequest } from '../../types/group';
