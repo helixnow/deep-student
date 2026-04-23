@@ -45,14 +45,16 @@ function SidebarDockIcon() {
 type AppChromeProps = {
   desktopPlatform: DesktopPlatform;
   currentMode: "app" | "settings";
-  isSidebarOpen: boolean;
+  mobileSidebarOpen: boolean;
+  sidebarCollapsed: boolean;
   activeSettingsTab: string;
   folderItems: Array<{ id: string; label: string; icon: React.ReactNode; active: boolean; count: number }>;
   settingsNavItems: Array<{ id: string; label: string; icon: React.ReactNode }>;
   threadItems: Array<{ id: number | string; title: string; active: boolean; meta?: string; folderId: string; pinned?: boolean }>;
   appContent: React.ReactNode;
   settingsContent: React.ReactNode;
-  onToggleSidebar: () => void;
+  onToggleMobileSidebar: () => void;
+  onToggleSidebarCollapsed: () => void;
   onOpenSettings: () => void;
   onReturnToApp: () => void;
   onSelectSettingsTab: (tabId: string) => void;
@@ -68,11 +70,13 @@ export function AppChrome({
   currentMode,
   desktopPlatform,
   folderItems,
-  isSidebarOpen,
+  mobileSidebarOpen,
   onOpenSettings,
   onReturnToApp,
   onSelectSettingsTab,
-  onToggleSidebar,
+  onToggleMobileSidebar,
+  onToggleSidebarCollapsed,
+  sidebarCollapsed,
   settingsContent,
   settingsNavItems,
   threadItems,
@@ -90,8 +94,12 @@ export function AppChrome({
     [responsiveEnvironment],
   );
   const isCompactViewport = layoutPolicy.isCompact;
-  const shouldPinSidebarOpen = currentMode === "settings" && !isCompactViewport;
-  const isSidebarVisible = isSidebarOpen || shouldPinSidebarOpen;
+  const shouldRenderDrawerSidebar = layoutPolicy.sidebarMode === "drawer";
+  const shouldRenderDockedSidebar = layoutPolicy.sidebarMode === "docked";
+  const shouldPinSidebarOpen = currentMode === "settings" && shouldRenderDockedSidebar;
+  const isSidebarVisible = shouldRenderDrawerSidebar
+    ? mobileSidebarOpen
+    : !sidebarCollapsed || shouldPinSidebarOpen;
   const headerTopInset = getHeaderTopInset(
     isSidebarVisible,
     titlebarMode,
@@ -102,13 +110,19 @@ export function AppChrome({
   const mainAreaTopOffset = getMainAreaTopOffset(isSidebarVisible, titlebarMode);
   const mainDragHotspotHeight = mainAreaTopOffset + headerTopInset + 46;
   const collapsedSidebarToggleTop = mainAreaTopOffset + headerTopInset + 6;
-  const shouldRenderDockedSidebar = layoutPolicy.sidebarMode === "docked";
   const isDockedSidebarExpanded = shouldRenderDockedSidebar && isSidebarVisible;
   const dockedSidebarSurfaceClass = getNavigationSurfaceClass(windowBackgroundPreference);
   const mainWorkspaceChromeClass = getNavigationSurfaceClass(windowBackgroundPreference);
   const mainWorkspaceSurfaceClass = getMainWorkspaceSurfaceClass(windowBackgroundPreference);
   const splitSeamClass = getSplitSeamClass(windowBackgroundPreference);
-  const handleToggleSidebar = () => onToggleSidebar();
+  const handleToggleSidebar = () => {
+    if (shouldRenderDrawerSidebar) {
+      onToggleMobileSidebar();
+      return;
+    }
+
+    onToggleSidebarCollapsed();
+  };
 
   const appHeaderTitle = "新对话";
   const activeSettingsItem = settingsNavItems.find((item) => item.id === activeSettingsTab);
@@ -219,9 +233,9 @@ export function AppChrome({
       <div className="relative z-0 flex min-w-0 flex-1 overflow-hidden">
         {sharedTrafficLightsAccessory}
 
-        {layoutPolicy.sidebarMode === "drawer" ? (
+        {shouldRenderDrawerSidebar ? (
           <Sheet
-            open={layoutPolicy.sidebarMode === "drawer" && isSidebarVisible}
+            open={shouldRenderDrawerSidebar && isSidebarVisible}
             onOpenChange={(open) => {
               if (open !== isSidebarVisible) {
                 handleToggleSidebar();

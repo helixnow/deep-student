@@ -104,6 +104,7 @@ test("app chrome consumes the shared responsive layout policy", () => {
   );
   assert.match(source, /const layoutPolicy = useMemo\(\s*\(\) => getAppLayoutPolicy\(responsiveEnvironment\),\s*\[responsiveEnvironment\],\s*\);/u);
   assert.match(source, /const isCompactViewport = layoutPolicy\.isCompact;/u);
+  assert.match(source, /const shouldRenderDrawerSidebar = layoutPolicy\.sidebarMode === "drawer";/u);
   assert.match(source, /const shouldRenderDockedSidebar = layoutPolicy\.sidebarMode === "docked";/u);
   assert.doesNotMatch(source, /max-width: 767px/u);
   assert.doesNotMatch(source, /compactViewportQuery/u);
@@ -111,12 +112,31 @@ test("app chrome consumes the shared responsive layout policy", () => {
   assert.doesNotMatch(source, /getCompactViewport/u);
 });
 
+test("app chrome routes split sidebar state by the active sidebar mode", () => {
+  const source = readFileSync(appChromePath, "utf8");
+
+  assert.match(source, /mobileSidebarOpen: boolean;/u);
+  assert.match(source, /sidebarCollapsed: boolean;/u);
+  assert.match(source, /onToggleMobileSidebar: \(\) => void;/u);
+  assert.match(source, /onToggleSidebarCollapsed: \(\) => void;/u);
+  assert.match(
+    source,
+    /const isSidebarVisible = shouldRenderDrawerSidebar\s*\?\s*mobileSidebarOpen\s*:\s*!sidebarCollapsed \|\| shouldPinSidebarOpen;/u,
+  );
+  assert.match(
+    source,
+    /const handleToggleSidebar = \(\) => \{\s*if \(shouldRenderDrawerSidebar\) \{\s*onToggleMobileSidebar\(\);\s*return;\s*\}\s*onToggleSidebarCollapsed\(\);\s*\};/u,
+  );
+  assert.doesNotMatch(source, /\bisSidebarOpen\b/u);
+  assert.doesNotMatch(source, /\bonToggleSidebar: \(\) => void;/u);
+});
+
 test("compact viewports present the sidebar through the shared sheet drawer", () => {
   const source = readFileSync(appChromePath, "utf8");
 
   assert.match(source, /import \{ Sheet, SheetContent \} from "@\/components\/ui\/sheet";/u);
-  assert.match(source, /\{layoutPolicy\.sidebarMode === "drawer" \? \(/u);
-  assert.match(source, /<Sheet[\s\S]*open=\{layoutPolicy\.sidebarMode === "drawer" && isSidebarVisible\}/u);
+  assert.match(source, /\{shouldRenderDrawerSidebar \? \(/u);
+  assert.match(source, /<Sheet[\s\S]*open=\{shouldRenderDrawerSidebar && isSidebarVisible\}/u);
   assert.match(source, /<SheetContent side="left" className="w-\[min\(92vw,19rem\)\] border-r p-0"/u);
 });
 

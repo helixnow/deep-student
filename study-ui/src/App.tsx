@@ -37,7 +37,8 @@ function AppSurfaceFallback() {
 }
 
 export default function App() {
-  const [isSidebarOpen, setIsSidebarOpen] = useState(true);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [currentMode, setCurrentMode] = useState<Mode>("app");
   const [activeSettingsTab, setActiveSettingsTab] = useState<SettingsTabId>("general");
   const [orderedFolderItems, setOrderedFolderItems] = useState(sidebarFolderItems);
@@ -51,10 +52,12 @@ export default function App() {
     [],
   );
 
-  const toggleSidebar = () => setIsSidebarOpen((open) => !open);
+  const toggleMobileSidebar = () => setMobileSidebarOpen((open) => !open);
+  const toggleSidebarCollapsed = () => setSidebarCollapsed((collapsed) => !collapsed);
   const openSettings = () => {
     setCurrentMode("settings");
-    setIsSidebarOpen(true);
+    setMobileSidebarOpen(true);
+    setSidebarCollapsed(false);
   };
   const returnToApp = () => setCurrentMode("app");
   const handleSelectSettingsTab = (tabId: string) => {
@@ -92,12 +95,14 @@ export default function App() {
       currentMode={currentMode}
       desktopPlatform={desktopPlatform}
       folderItems={orderedFolderItems}
-      isSidebarOpen={isSidebarOpen}
+      mobileSidebarOpen={mobileSidebarOpen}
       onOpenSettings={openSettings}
       onReorderFolders={handleReorderFolders}
       onReturnToApp={returnToApp}
       onSelectSettingsTab={handleSelectSettingsTab}
-      onToggleSidebar={toggleSidebar}
+      onToggleMobileSidebar={toggleMobileSidebar}
+      onToggleSidebarCollapsed={toggleSidebarCollapsed}
+      sidebarCollapsed={sidebarCollapsed}
       settingsContent={
         <React.Suspense fallback={<AppSurfaceFallback />}>
           <SettingsPanel activeTab={activeSettingsTab} onSelectTab={handleSelectSettingsTab} />
