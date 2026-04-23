@@ -142,11 +142,44 @@ test("composer divider stays visible in light theme and disappears in dark theme
 test("page-level layout tokens distinguish navigation, workspace, and composer surfaces", () => {
   const source = readFileSync(appStylesPath, "utf8");
 
-  assert.match(source, /:root\s*\{[\s\S]*--layout-nav-width:\s*17\.5rem;/u);
+  assert.match(source, /:root\s*\{[\s\S]*--layout-nav-width:\s*var\(--sidebar-width\);/u);
   assert.match(source, /:root\s*\{[\s\S]*--workspace-max-width:\s*44rem;/u);
   assert.match(source, /:root\s*\{[\s\S]*--composer-max-width:\s*44rem;/u);
   assert.match(source, /:root\s*\{[\s\S]*--composer-min-height:\s*5rem;/u);
   assert.match(source, /:root\s*\{[\s\S]*--composer-border:\s*#E9E9E9;/u);
   assert.match(source, /:root\s*\{[\s\S]*--composer-divider:\s*color-mix\(/u);
   assert.match(source, /@theme inline\s*\{[\s\S]*--color-composer-border:\s*var\(--composer-border\);/u);
+});
+
+test("root layout tokens define shared names for gutters, sidebar, safe-area, composer, and touch sizing", () => {
+  const source = readFileSync(appStylesPath, "utf8");
+
+  assert.match(source, /:root\s*\{[\s\S]*--layout-safe-area-top:\s*var\(--safe-area-top\);/u);
+  assert.match(source, /:root\s*\{[\s\S]*--layout-safe-area-right:\s*var\(--safe-area-right\);/u);
+  assert.match(source, /:root\s*\{[\s\S]*--layout-safe-area-bottom:\s*var\(--safe-area-bottom\);/u);
+  assert.match(source, /:root\s*\{[\s\S]*--layout-safe-area-left:\s*var\(--safe-area-left\);/u);
+  assert.match(source, /:root\s*\{[\s\S]*--layout-viewport-height:\s*calc\(100dvh - var\(--layout-safe-area-top\) - var\(--layout-safe-area-bottom\)\);/u);
+  assert.match(source, /:root\s*\{[\s\S]*--page-gutter-inline:\s*2rem;/u);
+  assert.match(source, /:root\s*\{[\s\S]*--page-gutter-block:\s*1\.5rem;/u);
+  assert.match(source, /:root\s*\{[\s\S]*--sidebar-mode:\s*docked;/u);
+  assert.match(source, /:root\s*\{[\s\S]*--sidebar-width:\s*17rem;/u);
+  assert.match(source, /:root\s*\{[\s\S]*--composer-bottom-offset:\s*calc\(1rem \+ var\(--layout-safe-area-bottom\)\);/u);
+  assert.match(source, /:root\s*\{[\s\S]*--touch-target-size:\s*var\(--control-height-compact\);/u);
+});
+
+test("responsive datasets override the same layout token names instead of creating mobile-specific token families", () => {
+  const source = readFileSync(appStylesPath, "utf8");
+
+  assert.match(source, /\[data-form-factor="phone"\]\s*\{[\s\S]*--page-gutter-inline:\s*1rem;/u);
+  assert.match(source, /\[data-form-factor="phone"\]\s*\{[\s\S]*--workspace-max-width:\s*100%;/u);
+  assert.match(source, /\[data-form-factor="phone"\]\s*\{[\s\S]*--composer-max-width:\s*calc\(100vw/u);
+  assert.match(source, /\[data-form-factor="tablet"\]\s*\{[\s\S]*--page-gutter-inline:\s*1\.5rem;/u);
+  assert.match(source, /\[data-form-factor="tablet"\]\s*\{[\s\S]*--workspace-max-width:\s*48rem;/u);
+  assert.match(source, /\[data-form-factor="desktop"\]\s*\{[\s\S]*--page-gutter-inline:\s*2rem;/u);
+  assert.match(source, /\[data-sidebar-mode="drawer"\]\s*\{[\s\S]*--sidebar-mode:\s*drawer;/u);
+  assert.match(source, /\[data-sidebar-mode="drawer"\]\s*\{[\s\S]*--sidebar-width:\s*min\(92vw, 19rem\);/u);
+  assert.match(source, /\[data-sidebar-mode="docked"\]\s*\{[\s\S]*--sidebar-mode:\s*docked;/u);
+  assert.match(source, /\[data-density="touch"\]\s*\{[\s\S]*--touch-target-size:\s*var\(--control-height-touch\);/u);
+  assert.doesNotMatch(source, /--mobile-(page|workspace|composer|sidebar|touch)/u);
+  assert.doesNotMatch(source, /--tablet-(page|workspace|composer|sidebar|touch)/u);
 });

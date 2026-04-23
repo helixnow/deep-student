@@ -66,14 +66,25 @@
   --safe-area-right: env(safe-area-inset-right, 0px);
   --safe-area-bottom: env(safe-area-inset-bottom, 0px);
   --safe-area-left: env(safe-area-inset-left, 0px);
-  --layout-nav-width: 17.5rem;
+  --layout-safe-area-top: var(--safe-area-top);
+  --layout-safe-area-right: var(--safe-area-right);
+  --layout-safe-area-bottom: var(--safe-area-bottom);
+  --layout-safe-area-left: var(--safe-area-left);
+  --layout-viewport-height: calc(100dvh - var(--layout-safe-area-top) - var(--layout-safe-area-bottom));
+  --page-gutter-inline: 2rem;
+  --page-gutter-block: 1.5rem;
+  --sidebar-mode: docked;
+  --sidebar-width: 17rem;
+  --layout-nav-width: var(--sidebar-width);
   --workspace-max-width: 44rem;
   --composer-max-width: 44rem;
   --composer-min-height: 5rem;
+  --composer-bottom-offset: calc(1rem + var(--layout-safe-area-bottom));
   --composer-border: #E9E9E9;
   --composer-divider: color-mix(in oklab, var(--border) 100%, transparent);
   --control-height-compact: 2rem;
   --control-height-touch: 2.75rem;
+  --touch-target-size: var(--control-height-compact);
   --button-height: 2rem;
   --button-height-sm: 1.875rem;
   --button-height-lg: 2.25rem;
@@ -102,6 +113,49 @@
   --button-destructive-hover-bg: color-mix(in oklab, var(--destructive) 90%, var(--foreground) 10%);
   --button-destructive-active-bg: color-mix(in oklab, var(--destructive) 82%, var(--foreground) 18%);
   --button-destructive-border: color-mix(in oklab, var(--destructive) 30%, var(--border) 70%);
+}
+
+[data-form-factor="phone"] {
+  --page-gutter-inline: 1rem;
+  --page-gutter-block: 0.875rem;
+  --workspace-max-width: 100%;
+  --composer-max-width: calc(100vw - (var(--page-gutter-inline) * 2) - var(--layout-safe-area-left) - var(--layout-safe-area-right));
+  --composer-bottom-offset: calc(0.75rem + var(--layout-safe-area-bottom));
+  --touch-target-size: var(--control-height-touch);
+}
+
+[data-form-factor="tablet"] {
+  --page-gutter-inline: 1.5rem;
+  --page-gutter-block: 1.25rem;
+  --workspace-max-width: 48rem;
+  --composer-max-width: min(44rem, calc(100vw - (var(--page-gutter-inline) * 2) - var(--layout-safe-area-left) - var(--layout-safe-area-right)));
+  --composer-bottom-offset: calc(1rem + var(--layout-safe-area-bottom));
+  --touch-target-size: var(--control-height-touch);
+}
+
+[data-form-factor="desktop"] {
+  --page-gutter-inline: 2rem;
+  --page-gutter-block: 1.5rem;
+  --workspace-max-width: 44rem;
+  --composer-max-width: 44rem;
+  --composer-bottom-offset: calc(1rem + var(--layout-safe-area-bottom));
+  --touch-target-size: var(--control-height-compact);
+}
+
+[data-sidebar-mode="drawer"] {
+  --sidebar-mode: drawer;
+  --sidebar-width: min(92vw, 19rem);
+  --layout-nav-width: var(--sidebar-width);
+}
+
+[data-sidebar-mode="docked"] {
+  --sidebar-mode: docked;
+  --sidebar-width: 17rem;
+  --layout-nav-width: var(--sidebar-width);
+}
+
+[data-density="touch"] {
+  --touch-target-size: var(--control-height-touch);
 }
 
 [data-theme="dark"] {
