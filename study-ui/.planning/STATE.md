@@ -62,6 +62,9 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 - Resume file: `.planning/phases/05-touch-targets-and-verification/05-CONTEXT.md`.
 - 2026-04-23: Phase 5 UI design contract approved.
 - Resume file: `.planning/phases/05-touch-targets-and-verification/05-UI-SPEC.md`.
+- 2026-04-23: Phase 5 planning complete with 1 execution plan.
+- Resume file: `.planning/phases/05-touch-targets-and-verification/05-01-PLAN.md`.
+- 2026-04-23: Phase 5 planning skipped new research because context, UI-SPEC, and code inspection already identified the concrete touch-target/test gaps.
 
 ### Important Decisions
 
@@ -81,7 +84,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 - Mobile keyboard and safe-area behavior require real-device or WebView manual validation; source tests cannot fully prove it.
 - SettingsPanel is large and dense, so responsive degradation should be done carefully to avoid incidental regressions.
 - Switch and icon/small button variants need careful Phase 5 handling because their visual boxes can be smaller than the required phone/tablet touch target.
-- Existing `md:` height overrides on controls may shrink tablet targets and must be audited during Phase 5 planning.
+- Existing `md:` height overrides on controls may shrink tablet targets and must be audited during Phase 5 execution.
 
 ## Current Phase Queue
 
@@ -91,7 +94,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 | 2 Root State And Layout Tokens | Complete |
 | 3 Shell And Sidebar Adaptation | Complete |
 | 4 Content Surface Adaptation | Verified |
-| 5 Touch Targets And Verification | UI-SPEC approved |
+| 5 Touch Targets And Verification | Ready to execute |
 
 ---
-*Last updated: 2026-04-23 after Phase 5 UI-SPEC*
+*Last updated: 2026-04-23 after Phase 5 planning*
