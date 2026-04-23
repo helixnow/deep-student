@@ -445,11 +445,11 @@ export function AppChrome({
                           aria-pressed={isActiveMobileSettingsTab}
                           onClick={isActiveMobileSettingsTab ? undefined : () => onSelectSettingsTab(item.id)}
                           className={cn(
-                            "flex min-h-11 snap-start shrink-0 items-center justify-center gap-1.5 rounded-[14px] border px-3.5 text-[0.78rem] font-medium tracking-[-0.01em] transition-[background-color,border-color,box-shadow,color,transform]",
+                            "flex min-h-11 snap-start shrink-0 items-center justify-center gap-1.5 rounded-[14px] px-3.5 text-[0.78rem] font-medium tracking-[-0.01em] transition-[background-color,box-shadow,color,transform]",
                             "active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-[rgba(0,113,227,0.5)]",
                             isActiveMobileSettingsTab
-                              ? "border-transparent bg-[#EEF0F4] text-[#111111] shadow-none"
-                              : "border-[rgba(17,17,17,0.08)] bg-white text-[#3A3A3C] hover:bg-[#EEF0F4]",
+                              ? "bg-[#EEF0F4] text-[#111111] shadow-none"
+                              : "bg-transparent text-[#3A3A3C] hover:bg-[#EEF0F4]",
                           )}
                         >
                           <span className="flex size-5 items-center justify-center [&_svg]:size-4">{item.icon}</span>

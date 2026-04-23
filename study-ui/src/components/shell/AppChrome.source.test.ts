@@ -220,7 +220,8 @@ test("phone settings are presented as a real sheet instead of replacing the main
   assert.match(source, /className=\{cn\([\s\S]*snap-start[\s\S]*shrink-0[\s\S]*rounded-\[14px\][\s\S]*px-3\.5[\s\S]*active:scale-\[0\.97\]/u);
   assert.match(source, /<span className="flex size-5 items-center justify-center \[&_svg\]:size-4">\{item\.icon\}<\/span>/u);
   assert.match(source, /active:scale-\[0\.97\] focus-visible:ring-2 focus-visible:ring-\[rgba\(0,113,227,0\.5\)\]/u);
-  assert.match(source, /isActiveMobileSettingsTab[\s\S]*\? "border-transparent bg-\[#EEF0F4\] text-\[#111111\] shadow-none"[\s\S]*: "border-\[rgba\(17,17,17,0\.08\)\] bg-white text-\[#3A3A3C\] hover:bg-\[#EEF0F4\]"/u);
+  assert.match(source, /isActiveMobileSettingsTab[\s\S]*\? "bg-\[#EEF0F4\] text-\[#111111\] shadow-none"[\s\S]*: "bg-transparent text-\[#3A3A3C\] hover:bg-\[#EEF0F4\]"/u);
+  assert.doesNotMatch(source, /border-\[rgba\(17,17,17,0\.08\)\] bg-white text-\[#3A3A3C\]/u);
   assert.match(source, /data-slot="mobile-settings-sheet-nav-edge"[\s\S]*bg-gradient-to-l from-white via-white\/85 to-transparent/u);
   assert.match(source, /data-slot="mobile-settings-sheet-real-content"[\s\S]*data-theme="light"[\s\S]*data-window-background="opaque"[\s\S]*\[--background:#F5F5F7\][\s\S]*\[--primary:#0071E3\][\s\S]*\[--ring:rgba\(0,113,227,0\.5\)\][\s\S]*\[--touch-target-size:var\(--control-height-touch\)\][\s\S]*\[--workspace-max-width:100%\][\s\S]*\{settingsContent\}/u);
   assert.match(source, /\[&_input\[type=range\]\]:min-h-11/u);
