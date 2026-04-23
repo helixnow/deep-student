@@ -13,37 +13,6 @@ import { cn } from "@/lib/utils";
 
 const composerSecondaryControlClassName = "rounded-full border-transparent px-2.5 text-xs font-normal text-muted-foreground";
 
-const mobilePromptCards = [
-  {
-    id: "focus-map",
-    className: "bg-[#164a9f] text-white",
-    eyebrow: "MAP",
-    title: "拆解任务",
-    accentClassName: "border-white/35 bg-white/10",
-  },
-  {
-    id: "paper-note",
-    className: "bg-[#f5c84b] text-[#241c0b]",
-    eyebrow: "NOTE",
-    title: "整理资料",
-    accentClassName: "border-[#241c0b]/15 bg-white/45",
-  },
-  {
-    id: "study-room",
-    className: "bg-[#283a2b] text-white",
-    eyebrow: "FLOW",
-    title: "生成计划",
-    accentClassName: "border-white/25 bg-white/12",
-  },
-  {
-    id: "review-card",
-    className: "bg-[#f2f0ec] text-[#1f1f1d]",
-    eyebrow: "REVIEW",
-    title: "复盘重点",
-    accentClassName: "border-[#1f1f1d]/10 bg-white/70",
-  },
-] as const;
-
 const threadContentShellStyle = {
   paddingTop: "var(--page-gutter-block)",
   paddingBottom: "var(--page-gutter-block)",
@@ -86,28 +55,6 @@ export function ThreadCanvas() {
             data-slot="thread-mobile-empty-state"
             className="flex min-h-full w-full flex-col justify-center overflow-hidden pb-10 pt-8 text-center sm:hidden"
           >
-            <div
-              data-slot="thread-mobile-prompt-strip"
-              aria-hidden="true"
-              className="relative left-1/2 mb-9 flex w-screen -translate-x-1/2 overflow-hidden"
-            >
-              <div className="flex translate-x-[-4.75rem] gap-5 px-4">
-                {mobilePromptCards.map((card) => (
-                  <div
-                    key={card.id}
-                    className={cn(
-                      "relative h-20 w-36 shrink-0 overflow-hidden rounded-[1.75rem] p-4 text-left shadow-[0_18px_40px_rgba(15,15,15,0.12)]",
-                      card.className,
-                    )}
-                  >
-                    <div className={cn("absolute right-3 top-3 h-8 w-8 rounded-full border", card.accentClassName)} />
-                    <p className="text-[10px] font-semibold uppercase tracking-[0.18em] opacity-70">{card.eyebrow}</p>
-                    <p className="mt-3 text-lg font-semibold leading-none tracking-[-0.03em]">{card.title}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-
             <div className="mx-auto max-w-[20rem] space-y-3 px-2">
               <h2 className="text-balance text-2xl font-semibold tracking-[-0.04em] text-foreground">开启新的学习任务</h2>
               <p className="text-pretty text-base leading-7 text-muted-foreground">

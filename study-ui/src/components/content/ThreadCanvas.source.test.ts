@@ -16,11 +16,9 @@ test("thread canvas uses a document-style single column with an anchored compose
   assert.match(source, /import \{ Textarea \} from "@\/components\/ui\/textarea";/u);
   assert.match(source, /ArrowUp/u);
   assert.match(source, /Plus/u);
-  assert.match(source, /const mobilePromptCards = \[/u);
   assert.match(source, /data-slot="thread-content-shell"/u);
   assert.match(source, /data-slot="thread-content-column"/u);
   assert.match(source, /data-slot="thread-mobile-empty-state"/u);
-  assert.match(source, /data-slot="thread-mobile-prompt-strip"/u);
   assert.match(source, /data-slot="thread-empty-state"/u);
   assert.match(source, /data-slot="thread-composer-shell"/u);
   assert.match(source, /data-slot="thread-composer-column"/u);
@@ -55,6 +53,9 @@ test("thread canvas uses a document-style single column with an anchored compose
   assert.doesNotMatch(source, /border-t border-border\/60 px-4 py-3/u);
   assert.doesNotMatch(source, /rounded-\[26px\]/u);
   assert.doesNotMatch(source, /rounded-\[24px\]/u);
+  assert.doesNotMatch(source, /mobilePromptCards/u);
+  assert.doesNotMatch(source, /data-slot="thread-mobile-prompt-strip"/u);
+  assert.doesNotMatch(source, /拆解任务|整理资料|生成计划|复盘重点/u);
 });
 
 test("thread canvas adds a phone-only mobile landing without replacing tablet desktop empty state", () => {
@@ -68,8 +69,8 @@ test("thread canvas adds a phone-only mobile landing without replacing tablet de
 
   const mobileBlock = source.slice(mobileStart, desktopStart);
   assert.match(mobileBlock, /className="flex min-h-full w-full flex-col justify-center overflow-hidden pb-10 pt-8 text-center sm:hidden"/u);
-  assert.match(mobileBlock, /data-slot="thread-mobile-prompt-strip"/u);
-  assert.match(mobileBlock, /mobilePromptCards\.map/u);
+  assert.doesNotMatch(mobileBlock, /data-slot="thread-mobile-prompt-strip"/u);
+  assert.doesNotMatch(mobileBlock, /mobilePromptCards\.map/u);
   assert.match(mobileBlock, /开启新的学习任务/u);
   assert.match(mobileBlock, /把问题、资料和想法放进来/u);
   assert.match(mobileBlock, /查看建议起点/u);

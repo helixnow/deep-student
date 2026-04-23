@@ -20,7 +20,7 @@ tech-stack:
   patterns:
     - Phone polish is gated with `sm:hidden`.
     - Tablet/desktop continuity is gated with `sm:flex` and `sm:block`.
-    - Visual prompt cards are CSS/Tailwind surfaces, not external assets.
+    - Phone landing keeps a minimal text-and-CTA composition without decorative prompt cards.
 
 key-files:
   modified:
@@ -45,7 +45,8 @@ completed: 2026-04-23
 
 ## Accomplishments
 
-- Added a phone-only `thread-mobile-empty-state` with a full-bleed horizontal prompt-card strip, centered title/description, and a single suggestion CTA.
+- Added a phone-only `thread-mobile-empty-state` with centered title/description and a single suggestion CTA.
+- Removed the decorative phone prompt-card strip so the mobile landing stays simpler.
 - Added a phone-only `thread-phone-composer` that reads as a floating single-line pill with 44px add, input, and send targets.
 - Removed the phone composer recording icon so the mobile input stays quieter and focused on text.
 - Polished phone top-left chrome so it starts at the mobile edge, uses a hamburger menu affordance, and removes the compact title/update-badge collision.
@@ -64,7 +65,7 @@ completed: 2026-04-23
 
 ## Notes
 
-- The design uses CSS/Tailwind prompt cards instead of image assets so the mobile landing stays lightweight and deterministic.
+- The design now keeps the phone landing lightweight without decorative prompt-card assets or data.
 
 ## Next Step
 

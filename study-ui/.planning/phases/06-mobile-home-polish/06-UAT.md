@@ -4,7 +4,7 @@ phase: 06-mobile-home-polish
 source:
   - .planning/phases/06-mobile-home-polish/06-01-SUMMARY.md
 started: 2026-04-23T10:01:56Z
-updated: 2026-04-23T10:22:25Z
+updated: 2026-04-23T10:56:25Z
 ---
 
 ## Current Test
@@ -14,9 +14,9 @@ updated: 2026-04-23T10:22:25Z
 ## Tests
 
 ### 1. Phone Mobile Landing
-expected: At `390x844`, the phone empty state shows the new mobile landing with prompt cards, concise copy, one suggestion CTA, no upgrade/user-plus entry points, and no horizontal overflow.
+expected: At `390x844`, the phone empty state shows a clean mobile landing with concise copy, one suggestion CTA, no decorative prompt-card strip, no upgrade/user-plus entry points, and no horizontal overflow.
 result: pass
-evidence: Playwright observed `formFactor=phone`, `thread-mobile-empty-state` visible, `thread-empty-state` hidden, no horizontal overflow, no `升级` or `用户+` text, and screenshot `/tmp/study-ui-uat-shots/phase6-phone-390x844.png`.
+evidence: Playwright observed `formFactor=phone`, `thread-mobile-empty-state` visible, `thread-empty-state` hidden, no `thread-mobile-prompt-strip`, no horizontal overflow, no `升级` or `用户+` text, and screenshot `/tmp/study-ui-uat-shots/phase6-phone-no-prompt-strip.png`.
 
 ### 2. Phone Pill Composer
 expected: At `390x844`, the phone composer appears as a floating single-line pill, omits recording controls, and all visible buttons remain at least 44px.
@@ -58,6 +58,7 @@ blocked: 0
 ## Visual Evidence
 
 - `/tmp/study-ui-uat-shots/phase6-phone-390x844.png`
+- `/tmp/study-ui-uat-shots/phase6-phone-no-prompt-strip.png`
 - `/tmp/study-ui-uat-shots/phase6-phone-composer-no-recording.png`
 - `/tmp/study-ui-uat-shots/phase6-phone-top-left-polish.png`
 - `/tmp/study-ui-uat-shots/phase6-tablet-768x1024-ready.png`
