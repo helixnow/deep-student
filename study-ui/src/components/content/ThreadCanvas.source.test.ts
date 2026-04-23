@@ -15,15 +15,22 @@ test("thread canvas uses a document-style single column with an anchored compose
   assert.match(source, /const composerSecondaryControlClassName = "rounded-full border-transparent px-2\.5 text-xs font-normal text-muted-foreground";/u);
   assert.match(source, /import \{ Textarea \} from "@\/components\/ui\/textarea";/u);
   assert.match(source, /ArrowUp/u);
+  assert.match(source, /Microphone/u);
+  assert.match(source, /Plus/u);
+  assert.match(source, /const mobilePromptCards = \[/u);
   assert.match(source, /data-slot="thread-content-shell"/u);
   assert.match(source, /data-slot="thread-content-column"/u);
+  assert.match(source, /data-slot="thread-mobile-empty-state"/u);
+  assert.match(source, /data-slot="thread-mobile-prompt-strip"/u);
   assert.match(source, /data-slot="thread-empty-state"/u);
   assert.match(source, /data-slot="thread-composer-shell"/u);
   assert.match(source, /data-slot="thread-composer-column"/u);
+  assert.match(source, /data-slot="thread-phone-composer"/u);
   assert.match(source, /data-slot="thread-composer"/u);
   assert.match(source, /maxWidth: "var\(--workspace-max-width\)"/u);
   assert.match(source, /maxWidth: "var\(--composer-max-width\)"/u);
   assert.match(source, /aria-label="线程输入"/u);
+  assert.match(source, /placeholder="询问 DeepStudent"/u);
   assert.match(source, /placeholder="请输入问题"/u);
   assert.match(source, /aria-label="发送消息"/u);
   assert.match(source, /border-composer-border/u);
@@ -33,6 +40,8 @@ test("thread canvas uses a document-style single column with an anchored compose
   assert.doesNotMatch(source, /md:h-\[var\(--button-icon-size\)\]/u);
   assert.match(source, /Button variant="ghost" size="sm" className=\{composerSecondaryControlClassName\}/u);
   assert.match(source, /开始一个新任务/u);
+  assert.match(source, /开启新的学习任务/u);
+  assert.doesNotMatch(source, /升级|用户\+/u);
   assert.doesNotMatch(source, /max-w-\\?\[44rem\\?\]/u);
   assert.doesNotMatch(source, /macOS 工作台|Windows 工作台|桌面工作台/u);
   assert.doesNotMatch(source, /platformLabel/u);
@@ -45,6 +54,54 @@ test("thread canvas uses a document-style single column with an anchored compose
   assert.doesNotMatch(source, /border-t border-border\/60 px-4 py-3/u);
   assert.doesNotMatch(source, /rounded-\[26px\]/u);
   assert.doesNotMatch(source, /rounded-\[24px\]/u);
+});
+
+test("thread canvas adds a phone-only mobile landing without replacing tablet desktop empty state", () => {
+  const source = readFileSync(threadCanvasPath, "utf8");
+  const mobileStart = source.indexOf('data-slot="thread-mobile-empty-state"');
+  const desktopStart = source.indexOf('data-slot="thread-empty-state"');
+
+  assert.notEqual(mobileStart, -1);
+  assert.notEqual(desktopStart, -1);
+  assert.ok(mobileStart < desktopStart);
+
+  const mobileBlock = source.slice(mobileStart, desktopStart);
+  assert.match(mobileBlock, /className="flex min-h-full w-full flex-col justify-center overflow-hidden pb-10 pt-8 text-center sm:hidden"/u);
+  assert.match(mobileBlock, /data-slot="thread-mobile-prompt-strip"/u);
+  assert.match(mobileBlock, /mobilePromptCards\.map/u);
+  assert.match(mobileBlock, /开启新的学习任务/u);
+  assert.match(mobileBlock, /把问题、资料和想法放进来/u);
+  assert.match(mobileBlock, /查看建议起点/u);
+
+  const desktopBlock = source.slice(desktopStart);
+  assert.match(desktopBlock, /className="hidden w-full flex-col items-center justify-center gap-5 py-12 text-center sm:flex md:py-16"/u);
+  assert.match(desktopBlock, /开始一个新任务/u);
+});
+
+test("thread canvas uses a phone-only pill composer while preserving the existing tablet desktop composer", () => {
+  const source = readFileSync(threadCanvasPath, "utf8");
+  const phoneComposerStart = source.indexOf('data-slot="thread-phone-composer"');
+  const desktopComposerStart = source.indexOf('data-slot="thread-composer"');
+
+  assert.notEqual(phoneComposerStart, -1);
+  assert.notEqual(desktopComposerStart, -1);
+  assert.ok(phoneComposerStart < desktopComposerStart);
+
+  const phoneComposerBlock = source.slice(phoneComposerStart, desktopComposerStart);
+  assert.match(phoneComposerBlock, /className="flex min-h-14 items-center gap-1 rounded-full border border-composer-border bg-card px-2/u);
+  assert.match(phoneComposerBlock, /sm:hidden/u);
+  assert.match(phoneComposerBlock, /aria-label="添加附件"/u);
+  assert.match(phoneComposerBlock, /aria-label="语音输入"/u);
+  assert.match(phoneComposerBlock, /placeholder="询问 DeepStudent"/u);
+  assert.match(phoneComposerBlock, /rows=\{1\}/u);
+  assert.match(phoneComposerBlock, /className="h-11 w-11 rounded-full"/u);
+  assert.match(phoneComposerBlock, /className=\{cn\(\s*"h-11 w-11 shrink-0 rounded-full"/u);
+
+  const desktopComposerBlock = source.slice(desktopComposerStart);
+  assert.match(desktopComposerBlock, /className="hidden overflow-hidden rounded-3xl border border-composer-border/u);
+  assert.match(desktopComposerBlock, /sm:block/u);
+  assert.match(desktopComposerBlock, /placeholder="请输入问题"/u);
+  assert.match(desktopComposerBlock, /data-slot="thread-composer-secondary-actions"/u);
 });
 
 test("thread composer tightens vertical spacing instead of keeping the taller drafting pad", () => {
@@ -60,7 +117,7 @@ test("thread composer tightens vertical spacing instead of keeping the taller dr
 test("thread canvas composer footer shares the same workspace surface token as the right content pane", () => {
   const source = readFileSync(threadCanvasPath, "utf8");
 
-  assert.match(source, /border-t border-\[color:var\(--composer-divider\)\] bg-\[color:var\(--shell-panel-strong\)\]/u);
+  assert.match(source, /bg-transparent sm:border-t sm:border-\[color:var\(--composer-divider\)\] sm:bg-\[color:var\(--shell-panel-strong\)\]/u);
   assert.match(source, /paddingBottom: "var\(--composer-bottom-offset\)"/u);
   assert.doesNotMatch(source, /border-t border-border\/60 bg-\[color:var\(--shell-panel-strong\)\] px-4 pb-3 pt-2\.5/u);
   assert.doesNotMatch(source, /border-t border-border\/60 bg-background\/96 px-4 pb-3 pt-2\.5/u);

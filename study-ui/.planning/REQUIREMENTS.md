@@ -54,6 +54,13 @@
 - [x] **VERF-04**: Manual viewport checks cover `390x844`, `768x1024`, `834x1194`, `1024x768`, and `1280x800`.
 - [x] **VERF-05**: Manual desktop checks confirm Windows/macOS titlebar, drag region, window controls, resize handles, and minimum window behavior are not regressed.
 
+### Mobile Home Polish
+
+- [x] **HOME-01**: Phone empty state uses a mobile landing composition with a full-bleed prompt strip, concise title/description, and one primary suggestion CTA.
+- [x] **HOME-02**: Phone composer uses a single-line floating pill while preserving at least `44px` add/input/voice/send touch targets.
+- [x] **HOME-03**: Tablet and desktop keep the previously verified ThreadCanvas empty state and composer from `640px` upward.
+- [x] **HOME-04**: Mobile home polish does not add upgrade, user-plus, account-growth, or other new product entry points.
+
 ## v2 Requirements
 
 ### Tablet Enhancements
@@ -111,12 +118,16 @@
 | VERF-03 | Phase 5 | Complete |
 | VERF-04 | Phase 5 | Complete |
 | VERF-05 | Phase 5 | Complete (macOS observed; Windows N/A on local macOS host) |
+| HOME-01 | Phase 6 | Complete |
+| HOME-02 | Phase 6 | Complete |
+| HOME-03 | Phase 6 | Complete |
+| HOME-04 | Phase 6 | Complete |
 
 **Coverage:**
-- v1 requirements: 31 total
-- Mapped to phases: 31
+- v1 requirements: 35 total
+- Mapped to phases: 35
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-23*
-*Last updated: 2026-04-23 after Phase 5 UAT*
+*Last updated: 2026-04-23 after Phase 6 mobile home polish*

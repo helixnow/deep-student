@@ -6,7 +6,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 
 **Core value:** One shared UI architecture must feel usable on phone, tablet, and desktop while preserving the existing desktop Tauri shell behavior.
 
-**Current focus:** Phase 5 verified; milestone is ready for final visual audit or completion.
+**Current focus:** Phase 6 mobile home polish verified; milestone is ready for final visual audit or completion.
 
 ## Workflow State
 
@@ -69,6 +69,10 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 - Summary file: `.planning/phases/05-touch-targets-and-verification/05-01-SUMMARY.md`.
 - 2026-04-23: Phase 5 UAT complete; viewport checks passed, macOS desktop chrome passed, Windows manual smoke recorded as N/A on local macOS host.
 - UAT file: `.planning/phases/05-touch-targets-and-verification/05-UAT.md`.
+- 2026-04-23: Restored the app-mode sidebar footer settings entry after confirming it had been removed by an earlier cleanup test.
+- 2026-04-23: Phase 6 mobile home polish completed for the phone empty state and composer while preserving tablet/desktop ThreadCanvas behavior.
+- Summary file: `.planning/phases/06-mobile-home-polish/06-01-SUMMARY.md`.
+- UAT file: `.planning/phases/06-mobile-home-polish/06-UAT.md`.
 
 ### Important Decisions
 
@@ -82,6 +86,8 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 - Treat stale Phase 4 source tests as part of Phase 5 verification hardening.
 - Do not use `md:` as the first touch-target compaction breakpoint; tablets remain touch density until `1024px`.
 - Portal-mounted `Sheet` and `Dialog` close controls need explicit viewport classes because they do not inherit the AppChrome root density dataset.
+- Phase 6 mobile landing is phone-only via `sm:hidden`; tablet and desktop use the existing verified empty state and composer via `sm:flex`/`sm:block`.
+- The provided ChatGPT mobile reference is a composition reference only; upgrade/user-plus/account-growth entry points are intentionally excluded.
 
 ### Known Risks
 
@@ -90,6 +96,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 - SettingsPanel is large and dense; source/unit coverage exists, but live settings navigation is not currently exposed from app mode for manual click-through.
 - Future icon/small button variants should keep using the Phase 5 `lg:` compaction pattern so tablet hit targets do not regress.
 - Windows desktop chrome still needs an actual Windows host for manual smoke; local UAT covered macOS and source/config behavior only.
+- Phase 6 phone composer includes a visual voice affordance but does not implement audio input behavior yet.
 
 ## Current Phase Queue
 
@@ -100,6 +107,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 | 3 Shell And Sidebar Adaptation | Complete |
 | 4 Content Surface Adaptation | Verified |
 | 5 Touch Targets And Verification | Verified |
+| 6 Mobile Home Polish | Verified |
 
 ---
-*Last updated: 2026-04-23 after Phase 5 UAT*
+*Last updated: 2026-04-23 after Phase 6 mobile home polish*

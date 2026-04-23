@@ -13,6 +13,7 @@
 | 3 | Shell And Sidebar Adaptation | Make AppChrome/Titlebar/Sidebar work across compact and desktop modes | SHELL-03, SHELL-04, SHELL-05, SHELL-06 | Complete |
 | 4 | Content Surface Adaptation | Make ThreadCanvas and SettingsPanel mobile/tablet-safe through tokens and responsive degradation | TOKN-03, THRD-01, THRD-02, THRD-03, THRD-04, THRD-05, SETT-01, SETT-02, SETT-03, SETT-04, SETT-05, SETT-06 | Verified |
 | 5 | Touch Targets And Verification | Lock controls, tests, build, and manual viewport acceptance | CTRL-01, CTRL-02, VERF-01, VERF-02, VERF-03, VERF-04, VERF-05 | Verified |
+| 6 | Mobile Home Polish | Give phone empty state a ChatGPT-mobile-style landing while preserving tablet/desktop layouts | HOME-01, HOME-02, HOME-03, HOME-04 | Verified |
 
 ## Phase 1: Responsive Policy Foundation
 
@@ -156,10 +157,34 @@
 4. Targeted source/unit tests pass for responsive policy, shell, ThreadCanvas, SettingsPanel, and app-shell behavior.
 5. Manual viewport checks cover phone, tablet portrait, tablet landscape, desktop minimum, and wider desktop.
 
+## Phase 6: Mobile Home Polish
+
+**Goal:** Give the phone empty state a lightweight mobile landing inspired by the provided ChatGPT mobile reference, without adding upgrade/user growth entry points or changing tablet/desktop behavior.
+
+**Status:** Verified
+
+**UI hint:** yes
+
+**Depends on:** Phase 5
+
+**Requirements:** HOME-01, HOME-02, HOME-03, HOME-04
+
+**Primary files:**
+
+- `src/components/content/ThreadCanvas.tsx`
+- `src/components/content/ThreadCanvas.source.test.ts`
+
+**Success criteria:**
+
+1. Phone empty state uses a visual prompt strip, concise centered copy, and one suggestion CTA.
+2. Phone composer becomes a floating single-line pill with 44px add/input/voice/send controls.
+3. Tablet and desktop retain the existing verified `ThreadCanvas` empty state and composer at `sm` and above.
+4. No upgrade, user-plus, account-growth, or unrelated product entry points are introduced.
+
 ## Requirement Coverage
 
 All v1 requirements from `.planning/REQUIREMENTS.md` are mapped to exactly one roadmap phase.
 
 ## Next Step
 
-Phase 5 UAT is complete. Recommended next step: run `$gsd-ui-review 5` for a final visual audit, or `$gsd-complete-milestone` if the milestone is ready to archive.
+Phase 6 is complete. Recommended next step: run `$gsd-ui-review 6` for a final visual audit, or `$gsd-complete-milestone` if the milestone is ready to archive.
