@@ -1,4 +1,4 @@
-import { type ReactNode } from "react";
+import { type CSSProperties, type ReactNode, useId } from "react";
 import {
   ArrowSquareOut,
   CheckCircle,
@@ -55,6 +55,15 @@ type SettingsRowProps = {
   description: string;
   control: ReactNode;
   controlClassName?: string;
+};
+
+type SettingsSwitchRowProps = {
+  title: string;
+  description: string;
+  ariaLabel: string;
+  checked: boolean;
+  onCheckedChange: (checked: boolean) => void;
+  controlSurfaceClassName?: string;
 };
 
 type SettingsMetaRowProps = {
@@ -421,6 +430,10 @@ const configCheckItems = [
   "OCR 引擎",
 ] as const;
 
+const settingsContentColumnStyle = {
+  maxWidth: "var(--workspace-max-width)",
+} satisfies CSSProperties;
+
 function SettingsRow({ title, description, control, controlClassName }: SettingsRowProps) {
   return (
     <div className="flex flex-col gap-3 px-5 py-3.5 md:flex-row md:items-center md:justify-between md:gap-6 md:px-6">
@@ -429,6 +442,42 @@ function SettingsRow({ title, description, control, controlClassName }: Settings
         <p className="max-w-xl text-sm leading-6 text-muted-foreground">{description}</p>
       </div>
       <div className={cn("shrink-0 md:pl-4", controlClassName)}>{control}</div>
+    </div>
+  );
+}
+
+function SettingsSwitchRow({
+  title,
+  description,
+  ariaLabel,
+  checked,
+  onCheckedChange,
+  controlSurfaceClassName,
+}: SettingsSwitchRowProps) {
+  const switchId = useId();
+
+  return (
+    <div
+      data-slot="settings-switch-row"
+      className="flex min-h-[var(--touch-target-size)] flex-col gap-3 px-5 py-3.5 md:flex-row md:items-center md:justify-between md:gap-6 md:px-6"
+    >
+      <label
+        htmlFor={switchId}
+        className="flex min-h-[var(--touch-target-size)] min-w-0 flex-1 cursor-pointer flex-col justify-center space-y-1.5"
+      >
+        <span className="text-sm font-semibold text-foreground">{title}</span>
+        <span className="max-w-xl text-sm leading-6 text-muted-foreground">{description}</span>
+      </label>
+      <div className="shrink-0 md:pl-4">
+        <div className={cn(SETTINGS_SWITCH_CONTROL_CLASS_NAME, controlSurfaceClassName)}>
+          <Switch
+            id={switchId}
+            aria-label={ariaLabel}
+            checked={checked}
+            onCheckedChange={onCheckedChange}
+          />
+        </div>
+      </div>
     </div>
   );
 }
@@ -642,10 +691,10 @@ function OcrEngineCard({
 }
 
 const SETTINGS_PREVIEW_DIALOG_CLASS_NAME =
-  "w-[min(92vw,52rem)] rounded-2xl border border-border/70 bg-background/98 p-0 shadow-lg shadow-black/10";
+  "max-h-[calc(100dvh-var(--layout-safe-area-top)-var(--layout-safe-area-bottom)-1.5rem)] w-[min(92vw,52rem)] overflow-y-auto rounded-2xl border border-border/70 bg-background/98 p-0 shadow-lg shadow-black/10";
 
 const SETTINGS_PREVIEW_DIALOG_NARROW_CLASS_NAME =
-  "w-[min(92vw,48rem)] rounded-2xl border border-border/70 bg-background/98 p-0 shadow-lg shadow-black/10";
+  "max-h-[calc(100dvh-var(--layout-safe-area-top)-var(--layout-safe-area-bottom)-1.5rem)] w-[min(92vw,48rem)] overflow-y-auto rounded-2xl border border-border/70 bg-background/98 p-0 shadow-lg shadow-black/10";
 
 const SETTINGS_PREVIEW_CARD_CLASS_NAME =
   "rounded-2xl border border-border/70 bg-background/94 p-5 shadow-sm shadow-black/5";
@@ -656,15 +705,15 @@ function DebugPanelPreview() {
   return (
     <DialogContent className={SETTINGS_PREVIEW_DIALOG_CLASS_NAME}>
       <div className="overflow-hidden rounded-2xl">
-        <div className="border-b border-black/6 px-6 py-5 dark:border-white/8">
+        <div className="border-b border-black/6 px-4 py-4 sm:px-6 sm:py-5 dark:border-white/8">
           <DialogHeader className="space-y-2">
-            <DialogTitle className="text-2xl">统一调试面板</DialogTitle>
+            <DialogTitle className="text-xl sm:text-2xl">统一调试面板</DialogTitle>
             <DialogDescription>
               用于调试全局流式会话与事件，聚合会话状态、网络事件和工具调用摘要。
             </DialogDescription>
           </DialogHeader>
         </div>
-        <div className="grid gap-4 bg-secondary/54 px-6 py-6 md:grid-cols-[1.2fr_0.8fr]">
+        <div className="grid gap-4 bg-secondary/54 px-4 py-4 sm:px-6 sm:py-6 md:grid-cols-[1.2fr_0.8fr]">
           <div className={SETTINGS_PREVIEW_CARD_CLASS_NAME}>
             <div className="flex items-center justify-between">
               <p className="text-sm font-semibold text-foreground">全局流式会话</p>
@@ -713,7 +762,7 @@ function DebugPanelPreview() {
             </div>
           </div>
         </div>
-        <DialogFooter className="border-t border-black/6 px-6 py-4 dark:border-white/8">
+        <DialogFooter className="border-t border-black/6 px-4 py-4 sm:px-6 dark:border-white/8">
           <Button variant="outline" className={SETTINGS_SURFACE_ACTION_BUTTON_CLASS_NAME}>
             导出调试快照
           </Button>
@@ -728,15 +777,15 @@ function PrivacyAgreementPreview() {
   return (
     <DialogContent className={SETTINGS_PREVIEW_DIALOG_NARROW_CLASS_NAME}>
       <div className="overflow-hidden rounded-2xl">
-        <div className="border-b border-black/6 px-6 py-5 dark:border-white/8">
+        <div className="border-b border-black/6 px-4 py-4 sm:px-6 sm:py-5 dark:border-white/8">
           <DialogHeader className="space-y-2">
-            <DialogTitle className="text-2xl">首次安装协议预览</DialogTitle>
+            <DialogTitle className="text-xl sm:text-2xl">首次安装协议预览</DialogTitle>
             <DialogDescription>
               打开首次安装时显示的用户协议与隐私政策弹窗，用于预览效果。
             </DialogDescription>
           </DialogHeader>
         </div>
-        <div className="space-y-4 bg-secondary/56 px-6 py-6">
+        <div className="space-y-4 bg-secondary/56 px-4 py-4 sm:px-6 sm:py-6">
           <div className={SETTINGS_PREVIEW_CARD_CLASS_NAME}>
             <p className="text-sm font-semibold text-foreground">用户协议</p>
             <p className="mt-3 text-sm leading-7 text-muted-foreground">
@@ -750,7 +799,7 @@ function PrivacyAgreementPreview() {
             </p>
           </div>
         </div>
-        <DialogFooter className="border-t border-black/6 px-6 py-4 dark:border-white/8">
+        <DialogFooter className="border-t border-black/6 px-4 py-4 sm:px-6 dark:border-white/8">
           <Button variant="outline" className={SETTINGS_SURFACE_ACTION_BUTTON_CLASS_NAME}>
             关闭预览
           </Button>
@@ -792,7 +841,36 @@ function ModelServicePanel({ panelSurfaceClassName }: { panelSurfaceClassName: s
               <DataFlowCard title="总数据量" description="34" />
               <DataFlowCard title="文本" description="1" />
             </div>
-            <div className="overflow-hidden rounded-3xl border border-border/70 bg-background/90 shadow-sm shadow-black/5">
+            <div data-slot="embedding-dimensions-cards" className="grid gap-3 lg:hidden">
+              {embeddingDimensions.map((item) => (
+                <div
+                  key={`${item.dimension}-${item.dataset}-compact`}
+                  className={SETTINGS_EMBEDDED_PANEL_SOFT_CLASS_NAME}
+                >
+                  <dl className="grid gap-3 text-sm">
+                    {[
+                      ["维度", item.dimension],
+                      ["关联模型", item.providerModel],
+                      ["数据集", item.dataset],
+                      ["数据量", String(item.count)],
+                      ["类型", item.dataType],
+                      ["状态", item.status],
+                    ].map(([label, value]) => (
+                      <div key={`${item.dimension}-${label}`} className="grid grid-cols-[5rem_minmax(0,1fr)] gap-3">
+                        <dt className="text-muted-foreground">{label}</dt>
+                        <dd className={cn("min-w-0 break-words text-foreground", label === "状态" && "font-medium text-primary")}>
+                          {value}
+                        </dd>
+                      </div>
+                    ))}
+                  </dl>
+                </div>
+              ))}
+            </div>
+            <div
+              data-slot="embedding-dimensions-table"
+              className="hidden overflow-hidden rounded-3xl border border-border/70 bg-background/90 shadow-sm shadow-black/5 lg:block"
+            >
               <div className="grid grid-cols-[0.8fr_1.5fr_1.2fr_0.7fr_0.7fr_0.8fr] gap-3 border-b border-black/6 px-4 py-3 text-xs font-semibold text-muted-foreground dark:border-white/8">
                 <span>维度</span>
                 <span>关联模型</span>
@@ -994,7 +1072,11 @@ export function SettingsPanel({ activeTab, onSelectTab }: SettingsPanelProps) {
   };
 
   return (
-    <div data-slot="settings-content-column" className="mx-auto flex max-w-[46rem] flex-col gap-6 pb-20">
+    <div
+      data-slot="settings-content-column"
+      className="mx-auto flex w-full flex-col gap-6 pb-20"
+      style={settingsContentColumnStyle}
+    >
       <header data-slot="settings-page-header" className="space-y-1.5 px-1">
         <h1 className="text-xl font-semibold text-foreground">{currentPageMeta.title}</h1>
         <p className="max-w-3xl text-sm leading-6 text-muted-foreground">
@@ -1013,12 +1095,15 @@ export function SettingsPanel({ activeTab, onSelectTab }: SettingsPanelProps) {
                 value={settings.language}
                 onValueChange={(value) => updateSetting("language", value as AppLanguage)}
               >
-                <TabsList aria-label="语言设置" className="h-11 rounded-2xl p-1">
+                <TabsList
+                  aria-label="语言设置"
+                  className="grid h-auto w-full grid-cols-2 rounded-2xl p-1 md:inline-flex md:h-11 md:w-auto"
+                >
                   {languageOptions.map((option) => (
                     <TabsTrigger
                       key={option.value}
                       value={option.value}
-                      className="min-h-9 rounded-xl px-4.5 text-sm"
+                      className="min-h-[var(--touch-target-size)] rounded-xl px-4.5 text-sm md:min-h-9"
                     >
                       {option.label}
                     </TabsTrigger>
@@ -1141,19 +1226,19 @@ export function SettingsPanel({ activeTab, onSelectTab }: SettingsPanelProps) {
                 <Tabs value={preference} onValueChange={(value) => setThemePreference(value as ThemePreference)}>
                   <TabsList
                     className={cn(
-                      "h-11 rounded-2xl px-1 py-1 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.035)] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]",
+                      "grid h-auto w-full grid-cols-3 rounded-2xl px-1 py-1 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.035)] md:inline-flex md:h-11 md:w-auto dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]",
                       controlSurfaceClassName,
                     )}
                   >
-                    <TabsTrigger value="light" className="min-h-9 gap-2 rounded-xl px-4.5 text-sm font-medium">
+                    <TabsTrigger value="light" className="min-h-[var(--touch-target-size)] gap-2 rounded-xl px-3 text-sm font-medium md:min-h-9 md:px-4.5">
                       <Sun size={20} weight="regular" />
                       浅色
                     </TabsTrigger>
-                    <TabsTrigger value="dark" className="min-h-9 gap-2 rounded-xl px-4.5 text-sm font-medium">
+                    <TabsTrigger value="dark" className="min-h-[var(--touch-target-size)] gap-2 rounded-xl px-3 text-sm font-medium md:min-h-9 md:px-4.5">
                       <Moon size={20} weight="regular" />
                       深色
                     </TabsTrigger>
-                    <TabsTrigger value="system" className="min-h-9 gap-2 rounded-xl px-4.5 text-sm font-medium">
+                    <TabsTrigger value="system" className="min-h-[var(--touch-target-size)] gap-2 rounded-xl px-3 text-sm font-medium md:min-h-9 md:px-4.5">
                       <Desktop size={20} weight="regular" />
                       系统默认
                     </TabsTrigger>
@@ -1162,21 +1247,15 @@ export function SettingsPanel({ activeTab, onSelectTab }: SettingsPanelProps) {
               }
             />
 
-            <SettingsRow
+            <SettingsSwitchRow
               title="毛玻璃侧边栏"
               description="开启后使用系统毛玻璃侧边栏（Windows 为系统材质）；关闭后使用纯色侧边栏。系统减少透明度或材质不可用时会自动回退。"
-              controlClassName="flex justify-start md:justify-end"
-              control={
-                <div className={cn(SETTINGS_SWITCH_CONTROL_CLASS_NAME, controlSurfaceClassName)}>
-                  <Switch
-                    aria-label="切换毛玻璃侧边栏"
-                    checked={windowBackgroundPreference === "translucent"}
-                    onCheckedChange={(checked) =>
-                      setWindowBackgroundPreference(checked ? "translucent" : "opaque")
-                    }
-                  />
-                </div>
+              ariaLabel="切换毛玻璃侧边栏"
+              checked={windowBackgroundPreference === "translucent"}
+              onCheckedChange={(checked) =>
+                setWindowBackgroundPreference(checked ? "translucent" : "opaque")
               }
+              controlSurfaceClassName={controlSurfaceClassName}
             />
 
             <SettingsRow
@@ -1271,19 +1350,13 @@ export function SettingsPanel({ activeTab, onSelectTab }: SettingsPanelProps) {
             }
           />
 
-          <SettingsRow
+          <SettingsSwitchRow
             title="调试日志"
             description="开启后将输出详细的调试日志到控制台"
-            controlClassName="flex justify-start md:justify-end"
-            control={
-              <div className={cn(SETTINGS_SWITCH_CONTROL_CLASS_NAME, controlSurfaceClassName)}>
-                <Switch
-                  aria-label="调试日志"
-                  checked={settings.debugLoggingEnabled}
-                  onCheckedChange={(checked) => updateSetting("debugLoggingEnabled", checked)}
-                />
-              </div>
-            }
+            ariaLabel="调试日志"
+            checked={settings.debugLoggingEnabled}
+            onCheckedChange={(checked) => updateSetting("debugLoggingEnabled", checked)}
+            controlSurfaceClassName={controlSurfaceClassName}
           />
 
           <SettingBlock
@@ -1340,19 +1413,13 @@ export function SettingsPanel({ activeTab, onSelectTab }: SettingsPanelProps) {
             }
           />
 
-          <SettingsRow
+          <SettingsSwitchRow
             title="显示消息请求体"
             description="开启后，Chat V2 中每条助手消息下方将显示完整的 API 请求体，便于调试。"
-            controlClassName="flex justify-start md:justify-end"
-            control={
-              <div className={cn(SETTINGS_SWITCH_CONTROL_CLASS_NAME, controlSurfaceClassName)}>
-                <Switch
-                  aria-label="显示消息请求体"
-                  checked={settings.showMessageRequestBody}
-                  onCheckedChange={(checked) => updateSetting("showMessageRequestBody", checked)}
-                />
-              </div>
-            }
+            ariaLabel="显示消息请求体"
+            checked={settings.showMessageRequestBody}
+            onCheckedChange={(checked) => updateSetting("showMessageRequestBody", checked)}
+            controlSurfaceClassName={controlSurfaceClassName}
           />
 
           <SettingBlock
@@ -1388,19 +1455,13 @@ export function SettingsPanel({ activeTab, onSelectTab }: SettingsPanelProps) {
             }
           />
 
-          <SettingsRow
+          <SettingsSwitchRow
             title="持久化调试日志"
             description="开启后，每次 LLM 请求的完整请求体（含图片、工具等）将以 JSON 文件保存到数据目录，不受过滤级别影响。"
-            controlClassName="flex justify-start md:justify-end"
-            control={
-              <div className={cn(SETTINGS_SWITCH_CONTROL_CLASS_NAME, controlSurfaceClassName)}>
-                <Switch
-                  aria-label="持久化调试日志"
-                  checked={settings.persistDebugLogs}
-                  onCheckedChange={(checked) => updateSetting("persistDebugLogs", checked)}
-                />
-              </div>
-            }
+            ariaLabel="持久化调试日志"
+            checked={settings.persistDebugLogs}
+            onCheckedChange={(checked) => updateSetting("persistDebugLogs", checked)}
+            controlSurfaceClassName={controlSurfaceClassName}
           />
         </SettingsSection>
       ) : null}
@@ -1448,19 +1509,13 @@ export function SettingsPanel({ activeTab, onSelectTab }: SettingsPanelProps) {
             }
           />
 
-          <SettingsRow
+          <SettingsSwitchRow
             title="自动创建子文件夹"
             description="写入记忆时，自动按分类路径创建子文件夹"
-            controlClassName="flex justify-start md:justify-end"
-            control={
-              <div className={cn(SETTINGS_SWITCH_CONTROL_CLASS_NAME, controlSurfaceClassName)}>
-                <Switch
-                  aria-label="自动创建子文件夹"
-                  checked={settings.autoCreateMemoryFolders}
-                  onCheckedChange={(checked) => updateSetting("autoCreateMemoryFolders", checked)}
-                />
-              </div>
-            }
+            ariaLabel="自动创建子文件夹"
+            checked={settings.autoCreateMemoryFolders}
+            onCheckedChange={(checked) => updateSetting("autoCreateMemoryFolders", checked)}
+            controlSurfaceClassName={controlSurfaceClassName}
           />
 
           <SettingBlock
@@ -1477,19 +1532,13 @@ export function SettingsPanel({ activeTab, onSelectTab }: SettingsPanelProps) {
             }
           />
 
-          <SettingsRow
+          <SettingsSwitchRow
             title="隐私模式"
             description="开启后，记忆写入与检索会跳过外部 LLM 的改写/重排，以降低敏感信息外发风险。"
-            controlClassName="flex justify-start md:justify-end"
-            control={
-              <div className={cn(SETTINGS_SWITCH_CONTROL_CLASS_NAME, controlSurfaceClassName)}>
-                <Switch
-                  aria-label="隐私模式"
-                  checked={settings.memoryPrivacyMode}
-                  onCheckedChange={(checked) => updateSetting("memoryPrivacyMode", checked)}
-                />
-              </div>
-            }
+            ariaLabel="隐私模式"
+            checked={settings.memoryPrivacyMode}
+            onCheckedChange={(checked) => updateSetting("memoryPrivacyMode", checked)}
+            controlSurfaceClassName={controlSurfaceClassName}
           />
         </SettingsSection>
       ) : null}
@@ -1500,19 +1549,13 @@ export function SettingsPanel({ activeTab, onSelectTab }: SettingsPanelProps) {
           title="隐私与数据"
           description="统一放在一组里，方便理解数据边界与治理入口。"
         >
-          <SettingsRow
+          <SettingsSwitchRow
             title="匿名错误报告"
             description="允许发送匿名崩溃报告以帮助改善软件质量"
-            controlClassName="flex justify-start md:justify-end"
-            control={
-              <div className={cn(SETTINGS_SWITCH_CONTROL_CLASS_NAME, controlSurfaceClassName)}>
-                <Switch
-                  aria-label="匿名错误报告"
-                  checked={settings.anonymousCrashReports}
-                  onCheckedChange={(checked) => updateSetting("anonymousCrashReports", checked)}
-                />
-              </div>
-            }
+            ariaLabel="匿名错误报告"
+            checked={settings.anonymousCrashReports}
+            onCheckedChange={(checked) => updateSetting("anonymousCrashReports", checked)}
+            controlSurfaceClassName={controlSurfaceClassName}
           />
 
           <SettingBlock

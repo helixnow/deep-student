@@ -11,6 +11,8 @@ const settingsStatsPanelPath = path.join(__dirname, "SettingsStatsPanel.tsx");
 const statsPanelDataPath = path.join(__dirname, "stats-panel-data.ts");
 const sidebarDataPath = path.join(__dirname, "../../lib/sidebar-data.tsx");
 const settingsPanelLibPath = path.join(__dirname, "../../lib/settings-panel.ts");
+const oldSettingsContentWidthPattern = new RegExp(["max-w", "[46rem]"].join("-").replace("[", "\\[").replace("]", "\\]"), "u");
+const mobileSurfaceForkPattern = new RegExp(`${["MobileSettings", "Panel"].join("")}|${["MobileThread", "Canvas"].join("")}`, "u");
 
 test("settings panel keeps the requested settings controls while adopting a quieter structure", () => {
   const source = readFileSync(settingsPanelPath, "utf8");
@@ -40,7 +42,9 @@ test("settings panel keeps the narrow grouped preferences layout without a dupli
   assert.match(source, /data-slot="settings-page-header"/u);
   assert.match(source, /data-slot="settings-content-column"/u);
   assert.match(source, /data-slot="settings-section-group"/u);
-  assert.match(source, /max-w-\[46rem\]/u);
+  assert.match(source, /const settingsContentColumnStyle = \{[\s\S]*maxWidth: "var\(--workspace-max-width\)"/u);
+  assert.match(source, /style=\{settingsContentColumnStyle\}/u);
+  assert.doesNotMatch(source, oldSettingsContentWidthPattern);
 });
 
 test("settings panel does not render a duplicated right-side settings title nav", () => {
@@ -48,6 +52,7 @@ test("settings panel does not render a duplicated right-side settings title nav"
 
   assert.doesNotMatch(source, /<SettingsNav/u);
   assert.doesNotMatch(source, /activeLabel:\s*string/u);
+  assert.doesNotMatch(source, mobileSurfaceForkPattern);
 });
 
 test("settings cleanup removes the obsolete settings nav file and active label helper", () => {
@@ -123,4 +128,63 @@ test("settings panel page header and inline controls use normalized type and rad
   assert.doesNotMatch(source, /rounded-\[20px\]/u);
   assert.doesNotMatch(source, /rounded-\[15px\]/u);
   assert.doesNotMatch(source, /rounded-\[24px\]/u);
+});
+
+test("settings panel makes short tab groups full-width and equal-width on compact screens", () => {
+  const source = readFileSync(settingsPanelPath, "utf8");
+
+  assert.match(source, /aria-label="语言设置"[\s\S]*className="grid h-auto w-full grid-cols-2 rounded-2xl p-1 md:inline-flex md:h-11 md:w-auto"/u);
+  assert.match(source, /className="min-h-\[var\(--touch-target-size\)\] rounded-xl px-4\.5 text-sm md:min-h-9"/u);
+  assert.match(source, /grid h-auto w-full grid-cols-3 rounded-2xl px-1 py-1/u);
+  assert.match(source, /className="min-h-\[var\(--touch-target-size\)\] gap-2 rounded-xl px-3 text-sm font-medium md:min-h-9 md:px-4\.5"/u);
+});
+
+test("settings switch rows expose row-level touch targets without rewriting the global switch primitive", () => {
+  const source = readFileSync(settingsPanelPath, "utf8");
+  const switchSource = readFileSync(path.join(__dirname, "../ui/switch.tsx"), "utf8");
+
+  assert.match(source, /import \{ type CSSProperties, type ReactNode, useId \} from "react";/u);
+  assert.match(source, /function SettingsSwitchRow/u);
+  assert.match(source, /data-slot="settings-switch-row"/u);
+  assert.match(source, /min-h-\[var\(--touch-target-size\)\]/u);
+  assert.match(source, /htmlFor=\{switchId\}/u);
+  assert.match(source, /id=\{switchId\}/u);
+
+  for (const label of [
+    "毛玻璃侧边栏",
+    "调试日志",
+    "显示消息请求体",
+    "持久化调试日志",
+    "自动创建子文件夹",
+    "隐私模式",
+    "匿名错误报告",
+  ]) {
+    assert.match(source, new RegExp(`<SettingsSwitchRow[\\s\\S]*title="${label}"`, "u"));
+  }
+
+  assert.doesNotMatch(switchSource, /settings-switch-row|useId|touch-target-size/u);
+});
+
+test("embedding dimensions degrade to compact definition cards while preserving a desktop table", () => {
+  const source = readFileSync(settingsPanelPath, "utf8");
+
+  assert.match(source, /data-slot="embedding-dimensions-cards" className="grid gap-3 lg:hidden"/u);
+  assert.match(source, /<dl className="grid gap-3 text-sm">/u);
+  assert.match(source, /<dt className="text-muted-foreground">\{label\}<\/dt>/u);
+  assert.match(source, /data-slot="embedding-dimensions-table"/u);
+  assert.match(source, /className="hidden overflow-hidden rounded-3xl border border-border\/70 bg-background\/90 shadow-sm shadow-black\/5 lg:block"/u);
+
+  for (const label of ["维度", "关联模型", "数据集", "数据量", "类型", "状态"]) {
+    assert.equal(source.includes(label), true, `missing compact dimension label: ${label}`);
+  }
+});
+
+test("settings preview dialogs use viewport-safe sizing and compact padding", () => {
+  const source = readFileSync(settingsPanelPath, "utf8");
+
+  assert.match(source, /max-h-\[calc\(100dvh-var\(--layout-safe-area-top\)-var\(--layout-safe-area-bottom\)-1\.5rem\)\]/u);
+  assert.match(source, /overflow-y-auto rounded-2xl/u);
+  assert.match(source, /px-4 py-4 sm:px-6 sm:py-5/u);
+  assert.match(source, /px-4 py-4 sm:px-6 sm:py-6/u);
+  assert.match(source, /text-xl sm:text-2xl/u);
 });

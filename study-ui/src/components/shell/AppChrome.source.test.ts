@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const appChromePath = path.join(__dirname, "AppChrome.tsx");
+const oldSettingsScrollPaddingPattern = new RegExp(["px-6 pb-10", "md:px-20"].join(" "), "u");
 
 test("main content pane keeps translucency subtle instead of glassy", () => {
   const source = readFileSync(appChromePath, "utf8");
@@ -264,7 +265,13 @@ test("settings scroll region accounts for safe-area insets without adding route 
   assert.match(source, /data-platform=\{desktopPlatform\}/u);
   assert.match(source, /const settingsScrollPaddingTop = `calc\(\$\{mainDragHotspotHeight \+ 28\}px \+ var\(--safe-area-top\)\)`;/u);
   assert.match(source, /const settingsScrollPaddingBottom = `calc\(2\.5rem \+ var\(--safe-area-bottom\)\)`;/u);
-  assert.match(source, /style=\{\{ paddingBottom: settingsScrollPaddingBottom, paddingTop: settingsScrollPaddingTop \}\}/u);
+  assert.match(source, /const settingsScrollPaddingLeft = "calc\(var\(--page-gutter-inline\) \+ var\(--layout-safe-area-left\)\)";/u);
+  assert.match(source, /const settingsScrollPaddingRight = "calc\(var\(--page-gutter-inline\) \+ var\(--layout-safe-area-right\)\)";/u);
+  assert.match(source, /paddingBottom: settingsScrollPaddingBottom/u);
+  assert.match(source, /paddingLeft: settingsScrollPaddingLeft/u);
+  assert.match(source, /paddingRight: settingsScrollPaddingRight/u);
+  assert.match(source, /paddingTop: settingsScrollPaddingTop/u);
+  assert.doesNotMatch(source, oldSettingsScrollPaddingPattern);
   assert.doesNotMatch(source, /animate-presence|framer-motion/u);
 });
 

@@ -131,6 +131,8 @@ export function AppChrome({
   const settingsPageTitle = activeSettingsItem?.label ?? "设置";
   const settingsScrollPaddingTop = `calc(${mainDragHotspotHeight + 28}px + var(--safe-area-top))`;
   const settingsScrollPaddingBottom = `calc(2.5rem + var(--safe-area-bottom))`;
+  const settingsScrollPaddingLeft = "calc(var(--page-gutter-inline) + var(--layout-safe-area-left))";
+  const settingsScrollPaddingRight = "calc(var(--page-gutter-inline) + var(--layout-safe-area-right))";
   const toggleLabel = isSidebarVisible ? "收起侧边栏" : "展开侧边栏";
   const sidebarToggleAccessoryOffset =
     titlebarMode === "native-transparent" ? getOverlayLeadingInset(titlebarMode) : 16;
@@ -407,8 +409,13 @@ export function AppChrome({
                   />
                 </div>
                 <div
-                  className="custom-scrollbar box-border flex-1 overflow-y-auto px-6 pb-10 md:px-20"
-                  style={{ paddingBottom: settingsScrollPaddingBottom, paddingTop: settingsScrollPaddingTop }}
+                  className="custom-scrollbar box-border flex-1 overflow-y-auto"
+                  style={{
+                    paddingBottom: settingsScrollPaddingBottom,
+                    paddingLeft: settingsScrollPaddingLeft,
+                    paddingRight: settingsScrollPaddingRight,
+                    paddingTop: settingsScrollPaddingTop,
+                  }}
                 >
                   {settingsContent}
                 </div>
