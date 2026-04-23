@@ -33,7 +33,7 @@ test("sidebar settings reuses the shared quiet hover affordance without legacy t
     source,
     /isActive[\s\S]*"rounded-2xl text-sidebar-foreground hover:bg-interactive-hover hover:text-sidebar-foreground"/u,
   );
-  assert.match(source, /onClick=\{isActive \? undefined : \(\) => onSelectSettingsTab\(item\.id\)\}/u);
+  assert.match(source, /onClick=\{isActive \? undefined : \(\) => handleSelectSettingsTab\(item\.id\)\}/u);
   assert.doesNotMatch(source, /sidebarHoverSurfaceClassName/u);
   assert.doesNotMatch(source, /sidebarNavMotionClassName/u);
   assert.doesNotMatch(source, /hover:bg-sidebar-hover/);
