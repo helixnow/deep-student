@@ -16,10 +16,10 @@
 
 - [x] **SHELL-01**: The shell root exposes stable datasets for form factor, sidebar mode, density, and related responsive state.
 - [x] **SHELL-02**: Mobile drawer visibility and desktop/sidebar collapsed state are separate state concepts.
-- [ ] **SHELL-03**: Phone and compact tablet navigation uses the existing `Sheet`/Drawer sidebar rather than a docked desktop sidebar.
-- [ ] **SHELL-04**: Desktop navigation remains docked and preserves existing Tauri titlebar/window behavior.
-- [ ] **SHELL-05**: Compact navigation closes after a user selects a navigation item when appropriate.
-- [ ] **SHELL-06**: Mobile/tablet topbar avoids desktop-only status noise while keeping the core navigation and title actions available.
+- [x] **SHELL-03**: Phone and compact tablet navigation uses the existing `Sheet`/Drawer sidebar rather than a docked desktop sidebar.
+- [x] **SHELL-04**: Desktop navigation remains docked and preserves existing Tauri titlebar/window behavior.
+- [x] **SHELL-05**: Compact navigation closes after a user selects a navigation item when appropriate.
+- [x] **SHELL-06**: Mobile/tablet topbar avoids desktop-only status noise while keeping the core navigation and title actions available.
 
 ### Layout Tokens
 
@@ -86,10 +86,10 @@
 | RESP-04 | Phase 1 | Complete |
 | SHELL-01 | Phase 2 | Complete |
 | SHELL-02 | Phase 2 | Complete |
-| SHELL-03 | Phase 3 | Pending |
-| SHELL-04 | Phase 3 | Pending |
-| SHELL-05 | Phase 3 | Pending |
-| SHELL-06 | Phase 3 | Pending |
+| SHELL-03 | Phase 3 | Complete |
+| SHELL-04 | Phase 3 | Complete |
+| SHELL-05 | Phase 3 | Complete |
+| SHELL-06 | Phase 3 | Complete |
 | TOKN-01 | Phase 2 | Complete |
 | TOKN-02 | Phase 2 | Complete |
 | TOKN-03 | Phase 4 | Pending |
@@ -119,4 +119,4 @@
 
 ---
 *Requirements defined: 2026-04-23*
-*Last updated: 2026-04-23 after Phase 2 execution*
+*Last updated: 2026-04-23 after Phase 3 execution*

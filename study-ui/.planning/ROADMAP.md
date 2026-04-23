@@ -10,7 +10,7 @@
 |-------|------|------|--------------|--------|
 | 1 | Responsive Policy Foundation | Centralize responsive facts and layout decisions | RESP-01, RESP-02, RESP-03, RESP-04 | Complete |
 | 2 | Root State And Layout Tokens | Expose policy state to CSS and split sidebar semantics | SHELL-01, SHELL-02, TOKN-01, TOKN-02 | Complete |
-| 3 | Shell And Sidebar Adaptation | Make AppChrome/Titlebar/Sidebar work across compact and desktop modes | SHELL-03, SHELL-04, SHELL-05, SHELL-06 | Not planned |
+| 3 | Shell And Sidebar Adaptation | Make AppChrome/Titlebar/Sidebar work across compact and desktop modes | SHELL-03, SHELL-04, SHELL-05, SHELL-06 | Complete |
 | 4 | Content Surface Adaptation | Make ThreadCanvas and SettingsPanel mobile/tablet-safe through tokens and responsive degradation | TOKN-03, THRD-01, THRD-02, THRD-03, THRD-04, THRD-05, SETT-01, SETT-02, SETT-03, SETT-04, SETT-05, SETT-06 | Not planned |
 | 5 | Touch Targets And Verification | Lock controls, tests, build, and manual viewport acceptance | CTRL-01, CTRL-02, VERF-01, VERF-02, VERF-03, VERF-04, VERF-05 | Not planned |
 
@@ -71,6 +71,8 @@
 ## Phase 3: Shell And Sidebar Adaptation
 
 **Goal:** Adapt AppChrome, Titlebar, and Sidebar while preserving desktop window behavior.
+
+**Status:** Complete
 
 **UI hint:** yes
 
@@ -156,4 +158,4 @@ All v1 requirements from `.planning/REQUIREMENTS.md` are mapped to exactly one r
 
 ## Next Step
 
-Run `$gsd-discuss-phase 3` before adapting AppChrome, Titlebar, and Sidebar compact behavior.
+Run `$gsd-discuss-phase 4` before adapting ThreadCanvas and SettingsPanel content surfaces.

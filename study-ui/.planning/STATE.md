@@ -6,7 +6,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 
 **Core value:** One shared UI architecture must feel usable on phone, tablet, and desktop while preserving the existing desktop Tauri shell behavior.
 
-**Current focus:** Phase 3: Shell And Sidebar Adaptation
+**Current focus:** Phase 4: Content Surface Adaptation
 
 ## Workflow State
 
@@ -48,6 +48,8 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 - Summary file: `.planning/phases/01-responsive-policy-foundation/01-01-SUMMARY.md`.
 - 2026-04-23: Phase 2 execution complete; code commits `3d136c2`, `67c889b`, `4e3232a`.
 - Summary file: `.planning/phases/02-root-state-and-layout-tokens/02-01-SUMMARY.md`.
+- 2026-04-23: Phase 3 execution complete; code commits `e91b923`, `5641fa0`, `ac1fd87`.
+- Summary file: `.planning/phases/03-shell-and-sidebar-adaptation/03-01-SUMMARY.md`.
 
 ### Important Decisions
 
@@ -55,6 +57,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 - Use phone/tablet/desktop form factors with compact-vs-desktop interaction behavior.
 - Use root datasets and CSS tokens as the main responsive presentation mechanism.
 - Preserve existing desktop Tauri shell behavior while adapting mobile/tablet layout.
+- Keep compact drawer close-after-selection in `Sidebar` behind AppChrome's drawer-mode `closeOnSelect` prop.
 
 ### Known Risks
 
@@ -68,9 +71,9 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 |-------|--------|
 | 1 Responsive Policy Foundation | Complete |
 | 2 Root State And Layout Tokens | Complete |
-| 3 Shell And Sidebar Adaptation | Next |
-| 4 Content Surface Adaptation | Pending |
+| 3 Shell And Sidebar Adaptation | Complete |
+| 4 Content Surface Adaptation | Next |
 | 5 Touch Targets And Verification | Pending |
 
 ---
-*Last updated: 2026-04-23 after Phase 2 execution*
+*Last updated: 2026-04-23 after Phase 3 execution*
