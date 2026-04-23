@@ -1097,13 +1097,13 @@ export function SettingsPanel({ activeTab, onSelectTab }: SettingsPanelProps) {
               >
                 <TabsList
                   aria-label="语言设置"
-                  className="grid h-auto w-full grid-cols-2 rounded-2xl p-1 md:inline-flex md:h-11 md:w-auto"
+                  className="grid h-auto w-full grid-cols-2 rounded-2xl p-1 lg:inline-flex lg:h-11 lg:w-auto"
                 >
                   {languageOptions.map((option) => (
                     <TabsTrigger
                       key={option.value}
                       value={option.value}
-                      className="min-h-[var(--touch-target-size)] rounded-xl px-4.5 text-sm md:min-h-9"
+                      className="min-h-[var(--touch-target-size)] rounded-xl px-4.5 text-sm lg:min-h-9"
                     >
                       {option.label}
                     </TabsTrigger>
@@ -1226,19 +1226,19 @@ export function SettingsPanel({ activeTab, onSelectTab }: SettingsPanelProps) {
                 <Tabs value={preference} onValueChange={(value) => setThemePreference(value as ThemePreference)}>
                   <TabsList
                     className={cn(
-                      "grid h-auto w-full grid-cols-3 rounded-2xl px-1 py-1 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.035)] md:inline-flex md:h-11 md:w-auto dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]",
+                      "grid h-auto w-full grid-cols-3 rounded-2xl px-1 py-1 shadow-[inset_0_0_0_1px_rgba(15,23,42,0.035)] lg:inline-flex lg:h-11 lg:w-auto dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]",
                       controlSurfaceClassName,
                     )}
                   >
-                    <TabsTrigger value="light" className="min-h-[var(--touch-target-size)] gap-2 rounded-xl px-3 text-sm font-medium md:min-h-9 md:px-4.5">
+                    <TabsTrigger value="light" className="min-h-[var(--touch-target-size)] gap-2 rounded-xl px-3 text-sm font-medium lg:min-h-9 lg:px-4.5">
                       <Sun size={20} weight="regular" />
                       浅色
                     </TabsTrigger>
-                    <TabsTrigger value="dark" className="min-h-[var(--touch-target-size)] gap-2 rounded-xl px-3 text-sm font-medium md:min-h-9 md:px-4.5">
+                    <TabsTrigger value="dark" className="min-h-[var(--touch-target-size)] gap-2 rounded-xl px-3 text-sm font-medium lg:min-h-9 lg:px-4.5">
                       <Moon size={20} weight="regular" />
                       深色
                     </TabsTrigger>
-                    <TabsTrigger value="system" className="min-h-[var(--touch-target-size)] gap-2 rounded-xl px-3 text-sm font-medium md:min-h-9 md:px-4.5">
+                    <TabsTrigger value="system" className="min-h-[var(--touch-target-size)] gap-2 rounded-xl px-3 text-sm font-medium lg:min-h-9 lg:px-4.5">
                       <Desktop size={20} weight="regular" />
                       系统默认
                     </TabsTrigger>

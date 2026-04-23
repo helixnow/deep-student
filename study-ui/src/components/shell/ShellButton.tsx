@@ -27,7 +27,7 @@ export const ShellButton = React.forwardRef<HTMLButtonElement, ShellButtonProps>
       secondary: buttonToneClassNames.secondary,
       icon: cn(buttonToneClassNames.ghost, buttonSizeClassNames.icon, "justify-center"),
       nav:
-        "border-transparent bg-transparent text-muted-foreground flex min-h-[2.75rem] md:min-h-9 w-full min-w-0 justify-start gap-2.5 overflow-hidden rounded-2xl px-2.5 py-1.5 text-left text-sm font-normal",
+        "border-transparent bg-transparent text-muted-foreground flex min-h-[2.75rem] lg:min-h-9 w-full min-w-0 justify-start gap-2.5 overflow-hidden rounded-2xl px-2.5 py-1.5 text-left text-sm font-normal",
     };
 
     const sizes: Record<ShellButtonSize, string> = {

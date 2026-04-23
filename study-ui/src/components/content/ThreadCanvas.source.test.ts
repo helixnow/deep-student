@@ -29,7 +29,8 @@ test("thread canvas uses a document-style single column with an anchored compose
   assert.match(source, /border-composer-border/u);
   assert.match(source, /min-h-\[var\(--composer-min-height\)\]/u);
   assert.match(source, /size="icon"/u);
-  assert.match(source, /shrink-0 rounded-full md:h-\[var\(--button-icon-size\)\] md:w-\[var\(--button-icon-size\)\]/u);
+  assert.match(source, /shrink-0 rounded-full lg:h-\[var\(--button-icon-size\)\] lg:w-\[var\(--button-icon-size\)\]/u);
+  assert.doesNotMatch(source, /md:h-\[var\(--button-icon-size\)\]/u);
   assert.match(source, /Button variant="ghost" size="sm" className=\{composerSecondaryControlClassName\}/u);
   assert.match(source, /开始一个新任务/u);
   assert.doesNotMatch(source, /max-w-\\?\[44rem\\?\]/u);

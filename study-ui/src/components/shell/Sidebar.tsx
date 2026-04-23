@@ -184,8 +184,8 @@ export function Sidebar({
                         onClick={closeSidebarAfterSelection}
                         className={
                           item.active
-                            ? "w-full rounded-2xl bg-interactive-selected text-sidebar-foreground md:min-h-8 md:gap-2 md:py-1"
-                            : "rounded-2xl text-sidebar-foreground hover:bg-interactive-hover hover:text-sidebar-foreground md:min-h-8 md:gap-2 md:py-1"
+                            ? "w-full rounded-2xl bg-interactive-selected text-sidebar-foreground lg:min-h-8 lg:gap-2 lg:py-1"
+                            : "rounded-2xl text-sidebar-foreground hover:bg-interactive-hover hover:text-sidebar-foreground lg:min-h-8 lg:gap-2 lg:py-1"
                         }
                       >
                         {item.icon}
@@ -249,8 +249,8 @@ export function Sidebar({
                               aria-expanded={isExpanded}
                               className={
                                 isCurrentFolder
-                                  ? "group w-full rounded-2xl bg-interactive-selected text-sidebar-foreground md:min-h-8 md:gap-2 md:py-1"
-                                  : "group rounded-2xl text-sidebar-foreground hover:bg-interactive-hover hover:text-sidebar-foreground md:min-h-8 md:gap-2 md:py-1"
+                                  ? "group w-full rounded-2xl bg-interactive-selected text-sidebar-foreground lg:min-h-8 lg:gap-2 lg:py-1"
+                                  : "group rounded-2xl text-sidebar-foreground hover:bg-interactive-hover hover:text-sidebar-foreground lg:min-h-8 lg:gap-2 lg:py-1"
                               }
                               onClick={() => toggleFolder(folder.id)}
                             >
@@ -299,8 +299,8 @@ export function Sidebar({
                                     onClick={closeSidebarAfterSelection}
                                     className={
                                       item.active
-                                        ? "w-full rounded-2xl bg-interactive-selected text-sidebar-foreground md:min-h-8 md:gap-2 md:py-1"
-                                        : "rounded-2xl text-sidebar-foreground hover:bg-interactive-hover hover:text-sidebar-foreground md:min-h-8 md:gap-2 md:py-1"
+                                        ? "w-full rounded-2xl bg-interactive-selected text-sidebar-foreground lg:min-h-8 lg:gap-2 lg:py-1"
+                                        : "rounded-2xl text-sidebar-foreground hover:bg-interactive-hover hover:text-sidebar-foreground lg:min-h-8 lg:gap-2 lg:py-1"
                                     }
                                   >
                                     <span className="flex min-w-0 flex-1 items-center justify-between gap-2">

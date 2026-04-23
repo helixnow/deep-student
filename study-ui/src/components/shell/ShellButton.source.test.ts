@@ -13,7 +13,9 @@ test("shell nav buttons keep the same restrained rounded geometry", async () => 
   const source = await readFile(new URL("./ShellButton.tsx", import.meta.url), "utf8");
 
   assert.match(source, /import \{[^}]*buttonBaseClassName[^}]*buttonSizeClassNames[^}]*buttonToneClassNames[^}]*\} from "@\/components\/ui\/button";/);
-  assert.match(source, /nav:\s*`\$\{buttonToneClassNames\.ghost\} flex min-h-\[2\.75rem\] md:min-h-9 w-full min-w-0 justify-start gap-2\.5 overflow-hidden rounded-2xl px-2\.5 py-1\.5 text-left text-sm font-normal`/);
+  assert.match(source, /const shellNavBaseClassName =/);
+  assert.match(source, /nav:\s*"border-transparent bg-transparent text-muted-foreground flex min-h-\[2\.75rem\] lg:min-h-9 w-full min-w-0 justify-start gap-2\.5 overflow-hidden rounded-2xl px-2\.5 py-1\.5 text-left text-sm font-normal"/);
+  assert.doesNotMatch(source, /md:min-h-9/);
   assert.doesNotMatch(source, /text-\[15px\]/);
   assert.match(source, /buttonToneClassNames\.ghost/);
 });

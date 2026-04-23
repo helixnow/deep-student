@@ -17,10 +17,10 @@ test("settings panel uses compact preference rows instead of oversized showcase 
 
   assert.match(source, /function SettingsRow[\s\S]*px-5 py-4/u);
   assert.match(source, /function SettingsSection[\s\S]*rounded-2xl/u);
-  assert.match(source, /<TabsList[\s\S]*aria-label="语言设置"[\s\S]*className="h-11 rounded-2xl p-1"/u);
+  assert.match(source, /<TabsList[\s\S]*aria-label="语言设置"[\s\S]*className="grid h-auto w-full grid-cols-2 rounded-2xl p-1 lg:inline-flex lg:h-11 lg:w-auto"/u);
   assert.match(
     source,
-    /<TabsTrigger[\s\S]*key=\{option\.value\}[\s\S]*value=\{option\.value\}[\s\S]*className="min-h-9 rounded-xl px-4\.5 text-sm"/u,
+    /<TabsTrigger[\s\S]*key=\{option\.value\}[\s\S]*value=\{option\.value\}[\s\S]*className="min-h-\[var\(--touch-target-size\)\] rounded-xl px-4\.5 text-sm lg:min-h-9"/u,
   );
   assert.doesNotMatch(source, /rounded-\[28px\]/u);
   assert.doesNotMatch(source, /rounded-\[30px\]/u);

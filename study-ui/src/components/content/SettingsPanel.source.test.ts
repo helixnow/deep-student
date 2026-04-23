@@ -133,10 +133,11 @@ test("settings panel page header and inline controls use normalized type and rad
 test("settings panel makes short tab groups full-width and equal-width on compact screens", () => {
   const source = readFileSync(settingsPanelPath, "utf8");
 
-  assert.match(source, /aria-label="语言设置"[\s\S]*className="grid h-auto w-full grid-cols-2 rounded-2xl p-1 md:inline-flex md:h-11 md:w-auto"/u);
-  assert.match(source, /className="min-h-\[var\(--touch-target-size\)\] rounded-xl px-4\.5 text-sm md:min-h-9"/u);
+  assert.match(source, /aria-label="语言设置"[\s\S]*className="grid h-auto w-full grid-cols-2 rounded-2xl p-1 lg:inline-flex lg:h-11 lg:w-auto"/u);
+  assert.match(source, /className="min-h-\[var\(--touch-target-size\)\] rounded-xl px-4\.5 text-sm lg:min-h-9"/u);
   assert.match(source, /grid h-auto w-full grid-cols-3 rounded-2xl px-1 py-1/u);
-  assert.match(source, /className="min-h-\[var\(--touch-target-size\)\] gap-2 rounded-xl px-3 text-sm font-medium md:min-h-9 md:px-4\.5"/u);
+  assert.match(source, /className="min-h-\[var\(--touch-target-size\)\] gap-2 rounded-xl px-3 text-sm font-medium lg:min-h-9 lg:px-4\.5"/u);
+  assert.doesNotMatch(source, /md:min-h-9/u);
 });
 
 test("settings switch rows expose row-level touch targets without rewriting the global switch primitive", () => {
@@ -162,7 +163,8 @@ test("settings switch rows expose row-level touch targets without rewriting the 
     assert.match(source, new RegExp(`<SettingsSwitchRow[\\s\\S]*title="${label}"`, "u"));
   }
 
-  assert.doesNotMatch(switchSource, /settings-switch-row|useId|touch-target-size/u);
+  assert.match(switchSource, /h-\[var\(--touch-target-size\)\]/u);
+  assert.doesNotMatch(switchSource, /settings-switch-row|useId/u);
 });
 
 test("embedding dimensions degrade to compact definition cards while preserving a desktop table", () => {

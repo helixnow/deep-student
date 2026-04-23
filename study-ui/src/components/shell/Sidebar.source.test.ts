@@ -40,13 +40,13 @@ test("sidebar primary entries tighten desktop density without reducing the mobil
 
   assert.match(
     primaryBlock,
-    /"w-full rounded-2xl bg-interactive-selected text-sidebar-foreground md:min-h-8 md:gap-2 md:py-1"/u,
+    /"w-full rounded-2xl bg-interactive-selected text-sidebar-foreground lg:min-h-8 lg:gap-2 lg:py-1"/u,
   );
   assert.match(
     primaryBlock,
-    /"rounded-2xl text-sidebar-foreground hover:bg-interactive-hover hover:text-sidebar-foreground md:min-h-8 md:gap-2 md:py-1"/u,
+    /"rounded-2xl text-sidebar-foreground hover:bg-interactive-hover hover:text-sidebar-foreground lg:min-h-8 lg:gap-2 lg:py-1"/u,
   );
-  assert.doesNotMatch(primaryBlock, /md:min-h-7/u);
+  assert.doesNotMatch(primaryBlock, /md:min-h-/u);
 });
 
 test("sidebar section labels stay quiet instead of dashboard-style uppercase tags", () => {
@@ -174,8 +174,9 @@ test("recent folder groups tighten desktop density without shrinking mobile touc
   const source = readFileSync(sidebarPath, "utf8");
 
   assert.match(source, /<section className="space-y-0\.5">[\s\S]*<div className="space-y-0\.5">/u);
-  assert.match(source, /className=\{\s*isCurrentFolder[\s\S]*md:min-h-8 md:gap-2 md:py-1/u);
-  assert.match(source, /className=\{\s*item\.active[\s\S]*md:min-h-8 md:gap-2 md:py-1/u);
+  assert.match(source, /className=\{\s*isCurrentFolder[\s\S]*lg:min-h-8 lg:gap-2 lg:py-1/u);
+  assert.match(source, /className=\{\s*item\.active[\s\S]*lg:min-h-8 lg:gap-2 lg:py-1/u);
+  assert.doesNotMatch(source, /md:min-h-8/u);
 });
 
 test("sidebar can close compact drawer after meaningful navigation selections", () => {
@@ -277,7 +278,8 @@ test("sidebar touch targets stay at least 44px tall on compact screens", () => {
   const shellButtonSource = readFileSync(path.join(__dirname, "ShellButton.tsx"), "utf8");
 
   assert.match(shellButtonSource, /min-h-\[2\.75rem\][\s\S]*text-(?:\[\d+px\]|sm)/u);
-  assert.match(shellButtonSource, /md:min-h-9/u);
+  assert.match(shellButtonSource, /lg:min-h-9/u);
+  assert.doesNotMatch(shellButtonSource, /md:min-h-9/u);
   assert.match(source, /<ShellButton/u);
 });
 
