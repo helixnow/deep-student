@@ -194,14 +194,18 @@ test("phone settings are presented as a real sheet instead of replacing the main
   assert.match(source, /<SheetTitle[\s\S]*系统设置[\s\S]*<\/SheetTitle>/u);
   assert.match(source, /<SheetDescription className="sr-only">[\s\S]*移动端系统设置面板/u);
   assert.match(source, /<SheetClose asChild>[\s\S]*aria-label="关闭系统设置"[\s\S]*<X size=\{28\} weight="regular" \/>/u);
+  assert.match(source, /const mobileSettingsSheetTabs = \[[\s\S]*id: "general"[\s\S]*slot: "general"[\s\S]*通用设置/u);
+  assert.match(source, /id: "about"[\s\S]*slot: "account"[\s\S]*账号管理/u);
+  assert.match(source, /id: "advanced"[\s\S]*slot: "data"[\s\S]*数据管理[\s\S]*trailingIcon: <CaretRight size=\{14\} weight="bold" \/>/u);
   assert.match(source, /data-slot="mobile-settings-sheet-nav"[\s\S]*grid-cols-\[1\.08fr_0\.96fr_1fr\]/u);
-  assert.match(source, /data-slot="mobile-settings-sheet-nav-general"[\s\S]*<GearSix size=\{20\} weight="regular" \/>[\s\S]*通用设置/u);
-  assert.match(source, /data-slot="mobile-settings-sheet-nav-account"[\s\S]*<User size=\{20\} weight="regular" \/>[\s\S]*账号管理/u);
-  assert.match(source, /data-slot="mobile-settings-sheet-nav-data"[\s\S]*<Database size=\{20\} weight="regular" \/>[\s\S]*数据管理[\s\S]*<CaretRight size=\{14\} weight="bold" \/>/u);
-  assert.match(source, /data-slot="mobile-settings-sheet-theme-light"[\s\S]*onClick=\{\(\) => setThemePreference\("light"\)\}[\s\S]*浅色/u);
-  assert.match(source, /data-slot="mobile-settings-sheet-theme-dark"[\s\S]*onClick=\{\(\) => setThemePreference\("dark"\)\}[\s\S]*深色/u);
-  assert.match(source, /data-slot="mobile-settings-sheet-theme-system"[\s\S]*onClick=\{\(\) => setThemePreference\("system"\)\}[\s\S]*跟随系统/u);
-  assert.match(source, /data-slot="mobile-settings-sheet-language"[\s\S]*<select[\s\S]*aria-label="语言设置"[\s\S]*updateSetting\("language", event\.currentTarget\.value as AppLanguage\)/u);
+  assert.match(source, /mobileSettingsSheetTabs\.map\(\(item\) => \{[\s\S]*activeSettingsTab === item\.id/u);
+  assert.match(source, /data-slot=\{`mobile-settings-sheet-nav-\$\{item\.slot\}`\}/u);
+  assert.match(source, /onClick=\{isActiveMobileSettingsTab \? undefined : \(\) => onSelectSettingsTab\(item\.id\)\}/u);
+  assert.match(source, /data-slot="mobile-settings-sheet-real-content"[\s\S]*data-theme="dark"[\s\S]*data-window-background="opaque"[\s\S]*\[--touch-target-size:var\(--control-height-touch\)\][\s\S]*\{settingsContent\}/u);
+  assert.match(source, /\[&_input\[type=range\]\]:min-h-11/u);
+  assert.doesNotMatch(source, /mobileSettingsLanguageOptions/u);
+  assert.doesNotMatch(source, /data-slot="mobile-settings-sheet-theme-light"/u);
+  assert.doesNotMatch(source, /updateSetting\("language", event\.currentTarget\.value as AppLanguage\)/u);
   assert.match(source, /\{shouldShowAppSurface \? \(/u);
 });
 

@@ -1,15 +1,11 @@
 import React, { useMemo, useSyncExternalStore } from "react";
 import {
-  CaretDown,
   CaretRight,
   Database,
-  Desktop,
   GearSix,
   List,
-  Moon,
   NotePencil,
   Pulse,
-  Sun,
   User,
   X,
 } from "@phosphor-icons/react";
@@ -25,7 +21,6 @@ import {
   SheetTitle,
 } from "@/components/ui/sheet";
 import { getAppLayoutPolicy } from "@/lib/app-layout-policy";
-import type { AppLanguage } from "@/lib/app-settings";
 import {
   APP_LAYOUT_TOKENS,
   getHeaderTopInset,
@@ -62,10 +57,11 @@ function SidebarDockIcon() {
   );
 }
 
-const mobileSettingsLanguageOptions: Array<{ value: AppLanguage; label: string }> = [
-  { value: "zh-CN", label: "中文" },
-  { value: "en-US", label: "English" },
-];
+const mobileSettingsSheetTabs = [
+  { id: "general", slot: "general", label: "通用设置", icon: <GearSix size={20} weight="regular" /> },
+  { id: "about", slot: "account", label: "账号管理", icon: <User size={20} weight="regular" /> },
+  { id: "advanced", slot: "data", label: "数据管理", icon: <Database size={20} weight="regular" />, trailingIcon: <CaretRight size={14} weight="bold" /> },
+] as const;
 
 type AppChromeProps = {
   desktopPlatform: DesktopPlatform;
@@ -106,8 +102,8 @@ export function AppChrome({
   settingsNavItems,
   threadItems,
 }: AppChromeProps) {
-  const { settings, updateSetting } = useAppSettings();
-  const { preference, setThemePreference, windowBackgroundPreference } = useTheme();
+  const { settings } = useAppSettings();
+  const { windowBackgroundPreference } = useTheme();
   const titlebarMode = useMemo(() => getTitlebarMode(desktopPlatform), [desktopPlatform]);
   const responsiveEnvironment = useSyncExternalStore(
     subscribeResponsiveEnvironment,
@@ -381,107 +377,39 @@ export function AppChrome({
                 data-slot="mobile-settings-sheet-nav"
                 className="mt-8 grid grid-cols-[1.08fr_0.96fr_1fr] gap-2 pb-1"
               >
-                <button
-                  type="button"
-                  data-slot="mobile-settings-sheet-nav-general"
-                  aria-pressed="true"
-                  className="flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-[1.05rem] bg-white/10 px-1.5 text-[0.86rem] font-medium tracking-[-0.02em] text-white"
-                >
-                  <GearSix size={20} weight="regular" />
-                  <span className="whitespace-nowrap">通用设置</span>
-                </button>
-                <button
-                  type="button"
-                  data-slot="mobile-settings-sheet-nav-account"
-                  onClick={() => onSelectSettingsTab("about")}
-                  className="flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-[1.05rem] px-1.5 text-[0.86rem] font-medium tracking-[-0.02em] text-white/82 transition-colors hover:bg-white/7"
-                >
-                  <User size={20} weight="regular" />
-                  <span className="whitespace-nowrap">账号管理</span>
-                </button>
-                <button
-                  type="button"
-                  data-slot="mobile-settings-sheet-nav-data"
-                  onClick={() => onSelectSettingsTab("advanced")}
-                  className="flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-[1.05rem] px-1.5 text-[0.86rem] font-medium tracking-[-0.02em] text-white/48 transition-colors hover:bg-white/7"
-                >
-                  <Database size={20} weight="regular" />
-                  <span className="whitespace-nowrap">数据管理</span>
-                  <CaretRight size={14} weight="bold" />
-                </button>
+                {mobileSettingsSheetTabs.map((item) => {
+                  const isActiveMobileSettingsTab = activeSettingsTab === item.id;
+
+                  return (
+                    <button
+                      key={item.id}
+                      type="button"
+                      data-slot={`mobile-settings-sheet-nav-${item.slot}`}
+                      aria-pressed={isActiveMobileSettingsTab}
+                      onClick={isActiveMobileSettingsTab ? undefined : () => onSelectSettingsTab(item.id)}
+                      className={cn(
+                        "flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-[1.05rem] px-1.5 text-[0.86rem] font-medium tracking-[-0.02em] transition-colors",
+                        isActiveMobileSettingsTab
+                          ? "bg-white/10 text-white"
+                          : "text-white/72 hover:bg-white/7 hover:text-white/88",
+                      )}
+                    >
+                      {item.icon}
+                      <span className="whitespace-nowrap">{item.label}</span>
+                      {"trailingIcon" in item ? item.trailingIcon : null}
+                    </button>
+                  );
+                })}
               </nav>
 
-              <section data-slot="mobile-settings-sheet-theme" className="mt-14 space-y-5">
-                <h2 className="text-lg font-medium text-white">主题</h2>
-                <div className="grid grid-cols-2 gap-3">
-                  <button
-                    type="button"
-                    data-slot="mobile-settings-sheet-theme-light"
-                    aria-pressed={preference === "light"}
-                    onClick={() => setThemePreference("light")}
-                    className={cn(
-                      "flex min-h-24 flex-col items-center justify-center gap-2 rounded-[1.35rem] border border-white/10 text-base font-medium text-white/92 transition-colors",
-                      preference === "light" ? "bg-white/12" : "bg-transparent hover:bg-white/7",
-                    )}
-                  >
-                    <Sun size={26} weight="regular" />
-                    浅色
-                  </button>
-                  <button
-                    type="button"
-                    data-slot="mobile-settings-sheet-theme-dark"
-                    aria-pressed={preference === "dark"}
-                    onClick={() => setThemePreference("dark")}
-                    className={cn(
-                      "flex min-h-24 flex-col items-center justify-center gap-2 rounded-[1.35rem] border border-white/10 text-base font-medium text-white/92 transition-colors",
-                      preference === "dark" ? "bg-white/12" : "bg-transparent hover:bg-white/7",
-                    )}
-                  >
-                    <Moon size={26} weight="regular" />
-                    深色
-                  </button>
-                  <button
-                    type="button"
-                    data-slot="mobile-settings-sheet-theme-system"
-                    aria-pressed={preference === "system"}
-                    onClick={() => setThemePreference("system")}
-                    className={cn(
-                      "col-span-2 flex min-h-24 flex-col items-center justify-center gap-2 rounded-[1.35rem] border border-white/10 text-base font-medium text-white/92 transition-colors",
-                      preference === "system" ? "bg-white/12" : "bg-transparent hover:bg-white/7",
-                    )}
-                  >
-                    <Desktop size={26} weight="regular" />
-                    跟随系统
-                  </button>
-                </div>
-              </section>
-
-              <section data-slot="mobile-settings-sheet-language" className="mt-12">
-                <div className="flex min-h-14 items-center justify-between gap-4">
-                  <h2 className="text-lg font-medium text-white">语言</h2>
-                  <label className="relative">
-                    <span className="sr-only">语言设置</span>
-                    <select
-                      aria-label="语言设置"
-                      value={settings.language}
-                      onChange={(event) => updateSetting("language", event.currentTarget.value as AppLanguage)}
-                      className="min-h-12 appearance-none rounded-full border border-white/8 bg-white/10 py-2.5 pl-5 pr-11 text-base font-medium text-white outline-none transition-colors hover:bg-white/13 focus-visible:ring-2 focus-visible:ring-white/24"
-                    >
-                      {mobileSettingsLanguageOptions.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
-                    </select>
-                    <CaretDown
-                      aria-hidden="true"
-                      size={18}
-                      weight="bold"
-                      className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-white/55"
-                    />
-                  </label>
-                </div>
-              </section>
+              <div
+                data-slot="mobile-settings-sheet-real-content"
+                data-theme="dark"
+                data-window-background="opaque"
+                className="mt-10 border-t border-white/8 pt-6 [--background:#26272b] [--border:rgba(255,255,255,0.12)] [--foreground:#f5f5f5] [--interactive-hover:rgba(255,255,255,0.08)] [--interactive-selected:rgba(255,255,255,0.14)] [--muted-foreground:rgba(255,255,255,0.58)] [--secondary:#303136] [--shell-panel-strong:#2b2c31] [--touch-target-size:var(--control-height-touch)] [&_input[type=range]]:min-h-11"
+              >
+                {settingsContent}
+              </div>
             </SheetContent>
           </Sheet>
         ) : null}
