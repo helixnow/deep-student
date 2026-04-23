@@ -1,10 +1,8 @@
 import { type CSSProperties, useState } from "react";
 import {
   ArrowUp,
-  MagicWand,
   Paperclip,
   Plus,
-  Sparkle,
 } from "@phosphor-icons/react";
 
 import { Button } from "@/components/ui/button";
@@ -52,42 +50,29 @@ export function ThreadCanvas() {
           style={threadContentColumnStyle}
         >
           <section
-            data-slot="thread-mobile-empty-state"
-            className="flex min-h-full w-full flex-col justify-center overflow-hidden pb-10 pt-8 text-center sm:hidden"
-          >
-            <div className="mx-auto max-w-[20rem] space-y-3 px-2">
-              <h2 className="text-balance text-2xl font-semibold tracking-[-0.04em] text-foreground">开启新的学习任务</h2>
-              <p className="text-pretty text-base leading-7 text-muted-foreground">
-                把问题、资料和想法放进来，DeepStudent 会帮你收敛成更清晰的下一步。
-              </p>
-            </div>
-
-            <Button variant="outline" className="mx-auto mt-7 min-w-32 rounded-full bg-card/85 shadow-sm shadow-black/5">
-              <MagicWand size={16} />
-              查看建议起点
-            </Button>
-          </section>
-
-          <section
             data-slot="thread-empty-state"
-            className="hidden w-full flex-col items-center justify-center gap-5 py-12 text-center sm:flex md:py-16"
+            className="flex min-h-full w-full flex-col items-center justify-center px-2 pb-16 pt-10 text-center sm:pb-20 md:pt-16"
           >
-            <div className="inline-flex size-12 items-center justify-center rounded-full bg-secondary text-muted-foreground">
-              <Sparkle size={20} weight="fill" />
-            </div>
-
-            <div className="space-y-2">
-              <h2 className="text-balance text-xl font-medium text-foreground">开始一个新任务</h2>
-              <p className="text-base text-muted-foreground">当前工作区：`study-ui`</p>
-              <p className="mx-auto max-w-[32rem] text-pretty text-sm leading-6 text-muted-foreground">
-                把需求直接发到底部输入区。首屏保持安静，只保留当前工作区、主动作和足够的留白。
+            <div className="mx-auto flex max-w-[24rem] flex-col items-center gap-4">
+              <p
+                data-slot="thread-empty-workspace"
+                className="rounded-full bg-secondary/80 px-3.5 py-1.5 text-xs font-medium text-muted-foreground"
+              >
+                当前工作区：<code className="font-medium text-foreground">study-ui</code>
               </p>
+              <div className="space-y-3">
+                <h2 className="text-balance text-2xl font-semibold tracking-[-0.04em] text-foreground sm:text-xl sm:font-medium sm:tracking-normal">
+                  开始一个新任务
+                </h2>
+                <p
+                  data-slot="thread-empty-primary-action"
+                  className="mx-auto max-w-[21rem] text-pretty text-base leading-7 text-muted-foreground sm:text-sm sm:leading-6"
+                >
+                  把需求直接发到底部输入区。
+                </p>
+              </div>
+              <p className="sr-only">首屏保持安静，只保留当前工作区、主动作和足够的留白。</p>
             </div>
-
-            <Button variant="outline" className="min-w-36">
-              <MagicWand size={16} />
-              查看建议起点
-            </Button>
           </section>
         </div>
       </div>

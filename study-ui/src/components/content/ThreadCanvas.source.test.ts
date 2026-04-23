@@ -18,8 +18,9 @@ test("thread canvas uses a document-style single column with an anchored compose
   assert.match(source, /Plus/u);
   assert.match(source, /data-slot="thread-content-shell"/u);
   assert.match(source, /data-slot="thread-content-column"/u);
-  assert.match(source, /data-slot="thread-mobile-empty-state"/u);
   assert.match(source, /data-slot="thread-empty-state"/u);
+  assert.match(source, /data-slot="thread-empty-workspace"/u);
+  assert.match(source, /data-slot="thread-empty-primary-action"/u);
   assert.match(source, /data-slot="thread-composer-shell"/u);
   assert.match(source, /data-slot="thread-composer-column"/u);
   assert.match(source, /data-slot="thread-phone-composer"/u);
@@ -37,7 +38,13 @@ test("thread canvas uses a document-style single column with an anchored compose
   assert.doesNotMatch(source, /md:h-\[var\(--button-icon-size\)\]/u);
   assert.match(source, /Button variant="ghost" size="sm" className=\{composerSecondaryControlClassName\}/u);
   assert.match(source, /开始一个新任务/u);
-  assert.match(source, /开启新的学习任务/u);
+  assert.match(source, /当前工作区：<code className="font-medium text-foreground">study-ui<\/code>/u);
+  assert.match(source, /把需求直接发到底部输入区。/u);
+  assert.match(source, /首屏保持安静，只保留当前工作区、主动作和足够的留白。/u);
+  assert.doesNotMatch(source, /开启新的学习任务/u);
+  assert.doesNotMatch(source, /查看建议起点/u);
+  assert.doesNotMatch(source, /MagicWand/u);
+  assert.doesNotMatch(source, /Sparkle/u);
   assert.doesNotMatch(source, /升级|用户\+/u);
   assert.doesNotMatch(source, /max-w-\\?\[44rem\\?\]/u);
   assert.doesNotMatch(source, /macOS 工作台|Windows 工作台|桌面工作台/u);
@@ -58,26 +65,25 @@ test("thread canvas uses a document-style single column with an anchored compose
   assert.doesNotMatch(source, /拆解任务|整理资料|生成计划|复盘重点/u);
 });
 
-test("thread canvas adds a phone-only mobile landing without replacing tablet desktop empty state", () => {
+test("thread canvas uses one quiet responsive landing across phone tablet and desktop", () => {
   const source = readFileSync(threadCanvasPath, "utf8");
-  const mobileStart = source.indexOf('data-slot="thread-mobile-empty-state"');
-  const desktopStart = source.indexOf('data-slot="thread-empty-state"');
+  const emptyStart = source.indexOf('data-slot="thread-empty-state"');
+  const phoneComposerStart = source.indexOf('data-slot="thread-phone-composer"');
 
-  assert.notEqual(mobileStart, -1);
-  assert.notEqual(desktopStart, -1);
-  assert.ok(mobileStart < desktopStart);
+  assert.notEqual(emptyStart, -1);
+  assert.notEqual(phoneComposerStart, -1);
+  assert.ok(emptyStart < phoneComposerStart);
+  assert.doesNotMatch(source, /data-slot="thread-mobile-empty-state"/u);
 
-  const mobileBlock = source.slice(mobileStart, desktopStart);
-  assert.match(mobileBlock, /className="flex min-h-full w-full flex-col justify-center overflow-hidden pb-10 pt-8 text-center sm:hidden"/u);
-  assert.doesNotMatch(mobileBlock, /data-slot="thread-mobile-prompt-strip"/u);
-  assert.doesNotMatch(mobileBlock, /mobilePromptCards\.map/u);
-  assert.match(mobileBlock, /开启新的学习任务/u);
-  assert.match(mobileBlock, /把问题、资料和想法放进来/u);
-  assert.match(mobileBlock, /查看建议起点/u);
-
-  const desktopBlock = source.slice(desktopStart);
-  assert.match(desktopBlock, /className="hidden w-full flex-col items-center justify-center gap-5 py-12 text-center sm:flex md:py-16"/u);
-  assert.match(desktopBlock, /开始一个新任务/u);
+  const emptyBlock = source.slice(emptyStart, phoneComposerStart);
+  assert.match(emptyBlock, /className="flex min-h-full w-full flex-col items-center justify-center px-2 pb-16 pt-10 text-center sm:pb-20 md:pt-16"/u);
+  assert.match(emptyBlock, /max-w-\[24rem\]/u);
+  assert.match(emptyBlock, /data-slot="thread-empty-workspace"/u);
+  assert.match(emptyBlock, /当前工作区：<code/u);
+  assert.match(emptyBlock, /study-ui/u);
+  assert.match(emptyBlock, /data-slot="thread-empty-primary-action"/u);
+  assert.match(emptyBlock, /把需求直接发到底部输入区。/u);
+  assert.doesNotMatch(emptyBlock, /查看建议起点|开启新的学习任务|Sparkle|MagicWand/u);
 });
 
 test("thread canvas uses a phone-only pill composer while preserving the existing tablet desktop composer", () => {
@@ -165,7 +171,7 @@ test("thread composer lifts with a subtle shadow when any control inside it rece
 test("thread canvas hero title stays aligned with the lighter app typography scale", () => {
   const source = readFileSync(threadCanvasPath, "utf8");
 
-  assert.match(source, /<h2 className="text-balance text-xl font-medium text-foreground">开始一个新任务<\/h2>/u);
-  assert.match(source, /text-pretty text-sm leading-6 text-muted-foreground/u);
+  assert.match(source, /<h2 className="text-balance text-2xl font-semibold tracking-\[-0\.04em\] text-foreground sm:text-xl sm:font-medium sm:tracking-normal">[\s\S]*开始一个新任务[\s\S]*<\/h2>/u);
+  assert.match(source, /data-slot="thread-empty-primary-action"[\s\S]*text-pretty text-base leading-7 text-muted-foreground sm:text-sm sm:leading-6/u);
   assert.doesNotMatch(source, /<h2 className="text-xl font-semibold text-foreground">开始一个新任务<\/h2>/u);
 });
