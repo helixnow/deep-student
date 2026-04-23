@@ -25,24 +25,24 @@
 
 - [x] **TOKN-01**: `src/styles/app.css` defines reusable layout tokens for page gutter, workspace width, composer width, sidebar width/mode, safe-area offsets, and touch target size.
 - [x] **TOKN-02**: Root datasets override the same token names per form factor instead of introducing duplicate mobile/tablet token families.
-- [ ] **TOKN-03**: Components consume layout tokens for content width, gutters, composer placement, and safe-area spacing instead of repeating hard-coded responsive classes.
+- [x] **TOKN-03**: Components consume layout tokens for content width, gutters, composer placement, and safe-area spacing instead of repeating hard-coded responsive classes.
 
 ### Thread Canvas
 
-- [ ] **THRD-01**: `ThreadCanvas` uses `--workspace-max-width` and `--composer-max-width` rather than hard-coded `max-w-[44rem]`.
-- [ ] **THRD-02**: `ThreadCanvas` replaces desktop-first `px-4 md:px-8` spacing with token-driven inline and block spacing.
-- [ ] **THRD-03**: The composer consumes safe-area tokens so it remains visible and usable on mobile and tablet WebView surfaces.
-- [ ] **THRD-04**: The mobile composer prioritizes text input and send action while moving secondary actions into a touch-friendly layout.
-- [ ] **THRD-05**: Thread canvas source tests assert safe-area/token usage and prevent reintroducing desktop-only width hard-coding.
+- [x] **THRD-01**: `ThreadCanvas` uses `--workspace-max-width` and `--composer-max-width` rather than hard-coded `max-w-[44rem]`.
+- [x] **THRD-02**: `ThreadCanvas` replaces desktop-first `px-4 md:px-8` spacing with token-driven inline and block spacing.
+- [x] **THRD-03**: The composer consumes safe-area tokens so it remains visible and usable on mobile and tablet WebView surfaces.
+- [x] **THRD-04**: The mobile composer prioritizes text input and send action while moving secondary actions into a touch-friendly layout.
+- [x] **THRD-05**: Thread canvas source tests assert safe-area/token usage and prevent reintroducing desktop-only width hard-coding.
 
 ### Settings Panel
 
-- [ ] **SETT-01**: `SettingsPanel` remains one shared page and does not fork into a separate mobile settings page.
-- [ ] **SETT-02**: Dense settings grids and pseudo-tables degrade under desktop width into card or definition-list style layouts.
-- [ ] **SETT-03**: Tabs use equal-width or scrollable mobile-safe layouts depending on item count.
-- [ ] **SETT-04**: Switch settings are wrapped in rows or labels that make the full setting row touch-friendly.
-- [ ] **SETT-05**: Settings scroll padding and page gutters follow shell/layout tokens and safe-area values.
-- [ ] **SETT-06**: Settings tests assert small-screen single-column behavior and dense-region degradation.
+- [x] **SETT-01**: `SettingsPanel` remains one shared page and does not fork into a separate mobile settings page.
+- [x] **SETT-02**: Dense settings grids and pseudo-tables degrade under desktop width into card or definition-list style layouts.
+- [x] **SETT-03**: Tabs use equal-width or scrollable mobile-safe layouts depending on item count.
+- [x] **SETT-04**: Switch settings are wrapped in rows or labels that make the full setting row touch-friendly.
+- [x] **SETT-05**: Settings scroll padding and page gutters follow shell/layout tokens and safe-area values.
+- [x] **SETT-06**: Settings tests assert small-screen single-column behavior and dense-region degradation.
 
 ### Controls And Verification
 
@@ -92,18 +92,18 @@
 | SHELL-06 | Phase 3 | Complete |
 | TOKN-01 | Phase 2 | Complete |
 | TOKN-02 | Phase 2 | Complete |
-| TOKN-03 | Phase 4 | Pending |
-| THRD-01 | Phase 4 | Pending |
-| THRD-02 | Phase 4 | Pending |
-| THRD-03 | Phase 4 | Pending |
-| THRD-04 | Phase 4 | Pending |
-| THRD-05 | Phase 4 | Pending |
-| SETT-01 | Phase 4 | Pending |
-| SETT-02 | Phase 4 | Pending |
-| SETT-03 | Phase 4 | Pending |
-| SETT-04 | Phase 4 | Pending |
-| SETT-05 | Phase 4 | Pending |
-| SETT-06 | Phase 4 | Pending |
+| TOKN-03 | Phase 4 | Complete |
+| THRD-01 | Phase 4 | Complete |
+| THRD-02 | Phase 4 | Complete |
+| THRD-03 | Phase 4 | Complete |
+| THRD-04 | Phase 4 | Complete |
+| THRD-05 | Phase 4 | Complete |
+| SETT-01 | Phase 4 | Complete |
+| SETT-02 | Phase 4 | Complete |
+| SETT-03 | Phase 4 | Complete |
+| SETT-04 | Phase 4 | Complete |
+| SETT-05 | Phase 4 | Complete |
+| SETT-06 | Phase 4 | Complete |
 | CTRL-01 | Phase 5 | Pending |
 | CTRL-02 | Phase 5 | Pending |
 | VERF-01 | Phase 5 | Pending |
@@ -119,4 +119,4 @@
 
 ---
 *Requirements defined: 2026-04-23*
-*Last updated: 2026-04-23 after Phase 3 execution*
+*Last updated: 2026-04-23 after Phase 4 execution*

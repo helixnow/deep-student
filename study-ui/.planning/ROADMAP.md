@@ -11,7 +11,7 @@
 | 1 | Responsive Policy Foundation | Centralize responsive facts and layout decisions | RESP-01, RESP-02, RESP-03, RESP-04 | Complete |
 | 2 | Root State And Layout Tokens | Expose policy state to CSS and split sidebar semantics | SHELL-01, SHELL-02, TOKN-01, TOKN-02 | Complete |
 | 3 | Shell And Sidebar Adaptation | Make AppChrome/Titlebar/Sidebar work across compact and desktop modes | SHELL-03, SHELL-04, SHELL-05, SHELL-06 | Complete |
-| 4 | Content Surface Adaptation | Make ThreadCanvas and SettingsPanel mobile/tablet-safe through tokens and responsive degradation | TOKN-03, THRD-01, THRD-02, THRD-03, THRD-04, THRD-05, SETT-01, SETT-02, SETT-03, SETT-04, SETT-05, SETT-06 | Planned |
+| 4 | Content Surface Adaptation | Make ThreadCanvas and SettingsPanel mobile/tablet-safe through tokens and responsive degradation | TOKN-03, THRD-01, THRD-02, THRD-03, THRD-04, THRD-05, SETT-01, SETT-02, SETT-03, SETT-04, SETT-05, SETT-06 | Complete |
 | 5 | Touch Targets And Verification | Lock controls, tests, build, and manual viewport acceptance | CTRL-01, CTRL-02, VERF-01, VERF-02, VERF-03, VERF-04, VERF-05 | Not planned |
 
 ## Phase 1: Responsive Policy Foundation
@@ -101,7 +101,7 @@
 
 **Goal:** Make the main thread and settings surfaces readable, touch-friendly, and safe-area-aware across phone/tablet/desktop.
 
-**Status:** Planned
+**Status:** Complete
 
 **UI hint:** yes
 
@@ -160,4 +160,4 @@ All v1 requirements from `.planning/REQUIREMENTS.md` are mapped to exactly one r
 
 ## Next Step
 
-Run `$gsd-execute-phase 4` to adapt ThreadCanvas and SettingsPanel content surfaces.
+Run `$gsd-verify-work 4` to review Phase 4 in context, then continue with `$gsd-discuss-phase 5`.
