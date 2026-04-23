@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { type CSSProperties, useState } from "react";
 import {
   ArrowUp,
   MagicWand,
@@ -12,14 +12,44 @@ import { cn } from "@/lib/utils";
 
 const composerSecondaryControlClassName = "rounded-full border-transparent px-2.5 text-xs font-normal text-muted-foreground";
 
+const threadContentShellStyle = {
+  paddingTop: "var(--page-gutter-block)",
+  paddingBottom: "var(--page-gutter-block)",
+  paddingLeft: "calc(var(--page-gutter-inline) + var(--layout-safe-area-left))",
+  paddingRight: "calc(var(--page-gutter-inline) + var(--layout-safe-area-right))",
+} satisfies CSSProperties;
+
+const threadContentColumnStyle = {
+  maxWidth: "var(--workspace-max-width)",
+} satisfies CSSProperties;
+
+const threadComposerShellStyle = {
+  paddingTop: "calc(var(--page-gutter-block) * 0.5)",
+  paddingBottom: "var(--composer-bottom-offset)",
+  paddingLeft: "calc(var(--page-gutter-inline) + var(--layout-safe-area-left))",
+  paddingRight: "calc(var(--page-gutter-inline) + var(--layout-safe-area-right))",
+} satisfies CSSProperties;
+
+const threadComposerColumnStyle = {
+  maxWidth: "var(--composer-max-width)",
+} satisfies CSSProperties;
+
 export function ThreadCanvas() {
   const [draftMessage, setDraftMessage] = useState("");
   const isComposerEmpty = draftMessage.trim().length === 0;
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-3 md:px-8 md:pb-8 md:pt-4">
-        <div className="mx-auto flex min-h-full w-full max-w-[44rem] items-center">
+      <div
+        data-slot="thread-content-shell"
+        className="custom-scrollbar min-h-0 flex-1 overflow-y-auto"
+        style={threadContentShellStyle}
+      >
+        <div
+          data-slot="thread-content-column"
+          className="mx-auto flex min-h-full w-full items-center"
+          style={threadContentColumnStyle}
+        >
           <section
             data-slot="thread-empty-state"
             className="flex w-full flex-col items-center justify-center gap-5 py-12 text-center md:py-16"
@@ -44,8 +74,16 @@ export function ThreadCanvas() {
         </div>
       </div>
 
-      <div className="border-t border-[color:var(--composer-divider)] bg-[color:var(--shell-panel-strong)] px-4 pb-3 pt-2.5 md:px-8 md:pb-4">
-        <div className="mx-auto w-full max-w-[44rem]">
+      <div
+        data-slot="thread-composer-shell"
+        className="border-t border-[color:var(--composer-divider)] bg-[color:var(--shell-panel-strong)]"
+        style={threadComposerShellStyle}
+      >
+        <div
+          data-slot="thread-composer-column"
+          className="mx-auto w-full"
+          style={threadComposerColumnStyle}
+        >
           <div
             data-slot="thread-composer"
             className="overflow-hidden rounded-3xl border border-composer-border bg-card shadow-lg shadow-black/5 transition-shadow duration-150 ease-out motion-reduce:transition-none focus-within:[box-shadow:var(--shadow-composer-focus)]"
@@ -58,8 +96,11 @@ export function ThreadCanvas() {
               placeholder="请输入问题"
             />
 
-            <div className="flex flex-wrap items-center justify-between gap-2 px-3 pb-2.5 pt-1 md:px-4">
-              <div className="flex flex-wrap items-center gap-2">
+            <div className="flex items-center gap-2 px-3 pb-2.5 pt-1 md:px-4">
+              <div
+                data-slot="thread-composer-secondary-actions"
+                className="flex min-w-0 flex-1 flex-wrap items-center gap-2"
+              >
                 <Button variant="ghost" size="sm" className={composerSecondaryControlClassName}>
                   <Paperclip size={16} />
                   附件
@@ -75,7 +116,7 @@ export function ThreadCanvas() {
               <Button
                 aria-label="发送消息"
                 className={cn(
-                  "h-11 w-11 rounded-full md:h-[var(--button-icon-size)] md:w-[var(--button-icon-size)]",
+                  "h-11 w-11 shrink-0 rounded-full md:h-[var(--button-icon-size)] md:w-[var(--button-icon-size)]",
                   isComposerEmpty && "border-transparent bg-muted-foreground hover:bg-muted-foreground/90 active:bg-muted-foreground/85 text-[color:var(--interactive-selected)]",
                 )}
                 size="icon"
