@@ -6,7 +6,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 
 **Core value:** One shared UI architecture must feel usable on phone, tablet, and desktop while preserving the existing desktop Tauri shell behavior.
 
-**Current focus:** Phase 5: Touch Targets And Verification - UAT pending
+**Current focus:** Phase 5 verified; milestone is ready for final visual audit or completion.
 
 ## Workflow State
 
@@ -67,6 +67,8 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 - 2026-04-23: Phase 5 planning skipped new research because context, UI-SPEC, and code inspection already identified the concrete touch-target/test gaps.
 - 2026-04-23: Phase 5 execution complete; automated gates passed and manual acceptance checklist prepared.
 - Summary file: `.planning/phases/05-touch-targets-and-verification/05-01-SUMMARY.md`.
+- 2026-04-23: Phase 5 UAT complete; viewport checks passed, macOS desktop chrome passed, Windows manual smoke recorded as N/A on local macOS host.
+- UAT file: `.planning/phases/05-touch-targets-and-verification/05-UAT.md`.
 
 ### Important Decisions
 
@@ -79,15 +81,15 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 - Preserve compact desktop controls instead of globally forcing desktop UI to 44px.
 - Treat stale Phase 4 source tests as part of Phase 5 verification hardening.
 - Do not use `md:` as the first touch-target compaction breakpoint; tablets remain touch density until `1024px`.
+- Portal-mounted `Sheet` and `Dialog` close controls need explicit viewport classes because they do not inherit the AppChrome root density dataset.
 
 ### Known Risks
 
 - `gsd-sdk` is unavailable, so future `$gsd-*` commands may also need manual fallback unless the SDK is installed or added to `PATH`.
 - Mobile keyboard and safe-area behavior require real-device or WebView manual validation; source tests cannot fully prove it.
-- SettingsPanel is large and dense, so responsive degradation should be done carefully to avoid incidental regressions.
-- Switch and icon/small button variants need careful Phase 5 handling because their visual boxes can be smaller than the required phone/tablet touch target.
-- Existing `md:` height overrides on controls may shrink tablet targets and must be audited during Phase 5 execution.
-- Manual viewport and OS-specific desktop observations remain pending for `$gsd-verify-work 5`.
+- SettingsPanel is large and dense; source/unit coverage exists, but live settings navigation is not currently exposed from app mode for manual click-through.
+- Future icon/small button variants should keep using the Phase 5 `lg:` compaction pattern so tablet hit targets do not regress.
+- Windows desktop chrome still needs an actual Windows host for manual smoke; local UAT covered macOS and source/config behavior only.
 
 ## Current Phase Queue
 
@@ -97,7 +99,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 | 2 Root State And Layout Tokens | Complete |
 | 3 Shell And Sidebar Adaptation | Complete |
 | 4 Content Surface Adaptation | Verified |
-| 5 Touch Targets And Verification | Complete - UAT pending |
+| 5 Touch Targets And Verification | Verified |
 
 ---
-*Last updated: 2026-04-23 after Phase 5 execution*
+*Last updated: 2026-04-23 after Phase 5 UAT*

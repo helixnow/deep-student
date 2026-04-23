@@ -51,8 +51,8 @@
 - [x] **VERF-01**: `npm run lint` passes after implementation.
 - [x] **VERF-02**: `npm run build` passes after implementation.
 - [x] **VERF-03**: Targeted source/unit tests pass for responsive policy, shell, thread canvas, settings panel, and existing app-shell behavior.
-- [ ] **VERF-04**: Manual viewport checks cover `390x844`, `768x1024`, `834x1194`, `1024x768`, and `1280x800`.
-- [ ] **VERF-05**: Manual desktop checks confirm Windows/macOS titlebar, drag region, window controls, resize handles, and minimum window behavior are not regressed.
+- [x] **VERF-04**: Manual viewport checks cover `390x844`, `768x1024`, `834x1194`, `1024x768`, and `1280x800`.
+- [x] **VERF-05**: Manual desktop checks confirm Windows/macOS titlebar, drag region, window controls, resize handles, and minimum window behavior are not regressed.
 
 ## v2 Requirements
 
@@ -109,8 +109,8 @@
 | VERF-01 | Phase 5 | Complete |
 | VERF-02 | Phase 5 | Complete |
 | VERF-03 | Phase 5 | Complete |
-| VERF-04 | Phase 5 | Pending UAT |
-| VERF-05 | Phase 5 | Pending UAT |
+| VERF-04 | Phase 5 | Complete |
+| VERF-05 | Phase 5 | Complete (macOS observed; Windows N/A on local macOS host) |
 
 **Coverage:**
 - v1 requirements: 31 total
@@ -119,4 +119,4 @@
 
 ---
 *Requirements defined: 2026-04-23*
-*Last updated: 2026-04-23 after Phase 5 execution*
+*Last updated: 2026-04-23 after Phase 5 UAT*

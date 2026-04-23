@@ -14,6 +14,17 @@ test("dialog and sheet close controls use the shared interactive hover fill", as
   assert.doesNotMatch(sheetSource, /hover:bg-accent/);
 });
 
+test("dialog and sheet close controls stay touch-sized before the desktop breakpoint", async () => {
+  const [dialogSource, sheetSource] = await Promise.all([
+    readFile(new URL("./dialog.tsx", import.meta.url), "utf8"),
+    readFile(new URL("./sheet.tsx", import.meta.url), "utf8"),
+  ]);
+
+  const touchCloseClass = /inline-flex h-11 w-11 items-center justify-center[\s\S]*lg:h-8 lg:w-8/u;
+  assert.match(dialogSource, touchCloseClass);
+  assert.match(sheetSource, touchCloseClass);
+});
+
 test("dialog and sheet overlays use the shared overlay token without extra blur styling", async () => {
   const [dialogSource, sheetSource] = await Promise.all([
     readFile(new URL("./dialog.tsx", import.meta.url), "utf8"),

@@ -9,9 +9,10 @@ requires:
     provides: tokenized ThreadCanvas, SettingsPanel, composer, and settings rows
 provides:
   - Shared Button, Input, Textarea, and Switch contracts now preserve 44px touch targets through phone/tablet widths.
+  - Portal-mounted Sheet and Dialog close controls now preserve 44px touch targets through phone/tablet widths.
   - Shell/sidebar/thread/settings controls no longer use `md:` as the first touch-target compaction breakpoint.
   - Stale Phase 4 source tests are repaired and targeted verification passes.
-  - Manual acceptance checklist exists for the required phone, tablet, and desktop viewport checks.
+  - Manual acceptance is complete for required phone, tablet, and desktop viewport checks, with Windows host smoke recorded as N/A locally.
 affects: [phase-5-uat, milestone-verification]
 
 tech-stack:
@@ -24,14 +25,18 @@ tech-stack:
 key-files:
   modified:
     - src/components/ui/button.tsx
+    - src/components/ui/dialog.tsx
     - src/components/ui/input.tsx
+    - src/components/ui/sheet.tsx
     - src/components/ui/switch.tsx
     - src/components/ui/textarea.source.test.ts
+    - src/components/ui/interactive-surfaces.test.ts
     - src/components/shell/ShellButton.tsx
     - src/components/shell/Sidebar.tsx
     - src/components/content/ThreadCanvas.tsx
     - src/components/content/SettingsPanel.tsx
     - .planning/phases/05-touch-targets-and-verification/05-MANUAL-ACCEPTANCE.md
+    - .planning/phases/05-touch-targets-and-verification/05-UAT.md
 
 key-decisions:
   - "Use `--touch-target-size` as the shared phone/tablet hit-area contract."
@@ -39,8 +44,8 @@ key-decisions:
   - "Allow `Switch` primitive root height to consume `--touch-target-size` while preserving Radix root/thumb semantics."
   - "Do not mark manual viewport rows as PASS until they are actually observed."
 
-requirements-completed: [CTRL-01, CTRL-02, VERF-01, VERF-02, VERF-03]
-requirements-ready-for-uat: [VERF-04, VERF-05]
+requirements-completed: [CTRL-01, CTRL-02, VERF-01, VERF-02, VERF-03, VERF-04, VERF-05]
+requirements-ready-for-uat: []
 
 duration: 52min
 completed: 2026-04-23
@@ -66,6 +71,8 @@ completed: 2026-04-23
 - Replaced tablet-breaking `md:` control-height compaction with `lg:` in `ShellButton`, `Sidebar`, `ThreadCanvas`, and `SettingsPanel`.
 - Repaired stale `ShellButton.source.test.ts` and `SettingsPanel.test.ts` expectations from Phase 4.
 - Added `05-MANUAL-ACCEPTANCE.md` with required viewport and desktop platform checks.
+- During UAT, fixed portal-mounted `Sheet` and `Dialog` close controls so mobile/tablet close actions are 44x44 while desktop remains compact.
+- Completed `05-UAT.md` with automated, browser viewport, and macOS Tauri desktop evidence.
 
 ## Task Commits
 
@@ -77,6 +84,8 @@ completed: 2026-04-23
 
 - `src/components/ui/button.tsx` - Moves desktop compaction to `lg:` and uses `--touch-target-size` for icon/touch sizing.
 - `src/components/ui/button.source.test.ts` - Locks default, `sm`, `lg`, and `icon` touch-safe sizing.
+- `src/components/ui/dialog.tsx` and `src/components/ui/sheet.tsx` - Keep portal close controls at 44x44 before the desktop breakpoint.
+- `src/components/ui/interactive-surfaces.test.ts` - Locks touch-safe portal close sizing.
 - `src/components/ui/input.tsx` - Keeps 44px height through tablet widths.
 - `src/components/ui/input.source.test.ts` - Rejects `md:h-10` and asserts `lg:h-10`.
 - `src/components/ui/textarea.source.test.ts` - Adds source coverage for textarea minimum height and interaction states.
@@ -86,11 +95,13 @@ completed: 2026-04-23
 - `src/components/content/ThreadCanvas.tsx` - Keeps send button 44px through tablet widths.
 - `src/components/content/SettingsPanel.tsx` - Keeps compact tabs/tabs triggers touch-safe through tablet widths.
 - `.planning/phases/05-touch-targets-and-verification/05-MANUAL-ACCEPTANCE.md` - Adds acceptance checklist and records automated gate results.
+- `.planning/phases/05-touch-targets-and-verification/05-UAT.md` - Records final Phase 5 UAT results.
 
 ## Deviations from Plan
 
 - `Switch` source behavior intentionally changed from the Phase 4 assumption that the global primitive would remain untouched. This matches the Phase 5 UI-SPEC because `CTRL-01` explicitly includes switch controls.
-- Manual viewport and OS-specific visual observations were not marked `PASS` during execution. The checklist is ready for `$gsd-verify-work 5` so those checks can be completed honestly.
+- Manual viewport and OS-specific visual observations were intentionally left pending during execution and completed during `$gsd-verify-work 5`.
+- Windows desktop smoke could not be performed on the local macOS host, so it is recorded as `skipped`/`N/A` with a concrete reason rather than overclaimed as locally observed.
 
 ## Issues Encountered
 
@@ -103,23 +114,30 @@ completed: 2026-04-23
 - Full targeted suite from the plan - passed, 146 tests.
 - `npm run lint` - passed.
 - `npm run build` - passed, Vite built 4700 modules in 1.99s.
+- `node --test --experimental-strip-types src/components/ui/interactive-surfaces.test.ts` - passed, 4 tests after UAT close-control fix.
+- `rg --files src | rg '(\\.source\\.test|\\.test)\\.tsx?$' | xargs node --test --experimental-strip-types` - passed, 223 tests after UAT close-control fix.
+- `npm run lint` - passed after UAT close-control fix.
+- `npm run build` - passed after UAT close-control fix, Vite built 4700 modules in 1.82s.
+- Playwright viewport checks passed for `390x844`, `768x1024`, `834x1194`, `1024x768`, and `1280x800`.
+- macOS Tauri desktop checks passed for visible traffic lights, drag region movement, resize handles, and minimum-size clamping.
 - Production source audit excluding test files for `md:(h|min-h|size)-|md:h-|md:min-h-|md:size-` - no matches, expected `rg` exit code 1.
 - Full audit still reports only negative source-test assertions for the old `md:` patterns.
 
 ## Manual Acceptance
 
 - Automated gates in `05-MANUAL-ACCEPTANCE.md` are marked `PASS`.
-- Viewport rows for `390x844`, `768x1024`, `834x1194`, `1024x768`, and `1280x800` are prepared but not marked `PASS`.
-- Desktop platform rows for macOS and Windows titlebar, window controls, drag region, resize handles, and minimum window behavior are prepared but not marked `PASS`.
+- Viewport rows for `390x844`, `768x1024`, `834x1194`, `1024x768`, and `1280x800` are marked `PASS`.
+- macOS desktop platform row is marked `PASS`.
+- Windows desktop platform row is marked `N/A` because the current verification host is macOS; Windows config/source behavior remains covered by automated tests.
 
 ## Next Phase Readiness
 
-Run `$gsd-verify-work 5` to complete conversational/manual UAT. The main remaining work is observation, not implementation: validate the prepared viewport and desktop checklist, then mark Phase 5 verified if no gaps are found.
+Phase 5 UAT is complete with no code gaps. Recommended next step is `$gsd-ui-review 5` for a final visual audit, or `$gsd-complete-milestone` if the milestone is ready to archive.
 
 ## Self-Check: PASSED
 
 - `CTRL-01`, `CTRL-02`, `VERF-01`, `VERF-02`, and `VERF-03` are implemented and verified by automated gates.
-- `VERF-04` and `VERF-05` have committed acceptance coverage and should be completed during UAT/manual verification.
+- `VERF-04` and `VERF-05` have committed acceptance coverage; Windows manual smoke is recorded as an environment-specific skip, not a code gap.
 - No mobile UI fork, new UI library, CSS-in-JS, or new test dependency was introduced.
 
 ---

@@ -21,26 +21,26 @@ Do not mark a row as `PASS` unless the behavior was actually observed. If real-d
 
 | Gate | Command | Status | Notes |
 |------|---------|--------|-------|
-| Targeted source/unit tests | `node --test --experimental-strip-types src/lib/responsive-env.test.ts src/lib/app-layout-policy.test.ts src/lib/app-shell.test.ts src/App.source.test.ts src/styles/app.source.test.ts src/components/ui/button.source.test.ts src/components/ui/input.source.test.ts src/components/ui/textarea.source.test.ts src/components/ui/switch.source.test.ts src/components/shell/AppChrome.source.test.ts src/components/shell/ShellButton.source.test.ts src/components/shell/Sidebar.source.test.ts src/components/shell/Titlebar.source.test.ts src/components/content/ThreadCanvas.source.test.ts src/components/content/SettingsPanel.source.test.ts src/components/content/SettingsPanel.test.ts src/components/content/settings-actions.test.ts src/components/content/settings-input-styles.test.ts src/components/content/settings-control-styles.test.ts` | PASS | Passed 146/146 tests during Phase 5 execution. |
-| Lint | `npm run lint` | PASS | ESLint exited 0 during Phase 5 execution. |
-| Build | `npm run build` | PASS | Vite build exited 0 during Phase 5 execution. |
+| Full source/unit suite | `rg --files src | rg '(\\.source\\.test|\\.test)\\.tsx?$' | xargs node --test --experimental-strip-types` | PASS | Passed 223/223 tests after UAT close-control fix. |
+| Lint | `npm run lint` | PASS | ESLint exited 0 after UAT close-control fix. |
+| Build | `npm run build` | PASS | Vite build exited 0 after UAT close-control fix. |
 
 ## Viewport Checklist
 
 | Viewport | Expected Observations | Status | Observed Result |
 |----------|-----------------------|--------|-----------------|
-| `390x844` | Phone layout uses compact drawer navigation; topbar controls are tappable; drawer nav rows are at least 44px; composer input/send remain reachable; secondary controls do not crowd send; settings tabs, inputs, switches, and switch rows are touch-safe; no horizontal page scroll. |  |  |
-| `768x1024` | Tablet portrait remains touch density; controls do not shrink due to `md:`; drawer/sidebar nav rows, composer send, secondary controls, settings tabs, settings switches, inputs, and textareas remain at least 44px. |  |  |
-| `834x1194` | Large tablet portrait keeps compact drawer behavior and touch density; wider layout tokens provide breathing room without switching controls to compact desktop height. |  |  |
-| `1024x768` | Desktop minimum boundary uses docked shell; compact desktop controls are acceptable; content does not overflow; desktop titlebar, window controls, drag region, resize handles, and minimum window behavior remain usable. |  |  |
-| `1280x800` | Wider desktop preserves docked sidebar, sidebar collapse, compact density, desktop titlebar, window controls, drag region, resize handles, and stable content/composer alignment. |  |  |
+| `390x844` | Phone layout uses compact drawer navigation; topbar controls are tappable; drawer nav rows are at least 44px; composer input/send remain reachable; secondary controls do not crowd send; settings tabs, inputs, switches, and switch rows are touch-safe; no horizontal page scroll. | PASS | Playwright observed `formFactor=phone`, `density=touch`, `sidebarMode=drawer`; topbar buttons, composer secondary controls, send, drawer rows, and Sheet close were all at least 44px. Composer textarea was 356x80 and no horizontal overflow was present. Settings-specific controls are covered by source/unit tests because the current app-mode shell does not expose a live settings launcher. |
+| `768x1024` | Tablet portrait remains touch density; controls do not shrink due to `md:`; drawer/sidebar nav rows, composer send, secondary controls, settings tabs, settings switches, inputs, and textareas remain at least 44px. | PASS | Playwright observed `formFactor=tablet`, `density=touch`, `sidebarMode=drawer`; topbar buttons were 44x44, textarea was 702x80, composer controls/send were at least 44px, drawer rows were 44/46px, and there was no horizontal overflow. Settings-specific controls are source/unit verified. |
+| `834x1194` | Large tablet portrait keeps compact drawer behavior and touch density; wider layout tokens provide breathing room without switching controls to compact desktop height. | PASS | Playwright observed `formFactor=tablet`, `density=touch`, `sidebarMode=drawer`; topbar buttons were 44x44, textarea was 702x80, composer controls/send were at least 44px, drawer rows were 44/46px, and there was no horizontal overflow. |
+| `1024x768` | Desktop minimum boundary uses docked shell; compact desktop controls are acceptable; content does not overflow; desktop titlebar, window controls, drag region, resize handles, and minimum window behavior remain usable. | PASS | Browser and Tauri dev checks observed desktop/docked shell with no horizontal overflow. macOS Tauri window was resized to 1024x768, traffic lights remained visible, drag region moved the window, resize handles changed size, and attempted 360x520 sizing clamped to the configured 980x680 minimum. |
+| `1280x800` | Wider desktop preserves docked sidebar, sidebar collapse, compact density, desktop titlebar, window controls, drag region, resize handles, and stable content/composer alignment. | PASS | Browser and Tauri dev checks observed docked sidebar, stable topbar/content/composer alignment, no horizontal overflow, and preserved macOS window chrome behavior at 1280x800. |
 
 ## Desktop Platform Notes
 
 | Platform | Expected Observations | Status | Observed Result |
 |----------|-----------------------|--------|-----------------|
-| macOS | Native/frameless titlebar behavior is unchanged; traffic-light/window controls remain accessible; drag region still moves the window; resize handles work where applicable. |  |  |
-| Windows | Window controls remain accessible; drag region still moves the window; resize handles work; minimum window behavior does not regress. |  |  |
+| macOS | Native/frameless titlebar behavior is unchanged; traffic-light/window controls remain accessible; drag region still moves the window; resize handles work where applicable. | PASS | Tauri dev app process `app` was tested on macOS: traffic lights remained visible, native drag moved the window from `{120,120}` to `{190,160}`, bottom-right resize changed size from `1024x768` to `1068x812`, and minimum sizing clamped to `980x680`. |
+| Windows | Window controls remain accessible; drag region still moves the window; resize handles work; minimum window behavior does not regress. | N/A | Current verification host is macOS. Windows config/source behavior remains covered by automated tests and `src-tauri/tauri.windows.conf.json`, but real Windows manual smoke requires a Windows host. |
 
 ## Follow-Up Rule
 
