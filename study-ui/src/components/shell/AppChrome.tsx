@@ -448,7 +448,7 @@ export function AppChrome({
                             "flex min-h-11 snap-start shrink-0 items-center justify-center gap-1.5 rounded-[14px] border px-3.5 text-[0.78rem] font-medium tracking-[-0.01em] transition-[background-color,border-color,box-shadow,color,transform]",
                             "active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-[rgba(0,113,227,0.5)]",
                             isActiveMobileSettingsTab
-                              ? "border-[rgba(0,113,227,0.28)] bg-[#EAF3FF] text-[#0071E3] shadow-[0_1px_2px_rgba(17,17,17,0.06)]"
+                              ? "border-transparent bg-[#EEF0F4] text-[#111111] shadow-none"
                               : "border-[rgba(17,17,17,0.08)] bg-white text-[#3A3A3C] hover:bg-[#EEF0F4]",
                           )}
                         >
