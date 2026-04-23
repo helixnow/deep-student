@@ -125,6 +125,8 @@ export function AppChrome({
   };
 
   const appHeaderTitle = "新对话";
+  const showDesktopHeaderStatus = !isCompactViewport;
+  const showCompactHeaderActions = isCompactViewport;
   const activeSettingsItem = settingsNavItems.find((item) => item.id === activeSettingsTab);
   const settingsPageTitle = activeSettingsItem?.label ?? "设置";
   const settingsScrollPaddingTop = `calc(${mainDragHotspotHeight + 28}px + var(--safe-area-top))`;
@@ -344,27 +346,40 @@ export function AppChrome({
                     </div>
                     <div
                       data-slot="app-header-actions"
-                      className="flex shrink-0 items-center gap-2 text-muted-foreground"
+                      className="pointer-events-auto flex shrink-0 items-center gap-2 text-muted-foreground"
                     >
-                      <Button variant="ghost" size="sm" className="rounded-lg text-muted-foreground">
-                        本地环境
-                      </Button>
-                      <Button variant="outline" size="sm" className="rounded-lg">
-                        提交模式
-                      </Button>
-                      <span
-                        data-slot="app-header-status-icon"
-                        className="inline-flex size-7 items-center justify-center rounded-full bg-secondary text-muted-foreground"
-                      >
-                        <Pulse size={14} weight="regular" />
-                      </span>
-                      <div
-                        data-slot="app-header-diff-summary"
-                        className="flex items-center gap-2 pl-1 text-xs font-medium"
-                      >
-                        <span className="text-primary">+12</span>
-                        <span className="text-destructive">-3</span>
-                      </div>
+                      {showDesktopHeaderStatus ? (
+                        <>
+                          <Button variant="ghost" size="sm" className="rounded-lg text-muted-foreground">
+                            本地环境
+                          </Button>
+                          <Button variant="outline" size="sm" className="rounded-lg">
+                            提交模式
+                          </Button>
+                          <span
+                            data-slot="app-header-status-icon"
+                            className="inline-flex size-7 items-center justify-center rounded-full bg-secondary text-muted-foreground"
+                          >
+                            <Pulse size={14} weight="regular" />
+                          </span>
+                          <div
+                            data-slot="app-header-diff-summary"
+                            className="flex items-center gap-2 pl-1 text-xs font-medium"
+                          >
+                            <span className="text-primary">+12</span>
+                            <span className="text-destructive">-3</span>
+                          </div>
+                        </>
+                      ) : null}
+                      {showCompactHeaderActions ? (
+                        <ShellButton
+                          variant="icon"
+                          className="text-muted-foreground hover:text-foreground"
+                          aria-label="新建对话"
+                        >
+                          <NotePencil size={18} weight="regular" />
+                        </ShellButton>
+                      ) : null}
                     </div>
                   </>
                 </Titlebar>

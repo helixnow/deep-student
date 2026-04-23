@@ -31,19 +31,36 @@ test("app header keeps the title on the left and a dedicated actions group on th
 
   assert.match(source, /<h1 className="truncate text-sm font-medium text-foreground">/u);
   assert.match(source, /data-slot="app-header-actions"/u);
+  assert.match(source, /className="pointer-events-auto flex shrink-0 items-center gap-2 text-muted-foreground"/u);
   assert.match(source, /desktopPlatform=\{desktopPlatform\}/u);
   assert.match(source, /titlebarMode=\{titlebarMode\}/u);
 });
 
-test("app header reserves environment, mode, status, and diff summary affordances", () => {
+test("desktop app header reserves environment, mode, status, and diff summary affordances", () => {
   const source = readFileSync(appChromePath, "utf8");
 
+  assert.match(source, /const showDesktopHeaderStatus = !isCompactViewport;/u);
+  assert.match(source, /\{showDesktopHeaderStatus \? \(/u);
   assert.match(source, />\s*本地环境\s*</u);
   assert.match(source, />\s*提交模式\s*</u);
   assert.match(source, /data-slot="app-header-status-icon"/u);
   assert.match(source, /data-slot="app-header-diff-summary"/u);
   assert.match(source, />\s*\+12\s*</u);
   assert.match(source, />\s*-3\s*</u);
+});
+
+test("compact app header hides desktop status noise while keeping a core action", () => {
+  const source = readFileSync(appChromePath, "utf8");
+
+  assert.match(source, /const showCompactHeaderActions = isCompactViewport;/u);
+  assert.match(
+    source,
+    /\{showCompactHeaderActions \? \(\s*<ShellButton[\s\S]*aria-label="新建对话"[\s\S]*<NotePencil size=\{18\} weight="regular" \/>[\s\S]*<\/ShellButton>\s*\) : null\}/u,
+  );
+  assert.match(
+    source,
+    /\{showDesktopHeaderStatus \? \(\s*<>[\s\S]*data-slot="app-header-status-icon"[\s\S]*data-slot="app-header-diff-summary"[\s\S]*<\/>\s*\) : null\}/u,
+  );
 });
 
 test("settings mode exposes the current destination in the main content region", () => {
