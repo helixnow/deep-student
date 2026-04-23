@@ -33,6 +33,8 @@ test("dialog and sheet overlays use the shared overlay token without extra blur 
 
   assert.match(dialogSource, /bg-overlay/);
   assert.match(sheetSource, /bg-overlay/);
+  assert.match(sheetSource, /overlayClassName\?: string/u);
+  assert.match(sheetSource, /<SheetOverlay className=\{overlayClassName\} \/>/u);
   assert.doesNotMatch(dialogSource, /backdrop-blur-sm/);
   assert.doesNotMatch(sheetSource, /backdrop-blur-sm/);
   assert.match(dialogSource, /rounded-2xl/);

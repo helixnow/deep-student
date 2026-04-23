@@ -108,6 +108,11 @@ export function Sidebar({
     closeSidebarAfterSelection();
   };
 
+  const handleOpenSettings = () => {
+    onOpenSettings();
+    closeSidebarAfterSelection();
+  };
+
   const handleSelectSettingsTab = (tabId: string) => {
     onSelectSettingsTab(tabId);
     closeSidebarAfterSelection();
@@ -368,7 +373,7 @@ export function Sidebar({
             <ShellButton
               variant="nav"
               data-slot="sidebar-app-settings-action"
-              onClick={onOpenSettings}
+              onClick={handleOpenSettings}
               className="rounded-2xl text-sidebar-muted hover:bg-interactive-hover hover:text-sidebar-foreground lg:min-h-8 lg:gap-2 lg:py-1"
             >
               <GearSix size={18} />

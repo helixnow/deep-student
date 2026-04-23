@@ -1,11 +1,31 @@
 import React, { useMemo, useSyncExternalStore } from "react";
-import { List, NotePencil, Pulse } from "@phosphor-icons/react";
+import {
+  CaretDown,
+  CaretRight,
+  Database,
+  Desktop,
+  GearSix,
+  List,
+  Moon,
+  NotePencil,
+  Pulse,
+  Sun,
+  User,
+  X,
+} from "@phosphor-icons/react";
 
 import { useAppSettings } from "@/components/settings/AppSettingsProvider";
 import { useTheme } from "@/components/theme/theme-provider";
 import { Button } from "@/components/ui/button";
-import { Sheet, SheetContent } from "@/components/ui/sheet";
+import {
+  Sheet,
+  SheetClose,
+  SheetContent,
+  SheetDescription,
+  SheetTitle,
+} from "@/components/ui/sheet";
 import { getAppLayoutPolicy } from "@/lib/app-layout-policy";
+import type { AppLanguage } from "@/lib/app-settings";
 import {
   APP_LAYOUT_TOKENS,
   getHeaderTopInset,
@@ -41,6 +61,11 @@ function SidebarDockIcon() {
     </svg>
   );
 }
+
+const mobileSettingsLanguageOptions: Array<{ value: AppLanguage; label: string }> = [
+  { value: "zh-CN", label: "中文" },
+  { value: "en-US", label: "English" },
+];
 
 type AppChromeProps = {
   desktopPlatform: DesktopPlatform;
@@ -81,8 +106,8 @@ export function AppChrome({
   settingsNavItems,
   threadItems,
 }: AppChromeProps) {
-  const { settings } = useAppSettings();
-  const { windowBackgroundPreference } = useTheme();
+  const { settings, updateSetting } = useAppSettings();
+  const { preference, setThemePreference, windowBackgroundPreference } = useTheme();
   const titlebarMode = useMemo(() => getTitlebarMode(desktopPlatform), [desktopPlatform]);
   const responsiveEnvironment = useSyncExternalStore(
     subscribeResponsiveEnvironment,
@@ -107,6 +132,9 @@ export function AppChrome({
   );
   const showFloatingSidebarToggle = false;
   const showResizeHandles = titlebarMode === "frameless" && hasTauriRuntime();
+  const shouldRenderMobileSettingsSheet = layoutPolicy.formFactor === "phone";
+  const isMobileSettingsSheetOpen = currentMode === "settings" && shouldRenderMobileSettingsSheet;
+  const shouldShowAppSurface = currentMode === "app" || isMobileSettingsSheetOpen;
   const mainAreaTopOffset = getMainAreaTopOffset(isSidebarVisible, titlebarMode);
   const mainDragHotspotHeight = mainAreaTopOffset + headerTopInset + 46;
   const collapsedSidebarToggleTop = mainAreaTopOffset + headerTopInset + 6;
@@ -122,6 +150,11 @@ export function AppChrome({
     }
 
     onToggleSidebarCollapsed();
+  };
+  const handleMobileSettingsSheetOpenChange = (open: boolean) => {
+    if (!open) {
+      onReturnToApp();
+    }
   };
 
   const appHeaderTitle = "新对话";
@@ -257,6 +290,10 @@ export function AppChrome({
             }}
           >
             <SheetContent side="left" className="w-[min(92vw,19rem)] border-r p-0">
+              <SheetTitle className="sr-only">侧边栏</SheetTitle>
+              <SheetDescription className="sr-only">
+                移动端侧边栏，可切换对话、学习资源和设置。
+              </SheetDescription>
               <Sidebar
                 activeSettingsTab={activeSettingsTab}
                 closeOnSelect={shouldRenderDrawerSidebar}
@@ -312,6 +349,143 @@ export function AppChrome({
           </div>
         ) : null}
 
+        {shouldRenderMobileSettingsSheet ? (
+          <Sheet open={isMobileSettingsSheetOpen} onOpenChange={handleMobileSettingsSheetOpenChange}>
+            <SheetContent
+              side="bottom"
+              data-slot="mobile-settings-sheet"
+              overlayClassName="bg-[rgba(0,0,0,0.72)]"
+              className="h-[calc(100dvh-1.75rem)] max-h-[calc(100dvh-1.75rem)] overflow-y-auto rounded-t-[2rem] border-0 bg-[#26272b] px-6 pb-[calc(2rem+var(--safe-area-bottom))] pt-7 text-white shadow-[0_-24px_80px_rgba(0,0,0,0.28)] [&>button]:hidden"
+            >
+              <header data-slot="mobile-settings-sheet-header" className="flex items-start justify-between gap-5">
+                <div className="space-y-2">
+                  <SheetTitle className="text-2xl font-semibold tracking-[-0.03em] text-white">
+                    系统设置
+                  </SheetTitle>
+                  <SheetDescription className="sr-only">
+                    移动端系统设置面板，可调整主题和语言。
+                  </SheetDescription>
+                </div>
+                <SheetClose asChild>
+                  <button
+                    type="button"
+                    aria-label="关闭系统设置"
+                    className="flex min-h-11 min-w-11 items-center justify-center rounded-full text-white/86 transition-colors hover:bg-white/8 focus-visible:ring-2 focus-visible:ring-white/30"
+                  >
+                    <X size={28} weight="regular" />
+                  </button>
+                </SheetClose>
+              </header>
+
+              <nav
+                data-slot="mobile-settings-sheet-nav"
+                className="mt-8 grid grid-cols-[1.08fr_0.96fr_1fr] gap-2 pb-1"
+              >
+                <button
+                  type="button"
+                  data-slot="mobile-settings-sheet-nav-general"
+                  aria-pressed="true"
+                  className="flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-[1.05rem] bg-white/10 px-1.5 text-[0.86rem] font-medium tracking-[-0.02em] text-white"
+                >
+                  <GearSix size={20} weight="regular" />
+                  <span className="whitespace-nowrap">通用设置</span>
+                </button>
+                <button
+                  type="button"
+                  data-slot="mobile-settings-sheet-nav-account"
+                  onClick={() => onSelectSettingsTab("about")}
+                  className="flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-[1.05rem] px-1.5 text-[0.86rem] font-medium tracking-[-0.02em] text-white/82 transition-colors hover:bg-white/7"
+                >
+                  <User size={20} weight="regular" />
+                  <span className="whitespace-nowrap">账号管理</span>
+                </button>
+                <button
+                  type="button"
+                  data-slot="mobile-settings-sheet-nav-data"
+                  onClick={() => onSelectSettingsTab("advanced")}
+                  className="flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-[1.05rem] px-1.5 text-[0.86rem] font-medium tracking-[-0.02em] text-white/48 transition-colors hover:bg-white/7"
+                >
+                  <Database size={20} weight="regular" />
+                  <span className="whitespace-nowrap">数据管理</span>
+                  <CaretRight size={14} weight="bold" />
+                </button>
+              </nav>
+
+              <section data-slot="mobile-settings-sheet-theme" className="mt-14 space-y-5">
+                <h2 className="text-lg font-medium text-white">主题</h2>
+                <div className="grid grid-cols-2 gap-3">
+                  <button
+                    type="button"
+                    data-slot="mobile-settings-sheet-theme-light"
+                    aria-pressed={preference === "light"}
+                    onClick={() => setThemePreference("light")}
+                    className={cn(
+                      "flex min-h-24 flex-col items-center justify-center gap-2 rounded-[1.35rem] border border-white/10 text-base font-medium text-white/92 transition-colors",
+                      preference === "light" ? "bg-white/12" : "bg-transparent hover:bg-white/7",
+                    )}
+                  >
+                    <Sun size={26} weight="regular" />
+                    浅色
+                  </button>
+                  <button
+                    type="button"
+                    data-slot="mobile-settings-sheet-theme-dark"
+                    aria-pressed={preference === "dark"}
+                    onClick={() => setThemePreference("dark")}
+                    className={cn(
+                      "flex min-h-24 flex-col items-center justify-center gap-2 rounded-[1.35rem] border border-white/10 text-base font-medium text-white/92 transition-colors",
+                      preference === "dark" ? "bg-white/12" : "bg-transparent hover:bg-white/7",
+                    )}
+                  >
+                    <Moon size={26} weight="regular" />
+                    深色
+                  </button>
+                  <button
+                    type="button"
+                    data-slot="mobile-settings-sheet-theme-system"
+                    aria-pressed={preference === "system"}
+                    onClick={() => setThemePreference("system")}
+                    className={cn(
+                      "col-span-2 flex min-h-24 flex-col items-center justify-center gap-2 rounded-[1.35rem] border border-white/10 text-base font-medium text-white/92 transition-colors",
+                      preference === "system" ? "bg-white/12" : "bg-transparent hover:bg-white/7",
+                    )}
+                  >
+                    <Desktop size={26} weight="regular" />
+                    跟随系统
+                  </button>
+                </div>
+              </section>
+
+              <section data-slot="mobile-settings-sheet-language" className="mt-12">
+                <div className="flex min-h-14 items-center justify-between gap-4">
+                  <h2 className="text-lg font-medium text-white">语言</h2>
+                  <label className="relative">
+                    <span className="sr-only">语言设置</span>
+                    <select
+                      aria-label="语言设置"
+                      value={settings.language}
+                      onChange={(event) => updateSetting("language", event.currentTarget.value as AppLanguage)}
+                      className="min-h-12 appearance-none rounded-full border border-white/8 bg-white/10 py-2.5 pl-5 pr-11 text-base font-medium text-white outline-none transition-colors hover:bg-white/13 focus-visible:ring-2 focus-visible:ring-white/24"
+                    >
+                      {mobileSettingsLanguageOptions.map((option) => (
+                        <option key={option.value} value={option.value}>
+                          {option.label}
+                        </option>
+                      ))}
+                    </select>
+                    <CaretDown
+                      aria-hidden="true"
+                      size={18}
+                      weight="bold"
+                      className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-white/55"
+                    />
+                  </label>
+                </div>
+              </section>
+            </SheetContent>
+          </Sheet>
+        ) : null}
+
         <main
           aria-label={currentMode === "settings" ? `设置 - ${settingsPageTitle}` : undefined}
           className={cn(
@@ -333,7 +507,7 @@ export function AppChrome({
               isDockedSidebarExpanded && "ml-px rounded-tl-[var(--radius-section)] rounded-bl-[var(--radius-section)]",
             )}
           >
-            {currentMode === "app" ? (
+            {shouldShowAppSurface ? (
               <div className="box-border flex h-full min-h-0 flex-col">
                 <Titlebar
                   variant="app"

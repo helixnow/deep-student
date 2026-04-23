@@ -167,11 +167,42 @@ test("compact viewports present the sidebar through the shared sheet drawer", ()
   const source = readFileSync(appChromePath, "utf8");
   const closeOnSelectContracts = source.match(/closeOnSelect=\{shouldRenderDrawerSidebar\}/gu) ?? [];
 
-  assert.match(source, /import \{ Sheet, SheetContent \} from "@\/components\/ui\/sheet";/u);
+  assert.match(
+    source,
+    /import \{[\s\S]*Sheet,[\s\S]*SheetClose,[\s\S]*SheetContent,[\s\S]*SheetDescription,[\s\S]*SheetTitle,[\s\S]*\} from "@\/components\/ui\/sheet";/u,
+  );
   assert.match(source, /\{shouldRenderDrawerSidebar \? \(/u);
   assert.match(source, /<Sheet[\s\S]*open=\{shouldRenderDrawerSidebar && isSidebarVisible\}/u);
   assert.match(source, /<SheetContent side="left" className="w-\[min\(92vw,19rem\)\] border-r p-0"/u);
+  assert.match(source, /<SheetTitle className="sr-only">侧边栏<\/SheetTitle>/u);
+  assert.match(source, /<SheetDescription className="sr-only">[\s\S]*移动端侧边栏/u);
   assert.equal(closeOnSelectContracts.length, 2);
+});
+
+test("phone settings are presented as a real sheet instead of replacing the main page", () => {
+  const source = readFileSync(appChromePath, "utf8");
+
+  assert.match(source, /const shouldRenderMobileSettingsSheet = layoutPolicy\.formFactor === "phone";/u);
+  assert.match(source, /const isMobileSettingsSheetOpen = currentMode === "settings" && shouldRenderMobileSettingsSheet;/u);
+  assert.match(source, /const shouldShowAppSurface = currentMode === "app" \|\| isMobileSettingsSheetOpen;/u);
+  assert.match(
+    source,
+    /const handleMobileSettingsSheetOpenChange = \(open: boolean\) => \{\s*if \(!open\) \{\s*onReturnToApp\(\);\s*\}\s*\};/u,
+  );
+  assert.match(source, /<Sheet open=\{isMobileSettingsSheetOpen\} onOpenChange=\{handleMobileSettingsSheetOpenChange\}>/u);
+  assert.match(source, /<SheetContent[\s\S]*side="bottom"[\s\S]*data-slot="mobile-settings-sheet"[\s\S]*overlayClassName="bg-\[rgba\(0,0,0,0\.72\)\]"[\s\S]*bg-\[#26272b\][\s\S]*\[&>button\]:hidden/u);
+  assert.match(source, /<SheetTitle[\s\S]*系统设置[\s\S]*<\/SheetTitle>/u);
+  assert.match(source, /<SheetDescription className="sr-only">[\s\S]*移动端系统设置面板/u);
+  assert.match(source, /<SheetClose asChild>[\s\S]*aria-label="关闭系统设置"[\s\S]*<X size=\{28\} weight="regular" \/>/u);
+  assert.match(source, /data-slot="mobile-settings-sheet-nav"[\s\S]*grid-cols-\[1\.08fr_0\.96fr_1fr\]/u);
+  assert.match(source, /data-slot="mobile-settings-sheet-nav-general"[\s\S]*<GearSix size=\{20\} weight="regular" \/>[\s\S]*通用设置/u);
+  assert.match(source, /data-slot="mobile-settings-sheet-nav-account"[\s\S]*<User size=\{20\} weight="regular" \/>[\s\S]*账号管理/u);
+  assert.match(source, /data-slot="mobile-settings-sheet-nav-data"[\s\S]*<Database size=\{20\} weight="regular" \/>[\s\S]*数据管理[\s\S]*<CaretRight size=\{14\} weight="bold" \/>/u);
+  assert.match(source, /data-slot="mobile-settings-sheet-theme-light"[\s\S]*onClick=\{\(\) => setThemePreference\("light"\)\}[\s\S]*浅色/u);
+  assert.match(source, /data-slot="mobile-settings-sheet-theme-dark"[\s\S]*onClick=\{\(\) => setThemePreference\("dark"\)\}[\s\S]*深色/u);
+  assert.match(source, /data-slot="mobile-settings-sheet-theme-system"[\s\S]*onClick=\{\(\) => setThemePreference\("system"\)\}[\s\S]*跟随系统/u);
+  assert.match(source, /data-slot="mobile-settings-sheet-language"[\s\S]*<select[\s\S]*aria-label="语言设置"[\s\S]*updateSetting\("language", event\.currentTarget\.value as AppLanguage\)/u);
+  assert.match(source, /\{shouldShowAppSurface \? \(/u);
 });
 
 test("non-overlay shells keep a compact in-app sidebar toggle without overlay positioning", () => {
@@ -215,7 +246,7 @@ test("macOS traffic lights accessory lives on the shared chrome layer immediatel
   const source = readFileSync(appChromePath, "utf8");
 
   assert.match(source, /import \{ SidebarUpdateBadge \} from "\.\/SidebarUpdateBadge";/u);
-  assert.match(source, /import \{ List, NotePencil, Pulse \} from "@phosphor-icons\/react";/u);
+  assert.match(source, /import \{[\s\S]*List,[\s\S]*NotePencil,[\s\S]*Pulse,[\s\S]*\} from "@phosphor-icons\/react";/u);
   assert.match(
     source,
     /const sidebarToggleAccessoryContent = \(\s*<div data-slot="compact-leading-sidebar-accessory" className="flex items-center gap-1\.5">[\s\S]*<ShellButton[\s\S]*aria-label=\{toggleLabel\}[\s\S]*\{isCompactViewport \? <List size=\{21\} weight="regular" \/> : <SidebarDockIcon \/>\}[\s\S]*<\/ShellButton>[\s\S]*\{!isCompactViewport \? <SidebarUpdateBadge className="shrink-0" \/> : null\}[\s\S]*<\/div>\s*\);/u,

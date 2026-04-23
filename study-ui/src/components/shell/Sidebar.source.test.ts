@@ -105,7 +105,7 @@ test("app mode footer keeps the settings entry reachable", () => {
 
   assert.match(footerBlock, /currentMode === "app"/u);
   assert.match(footerBlock, /data-slot="sidebar-app-settings-action"/u);
-  assert.match(footerBlock, /onClick=\{onOpenSettings\}/u);
+  assert.match(footerBlock, /onClick=\{handleOpenSettings\}/u);
   assert.match(footerBlock, /GearSix size=\{18\}/u);
   assert.match(footerBlock, />设置</u);
   assert.doesNotMatch(footerBlock, /border-t border-sidebar-border\/80/u);
@@ -196,10 +196,15 @@ test("sidebar can close compact drawer after meaningful navigation selections", 
   );
   assert.match(
     source,
+    /const handleOpenSettings = \(\) => \{\s*onOpenSettings\(\);\s*closeSidebarAfterSelection\(\);\s*\};/u,
+  );
+  assert.match(
+    source,
     /const handleSelectSettingsTab = \(tabId: string\) => \{\s*onSelectSettingsTab\(tabId\);\s*closeSidebarAfterSelection\(\);\s*\};/u,
   );
   assert.match(source, /onClick=\{closeSidebarAfterSelection\}/u);
   assert.match(source, /onClick=\{handleReturnToApp\}/u);
+  assert.match(source, /onClick=\{handleOpenSettings\}/u);
   assert.match(source, /onClick=\{isActive \? undefined : \(\) => handleSelectSettingsTab\(item\.id\)\}/u);
 });
 
