@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 
 import {
   createResponsiveEnvironment,
+  getBrowserResponsiveEnvironment,
   getFormFactor,
   getServerResponsiveEnvironment,
   isCompactWidth,
@@ -63,4 +64,9 @@ test("returns a desktop-safe server environment when browser APIs are unavailabl
     inputMode: "fine",
     shellMode: "desktop-window",
   });
+});
+
+test("keeps snapshots referentially stable for useSyncExternalStore", () => {
+  assert.equal(getServerResponsiveEnvironment(), getServerResponsiveEnvironment());
+  assert.equal(getBrowserResponsiveEnvironment(), getServerResponsiveEnvironment());
 });

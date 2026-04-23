@@ -90,11 +90,33 @@ test("desktop docked sidebar keeps motion on a single inner surface with a subtl
   assert.match(source, /isDockedSidebarExpanded \? "translate-x-0 opacity-100" : "-translate-x-1 opacity-0"/u);
 });
 
+test("app chrome consumes the shared responsive layout policy", () => {
+  const source = readFileSync(appChromePath, "utf8");
+
+  assert.match(source, /import \{ getAppLayoutPolicy \} from "@\/lib\/app-layout-policy";/u);
+  assert.match(
+    source,
+    /import \{[\s\S]*getBrowserResponsiveEnvironment,[\s\S]*getServerResponsiveEnvironment,[\s\S]*subscribeResponsiveEnvironment,[\s\S]*\} from "@\/lib\/responsive-env";/u,
+  );
+  assert.match(
+    source,
+    /const responsiveEnvironment = useSyncExternalStore\(\s*subscribeResponsiveEnvironment,\s*getBrowserResponsiveEnvironment,\s*getServerResponsiveEnvironment,\s*\);/u,
+  );
+  assert.match(source, /const layoutPolicy = useMemo\(\s*\(\) => getAppLayoutPolicy\(responsiveEnvironment\),\s*\[responsiveEnvironment\],\s*\);/u);
+  assert.match(source, /const isCompactViewport = layoutPolicy\.isCompact;/u);
+  assert.match(source, /const shouldRenderDockedSidebar = layoutPolicy\.sidebarMode === "docked";/u);
+  assert.doesNotMatch(source, /max-width: 767px/u);
+  assert.doesNotMatch(source, /compactViewportQuery/u);
+  assert.doesNotMatch(source, /subscribeCompactViewport/u);
+  assert.doesNotMatch(source, /getCompactViewport/u);
+});
+
 test("compact viewports present the sidebar through the shared sheet drawer", () => {
   const source = readFileSync(appChromePath, "utf8");
 
   assert.match(source, /import \{ Sheet, SheetContent \} from "@\/components\/ui\/sheet";/u);
-  assert.match(source, /<Sheet[\s\S]*open=\{isCompactViewport && isSidebarVisible\}/u);
+  assert.match(source, /\{layoutPolicy\.sidebarMode === "drawer" \? \(/u);
+  assert.match(source, /<Sheet[\s\S]*open=\{layoutPolicy\.sidebarMode === "drawer" && isSidebarVisible\}/u);
   assert.match(source, /<SheetContent side="left" className="w-\[min\(92vw,19rem\)\] border-r p-0"/u);
 });
 

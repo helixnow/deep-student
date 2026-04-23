@@ -60,22 +60,47 @@ export function createResponsiveEnvironment(input: {
   };
 }
 
+function areResponsiveEnvironmentsEqual(
+  current: ResponsiveEnvironment,
+  next: ResponsiveEnvironment,
+) {
+  return current.width === next.width &&
+    current.formFactor === next.formFactor &&
+    current.isCompact === next.isCompact &&
+    current.inputMode === next.inputMode &&
+    current.shellMode === next.shellMode;
+}
+
+const serverResponsiveEnvironment = createResponsiveEnvironment({
+  width: RESPONSIVE_BREAKPOINTS.desktopMin,
+  inputMode: "fine",
+});
+
+let browserResponsiveEnvironment: ResponsiveEnvironment | null = null;
+
 export function getBrowserResponsiveEnvironment(): ResponsiveEnvironment {
   if (typeof window === "undefined") {
     return getServerResponsiveEnvironment();
   }
 
-  return createResponsiveEnvironment({
+  const nextEnvironment = createResponsiveEnvironment({
     width: window.innerWidth,
     inputMode: window.matchMedia?.("(pointer: coarse)")?.matches ? "coarse" : "fine",
   });
+
+  if (
+    browserResponsiveEnvironment &&
+    areResponsiveEnvironmentsEqual(browserResponsiveEnvironment, nextEnvironment)
+  ) {
+    return browserResponsiveEnvironment;
+  }
+
+  browserResponsiveEnvironment = nextEnvironment;
+  return browserResponsiveEnvironment;
 }
 
 export function getServerResponsiveEnvironment(): ResponsiveEnvironment {
-  return createResponsiveEnvironment({
-    width: RESPONSIVE_BREAKPOINTS.desktopMin,
-    inputMode: "fine",
-  });
+  return serverResponsiveEnvironment;
 }
 
 export function subscribeResponsiveEnvironment(listener: () => void): () => void {

@@ -5,6 +5,7 @@ import { useAppSettings } from "@/components/settings/AppSettingsProvider";
 import { useTheme } from "@/components/theme/theme-provider";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import { getAppLayoutPolicy } from "@/lib/app-layout-policy";
 import {
   APP_LAYOUT_TOKENS,
   getHeaderTopInset,
@@ -19,6 +20,11 @@ import {
   shouldShowCustomWindowControls,
   type DesktopPlatform,
 } from "@/lib/app-shell";
+import {
+  getBrowserResponsiveEnvironment,
+  getServerResponsiveEnvironment,
+  subscribeResponsiveEnvironment,
+} from "@/lib/responsive-env";
 import { cn } from "@/lib/utils";
 
 import { FramelessResizeHandles } from "./FramelessResizeHandles";
@@ -56,14 +62,6 @@ function hasTauriRuntime() {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
-const compactViewportQuery =
-  typeof window !== "undefined" ? window.matchMedia("(max-width: 767px)") : null;
-const subscribeCompactViewport = (cb: () => void) => {
-  compactViewportQuery?.addEventListener("change", cb);
-  return () => compactViewportQuery?.removeEventListener("change", cb);
-};
-const getCompactViewport = () => compactViewportQuery?.matches ?? false;
-
 export function AppChrome({
   activeSettingsTab,
   appContent,
@@ -82,11 +80,16 @@ export function AppChrome({
   const { settings } = useAppSettings();
   const { windowBackgroundPreference } = useTheme();
   const titlebarMode = useMemo(() => getTitlebarMode(desktopPlatform), [desktopPlatform]);
-  const isCompactViewport = useSyncExternalStore(
-    subscribeCompactViewport,
-    getCompactViewport,
-    () => false,
+  const responsiveEnvironment = useSyncExternalStore(
+    subscribeResponsiveEnvironment,
+    getBrowserResponsiveEnvironment,
+    getServerResponsiveEnvironment,
   );
+  const layoutPolicy = useMemo(
+    () => getAppLayoutPolicy(responsiveEnvironment),
+    [responsiveEnvironment],
+  );
+  const isCompactViewport = layoutPolicy.isCompact;
   const shouldPinSidebarOpen = currentMode === "settings" && !isCompactViewport;
   const isSidebarVisible = isSidebarOpen || shouldPinSidebarOpen;
   const headerTopInset = getHeaderTopInset(
@@ -99,7 +102,7 @@ export function AppChrome({
   const mainAreaTopOffset = getMainAreaTopOffset(isSidebarVisible, titlebarMode);
   const mainDragHotspotHeight = mainAreaTopOffset + headerTopInset + 46;
   const collapsedSidebarToggleTop = mainAreaTopOffset + headerTopInset + 6;
-  const shouldRenderDockedSidebar = !isCompactViewport;
+  const shouldRenderDockedSidebar = layoutPolicy.sidebarMode === "docked";
   const isDockedSidebarExpanded = shouldRenderDockedSidebar && isSidebarVisible;
   const dockedSidebarSurfaceClass = getNavigationSurfaceClass(windowBackgroundPreference);
   const mainWorkspaceChromeClass = getNavigationSurfaceClass(windowBackgroundPreference);
@@ -216,9 +219,9 @@ export function AppChrome({
       <div className="relative z-0 flex min-w-0 flex-1 overflow-hidden">
         {sharedTrafficLightsAccessory}
 
-        {isCompactViewport ? (
+        {layoutPolicy.sidebarMode === "drawer" ? (
           <Sheet
-            open={isCompactViewport && isSidebarVisible}
+            open={layoutPolicy.sidebarMode === "drawer" && isSidebarVisible}
             onOpenChange={(open) => {
               if (open !== isSidebarVisible) {
                 handleToggleSidebar();
