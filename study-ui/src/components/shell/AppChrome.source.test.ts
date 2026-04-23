@@ -131,6 +131,19 @@ test("app chrome routes split sidebar state by the active sidebar mode", () => {
   assert.doesNotMatch(source, /\bonToggleSidebar: \(\) => void;/u);
 });
 
+test("shell root exposes responsive policy and sidebar state datasets", () => {
+  const source = readFileSync(appChromePath, "utf8");
+
+  assert.match(source, /data-form-factor=\{layoutPolicy\.formFactor\}/u);
+  assert.match(source, /data-sidebar-mode=\{layoutPolicy\.sidebarMode\}/u);
+  assert.match(source, /data-density=\{layoutPolicy\.density\}/u);
+  assert.match(source, /data-shell-mode=\{layoutPolicy\.shellMode\}/u);
+  assert.match(source, /data-compact=\{layoutPolicy\.isCompact \? "true" : "false"\}/u);
+  assert.match(source, /data-sidebar-visible=\{isSidebarVisible \? "true" : "false"\}/u);
+  assert.match(source, /data-sidebar-collapsed=\{isDockedSidebarExpanded \? "false" : "true"\}/u);
+  assert.match(source, /data-platform=\{desktopPlatform\}/u);
+});
+
 test("compact viewports present the sidebar through the shared sheet drawer", () => {
   const source = readFileSync(appChromePath, "utf8");
 

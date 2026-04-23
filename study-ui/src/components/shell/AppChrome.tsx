@@ -221,7 +221,14 @@ export function AppChrome({
 
   return (
     <div
+      data-compact={layoutPolicy.isCompact ? "true" : "false"}
+      data-density={layoutPolicy.density}
+      data-form-factor={layoutPolicy.formFactor}
       data-platform={desktopPlatform}
+      data-shell-mode={layoutPolicy.shellMode}
+      data-sidebar-collapsed={isDockedSidebarExpanded ? "false" : "true"}
+      data-sidebar-mode={layoutPolicy.sidebarMode}
+      data-sidebar-visible={isSidebarVisible ? "true" : "false"}
       className={cn(
         "relative flex h-dvh w-screen overflow-hidden font-sans text-foreground subpixel-antialiased transition-colors duration-200 ease-out motion-reduce:transition-none",
         getShellBackdropClass(desktopPlatform, titlebarMode, windowBackgroundPreference),
