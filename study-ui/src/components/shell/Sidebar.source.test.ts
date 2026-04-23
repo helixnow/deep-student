@@ -178,6 +178,42 @@ test("recent folder groups tighten desktop density without shrinking mobile touc
   assert.match(source, /className=\{\s*item\.active[\s\S]*md:min-h-8 md:gap-2 md:py-1/u);
 });
 
+test("sidebar can close compact drawer after meaningful navigation selections", () => {
+  const source = readFileSync(sidebarPath, "utf8");
+
+  assert.match(source, /closeOnSelect\?: boolean;/u);
+  assert.match(source, /closeOnSelect = false/u);
+  assert.match(
+    source,
+    /const closeSidebarAfterSelection = \(\) => \{\s*if \(closeOnSelect\) \{\s*onToggleSidebar\(\);\s*\}\s*\};/u,
+  );
+  assert.match(
+    source,
+    /const handleReturnToApp = \(\) => \{\s*onReturnToApp\(\);\s*closeSidebarAfterSelection\(\);\s*\};/u,
+  );
+  assert.match(
+    source,
+    /const handleSelectSettingsTab = \(tabId: string\) => \{\s*onSelectSettingsTab\(tabId\);\s*closeSidebarAfterSelection\(\);\s*\};/u,
+  );
+  assert.match(source, /onClick=\{closeSidebarAfterSelection\}/u);
+  assert.match(source, /onClick=\{handleReturnToApp\}/u);
+  assert.match(source, /onClick=\{isActive \? undefined : \(\) => handleSelectSettingsTab\(item\.id\)\}/u);
+});
+
+test("folder disclosure stays open and does not trigger compact drawer close", () => {
+  const source = readFileSync(sidebarPath, "utf8");
+  const toggleFolderStart = source.indexOf("const toggleFolder = (folderId: string) => {");
+  const toggleFolderEnd = source.indexOf("return (", toggleFolderStart);
+
+  assert.notEqual(toggleFolderStart, -1);
+  assert.notEqual(toggleFolderEnd, -1);
+
+  const toggleFolderBlock = source.slice(toggleFolderStart, toggleFolderEnd);
+
+  assert.doesNotMatch(toggleFolderBlock, /closeSidebarAfterSelection/u);
+  assert.match(source, /onClick=\{\(\) => toggleFolder\(folder\.id\)\}/u);
+});
+
 test("folder disclosure keeps motion subtle with icon rotation and a compact collapse transition", () => {
   const source = readFileSync(sidebarPath, "utf8");
 

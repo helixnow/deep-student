@@ -163,11 +163,13 @@ test("shell root exposes responsive policy and sidebar state datasets", () => {
 
 test("compact viewports present the sidebar through the shared sheet drawer", () => {
   const source = readFileSync(appChromePath, "utf8");
+  const closeOnSelectContracts = source.match(/closeOnSelect=\{shouldRenderDrawerSidebar\}/gu) ?? [];
 
   assert.match(source, /import \{ Sheet, SheetContent \} from "@\/components\/ui\/sheet";/u);
   assert.match(source, /\{shouldRenderDrawerSidebar \? \(/u);
   assert.match(source, /<Sheet[\s\S]*open=\{shouldRenderDrawerSidebar && isSidebarVisible\}/u);
   assert.match(source, /<SheetContent side="left" className="w-\[min\(92vw,19rem\)\] border-r p-0"/u);
+  assert.equal(closeOnSelectContracts.length, 2);
 });
 
 test("non-overlay shells keep a compact in-app sidebar toggle without overlay positioning", () => {

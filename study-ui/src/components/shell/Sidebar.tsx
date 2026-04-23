@@ -31,6 +31,7 @@ type SidebarProps = {
   currentMode: "app" | "settings";
   isSidebarVisible: boolean;
   isSidebarClosing?: boolean;
+  closeOnSelect?: boolean;
   showFloatingSidebarToggle: boolean;
   activeSettingsTab: string;
   folderItems: Array<{ id: string; label: string; icon: React.ReactNode; active: boolean; count: number }>;
@@ -45,6 +46,7 @@ type SidebarProps = {
 
 export function Sidebar({
   activeSettingsTab,
+  closeOnSelect = false,
   currentMode,
   folderItems,
   isSidebarClosing = false,
@@ -92,6 +94,22 @@ export function Sidebar({
 
     return initial;
   });
+
+  const closeSidebarAfterSelection = () => {
+    if (closeOnSelect) {
+      onToggleSidebar();
+    }
+  };
+
+  const handleReturnToApp = () => {
+    onReturnToApp();
+    closeSidebarAfterSelection();
+  };
+
+  const handleSelectSettingsTab = (tabId: string) => {
+    onSelectSettingsTab(tabId);
+    closeSidebarAfterSelection();
+  };
 
   const toggleFolder = (folderId: string) => {
     setExpandedFolderIds((current) => {
@@ -163,6 +181,7 @@ export function Sidebar({
                         variant="nav"
                         role="listitem"
                         aria-current={item.active ? "page" : undefined}
+                        onClick={closeSidebarAfterSelection}
                         className={
                           item.active
                             ? "w-full rounded-2xl bg-interactive-selected text-sidebar-foreground md:min-h-8 md:gap-2 md:py-1"
@@ -187,6 +206,7 @@ export function Sidebar({
                           variant="nav"
                           role="listitem"
                           aria-current={item.active ? "page" : undefined}
+                          onClick={closeSidebarAfterSelection}
                           className={
                             item.active
                               ? "w-full rounded-2xl bg-interactive-selected text-sidebar-foreground"
@@ -276,6 +296,7 @@ export function Sidebar({
                                     role="listitem"
                                     aria-current={item.active ? "page" : undefined}
                                     tabIndex={isExpanded ? undefined : -1}
+                                    onClick={closeSidebarAfterSelection}
                                     className={
                                       item.active
                                         ? "w-full rounded-2xl bg-interactive-selected text-sidebar-foreground md:min-h-8 md:gap-2 md:py-1"
@@ -306,7 +327,7 @@ export function Sidebar({
             <div className="py-0.5">
               <ShellButton
                 variant="nav"
-                onClick={onReturnToApp}
+                onClick={handleReturnToApp}
                 className="text-sidebar-muted hover:bg-interactive-hover hover:text-sidebar-foreground"
               >
                 <ArrowLeft size={18} />
@@ -327,7 +348,7 @@ export function Sidebar({
                             ? "w-full rounded-2xl bg-interactive-selected text-sidebar-foreground cursor-default"
                             : "rounded-2xl text-sidebar-foreground hover:bg-interactive-hover hover:text-sidebar-foreground"
                         }
-                        onClick={isActive ? undefined : () => onSelectSettingsTab(item.id)}
+                        onClick={isActive ? undefined : () => handleSelectSettingsTab(item.id)}
                       >
                         {item.icon}
                         <span className={`truncate ${SETTINGS_NAV_ITEM_LABEL_CLASS_NAME}`}>{item.label}</span>

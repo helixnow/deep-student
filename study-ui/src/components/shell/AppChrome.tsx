@@ -254,6 +254,7 @@ export function AppChrome({
             <SheetContent side="left" className="w-[min(92vw,19rem)] border-r p-0">
               <Sidebar
                 activeSettingsTab={activeSettingsTab}
+                closeOnSelect={shouldRenderDrawerSidebar}
                 currentMode={currentMode}
                 folderItems={folderItems}
                 isSidebarVisible={isSidebarVisible}
@@ -287,6 +288,7 @@ export function AppChrome({
             >
               <Sidebar
                 activeSettingsTab={activeSettingsTab}
+                closeOnSelect={shouldRenderDrawerSidebar}
                 currentMode={currentMode}
                 folderItems={folderItems}
                 isSidebarVisible={isDockedSidebarExpanded}
