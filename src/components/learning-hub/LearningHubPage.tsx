@@ -913,9 +913,7 @@ export const LearningHubPage: React.FC = () => {
         className="study-shell-page absolute inset-0 flex flex-col overflow-hidden select-none"
         style={{
           touchAction: 'pan-y pinch-zoom',
-          // 给底部导航栏留空间 - 使用 CSS 变量作为 Android fallback
-          // BottomTabBar 高度为 56px（见 MOBILE_LAYOUT.bottomTabBar.defaultHeight）
-          bottom: 'calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + 56px)',
+          bottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
         }}
       >
         {/* 三屏内容容器：左侧(sidebarWidth) + 中间(100%) + 右侧(100%) */}

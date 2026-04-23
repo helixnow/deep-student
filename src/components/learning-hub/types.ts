@@ -126,7 +126,7 @@ export interface LearningHubSidebarProps {
   onToggleCollapse?: () => void;
   /** ★ 当前在应用面板中打开的文件 ID（用于高亮） */
   activeFileId?: string | null;
-  /** ★ 移动端底部内边距（给底部导航栏留空间），状态栏贴底 */
+  /** ★ 移动端底部安全区内边距 */
   mobileBottomPadding?: boolean;
   /** ★ 是否有应用面板打开 */
   hasOpenApp?: boolean;

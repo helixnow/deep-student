@@ -96,7 +96,6 @@ import { pLimit } from '@/utils/concurrency';
 import { ImportProgressModal, type ImportProgressState, type ImportStage } from './components/ImportProgressModal';
 import { useVfsContextInject } from './hooks';
 import type { VfsResourceType } from '@/chat-v2/context/types';
-import { MOBILE_LAYOUT } from '@/config/mobileLayout';
 import {
   consumePathsDropHandledFlag,
   isDragDropBlockedView,

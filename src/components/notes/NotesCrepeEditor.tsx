@@ -26,10 +26,8 @@ import { NotesEditorHeader } from './components/NotesEditorHeader';
 import { NotesEditorToolbar } from './components/NotesEditorToolbar';
 import { FindReplacePanel } from './components/FindReplacePanel';
 import { emitOutlineDebugLog, emitOutlineDebugSnapshot } from '../../debug-panel/events/NotesOutlineDebugChannel';
-import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { isMacOS } from '../../utils/platform';
 import { useTauriDragAndDrop } from '../../hooks/useTauriDragAndDrop';
-import { MOBILE_LAYOUT } from '../../config/mobileLayout';
 import { useCanvasAIEditHandler } from './hooks/useCanvasAIEditHandler';
 import { AIDiffPanel } from './AIDiffPanel';
 import { ErrorBoundary } from '../ErrorBoundary';
@@ -73,7 +71,6 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
   onEditorReady,
 }) => {
   const { t } = useTranslation(['notes', 'common']);
-  const { isSmallScreen } = useBreakpoint();
   
   // ========== 模式判断 ==========
   // DSTU 模式：通过 props 传入数据
@@ -866,9 +863,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
             <div
               className="notes-editor-content max-w-[800px] mx-auto min-h-full px-4 sm:px-8 sm:pl-24 relative flex flex-col"
               style={{
-                paddingBottom: isSmallScreen
-                  ? `calc(30vh + ${MOBILE_LAYOUT.bottomTabBar.defaultHeight}px)`
-                  : '30vh',
+                paddingBottom: '30vh',
               }}
               ref={dropZoneRef}
             >

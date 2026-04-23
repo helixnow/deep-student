@@ -25,7 +25,6 @@ import { Input } from '@/components/ui/shad/Input';
 import { NotionAlertDialog } from '../ui/NotionDialog';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { useMobileHeader, MobileSlidingLayout, ScreenPosition } from '@/components/layout';
-import { MOBILE_LAYOUT } from '@/config/mobileLayout';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { fileManager } from '@/utils/fileManager';
 
@@ -832,17 +831,6 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           editingSkillId={editorOpen ? editingSkill?.id : null}
         />
       </CustomScrollArea>
-
-      {/* 移动端底部导航栏占位 */}
-      {isSmallScreen && (
-        <div
-          className="flex-shrink-0"
-          style={{
-            // 使用 CSS 变量作为 Android fallback
-            height: `calc(${MOBILE_LAYOUT.bottomTabBar.defaultHeight}px + var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)))`
-          }}
-        />
-      )}
     </div>
   );
 

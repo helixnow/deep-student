@@ -23,7 +23,6 @@ import { listen as tauriListen } from '@tauri-apps/api/event';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { useUnifiedErrorHandler } from './UnifiedErrorHandler';
 import { TauriAPI } from '../utils/tauriApi';
-import { MOBILE_LAYOUT } from '../config/mobileLayout';
 import type { UseMcpEditorSectionDeps, McpToolConfig } from './settings/hookDepsTypes';
 
 interface McpTestResult {
@@ -1221,7 +1220,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
       <div
         className="h-full flex flex-col bg-background"
         style={{
-          paddingBottom: `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${MOBILE_LAYOUT.bottomTabBar.defaultHeight}px)`,
+          paddingBottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
         }}
       >
         <div className="px-4 pt-4 pb-2 border-b border-border flex-shrink-0">
@@ -1455,7 +1454,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
       <div
         className="h-full flex flex-col bg-background"
         style={{
-          paddingBottom: `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${MOBILE_LAYOUT.bottomTabBar.defaultHeight}px)`,
+          paddingBottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
         }}
       >
         <div className="px-4 pt-4 pb-2 border-b border-border flex-shrink-0">

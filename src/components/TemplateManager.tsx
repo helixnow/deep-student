@@ -45,7 +45,6 @@ import {
 } from './ui/unified-sidebar/UnifiedSidebar';
 import { useMobileHeader, MobileSlidingLayout } from '@/components/layout';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { MOBILE_LAYOUT } from '@/config/mobileLayout';
 
 interface TemplateManagerProps {
   onClose: () => void;
@@ -639,9 +638,6 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({ onClose, onSelectTemp
             sidebar={
               <div
                 className="h-full flex flex-col bg-background"
-                style={{
-                  paddingBottom: `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${MOBILE_LAYOUT.bottomTabBar.defaultHeight}px)`,
-                }}
               >
                 {renderSidebar()}
               </div>

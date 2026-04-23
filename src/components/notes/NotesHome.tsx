@@ -13,7 +13,6 @@ import { useMediaQuery } from "../../hooks/useMediaQuery";
 import { useCommandEvents, COMMAND_EVENTS } from "@/command-palette";
 import { useMobileHeader, MobileSlidingLayout } from "../layout";
 import { useBreakpoint } from "../../hooks/useBreakpoint";
-import { MOBILE_LAYOUT } from "../../config/mobileLayout";
 
 export default function NotesHome() {
   const { t } = useTranslation(['notes', 'common']);
@@ -82,7 +81,7 @@ export default function NotesHome() {
     <div
       className="flex-1 flex flex-col relative h-full overflow-hidden bg-background"
       style={{
-        paddingBottom: isSmallScreen ? `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${MOBILE_LAYOUT.bottomTabBar.defaultHeight}px)` : 0,
+        paddingBottom: isSmallScreen ? 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))' : 0,
       }}
     >
       <NotesHeader
@@ -100,9 +99,6 @@ export default function NotesHome() {
           sidebar={
             <div
               className="h-full flex flex-col bg-background"
-              style={{
-                paddingBottom: `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${MOBILE_LAYOUT.bottomTabBar.defaultHeight}px)`,
-              }}
             >
               {renderSidebar()}
             </div>

@@ -18,7 +18,6 @@ import TagInput from '../ui/shad/TagInput';
 import { CustomScrollArea } from '../custom-scroll-area';
 import { FileText, Settings, X, Wrench } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { MOBILE_LAYOUT } from '@/config/mobileLayout';
 import { unifiedConfirm } from '@/utils/unifiedDialogs';
 import type { SkillDefinition, SkillLocation, SkillType, ToolSchema } from '@/chat-v2/skills/types';
 import { SKILL_DEFAULT_PRIORITY } from '@/chat-v2/skills/types';
@@ -643,9 +642,8 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
       <div
         className="flex-none px-4 pt-3 border-t border-border/40 flex items-center justify-end gap-2 bg-gradient-to-t from-background via-background/95 to-background/80 backdrop-blur supports-[backdrop-filter]:backdrop-blur-md"
         style={{
-          // 使用 CSS 变量作为 Android fallback
           paddingBottom: embeddedMode
-            ? `calc(${MOBILE_LAYOUT.bottomTabBar.defaultHeight}px + var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + 16px)`
+            ? 'calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + 16px)'
             : '14px',
         }}
       >

@@ -34,7 +34,6 @@ import { fileManager } from '../utils/fileManager';
 import { usePageMount, pageLifecycleTracker } from '@/debug-panel/hooks/usePageLifecycle';
 import { useMobileHeader, MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { MOBILE_LAYOUT } from '@/config/mobileLayout';
 import { showGlobalNotification } from './UnifiedNotification';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
@@ -927,9 +926,6 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                 sidebar={
                   <div
                     className="study-shell-sidebar-frame h-full flex flex-col"
-                    style={{
-                      paddingBottom: `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${MOBILE_LAYOUT.bottomTabBar.defaultHeight}px)`,
-                    }}
                   >
                     {sidebarContent}
                   </div>
