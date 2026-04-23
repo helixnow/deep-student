@@ -6,7 +6,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 
 **Core value:** One shared UI architecture must feel usable on phone, tablet, and desktop while preserving the existing desktop Tauri shell behavior.
 
-**Current focus:** Phase 2: Root State And Layout Tokens
+**Current focus:** Phase 3: Shell And Sidebar Adaptation
 
 ## Workflow State
 
@@ -36,6 +36,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 - 2026-04-23: Captured Phase 1 context for responsive policy foundation.
 - 2026-04-23: Planned Phase 1 with 1 execution plan.
 - 2026-04-23: Executed Phase 1 responsive policy foundation.
+- 2026-04-23: Planned and executed Phase 2 root state and layout tokens.
 
 ### Session Notes
 
@@ -45,6 +46,8 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 - Resume file: `.planning/phases/01-responsive-policy-foundation/01-01-PLAN.md`.
 - 2026-04-23: Phase 1 execution complete; code commits `063d32f`, `5fd372e`, `30b354b`.
 - Summary file: `.planning/phases/01-responsive-policy-foundation/01-01-SUMMARY.md`.
+- 2026-04-23: Phase 2 execution complete; code commits `3d136c2`, `67c889b`, `4e3232a`.
+- Summary file: `.planning/phases/02-root-state-and-layout-tokens/02-01-SUMMARY.md`.
 
 ### Important Decisions
 
@@ -64,10 +67,10 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 | Phase | Status |
 |-------|--------|
 | 1 Responsive Policy Foundation | Complete |
-| 2 Root State And Layout Tokens | Next |
-| 3 Shell And Sidebar Adaptation | Pending |
+| 2 Root State And Layout Tokens | Complete |
+| 3 Shell And Sidebar Adaptation | Next |
 | 4 Content Surface Adaptation | Pending |
 | 5 Touch Targets And Verification | Pending |
 
 ---
-*Last updated: 2026-04-23 after Phase 1 execution*
+*Last updated: 2026-04-23 after Phase 2 execution*

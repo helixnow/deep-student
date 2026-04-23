@@ -14,8 +14,8 @@
 
 ### Shell And Sidebar
 
-- [ ] **SHELL-01**: The shell root exposes stable datasets for form factor, sidebar mode, density, and related responsive state.
-- [ ] **SHELL-02**: Mobile drawer visibility and desktop/sidebar collapsed state are separate state concepts.
+- [x] **SHELL-01**: The shell root exposes stable datasets for form factor, sidebar mode, density, and related responsive state.
+- [x] **SHELL-02**: Mobile drawer visibility and desktop/sidebar collapsed state are separate state concepts.
 - [ ] **SHELL-03**: Phone and compact tablet navigation uses the existing `Sheet`/Drawer sidebar rather than a docked desktop sidebar.
 - [ ] **SHELL-04**: Desktop navigation remains docked and preserves existing Tauri titlebar/window behavior.
 - [ ] **SHELL-05**: Compact navigation closes after a user selects a navigation item when appropriate.
@@ -23,8 +23,8 @@
 
 ### Layout Tokens
 
-- [ ] **TOKN-01**: `src/styles/app.css` defines reusable layout tokens for page gutter, workspace width, composer width, sidebar width/mode, safe-area offsets, and touch target size.
-- [ ] **TOKN-02**: Root datasets override the same token names per form factor instead of introducing duplicate mobile/tablet token families.
+- [x] **TOKN-01**: `src/styles/app.css` defines reusable layout tokens for page gutter, workspace width, composer width, sidebar width/mode, safe-area offsets, and touch target size.
+- [x] **TOKN-02**: Root datasets override the same token names per form factor instead of introducing duplicate mobile/tablet token families.
 - [ ] **TOKN-03**: Components consume layout tokens for content width, gutters, composer placement, and safe-area spacing instead of repeating hard-coded responsive classes.
 
 ### Thread Canvas
@@ -84,14 +84,14 @@
 | RESP-02 | Phase 1 | Complete |
 | RESP-03 | Phase 1 | Complete |
 | RESP-04 | Phase 1 | Complete |
-| SHELL-01 | Phase 2 | Pending |
-| SHELL-02 | Phase 2 | Pending |
+| SHELL-01 | Phase 2 | Complete |
+| SHELL-02 | Phase 2 | Complete |
 | SHELL-03 | Phase 3 | Pending |
 | SHELL-04 | Phase 3 | Pending |
 | SHELL-05 | Phase 3 | Pending |
 | SHELL-06 | Phase 3 | Pending |
-| TOKN-01 | Phase 2 | Pending |
-| TOKN-02 | Phase 2 | Pending |
+| TOKN-01 | Phase 2 | Complete |
+| TOKN-02 | Phase 2 | Complete |
 | TOKN-03 | Phase 4 | Pending |
 | THRD-01 | Phase 4 | Pending |
 | THRD-02 | Phase 4 | Pending |
@@ -119,4 +119,4 @@
 
 ---
 *Requirements defined: 2026-04-23*
-*Last updated: 2026-04-23 after Phase 1 execution*
+*Last updated: 2026-04-23 after Phase 2 execution*
