@@ -179,7 +179,7 @@
 **Success criteria:**
 
 1. Phone empty state uses a visual prompt strip, concise centered copy, and one suggestion CTA.
-2. Phone composer becomes a floating single-line pill with 44px add/input/voice/send controls.
+2. Phone composer becomes a floating single-line pill with 44px add/input/send controls and no recording icon.
 3. Phone top-left chrome shows one edge-aligned 44px menu affordance without desktop title/update clutter.
 4. Tablet and desktop retain the existing verified `ThreadCanvas` empty state and composer at `sm` and above.
 5. No upgrade, user-plus, account-growth, or unrelated product entry points are introduced.

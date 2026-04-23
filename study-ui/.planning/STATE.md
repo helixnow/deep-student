@@ -98,7 +98,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 - SettingsPanel is large and dense; source/unit coverage exists, but live settings navigation is not currently exposed from app mode for manual click-through.
 - Future icon/small button variants should keep using the Phase 5 `lg:` compaction pattern so tablet hit targets do not regress.
 - Windows desktop chrome still needs an actual Windows host for manual smoke; local UAT covered macOS and source/config behavior only.
-- Phase 6 phone composer includes a visual voice affordance but does not implement audio input behavior yet.
+- Phase 6 phone composer intentionally omits recording/audio controls; audio input behavior is outside this milestone.
 
 ## Current Phase Queue
 

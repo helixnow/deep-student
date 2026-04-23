@@ -9,7 +9,7 @@ requires:
     provides: verified compact touch targets and phone/tablet/desktop responsive policy
 provides:
   - Phone-only ChatGPT-mobile-style landing for `ThreadCanvas` empty state.
-  - Phone-only floating pill composer with add/input/voice/send controls.
+  - Phone-only floating pill composer with add/input/send controls and no recording affordance.
   - Phone top-left chrome with an edge-aligned hamburger menu and no title/update clutter.
   - Tablet/desktop ThreadCanvas empty state and composer remain on the previously verified path.
   - Source coverage prevents upgrade/user-plus entry points and protects phone-only gating.
@@ -46,7 +46,8 @@ completed: 2026-04-23
 ## Accomplishments
 
 - Added a phone-only `thread-mobile-empty-state` with a full-bleed horizontal prompt-card strip, centered title/description, and a single suggestion CTA.
-- Added a phone-only `thread-phone-composer` that reads as a floating single-line pill with 44px add, input, voice, and send targets.
+- Added a phone-only `thread-phone-composer` that reads as a floating single-line pill with 44px add, input, and send targets.
+- Removed the phone composer recording icon so the mobile input stays quieter and focused on text.
 - Polished phone top-left chrome so it starts at the mobile edge, uses a hamburger menu affordance, and removes the compact title/update-badge collision.
 - Preserved the existing tablet/desktop empty state and composer behind `sm:flex`/`sm:block` so Phase 5 desktop/tablet verification is not disturbed.
 - Kept the user's requested exclusion: no upgrade, user-plus, account-growth, or new product entry points were added.
@@ -63,7 +64,6 @@ completed: 2026-04-23
 
 ## Notes
 
-- The voice icon is a visual composer affordance only; actual audio capture remains out of scope.
 - The design uses CSS/Tailwind prompt cards instead of image assets so the mobile landing stays lightweight and deterministic.
 
 ## Next Step

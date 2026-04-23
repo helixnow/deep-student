@@ -2,7 +2,6 @@ import { type CSSProperties, useState } from "react";
 import {
   ArrowUp,
   MagicWand,
-  Microphone,
   Paperclip,
   Plus,
   Sparkle,
@@ -171,9 +170,6 @@ export function ThreadCanvas() {
               placeholder="询问 DeepStudent"
               rows={1}
             />
-            <Button aria-label="语音输入" className="h-11 w-11 rounded-full text-muted-foreground" size="icon" variant="ghost">
-              <Microphone size={21} />
-            </Button>
             <Button
               aria-label="发送消息"
               className={cn(

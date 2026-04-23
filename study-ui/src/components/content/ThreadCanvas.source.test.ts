@@ -15,7 +15,6 @@ test("thread canvas uses a document-style single column with an anchored compose
   assert.match(source, /const composerSecondaryControlClassName = "rounded-full border-transparent px-2\.5 text-xs font-normal text-muted-foreground";/u);
   assert.match(source, /import \{ Textarea \} from "@\/components\/ui\/textarea";/u);
   assert.match(source, /ArrowUp/u);
-  assert.match(source, /Microphone/u);
   assert.match(source, /Plus/u);
   assert.match(source, /const mobilePromptCards = \[/u);
   assert.match(source, /data-slot="thread-content-shell"/u);
@@ -49,6 +48,8 @@ test("thread canvas uses a document-style single column with an anchored compose
   assert.doesNotMatch(source, /完成范围/u);
   assert.doesNotMatch(source, /下一步建议/u);
   assert.doesNotMatch(source, /PaperPlaneTilt/u);
+  assert.doesNotMatch(source, /Microphone/u);
+  assert.doesNotMatch(source, /aria-label="语音输入"/u);
   assert.doesNotMatch(source, /发送<\/Button>/u);
   assert.doesNotMatch(source, /Button variant="ghost" className="text-muted-foreground"/u);
   assert.doesNotMatch(source, /border-t border-border\/60 px-4 py-3/u);
@@ -91,7 +92,8 @@ test("thread canvas uses a phone-only pill composer while preserving the existin
   assert.match(phoneComposerBlock, /className="flex min-h-14 items-center gap-1 rounded-full border border-composer-border bg-card px-2/u);
   assert.match(phoneComposerBlock, /sm:hidden/u);
   assert.match(phoneComposerBlock, /aria-label="添加附件"/u);
-  assert.match(phoneComposerBlock, /aria-label="语音输入"/u);
+  assert.doesNotMatch(phoneComposerBlock, /aria-label="语音输入"/u);
+  assert.doesNotMatch(phoneComposerBlock, /Microphone/u);
   assert.match(phoneComposerBlock, /placeholder="询问 DeepStudent"/u);
   assert.match(phoneComposerBlock, /rows=\{1\}/u);
   assert.match(phoneComposerBlock, /className="h-11 w-11 rounded-full"/u);

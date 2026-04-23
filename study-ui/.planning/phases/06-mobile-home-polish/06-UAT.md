@@ -4,7 +4,7 @@ phase: 06-mobile-home-polish
 source:
   - .planning/phases/06-mobile-home-polish/06-01-SUMMARY.md
 started: 2026-04-23T10:01:56Z
-updated: 2026-04-23T10:16:18Z
+updated: 2026-04-23T10:22:25Z
 ---
 
 ## Current Test
@@ -19,9 +19,9 @@ result: pass
 evidence: Playwright observed `formFactor=phone`, `thread-mobile-empty-state` visible, `thread-empty-state` hidden, no horizontal overflow, no `升级` or `用户+` text, and screenshot `/tmp/study-ui-uat-shots/phase6-phone-390x844.png`.
 
 ### 2. Phone Pill Composer
-expected: At `390x844`, the phone composer appears as a floating single-line pill and all visible buttons remain at least 44px.
+expected: At `390x844`, the phone composer appears as a floating single-line pill, omits recording controls, and all visible buttons remain at least 44px.
 result: pass
-evidence: Playwright observed `thread-phone-composer` visible at 358x56, desktop composer hidden, and `buttonsUnder44: []`.
+evidence: Playwright observed `thread-phone-composer` visible at `x=16`, `y=776`, `358x56`; desktop composer hidden; only `添加附件` and `发送消息` buttons inside the phone composer; `hasVoiceButton=false`; `buttonsUnder44: []`; no horizontal overflow; and screenshot `/tmp/study-ui-uat-shots/phase6-phone-composer-no-recording.png`.
 
 ### 3. Tablet Layout Preservation
 expected: At `768x1024`, tablet keeps the previously verified empty state and desktop/tablet composer path; the phone-only landing and phone composer stay hidden.
@@ -58,6 +58,7 @@ blocked: 0
 ## Visual Evidence
 
 - `/tmp/study-ui-uat-shots/phase6-phone-390x844.png`
+- `/tmp/study-ui-uat-shots/phase6-phone-composer-no-recording.png`
 - `/tmp/study-ui-uat-shots/phase6-phone-top-left-polish.png`
 - `/tmp/study-ui-uat-shots/phase6-tablet-768x1024-ready.png`
 - `/tmp/study-ui-uat-shots/phase6-desktop-1280x800-ready.png`
@@ -65,7 +66,7 @@ blocked: 0
 ## Notes
 
 - Hidden phone copy is still present in `document.body.textContent` on tablet/desktop because the implementation uses CSS breakpoint gating, but visual display is correctly hidden by `sm` classes.
-- The voice icon is visual only; actual audio input is outside Phase 6 scope.
+- The phone composer intentionally omits recording/audio controls; audio input remains outside Phase 6 scope.
 
 ## Gaps
 

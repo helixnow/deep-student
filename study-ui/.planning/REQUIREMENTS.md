@@ -57,7 +57,7 @@
 ### Mobile Home Polish
 
 - [x] **HOME-01**: Phone empty state uses a mobile landing composition with a full-bleed prompt strip, concise title/description, and one primary suggestion CTA.
-- [x] **HOME-02**: Phone composer uses a single-line floating pill while preserving at least `44px` add/input/voice/send touch targets.
+- [x] **HOME-02**: Phone composer uses a single-line floating pill while preserving at least `44px` add/input/send touch targets and omitting recording controls.
 - [x] **HOME-03**: Tablet and desktop keep the previously verified ThreadCanvas empty state and composer from `640px` upward.
 - [x] **HOME-04**: Mobile home polish does not add upgrade, user-plus, account-growth, or other new product entry points.
 - [x] **HOME-05**: Phone top-left chrome starts from the mobile edge, uses a single 44px menu affordance, and hides desktop title/update clutter.
