@@ -75,12 +75,14 @@ test("settings mode exposes the current destination in the main content region",
 
 test("app header stays lightweight without an extra card, divider, or heavy background bar", () => {
   const source = readFileSync(appChromePath, "utf8");
+  const appTitlebarBlock = source.match(/<Titlebar[\s\S]*variant="app"[\s\S]*<\/Titlebar>/u)?.[0] ?? "";
 
   assert.match(source, /<Titlebar[\s\S]*variant="app"/u);
   assert.match(source, /<Titlebar[\s\S]*windowBackgroundPreference=\{windowBackgroundPreference\}/u);
-  assert.doesNotMatch(source, /border-b/u);
-  assert.doesNotMatch(source, /bg-card\/96/u);
-  assert.doesNotMatch(source, /shadow-(md|lg|xl)/u);
+  assert.notEqual(appTitlebarBlock, "");
+  assert.doesNotMatch(appTitlebarBlock, /border-b/u);
+  assert.doesNotMatch(appTitlebarBlock, /bg-card\/96/u);
+  assert.doesNotMatch(appTitlebarBlock, /shadow-(md|lg|xl)/u);
 });
 
 test("desktop sidebar uses a quiet width transition instead of JS-driven overlay choreography", () => {
@@ -187,22 +189,40 @@ test("phone settings are presented as a real sheet instead of replacing the main
   assert.match(source, /const shouldShowAppSurface = currentMode === "app" \|\| isMobileSettingsSheetOpen;/u);
   assert.match(
     source,
-    /const handleMobileSettingsSheetOpenChange = \(open: boolean\) => \{\s*if \(!open\) \{\s*onReturnToApp\(\);\s*\}\s*\};/u,
+    /const handleMobileSettingsSheetOpenChange = \(open: boolean\) => \{\s*if \(!open\) \{\s*resetMobileSettingsDrag\(\);\s*onReturnToApp\(\);\s*\}\s*\};/u,
   );
   assert.match(source, /<Sheet open=\{isMobileSettingsSheetOpen\} onOpenChange=\{handleMobileSettingsSheetOpenChange\}>/u);
-  assert.match(source, /<SheetContent[\s\S]*side="bottom"[\s\S]*data-slot="mobile-settings-sheet"[\s\S]*overlayClassName="bg-\[rgba\(0,0,0,0\.72\)\]"[\s\S]*bg-\[#26272b\][\s\S]*\[&>button\]:hidden/u);
+  assert.match(source, /useRef, useState, useSyncExternalStore/u);
+  assert.match(source, /const mobileSettingsDragStartYRef = useRef<number \| null>\(null\);/u);
+  assert.match(source, /const mobileSettingsDragOffsetRef = useRef\(0\);/u);
+  assert.match(source, /const \[mobileSettingsDragOffset, setMobileSettingsDragOffset\] = useState\(0\);/u);
+  assert.match(source, /const \[isMobileSettingsDragging, setIsMobileSettingsDragging\] = useState\(false\);/u);
+  assert.match(source, /const handleMobileSettingsDragStart = \(event: React\.PointerEvent<HTMLDivElement>\) => \{[\s\S]*setPointerCapture\(event\.pointerId\);[\s\S]*\};/u);
+  assert.match(source, /const handleMobileSettingsDragMove = \(event: React\.PointerEvent<HTMLDivElement>\) => \{[\s\S]*Math\.max\(0, event\.clientY - mobileSettingsDragStartYRef\.current\)[\s\S]*\};/u);
+  assert.match(source, /const handleMobileSettingsDragEnd = \(event: React\.PointerEvent<HTMLDivElement>\) => \{[\s\S]*mobileSettingsDragOffsetRef\.current > 96[\s\S]*onReturnToApp\(\);[\s\S]*\};/u);
+  assert.match(source, /<SheetContent[\s\S]*side="bottom"[\s\S]*data-slot="mobile-settings-sheet"[\s\S]*overlayClassName="bg-\[rgba\(17,17,17,0\.4\)\]"[\s\S]*h-\[min\(74dvh,calc\(100dvh-1rem\)\)\][\s\S]*rounded-t-\[24px\][\s\S]*bg-\[#FFFFFF\][\s\S]*text-\[#111111\][\s\S]*\[&>button\]:hidden/u);
+  assert.match(source, /style=\{[\s\S]*transform: `translateY\(\$\{mobileSettingsDragOffset\}px\)`[\s\S]*transition: isMobileSettingsDragging \? "none" : undefined/u);
+  assert.match(source, /data-slot="mobile-settings-sheet-drag-zone"[\s\S]*onPointerDown=\{handleMobileSettingsDragStart\}[\s\S]*onPointerMove=\{handleMobileSettingsDragMove\}[\s\S]*onPointerUp=\{handleMobileSettingsDragEnd\}/u);
+  assert.match(source, /data-slot="mobile-settings-sheet-drag-handle" className="h-1 w-12 rounded-full bg-\[#C9CDD6\]"/u);
+  assert.match(source, /data-slot="mobile-settings-sheet-header"[\s\S]*border-b border-\[rgba\(17,17,17,0\.08\)\]/u);
   assert.match(source, /<SheetTitle[\s\S]*系统设置[\s\S]*<\/SheetTitle>/u);
-  assert.match(source, /<SheetDescription className="sr-only">[\s\S]*移动端系统设置面板/u);
-  assert.match(source, /<SheetClose asChild>[\s\S]*aria-label="关闭系统设置"[\s\S]*<X size=\{28\} weight="regular" \/>/u);
+  assert.match(source, /<SheetDescription className="text-xs font-medium leading-5 text-\[#5C5C5F\]">[\s\S]*应用偏好与数据选项/u);
+  assert.match(source, /<SheetClose asChild>[\s\S]*aria-label="关闭系统设置"[\s\S]*active:scale-\[0\.97\][\s\S]*focus-visible:ring-\[rgba\(0,113,227,0\.5\)\][\s\S]*<X size=\{20\} weight="regular" \/>/u);
   assert.match(source, /const mobileSettingsSheetTabs = \[[\s\S]*id: "general"[\s\S]*slot: "general"[\s\S]*通用设置/u);
   assert.match(source, /id: "about"[\s\S]*slot: "account"[\s\S]*账号管理/u);
   assert.match(source, /id: "advanced"[\s\S]*slot: "data"[\s\S]*数据管理[\s\S]*trailingIcon: <CaretRight size=\{14\} weight="bold" \/>/u);
-  assert.match(source, /data-slot="mobile-settings-sheet-nav"[\s\S]*grid-cols-\[1\.08fr_0\.96fr_1fr\]/u);
+  assert.match(source, /data-slot="mobile-settings-sheet-scroll"[\s\S]*custom-scrollbar[\s\S]*overflow-y-auto[\s\S]*pb-\[calc\(1\.25rem\+var\(--safe-area-bottom\)\)\]/u);
+  assert.match(source, /data-slot="mobile-settings-sheet-nav"[\s\S]*grid-cols-\[1\.08fr_0\.96fr_1fr\][\s\S]*bg-\[#EEF0F4\]/u);
   assert.match(source, /mobileSettingsSheetTabs\.map\(\(item\) => \{[\s\S]*activeSettingsTab === item\.id/u);
   assert.match(source, /data-slot=\{`mobile-settings-sheet-nav-\$\{item\.slot\}`\}/u);
   assert.match(source, /onClick=\{isActiveMobileSettingsTab \? undefined : \(\) => onSelectSettingsTab\(item\.id\)\}/u);
-  assert.match(source, /data-slot="mobile-settings-sheet-real-content"[\s\S]*data-theme="dark"[\s\S]*data-window-background="opaque"[\s\S]*\[--touch-target-size:var\(--control-height-touch\)\][\s\S]*\{settingsContent\}/u);
+  assert.match(source, /active:scale-\[0\.97\] focus-visible:ring-2 focus-visible:ring-\[rgba\(0,113,227,0\.5\)\]/u);
+  assert.match(source, /isActiveMobileSettingsTab[\s\S]*\? "bg-white text-\[#111111\] shadow-\[0_1px_2px_rgba\(17,17,17,0\.08\)\]"[\s\S]*: "text-\[#3A3A3C\] hover:bg-white\/55"/u);
+  assert.match(source, /data-slot="mobile-settings-sheet-real-content"[\s\S]*data-theme="light"[\s\S]*data-window-background="opaque"[\s\S]*\[--background:#F5F5F7\][\s\S]*\[--primary:#0071E3\][\s\S]*\[--ring:rgba\(0,113,227,0\.5\)\][\s\S]*\[--touch-target-size:var\(--control-height-touch\)\][\s\S]*\[--workspace-max-width:100%\][\s\S]*\{settingsContent\}/u);
   assert.match(source, /\[&_input\[type=range\]\]:min-h-11/u);
+  assert.doesNotMatch(source, /overlayClassName="bg-\[rgba\(0,0,0,0\.72\)\]"/u);
+  assert.doesNotMatch(source, /data-theme="dark"/u);
+  assert.doesNotMatch(source, /bg-\[#26272b\]/u);
   assert.doesNotMatch(source, /mobileSettingsLanguageOptions/u);
   assert.doesNotMatch(source, /data-slot="mobile-settings-sheet-theme-light"/u);
   assert.doesNotMatch(source, /updateSetting\("language", event\.currentTarget\.value as AppLanguage\)/u);

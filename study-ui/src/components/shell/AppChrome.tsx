@@ -1,4 +1,4 @@
-import React, { useMemo, useSyncExternalStore } from "react";
+import React, { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
   CaretRight,
   Database,
@@ -131,6 +131,10 @@ export function AppChrome({
   const shouldRenderMobileSettingsSheet = layoutPolicy.formFactor === "phone";
   const isMobileSettingsSheetOpen = currentMode === "settings" && shouldRenderMobileSettingsSheet;
   const shouldShowAppSurface = currentMode === "app" || isMobileSettingsSheetOpen;
+  const mobileSettingsDragStartYRef = useRef<number | null>(null);
+  const mobileSettingsDragOffsetRef = useRef(0);
+  const [mobileSettingsDragOffset, setMobileSettingsDragOffset] = useState(0);
+  const [isMobileSettingsDragging, setIsMobileSettingsDragging] = useState(false);
   const mainAreaTopOffset = getMainAreaTopOffset(isSidebarVisible, titlebarMode);
   const mainDragHotspotHeight = mainAreaTopOffset + headerTopInset + 46;
   const collapsedSidebarToggleTop = mainAreaTopOffset + headerTopInset + 6;
@@ -147,8 +151,42 @@ export function AppChrome({
 
     onToggleSidebarCollapsed();
   };
+  const resetMobileSettingsDrag = () => {
+    mobileSettingsDragStartYRef.current = null;
+    mobileSettingsDragOffsetRef.current = 0;
+    setMobileSettingsDragOffset(0);
+    setIsMobileSettingsDragging(false);
+  };
   const handleMobileSettingsSheetOpenChange = (open: boolean) => {
     if (!open) {
+      resetMobileSettingsDrag();
+      onReturnToApp();
+    }
+  };
+  const handleMobileSettingsDragStart = (event: React.PointerEvent<HTMLDivElement>) => {
+    mobileSettingsDragStartYRef.current = event.clientY;
+    setIsMobileSettingsDragging(true);
+    event.currentTarget.setPointerCapture(event.pointerId);
+  };
+  const handleMobileSettingsDragMove = (event: React.PointerEvent<HTMLDivElement>) => {
+    if (mobileSettingsDragStartYRef.current === null) {
+      return;
+    }
+
+    const nextOffset = Math.max(0, event.clientY - mobileSettingsDragStartYRef.current);
+    mobileSettingsDragOffsetRef.current = nextOffset;
+    setMobileSettingsDragOffset(nextOffset);
+  };
+  const handleMobileSettingsDragEnd = (event: React.PointerEvent<HTMLDivElement>) => {
+    const shouldClose = mobileSettingsDragOffsetRef.current > 96;
+
+    if (event.currentTarget.hasPointerCapture(event.pointerId)) {
+      event.currentTarget.releasePointerCapture(event.pointerId);
+    }
+
+    resetMobileSettingsDrag();
+
+    if (shouldClose) {
       onReturnToApp();
     }
   };
@@ -350,65 +388,94 @@ export function AppChrome({
             <SheetContent
               side="bottom"
               data-slot="mobile-settings-sheet"
-              overlayClassName="bg-[rgba(0,0,0,0.72)]"
-              className="h-[calc(100dvh-1.75rem)] max-h-[calc(100dvh-1.75rem)] overflow-y-auto rounded-t-[2rem] border-0 bg-[#26272b] px-6 pb-[calc(2rem+var(--safe-area-bottom))] pt-7 text-white shadow-[0_-24px_80px_rgba(0,0,0,0.28)] [&>button]:hidden"
+              overlayClassName="bg-[rgba(17,17,17,0.4)]"
+              className="flex h-[min(74dvh,calc(100dvh-1rem))] max-h-[calc(100dvh-1rem)] flex-col overflow-hidden rounded-b-none rounded-t-[24px] border-x-0 border-b-0 border-t border-[#E0E3EA] bg-[#FFFFFF] p-0 text-[#111111] shadow-[0_-12px_34px_rgba(17,17,17,0.10)] ease-out duration-200 [&>button]:hidden"
+              style={
+                mobileSettingsDragOffset > 0
+                  ? {
+                    transform: `translateY(${mobileSettingsDragOffset}px)`,
+                    transition: isMobileSettingsDragging ? "none" : undefined,
+                  }
+                  : undefined
+              }
             >
-              <header data-slot="mobile-settings-sheet-header" className="flex items-start justify-between gap-5">
-                <div className="space-y-2">
-                  <SheetTitle className="text-2xl font-semibold tracking-[-0.03em] text-white">
+              <div
+                data-slot="mobile-settings-sheet-drag-zone"
+                className="flex h-7 touch-none items-center justify-center pt-2"
+                onPointerDown={handleMobileSettingsDragStart}
+                onPointerMove={handleMobileSettingsDragMove}
+                onPointerUp={handleMobileSettingsDragEnd}
+                onPointerCancel={handleMobileSettingsDragEnd}
+                onLostPointerCapture={resetMobileSettingsDrag}
+              >
+                <div data-slot="mobile-settings-sheet-drag-handle" className="h-1 w-12 rounded-full bg-[#C9CDD6]" />
+              </div>
+
+              <header
+                data-slot="mobile-settings-sheet-header"
+                className="flex items-center justify-between gap-5 border-b border-[rgba(17,17,17,0.08)] px-5 pb-3 pt-1"
+              >
+                <div className="min-w-0 space-y-0.5">
+                  <SheetTitle className="text-sm font-semibold leading-5 tracking-[-0.01em] text-[#111111]">
                     系统设置
                   </SheetTitle>
-                  <SheetDescription className="sr-only">
-                    移动端系统设置面板，可调整主题和语言。
+                  <SheetDescription className="text-xs font-medium leading-5 text-[#5C5C5F]">
+                    应用偏好与数据选项
                   </SheetDescription>
                 </div>
                 <SheetClose asChild>
                   <button
                     type="button"
                     aria-label="关闭系统设置"
-                    className="flex min-h-11 min-w-11 items-center justify-center rounded-full text-white/86 transition-colors hover:bg-white/8 focus-visible:ring-2 focus-visible:ring-white/30"
+                    className="flex min-h-11 min-w-11 items-center justify-center rounded-xl text-[#3A3A3C] transition-[background-color,transform] hover:bg-[#EEF0F4] active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-[rgba(0,113,227,0.5)]"
                   >
-                    <X size={28} weight="regular" />
+                    <X size={20} weight="regular" />
                   </button>
                 </SheetClose>
               </header>
 
-              <nav
-                data-slot="mobile-settings-sheet-nav"
-                className="mt-8 grid grid-cols-[1.08fr_0.96fr_1fr] gap-2 pb-1"
-              >
-                {mobileSettingsSheetTabs.map((item) => {
-                  const isActiveMobileSettingsTab = activeSettingsTab === item.id;
-
-                  return (
-                    <button
-                      key={item.id}
-                      type="button"
-                      data-slot={`mobile-settings-sheet-nav-${item.slot}`}
-                      aria-pressed={isActiveMobileSettingsTab}
-                      onClick={isActiveMobileSettingsTab ? undefined : () => onSelectSettingsTab(item.id)}
-                      className={cn(
-                        "flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-[1.05rem] px-1.5 text-[0.86rem] font-medium tracking-[-0.02em] transition-colors",
-                        isActiveMobileSettingsTab
-                          ? "bg-white/10 text-white"
-                          : "text-white/72 hover:bg-white/7 hover:text-white/88",
-                      )}
-                    >
-                      {item.icon}
-                      <span className="whitespace-nowrap">{item.label}</span>
-                      {"trailingIcon" in item ? item.trailingIcon : null}
-                    </button>
-                  );
-                })}
-              </nav>
-
               <div
-                data-slot="mobile-settings-sheet-real-content"
-                data-theme="dark"
-                data-window-background="opaque"
-                className="mt-10 border-t border-white/8 pt-6 [--background:#26272b] [--border:rgba(255,255,255,0.12)] [--foreground:#f5f5f5] [--interactive-hover:rgba(255,255,255,0.08)] [--interactive-selected:rgba(255,255,255,0.14)] [--muted-foreground:rgba(255,255,255,0.58)] [--secondary:#303136] [--shell-panel-strong:#2b2c31] [--touch-target-size:var(--control-height-touch)] [&_input[type=range]]:min-h-11"
+                data-slot="mobile-settings-sheet-scroll"
+                className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-5 pb-[calc(1.25rem+var(--safe-area-bottom))] pt-4"
               >
-                {settingsContent}
+                <nav
+                  data-slot="mobile-settings-sheet-nav"
+                  className="grid grid-cols-[1.08fr_0.96fr_1fr] gap-1 rounded-[14px] bg-[#EEF0F4] p-1"
+                >
+                  {mobileSettingsSheetTabs.map((item) => {
+                    const isActiveMobileSettingsTab = activeSettingsTab === item.id;
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        data-slot={`mobile-settings-sheet-nav-${item.slot}`}
+                        aria-pressed={isActiveMobileSettingsTab}
+                        onClick={isActiveMobileSettingsTab ? undefined : () => onSelectSettingsTab(item.id)}
+                        className={cn(
+                          "flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-[11px] px-1.5 text-[0.78rem] font-medium tracking-[-0.01em] transition-[background-color,box-shadow,color,transform]",
+                          "active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-[rgba(0,113,227,0.5)]",
+                          isActiveMobileSettingsTab
+                            ? "bg-white text-[#111111] shadow-[0_1px_2px_rgba(17,17,17,0.08)]"
+                            : "text-[#3A3A3C] hover:bg-white/55",
+                        )}
+                      >
+                        {item.icon}
+                        <span className="whitespace-nowrap">{item.label}</span>
+                        {"trailingIcon" in item ? item.trailingIcon : null}
+                      </button>
+                    );
+                  })}
+                </nav>
+
+                <div
+                  data-slot="mobile-settings-sheet-real-content"
+                  data-theme="light"
+                  data-window-background="opaque"
+                  className="mt-5 [--background:#F5F5F7] [--border:rgba(17,17,17,0.08)] [--button-outline-active-bg:#E6E8EE] [--button-outline-bg:#FFFFFF] [--button-outline-border:#E0E3EA] [--button-outline-hover-bg:#EEF0F4] [--button-plain-hover-bg:#EEF0F4] [--button-tonal-bg:#EEF0F4] [--button-tonal-border:#E0E3EA] [--card:#FFFFFF] [--foreground:#111111] [--input:#EEF0F4] [--interactive-hover:#EEF0F4] [--interactive-selected:#E6E8EE] [--muted:#EEF0F4] [--muted-foreground:#5C5C5F] [--primary:#0071E3] [--primary-foreground:#FFFFFF] [--ring:rgba(0,113,227,0.5)] [--secondary:#EEF0F4] [--shell-panel-strong:#FFFFFF] [--touch-target-size:var(--control-height-touch)] [--workspace-max-width:100%] [&_input[type=range]]:min-h-11"
+                >
+                  {settingsContent}
+                </div>
               </div>
             </SheetContent>
           </Sheet>
