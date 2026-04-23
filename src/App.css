@@ -25,7 +25,7 @@ body {
 }
 
 .desktop-shell-titlebar {
-  background: transparent;
+  background: var(--shell-titlebar-surface);
   border-bottom: none;
 }
 
@@ -46,7 +46,12 @@ body {
 
 .desktop-shell-header-cell--nav {
   background: var(--shell-navigation-surface);
-  border-right: 1px solid var(--shell-chrome-border);
+  border-right: 0;
+}
+
+.desktop-shell-header-cell--workspace {
+  background: var(--shell-workspace-panel);
+  box-shadow: inset 14px 0 22px -24px hsl(var(--foreground) / 0.32);
 }
 
 .desktop-shell-toolbar-group {
@@ -127,7 +132,7 @@ body {
 .desktop-shell-sidebar-row,
 .desktop-shell-nav-row,
 .desktop-shell-thread-row {
-  min-height: 36px !important;
+  min-height: 32px !important;
   justify-content: flex-start !important;
   border-radius: var(--shell-nav-row-radius) !important;
   border: 1px solid transparent !important;
@@ -180,7 +185,8 @@ body {
 
 .sidebar-shell-surface {
   background: var(--shell-navigation-surface);
-  border-right: 1px solid var(--shell-navigation-border);
+  border-right: 0;
+  box-shadow: 14px 0 28px -30px hsl(var(--foreground) / 0.34);
 }
 
 .sidebar-shell-header {
@@ -237,7 +243,8 @@ body {
 
 .study-shell-sidebar-frame {
   background: var(--shell-navigation-surface);
-  border-right: 1px solid var(--shell-navigation-border);
+  border-right: 0;
+  box-shadow: 14px 0 28px -30px hsl(var(--foreground) / 0.34);
 }
 
 .study-shell-toolbar {

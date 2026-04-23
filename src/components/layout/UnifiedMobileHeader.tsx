@@ -8,7 +8,8 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { ChevronLeft, Menu } from 'lucide-react';
+import { List } from '@phosphor-icons/react';
+import { ChevronLeft } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useMobileHeaderContextSafe } from './MobileHeaderContext';
 import { isAndroid } from '@/utils/platform';
@@ -76,11 +77,10 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
             variant="ghost"
             size="icon"
             onClick={config.onMenuClick}
-            className="h-9 w-9 -ml-1 rounded-[var(--shell-nav-row-radius)] border border-transparent text-[color:var(--shell-navigation-foreground)] hover:bg-[color:var(--shell-control-hover)]"
-            style={{ minWidth: 36, minHeight: 36 }}
-            aria-label={t('common:mobile_header.open_menu')}
+            className="h-[var(--touch-target-size)] w-[var(--touch-target-size)] justify-center rounded-full border-[color:var(--button-plain-border)] bg-card/85 text-muted-foreground shadow-sm shadow-black/5 hover:bg-card hover:text-foreground active:bg-[var(--button-plain-active-bg)] lg:h-[var(--button-icon-size)] lg:w-[var(--button-icon-size)]"
+            aria-label="展开侧边栏"
           >
-            <Menu style={{ width: 20, height: 20, minWidth: 20, minHeight: 20 }} />
+            <List size={21} weight="regular" />
           </NotionButton>
         )}
         {showBackButton && (

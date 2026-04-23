@@ -15,6 +15,7 @@
   /* Desktop shell surfaces */
   --interactive-hover: #E9E9E9;
   --interactive-selected: #E9E9E9;
+  --overlay: rgba(248, 248, 244, 0.78);
   --sidebar-hover: #F9F9F9;
   --sidebar: #F3F3F3;
   --sidebar-foreground: oklch(0.29 0.014 264.2);
@@ -142,6 +143,7 @@
 :root.dark {
   --interactive-hover: rgba(255, 255, 255, 0.08);
   --interactive-selected: rgba(255, 255, 255, 0.14);
+  --overlay: rgba(27, 27, 25, 0.84);
   --sidebar-hover: #2A2A2A;
   --sidebar: #000000;
   --sidebar-foreground: #FFFFFF;
@@ -161,4 +163,10 @@
   --button-prominent-hover-bg: color-mix(in oklab, hsl(var(--primary)) 78%, hsl(var(--background)) 22%);
   --button-prominent-active-bg: color-mix(in oklab, hsl(var(--primary)) 68%, hsl(var(--background)) 32%);
   --button-prominent-border: color-mix(in oklab, hsl(var(--primary)) 40%, hsl(var(--border)) 60%);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :where(:root) {
+    --overlay: color-mix(in hsl, hsl(var(--background)) 82%, hsl(var(--foreground)) 18%);
+  }
 }

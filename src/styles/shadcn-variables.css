@@ -12,12 +12,19 @@
   --size-shell-window-control: 34px;
   --size-shell-touch-target: 36px;
   --size-shell-touch-target-lg: 40px;
+  --control-height-compact: 32px;
+  --control-height-touch: 44px;
+  --touch-target-size: var(--control-height-touch);
 
   --space-shell-layout-gap: 14px;
   --space-shell-section-gap: 18px;
   --space-shell-control-gap: 2px;
   --button-icon-size: 2rem;
   --button-radius: 9px;
+  --button-plain-border: transparent;
+  --button-plain-bg: transparent;
+  --button-plain-hover-bg: var(--button-utility-hover);
+  --button-plain-active-bg: var(--button-utility-active);
   
   /* =========================================
      字体系统 (Notion-inspired)

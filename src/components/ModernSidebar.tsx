@@ -771,7 +771,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
         <div
           aria-hidden={!isExpanded}
           className={cn(
-            'space-y-0.5 overflow-hidden',
+            'space-y-0.5 overflow-hidden pl-4',
             !isExpanded && 'pointer-events-none'
           )}
           role="list"
@@ -840,7 +840,18 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                   dragOverRecentGroupId === group.id && draggedRecentGroupId !== group.id && 'bg-[color:var(--sidebar-quiet-hover)] ring-1 ring-black/8'
                 )}
                 leftSlot={renderRecentGroupIcon(group)}
-                rightSlot={quickAction}
+                rightSlot={
+                  <span className="flex shrink-0 items-center gap-1.5 text-[color:var(--shell-navigation-muted)]">
+                    {quickAction}
+                    <ChevronRight
+                      className={cn(
+                        'size-3 transition-transform duration-150 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none',
+                        isExpanded && 'rotate-90'
+                      )}
+                      strokeWidth={2.25}
+                    />
+                  </span>
+                }
               >
                 <SidebarRowLabel>{group.label}</SidebarRowLabel>
               </SidebarRow>

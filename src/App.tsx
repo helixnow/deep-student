@@ -6,11 +6,12 @@ import { useTranslation } from 'react-i18next';
 // getCurrentWebviewWindow 已无使用（2026-02 清理）
 import { invoke } from '@tauri-apps/api/core';
 // 🚀 性能优化：Settings, Dashboard, SOTADashboard 改为懒加载
-import { ChevronLeft, ChevronRight, Terminal, AlertTriangle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Terminal, AlertTriangle, X } from 'lucide-react';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/shad/Sheet';
 import { useUIStore } from '@/stores/uiStore';
 
 // 🚀 性能优化：DataImportExport, ImportConversationDialog 改为懒加载
@@ -23,7 +24,7 @@ import { useWindowDrag } from './hooks/useWindowDrag';
 import { ModernSidebar } from './components/ModernSidebar';
 import { WindowControls } from './components/WindowControls';
 import { useFinderStore } from './components/learning-hub/stores/finderStore';
-import { MobileLayoutProvider, BottomTabBar, MobileHeaderProvider, UnifiedMobileHeader, MobileHeaderActiveViewSync } from '@/components/layout';
+import { MobileLayoutProvider, MobileHeaderProvider, UnifiedMobileHeader, MobileHeaderActiveViewSync, MOBILE_APP_NAVIGATE_EVENT } from '@/components/layout';
 import { GlobalPomodoroWidget } from '@/components/pomodoro/GlobalPomodoroWidget';
 // 🚀 性能优化：IrecServiceSwitcher, IrecGraphFlow, IrecGraphFlowDemo, CrepeDemoPage, ChatV2IntegrationTest, BridgeToIrec 改为懒加载
 import { TauriAPI } from './utils/tauriApi';
@@ -501,7 +502,7 @@ function App() {
   useEffect(() => { checkAgreement(); }, [checkAgreement]);
 
   // 🌍 国际化支持（提前至此处，后续 useEffect 依赖 t）
-  const { t, i18n } = useTranslation(['common', 'analysis', 'sidebar', 'command_palette']);
+  const { t, i18n } = useTranslation(['common', 'analysis', 'sidebar', 'command_palette', 'settings']);
   const updater = useAppUpdater();
 
   // 🆕 维护模式：从 store 读取全局状态
@@ -662,6 +663,8 @@ function App() {
   }) as React.CSSProperties, [desktopNavigationWidth, shellSidebarWidth, topbarTopMargin]);
   const [templateManagementRefreshTick, setTemplateManagementRefreshTick] = useState(0);
   const currentViewRef = useRef<CurrentView>('chat-v2');
+  const isSmallScreenRef = useRef(isSmallScreen);
+  const [mobileSettingsSheetOpen, setMobileSettingsSheetOpen] = useState(false);
   const viewSwitchStartRef = useRef<{ from: CurrentView; to: CurrentView; startTime: number } | null>(null);
   
   // 🚀 性能优化：追踪已访问的页面，只渲染访问过的页面
@@ -670,11 +673,27 @@ function App() {
     () => new Map<CurrentView, number>([['chat-v2', Date.now()]])
   );
 
+  useEffect(() => {
+    isSmallScreenRef.current = isSmallScreen;
+    if (!isSmallScreen) {
+      setMobileSettingsSheetOpen(false);
+    }
+  }, [isSmallScreen]);
+
   // 包装 setCurrentView，添加视图切换追踪 + LRU 淘汰
   const setCurrentView = useCallback((newView: CurrentView | ((prev: CurrentView) => CurrentView)) => {
     const prevView = currentViewRef.current;
     const rawTargetView = typeof newView === 'function' ? newView(prevView) : newView;
     const targetView = canonicalizeView(rawTargetView);
+
+    if (isSmallScreenRef.current && targetView === 'settings') {
+      setMobileSettingsSheetOpen(true);
+      return;
+    }
+
+    if (isSmallScreenRef.current) {
+      setMobileSettingsSheetOpen(false);
+    }
 
     if (targetView !== prevView) {
       const startTime = performance.now();
@@ -1312,6 +1331,17 @@ function App() {
     setCurrentView(newView);
   }, [setCurrentView]);
 
+  useEffect(() => {
+    const handleMobileSidebarNavigate = (event: Event) => {
+      const view = (event as CustomEvent<{ view?: CurrentView }>).detail?.view;
+      if (!view) return;
+      handleViewChange(view);
+    };
+
+    window.addEventListener(MOBILE_APP_NAVIGATE_EVENT, handleMobileSidebarNavigate);
+    return () => window.removeEventListener(MOBILE_APP_NAVIGATE_EVENT, handleMobileSidebarNavigate);
+  }, [handleViewChange]);
+
   // 历史管理已迁移到 useNavigationHistory Hook
 
   // 开发者工具快捷键支持 (仅生产模式，仅 Ctrl+Shift+I / Cmd+Alt+I)
@@ -1718,6 +1748,16 @@ function App() {
     </Suspense>
   ), [setCurrentView]);
 
+  const closeMobileSettingsSheet = useCallback(() => {
+    setMobileSettingsSheetOpen(false);
+  }, []);
+
+  const mobileSettingsSheetContent = useMemo(() => (
+    <Suspense fallback={<PageLoadingFallback />}>
+      <LazySettings onBack={closeMobileSettingsSheet} mobilePresentation="sheet" />
+    </Suspense>
+  ), [closeMobileSettingsSheet]);
+
   const taskDashboardContent = useMemo(() => (
     <Suspense fallback={<PageLoadingFallback />}>
       <TaskDashboardPage
@@ -1901,7 +1941,10 @@ function App() {
           ) : null}
 
           <div
-            className="desktop-shell-header-cell desktop-shell-header-cell--nav flex min-w-0 items-center justify-end overflow-visible px-4"
+            className={cn(
+              'desktop-shell-header-cell relative z-10 flex min-w-0 items-center justify-end overflow-visible',
+              leftPanelCollapsed ? 'px-0' : 'desktop-shell-header-cell--nav px-4'
+            )}
           >
             <div
               className="desktop-shell-header-hotzone flex min-w-0 items-center justify-end"
@@ -1923,7 +1966,7 @@ function App() {
           </div>
 
           <div
-            className="desktop-shell-header-cell flex min-w-0 items-center justify-between px-5 transition-[padding-left] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none"
+            className="desktop-shell-header-cell desktop-shell-header-cell--workspace relative z-10 flex min-w-0 items-center justify-between px-5 transition-[padding-left] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none"
             style={{ paddingLeft: `${20 + desktopTitlebarLeadingInset}px` }}
           >
             <div
@@ -2045,7 +2088,7 @@ function App() {
 
               {renderViewLayer('dashboard', dashboardContent, 'overflow-hidden')}
 
-              {renderViewLayer('settings', settingsContent, 'overflow-hidden')}
+              {!isSmallScreen && renderViewLayer('settings', settingsContent, 'overflow-hidden')}
 
               {/* 🎯 Phase 5 清理：mistake-detail 视图已移除，统一由 ChatViewWithSidebar 处理 */}
               {/* 🎯 2026-01: llm-usage-stats 视图已移除，统计数据已整合到 DataStats 页面 */}
@@ -2092,13 +2135,42 @@ function App() {
           </main>
         </div>
 
-        {/* 移动端：底部导航 */}
         {isSmallScreen && (
-          <BottomTabBar
-            currentView={currentView}
-            onViewChange={handleViewChange}
-          />
+          <Sheet open={mobileSettingsSheetOpen} onOpenChange={setMobileSettingsSheetOpen}>
+            <SheetContent
+              side="bottom"
+              data-slot="mobile-settings-sheet"
+              overlayClassName="bg-[rgba(17,17,17,0.4)]"
+              hideCloseButton
+              className="flex h-[min(86dvh,calc(100dvh-0.5rem))] max-h-[calc(100dvh-0.5rem)] flex-col overflow-hidden rounded-b-none rounded-t-[24px] border-x-0 border-b-0 border-t border-[#E0E3EA] bg-[#FFFFFF] p-0 text-[#111111] shadow-[0_-12px_34px_rgba(17,17,17,0.10)] duration-200 ease-out"
+            >
+              <div className="flex h-7 shrink-0 items-center justify-center">
+                <div className="h-1 w-12 rounded-full bg-[#C9CDD6]" />
+              </div>
+              <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[rgba(17,17,17,0.08)] px-5 pb-3 pt-1">
+                <div className="min-w-0">
+                  <SheetTitle className="text-[18px] font-semibold leading-6 text-[#111111]">
+                    {t('settings:title', '系统设置')}
+                  </SheetTitle>
+                  <SheetDescription className="mt-1 text-[13px] leading-5 text-[#6E737D]">
+                    {t('settings:study_ui_descriptions.default', '应用偏好与数据选项')}
+                  </SheetDescription>
+                </div>
+                <SheetClose asChild>
+                  <button
+                    type="button"
+                    className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl text-[#5F636D] transition-colors hover:bg-[#F1F3F6] hover:text-[#111111] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6AA5FF]"
+                    aria-label={t('common:actions.close', '关闭')}
+                  >
+                    <X className="h-5 w-5" />
+                  </button>
+                </SheetClose>
+              </div>
+              {mobileSettingsSheetContent}
+            </SheetContent>
+          </Sheet>
         )}
+
       </div>
       {/* CmdK 由 Notes 模块内部管理 */}
       {annProgress.loading && (

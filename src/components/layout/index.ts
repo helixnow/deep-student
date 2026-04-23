@@ -4,6 +4,10 @@
 
 // 移动端布局组件
 export { BottomTabBar, type BottomTabBarProps } from './BottomTabBar';
+export {
+  MobileSidebarNavigation,
+  MOBILE_APP_NAVIGATE_EVENT,
+} from './MobileSidebarNavigation';
 export { MobileSlidingLayout, type ScreenPosition } from './MobileSlidingLayout';
 export {
   MobileLayoutProvider,

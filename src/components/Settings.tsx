@@ -24,7 +24,6 @@ import { UnifiedCodeEditor } from './shared/UnifiedCodeEditor';
 import { isTauriStdioSupported } from '../mcp/tauriStdioTransport';
 import { MacTopSafeDragZone } from './layout/MacTopSafeDragZone';
 import { useMobileHeader, MobileSlidingLayout, type ScreenPosition } from './layout';
-import { MOBILE_LAYOUT } from '../config/mobileLayout';
 import { UnifiedSidebar, UnifiedSidebarHeader, UnifiedSidebarContent, UnifiedSidebarItem } from './ui/unified-sidebar/UnifiedSidebar';
 import useTheme, { type ThemeMode, type ThemePalette } from '../hooks/useTheme';
 import { useBreakpoint } from '../hooks/useBreakpoint';
@@ -147,9 +146,11 @@ const invoke = isTauri ? tauriInvoke : null;
 
 
 
-export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
+export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation = 'page' }) => {
   const { t, i18n } = useTranslation(['settings', 'common']);
   const { isSmallScreen } = useBreakpoint();
+  const isMobileSheetPresentation = isSmallScreen && mobilePresentation === 'sheet';
+  const effectiveMobilePanelMode = isSmallScreen && !isMobileSheetPresentation;
   const {
     mode: themeMode,
     isDarkMode,
@@ -479,10 +480,10 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   const updateIndicatorRafRef = useRef<((tabId: string) => void) | null>(null);
   const { loadConfig, handleSave, saveSingleAssignmentField, handleTabChange } = useSettingsConfig({ setLoading, configLoadedRef, setExtra, setActiveTab, activeTab, modelAssignments, vendors, modelProfiles, resolvedApiConfigs, refreshVendors: undefined, refreshProfiles: undefined, refreshApiConfigsFromBackend, persistAssignments, saving, setSaving, t, config, setConfig, loading, updateIndicatorRaf: (tabId: string) => updateIndicatorRafRef.current?.(tabId) });
 
-  const vendorState = useSettingsVendorState({ resolvedApiConfigs, vendorLoading, vendorSaving, vendors, modelProfiles, modelAssignments, config, t, loading, upsertVendor, upsertModelProfile, deleteModelProfile, persistAssignments, persistModelProfiles, persistVendors, closeRightPanel, refreshVendors: undefined, refreshProfiles: undefined, refreshApiConfigsFromBackend, isSmallScreen, setScreenPosition, setRightPanelType, activeTab, deleteVendorById: deleteVendor });
+  const vendorState = useSettingsVendorState({ resolvedApiConfigs, vendorLoading, vendorSaving, vendors, modelProfiles, modelAssignments, config, t, loading, upsertVendor, upsertModelProfile, deleteModelProfile, persistAssignments, persistModelProfiles, persistVendors, closeRightPanel, refreshVendors: undefined, refreshProfiles: undefined, refreshApiConfigsFromBackend, isSmallScreen: effectiveMobilePanelMode, setScreenPosition, setRightPanelType, activeTab, deleteVendorById: deleteVendor });
   const { selectedVendorId, setSelectedVendorId, vendorModalOpen, setVendorModalOpen, editingVendor, setEditingVendor, isEditingVendor, vendorFormData, setVendorFormData, modelEditor, setModelEditor, inlineEditState, setInlineEditState, isAddingNewModel, setIsAddingNewModel, modelDeleteDialog, setModelDeleteDialog, vendorDeleteDialog, setVendorDeleteDialog, testingApi, vendorBusy, sortedVendors, selectedVendor, selectedVendorModels, profileCountByVendor, selectedVendorIsSiliconflow, testApiConnection, handleOpenVendorModal, handleStartEditVendor, handleCancelEditVendor, handleSaveEditVendor, handleSaveVendorModal, handleDeleteVendor, handleSaveVendorApiKey, handleSaveVendorBaseUrl, handleReorderVendors, confirmDeleteVendor, handleOpenModelEditor, handleSaveModelProfile, handleSaveInlineEdit, handleAddModelInline, handleCloseModelEditor, handleSaveModelProfileAndClose, handleDeleteModelProfile, confirmDeleteModelProfile, handleToggleModelProfile, handleToggleFavorite, handleSiliconFlowConfig, handleAddVendorModels, getAllEnabledApis, getEmbeddingApis, getRerankerApis, toUnifiedModelInfo, handleBatchCreateConfigs, handleApplyPreset, handleBatchConfigsCreated, handleClearVendorApiKey, isSensitiveKey, PasswordInputWithToggle, maskApiKey, apiConfigsForApisTab } = vendorState;
 
-  const mcpSection = useMcpEditorSection({ config, setConfig, isSmallScreen, activeTab, setActiveTab, setScreenPosition, setRightPanelType, t, extra, setExtra, handleSave, normalizedMcpServers, setMcpStatusInfo });
+  const mcpSection = useMcpEditorSection({ config, setConfig, isSmallScreen: effectiveMobilePanelMode, activeTab, setActiveTab, setScreenPosition, setRightPanelType, t, extra, setExtra, handleSave, normalizedMcpServers, setMcpStatusInfo });
   const { mcpPolicyModal, setMcpPolicyModal, mcpPreview, mcpTestStep, stripMcpPrefix, emitChatStreamSettingsUpdate, refreshSnapshots, handleDeleteMcpTool, handleSaveMcpServer, handleTestServer, handleReconnectClient, handleAddMcpTool, handleOpenMcpPolicy, handleClosePreview, renderMcpToolEditor, renderMcpToolEditorEmbedded, renderMcpPolicyEditorEmbedded, mcpCachedDetails, mcpServers, serverStatusMap, lastError, cacheCapacity, lastCacheUpdatedAt, lastCacheUpdatedText, connectedServers, totalServers, totalCachedTools, promptsCount, resourcesCount, cacheUsagePercent, latestPrompts, latestResources, mcpErrors, clearMcpErrors, dismissMcpError, handleRunHealthCheck, handleClearCaches, handleRefreshRegistry } = mcpSection;
 
   const handleSaveChatStreamTimeout = useCallback(async () => {
@@ -696,7 +697,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
       <div
         className="h-full flex flex-col bg-background"
         style={{
-          paddingBottom: `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${MOBILE_LAYOUT.bottomTabBar.defaultHeight}px)`,
+          paddingBottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
         }}
       >
         <VendorConfigModal
@@ -913,6 +914,24 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   ]);
 
   if (loading) {
+    if (isMobileSheetPresentation) {
+      return (
+        <div
+          data-slot="mobile-settings-sheet-real-content"
+          className="flex min-h-0 flex-1 flex-col bg-[#FFFFFF] text-[#111111]"
+        >
+          <div className="flex gap-2 overflow-hidden border-b border-[#ECEEF3] px-5 py-3">
+            {[1, 2, 3].map((i) => (
+              <div key={i} className="h-11 w-24 shrink-0 rounded-[14px] bg-[#EEF0F4] animate-pulse" />
+            ))}
+          </div>
+          <div className="flex flex-1 items-center justify-center text-sm text-[#6E737D]">
+            {t('settings:loading')}
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="settings absolute inset-0 flex flex-row overflow-hidden bg-background">
         <MacTopSafeDragZone className="settings-top-safe-drag-zone" />
@@ -941,7 +960,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
   // 渲染侧边栏内容 - 提取为独立组件
   const renderSettingsSidebar = () => (
     <SettingsSidebar
-      isSmallScreen={isSmallScreen}
+      isSmallScreen={effectiveMobilePanelMode}
       globalLeftPanelCollapsed={globalLeftPanelCollapsed}
       sidebarSearchQuery={sidebarSearchQuery}
       setSidebarSearchQuery={setSidebarSearchQuery}
@@ -956,9 +975,50 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     />
   );
 
+  const renderSettingsSheetTabRail = () => (
+    <div className="shrink-0 border-b border-[#ECEEF3] bg-[#FFFFFF] py-2">
+      <div className="flex snap-x gap-2 overflow-x-auto px-5 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
+        {sidebarNavItems.map((item) => {
+          const Icon = item.icon;
+          const isActive = activeTab === item.value;
+
+          return (
+            <button
+              key={item.value}
+              ref={(el) => {
+                if (el) tabsRef.current.set(item.value, el);
+                else tabsRef.current.delete(item.value);
+              }}
+              type="button"
+              onClick={() => setActiveTab(item.value)}
+              className={cn(
+                "inline-flex min-h-11 shrink-0 snap-start items-center gap-2 rounded-[14px] px-3.5 text-sm font-medium transition-colors",
+                isActive
+                  ? "bg-[#EEF0F4] text-[#111111]"
+                  : "text-[#5F636D] hover:bg-[#F6F7FA] hover:text-[#111111]"
+              )}
+              aria-current={isActive ? 'page' : undefined}
+            >
+              <Icon className="h-4 w-4 shrink-0" />
+              <span className="whitespace-nowrap">{item.label}</span>
+            </button>
+          );
+        })}
+      </div>
+    </div>
+  );
+
   // 渲染主内容区域
-  const renderSettingsMainContent = () => (
-    <div id="settings-main-content" className="study-shell-pane flex-1 min-w-0 h-full flex flex-col overflow-hidden max-w-full bg-background relative">
+  const renderSettingsMainContent = ({ sheetMode = false }: { sheetMode?: boolean } = {}) => (
+    <div
+      id="settings-main-content"
+      className={cn(
+        "study-shell-pane flex-1 min-w-0 h-full flex flex-col overflow-hidden max-w-full bg-background relative",
+        sheetMode && "bg-[#FFFFFF] text-[#111111]"
+      )}
+      data-slot={sheetMode ? 'mobile-settings-sheet-content' : undefined}
+    >
+        {!sheetMode && (
         <div className="study-shell-toolbar shrink-0 px-6 py-5 sm:px-8">
           <div className="mx-auto w-full max-w-[72rem] text-left">
             <p className="text-[11px] font-normal text-muted-foreground">
@@ -972,7 +1032,20 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             </p>
           </div>
         </div>
-        <CustomScrollArea className="flex-1 w-full max-w-full overflow-x-hidden" viewportClassName={cn("px-6 py-6 sm:px-8 sm:py-7", isSmallScreen && "px-4 py-3 pb-20")} trackOffsetTop={16} trackOffsetBottom={16} trackOffsetRight={0} style={{ textAlign: 'left' }}>
+        )}
+        <CustomScrollArea
+          className="flex-1 w-full max-w-full overflow-x-hidden"
+          viewportClassName={cn(
+            sheetMode
+              ? "px-5 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4"
+              : "px-6 py-6 sm:px-8 sm:py-7",
+            effectiveMobilePanelMode && !sheetMode && "px-4 py-3 pb-20"
+          )}
+          trackOffsetTop={16}
+          trackOffsetBottom={16}
+          trackOffsetRight={0}
+          style={{ textAlign: 'left' }}
+        >
           <div className="mx-auto w-full max-w-[72rem]">
             <div className="space-y-6">
         {/* API配置管理 */}
@@ -1018,7 +1091,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             handleBatchConfigsCreated={handleBatchConfigsCreated}
             onReorderVendors={handleReorderVendors}
             onAddVendorModels={handleAddVendorModels}
-            isSmallScreen={isSmallScreen}
+            isSmallScreen={effectiveMobilePanelMode}
           />
         )}
 
@@ -1443,7 +1516,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
           <div
             className="h-full flex flex-col bg-background"
             style={{
-              paddingBottom: `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${MOBILE_LAYOUT.bottomTabBar.defaultHeight}px)`,
+              paddingBottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
             }}
           >
             <ShadApiEditModal
@@ -1479,6 +1552,91 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
     }
   };
 
+  if (isMobileSheetPresentation) {
+    return (
+      <div
+        data-slot="mobile-settings-sheet-real-content"
+        className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#FFFFFF] text-[#111111] [--background:0_0%_100%] [--border:220_13%_90%] [--card:0_0%_100%] [--foreground:0_0%_7%] [--muted:220_14%_96%] [--popover:0_0%_100%]"
+      >
+        <UnifiedErrorHandler errors={mcpErrors} onDismiss={dismissMcpError} onClearAll={clearMcpErrors} />
+        {renderSettingsSheetTabRail()}
+        {renderSettingsMainContent({ sheetMode: true })}
+
+        {modelEditor && (
+          <ShadApiEditModal
+            api={modelEditor.api}
+            onSave={handleSaveModelProfile}
+            onCancel={() => setModelEditor(null)}
+            hideConnectionFields
+            lockedVendorInfo={{
+              name: modelEditor.vendor.name,
+              baseUrl: modelEditor.vendor.baseUrl,
+              providerType: modelEditor.vendor.providerType,
+            }}
+          />
+        )}
+        <VendorConfigModal
+          open={vendorModalOpen}
+          vendor={editingVendor}
+          onClose={() => {
+            setVendorModalOpen(false);
+            setEditingVendor(null);
+          }}
+          onSave={handleSaveVendorModal}
+        />
+        <NotionAlertDialog
+          open={Boolean(modelDeleteDialog)}
+          onOpenChange={open => { if (!open) setModelDeleteDialog(null); }}
+          title={t('settings:vendor_panel.delete_model_title')}
+          description={t('settings:vendor_panel.delete_model_desc')}
+          confirmText={t('common:actions.delete')}
+          cancelText={t('common:actions.cancel')}
+          confirmVariant="danger"
+          onConfirm={confirmDeleteModelProfile}
+        >
+          {modelDeleteDialog?.referencingKeys.length ? (
+            <p className="text-sm text-muted-foreground">
+              {t('settings:common_labels.confirm_delete_api_with_assignments', {
+                count: modelDeleteDialog.referencingKeys.length,
+              })}
+            </p>
+          ) : (
+            <p className="text-sm text-muted-foreground">{t('settings:common_labels.confirm_delete_api')}</p>
+          )}
+        </NotionAlertDialog>
+        <NotionAlertDialog
+          open={Boolean(vendorDeleteDialog)}
+          onOpenChange={open => { if (!open) setVendorDeleteDialog(null); }}
+          title={t('settings:vendor_panel.delete_vendor_title')}
+          description={t('settings:vendor_panel.delete_vendor_desc')}
+          confirmText={t('common:actions.delete')}
+          cancelText={t('common:actions.cancel')}
+          confirmVariant="danger"
+          onConfirm={confirmDeleteVendor}
+        >
+          {vendorDeleteDialog && (
+            <p className="text-sm text-muted-foreground">{t('settings:vendor_panel.confirm_delete', { name: vendorDeleteDialog.name })}</p>
+          )}
+        </NotionAlertDialog>
+
+        <NotionDialog open={showAppMenuDemo} onOpenChange={setShowAppMenuDemo} maxWidth="max-w-4xl">
+          <NotionDialogHeader>
+            <NotionDialogTitle className="flex items-center gap-2">
+              <Layers className="h-5 w-5" />
+              {t('acknowledgements.ui_components.app_menu')}
+            </NotionDialogTitle>
+            <NotionDialogDescription>
+              {t('acknowledgements.ui_components.app_menu_desc')}
+            </NotionDialogDescription>
+          </NotionDialogHeader>
+          <NotionDialogBody nativeScroll>
+            <AppMenuDemo />
+          </NotionDialogBody>
+        </NotionDialog>
+      </div>
+    );
+  }
+
   if (isSmallScreen) {
     return (
       <div className="study-shell-page settings absolute inset-0 flex flex-col overflow-hidden bg-background">
@@ -1490,7 +1648,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack }) => {
             <div
               className="h-full flex flex-col bg-background"
               style={{
-                paddingBottom: `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${MOBILE_LAYOUT.bottomTabBar.defaultHeight}px)`,
+                paddingBottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
               }}
             >
               {renderSettingsSidebar()}

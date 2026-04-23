@@ -8,7 +8,8 @@
 import React, { type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { ChevronLeft, Menu } from 'lucide-react';
+import { List } from '@phosphor-icons/react';
+import { ChevronLeft } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
 
 export interface MobileHeaderProps {
@@ -81,11 +82,10 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
             variant="ghost"
             size="icon"
             onClick={onMenuClick}
-            className="h-9 w-9 -ml-1"
-            style={{ minWidth: 36, minHeight: 36 }}
-            aria-label={t('common:mobile_header.menu')}
+            className="h-[var(--touch-target-size)] w-[var(--touch-target-size)] justify-center rounded-full border-[color:var(--button-plain-border)] bg-card/85 text-muted-foreground shadow-sm shadow-black/5 hover:bg-card hover:text-foreground active:bg-[var(--button-plain-active-bg)] lg:h-[var(--button-icon-size)] lg:w-[var(--button-icon-size)]"
+            aria-label="展开侧边栏"
           >
-            <Menu style={{ width: 20, height: 20, minWidth: 20, minHeight: 20 }} />
+            <List size={21} weight="regular" />
           </NotionButton>
         )}
       </div>

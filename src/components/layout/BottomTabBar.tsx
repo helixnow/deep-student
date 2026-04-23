@@ -22,6 +22,7 @@ export interface BottomTabBarProps {
   onViewChange: (view: CurrentView) => void;
   className?: string;
   showLabels?: boolean;
+  hidden?: boolean;
 }
 
 export const BottomTabBar: React.FC<BottomTabBarProps> = ({
@@ -29,11 +30,12 @@ export const BottomTabBar: React.FC<BottomTabBarProps> = ({
   onViewChange,
   className,
   showLabels = true,
+  hidden = false,
 }) => {
   const { t } = useTranslation(['sidebar', 'common']);
 
   const mobileLayout = useMobileLayoutSafe();
-  const isHidden = mobileLayout?.isFullscreenContent ?? false;
+  const isHidden = hidden || (mobileLayout?.isFullscreenContent ?? false);
   const barHeight = getBottomTabBarHeight(showLabels);
 
   const allNavItems = useMemo(() => createNavItems(t), [t]);
