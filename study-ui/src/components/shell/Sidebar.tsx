@@ -28,6 +28,7 @@ import {
 } from "./sidebar-settings";
 
 type SidebarProps = {
+  className?: string;
   titlebarMode: TitlebarMode;
   currentMode: "app" | "settings";
   isSidebarVisible: boolean;
@@ -47,6 +48,7 @@ type SidebarProps = {
 
 export function Sidebar({
   activeSettingsTab,
+  className,
   closeOnSelect = false,
   currentMode,
   folderItems,
@@ -140,6 +142,7 @@ export function Sidebar({
         "relative z-20 flex h-full w-68 shrink-0 flex-col overflow-hidden text-sidebar-foreground",
         getSidebarSurfaceClass(windowBackgroundPreference),
         isSidebarVisible && !isSidebarClosing ? "pointer-events-auto" : "pointer-events-none",
+        className,
       )}
     >
       <div className="flex h-full flex-col">

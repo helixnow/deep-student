@@ -313,13 +313,14 @@ export function AppChrome({
               }
             }}
           >
-            <SheetContent side="left" className="w-[min(92vw,19rem)] border-r p-0">
+            <SheetContent side="left" className="w-[min(92vw,19rem)] border-r p-0 [&>button]:hidden">
               <SheetTitle className="sr-only">侧边栏</SheetTitle>
               <SheetDescription className="sr-only">
                 移动端侧边栏，可切换对话、学习资源和设置。
               </SheetDescription>
               <Sidebar
                 activeSettingsTab={activeSettingsTab}
+                className="w-full"
                 closeOnSelect={shouldRenderDrawerSidebar}
                 currentMode={currentMode}
                 folderItems={folderItems}

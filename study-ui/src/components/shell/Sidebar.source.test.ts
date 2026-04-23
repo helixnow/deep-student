@@ -293,7 +293,10 @@ test("sidebar touch targets stay at least 44px tall on compact screens", () => {
 test("sidebar width stays one notch tighter than the earlier 280px rail", () => {
   const source = readFileSync(sidebarPath, "utf8");
 
+  assert.match(source, /className\?: string;/u);
   assert.match(source, /w-68 shrink-0/u);
+  assert.match(source, /className,\s*$/mu);
+  assert.match(source, /getSidebarSurfaceClass\(windowBackgroundPreference\),[\s\S]*className,/u);
   assert.doesNotMatch(source, /w-70 shrink-0/u);
 });
 

@@ -175,9 +175,10 @@ test("compact viewports present the sidebar through the shared sheet drawer", ()
   );
   assert.match(source, /\{shouldRenderDrawerSidebar \? \(/u);
   assert.match(source, /<Sheet[\s\S]*open=\{shouldRenderDrawerSidebar && isSidebarVisible\}/u);
-  assert.match(source, /<SheetContent side="left" className="w-\[min\(92vw,19rem\)\] border-r p-0"/u);
+  assert.match(source, /<SheetContent side="left" className="w-\[min\(92vw,19rem\)\] border-r p-0 \[&>button\]:hidden"/u);
   assert.match(source, /<SheetTitle className="sr-only">侧边栏<\/SheetTitle>/u);
   assert.match(source, /<SheetDescription className="sr-only">[\s\S]*移动端侧边栏/u);
+  assert.match(source, /<Sidebar[\s\S]*className="w-full"[\s\S]*closeOnSelect=\{shouldRenderDrawerSidebar\}/u);
   assert.equal(closeOnSelectContracts.length, 2);
 });
 
