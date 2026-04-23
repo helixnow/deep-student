@@ -296,3 +296,10 @@ aurora-blue / lavender-violet / forest-green / sunset-orange / rose-pink / teal-
 
 - 环境变量：使用 `.env.local`（不提交），前端仅暴露 `VITE_` 前缀变量。
 - Tauri：修改 `src-tauri` 配置前请评估权限与打包影响；避免在渲染进程存放敏感信息。
+
+## GSD 项目上下文
+
+- 当前 GSD 项目文档位于 `.planning/`。
+- 当前目标：在不复制三套 UI 的前提下，完成 `study-ui` 的 phone / tablet / desktop 响应式适配。
+- 下一步优先阅读：`.planning/PROJECT.md`、`.planning/REQUIREMENTS.md`、`.planning/ROADMAP.md`。
+- 执行顺序：先做响应式环境与 layout policy，再做 root dataset/token，再改 shell/sidebar，随后改 ThreadCanvas/SettingsPanel，最后统一触控尺寸和验收。

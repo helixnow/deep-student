@@ -1,0 +1,122 @@
+# Requirements: study-ui Mobile Adaptation
+
+**Defined:** 2026-04-23
+**Core Value:** One shared UI architecture must feel usable on phone, tablet, and desktop while preserving the existing desktop Tauri shell behavior.
+
+## v1 Requirements
+
+### Responsive Policy
+
+- [ ] **RESP-01**: The app exposes a single responsive environment model that classifies `phone < 640`, `tablet 640-1023`, and `desktop >= 1024`.
+- [ ] **RESP-02**: The app exposes `isCompact` for widths below `1024` and uses it for the initial compact-vs-desktop interaction split.
+- [ ] **RESP-03**: Breakpoint boundary behavior is covered by tests for `639`, `640`, `767`, `768`, `1023`, and `1024` viewport widths.
+- [ ] **RESP-04**: App layout decisions are centralized in a layout policy that outputs at least `formFactor`, `isCompact`, `sidebarMode`, and `density`.
+
+### Shell And Sidebar
+
+- [ ] **SHELL-01**: The shell root exposes stable datasets for form factor, sidebar mode, density, and related responsive state.
+- [ ] **SHELL-02**: Mobile drawer visibility and desktop/sidebar collapsed state are separate state concepts.
+- [ ] **SHELL-03**: Phone and compact tablet navigation uses the existing `Sheet`/Drawer sidebar rather than a docked desktop sidebar.
+- [ ] **SHELL-04**: Desktop navigation remains docked and preserves existing Tauri titlebar/window behavior.
+- [ ] **SHELL-05**: Compact navigation closes after a user selects a navigation item when appropriate.
+- [ ] **SHELL-06**: Mobile/tablet topbar avoids desktop-only status noise while keeping the core navigation and title actions available.
+
+### Layout Tokens
+
+- [ ] **TOKN-01**: `src/styles/app.css` defines reusable layout tokens for page gutter, workspace width, composer width, sidebar width/mode, safe-area offsets, and touch target size.
+- [ ] **TOKN-02**: Root datasets override the same token names per form factor instead of introducing duplicate mobile/tablet token families.
+- [ ] **TOKN-03**: Components consume layout tokens for content width, gutters, composer placement, and safe-area spacing instead of repeating hard-coded responsive classes.
+
+### Thread Canvas
+
+- [ ] **THRD-01**: `ThreadCanvas` uses `--workspace-max-width` and `--composer-max-width` rather than hard-coded `max-w-[44rem]`.
+- [ ] **THRD-02**: `ThreadCanvas` replaces desktop-first `px-4 md:px-8` spacing with token-driven inline and block spacing.
+- [ ] **THRD-03**: The composer consumes safe-area tokens so it remains visible and usable on mobile and tablet WebView surfaces.
+- [ ] **THRD-04**: The mobile composer prioritizes text input and send action while moving secondary actions into a touch-friendly layout.
+- [ ] **THRD-05**: Thread canvas source tests assert safe-area/token usage and prevent reintroducing desktop-only width hard-coding.
+
+### Settings Panel
+
+- [ ] **SETT-01**: `SettingsPanel` remains one shared page and does not fork into a separate mobile settings page.
+- [ ] **SETT-02**: Dense settings grids and pseudo-tables degrade under desktop width into card or definition-list style layouts.
+- [ ] **SETT-03**: Tabs use equal-width or scrollable mobile-safe layouts depending on item count.
+- [ ] **SETT-04**: Switch settings are wrapped in rows or labels that make the full setting row touch-friendly.
+- [ ] **SETT-05**: Settings scroll padding and page gutters follow shell/layout tokens and safe-area values.
+- [ ] **SETT-06**: Settings tests assert small-screen single-column behavior and dense-region degradation.
+
+### Controls And Verification
+
+- [ ] **CTRL-01**: Button, shell button, input, textarea, switch, and composer controls maintain at least `44px` touch targets on phone/tablet.
+- [ ] **CTRL-02**: Desktop controls can remain compact where appropriate without reducing phone/tablet hit targets.
+- [ ] **VERF-01**: `npm run lint` passes after implementation.
+- [ ] **VERF-02**: `npm run build` passes after implementation.
+- [ ] **VERF-03**: Targeted source/unit tests pass for responsive policy, shell, thread canvas, settings panel, and existing app-shell behavior.
+- [ ] **VERF-04**: Manual viewport checks cover `390x844`, `768x1024`, `834x1194`, `1024x768`, and `1280x800`.
+- [ ] **VERF-05**: Manual desktop checks confirm Windows/macOS titlebar, drag region, window controls, resize handles, and minimum window behavior are not regressed.
+
+## v2 Requirements
+
+### Tablet Enhancements
+
+- **TABL-01**: Tablet landscape can use a narrow rail/sidebar mode once compact drawer behavior is stable.
+- **TABL-02**: Tablet orientation changes can preserve navigation state intelligently across portrait/landscape transitions.
+
+### Keyboard And Device Signals
+
+- **KEYB-01**: Mobile keyboard visibility can become an explicit environment signal when real-device validation requires finer composer behavior.
+- **KEYB-02**: Pointer and hover capability can refine density beyond viewport width where beneficial.
+
+## Out of Scope
+
+| Feature | Reason |
+|---------|--------|
+| Separate mobile app shell | Increases maintenance cost and conflicts with the chosen single-architecture strategy. |
+| New UI component library | Existing Radix/shadcn primitives cover the required patterns. |
+| CSS-in-JS migration | Project styling is token-driven Tailwind/CSS variables. |
+| Product feature changes outside UI adaptation | Current milestone is responsive shell/content usability only. |
+| Complex motion system | Structural layout and touch usability are the goal; animation must remain restrained. |
+
+## Traceability
+
+| Requirement | Phase | Status |
+|-------------|-------|--------|
+| RESP-01 | Phase 1 | Pending |
+| RESP-02 | Phase 1 | Pending |
+| RESP-03 | Phase 1 | Pending |
+| RESP-04 | Phase 1 | Pending |
+| SHELL-01 | Phase 2 | Pending |
+| SHELL-02 | Phase 2 | Pending |
+| SHELL-03 | Phase 3 | Pending |
+| SHELL-04 | Phase 3 | Pending |
+| SHELL-05 | Phase 3 | Pending |
+| SHELL-06 | Phase 3 | Pending |
+| TOKN-01 | Phase 2 | Pending |
+| TOKN-02 | Phase 2 | Pending |
+| TOKN-03 | Phase 4 | Pending |
+| THRD-01 | Phase 4 | Pending |
+| THRD-02 | Phase 4 | Pending |
+| THRD-03 | Phase 4 | Pending |
+| THRD-04 | Phase 4 | Pending |
+| THRD-05 | Phase 4 | Pending |
+| SETT-01 | Phase 4 | Pending |
+| SETT-02 | Phase 4 | Pending |
+| SETT-03 | Phase 4 | Pending |
+| SETT-04 | Phase 4 | Pending |
+| SETT-05 | Phase 4 | Pending |
+| SETT-06 | Phase 4 | Pending |
+| CTRL-01 | Phase 5 | Pending |
+| CTRL-02 | Phase 5 | Pending |
+| VERF-01 | Phase 5 | Pending |
+| VERF-02 | Phase 5 | Pending |
+| VERF-03 | Phase 5 | Pending |
+| VERF-04 | Phase 5 | Pending |
+| VERF-05 | Phase 5 | Pending |
+
+**Coverage:**
+- v1 requirements: 31 total
+- Mapped to phases: 31
+- Unmapped: 0
+
+---
+*Requirements defined: 2026-04-23*
+*Last updated: 2026-04-23 after initialization*

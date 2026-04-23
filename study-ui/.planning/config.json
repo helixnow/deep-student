@@ -1,0 +1,23 @@
+{
+  "mode": "yolo",
+  "granularity": "coarse",
+  "parallelization": true,
+  "commit_docs": true,
+  "model_profile": "inherit",
+  "workflow": {
+    "research": true,
+    "plan_check": true,
+    "verifier": true,
+    "nyquist_validation": false,
+    "auto_advance": false
+  },
+  "planning": {
+    "sub_repos": []
+  },
+  "runtime": "codex",
+  "notes": {
+    "created_by": "manual gsd-new-project fallback because gsd-sdk is unavailable in PATH",
+    "target_branch": "feat/study-ui-migration",
+    "target_workspace": "/Users/ba7mlv/Documents/Coding/deep-student/.worktrees/study-ui-migration/study-ui"
+  }
+}
