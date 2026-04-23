@@ -6,7 +6,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 
 **Core value:** One shared UI architecture must feel usable on phone, tablet, and desktop while preserving the existing desktop Tauri shell behavior.
 
-**Current focus:** Phase 4 verification, then Phase 5: Touch Targets And Verification
+**Current focus:** Phase 5: Touch Targets And Verification
 
 ## Workflow State
 
@@ -56,6 +56,8 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 - Resume file: `.planning/phases/04-content-surface-adaptation/04-01-PLAN.md`.
 - 2026-04-23: Phase 4 execution complete; code commits `0e24a27`, `3c35e6b`.
 - Summary file: `.planning/phases/04-content-surface-adaptation/04-01-SUMMARY.md`.
+- 2026-04-23: Phase 4 UAT complete with 6/6 automated checks passed and 0 gaps.
+- UAT file: `.planning/phases/04-content-surface-adaptation/04-UAT.md`.
 
 ### Important Decisions
 
@@ -78,8 +80,8 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 | 1 Responsive Policy Foundation | Complete |
 | 2 Root State And Layout Tokens | Complete |
 | 3 Shell And Sidebar Adaptation | Complete |
-| 4 Content Surface Adaptation | Complete |
+| 4 Content Surface Adaptation | Verified |
 | 5 Touch Targets And Verification | Pending |
 
 ---
-*Last updated: 2026-04-23 after Phase 4 execution*
+*Last updated: 2026-04-23 after Phase 4 UAT*
