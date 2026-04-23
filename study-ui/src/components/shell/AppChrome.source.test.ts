@@ -30,7 +30,7 @@ test("main pane exposes a lightweight visible app header instead of only a drag 
 test("app header keeps the title on the left and a dedicated actions group on the right", () => {
   const source = readFileSync(appChromePath, "utf8");
 
-  assert.match(source, /<h1 className="truncate text-sm font-medium text-foreground">/u);
+  assert.match(source, /<h1 className="hidden truncate text-sm font-medium text-foreground sm:block">/u);
   assert.match(source, /data-slot="app-header-actions"/u);
   assert.match(source, /className="pointer-events-auto flex shrink-0 items-center gap-2 text-muted-foreground"/u);
   assert.match(source, /desktopPlatform=\{desktopPlatform\}/u);
@@ -54,6 +54,7 @@ test("compact app header hides desktop status noise while keeping a core action"
   const source = readFileSync(appChromePath, "utf8");
 
   assert.match(source, /const showCompactHeaderActions = isCompactViewport;/u);
+  assert.match(source, /<h1 className="hidden truncate text-sm font-medium text-foreground sm:block">/u);
   assert.match(
     source,
     /\{showCompactHeaderActions \? \(\s*<ShellButton[\s\S]*aria-label="新建对话"[\s\S]*<NotePencil size=\{18\} weight="regular" \/>[\s\S]*<\/ShellButton>\s*\) : null\}/u,
@@ -78,8 +79,8 @@ test("app header stays lightweight without an extra card, divider, or heavy back
   assert.match(source, /<Titlebar[\s\S]*variant="app"/u);
   assert.match(source, /<Titlebar[\s\S]*windowBackgroundPreference=\{windowBackgroundPreference\}/u);
   assert.doesNotMatch(source, /border-b/u);
-  assert.doesNotMatch(source, /bg-card/u);
-  assert.doesNotMatch(source, /shadow-(sm|md|lg|xl)/u);
+  assert.doesNotMatch(source, /bg-card\/96/u);
+  assert.doesNotMatch(source, /shadow-(md|lg|xl)/u);
 });
 
 test("desktop sidebar uses a quiet width transition instead of JS-driven overlay choreography", () => {
@@ -184,7 +185,7 @@ test("non-overlay shells keep a compact in-app sidebar toggle without overlay po
   assert.match(source, /getMacTitlebarControlTopInset/u);
   assert.match(
     source,
-    /const sidebarToggleAccessoryOffset =\s*titlebarMode === "native-transparent" \? getOverlayLeadingInset\(titlebarMode\) : 16;/u,
+    /const sidebarToggleAccessoryOffset =\s*isCompactViewport \? 16 : titlebarMode === "native-transparent" \? getOverlayLeadingInset\(titlebarMode\) : 16;/u,
   );
   assert.match(
     source,
@@ -194,14 +195,30 @@ test("non-overlay shells keep a compact in-app sidebar toggle without overlay po
   assert.doesNotMatch(source, /floatingSidebarTogglePosition/u);
 });
 
+test("compact leading sidebar accessory starts at the mobile edge without the update badge", () => {
+  const source = readFileSync(appChromePath, "utf8");
+  const accessoryStart = source.indexOf('data-slot="compact-leading-sidebar-accessory"');
+  const accessoryEnd = source.indexOf("const sharedTrafficLightsAccessoryContent", accessoryStart);
+
+  assert.notEqual(accessoryStart, -1);
+  assert.notEqual(accessoryEnd, -1);
+
+  const accessoryBlock = source.slice(accessoryStart, accessoryEnd);
+  assert.match(source, /const sidebarToggleAccessoryOffset =\s*isCompactViewport \? 16/u);
+  assert.match(accessoryBlock, /data-slot="compact-leading-sidebar-accessory"/u);
+  assert.match(accessoryBlock, /isCompactViewport && "rounded-full bg-card\/85 shadow-sm shadow-black\/5 hover:bg-card"/u);
+  assert.match(accessoryBlock, /\{isCompactViewport \? <List size=\{21\} weight="regular" \/> : <SidebarDockIcon \/>\}/u);
+  assert.match(accessoryBlock, /\{!isCompactViewport \? <SidebarUpdateBadge className="shrink-0" \/> : null\}/u);
+});
+
 test("macOS traffic lights accessory lives on the shared chrome layer immediately to the right of the lights", () => {
   const source = readFileSync(appChromePath, "utf8");
 
   assert.match(source, /import \{ SidebarUpdateBadge \} from "\.\/SidebarUpdateBadge";/u);
-  assert.match(source, /import \{ NotePencil, Pulse \} from "@phosphor-icons\/react";/u);
+  assert.match(source, /import \{ List, NotePencil, Pulse \} from "@phosphor-icons\/react";/u);
   assert.match(
     source,
-    /const sidebarToggleAccessoryContent = \(\s*<div className="flex items-center gap-1\.5">[\s\S]*<ShellButton[\s\S]*aria-label=\{toggleLabel\}[\s\S]*<SidebarDockIcon \/>[\s\S]*<\/ShellButton>[\s\S]*<SidebarUpdateBadge className="shrink-0" \/>[\s\S]*<\/div>\s*\);/u,
+    /const sidebarToggleAccessoryContent = \(\s*<div data-slot="compact-leading-sidebar-accessory" className="flex items-center gap-1\.5">[\s\S]*<ShellButton[\s\S]*aria-label=\{toggleLabel\}[\s\S]*\{isCompactViewport \? <List size=\{21\} weight="regular" \/> : <SidebarDockIcon \/>\}[\s\S]*<\/ShellButton>[\s\S]*\{!isCompactViewport \? <SidebarUpdateBadge className="shrink-0" \/> : null\}[\s\S]*<\/div>\s*\);/u,
   );
   assert.match(
     source,

@@ -71,6 +71,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 - UAT file: `.planning/phases/05-touch-targets-and-verification/05-UAT.md`.
 - 2026-04-23: Restored the app-mode sidebar footer settings entry after confirming it had been removed by an earlier cleanup test.
 - 2026-04-23: Phase 6 mobile home polish completed for the phone empty state and composer while preserving tablet/desktop ThreadCanvas behavior.
+- 2026-04-23: Phase 6 follow-up polished the phone top-left chrome after visual review: compact now uses an edge-aligned hamburger menu and hides title/update clutter.
 - Summary file: `.planning/phases/06-mobile-home-polish/06-01-SUMMARY.md`.
 - UAT file: `.planning/phases/06-mobile-home-polish/06-UAT.md`.
 
@@ -88,6 +89,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 - Portal-mounted `Sheet` and `Dialog` close controls need explicit viewport classes because they do not inherit the AppChrome root density dataset.
 - Phase 6 mobile landing is phone-only via `sm:hidden`; tablet and desktop use the existing verified empty state and composer via `sm:flex`/`sm:block`.
 - The provided ChatGPT mobile reference is a composition reference only; upgrade/user-plus/account-growth entry points are intentionally excluded.
+- Compact phone chrome should stay as a single left-edge menu affordance; desktop dock/sidebar iconography remains separate.
 
 ### Known Risks
 

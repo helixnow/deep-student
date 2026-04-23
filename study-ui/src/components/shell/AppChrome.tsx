@@ -1,5 +1,5 @@
 import React, { useMemo, useSyncExternalStore } from "react";
-import { NotePencil, Pulse } from "@phosphor-icons/react";
+import { List, NotePencil, Pulse } from "@phosphor-icons/react";
 
 import { useAppSettings } from "@/components/settings/AppSettingsProvider";
 import { useTheme } from "@/components/theme/theme-provider";
@@ -135,7 +135,7 @@ export function AppChrome({
   const settingsScrollPaddingRight = "calc(var(--page-gutter-inline) + var(--layout-safe-area-right))";
   const toggleLabel = isSidebarVisible ? "收起侧边栏" : "展开侧边栏";
   const sidebarToggleAccessoryOffset =
-    titlebarMode === "native-transparent" ? getOverlayLeadingInset(titlebarMode) : 16;
+    isCompactViewport ? 16 : titlebarMode === "native-transparent" ? getOverlayLeadingInset(titlebarMode) : 16;
   const titlebarAccessoryInset =
     sidebarToggleAccessoryOffset + APP_LAYOUT_TOKENS.MAC_TITLE_LEADING_OFFSET_AFTER_TOGGLE;
   const sharedTrafficLightsAccessoryInset =
@@ -146,16 +146,19 @@ export function AppChrome({
     ? APP_LAYOUT_TOKENS.FLOATING_SIDEBAR_WIDTH - sidebarToggleAccessoryOffset - 16
     : sharedTrafficLightsAccessoryInset - sidebarToggleAccessoryOffset;
   const sidebarToggleAccessoryContent = (
-    <div className="flex items-center gap-1.5">
+    <div data-slot="compact-leading-sidebar-accessory" className="flex items-center gap-1.5">
       <ShellButton
         variant="icon"
         onClick={handleToggleSidebar}
-        className="text-muted-foreground hover:text-foreground"
+        className={cn(
+          "text-muted-foreground hover:text-foreground",
+          isCompactViewport && "rounded-full bg-card/85 shadow-sm shadow-black/5 hover:bg-card",
+        )}
         aria-label={toggleLabel}
       >
-        <SidebarDockIcon />
+        {isCompactViewport ? <List size={21} weight="regular" /> : <SidebarDockIcon />}
       </ShellButton>
-      <SidebarUpdateBadge className="shrink-0" />
+      {!isCompactViewport ? <SidebarUpdateBadge className="shrink-0" /> : null}
     </div>
   );
   const sharedTrafficLightsAccessoryContent = (
@@ -344,7 +347,7 @@ export function AppChrome({
                 >
                   <>
                     <div className="flex min-w-0 items-center">
-                      <h1 className="truncate text-sm font-medium text-foreground">
+                      <h1 className="hidden truncate text-sm font-medium text-foreground sm:block">
                         {appHeaderTitle}
                       </h1>
                     </div>

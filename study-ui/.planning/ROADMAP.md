@@ -13,7 +13,7 @@
 | 3 | Shell And Sidebar Adaptation | Make AppChrome/Titlebar/Sidebar work across compact and desktop modes | SHELL-03, SHELL-04, SHELL-05, SHELL-06 | Complete |
 | 4 | Content Surface Adaptation | Make ThreadCanvas and SettingsPanel mobile/tablet-safe through tokens and responsive degradation | TOKN-03, THRD-01, THRD-02, THRD-03, THRD-04, THRD-05, SETT-01, SETT-02, SETT-03, SETT-04, SETT-05, SETT-06 | Verified |
 | 5 | Touch Targets And Verification | Lock controls, tests, build, and manual viewport acceptance | CTRL-01, CTRL-02, VERF-01, VERF-02, VERF-03, VERF-04, VERF-05 | Verified |
-| 6 | Mobile Home Polish | Give phone empty state a ChatGPT-mobile-style landing while preserving tablet/desktop layouts | HOME-01, HOME-02, HOME-03, HOME-04 | Verified |
+| 6 | Mobile Home Polish | Give phone empty state a ChatGPT-mobile-style landing while preserving tablet/desktop layouts | HOME-01, HOME-02, HOME-03, HOME-04, HOME-05 | Verified |
 
 ## Phase 1: Responsive Policy Foundation
 
@@ -167,19 +167,22 @@
 
 **Depends on:** Phase 5
 
-**Requirements:** HOME-01, HOME-02, HOME-03, HOME-04
+**Requirements:** HOME-01, HOME-02, HOME-03, HOME-04, HOME-05
 
 **Primary files:**
 
 - `src/components/content/ThreadCanvas.tsx`
 - `src/components/content/ThreadCanvas.source.test.ts`
+- `src/components/shell/AppChrome.tsx`
+- `src/components/shell/AppChrome.source.test.ts`
 
 **Success criteria:**
 
 1. Phone empty state uses a visual prompt strip, concise centered copy, and one suggestion CTA.
 2. Phone composer becomes a floating single-line pill with 44px add/input/voice/send controls.
-3. Tablet and desktop retain the existing verified `ThreadCanvas` empty state and composer at `sm` and above.
-4. No upgrade, user-plus, account-growth, or unrelated product entry points are introduced.
+3. Phone top-left chrome shows one edge-aligned 44px menu affordance without desktop title/update clutter.
+4. Tablet and desktop retain the existing verified `ThreadCanvas` empty state and composer at `sm` and above.
+5. No upgrade, user-plus, account-growth, or unrelated product entry points are introduced.
 
 ## Requirement Coverage
 

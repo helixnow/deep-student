@@ -60,6 +60,7 @@
 - [x] **HOME-02**: Phone composer uses a single-line floating pill while preserving at least `44px` add/input/voice/send touch targets.
 - [x] **HOME-03**: Tablet and desktop keep the previously verified ThreadCanvas empty state and composer from `640px` upward.
 - [x] **HOME-04**: Mobile home polish does not add upgrade, user-plus, account-growth, or other new product entry points.
+- [x] **HOME-05**: Phone top-left chrome starts from the mobile edge, uses a single 44px menu affordance, and hides desktop title/update clutter.
 
 ## v2 Requirements
 
@@ -122,12 +123,13 @@
 | HOME-02 | Phase 6 | Complete |
 | HOME-03 | Phase 6 | Complete |
 | HOME-04 | Phase 6 | Complete |
+| HOME-05 | Phase 6 | Complete |
 
 **Coverage:**
-- v1 requirements: 35 total
-- Mapped to phases: 35
+- v1 requirements: 36 total
+- Mapped to phases: 36
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-23*
-*Last updated: 2026-04-23 after Phase 6 mobile home polish*
+*Last updated: 2026-04-23 after Phase 6 mobile top-left polish*
