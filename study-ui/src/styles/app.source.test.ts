@@ -173,6 +173,7 @@ test("responsive datasets override the same layout token names instead of creati
   assert.match(source, /\[data-form-factor="phone"\]\s*\{[\s\S]*--page-gutter-inline:\s*1rem;/u);
   assert.match(source, /\[data-form-factor="phone"\]\s*\{[\s\S]*--workspace-max-width:\s*100%;/u);
   assert.match(source, /\[data-form-factor="phone"\]\s*\{[\s\S]*--composer-max-width:\s*calc\(100vw/u);
+  assert.match(source, /\[data-form-factor="phone"\]\s*\{[\s\S]*--composer-bottom-offset:\s*calc\(max\(1\.5rem, var\(--layout-safe-area-bottom\)\) \+ 0\.5rem\);/u);
   assert.match(source, /\[data-form-factor="tablet"\]\s*\{[\s\S]*--page-gutter-inline:\s*1\.5rem;/u);
   assert.match(source, /\[data-form-factor="tablet"\]\s*\{[\s\S]*--workspace-max-width:\s*48rem;/u);
   assert.match(source, /\[data-form-factor="desktop"\]\s*\{[\s\S]*--page-gutter-inline:\s*2rem;/u);

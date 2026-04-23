@@ -120,7 +120,7 @@
   --page-gutter-block: 0.875rem;
   --workspace-max-width: 100%;
   --composer-max-width: calc(100vw - (var(--page-gutter-inline) * 2) - var(--layout-safe-area-left) - var(--layout-safe-area-right));
-  --composer-bottom-offset: calc(0.75rem + var(--layout-safe-area-bottom));
+  --composer-bottom-offset: calc(max(1.5rem, var(--layout-safe-area-bottom)) + 0.5rem);
   --touch-target-size: var(--control-height-touch);
 }
 
