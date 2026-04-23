@@ -208,18 +208,25 @@ test("phone settings are presented as a real sheet instead of replacing the main
   assert.match(source, /<SheetTitle[\s\S]*系统设置[\s\S]*<\/SheetTitle>/u);
   assert.match(source, /<SheetDescription className="text-xs font-medium leading-5 text-\[#5C5C5F\]">[\s\S]*应用偏好与数据选项/u);
   assert.match(source, /<SheetClose asChild>[\s\S]*aria-label="关闭系统设置"[\s\S]*active:scale-\[0\.97\][\s\S]*focus-visible:ring-\[rgba\(0,113,227,0\.5\)\][\s\S]*<X size=\{20\} weight="regular" \/>/u);
-  assert.match(source, /const mobileSettingsSheetTabs = \[[\s\S]*id: "general"[\s\S]*slot: "general"[\s\S]*通用设置/u);
-  assert.match(source, /id: "about"[\s\S]*slot: "account"[\s\S]*账号管理/u);
-  assert.match(source, /id: "advanced"[\s\S]*slot: "data"[\s\S]*数据管理[\s\S]*trailingIcon: <CaretRight size=\{14\} weight="bold" \/>/u);
   assert.match(source, /data-slot="mobile-settings-sheet-scroll"[\s\S]*custom-scrollbar[\s\S]*overflow-y-auto[\s\S]*pb-\[calc\(1\.25rem\+var\(--safe-area-bottom\)\)\]/u);
-  assert.match(source, /data-slot="mobile-settings-sheet-nav"[\s\S]*grid-cols-\[1\.08fr_0\.96fr_1fr\][\s\S]*bg-\[#EEF0F4\]/u);
-  assert.match(source, /mobileSettingsSheetTabs\.map\(\(item\) => \{[\s\S]*activeSettingsTab === item\.id/u);
-  assert.match(source, /data-slot=\{`mobile-settings-sheet-nav-\$\{item\.slot\}`\}/u);
+  assert.match(source, /data-slot="mobile-settings-sheet-nav-rail"[\s\S]*className="relative -mx-5"/u);
+  assert.match(
+    source,
+    /data-slot="mobile-settings-sheet-nav"[\s\S]*aria-label="移动端设置分类"[\s\S]*snap-x[\s\S]*gap-2[\s\S]*overflow-x-auto[\s\S]*px-5[\s\S]*py-1[\s\S]*\[-webkit-overflow-scrolling:touch\][\s\S]*\[scrollbar-width:none\][\s\S]*\[&::-webkit-scrollbar\]:hidden/u,
+  );
+  assert.match(source, /settingsNavItems\.map\(\(item\) => \{[\s\S]*activeSettingsTab === item\.id/u);
+  assert.match(source, /data-slot=\{`mobile-settings-sheet-nav-\$\{item\.id\}`\}/u);
   assert.match(source, /onClick=\{isActiveMobileSettingsTab \? undefined : \(\) => onSelectSettingsTab\(item\.id\)\}/u);
+  assert.match(source, /className=\{cn\([\s\S]*snap-start[\s\S]*shrink-0[\s\S]*rounded-\[14px\][\s\S]*px-3\.5[\s\S]*active:scale-\[0\.97\]/u);
+  assert.match(source, /<span className="flex size-5 items-center justify-center \[&_svg\]:size-4">\{item\.icon\}<\/span>/u);
   assert.match(source, /active:scale-\[0\.97\] focus-visible:ring-2 focus-visible:ring-\[rgba\(0,113,227,0\.5\)\]/u);
-  assert.match(source, /isActiveMobileSettingsTab[\s\S]*\? "bg-white text-\[#111111\] shadow-\[0_1px_2px_rgba\(17,17,17,0\.08\)\]"[\s\S]*: "text-\[#3A3A3C\] hover:bg-white\/55"/u);
+  assert.match(source, /isActiveMobileSettingsTab[\s\S]*\? "border-\[rgba\(0,113,227,0\.28\)\] bg-\[#EAF3FF\] text-\[#0071E3\] shadow-\[0_1px_2px_rgba\(17,17,17,0\.06\)\]"[\s\S]*: "border-\[rgba\(17,17,17,0\.08\)\] bg-white text-\[#3A3A3C\] hover:bg-\[#EEF0F4\]"/u);
+  assert.match(source, /data-slot="mobile-settings-sheet-nav-edge"[\s\S]*bg-gradient-to-l from-white via-white\/85 to-transparent/u);
   assert.match(source, /data-slot="mobile-settings-sheet-real-content"[\s\S]*data-theme="light"[\s\S]*data-window-background="opaque"[\s\S]*\[--background:#F5F5F7\][\s\S]*\[--primary:#0071E3\][\s\S]*\[--ring:rgba\(0,113,227,0\.5\)\][\s\S]*\[--touch-target-size:var\(--control-height-touch\)\][\s\S]*\[--workspace-max-width:100%\][\s\S]*\{settingsContent\}/u);
   assert.match(source, /\[&_input\[type=range\]\]:min-h-11/u);
+  assert.doesNotMatch(source, /mobileSettingsSheetTabs/u);
+  assert.doesNotMatch(source, /账号管理/u);
+  assert.doesNotMatch(source, /数据管理/u);
   assert.doesNotMatch(source, /overlayClassName="bg-\[rgba\(0,0,0,0\.72\)\]"/u);
   assert.doesNotMatch(source, /data-theme="dark"/u);
   assert.doesNotMatch(source, /bg-\[#26272b\]/u);

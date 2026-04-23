@@ -1,12 +1,8 @@
 import React, { useMemo, useRef, useState, useSyncExternalStore } from "react";
 import {
-  CaretRight,
-  Database,
-  GearSix,
   List,
   NotePencil,
   Pulse,
-  User,
   X,
 } from "@phosphor-icons/react";
 
@@ -56,12 +52,6 @@ function SidebarDockIcon() {
     </svg>
   );
 }
-
-const mobileSettingsSheetTabs = [
-  { id: "general", slot: "general", label: "通用设置", icon: <GearSix size={20} weight="regular" /> },
-  { id: "about", slot: "account", label: "账号管理", icon: <User size={20} weight="regular" /> },
-  { id: "advanced", slot: "data", label: "数据管理", icon: <Database size={20} weight="regular" />, trailingIcon: <CaretRight size={14} weight="bold" /> },
-] as const;
 
 type AppChromeProps = {
   desktopPlatform: DesktopPlatform;
@@ -438,35 +428,42 @@ export function AppChrome({
                 data-slot="mobile-settings-sheet-scroll"
                 className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-5 pb-[calc(1.25rem+var(--safe-area-bottom))] pt-4"
               >
-                <nav
-                  data-slot="mobile-settings-sheet-nav"
-                  className="grid grid-cols-[1.08fr_0.96fr_1fr] gap-1 rounded-[14px] bg-[#EEF0F4] p-1"
-                >
-                  {mobileSettingsSheetTabs.map((item) => {
-                    const isActiveMobileSettingsTab = activeSettingsTab === item.id;
+                <div data-slot="mobile-settings-sheet-nav-rail" className="relative -mx-5">
+                  <nav
+                    data-slot="mobile-settings-sheet-nav"
+                    aria-label="移动端设置分类"
+                    className="flex snap-x gap-2 overflow-x-auto px-5 py-1 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                  >
+                    {settingsNavItems.map((item) => {
+                      const isActiveMobileSettingsTab = activeSettingsTab === item.id;
 
-                    return (
-                      <button
-                        key={item.id}
-                        type="button"
-                        data-slot={`mobile-settings-sheet-nav-${item.slot}`}
-                        aria-pressed={isActiveMobileSettingsTab}
-                        onClick={isActiveMobileSettingsTab ? undefined : () => onSelectSettingsTab(item.id)}
-                        className={cn(
-                          "flex min-h-11 min-w-0 items-center justify-center gap-1 rounded-[11px] px-1.5 text-[0.78rem] font-medium tracking-[-0.01em] transition-[background-color,box-shadow,color,transform]",
-                          "active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-[rgba(0,113,227,0.5)]",
-                          isActiveMobileSettingsTab
-                            ? "bg-white text-[#111111] shadow-[0_1px_2px_rgba(17,17,17,0.08)]"
-                            : "text-[#3A3A3C] hover:bg-white/55",
-                        )}
-                      >
-                        {item.icon}
-                        <span className="whitespace-nowrap">{item.label}</span>
-                        {"trailingIcon" in item ? item.trailingIcon : null}
-                      </button>
-                    );
-                  })}
-                </nav>
+                      return (
+                        <button
+                          key={item.id}
+                          type="button"
+                          data-slot={`mobile-settings-sheet-nav-${item.id}`}
+                          aria-pressed={isActiveMobileSettingsTab}
+                          onClick={isActiveMobileSettingsTab ? undefined : () => onSelectSettingsTab(item.id)}
+                          className={cn(
+                            "flex min-h-11 snap-start shrink-0 items-center justify-center gap-1.5 rounded-[14px] border px-3.5 text-[0.78rem] font-medium tracking-[-0.01em] transition-[background-color,border-color,box-shadow,color,transform]",
+                            "active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-[rgba(0,113,227,0.5)]",
+                            isActiveMobileSettingsTab
+                              ? "border-[rgba(0,113,227,0.28)] bg-[#EAF3FF] text-[#0071E3] shadow-[0_1px_2px_rgba(17,17,17,0.06)]"
+                              : "border-[rgba(17,17,17,0.08)] bg-white text-[#3A3A3C] hover:bg-[#EEF0F4]",
+                          )}
+                        >
+                          <span className="flex size-5 items-center justify-center [&_svg]:size-4">{item.icon}</span>
+                          <span className="whitespace-nowrap">{item.label}</span>
+                        </button>
+                      );
+                    })}
+                  </nav>
+                  <div
+                    aria-hidden="true"
+                    data-slot="mobile-settings-sheet-nav-edge"
+                    className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-white via-white/85 to-transparent"
+                  />
+                </div>
 
                 <div
                   data-slot="mobile-settings-sheet-real-content"
