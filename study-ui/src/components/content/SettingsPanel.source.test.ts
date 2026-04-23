@@ -130,11 +130,15 @@ test("settings panel page header and inline controls use normalized type and rad
   assert.doesNotMatch(source, /rounded-\[24px\]/u);
 });
 
-test("settings panel makes short tab groups full-width and equal-width on compact screens", () => {
+test("settings panel uses a native language dropdown while keeping theme tabs compact", () => {
   const source = readFileSync(settingsPanelPath, "utf8");
 
-  assert.match(source, /aria-label="语言设置"[\s\S]*className="grid h-auto w-full grid-cols-2 rounded-2xl p-1 lg:inline-flex lg:h-11 lg:w-auto"/u);
-  assert.match(source, /className="min-h-\[var\(--touch-target-size\)\] rounded-xl px-4\.5 text-sm lg:min-h-9"/u);
+  assert.match(source, /<select[\s\S]*aria-label="语言设置"[\s\S]*value=\{settings\.language\}[\s\S]*onChange=\{\(event\) => updateSetting\("language", event\.currentTarget\.value as AppLanguage\)\}/u);
+  assert.match(source, /className=\{cn\([\s\S]*SETTINGS_SURFACE_INPUT_CLASS_NAME,[\s\S]*appearance-none[\s\S]*pr-11[\s\S]*focus-visible:ring-2 focus-visible:ring-ring/u);
+  assert.match(source, /languageOptions\.map\(\(option\) => \(\s*<option[\s\S]*key=\{option\.value\}[\s\S]*value=\{option\.value\}/u);
+  assert.match(source, /<CaretDown[\s\S]*aria-hidden="true"[\s\S]*size=\{16\}[\s\S]*weight="bold"[\s\S]*text-muted-foreground/u);
+  assert.doesNotMatch(source, /<Tabs\s+value=\{settings\.language\}/u);
+  assert.doesNotMatch(source, /<TabsList[\s\S]*aria-label="语言设置"/u);
   assert.match(source, /grid h-auto w-full grid-cols-3 rounded-2xl px-1 py-1/u);
   assert.match(source, /className="min-h-\[var\(--touch-target-size\)\] gap-2 rounded-xl px-3 text-sm font-medium lg:min-h-9 lg:px-4\.5"/u);
   assert.doesNotMatch(source, /md:min-h-9/u);

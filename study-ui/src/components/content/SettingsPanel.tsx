@@ -1,6 +1,7 @@
 import { type CSSProperties, type ReactNode, useId } from "react";
 import {
   ArrowSquareOut,
+  CaretDown,
   CheckCircle,
   Desktop,
   Moon,
@@ -1091,25 +1092,32 @@ export function SettingsPanel({ activeTab, onSelectTab }: SettingsPanelProps) {
             description="切换设置页和系统文案的显示语言。"
             currentValue={currentLanguageLabel}
             controls={
-              <Tabs
-                value={settings.language}
-                onValueChange={(value) => updateSetting("language", value as AppLanguage)}
-              >
-                <TabsList
+              <div className="relative w-full max-w-xs lg:w-56">
+                <select
                   aria-label="语言设置"
-                  className="grid h-auto w-full grid-cols-2 rounded-2xl p-1 lg:inline-flex lg:h-11 lg:w-auto"
+                  value={settings.language}
+                  onChange={(event) => updateSetting("language", event.currentTarget.value as AppLanguage)}
+                  className={cn(
+                    SETTINGS_SURFACE_INPUT_CLASS_NAME,
+                    "w-full appearance-none border border-border/70 bg-background/98 pr-11 text-foreground shadow-[inset_0_1px_0_rgba(255,255,255,0.48)] transition-[background-color,border-color,box-shadow] outline-none focus-visible:ring-2 focus-visible:ring-ring",
+                  )}
                 >
                   {languageOptions.map((option) => (
-                    <TabsTrigger
+                    <option
                       key={option.value}
                       value={option.value}
-                      className="min-h-[var(--touch-target-size)] rounded-xl px-4.5 text-sm lg:min-h-9"
                     >
                       {option.label}
-                    </TabsTrigger>
+                    </option>
                   ))}
-                </TabsList>
-              </Tabs>
+                </select>
+                <CaretDown
+                  aria-hidden="true"
+                  size={16}
+                  weight="bold"
+                  className="pointer-events-none absolute right-4 top-1/2 -translate-y-1/2 text-muted-foreground"
+                />
+              </div>
             }
           />
 
