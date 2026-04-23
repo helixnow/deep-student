@@ -21,10 +21,11 @@ export const buttonToneClassNames = {
 } as const;
 
 export const buttonSizeClassNames = {
-  default: "h-11 px-[var(--button-padding-x)] md:h-[var(--button-height)]",
-  sm: "h-[var(--button-height-sm)] px-[var(--button-padding-x-sm)] text-xs",
-  lg: "h-[var(--button-height-lg)] px-[var(--button-padding-x-lg)] text-sm",
-  icon: "h-[var(--button-icon-size)] w-[var(--button-icon-size)] rounded-[var(--button-radius)]",
+  default: "h-11 px-[var(--button-padding-x)] lg:h-[var(--button-height)]",
+  sm: "h-[var(--touch-target-size)] px-[var(--button-padding-x-sm)] text-xs lg:h-[var(--button-height-sm)]",
+  lg: "h-[var(--touch-target-size)] px-[var(--button-padding-x-lg)] text-sm lg:h-[var(--button-height-lg)]",
+  icon:
+    "h-[var(--touch-target-size)] w-[var(--touch-target-size)] rounded-[var(--button-radius)] lg:h-[var(--button-icon-size)] lg:w-[var(--button-icon-size)]",
 } as const;
 
 const buttonVariants = cva(

@@ -10,11 +10,12 @@ const switchPath = path.join(__dirname, "switch.tsx");
 test("switch relies on semantic tokens instead of hardcoded neutral colors", () => {
   const source = readFileSync(switchPath, "utf8");
 
-  assert.match(source, /h-8 w-\[3\.25rem\]/);
+  assert.match(source, /h-\[var\(--touch-target-size\)\] w-\[3\.25rem\]/);
   assert.match(source, /size-7/);
   assert.match(source, /bg-input/);
   assert.match(source, /data-\[state=checked\]:bg-primary/);
   assert.match(source, /data-\[state=checked\]:translate-x-\[1\.125rem\]/);
+  assert.doesNotMatch(source, /h-8 w-\[3\.25rem\]/);
   assert.doesNotMatch(source, /h-10 w-16/);
   assert.doesNotMatch(source, /size-8/);
   assert.doesNotMatch(source, /translate-x-7/);

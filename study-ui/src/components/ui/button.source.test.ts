@@ -6,8 +6,14 @@ test("button primitive uses 44px touch targets on mobile and compacts on desktop
   const source = await readFile(new URL("./button.tsx", import.meta.url), "utf8");
 
   assert.match(source, /rounded-\[var\(--button-radius\)\]/);
-  assert.match(source, /h-11 px-\[var\(--button-padding-x\)\] md:h-\[var\(--button-height\)\]/);
-  assert.match(source, /h-\[var\(--button-icon-size\)\] w-\[var\(--button-icon-size\)\] rounded-\[var\(--button-radius\)\]/);
+  assert.match(source, /h-11 px-\[var\(--button-padding-x\)\] lg:h-\[var\(--button-height\)\]/);
+  assert.match(source, /sm:\s*"h-\[var\(--touch-target-size\)\] px-\[var\(--button-padding-x-sm\)\] text-xs lg:h-\[var\(--button-height-sm\)\]"/);
+  assert.match(source, /lg:\s*"h-\[var\(--touch-target-size\)\] px-\[var\(--button-padding-x-lg\)\] text-sm lg:h-\[var\(--button-height-lg\)\]"/);
+  assert.match(
+    source,
+    /h-\[var\(--touch-target-size\)\] w-\[var\(--touch-target-size\)\] rounded-\[var\(--button-radius\)\] lg:h-\[var\(--button-icon-size\)\] lg:w-\[var\(--button-icon-size\)\]/,
+  );
+  assert.doesNotMatch(source, /md:h-\[var\(--button-height\)\]/);
   assert.doesNotMatch(source, /rounded-lg/);
   assert.doesNotMatch(source, /h-9 px-4/);
 });
