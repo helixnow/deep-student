@@ -379,7 +379,7 @@ export function AppChrome({
               side="bottom"
               data-slot="mobile-settings-sheet"
               overlayClassName="bg-[rgba(17,17,17,0.4)]"
-              className="flex h-[min(74dvh,calc(100dvh-1rem))] max-h-[calc(100dvh-1rem)] flex-col overflow-hidden rounded-b-none rounded-t-[24px] border-x-0 border-b-0 border-t border-[#E0E3EA] bg-[#FFFFFF] p-0 text-[#111111] shadow-[0_-12px_34px_rgba(17,17,17,0.10)] ease-out duration-200 [&>button]:hidden"
+              className="flex h-[min(86dvh,calc(100dvh-0.5rem))] max-h-[calc(100dvh-0.5rem)] flex-col overflow-hidden rounded-b-none rounded-t-[24px] border-x-0 border-b-0 border-t border-[#E0E3EA] bg-[#FFFFFF] p-0 text-[#111111] shadow-[0_-12px_34px_rgba(17,17,17,0.10)] ease-out duration-200 [&>button]:hidden"
               style={
                 mobileSettingsDragOffset > 0
                   ? {
@@ -424,52 +424,52 @@ export function AppChrome({
                 </SheetClose>
               </header>
 
+              <div data-slot="mobile-settings-sheet-nav-rail" className="relative shrink-0 bg-white py-2">
+                <nav
+                  data-slot="mobile-settings-sheet-nav"
+                  aria-label="移动端设置分类"
+                  className="flex snap-x gap-2 overflow-x-auto px-5 py-1 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
+                >
+                  {settingsNavItems.map((item) => {
+                    const isActiveMobileSettingsTab = activeSettingsTab === item.id;
+
+                    return (
+                      <button
+                        key={item.id}
+                        type="button"
+                        data-slot={`mobile-settings-sheet-nav-${item.id}`}
+                        aria-pressed={isActiveMobileSettingsTab}
+                        onClick={isActiveMobileSettingsTab ? undefined : () => onSelectSettingsTab(item.id)}
+                        className={cn(
+                          "flex min-h-11 snap-start shrink-0 items-center justify-center gap-1.5 rounded-[14px] px-3.5 text-[0.78rem] font-medium tracking-[-0.01em] transition-[background-color,box-shadow,color,transform]",
+                          "active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-[rgba(0,113,227,0.5)]",
+                          isActiveMobileSettingsTab
+                            ? "bg-[#EEF0F4] text-[#111111] shadow-none"
+                            : "bg-transparent text-[#3A3A3C] hover:bg-[#EEF0F4]",
+                        )}
+                      >
+                        <span className="flex size-5 items-center justify-center [&_svg]:size-4">{item.icon}</span>
+                        <span className="whitespace-nowrap">{item.label}</span>
+                      </button>
+                    );
+                  })}
+                </nav>
+                <div
+                  aria-hidden="true"
+                  data-slot="mobile-settings-sheet-nav-edge"
+                  className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-white via-white/85 to-transparent"
+                />
+              </div>
+
               <div
                 data-slot="mobile-settings-sheet-scroll"
                 className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-5 pb-[calc(1.25rem+var(--safe-area-bottom))] pt-4"
               >
-                <div data-slot="mobile-settings-sheet-nav-rail" className="relative -mx-5">
-                  <nav
-                    data-slot="mobile-settings-sheet-nav"
-                    aria-label="移动端设置分类"
-                    className="flex snap-x gap-2 overflow-x-auto px-5 py-1 [-webkit-overflow-scrolling:touch] [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                  >
-                    {settingsNavItems.map((item) => {
-                      const isActiveMobileSettingsTab = activeSettingsTab === item.id;
-
-                      return (
-                        <button
-                          key={item.id}
-                          type="button"
-                          data-slot={`mobile-settings-sheet-nav-${item.id}`}
-                          aria-pressed={isActiveMobileSettingsTab}
-                          onClick={isActiveMobileSettingsTab ? undefined : () => onSelectSettingsTab(item.id)}
-                          className={cn(
-                            "flex min-h-11 snap-start shrink-0 items-center justify-center gap-1.5 rounded-[14px] px-3.5 text-[0.78rem] font-medium tracking-[-0.01em] transition-[background-color,box-shadow,color,transform]",
-                            "active:scale-[0.97] focus-visible:ring-2 focus-visible:ring-[rgba(0,113,227,0.5)]",
-                            isActiveMobileSettingsTab
-                              ? "bg-[#EEF0F4] text-[#111111] shadow-none"
-                              : "bg-transparent text-[#3A3A3C] hover:bg-[#EEF0F4]",
-                          )}
-                        >
-                          <span className="flex size-5 items-center justify-center [&_svg]:size-4">{item.icon}</span>
-                          <span className="whitespace-nowrap">{item.label}</span>
-                        </button>
-                      );
-                    })}
-                  </nav>
-                  <div
-                    aria-hidden="true"
-                    data-slot="mobile-settings-sheet-nav-edge"
-                    className="pointer-events-none absolute inset-y-0 right-0 w-12 bg-gradient-to-l from-white via-white/85 to-transparent"
-                  />
-                </div>
-
                 <div
                   data-slot="mobile-settings-sheet-real-content"
                   data-theme="light"
                   data-window-background="opaque"
-                  className="mt-5 [--background:#F5F5F7] [--border:rgba(17,17,17,0.08)] [--button-outline-active-bg:#E6E8EE] [--button-outline-bg:#FFFFFF] [--button-outline-border:#E0E3EA] [--button-outline-hover-bg:#EEF0F4] [--button-plain-hover-bg:#EEF0F4] [--button-tonal-bg:#EEF0F4] [--button-tonal-border:#E0E3EA] [--card:#FFFFFF] [--foreground:#111111] [--input:#EEF0F4] [--interactive-hover:#EEF0F4] [--interactive-selected:#E6E8EE] [--muted:#EEF0F4] [--muted-foreground:#5C5C5F] [--primary:#0071E3] [--primary-foreground:#FFFFFF] [--ring:rgba(0,113,227,0.5)] [--secondary:#EEF0F4] [--shell-panel-strong:#FFFFFF] [--touch-target-size:var(--control-height-touch)] [--workspace-max-width:100%] [&_input[type=range]]:min-h-11"
+                  className="[--background:#F5F5F7] [--border:rgba(17,17,17,0.08)] [--button-outline-active-bg:#E6E8EE] [--button-outline-bg:#FFFFFF] [--button-outline-border:#E0E3EA] [--button-outline-hover-bg:#EEF0F4] [--button-plain-hover-bg:#EEF0F4] [--button-tonal-bg:#EEF0F4] [--button-tonal-border:#E0E3EA] [--card:#FFFFFF] [--foreground:#111111] [--input:#EEF0F4] [--interactive-hover:#EEF0F4] [--interactive-selected:#E6E8EE] [--muted:#EEF0F4] [--muted-foreground:#5C5C5F] [--primary:#0071E3] [--primary-foreground:#FFFFFF] [--ring:rgba(0,113,227,0.5)] [--secondary:#EEF0F4] [--shell-panel-strong:#FFFFFF] [--touch-target-size:var(--control-height-touch)] [--workspace-max-width:100%] [&_[data-slot=settings-page-header]]:hidden [&_input[type=range]]:min-h-11"
                 >
                   {settingsContent}
                 </div>

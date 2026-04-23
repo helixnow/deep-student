@@ -200,7 +200,7 @@ test("phone settings are presented as a real sheet instead of replacing the main
   assert.match(source, /const handleMobileSettingsDragStart = \(event: React\.PointerEvent<HTMLDivElement>\) => \{[\s\S]*setPointerCapture\(event\.pointerId\);[\s\S]*\};/u);
   assert.match(source, /const handleMobileSettingsDragMove = \(event: React\.PointerEvent<HTMLDivElement>\) => \{[\s\S]*Math\.max\(0, event\.clientY - mobileSettingsDragStartYRef\.current\)[\s\S]*\};/u);
   assert.match(source, /const handleMobileSettingsDragEnd = \(event: React\.PointerEvent<HTMLDivElement>\) => \{[\s\S]*mobileSettingsDragOffsetRef\.current > 96[\s\S]*onReturnToApp\(\);[\s\S]*\};/u);
-  assert.match(source, /<SheetContent[\s\S]*side="bottom"[\s\S]*data-slot="mobile-settings-sheet"[\s\S]*overlayClassName="bg-\[rgba\(17,17,17,0\.4\)\]"[\s\S]*h-\[min\(74dvh,calc\(100dvh-1rem\)\)\][\s\S]*rounded-t-\[24px\][\s\S]*bg-\[#FFFFFF\][\s\S]*text-\[#111111\][\s\S]*\[&>button\]:hidden/u);
+  assert.match(source, /<SheetContent[\s\S]*side="bottom"[\s\S]*data-slot="mobile-settings-sheet"[\s\S]*overlayClassName="bg-\[rgba\(17,17,17,0\.4\)\]"[\s\S]*h-\[min\(86dvh,calc\(100dvh-0\.5rem\)\)\][\s\S]*max-h-\[calc\(100dvh-0\.5rem\)\][\s\S]*rounded-t-\[24px\][\s\S]*bg-\[#FFFFFF\][\s\S]*text-\[#111111\][\s\S]*\[&>button\]:hidden/u);
   assert.match(source, /style=\{[\s\S]*transform: `translateY\(\$\{mobileSettingsDragOffset\}px\)`[\s\S]*transition: isMobileSettingsDragging \? "none" : undefined/u);
   assert.match(source, /data-slot="mobile-settings-sheet-drag-zone"[\s\S]*onPointerDown=\{handleMobileSettingsDragStart\}[\s\S]*onPointerMove=\{handleMobileSettingsDragMove\}[\s\S]*onPointerUp=\{handleMobileSettingsDragEnd\}/u);
   assert.match(source, /data-slot="mobile-settings-sheet-drag-handle" className="h-1 w-12 rounded-full bg-\[#C9CDD6\]"/u);
@@ -208,8 +208,7 @@ test("phone settings are presented as a real sheet instead of replacing the main
   assert.match(source, /<SheetTitle[\s\S]*系统设置[\s\S]*<\/SheetTitle>/u);
   assert.match(source, /<SheetDescription className="text-xs font-medium leading-5 text-\[#5C5C5F\]">[\s\S]*应用偏好与数据选项/u);
   assert.match(source, /<SheetClose asChild>[\s\S]*aria-label="关闭系统设置"[\s\S]*active:scale-\[0\.97\][\s\S]*focus-visible:ring-\[rgba\(0,113,227,0\.5\)\][\s\S]*<X size=\{20\} weight="regular" \/>/u);
-  assert.match(source, /data-slot="mobile-settings-sheet-scroll"[\s\S]*custom-scrollbar[\s\S]*overflow-y-auto[\s\S]*pb-\[calc\(1\.25rem\+var\(--safe-area-bottom\)\)\]/u);
-  assert.match(source, /data-slot="mobile-settings-sheet-nav-rail"[\s\S]*className="relative -mx-5"/u);
+  assert.match(source, /data-slot="mobile-settings-sheet-nav-rail"[\s\S]*className="relative shrink-0 bg-white py-2"/u);
   assert.match(
     source,
     /data-slot="mobile-settings-sheet-nav"[\s\S]*aria-label="移动端设置分类"[\s\S]*snap-x[\s\S]*gap-2[\s\S]*overflow-x-auto[\s\S]*px-5[\s\S]*py-1[\s\S]*\[-webkit-overflow-scrolling:touch\][\s\S]*\[scrollbar-width:none\][\s\S]*\[&::-webkit-scrollbar\]:hidden/u,
@@ -223,7 +222,8 @@ test("phone settings are presented as a real sheet instead of replacing the main
   assert.match(source, /isActiveMobileSettingsTab[\s\S]*\? "bg-\[#EEF0F4\] text-\[#111111\] shadow-none"[\s\S]*: "bg-transparent text-\[#3A3A3C\] hover:bg-\[#EEF0F4\]"/u);
   assert.doesNotMatch(source, /border-\[rgba\(17,17,17,0\.08\)\] bg-white text-\[#3A3A3C\]/u);
   assert.match(source, /data-slot="mobile-settings-sheet-nav-edge"[\s\S]*bg-gradient-to-l from-white via-white\/85 to-transparent/u);
-  assert.match(source, /data-slot="mobile-settings-sheet-real-content"[\s\S]*data-theme="light"[\s\S]*data-window-background="opaque"[\s\S]*\[--background:#F5F5F7\][\s\S]*\[--primary:#0071E3\][\s\S]*\[--ring:rgba\(0,113,227,0\.5\)\][\s\S]*\[--touch-target-size:var\(--control-height-touch\)\][\s\S]*\[--workspace-max-width:100%\][\s\S]*\{settingsContent\}/u);
+  assert.match(source, /data-slot="mobile-settings-sheet-scroll"[\s\S]*custom-scrollbar[\s\S]*overflow-y-auto[\s\S]*pb-\[calc\(1\.25rem\+var\(--safe-area-bottom\)\)\]/u);
+  assert.match(source, /data-slot="mobile-settings-sheet-real-content"[\s\S]*data-theme="light"[\s\S]*data-window-background="opaque"[\s\S]*\[--background:#F5F5F7\][\s\S]*\[--primary:#0071E3\][\s\S]*\[--ring:rgba\(0,113,227,0\.5\)\][\s\S]*\[--touch-target-size:var\(--control-height-touch\)\][\s\S]*\[--workspace-max-width:100%\][\s\S]*\[&_\[data-slot=settings-page-header\]\]:hidden[\s\S]*\{settingsContent\}/u);
   assert.match(source, /\[&_input\[type=range\]\]:min-h-11/u);
   assert.doesNotMatch(source, /mobileSettingsSheetTabs/u);
   assert.doesNotMatch(source, /账号管理/u);
