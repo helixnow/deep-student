@@ -52,6 +52,8 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 - Summary file: `.planning/phases/03-shell-and-sidebar-adaptation/03-01-SUMMARY.md`.
 - 2026-04-23: Phase 4 context gathered.
 - Resume file: `.planning/phases/04-content-surface-adaptation/04-CONTEXT.md`.
+- 2026-04-23: Phase 4 UI design contract approved and planning complete.
+- Resume file: `.planning/phases/04-content-surface-adaptation/04-01-PLAN.md`.
 
 ### Important Decisions
 
@@ -74,8 +76,8 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 | 1 Responsive Policy Foundation | Complete |
 | 2 Root State And Layout Tokens | Complete |
 | 3 Shell And Sidebar Adaptation | Complete |
-| 4 Content Surface Adaptation | Context gathered |
+| 4 Content Surface Adaptation | Planned |
 | 5 Touch Targets And Verification | Pending |
 
 ---
-*Last updated: 2026-04-23 after Phase 4 context gathering*
+*Last updated: 2026-04-23 after Phase 4 planning*
