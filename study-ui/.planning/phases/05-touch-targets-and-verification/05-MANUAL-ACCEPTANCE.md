@@ -21,9 +21,9 @@ Do not mark a row as `PASS` unless the behavior was actually observed. If real-d
 
 | Gate | Command | Status | Notes |
 |------|---------|--------|-------|
-| Targeted source/unit tests | `node --test --experimental-strip-types src/lib/responsive-env.test.ts src/lib/app-layout-policy.test.ts src/lib/app-shell.test.ts src/App.source.test.ts src/styles/app.source.test.ts src/components/ui/button.source.test.ts src/components/ui/input.source.test.ts src/components/ui/textarea.source.test.ts src/components/ui/switch.source.test.ts src/components/shell/AppChrome.source.test.ts src/components/shell/ShellButton.source.test.ts src/components/shell/Sidebar.source.test.ts src/components/shell/Titlebar.source.test.ts src/components/content/ThreadCanvas.source.test.ts src/components/content/SettingsPanel.source.test.ts src/components/content/SettingsPanel.test.ts src/components/content/settings-actions.test.ts src/components/content/settings-input-styles.test.ts src/components/content/settings-control-styles.test.ts` |  | Record final command result during execution. |
-| Lint | `npm run lint` |  | Record final command result during execution. |
-| Build | `npm run build` |  | Record final command result during execution. |
+| Targeted source/unit tests | `node --test --experimental-strip-types src/lib/responsive-env.test.ts src/lib/app-layout-policy.test.ts src/lib/app-shell.test.ts src/App.source.test.ts src/styles/app.source.test.ts src/components/ui/button.source.test.ts src/components/ui/input.source.test.ts src/components/ui/textarea.source.test.ts src/components/ui/switch.source.test.ts src/components/shell/AppChrome.source.test.ts src/components/shell/ShellButton.source.test.ts src/components/shell/Sidebar.source.test.ts src/components/shell/Titlebar.source.test.ts src/components/content/ThreadCanvas.source.test.ts src/components/content/SettingsPanel.source.test.ts src/components/content/SettingsPanel.test.ts src/components/content/settings-actions.test.ts src/components/content/settings-input-styles.test.ts src/components/content/settings-control-styles.test.ts` | PASS | Passed 146/146 tests during Phase 5 execution. |
+| Lint | `npm run lint` | PASS | ESLint exited 0 during Phase 5 execution. |
+| Build | `npm run build` | PASS | Vite build exited 0 during Phase 5 execution. |
 
 ## Viewport Checklist
 

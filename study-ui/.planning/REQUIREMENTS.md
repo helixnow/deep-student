@@ -46,11 +46,11 @@
 
 ### Controls And Verification
 
-- [ ] **CTRL-01**: Button, shell button, input, textarea, switch, and composer controls maintain at least `44px` touch targets on phone/tablet.
-- [ ] **CTRL-02**: Desktop controls can remain compact where appropriate without reducing phone/tablet hit targets.
-- [ ] **VERF-01**: `npm run lint` passes after implementation.
-- [ ] **VERF-02**: `npm run build` passes after implementation.
-- [ ] **VERF-03**: Targeted source/unit tests pass for responsive policy, shell, thread canvas, settings panel, and existing app-shell behavior.
+- [x] **CTRL-01**: Button, shell button, input, textarea, switch, and composer controls maintain at least `44px` touch targets on phone/tablet.
+- [x] **CTRL-02**: Desktop controls can remain compact where appropriate without reducing phone/tablet hit targets.
+- [x] **VERF-01**: `npm run lint` passes after implementation.
+- [x] **VERF-02**: `npm run build` passes after implementation.
+- [x] **VERF-03**: Targeted source/unit tests pass for responsive policy, shell, thread canvas, settings panel, and existing app-shell behavior.
 - [ ] **VERF-04**: Manual viewport checks cover `390x844`, `768x1024`, `834x1194`, `1024x768`, and `1280x800`.
 - [ ] **VERF-05**: Manual desktop checks confirm Windows/macOS titlebar, drag region, window controls, resize handles, and minimum window behavior are not regressed.
 
@@ -104,13 +104,13 @@
 | SETT-04 | Phase 4 | Complete |
 | SETT-05 | Phase 4 | Complete |
 | SETT-06 | Phase 4 | Complete |
-| CTRL-01 | Phase 5 | Pending |
-| CTRL-02 | Phase 5 | Pending |
-| VERF-01 | Phase 5 | Pending |
-| VERF-02 | Phase 5 | Pending |
-| VERF-03 | Phase 5 | Pending |
-| VERF-04 | Phase 5 | Pending |
-| VERF-05 | Phase 5 | Pending |
+| CTRL-01 | Phase 5 | Complete |
+| CTRL-02 | Phase 5 | Complete |
+| VERF-01 | Phase 5 | Complete |
+| VERF-02 | Phase 5 | Complete |
+| VERF-03 | Phase 5 | Complete |
+| VERF-04 | Phase 5 | Pending UAT |
+| VERF-05 | Phase 5 | Pending UAT |
 
 **Coverage:**
 - v1 requirements: 31 total
@@ -119,4 +119,4 @@
 
 ---
 *Requirements defined: 2026-04-23*
-*Last updated: 2026-04-23 after Phase 4 execution*
+*Last updated: 2026-04-23 after Phase 5 execution*
