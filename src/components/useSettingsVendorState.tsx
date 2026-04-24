@@ -665,7 +665,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
 
       const caps = inferCapabilities({ id: modelId, providerScope: vendor.providerType, name: label });
       const extCaps = inferApiCapabilities({ id: modelId, name: label, providerScope: vendor.providerType });
-      const defaults = getModelDefaultParameters(modelId);
+      const defaults = getModelDefaultParameters(modelId, { providerScope: vendor.providerType });
 
       const effectiveSupportsReasoning =
         caps.supportsReasoning ||

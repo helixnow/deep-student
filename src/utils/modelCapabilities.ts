@@ -44,9 +44,15 @@ export interface ModelDefaultParams {
   enableThinking?: boolean;
   thinkingBudget?: number;
   includeThoughts?: boolean;
+  reasoningEffort?: string;
   temperature?: number;
   minP?: number;
   topK?: number;
+}
+
+export interface ModelDefaultParameterOptions {
+  providerScope?: string;
+  providerType?: string;
 }
 
 const toLower = (s: string) => s.toLowerCase();
@@ -144,8 +150,16 @@ export function inferCapabilities(modelLike: BasicModelDescriptor | string): Inf
   };
 }
 
+const isDeepSeekV4Id = (lowerId: string): boolean => lowerId.includes('deepseek-v4');
+const isDeepSeekLegacyAlias = (lowerId: string): boolean => lowerId === 'deepseek-chat' || lowerId === 'deepseek-reasoner';
+const isSiliconFlowProvider = (options?: ModelDefaultParameterOptions): boolean => {
+  const providerScope = options?.providerScope?.toLowerCase();
+  const providerType = options?.providerType?.toLowerCase();
+  return providerScope === 'siliconflow' || providerType === 'siliconflow';
+};
+
 // 统一默认参数
-export function getModelDefaultParameters(modelId: string): ModelDefaultParams {
+export function getModelDefaultParameters(modelId: string, options: ModelDefaultParameterOptions = {}): ModelDefaultParams {
   const map: Record<string, ModelDefaultParams> = {
     'pro/qwen/qwen2.5-vl-7b-instruct': { maxOutputTokens: 4096 },
     'qwen/qwq-32b': { enableThinking: true, thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 },
@@ -165,6 +179,33 @@ export function getModelDefaultParameters(modelId: string): ModelDefaultParams {
   };
   const lower = toLower(modelId);
   if (map[lower]) return map[lower];
+
+  if (isDeepSeekV4Id(lower)) {
+    if (isSiliconFlowProvider(options)) {
+      return {
+        enableThinking: true,
+        thinkingBudget: 8192,
+        includeThoughts: true,
+        maxOutputTokens: 8192,
+        temperature: 0.6,
+      };
+    }
+    return {
+      enableThinking: true,
+      includeThoughts: true,
+      reasoningEffort: 'high',
+      maxOutputTokens: 8192,
+      temperature: 0.6,
+    };
+  }
+
+  if (isDeepSeekLegacyAlias(lower)) {
+    if (lower === 'deepseek-chat') {
+      return { enableThinking: false, includeThoughts: false, maxOutputTokens: 8192, temperature: 0.6 };
+    }
+    return { enableThinking: true, includeThoughts: true, reasoningEffort: 'high', maxOutputTokens: 8192, temperature: 0.6 };
+  }
+
   if (lower.includes('qwq')) return { enableThinking: true, thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 };
   if (lower.includes('deepseek')) return { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 };
   if (lower.includes('doubao-seed-2')) return { enableThinking: true, thinkingBudget: 16384, includeThoughts: true, temperature: 0.7 };

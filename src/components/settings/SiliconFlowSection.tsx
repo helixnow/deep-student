@@ -467,7 +467,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   }
 
   // 统一复用能力模块的默认参数
-  const getDefaultParams = useCallback((modelId: string) => getModelDefaultParameters(modelId), []);
+  const getDefaultParams = useCallback((modelId: string) => getModelDefaultParameters(modelId, { providerScope: 'siliconflow' }), []);
 
   const collapsibleOptions: CollapsibleModelOption[] = useMemo(() => {
     const list = availableModels.length > 0 ? availableModels : models;
@@ -660,7 +660,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
         } = getModelCapabilities(presetModelData ?? modelId);
         const capsExt = inferApiCapabilities({ id: modelId, name: presetModelData?.name, providerScope: 'siliconflow' });
         const effectiveSupportsTools = supportsTools;
-        const modelDefaults = getModelDefaultParameters(modelId);
+        const modelDefaults = getModelDefaultParameters(modelId, { providerScope: 'siliconflow' });
         const effectiveSupportsReasoning =
           supportsReasoning ||
           capsExt.reasoning ||
@@ -943,7 +943,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
         <div className="flex items-center gap-2 text-muted-foreground"><Settings className="h-4 w-4" /> {t('common:siliconflow.thinking_params_label')}: {selectedModelCapabilities.supportsReasoning ? t('common:siliconflow.supports') : t('common:siliconflow.not_supports')}</div>
         <div className="flex items-center gap-2 text-muted-foreground"><Settings className="h-4 w-4" /> {t('common:siliconflow.adapter_label')}: {selectedModelCapabilities.modelAdapter}</div>
         {(() => {
-          const defaults = getModelDefaultParameters(selectedModel);
+          const defaults = getModelDefaultParameters(selectedModel, { providerScope: 'siliconflow' });
           return (
             <>
               {defaults.maxOutputTokens && (

@@ -276,10 +276,14 @@ const GEMINI_3_THINKING_REGEX = /gemini-3/i;
 const PERPLEXITY_REASONING_REGEX = /sonar-reasoning-pro/i;
 
 // DeepSeek 混合推理模型：V3.1+ 支持 thinking_mode 动态切换
-// - deepseek-chat 对应非思考模式，deepseek-reasoner 对应思考模式
+// - DeepSeek V4 使用 thinking.type + official reasoning_effort
+// - deepseek-chat 对应非思考模式，deepseek-reasoner 对应思考模式（V4 Flash 兼容别名）
 // - V3.2-Speciale 不支持工具调用
 // 注意：R1 不支持混合推理，多轮对话时 reasoning_content 被忽略
+const DEEPSEEK_V4_REGEX = /deepseek-v4/i;
+const DEEPSEEK_LEGACY_ALIAS_REGEX = /^deepseek-(?:chat|reasoner)$/i;
 const DEEPSEEK_HYBRID_REGEXES: RegExp[] = [
+  DEEPSEEK_V4_REGEX,
   /deepseek-v3[.-]\d/i,
   /deepseek-chat(?!-v2)/i, // deepseek-chat (V3.2) 但排除 v2 系列
   /deepseek-reasoner/i, // deepseek-reasoner (V3.2)
@@ -300,6 +304,8 @@ const CONTEXT_WINDOW_RULES: Array<{ pattern: RegExp; window: number }> = [
   { pattern: /gemini-(?:2\.[05]|3)/i, window: 1_000_000 },
   // Gemini 别名（flash-latest/pro-latest 等指向 2.5+ 系列）
   { pattern: /gemini-(?:flash-latest|pro-latest|flash-lite-latest)/i, window: 1_000_000 },
+  // DeepSeek V4 官方模型及兼容别名：1M context
+  { pattern: /deepseek-v4|^deepseek-(?:chat|reasoner)$/i, window: 1_000_000 },
 
   // --- 2M 级 ---
   // Grok 4.1 Fast / Grok 4 Fast：2,000,000 tokens（xAI 官方 2025-11）
@@ -410,6 +416,8 @@ const hasRegistryOptionalParam = (fields: string[] | undefined, target: string):
 export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredApiCapabilities {
   const id = toLower(descriptor.id);
   const name = toLower(descriptor.name);
+  const providerScope = toLower(descriptor.providerScope);
+  const isSiliconFlowScope = providerScope === 'siliconflow';
   const modelRecord = findModelRecordById(descriptor.id, { providerScope: descriptor.providerScope });
   const modelCapabilities = modelRecord?.capabilities;
   const modelOptionalParams = modelRecord?.param_format?.optional_fields;
@@ -480,18 +488,22 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
 
   const isPerplexityReasoningBudget = id.includes('sonar-deep-research');
 
-  const isRegistryReasoningEffort = modelCapabilities && hasRegistryOptionalParam(modelOptionalParams, 'reasoning_effort');
+  const isDeepSeekV4 = DEEPSEEK_V4_REGEX.test(id) || (name ? DEEPSEEK_V4_REGEX.test(name) : false);
+  const isDeepSeekLegacyAlias = DEEPSEEK_LEGACY_ALIAS_REGEX.test(id);
+  const isOfficialDeepSeekV4Effort = (isDeepSeekV4 || isDeepSeekLegacyAlias) && !isSiliconFlowScope;
+
+  const isRegistryReasoningEffort = !!(modelCapabilities && hasRegistryOptionalParam(modelOptionalParams, 'reasoning_effort'));
   const isRegistryReasoningTokens =
-    modelCapabilities && (
+    !!(modelCapabilities && (
       hasRegistryOptionalParam(modelOptionalParams, 'include_thoughts') ||
       hasRegistryOptionalParam(modelOptionalParams, 'thinking_budget') ||
       hasRegistryOptionalParam(modelOptionalParams, 'thinkingConfig') ||
       hasRegistryOptionalParam(modelOptionalParams, 'enable_thinking')
-    );
-  const isRegistryHybridReasoning = modelCapabilities && hasRegistryOptionalParam(modelOptionalParams, 'reasoning_mode');
+    ));
+  const isRegistryHybridReasoning = !!(modelCapabilities && hasRegistryOptionalParam(modelOptionalParams, 'reasoning_mode'));
 
   const supportsReasoningEffort = !embedding && !rerank && !imageModel && (
-    isOpenaiReasoningBudget || isGrokReasoningBudget || isPerplexityReasoningBudget || isRegistryReasoningEffort
+    isOpenaiReasoningBudget || isGrokReasoningBudget || isPerplexityReasoningBudget || isOfficialDeepSeekV4Effort || isRegistryReasoningEffort
   );
 
   const isGeminiThinking =
@@ -574,8 +586,11 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
 
   // 上下文窗口推断：使用 id + name 拼接作为指纹，提高匹配率
   const inferredWindow = inferContextWindow(`${id} ${name}`);
+  const shouldUseDeepSeekV4Context = isDeepSeekV4 || isOfficialDeepSeekV4Effort;
   const contextWindow =
-    modelCapabilities && typeof modelCapabilities.max_context_tokens === 'number' && modelCapabilities.max_context_tokens > 0
+    shouldUseDeepSeekV4Context
+      ? 1_000_000
+      : modelCapabilities && typeof modelCapabilities.max_context_tokens === 'number' && modelCapabilities.max_context_tokens > 0
       ? modelCapabilities.max_context_tokens
       : inferredWindow;
 
