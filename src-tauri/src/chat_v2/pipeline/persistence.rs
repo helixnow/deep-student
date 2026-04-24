@@ -6,6 +6,7 @@ fn build_replay_skill_payload_snapshot(
     let snapshot = crate::chat_v2::types::ReplaySkillPayloadSnapshot {
         active_skill_ids: options.active_skill_ids.clone().unwrap_or_default(),
         skill_contents: options.skill_contents.clone().unwrap_or_default(),
+        skill_dependencies: options.skill_dependencies.clone().unwrap_or_default(),
         skill_embedded_tools: options.skill_embedded_tools.clone().unwrap_or_default(),
         mcp_tool_schemas: options.mcp_tool_schemas.clone().unwrap_or_default(),
         selected_mcp_servers: options.mcp_tools.clone().unwrap_or_default(),
@@ -13,6 +14,7 @@ fn build_replay_skill_payload_snapshot(
 
     let has_payload = !snapshot.active_skill_ids.is_empty()
         || !snapshot.skill_contents.is_empty()
+        || !snapshot.skill_dependencies.is_empty()
         || !snapshot.skill_embedded_tools.is_empty()
         || !snapshot.mcp_tool_schemas.is_empty()
         || !snapshot.selected_mcp_servers.is_empty();

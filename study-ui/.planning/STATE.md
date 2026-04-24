@@ -6,7 +6,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 
 **Core value:** One shared UI architecture must feel usable on phone, tablet, and desktop while preserving the existing desktop Tauri shell behavior.
 
-**Current focus:** Phase 6 mobile home polish verified; milestone is ready for final visual audit or completion.
+**Current focus:** Phase 8 DeepSeek Versioned Adapter Compatibility is planned and ready for execution. Phase 7 still has Tauri runtime visual UAT pending for MIGR-08.
 
 ## Workflow State
 
@@ -74,6 +74,16 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 - 2026-04-23: Phase 6 follow-up polished the phone top-left chrome after visual review: compact now uses an edge-aligned hamburger menu and hides title/update clutter.
 - Summary file: `.planning/phases/06-mobile-home-polish/06-01-SUMMARY.md`.
 - UAT file: `.planning/phases/06-mobile-home-polish/06-UAT.md`.
+- 2026-04-24: Phase 6 UI review completed with an 18/24 score. The review found that study-ui is well componentized, but parent app migration still needs primitive convergence and stronger semantic token enforcement.
+- 2026-04-24: Added Phase 7 DeepStudent migration foundation to move study-ui contracts into the parent app without a big-bang rewrite.
+- 2026-04-24: Added Phase 8 DeepSeek versioned adapter compatibility to keep one DeepSeek adapter while applying V3.2/V4 model configuration and official/SiliconFlow request formatting correctly.
+- 2026-04-24: Phase 7 UI design contract approved. It locks component primitive convergence, semantic tokenization, touch density, icon transition scope, and verification gates for migrating study-ui into parent `src/`.
+- Resume file: `.planning/phases/07-deepstudent-migration-foundation/07-UI-SPEC.md`.
+- 2026-04-24: Phase 7 plan 07-01 executed manually because `gsd-sdk` is unavailable. Token bridge aliases, shared parent button primitive contract, 44px touch-density guards, mobile header/sidebar tokenization, Phosphor internal shell icons, and static migration source tests landed in the parent app.
+- Summary file: `.planning/phases/07-deepstudent-migration-foundation/07-01-SUMMARY.md`.
+- Remaining verification: browser-only Vite smoke reaches `Loading...` because Tauri `invoke`/`listen` APIs are absent; run root chat/settings/desktop chrome visual UAT in Tauri runtime for MIGR-08.
+- 2026-04-24: Phase 8 planning complete with research, patterns, plan, and manual plan-check artifacts. The plan locks one shared DeepSeek adapter, version-aware DeepSeek profiles, official V4 request semantics, and SiliconFlow V3.2/V4 compatibility.
+- Resume file: `.planning/phases/08-deepseek-official-v4-adaptation-with-siliconflow-v3-2-v4-com/08-01-PLAN.md`.
 
 ### Important Decisions
 
@@ -99,6 +109,11 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 - Future icon/small button variants should keep using the Phase 5 `lg:` compaction pattern so tablet hit targets do not regress.
 - Windows desktop chrome still needs an actual Windows host for manual smoke; local UAT covered macOS and source/config behavior only.
 - Phase 6 phone composer intentionally omits recording/audio controls; audio input behavior is outside this milestone.
+- Parent app migration risk: `NotionButton` and `ui/shad/Button` now share a contract for targeted migrated surfaces, but legacy raw `button` usage still exists outside Phase 7 scope.
+- Parent app migration risk: targeted migrated controls now guard against sub-44px phone/tablet sizing, but untouched legacy root surfaces may still need cleanup as they enter future migration phases.
+- Parent app migration risk: targeted migrated files now reject hard-coded local palettes and spring/scale motion, but legacy surfaces outside the source guard should be cleaned only as those surfaces enter migration scope.
+- DeepSeek compatibility risk: official `deepseek-chat` and `deepseek-reasoner` aliases are scheduled for deprecation on 2026-07-24, so Phase 8 must add V4 defaults without breaking saved alias configs.
+- DeepSeek compatibility risk: SiliconFlow may later document a distinct DeepSeek V4 request contract; Phase 8 should re-check docs during execution and keep host serialization isolated.
 
 ## Current Phase Queue
 
@@ -110,6 +125,8 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 | 4 Content Surface Adaptation | Verified |
 | 5 Touch Targets And Verification | Verified |
 | 6 Mobile Home Polish | Verified |
+| 7 DeepStudent Migration Foundation | Implemented; Tauri UAT pending |
+| 8 DeepSeek Versioned Adapter Compatibility | Planned |
 
 ---
-*Last updated: 2026-04-23 after Phase 6 mobile home polish*
+*Last updated: 2026-04-24 after planning Phase 8 DeepSeek versioned adapter compatibility*

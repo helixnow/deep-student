@@ -76,6 +76,20 @@
   --button-prominent-hover-bg: color-mix(in oklab, hsl(var(--primary)) 94%, hsl(var(--foreground)) 6%);
   --button-prominent-active-bg: color-mix(in oklab, hsl(var(--primary)) 84%, hsl(var(--foreground)) 16%);
   --button-prominent-border: color-mix(in oklab, hsl(var(--primary)) 34%, hsl(var(--border)) 66%);
+  --button-tonal-bg: color-mix(in oklab, hsl(var(--secondary)) 82%, hsl(var(--background)) 18%);
+  --button-tonal-hover-bg: color-mix(in oklab, hsl(var(--muted)) 78%, hsl(var(--background)) 22%);
+  --button-tonal-active-bg: color-mix(in oklab, hsl(var(--accent)) 82%, hsl(var(--background)) 18%);
+  --button-tonal-border: color-mix(in oklab, hsl(var(--border)) 78%, hsl(var(--foreground)) 6%);
+  --button-outline-bg: color-mix(in oklab, hsl(var(--background)) 92%, hsl(var(--secondary)) 8%);
+  --button-outline-hover-bg: color-mix(in oklab, var(--interactive-hover) 84%, hsl(var(--background)) 16%);
+  --button-outline-active-bg: color-mix(in oklab, var(--interactive-selected) 78%, hsl(var(--background)) 22%);
+  --button-outline-border: color-mix(in oklab, hsl(var(--border)) 82%, hsl(var(--foreground)) 8%);
+  --button-plain-hover-bg: color-mix(in oklab, var(--interactive-hover) 88%, hsl(var(--background)) 12%);
+  --button-plain-active-bg: color-mix(in oklab, var(--interactive-selected) 80%, hsl(var(--background)) 20%);
+  --button-destructive-bg: color-mix(in oklab, hsl(var(--destructive)) 94%, hsl(var(--background)) 6%);
+  --button-destructive-hover-bg: color-mix(in oklab, hsl(var(--destructive)) 90%, hsl(var(--foreground)) 10%);
+  --button-destructive-active-bg: color-mix(in oklab, hsl(var(--destructive)) 82%, hsl(var(--foreground)) 18%);
+  --button-destructive-border: color-mix(in oklab, hsl(var(--destructive)) 30%, hsl(var(--border)) 70%);
   --button-utility-surface: color-mix(in hsl, var(--surface-elevated) 88%, var(--surface-root) 12%);
   --button-utility-border: color-mix(in hsl, var(--border-default) 76%, transparent 24%);
   --button-utility-foreground: var(--text-secondary);
@@ -163,6 +177,20 @@
   --button-prominent-hover-bg: color-mix(in oklab, hsl(var(--primary)) 78%, hsl(var(--background)) 22%);
   --button-prominent-active-bg: color-mix(in oklab, hsl(var(--primary)) 68%, hsl(var(--background)) 32%);
   --button-prominent-border: color-mix(in oklab, hsl(var(--primary)) 40%, hsl(var(--border)) 60%);
+  --button-tonal-bg: color-mix(in oklab, hsl(var(--secondary)) 88%, hsl(var(--background)) 12%);
+  --button-tonal-hover-bg: color-mix(in oklab, var(--interactive-hover) 84%, hsl(var(--background)) 16%);
+  --button-tonal-active-bg: color-mix(in oklab, var(--interactive-selected) 78%, hsl(var(--background)) 22%);
+  --button-tonal-border: color-mix(in oklab, hsl(var(--border)) 76%, hsl(var(--foreground)) 10%);
+  --button-outline-bg: color-mix(in oklab, hsl(var(--background)) 72%, hsl(var(--secondary)) 28%);
+  --button-outline-hover-bg: color-mix(in oklab, var(--interactive-hover) 84%, hsl(var(--background)) 16%);
+  --button-outline-active-bg: color-mix(in oklab, var(--interactive-selected) 80%, hsl(var(--background)) 20%);
+  --button-outline-border: color-mix(in oklab, hsl(var(--border)) 74%, hsl(var(--foreground)) 14%);
+  --button-plain-hover-bg: color-mix(in oklab, var(--interactive-hover) 92%, hsl(var(--background)) 8%);
+  --button-plain-active-bg: color-mix(in oklab, var(--interactive-selected) 86%, hsl(var(--background)) 14%);
+  --button-destructive-bg: color-mix(in oklab, hsl(var(--destructive)) 76%, hsl(var(--background)) 24%);
+  --button-destructive-hover-bg: color-mix(in oklab, hsl(var(--destructive)) 80%, hsl(var(--background)) 20%);
+  --button-destructive-active-bg: color-mix(in oklab, hsl(var(--destructive)) 70%, hsl(var(--background)) 30%);
+  --button-destructive-border: color-mix(in oklab, hsl(var(--destructive)) 36%, hsl(var(--border)) 64%);
 }
 
 @media (prefers-reduced-transparency: reduce) {

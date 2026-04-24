@@ -3337,6 +3337,7 @@ export class ChatV2TauriAdapter {
     runtimeSnapshot?: {
       activeSkillIds?: string[];
       skillContents?: Record<string, string>;
+      skillDependencies?: Record<string, string[]>;
       skillEmbeddedTools?: Record<string, Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }>>;
       mcpToolSchemas?: Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }>;
       selectedMcpServers?: string[];
@@ -3399,20 +3400,25 @@ export class ChatV2TauriAdapter {
         ? snapshot.effectiveAllowedExternalServers
         : undefined) ?? resolvedReplay.selectedServerIds ?? selectedServerIds;
 
-    const replaySkillIds = Array.from(new Set([
+    const enabledReplaySkillIds = Array.from(new Set([
       ...(runtimeSnapshot?.activeSkillIds || []),
       ...(snapshot.manualPinnedSkillIds || []),
       ...(snapshot.agenticSessionSkillIds || []),
       ...(snapshot.branchLocalSkillIds || []),
       ...(snapshot.modeRequiredBundleIds || []),
     ])).filter(Boolean);
+    const replayPinnedSkillIds = Array.from(new Set([
+      ...(snapshot.manualPinnedSkillIds || []),
+      ...(runtimeSnapshot?.activeSkillIds || []),
+    ])).filter(Boolean);
 
-    if (replaySkillIds.length > 0) {
-      options.activeSkillIds = replaySkillIds;
+    if (replayPinnedSkillIds.length > 0) {
+      options.activeSkillIds = replayPinnedSkillIds;
     }
 
 
     const skillContents: Record<string, string> = { ...(runtimeSnapshot?.skillContents || {}) };
+    const skillDependencies: Record<string, string[]> = { ...(runtimeSnapshot?.skillDependencies || {}) };
     const skillEmbeddedTools: Record<string, Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }>> = {
       ...(runtimeSnapshot?.skillEmbeddedTools || {}),
     };
@@ -3421,7 +3427,7 @@ export class ChatV2TauriAdapter {
       ...((runtimeSnapshot?.mcpToolSchemas || []).filter(Boolean)),
     ];
 
-    for (const skillId of replaySkillIds) {
+    for (const skillId of enabledReplaySkillIds) {
       if (skillContents[skillId] || skillEmbeddedTools[skillId]) {
         continue;
       }
@@ -3429,6 +3435,9 @@ export class ChatV2TauriAdapter {
       if (!skill) continue;
       if (skill.content) {
         skillContents[skill.id] = skill.content;
+      }
+      if (Array.isArray(skill.dependencies) && skill.dependencies.length > 0) {
+        skillDependencies[skill.id] = skill.dependencies.filter(Boolean);
       }
       if (skill.embeddedTools && skill.embeddedTools.length > 0) {
         const embedded = skill.embeddedTools.map(tool => ({
@@ -3443,6 +3452,10 @@ export class ChatV2TauriAdapter {
 
     if (Object.keys(skillContents).length > 0) {
       (options as Record<string, unknown>).skillContents = skillContents;
+      (options as Record<string, unknown>).replaySkillContents = skillContents;
+    }
+    if (Object.keys(skillDependencies).length > 0) {
+      (options as Record<string, unknown>).skillDependencies = skillDependencies;
     }
     if (Object.keys(skillEmbeddedTools).length > 0) {
       (options as Record<string, unknown>).skillEmbeddedTools = skillEmbeddedTools;
@@ -3622,6 +3635,7 @@ export class ChatV2TauriAdapter {
     const authoritativeLoadedSkillIds = structuredSkillState
       ? Array.from(new Set([
           ...structuredSkillState.agenticSessionSkillIds,
+          ...structuredSkillState.branchLocalSkillIds,
           ...structuredSkillState.modeRequiredBundleIds,
           ...modeRequiredSkillIds,
         ]))
@@ -3630,12 +3644,26 @@ export class ChatV2TauriAdapter {
           ...modeRequiredSkillIds,
         ]));
 
-    const authoritativeToolSkillIds = Array.from(
+    const enabledSkillIdSeed = Array.from(
       new Set([
         ...authoritativeLoadedSkillIds,
         ...authoritativeActiveSkillIds,
       ])
     );
+    const enabledSkillIdSet = new Set<string>();
+    const pendingSkillIds = [...enabledSkillIdSeed];
+    while (pendingSkillIds.length > 0) {
+      const skillId = pendingSkillIds.pop();
+      if (!skillId || enabledSkillIdSet.has(skillId)) continue;
+      enabledSkillIdSet.add(skillId);
+      const skill = skillRegistry.get(skillId);
+      for (const depId of skill?.dependencies ?? []) {
+        if (depId && !enabledSkillIdSet.has(depId)) {
+          pendingSkillIds.push(depId);
+        }
+      }
+    }
+    const authoritativeToolSkillIds = Array.from(enabledSkillIdSet);
 
     const options = {
       // ChatParams
@@ -3734,22 +3762,21 @@ export class ChatV2TauriAdapter {
       console.log(LOG_PREFIX, 'Schema tools collected:', schemaToolResult);
     }
 
-    // 🔧 渐进披露优化：只传递尚未加载的技能 content 和 embeddedTools
-    // 已加载的技能内容无需重传（后端 load_skills 不会再次请求它们）
-    // ⚠️ 例外：activeSkillIds 中的技能必须始终包含 content，
-    // 后端 inject_synthetic_load_skills 需要它来合成 role:tool 消息
+    // Transient skill injection 需要每轮拿到所有 enabled skills 的正文、依赖和工具定义。
     const allSkills = skillRegistry.getAll();
     if (allSkills.length > 0) {
-      const loadedIds = new Set(authoritativeLoadedSkillIds);
-      const activeIdSet = new Set(authoritativeActiveSkillIds);
       const skillContents: Record<string, string> = {};
+      const replaySkillContents: Record<string, string> = {};
+      const skillDependencies: Record<string, string[]> = {};
       const skillEmbeddedTools: Record<string, Array<{ name: string; description?: string; inputSchema?: unknown }>> = {};
       for (const skill of allSkills) {
-        // 跳过已加载且非激活的技能，减少 IPC 传输体积
-        // 激活技能必须保留 content（后端合成 load_skills 需要）
-        if (loadedIds.has(skill.id) && !activeIdSet.has(skill.id)) continue;
+        if (!enabledSkillIdSet.has(skill.id)) continue;
         if (skill.content) {
           skillContents[skill.id] = skill.content;
+          replaySkillContents[skill.id] = skill.content;
+        }
+        if (Array.isArray(skill.dependencies) && skill.dependencies.length > 0) {
+          skillDependencies[skill.id] = skill.dependencies.filter(Boolean);
         }
         if (skill.embeddedTools && skill.embeddedTools.length > 0) {
           skillEmbeddedTools[skill.id] = skill.embeddedTools.map(tool => ({
@@ -3761,11 +3788,15 @@ export class ChatV2TauriAdapter {
       }
       if (Object.keys(skillContents).length > 0) {
         (options as Record<string, unknown>).skillContents = skillContents;
-        console.log(LOG_PREFIX, '[ProgressiveDisclosure] Injected skill contents (excluding', loadedIds.size - activeIdSet.size, 'loaded, keeping', activeIdSet.size, 'active):', Object.keys(skillContents).length);
+        (options as Record<string, unknown>).replaySkillContents = replaySkillContents;
+        console.log(LOG_PREFIX, '[TransientSkills] Injected enabled skill contents:', Object.keys(skillContents).length);
+      }
+      if (Object.keys(skillDependencies).length > 0) {
+        (options as Record<string, unknown>).skillDependencies = skillDependencies;
       }
       if (Object.keys(skillEmbeddedTools).length > 0) {
         (options as Record<string, unknown>).skillEmbeddedTools = skillEmbeddedTools;
-        console.log(LOG_PREFIX, '[ProgressiveDisclosure] Injected skill embeddedTools (excluding', loadedIds.size, 'loaded):', Object.keys(skillEmbeddedTools).length);
+        console.log(LOG_PREFIX, '[TransientSkills] Injected enabled skill embeddedTools:', Object.keys(skillEmbeddedTools).length);
       }
     }
 

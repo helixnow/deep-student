@@ -181,16 +181,55 @@ impl ChatV2Pipeline {
         ctx.current_adapter = Some(adapter.clone());
 
         // ============================================================
-        // 构建聊天历史（包含之前的工具结果 + 当前用户消息）
+        // 构建聊天历史（真实历史 + 瞬态技能消息 + 当前用户消息 + 当前轮工具结果）
         // ============================================================
         let mut messages = ctx.chat_history.clone();
 
-        // 🔴 关键修复：添加当前用户消息到消息列表
-        // 之前这里缺失，导致 LLM 看不到用户当前发送的问题
-        let current_user_message = self.build_current_user_message(ctx);
-        messages.push(current_user_message);
+        let skill_state = self.load_effective_session_skill_state(&ctx.session_id, &ctx.options);
+        let empty_skill_contents = std::collections::HashMap::new();
+        let skill_contents = ctx
+            .options
+            .replay_skill_contents
+            .as_ref()
+            .or(ctx.options.skill_contents.as_ref())
+            .unwrap_or(&empty_skill_contents);
+        let transient_skill_messages = build_transient_skill_messages_with_audit(
+            &skill_state,
+            skill_contents,
+            ctx.options.skill_dependencies.as_ref(),
+            ctx.options
+                .context_limit
+                .map(|v| (v as usize).min(DEFAULT_MAX_HISTORY_TOKENS)),
+        );
+        let skill_audit = transient_skill_messages.audit.clone();
+        let injected_skill_count = skill_audit.injected_skill_ids.len();
+        let round_id = format!("tool-round-{}", recursion_depth);
+        messages.extend(transient_skill_messages.messages);
+        emitter.emit_skill_injection_audit(
+            &ctx.assistant_message_id,
+            json!({
+                "injectedSkillIds": skill_audit.injected_skill_ids.clone(),
+                "droppedSkillIds": skill_audit.dropped_skill_ids.clone(),
+                "missingSkillIds": skill_audit.missing_skill_ids.clone(),
+                "estimatedTokens": skill_audit.estimated_tokens,
+                "skillStateVersion": skill_audit.skill_state_version,
+            }),
+            None,
+            Some(skill_audit.skill_state_version),
+            Some(round_id.as_str()),
+        );
+
+        if ctx.options.is_continue != Some(true) {
+            // 🔴 关键修复：添加当前用户消息到消息列表
+            // 之前这里缺失，导致 LLM 看不到用户当前发送的问题
+            let current_user_message = self.build_current_user_message(ctx);
+            messages.push(current_user_message);
+        }
         log::debug!(
-            "[ChatV2::pipeline] Added current user message: content_len={}, has_images={}, has_docs={}",
+            "[ChatV2::pipeline] Built LLM messages: history={}, transient_skills={}, current_user={}, content_len={}, has_images={}, has_docs={}",
+            ctx.chat_history.len(),
+            injected_skill_count,
+            ctx.options.is_continue != Some(true),
             ctx.user_content.len(),
             ctx.attachments.iter().any(|a| a.mime_type.starts_with("image/")),
             ctx.attachments.iter().any(|a| !a.mime_type.starts_with("image/"))
@@ -892,6 +931,7 @@ impl ChatV2Pipeline {
             // 并行执行所有工具调用
             let canvas_note_id = ctx.options.canvas_note_id.clone();
             let skill_contents = ctx.options.skill_contents.clone();
+            let skill_embedded_tools = ctx.options.skill_embedded_tools.clone();
             let active_skill_ids = ctx.options.active_skill_ids.clone();
             let rag_top_k = ctx.options.rag_top_k;
             let rag_enable_reranking = ctx.options.rag_enable_reranking;
@@ -912,6 +952,7 @@ impl ChatV2Pipeline {
                     Some(round_id.as_str()),
                     &canvas_note_id,
                     &skill_contents,
+                    &skill_embedded_tools,
                     &active_skill_ids,
                     cancel_token,
                     rag_top_k,
@@ -942,7 +983,7 @@ impl ChatV2Pipeline {
                     if let Some(skill_ids) = tool_result
                         .output
                         .get("result")
-                        .and_then(|r| r.get("skill_ids"))
+                        .and_then(|r| r.get("loaded_skill_ids").or_else(|| r.get("skill_ids")))
                         .and_then(|ids| ids.as_array())
                     {
                         let loaded_skill_ids: Vec<String> = skill_ids
@@ -1203,7 +1244,7 @@ impl ChatV2Pipeline {
     /// - `session_id`: 会话 ID（用于工具状态隔离，如 TodoList）
     /// - `message_id`: 消息 ID（用于关联块）
     /// - `canvas_note_id`: Canvas 笔记 ID，用于 Canvas 工具默认值
-    /// - `skill_allowed_tools`: 🆕 P1-C Skill 工具白名单（如果设置，只允许执行白名单中的工具）
+    /// - `skill_embedded_tools`: 当前技能注入出的工具定义快照
     ///
     /// ## 返回
     /// 工具调用结果列表
@@ -1325,7 +1366,10 @@ impl ChatV2Pipeline {
         round_id: Option<&str>,
         canvas_note_id: &Option<String>,
         skill_contents: &Option<std::collections::HashMap<String, String>>,
-        active_skill_ids: &Option<Vec<String>>,
+        skill_embedded_tools: &Option<
+            std::collections::HashMap<String, Vec<super::super::types::McpToolSchema>>,
+        >,
+        _active_skill_ids: &Option<Vec<String>>,
         cancellation_token: Option<&CancellationToken>,
         rag_top_k: Option<u32>,
         rag_enable_reranking: Option<bool>,
@@ -1478,7 +1522,8 @@ impl ChatV2Pipeline {
                     round_id,
                     canvas_note_id,
                     skill_contents,
-                    active_skill_ids,
+                    skill_embedded_tools,
+                    _active_skill_ids,
                     cancellation_token.cloned(),
                     rag_top_k,
                     rag_enable_reranking,
@@ -1682,7 +1727,10 @@ impl ChatV2Pipeline {
         round_id: Option<&str>,
         canvas_note_id: &Option<String>,
         skill_contents: &Option<std::collections::HashMap<String, String>>,
-        active_skill_ids: &Option<Vec<String>>,
+        skill_embedded_tools: &Option<
+            std::collections::HashMap<String, Vec<super::super::types::McpToolSchema>>,
+        >,
+        _active_skill_ids: &Option<Vec<String>>,
         cancellation_token: Option<CancellationToken>,
         rag_top_k: Option<u32>,
         rag_enable_reranking: Option<bool>,
@@ -1893,6 +1941,7 @@ impl ChatV2Pipeline {
 
         // 🆕 渐进披露：传递 skill_contents
         ctx.skill_contents = skill_contents.clone();
+        ctx.skill_embedded_tools = skill_embedded_tools.clone();
 
         // 🆕 取消支持：传递取消令牌
         if let Some(token) = cancellation_token {

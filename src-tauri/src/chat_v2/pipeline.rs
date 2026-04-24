@@ -23,7 +23,7 @@ pub(crate) use std::time::Instant;
 
 pub(crate) use serde_json::{json, Value};
 pub(crate) use sha2::{Digest, Sha256};
-pub(crate) use tauri::{Emitter, Window};
+pub(crate) use tauri::Window;
 pub(crate) use tokio::time::{timeout, Duration};
 pub(crate) use tokio_util::sync::CancellationToken;
 pub(crate) use uuid::Uuid;
@@ -37,7 +37,7 @@ pub(crate) use super::tools::{
     AcademicSearchExecutor, AttemptCompletionExecutor, BuiltinResourceExecutor,
     BuiltinRetrievalExecutor, CanvasToolExecutor, ChatAnkiToolExecutor, ExecutionContext,
     FetchExecutor, GeneralToolExecutor, KnowledgeExecutor, MemoryToolExecutor, SkillsExecutor,
-    TemplateDesignerExecutor, ToolExecutor, ToolExecutorRegistry, ToolSensitivity,
+    TemplateDesignerExecutor, ToolExecutorRegistry, ToolSensitivity,
     UserTodoExecutor, WorkspaceToolExecutor,
 };
 pub(crate) use crate::database::Database as MainDatabase;
@@ -230,7 +230,7 @@ impl ChatV2Pipeline {
         registry.register(Arc::new(super::tools::qbank_executor::QBankExecutor::new()));
         registry.register(Arc::new(MemoryToolExecutor::new()));
         registry.register(Arc::new(UserTodoExecutor::new()));
-        registry.register(Arc::new(super::tools::SkillsExecutor::new())); // 🆕 Skills 工具执行器（渐进披露架构）
+        registry.register(Arc::new(SkillsExecutor::new())); // 🆕 Skills 工具执行器（渐进披露架构）
         registry.register(Arc::new(TemplateDesignerExecutor::new())); // 🆕 模板设计师工具执行器
         registry.register(Arc::new(super::tools::AskUserExecutor::new())); // 🆕 用户提问工具执行器
         registry.register(Arc::new(super::tools::SessionToolExecutor::new())); // 🆕 会话管理工具执行器

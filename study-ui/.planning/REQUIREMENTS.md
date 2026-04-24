@@ -62,6 +62,28 @@
 - [x] **HOME-04**: Mobile home polish does not add upgrade, user-plus, account-growth, or other new product entry points.
 - [x] **HOME-05**: Phone top-left chrome starts from the mobile edge, uses a single 44px menu affordance, and hides desktop title/update clutter.
 
+### DeepStudent Migration Foundation
+
+- [x] **MIGR-01**: The parent DeepStudent app treats `study-ui` as the source of truth for visual tokens, shell behavior, density, touch targets, and component primitive contracts.
+- [x] **MIGR-02**: Parent app semantic tokens expose study-ui-compatible surface, text, shell, sidebar, button, input, focus, destructive, and touch-target values through existing CSS variable files.
+- [x] **MIGR-03**: Parent app `NotionButton`, `ui/shad/Button`, and related control primitives converge on one touch-density contract: phone/tablet controls stay at least `44px`, with desktop compaction only at `lg` / `>=1024px`.
+- [x] **MIGR-04**: Parent app mobile shell, header, sidebar drawer/sheet, and close controls consume shared tokens and avoid hard-coded local palettes.
+- [x] **MIGR-05**: Migrated components avoid new hard-coded component colors, custom RGBA shadows, decorative gradients, and non-tokenized focus rings outside token definition files.
+- [x] **MIGR-06**: Icon usage is explicitly governed: migrated shell and primitive work follows the study-ui direction, while legacy icons may remain until their owning surface is migrated.
+- [x] **MIGR-07**: Migration safety tests or static checks detect hard-coded component colors, `md:` touch-target shrink, and forbidden scale/spring motion in targeted migrated primitives.
+- [ ] **MIGR-08**: Initial migration verification covers root chat shell, mobile header/sidebar, settings sheet/drawer behavior, and desktop Tauri chrome preservation.
+
+### DeepSeek Versioned Adapter Compatibility
+
+- [ ] **DSK-01**: The built-in official DeepSeek vendor defaults recommend `deepseek-v4-flash` and `deepseek-v4-pro` instead of presenting `deepseek-chat` and `deepseek-reasoner` as the primary long-term model IDs.
+- [ ] **DSK-02**: The shared `DeepSeekAdapter` detects DeepSeek model versions such as V3.2, V4, legacy aliases, and unknown future variants before applying reasoning and tool-call parameters.
+- [ ] **DSK-03**: Official DeepSeek V4 requests support V4 reasoning controls, including `thinking.type` and `reasoning_effort`, while remaining compatible with existing DeepSeek-style `reasoning_content` responses.
+- [ ] **DSK-04**: SiliconFlow-hosted `deepseek-ai/DeepSeek-V3.2` keeps using SiliconFlow's current request shape, including `enable_thinking` and `thinking_budget`, without regression from the official V4 adaptation.
+- [ ] **DSK-05**: SiliconFlow-hosted DeepSeek V4 model IDs reuse the shared `DeepSeekAdapter`, receive V4 model defaults, and still emit SiliconFlow-compatible request fields.
+- [ ] **DSK-06**: DeepSeek settings UI separates model capability from per-request thinking toggles so disabling thinking does not erase provider/model reasoning support metadata.
+- [ ] **DSK-07**: Regression tests cover official DeepSeek V4, SiliconFlow DeepSeek V3.2, and a SiliconFlow DeepSeek V4-style model identifier across request adaptation and capability inference.
+- [ ] **DSK-08**: Capability inference and default parameter logic distinguish DeepSeek model versions, including correct context window and reasoning defaults, without duplicating DeepSeek-specific UI/model pipelines per hosting platform.
+
 ## v2 Requirements
 
 ### Tablet Enhancements
@@ -124,12 +146,28 @@
 | HOME-03 | Phase 6 | Complete |
 | HOME-04 | Phase 6 | Complete |
 | HOME-05 | Phase 6 | Complete |
+| MIGR-01 | Phase 7 | Complete |
+| MIGR-02 | Phase 7 | Complete |
+| MIGR-03 | Phase 7 | Complete |
+| MIGR-04 | Phase 7 | Complete |
+| MIGR-05 | Phase 7 | Complete |
+| MIGR-06 | Phase 7 | Complete |
+| MIGR-07 | Phase 7 | Complete |
+| MIGR-08 | Phase 7 | Manual Tauri UAT pending |
+| DSK-01 | Phase 8 | Not started |
+| DSK-02 | Phase 8 | Not started |
+| DSK-03 | Phase 8 | Not started |
+| DSK-04 | Phase 8 | Not started |
+| DSK-05 | Phase 8 | Not started |
+| DSK-06 | Phase 8 | Not started |
+| DSK-07 | Phase 8 | Not started |
+| DSK-08 | Phase 8 | Not started |
 
 **Coverage:**
-- v1 requirements: 36 total
-- Mapped to phases: 36
+- v1 requirements: 52 total
+- Mapped to phases: 52
 - Unmapped: 0
 
 ---
 *Requirements defined: 2026-04-23*
-*Last updated: 2026-04-23 after Phase 6 mobile top-left polish*
+*Last updated: 2026-04-24 after tightening Phase 8 around one version-aware DeepSeek adapter*

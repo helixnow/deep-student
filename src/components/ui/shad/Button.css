@@ -1,16 +1,21 @@
 /**
- * Shad Button 组件样式
- * 使用 !important 确保 Android WebView 正确渲染
+ * Shad Button 组件样式。
+ * 使用 token 化的最小尺寸，确保 Android WebView 与触控密度一致。
  */
 
-/* Icon 按钮 - 确保最小尺寸 */
 [data-shad-button][data-size="icon"] {
-  min-width: 32px !important;
-  min-height: 32px !important;
+  min-width: var(--touch-target-size) !important;
+  min-height: var(--touch-target-size) !important;
   flex-shrink: 0 !important;
 }
 
-/* 按钮内的图标 - 确保可见 */
+@media (min-width: 1024px) {
+  [data-shad-button][data-size="icon"] {
+    min-width: var(--button-icon-size) !important;
+    min-height: var(--button-icon-size) !important;
+  }
+}
+
 [data-shad-button] svg {
   min-width: 14px !important;
   min-height: 14px !important;

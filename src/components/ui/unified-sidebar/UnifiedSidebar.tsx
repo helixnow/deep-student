@@ -11,20 +11,22 @@ import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { MacTopSafeDragZone } from '@/components/layout/MacTopSafeDragZone';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContract';
 import { Input } from '@/components/ui/shad/Input';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { SidebarSheet } from './SidebarSheet';
 import { SidebarDrawer } from './SidebarDrawer';
 import {
-  ChevronLeft,
-  ChevronRight,
-  Search,
+  ArrowsClockwise,
+  CaretLeft,
+  CaretRight,
+  CircleNotch,
+  MagnifyingGlass,
+  PencilSimple,
   Plus,
-  RefreshCw,
-  Loader2,
-  LucideIcon,
+  Trash,
   X,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import type {
   UnifiedSidebarProps,
   UnifiedSidebarContextValue,
@@ -66,7 +68,7 @@ const SIDEBAR_STYLES = {
   },
   /** 移动滑动模式样式（紧凑布局） */
   mobileSliding: {
-    header: { height: '40px', padding: 'px-2 py-1.5', gap: 'gap-0.5' },
+    header: { height: 'var(--touch-target-size)', padding: 'px-2 py-1.5', gap: 'gap-0.5' },
     search: { iconSize: 'w-3.5 h-3.5', inputPadding: 'pl-8 pr-3 py-1.5 text-sm' },
     button: { padding: 'p-1.5', iconSize: 'w-4 h-4' },
     item: { padding: 'gap-2.5 px-3 py-2 mx-1', iconSize: 'w-4 h-4', textSize: 'text-[13px]', indicator: 'w-[3px] h-4' },
@@ -305,7 +307,7 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
       <div className={cn('sidebar-shell-header flex flex-col', className)}>
         <div className="flex items-center justify-center px-1" style={{ height: '40px' }}>
           <NotionButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(false)} className="!p-1.5" title={expandTitle || t('expand')} aria-label="expand">
-            <ChevronRight className="w-4 h-4" />
+            <CaretRight className="w-4 h-4" weight="regular" />
           </NotionButton>
         </div>
       </div>
@@ -317,8 +319,8 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
       {/* 移动端模式：显示关闭按钮行（但移动滑动模式下不显示，因为顶栏已有切换按钮） */}
       {isMobileMode && !isMobileSlidingMode && (
         <div className="flex items-center gap-3 px-3 py-3 border-b border-[color:var(--shell-navigation-border)]">
-          <NotionButton variant="utility" size="icon" iconOnly onClick={closeMobile} className="!w-9 !h-9 shrink-0" aria-label={t('close')}>
-            <X className="w-5 h-5 text-muted-foreground" />
+          <NotionButton variant="utility" size="icon" iconOnly onClick={closeMobile} className={cn(shellIconButtonClassName, 'shrink-0')} aria-label={t('close')}>
+            <X size={20} weight="regular" />
           </NotionButton>
           {title && (
             <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -338,10 +340,10 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
           {/* 搜索框或标题 */}
           {showSearch ? (
             <div className="flex-1 relative">
-              <Search className={cn(
+              <MagnifyingGlass className={cn(
                 'absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60',
                 styles.search.iconSize
-              )} />
+              )} weight="regular" />
               <Input
                 type="text"
                 value={searchQuery}
@@ -369,13 +371,13 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
 
           {showRefresh && (
             <NotionButton variant="utility" size="icon" iconOnly onClick={onRefreshClick} disabled={isRefreshing} className={styles.button.padding} title={refreshTitle || t('refresh')} aria-label="refresh">
-              <RefreshCw className={cn(styles.button.iconSize, isRefreshing && 'animate-spin')} />
+              <ArrowsClockwise className={cn(styles.button.iconSize, isRefreshing && 'animate-spin')} weight="regular" />
             </NotionButton>
           )}
 
           {showCreate && (
             <NotionButton variant="utility" size="icon" iconOnly onClick={onCreateClick} className={styles.button.padding} title={createTitle || t('create')} aria-label="create">
-              <Plus className={styles.button.iconSize} />
+              <Plus className={styles.button.iconSize} weight="regular" />
             </NotionButton>
           )}
 
@@ -384,7 +386,7 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
           {/* 只在 panel 模式下显示折叠按钮，但在移动滑动模式下不显示（使用关闭按钮代替） */}
           {showCollapse && displayMode === 'panel' && !isMobileSlidingMode && (
             <NotionButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(true)} className="!p-1.5" title={collapseTitle || t('collapse')} aria-label="collapse">
-              <ChevronLeft className="w-4 h-4" />
+              <CaretLeft className="w-4 h-4" weight="regular" />
             </NotionButton>
           )}
         </div>
@@ -430,7 +432,7 @@ export const UnifiedSidebarContent: React.FC<UnifiedSidebarContentProps> = ({
   if (isLoading) {
     return (
       <div className={cn('flex items-center justify-center', isMobileMode ? 'py-12' : 'py-8')}>
-        <Loader2 className={cn('animate-spin text-muted-foreground', isMobileMode ? 'w-6 h-6' : 'w-5 h-5')} />
+        <CircleNotch className={cn('animate-spin text-muted-foreground', isMobileMode ? 'w-6 h-6' : 'w-5 h-5')} weight="regular" />
       </div>
     );
   }
@@ -558,7 +560,7 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
       if (React.isValidElement(icon)) {
         return icon;
       }
-      const IconComponent = icon as LucideIcon;
+      const IconComponent = icon as React.ElementType;
       return (
         <IconComponent
           className={cn(
@@ -651,18 +653,12 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
           {extraActions}
           {showEdit && onEditClick && (
             <NotionButton variant="utility" size="icon" iconOnly onClick={onEditClick} className={styles.actions.btnPadding} aria-label="edit">
-              <svg className={styles.actions.iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-              </svg>
+              <PencilSimple className={styles.actions.iconSize} weight="regular" />
             </NotionButton>
           )}
           {showDelete && onDeleteClick && (
             <NotionButton variant="utility" size="icon" iconOnly onClick={onDeleteClick} className={styles.actions.btnPadding} aria-label="delete">
-              <svg className={styles.actions.iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="3,6 5,6 21,6" />
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-              </svg>
+              <Trash className={styles.actions.iconSize} weight="regular" />
             </NotionButton>
           )}
         </div>

@@ -747,8 +747,14 @@ impl LLMManager {
             }
         }
 
-        // 🔧 防御性合并：连续 user 消息合并，避免部分 API（Anthropic/ERNIE）报错
-        Self::merge_consecutive_user_messages(&mut messages);
+        // 瞬态技能指令必须保持独立 user message，不能与当前用户输入合并。
+        let has_transient_skill_messages = chat_history
+            .iter()
+            .any(crate::chat_v2::pipeline::is_transient_skill_message);
+        if !has_transient_skill_messages {
+            // 🔧 防御性合并：连续 user 消息合并，避免部分 API（Anthropic/ERNIE）报错
+            Self::merge_consecutive_user_messages(&mut messages);
+        }
 
         // 近似输入token统计（用于用量/事件）
         let _approx_tokens_in = {
@@ -1101,33 +1107,32 @@ impl LLMManager {
                 );
             }
         }
-        // 🆕 检测合成的 load_skills 工具交互是否出现在请求消息中
+        // 审计：瞬态技能消息数量 + 真实 load_skills 调用数量
         {
-            let synthetic_count = messages
+            let transient_skill_count = chat_history
+                .iter()
+                .filter(|m| crate::chat_v2::pipeline::is_transient_skill_message(m))
+                .count();
+            let real_load_skills_call_count = messages
                 .iter()
                 .filter(|m| {
-                    // 检测 assistant 消息中包含 load_skills tool_call
-                    if let Some(tool_calls) = m.get("tool_calls").and_then(|v| v.as_array()) {
-                        tool_calls.iter().any(|tc| {
-                            tc.get("function")
-                                .and_then(|f| f.get("name"))
-                                .and_then(|n| n.as_str())
-                                .map_or(false, |name| name == "load_skills")
+                    m.get("tool_calls")
+                        .and_then(|v| v.as_array())
+                        .is_some_and(|tool_calls| {
+                            tool_calls.iter().any(|tc| {
+                                tc.get("function")
+                                    .and_then(|f| f.get("name"))
+                                    .and_then(|n| n.as_str())
+                                    .map_or(false, |name| name == "load_skills")
+                            })
                         })
-                    } else if m.get("role").and_then(|r| r.as_str()) == Some("tool") {
-                        // 检测 tool 消息中包含 skill_loaded 标记
-                        m.get("content")
-                            .and_then(|c| c.as_str())
-                            .map_or(false, |c| c.contains("<skill_loaded"))
-                    } else {
-                        false
-                    }
                 })
                 .count();
-            if synthetic_count > 0 {
+            if transient_skill_count > 0 || real_load_skills_call_count > 0 {
                 info!(
-                    "[LLM_AUDIT] 请求体包含 {} 条合成 load_skills 工具消息（总消息数: {}）",
-                    synthetic_count,
+                    "[LLM_AUDIT] 请求体包含 {} 条瞬态技能消息，{} 次真实 load_skills 调用（总消息数: {}）",
+                    transient_skill_count,
+                    real_load_skills_call_count,
                     messages.len()
                 );
             }
@@ -2394,8 +2399,13 @@ impl LLMManager {
         // 注意：history.rs 输出的是交叉模式 assistant→tool→assistant→tool，
         // 所以此函数在正常流程中是 no-op，仅作为防御性保护。
         Self::merge_consecutive_assistant_tool_calls(&mut messages);
-        // 🔧 防御性合并：连续 user 消息合并
-        Self::merge_consecutive_user_messages(&mut messages);
+        if !chat_history
+            .iter()
+            .any(crate::chat_v2::pipeline::is_transient_skill_message)
+        {
+            // 🔧 防御性合并：连续 user 消息合并
+            Self::merge_consecutive_user_messages(&mut messages);
+        }
 
         let mut request_body = json!({
             "model": config.model,
@@ -3389,8 +3399,13 @@ impl LLMManager {
 
         // 🔧 防御性合并：连续 assistant tool_calls（正常流程中是 no-op）
         Self::merge_consecutive_assistant_tool_calls(&mut messages);
-        // 🔧 防御性合并：连续 user 消息合并
-        Self::merge_consecutive_user_messages(&mut messages);
+        if !chat_history
+            .iter()
+            .any(crate::chat_v2::pipeline::is_transient_skill_message)
+        {
+            // 🔧 防御性合并：连续 user 消息合并
+            Self::merge_consecutive_user_messages(&mut messages);
+        }
 
         let mut request_body = json!({
             "model": config.model,

@@ -1,11 +1,28 @@
 use super::*;
 
+fn session_skill_state_from_snapshot(
+    snapshot: &crate::chat_v2::types::SkillStateSnapshot,
+) -> crate::chat_v2::types::SessionSkillState {
+    crate::chat_v2::types::SessionSkillState {
+        manual_pinned_skill_ids: snapshot.manual_pinned_skill_ids.clone(),
+        mode_required_bundle_ids: snapshot.mode_required_bundle_ids.clone(),
+        agentic_session_skill_ids: snapshot.agentic_session_skill_ids.clone(),
+        branch_local_skill_ids: snapshot.branch_local_skill_ids.clone(),
+        effective_allowed_internal_tools: snapshot.effective_allowed_internal_tools.clone(),
+        effective_allowed_external_tools: snapshot.effective_allowed_external_tools.clone(),
+        effective_allowed_external_servers: snapshot.effective_allowed_external_servers.clone(),
+        version: snapshot.version,
+        legacy_migrated: Some(false),
+    }
+}
+
 fn build_replay_skill_payload_snapshot(
     options: &SendOptions,
 ) -> Option<crate::chat_v2::types::ReplaySkillPayloadSnapshot> {
     let snapshot = crate::chat_v2::types::ReplaySkillPayloadSnapshot {
         active_skill_ids: options.active_skill_ids.clone().unwrap_or_default(),
         skill_contents: options.skill_contents.clone().unwrap_or_default(),
+        skill_dependencies: options.skill_dependencies.clone().unwrap_or_default(),
         skill_embedded_tools: options.skill_embedded_tools.clone().unwrap_or_default(),
         mcp_tool_schemas: options.mcp_tool_schemas.clone().unwrap_or_default(),
         selected_mcp_servers: options.mcp_tools.clone().unwrap_or_default(),
@@ -13,6 +30,7 @@ fn build_replay_skill_payload_snapshot(
 
     let has_payload = !snapshot.active_skill_ids.is_empty()
         || !snapshot.skill_contents.is_empty()
+        || !snapshot.skill_dependencies.is_empty()
         || !snapshot.skill_embedded_tools.is_empty()
         || !snapshot.mcp_tool_schemas.is_empty()
         || !snapshot.selected_mcp_servers.is_empty();
@@ -709,8 +727,6 @@ impl ChatV2Pipeline {
 
         // 加载聊天历史
         let mut chat_history = self.load_variant_chat_history(&session_id).await?;
-        // 🆕 2026-02-22: 为已激活的默认技能自动注入合成 load_skills 工具交互
-        inject_synthetic_load_skills(&mut chat_history, &options);
         // 🔧 Token 预算裁剪（对齐单变体路径）
         let max_tokens = options
             .context_limit
@@ -740,8 +756,29 @@ impl ChatV2Pipeline {
             .await;
 
         // 构建消息历史
+        let base_history_len = chat_history.len();
         let mut messages = chat_history;
         messages.push(current_user_message);
+
+        let variant_skill_state = ctx
+            .get_meta()
+            .and_then(|meta| meta.skill_snapshot_after.or(meta.skill_snapshot_before))
+            .map(|snapshot| session_skill_state_from_snapshot(&snapshot))
+            .unwrap_or_else(|| self.load_effective_session_skill_state(&session_id, &options));
+        let empty_skill_contents = std::collections::HashMap::new();
+        let transient_skill_messages = build_transient_skill_messages(
+            &variant_skill_state,
+            options
+                .replay_skill_contents
+                .as_ref()
+                .or(options.skill_contents.as_ref())
+                .unwrap_or(&empty_skill_contents),
+            options.skill_dependencies.as_ref(),
+            options
+                .context_limit
+                .map(|v| (v as usize).min(DEFAULT_MAX_HISTORY_TOKENS)),
+        );
+        messages.splice(base_history_len..base_history_len, transient_skill_messages);
 
         // 构建 LLM 上下文
         let mut llm_context: std::collections::HashMap<String, Value> =
@@ -937,8 +974,6 @@ impl ChatV2Pipeline {
             .build_system_prompt_with_shared_context(&options, &shared_context)
             .await;
         let mut chat_history = self.load_variant_chat_history(&session_id).await?;
-        // 🆕 2026-02-22: 为已激活的默认技能自动注入合成 load_skills 工具交互
-        inject_synthetic_load_skills(&mut chat_history, &options);
         // 🔧 Token 预算裁剪（对齐单变体路径）
         let max_tokens_budget = options
             .context_limit
@@ -957,6 +992,7 @@ impl ChatV2Pipeline {
             .unwrap_or(false);
         let disable_tools = options.disable_tools.unwrap_or(false) || !has_tools;
 
+        let base_history_len = chat_history.len();
         let mut messages = chat_history;
         messages.push(current_user_message);
 
@@ -1070,6 +1106,11 @@ impl ChatV2Pipeline {
         let active_skill_ids = options.active_skill_ids.clone();
         let skill_contents = options.skill_contents.clone();
         let variant_session_key = format!("{}:{}", session_id, ctx.variant_id());
+        let mut variant_skill_state = ctx
+            .get_meta()
+            .and_then(|meta| meta.skill_snapshot_after.or(meta.skill_snapshot_before))
+            .map(|snapshot| session_skill_state_from_snapshot(&snapshot))
+            .unwrap_or_else(|| self.load_effective_session_skill_state(&session_id, &options));
 
         let mut tool_round = 0u32;
         loop {
@@ -1077,6 +1118,37 @@ impl ChatV2Pipeline {
                 ctx.cancel();
                 break;
             }
+
+            messages.retain(|msg| !is_transient_skill_message(msg));
+            let empty_skill_contents = std::collections::HashMap::new();
+            let transient_skill_messages = build_transient_skill_messages_with_audit(
+                &variant_skill_state,
+                options
+                    .replay_skill_contents
+                    .as_ref()
+                    .or(options.skill_contents.as_ref())
+                    .unwrap_or(&empty_skill_contents),
+                options.skill_dependencies.as_ref(),
+                options
+                    .context_limit
+                    .map(|v| (v as usize).min(DEFAULT_MAX_HISTORY_TOKENS)),
+            );
+            let skill_audit = transient_skill_messages.audit.clone();
+            messages.splice(base_history_len..base_history_len, transient_skill_messages.messages);
+            let audit_round_id = format!("variant-tool-round-{}", tool_round);
+            emitter_arc.emit_skill_injection_audit(
+                ctx.message_id(),
+                json!({
+                    "injectedSkillIds": skill_audit.injected_skill_ids.clone(),
+                    "droppedSkillIds": skill_audit.dropped_skill_ids.clone(),
+                    "missingSkillIds": skill_audit.missing_skill_ids.clone(),
+                    "estimatedTokens": skill_audit.estimated_tokens,
+                    "skillStateVersion": skill_audit.skill_state_version,
+                }),
+                Some(ctx.variant_id()),
+                Some(skill_audit.skill_state_version),
+                Some(audit_round_id.as_str()),
+            );
 
             // 🔧 P1修复：添加 Pipeline 层超时保护
             let llm_future = self.llm_manager.call_unified_model_2_stream(
@@ -1200,6 +1272,7 @@ impl ChatV2Pipeline {
                     Some(round_id.as_str()),
                     &canvas_note_id,
                     &skill_contents,
+                    &options.skill_embedded_tools,
                     &active_skill_ids,
                     cancel_token,
                     rag_top_k,
@@ -1227,7 +1300,7 @@ impl ChatV2Pipeline {
                     if let Some(skill_ids) = tool_result
                         .output
                         .get("result")
-                        .and_then(|r| r.get("skill_ids"))
+                        .and_then(|r| r.get("loaded_skill_ids").or_else(|| r.get("skill_ids")))
                         .and_then(|ids| ids.as_array())
                     {
                         let loaded_skill_ids: Vec<String> = skill_ids
@@ -1285,6 +1358,9 @@ impl ChatV2Pipeline {
                                         .insert("tools".into(), Value::Array(refreshed_tools));
                                 }
                             }
+                            variant_skill_state =
+                                variant_skill_state.with_added_branch_local_skills(&loaded_skill_ids);
+                            options.skill_state_version = Some(variant_skill_state.version);
                         }
                     }
                 }

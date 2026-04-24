@@ -405,10 +405,6 @@ impl ChatV2Pipeline {
         // 🔧 改进 5：验证工具调用链完整性
         validate_tool_chain(&chat_history);
 
-        // 🆕 2026-02-22: 为已激活的默认技能自动注入合成 load_skills 工具交互
-        // 技能内容通过 role: tool 投递，模型遵循度远高于 user message 中的 XML 块
-        inject_synthetic_load_skills(&mut chat_history, &ctx.options);
-
         // 🔧 Token 预算裁剪：在条数限制基础上，按 token 预算从最旧消息开始移除
         let max_tokens = ctx
             .options

@@ -716,6 +716,8 @@ pub struct ReplaySkillPayloadSnapshot {
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub skill_contents: std::collections::HashMap<String, String>,
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub skill_dependencies: std::collections::HashMap<String, Vec<String>>,
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub skill_embedded_tools: std::collections::HashMap<String, Vec<McpToolSchema>>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mcp_tool_schemas: Vec<McpToolSchema>,
@@ -2002,6 +2004,16 @@ pub struct SendOptions {
     /// 后端 load_skills 执行时从此字段获取技能内容并返回给 LLM
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skill_contents: Option<std::collections::HashMap<String, String>>,
+
+    /// 回放技能内容映射（skillId -> historical content）
+    /// retry/regenerate 原始回放优先使用此快照，避免读取最新技能文件导致漂移
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replay_skill_contents: Option<std::collections::HashMap<String, String>>,
+
+    /// 技能依赖图（skillId -> dependency skill IDs）
+    /// transient builder 和 load_skills 共享，依赖必须先于父技能注入
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill_dependencies: Option<std::collections::HashMap<String, Vec<String>>>,
 
     /// 技能嵌入工具映射（skillId -> embeddedTools）
     /// 前端发送时填充所有已注册技能的 embeddedTools

@@ -11,6 +11,7 @@ import {
 } from '../config/fontConfig';
 import { t } from '../utils/i18n';
 import { showGlobalNotification } from '../components/UnifiedNotification';
+import { setPendingSettingsTab } from '../utils/pendingSettingsTab';
 
 // 初始化字体设置（应用启动时调用）
 const initializeFontSetting = async () => {
@@ -124,6 +125,15 @@ export const useAppInitialization = (): UseAppInitializationReturn => {
                 'warning',
                 t('init_steps.database'),
                 t('messages.error.init_failed'),
+                {
+                  action: {
+                    label: t('ui.buttons.go_to_settings', { defaultValue: '去设置' }),
+                    onClick: () => {
+                      setPendingSettingsTab('data-governance');
+                      window.dispatchEvent(new CustomEvent('navigate-to-tab', { detail: { tabName: 'settings' } }));
+                    },
+                  },
+                },
               );
             }
           })();

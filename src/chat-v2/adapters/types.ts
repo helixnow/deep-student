@@ -122,6 +122,10 @@ export interface SendOptions {
 
   /** Skill 内容（SKILL.md 内容） */
   skillContents?: Record<string, string>;
+  /** Historical skill contents for replay/regenerate */
+  replaySkillContents?: Record<string, string>;
+  /** Skill dependency graph */
+  skillDependencies?: Record<string, string[]>;
   /** Skill 内嵌工具 Schema */
   skillEmbeddedTools?: Record<string, Array<{
     name: string;

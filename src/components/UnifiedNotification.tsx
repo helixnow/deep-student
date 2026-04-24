@@ -39,8 +39,14 @@ export interface NotificationProps {
     message: string;
     visible: boolean;
     title?: string;
+    action?: GlobalNotificationAction;
   };
   onClose: () => void;
+}
+
+export interface GlobalNotificationAction {
+  label: string;
+  onClick: () => void;
 }
 
 export const UnifiedNotification: React.FC<NotificationProps> = ({ 
@@ -143,6 +149,10 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({
   if (!notification.visible) return null;
 
   const isAssertive = notification.type === 'error' || notification.type === 'warning';
+  const handleActionClick = () => {
+    notification.action?.onClick();
+    handleClose();
+  };
   const icons = {
     success: <CheckCircle size={20} aria-hidden="true" />,
     error: <XCircle size={20} aria-hidden="true" />,
@@ -184,6 +194,18 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({
         <div className="unified-notification-message">
           {notification.message}
         </div>
+        {notification.action && (
+          <div className="unified-notification-actions">
+            <NotionButton
+              variant="ghost"
+              size="sm"
+              className="unified-notification-action"
+              onClick={handleActionClick}
+            >
+              {notification.action.label}
+            </NotionButton>
+          </div>
+        )}
       </div>
       <NotionButton variant="ghost" size="icon" iconOnly className="unified-notification-close" onClick={handleClose} aria-label={t('common:close_notification', 'Close notification')}>
         <X size={16} aria-hidden="true" />
@@ -199,12 +221,14 @@ export interface GlobalNotificationPayload {
   type: GlobalNotificationType;
   message: string;
   title?: string;
+  action?: GlobalNotificationAction;
 }
 
 export const showGlobalNotification = (
   type: GlobalNotificationType,
   message: unknown,
-  title?: string
+  title?: string,
+  options?: { action?: GlobalNotificationAction }
 ): void => {
   const normalized = normalizeNotificationMessage(message);
   const finalTitle = title;
@@ -220,13 +244,17 @@ export const showGlobalNotification = (
       return;
     }
     cache.items.push({ key, ts: now });
-  } catch {}
+  } catch {
+    // Notification de-duping is best-effort only.
+  }
 
   try {
     window.dispatchEvent(
       new CustomEvent<GlobalNotificationPayload>('showGlobalNotification', {
-        detail: { type, message: normalized, title: finalTitle },
+        detail: { type, message: normalized, title: finalTitle, action: options?.action },
       })
     );
-  } catch {}
+  } catch {
+    // Notification dispatch is best-effort only.
+  }
 };

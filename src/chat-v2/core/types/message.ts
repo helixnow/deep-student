@@ -68,8 +68,8 @@ export interface SkillStateSnapshot {
 
 export interface ReplaySkillPayloadSnapshot {
   activeSkillIds?: string[];
-  skillAllowedTools?: string[];
   skillContents?: Record<string, string>;
+  skillDependencies?: Record<string, string[]>;
   skillEmbeddedTools?: Record<string, Array<{ name: string; description?: string; inputSchema?: unknown }>>;
   mcpToolSchemas?: Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }>;
   selectedMcpServers?: string[];

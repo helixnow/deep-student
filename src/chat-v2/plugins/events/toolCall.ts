@@ -617,8 +617,12 @@ const toolCallEventHandler: EventHandler = {
             : Array.isArray(skillResult.skill_ids)
               ? skillResult.skill_ids
               : [];
+          const parentMessage = store.messageMap.get(block.messageId);
+          const isVariantToolCall = !!parentMessage?.variants?.some((variant) =>
+            variant.blockIds.includes(blockId)
+          );
 
-          if (!event.variantId) {
+          if (!isVariantToolCall) {
             syncLoadedSkillsFromBackend(sessionId, loadedSkillIds, { replace: true });
           }
 

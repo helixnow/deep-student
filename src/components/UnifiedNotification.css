@@ -106,6 +106,19 @@
   word-break: break-word;
 }
 
+.unified-notification-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.unified-notification-action {
+  height: 28px;
+  padding-inline: 10px;
+  font-size: 12px;
+}
+
 .unified-notification-close {
   background: transparent;
   border: none;

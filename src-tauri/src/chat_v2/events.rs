@@ -84,6 +84,8 @@ pub mod event_types {
     // ========== 系统提示事件 ==========
     /// 工具递归限制提示（达到最大递归次数时）
     pub const TOOL_LIMIT: &str = "tool_limit";
+    /// 技能瞬态注入审计（hidden transient skill messages）
+    pub const SKILL_INJECTION_AUDIT: &str = "skill_injection_audit";
 }
 
 // ============================================================
@@ -951,6 +953,37 @@ impl ChatV2EventEmitter {
         event.skill_state_version = skill_state_version;
         event.round_id = round_id.map(|s| s.to_string());
         self.apply_registered_meta(Some(block_id), &mut event);
+        self.emit(event);
+    }
+
+    pub fn emit_skill_injection_audit(
+        &self,
+        message_id: &str,
+        payload: Value,
+        variant_id: Option<&str>,
+        skill_state_version: Option<u64>,
+        round_id: Option<&str>,
+    ) {
+        let seq = self.next_sequence_id();
+        let event = BackendEvent {
+            sequence_id: seq,
+            session_id: Some(self.session_id.clone()),
+            r#type: event_types::SKILL_INJECTION_AUDIT.to_string(),
+            phase: event_phase::END.to_string(),
+            message_id: Some(message_id.to_string()),
+            block_id: None,
+            block_type: None,
+            chunk: None,
+            result: Some(payload),
+            error: None,
+            payload: None,
+            skill_state_version,
+            round_id: round_id.map(|s| s.to_string()),
+            variant_id: variant_id.map(|s| s.to_string()),
+            model_id: None,
+            status: None,
+            usage: None,
+        };
         self.emit(event);
     }
 

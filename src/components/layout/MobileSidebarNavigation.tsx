@@ -1,10 +1,12 @@
 import React, { useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronRight } from 'lucide-react';
+import { CaretRight } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { createNavItems, type NavItem } from '@/config/navigation';
 import type { CurrentView } from '@/types/navigation';
 import { useViewStore } from '@/stores/viewStore';
+import { NotionButton } from '@/components/ui/NotionButton';
+import { shellNavButtonClassName } from '@/components/ui/buttonPrimitiveContract';
 
 export const MOBILE_APP_NAVIGATE_EVENT = 'deepstudent:mobile-sidebar-navigate';
 
@@ -64,13 +66,16 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
           const isActive = currentView === view;
 
           return (
-            <button
+            <NotionButton
               key={view}
               type="button"
+              variant="nav"
+              size="sm"
               aria-current={isActive ? 'page' : undefined}
               onClick={() => handleNavigate(view as CurrentView)}
               className={cn(
-                'group flex min-h-11 w-full items-center gap-2.5 rounded-2xl px-3 text-left text-[15px] font-medium transition-colors',
+                shellNavButtonClassName,
+                'group px-3 text-[15px] font-medium',
                 isActive
                   ? 'bg-[var(--sidebar-study-selected)] text-foreground'
                   : 'text-foreground/82 hover:bg-[var(--sidebar-study-hover)] hover:text-foreground'
@@ -84,8 +89,8 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
                 strokeWidth={isActive ? 2.5 : 2}
               />
               <span className="min-w-0 flex-1 truncate">{name}</span>
-              <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground/80" />
-            </button>
+              <CaretRight className="h-4 w-4 shrink-0 text-muted-foreground/80" weight="regular" />
+            </NotionButton>
           );
         })}
       </nav>

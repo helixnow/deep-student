@@ -492,7 +492,7 @@ function App() {
   // 全面接入新引擎统一管理（在 App 级别避免再手绑流事件）
   const USE_STABLE_STREAM_ENGINE = true;
   // 🚀 应用初始化
-  const { isLoading, progress, currentStep, steps, error: initError } = useAppInitialization();
+  useAppInitialization();
   
   // 🆕 监听数据治理迁移状态（启动时显示警告/错误通知）
   useMigrationStatusListener();
@@ -2051,24 +2051,6 @@ function App() {
                 }}
               >
                 {t('common:maintenance.go_to_data_governance', '查看详情')}
-              </NotionButton>
-            </div>
-          )}
-
-          {/* 数据库初始化失败警告 banner（非阻塞） */}
-          {initError && steps.some(s => s.key === 'database' && !s.completed) && (
-            <div className="flex items-center gap-2 px-4 py-2 bg-yellow-500/15 border-b border-yellow-500/30 text-yellow-700 dark:text-yellow-400 text-sm">
-              <span className="shrink-0">⚠</span>
-              <span className="flex-1 truncate">
-                {t('common:init_steps.database')}: {initError}
-              </span>
-              <NotionButton
-                variant="ghost"
-                size="sm"
-                className="shrink-0 text-yellow-700 dark:text-yellow-400 hover:bg-yellow-500/20 h-6 px-2 text-xs"
-                onClick={() => setCurrentView('settings')}
-              >
-                {t('common:ui.buttons.go_to_settings', '去设置')}
               </NotionButton>
             </div>
           )}
