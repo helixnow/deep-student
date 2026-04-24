@@ -54,8 +54,8 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         name: "DeepSeek",
         provider_type: "deepseek",
         base_url: "https://api.deepseek.com/v1",
-        notes: "DeepSeek 官方 API。可用模型: deepseek-chat, deepseek-reasoner",
-        max_tokens_limit: Some(8192), // DeepSeek API 限制
+        notes: "DeepSeek 官方 API。推荐模型: deepseek-v4-flash, deepseek-v4-pro。兼容别名: deepseek-chat, deepseek-reasoner（官方计划于 2026-07-24 后逐步弃用）。",
+        max_tokens_limit: Some(384_000), // DeepSeek V4 最大输出能力；内置模型默认仍保持保守
         website_url: "https://deepseek.com",
     },
     // 通义千问 (Qwen / 阿里云百炼)
@@ -134,9 +134,31 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
 pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     // ===== DeepSeek 模型 =====
     BuiltinModel {
+        id: "builtin-deepseek-v4-flash",
+        vendor_id: "builtin-deepseek",
+        label: "DeepSeek V4 Flash (官方推荐)",
+        model: "deepseek-v4-flash",
+        is_multimodal: false,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 8192,
+        temperature: 0.6,
+    },
+    BuiltinModel {
+        id: "builtin-deepseek-v4-pro",
+        vendor_id: "builtin-deepseek",
+        label: "DeepSeek V4 Pro (官方推荐)",
+        model: "deepseek-v4-pro",
+        is_multimodal: false,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 8192,
+        temperature: 0.6,
+    },
+    BuiltinModel {
         id: "builtin-deepseek-chat",
         vendor_id: "builtin-deepseek",
-        label: "DeepSeek Chat (对话)",
+        label: "DeepSeek Chat (兼容别名/非思考)",
         model: "deepseek-chat",
         is_multimodal: false,
         is_reasoning: false,
@@ -147,7 +169,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-deepseek-reasoner",
         vendor_id: "builtin-deepseek",
-        label: "DeepSeek Reasoner (深度推理)",
+        label: "DeepSeek Reasoner (兼容别名/思考)",
         model: "deepseek-reasoner",
         is_multimodal: false,
         is_reasoning: true,
@@ -639,31 +661,42 @@ fn get_vendor_max_tokens_limit(vendor_id: &str) -> Option<u32> {
         .and_then(|v| v.max_tokens_limit)
 }
 
+fn get_vendor_provider_type(vendor_id: &str) -> String {
+    BUILTIN_VENDORS
+        .iter()
+        .find(|vendor| vendor.id == vendor_id)
+        .map(|vendor| vendor.provider_type.to_string())
+        .unwrap_or_else(|| "openai".to_string())
+}
+
 /// 将内置模型定义转换为 ModelProfile
 impl BuiltinModel {
     pub fn to_model_profile(&self) -> ModelProfile {
         // 从对应的供应商继承 max_tokens_limit
         let max_tokens_limit = get_vendor_max_tokens_limit(self.vendor_id);
+        let provider_scope = get_vendor_provider_type(self.vendor_id);
 
         // 根据供应商确定 model_adapter
         let (model_adapter, gemini_api_version) = if self.vendor_id == "builtin-gemini" {
             ("google".to_string(), Some("v1beta".to_string()))
+        } else if self.vendor_id == "builtin-deepseek" {
+            ("deepseek".to_string(), None)
         } else {
             ("openai".to_string(), None)
         };
+        let reasoning_effort =
+            if self.vendor_id == "builtin-deepseek" && self.is_reasoning {
+                Some("high".to_string())
+            } else {
+                None
+            };
 
         ModelProfile {
             id: self.id.to_string(),
             vendor_id: self.vendor_id.to_string(),
             label: self.label.to_string(),
             model: self.model.to_string(),
-            provider_scope: Some(
-                BUILTIN_VENDORS
-                    .iter()
-                    .find(|vendor| vendor.id == self.vendor_id)
-                    .map(|vendor| vendor.provider_type.to_string())
-                    .unwrap_or_else(|| "openai".to_string()),
-            ),
+            provider_scope: Some(provider_scope),
             model_adapter,
             is_multimodal: self.is_multimodal,
             is_reasoning: self.is_reasoning,
@@ -675,7 +708,7 @@ impl BuiltinModel {
             enabled: true,
             max_output_tokens: self.max_output_tokens,
             temperature: self.temperature,
-            reasoning_effort: None,
+            reasoning_effort,
             thinking_enabled: self.is_reasoning,
             thinking_budget: None,
             include_thoughts: self.is_reasoning,
@@ -720,4 +753,58 @@ pub fn load_all_builtins(
     let vendors = load_builtin_vendors(existing_vendor_ids);
     let profiles = load_builtin_models(existing_profile_ids);
     (vendors, profiles)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn deepseek_vendor() -> &'static BuiltinVendor {
+        BUILTIN_VENDORS
+            .iter()
+            .find(|vendor| vendor.id == "builtin-deepseek")
+            .expect("builtin DeepSeek vendor should exist")
+    }
+
+    fn builtin_model(id: &str) -> &'static BuiltinModel {
+        BUILTIN_MODELS
+            .iter()
+            .find(|model| model.id == id)
+            .expect("builtin model should exist")
+    }
+
+    #[test]
+    fn official_deepseek_vendor_advertises_v4_and_keeps_alias_notice() {
+        let vendor = deepseek_vendor();
+
+        assert!(vendor.notes.contains("deepseek-v4-flash"));
+        assert!(vendor.notes.contains("deepseek-v4-pro"));
+        assert!(vendor.notes.contains("deepseek-chat"));
+        assert!(vendor.notes.contains("deepseek-reasoner"));
+        assert_eq!(vendor.max_tokens_limit, Some(384_000));
+    }
+
+    #[test]
+    fn official_deepseek_builtin_profiles_recommend_v4_and_preserve_aliases() {
+        let v4_flash = builtin_model("builtin-deepseek-v4-flash").to_model_profile();
+        let v4_pro = builtin_model("builtin-deepseek-v4-pro").to_model_profile();
+        let chat_alias = builtin_model("builtin-deepseek-chat").to_model_profile();
+        let reasoner_alias = builtin_model("builtin-deepseek-reasoner").to_model_profile();
+
+        assert_eq!(v4_flash.model, "deepseek-v4-flash");
+        assert_eq!(v4_pro.model, "deepseek-v4-pro");
+        assert_eq!(v4_flash.provider_scope.as_deref(), Some("deepseek"));
+        assert_eq!(v4_flash.model_adapter, "deepseek");
+        assert_eq!(v4_flash.max_tokens_limit, Some(384_000));
+        assert_eq!(v4_flash.max_output_tokens, 8192);
+        assert_eq!(v4_flash.reasoning_effort.as_deref(), Some("high"));
+
+        assert_eq!(chat_alias.model, "deepseek-chat");
+        assert_eq!(chat_alias.model_adapter, "deepseek");
+        assert!(!chat_alias.is_reasoning);
+        assert!(!chat_alias.thinking_enabled);
+        assert_eq!(reasoner_alias.model, "deepseek-reasoner");
+        assert!(reasoner_alias.is_reasoning);
+        assert_eq!(reasoner_alias.reasoning_effort.as_deref(), Some("high"));
+    }
 }
