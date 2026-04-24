@@ -9,7 +9,7 @@
 //! | 模型/Provider | 格式 | 需要回传 | 新问题清理 | 签名 |
 //! |--------------|------|---------|-----------|------|
 //! | DeepSeek R1/Reasoner | `reasoning_content` | ✅ | ✅ | ❌ |
-//! | DeepSeek V3.x (enable_thinking) | `reasoning_content` | ✅ | ✅ | ❌ |
+//! | DeepSeek V3.x/V4 | `reasoning_content` | ✅ | ✅ | ❌ |
 //! | Perplexity Sonar Reasoning | `reasoning_content` | ✅ | ✅ | ❌ |
 //! | xAI Grok | `reasoning_content` | ✅ | ✅ | ❌ |
 //! | GLM-4-Thinking (SiliconFlow) | `reasoning_content` | ✅ | ✅ | ❌ |
@@ -187,6 +187,16 @@ pub fn get_passback_policy(config: &ApiConfig) -> ReasoningPassbackPolicy {
         }
     }
 
+    // Direct Google Gemini thinking responses use structured reasoning details.
+    if (provider == "google" || provider == "gemini") && is_gemini_thinking_model(config) {
+        return ReasoningPassbackPolicy::ReasoningDetails;
+    }
+
+    // Perplexity Sonar reasoning models stream DeepSeek-style reasoning_content.
+    if provider == "perplexity" && model.contains("sonar") && model.contains("reasoning") {
+        return ReasoningPassbackPolicy::DeepSeekStyle;
+    }
+
     // 委托给适配器系统
     let adapter = get_adapter(
         config.provider_type.as_deref(),
@@ -323,6 +333,17 @@ mod tests {
             ReasoningPassbackPolicy::DeepSeekStyle
         );
         assert!(requires_reasoning_passback(&config));
+    }
+
+    #[test]
+    fn test_deepseek_v4_official() {
+        let config = make_config(Some("deepseek"), "deepseek-v4-pro", true);
+        assert_eq!(
+            get_passback_policy(&config),
+            ReasoningPassbackPolicy::DeepSeekStyle
+        );
+        assert!(requires_reasoning_passback(&config));
+        assert!(!uses_reasoning_details_format(&config));
     }
 
     #[test]

@@ -4,19 +4,20 @@
 //!
 //! ## DeepSeek 官方 API（api.deepseek.com）
 //! - `thinking: { type: "enabled" | "disabled" }`
+//! - DeepSeek V4: `reasoning_effort: "high" | "max"`
 //!
 //! ## SiliconFlow 平台（api.siliconflow.cn）
 //! - `enable_thinking: true | false`
 //! - `thinking_budget: number`
 //!
-//! - DeepSeek-R1/V3.2 系列是原生推理模型
+//! - DeepSeek-R1/V3.2/V4 系列是原生推理模型
 //! - V3.1 使用函数调用时需禁用思维模式
 //!
 //! 参考文档：
 //! - DeepSeek: https://api-docs.deepseek.com/
 //! - SiliconFlow: https://docs.siliconflow.com/
 
-use super::{resolve_enable_thinking, RequestAdapter};
+use super::{get_trimmed_effort, resolve_enable_thinking, RequestAdapter};
 use crate::llm_manager::ApiConfig;
 use serde_json::{json, Map, Value};
 
@@ -28,13 +29,51 @@ use serde_json::{json, Map, Value};
 /// - V3.1: 使用函数调用时需禁用 thinking 相关字段
 pub struct DeepSeekAdapter;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DeepSeekModelVersion {
+    V31,
+    V32,
+    V4,
+    LegacyAlias,
+    Unknown,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum DeepSeekHostProtocol {
+    Official,
+    SiliconFlow,
+    OtherHosted,
+}
+
 impl DeepSeekAdapter {
-    /// 检查是否是 DeepSeek V3.1（需要特殊处理工具调用）
-    fn is_v31(model: &str) -> bool {
+    fn classify_model(model: &str) -> DeepSeekModelVersion {
         let model_lower = model.to_lowercase();
-        model_lower.contains("deepseek-v3.1")
+
+        if model_lower.contains("deepseek-v3.1")
             || model_lower.contains("deepseek-ai/deepseek-v3.1")
             || model_lower.contains("pro/deepseek-ai/deepseek-v3.1")
+        {
+            return DeepSeekModelVersion::V31;
+        }
+
+        if model_lower.contains("deepseek-v3.2") {
+            return DeepSeekModelVersion::V32;
+        }
+
+        if model_lower.contains("deepseek-v4") {
+            return DeepSeekModelVersion::V4;
+        }
+
+        if matches!(model_lower.as_str(), "deepseek-chat" | "deepseek-reasoner") {
+            return DeepSeekModelVersion::LegacyAlias;
+        }
+
+        DeepSeekModelVersion::Unknown
+    }
+
+    /// 检查是否是 DeepSeek V3.1（需要特殊处理工具调用）
+    fn is_v31(model: &str) -> bool {
+        Self::classify_model(model) == DeepSeekModelVersion::V31
     }
 
     /// 检查请求是否包含工具调用
@@ -45,19 +84,96 @@ impl DeepSeekAdapter {
     /// 检查是否是 SiliconFlow 平台
     ///
     /// SiliconFlow 使用不同的参数格式：enable_thinking 而不是 thinking.type
-    fn is_siliconflow(config: &ApiConfig) -> bool {
+    fn host_protocol(config: &ApiConfig) -> DeepSeekHostProtocol {
         // 通过 base_url 检测
         let base_url_lower = config.base_url.to_lowercase();
         if base_url_lower.contains("siliconflow") {
-            return true;
+            return DeepSeekHostProtocol::SiliconFlow;
         }
         // 通过 provider_type 检测
         if let Some(ref pt) = config.provider_type {
             if pt.to_lowercase() == "siliconflow" {
-                return true;
+                return DeepSeekHostProtocol::SiliconFlow;
             }
         }
-        false
+
+        if base_url_lower.contains("api.deepseek.com")
+            || config
+                .provider_type
+                .as_deref()
+                .map(|pt| pt.eq_ignore_ascii_case("deepseek"))
+                .unwrap_or(false)
+            || config
+                .provider_scope
+                .as_deref()
+                .map(|scope| scope.eq_ignore_ascii_case("deepseek"))
+                .unwrap_or(false)
+        {
+            return DeepSeekHostProtocol::Official;
+        }
+
+        DeepSeekHostProtocol::OtherHosted
+    }
+
+    fn is_v4_effort_capable(version: DeepSeekModelVersion) -> bool {
+        matches!(
+            version,
+            DeepSeekModelVersion::V4 | DeepSeekModelVersion::LegacyAlias
+        )
+    }
+
+    fn resolve_deepseek_thinking(
+        config: &ApiConfig,
+        version: DeepSeekModelVersion,
+        override_value: Option<bool>,
+    ) -> bool {
+        if let Some(value) = override_value {
+            return value;
+        }
+        if let Some(value) = config.enable_thinking {
+            return value;
+        }
+
+        // Official V4 thinking mode defaults to enabled, including current aliases.
+        if config.supports_reasoning && Self::is_v4_effort_capable(version) {
+            return true;
+        }
+
+        resolve_enable_thinking(config, None)
+    }
+
+    fn normalize_v4_reasoning_effort(effort: &str) -> Option<&'static str> {
+        match effort.trim().to_lowercase().as_str() {
+            "none" | "unset" => None,
+            "low" | "medium" | "minimal" | "high" => Some("high"),
+            "xhigh" | "max" => Some("max"),
+            _ => None,
+        }
+    }
+
+    fn should_apply_reasoning_effort(
+        config: &ApiConfig,
+        version: DeepSeekModelVersion,
+        host: DeepSeekHostProtocol,
+        enable_thinking_value: bool,
+    ) -> Option<&'static str> {
+        if host == DeepSeekHostProtocol::SiliconFlow
+            || !enable_thinking_value
+            || !Self::is_v4_effort_capable(version)
+        {
+            return None;
+        }
+
+        get_trimmed_effort(config).and_then(Self::normalize_v4_reasoning_effort)
+    }
+
+    fn reasoning_effort_disables_thinking(config: &ApiConfig) -> bool {
+        get_trimmed_effort(config)
+            .map(|effort| {
+                let normalized = effort.to_lowercase();
+                normalized == "none" || normalized == "unset"
+            })
+            .unwrap_or(false)
     }
 }
 
@@ -71,7 +187,7 @@ impl RequestAdapter for DeepSeekAdapter {
     }
 
     fn description(&self) -> &'static str {
-        "DeepSeek 系列，支持 thinking.type 参数格式"
+        "DeepSeek 系列，支持 version-aware thinking/reasoning 参数格式"
     }
 
     fn apply_reasoning_config(
@@ -80,24 +196,31 @@ impl RequestAdapter for DeepSeekAdapter {
         config: &ApiConfig,
         enable_thinking: Option<bool>,
     ) -> bool {
+        let version = Self::classify_model(&config.model);
+        let host = Self::host_protocol(config);
+
         // DeepSeek V3.1 + 工具调用：禁用所有 thinking 相关字段
-        if Self::is_v31(&config.model) && Self::has_tools(body) {
+        if version == DeepSeekModelVersion::V31 && Self::has_tools(body) {
             // 移除可能已存在的 thinking 相关字段
             body.remove("enable_thinking");
             body.remove("thinking");
             body.remove("thinking_budget");
             body.remove("include_thoughts");
+            body.remove("reasoning_effort");
             return false;
         }
 
         // 检查是否需要启用推理模式
         if config.supports_reasoning {
-            let enable_thinking_value = resolve_enable_thinking(config, enable_thinking);
+            let enable_thinking_value =
+                Self::resolve_deepseek_thinking(config, version, enable_thinking);
 
             // 根据平台选择不同的参数格式
-            if Self::is_siliconflow(config) {
+            if host == DeepSeekHostProtocol::SiliconFlow {
                 // SiliconFlow 平台：使用 enable_thinking + thinking_budget 格式
                 body.insert("enable_thinking".to_string(), json!(enable_thinking_value));
+                body.remove("thinking");
+                body.remove("reasoning_effort");
 
                 // SiliconFlow 支持 thinking_budget 参数
                 if let Some(budget) = config.thinking_budget {
@@ -112,6 +235,16 @@ impl RequestAdapter for DeepSeekAdapter {
                     "disabled"
                 };
                 body.insert("thinking".to_string(), json!({ "type": thinking_type }));
+                body.remove("enable_thinking");
+                body.remove("thinking_budget");
+
+                if let Some(effort) =
+                    Self::should_apply_reasoning_effort(config, version, host, enable_thinking_value)
+                {
+                    body.insert("reasoning_effort".to_string(), json!(effort));
+                } else {
+                    body.remove("reasoning_effort");
+                }
             }
         }
 
@@ -121,7 +254,14 @@ impl RequestAdapter for DeepSeekAdapter {
     fn should_remove_sampling_params(&self, config: &ApiConfig) -> bool {
         // DeepSeek Thinking 模式不支持采样参数（设置无效但不报错）
         // 官方文档：temperature, top_p, presence_penalty, frequency_penalty 在 thinking 模式下无效
-        config.supports_reasoning || config.is_reasoning || config.thinking_enabled
+        if Self::reasoning_effort_disables_thinking(config) {
+            return false;
+        }
+
+        let version = Self::classify_model(&config.model);
+        let thinking_enabled = Self::resolve_deepseek_thinking(config, version, None);
+
+        config.is_reasoning || thinking_enabled
     }
 
     fn should_disable_thinking_for_tools(
