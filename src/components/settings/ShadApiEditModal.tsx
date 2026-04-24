@@ -176,9 +176,17 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
   });
 
   const inferredCaps = useMemo(
-    () => inferApiCapabilities({ id: formData.model, name: formData.name, providerScope: formData.providerType }),
-    [formData.model, formData.name, formData.providerType]
+    () => inferApiCapabilities({ id: formData.model, name: formData.name, providerScope: formData.providerScope ?? formData.providerType }),
+    [formData.model, formData.name, formData.providerScope, formData.providerType]
   );
+  const inferredSupportsReasoning =
+    inferredCaps.reasoning ||
+    inferredCaps.supportsReasoningEffort ||
+    inferredCaps.supportsThinkingTokens ||
+    inferredCaps.supportsHybridReasoning;
+  const isDeepSeekAdapter = formData.modelAdapter === 'deepseek';
+  const effectiveSupportsReasoning = !!formData.supportsReasoning || inferredSupportsReasoning;
+  const supportsDeepSeekReasoningEffort = isDeepSeekAdapter && inferredCaps.supportsReasoningEffort;
 
   const inferenceTimeoutRef = useRef<number | null>(null);
   const lastInferredModelRef = useRef<string | null>(api.model ?? null);
@@ -201,7 +209,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
     const caps = inferApiCapabilities({
       id: formData.model,
       name: formData.name,
-      providerScope: formData.providerType,
+      providerScope: formData.providerScope ?? formData.providerType,
     });
     const shouldReason = caps.reasoning || caps.supportsReasoningEffort || caps.supportsThinkingTokens || caps.supportsHybridReasoning;
     if (!shouldReason || !caps.supportsThinkingTokens) return;
@@ -250,7 +258,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
         const caps = inferApiCapabilities({
           id: currentModel,
           name: prev.name,
-          providerScope: prev.providerType,
+          providerScope: prev.providerScope ?? prev.providerType,
         });
         const shouldReason =
           caps.reasoning || caps.supportsReasoningEffort || caps.supportsThinkingTokens || caps.supportsHybridReasoning;
@@ -290,7 +298,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
         inferenceTimeoutRef.current = null;
       }
     };
-  }, [formData.model, formData.name, formData.modelAdapter]);
+  }, [formData.model, formData.name, formData.modelAdapter, formData.providerScope, formData.providerType]);
 
   useEffect(() => {
     if (formData.modelAdapter !== 'general') return;
@@ -525,6 +533,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
           ? Math.max(0, Math.min(Math.round(formData.topK), 10000))
           : undefined,
       supportsReasoning: formData.supportsReasoning ?? false,
+      reasoningEffort: formData.reasoningEffort?.trim() || undefined,
       repetitionPenalty:
         typeof formData.repetitionPenalty === 'number' && Number.isFinite(formData.repetitionPenalty)
           ? Math.max(0, formData.repetitionPenalty)
@@ -533,8 +542,19 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
       effort: formData.effort,
       verbosity: formData.verbosity,
     };
-    // 若用户显式开启了思维链相关任一项，则强制标记 supportsReasoning=true，避免被保存阶段清除
-    if (sanitized.includeThoughts || sanitized.enableThinking || sanitized.thinkingBudget !== undefined) {
+    const hasThinkingDefaults =
+      !!sanitized.includeThoughts ||
+      !!sanitized.enableThinking ||
+      sanitized.thinkingBudget !== undefined;
+    if (sanitized.modelAdapter === 'deepseek') {
+      if (hasThinkingDefaults) {
+        sanitized.supportsReasoning = !!sanitized.supportsReasoning || inferredSupportsReasoning;
+      }
+      if (!inferredCaps.supportsReasoningEffort) {
+        sanitized.reasoningEffort = undefined;
+      }
+    } else if (hasThinkingDefaults) {
+      // Non-DeepSeek adapters historically use this flag as the guard for provider thinking fields.
       sanitized.supportsReasoning = true;
     }
     if (!sanitized.supportsReasoning) {
@@ -1201,7 +1221,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                   )}
 
                   {/* DeepSeek 专用面板 */}
-                  {formData.modelAdapter === 'deepseek' && (
+                  {isDeepSeekAdapter && (
                     <div className="space-y-6">
                       <Card className="border-border/40 bg-transparent shadow-none">
                         <CardHeader className="pb-3">
@@ -1216,7 +1236,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         <CardContent className="space-y-4">
                           <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-all duration-200", formData.enableThinking ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
-                              <Label className="text-sm font-medium cursor-pointer" onClick={() => setFormData(prev => ({ ...prev, enableThinking: !prev.enableThinking }))}>
+                              <Label className="text-sm font-medium cursor-pointer" onClick={() => effectiveSupportsReasoning && setFormData(prev => ({ ...prev, enableThinking: !prev.enableThinking }))}>
                                 {t('settings:api.modal.deepseek.enable_thinking')}
                               </Label>
                               <p className="text-xs text-muted-foreground/70">
@@ -1225,9 +1245,33 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                             </div>
                             <Switch
                               checked={!!formData.enableThinking}
-                              onCheckedChange={v => setFormData(prev => ({ ...prev, enableThinking: !!v, supportsReasoning: !!v }))}
+                              disabled={!effectiveSupportsReasoning}
+                              onCheckedChange={v => setFormData(prev => ({ ...prev, enableThinking: !!v }))}
                             />
                           </div>
+                          {supportsDeepSeekReasoningEffort && (
+                            <div className="space-y-2">
+                              <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
+                                {t('settings:api.modal.reasoning.openai_label')}
+                              </Label>
+                              <AppSelect
+                                value={formData.reasoningEffort ?? 'unset'}
+                                onValueChange={v => setFormData(prev => ({ ...prev, reasoningEffort: v === 'unset' ? undefined : v }))}
+                                placeholder={t('settings:api.modal.reasoning.default_option')}
+                                options={[
+                                  { value: 'unset', label: t('settings:api.modal.reasoning.unset_option') },
+                                  { value: 'none', label: t('settings:api.modal.reasoning.effort.none', 'None') },
+                                  { value: 'high', label: t('settings:api.modal.reasoning.effort.high') },
+                                  { value: 'max', label: t('settings:api.modal.reasoning.effort.max', 'Max') },
+                                ]}
+                                variant="ghost"
+                                className="bg-muted/30 border-transparent hover:border-border/50 transition-all h-10"
+                              />
+                              <p className="text-[10px] text-muted-foreground/60 ml-1">
+                                {t('settings:api.modal.deepseek.reasoning_effort_hint', 'Official DeepSeek V4 supports high or max reasoning effort; SiliconFlow DeepSeek keeps thinking budget formatting.')}
+                              </p>
+                            </div>
+                          )}
                           {isDeepseekV31 && formData.supportsTools && (
                             <p className="text-xs text-amber-500 flex items-center gap-1">
                               <Info className="h-3 w-3" />
