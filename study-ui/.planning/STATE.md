@@ -6,7 +6,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 
 **Core value:** One shared UI architecture must feel usable on phone, tablet, and desktop while preserving the existing desktop Tauri shell behavior.
 
-**Current focus:** Phase 8 DeepSeek Versioned Adapter Compatibility is planned and ready for execution. Phase 7 still has Tauri runtime visual UAT pending for MIGR-08.
+**Current focus:** Phase 8 DeepSeek Versioned Adapter Compatibility is verified. Phase 7 still has Tauri runtime visual UAT pending for MIGR-08.
 
 ## Workflow State
 
@@ -84,6 +84,8 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 - Remaining verification: browser-only Vite smoke reaches `Loading...` because Tauri `invoke`/`listen` APIs are absent; run root chat/settings/desktop chrome visual UAT in Tauri runtime for MIGR-08.
 - 2026-04-24: Phase 8 planning complete with research, patterns, plan, and manual plan-check artifacts. The plan locks one shared DeepSeek adapter, version-aware DeepSeek profiles, official V4 request semantics, and SiliconFlow V3.2/V4 compatibility.
 - Resume file: `.planning/phases/08-deepseek-official-v4-adaptation-with-siliconflow-v3-2-v4-com/08-01-PLAN.md`.
+- 2026-04-24: Phase 8 execution complete. Official DeepSeek V4, official aliases, SiliconFlow V3.2, and SiliconFlow V4-shaped IDs now share one version-aware DeepSeekAdapter with host-specific request serialization.
+- Summary file: `.planning/phases/08-deepseek-official-v4-adaptation-with-siliconflow-v3-2-v4-com/08-01-SUMMARY.md`.
 
 ### Important Decisions
 
@@ -126,7 +128,7 @@ See: `.planning/PROJECT.md` (updated 2026-04-23)
 | 5 Touch Targets And Verification | Verified |
 | 6 Mobile Home Polish | Verified |
 | 7 DeepStudent Migration Foundation | Implemented; Tauri UAT pending |
-| 8 DeepSeek Versioned Adapter Compatibility | Planned |
+| 8 DeepSeek Versioned Adapter Compatibility | Verified |
 
 ---
-*Last updated: 2026-04-24 after planning Phase 8 DeepSeek versioned adapter compatibility*
+*Last updated: 2026-04-24 after verifying Phase 8 DeepSeek versioned adapter compatibility*

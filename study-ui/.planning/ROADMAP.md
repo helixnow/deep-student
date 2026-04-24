@@ -15,7 +15,7 @@
 | 5 | Touch Targets And Verification | Lock controls, tests, build, and manual viewport acceptance | CTRL-01, CTRL-02, VERF-01, VERF-02, VERF-03, VERF-04, VERF-05 | Verified |
 | 6 | Mobile Home Polish | Give phone empty state a ChatGPT-mobile-style landing while preserving tablet/desktop layouts | HOME-01, HOME-02, HOME-03, HOME-04, HOME-05 | Verified |
 | 7 | DeepStudent Migration Foundation | Move the study-ui design contract into the parent DeepStudent app without a big-bang rewrite | MIGR-01, MIGR-02, MIGR-03, MIGR-04, MIGR-05, MIGR-06, MIGR-07, MIGR-08 | Implemented; Tauri UAT pending |
-| 8 | DeepSeek Versioned Adapter Compatibility | Add version-aware DeepSeek configuration inside the shared DeepSeek adapter so V4, V3.2, official API, and SiliconFlow-hosted models each use the right settings | DSK-01, DSK-02, DSK-03, DSK-04, DSK-05, DSK-06, DSK-07, DSK-08 | Planned |
+| 8 | DeepSeek Versioned Adapter Compatibility | Add version-aware DeepSeek configuration inside the shared DeepSeek adapter so V4, V3.2, official API, and SiliconFlow-hosted models each use the right settings | DSK-01, DSK-02, DSK-03, DSK-04, DSK-05, DSK-06, DSK-07, DSK-08 | Verified |
 
 ## Phase 1: Responsive Policy Foundation
 
@@ -233,13 +233,13 @@ All v1 requirements from `.planning/REQUIREMENTS.md` are mapped to exactly one r
 
 ## Next Step
 
-Phase 7 automated migration foundation gates are implemented. Recommended next step: run Tauri runtime UAT for MIGR-08, then plan the first product-surface migration that consumes the shared primitive contract.
+Phase 8 DeepSeek adapter compatibility is verified by targeted automated checks. Recommended next step: run Tauri runtime UAT for MIGR-08, then plan the first product-surface migration that consumes the shared primitive contract.
 
 ## Phase 8: DeepSeek Versioned Adapter Compatibility
 
 **Goal:** Keep one shared `DeepSeekAdapter` for the DeepSeek model family, add version-aware configuration for V3.2 and V4, and let the hosting platform only choose the request field format required by official DeepSeek or SiliconFlow.
 
-**Status:** Planned
+**Status:** Verified
 
 **UI hint:** no
 

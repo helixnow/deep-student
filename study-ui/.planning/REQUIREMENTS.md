@@ -75,14 +75,14 @@
 
 ### DeepSeek Versioned Adapter Compatibility
 
-- [ ] **DSK-01**: The built-in official DeepSeek vendor defaults recommend `deepseek-v4-flash` and `deepseek-v4-pro` instead of presenting `deepseek-chat` and `deepseek-reasoner` as the primary long-term model IDs.
-- [ ] **DSK-02**: The shared `DeepSeekAdapter` detects DeepSeek model versions such as V3.2, V4, legacy aliases, and unknown future variants before applying reasoning and tool-call parameters.
-- [ ] **DSK-03**: Official DeepSeek V4 requests support V4 reasoning controls, including `thinking.type` and `reasoning_effort`, while remaining compatible with existing DeepSeek-style `reasoning_content` responses.
-- [ ] **DSK-04**: SiliconFlow-hosted `deepseek-ai/DeepSeek-V3.2` keeps using SiliconFlow's current request shape, including `enable_thinking` and `thinking_budget`, without regression from the official V4 adaptation.
-- [ ] **DSK-05**: SiliconFlow-hosted DeepSeek V4 model IDs reuse the shared `DeepSeekAdapter`, receive V4 model defaults, and still emit SiliconFlow-compatible request fields.
-- [ ] **DSK-06**: DeepSeek settings UI separates model capability from per-request thinking toggles so disabling thinking does not erase provider/model reasoning support metadata.
-- [ ] **DSK-07**: Regression tests cover official DeepSeek V4, SiliconFlow DeepSeek V3.2, and a SiliconFlow DeepSeek V4-style model identifier across request adaptation and capability inference.
-- [ ] **DSK-08**: Capability inference and default parameter logic distinguish DeepSeek model versions, including correct context window and reasoning defaults, without duplicating DeepSeek-specific UI/model pipelines per hosting platform.
+- [x] **DSK-01**: The built-in official DeepSeek vendor defaults recommend `deepseek-v4-flash` and `deepseek-v4-pro` instead of presenting `deepseek-chat` and `deepseek-reasoner` as the primary long-term model IDs.
+- [x] **DSK-02**: The shared `DeepSeekAdapter` detects DeepSeek model versions such as V3.2, V4, legacy aliases, and unknown future variants before applying reasoning and tool-call parameters.
+- [x] **DSK-03**: Official DeepSeek V4 requests support V4 reasoning controls, including `thinking.type` and `reasoning_effort`, while remaining compatible with existing DeepSeek-style `reasoning_content` responses.
+- [x] **DSK-04**: SiliconFlow-hosted `deepseek-ai/DeepSeek-V3.2` keeps using SiliconFlow's current request shape, including `enable_thinking` and `thinking_budget`, without regression from the official V4 adaptation.
+- [x] **DSK-05**: SiliconFlow-hosted DeepSeek V4 model IDs reuse the shared `DeepSeekAdapter`, receive V4 model defaults, and still emit SiliconFlow-compatible request fields.
+- [x] **DSK-06**: DeepSeek settings UI separates model capability from per-request thinking toggles so disabling thinking does not erase provider/model reasoning support metadata.
+- [x] **DSK-07**: Regression tests cover official DeepSeek V4, SiliconFlow DeepSeek V3.2, and a SiliconFlow DeepSeek V4-style model identifier across request adaptation and capability inference.
+- [x] **DSK-08**: Capability inference and default parameter logic distinguish DeepSeek model versions, including correct context window and reasoning defaults, without duplicating DeepSeek-specific UI/model pipelines per hosting platform.
 
 ## v2 Requirements
 
@@ -154,14 +154,14 @@
 | MIGR-06 | Phase 7 | Complete |
 | MIGR-07 | Phase 7 | Complete |
 | MIGR-08 | Phase 7 | Manual Tauri UAT pending |
-| DSK-01 | Phase 8 | Not started |
-| DSK-02 | Phase 8 | Not started |
-| DSK-03 | Phase 8 | Not started |
-| DSK-04 | Phase 8 | Not started |
-| DSK-05 | Phase 8 | Not started |
-| DSK-06 | Phase 8 | Not started |
-| DSK-07 | Phase 8 | Not started |
-| DSK-08 | Phase 8 | Not started |
+| DSK-01 | Phase 8 | Complete |
+| DSK-02 | Phase 8 | Complete |
+| DSK-03 | Phase 8 | Complete |
+| DSK-04 | Phase 8 | Complete |
+| DSK-05 | Phase 8 | Complete |
+| DSK-06 | Phase 8 | Complete |
+| DSK-07 | Phase 8 | Complete |
+| DSK-08 | Phase 8 | Complete |
 
 **Coverage:**
 - v1 requirements: 52 total
@@ -170,4 +170,4 @@
 
 ---
 *Requirements defined: 2026-04-23*
-*Last updated: 2026-04-24 after tightening Phase 8 around one version-aware DeepSeek adapter*
+*Last updated: 2026-04-24 after verifying Phase 8 DeepSeek versioned adapter compatibility*
