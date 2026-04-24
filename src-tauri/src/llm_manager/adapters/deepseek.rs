@@ -161,6 +161,102 @@ mod tests {
     }
 
     #[test]
+    fn test_official_v4_reasoning_effort_medium_maps_to_high() {
+        let adapter = DeepSeekAdapter;
+        let config = ApiConfig {
+            supports_reasoning: true,
+            thinking_enabled: true,
+            reasoning_effort: Some("medium".to_string()),
+            model: "deepseek-v4-pro".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+
+        adapter.apply_reasoning_config(&mut body, &config, None);
+
+        let thinking = body.get("thinking").unwrap();
+        assert_eq!(thinking.get("type"), Some(&json!("enabled")));
+        assert_eq!(body.get("reasoning_effort"), Some(&json!("high")));
+        assert!(!body.contains_key("enable_thinking"));
+    }
+
+    #[test]
+    fn test_official_v4_reasoning_effort_xhigh_maps_to_max() {
+        let adapter = DeepSeekAdapter;
+        let config = ApiConfig {
+            supports_reasoning: true,
+            thinking_enabled: true,
+            reasoning_effort: Some("xhigh".to_string()),
+            model: "deepseek-v4-flash".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+
+        adapter.apply_reasoning_config(&mut body, &config, None);
+
+        assert_eq!(body.get("reasoning_effort"), Some(&json!("max")));
+    }
+
+    #[test]
+    fn test_legacy_alias_supports_v4_reasoning_effort() {
+        let adapter = DeepSeekAdapter;
+        let config = ApiConfig {
+            supports_reasoning: true,
+            thinking_enabled: true,
+            reasoning_effort: Some("high".to_string()),
+            model: "deepseek-reasoner".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+
+        adapter.apply_reasoning_config(&mut body, &config, None);
+
+        assert_eq!(body.get("reasoning_effort"), Some(&json!("high")));
+        assert!(body.contains_key("thinking"));
+    }
+
+    #[test]
+    fn test_official_v4_reasoning_none_keeps_sampling_params() {
+        let adapter = DeepSeekAdapter;
+        let config = ApiConfig {
+            supports_reasoning: true,
+            thinking_enabled: false,
+            enable_thinking: Some(false),
+            reasoning_effort: Some("none".to_string()),
+            model: "deepseek-v4-pro".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            ..Default::default()
+        };
+
+        assert!(!adapter.should_remove_sampling_params(&config));
+    }
+
+    #[test]
+    fn test_siliconflow_v4_shaped_id_keeps_siliconflow_format() {
+        let adapter = DeepSeekAdapter;
+        let config = ApiConfig {
+            supports_reasoning: true,
+            thinking_enabled: true,
+            reasoning_effort: Some("max".to_string()),
+            model: "deepseek-ai/DeepSeek-V4-Pro".to_string(),
+            base_url: "https://api.siliconflow.cn/v1".to_string(),
+            thinking_budget: Some(50000),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+
+        adapter.apply_reasoning_config(&mut body, &config, None);
+
+        assert_eq!(body.get("enable_thinking"), Some(&json!(true)));
+        assert_eq!(body.get("thinking_budget"), Some(&json!(32768)));
+        assert!(!body.contains_key("thinking"));
+        assert!(!body.contains_key("reasoning_effort"));
+    }
+
+    #[test]
     fn test_siliconflow_enable_thinking_format() {
         // SiliconFlow 平台应使用 enable_thinking: true 格式
         let adapter = DeepSeekAdapter;
