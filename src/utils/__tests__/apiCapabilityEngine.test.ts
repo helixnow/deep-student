@@ -55,3 +55,47 @@ describe('apiCapabilityEngine vision inference', () => {
     expect(record?.provider_model_id).toBe('Qwen/Qwen3.5-397B-A17B');
   });
 });
+
+describe('apiCapabilityEngine DeepSeek version inference', () => {
+  it('treats official DeepSeek V4 as hybrid reasoning with V4 effort and 1M context', () => {
+    const caps = inferApiCapabilities({ id: 'deepseek-v4-pro', providerScope: 'deepseek' });
+    expect(caps.functionCalling).toBe(true);
+    expect(caps.supportsHybridReasoning).toBe(true);
+    expect(caps.supportsReasoningEffort).toBe(true);
+    expect(caps.supportsThinkingTokens).toBe(false);
+    expect(caps.contextWindow).toBe(1_000_000);
+  });
+
+  it('keeps official DeepSeek legacy aliases as V4-compatible aliases', () => {
+    const chatCaps = inferApiCapabilities({ id: 'deepseek-chat', providerScope: 'deepseek' });
+    const reasonerCaps = inferApiCapabilities({ id: 'deepseek-reasoner', providerScope: 'deepseek' });
+
+    expect(chatCaps.supportsHybridReasoning).toBe(true);
+    expect(chatCaps.supportsReasoningEffort).toBe(true);
+    expect(chatCaps.contextWindow).toBe(1_000_000);
+    expect(reasonerCaps.reasoning).toBe(true);
+    expect(reasonerCaps.supportsReasoningEffort).toBe(true);
+  });
+
+  it('preserves SiliconFlow DeepSeek V3.2 as thinking-budget based 128K hybrid reasoning', () => {
+    const caps = inferApiCapabilities({
+      id: 'deepseek-ai/DeepSeek-V3.2',
+      providerScope: 'siliconflow',
+    });
+
+    expect(caps.supportsHybridReasoning).toBe(true);
+    expect(caps.supportsReasoningEffort).toBe(false);
+    expect(caps.contextWindow).toBe(128_000);
+  });
+
+  it('classifies SiliconFlow DeepSeek V4-shaped ids as V4 models without official effort fields', () => {
+    const caps = inferApiCapabilities({
+      id: 'deepseek-ai/DeepSeek-V4-Pro',
+      providerScope: 'siliconflow',
+    });
+
+    expect(caps.supportsHybridReasoning).toBe(true);
+    expect(caps.supportsReasoningEffort).toBe(false);
+    expect(caps.contextWindow).toBe(1_000_000);
+  });
+});
