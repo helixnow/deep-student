@@ -11,6 +11,7 @@ import type { ModelInfo } from '../../utils/parseModelMentions';
 import type { ContextRef } from '../../resources/types';
 import type { ApprovalRequestData } from '../ToolApprovalCard';
 import type { PdfPageRefsState } from './usePdfPageRefs';
+import type { DeepSeekReasoningOption, DeepSeekReasoningOptionValue } from '@/utils/deepseekReasoningControls';
 
 // ============================================================================
 // 模型 @mention 自动完成状态
@@ -228,8 +229,16 @@ export interface InputBarUIProps {
 
   /** 是否启用推理/思维链模式 */
   enableThinking?: boolean;
+  /** 当前推理状态展示文案，例如“推理: max”或“推理: 关闭” */
+  thinkingStateLabel?: string;
+  /** 当前模型支持的运行时推理深度选项；为空时按钮保持 toggle-only */
+  thinkingDepthOptions?: DeepSeekReasoningOption[];
+  /** 当前归一化后的运行时推理深度 */
+  thinkingDepthValue?: DeepSeekReasoningOptionValue;
   /** 切换推理模式 */
   onToggleThinking?: () => void;
+  /** 设置 Chat 运行时推理深度；只改 ChatParams，不改设置页模型默认值 */
+  onSetThinkingDepth?: (value: DeepSeekReasoningOptionValue | 'off') => void;
 
   // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器
   // enableAnkiTools 和 onToggleAnkiTools 已移除

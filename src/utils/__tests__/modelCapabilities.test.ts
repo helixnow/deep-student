@@ -31,27 +31,56 @@ describe('modelCapabilities DeepSeek version defaults', () => {
   it('keeps SiliconFlow DeepSeek V3.2 defaults unchanged', () => {
     expect(getModelDefaultParameters('deepseek-ai/DeepSeek-V3.2', { providerScope: 'siliconflow' })).toEqual({
       enableThinking: true,
+      reasoningEffort: 'medium',
       thinkingBudget: 8192,
       includeThoughts: true,
       temperature: 0.6,
     });
   });
 
-  it('uses V4 model defaults with SiliconFlow thinking-budget formatting for V4-shaped ids', () => {
+  it('uses high/max effort defaults for SiliconFlow V4-shaped ids', () => {
     const defaults = getModelDefaultParameters('deepseek-ai/DeepSeek-V4-Pro', { providerScope: 'siliconflow' });
 
     expect(defaults).toMatchObject({
       enableThinking: true,
-      thinkingBudget: 8192,
       includeThoughts: true,
+      reasoningEffort: 'high',
       maxOutputTokens: 8192,
       temperature: 0.6,
     });
-    expect(defaults).not.toHaveProperty('reasoningEffort');
+    expect(defaults).not.toHaveProperty('thinkingBudget');
   });
 
   it('distinguishes DeepSeek V4 and V3.2 context windows', () => {
     expect(inferModelContextWindow({ id: 'deepseek-v4-pro', providerScope: 'deepseek' })).toBe(1_000_000);
     expect(inferModelContextWindow({ id: 'deepseek-ai/DeepSeek-V3.2', providerScope: 'siliconflow' })).toBe(128_000);
+  });
+});
+
+describe('modelCapabilities NVIDIA provider defaults', () => {
+  it('keeps NVIDIA-hosted vendor/model ids on the generic adapter path', () => {
+    const deepseekCaps = inferCapabilities({
+      id: 'deepseek-ai/deepseek-v4-flash',
+      providerScope: 'nvidia',
+    });
+    const qwenCaps = inferCapabilities({
+      id: 'qwen/qwen3.5-122b-a10b',
+      providerScope: 'nvidia',
+    });
+
+    expect(deepseekCaps.modelAdapter).toBe('general');
+    expect(qwenCaps.modelAdapter).toBe('general');
+    expect(deepseekCaps.supportsReasoning).toBe(true);
+  });
+
+  it('does not inject thinking parameters by default for NVIDIA-hosted reasoning models', () => {
+    const defaults = getModelDefaultParameters('deepseek-ai/deepseek-v4-flash', {
+      providerScope: 'nvidia',
+    });
+
+    expect(defaults).not.toHaveProperty('enableThinking');
+    expect(defaults).not.toHaveProperty('reasoningEffort');
+    expect(defaults).not.toHaveProperty('thinkingBudget');
+    expect(defaults).not.toHaveProperty('includeThoughts');
   });
 });

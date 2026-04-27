@@ -163,6 +163,20 @@ mod tests {
 
         assert!(!should_use_openai_responses_for_config(&config));
     }
+
+    #[test]
+    fn test_runtime_reasoning_overrides_replace_saved_profile_depth() {
+        let mut config = ApiConfig {
+            reasoning_effort: Some("high".to_string()),
+            thinking_budget: Some(8192),
+            ..Default::default()
+        };
+
+        apply_runtime_reasoning_overrides(&mut config, Some("max".to_string()), Some(32768));
+
+        assert_eq!(config.reasoning_effort.as_deref(), Some("max"));
+        assert_eq!(config.thinking_budget, Some(32768));
+    }
 }
 
 fn should_use_openai_responses_for_config(config: &ApiConfig) -> bool {
@@ -174,6 +188,19 @@ fn should_use_openai_responses_for_config(config: &ApiConfig) -> bool {
     }
     let lower = config.model.to_lowercase();
     lower.contains("o1") || lower.contains("o3") || lower.contains("o4") || lower.contains("gpt-5")
+}
+
+fn apply_runtime_reasoning_overrides(
+    config: &mut ApiConfig,
+    reasoning_effort_override: Option<String>,
+    thinking_budget_override: Option<i32>,
+) {
+    if let Some(effort) = reasoning_effort_override {
+        config.reasoning_effort = Some(effort);
+    }
+    if let Some(budget) = thinking_budget_override {
+        config.thinking_budget = Some(budget);
+    }
 }
 
 /// 输出审计日志（info 级别）+ 可选文件持久化（用于无 window 的非流式路径）
@@ -313,6 +340,8 @@ impl LLMManager {
         frequency_penalty_override: Option<f32>,
         presence_penalty_override: Option<f32>,
         max_output_tokens_override: Option<u32>,
+        reasoning_effort_override: Option<String>,
+        thinking_budget_override: Option<i32>,
     ) -> Result<StandardModel2Output> {
         info!(
             "调用统一模型二接口(流式): 科目={}, 思维链={}, override_model={:?}",
@@ -331,7 +360,7 @@ impl LLMManager {
             Some(tc) if tc == "tag_generation" => "tag_generation",
             _ => "default",
         };
-        let (config, _cot_by_model) = self
+        let (mut config, _cot_by_model) = self
             .select_model_for(
                 task_key,
                 model_override_id.clone(),
@@ -342,6 +371,11 @@ impl LLMManager {
                 max_output_tokens_override,
             )
             .await?;
+        apply_runtime_reasoning_overrides(
+            &mut config,
+            reasoning_effort_override,
+            thinking_budget_override,
+        );
 
         // P1修复：图片上下文严格控制 - 图片由消息级字段提供，禁用会话级回退
         let images_used_source = "per_message_only".to_string();

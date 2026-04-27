@@ -305,6 +305,44 @@ describe('ChatV2TauriAdapter', () => {
       });
     });
 
+    it('should pass DeepSeek V4 runtime reasoning effort without mutating model defaults', async () => {
+      await adapter.setup();
+
+      (mockStore as any).chatParams = {
+        ...(mockStore as any).chatParams,
+        enableThinking: true,
+        reasoningEffort: 'max',
+        thinkingBudget: undefined,
+      };
+
+      const options = (adapter as any).buildSendOptions();
+
+      expect(options).toMatchObject({
+        enableThinking: true,
+        reasoningEffort: 'max',
+      });
+      expect(options.thinkingBudget).toBeUndefined();
+    });
+
+    it('should pass SiliconFlow V3.2 runtime thinking budget preset', async () => {
+      await adapter.setup();
+
+      (mockStore as any).chatParams = {
+        ...(mockStore as any).chatParams,
+        enableThinking: true,
+        reasoningEffort: 'xhigh',
+        thinkingBudget: 32768,
+      };
+
+      const options = (adapter as any).buildSendOptions();
+
+      expect(options).toMatchObject({
+        enableThinking: true,
+        reasoningEffort: 'xhigh',
+        thinkingBudget: 32768,
+      });
+    });
+
     it('should prefer structured skill state over local cache', async () => {
       await adapter.setup();
 

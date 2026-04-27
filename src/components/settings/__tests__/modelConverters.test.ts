@@ -1,5 +1,9 @@
 import { describe, expect, it } from 'vitest';
-import { convertApiConfigToProfile, convertProfileToApiConfig } from '../modelConverters';
+import {
+  convertApiConfigToProfile,
+  convertProfileToApiConfig,
+  inferProviderTypeFromBaseUrl,
+} from '../modelConverters';
 import type { ApiConfig, ModelProfile, VendorConfig } from '../../../types';
 
 const baseVendor: VendorConfig = {
@@ -79,5 +83,56 @@ describe('settings modelConverters DeepSeek adapter normalization', () => {
     expect(profile.providerScope).toBe('deepseek');
     expect(profile.reasoningEffort).toBe('high');
     expect(profile.supportsReasoning).toBe(true);
+  });
+
+  it('round-trips DeepSeek context window metadata through model profile conversion', () => {
+    const profileWithContext = {
+      ...baseProfile,
+      contextWindow: 1_000_000,
+    } as ModelProfile & { contextWindow?: number };
+
+    const api = convertProfileToApiConfig(profileWithContext, baseVendor);
+    expect(api.contextWindow).toBe(1_000_000);
+
+    const profile = convertApiConfigToProfile(api, baseVendor.id) as ModelProfile & { contextWindow?: number };
+    expect(profile.contextWindow).toBe(1_000_000);
+  });
+});
+
+describe('settings modelConverters NVIDIA provider support', () => {
+  it('detects NVIDIA integrate API hosts as the nvidia provider type', () => {
+    expect(inferProviderTypeFromBaseUrl('https://integrate.api.nvidia.com')).toBe('nvidia');
+    expect(inferProviderTypeFromBaseUrl('https://integrate.api.nvidia.com/v1')).toBe('nvidia');
+  });
+
+  it('keeps NVIDIA-hosted DeepSeek models on the generic OpenAI-compatible adapter', () => {
+    const nvidiaVendor: VendorConfig = {
+      ...baseVendor,
+      id: 'builtin-nvidia',
+      name: 'NVIDIA',
+      providerType: 'nvidia',
+      baseUrl: 'https://integrate.api.nvidia.com/v1',
+    };
+    const profile: ModelProfile = {
+      ...baseProfile,
+      vendorId: 'builtin-nvidia',
+      label: 'NVIDIA - DeepSeek V4 Flash',
+      model: 'deepseek-ai/deepseek-v4-flash',
+      providerScope: 'nvidia',
+      modelAdapter: 'general',
+      reasoningEffort: undefined,
+      thinkingBudget: undefined,
+      enableThinking: false,
+      thinkingEnabled: false,
+      includeThoughts: false,
+    };
+
+    const api = convertProfileToApiConfig(profile, nvidiaVendor);
+
+    expect(api.providerType).toBe('nvidia');
+    expect(api.providerScope).toBe('nvidia');
+    expect(api.modelAdapter).toBe('general');
+    expect(api.reasoningEffort).toBeUndefined();
+    expect(api.thinkingBudget).toBeUndefined();
   });
 });

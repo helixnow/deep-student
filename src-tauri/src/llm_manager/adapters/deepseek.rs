@@ -8,7 +8,8 @@
 //!
 //! ## SiliconFlow 平台（api.siliconflow.cn）
 //! - `enable_thinking: true | false`
-//! - `thinking_budget: number`
+//! - DeepSeek V3.2: `thinking_budget: number`
+//! - DeepSeek V4: `reasoning_effort: "high" | "max"` if SiliconFlow exposes that V4 dialect
 //!
 //! - DeepSeek-R1/V3.2/V4 系列是原生推理模型
 //! - V3.1 使用函数调用时需禁用思维模式
@@ -25,7 +26,7 @@ use serde_json::{json, Map, Value};
 ///
 /// DeepSeek 模型的参数处理：
 /// - DeepSeek 官方 API: 使用 `thinking: { type: "enabled" }` 格式
-/// - SiliconFlow 平台: 使用 `enable_thinking: true` 格式
+/// - SiliconFlow 平台: 使用 `enable_thinking: true`，V3.2 映射 `thinking_budget`，V4 映射 high/max effort
 /// - V3.1: 使用函数调用时需禁用 thinking 相关字段
 pub struct DeepSeekAdapter;
 
@@ -122,6 +123,13 @@ impl DeepSeekAdapter {
         )
     }
 
+    fn is_v4_thinking_sampling_limited(version: DeepSeekModelVersion) -> bool {
+        matches!(
+            version,
+            DeepSeekModelVersion::V4 | DeepSeekModelVersion::LegacyAlias
+        )
+    }
+
     fn resolve_deepseek_thinking(
         config: &ApiConfig,
         version: DeepSeekModelVersion,
@@ -134,7 +142,10 @@ impl DeepSeekAdapter {
             return value;
         }
 
-        // Official V4 thinking mode defaults to enabled, including current aliases.
+        // Official V4 model ids default to enabled; aliases still follow saved config.
+        if version == DeepSeekModelVersion::V4 {
+            return true;
+        }
         if config.supports_reasoning && Self::is_v4_effort_capable(version) {
             return true;
         }
@@ -151,29 +162,43 @@ impl DeepSeekAdapter {
         }
     }
 
+    fn v32_budget_from_effort(effort: &str) -> Option<i32> {
+        match effort.trim().to_lowercase().as_str() {
+            "low" => Some(2048),
+            "medium" => Some(8192),
+            "high" => Some(16384),
+            "xhigh" | "max" => Some(32768),
+            _ => None,
+        }
+    }
+
+    fn resolve_siliconflow_thinking_budget(
+        config: &ApiConfig,
+        version: DeepSeekModelVersion,
+    ) -> Option<i32> {
+        if matches!(
+            version,
+            DeepSeekModelVersion::V31 | DeepSeekModelVersion::V32
+        ) {
+            if let Some(mapped) = get_trimmed_effort(config).and_then(Self::v32_budget_from_effort)
+            {
+                return Some(mapped);
+            }
+        }
+        config.thinking_budget
+    }
+
     fn should_apply_reasoning_effort(
         config: &ApiConfig,
         version: DeepSeekModelVersion,
-        host: DeepSeekHostProtocol,
+        _host: DeepSeekHostProtocol,
         enable_thinking_value: bool,
     ) -> Option<&'static str> {
-        if host == DeepSeekHostProtocol::SiliconFlow
-            || !enable_thinking_value
-            || !Self::is_v4_effort_capable(version)
-        {
+        if !enable_thinking_value || !Self::is_v4_effort_capable(version) {
             return None;
         }
 
         get_trimmed_effort(config).and_then(Self::normalize_v4_reasoning_effort)
-    }
-
-    fn reasoning_effort_disables_thinking(config: &ApiConfig) -> bool {
-        get_trimmed_effort(config)
-            .map(|effort| {
-                let normalized = effort.to_lowercase();
-                normalized == "none" || normalized == "unset"
-            })
-            .unwrap_or(false)
     }
 }
 
@@ -210,22 +235,42 @@ impl RequestAdapter for DeepSeekAdapter {
             return false;
         }
 
+        let deepseek_reasoning_capable = config.supports_reasoning
+            || matches!(
+                version,
+                DeepSeekModelVersion::V31 | DeepSeekModelVersion::V32 | DeepSeekModelVersion::V4
+            );
+
         // 检查是否需要启用推理模式
-        if config.supports_reasoning {
+        if deepseek_reasoning_capable {
             let enable_thinking_value =
                 Self::resolve_deepseek_thinking(config, version, enable_thinking);
 
             // 根据平台选择不同的参数格式
             if host == DeepSeekHostProtocol::SiliconFlow {
-                // SiliconFlow 平台：使用 enable_thinking + thinking_budget 格式
+                // SiliconFlow 平台：V3.2 使用 thinking_budget；未来 V4 使用 high/max effort。
                 body.insert("enable_thinking".to_string(), json!(enable_thinking_value));
                 body.remove("thinking");
-                body.remove("reasoning_effort");
 
-                // SiliconFlow 支持 thinking_budget 参数
-                if let Some(budget) = config.thinking_budget {
-                    let sanitized = budget.max(128).min(32768); // SiliconFlow 范围：128-32768
-                    body.insert("thinking_budget".to_string(), json!(sanitized));
+                if Self::is_v4_effort_capable(version) {
+                    body.remove("thinking_budget");
+                    if let Some(effort) = Self::should_apply_reasoning_effort(
+                        config,
+                        version,
+                        host,
+                        enable_thinking_value,
+                    ) {
+                        body.insert("reasoning_effort".to_string(), json!(effort));
+                    } else {
+                        body.remove("reasoning_effort");
+                    }
+                } else {
+                    body.remove("reasoning_effort");
+                    if let Some(budget) = Self::resolve_siliconflow_thinking_budget(config, version)
+                    {
+                        let sanitized = budget.max(128).min(32768); // SiliconFlow 范围：128-32768
+                        body.insert("thinking_budget".to_string(), json!(sanitized));
+                    }
                 }
             } else {
                 // DeepSeek 官方 API：使用 thinking: { type: "enabled" | "disabled" } 格式
@@ -238,9 +283,12 @@ impl RequestAdapter for DeepSeekAdapter {
                 body.remove("enable_thinking");
                 body.remove("thinking_budget");
 
-                if let Some(effort) =
-                    Self::should_apply_reasoning_effort(config, version, host, enable_thinking_value)
-                {
+                if let Some(effort) = Self::should_apply_reasoning_effort(
+                    config,
+                    version,
+                    host,
+                    enable_thinking_value,
+                ) {
                     body.insert("reasoning_effort".to_string(), json!(effort));
                 } else {
                     body.remove("reasoning_effort");
@@ -252,16 +300,12 @@ impl RequestAdapter for DeepSeekAdapter {
     }
 
     fn should_remove_sampling_params(&self, config: &ApiConfig) -> bool {
-        // DeepSeek Thinking 模式不支持采样参数（设置无效但不报错）
-        // 官方文档：temperature, top_p, presence_penalty, frequency_penalty 在 thinking 模式下无效
-        if Self::reasoning_effort_disables_thinking(config) {
-            return false;
-        }
-
+        // DeepSeek V4 Thinking 模式不支持采样参数（设置无效但不报错）。
+        // V4 模型规则跟随 DeepSeek 官方；host 只决定 payload 字段格式。
         let version = Self::classify_model(&config.model);
         let thinking_enabled = Self::resolve_deepseek_thinking(config, version, None);
 
-        config.is_reasoning || thinking_enabled
+        thinking_enabled && Self::is_v4_thinking_sampling_limited(version)
     }
 
     fn should_disable_thinking_for_tools(
@@ -359,19 +403,59 @@ mod tests {
     }
 
     #[test]
-    fn test_official_v4_reasoning_none_keeps_sampling_params() {
+    fn test_official_v4_reasoning_none_still_removes_sampling_params() {
         let adapter = DeepSeekAdapter;
         let config = ApiConfig {
             supports_reasoning: true,
-            thinking_enabled: false,
-            enable_thinking: Some(false),
+            thinking_enabled: true,
             reasoning_effort: Some("none".to_string()),
             model: "deepseek-v4-pro".to_string(),
             base_url: "https://api.deepseek.com/v1".to_string(),
             ..Default::default()
         };
 
+        assert!(adapter.should_remove_sampling_params(&config));
+    }
+
+    #[test]
+    fn test_official_v4_disable_thinking_uses_thinking_type_disabled() {
+        let adapter = DeepSeekAdapter;
+        let config = ApiConfig {
+            supports_reasoning: true,
+            thinking_enabled: true,
+            enable_thinking: Some(false),
+            reasoning_effort: Some("max".to_string()),
+            model: "deepseek-v4-pro".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+
+        adapter.apply_reasoning_config(&mut body, &config, None);
+
+        let thinking = body.get("thinking").unwrap();
+        assert_eq!(thinking.get("type"), Some(&json!("disabled")));
+        assert!(!body.contains_key("reasoning_effort"));
         assert!(!adapter.should_remove_sampling_params(&config));
+    }
+
+    #[test]
+    fn test_official_v4_disable_thinking_even_when_legacy_config_lacks_capability_flag() {
+        let adapter = DeepSeekAdapter;
+        let config = ApiConfig {
+            supports_reasoning: false,
+            thinking_enabled: false,
+            enable_thinking: Some(false),
+            model: "deepseek-v4-pro".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+
+        adapter.apply_reasoning_config(&mut body, &config, None);
+
+        let thinking = body.get("thinking").unwrap();
+        assert_eq!(thinking.get("type"), Some(&json!("disabled")));
     }
 
     #[test]
@@ -391,8 +475,28 @@ mod tests {
         adapter.apply_reasoning_config(&mut body, &config, None);
 
         assert_eq!(body.get("enable_thinking"), Some(&json!(true)));
-        assert_eq!(body.get("thinking_budget"), Some(&json!(32768)));
+        assert_eq!(body.get("reasoning_effort"), Some(&json!("max")));
+        assert!(!body.contains_key("thinking_budget"));
         assert!(!body.contains_key("thinking"));
+    }
+
+    #[test]
+    fn test_siliconflow_v32_depth_presets_map_to_budget() {
+        let adapter = DeepSeekAdapter;
+        let config = ApiConfig {
+            supports_reasoning: true,
+            thinking_enabled: true,
+            reasoning_effort: Some("low".to_string()),
+            model: "deepseek-ai/DeepSeek-V3.2".to_string(),
+            base_url: "https://api.siliconflow.cn/v1".to_string(),
+            ..Default::default()
+        };
+        let mut body = Map::new();
+
+        adapter.apply_reasoning_config(&mut body, &config, None);
+
+        assert_eq!(body.get("enable_thinking"), Some(&json!(true)));
+        assert_eq!(body.get("thinking_budget"), Some(&json!(2048)));
         assert!(!body.contains_key("reasoning_effort"));
     }
 
@@ -460,14 +564,16 @@ mod tests {
     }
 
     #[test]
-    fn test_remove_sampling_params_for_thinking() {
+    fn test_remove_sampling_params_for_v4_thinking() {
         let adapter = DeepSeekAdapter;
         let config = ApiConfig {
-            is_reasoning: true,
+            supports_reasoning: true,
+            thinking_enabled: true,
+            model: "deepseek-v4-pro".to_string(),
             ..Default::default()
         };
 
-        // DeepSeek Thinking 模式下采样参数无效，应移除
+        // DeepSeek V4 Thinking 模式下采样参数无效，应移除
         assert!(adapter.should_remove_sampling_params(&config));
     }
 

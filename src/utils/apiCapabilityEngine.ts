@@ -70,7 +70,7 @@ const IMAGE_MODEL_ID_SET = new Set(
 // 推理模型正则：o系列、gpt-5系列（除gpt-5-chat）、gpt-oss、codex-mini、各厂商推理模型
 // Grok 系列：3-mini, 4, 4-fast, 4.1, 4-1-fast, code-fast 都是推理模型（排除 -non-reasoning 变体）
 // Mistral Magistral 系列：magistral-small/medium 是推理模型
-const REASONING_REGEX = /^(?!.*-non-reasoning\b)(?:o\d+(?:-[\w-]+)?|gpt-5(?!-chat)[\w.-]*|gpt-oss|codex-mini|.*\b(?:reasoning|reasoner|thinking)\b.*|.*-[rR]\d+.*|.*\bqwq(?:-[\w-]+)?\b.*|.*\bhunyuan-t1(?:-[\w-]+)?\b.*|.*\bglm-zero-preview\b.*|.*\bgrok-(?:3-mini|4(?:[.-]1)?(?:-fast)?|code-fast)(?:-[\w-]+)?\b.*|.*\bmagistral(?:-[\w-]+)?\b.*)$/i;
+const REASONING_REGEX = /^(?!.*-non-reasoning\b)(?:o\d+(?:-[\w-]+)?|gpt-5(?!-chat)[\w.-]*|gpt-oss|codex-mini|.*\b(?:reasoning|reasoner|thinking)\b.*|.*-[rR]\d+.*|.*\bqwq(?:-[\w-]+)?\b.*|.*\bhunyuan-t1(?:-[\w-]+)?\b.*|.*\bglm-zero-preview\b.*|.*\bgrok-(?:3-mini|4(?:[.-]1)?(?:-fast)?|code-fast)(?:-[\w-]+)?\b.*|.*\bmagistral(?:-[\w-]+)?\b.*|.*\bnemotron-3-(?:nano|super|ultra)\b.*)$/i;
 
 const VISION_ALLOWED_PATTERNS: (string | RegExp)[] = [
   // OCR 专用模型（DeepSeek-OCR、PaddleOCR-VL 等）
@@ -175,7 +175,7 @@ const VISION_EXCLUDED_REGEXES: RegExp[] = [
 
 // 函数调用支持白名单：OpenAI GPT系列、o系列、各厂商主流模型
 // 2026-02: 添加 doubao-seed-2.0, MiniMax-M2.5, GLM-5, grok-4.1 支持
-const FUNCTION_CALLING_WHITELIST_REGEX = /(gpt-4o-mini|gpt-4o|gpt-4\.1|gpt-4\.5|gpt-4(?!-\d)|gpt-oss|gpt-5|o[134]\b|o3-pro|codex-mini|computer-use|claude|qwen3?|hunyuan|deepseek|glm-(?:4(?:\.[5-7])?|5(?:\.\d+)?)|learnlm|gemini(?!.*embedding)|grok-[34]|doubao-seed-(?:1(?:\.[68]|-[68])|2(?:\.0|-0))|kimi-(?:k2(?:\.5|-5)?|latest|vl)|ling-[\w-]+|ring-[\w-]+|minimax-m2(?:\.\d)?|devstral)/i;
+const FUNCTION_CALLING_WHITELIST_REGEX = /(gpt-4o-mini|gpt-4o|gpt-4\.1|gpt-4\.5|gpt-4(?!-\d)|gpt-oss|gpt-5|o[134]\b|o3-pro|codex-mini|computer-use|claude|qwen3?|hunyuan|deepseek|glm-(?:4(?:\.[5-7])?|5(?:\.\d+)?)|learnlm|gemini(?!.*embedding)|grok-[34]|doubao-seed-(?:1(?:\.[68]|-[68])|2(?:\.0|-0))|kimi-(?:k2(?:\.5|-5)?|latest|vl)|ling-[\w-]+|ring-[\w-]+|minimax-m2(?:\.\d)?|devstral|nemotron-3-(?:nano|super|ultra))/i;
 
 const FUNCTION_CALLING_EXCLUDED_REGEXES: RegExp[] = [
   /\baqa\b/i,
@@ -306,6 +306,8 @@ const CONTEXT_WINDOW_RULES: Array<{ pattern: RegExp; window: number }> = [
   { pattern: /gemini-(?:flash-latest|pro-latest|flash-lite-latest)/i, window: 1_000_000 },
   // DeepSeek V4 官方模型及兼容别名：1M context
   { pattern: /deepseek-v4|^deepseek-(?:chat|reasoner)$/i, window: 1_000_000 },
+  // NVIDIA Nemotron 3 系列：NIM/API Catalog 暴露 1M 级上下文窗口
+  { pattern: /nemotron-3-(?:nano|super|ultra)/i, window: 1_000_000 },
 
   // --- 2M 级 ---
   // Grok 4.1 Fast / Grok 4 Fast：2,000,000 tokens（xAI 官方 2025-11）
@@ -490,7 +492,9 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
 
   const isDeepSeekV4 = DEEPSEEK_V4_REGEX.test(id) || (name ? DEEPSEEK_V4_REGEX.test(name) : false);
   const isDeepSeekLegacyAlias = DEEPSEEK_LEGACY_ALIAS_REGEX.test(id);
-  const isOfficialDeepSeekV4Effort = (isDeepSeekV4 || isDeepSeekLegacyAlias) && !isSiliconFlowScope;
+  // DeepSeek V4 exposes high/max effort semantics across official DeepSeek and
+  // SiliconFlow-hosted V4 ids; V3.2 remains thinking-budget based.
+  const isDeepSeekV4EffortCapable = isDeepSeekV4 || isDeepSeekLegacyAlias;
 
   const isRegistryReasoningEffort = !!(modelCapabilities && hasRegistryOptionalParam(modelOptionalParams, 'reasoning_effort'));
   const isRegistryReasoningTokens =
@@ -503,7 +507,7 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
   const isRegistryHybridReasoning = !!(modelCapabilities && hasRegistryOptionalParam(modelOptionalParams, 'reasoning_mode'));
 
   const supportsReasoningEffort = !embedding && !rerank && !imageModel && (
-    isOpenaiReasoningBudget || isGrokReasoningBudget || isPerplexityReasoningBudget || isOfficialDeepSeekV4Effort || isRegistryReasoningEffort
+    isOpenaiReasoningBudget || isGrokReasoningBudget || isPerplexityReasoningBudget || isDeepSeekV4EffortCapable || isRegistryReasoningEffort
   );
 
   const isGeminiThinking =
@@ -586,7 +590,7 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
 
   // 上下文窗口推断：使用 id + name 拼接作为指纹，提高匹配率
   const inferredWindow = inferContextWindow(`${id} ${name}`);
-  const shouldUseDeepSeekV4Context = isDeepSeekV4 || isOfficialDeepSeekV4Effort;
+  const shouldUseDeepSeekV4Context = isDeepSeekV4 || isDeepSeekV4EffortCapable;
   const contextWindow =
     shouldUseDeepSeekV4Context
       ? 1_000_000

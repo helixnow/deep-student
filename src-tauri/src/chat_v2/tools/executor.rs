@@ -24,9 +24,7 @@ use tokio_util::sync::CancellationToken;
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::event_types;
 use crate::chat_v2::events::ChatV2EventEmitter;
-use crate::chat_v2::types::{
-    block_status, McpToolSchema, MessageBlock, ToolCall, ToolResultInfo,
-};
+use crate::chat_v2::types::{block_status, McpToolSchema, MessageBlock, ToolCall, ToolResultInfo};
 use crate::database::Database;
 use crate::notes_manager::NotesManager;
 use crate::tools::ToolRegistry;

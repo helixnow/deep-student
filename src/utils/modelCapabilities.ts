@@ -68,7 +68,15 @@ const featureHas = (features: string[] | undefined, ...candidates: string[]) => 
  * 
  * 匹配顺序很重要：更具体的模式应该在更通用的模式之前
  */
-function detectAdapterById(lowerId: string): ModelAdapterType {
+const isNvidiaProvider = (options?: ModelDefaultParameterOptions | { providerScope?: string }): boolean => {
+  const providerScope = options?.providerScope?.toLowerCase();
+  const providerType = 'providerType' in (options ?? {}) ? (options as ModelDefaultParameterOptions).providerType?.toLowerCase() : undefined;
+  return providerScope === 'nvidia' || providerType === 'nvidia';
+};
+
+function detectAdapterById(lowerId: string, providerScope?: string): ModelAdapterType {
+  if (providerScope?.toLowerCase() === 'nvidia') return 'general';
+
   // DeepSeek 系列
   if (lowerId.includes('deepseek')) return 'deepseek';
   
@@ -137,7 +145,7 @@ export function inferCapabilities(modelLike: BasicModelDescriptor | string): Inf
   const supportsTools = apiCaps.functionCalling || featureSupportsTools;
   const supportsReasoning = isReasoning || apiCaps.supportsReasoningEffort;
 
-  const modelAdapter = detectAdapterById(lowerId);
+  const modelAdapter = detectAdapterById(lowerId, providerScope);
 
   return {
     isMultimodal,
@@ -152,11 +160,6 @@ export function inferCapabilities(modelLike: BasicModelDescriptor | string): Inf
 
 const isDeepSeekV4Id = (lowerId: string): boolean => lowerId.includes('deepseek-v4');
 const isDeepSeekLegacyAlias = (lowerId: string): boolean => lowerId === 'deepseek-chat' || lowerId === 'deepseek-reasoner';
-const isSiliconFlowProvider = (options?: ModelDefaultParameterOptions): boolean => {
-  const providerScope = options?.providerScope?.toLowerCase();
-  const providerType = options?.providerType?.toLowerCase();
-  return providerScope === 'siliconflow' || providerType === 'siliconflow';
-};
 
 // 统一默认参数
 export function getModelDefaultParameters(modelId: string, options: ModelDefaultParameterOptions = {}): ModelDefaultParams {
@@ -164,10 +167,10 @@ export function getModelDefaultParameters(modelId: string, options: ModelDefault
     'pro/qwen/qwen2.5-vl-7b-instruct': { maxOutputTokens: 4096 },
     'qwen/qwq-32b': { enableThinking: true, thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 },
     'qwen/qwq-32b-preview': { enableThinking: true, thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 },
-    'deepseek-ai/deepseek-v3.1': { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 },
-    'deepseek-ai/deepseek-v3': { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 },
-    'deepseek-ai/deepseek-v3.2-exp': { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 },
-    'deepseek-ai/deepseek-v3.2': { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 },
+    'deepseek-ai/deepseek-v3.1': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 },
+    'deepseek-ai/deepseek-v3': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 },
+    'deepseek-ai/deepseek-v3.2-exp': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 },
+    'deepseek-ai/deepseek-v3.2': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 },
     // Doubao Seed 2.0 系列
     'doubao-seed-2-0-pro-260215': { enableThinking: true, thinkingBudget: 16384, includeThoughts: true, temperature: 0.7 },
     'doubao-seed-2-0-lite-260215': { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.7 },
@@ -178,18 +181,15 @@ export function getModelDefaultParameters(modelId: string, options: ModelDefault
     'glm-4.7': { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.7 },
   };
   const lower = toLower(modelId);
+  if (isNvidiaProvider(options)) {
+    if (lower.includes('nemotron')) {
+      return { maxOutputTokens: 8192, temperature: 0.7 };
+    }
+    return {};
+  }
   if (map[lower]) return map[lower];
 
   if (isDeepSeekV4Id(lower)) {
-    if (isSiliconFlowProvider(options)) {
-      return {
-        enableThinking: true,
-        thinkingBudget: 8192,
-        includeThoughts: true,
-        maxOutputTokens: 8192,
-        temperature: 0.6,
-      };
-    }
     return {
       enableThinking: true,
       includeThoughts: true,
@@ -206,8 +206,11 @@ export function getModelDefaultParameters(modelId: string, options: ModelDefault
     return { enableThinking: true, includeThoughts: true, reasoningEffort: 'high', maxOutputTokens: 8192, temperature: 0.6 };
   }
 
+  if (lower.includes('deepseek-v3.2') || lower.includes('deepseek-v3.1')) {
+    return { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 };
+  }
   if (lower.includes('qwq')) return { enableThinking: true, thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 };
-  if (lower.includes('deepseek')) return { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 };
+  if (lower.includes('deepseek')) return { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 };
   if (lower.includes('doubao-seed-2')) return { enableThinking: true, thinkingBudget: 16384, includeThoughts: true, temperature: 0.7 };
   if (lower.includes('doubao-seed-1')) return { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.7 };
   if ((lower.includes('glm-5') || lower.includes('glm-4.7')) && !lower.includes('-flash')) return { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.7 };

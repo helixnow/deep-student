@@ -167,7 +167,8 @@
       "label": "打开推理",
       "helper": "为支持的模型启用推理模式"
     },
-    "thinking_mode_notice": "推理模式下，温度参数可能被模型忽略。"
+    "thinking_mode_notice": "推理模式下，温度参数可能被模型忽略。",
+    "deepseek_v4_sampling_notice": "DeepSeek V4 思考模式（{{effort}}）下，温度、Top-P、频率惩罚、存在惩罚不会生效；关闭思考后才会使用这些采样参数。"
   },
   "token_estimate": {
     "approx": "约 ",

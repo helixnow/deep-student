@@ -369,6 +369,8 @@ export interface ModelProfile {
   isReadOnly?: boolean;
   /** 是否收藏（收藏的模型在列表中优先显示） */
   isFavorite?: boolean;
+  /** 上下文窗口大小（tokens），用于设置页和 Chat V2 自动预算 */
+  contextWindow?: number;
   repetitionPenalty?: number;
   reasoningSplit?: boolean;
   effort?: string;

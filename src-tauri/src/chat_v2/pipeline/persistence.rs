@@ -764,6 +764,8 @@ impl ChatV2Pipeline {
             "contextLimit": ctx.options.context_limit,
             "maxTokens": ctx.options.max_tokens,
             "enableThinking": ctx.options.enable_thinking,
+            "reasoningEffort": ctx.options.reasoning_effort,
+            "thinkingBudget": ctx.options.thinking_budget,
             "disableTools": ctx.options.disable_tools,
             "model2OverrideId": ctx.options.model2_override_id,
         });

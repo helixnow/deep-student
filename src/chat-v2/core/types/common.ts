@@ -126,6 +126,10 @@ export interface ChatParams {
   contextLimit?: number;
   /** 启用推理/思维链 */
   enableThinking: boolean;
+  /** 本轮/本会话运行时推理强度覆盖；不修改设置页模型默认值 */
+  reasoningEffort?: string;
+  /** 本轮/本会话运行时 thinking budget 覆盖；DeepSeek V3.2 等预算型模型使用 */
+  thinkingBudget?: number;
   /** 禁用工具调用 */
   disableTools: boolean;
   /** 模型 2 覆盖（用于特定场景） */

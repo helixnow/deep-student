@@ -29,6 +29,7 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
   const [showApiKey, setShowApiKey] = useState(false);
   const [saving, setSaving] = useState(false);
   const [maskedConfigured, setMaskedConfigured] = useState(false);
+  const [confirmingClear, setConfirmingClear] = useState(false);
   
   // 防抖保存：用户停止输入 800ms 后才触发保存
   const debouncedApiKey = useDebounce(apiKey, 800);
@@ -56,6 +57,7 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
       setApiKey('');
       lastSavedKeyRef.current = '';
     }
+    setConfirmingClear(false);
     // 重置初始化标记，并在下一个 tick 允许自动保存。
     // 不能延迟过久（例如 900ms），否则用户首次输入后若刚好在防抖窗口内结束，
     // 会被误判为“初始化阶段”而跳过保存，导致配置未持久化。
@@ -97,18 +99,25 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
 
   const handleApiKeyChange = (value: string) => {
     setApiKey(value);
+    setConfirmingClear(false);
     if (maskedConfigured) {
       setMaskedConfigured(false);
     }
   };
 
   const handleClearApiKey = async () => {
+    if (!confirmingClear) {
+      setConfirmingClear(true);
+      return;
+    }
+
     try {
       setSaving(true);
       await onClear();
       setApiKey('');
       lastSavedKeyRef.current = ''; // 重置保存记录
       setMaskedConfigured(false);
+      setConfirmingClear(false);
       if (showMessage) {
         showMessage('success', t('settings:vendor_panel.api_key_cleared'));
       }
@@ -150,10 +159,11 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
           title={t('settings:vendor_panel.clear_api_key_title')}
         >
           <Trash2 className="h-3.5 w-3.5" />
-          {t('settings:vendor_panel.clear_api_key')}
+          {confirmingClear
+            ? t('settings:vendor_panel.clear_api_key_confirm')
+            : t('settings:vendor_panel.clear_api_key')}
         </NotionButton>
       </div>
     </div>
   );
 };
-

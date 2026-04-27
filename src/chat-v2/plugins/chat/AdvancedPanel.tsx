@@ -19,6 +19,8 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import type { ChatStore } from '../../core/types';
 import { ensureModelsCacheLoaded, getModelInfoByConfigId } from '../../hooks/useAvailableModels';
 import { deriveInputContextBudget, inferModelContextWindow } from '../../../utils/modelCapabilities';
+import { shouldLockDeepSeekV4SamplingControls } from './deepseekSamplingControls';
+import { normalizeDeepSeekV4Effort } from '@/utils/deepseekReasoningControls';
 
 // ============================================================================
 // 常量
@@ -111,6 +113,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
     presencePenalty: s.chatParams.presencePenalty,
     maxTokens: s.chatParams.maxTokens,
     enableThinking: s.chatParams.enableThinking,
+    reasoningEffort: s.chatParams.reasoningEffort,
     contextLimit: s.chatParams.contextLimit,
     ragTopK: s.chatParams.ragTopK,
     ragEnableReranking: s.chatParams.ragEnableReranking,
@@ -160,6 +163,19 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
     () => getModelInfoByConfigId(chatParams.modelId),
     [chatParams.modelId, modelMetaVersion]
   );
+  const deepSeekV4SamplingLocked = useMemo(
+    () =>
+      shouldLockDeepSeekV4SamplingControls({
+        model: modelInfo?.model ?? chatParams.modelId,
+        providerType: modelInfo?.providerType,
+        providerScope: modelInfo?.providerScope,
+        baseUrl: modelInfo?.baseUrl,
+        enableThinking,
+      }),
+    [modelInfo?.model, modelInfo?.providerType, modelInfo?.providerScope, modelInfo?.baseUrl, chatParams.modelId, enableThinking]
+  );
+  const deepSeekV4ReasoningEffort = normalizeDeepSeekV4Effort(chatParams.reasoningEffort);
+  const samplingControlsDisabled = isStreaming || deepSeekV4SamplingLocked;
   const inferredContextWindow = useMemo(
     () => {
       // 优先使用 ApiConfig 中用户配置/推断引擎写入的 contextWindow
@@ -219,6 +235,14 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
       <CustomScrollArea className="flex-1 min-h-0" viewportClassName={cn('pr-3', isMobile || sidebarMode ? 'h-full' : 'max-h-[calc(60vh-120px)]')}>
         {/* 侧栏模式强制单列布局，非侧栏模式使用响应式双列 */}
         <div className={sidebarMode ? 'flex flex-col gap-2 pb-1' : 'grid grid-cols-1 md:grid-cols-2 gap-2 pb-1'}>
+        {deepSeekV4SamplingLocked && (
+          <div className={cn('rounded-lg border border-amber-300/40 bg-amber-50/70 px-3 py-2 text-[11px] leading-relaxed text-amber-800 dark:border-amber-500/30 dark:bg-amber-500/10 dark:text-amber-200', !sidebarMode && 'md:col-span-2')}>
+            {t('chat_host:advanced.deepseek_v4_sampling_notice', {
+              effort: deepSeekV4ReasoningEffort,
+              defaultValue: 'DeepSeek V4 thinking mode ({{effort}}) ignores temperature, top_p, presence_penalty, and frequency_penalty. Turn thinking off to use sampling controls.',
+            })}
+          </div>
+        )}
         {/* 温度 */}
         <div className="p-2">
           <div className="flex items-center gap-1.5">
@@ -240,15 +264,15 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
             step={TEMPERATURE_STEP}
             inputId={temperatureId}
             onChange={(next: number) => {
-              if (!isStreaming) updateParam('temperature', next);
+              if (!samplingControlsDisabled) updateParam('temperature', next);
             }}
             config={{
               snappingThreshold: 0.15,
               labelFormatter: (v: number) => v.toFixed(1),
             }}
-            disabled={isStreaming}
+            disabled={samplingControlsDisabled}
           />
-          {enableThinking && (
+          {enableThinking && !deepSeekV4SamplingLocked && (
             <p className="mt-1 text-[10px] text-amber-500/80">
               {t('chat_host:advanced.thinking_mode_notice')}
             </p>
@@ -267,7 +291,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
             </span>
           </div>
           <SnappySlider
-            className={cn(isStreaming && 'pointer-events-none opacity-60')}
+            className={cn(samplingControlsDisabled && 'pointer-events-none opacity-60')}
             values={TOP_P_SNAP_POINTS}
             defaultValue={TOP_P_DEFAULT}
             value={topP}
@@ -276,13 +300,13 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
             step={TOP_P_STEP}
             inputId={topPId}
             onChange={(next: number) => {
-              if (!isStreaming) updateParam('topP', next);
+              if (!samplingControlsDisabled) updateParam('topP', next);
             }}
             config={{
               snappingThreshold: 0.1,
               labelFormatter: (v: number) => v.toFixed(2),
             }}
-            disabled={isStreaming}
+            disabled={samplingControlsDisabled}
           />
         </div>
 
@@ -313,7 +337,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
             </NotionButton>
           </div>
           <SnappySlider
-            className={cn(isStreaming && 'pointer-events-none opacity-60')}
+            className={cn(samplingControlsDisabled && 'pointer-events-none opacity-60')}
             values={contextSliderPoints}
             defaultValue={autoContextLimit}
             value={contextLimit}
@@ -393,13 +417,13 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
             step={PENALTY_STEP}
             inputId={freqPenaltyId}
             onChange={(next: number) => {
-              if (!isStreaming) updateParam('frequencyPenalty', next);
+              if (!samplingControlsDisabled) updateParam('frequencyPenalty', next);
             }}
             config={{
               snappingThreshold: 0.2,
               labelFormatter: (v: number) => v.toFixed(1),
             }}
-            disabled={isStreaming}
+            disabled={samplingControlsDisabled}
           />
         </div>
 
@@ -415,7 +439,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
             </span>
           </div>
           <SnappySlider
-            className={cn(isStreaming && 'pointer-events-none opacity-60')}
+            className={cn(samplingControlsDisabled && 'pointer-events-none opacity-60')}
             values={PENALTY_SNAP_POINTS}
             defaultValue={PENALTY_DEFAULT}
             value={presencePenalty}
@@ -424,13 +448,13 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
             step={PENALTY_STEP}
             inputId={presPenaltyId}
             onChange={(next: number) => {
-              if (!isStreaming) updateParam('presencePenalty', next);
+              if (!samplingControlsDisabled) updateParam('presencePenalty', next);
             }}
             config={{
               snappingThreshold: 0.2,
               labelFormatter: (v: number) => v.toFixed(1),
             }}
-            disabled={isStreaming}
+            disabled={samplingControlsDisabled}
           />
         </div>
 

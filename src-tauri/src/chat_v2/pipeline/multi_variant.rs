@@ -327,6 +327,8 @@ impl ChatV2Pipeline {
                 meta: Some(MessageMeta {
                     model_id: None,
                     chat_params: Some(serde_json::json!({
+                        "reasoningEffort": options.reasoning_effort,
+                        "thinkingBudget": options.thinking_budget,
                         "multiVariantMode": true,
                     })),
                     sources: None,
@@ -895,6 +897,8 @@ impl ChatV2Pipeline {
             options.frequency_penalty,
             options.presence_penalty,
             options.max_tokens,
+            options.reasoning_effort.clone(),
+            options.thinking_budget,
         );
 
         let call_result =
@@ -1134,7 +1138,10 @@ impl ChatV2Pipeline {
                     .map(|v| (v as usize).min(DEFAULT_MAX_HISTORY_TOKENS)),
             );
             let skill_audit = transient_skill_messages.audit.clone();
-            messages.splice(base_history_len..base_history_len, transient_skill_messages.messages);
+            messages.splice(
+                base_history_len..base_history_len,
+                transient_skill_messages.messages,
+            );
             let audit_round_id = format!("variant-tool-round-{}", tool_round);
             emitter_arc.emit_skill_injection_audit(
                 ctx.message_id(),
@@ -1171,6 +1178,8 @@ impl ChatV2Pipeline {
                 options.frequency_penalty,
                 options.presence_penalty,
                 options.max_tokens,
+                options.reasoning_effort.clone(),
+                options.thinking_budget,
             );
 
             // 使用 tokio::select! 支持取消（与单变体 pipeline 对齐）
@@ -1358,8 +1367,8 @@ impl ChatV2Pipeline {
                                         .insert("tools".into(), Value::Array(refreshed_tools));
                                 }
                             }
-                            variant_skill_state =
-                                variant_skill_state.with_added_branch_local_skills(&loaded_skill_ids);
+                            variant_skill_state = variant_skill_state
+                                .with_added_branch_local_skills(&loaded_skill_ids);
                             options.skill_state_version = Some(variant_skill_state.version);
                         }
                     }
@@ -2958,6 +2967,8 @@ impl ChatV2Pipeline {
                         "temperature": options.temperature,
                         "maxTokens": options.max_tokens,
                         "enableThinking": options.enable_thinking,
+                        "reasoningEffort": options.reasoning_effort,
+                        "thinkingBudget": options.thinking_budget,
                         "multiVariantMode": true,
                     })),
                     sources: if shared_context.has_sources() {

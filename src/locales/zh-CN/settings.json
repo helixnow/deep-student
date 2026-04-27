@@ -64,10 +64,11 @@
         "effort": {
           "none": "none（默认）",
           "minimal": "minimal（最低）",
-          "low": "low（较低）",
-          "medium": "medium（中等）",
-          "high": "high（较高）",
-          "xhigh": "xhigh（最高）"
+          "low": "low（低）",
+          "medium": "medium（中）",
+          "high": "high（高）",
+          "xhigh": "xhigh（超高）",
+          "max": "max（最大）"
         },
         "enable_thinking": "Enable Thinking 模式",
         "enable_thinking_hint": "向 API 发送 enable_thinking 标志，部分模型支持。",
@@ -122,7 +123,14 @@
         "description": "DeepSeek V3.2 使用 thinking.type 格式控制思维链",
         "enable_thinking": "启用思维模式",
         "enable_thinking_hint": "启用后模型会输出 reasoning_content 思考过程",
-        "v31_warning": "DeepSeek V3.1 使用工具时会自动禁用思维模式"
+        "v31_warning": "DeepSeek V3.1 使用工具时会自动禁用思维模式",
+        "depth": {
+          "low": "低",
+          "medium": "中",
+          "high": "高",
+          "xhigh": "超高",
+          "max": "最大"
+        }
       },
       "qwen": {
         "title": "通义千问推理配置",
@@ -223,6 +231,7 @@
     "api_key_cleared": "API 密钥已清除",
     "api_key_clear_failed": "清除 API 密钥失败",
     "clear_api_key": "清除",
+    "clear_api_key_confirm": "确认清除",
     "clear_api_key_title": "清除 API 密钥",
     "show_api_key": "显示 API 密钥",
     "hide_api_key": "隐藏 API 密钥",

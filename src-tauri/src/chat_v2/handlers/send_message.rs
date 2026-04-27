@@ -1980,7 +1980,11 @@ mod tests {
             vec!["runtime-skill".to_string()]
         );
         assert_eq!(
-            updated.skill_contents.unwrap().get("runtime-skill").map(String::as_str),
+            updated
+                .skill_contents
+                .unwrap()
+                .get("runtime-skill")
+                .map(String::as_str),
             Some("runtime body")
         );
         assert_eq!(

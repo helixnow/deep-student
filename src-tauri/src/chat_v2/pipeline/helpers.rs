@@ -352,8 +352,7 @@ pub(crate) fn build_transient_skill_messages_with_audit(
         ..Default::default()
     };
 
-    let ordered_skill_ids =
-        ordered_skill_ids_for_injection(skill_state, skill_dependencies);
+    let ordered_skill_ids = ordered_skill_ids_for_injection(skill_state, skill_dependencies);
     if ordered_skill_ids.is_empty() {
         return result;
     }
@@ -391,17 +390,15 @@ impl ChatV2Pipeline {
         session_id: &str,
         options: &SendOptions,
     ) -> super::super::types::SessionSkillState {
-        let replay_with_runtime_snapshot =
-            options.replay_mode == Some(super::super::types::ReplayMode::Original)
-                && options.replay_skill_contents.is_some();
+        let replay_with_runtime_snapshot = options.replay_mode
+            == Some(super::super::types::ReplayMode::Original)
+            && options.replay_skill_contents.is_some();
         let mut state = if replay_with_runtime_snapshot {
             super::super::types::SessionSkillState::default()
         } else {
             match ChatV2Repo::load_session_state_v2(&self.db, session_id) {
                 Ok(Some(state)) => state.resolved_skill_state(),
-                Ok(None) => {
-                    super::super::types::SessionSkillState::default()
-                }
+                Ok(None) => super::super::types::SessionSkillState::default(),
                 Err(err) => {
                     log::warn!(
                         "[ChatV2::pipeline] Failed to load session skill state for transient injection: session_id={}, error={}",
@@ -465,7 +462,13 @@ pub(crate) fn trim_history_by_token_budget(
         .sum();
 
     let original_len = history.len();
-    while total_tokens > max_tokens && history.iter().filter(|m| !is_transient_skill_message(m)).count() > 2 {
+    while total_tokens > max_tokens
+        && history
+            .iter()
+            .filter(|m| !is_transient_skill_message(m))
+            .count()
+            > 2
+    {
         let Some(remove_idx) = history.iter().position(|m| !is_transient_skill_message(m)) else {
             break;
         };
@@ -528,10 +531,7 @@ mod tests {
         );
         assert_eq!(injected.audit.skill_state_version, 7);
         assert_eq!(injected.messages.len(), 5);
-        assert!(injected
-            .messages
-            .iter()
-            .all(is_transient_skill_message));
+        assert!(injected.messages.iter().all(is_transient_skill_message));
     }
 
     #[test]

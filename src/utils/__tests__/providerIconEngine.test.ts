@@ -44,6 +44,11 @@ describe('ProviderIconEngine', () => {
       expect(detectProviderBrand('grok-2')).toBe('xai');
       expect(detectProviderBrand('grok-vision-beta')).toBe('xai');
     });
+
+    it('应该正确识别 NVIDIA 模型', () => {
+      expect(detectProviderBrand('nvidia/nemotron-3-nano-30b-a3b')).toBe('nvidia');
+      expect(detectProviderBrand('nim-chat')).toBe('nvidia');
+    });
   });
 
   describe('detectProviderBrand - 中国供应商', () => {
@@ -164,6 +169,7 @@ describe('ProviderIconEngine', () => {
       expect(getProviderIcon('claude-3-opus')).toBe('/icons/providers/anthropic.svg');
       expect(getProviderIcon('gemini-2.0')).toBe('/icons/providers/gemini.svg');
       expect(getProviderIcon('deepseek-v3.1')).toBe('/icons/providers/deepseek.svg');
+      expect(getProviderIcon('nvidia/nemotron-3-nano-30b-a3b')).toBe('/icons/providers/nvidia.svg');
     });
 
     it('未识别的模型应该返回 generic 图标路径', () => {
@@ -193,7 +199,6 @@ describe('ProviderIconEngine', () => {
     });
   });
 });
-
 
 
 

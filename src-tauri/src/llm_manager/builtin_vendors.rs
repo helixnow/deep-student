@@ -128,6 +128,16 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         max_tokens_limit: None,
         website_url: "https://aistudio.google.com",
     },
+    // NVIDIA NIM / API Catalog
+    BuiltinVendor {
+        id: "builtin-nvidia",
+        name: "NVIDIA",
+        provider_type: "nvidia",
+        base_url: "https://integrate.api.nvidia.com/v1",
+        notes: "NVIDIA NIM hosted API。OpenAI-compatible Chat Completions；模型可通过 /models 拉取。默认不注入 thinking/reasoning 专用参数，避免不同 NIM 模型参数格式不一致。",
+        max_tokens_limit: None,
+        website_url: "https://build.nvidia.com/nim",
+    },
 ];
 
 /// 所有内置模型列表
@@ -625,6 +635,40 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         max_output_tokens: 65536,
         temperature: 0.7,
     },
+    // ===== NVIDIA NIM 模型 =====
+    BuiltinModel {
+        id: "builtin-nvidia-nemotron-3-nano",
+        vendor_id: "builtin-nvidia",
+        label: "NVIDIA Nemotron 3 Nano",
+        model: "nvidia/nemotron-3-nano-30b-a3b",
+        is_multimodal: false,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 8192,
+        temperature: 0.7,
+    },
+    BuiltinModel {
+        id: "builtin-nvidia-llama-3.1-405b",
+        vendor_id: "builtin-nvidia",
+        label: "Llama 3.1 405B Instruct",
+        model: "meta/llama-3.1-405b-instruct",
+        is_multimodal: false,
+        is_reasoning: false,
+        supports_tools: false,
+        max_output_tokens: 8192,
+        temperature: 0.7,
+    },
+    BuiltinModel {
+        id: "builtin-nvidia-yi-large",
+        vendor_id: "builtin-nvidia",
+        label: "Yi Large",
+        model: "01-ai/yi-large",
+        is_multimodal: false,
+        is_reasoning: false,
+        supports_tools: false,
+        max_output_tokens: 8192,
+        temperature: 0.7,
+    },
 ];
 
 /// 将内置供应商定义转换为 VendorConfig
@@ -681,15 +725,17 @@ impl BuiltinModel {
             ("google".to_string(), Some("v1beta".to_string()))
         } else if self.vendor_id == "builtin-deepseek" {
             ("deepseek".to_string(), None)
+        } else if self.vendor_id == "builtin-nvidia" {
+            ("general".to_string(), None)
         } else {
             ("openai".to_string(), None)
         };
-        let reasoning_effort =
-            if self.vendor_id == "builtin-deepseek" && self.is_reasoning {
-                Some("high".to_string())
-            } else {
-                None
-            };
+        let reasoning_effort = if self.vendor_id == "builtin-deepseek" && self.is_reasoning {
+            Some("high".to_string())
+        } else {
+            None
+        };
+        let use_reasoning_defaults = self.is_reasoning && self.vendor_id != "builtin-nvidia";
 
         ModelProfile {
             id: self.id.to_string(),
@@ -709,9 +755,9 @@ impl BuiltinModel {
             max_output_tokens: self.max_output_tokens,
             temperature: self.temperature,
             reasoning_effort,
-            thinking_enabled: self.is_reasoning,
+            thinking_enabled: use_reasoning_defaults,
             thinking_budget: None,
-            include_thoughts: self.is_reasoning,
+            include_thoughts: use_reasoning_defaults,
             enable_thinking: None,
             min_p: None,
             top_k: None,
@@ -719,6 +765,7 @@ impl BuiltinModel {
             is_builtin: false, // 允许用户编辑和删除模型配置
             is_favorite: false,
             max_tokens_limit, // 从供应商继承
+            context_window: deepseek_context_window(self.model),
             repetition_penalty: None,
             reasoning_split: None,
             effort: None,
@@ -755,6 +802,24 @@ pub fn load_all_builtins(
     (vendors, profiles)
 }
 
+pub(crate) fn deepseek_context_window(model: &str) -> Option<u32> {
+    let normalized = model.trim().to_lowercase();
+    if normalized.contains("deepseek-v4")
+        || matches!(normalized.as_str(), "deepseek-chat" | "deepseek-reasoner")
+    {
+        Some(1_000_000)
+    } else if normalized.contains("deepseek-v3.2") || normalized.contains("deepseek-v3.1") {
+        Some(128_000)
+    } else if normalized.contains("nemotron-3-nano")
+        || normalized.contains("nemotron-3-super")
+        || normalized.contains("nemotron-3-ultra")
+    {
+        Some(1_000_000)
+    } else {
+        None
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -771,6 +836,13 @@ mod tests {
             .iter()
             .find(|model| model.id == id)
             .expect("builtin model should exist")
+    }
+
+    fn nvidia_vendor() -> &'static BuiltinVendor {
+        BUILTIN_VENDORS
+            .iter()
+            .find(|vendor| vendor.id == "builtin-nvidia")
+            .expect("builtin NVIDIA vendor should exist")
     }
 
     #[test]
@@ -796,15 +868,50 @@ mod tests {
         assert_eq!(v4_flash.provider_scope.as_deref(), Some("deepseek"));
         assert_eq!(v4_flash.model_adapter, "deepseek");
         assert_eq!(v4_flash.max_tokens_limit, Some(384_000));
+        assert_eq!(v4_flash.context_window, Some(1_000_000));
+        assert_eq!(v4_pro.context_window, Some(1_000_000));
         assert_eq!(v4_flash.max_output_tokens, 8192);
         assert_eq!(v4_flash.reasoning_effort.as_deref(), Some("high"));
 
         assert_eq!(chat_alias.model, "deepseek-chat");
         assert_eq!(chat_alias.model_adapter, "deepseek");
+        assert_eq!(chat_alias.context_window, Some(1_000_000));
         assert!(!chat_alias.is_reasoning);
         assert!(!chat_alias.thinking_enabled);
         assert_eq!(reasoner_alias.model, "deepseek-reasoner");
+        assert_eq!(reasoner_alias.context_window, Some(1_000_000));
         assert!(reasoner_alias.is_reasoning);
         assert_eq!(reasoner_alias.reasoning_effort.as_deref(), Some("high"));
+    }
+
+    #[test]
+    fn nvidia_builtin_vendor_uses_integrate_api_openai_compatible_endpoint() {
+        let vendor = nvidia_vendor();
+
+        assert_eq!(vendor.name, "NVIDIA");
+        assert_eq!(vendor.provider_type, "nvidia");
+        assert_eq!(vendor.base_url, "https://integrate.api.nvidia.com/v1");
+        assert!(vendor.notes.contains("OpenAI-compatible"));
+        assert!(vendor.website_url.contains("build.nvidia.com"));
+    }
+
+    #[test]
+    fn nvidia_builtin_profiles_use_generic_adapter_without_thinking_defaults() {
+        let nemotron = builtin_model("builtin-nvidia-nemotron-3-nano").to_model_profile();
+        let llama = builtin_model("builtin-nvidia-llama-3.1-405b").to_model_profile();
+
+        assert_eq!(nemotron.vendor_id, "builtin-nvidia");
+        assert_eq!(nemotron.provider_scope.as_deref(), Some("nvidia"));
+        assert_eq!(nemotron.model_adapter, "general");
+        assert_eq!(nemotron.model, "nvidia/nemotron-3-nano-30b-a3b");
+        assert!(nemotron.is_reasoning);
+        assert!(!nemotron.thinking_enabled);
+        assert!(!nemotron.include_thoughts);
+        assert!(nemotron.reasoning_effort.is_none());
+        assert_eq!(nemotron.context_window, Some(1_000_000));
+
+        assert_eq!(llama.model, "meta/llama-3.1-405b-instruct");
+        assert_eq!(llama.model_adapter, "general");
+        assert!(llama.reasoning_effort.is_none());
     }
 }

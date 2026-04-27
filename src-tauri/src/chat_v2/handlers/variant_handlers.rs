@@ -121,6 +121,14 @@ fn resolve_retry_options(
             .and_then(|v| v.as_u64())
             .map(|v| v as u32);
         options.enable_thinking = params.get("enableThinking").and_then(|v| v.as_bool());
+        options.reasoning_effort = params
+            .get("reasoningEffort")
+            .and_then(|v| v.as_str())
+            .map(|v| v.to_string());
+        options.thinking_budget = params
+            .get("thinkingBudget")
+            .and_then(|v| v.as_i64())
+            .map(|v| v as i32);
     }
 
     if options.replay_mode.is_some() {

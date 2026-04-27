@@ -64,6 +64,7 @@
       "title": "Start a conversation",
       "slogan": "Ask anything, learn everything",
       "description": "Send a message to start chatting with AI",
+      "primaryAction": "What should we start with?",
       "suggestion1": "Analyze this deep learning paper and summarize its key innovations and experimental results.",
       "suggestion2": "I'm preparing for a math exam. Help me create a study outline for linear algebra.",
       "suggestion3": "Check this code for logical flaws and optimize its time complexity.",
@@ -163,6 +164,10 @@
     "thinkingDisabled": "Click to enable reasoning mode",
     "toggleThinking": "Toggle reasoning mode",
     "thinking": "Reasoning mode",
+    "thinkingDepthMenu": "Choose reasoning depth",
+    "thinkingDepthTitle": "Reasoning depth",
+    "thinkingOff": "Off",
+    "thinkingDepthExpensive": "Slower",
     "ankiTools": "Anki cards",
     "menuGroup": {
       "context": "Context",

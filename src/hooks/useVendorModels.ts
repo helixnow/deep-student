@@ -96,6 +96,7 @@ const buildResolvedConfigs = (vendors: VendorConfig[], profiles: ModelProfile[])
         topK: profile.topK,
         supportsReasoning: profile.supportsReasoning ?? profile.isReasoning,
         headers: vendor.headers,
+        contextWindow: profile.contextWindow,
       } as ApiConfig;
     })
     .filter((cfg): cfg is ApiConfig => Boolean(cfg));

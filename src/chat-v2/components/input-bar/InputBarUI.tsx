@@ -23,13 +23,13 @@ import {
   Clock,
   XCircle,
   Upload,
-  Atom,
   Network,
   Plus,
   Camera,
   Zap,
   Loader2,
   FolderOpen,
+  ChevronDown,
 } from 'lucide-react';
 import { usePdfProcessingProgress } from '@/hooks/usePdfProcessingProgress';
 import { usePdfProcessingStore } from '@/stores/pdfProcessingStore';
@@ -163,6 +163,11 @@ function getFileExtension(fileName: string): string {
 function clampPercent(value?: number): number {
   const safe = Number.isFinite(value) ? (value as number) : 0;
   return Math.min(100, Math.max(0, Math.round(safe)));
+}
+
+function getCompactThinkingLabel(label?: string): string | undefined {
+  const compact = label?.replace(/^(推理|Reasoning)\s*[:：]\s*/i, '').trim();
+  return compact || label;
 }
 
 function getStageLabel(
@@ -368,7 +373,11 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   modelMentionActions,
   // 推理模式
   enableThinking,
+  thinkingStateLabel,
+  thinkingDepthOptions,
+  thinkingDepthValue,
   onToggleThinking,
+  onSetThinkingDepth,
   // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器，移除开关
   // ★ Skills 技能系统（多选模式）
   activeSkillIds,
@@ -391,7 +400,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   onRemovePdfPageRef,
   onClearPdfPageRefs,
 }) => {
-  const { t } = useTranslation(['analysis', 'common', 'chatV2']);
+  const { t } = useTranslation(['analysis', 'common', 'chatV2', 'settings']);
 
   const modeLabelMap = useMemo<Record<MediaInjectMode, string>>(() => ({
     text: t('chatV2:injectMode.pdf.text'),
@@ -947,6 +956,13 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const tooltipDisabled = isMobile;
   const attachmentCount = attachments.length;
   const attachmentBadgeLabel = attachmentCount > 99 ? '99+' : String(attachmentCount);
+  const compactThinkingStateLabel = getCompactThinkingLabel(thinkingStateLabel);
+  const hasThinkingDepthMenu = !!(
+    compactThinkingStateLabel &&
+    onSetThinkingDepth &&
+    thinkingDepthOptions &&
+    thinkingDepthOptions.length > 0
+  );
   const hasText = inputValue.trim().length > 0;
   const hasAttachments = attachmentCount > 0;
   const hasContent = hasText || hasAttachments;
@@ -1923,48 +1939,43 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         {/* 底部按钮栏 */}
         <div className="flex items-center justify-between gap-2">
           {/* 左侧按钮 - 窄屏时可横向滚动 */}
-          <div className="flex items-center gap-2 overflow-x-auto scrollbar-none min-w-0 flex-1 md:flex-none md:overflow-visible">
+          <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto pr-2 scrollbar-none">
+            {/* 附件按钮 - 左侧首位，方便先添加上下文 */}
+            <CommonTooltip
+              content={
+                attachmentCount > 0
+                  ? `${t('analysis:input_bar.attachments.title')} (${attachmentCount})`
+                  : t('analysis:input_bar.attachments.title')
+              }
+              position={tooltipPosition}
+              disabled={tooltipDisabled}
+            >
+              <NotionButton
+                data-testid="btn-toggle-attachments"
+                variant="ghost"
+                size="icon"
+                iconOnly
+                onClick={toggleAttachmentPanel}
+                className={cn(
+                  iconButtonClass,
+                  'relative transition-colors disabled:opacity-60'
+                )}
+                aria-label={t('analysis:input_bar.attachments.title')}
+              >
+                <span className="relative inline-flex items-center justify-center">
+                  <Paperclip size={18} />
+                  {attachmentCount > 0 && (
+                    <span className="pointer-events-none absolute -right-1 -bottom-1 flex h-4 min-w-[1.1rem] items-center justify-center rounded-full border bg-primary px-[0.25rem] text-[10px] font-semibold text-primary-foreground shadow-sm">
+                      {attachmentBadgeLabel}
+                    </span>
+                  )}
+                </span>
+              </NotionButton>
+            </CommonTooltip>
+
             {leftAccessory}
 
             {/* ★ 加号菜单已移除，统一桌面端和移动端样式 */}
-
-            {/* 🔧 P0: 推理模式独立按钮（高频功能提升） */}
-            {onToggleThinking && (
-              <CommonTooltip
-                content={
-                  <span className="flex items-center gap-2">
-                    <span>{t('chatV2:inputBar.thinking')}</span>
-                    <kbd className="px-1 py-0.5 text-[10px] font-mono bg-muted/50 rounded border border-border/50">⌘⇧T</kbd>
-                  </span>
-                }
-                position={tooltipPosition}
-                disabled={tooltipDisabled}
-              >
-                <NotionButton
-                  data-testid="btn-toggle-thinking"
-                  variant="ghost"
-                  size="icon"
-                  iconOnly
-                  onClick={onToggleThinking}
-                  className={cn(
-                    iconButtonClass,
-                    'relative transition-colors',
-                    enableThinking
-                      ? 'text-[color:var(--button-primary-foreground)] hover:text-[color:var(--button-primary-foreground)]'
-                      : 'text-[color:var(--button-utility-foreground)] hover:text-[color:var(--text-primary)]'
-                  )}
-                  aria-label={t('chatV2:inputBar.thinking')}
-                  aria-pressed={enableThinking}
-                >
-                  <span className="relative inline-flex items-center justify-center">
-                    <Atom size={18} />
-                    {enableThinking && (
-                      <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-[color:var(--button-primary-foreground)] animate-pulse" />
-                    )}
-                  </span>
-                </NotionButton>
-              </CommonTooltip>
-            )}
 
             {/* 模型选择按钮 */}
             <CommonTooltip content={t('chat_host:model_panel.title')} position={tooltipPosition} disabled={tooltipDisabled}>
@@ -2081,38 +2092,81 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             {/* Token 估算（防抖后） */}
             {isReady && <InputTokenEstimate tokenCount={debouncedTokenCount} />}
 
-            {/* 附件按钮 - 移到发送按钮左侧 */}
-            <CommonTooltip
-              content={
-                attachmentCount > 0
-                  ? `${t('analysis:input_bar.attachments.title')} (${attachmentCount})`
-                  : t('analysis:input_bar.attachments.title')
-              }
-              position={tooltipPosition}
-              disabled={tooltipDisabled}
-            >
-              <NotionButton
-                data-testid="btn-toggle-attachments"
-                variant="ghost"
-                size="icon"
-                iconOnly
-                onClick={toggleAttachmentPanel}
+            {/* 推理强度 - 放在原附件按钮位置，靠近发送动作 */}
+            {onToggleThinking && (
+              <span
                 className={cn(
-                  iconButtonClass,
-                  'relative transition-colors disabled:opacity-60'
+                  'relative inline-flex h-8 min-w-0 max-w-[8rem] shrink-0 items-center rounded-lg px-1 text-[13px] font-semibold leading-none transition-colors duration-150 hover:bg-[color:var(--button-utility-hover)] focus-within:bg-[color:var(--button-utility-hover)]',
+                  enableThinking
+                    ? 'text-[color:var(--text-primary)]'
+                    : 'text-[color:var(--text-muted)]'
                 )}
-                aria-label={t('analysis:input_bar.attachments.title')}
+                data-testid="thinking-runtime-control"
               >
-                <span className="relative inline-flex items-center justify-center">
-                  <Paperclip size={18} />
-                  {attachmentCount > 0 && (
-                    <span className="pointer-events-none absolute -right-1 -bottom-1 flex h-4 min-w-[1.1rem] items-center justify-center rounded-full border bg-primary px-[0.25rem] text-[10px] font-semibold text-primary-foreground shadow-sm">
-                      {attachmentBadgeLabel}
-                    </span>
-                  )}
-                </span>
-              </NotionButton>
-            </CommonTooltip>
+                {hasThinkingDepthMenu ? (
+                  <AppMenu>
+                    <AppMenuTrigger asChild>
+                      <button
+                        type="button"
+                        data-testid="thinking-runtime-menu-trigger"
+                        className="inline-flex h-7 min-w-0 items-center gap-1 rounded-md px-1 text-inherit transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
+                        title={thinkingStateLabel}
+                        aria-label={t('chatV2:inputBar.thinkingDepthMenu', '选择推理深度')}
+                      >
+                        <Zap size={15} className={cn('shrink-0 opacity-90', enableThinking && 'fill-current')} />
+                        <span data-testid="thinking-runtime-state-label" className="min-w-0 max-w-[5.75rem] truncate">
+                          {compactThinkingStateLabel}
+                        </span>
+                        <ChevronDown size={13} className="shrink-0 opacity-55" />
+                      </button>
+                    </AppMenuTrigger>
+                    <AppMenuContent align="start" width={176}>
+                      <AppMenuGroup label={t('chatV2:inputBar.thinkingDepthTitle', '推理强度')}>
+                        <AppMenuItem checked={!enableThinking} onClick={() => onSetThinkingDepth('off')}>
+                          {t('chatV2:inputBar.thinkingOff', '关闭')}
+                        </AppMenuItem>
+                        <AppMenuSeparator />
+                        {thinkingDepthOptions.map((option) => (
+                          <AppMenuItem
+                            key={option.value}
+                            checked={!!enableThinking && thinkingDepthValue === option.value}
+                            onClick={() => onSetThinkingDepth(option.value)}
+                          >
+                            {t(option.labelKey, option.defaultLabel)}
+                          </AppMenuItem>
+                        ))}
+                      </AppMenuGroup>
+                    </AppMenuContent>
+                  </AppMenu>
+                ) : (
+                  <span className="inline-flex min-w-0 items-center" data-testid="thinking-runtime-minimal-control">
+                    <button
+                      type="button"
+                      data-testid="btn-toggle-thinking"
+                      onClick={onToggleThinking}
+                      className={cn(
+                        'inline-flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-inherit transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',
+                        enableThinking ? 'opacity-90' : 'opacity-65 hover:opacity-90'
+                      )}
+                      title={thinkingStateLabel ?? t('chatV2:inputBar.thinking')}
+                      aria-label={thinkingStateLabel ?? t('chatV2:inputBar.thinking')}
+                      aria-pressed={enableThinking}
+                    >
+                      <Zap size={15} className={cn('shrink-0', enableThinking && 'fill-current')} />
+                    </button>
+                    {compactThinkingStateLabel ? (
+                      <span
+                        data-testid="thinking-runtime-state-label"
+                        className="inline-flex h-7 min-w-0 max-w-[5.75rem] select-none items-center rounded-md px-1 text-inherit"
+                        title={thinkingStateLabel}
+                      >
+                        <span className="truncate">{compactThinkingStateLabel}</span>
+                      </span>
+                    ) : null}
+                  </span>
+                )}
+              </span>
+            )}
 
             {/* 🆕 媒体处理中提示 */}
             {hasProcessingMedia && (

@@ -64,6 +64,7 @@
       "title": "开始对话",
       "slogan": "AI原生开源学习方案",
       "description": "发送消息开始与 AI 对话",
+      "primaryAction": "我们要开始做什么？",
       "suggestion1": "分析这篇关于深度学习的论文，总结其核心创新点和实验结果。",
       "suggestion2": "我正在准备考研数学，请帮我创建一个线性代数的知识体系思维导图。",
       "suggestion3": "请调研2026年大语言模型的最新发展趋势，并撰写调研报告。",
@@ -163,6 +164,10 @@
     "thinkingDisabled": "点击开启推理模式",
     "toggleThinking": "切换推理模式",
     "thinking": "推理模式",
+    "thinkingDepthMenu": "选择推理深度",
+    "thinkingDepthTitle": "推理强度",
+    "thinkingOff": "关闭",
+    "thinkingDepthExpensive": "更慢",
     "ankiTools": "Anki 制卡",
     "menuGroup": {
       "context": "上下文",

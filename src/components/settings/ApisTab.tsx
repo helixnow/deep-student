@@ -51,6 +51,7 @@ const getVendorIconPath = (providerType?: string | null): string | null => {
     ollama: 'ollama',
     mistral: 'mistral',
     meta: 'meta',
+    nvidia: 'nvidia',
   };
   const iconName = iconMap[key];
   return iconName ? `/icons/providers/${iconName}.svg` : null;
@@ -65,6 +66,7 @@ const getProviderDisplayName = (providerType?: string | null) => {
     siliconflow: 'SiliconFlow',
     deepseek: 'DeepSeek',
     ollama: 'Ollama',
+    nvidia: 'NVIDIA',
   };
   return map[providerType.toLowerCase()] || providerType;
 };
@@ -84,6 +86,7 @@ const getProviderWebsiteUrl = (providerType?: string | null): string | null => {
     gemini: 'https://aistudio.google.com',
     anthropic: 'https://console.anthropic.com',
     google: 'https://aistudio.google.com',
+    nvidia: 'https://build.nvidia.com/nim',
   };
   return map[providerType.toLowerCase()] || null;
 };

@@ -97,7 +97,7 @@ pub trait RequestAdapter: Send + Sync {
         enable_thinking: Option<bool>,
     ) -> bool;
 
-    /// 是否应该移除采样参数（temperature, top_p, logprobs）
+    /// 是否应该移除采样参数（temperature, top_p, presence_penalty, frequency_penalty, logprobs）
     ///
     /// 某些推理模型（如 OpenAI o 系列）不支持这些参数
     fn should_remove_sampling_params(&self, config: &ApiConfig) -> bool {
@@ -200,6 +200,7 @@ static ADAPTER_REGISTRY: LazyLock<HashMap<&'static str, Box<dyn RequestAdapter>>
         m.insert("openai", Box::new(GenericOpenAIAdapter));
         m.insert("general", Box::new(GenericOpenAIAdapter));
         m.insert("siliconflow", Box::new(GenericOpenAIAdapter)); // SiliconFlow 使用通用适配器
+        m.insert("nvidia", Box::new(GenericOpenAIAdapter)); // NVIDIA NIM hosted API 使用 OpenAI-compatible 路径
 
         // 国产模型供应商（专用适配器）
         m.insert("minimax", Box::new(MiniMaxAdapter));
@@ -394,5 +395,11 @@ mod tests {
     fn test_get_ernie_adapter_by_baidu_alias() {
         let adapter = get_adapter(Some("baidu"), None, "openai");
         assert_eq!(adapter.id(), "ernie");
+    }
+
+    #[test]
+    fn test_nvidia_provider_prefers_generic_adapter_over_model_family_adapter() {
+        let adapter = get_adapter(Some("nvidia"), Some("nvidia"), "deepseek");
+        assert_eq!(adapter.id(), "general");
     }
 }

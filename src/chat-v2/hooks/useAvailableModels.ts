@@ -21,6 +21,9 @@ interface ModelConfig {
   id: string;
   name: string;
   model: string;
+  providerType?: string;
+  providerScope?: string;
+  baseUrl?: string;
   isMultimodal?: boolean;
   /** 是否为推理模型（支持 thinking/reasoning） */
   isReasoning?: boolean;
@@ -40,6 +43,18 @@ interface ModelConfig {
   /** 供应商级别 max_tokens 上限 */
   maxTokensLimit?: number;
   max_tokens_limit?: number;
+  /** 模型上下文窗口 */
+  contextWindow?: number;
+  context_window?: number;
+  /** 推理强度默认值（设置页模型默认值） */
+  reasoningEffort?: string;
+  reasoning_effort?: string;
+  /** thinking budget 默认值（设置页模型默认值） */
+  thinkingBudget?: number;
+  thinking_budget?: number;
+  /** 模型默认 thinking 开关 */
+  enableThinking?: boolean;
+  enable_thinking?: boolean;
 }
 
 interface UseAvailableModelsReturn {
@@ -87,6 +102,9 @@ async function fetchAvailableModelInfos(): Promise<ModelInfo[]> {
     name: config.name || config.model, // 用户定义的名称（用于显示和 @mention 插入）
     // 模型标识符（如 "gpt-4", "deepseek-chat"）- 用于 Popover 副标题显示
     model: config.model,
+    providerType: config.providerType,
+    providerScope: config.providerScope,
+    baseUrl: config.baseUrl,
     // 生成别名：包含名称、模型标识符
     aliases: [
       config.name?.toLowerCase(),
@@ -100,6 +118,10 @@ async function fetchAvailableModelInfos(): Promise<ModelInfo[]> {
     // 上下文预算推断所需元信息
     maxOutputTokens: config.maxOutputTokens ?? config.max_output_tokens,
     maxTokensLimit: config.maxTokensLimit ?? config.max_tokens_limit,
+    contextWindow: config.contextWindow ?? config.context_window,
+    reasoningEffort: config.reasoningEffort ?? config.reasoning_effort,
+    thinkingBudget: config.thinkingBudget ?? config.thinking_budget,
+    enableThinking: config.enableThinking ?? config.enable_thinking,
   }));
 }
 

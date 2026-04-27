@@ -88,14 +88,29 @@ describe('apiCapabilityEngine DeepSeek version inference', () => {
     expect(caps.contextWindow).toBe(128_000);
   });
 
-  it('classifies SiliconFlow DeepSeek V4-shaped ids as V4 models without official effort fields', () => {
+  it('classifies SiliconFlow DeepSeek V4-shaped ids as high/max effort capable V4 models', () => {
     const caps = inferApiCapabilities({
       id: 'deepseek-ai/DeepSeek-V4-Pro',
       providerScope: 'siliconflow',
     });
 
     expect(caps.supportsHybridReasoning).toBe(true);
-    expect(caps.supportsReasoningEffort).toBe(false);
+    expect(caps.supportsReasoningEffort).toBe(true);
+    expect(caps.contextWindow).toBe(1_000_000);
+  });
+});
+
+describe('apiCapabilityEngine NVIDIA model inference', () => {
+  it('recognizes NVIDIA Nemotron chat models as reasoning-capable generic chat models', () => {
+    const caps = inferApiCapabilities({
+      id: 'nvidia/nemotron-3-nano-30b-a3b',
+      providerScope: 'nvidia',
+    });
+
+    expect(caps.embedding).toBe(false);
+    expect(caps.rerank).toBe(false);
+    expect(caps.reasoning).toBe(true);
+    expect(caps.functionCalling).toBe(true);
     expect(caps.contextWindow).toBe(1_000_000);
   });
 });

@@ -67,7 +67,8 @@
           "low": "low",
           "medium": "medium",
           "high": "high",
-          "xhigh": "xhigh (extra high)"
+          "xhigh": "xhigh (extra high)",
+          "max": "max"
         },
         "enable_thinking": "Enable Thinking mode",
         "enable_thinking_hint": "Send the enable_thinking flag when this model supports it.",
@@ -122,7 +123,14 @@
         "description": "DeepSeek V3.2 uses thinking.type format to control chain-of-thought",
         "enable_thinking": "Enable Thinking Mode",
         "enable_thinking_hint": "When enabled, the model outputs reasoning_content with its thought process",
-        "v31_warning": "DeepSeek V3.1 automatically disables thinking mode when using tools"
+        "v31_warning": "DeepSeek V3.1 automatically disables thinking mode when using tools",
+        "depth": {
+          "low": "Low",
+          "medium": "Medium",
+          "high": "High",
+          "xhigh": "Extra High",
+          "max": "Max"
+        }
       },
       "qwen": {
         "title": "Qwen Reasoning Configuration",
@@ -223,6 +231,7 @@
     "api_key_cleared": "API key cleared",
     "api_key_clear_failed": "Failed to clear API key",
     "clear_api_key": "Clear",
+    "clear_api_key_confirm": "Confirm Clear",
     "clear_api_key_title": "Clear API Key",
     "show_api_key": "Show API Key",
     "hide_api_key": "Hide API Key",

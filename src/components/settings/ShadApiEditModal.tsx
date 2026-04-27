@@ -30,8 +30,15 @@ import {
 } from 'lucide-react';
 import type { ApiConfig as BaseApiConfig } from '../../types';
 import { inferApiCapabilities } from '../../utils/apiCapabilityEngine';
+import { getModelDefaultParameters } from '../../utils/modelCapabilities';
 import { cn } from '../../lib/utils';
 import { showGlobalNotification } from '../UnifiedNotification';
+import {
+  deepSeekV32BudgetToEffort,
+  deepSeekV32EffortToBudget,
+  normalizeDeepSeekV4Effort,
+  resolveDeepSeekReasoningControl,
+} from './deepseekReasoningControls';
 
 // Tauri 2.x API导入（可选）
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
@@ -187,6 +194,14 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
   const isDeepSeekAdapter = formData.modelAdapter === 'deepseek';
   const effectiveSupportsReasoning = !!formData.supportsReasoning || inferredSupportsReasoning;
   const supportsDeepSeekReasoningEffort = isDeepSeekAdapter && inferredCaps.supportsReasoningEffort;
+  const deepSeekReasoningControl = useMemo(
+    () => resolveDeepSeekReasoningControl(formData.model, supportsDeepSeekReasoningEffort),
+    [formData.model, supportsDeepSeekReasoningEffort]
+  );
+  const deepSeekReasoningSelectValue =
+    deepSeekReasoningControl.kind === 'v32-budget-effort'
+      ? formData.reasoningEffort ?? deepSeekV32BudgetToEffort(formData.thinkingBudget)
+      : normalizeDeepSeekV4Effort(formData.reasoningEffort);
 
   const inferenceTimeoutRef = useRef<number | null>(null);
   const lastInferredModelRef = useRef<string | null>(api.model ?? null);
@@ -286,6 +301,30 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
             thinkingEnabled: true,
             enableThinking: true,
             thinkingBudget: -1,
+          };
+        }
+        const isDeepSeek = next.modelAdapter === 'deepseek';
+        if (isDeepSeek && shouldReason && !hasThinkingFlags) {
+          const modelDefaults = getModelDefaultParameters(currentModel, {
+            providerScope: prev.providerScope ?? prev.providerType,
+          });
+          const control = resolveDeepSeekReasoningControl(currentModel, caps.supportsReasoningEffort);
+          const deepSeekEnableThinkingDefault = true;
+          const defaultEffort =
+            control.kind === 'v32-budget-effort'
+              ? modelDefaults.reasoningEffort ?? 'medium'
+              : normalizeDeepSeekV4Effort(modelDefaults.reasoningEffort);
+          const defaultBudget =
+            control.kind === 'v32-budget-effort'
+              ? deepSeekV32EffortToBudget(defaultEffort) ?? modelDefaults.thinkingBudget
+              : undefined;
+          next = {
+            ...next,
+            enableThinking: deepSeekEnableThinkingDefault,
+            thinkingEnabled: deepSeekEnableThinkingDefault,
+            includeThoughts: modelDefaults.includeThoughts ?? deepSeekEnableThinkingDefault,
+            reasoningEffort: defaultEffort,
+            thinkingBudget: defaultBudget,
           };
         }
         return next;
@@ -547,10 +586,23 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
       !!sanitized.enableThinking ||
       sanitized.thinkingBudget !== undefined;
     if (sanitized.modelAdapter === 'deepseek') {
-      if (hasThinkingDefaults) {
-        sanitized.supportsReasoning = !!sanitized.supportsReasoning || inferredSupportsReasoning;
+      if (inferredSupportsReasoning) {
+        sanitized.supportsReasoning = true;
+        sanitized.isReasoning = true;
       }
-      if (!inferredCaps.supportsReasoningEffort) {
+
+      const control = resolveDeepSeekReasoningControl(sanitized.model, inferredCaps.supportsReasoningEffort);
+      if (control.kind === 'v4-effort') {
+        sanitized.reasoningEffort = normalizeDeepSeekV4Effort(sanitized.reasoningEffort);
+        sanitized.thinkingBudget = undefined;
+      } else if (control.kind === 'v32-budget-effort') {
+        const effort = sanitized.reasoningEffort ?? deepSeekV32BudgetToEffort(sanitized.thinkingBudget);
+        const budget = deepSeekV32EffortToBudget(effort);
+        if (budget !== undefined) {
+          sanitized.reasoningEffort = effort;
+          sanitized.thinkingBudget = budget;
+        }
+      } else if (!inferredCaps.supportsReasoningEffort) {
         sanitized.reasoningEffort = undefined;
       }
     } else if (hasThinkingDefaults) {
@@ -1249,26 +1301,41 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               onCheckedChange={v => setFormData(prev => ({ ...prev, enableThinking: !!v }))}
                             />
                           </div>
-                          {supportsDeepSeekReasoningEffort && (
+                          {formData.enableThinking && deepSeekReasoningControl.kind !== 'toggle-only' && (
                             <div className="space-y-2">
                               <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
                                 {t('settings:api.modal.reasoning.openai_label')}
                               </Label>
                               <AppSelect
-                                value={formData.reasoningEffort ?? 'unset'}
-                                onValueChange={v => setFormData(prev => ({ ...prev, reasoningEffort: v === 'unset' ? undefined : v }))}
+                                value={deepSeekReasoningSelectValue}
+                                onValueChange={v =>
+                                  setFormData(prev => {
+                                    if (deepSeekReasoningControl.kind === 'v32-budget-effort') {
+                                      return {
+                                        ...prev,
+                                        reasoningEffort: v,
+                                        thinkingBudget: deepSeekV32EffortToBudget(v) ?? prev.thinkingBudget,
+                                      };
+                                    }
+                                    return {
+                                      ...prev,
+                                      reasoningEffort: normalizeDeepSeekV4Effort(v),
+                                      thinkingBudget: undefined,
+                                    };
+                                  })
+                                }
                                 placeholder={t('settings:api.modal.reasoning.default_option')}
-                                options={[
-                                  { value: 'unset', label: t('settings:api.modal.reasoning.unset_option') },
-                                  { value: 'none', label: t('settings:api.modal.reasoning.effort.none', 'None') },
-                                  { value: 'high', label: t('settings:api.modal.reasoning.effort.high') },
-                                  { value: 'max', label: t('settings:api.modal.reasoning.effort.max', 'Max') },
-                                ]}
+                                options={deepSeekReasoningControl.options.map(option => ({
+                                  value: option.value,
+                                  label: t(option.labelKey, option.defaultLabel),
+                                }))}
                                 variant="ghost"
                                 className="bg-muted/30 border-transparent hover:border-border/50 transition-all h-10"
                               />
                               <p className="text-[10px] text-muted-foreground/60 ml-1">
-                                {t('settings:api.modal.deepseek.reasoning_effort_hint', 'Official DeepSeek V4 supports high or max reasoning effort; SiliconFlow DeepSeek keeps thinking budget formatting.')}
+                                {deepSeekReasoningControl.kind === 'v32-budget-effort'
+                                  ? t('settings:api.modal.deepseek.v32_depth_hint', 'DeepSeek V3.2 maps depth presets to SiliconFlow thinking_budget.')
+                                  : t('settings:api.modal.deepseek.reasoning_effort_hint', 'DeepSeek V4 supports high or max reasoning effort.')}
                               </p>
                             </div>
                           )}

@@ -60,6 +60,7 @@ interface ApiConfig {
   topK?: number;
   supportsReasoning?: boolean;
   supportsTools?: boolean;
+  contextWindow?: number;
   repetitionPenalty?: number;
   reasoningSplit?: boolean;
   effort?: string;
@@ -86,6 +87,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   const [availableModels, setAvailableModels] = useState<SiliconFlowModel[]>([]); // New state for available models
   const [error, setError] = useState<string | null>(null); // New state for error message
   const [showApiKey, setShowApiKey] = useState(false);
+  const [confirmingClearApiKey, setConfirmingClearApiKey] = useState(false);
   const siliconFlowVendorKey = 'builtin-siliconflow.api_key';
   const siliconFlowLegacyKey = 'siliconflow.api_key';
   const [lastFetchTime, setLastFetchTime] = useState<number | null>(null); // 上次获取时间
@@ -217,6 +219,13 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
           TauriAPI.deleteSetting(siliconFlowVendorKey),
           TauriAPI.deleteSetting(siliconFlowLegacyKey),
         ]);
+        if (typeof window !== 'undefined') {
+          try {
+            window.localStorage?.removeItem('siliconflow_api_key');
+          } catch (error: unknown) {
+            console.warn('移除旧版 SiliconFlow Key 失败:', error);
+          }
+        }
       }
       // Broadcast the change so other views refresh immediately.
       if (typeof window !== 'undefined') {
@@ -266,6 +275,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       const customEvent = event as CustomEvent<{ apiKey: string }>;
       if (customEvent.detail?.apiKey !== undefined) {
         setApiKey(customEvent.detail.apiKey);
+        setConfirmingClearApiKey(false);
       }
     };
 
@@ -304,13 +314,20 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   const handleApiKeyChange = (value: string) => {
     // 立即更新状态（修复移动端输入后按钮仍禁用的问题）
     setApiKey(value);
+    setConfirmingClearApiKey(false);
     // 异步保存到后端
     void persistApiKey(value);
   };
 
   // 清除保存的API密钥
   const clearSavedApiKey = async () => {
+    if (!confirmingClearApiKey) {
+      setConfirmingClearApiKey(true);
+      return;
+    }
+
     setApiKey('');
+    setConfirmingClearApiKey(false);
     setModels([]);
     setAvailableModels([]);
     setSelectedModel('');
@@ -537,6 +554,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       thinkingEnabled: enableThinkingDefault,
       enableThinking: enableThinkingDefault,
       thinkingBudget: thinkingBudgetDefault,
+      reasoningEffort: modelDefaults.reasoningEffort,
       includeThoughts: includeThoughtsDefault,
       minP: modelDefaults.minP ?? undefined,
       topK: modelDefaults.topK ?? undefined,
@@ -697,6 +715,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
           thinkingEnabled: enableThinkingDefault,
           enableThinking: enableThinkingDefault,
           thinkingBudget: thinkingBudgetDefault,
+          reasoningEffort: modelDefaults.reasoningEffort,
           includeThoughts: includeThoughtsDefault,
           minP: modelDefaults.minP ?? undefined,
           topK: modelDefaults.topK ?? undefined,
@@ -884,9 +903,11 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
           {t('common:siliconflow.one_click_assign')}
         </NotionButton>
         {/* Notion 风格按钮 - 清除 (右对齐) */}
-        <NotionButton variant="ghost" size="sm" onClick={clearSavedApiKey} disabled={loading || !apiKey} title={t('common:siliconflow.clear_api_key_title')} className="text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20">
+        <NotionButton variant={confirmingClearApiKey ? 'danger' : 'ghost'} size="sm" onClick={clearSavedApiKey} disabled={loading || !apiKey} title={t('common:siliconflow.clear_api_key_title')} className={confirmingClearApiKey ? undefined : 'text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20'}>
           <Trash2 className="h-3.5 w-3.5" />
-          {t('common:siliconflow.clear_button')}
+          {confirmingClearApiKey
+            ? t('common:siliconflow.clear_confirm_button')
+            : t('common:siliconflow.clear_button')}
         </NotionButton>
       </div>
     </div>

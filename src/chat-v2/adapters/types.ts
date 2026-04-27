@@ -27,6 +27,8 @@ export interface SendOptions {
   contextLimit?: number;
   maxTokens?: number;
   enableThinking?: boolean;
+  reasoningEffort?: string;
+  thinkingBudget?: number;
   replayMode?: 'original' | 'current';
   skillStateVersion?: number;
   disableTools?: boolean;

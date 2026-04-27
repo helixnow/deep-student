@@ -23,6 +23,14 @@ import { useDialogControl } from '@/contexts/DialogControlContext';
 import { isBuiltinServer } from '@/mcp/builtinMcpServer';
 import type { ModelInfo } from '../../utils/parseModelMentions';
 import { isMultiModelSelectEnabled } from '@/config/featureFlags';
+import {
+  deepSeekV32EffortToBudget,
+  normalizeDeepSeekV4Effort,
+  resolveDeepSeekRuntimeReasoningControl,
+  resolveDeepSeekRuntimeReasoningSelection,
+  type DeepSeekReasoningControlKind,
+  type DeepSeekReasoningOptionValue,
+} from '@/utils/deepseekReasoningControls';
 
 /**
  * InputBarV2 - V2 输入栏入口组件
@@ -46,8 +54,46 @@ interface AggregatedStoreState {
   mode: string;
   inputValue: string;
   enableThinking: boolean;
+  modelId: string;
+  modelDisplayName?: string;
+  reasoningEffort?: string;
+  thinkingBudget?: number;
   modelRetryTarget: string | null;
   setChatParams: (params: any) => void;
+}
+
+const THINKING_DEPTH_LABELS: Record<DeepSeekReasoningControlKind, Partial<Record<DeepSeekReasoningOptionValue, string>>> = {
+  'v4-effort': {
+    high: '高',
+    max: '最大',
+  },
+  'v32-budget-effort': {
+    low: '低',
+    medium: '中',
+    high: '高',
+    xhigh: '超高',
+    max: '超高',
+  },
+  'toggle-only': {},
+};
+
+function getThinkingDepthLabel(kind: DeepSeekReasoningControlKind, value: DeepSeekReasoningOptionValue | undefined): string {
+  if (!value) return '开启';
+  return THINKING_DEPTH_LABELS[kind][value] ?? value;
+}
+
+function normalizeModelIdentity(value: unknown): string {
+  return typeof value === 'string' ? value.trim().toLowerCase() : '';
+}
+
+function matchesModelIdentity(model: ModelInfo, candidates: unknown[]): boolean {
+  const normalizedCandidates = new Set(candidates.map(normalizeModelIdentity).filter(Boolean));
+  if (normalizedCandidates.size === 0) return false;
+
+  const aliases = Array.isArray(model.aliases) ? model.aliases : [];
+  return [model.id, model.model, model.name, ...aliases].some((value) =>
+    normalizedCandidates.has(normalizeModelIdentity(value))
+  );
 }
 
 function getManualPinnedSkillIds(
@@ -80,6 +126,10 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       mode,
       inputValue,
       enableThinking,
+      modelId,
+      modelDisplayName,
+      reasoningEffort,
+      thinkingBudget,
       modelRetryTarget,
       setChatParams,
       // ★ Skills 系统（多选模式）
@@ -100,6 +150,10 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         mode: s.mode,
         inputValue: s.inputValue,
         enableThinking: s.chatParams.enableThinking,
+        modelId: s.chatParams.modelId,
+        modelDisplayName: s.chatParams.modelDisplayName,
+        reasoningEffort: s.chatParams.reasoningEffort,
+        thinkingBudget: s.chatParams.thinkingBudget,
         modelRetryTarget: s.modelRetryTarget,
         setChatParams: s.setChatParams,
         // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器，移除 enableAnkiTools
@@ -170,6 +224,106 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       const state = store.getState();
       state.setChatParams({ enableThinking: !state.chatParams.enableThinking });
     }, [store]);
+
+    const currentModelInfo = useMemo(
+      () => availableModels?.find((model) => matchesModelIdentity(model, [modelId, modelDisplayName])),
+      [availableModels, modelDisplayName, modelId]
+    );
+
+    const thinkingControl = useMemo(
+      () =>
+        resolveDeepSeekRuntimeReasoningControl({
+          model: currentModelInfo?.model ?? modelDisplayName ?? modelId,
+          modelId: currentModelInfo?.id ?? modelId,
+          providerType: currentModelInfo?.providerType,
+          providerScope: currentModelInfo?.providerScope,
+          baseUrl: currentModelInfo?.baseUrl,
+        }),
+      [
+        currentModelInfo?.model,
+        currentModelInfo?.providerType,
+        currentModelInfo?.providerScope,
+        currentModelInfo?.baseUrl,
+        modelDisplayName,
+        modelId,
+      ]
+    );
+
+    const effectiveReasoningEffort = reasoningEffort ?? (currentModelInfo?.reasoningEffort as string | undefined);
+    const effectiveThinkingBudget = thinkingBudget ?? (currentModelInfo?.thinkingBudget as number | undefined);
+    const normalizedThinkingSelection = useMemo(
+      () =>
+        resolveDeepSeekRuntimeReasoningSelection({
+          control: thinkingControl,
+          enableThinking,
+          reasoningEffort: effectiveReasoningEffort,
+          thinkingBudget: effectiveThinkingBudget,
+        }),
+      [thinkingControl, enableThinking, effectiveReasoningEffort, effectiveThinkingBudget]
+    );
+    const runtimeDepthIsSet = reasoningEffort !== undefined || thinkingBudget !== undefined;
+
+    useEffect(() => {
+      if (!runtimeDepthIsSet && thinkingControl.kind !== 'toggle-only') return;
+
+      const nextReasoningEffort = normalizedThinkingSelection.reasoningEffort;
+      const nextThinkingBudget = normalizedThinkingSelection.thinkingBudget;
+      if (reasoningEffort === nextReasoningEffort && thinkingBudget === nextThinkingBudget) return;
+
+      setChatParams({
+        enableThinking,
+        reasoningEffort: nextReasoningEffort,
+        thinkingBudget: nextThinkingBudget,
+      });
+    }, [
+      enableThinking,
+      normalizedThinkingSelection.reasoningEffort,
+      normalizedThinkingSelection.thinkingBudget,
+      reasoningEffort,
+      runtimeDepthIsSet,
+      setChatParams,
+      thinkingBudget,
+      thinkingControl.kind,
+    ]);
+
+    const handleSetThinkingDepth = useCallback(
+      (value: DeepSeekReasoningOptionValue | 'off') => {
+        if (value === 'off') {
+          store.getState().setChatParams({ enableThinking: false });
+          return;
+        }
+
+        if (thinkingControl.kind === 'v4-effort') {
+          store.getState().setChatParams({
+            enableThinking: true,
+            reasoningEffort: normalizeDeepSeekV4Effort(value),
+            thinkingBudget: undefined,
+          });
+          return;
+        }
+
+        if (thinkingControl.kind === 'v32-budget-effort') {
+          const effort = value === 'max' ? 'xhigh' : value;
+          store.getState().setChatParams({
+            enableThinking: true,
+            reasoningEffort: effort,
+            thinkingBudget: deepSeekV32EffortToBudget(effort),
+          });
+          return;
+        }
+
+        store.getState().setChatParams({ enableThinking: true });
+      },
+      [store, thinkingControl.kind]
+    );
+
+    const thinkingStateLabel = useMemo(() => {
+      if (!enableThinking) return '推理: 关闭';
+      return `推理: ${getThinkingDepthLabel(
+        thinkingControl.kind,
+        normalizedThinkingSelection.reasoningEffort as DeepSeekReasoningOptionValue | undefined
+      )}`;
+    }, [enableThinking, normalizedThinkingSelection.reasoningEffort, thinkingControl.kind]);
 
     // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器，移除 handleToggleAnkiTools
     // Anki 工具现在始终可用，无需单独开关
@@ -460,7 +614,11 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         modelMentionActions={modelMentionActions}
         // 推理模式
         enableThinking={enableThinking}
+        thinkingStateLabel={thinkingStateLabel}
+        thinkingDepthOptions={thinkingControl.options}
+        thinkingDepthValue={normalizedThinkingSelection.reasoningEffort as DeepSeekReasoningOptionValue | undefined}
         onToggleThinking={handleToggleThinking}
+        onSetThinkingDepth={handleSetThinkingDepth}
         // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器，移除开关
         // 🔧 会话切换 key（用于重置内部状态）
         sessionSwitchKey={sessionSwitchKey}

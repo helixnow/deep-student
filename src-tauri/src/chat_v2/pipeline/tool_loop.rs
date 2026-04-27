@@ -650,6 +650,8 @@ impl ChatV2Pipeline {
             frequency_penalty_override,
             presence_penalty_override,
             max_tokens_override,
+            ctx.options.reasoning_effort.clone(),
+            ctx.options.thinking_budget,
         );
 
         const LLM_MAX_RETRIES: u32 = 2;
@@ -740,6 +742,8 @@ impl ChatV2Pipeline {
                         frequency_penalty_override,
                         presence_penalty_override,
                         max_tokens_override,
+                        ctx.options.reasoning_effort.clone(),
+                        ctx.options.thinking_budget,
                     );
 
                     call_result =

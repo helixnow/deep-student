@@ -3675,6 +3675,8 @@ export class ChatV2TauriAdapter {
       maxTokens: chatParams.maxTokens,
       contextLimit,
       enableThinking: chatParams.enableThinking,
+      reasoningEffort: chatParams.reasoningEffort,
+      thinkingBudget: chatParams.thinkingBudget,
       replayMode: testModeConfig.replayMode ? 'original' as const : undefined,
       skillStateVersion: (() => {
         const raw = currentState.skillStateJson;
@@ -3809,6 +3811,8 @@ export class ChatV2TauriAdapter {
       count: parallelIds?.length ?? 0,
       willTriggerMultiVariant: (parallelIds?.length ?? 0) >= 2,
       enableThinking: chatParams.enableThinking,
+      reasoningEffort: chatParams.reasoningEffort,
+      thinkingBudget: chatParams.thinkingBudget,
       isSingleVariant: !parallelIds || parallelIds.length < 2,
     }, options.modelId ? 'success' : 'warning');
 
@@ -3817,6 +3821,8 @@ export class ChatV2TauriAdapter {
       logMultiVariant('adapter', 'thinking_enabled', {
         modelId: chatParams.modelId,
         enableThinking: true,
+        reasoningEffort: chatParams.reasoningEffort,
+        thinkingBudget: chatParams.thinkingBudget,
       }, 'info');
     }
 

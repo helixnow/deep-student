@@ -666,6 +666,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       const caps = inferCapabilities({ id: modelId, providerScope: vendor.providerType, name: label });
       const extCaps = inferApiCapabilities({ id: modelId, name: label, providerScope: vendor.providerType });
       const defaults = getModelDefaultParameters(modelId, { providerScope: vendor.providerType });
+      const isNvidiaProvider = vendor.providerType?.toLowerCase() === 'nvidia';
 
       const effectiveSupportsReasoning =
         caps.supportsReasoning ||
@@ -674,7 +675,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
         extCaps.supportsThinkingTokens ||
         extCaps.supportsHybridReasoning;
 
-      const enableThinkingDefault = effectiveSupportsReasoning
+      const enableThinkingDefault = effectiveSupportsReasoning && !isNvidiaProvider
         ? defaults.enableThinking ?? (extCaps.supportsThinkingTokens || extCaps.supportsHybridReasoning || caps.isReasoning)
         : false;
 
@@ -698,11 +699,13 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
         maxOutputTokens: defaults.maxOutputTokens ?? 8192,
         temperature: defaults.temperature ?? 0.7,
         thinkingEnabled: enableThinkingDefault,
-        includeThoughts: effectiveSupportsReasoning ? (defaults.includeThoughts ?? extCaps.supportsThinkingTokens) : false,
+        includeThoughts: effectiveSupportsReasoning && !isNvidiaProvider ? (defaults.includeThoughts ?? extCaps.supportsThinkingTokens) : false,
         enableThinking: enableThinkingDefault,
-        thinkingBudget: effectiveSupportsReasoning ? defaults.thinkingBudget : undefined,
+        thinkingBudget: effectiveSupportsReasoning && !isNvidiaProvider ? defaults.thinkingBudget : undefined,
+        reasoningEffort: effectiveSupportsReasoning ? defaults.reasoningEffort : undefined,
         minP: defaults.minP,
         topK: defaults.topK,
+        contextWindow: extCaps.contextWindow,
         geminiApiVersion,
         isBuiltin: false,
       };

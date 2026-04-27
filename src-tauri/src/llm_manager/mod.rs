@@ -35,6 +35,8 @@ struct RegistryCapabilityFlags {
     vision: bool,
     function_calling: bool,
     reasoning: bool,
+    #[serde(default)]
+    max_context_tokens: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -64,6 +66,7 @@ struct CapabilityOverrides {
     is_multimodal: bool,
     supports_tools: bool,
     supports_reasoning: bool,
+    context_window: Option<u32>,
 }
 
 static MODEL_CAPABILITY_REGISTRY: LazyLock<Vec<RegistryModelRecord>> = LazyLock::new(|| {
@@ -98,6 +101,18 @@ pub(crate) struct IncrementalJsonArrayParser {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn deepseek_sampling_body(model: &str) -> Value {
+        json!({
+            "model": model,
+            "messages": [],
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "presence_penalty": 0.3,
+            "frequency_penalty": 0.4,
+            "logprobs": true
+        })
+    }
 
     fn profile(
         id: &str,
@@ -212,6 +227,143 @@ mod tests {
         assert_eq!(profiles.len(), 1);
         assert_eq!(profiles[0].id, "builtin-deepseek-chat");
         assert!(profiles[0].is_builtin);
+    }
+
+    #[test]
+    fn apply_reasoning_config_removes_official_v4_thinking_ignored_sampling_params() {
+        let mut body = deepseek_sampling_body("deepseek-v4-pro");
+        let config = ApiConfig {
+            provider_type: Some("deepseek".to_string()),
+            provider_scope: Some("deepseek".to_string()),
+            model_adapter: "deepseek".to_string(),
+            model: "deepseek-v4-pro".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            supports_reasoning: true,
+            is_reasoning: true,
+            thinking_enabled: true,
+            enable_thinking: Some(true),
+            ..Default::default()
+        };
+
+        LLMManager::apply_reasoning_config(&mut body, &config, None);
+
+        let map = body
+            .as_object()
+            .expect("request body should stay an object");
+        for key in [
+            "temperature",
+            "top_p",
+            "presence_penalty",
+            "frequency_penalty",
+            "logprobs",
+        ] {
+            assert!(!map.contains_key(key), "{key} should be removed");
+        }
+        assert_eq!(
+            map.get("thinking").and_then(|value| value.get("type")),
+            Some(&json!("enabled"))
+        );
+    }
+
+    #[test]
+    fn apply_reasoning_config_removes_future_siliconflow_v4_thinking_ignored_sampling_params() {
+        let mut body = deepseek_sampling_body("deepseek-ai/DeepSeek-V4-Pro");
+        let config = ApiConfig {
+            provider_type: Some("siliconflow".to_string()),
+            provider_scope: Some("deepseek".to_string()),
+            model_adapter: "deepseek".to_string(),
+            model: "deepseek-ai/DeepSeek-V4-Pro".to_string(),
+            base_url: "https://api.siliconflow.cn/v1".to_string(),
+            supports_reasoning: true,
+            is_reasoning: true,
+            thinking_enabled: true,
+            enable_thinking: Some(true),
+            reasoning_effort: Some("max".to_string()),
+            thinking_budget: Some(4096),
+            ..Default::default()
+        };
+
+        LLMManager::apply_reasoning_config(&mut body, &config, None);
+
+        let map = body
+            .as_object()
+            .expect("request body should stay an object");
+        for key in [
+            "temperature",
+            "top_p",
+            "presence_penalty",
+            "frequency_penalty",
+            "logprobs",
+        ] {
+            assert!(!map.contains_key(key), "{key} should be removed");
+        }
+        assert_eq!(map.get("enable_thinking"), Some(&json!(true)));
+        assert_eq!(map.get("reasoning_effort"), Some(&json!("max")));
+        assert!(!map.contains_key("thinking_budget"));
+        assert!(!map.contains_key("thinking"));
+    }
+
+    #[test]
+    fn apply_reasoning_config_maps_siliconflow_v32_depth_to_budget() {
+        let mut body = deepseek_sampling_body("deepseek-ai/DeepSeek-V3.2");
+        let config = ApiConfig {
+            provider_type: Some("siliconflow".to_string()),
+            provider_scope: Some("deepseek".to_string()),
+            model_adapter: "deepseek".to_string(),
+            model: "deepseek-ai/DeepSeek-V3.2".to_string(),
+            base_url: "https://api.siliconflow.cn/v1".to_string(),
+            supports_reasoning: true,
+            is_reasoning: true,
+            thinking_enabled: true,
+            enable_thinking: Some(true),
+            reasoning_effort: Some("xhigh".to_string()),
+            ..Default::default()
+        };
+
+        LLMManager::apply_reasoning_config(&mut body, &config, None);
+
+        let map = body
+            .as_object()
+            .expect("request body should stay an object");
+        assert_eq!(map.get("enable_thinking"), Some(&json!(true)));
+        assert_eq!(map.get("thinking_budget"), Some(&json!(32768)));
+        assert!(!map.contains_key("reasoning_effort"));
+    }
+
+    #[test]
+    fn apply_reasoning_config_keeps_siliconflow_v32_sampling_params() {
+        let mut body = deepseek_sampling_body("deepseek-ai/DeepSeek-V3.2");
+        let config = ApiConfig {
+            provider_type: Some("siliconflow".to_string()),
+            provider_scope: Some("deepseek".to_string()),
+            model_adapter: "deepseek".to_string(),
+            model: "deepseek-ai/DeepSeek-V3.2".to_string(),
+            base_url: "https://api.siliconflow.cn/v1".to_string(),
+            supports_reasoning: true,
+            is_reasoning: true,
+            thinking_enabled: true,
+            enable_thinking: Some(true),
+            thinking_budget: Some(4096),
+            ..Default::default()
+        };
+
+        LLMManager::apply_reasoning_config(&mut body, &config, None);
+
+        let map = body
+            .as_object()
+            .expect("request body should stay an object");
+        for key in [
+            "temperature",
+            "top_p",
+            "presence_penalty",
+            "frequency_penalty",
+        ] {
+            assert!(map.contains_key(key), "{key} should be preserved");
+        }
+        assert_eq!(map.get("enable_thinking"), Some(&json!(true)));
+        assert_eq!(map.get("thinking_budget"), Some(&json!(4096)));
+        assert!(!map.contains_key("thinking"));
+        assert!(!map.contains_key("reasoning_effort"));
     }
 
     #[test]
@@ -678,6 +830,9 @@ pub struct ApiConfig {
     /// 供应商级别的 max_tokens 限制（API 最大允许值）
     #[serde(default)]
     pub max_tokens_limit: Option<u32>,
+    /// 模型上下文窗口大小（tokens），用于前端/Chat V2 预算，不作为 API 参数发送
+    #[serde(default, alias = "context_window")]
+    pub context_window: Option<u32>,
 }
 
 impl Default for ApiConfig {
@@ -722,6 +877,7 @@ impl Default for ApiConfig {
             verbosity: None,
             is_favorite: false,
             max_tokens_limit: None,
+            context_window: None,
         }
     }
 }
@@ -842,6 +998,9 @@ pub struct ModelProfile {
     /// 模型级别的 max_tokens 限制（优先于供应商级别）
     #[serde(default)]
     pub max_tokens_limit: Option<u32>,
+    /// 模型上下文窗口大小（tokens），用于前端/Chat V2 预算，不作为 API 参数发送
+    #[serde(default, alias = "context_window")]
+    pub context_window: Option<u32>,
 }
 
 impl Default for ModelProfile {
@@ -878,6 +1037,7 @@ impl Default for ModelProfile {
             verbosity: None,
             is_favorite: false,
             max_tokens_limit: None,
+            context_window: None,
         }
     }
 }
@@ -1035,6 +1195,7 @@ impl LLMManager {
                 is_multimodal: model.is_multimodal,
                 supports_tools: model.supports_tools,
                 supports_reasoning: model.is_reasoning,
+                context_window: builtin_vendors::deepseek_context_window(model.model),
             });
             break;
         }
@@ -1155,6 +1316,7 @@ impl LLMManager {
             is_multimodal: record.capabilities.vision,
             supports_tools: record.capabilities.function_calling,
             supports_reasoning: record.capabilities.reasoning,
+            context_window: record.capabilities.max_context_tokens,
         })
     }
 
@@ -1172,6 +1334,7 @@ impl LLMManager {
             is_multimodal: registry.is_multimodal || builtin.is_multimodal,
             supports_tools: registry.supports_tools || builtin.supports_tools,
             supports_reasoning: registry.supports_reasoning || builtin.supports_reasoning,
+            context_window: registry.context_window.or(builtin.context_window),
         }
     }
 
@@ -1232,6 +1395,7 @@ impl LLMManager {
             update_if_untouched!(verbosity);
             update_if_untouched!(is_favorite);
             update_if_untouched!(max_tokens_limit);
+            update_if_untouched!(context_window);
             return;
         }
         profiles.push(builtin_profile);
@@ -1418,6 +1582,8 @@ impl LLMManager {
         if adapter.should_remove_sampling_params(config) {
             map.remove("temperature");
             map.remove("top_p");
+            map.remove("presence_penalty");
+            map.remove("frequency_penalty");
             map.remove("logprobs");
         }
 
@@ -2313,9 +2479,14 @@ impl LLMManager {
                         AppError::database(format!("Failed to save builtin vendor API key: {}", e))
                     })?;
                     if cfg.id == "builtin-siliconflow" {
-                        self.db.save_secret("siliconflow.api_key", trimmed).map_err(|e| {
-                            AppError::database(format!("Failed to save SiliconFlow compatibility key: {}", e))
-                        })?;
+                        self.db
+                            .save_secret("siliconflow.api_key", trimmed)
+                            .map_err(|e| {
+                                AppError::database(format!(
+                                    "Failed to save SiliconFlow compatibility key: {}",
+                                    e
+                                ))
+                            })?;
                     }
                 }
                 clone.api_key = String::new();
@@ -2568,6 +2739,9 @@ impl LLMManager {
             is_favorite: profile.is_favorite,
             // 模型粒度自管理 max_tokens_limit，不从供应商继承
             max_tokens_limit: profile.max_tokens_limit,
+            context_window: profile
+                .context_window
+                .or(capability_overrides.context_window),
         };
 
         Ok(ResolvedModelConfig {
@@ -2658,6 +2832,7 @@ impl LLMManager {
                 is_builtin: true,
                 is_favorite: cfg.is_favorite,
                 max_tokens_limit: cfg.max_tokens_limit,
+                context_window: cfg.context_window,
                 repetition_penalty: cfg.repetition_penalty,
                 reasoning_split: cfg.reasoning_split,
                 effort: cfg.effort.clone(),
@@ -2746,6 +2921,7 @@ impl LLMManager {
                     verbosity: None,
                     is_favorite: false,
                     max_tokens_limit: None,
+                    context_window: None,
                 })
                 .collect());
         }
@@ -2791,6 +2967,7 @@ impl LLMManager {
                 presence_penalty_override: None,
                 is_favorite: false,
                 max_tokens_limit: None,
+                context_window: None,
                 repetition_penalty: None,
                 reasoning_split: None,
                 effort: None,
@@ -2885,6 +3062,7 @@ impl LLMManager {
                 is_builtin: cfg.is_builtin,
                 is_favorite: cfg.is_favorite,
                 max_tokens_limit: cfg.max_tokens_limit,
+                context_window: cfg.context_window.or(capability_overrides.context_window),
                 repetition_penalty: cfg.repetition_penalty,
                 reasoning_split: cfg.reasoning_split,
                 effort: cfg.effort.clone(),

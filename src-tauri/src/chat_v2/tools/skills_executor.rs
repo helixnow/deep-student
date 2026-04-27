@@ -22,9 +22,7 @@ use serde_json::json;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use crate::chat_v2::event_types;
 use crate::chat_v2::repo::ChatV2Repo;
-use crate::chat_v2::types::{
-    ReplaySkillPayloadSnapshot, ToolCall, ToolResultInfo,
-};
+use crate::chat_v2::types::{ReplaySkillPayloadSnapshot, ToolCall, ToolResultInfo};
 
 /// load_skills 工具名称
 pub const LOAD_SKILLS_TOOL_NAME: &str = "load_skills";
@@ -291,7 +289,9 @@ impl ToolExecutor for SkillsExecutor {
                                     let next_runtime = ReplaySkillPayloadSnapshot {
                                         active_skill_ids: next_skill_state
                                             .resolved_active_skill_ids(),
-                                        skill_contents: if previous_runtime.skill_contents.is_empty()
+                                        skill_contents: if previous_runtime
+                                            .skill_contents
+                                            .is_empty()
                                         {
                                             ctx.skill_contents.clone().unwrap_or_default()
                                         } else {
@@ -378,8 +378,7 @@ impl ToolExecutor for SkillsExecutor {
                         format!("No skills loaded. Missing: {}", not_found_skills.join(", "))
                     }
                 } else if not_found_skills.is_empty() {
-                    "Skills loaded. Instructions will be provided in the next message."
-                        .to_string()
+                    "Skills loaded. Instructions will be provided in the next message.".to_string()
                 } else {
                     format!(
                         "Skills loaded. Instructions will be provided in the next message. Missing: {}",

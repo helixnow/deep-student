@@ -123,6 +123,7 @@ pub fn load_builtin_api_configs() -> Result<Vec<ApiConfig>, AppError> {
                     presence_penalty_override: None,
                     is_favorite: false,
                     max_tokens_limit: None,
+                    context_window: None,
                     repetition_penalty: None,
                     reasoning_split: None,
                     effort: None,

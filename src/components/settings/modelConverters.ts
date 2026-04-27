@@ -18,6 +18,9 @@ const isDeepSeekFamilyModel = (
   const lowerModel = model.toLowerCase();
   const lowerScope = (providerScope ?? '').toLowerCase();
   const lowerProvider = (providerType ?? '').toLowerCase();
+  if (lowerScope === 'nvidia' || lowerProvider === 'nvidia') {
+    return false;
+  }
   return lowerModel.includes('deepseek') || lowerScope === 'deepseek' || lowerProvider === 'deepseek';
 };
 
@@ -73,6 +76,7 @@ export const convertProfileToApiConfig = (profile: ModelProfile, vendor: VendorC
     topK: profile.topK,
     supportsReasoning: profile.supportsReasoning ?? profile.isReasoning,
     headers: vendor.headers,
+    contextWindow: profile.contextWindow,
     repetitionPenalty: profile.repetitionPenalty,
     reasoningSplit: profile.reasoningSplit,
     effort: profile.effort,
@@ -116,6 +120,7 @@ export const convertApiConfigToProfile = (api: ApiConfig, vendorId: string): Mod
     geminiApiVersion: api.geminiApiVersion,
     isBuiltin: api.isBuiltin,
     isReadOnly: api.isReadOnly,
+    contextWindow: api.contextWindow,
     repetitionPenalty: api.repetitionPenalty,
     reasoningSplit: api.reasoningSplit,
     effort: api.effort,
@@ -171,6 +176,9 @@ export const inferProviderTypeFromBaseUrl = (baseUrl?: string | null): string | 
   if (lowerBaseUrl.includes('api.minimax.io') || lowerBaseUrl.includes('api.minimax.chat')) {
     return 'minimax';
   }
+  if (lowerBaseUrl.includes('integrate.api.nvidia.com')) {
+    return 'nvidia';
+  }
 
   return undefined;
 };
@@ -189,5 +197,6 @@ export const providerTypeFromConfig = (providerType?: string | null, adapter?: s
   if (adapter === 'minimax') return 'minimax';
   if (adapter === 'ernie') return 'ernie';
   if (adapter === 'mistral') return 'mistral';
+  if (adapter === 'nvidia') return 'nvidia';
   return 'openai';
 };

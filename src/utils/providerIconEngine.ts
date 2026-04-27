@@ -16,6 +16,7 @@ export type ProviderBrand =
   | 'mistral'
   | 'xai'
   | 'microsoft'
+  | 'nvidia'
   // 中国供应商
   | 'deepseek'
   | 'qwen'       // 阿里通义千问
@@ -124,6 +125,12 @@ const PROVIDER_PATTERNS: Record<ProviderBrand, (string | RegExp)[]> = {
     /^microsoft\//i,
     /phi-[234]/i,
     'azure',
+  ],
+
+  nvidia: [
+    /^nvidia\//i,
+    /nemotron/i,
+    /nim-/i,
   ],
   
   // === 中国供应商 ===
@@ -361,6 +368,7 @@ const PROVIDER_DISPLAY_NAMES: Record<ProviderBrand, string> = {
   mistral: 'Mistral AI',
   xai: 'xAI',
   microsoft: 'Microsoft',
+  nvidia: 'NVIDIA',
   deepseek: 'DeepSeek',
   qwen: '通义千问',
   alibaba: '阿里云',
@@ -532,7 +540,6 @@ export function getBatchProviderInfo(modelIds: string[]): Map<string, ProviderIn
   }
   return result;
 }
-
 
 
 

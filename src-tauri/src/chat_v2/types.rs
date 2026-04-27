@@ -1832,6 +1832,14 @@ pub struct SendOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enable_thinking: Option<bool>,
 
+    /// 本次发送的运行时推理强度覆盖；不修改模型默认配置
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
+
+    /// 本次发送的运行时 thinking budget 覆盖
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking_budget: Option<i32>,
+
     /// 历史重放模式
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replay_mode: Option<ReplayMode>,
@@ -2225,6 +2233,14 @@ pub struct ChatParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enable_thinking: Option<bool>,
 
+    /// Chat 运行时推理强度覆盖
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
+
+    /// Chat 运行时 thinking budget 覆盖
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking_budget: Option<i32>,
+
     /// 禁用工具调用
     #[serde(skip_serializing_if = "Option::is_none")]
     pub disable_tools: Option<bool>,
@@ -2311,6 +2327,8 @@ impl Default for ChatParams {
             // 🔧 2026-02-07: 对齐前端默认值 (32768 / enableThinking=true)
             max_tokens: Some(32768),
             enable_thinking: Some(true),
+            reasoning_effort: None,
+            thinking_budget: None,
             disable_tools: Some(false),
             model2_override_id: None,
             rag_top_k: None,
@@ -2388,7 +2406,25 @@ impl Default for PanelStates {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json;
+    use serde_json::{self, json};
+
+    #[test]
+    fn test_send_options_preserves_runtime_reasoning_overrides() {
+        let options: SendOptions = serde_json::from_value(json!({
+            "enableThinking": true,
+            "reasoningEffort": "max",
+            "thinkingBudget": 32768
+        }))
+        .unwrap();
+
+        assert_eq!(options.enable_thinking, Some(true));
+        assert_eq!(options.reasoning_effort.as_deref(), Some("max"));
+        assert_eq!(options.thinking_budget, Some(32768));
+
+        let serialized = serde_json::to_value(&options).unwrap();
+        assert_eq!(serialized.get("reasoningEffort"), Some(&json!("max")));
+        assert_eq!(serialized.get("thinkingBudget"), Some(&json!(32768)));
+    }
 
     #[test]
     fn test_message_block_serialization() {

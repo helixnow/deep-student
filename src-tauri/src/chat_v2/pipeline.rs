@@ -37,8 +37,8 @@ pub(crate) use super::tools::{
     AcademicSearchExecutor, AttemptCompletionExecutor, BuiltinResourceExecutor,
     BuiltinRetrievalExecutor, CanvasToolExecutor, ChatAnkiToolExecutor, ExecutionContext,
     FetchExecutor, GeneralToolExecutor, KnowledgeExecutor, MemoryToolExecutor, SkillsExecutor,
-    TemplateDesignerExecutor, ToolExecutorRegistry, ToolSensitivity,
-    UserTodoExecutor, WorkspaceToolExecutor,
+    TemplateDesignerExecutor, ToolExecutorRegistry, ToolSensitivity, UserTodoExecutor,
+    WorkspaceToolExecutor,
 };
 pub(crate) use crate::database::Database as MainDatabase;
 pub(crate) use crate::models::{
