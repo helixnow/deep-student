@@ -51,7 +51,8 @@ body {
 
 .desktop-shell-header-cell--workspace {
   background: var(--shell-workspace-panel);
-  box-shadow: inset 14px 0 22px -24px hsl(var(--foreground) / 0.32);
+  border: 0;
+  box-shadow: none;
 }
 
 .desktop-shell-toolbar-group {
@@ -175,7 +176,7 @@ body {
 }
 
 .desktop-shell-workspace {
-  background: hsl(var(--background));
+  background: var(--shell-workspace-panel);
   box-shadow: none;
 }
 
@@ -235,6 +236,13 @@ body {
   box-shadow: var(--shadow-shell-soft);
 }
 
+.study-shell-pane--flush-top {
+  border-top: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  box-shadow: none;
+}
+
 .study-shell-panel {
   background: var(--shell-inspector-panel);
   border: 1px solid var(--shell-inspector-border);
@@ -250,6 +258,10 @@ body {
 .study-shell-toolbar {
   background: var(--shell-toolbar-surface);
   border-bottom: 1px solid var(--shell-inspector-border);
+}
+
+.study-shell-toolbar--seamless {
+  border-bottom: 0;
 }
 
 .study-shell-toolbar--floating {
@@ -3632,19 +3644,19 @@ body {
 
 /* 设置页面样式 */
 .settings {
-  background: hsl(var(--card));
+  background: var(--shell-workspace-panel);
   border-radius: 0;
   /* 滚动由内部 CustomScrollArea 处理，外层禁止溢出 */
   overflow: hidden;
-  box-shadow: none; /* 移除阴影，避免边缘出现渐变 */
-  border: 1px solid hsl(var(--border) / 0.35);
+  border: 0;
+  box-shadow: none;
 }
 
 /* 暗色模式下：卡片与背景色接近，增强边界与圆角可见性 */
 .dark .settings {
   /* 暗色下也不使用阴影，防止产生渐变带 */
   box-shadow: none;
-  border: 1px solid hsl(var(--border) / 0.35);
+  border: 0;
   border-radius: 0;
 }
 
@@ -7157,11 +7169,12 @@ body {
 
 /* 设置页面样式 */
 .settings {
-  background: hsl(var(--card));
+  background: var(--shell-workspace-panel);
   border-radius: 0;
   /* 滚动由内部 CustomScrollArea 处理，外层禁止溢出 */
   overflow: hidden;
-  box-shadow: 0 4px 20px rgba(0,0,0,0.1);
+  border: 0;
+  box-shadow: none;
 }
 
 .settings-header {

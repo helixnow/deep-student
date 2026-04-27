@@ -32,6 +32,7 @@ const BASE_CANONICAL_VIEWS: CurrentView[] = [
   'data-management',
   'task-dashboard',
   'template-management',
+  'ui-lab',
   'template-json-preview',
   'pdf-reader',
   'learning-hub',

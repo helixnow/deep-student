@@ -80,6 +80,11 @@ export const LazyTemplateManagementPage = React.lazy(() =>
   import('./components/TemplateManagementPage').then(m => ({ default: m.default }))
 );
 
+// UI 样式调试
+export const LazyStyleDebugPage = React.lazy(() =>
+  import('./components/style-lab/StyleDebugPage').then(m => ({ default: m.StyleDebugPage }))
+);
+
 // 模板 JSON 预览
 export const LazyTemplateJsonPreviewPage = React.lazy(() =>
   import('./components/TemplateJsonPreviewPage').then(m => ({ default: m.default }))

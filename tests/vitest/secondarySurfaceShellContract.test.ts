@@ -6,6 +6,7 @@ describe('secondary surface shell migration contract', () => {
   const templatePageSource = readFileSync(resolve(process.cwd(), 'src/components/TemplateManagementPage.tsx'), 'utf-8');
   const templatePageCssSource = readFileSync(resolve(process.cwd(), 'src/components/TemplateManagementPage.css'), 'utf-8');
   const taskDashboardSource = readFileSync(resolve(process.cwd(), 'src/components/anki/TaskDashboardPage.tsx'), 'utf-8');
+  const chatPageSource = readFileSync(resolve(process.cwd(), 'src/chat-v2/pages/ChatV2Page.tsx'), 'utf-8');
   const skillsPageSource = readFileSync(resolve(process.cwd(), 'src/components/skills-management/SkillsManagementPage.tsx'), 'utf-8');
   const skillsListSource = readFileSync(resolve(process.cwd(), 'src/components/skills-management/SkillsList.tsx'), 'utf-8');
   const notesSidebarSource = readFileSync(resolve(process.cwd(), 'src/components/notes/NotesSidebarV2.tsx'), 'utf-8');
@@ -29,5 +30,10 @@ describe('secondary surface shell migration contract', () => {
     expect(skillsListSource).toContain('study-shell-secondary-card');
     expect(notesSidebarSource).toContain('study-shell-sidebar-frame');
     expect(notesSidebarSource).toContain('sidebar-shell-item');
+  });
+
+  it('renders the chat main pane flush with the desktop header shell', () => {
+    expect(chatPageSource).toContain('study-shell-pane study-shell-pane--flush-top');
+    expect(chatPageSource).toContain('study-shell-toolbar study-shell-toolbar--seamless');
   });
 });

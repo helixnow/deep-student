@@ -6,8 +6,8 @@
   flex-direction: row; /* 改为横向布局：侧边栏 + 内容区 */
   min-height: 0;
   overflow: hidden;
-  /* 使用主背景色，让卡片浮层更明显 */
-  background: hsl(var(--background));
+  /* Keep the settings shell visually continuous with the desktop workspace header. */
+  background: var(--shell-workspace-panel);
   /* 防止水平溢出 */
   max-width: 100vw;
   box-sizing: border-box;

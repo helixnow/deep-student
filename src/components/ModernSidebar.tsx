@@ -253,7 +253,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   const primaryItems = useMemo(
     () =>
       navItems.filter((item) =>
-        ['chat-v2', 'learning-hub', 'todo', 'skills-management', 'task-dashboard', 'template-management'].includes(item.view)
+        ['chat-v2', 'learning-hub', 'todo', 'skills-management', 'task-dashboard', 'template-management', 'ui-lab'].includes(item.view)
       ),
     [navItems]
   );
@@ -897,27 +897,40 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       aria-label={t('sidebar:aria.sidebar_navigation', '主导航')}
       data-shell-layer="navigation"
       data-shell-surface="navigation"
-      className="font-sidebar-study-ui relative z-20 flex h-full w-full min-w-0 flex-col bg-[color:var(--shell-navigation-surface)] text-[color:var(--shell-navigation-foreground)] transition-colors duration-500"
+      className="font-sidebar-study-ui relative z-20 flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-[color:var(--shell-navigation-surface)] text-[color:var(--shell-navigation-foreground)] transition-colors duration-500"
       style={{ paddingTop: 'calc(var(--shell-titlebar-height) + var(--shell-layout-gap))' }}
     >
       <div className="px-2 pb-1 pt-1" data-no-drag />
 
-      <CustomScrollArea className="flex-1 w-full" viewportClassName="h-full w-full">
-        <div className="flex flex-col gap-3 px-2 pb-3 pt-1" data-no-drag>
-          <div className="space-y-1">
-            <nav aria-label={t('sidebar:aria.workspace_primary_entry', '工作区主入口')}>
-              <div className="space-y-0.5" role="list">
-                {primaryItems.map((item) =>
-                  renderNavRow(
-                    item.view as CurrentView,
-                    item.view === 'chat-v2' ? chatNavLabel : item.name,
-                    item.icon
-                  )
-                )}
-              </div>
-            </nav>
+      <div
+        className="shrink-0 px-2 pb-2 pt-1"
+        data-no-drag
+        data-sidebar-fixed-region="primary-navigation"
+      >
+        <nav aria-label={t('sidebar:aria.workspace_primary_entry', '工作区主入口')}>
+          <div className="space-y-0.5" role="list">
+            {primaryItems.map((item) =>
+              renderNavRow(
+                item.view as CurrentView,
+                item.view === 'chat-v2' ? chatNavLabel : item.name,
+                item.icon
+              )
+            )}
           </div>
+        </nav>
+      </div>
 
+      <CustomScrollArea
+        className="min-h-0 flex-1 w-full"
+        viewportClassName="h-full w-full"
+        viewportProps={{
+          'data-sidebar-scroll-region': 'sessions',
+        }}
+      >
+        <div
+          className="flex flex-col gap-3 px-2 pb-3 pt-1"
+          data-no-drag
+        >
           {pinnedRecentSessions.length > 0 ? (
             <section className="space-y-0.5 pt-1">
               <nav aria-label={t('sidebar:aria.pinned_sessions', '置顶会话')}>
@@ -977,7 +990,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
         </div>
       </CustomScrollArea>
 
-      <div className="mt-auto px-2 pb-3 pt-1" data-no-drag>
+      <div className="mt-auto shrink-0 px-2 pb-3 pt-1" data-no-drag>
         <div className="relative flex justify-start">
           <SidebarRow
             rowType="nav"

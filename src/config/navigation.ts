@@ -24,6 +24,7 @@ export type NavViewType =
   | 'chat-v2'
   | 'learning-hub'
   | 'skills-management'
+  | 'ui-lab'
   | 'todo';
 
 /**
@@ -80,6 +81,11 @@ export const createNavItems = (t: TFunction): NavItem[] => {
       icon: StudyBlocksIcon,
     },
     {
+      name: t('sidebar:navigation.ui_lab', '样式调试'),
+      view: 'ui-lab',
+      icon: StudyBlocksIcon,
+    },
+    {
       name: t('sidebar:navigation.settings', '设置'),
       view: 'settings',
       icon: StudySettingsIcon,
@@ -92,7 +98,7 @@ export const createNavItems = (t: TFunction): NavItem[] => {
 /**
  * 导航项总数（用于布局计算）
  */
-export const NAV_ITEMS_COUNT = 7;
+export const NAV_ITEMS_COUNT = 8;
 
 /**
  * 估算单个导航项的平均宽度（像素）

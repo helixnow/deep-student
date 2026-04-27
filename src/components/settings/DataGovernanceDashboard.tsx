@@ -24,6 +24,7 @@ import {
   Bug,
   Image,
   Database,
+  Trash2,
 } from 'lucide-react';
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/shad/Tabs';
@@ -71,6 +72,7 @@ import { OverviewTab } from './data-governance/OverviewTab';
 import { BackupTab, type BackupJobOperation } from './data-governance/BackupTab';
 import { SyncTab } from './data-governance/SyncTab';
 import { AuditTab } from './data-governance/AuditTab';
+import { ChatSessionTrashTab } from './data-governance/ChatSessionTrashTab';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -1431,6 +1433,10 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           <Activity className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_overview')}</span>
         </TabsTrigger>
+        <TabsTrigger value="trash" className="flex items-center gap-1">
+          <Trash2 className="h-4 w-4" />
+          <span className="hidden sm:inline">{t('data:governance.tab_trash')}</span>
+        </TabsTrigger>
         <TabsTrigger value="backup" className="flex items-center gap-1">
           <HardDrive className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_backup')}</span>
@@ -1462,7 +1468,12 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           loading={overviewLoading}
           onRefresh={loadOverviewData}
           onRunHealthCheck={runHealthCheck}
+          onOpenTrash={() => setActiveTab('trash')}
         />
+      </TabsContent>
+
+      <TabsContent value="trash">
+        <ChatSessionTrashTab />
       </TabsContent>
 
       <TabsContent value="backup">

@@ -15,6 +15,7 @@ export type CurrentView =
   | 'data-management'
   | 'task-dashboard'     // 制卡任务管理页面
   | 'template-management'
+  | 'ui-lab'            // UI 样式调试与 primitive 校对页面
   | 'template-json-preview'
   | 'crepe-demo'
   | 'pdf-reader'

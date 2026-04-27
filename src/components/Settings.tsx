@@ -82,6 +82,11 @@ import { useSettingsConfig } from './useSettingsConfig';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
+const SETTINGS_TOP_SAFE_DRAG_ZONE_STYLE: React.CSSProperties = {
+  background: 'var(--shell-workspace-panel)',
+  borderBottom: 0,
+};
+
 const normalizeThemeMode = (value: unknown): ThemeMode => {
   if (value === 'dark' || value === 'auto') return value;
   return 'light';
@@ -934,7 +939,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
 
     return (
       <div className="settings absolute inset-0 flex flex-row overflow-hidden bg-background">
-        <MacTopSafeDragZone className="settings-top-safe-drag-zone" />
+        <MacTopSafeDragZone className="settings-top-safe-drag-zone" style={SETTINGS_TOP_SAFE_DRAG_ZONE_STYLE} />
         <div className="h-full flex flex-col bg-background pt-[5px] border-r border-border/40 w-52">
           <nav className="flex-1 overflow-y-auto py-2 px-2">
             {[1, 2, 3, 4, 5, 6].map((i) => (
@@ -1013,13 +1018,13 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
     <div
       id="settings-main-content"
       className={cn(
-        "study-shell-pane flex-1 min-w-0 h-full flex flex-col overflow-hidden max-w-full bg-background relative",
+        "study-shell-pane study-shell-pane--flush-top flex-1 min-w-0 h-full flex flex-col overflow-hidden max-w-full relative",
         sheetMode && "bg-[#FFFFFF] text-[#111111]"
       )}
       data-slot={sheetMode ? 'mobile-settings-sheet-content' : undefined}
     >
         {!sheetMode && (
-        <div className="study-shell-toolbar shrink-0 px-6 py-5 sm:px-8">
+        <div className="study-shell-toolbar study-shell-toolbar--seamless shrink-0 px-6 py-5 sm:px-8">
           <div className="mx-auto w-full max-w-[72rem] text-left">
             <p className="text-[11px] font-normal text-muted-foreground">
               {t('settings:title')}
@@ -1639,8 +1644,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
 
   if (isSmallScreen) {
     return (
-      <div className="study-shell-page settings absolute inset-0 flex flex-col overflow-hidden bg-background">
-        <MacTopSafeDragZone className="settings-top-safe-drag-zone" />
+      <div className="study-shell-page settings absolute inset-0 flex flex-col overflow-hidden">
+        <MacTopSafeDragZone className="settings-top-safe-drag-zone" style={SETTINGS_TOP_SAFE_DRAG_ZONE_STYLE} />
         <UnifiedErrorHandler errors={mcpErrors} onDismiss={dismissMcpError} onClearAll={clearMcpErrors} />
 
         <MobileSlidingLayout
@@ -1722,8 +1727,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
 
   // ===== 桌面端布局 =====
   return (
-    <div className="study-shell-page settings absolute inset-0 flex flex-row overflow-hidden bg-background">
-      <MacTopSafeDragZone className="settings-top-safe-drag-zone" />
+    <div className="study-shell-page settings absolute inset-0 flex flex-row overflow-hidden">
+      <MacTopSafeDragZone className="settings-top-safe-drag-zone" style={SETTINGS_TOP_SAFE_DRAG_ZONE_STYLE} />
       <UnifiedErrorHandler errors={mcpErrors} onDismiss={dismissMcpError} onClearAll={clearMcpErrors} />
 
       {/* 侧边栏 */}

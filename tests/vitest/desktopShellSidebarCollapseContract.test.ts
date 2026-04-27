@@ -56,6 +56,8 @@ describe('desktop shell sidebar collapse contract', () => {
   it('lets ModernSidebar behave like a fill-content shell so the outer app column owns the collapse animation', () => {
     expect(sidebarSource).not.toContain("'overflow-hidden transition-[width] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)]'");
     expect(sidebarSource).not.toContain("sidebarCollapsed ? 'w-0' : 'w-[var(--shell-navigation-width)]'");
-    expect(sidebarSource).toContain('className="font-sidebar-study-ui relative z-20 flex h-full w-full min-w-0 flex-col');
+    expect(sidebarSource).toMatch(
+      /className="font-sidebar-study-ui[^"]*\bflex\b[^"]*\bh-full\b[^"]*\bmin-h-0\b[^"]*\bw-full\b[^"]*\bmin-w-0\b[^"]*\bflex-col\b[^"]*\boverflow-hidden\b/
+    );
   });
 });

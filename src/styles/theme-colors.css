@@ -23,8 +23,8 @@
   --sidebar-border: oklch(0.83 0.006 264.2 / 0.08);
   --sidebar-accent: #EFEFEA;
   --shell-backdrop: #ECECE7;
-  --shell-panel: #FFFFFF;
-  --shell-panel-strong: #FCFCFA;
+  --shell-panel: hsl(var(--background));
+  --shell-panel-strong: hsl(var(--card));
   --shell-rim: oklch(0.83 0.006 264.2 / 0.08);
   --shell-float: #FCFCFA;
   --shell-glow: transparent;
@@ -165,8 +165,8 @@
   --sidebar-border: oklch(0.7 0.008 264.2 / 0.12);
   --sidebar-accent: #20201E;
   --shell-backdrop: #141413;
-  --shell-panel: #1D1D1B;
-  --shell-panel-strong: #222220;
+  --shell-panel: hsl(var(--background));
+  --shell-panel-strong: hsl(var(--card));
   --shell-rim: oklch(0.7 0.008 264.2 / 0.12);
   --shell-float: #232321;
   --shell-glow: transparent;

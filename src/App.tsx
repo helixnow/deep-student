@@ -101,6 +101,7 @@ import {
   LazyImportConversationDialog,
   LazySkillsManagementPage,
   LazyTemplateManagementPage,
+  LazyStyleDebugPage,
   LazyTemplateJsonPreviewPage,
   LazyLearningHubPage,
   LazyPdfReader,
@@ -1606,6 +1607,7 @@ function App() {
   const openCommandPalette = useCallback(() => {
     commandPaletteTriggerRef.current?.();
   }, []);
+  const shouldShowDesktopHeaderNavControls = currentView !== 'settings';
   const desktopHeaderNavControls = (
     <DesktopHeaderNavControls
       canGoBack={unifiedCanGoBack}
@@ -1720,6 +1722,7 @@ function App() {
       'skills-management': t('sidebar:navigation.skills_management', '技能管理'),
       'data-management': t('common:navigation.data_management', '数据管理'),
       'template-management': t('sidebar:navigation.template_management', '模板库'),
+      'ui-lab': t('sidebar:navigation.ui_lab', '样式调试'),
       'template-json-preview': t('common:navigation.template_json_preview', '模板预览'),
       'pdf-reader': t('common:navigation.pdf_reader', 'PDF 阅读器'),
       'tree-test': t('common:navigation.tree_test', 'Tree Test'),
@@ -1786,6 +1789,12 @@ function App() {
       />
     </Suspense>
   ), [setCurrentView]);
+
+  const styleDebugContent = useMemo(() => (
+    <Suspense fallback={<PageLoadingFallback />}>
+      <LazyStyleDebugPage />
+    </Suspense>
+  ), []);
 
   const learningHubContent = useMemo(() => (
     <Suspense fallback={<PageLoadingFallback />}><LazyLearningHubPage /></Suspense>
@@ -1935,7 +1944,7 @@ function App() {
                 <div className="flex items-center">
                   {desktopSidebarAccessoryContent}
                 </div>
-                {leftPanelCollapsed ? desktopHeaderNavControls : null}
+                {leftPanelCollapsed && shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}
               </div>
             </div>
           ) : null}
@@ -1961,7 +1970,7 @@ function App() {
               onKeyDown={(event) => handleHeaderHotzoneKeyDown(event, handleCreateChatSession)}
             >
               {isMacOS() && <div className="flex-shrink-0" style={{ width: DESKTOP_SHELL.macTrafficLightsSpacer }} />}
-              {!leftPanelCollapsed ? desktopHeaderNavControls : null}
+              {!leftPanelCollapsed && shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}
             </div>
           </div>
 
@@ -2086,6 +2095,8 @@ function App() {
               {renderViewLayer('data-management', dataManagementContent)}
 
               {renderViewLayer('template-management', templateManagementContent)}
+
+              {renderViewLayer('ui-lab', styleDebugContent)}
 
               {renderViewLayer('template-json-preview', templateJsonPreviewContent)}
 

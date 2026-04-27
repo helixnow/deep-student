@@ -241,6 +241,41 @@ describe('ModernSidebar shell navigation', () => {
     expect(screen.getByRole('button', { name: '未分组会话' })).toBeInTheDocument();
   });
 
+  it('keeps primary navigation outside the recent sessions scroll viewport', async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'chat_v2_list_sessions') {
+        return Promise.resolve([
+          { id: 'session-1', title: '代数复习', updatedAt: '2026-04-06T08:00:00Z', createdAt: '2026-04-06T08:00:00Z', mode: 'chat', groupId: 'group-math' },
+        ]);
+      }
+      if (command === 'chat_v2_list_groups') {
+        return Promise.resolve([
+          { id: 'group-math', name: '数学', icon: '📘', sortOrder: 0, defaultSkillIds: [], pinnedResourceIds: [], persistStatus: 'active', createdAt: '2026-04-01T00:00:00Z', updatedAt: '2026-04-05T00:00:00Z' },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    const { container } = render(
+      <ModernSidebar
+        currentView="chat-v2"
+        onViewChange={() => undefined}
+      />
+    );
+
+    expect(await screen.findByRole('button', { name: '数学' })).toBeInTheDocument();
+
+    const fixedRegion = container.querySelector('[data-sidebar-fixed-region="primary-navigation"]');
+    const scrollRegion = container.querySelector('[data-sidebar-scroll-region="sessions"]');
+
+    expect(fixedRegion).not.toBeNull();
+    expect(scrollRegion).not.toBeNull();
+    expect(within(fixedRegion as HTMLElement).getByRole('button', { name: '智能会话' })).toBeInTheDocument();
+    expect(within(scrollRegion as HTMLElement).queryByRole('button', { name: '智能会话' })).not.toBeInTheDocument();
+    expect(within(scrollRegion as HTMLElement).getByRole('button', { name: '数学' })).toBeInTheDocument();
+    expect(within(scrollRegion as HTMLElement).getByRole('button', { name: '代数复习' })).toBeInTheDocument();
+  });
+
   it('keeps empty groups visible in recent even before they contain sessions', async () => {
     invokeMock.mockImplementation((command: string) => {
       if (command === 'chat_v2_list_sessions') {
@@ -650,7 +685,7 @@ describe('ModernSidebar shell navigation', () => {
   it('keeps grouped session rows full width instead of shrinking them with an outer indent', () => {
     const sidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ModernSidebar.tsx'), 'utf-8');
 
-    expect(sidebarSource).toContain("'space-y-0.5 overflow-hidden'");
+    expect(sidebarSource).toContain("'space-y-0.5 overflow-hidden pl-4'");
     expect(sidebarSource).not.toContain("pl-[26px]");
   });
 
