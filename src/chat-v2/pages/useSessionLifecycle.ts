@@ -8,6 +8,14 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { ChatSession } from '../types/session';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import type { TFunction } from 'i18next';
+import {
+  buildHiddenDraftSessionMetadata,
+  getDraftSessionScope,
+  getHiddenDraftSessionScope,
+  getStoredDraftSessionId,
+  persistHiddenDraftSessionId,
+  clearHiddenDraftSessionId,
+} from './draftSession';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -59,23 +67,39 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
     }
   }, []);
 
+  const getOrCreateHiddenDraftSession = useCallback(async (groupId?: string | null): Promise<ChatSession> => {
+    const scope = getDraftSessionScope('chat', groupId ?? null);
+    const storedDraftId = getStoredDraftSessionId(scope);
+
+    if (storedDraftId) {
+      try {
+        const storedDraft = await invoke<ChatSession | null>('chat_v2_get_session', {
+          sessionId: storedDraftId,
+        });
+        if (storedDraft && getHiddenDraftSessionScope(storedDraft.metadata) === scope) {
+          return storedDraft;
+        }
+      } catch (error) {
+        console.warn('[ChatV2Page] Failed to reuse hidden draft session:', getErrorMessage(error));
+      }
+      clearHiddenDraftSessionId(scope);
+    }
+
+    const session = await createSessionWithDefaults({
+      mode: 'chat',
+      title: null,
+      metadata: buildHiddenDraftSessionMetadata(null, scope),
+      groupId,
+    });
+    persistHiddenDraftSessionId(scope, session.id);
+    return session;
+  }, []);
+
   // 创建新会话（使用全局科目）- 提前定义用于 useMobileHeader
   const createSession = useCallback(async (groupId?: string) => {
     setIsLoading(true);
     try {
-      const session = await createSessionWithDefaults({
-        mode: 'chat',
-        title: null,
-        metadata: null,
-        groupId,
-      });
-
-      setSessions((prev) => [session, ...prev]);
-      emitSessionListUpdated();
-      setTotalSessionCount((prev) => (prev !== null ? prev + 1 : null));
-      if (!groupId) {
-        void loadUngroupedCount();
-      }
+      const session = await getOrCreateHiddenDraftSession(groupId);
       setCurrentSessionId(session.id);
     } catch (error) {
       console.error('[ChatV2Page] Failed to create session:', getErrorMessage(error));
@@ -83,7 +107,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
     } finally {
       setIsLoading(false);
     }
-  }, [loadUngroupedCount, t]);
+  }, [getOrCreateHiddenDraftSession, t]);
 
   // P1-06: 创建分析模式会话
   // 打开文件对话框让用户选择图片，然后创建 analysis 模式会话
@@ -205,50 +229,16 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
       // "加载更多"只针对未分组会话
       setHasMoreSessions(ungroupedResult.length >= PAGE_SIZE);
 
-      // 启动行为：默认进入新空会话，除非上次会话本身就是空的则复用
+      // 启动行为：进入一个隐藏 draft。它不进入左侧列表，只有首条消息后才转正。
       let sessionToSelect: string | null = null;
 
       try {
-        const lastSessionId = localStorage.getItem(LAST_SESSION_KEY);
-        if (lastSessionId) {
-          const sessionExists = allSessions.some(s => s.id === lastSessionId)
-            || await invoke<ChatSession | null>('chat_v2_get_session', { sessionId: lastSessionId })
-                .then(s => !!s).catch(() => false);
-
-          if (sessionExists) {
-            const msgCount = await invoke<number>('chat_v2_session_message_count', { sessionId: lastSessionId });
-            if (msgCount === 0) {
-              sessionToSelect = lastSessionId;
-              console.log('[ChatV2Page] Reusing last empty session:', lastSessionId);
-            } else {
-              console.log('[ChatV2Page] Last session has messages, will create new empty session');
-            }
-          } else {
-            localStorage.removeItem(LAST_SESSION_KEY);
-          }
-        }
+        const draftSession = await getOrCreateHiddenDraftSession();
+        sessionToSelect = draftSession.id;
       } catch (e) {
-        console.warn('[ChatV2Page] Failed to check last session:', e);
-      }
-
-      if (!sessionToSelect) {
-        try {
-          const newSession = await createSessionWithDefaults({
-                      mode: 'chat',
-                      title: null,
-                      metadata: null,
-                    });
-                    setSessions([newSession, ...allSessions]);
-                    emitSessionListUpdated();
-                    setTotalSessionCount(totalCount + 1);
-                    setUngroupedSessionCount(ungroupedCount + 1);
-          sessionToSelect = newSession.id;
-          console.log('[ChatV2Page] Created new empty session on startup:', newSession.id);
-        } catch (e) {
-          console.warn('[ChatV2Page] Failed to create startup session:', e);
-          if (allSessions.length > 0) {
-            sessionToSelect = allSessions[0].id;
-          }
+        console.warn('[ChatV2Page] Failed to create startup draft session:', e);
+        if (allSessions.length > 0) {
+          sessionToSelect = allSessions[0].id;
         }
       }
 
@@ -259,7 +249,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
     } finally {
       setIsInitialLoading(false);
     }
-  }, [t]);
+  }, [getOrCreateHiddenDraftSession, t]);
 
   // P1-22: 加载更多会话（无限滚动分页）
   // 🔧 分组懒加载修复：只加载更多未分组会话，已分组会话在初始加载时已全量获取
@@ -321,20 +311,15 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
         // 使用 sessionsRef.current 获取最新状态，避免闭包中使用过时的 sessions
         const remaining = sessionsRef.current.filter((s) => s.id !== sessionId);
         if (remaining.length === 0) {
-          // 🔧 优化空态体验：删除最后一个会话时，自动创建新的空会话
           try {
-            const newSession = await createSessionWithDefaults({
-              mode: 'chat',
-              title: null,
-              metadata: null,
-            });
-            setSessions([newSession]);
+            const draftSession = await getOrCreateHiddenDraftSession();
+            setSessions([]);
             emitSessionListUpdated();
-            setTotalSessionCount(1);
-            setCurrentSessionId(newSession.id);
-            console.log('[ChatV2Page] Auto-created session after deleting last one:', newSession.id);
+            setTotalSessionCount(0);
+            setUngroupedSessionCount(0);
+            setCurrentSessionId(draftSession.id);
           } catch (e) {
-            console.warn('[ChatV2Page] Failed to auto-create session:', e);
+            console.warn('[ChatV2Page] Failed to create replacement draft session:', e);
             setCurrentSessionId(null);
           }
         } else {
@@ -350,7 +335,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
         showGlobalNotification('error', t('page.deleteSessionFailed', '删除会话失败，请稍后重试'));
       }
     },
-    [loadUngroupedCount, t] // 不再依赖 currentSessionId 和 sessions，使用 ref 和函数式更新
+    [getOrCreateHiddenDraftSession, loadUngroupedCount, t] // 不再依赖 currentSessionId 和 sessions，使用 ref 和函数式更新
   );
 
   // 🔧 P1-29: 加载已删除会话（回收站）

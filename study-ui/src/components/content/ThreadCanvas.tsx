@@ -60,18 +60,12 @@ export function ThreadCanvas() {
               >
                 当前工作区：<code className="font-medium text-foreground">study-ui</code>
               </p>
-              <div className="space-y-3">
-                <h2 className="text-balance text-2xl font-semibold tracking-[-0.04em] text-foreground sm:text-xl sm:font-medium sm:tracking-normal">
-                  开始一个新任务
-                </h2>
-                <p
-                  data-slot="thread-empty-primary-action"
-                  className="mx-auto max-w-[21rem] text-pretty text-base leading-7 text-muted-foreground sm:text-sm sm:leading-6"
-                >
-                  把需求直接发到底部输入区。
-                </p>
-              </div>
-              <p className="sr-only">首屏保持安静，只保留当前工作区、主动作和足够的留白。</p>
+              <h2
+                data-slot="thread-empty-primary-action"
+                className="text-balance text-2xl font-semibold tracking-[-0.04em] text-foreground sm:text-xl sm:font-medium sm:tracking-normal"
+              >
+                我们要开始做什么？
+              </h2>
             </div>
           </section>
         </div>

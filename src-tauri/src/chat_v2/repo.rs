@@ -27,6 +27,10 @@ use super::types::{
 pub struct ChatV2Repo;
 
 impl ChatV2Repo {
+    fn append_visible_session_filter(sql: &mut String) {
+        sql.push_str(" AND COALESCE(json_extract(metadata_json, '$.chatV2Draft.hidden'), 0) != 1");
+    }
+
     // ========================================================================
     // 会话 CRUD
     // ========================================================================
@@ -287,6 +291,7 @@ impl ChatV2Repo {
                 WHERE mode != 'agent'
             "#,
         );
+        Self::append_visible_session_filter(&mut sql);
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
         if let Some(s) = status {
@@ -339,6 +344,7 @@ impl ChatV2Repo {
         group_id: Option<&str>,
     ) -> ChatV2Result<u32> {
         let mut sql = String::from("SELECT COUNT(*) FROM chat_v2_sessions WHERE mode != 'agent'");
+        Self::append_visible_session_filter(&mut sql);
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
         if let Some(s) = status {

@@ -49,6 +49,8 @@ export interface ChatContainerProps {
   sessionId: string;
   /** 自定义类名 */
   className?: string;
+  /** 空态中显示的当前分组名；未分组时不显示 */
+  emptyStateGroupName?: string | null;
   /** 是否显示输入框 */
   showInputBar?: boolean;
   /** 🆕 2026-01-20: 点击 Worker Agent 查看输出的回调（用于切换到对应会话） */
@@ -74,6 +76,7 @@ export interface ChatContainerProps {
 export const ChatContainer: React.FC<ChatContainerProps> = ({
   sessionId,
   className,
+  emptyStateGroupName = null,
   showInputBar = true,
   onViewAgentSession,
   forceEmptyPreview = false,
@@ -255,7 +258,12 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
       {/* 消息列表 - 与输入框布局完全分离 */}
       {/* 🚀 性能优化：使用 key={sessionId} 强制重新挂载组件 */}
       <div className="flex-1 overflow-hidden relative">
-        <MessageList key={sessionId} store={store} forceEmptyPreview={forceEmptyPreview} />
+        <MessageList
+          key={sessionId}
+          store={store}
+          emptyStateGroupName={emptyStateGroupName}
+          forceEmptyPreview={forceEmptyPreview}
+        />
         {/* 🎨 底部渐变过渡：平滑边缘效果 */}
         <div 
           className="pointer-events-none absolute left-0 right-0 bottom-0 z-10 h-6"

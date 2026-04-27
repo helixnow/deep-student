@@ -77,6 +77,11 @@ import { useSessionItemRenderer } from './SessionItemRenderer';
 import { useSessionSidebarContent } from './SessionSidebarContent';
 import { getSessionTitleText } from '../utils/sessionTitle';
 import { compareSessionsForSidebar } from '../utils/sessionPin';
+import {
+  clearHiddenDraftSessionId,
+  clearHiddenDraftSessionMetadata,
+  getHiddenDraftSessionScope,
+} from './draftSession';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 
@@ -393,6 +398,41 @@ export const ChatV2Page: React.FC = () => {
     t, PAGE_SIZE, LAST_SESSION_KEY,
   });
 
+  const promotingDraftIdsRef = useRef<Set<string>>(new Set());
+  const promoteHiddenDraftSession = useCallback(async (
+    sessionId: string,
+    metadata: Record<string, unknown> | null | undefined
+  ) => {
+    const draftScope = getHiddenDraftSessionScope(metadata);
+    if (!draftScope || promotingDraftIdsRef.current.has(sessionId)) {
+      return;
+    }
+
+    promotingDraftIdsRef.current.add(sessionId);
+    try {
+      const nextMetadata = clearHiddenDraftSessionMetadata(metadata);
+      const promotedSession = await invoke<ChatSession>('chat_v2_update_session_settings', {
+        sessionId,
+        settings: { metadata: nextMetadata ?? null },
+      });
+
+      sessionManager.get(sessionId)?.setState({
+        sessionMetadata: nextMetadata,
+      });
+      clearHiddenDraftSessionId(draftScope);
+      setSessions((prev) => [promotedSession, ...prev.filter((session) => session.id !== sessionId)]);
+      setTotalSessionCount((prev) => (prev !== null ? prev + 1 : null));
+      if (!promotedSession.groupId) {
+        void loadUngroupedCount();
+      }
+      window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
+    } catch (error) {
+      console.warn('[ChatV2Page] Failed to promote hidden draft session:', getErrorMessage(error));
+    } finally {
+      promotingDraftIdsRef.current.delete(sessionId);
+    }
+  }, [loadUngroupedCount]);
+
   // 加载会话列表（根据全局科目过滤）
   // 🔧 修复：不依赖 currentSessionId，避免与 useEffect 中的 setCurrentSessionId 形成循环
   // 🔧 分组懒加载修复：分别加载已分组会话（全量）和未分组会话（分页），确保每个分组都能显示其会话
@@ -411,8 +451,12 @@ export const ChatV2Page: React.FC = () => {
     }
     
     // 立即检查当前消息数量
-    const initialHasMessages = store.getState().messageOrder.length > 0;
+    const initialState = store.getState();
+    const initialHasMessages = initialState.messageOrder.length > 0;
     setCurrentSessionHasMessages(initialHasMessages);
+    if (initialHasMessages) {
+      void promoteHiddenDraftSession(currentSessionId, initialState.sessionMetadata);
+    }
     
     // 订阅 store 的消息数量变化
     const unsubscribe = store.subscribe((state, prevState) => {
@@ -422,11 +466,14 @@ export const ChatV2Page: React.FC = () => {
       if (hasMessages !== prevHasMessages) {
         console.log('[ChatV2Page] Message count changed, hasMessages:', hasMessages);
         setCurrentSessionHasMessages(hasMessages);
+        if (hasMessages) {
+          void promoteHiddenDraftSession(currentSessionId, state.sessionMetadata);
+        }
       }
     });
     
     return unsubscribe;
-  }, [currentSessionId]);
+  }, [currentSessionId, promoteHiddenDraftSession]);
 
   // 🔧 修复：后端自动生成标题后，同步更新 sessions 列表
   useEffect(() => {
@@ -450,6 +497,9 @@ export const ChatV2Page: React.FC = () => {
 
   // ========== 移动端统一顶栏配置 ==========
   const currentSession = sessions.find(s => s.id === currentSessionId);
+  const currentSessionGroupName = currentSession?.groupId
+    ? groupNameMap.get(currentSession.groupId) ?? null
+    : null;
 
   // ===== 会话编辑 hook =====
   const {
@@ -643,7 +693,7 @@ export const ChatV2Page: React.FC = () => {
   // ★ 监听附件预览事件，在右侧面板打开附件
   // 使用独立的附件预览状态，不依赖于 NotesContext
   const renderMainContent = () => (
-    <div className="study-shell-pane flex h-full flex-col overflow-hidden relative">
+    <div className="study-shell-pane study-shell-pane--flush-top flex h-full flex-col overflow-hidden relative">
       {/* 🚀 会话切换加载指示器（防闪动：只有超过 500ms 才显示） */}
       {showSwitchingIndicator && (
         <div
@@ -660,7 +710,7 @@ export const ChatV2Page: React.FC = () => {
         </div>
       )}
       {!isSmallScreen && viewMode !== 'browser' && !groupEditorOpen && currentSessionId ? (
-        <div className="study-shell-toolbar flex items-center justify-end px-3 py-2 border-b shrink-0">
+        <div className="study-shell-toolbar study-shell-toolbar--seamless flex items-center justify-end px-3 py-2 shrink-0">
           <Popover open={chatControlPopoverOpen} onOpenChange={setChatControlPopoverOpen}>
             <PopoverTrigger asChild>
               <NotionButton
@@ -699,7 +749,10 @@ export const ChatV2Page: React.FC = () => {
           isLoading={isLoading}
           onSelectSession={handleBrowserSelectSession}
           onDeleteSession={deleteSession}
-          onCreateSession={() => createSession()}
+          onCreateSession={() => {
+            setViewMode('sidebar');
+            void createSession();
+          }}
           onRenameSession={handleBrowserRenameSession}
           className="h-full flex-1"
         />
@@ -724,6 +777,7 @@ export const ChatV2Page: React.FC = () => {
         <ChatContainer
           sessionId={currentSessionId}
           className="flex-1 h-full"
+          emptyStateGroupName={currentSessionGroupName}
           onViewAgentSession={handleViewAgentSession}
         />
       ) : (
@@ -851,7 +905,10 @@ export const ChatV2Page: React.FC = () => {
               isLoading={isLoading}
               onSelectSession={handleBrowserSelectSession}
               onDeleteSession={deleteSession}
-              onCreateSession={() => createSession()}
+              onCreateSession={() => {
+                setViewMode('sidebar');
+                void createSession();
+              }}
               onRenameSession={handleBrowserRenameSession}
               className="h-full"
               embeddedMode={true}

@@ -1,0 +1,61 @@
+import { existsSync, readFileSync } from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { describe, expect, it } from 'vitest';
+
+const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
+const messageListPath = path.join(repoRoot, 'src/chat-v2/components/MessageList.tsx');
+const chatContainerPath = path.join(repoRoot, 'src/chat-v2/components/ChatContainer.tsx');
+const chatPagePath = path.join(repoRoot, 'src/chat-v2/pages/ChatV2Page.tsx');
+const oldWorkspaceLabel = ['当前工作区：', 'study-ui'].join('');
+const oldWorkspaceKey = ['workspace', 'Label'].join('');
+const oldWorkspaceHintKey = ['workspace', 'Hint'].join('');
+const oldShowSuggestionsKey = ['show', 'Suggestions'].join('');
+const oldWorkspaceHintText = [
+  '把需求直接发到底部输入区。',
+  '首屏保持安静，只保留当前工作区、主动作和足够的留白。',
+].join('');
+
+function readSource(absolutePath: string) {
+  return existsSync(absolutePath) ? readFileSync(absolutePath, 'utf8') : '';
+}
+
+describe('MessageList empty state source guards', () => {
+  it('keeps the default new-session landing quiet and shows a group label only when provided', () => {
+    const source = readSource(messageListPath);
+    const emptyStateMatch = source.match(/if \(forceEmptyPreview \|\| messageOrder\.length === 0\) \{([\s\S]*?)return \(/);
+    const emptyBlock = emptyStateMatch?.[1] ?? '';
+
+    expect(source).toContain('data-slot="thread-empty-state"');
+    expect(source).toContain('emptyStateGroupName?: string | null');
+    expect(source).toContain('emptyStateGroupName = null');
+    expect(source).toContain('{emptyStateGroupName ? (');
+    expect(source).toContain('<p className="text-base text-muted-foreground">{emptyStateGroupName}</p>');
+    expect(source).toContain("t('messageList.empty.primaryAction'");
+    expect(source).toContain("defaultValue: '我们要开始做什么？'");
+
+    expect(source).not.toContain(`t('chatV2:messageList.empty.${oldWorkspaceKey}'`);
+    expect(source).not.toContain(`defaultValue: '${oldWorkspaceLabel}'`);
+    expect(source).not.toContain(oldWorkspaceLabel);
+    expect(source).not.toContain(`defaultValue: '${oldWorkspaceHintText}'`);
+    expect(source).not.toContain("defaultValue: '查看建议起点'");
+    expect(source).not.toContain('<Sparkles');
+    expect(source).not.toContain('<NotionButton');
+    expect(source).not.toContain(`messageList.empty.${oldWorkspaceHintKey}`);
+    expect(source).not.toContain(`messageList.empty.${oldShowSuggestionsKey}`);
+    expect(emptyBlock).not.toContain("const starterPrompt = t('messageList.empty.suggestion2');");
+  });
+
+  it('passes the active session group name into the empty state', () => {
+    const containerSource = readSource(chatContainerPath);
+    const pageSource = readSource(chatPagePath);
+
+    expect(containerSource).toContain('emptyStateGroupName?: string | null');
+    expect(containerSource).toContain('emptyStateGroupName = null');
+    expect(containerSource).toContain('emptyStateGroupName={emptyStateGroupName}');
+
+    expect(pageSource).toContain('const currentSessionGroupName = currentSession?.groupId');
+    expect(pageSource).toContain('groupNameMap.get(currentSession.groupId) ?? null');
+    expect(pageSource).toContain('emptyStateGroupName={currentSessionGroupName}');
+  });
+});

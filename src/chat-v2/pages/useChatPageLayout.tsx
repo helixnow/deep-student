@@ -60,7 +60,10 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
           variant="primary"
           size="icon"
           iconOnly
-          onClick={() => createSession()}
+          onClick={() => {
+            setViewMode('sidebar');
+            void createSession();
+          }}
           disabled={isLoading}
           aria-label={t('page.newSession')}
           title={t('page.newSession')}

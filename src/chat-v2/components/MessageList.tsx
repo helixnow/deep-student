@@ -14,11 +14,9 @@
 import React, { useRef, useEffect, useCallback, memo, useMemo, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useTranslation } from 'react-i18next';
-import { Sparkles } from 'lucide-react';
 import type { StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { NotionButton } from '@/components/ui/NotionButton';
 import { MessageItem } from './MessageItem';
 import { useMessageOrder, useSessionStatus, useIsDataLoaded } from '../hooks/useChatStore';
 import type { ChatStore } from '../core/types';
@@ -49,6 +47,8 @@ export interface MessageListProps {
   store: StoreApi<ChatStore>;
   /** 自定义类名 */
   className?: string;
+  /** 空态中显示的当前分组名；未分组时不显示 */
+  emptyStateGroupName?: string | null;
   /** 预估消息高度 */
   estimatedItemSize?: number;
   /** 过滤空消息 */
@@ -72,6 +72,7 @@ export interface MessageListProps {
 const MessageListInner: React.FC<MessageListProps> = ({
   store,
   className,
+  emptyStateGroupName = null,
   estimatedItemSize = DEFAULT_ESTIMATED_ITEM_SIZE,
   overscan = 5,
   forceEmptyPreview = false,
@@ -378,8 +379,6 @@ const MessageListInner: React.FC<MessageListProps> = ({
 
   // 空状态
   if (forceEmptyPreview || messageOrder.length === 0) {
-    const starterPrompt = t('messageList.empty.suggestion2');
-
     return (
       <div
         className={cn(
@@ -392,38 +391,19 @@ const MessageListInner: React.FC<MessageListProps> = ({
             <section
               data-slot="thread-empty-state"
               className={cn(
-                'flex w-full flex-col items-center justify-center gap-5 text-center',
+                'flex w-full flex-col items-center justify-center gap-4 text-center',
                 isSmallScreen ? 'py-10' : 'py-16'
               )}
             >
-              <div className="inline-flex size-12 items-center justify-center rounded-full bg-secondary text-muted-foreground">
-                <Sparkles size={20} />
-              </div>
-
-              <div className="space-y-2">
-                <h2 className="text-balance text-xl font-medium text-foreground">
-                  {t('chatV2:page.newSession', { defaultValue: '开始一个新任务' })}
-                </h2>
-                <p className="text-base text-muted-foreground">
-                  {t('chatV2:messageList.empty.workspaceLabel', { defaultValue: '当前工作区：study-ui' })}
-                </p>
-                <p className="mx-auto max-w-[32rem] text-pretty text-sm leading-6 text-muted-foreground">
-                  {t('chatV2:messageList.empty.workspaceHint', {
-                    defaultValue: '把需求直接发到底部输入区。首屏保持安静，只保留当前工作区、主动作和足够的留白。',
-                  })}
-                </p>
-              </div>
-
-              <NotionButton
-                variant="outline"
-                size="lg"
-                className="min-w-36"
-                onClick={() => {
-                  store.getState().setInputValue(starterPrompt);
-                }}
+              {emptyStateGroupName ? (
+                <p className="text-base text-muted-foreground">{emptyStateGroupName}</p>
+              ) : null}
+              <h2
+                data-slot="thread-empty-primary-action"
+                className="text-balance text-xl font-medium text-foreground"
               >
-                {t('chatV2:messageList.empty.showSuggestions', { defaultValue: '查看建议起点' })}
-              </NotionButton>
+                {t('messageList.empty.primaryAction', { defaultValue: '我们要开始做什么？' })}
+              </h2>
             </section>
           </div>
         </div>
@@ -520,6 +500,7 @@ export const MessageList = memo(MessageListInner, (prevProps, nextProps) => {
   return (
     prevProps.store === nextProps.store &&
     prevProps.className === nextProps.className &&
+    prevProps.emptyStateGroupName === nextProps.emptyStateGroupName &&
     prevProps.estimatedItemSize === nextProps.estimatedItemSize &&
     prevProps.overscan === nextProps.overscan &&
     prevProps.forceEmptyPreview === nextProps.forceEmptyPreview
