@@ -27,42 +27,227 @@ type MixedComponentRow = {
   nextStep: string;
 };
 
+type InventoryMetric = {
+  label: string;
+  value: string;
+  detail: string;
+  tone?: string;
+};
+
+type InventoryEntrySystem = {
+  title: string;
+  summary: string;
+  examples: string[];
+};
+
+type ComponentGroup = {
+  title: string;
+  path: string;
+  items: string[];
+};
+
+const scanScopeRows = [
+  '扫描范围：src/ 和 study-ui/src/',
+  '计入文件：1188 个产品源码文件，其中 520 个 TSX 文件',
+  '排除：测试文件、*.source.test.*、src/debug-panel/、src/mcp-debug/、src/components/dev/',
+  '数字口径：refs/files 是 JSX 或原生标签出现次数 / 涉及文件数；imports/files 是 import 语句次数 / 涉及文件数',
+];
+
+const inventoryMetrics: InventoryMetric[] = [
+  {
+    label: 'Native buttons',
+    value: '184',
+    detail: '184 refs / 66 files',
+    tone: 'text-[color:hsl(var(--warning))]',
+  },
+  {
+    label: 'Native controls',
+    value: '198',
+    detail: '198 refs / 83 files',
+    tone: 'text-[color:hsl(var(--warning))]',
+  },
+  {
+    label: 'CSS !important',
+    value: '1,621',
+    detail: 'StyleDebugPage 原写死为 1,568',
+    tone: 'text-[color:hsl(var(--destructive))]',
+  },
+  {
+    label: 'NotionButton refs',
+    value: '1560',
+    detail: '301 import files；1560 JSX refs / 301 files',
+    tone: 'text-[color:hsl(var(--success))]',
+  },
+];
+
+const entrySystems: InventoryEntrySystem[] = [
+  {
+    title: '主应用现行入口',
+    summary: '主产品页面当前主要消费这组组件，后续校对应优先确认它们在真实页面中的状态一致性。',
+    examples: ['NotionButton', 'NotionDialog', 'src/components/ui/shad/*', 'AppMenu', 'CustomScrollArea', 'UnifiedSidebar'],
+  },
+  {
+    title: '迁移实验入口',
+    summary: 'study-ui 里已经形成一套新 shell 和 primitive，用于对照迁移目标与 macOS 风格窗口体验。',
+    examples: ['study-ui/src/components/ui/*', 'study-ui/src/components/shell/*', 'AppChrome', 'ShellButton', 'Titlebar'],
+  },
+  {
+    title: '旧/业务直写入口',
+    summary: '这些入口仍散落在业务页面里，是人工校对时最容易出现尺寸、hover、focus 和圆角不一致的区域。',
+    examples: ['原生 <button>', '原生 <input>', '原生 <select>', '原生 <textarea>', '业务 panel/card/menu 样式'],
+  },
+];
+
 const mixedComponentRows: MixedComponentRow[] = [
   {
     family: 'Button',
     activePaths: ['NotionButton', 'shad Button', 'study-ui Button', '原生 <button>'],
-    productCount: '177 native / 66 files',
+    productCount: 'NotionButton 301 imports；原生 184 refs / 66 files',
     status: 'primary',
-    nextStep: '以 buttonPrimitiveContract 为唯一合同，逐批替换原生按钮。',
+    nextStep: 'NotionButton 已是主入口；study-ui Button 是迁移实验入口；逐批替换原生按钮。',
   },
   {
-    family: 'Dialog / Sheet',
-    activePaths: ['NotionDialog', 'UnifiedModal', 'shad Sheet', 'study-ui Sheet'],
-    productCount: '46 dialog-like files',
+    family: 'Dialog / Overlay / Menu',
+    activePaths: ['NotionDialog', 'shad Sheet/Popover/Tooltip', 'study-ui Dialog/Sheet/Menu', 'AppMenu'],
+    productCount: 'NotionDialog 52 imports；AppMenu 47 imports',
     status: 'watch',
-    nextStep: '保留一个 Dialog 主入口，一个 Sheet 主入口，统一 overlay 与 focus ring。',
+    nextStep: '弹层、Sheet、菜单是最明显的多入口区域；统一 overlay、radius、focus ring。',
   },
   {
     family: 'Form controls',
-    activePaths: ['shad Input', 'AppSelect', 'ModernSelect', '原生控件'],
-    productCount: '195 native controls / 83 files',
+    activePaths: ['shad Input/Textarea/Switch', 'AppSelect', 'study-ui controls', '原生控件'],
+    productCount: 'shad controls 165 imports；原生 198 refs / 83 files',
     status: 'legacy',
-    nextStep: '先迁移设置页、模板页、批量编辑里的 input/select/textarea。',
+    nextStep: '输入控件已有 shad 主路径；选择器和原生控件仍需要按页面收敛。',
   },
   {
     family: 'Surface / Card',
     activePaths: ['shad Card', 'study-ui Surface', '业务 .card / panel'],
-    productCount: '184 raw card refs',
+    productCount: 'shad Card 31 imports；study-ui Card/Surface 6 imports',
     status: 'watch',
-    nextStep: '定义 Surface、Card、Panel 的语义边界，减少业务自定义容器。',
+    nextStep: '定义 Surface、Card、Panel 的语义边界，判断业务 panel 是否继续自定义。',
+  },
+  {
+    family: 'Tabs',
+    activePaths: ['shad Tabs', 'study-ui Tabs'],
+    productCount: 'shad Tabs 16 imports；study-ui Tabs 2 imports',
+    status: 'watch',
+    nextStep: '两套 Tabs 同时存在；迁移期间避免同一页面内混搭。',
+  },
+  {
+    family: 'Sidebar / Shell / Layout',
+    activePaths: ['ModernSidebar', 'UnifiedSidebar', 'main layout', 'study-ui shell'],
+    productCount: 'UnifiedSidebar 8 imports；study-ui shell 2 imports',
+    status: 'watch',
+    nextStep: '重点校对导航行、标题栏、窗口控制、折叠态和 macOS safe area。',
+  },
+  {
+    family: 'Scroll',
+    activePaths: ['CustomScrollArea', 'shad ScrollArea'],
+    productCount: 'CustomScrollArea 111 imports；shad ScrollArea 0 imports',
+    status: 'primary',
+    nextStep: '滚动容器基本集中；继续确认各页面 viewport padding 和滚动条密度。',
+  },
+  {
+    family: 'Feedback / Status',
+    activePaths: ['Badge', 'Alert', 'Progress', 'Skeleton', 'UnifiedNotification'],
+    productCount: 'shad feedback 101 imports；notification 146 imports',
+    status: 'watch',
+    nextStep: '区分局部 badge/progress 与全局 notification，状态色只走语义 token。',
+  },
+  {
+    family: 'Icons',
+    activePaths: ['lucide-react', 'Phosphor', 'StudySidebarIcons'],
+    productCount: 'lucide 370 imports；Phosphor main/study-ui 40 imports',
+    status: 'legacy',
+    nextStep: '人工校对同屏图标的线宽、尺寸、视觉重量和 filled/outline 风格。',
+  },
+  {
+    family: 'Specialist widgets',
+    activePaths: ['CodeMirror', 'Milkdown', 'Recharts', 'XYFlow', 'DnD libs', 'resizable panels'],
+    productCount: 'CodeMirror 15；Milkdown 22；XYFlow 21；DnD 35 imports',
+    status: 'target',
+    nextStep: '领域组件不强行并入 primitive，但外层 shell、surface、token 要一致。',
   },
   {
     family: 'Color tokens',
     activePaths: ['theme-colors.css', 'shadcn-variables.css', '局部 Tailwind color'],
-    productCount: '1,568 !important',
+    productCount: '1,621 !important',
     status: 'target',
     nextStep: '颜色只通过语义 token 消费，业务组件不再直接发明视觉规则。',
   },
+];
+
+const mainComponentGroups: ComponentGroup[] = [
+  {
+    title: '当前可用主应用组件',
+    path: 'src/components/ui',
+    items: ['CommandPalette', 'NotionButton', 'NotionDialog', 'ProviderIcon', 'SiliconFlowLogo', 'SnappySlider'],
+  },
+  {
+    title: '主应用 shad primitives',
+    path: 'src/components/ui/shad',
+    items: [
+      'Alert',
+      'Badge',
+      'Breadcrumb',
+      'Button',
+      'Card',
+      'Checkbox',
+      'Collapsible',
+      'CollapsibleModelSelector',
+      'Combobox',
+      'Command',
+      'Dialog',
+      'Input',
+      'Label',
+      'Popover',
+      'Progress',
+      'ScrollArea',
+      'Separator',
+      'Sheet',
+      'Skeleton',
+      'Slider',
+      'Switch',
+      'Table',
+      'Tabs',
+      'TagInput',
+      'Textarea',
+      'Tooltip',
+    ],
+  },
+  {
+    title: '主应用 menu/select',
+    path: 'src/components/ui/app-menu',
+    items: ['AppMenu', 'AppMenuContent', 'AppMenuGroup', 'AppMenuItem', 'AppMenuSeparator', 'AppMenuSwitchItem', 'AppMenuTrigger', 'AppSelect'],
+  },
+  {
+    title: '主应用 sidebar',
+    path: 'src/components/ui/unified-sidebar',
+    items: ['MobileSidebarLayout', 'SidebarDrawer', 'SidebarSheet', 'UnifiedSidebar', 'UnifiedSidebarSection'],
+  },
+];
+
+const studyUiComponentGroups: ComponentGroup[] = [
+  {
+    title: '当前可用 study-ui 组件',
+    path: 'study-ui/src/components/ui',
+    items: ['button', 'card', 'dialog', 'dropdown-menu', 'input', 'sheet', 'surface', 'switch', 'tabs', 'textarea', 'tooltip'],
+  },
+  {
+    title: 'study-ui shell',
+    path: 'study-ui/src/components/shell',
+    items: ['AppChrome', 'FramelessResizeHandles', 'ShellButton', 'Sidebar', 'SidebarUpdateBadge', 'Titlebar', 'WindowControls'],
+  },
+];
+
+const reviewTargets = [
+  '样式调试台：src/components/style-lab/StyleDebugPage.tsx',
+  '主 Shell：src/App.tsx、src/components/ModernSidebar.tsx、src/components/layout/*',
+  'Chat V2：src/chat-v2/pages/ChatV2Page.tsx、src/chat-v2/components/input-bar/InputBarUI.tsx',
+  'Settings：src/components/Settings.tsx、src/components/settings/*',
+  'Learning Hub / Notes：src/components/learning-hub/*、src/components/notes/*',
+  'study-ui demo shell：study-ui/src/App.tsx、study-ui/src/components/shell/*、study-ui/src/components/content/*',
 ];
 
 const primitiveGoals = [
@@ -124,11 +309,103 @@ function SectionHeader({
   );
 }
 
-function MetricTile({ label, value, tone }: { label: string; value: string; tone?: string }) {
+function MetricTile({ label, value, detail, tone }: { label: string; value: string; detail?: string; tone?: string }) {
   return (
     <div className="min-w-0 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] px-3 py-3">
       <p className="truncate text-xs text-[color:var(--text-secondary)]">{label}</p>
       <p className={cn('mt-1 truncate text-lg font-semibold text-[color:var(--text-primary)]', tone)}>{value}</p>
+      {detail ? <p className="mt-1 truncate text-[11px] leading-4 text-[color:var(--text-secondary)]">{detail}</p> : null}
+    </div>
+  );
+}
+
+function ScanScopePanel() {
+  return (
+    <div className="grid gap-2 lg:grid-cols-2">
+      {scanScopeRows.map((row) => (
+        <div
+          key={row}
+          className="rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] px-3 py-2 text-xs leading-5 text-[color:var(--text-secondary)]"
+        >
+          {row}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function EntrySystemsPanel() {
+  return (
+    <div className="grid gap-3 xl:grid-cols-3">
+      {entrySystems.map((system) => (
+        <section
+          key={system.title}
+          className="min-w-0 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] p-4"
+        >
+          <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">{system.title}</h3>
+          <p className="mt-2 text-xs leading-5 text-[color:var(--text-secondary)]">{system.summary}</p>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {system.examples.map((example) => (
+              <Badge
+                key={example}
+                variant="outline"
+                className="max-w-full border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] text-[color:var(--text-secondary)]"
+              >
+                <span className="truncate">{example}</span>
+              </Badge>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function ComponentGroupList({ groups }: { groups: ComponentGroup[] }) {
+  return (
+    <div className="grid gap-3 xl:grid-cols-2">
+      {groups.map((group) => (
+        <section
+          key={group.path}
+          className="min-w-0 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] p-4"
+        >
+          <div className="flex min-w-0 flex-wrap items-baseline justify-between gap-2">
+            <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">{group.title}</h3>
+            <code className="max-w-full truncate rounded bg-[color:var(--surface-root)] px-2 py-1 text-[11px] text-[color:var(--text-secondary)]">
+              {group.path}
+            </code>
+          </div>
+          <div className="mt-3 flex flex-wrap gap-1.5">
+            {group.items.map((item) => (
+              <Badge
+                key={item}
+                variant="outline"
+                className="border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] text-[color:var(--text-secondary)]"
+              >
+                {item}
+              </Badge>
+            ))}
+          </div>
+        </section>
+      ))}
+    </div>
+  );
+}
+
+function ReviewTargetsPanel() {
+  return (
+    <div className="grid gap-2 lg:grid-cols-2">
+      {reviewTargets.map((target, index) => (
+        <div
+          key={target}
+          className="flex min-w-0 items-start gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] px-3 py-2"
+        >
+          <span className="mt-0.5 flex size-5 shrink-0 items-center justify-center rounded border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] text-[11px] font-semibold text-[color:var(--text-secondary)]">
+            {index + 1}
+          </span>
+          <p className="min-w-0 text-xs leading-5 text-[color:var(--text-secondary)]">{target}</p>
+        </div>
+      ))}
     </div>
   );
 }
@@ -509,10 +786,15 @@ export function StyleDebugPage() {
             </div>
           </div>
           <div className="grid grid-cols-2 gap-2">
-            <MetricTile label="Native buttons" value="177" tone="text-[color:hsl(var(--warning))]" />
-            <MetricTile label="Native controls" value="195" tone="text-[color:hsl(var(--warning))]" />
-            <MetricTile label="CSS !important" value="1,568" tone="text-[color:hsl(var(--destructive))]" />
-            <MetricTile label="NotionButton refs" value="302" tone="text-[color:hsl(var(--success))]" />
+            {inventoryMetrics.map((metric) => (
+              <MetricTile
+                key={metric.label}
+                label={metric.label}
+                value={metric.value}
+                detail={metric.detail}
+                tone={metric.tone}
+              />
+            ))}
           </div>
         </section>
 
@@ -520,6 +802,7 @@ export function StyleDebugPage() {
           <TabsList>
             <TabsTrigger value="previews">重复组件预览</TabsTrigger>
             <TabsTrigger value="inventory">混用清单</TabsTrigger>
+            <TabsTrigger value="components">组件列表</TabsTrigger>
             <TabsTrigger value="primitives">Primitive 样例</TabsTrigger>
             <TabsTrigger value="tokens">Token 校对</TabsTrigger>
           </TabsList>
@@ -532,9 +815,29 @@ export function StyleDebugPage() {
             <SectionHeader
               icon={SplitSquareHorizontal}
               title="当前混用组件"
-              description="这些族在产品主体里同时存在多个入口；后续迁移应逐步压缩到一个 token 系统和少数稳定 primitive。"
+              description="静态扫描结果用于人工校对真实页面状态；这些族在产品主体里同时存在多个入口，后续迁移应逐步压缩到一个 token 系统和少数稳定 primitive。"
             />
+            <ScanScopePanel />
+            <EntrySystemsPanel />
             <MixedComponentTable />
+            <div className="space-y-3">
+              <SectionHeader
+                icon={CheckCircle2}
+                title="人工校对页面"
+                description="优先用这些真实页面区域确认组件外观、交互状态和迁移后的页面状态是否一致。"
+              />
+              <ReviewTargetsPanel />
+            </div>
+          </TabsContent>
+
+          <TabsContent value="components" className="space-y-4">
+            <SectionHeader
+              icon={Layers3}
+              title="当前用到的组件"
+              description="这里按源码目录列出当前可用组件，方便人工从真实页面反查具体实现入口。"
+            />
+            <ComponentGroupList groups={mainComponentGroups} />
+            <ComponentGroupList groups={studyUiComponentGroups} />
           </TabsContent>
 
           <TabsContent value="primitives" className="space-y-4">
