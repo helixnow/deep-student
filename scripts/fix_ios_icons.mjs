@@ -6,6 +6,7 @@ import sharp from 'sharp';
 const repoRoot = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
 
 const targets = [
+  path.join(repoRoot, 'src-tauri', 'icons', 'ios'),
   path.join(repoRoot, 'src-tauri', 'icons_ios_current'),
   path.join(repoRoot, 'src-tauri', 'gen', 'apple', 'Assets.xcassets', 'AppIcon.appiconset'),
 ];
@@ -53,4 +54,3 @@ main().catch((e) => {
   console.error(e);
   process.exit(1);
 });
-
