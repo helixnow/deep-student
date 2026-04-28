@@ -114,3 +114,31 @@ describe('apiCapabilityEngine NVIDIA model inference', () => {
     expect(caps.contextWindow).toBe(1_000_000);
   });
 });
+
+describe('apiCapabilityEngine Xiaomi MiMo model inference', () => {
+  it('recognizes MiMo V2.5 Pro as a reasoning-capable tool model with 1M context', () => {
+    const caps = inferApiCapabilities({
+      id: 'mimo-v2.5-pro',
+      providerScope: 'mimo',
+    });
+
+    expect(caps.embedding).toBe(false);
+    expect(caps.rerank).toBe(false);
+    expect(caps.reasoning).toBe(true);
+    expect(caps.functionCalling).toBe(true);
+    expect(caps.supportsHybridReasoning).toBe(true);
+    expect(caps.contextWindow).toBe(1_000_000);
+  });
+
+  it('recognizes MiMo V2.5 as multimodal and 1M context capable', () => {
+    const caps = inferApiCapabilities({
+      id: 'mimo-v2.5',
+      providerScope: 'mimo',
+    });
+
+    expect(caps.vision).toBe(true);
+    expect(caps.reasoning).toBe(true);
+    expect(caps.functionCalling).toBe(true);
+    expect(caps.contextWindow).toBe(1_000_000);
+  });
+});

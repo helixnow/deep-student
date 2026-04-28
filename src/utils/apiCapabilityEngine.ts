@@ -48,6 +48,8 @@ const EMBEDDING_REGEX = /(?:^text-|embed|bge-|e5-|llm2vec|retrieval|uae-|gte-|ji
 const RERANK_REGEX = /(?:rerank|re-rank|re-ranker|re-ranking|retrieval|retriever)/i;
 
 const IMAGE_MODEL_REGEX = /flux|diffusion|stabilityai|sd-|dall|cogview|janus|midjourney|mj-|image|gpt-image/i;
+const MIMO_CHAT_REGEX = /^mimo-v2(?:\.5)?(?:-(?:pro|flash))?$|^mimo-v2-omni$/i;
+const MIMO_MULTIMODAL_REGEX = /^mimo-v2\.5$|^mimo-v2-omni$/i;
 
 const IMAGE_MODEL_ID_SET = new Set(
   [
@@ -175,7 +177,7 @@ const VISION_EXCLUDED_REGEXES: RegExp[] = [
 
 // 函数调用支持白名单：OpenAI GPT系列、o系列、各厂商主流模型
 // 2026-02: 添加 doubao-seed-2.0, MiniMax-M2.5, GLM-5, grok-4.1 支持
-const FUNCTION_CALLING_WHITELIST_REGEX = /(gpt-4o-mini|gpt-4o|gpt-4\.1|gpt-4\.5|gpt-4(?!-\d)|gpt-oss|gpt-5|o[134]\b|o3-pro|codex-mini|computer-use|claude|qwen3?|hunyuan|deepseek|glm-(?:4(?:\.[5-7])?|5(?:\.\d+)?)|learnlm|gemini(?!.*embedding)|grok-[34]|doubao-seed-(?:1(?:\.[68]|-[68])|2(?:\.0|-0))|kimi-(?:k2(?:\.5|-5)?|latest|vl)|ling-[\w-]+|ring-[\w-]+|minimax-m2(?:\.\d)?|devstral|nemotron-3-(?:nano|super|ultra))/i;
+const FUNCTION_CALLING_WHITELIST_REGEX = /(gpt-4o-mini|gpt-4o|gpt-4\.1|gpt-4\.5|gpt-4(?!-\d)|gpt-oss|gpt-5|o[134]\b|o3-pro|codex-mini|computer-use|claude|qwen3?|hunyuan|deepseek|glm-(?:4(?:\.[5-7])?|5(?:\.\d+)?)|learnlm|gemini(?!.*embedding)|grok-[34]|doubao-seed-(?:1(?:\.[68]|-[68])|2(?:\.0|-0))|kimi-(?:k2(?:\.5|-5)?|latest|vl)|ling-[\w-]+|ring-[\w-]+|minimax-m2(?:\.\d)?|devstral|nemotron-3-(?:nano|super|ultra)|mimo-v2(?:\.5)?(?:-(?:pro|flash))?|mimo-v2-omni)/i;
 
 const FUNCTION_CALLING_EXCLUDED_REGEXES: RegExp[] = [
   /\baqa\b/i,
@@ -189,6 +191,7 @@ const FUNCTION_CALLING_EXCLUDED_REGEXES: RegExp[] = [
   /glm-(?:4(?:\.[0-4])?v)/i, // 仅排除 GLM-4.4V 及以下（4.5V+ 原生支持工具调用）
   /hunyuan-mt/i, // 排除 Hunyuan-MT 翻译系列，不支持工具调用
   /deepseek-v3\.2-speciale/i, // DeepSeek V3.2-Speciale 不支持工具调用
+  /mimo-v2(?:\.5)?-tts/i, // MiMo TTS 系列不支持工具调用
 ];
 
 // Web Search 支持白名单
@@ -308,6 +311,8 @@ const CONTEXT_WINDOW_RULES: Array<{ pattern: RegExp; window: number }> = [
   { pattern: /deepseek-v4|^deepseek-(?:chat|reasoner)$/i, window: 1_000_000 },
   // NVIDIA Nemotron 3 系列：NIM/API Catalog 暴露 1M 级上下文窗口
   { pattern: /nemotron-3-(?:nano|super|ultra)/i, window: 1_000_000 },
+  // Xiaomi MiMo V2.5 Pro / V2 Pro / V2.5：官方 1M context
+  { pattern: /(?:^|\s)(?:mimo-v2\.5-pro|mimo-v2-pro|mimo-v2\.5)(?:\s|$)/i, window: 1_000_000 },
 
   // --- 2M 级 ---
   // Grok 4.1 Fast / Grok 4 Fast：2,000,000 tokens（xAI 官方 2025-11）
@@ -334,6 +339,8 @@ const CONTEXT_WINDOW_RULES: Array<{ pattern: RegExp; window: number }> = [
   { pattern: /qwen3?-max|qwen-long/i, window: 256_000 },
   // Doubao 256K 变体 + Seed 系列：256K tokens（火山引擎官方）
   { pattern: /doubao.*256k|doubao-seed/i, window: 256_000 },
+  // Xiaomi MiMo V2 Flash / Omni：官方 256K context
+  { pattern: /(?:^|\s)(?:mimo-v2(?:\.5)?-flash|mimo-v2-omni)(?:\s|$)/i, window: 256_000 },
   // Mistral Large 3：256K tokens（Mistral 官方 2025-12，675B MoE）
   { pattern: /mistral-large-3/i, window: 256_000 },
 
@@ -440,7 +447,7 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
   } else if (modelCapabilities) {
     reasoning = modelCapabilities.reasoning;
   } else if (!embedding && !rerank && !imageModel) {
-    reasoning = REASONING_REGEX.test(id) || (name ? REASONING_REGEX.test(name) : false);
+    reasoning = REASONING_REGEX.test(id) || MIMO_CHAT_REGEX.test(id) || (name ? REASONING_REGEX.test(name) || MIMO_CHAT_REGEX.test(name) : false);
   }
 
   const visionOverride = getOverride(descriptor, 'vision');
@@ -450,7 +457,7 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
   } else if (modelCapabilities) {
     vision = modelCapabilities.vision;
   } else if (!embedding && !rerank) {
-    const allowed = matchesPatternList(id, VISION_ALLOWED_PATTERNS) || (name ? matchesPatternList(name, VISION_ALLOWED_PATTERNS) : false);
+    const allowed = matchesPatternList(id, VISION_ALLOWED_PATTERNS) || MIMO_MULTIMODAL_REGEX.test(id) || (name ? matchesPatternList(name, VISION_ALLOWED_PATTERNS) || MIMO_MULTIMODAL_REGEX.test(name) : false);
     const excluded = matchesRegexList(id, VISION_EXCLUDED_REGEXES) || (name ? matchesRegexList(name, VISION_EXCLUDED_REGEXES) : false);
     vision = allowed && !excluded;
   }
@@ -582,11 +589,13 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
       isPerplexityReasoning ||
       isRegistryReasoningTokens);
 
+  const isMimoHybridReasoning = MIMO_CHAT_REGEX.test(id) || (name ? MIMO_CHAT_REGEX.test(name) : false);
+
   const supportsHybridReasoning =
     !embedding &&
     !rerank &&
     !imageModel &&
-    (DEEPSEEK_HYBRID_REGEXES.some(regex => regex.test(id)) || isRegistryHybridReasoning);
+    (DEEPSEEK_HYBRID_REGEXES.some(regex => regex.test(id)) || isMimoHybridReasoning || isRegistryHybridReasoning);
 
   // 上下文窗口推断：使用 id + name 拼接作为指纹，提高匹配率
   const inferredWindow = inferContextWindow(`${id} ${name}`);

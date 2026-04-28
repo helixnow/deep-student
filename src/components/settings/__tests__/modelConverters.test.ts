@@ -136,3 +136,46 @@ describe('settings modelConverters NVIDIA provider support', () => {
     expect(api.thinkingBudget).toBeUndefined();
   });
 });
+
+describe('settings modelConverters Xiaomi MiMo provider support', () => {
+  it('detects Xiaomi MiMo API hosts as the mimo provider type', () => {
+    expect(inferProviderTypeFromBaseUrl('https://api.xiaomimimo.com/v1')).toBe('mimo');
+    expect(inferProviderTypeFromBaseUrl('https://token-plan-cn.xiaomimimo.com/v1')).toBe('mimo');
+    expect(inferProviderTypeFromBaseUrl('https://token-plan-sgp.xiaomimimo.com/v1')).toBe('mimo');
+    expect(inferProviderTypeFromBaseUrl('https://token-plan-ams.xiaomimimo.com/v1')).toBe('mimo');
+  });
+
+  it('round-trips MiMo models through the dedicated adapter path', () => {
+    const mimoVendor: VendorConfig = {
+      ...baseVendor,
+      id: 'builtin-mimo',
+      name: 'Xiaomi MiMo',
+      providerType: 'mimo',
+      baseUrl: 'https://api.xiaomimimo.com/v1',
+    };
+    const profile: ModelProfile = {
+      ...baseProfile,
+      vendorId: 'builtin-mimo',
+      label: 'MiMo V2.5 Pro',
+      model: 'mimo-v2.5-pro',
+      providerScope: 'mimo',
+      modelAdapter: 'mimo' as ModelProfile['modelAdapter'],
+      reasoningEffort: undefined,
+      thinkingBudget: undefined,
+      enableThinking: true,
+      thinkingEnabled: true,
+      includeThoughts: true,
+    };
+
+    const api = convertProfileToApiConfig(profile, mimoVendor);
+    expect(api.providerType).toBe('mimo');
+    expect(api.providerScope).toBe('mimo');
+    expect(api.modelAdapter).toBe('mimo');
+    expect(api.enableThinking).toBe(true);
+
+    const roundTripped = convertApiConfigToProfile(api, mimoVendor.id);
+    expect(roundTripped.modelAdapter).toBe('mimo');
+    expect(roundTripped.providerScope).toBe('mimo');
+    expect(roundTripped.includeThoughts).toBe(true);
+  });
+});

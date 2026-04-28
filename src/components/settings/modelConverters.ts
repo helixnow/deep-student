@@ -179,6 +179,9 @@ export const inferProviderTypeFromBaseUrl = (baseUrl?: string | null): string | 
   if (lowerBaseUrl.includes('integrate.api.nvidia.com')) {
     return 'nvidia';
   }
+  if (lowerBaseUrl.includes('xiaomimimo.com')) {
+    return 'mimo';
+  }
 
   return undefined;
 };
@@ -198,5 +201,6 @@ export const providerTypeFromConfig = (providerType?: string | null, adapter?: s
   if (adapter === 'ernie') return 'ernie';
   if (adapter === 'mistral') return 'mistral';
   if (adapter === 'nvidia') return 'nvidia';
+  if (adapter === 'mimo') return 'mimo';
   return 'openai';
 };

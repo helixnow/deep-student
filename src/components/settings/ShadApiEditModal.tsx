@@ -58,6 +58,7 @@ const SUPPORTED_MODEL_ADAPTERS = [
   'moonshot',   // Kimi/Moonshot
   'grok',       // xAI Grok
   'minimax',    // MiniMax
+  'mimo',       // Xiaomi MiMo
 ] as const;
 
 const ADAPTER_DEFAULT_BASE_URL: Record<string, string> = {
@@ -71,6 +72,7 @@ const ADAPTER_DEFAULT_BASE_URL: Record<string, string> = {
   moonshot: 'https://api.moonshot.cn/v1',
   grok: 'https://api.x.ai/v1',
   minimax: 'https://api.minimax.io/v1',
+  mimo: 'https://api.xiaomimimo.com/v1',
 };
 
 export const GENERAL_DEFAULT_MIN_P = 0.05;
@@ -434,6 +436,11 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
         label: t('common:api_config_modal.adapter_minimax'),
         description: t('common:api_config_modal.adapter_minimax_desc'),
       },
+      {
+        value: 'mimo',
+        label: t('common:api_config_modal.adapter_mimo', 'Xiaomi MiMo'),
+        description: t('common:api_config_modal.adapter_mimo_desc', 'MiMo series, supports thinking.type and reasoning_content'),
+      },
     ],
     [t]
   );
@@ -471,6 +478,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
       general: { temperature: 0.7, maxOutputTokens: 8192 },
       google: { temperature: 0.7, maxOutputTokens: 8192 },
       anthropic: { temperature: 0.7, maxOutputTokens: 4096 },
+      mimo: { temperature: 1.0, maxOutputTokens: 32768 },
     };
     if (formData.modelAdapter && recommended[formData.modelAdapter]) {
       setFormData(prev => ({
@@ -608,6 +616,10 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
     } else if (hasThinkingDefaults) {
       // Non-DeepSeek adapters historically use this flag as the guard for provider thinking fields.
       sanitized.supportsReasoning = true;
+    }
+    if (sanitized.modelAdapter === 'mimo') {
+      sanitized.reasoningEffort = undefined;
+      sanitized.thinkingBudget = undefined;
     }
     if (!sanitized.supportsReasoning) {
       sanitized.enableThinking = false;
@@ -1123,6 +1135,55 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           />
                         </div>
                       </div>
+                    </div>
+                  )}
+
+                  {/* Xiaomi MiMo 专用面板 */}
+                  {formData.modelAdapter === 'mimo' && (
+                    <div className="space-y-6">
+                      <Card className="border-border/40 bg-transparent shadow-none">
+                        <CardHeader className="pb-3">
+                          <CardTitle className="text-sm flex items-center gap-2">
+                            <Atom className="h-4 w-4 text-primary" />
+                            {t('settings:api.modal.mimo.title', 'Xiaomi MiMo')}
+                          </CardTitle>
+                          <CardDescription className="text-xs">
+                            {t('settings:api.modal.mimo.description', 'Uses thinking.type and returns reasoning_content for thinking mode.')}
+                          </CardDescription>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                          <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-all duration-200", formData.enableThinking ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
+                            <div className="space-y-1">
+                              <Label className="text-sm font-medium cursor-pointer" onClick={() => formData.supportsReasoning && setFormData(prev => ({ ...prev, enableThinking: !prev.enableThinking, thinkingEnabled: !prev.enableThinking }))}>
+                                {t('settings:api.modal.mimo.enable_thinking', 'Thinking Mode')}
+                              </Label>
+                              <p className="text-xs text-muted-foreground/70">
+                                {t('settings:api.modal.mimo.enable_thinking_hint', 'Maps to thinking.type enabled or disabled.')}
+                              </p>
+                            </div>
+                            <Switch
+                              checked={!!formData.enableThinking}
+                              disabled={!formData.supportsReasoning}
+                              onCheckedChange={v => setFormData(prev => ({ ...prev, enableThinking: !!v, thinkingEnabled: !!v }))}
+                            />
+                          </div>
+                          <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-all duration-200", formData.includeThoughts ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
+                            <div className="space-y-1">
+                              <Label className="text-sm font-medium cursor-pointer" onClick={() => formData.supportsReasoning && setFormData(prev => ({ ...prev, includeThoughts: !prev.includeThoughts }))}>
+                                {t('settings:api.modal.mimo.preserve_reasoning', 'Preserve Reasoning')}
+                              </Label>
+                              <p className="text-xs text-muted-foreground/70">
+                                {t('settings:api.modal.mimo.preserve_reasoning_hint', 'Keeps returned reasoning_content in multi-turn tool conversations.')}
+                              </p>
+                            </div>
+                            <Switch
+                              checked={!!formData.includeThoughts}
+                              disabled={!formData.supportsReasoning}
+                              onCheckedChange={v => setFormData(prev => ({ ...prev, includeThoughts: !!v }))}
+                            />
+                          </div>
+                        </CardContent>
+                      </Card>
                     </div>
                   )}
 

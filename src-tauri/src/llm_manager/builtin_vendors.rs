@@ -138,6 +138,16 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         max_tokens_limit: None,
         website_url: "https://build.nvidia.com/nim",
     },
+    // Xiaomi MiMo
+    BuiltinVendor {
+        id: "builtin-mimo",
+        name: "Xiaomi MiMo",
+        provider_type: "mimo",
+        base_url: "https://api.xiaomimimo.com/v1",
+        notes: "Xiaomi MiMo API。优先内置 MiMo V2.5-Pro 与 MiMo V2.5（1M context，OpenAI-compatible Chat Completions）；Token Plan 可将 Base URL 改为 token-plan-*.xiaomimimo.com/v1。支持 thinking: { type } 与 reasoning_content 回传。V2.5 TTS/ASR 属语音专项能力，当前不放入聊天模型默认列表。",
+        max_tokens_limit: None,
+        website_url: "https://platform.xiaomimimo.com",
+    },
 ];
 
 /// 所有内置模型列表
@@ -669,6 +679,62 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         max_output_tokens: 8192,
         temperature: 0.7,
     },
+    // ===== Xiaomi MiMo 模型 =====
+    BuiltinModel {
+        id: "builtin-mimo-v2.5-pro",
+        vendor_id: "builtin-mimo",
+        label: "MiMo V2.5 Pro",
+        model: "mimo-v2.5-pro",
+        is_multimodal: false,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 131072,
+        temperature: 1.0,
+    },
+    BuiltinModel {
+        id: "builtin-mimo-v2.5",
+        vendor_id: "builtin-mimo",
+        label: "MiMo V2.5",
+        model: "mimo-v2.5",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 32768,
+        temperature: 1.0,
+    },
+    BuiltinModel {
+        id: "builtin-mimo-v2-pro",
+        vendor_id: "builtin-mimo",
+        label: "MiMo V2 Pro",
+        model: "mimo-v2-pro",
+        is_multimodal: false,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 131072,
+        temperature: 1.0,
+    },
+    BuiltinModel {
+        id: "builtin-mimo-v2-omni",
+        vendor_id: "builtin-mimo",
+        label: "MiMo V2 Omni",
+        model: "mimo-v2-omni",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 32768,
+        temperature: 1.0,
+    },
+    BuiltinModel {
+        id: "builtin-mimo-v2-flash",
+        vendor_id: "builtin-mimo",
+        label: "MiMo V2 Flash",
+        model: "mimo-v2-flash",
+        is_multimodal: false,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 65536,
+        temperature: 0.3,
+    },
 ];
 
 /// 将内置供应商定义转换为 VendorConfig
@@ -727,6 +793,8 @@ impl BuiltinModel {
             ("deepseek".to_string(), None)
         } else if self.vendor_id == "builtin-nvidia" {
             ("general".to_string(), None)
+        } else if self.vendor_id == "builtin-mimo" {
+            ("mimo".to_string(), None)
         } else {
             ("openai".to_string(), None)
         };
@@ -735,7 +803,10 @@ impl BuiltinModel {
         } else {
             None
         };
-        let use_reasoning_defaults = self.is_reasoning && self.vendor_id != "builtin-nvidia";
+        let use_reasoning_defaults = self.is_reasoning
+            && self.vendor_id != "builtin-nvidia"
+            && !(self.vendor_id == "builtin-mimo"
+                && matches!(self.model, "mimo-v2-flash" | "mimo-v2.5-flash"));
 
         ModelProfile {
             id: self.id.to_string(),
@@ -815,6 +886,16 @@ pub(crate) fn deepseek_context_window(model: &str) -> Option<u32> {
         || normalized.contains("nemotron-3-ultra")
     {
         Some(1_000_000)
+    } else if matches!(
+        normalized.as_str(),
+        "mimo-v2.5-pro" | "mimo-v2-pro" | "mimo-v2.5"
+    ) {
+        Some(1_000_000)
+    } else if matches!(
+        normalized.as_str(),
+        "mimo-v2-flash" | "mimo-v2.5-flash" | "mimo-v2-omni"
+    ) {
+        Some(256_000)
     } else {
         None
     }
@@ -843,6 +924,13 @@ mod tests {
             .iter()
             .find(|vendor| vendor.id == "builtin-nvidia")
             .expect("builtin NVIDIA vendor should exist")
+    }
+
+    fn mimo_vendor() -> &'static BuiltinVendor {
+        BUILTIN_VENDORS
+            .iter()
+            .find(|vendor| vendor.id == "builtin-mimo")
+            .expect("builtin Xiaomi MiMo vendor should exist")
     }
 
     #[test]
@@ -913,5 +1001,52 @@ mod tests {
         assert_eq!(llama.model, "meta/llama-3.1-405b-instruct");
         assert_eq!(llama.model_adapter, "general");
         assert!(llama.reasoning_effort.is_none());
+    }
+
+    #[test]
+    fn mimo_builtin_vendor_uses_openai_compatible_endpoint() {
+        let vendor = mimo_vendor();
+
+        assert_eq!(vendor.name, "Xiaomi MiMo");
+        assert_eq!(vendor.provider_type, "mimo");
+        assert_eq!(vendor.base_url, "https://api.xiaomimimo.com/v1");
+        assert!(vendor.notes.contains("OpenAI-compatible"));
+        assert!(vendor.notes.contains("Token Plan"));
+        assert!(vendor.website_url.contains("xiaomimimo.com"));
+    }
+
+    #[test]
+    fn mimo_builtin_vendor_notes_call_out_v25_scope() {
+        let vendor = mimo_vendor();
+
+        assert!(vendor.notes.contains("V2.5-Pro"));
+        assert!(vendor.notes.contains("V2.5"));
+        assert!(vendor.notes.contains("TTS"));
+        assert!(vendor.notes.contains("ASR"));
+    }
+
+    #[test]
+    fn mimo_builtin_profiles_use_mimo_adapter_and_thinking_defaults() {
+        let pro = builtin_model("builtin-mimo-v2.5-pro").to_model_profile();
+        let omni = builtin_model("builtin-mimo-v2.5").to_model_profile();
+        let flash = builtin_model("builtin-mimo-v2-flash").to_model_profile();
+
+        assert_eq!(pro.vendor_id, "builtin-mimo");
+        assert_eq!(pro.provider_scope.as_deref(), Some("mimo"));
+        assert_eq!(pro.model_adapter, "mimo");
+        assert_eq!(pro.model, "mimo-v2.5-pro");
+        assert!(pro.is_reasoning);
+        assert!(pro.thinking_enabled);
+        assert!(pro.include_thoughts);
+        assert_eq!(pro.max_output_tokens, 131_072);
+        assert_eq!(pro.context_window, Some(1_000_000));
+
+        assert_eq!(omni.model, "mimo-v2.5");
+        assert!(omni.is_multimodal);
+        assert_eq!(omni.context_window, Some(1_000_000));
+
+        assert_eq!(flash.model, "mimo-v2-flash");
+        assert_eq!(flash.max_output_tokens, 65_536);
+        assert_eq!(flash.context_window, Some(256_000));
     }
 }

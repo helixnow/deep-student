@@ -20,7 +20,8 @@ export type ModelAdapterType =
   | 'grok'         // xAI Grok
   | 'minimax'      // MiniMax
   | 'ernie'        // 百度文心
-  | 'mistral';     // Mistral
+  | 'mistral'      // Mistral
+  | 'mimo';        // Xiaomi MiMo
 
 export interface BasicModelDescriptor {
   id: string;
@@ -76,6 +77,10 @@ const isNvidiaProvider = (options?: ModelDefaultParameterOptions | { providerSco
 
 function detectAdapterById(lowerId: string, providerScope?: string): ModelAdapterType {
   if (providerScope?.toLowerCase() === 'nvidia') return 'general';
+  if (providerScope?.toLowerCase() === 'mimo') return 'mimo';
+
+  // Xiaomi MiMo 系列
+  if (lowerId.includes('mimo-v')) return 'mimo';
 
   // DeepSeek 系列
   if (lowerId.includes('deepseek')) return 'deepseek';
@@ -160,6 +165,11 @@ export function inferCapabilities(modelLike: BasicModelDescriptor | string): Inf
 
 const isDeepSeekV4Id = (lowerId: string): boolean => lowerId.includes('deepseek-v4');
 const isDeepSeekLegacyAlias = (lowerId: string): boolean => lowerId === 'deepseek-chat' || lowerId === 'deepseek-reasoner';
+const isMimoProvider = (options?: ModelDefaultParameterOptions): boolean => {
+  const providerScope = options?.providerScope?.toLowerCase();
+  const providerType = options?.providerType?.toLowerCase();
+  return providerScope === 'mimo' || providerType === 'mimo';
+};
 
 // 统一默认参数
 export function getModelDefaultParameters(modelId: string, options: ModelDefaultParameterOptions = {}): ModelDefaultParams {
@@ -186,6 +196,21 @@ export function getModelDefaultParameters(modelId: string, options: ModelDefault
       return { maxOutputTokens: 8192, temperature: 0.7 };
     }
     return {};
+  }
+  if (isMimoProvider(options) || lower.includes('mimo-v')) {
+    if (lower.includes('tts')) {
+      return { maxOutputTokens: 8192, temperature: 0.6 };
+    }
+    if (lower === 'mimo-v2.5-pro' || lower === 'mimo-v2-pro') {
+      return { enableThinking: true, includeThoughts: true, maxOutputTokens: 131_072, temperature: 1.0 };
+    }
+    if (lower === 'mimo-v2.5' || lower === 'mimo-v2-omni') {
+      return { enableThinking: true, includeThoughts: true, maxOutputTokens: 32_768, temperature: 1.0 };
+    }
+    if (lower === 'mimo-v2-flash' || lower === 'mimo-v2.5-flash') {
+      return { enableThinking: false, includeThoughts: false, maxOutputTokens: 65_536, temperature: 0.3 };
+    }
+    return { enableThinking: true, includeThoughts: true, temperature: 1.0 };
   }
   if (map[lower]) return map[lower];
 

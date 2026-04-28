@@ -50,6 +50,105 @@ fn effective_max_tokens(max_output_tokens: u32, max_tokens_limit: Option<u32>) -
     }
 }
 
+fn is_mimo_config(config: &ApiConfig) -> bool {
+    config
+        .provider_scope
+        .as_deref()
+        .map(|value| value.eq_ignore_ascii_case("mimo"))
+        .unwrap_or(false)
+        || config
+            .provider_type
+            .as_deref()
+            .map(|value| value.eq_ignore_ascii_case("mimo"))
+            .unwrap_or(false)
+        || config.model_adapter.eq_ignore_ascii_case("mimo")
+        || config.base_url.to_lowercase().contains("xiaomimimo.com")
+        || config.model.to_lowercase().starts_with("mimo-v")
+}
+
+fn apply_generation_token_limit(body: &mut Value, config: &ApiConfig, max_tokens: u32) {
+    if is_mimo_config(config) {
+        body["max_completion_tokens"] = json!(max_tokens);
+        if let Some(map) = body.as_object_mut() {
+            map.remove("max_tokens");
+        }
+    } else if config.is_reasoning {
+        body["max_completion_tokens"] = json!(max_tokens);
+    } else {
+        body["max_tokens"] = json!(max_tokens);
+        if let Some(map) = body.as_object_mut() {
+            map.remove("max_completion_tokens");
+        }
+    }
+}
+
+fn apply_max_tokens_or_mimo_completion_limit(body: &mut Value, config: &ApiConfig, max_tokens: u32) {
+    if is_mimo_config(config) {
+        body["max_completion_tokens"] = json!(max_tokens);
+        if let Some(map) = body.as_object_mut() {
+            map.remove("max_tokens");
+        }
+    } else {
+        body["max_tokens"] = json!(max_tokens);
+        if let Some(map) = body.as_object_mut() {
+            map.remove("max_completion_tokens");
+        }
+    }
+}
+
+fn apply_generation_params(body: &mut Value, config: &ApiConfig) {
+    let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
+    apply_generation_token_limit(body, config, max_tokens);
+
+    if !config.is_reasoning || is_mimo_config(config) {
+        body["temperature"] = json!(config.temperature);
+        if let Some(top_p) = config.top_p_override {
+            body["top_p"] = json!(top_p);
+        }
+        if let Some(frequency_penalty) = config.frequency_penalty_override {
+            body["frequency_penalty"] = json!(frequency_penalty);
+        }
+        if let Some(presence_penalty) = config.presence_penalty_override {
+            body["presence_penalty"] = json!(presence_penalty);
+        }
+    }
+}
+
+fn is_mimo_endpoint(model: &str, base_url: &str) -> bool {
+    model.to_lowercase().starts_with("mimo-v") || base_url.to_lowercase().contains("xiaomimimo.com")
+}
+
+fn build_test_chat_request_body(model: &str, base_url: &str) -> Value {
+    if is_mimo_endpoint(model, base_url) {
+        json!({
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Hi"
+                }
+            ],
+            "max_completion_tokens": 32,
+            "temperature": 1.0,
+            "thinking": {
+                "type": "disabled"
+            }
+        })
+    } else {
+        json!({
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Hi"
+                }
+            ],
+            "max_tokens": 5,
+            "temperature": 0.1
+        })
+    }
+}
+
 /// 统一使用 debug_log_service 的 standard 级别脱敏（准确的 base64 大小计算）
 pub(crate) fn sanitize_request_body_for_audit(body: &serde_json::Value) -> serde_json::Value {
     let mut sanitized = crate::debug_log_service::sanitize_for_level(
@@ -176,6 +275,88 @@ mod tests {
 
         assert_eq!(config.reasoning_effort.as_deref(), Some("max"));
         assert_eq!(config.thinking_budget, Some(32768));
+    }
+
+    #[test]
+    fn mimo_reasoning_generation_params_use_completion_tokens_and_sampling() {
+        let config = ApiConfig {
+            model: "mimo-v2.5-pro".to_string(),
+            provider_type: Some("mimo".to_string()),
+            provider_scope: Some("mimo".to_string()),
+            model_adapter: "mimo".to_string(),
+            is_reasoning: true,
+            supports_reasoning: true,
+            max_output_tokens: 131_072,
+            temperature: 1.0,
+            top_p_override: Some(0.95),
+            ..Default::default()
+        };
+        let mut body = json!({
+            "model": config.model,
+            "messages": [],
+            "stream": true
+        });
+
+        apply_generation_params(&mut body, &config);
+
+        assert_eq!(body.get("max_completion_tokens"), Some(&json!(131_072)));
+        assert!(!body.as_object().unwrap().contains_key("max_tokens"));
+        assert_eq!(body.get("temperature"), Some(&json!(1.0)));
+        let top_p = body.get("top_p").and_then(|value| value.as_f64()).unwrap();
+        assert!((top_p - 0.95).abs() < 0.000_001);
+    }
+
+    #[test]
+    fn non_mimo_reasoning_generation_params_preserve_adapter_max_tokens() {
+        let config = ApiConfig {
+            model: "kimi-k2-thinking".to_string(),
+            provider_type: Some("moonshot".to_string()),
+            provider_scope: Some("moonshot".to_string()),
+            model_adapter: "moonshot".to_string(),
+            is_reasoning: true,
+            max_output_tokens: 4096,
+            ..Default::default()
+        };
+        let mut body = json!({
+            "model": config.model,
+            "messages": [],
+            "max_tokens": 32_000
+        });
+
+        apply_generation_params(&mut body, &config);
+
+        assert_eq!(body.get("max_completion_tokens"), Some(&json!(4096)));
+        assert_eq!(body.get("max_tokens"), Some(&json!(32_000)));
+    }
+
+    #[test]
+    fn legacy_max_token_paths_switch_to_completion_tokens_for_mimo_only() {
+        let config = ApiConfig {
+            model: "mimo-v2.5".to_string(),
+            provider_type: Some("mimo".to_string()),
+            provider_scope: Some("mimo".to_string()),
+            model_adapter: "mimo".to_string(),
+            ..Default::default()
+        };
+        let mut body = json!({
+            "model": config.model,
+            "messages": [],
+            "max_tokens": 8000
+        });
+
+        apply_max_tokens_or_mimo_completion_limit(&mut body, &config, 4096);
+
+        assert_eq!(body.get("max_completion_tokens"), Some(&json!(4096)));
+        assert!(!body.as_object().unwrap().contains_key("max_tokens"));
+    }
+
+    #[test]
+    fn mimo_connection_test_body_uses_chat_completions_token_field() {
+        let body = build_test_chat_request_body("mimo-v2.5-pro", "https://api.xiaomimimo.com/v1");
+
+        assert_eq!(body.get("max_completion_tokens"), Some(&json!(32)));
+        assert!(!body.as_object().unwrap().contains_key("max_tokens"));
+        assert_eq!(body.pointer("/thinking/type"), Some(&json!("disabled")));
     }
 }
 
@@ -1104,42 +1285,12 @@ impl LLMManager {
 
         // 简化：不再在此处估算输入token
 
-        // 根据模型适配器类型和是否为推理模型设置不同的参数
-        if cfg!(debug_assertions) {
-            // debug removed: adapter type & reasoning flag
-        }
-
-        if config.is_reasoning {
-            // 使用配置化的 max_tokens_limit 限制 max_completion_tokens
-            let max_tokens = match config.max_tokens_limit {
-                Some(limit) => config.max_output_tokens.min(limit),
-                None => config.max_output_tokens,
-            };
-            match config.model_adapter.as_str() {
-                _ => {
-                    request_body["max_completion_tokens"] = json!(max_tokens);
-                }
-            }
-        } else {
-            // 非推理模型走通用参数
-            // 使用配置化的 max_tokens_limit 限制 max_tokens
-            let max_tokens = match config.max_tokens_limit {
-                Some(limit) => config.max_output_tokens.min(limit),
-                None => config.max_output_tokens,
-            };
-            request_body["max_tokens"] = json!(max_tokens);
-            request_body["temperature"] = json!(config.temperature);
-            // 关键：如果模型是非推理模型，即使前端请求了思维链，
-            // 也不要向API发送特定于思维链的参数，除非该模型明确支持。
-            // 对于通用模型，通常不需要为"思维链"传递特殊参数，模型会自然地按指令回复。
-            // 如果 enable_chain_of_thought 对非推理模型意味着不同的处理（例如，更详细的回复），
-            // 这里的逻辑可能需要调整，但通常是Prompt工程的一部分，而不是API参数。
-            if enable_chain_of_thought {
-                warn!(
-                    "前端为非推理模型 {} 请求了思维链。通常这由Prompt控制，而非特定API参数。",
-                    config.model
-                );
-            }
+        apply_generation_params(&mut request_body, &config);
+        if !config.is_reasoning && enable_chain_of_thought {
+            warn!(
+                "前端为非推理模型 {} 请求了思维链。通常这由Prompt控制，而非特定API参数。",
+                config.model
+            );
         }
         // 审计：瞬态技能消息数量 + 真实 load_skills 调用数量
         {
@@ -2582,10 +2733,7 @@ impl LLMManager {
         // 降级注入可能调整 messages，确保请求体使用最新消息集合
         request_body["messages"] = serde_json::Value::Array(messages.clone());
 
-        // 根据模型适配器添加特定参数（应用供应商级别的 max_tokens 限制）
-        let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
-        request_body["max_tokens"] = json!(max_tokens);
-        request_body["temperature"] = json!(config.temperature);
+        apply_generation_params(&mut request_body, &config);
 
         // 记录请求体大小与起始时间
         let request_json_str = serde_json::to_string(&request_body).unwrap_or_default();
@@ -3449,20 +3597,7 @@ impl LLMManager {
 
         Self::apply_reasoning_config(&mut request_body, &config, None);
 
-        // 根据模型适配器类型设置不同的参数
-        if cfg!(debug_assertions) {
-            // debug removed
-        }
-
-        // 应用供应商级别的 max_tokens 限制
-        let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
-        if config.is_reasoning {
-            request_body["max_completion_tokens"] = json!(max_tokens);
-            debug!("应用推理模型参数: max_completion_tokens={}", max_tokens);
-        } else {
-            request_body["max_tokens"] = json!(max_tokens);
-            request_body["temperature"] = json!(config.temperature);
-        }
+        apply_generation_params(&mut request_body, &config);
 
         // 使用 ProviderAdapter 构建请求，确保 Gemini 模型走转换后的URL/Headers/Body
         let adapter: Box<dyn ProviderAdapter> = if self.should_use_openai_responses(&config) {
@@ -4050,17 +4185,7 @@ impl LLMManager {
 
         // 尝试不同的模型进行测试
         for model in test_models {
-            let request_body = json!({
-                "model": model,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": "Hi"
-                    }
-                ],
-                "max_tokens": 5,
-                "temperature": 0.1
-            });
+            let request_body = build_test_chat_request_body(&model, base_url);
 
             debug!("尝试模型: {}", model);
 
@@ -4305,17 +4430,15 @@ impl LLMManager {
             "temperature": config.temperature
         });
 
-        // `max_total_tokens` 作为兼容字段保留给 Gemini 适配器；同时针对不同模型类型传递官方推荐的上限参数。
-        // 应用供应商级别的 max_tokens 限制
-        let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
-        request_body["max_total_tokens"] = json!(max_tokens);
-        if config.is_reasoning {
-            request_body["max_completion_tokens"] = json!(max_tokens);
-        } else {
-            request_body["max_tokens"] = json!(max_tokens);
-        }
-
         Self::apply_reasoning_config(&mut request_body, &config, None);
+        apply_generation_params(&mut request_body, &config);
+        if let Some(max_tokens) = request_body
+            .get("max_completion_tokens")
+            .or_else(|| request_body.get("max_tokens"))
+            .cloned()
+        {
+            request_body["max_total_tokens"] = max_tokens;
+        }
 
         // 如果是 OpenAI GPT 模型，启用 JSON strict 模式
         if config.model.starts_with("gpt-") {
@@ -4512,7 +4635,7 @@ impl LLMManager {
             .min(ocr_adapter.recommended_max_tokens(ocr_mode))
             .max(2048)
             .min(8000);
-        request_body["max_tokens"] = json!(max_tokens);
+        apply_max_tokens_or_mimo_completion_limit(&mut request_body, &config, max_tokens);
 
         if let Some(extra) = ocr_adapter.get_extra_request_params() {
             if let Some(obj) = request_body.as_object_mut() {
@@ -4667,13 +4790,13 @@ impl LLMManager {
         let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit)
             .max(2048)
             .min(8000);
-        let request_body = json!({
+        let mut request_body = json!({
             "model": config.model,
             "messages": messages,
             "temperature": 0.0,
-            "max_tokens": max_tokens,
             "stream": false,
         });
+        apply_max_tokens_or_mimo_completion_limit(&mut request_body, &config, max_tokens);
 
         let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
             "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
@@ -4888,10 +5011,10 @@ impl LLMManager {
                     "content": final_prompt
                 }
             ],
-            "max_tokens": max_tokens,
             "temperature": temperature
         });
 
+        apply_max_tokens_or_mimo_completion_limit(&mut request_body, &config, max_tokens);
         Self::apply_reasoning_config(&mut request_body, &config, None);
 
         // 如果支持JSON模式，添加response_format

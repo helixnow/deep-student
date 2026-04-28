@@ -17,6 +17,7 @@ export type ProviderBrand =
   | 'xai'
   | 'microsoft'
   | 'nvidia'
+  | 'mimo'
   // 中国供应商
   | 'deepseek'
   | 'qwen'       // 阿里通义千问
@@ -131,6 +132,11 @@ const PROVIDER_PATTERNS: Record<ProviderBrand, (string | RegExp)[]> = {
     /^nvidia\//i,
     /nemotron/i,
     /nim-/i,
+  ],
+
+  mimo: [
+    /^mimo-v/i,
+    /xiaomi[\s-]?mimo/i,
   ],
   
   // === 中国供应商 ===
@@ -369,6 +375,7 @@ const PROVIDER_DISPLAY_NAMES: Record<ProviderBrand, string> = {
   xai: 'xAI',
   microsoft: 'Microsoft',
   nvidia: 'NVIDIA',
+  mimo: 'Xiaomi MiMo',
   deepseek: 'DeepSeek',
   qwen: '通义千问',
   alibaba: '阿里云',
@@ -540,7 +547,6 @@ export function getBatchProviderInfo(modelIds: string[]): Map<string, ProviderIn
   }
   return result;
 }
-
 
 
 

@@ -84,3 +84,38 @@ describe('modelCapabilities NVIDIA provider defaults', () => {
     expect(defaults).not.toHaveProperty('includeThoughts');
   });
 });
+
+describe('modelCapabilities Xiaomi MiMo provider defaults', () => {
+  it('keeps MiMo hosted models on the MiMo adapter path', () => {
+    const proCaps = inferCapabilities({
+      id: 'mimo-v2.5-pro',
+      providerScope: 'mimo',
+    });
+    const omniCaps = inferCapabilities({
+      id: 'mimo-v2.5',
+      providerScope: 'mimo',
+    });
+
+    expect(proCaps.modelAdapter).toBe('mimo');
+    expect(proCaps.supportsReasoning).toBe(true);
+    expect(proCaps.supportsTools).toBe(true);
+    expect(omniCaps.modelAdapter).toBe('mimo');
+    expect(omniCaps.isMultimodal).toBe(true);
+  });
+
+  it('uses MiMo model-specific token and sampling defaults', () => {
+    expect(getModelDefaultParameters('mimo-v2.5-pro', { providerScope: 'mimo' })).toMatchObject({
+      enableThinking: true,
+      includeThoughts: true,
+      maxOutputTokens: 131_072,
+      temperature: 1.0,
+    });
+
+    expect(getModelDefaultParameters('mimo-v2-flash', { providerScope: 'mimo' })).toMatchObject({
+      enableThinking: false,
+      includeThoughts: false,
+      maxOutputTokens: 65_536,
+      temperature: 0.3,
+    });
+  });
+});

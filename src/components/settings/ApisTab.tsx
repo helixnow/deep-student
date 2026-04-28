@@ -52,6 +52,7 @@ const getVendorIconPath = (providerType?: string | null): string | null => {
     mistral: 'mistral',
     meta: 'meta',
     nvidia: 'nvidia',
+    mimo: 'mimo',
   };
   const iconName = iconMap[key];
   return iconName ? `/icons/providers/${iconName}.svg` : null;
@@ -67,6 +68,7 @@ const getProviderDisplayName = (providerType?: string | null) => {
     deepseek: 'DeepSeek',
     ollama: 'Ollama',
     nvidia: 'NVIDIA',
+    mimo: 'Xiaomi MiMo',
   };
   return map[providerType.toLowerCase()] || providerType;
 };
@@ -87,6 +89,7 @@ const getProviderWebsiteUrl = (providerType?: string | null): string | null => {
     anthropic: 'https://console.anthropic.com',
     google: 'https://aistudio.google.com',
     nvidia: 'https://build.nvidia.com/nim',
+    mimo: 'https://platform.xiaomimimo.com',
   };
   return map[providerType.toLowerCase()] || null;
 };
