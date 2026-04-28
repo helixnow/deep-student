@@ -11,4 +11,31 @@ describe('modern sidebar icon contract', () => {
     expect(sidebarSource).not.toContain('strokeWidth={isActive ? 2.3 : 2}');
     expect(sidebarSource).not.toContain("strokeWidth={currentView === 'settings' ? 2.3 : 2}");
   });
+
+  it('uses a writing icon for the conversation-section hover create action', () => {
+    const conversationSectionAction = sidebarSource.match(
+      /const conversationHeaderAction = \([\s\S]*?<section className="space-y-0\.5 pt-1">/
+    )?.[0] ?? '';
+
+    expect(sidebarSource).toContain('StudyComposeIcon');
+    expect(conversationSectionAction).toContain('<StudyComposeIcon className="w-3.5 h-3.5" />');
+    expect(conversationSectionAction).not.toContain('<Plus className="w-3.5 h-3.5" />');
+    expect(conversationSectionAction).not.toContain('<Folder className="size-[16px]" strokeWidth={2} />');
+  });
+
+  it('keeps section disclosure arrows after the label and hidden until header hover or focus', () => {
+    const sectionHeader = sidebarSource.match(
+      /const renderSidebarSectionHeader = \(\{[\s\S]*?const conversationHeaderAction = \(/u
+    )?.[0] ?? '';
+
+    const labelIndex = sectionHeader.indexOf('className="desktop-shell-nav-section-label min-w-0 truncate"');
+    const arrowIndex = sectionHeader.indexOf('className={cn(');
+
+    expect(labelIndex).toBeGreaterThan(-1);
+    expect(arrowIndex).toBeGreaterThan(labelIndex);
+    expect(sectionHeader).toContain('opacity-0');
+    expect(sectionHeader).toContain('group-hover/sidebar-top-section:opacity-100');
+    expect(sectionHeader).toContain('group-focus-within/sidebar-top-section:opacity-100');
+    expect(sectionHeader).toMatch(/<ChevronRight[\s\S]*text-\[color:var\(--shell-navigation-section-label\)\]/);
+  });
 });

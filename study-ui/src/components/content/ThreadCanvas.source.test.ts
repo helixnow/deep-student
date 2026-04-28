@@ -37,7 +37,7 @@ test("thread canvas uses a document-style single column with an anchored compose
   assert.match(source, /shrink-0 rounded-full lg:h-\[var\(--button-icon-size\)\] lg:w-\[var\(--button-icon-size\)\]/u);
   assert.doesNotMatch(source, /md:h-\[var\(--button-icon-size\)\]/u);
   assert.match(source, /Button variant="ghost" size="sm" className=\{composerSecondaryControlClassName\}/u);
-  assert.match(source, /我们要开始做什么？/u);
+  assert.match(source, /在「分组名」里学点什么？/u);
   assert.match(source, /当前工作区：<code className="font-medium text-foreground">study-ui<\/code>/u);
   assert.doesNotMatch(source, /把需求直接发到底部输入区。/u);
   assert.doesNotMatch(source, /首屏保持安静，只保留当前工作区、主动作和足够的留白。/u);
@@ -82,7 +82,7 @@ test("thread canvas uses one quiet responsive landing across phone tablet and de
   assert.match(emptyBlock, /当前工作区：<code/u);
   assert.match(emptyBlock, /study-ui/u);
   assert.match(emptyBlock, /data-slot="thread-empty-primary-action"/u);
-  assert.match(emptyBlock, /我们要开始做什么？/u);
+  assert.match(emptyBlock, /在「分组名」里学点什么？/u);
   assert.doesNotMatch(emptyBlock, /把需求直接发到底部输入区。/u);
   assert.doesNotMatch(emptyBlock, /查看建议起点|开启新的学习任务|Sparkle|MagicWand/u);
 });
@@ -172,7 +172,7 @@ test("thread composer lifts with a subtle shadow when any control inside it rece
 test("thread canvas hero title stays aligned with the lighter app typography scale", () => {
   const source = readFileSync(threadCanvasPath, "utf8");
 
-  assert.match(source, /<h2[\s\S]*data-slot="thread-empty-primary-action"[\s\S]*className="text-balance text-2xl font-semibold tracking-\[-0\.04em\] text-foreground sm:text-xl sm:font-medium sm:tracking-normal"[\s\S]*我们要开始做什么？[\s\S]*<\/h2>/u);
+  assert.match(source, /<h2[\s\S]*data-slot="thread-empty-primary-action"[\s\S]*className="text-balance text-2xl font-semibold tracking-\[-0\.04em\] text-foreground sm:text-xl sm:font-medium sm:tracking-normal"[\s\S]*在「分组名」里学点什么？[\s\S]*<\/h2>/u);
   assert.doesNotMatch(source, /text-pretty text-base leading-7 text-muted-foreground sm:text-sm sm:leading-6/u);
-  assert.doesNotMatch(source, /<h2 className="text-xl font-semibold text-foreground">我们要开始做什么？<\/h2>/u);
+  assert.doesNotMatch(source, /<h2 className="text-xl font-semibold text-foreground">今天想学点什么？<\/h2>/u);
 });

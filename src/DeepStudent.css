@@ -405,8 +405,18 @@ html.is-android .android-safe-top {
 /* =================== 原有样式 =================== */
 
 [data-shell-layer="navigation"] {
+  position: relative;
   background: var(--shell-navigation-surface);
-  border-right: 1px solid var(--shell-navigation-border);
+  border-right: 0;
+  isolation: isolate;
+}
+
+[data-shell-layer="navigation"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--shell-navigation-depth-overlay);
 }
 
 [data-shell-window-controls] {

@@ -1,6 +1,5 @@
 import React, { Suspense } from 'react';
 import { useState, useEffect, useCallback, useMemo, useRef, startTransition } from 'react';
-import { NotePencil } from '@phosphor-icons/react';
 import './i18n';
 import { useTranslation } from 'react-i18next';
 // getCurrentWebviewWindow 已无使用（2026-02 清理）
@@ -22,6 +21,7 @@ import { TaskDashboardPage } from '@/components/anki/TaskDashboardPage';
 import { useWindowDrag } from './hooks/useWindowDrag';
 // 🚀 性能优化：ImageViewer 改为懒加载
 import { ModernSidebar } from './components/ModernSidebar';
+import { StudyComposeIcon } from './components/icons/StudySidebarIcons';
 import { WindowControls } from './components/WindowControls';
 import { useFinderStore } from './components/learning-hub/stores/finderStore';
 import { MobileLayoutProvider, MobileHeaderProvider, UnifiedMobileHeader, MobileHeaderActiveViewSync, MOBILE_APP_NAVIGATE_EVENT } from '@/components/layout';
@@ -85,6 +85,8 @@ import { useViewStore } from './stores/viewStore';
 import { debugLog } from './debug-panel/debugMasterSwitch';
 import { sessionManager } from './chat-v2/core/session/sessionManager';
 import { getSessionTitleText } from './chat-v2/utils/sessionTitle';
+import type { ChatStore } from './chat-v2/core/types';
+import { getHiddenDraftSessionScope } from './chat-v2/pages/draftSession';
 
 import { ViewLayerRenderer } from './app/components';
 import { ErrorBoundary } from './components/ErrorBoundary';
@@ -115,6 +117,7 @@ import {
 // ★ debugLog 别名：将本文件中的 console 调用路由到调试面板，受 debugMasterSwitch 控制
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 const LazyGlobalDebugPanel = React.lazy(() => import('./components/dev/GlobalDebugPanel'));
+const DESKTOP_CHAT_TITLE_TYPEWRITER_INTERVAL_MS = 26;
 
 /**
  * 启动时自动更新检查弹窗
@@ -345,16 +348,6 @@ function DesktopHeaderNavControls({
       <NotionButton
         variant="ghost"
         size="icon"
-        onClick={onNewSession}
-        className="desktop-shell-toolbar-button"
-        title={newSessionLabel}
-        aria-label={newSessionLabel}
-      >
-        <NotePencil size={18} weight="regular" />
-      </NotionButton>
-      <NotionButton
-        variant="ghost"
-        size="icon"
         onClick={onGoBack}
         disabled={!canGoBack}
         className="desktop-shell-toolbar-button"
@@ -373,6 +366,16 @@ function DesktopHeaderNavControls({
         aria-label={forwardLabel}
       >
         <ChevronRight className="h-4 w-4" />
+      </NotionButton>
+      <NotionButton
+        variant="ghost"
+        size="icon"
+        onClick={onNewSession}
+        className="desktop-shell-toolbar-button"
+        title={newSessionLabel}
+        aria-label={newSessionLabel}
+      >
+        <StudyComposeIcon className="h-4 w-4" />
       </NotionButton>
     </div>
   );
@@ -628,19 +631,17 @@ function App() {
   const [previousView, setPreviousView] = useState<CurrentView>('chat-v2');
   const leftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);
   const shellSidebarWidth = getShellSidebarWidth(isSmallScreen);
-  const desktopNavigationWidth = !isSmallScreen && currentView !== 'settings' && leftPanelCollapsed ? 0 : shellSidebarWidth;
+  const desktopNavigationWidth = !isSmallScreen && leftPanelCollapsed ? 0 : shellSidebarWidth;
   const shouldUseDesktopFloatingAccessory = !isSmallScreen && currentView !== 'settings';
   const desktopFloatingAccessoryOffset = isMacOS() ? DESKTOP_SHELL.macTrafficLightsSpacer + 16 : 16;
   const desktopSidebarToggleLabel = t('common:navigation.toggle_left_panel', '切换左侧面板');
   const desktopHeaderNavHotzoneLabel = t('chatV2:page.newSession', '新建会话');
   const desktopHeaderTitleHotzoneLabel = t('common:command_palette_label', '命令面板');
-  const desktopCollapsedLeadingWidth = 180;
+  const desktopCollapsedLeadingWidth = 148;
   const desktopTitlebarLeadingInset = !isSmallScreen && currentView !== 'settings' && leftPanelCollapsed
     ? (isMacOS() ? DESKTOP_SHELL.macTrafficLightsSpacer : 0) + 16 + desktopCollapsedLeadingWidth
     : 0;
-  const desktopFloatingAccessoryWidth = leftPanelCollapsed
-    ? Math.max(desktopTitlebarLeadingInset - desktopFloatingAccessoryOffset, 0)
-    : Math.max(desktopNavigationWidth - desktopFloatingAccessoryOffset - 16, 0);
+  const desktopFloatingAccessoryWidth = desktopCollapsedLeadingWidth;
   const desktopSidebarAccessoryContent = (
     <DesktopSidebarAccessory
       onToggle={useUIStore.getState().toggleLeftPanel}
@@ -1623,9 +1624,7 @@ function App() {
       collapsed={leftPanelCollapsed}
     />
   );
-  const [currentChatHeaderTitle, setCurrentChatHeaderTitle] = useState(() =>
-    t('sidebar:navigation.chat_v2', '智能会话')
-  );
+  const [currentChatHeaderTitle, setCurrentChatHeaderTitle] = useState('');
   const currentChatHeaderStoreUnsubscribeRef = useRef<(() => void) | null>(null);
   const currentChatHeaderSubscribedSessionIdRef = useRef<string | null>(null);
 
@@ -1635,18 +1634,28 @@ function App() {
     currentChatHeaderSubscribedSessionIdRef.current = null;
   }, []);
 
+  const getChatHeaderTitleFromStoreState = useCallback((state?: ChatStore | null) => {
+    if (!state) {
+      return '';
+    }
+
+    if (getHiddenDraftSessionScope(state?.sessionMetadata)) {
+      return '';
+    }
+
+    return getSessionTitleText(state.title, t('chatV2:page.untitled', '未命名会话'));
+  }, [t]);
+
   const syncCurrentChatHeaderTitle = useCallback((sessionId?: string | null) => {
     const chatHeaderSessionId = sessionId ?? sessionManager.getCurrentSessionId();
     if (!chatHeaderSessionId) {
-      setCurrentChatHeaderTitle(t('sidebar:navigation.chat_v2', '智能会话'));
+      setCurrentChatHeaderTitle('');
       return;
     }
 
-    const currentChatSessionTitle = sessionManager.get(chatHeaderSessionId)?.getState().title;
-    setCurrentChatHeaderTitle(
-      getSessionTitleText(currentChatSessionTitle, t('chatV2:page.untitled', '未命名会话'))
-    );
-  }, [t]);
+    const chatHeaderStore = sessionManager.get(chatHeaderSessionId);
+    setCurrentChatHeaderTitle(getChatHeaderTitleFromStoreState(chatHeaderStore?.getState()));
+  }, [getChatHeaderTitleFromStoreState, t]);
 
   useEffect(() => {
     const bindCurrentChatHeaderStore = (sessionId: string | null) => {
@@ -1669,10 +1678,8 @@ function App() {
       currentChatHeaderSubscribedSessionIdRef.current = sessionId;
       currentChatHeaderStoreUnsubscribeRef.current = activeChatHeaderStore.subscribe(
         (state, prevState) => {
-          if (state.title !== prevState.title) {
-            setCurrentChatHeaderTitle(
-              getSessionTitleText(state.title, t('chatV2:page.untitled', '未命名会话'))
-            );
+          if (state.title !== prevState.title || state.sessionMetadata !== prevState.sessionMetadata) {
+            setCurrentChatHeaderTitle(getChatHeaderTitleFromStoreState(state));
           }
         }
       );
@@ -1694,6 +1701,11 @@ function App() {
       const activeSessionId = sessionManager.getCurrentSessionId();
       if (!activeSessionId) {
         syncAndBindCurrentChatHeader(null);
+        return;
+      }
+
+      if (event.sessionId === activeSessionId && event.type === 'session-created') {
+        syncAndBindCurrentChatHeader(activeSessionId);
         return;
       }
 
@@ -1732,6 +1744,34 @@ function App() {
 
     return labels[currentView] ?? t('common:app.default_header', '新对话');
   }, [currentChatHeaderTitle, currentView, t]);
+  const [animatedDesktopShellViewLabel, setAnimatedDesktopShellViewLabel] = useState(desktopShellViewLabel);
+  const previousDesktopShellViewLabelRef = useRef(desktopShellViewLabel);
+
+  useEffect(() => {
+    const previousLabel = previousDesktopShellViewLabelRef.current;
+    previousDesktopShellViewLabelRef.current = desktopShellViewLabel;
+
+    if (currentView !== 'chat-v2' || !desktopShellViewLabel || desktopShellViewLabel === previousLabel) {
+      setAnimatedDesktopShellViewLabel(desktopShellViewLabel);
+      return;
+    }
+
+    let nextLength = 0;
+    setAnimatedDesktopShellViewLabel('');
+
+    const timer = window.setInterval(() => {
+      nextLength += 1;
+      setAnimatedDesktopShellViewLabel(desktopShellViewLabel.slice(0, nextLength));
+
+      if (nextLength >= desktopShellViewLabel.length) {
+        window.clearInterval(timer);
+      }
+    }, DESKTOP_CHAT_TITLE_TYPEWRITER_INTERVAL_MS);
+
+    return () => {
+      window.clearInterval(timer);
+    };
+  }, [currentView, desktopShellViewLabel]);
 
   // 🚀 性能优化：memoize 各视图内容，防止切换视图时所有已缓存视图子树被重新协调
   // 当 App 因 currentView 变化而重渲染时，useMemo 返回相同的 React 元素引用，
@@ -1920,7 +1960,7 @@ function App() {
         {!isSmallScreen && (
         <header
           data-shell-layer="window-chrome"
-          className="desktop-shell-titlebar fixed top-0 left-0 right-0 z-[1100] grid"
+          className="desktop-shell-titlebar fixed top-0 left-0 right-0 z-[1100] grid transition-[grid-template-columns] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none"
           style={{
             paddingTop: `${topbarTopMargin}px`,
             height: `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
@@ -1931,7 +1971,7 @@ function App() {
         >
           {shouldUseDesktopFloatingAccessory ? (
             <div
-              className="pointer-events-none absolute z-20 transition-[width,opacity] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none"
+              className="pointer-events-none absolute z-20 transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none"
               style={{
                 left: `${desktopFloatingAccessoryOffset}px`,
                 top: `${topbarTopMargin}px`,
@@ -1944,15 +1984,15 @@ function App() {
                 <div className="flex items-center">
                   {desktopSidebarAccessoryContent}
                 </div>
-                {leftPanelCollapsed && shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}
+                {shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}
               </div>
             </div>
           ) : null}
 
           <div
             className={cn(
-              'desktop-shell-header-cell relative z-10 flex min-w-0 items-center justify-end overflow-visible',
-              leftPanelCollapsed ? 'px-0' : 'desktop-shell-header-cell--nav px-4'
+              'desktop-shell-header-cell desktop-shell-header-cell--nav relative z-10 flex min-w-0 items-center justify-end overflow-hidden transition-[padding] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none',
+              leftPanelCollapsed ? 'px-0' : 'px-4'
             )}
           >
             <div
@@ -1970,7 +2010,6 @@ function App() {
               onKeyDown={(event) => handleHeaderHotzoneKeyDown(event, handleCreateChatSession)}
             >
               {isMacOS() && <div className="flex-shrink-0" style={{ width: DESKTOP_SHELL.macTrafficLightsSpacer }} />}
-              {!leftPanelCollapsed && shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}
             </div>
           </div>
 
@@ -1999,7 +2038,7 @@ function App() {
                   {currentView === 'learning-hub' ? (
                     <LearningHubTopbarBreadcrumb currentView={currentView} />
                   ) : (
-                    <span className="block truncate">{desktopShellViewLabel}</span>
+                    <span className="block truncate">{animatedDesktopShellViewLabel}</span>
                   )}
                 </div>
               </div>

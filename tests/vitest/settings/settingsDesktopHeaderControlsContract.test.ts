@@ -8,8 +8,9 @@ describe('settings desktop header controls contract', () => {
 
   it('does not render desktop chat navigation controls while the settings view is active', () => {
     expect(appSource).toContain("const shouldShowDesktopHeaderNavControls = currentView !== 'settings';");
-    expect(appSource).toContain('{leftPanelCollapsed && shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}');
-    expect(appSource).toContain('{!leftPanelCollapsed && shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}');
+    expect(appSource).toContain('{shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}');
+    expect(appSource).not.toContain('{leftPanelCollapsed && shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}');
+    expect(appSource).not.toContain('{!leftPanelCollapsed && shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}');
   });
 
   it('keeps only the right desktop workspace titlebar seamless without changing the left navigation titlebar', () => {

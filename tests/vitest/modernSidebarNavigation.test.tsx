@@ -107,6 +107,38 @@ describe('ModernSidebar shell navigation', () => {
     expect(screen.getByRole('button', { name: '设置' })).toBeInTheDocument();
   });
 
+  it('shows a quiet empty hint inside expanded groups with no conversations', async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'chat_v2_list_sessions') {
+        return Promise.resolve([]);
+      }
+      if (command === 'chat_v2_list_groups') {
+        return Promise.resolve([
+          {
+            id: 'group-114',
+            name: '114514',
+            icon: null,
+            status: 'active',
+            sortOrder: 0,
+            createdAt: '2026-04-27T00:00:00.000Z',
+            updatedAt: '2026-04-27T00:00:00.000Z',
+          },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    render(
+      <ModernSidebar
+        currentView="chat-v2"
+        onViewChange={() => undefined}
+      />
+    );
+
+    expect(await screen.findByRole('button', { name: '114514' })).toBeInTheDocument();
+    expect(screen.getByText('暂无对话')).toBeInTheDocument();
+  });
+
   it('does not render the update badge before an update is available', async () => {
     render(
       <ModernSidebar
@@ -209,7 +241,7 @@ describe('ModernSidebar shell navigation', () => {
     expect(await screen.findByRole('button', { name: '智能会话' })).toBeInTheDocument();
   });
 
-  it('renders recent sessions in collapsible groups when session groups exist', async () => {
+  it('renders topics and loose conversations as separate collapsible sidebar sections', async () => {
     getCurrentSessionIdMock.mockReturnValue('session-2');
     invokeMock.mockImplementation((command: string) => {
       if (command === 'chat_v2_list_sessions') {
@@ -235,10 +267,16 @@ describe('ModernSidebar shell navigation', () => {
     );
 
     expect(await screen.findByRole('button', { name: /^数学$/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^未分组$/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^课题$/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^对话$/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^未分组$/ })).not.toBeInTheDocument();
     expect(screen.getByRole('button', { name: '代数复习' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '几何证明' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '未分组会话' })).toBeInTheDocument();
+
+    const conversationNav = screen.getByRole('navigation', { name: '对话' });
+    expect(within(conversationNav).getByRole('button', { name: '未分组会话' })).toBeInTheDocument();
+    expect(conversationNav.querySelector('.lucide-folder')).toBeNull();
   });
 
   it('keeps primary navigation outside the recent sessions scroll viewport', async () => {
@@ -276,7 +314,7 @@ describe('ModernSidebar shell navigation', () => {
     expect(within(scrollRegion as HTMLElement).getByRole('button', { name: '代数复习' })).toBeInTheDocument();
   });
 
-  it('keeps empty groups visible in recent even before they contain sessions', async () => {
+  it('keeps empty topics visible before they contain sessions', async () => {
     invokeMock.mockImplementation((command: string) => {
       if (command === 'chat_v2_list_sessions') {
         return Promise.resolve([
@@ -299,10 +337,81 @@ describe('ModernSidebar shell navigation', () => {
     );
 
     expect(await screen.findByRole('button', { name: /^空分组$/ })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: /^未分组$/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^课题$/ })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: /^对话$/ })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: /^未分组$/ })).not.toBeInTheDocument();
   });
 
-  it('collapses grouped recent sessions when the group header is toggled', async () => {
+  it('keeps the conversation section visible when hidden drafts leave no visible sessions', async () => {
+    const user = userEvent.setup();
+    const dispatchEventSpy = vi.spyOn(window, 'dispatchEvent');
+
+    render(
+      <ModernSidebar
+        currentView="chat-v2"
+        onViewChange={() => undefined}
+      />
+    );
+
+    const conversationButton = await screen.findByRole('button', { name: /^对话$/ });
+    expect(conversationButton).toBeInTheDocument();
+    expect(screen.queryByText('最近')).not.toBeInTheDocument();
+
+    await user.hover(conversationButton);
+    await user.click(screen.getByRole('button', { name: 'New Session' }));
+
+    expect(dispatchEventSpy).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'modern-sidebar:group-action',
+      detail: { action: 'create-session', groupId: null },
+    }));
+  });
+
+  it('collapses pinned topics and loose conversation sections from their section headers', async () => {
+    const user = userEvent.setup();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'chat_v2_list_sessions') {
+        return Promise.resolve([
+          { id: 'session-pinned', title: '优先会话', updatedAt: '2026-04-06T10:00:00Z', createdAt: '2026-04-06T10:00:00Z', mode: 'chat', metadata: { pinned: true } },
+          { id: 'session-topic', title: '代数复习', updatedAt: '2026-04-06T08:00:00Z', createdAt: '2026-04-06T08:00:00Z', mode: 'chat', groupId: 'group-math' },
+          { id: 'session-loose', title: '随手问答', updatedAt: '2026-04-06T07:00:00Z', createdAt: '2026-04-06T07:00:00Z', mode: 'chat' },
+        ]);
+      }
+      if (command === 'chat_v2_list_groups') {
+        return Promise.resolve([
+          { id: 'group-math', name: '数学', icon: '📘', sortOrder: 0, defaultSkillIds: [], pinnedResourceIds: [], persistStatus: 'active', createdAt: '2026-04-01T00:00:00Z', updatedAt: '2026-04-05T00:00:00Z' },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    render(
+      <ModernSidebar
+        currentView="chat-v2"
+        onViewChange={() => undefined}
+      />
+    );
+
+    expect(await screen.findByRole('button', { name: '优先会话' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '数学' })).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '随手问答' })).toBeInTheDocument();
+
+    await user.click(screen.getByRole('button', { name: /^置顶$/ }));
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: '优先会话' })).not.toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: /^课题$/ }));
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: '数学' })).not.toBeInTheDocument();
+    });
+
+    await user.click(screen.getByRole('button', { name: /^对话$/ }));
+    await waitFor(() => {
+      expect(screen.queryByRole('button', { name: '随手问答' })).not.toBeInTheDocument();
+    });
+  });
+
+  it('collapses grouped topic sessions when the group header is toggled', async () => {
     const user = userEvent.setup();
     invokeMock.mockImplementation((command: string) => {
       if (command === 'chat_v2_list_sessions') {
@@ -335,7 +444,96 @@ describe('ModernSidebar shell navigation', () => {
     });
   });
 
-  it('toggles all recent groups from the recent section header action', async () => {
+  it('limits topic group sessions to five and toggles overflow from the bottom control', async () => {
+    const user = userEvent.setup();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'chat_v2_list_sessions') {
+        return Promise.resolve(
+          Array.from({ length: 7 }, (_, index) => {
+            const sessionNumber = index + 1;
+            return {
+              id: `session-${sessionNumber}`,
+              title: `数学会话 ${sessionNumber}`,
+              updatedAt: `2026-04-06T0${sessionNumber}:00:00Z`,
+              createdAt: `2026-04-06T0${sessionNumber}:00:00Z`,
+              mode: 'chat',
+              groupId: 'group-math',
+            };
+          })
+        );
+      }
+      if (command === 'chat_v2_list_groups') {
+        return Promise.resolve([
+          { id: 'group-math', name: '数学', icon: '📘', sortOrder: 0, defaultSkillIds: [], pinnedResourceIds: [], persistStatus: 'active', createdAt: '2026-04-01T00:00:00Z', updatedAt: '2026-04-05T00:00:00Z' },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    render(
+      <ModernSidebar
+        currentView="chat-v2"
+        onViewChange={() => undefined}
+      />
+    );
+
+    const groupButton = await screen.findByRole('button', { name: '数学' });
+    const groupSection = groupButton.closest('section') as HTMLElement;
+
+    expect(within(groupSection).getByRole('button', { name: '数学会话 7' })).toBeInTheDocument();
+    expect(within(groupSection).getByRole('button', { name: '数学会话 3' })).toBeInTheDocument();
+    expect(within(groupSection).queryByRole('button', { name: '数学会话 2' })).not.toBeInTheDocument();
+    expect(within(groupSection).queryByRole('button', { name: '数学会话 1' })).not.toBeInTheDocument();
+
+    const expandButton = within(groupSection).getByRole('button', { name: '展开显示 2 条更多' });
+    expect(within(groupSection).getAllByRole('button').at(-1)).toBe(expandButton);
+
+    await user.click(expandButton);
+
+    expect(await within(groupSection).findByRole('button', { name: '数学会话 2' })).toBeInTheDocument();
+    expect(within(groupSection).getByRole('button', { name: '数学会话 1' })).toBeInTheDocument();
+    const collapseButton = within(groupSection).getByRole('button', { name: '折叠展示' });
+    expect(within(groupSection).getAllByRole('button').at(-1)).toBe(collapseButton);
+
+    await user.click(collapseButton);
+
+    await waitFor(() => {
+      expect(within(groupSection).queryByRole('button', { name: '数学会话 2' })).not.toBeInTheDocument();
+    });
+    expect(within(groupSection).queryByRole('button', { name: '数学会话 1' })).not.toBeInTheDocument();
+    expect(within(groupSection).getByRole('button', { name: '展开显示 2 条更多' })).toBeInTheDocument();
+  });
+
+  it('does not render a trailing chevron after grouped session actions', async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'chat_v2_list_sessions') {
+        return Promise.resolve([
+          { id: 'session-1', title: '代数复习', updatedAt: '2026-04-06T08:00:00Z', createdAt: '2026-04-06T08:00:00Z', mode: 'chat', groupId: 'group-math' },
+        ]);
+      }
+      if (command === 'chat_v2_list_groups') {
+        return Promise.resolve([
+          { id: 'group-math', name: '数学', icon: '📘', sortOrder: 0, defaultSkillIds: [], pinnedResourceIds: [], persistStatus: 'active', createdAt: '2026-04-01T00:00:00Z', updatedAt: '2026-04-05T00:00:00Z' },
+        ]);
+      }
+      return Promise.resolve([]);
+    });
+
+    render(
+      <ModernSidebar
+        currentView="chat-v2"
+        onViewChange={() => undefined}
+      />
+    );
+
+    const groupButton = await screen.findByRole('button', { name: /^数学$/ });
+
+    expect(within(groupButton).getByRole('button', { name: 'Group Actions' })).toBeInTheDocument();
+    expect(within(groupButton).getByRole('button', { name: 'New Session' })).toBeInTheDocument();
+    expect(groupButton.querySelector('.lucide-chevron-right')).toBeNull();
+  });
+
+  it('toggles all topic groups from the topic section header action', async () => {
     const user = userEvent.setup();
     invokeMock.mockImplementation((command: string) => {
       if (command === 'chat_v2_list_sessions') {
@@ -363,20 +561,20 @@ describe('ModernSidebar shell navigation', () => {
     expect(await screen.findByRole('button', { name: '代数复习' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '力学推导' })).toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: '收起所有会话' }));
+    await user.click(screen.getByRole('button', { name: '收起所有课题' }));
 
     await waitFor(() => {
       expect(screen.queryByRole('button', { name: '代数复习' })).not.toBeInTheDocument();
     });
     expect(screen.queryByRole('button', { name: '力学推导' })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('button', { name: '展开所有会话' }));
+    await user.click(screen.getByRole('button', { name: '展开所有课题' }));
 
     expect(await screen.findByRole('button', { name: '代数复习' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '力学推导' })).toBeInTheDocument();
   });
 
-  it('dispatches create-group action from the recent section header folder button', async () => {
+  it('dispatches create-group action from the topic section header folder button', async () => {
     const user = userEvent.setup();
     const dispatchEventSpy = vi.spyOn(window, 'dispatchEvent');
     invokeMock.mockImplementation((command: string) => {
@@ -401,7 +599,7 @@ describe('ModernSidebar shell navigation', () => {
     );
 
     await screen.findByRole('button', { name: '数学' });
-    await user.click(screen.getByRole('button', { name: '新建文件夹' }));
+    await user.click(screen.getByRole('button', { name: '新建课题' }));
 
     expect(dispatchEventSpy).toHaveBeenCalledTimes(1);
     expect(dispatchEventSpy.mock.calls[0]?.[0]).toBeInstanceOf(CustomEvent);
@@ -512,7 +710,7 @@ describe('ModernSidebar shell navigation', () => {
     expect(titledSessionOffsetRow).not.toBeNull();
   });
 
-  it('marks recent session groups as draggable and exposes grabbed state during drag start', async () => {
+  it('marks topic session groups as draggable and exposes grabbed state during drag start', async () => {
     invokeMock.mockImplementation((command: string, payload?: unknown) => {
       if (command === 'chat_v2_list_sessions') {
         return Promise.resolve([
@@ -568,7 +766,7 @@ describe('ModernSidebar shell navigation', () => {
     expect(reordered.map((group) => group.sortOrder)).toEqual([0, 1, 2]);
   });
 
-  it('wires recent group drop handlers to persist reordered group ids through the sidebar source', () => {
+  it('wires topic group drop handlers to persist reordered group ids through the sidebar source', () => {
     const sidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ModernSidebar.tsx'), 'utf-8');
 
     expect(sidebarSource).toContain("await invoke('chat_v2_reorder_groups', { groupIds: reorderedIds });");
@@ -727,9 +925,13 @@ describe('ModernSidebar shell navigation', () => {
     fireEvent.click(await screen.findByText('置顶线程'));
 
     const pinnedNav = await screen.findByRole('navigation', { name: '置顶会话' });
+    const pinnedLabel = screen.getByText('置顶');
+    const recentLabel = screen.getByText('课题');
+
+    expect(pinnedLabel).toHaveClass('desktop-shell-nav-section-label');
+    expect(recentLabel).toHaveClass('desktop-shell-nav-section-label');
     expect(within(pinnedNav).getByRole('button', { name: '会话 A' })).toBeInTheDocument();
     expect(within(pinnedNav).getByTestId('recent-session-pin-icon')).toBeInTheDocument();
-    expect(screen.queryByText('置顶')).not.toBeInTheDocument();
     expect(screen.queryByText('已置顶')).not.toBeInTheDocument();
 
     const pinnedSessionButton = within(pinnedNav).getByRole('button', { name: '会话 A' });
@@ -740,10 +942,84 @@ describe('ModernSidebar shell navigation', () => {
     await waitFor(() => {
       expect(screen.queryByRole('navigation', { name: '置顶会话' })).not.toBeInTheDocument();
     });
+    expect(screen.queryByText('置顶')).not.toBeInTheDocument();
+  });
+
+  it('pins topic groups into the pinned section from the group action menu', async () => {
+    let groups = [
+      { id: 'group-math', name: '数学', icon: '📘', sortOrder: 0, defaultSkillIds: [], pinnedResourceIds: [], persistStatus: 'active', createdAt: '2026-04-01T00:00:00Z', updatedAt: '2026-04-05T00:00:00Z' },
+      { id: 'group-physics', name: '物理', icon: '🚀', sortOrder: 1, defaultSkillIds: [], pinnedResourceIds: [], persistStatus: 'active', createdAt: '2026-04-01T00:00:00Z', updatedAt: '2026-04-05T00:00:00Z' },
+    ];
+
+    invokeMock.mockImplementation((command: string, payload?: any) => {
+      if (command === 'chat_v2_list_sessions') {
+        return Promise.resolve([
+          { id: 'session-1', title: '代数复习', updatedAt: '2026-04-06T08:00:00Z', createdAt: '2026-04-06T08:00:00Z', mode: 'chat', groupId: 'group-math' },
+          { id: 'session-2', title: '力学推导', updatedAt: '2026-04-06T09:00:00Z', createdAt: '2026-04-06T09:00:00Z', mode: 'chat', groupId: 'group-physics' },
+        ]);
+      }
+      if (command === 'chat_v2_list_groups') {
+        return Promise.resolve(groups);
+      }
+      if (command === 'chat_v2_update_group') {
+        groups = groups.map((group) =>
+          group.id === payload.groupId
+            ? { ...group, ...payload.request, updatedAt: '2026-04-06T10:00:00Z' }
+            : group
+        );
+        return Promise.resolve(groups.find((group) => group.id === payload.groupId));
+      }
+      return Promise.resolve([]);
+    });
+
+    render(
+      <ModernSidebar
+        currentView="chat-v2"
+        onViewChange={() => undefined}
+      />
+    );
+
+    const recentNav = await screen.findByRole('navigation', { name: '课题' });
+    const mathGroup = within(recentNav).getByRole('button', { name: '数学' });
+
+    fireEvent.contextMenu(within(mathGroup).getByRole('button', { name: 'Group Actions' }));
+    fireEvent.click(await screen.findByText('置顶分组'));
+
+    const updateCall = invokeMock.mock.calls.find(([command]) => command === 'chat_v2_update_group');
+    expect(updateCall?.[1]).toMatchObject({
+      groupId: 'group-math',
+      request: { sortOrder: expect.any(Number) },
+    });
+    expect(updateCall?.[1].request.sortOrder).toBeLessThan(0);
+
+    const pinnedNav = await screen.findByRole('navigation', { name: '置顶会话' });
+    expect(screen.getByText('置顶')).toHaveClass('desktop-shell-nav-section-label');
+    const pinnedMathGroup = within(pinnedNav).getByRole('button', { name: '数学' });
+    expect(pinnedMathGroup).toBeInTheDocument();
+    if (pinnedMathGroup.getAttribute('aria-expanded') === 'false') {
+      fireEvent.click(pinnedMathGroup);
+    }
+    expect(within(pinnedNav).getByRole('button', { name: '代数复习' })).toBeInTheDocument();
+    expect(within(screen.getByRole('navigation', { name: '课题' })).queryByRole('button', { name: '数学' })).not.toBeInTheDocument();
+    expect(within(screen.getByRole('navigation', { name: '课题' })).getByRole('button', { name: '物理' })).toBeInTheDocument();
+
+    invokeMock.mockClear();
+    fireEvent.contextMenu(within(pinnedMathGroup).getByRole('button', { name: 'Group Actions' }));
+    fireEvent.click(await screen.findByText('取消置顶分组'));
+
+    const unpinCall = invokeMock.mock.calls.find(([command]) => command === 'chat_v2_update_group');
+    expect(unpinCall?.[1]).toMatchObject({
+      groupId: 'group-math',
+      request: { sortOrder: expect.any(Number) },
+    });
+    expect(unpinCall?.[1].request.sortOrder).toBeGreaterThanOrEqual(0);
+    await waitFor(() => {
+      expect(screen.queryByRole('navigation', { name: '置顶会话' })).not.toBeInTheDocument();
+    });
+    expect(within(screen.getByRole('navigation', { name: '课题' })).getByRole('button', { name: '数学' })).toBeInTheDocument();
   });
 
   it('shows pin rename and archive actions from the recent session context menu', async () => {
-    const dispatchEventSpy = vi.spyOn(window, 'dispatchEvent');
     invokeMock.mockImplementation((command: string) => {
       if (command === 'chat_v2_list_sessions') {
         return Promise.resolve([
@@ -773,11 +1049,12 @@ describe('ModernSidebar shell navigation', () => {
     expect(screen.getByText('归档线程')).toBeInTheDocument();
 
     fireEvent.click(screen.getByText('重命名会话'));
-    expect(dispatchEventSpy).toHaveBeenCalledWith(expect.objectContaining({
-      type: 'modern-sidebar:session-action',
-    }));
+    const renameDialog = await screen.findByRole('dialog');
+    expect(within(renameDialog).getByText('重命名对话')).toBeInTheDocument();
+    expect(within(renameDialog).getByRole('textbox', { name: '对话名称' })).toHaveValue('右键会话');
+    fireEvent.click(within(renameDialog).getByRole('button', { name: '取消' }));
 
-    fireEvent.contextMenu(screen.getByRole('button', { name: '右键会话' }));
+    fireEvent.contextMenu(await screen.findByRole('button', { name: '右键会话' }));
     fireEvent.click(screen.getByText('置顶线程'));
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('chat_v2_update_session_settings', {
@@ -791,5 +1068,87 @@ describe('ModernSidebar shell navigation', () => {
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('chat_v2_archive_session', { sessionId: 'session-1' });
     });
+  });
+
+  it('renames recent sessions from a simple dialog opened by the left sidebar context menu', async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'chat_v2_list_sessions') {
+        return Promise.resolve([
+          { id: 'session-1', title: '旧标题', updatedAt: '2026-04-10T00:00:00Z', createdAt: '2026-04-10T00:00:00Z', mode: 'chat' },
+        ]);
+      }
+      if (command === 'chat_v2_list_groups') {
+        return Promise.resolve([]);
+      }
+      if (command === 'chat_v2_update_session_settings') {
+        return Promise.resolve({
+          id: 'session-1',
+          title: '新标题',
+          updatedAt: '2026-04-10T00:01:00Z',
+          createdAt: '2026-04-10T00:00:00Z',
+          mode: 'chat',
+        });
+      }
+      return Promise.resolve([]);
+    });
+
+    render(
+      <ModernSidebar
+        currentView="chat-v2"
+        onViewChange={() => undefined}
+      />
+    );
+
+    fireEvent.contextMenu(await screen.findByRole('button', { name: '旧标题' }));
+    fireEvent.click(screen.getByText('重命名会话'));
+
+    const renameDialog = await screen.findByRole('dialog');
+    expect(within(renameDialog).getByText('重命名对话')).toBeInTheDocument();
+    expect(within(renameDialog).getByRole('button', { name: '取消' })).toBeInTheDocument();
+    expect(within(renameDialog).getByRole('button', { name: '确认' })).toBeInTheDocument();
+
+    const input = within(renameDialog).getByRole('textbox', { name: '对话名称' });
+    expect(input).toHaveValue('旧标题');
+
+    fireEvent.change(input, { target: { value: '新标题' } });
+    fireEvent.click(within(renameDialog).getByRole('button', { name: '确认' }));
+
+    await waitFor(() => {
+      expect(invokeMock).toHaveBeenCalledWith('chat_v2_update_session_settings', {
+        sessionId: 'session-1',
+        settings: { title: '新标题' },
+      });
+    });
+    expect(await screen.findByRole('button', { name: '新标题' })).toBeInTheDocument();
+  });
+
+  it('shows unnamed recent sessions as a placeholder in the rename dialog', async () => {
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'chat_v2_list_sessions') {
+        return Promise.resolve([
+          { id: 'session-1', updatedAt: '2026-04-10T00:00:00Z', createdAt: '2026-04-10T00:00:00Z', mode: 'chat' },
+        ]);
+      }
+      if (command === 'chat_v2_list_groups') {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve([]);
+    });
+
+    render(
+      <ModernSidebar
+        currentView="chat-v2"
+        onViewChange={() => undefined}
+      />
+    );
+
+    fireEvent.contextMenu(await screen.findByRole('button', { name: '未命名对话' }));
+    fireEvent.click(screen.getByText('重命名会话'));
+
+    const renameDialog = await screen.findByRole('dialog');
+    const input = within(renameDialog).getByRole('textbox', { name: '对话名称' });
+    expect(input).toHaveValue('');
+    expect(input).toHaveAttribute('placeholder', '未命名对话');
+    expect(within(renameDialog).getByRole('button', { name: '确认' })).toBeDisabled();
   });
 });

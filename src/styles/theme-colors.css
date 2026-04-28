@@ -36,7 +36,11 @@
   --shell-navigation-panel: var(--sidebar);
   --shell-navigation-foreground: var(--sidebar-foreground);
   --shell-navigation-muted: var(--sidebar-muted);
+  --shell-navigation-row-foreground: var(--shell-navigation-muted);
+  --shell-navigation-section-label: color-mix(in oklch, var(--shell-navigation-row-foreground) 72%, transparent);
+  --shell-navigation-thread-foreground: var(--shell-navigation-row-foreground);
   --shell-navigation-border: var(--sidebar-border);
+  --shell-navigation-depth-overlay: none;
   --shell-workspace-surface: var(--shell-surface);
   --shell-workspace-panel: var(--shell-panel);
   --shell-workspace-border: var(--shell-rim);
@@ -159,7 +163,7 @@
   --interactive-selected: rgba(255, 255, 255, 0.14);
   --overlay: rgba(27, 27, 25, 0.84);
   --sidebar-hover: #2A2A2A;
-  --sidebar: #000000;
+  --sidebar: hsl(var(--background));
   --sidebar-foreground: #FFFFFF;
   --sidebar-muted: rgba(255, 255, 255, 0.5);
   --sidebar-border: oklch(0.7 0.008 264.2 / 0.12);
@@ -173,6 +177,13 @@
   --shell-grid: transparent;
   --shell-titlebar: #1D1D1B;
   --shell-surface: #171917;
+  --shell-navigation-row-foreground: var(--shell-navigation-foreground);
+  --shell-navigation-depth-overlay: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.035) 0%,
+    rgba(255, 255, 255, 0.025) calc(100% - 48px),
+    rgba(255, 255, 255, 0) 100%
+  );
   --button-prominent-bg: color-mix(in oklab, hsl(var(--primary)) 74%, hsl(var(--background)) 26%);
   --button-prominent-hover-bg: color-mix(in oklab, hsl(var(--primary)) 78%, hsl(var(--background)) 22%);
   --button-prominent-active-bg: color-mix(in oklab, hsl(var(--primary)) 68%, hsl(var(--background)) 32%);

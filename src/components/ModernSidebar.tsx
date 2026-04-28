@@ -24,6 +24,7 @@ import {
   Heart,
   Languages,
   Lightbulb,
+  Loader2,
   MessageSquare,
   Music,
   Palette,
@@ -39,6 +40,13 @@ import {
 import { createNavItems } from '../config/navigation';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
+import {
+  NotionDialog,
+  NotionDialogBody,
+  NotionDialogFooter,
+  NotionDialogHeader,
+  NotionDialogTitle,
+} from '@/components/ui/NotionDialog';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { sessionManager } from '@/chat-v2/core/session/sessionManager';
 import type { ChatSession } from '@/chat-v2/types/session';
@@ -50,7 +58,7 @@ import { useEventRegistry } from '@/hooks/useEventRegistry';
 import type { AppUpdaterController } from '@/hooks/useAppUpdater';
 import type { CurrentView } from '@/types/navigation';
 import { pageLifecycleTracker } from '@/debug-panel/services/pageLifecycleTracker';
-import { StudySettingsIcon } from './icons/StudySidebarIcons';
+import { StudyComposeIcon, StudySettingsIcon } from './icons/StudySidebarIcons';
 import {
   AppMenu,
   AppMenuContent,
@@ -77,14 +85,14 @@ interface ModernSidebarProps {
   updater?: Pick<AppUpdaterController, 'checking' | 'available' | 'info' | 'downloading' | 'performUpdateAction'>;
 }
 
-const UNGROUPED_RECENT_GROUP_ID = '__ungrouped__';
+type SidebarSectionId = 'pinned' | 'topics' | 'conversations';
+const TOPIC_GROUP_SESSION_PREVIEW_LIMIT = 5;
 
 interface RecentSessionGroup {
   id: string;
   label: string;
   icon?: string;
   sessions: ChatSession[];
-  isUngrouped?: boolean;
 }
 
 const RECENT_GROUP_PRESET_ICONS: Record<string, LucideIcon> = {
@@ -135,11 +143,41 @@ function sortSessionsByUpdatedAt(sessions: ChatSession[]): ChatSession[] {
 
 function sortGroups(groups: SessionGroup[]): SessionGroup[] {
   return [...groups].sort((left, right) => {
+    const pinDelta = Number(isSessionGroupPinned(right)) - Number(isSessionGroupPinned(left));
+    if (pinDelta !== 0) {
+      return pinDelta;
+    }
     if (left.sortOrder !== right.sortOrder) {
       return left.sortOrder - right.sortOrder;
     }
     return (right.updatedAt ?? '').localeCompare(left.updatedAt ?? '');
   });
+}
+
+function isSessionGroupPinned(group: Pick<SessionGroup, 'sortOrder'>): boolean {
+  return group.sortOrder < 0;
+}
+
+function getNextPinnedGroupSortOrder(groups: SessionGroup[], groupId: string): number {
+  const pinnedSortOrders = groups
+    .filter((group) => group.id !== groupId && isSessionGroupPinned(group))
+    .map((group) => group.sortOrder);
+
+  return Math.min(0, ...pinnedSortOrders) - 1;
+}
+
+function getNextUnpinnedGroupSortOrder(groups: SessionGroup[], groupId: string): number {
+  const unpinnedSortOrders = groups
+    .filter((group) => group.id !== groupId && !isSessionGroupPinned(group))
+    .map((group) => group.sortOrder);
+
+  return Math.max(0, ...unpinnedSortOrders) + 1;
+}
+
+function isChatSession(value: unknown): value is ChatSession {
+  if (!value || typeof value !== 'object') return false;
+  const candidate = value as Partial<ChatSession>;
+  return typeof candidate.id === 'string' && typeof candidate.mode === 'string';
 }
 
 function getSidebarRowClassName({
@@ -164,7 +202,7 @@ function getSidebarRowClassName({
 
 function SidebarRowLabel({ children }: { children: React.ReactNode }) {
   return (
-    <span className="block min-w-0 flex-1 truncate leading-4">
+    <span className="desktop-shell-sidebar-row-title block min-w-0 flex-1 truncate leading-4">
       {children}
     </span>
   );
@@ -235,11 +273,17 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   const [recentSessions, setRecentSessions] = useState<ChatSession[]>([]);
   const [recentGroups, setRecentGroups] = useState<SessionGroup[]>([]);
   const [collapsedRecentGroupIds, setCollapsedRecentGroupIds] = useState<Set<string>>(() => new Set());
+  const [expandedRecentGroupSessionIds, setExpandedRecentGroupSessionIds] = useState<Set<string>>(() => new Set());
+  const [collapsedSidebarSectionIds, setCollapsedSidebarSectionIds] = useState<Set<SidebarSectionId>>(() => new Set());
   const [draggedRecentGroupId, setDraggedRecentGroupId] = useState<string | null>(null);
   const [dragOverRecentGroupId, setDragOverRecentGroupId] = useState<string | null>(null);
   const [hoveredRecentSessionId, setHoveredRecentSessionId] = useState<string | null>(null);
   const [openRecentSessionMenuId, setOpenRecentSessionMenuId] = useState<string | null>(null);
   const [confirmingArchiveSessionId, setConfirmingArchiveSessionId] = useState<string | null>(null);
+  const [editingRecentSessionId, setEditingRecentSessionId] = useState<string | null>(null);
+  const [editingRecentSessionTitle, setEditingRecentSessionTitle] = useState('');
+  const [renamingRecentSessionId, setRenamingRecentSessionId] = useState<string | null>(null);
+  const [recentRenameError, setRecentRenameError] = useState<string | null>(null);
   const draggedRecentGroupIdRef = useRef<string | null>(null);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(() => {
     try {
@@ -388,21 +432,70 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     }
   }, []);
 
-  const dispatchRecentSessionAction = useCallback((action: 'rename-session', session: ChatSession) => {
-    const dispatch = () => {
-      window.dispatchEvent(new CustomEvent('modern-sidebar:session-action', {
-        detail: { action, session, sessionId: session.id },
-      }));
-    };
+  const startRecentSessionRename = useCallback((session: ChatSession) => {
+    setOpenRecentSessionMenuId(null);
+    setConfirmingArchiveSessionId(null);
+    setRecentRenameError(null);
+    setEditingRecentSessionId(session.id);
+    setEditingRecentSessionTitle(getSessionTitleText(session.title, ''));
+  }, []);
 
-    if (currentView !== 'chat-v2') {
-      handleViewChange('chat-v2');
-      window.setTimeout(dispatch, 0);
+  const cancelRecentSessionRename = useCallback(() => {
+    setRenamingRecentSessionId(null);
+    setRecentRenameError(null);
+    setEditingRecentSessionId(null);
+    setEditingRecentSessionTitle('');
+  }, []);
+
+  const handleRecentRenameDialogOpenChange = useCallback((open: boolean) => {
+    if (!open && !renamingRecentSessionId) {
+      cancelRecentSessionRename();
+    }
+  }, [cancelRecentSessionRename, renamingRecentSessionId]);
+
+  const saveRecentSessionRename = useCallback(async (sessionId: string) => {
+    const trimmedTitle = editingRecentSessionTitle.trim();
+    if (!trimmedTitle) {
+      setRecentRenameError(t('chatV2:page.renameEmptyError', '会话名称不能为空'));
       return;
     }
 
-    dispatch();
-  }, [currentView, handleViewChange]);
+    const currentSession = recentSessions.find((session) => session.id === sessionId);
+    const currentTitle = getSessionTitleText(currentSession?.title, '');
+    if (currentTitle === trimmedTitle) {
+      cancelRecentSessionRename();
+      return;
+    }
+
+    try {
+      setRecentRenameError(null);
+      setRenamingRecentSessionId(sessionId);
+      const updatedSession = await invoke<ChatSession | null>('chat_v2_update_session_settings', {
+        sessionId,
+        settings: { title: trimmedTitle },
+      });
+
+      setRecentSessions((previous) =>
+        sortSessionsByUpdatedAt(
+          previous.map((item) => {
+            if (item.id !== sessionId) return item;
+            return isChatSession(updatedSession)
+              ? { ...item, ...updatedSession, title: trimmedTitle }
+              : { ...item, title: trimmedTitle };
+          })
+        )
+      );
+
+      sessionManager.get(sessionId)?.setState({ title: trimmedTitle });
+      cancelRecentSessionRename();
+      window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
+    } catch (error) {
+      console.warn('[ModernSidebar] Failed to rename recent session:', error);
+      setRecentRenameError(t('chatV2:page.renameFailed', '重命名失败'));
+    } finally {
+      setRenamingRecentSessionId(null);
+    }
+  }, [cancelRecentSessionRename, editingRecentSessionTitle, recentSessions, t]);
 
   const handleRecentSessionArchive = useCallback(async (sessionId: string) => {
     try {
@@ -431,11 +524,63 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     });
   }, []);
 
+  const toggleRecentGroupSessions = useCallback((groupId: string) => {
+    setExpandedRecentGroupSessionIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(groupId)) {
+        next.delete(groupId);
+      } else {
+        next.add(groupId);
+      }
+      return next;
+    });
+  }, []);
+
+  const toggleSidebarSection = useCallback((sectionId: SidebarSectionId) => {
+    setCollapsedSidebarSectionIds((previous) => {
+      const next = new Set(previous);
+      if (next.has(sectionId)) {
+        next.delete(sectionId);
+      } else {
+        next.add(sectionId);
+      }
+      return next;
+    });
+  }, []);
+
   const handleCreateRecentGroup = useCallback(() => {
     window.dispatchEvent(new CustomEvent('modern-sidebar:group-action', {
       detail: { action: 'create-group' },
     }));
   }, []);
+
+  const handleRecentGroupPinToggle = useCallback(async (group: SessionGroup, pinned: boolean) => {
+    const nextSortOrder = pinned
+      ? getNextPinnedGroupSortOrder(recentGroups, group.id)
+      : getNextUnpinnedGroupSortOrder(recentGroups, group.id);
+
+    try {
+      const updatedGroup = await invoke<SessionGroup | null>('chat_v2_update_group', {
+        groupId: group.id,
+        request: { sortOrder: nextSortOrder },
+      });
+
+      setRecentGroups((previous) =>
+        sortGroups(
+          previous.map((item) => {
+            if (item.id !== group.id) return item;
+            return isSessionGroup(updatedGroup)
+              ? updatedGroup
+              : { ...item, sortOrder: nextSortOrder };
+          })
+        )
+      );
+      window.dispatchEvent(new CustomEvent('chat-v2:groups-updated'));
+    } catch (error) {
+      console.warn('[ModernSidebar] Failed to toggle recent group pin:', error);
+      void loadSidebarData();
+    }
+  }, [loadSidebarData, recentGroups]);
 
   const clearRecentGroupDragState = useCallback(() => {
     draggedRecentGroupIdRef.current = null;
@@ -645,8 +790,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               <AppMenuItem
                 icon={<Edit2 className="h-4 w-4" />}
                 onClick={() => {
-                  setOpenRecentSessionMenuId(null);
-                  dispatchRecentSessionAction('rename-session', session);
+                  startRecentSessionRename(session);
                 }}
               >
                 重命名会话
@@ -675,17 +819,21 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
 
       </div>
     );
-  }, [confirmingArchiveSessionId, currentView, dispatchRecentSessionAction, handleRecentSessionArchive, handleRecentSessionOpen, handleRecentSessionPinToggle, hoveredRecentSessionId, openRecentSessionMenuId, t]);
+  }, [confirmingArchiveSessionId, currentView, handleRecentSessionArchive, handleRecentSessionOpen, handleRecentSessionPinToggle, hoveredRecentSessionId, openRecentSessionMenuId, startRecentSessionRename, t]);
 
   const pinnedRecentSessions = useMemo(
     () => sortSessionsByUpdatedAt(recentSessions.filter((session) => isSessionPinned(session))),
     [recentSessions]
   );
 
-  const recentSessionGroups = useMemo<RecentSessionGroup[]>(() => {
+  const {
+    pinnedRecentGroups,
+    topicSessionGroups,
+    conversationSessions,
+  } = useMemo<{ pinnedRecentGroups: RecentSessionGroup[]; topicSessionGroups: RecentSessionGroup[]; conversationSessions: ChatSession[] }>(() => {
     const sessionsByGroup = new Map<string, ChatSession[]>();
     const groupLookup = new Map(recentGroups.map((group) => [group.id, group]));
-    const ungroupedSessions: ChatSession[] = [];
+    const looseSessions: ChatSession[] = [];
 
     recentSessions.forEach((session) => {
       if (isSessionPinned(session)) {
@@ -698,48 +846,50 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
         sessionsByGroup.set(session.groupId, groupSessions);
         return;
       }
-      ungroupedSessions.push(session);
+      looseSessions.push(session);
     });
 
-    const groupedSections: RecentSessionGroup[] = recentGroups
-      .map((group) => ({
-        id: group.id,
-        label: group.name,
-        icon: group.icon,
-        sessions: sortSessionsByUpdatedAt(sessionsByGroup.get(group.id) ?? []),
-      }));
+    const toRecentGroupSection = (group: SessionGroup): RecentSessionGroup => ({
+      id: group.id,
+      label: group.name,
+      icon: group.icon,
+      sessions: sortSessionsByUpdatedAt(sessionsByGroup.get(group.id) ?? []),
+    });
 
-    if (ungroupedSessions.length > 0) {
-      groupedSections.push({
-        id: UNGROUPED_RECENT_GROUP_ID,
-        label: t('chatV2:browser.ungrouped', '未分组'),
-        sessions: sortSessionsByUpdatedAt(ungroupedSessions),
-        isUngrouped: true,
-      });
-    }
+    const pinnedGroups = recentGroups
+      .filter(isSessionGroupPinned)
+      .map(toRecentGroupSection);
 
-    return groupedSections;
-  }, [recentGroups, recentSessions, t]);
+    const topicGroups: RecentSessionGroup[] = recentGroups
+      .filter((group) => !isSessionGroupPinned(group))
+      .map(toRecentGroupSection);
 
-  const areAllRecentGroupsExpanded = useMemo(
-    () => recentSessionGroups.length > 0 && recentSessionGroups.every((group) => !collapsedRecentGroupIds.has(group.id)),
-    [collapsedRecentGroupIds, recentSessionGroups]
+    return {
+      pinnedRecentGroups: pinnedGroups,
+      topicSessionGroups: topicGroups,
+      conversationSessions: sortSessionsByUpdatedAt(looseSessions),
+    };
+  }, [recentGroups, recentSessions]);
+
+  const areAllTopicGroupsExpanded = useMemo(
+    () => topicSessionGroups.length > 0 && topicSessionGroups.every((group) => !collapsedRecentGroupIds.has(group.id)),
+    [collapsedRecentGroupIds, topicSessionGroups]
   );
 
-  const handleToggleAllRecentGroups = useCallback(() => {
-    if (recentSessionGroups.length === 0) {
+  const handleToggleAllTopicGroups = useCallback(() => {
+    if (topicSessionGroups.length === 0) {
       return;
     }
 
     setCollapsedRecentGroupIds(
-      areAllRecentGroupsExpanded
-        ? new Set(recentSessionGroups.map((group) => group.id))
+      areAllTopicGroupsExpanded
+        ? new Set(topicSessionGroups.map((group) => group.id))
         : new Set()
     );
-  }, [areAllRecentGroupsExpanded, recentSessionGroups]);
+  }, [areAllTopicGroupsExpanded, topicSessionGroups]);
 
   const renderRecentGroupIcon = useCallback((group: RecentSessionGroup) => {
-    if (!group.icon || group.isUngrouped) {
+    if (!group.icon) {
       return <Folder className="size-[16px]" strokeWidth={2} />;
     }
 
@@ -759,7 +909,23 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   const renderRecentGroup = useCallback((group: RecentSessionGroup) => {
     const isExpanded = !collapsedRecentGroupIds.has(group.id);
     const isActive = false;
-    const sessionGroup = !group.isUngrouped ? recentGroups.find(g => g.id === group.id) : null;
+    const sessionGroup = recentGroups.find(g => g.id === group.id);
+    if (!sessionGroup) {
+      return null;
+    }
+    const isPinnedGroup = isSessionGroupPinned(sessionGroup);
+    const isSessionListExpanded = expandedRecentGroupSessionIds.has(group.id);
+    const hasSessionOverflow = group.sessions.length > TOPIC_GROUP_SESSION_PREVIEW_LIMIT;
+    const visibleSessions = hasSessionOverflow && !isSessionListExpanded
+      ? group.sessions.slice(0, TOPIC_GROUP_SESSION_PREVIEW_LIMIT)
+      : group.sessions;
+    const hiddenSessionCount = group.sessions.length - TOPIC_GROUP_SESSION_PREVIEW_LIMIT;
+    const sessionOverflowLabel = isSessionListExpanded
+      ? t('sidebar:actions.collapse_group_sessions', { defaultValue: '折叠展示' })
+      : t('sidebar:actions.expand_group_sessions', {
+        count: hiddenSessionCount,
+        defaultValue: `展开显示 ${hiddenSessionCount} 条更多`,
+      });
 
     const sessionList = (
       <div
@@ -776,122 +942,186 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
           )}
           role="list"
         >
-          {group.sessions.map((session) => renderRecentSessionRow(session, !isExpanded))}
+          {group.sessions.length > 0 ? (
+            <>
+              {visibleSessions.map((session) => renderRecentSessionRow(session, !isExpanded))}
+              {hasSessionOverflow ? (
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  aria-label={sessionOverflowLabel}
+                  className="group/sidebar-session-toggle !h-auto min-h-8 w-full justify-center gap-1.5 rounded-2xl px-2.5 py-1 text-[12px] font-normal leading-none text-[color:var(--shell-navigation-muted)] hover:bg-[color:var(--sidebar-quiet-hover)] hover:text-[color:var(--shell-navigation-foreground)]"
+                  onClick={(event) => {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    toggleRecentGroupSessions(group.id);
+                  }}
+                >
+                  {isSessionListExpanded ? (
+                    <ChevronsUp className="size-3.5" strokeWidth={2} />
+                  ) : (
+                    <ChevronsDown className="size-3.5" strokeWidth={2} />
+                  )}
+                  <span>{sessionOverflowLabel}</span>
+                </NotionButton>
+              ) : null}
+            </>
+          ) : (
+            <div className="px-2 py-1.5 text-xs text-[color:var(--shell-navigation-muted)] opacity-70">
+              {t('sidebar:sections.emptyGroup', '暂无对话')}
+            </div>
+          )}
         </div>
       </div>
     );
 
-    if (sessionGroup) {
-      return (
-        <section key={group.id} className="space-y-0.5">
-          <SessionGroupActions
-            group={sessionGroup}
-            labels={{
-              groupActions: t('chatV2:page.groupActions', 'Group Actions'),
-              newSession: t('chatV2:page.newSession', 'New Session'),
-              renameGroup: t('chatV2:page.renameGroup', 'Rename Group'),
-              editGroup: t('chatV2:page.editGroup', 'Edit Group'),
-              deleteGroup: t('chatV2:page.deleteGroup', 'Delete Group'),
-            }}
-            onCreateSession={(groupId) => {
-              window.dispatchEvent(new CustomEvent('modern-sidebar:group-action', {
-                detail: { action: 'create-session', groupId }
-              }));
-            }}
-            onRenameGroup={(g) => {
-              handleViewChange('chat-v2');
-              requestAnimationFrame(() => {
-                window.dispatchEvent(new CustomEvent('modern-sidebar:group-action', {
-                  detail: { action: 'rename-group', group: g }
-                }));
-              });
-            }}
-            onEditGroup={(g) => {
-              handleViewChange('chat-v2');
-              requestAnimationFrame(() => {
-                window.dispatchEvent(new CustomEvent('modern-sidebar:group-action', {
-                  detail: { action: 'edit-group', group: g }
-                }));
-              });
-            }}
-            onDeleteGroup={(g) => {
-              window.dispatchEvent(new CustomEvent('modern-sidebar:group-action', {
-                detail: { action: 'delete-group', group: g }
-              }));
-            }}
-          >
-            {({ quickAction, onContextMenu }) => (
-              <SidebarRow
-                rowType="nav"
-                onClick={() => toggleRecentGroup(group.id)}
-                onContextMenu={onContextMenu}
-                onDragEnd={clearRecentGroupDragState}
-                onDragOver={(event) => handleRecentGroupDragOver(event, group.id)}
-                onDragStart={(event) => handleRecentGroupDragStart(event, group.id)}
-                onDrop={(event) => void handleRecentGroupDrop(event, group.id)}
-                aria-label={group.label}
-                aria-expanded={isExpanded}
-                aria-grabbed={draggedRecentGroupId === group.id}
-                draggable
-                isActive={isActive}
-                className={cn(
-                  'group/sidebar-section select-none',
-                  draggedRecentGroupId === group.id && 'cursor-grabbing opacity-60',
-                  dragOverRecentGroupId === group.id && draggedRecentGroupId !== group.id && 'bg-[color:var(--sidebar-quiet-hover)] ring-1 ring-black/8'
-                )}
-                leftSlot={renderRecentGroupIcon(group)}
-                rightSlot={
-                  <span className="flex shrink-0 items-center gap-1.5 text-[color:var(--shell-navigation-muted)]">
-                    {quickAction}
-                    <ChevronRight
-                      className={cn(
-                        'size-3 transition-transform duration-150 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none',
-                        isExpanded && 'rotate-90'
-                      )}
-                      strokeWidth={2.25}
-                    />
-                  </span>
-                }
-              >
-                <SidebarRowLabel>{group.label}</SidebarRowLabel>
-              </SidebarRow>
-            )}
-          </SessionGroupActions>
-          {sessionList}
-        </section>
-      );
-    }
-
     return (
       <section key={group.id} className="space-y-0.5">
-        <SidebarRow
-          rowType="nav"
-          onClick={() => toggleRecentGroup(group.id)}
-          aria-label={group.label}
-          aria-expanded={isExpanded}
-          isActive={isActive}
-          className="select-none"
-          leftSlot={renderRecentGroupIcon(group)}
-          rightSlot={
-            <span className="flex shrink-0 items-center justify-center text-[color:var(--shell-navigation-muted)]">
-              <ChevronRight
-                className={cn(
-                  'size-3 transition-transform duration-150 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none',
-                  isExpanded && 'rotate-90'
-                )}
-                strokeWidth={2.25}
-              />
-            </span>
-          }
+        <SessionGroupActions
+          group={sessionGroup}
+          labels={{
+            groupActions: t('chatV2:page.groupActions', 'Group Actions'),
+            newSession: t('chatV2:page.newSession', 'New Session'),
+            pinGroup: t('chatV2:page.pinGroup', '置顶分组'),
+            unpinGroup: t('chatV2:page.unpinGroup', '取消置顶分组'),
+            renameGroup: t('chatV2:page.renameGroup', 'Rename Group'),
+            editGroup: t('chatV2:page.editGroup', 'Edit Group'),
+            archiveGroup: t('chatV2:page.archiveGroup', 'Archive Group'),
+          }}
+          isPinned={isPinnedGroup}
+          onCreateSession={(groupId) => {
+            window.dispatchEvent(new CustomEvent('modern-sidebar:group-action', {
+              detail: { action: 'create-session', groupId }
+            }));
+          }}
+          onTogglePinGroup={(g, pinned) => {
+            void handleRecentGroupPinToggle(g, pinned);
+          }}
+          onRenameGroup={(g) => {
+            handleViewChange('chat-v2');
+            requestAnimationFrame(() => {
+              window.dispatchEvent(new CustomEvent('modern-sidebar:group-action', {
+                detail: { action: 'rename-group', group: g }
+              }));
+            });
+          }}
+          onEditGroup={(g) => {
+            handleViewChange('chat-v2');
+            requestAnimationFrame(() => {
+              window.dispatchEvent(new CustomEvent('modern-sidebar:group-action', {
+                detail: { action: 'edit-group', group: g }
+              }));
+            });
+          }}
+          onArchiveGroup={(g) => {
+            window.dispatchEvent(new CustomEvent('modern-sidebar:group-action', {
+              detail: { action: 'archive-group', group: g }
+            }));
+          }}
         >
-          <SidebarRowLabel>{group.label}</SidebarRowLabel>
-        </SidebarRow>
+          {({ quickAction, onContextMenu }) => (
+            <SidebarRow
+              rowType="nav"
+              onClick={() => toggleRecentGroup(group.id)}
+              onContextMenu={onContextMenu}
+              onDragEnd={clearRecentGroupDragState}
+              onDragOver={(event) => handleRecentGroupDragOver(event, group.id)}
+              onDragStart={(event) => handleRecentGroupDragStart(event, group.id)}
+              onDrop={(event) => void handleRecentGroupDrop(event, group.id)}
+              aria-label={group.label}
+              aria-expanded={isExpanded}
+              aria-grabbed={draggedRecentGroupId === group.id}
+              draggable={!isPinnedGroup}
+              isActive={isActive}
+              className={cn(
+                'group/sidebar-section select-none',
+                draggedRecentGroupId === group.id && 'cursor-grabbing opacity-60',
+                dragOverRecentGroupId === group.id && draggedRecentGroupId !== group.id && 'bg-[color:var(--sidebar-quiet-hover)] ring-1 ring-black/8'
+              )}
+              leftSlot={renderRecentGroupIcon(group)}
+              rightSlot={
+                <span className="flex shrink-0 items-center gap-1.5 text-[color:var(--shell-navigation-muted)]">
+                  {quickAction}
+                </span>
+              }
+            >
+              <SidebarRowLabel>{group.label}</SidebarRowLabel>
+            </SidebarRow>
+          )}
+        </SessionGroupActions>
         {sessionList}
       </section>
     );
-  }, [clearRecentGroupDragState, collapsedRecentGroupIds, dragOverRecentGroupId, draggedRecentGroupId, handleRecentGroupDragOver, handleRecentGroupDragStart, handleRecentGroupDrop, handleViewChange, recentGroups, renderRecentGroupIcon, renderRecentSessionRow, t, toggleRecentGroup]);
+  }, [clearRecentGroupDragState, collapsedRecentGroupIds, dragOverRecentGroupId, draggedRecentGroupId, expandedRecentGroupSessionIds, handleRecentGroupDragOver, handleRecentGroupDragStart, handleRecentGroupDrop, handleRecentGroupPinToggle, handleViewChange, recentGroups, renderRecentGroupIcon, renderRecentSessionRow, t, toggleRecentGroup, toggleRecentGroupSessions]);
+
+  const hasPinnedContent = pinnedRecentGroups.length > 0 || pinnedRecentSessions.length > 0;
+  const isPinnedSectionCollapsed = collapsedSidebarSectionIds.has('pinned');
+  const isTopicsSectionCollapsed = collapsedSidebarSectionIds.has('topics');
+  const isConversationsSectionCollapsed = collapsedSidebarSectionIds.has('conversations');
+  const pinnedSectionLabel = t('sidebar:sections.pinned', '置顶');
+  const topicsSectionLabel = t('sidebar:sections.topics', '课题');
+  const conversationsSectionLabel = t('sidebar:sections.conversations', '对话');
+  const newConversationLabel = t('sidebar:actions.create_conversation', t('chatV2:page.newSession', 'New Session'));
+
+  const renderSidebarSectionHeader = ({
+    id,
+    label,
+    action,
+  }: {
+    id: SidebarSectionId;
+    label: string;
+    action?: React.ReactNode;
+  }) => {
+    const isCollapsed = collapsedSidebarSectionIds.has(id);
+
+    return (
+      <div className="group/sidebar-top-section flex items-center justify-between gap-2 px-2">
+        <button
+          type="button"
+          className="flex min-w-0 flex-1 items-center gap-1 rounded-md px-1 py-0.5 text-left text-[color:var(--shell-navigation-muted)] outline-none transition-colors hover:text-[color:var(--shell-navigation-foreground)] focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
+          aria-label={label}
+          aria-expanded={!isCollapsed}
+          onClick={() => toggleSidebarSection(id)}
+        >
+          <span className="desktop-shell-nav-section-label min-w-0 truncate">
+            {label}
+          </span>
+          <ChevronRight
+            className={cn(
+              'size-3 shrink-0 text-[color:var(--shell-navigation-section-label)] opacity-0 transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.25,0.1,0.25,1)] group-hover/sidebar-top-section:opacity-100 group-focus-within/sidebar-top-section:opacity-100 motion-reduce:transition-none',
+              !isCollapsed && 'rotate-90'
+            )}
+            strokeWidth={2.25}
+          />
+        </button>
+        {action}
+      </div>
+    );
+  };
+
+  const conversationHeaderAction = (
+    <span className="flex shrink-0 items-center gap-1 opacity-0 transition-opacity duration-150 group-hover/sidebar-top-section:opacity-100 group-focus-within/sidebar-top-section:opacity-100">
+      <NotionButton
+        variant="ghost"
+        size="icon"
+        iconOnly
+        aria-label={newConversationLabel}
+        title={newConversationLabel}
+        className="!h-6 !w-6 text-[color:var(--shell-navigation-muted)]"
+        onClick={(event) => {
+          event.stopPropagation();
+          window.dispatchEvent(new CustomEvent('modern-sidebar:group-action', {
+            detail: { action: 'create-session', groupId: null },
+          }));
+        }}
+      >
+        <StudyComposeIcon className="w-3.5 h-3.5" />
+      </NotionButton>
+    </span>
+  );
 
   return (
+    <>
     <aside
       role="navigation"
       aria-label={t('sidebar:aria.sidebar_navigation', '主导航')}
@@ -921,47 +1151,50 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       </div>
 
       <CustomScrollArea
-        className="min-h-0 flex-1 w-full"
-        viewportClassName="h-full w-full"
+        className="desktop-shell-sidebar-session-scroll min-h-0 flex-1 w-full"
+        viewportClassName="desktop-shell-sidebar-session-scroll-viewport h-full w-full"
         viewportProps={{
           'data-sidebar-scroll-region': 'sessions',
-        }}
+        } as React.HTMLAttributes<HTMLDivElement>}
       >
         <div
           className="flex flex-col gap-3 px-2 pb-3 pt-1"
           data-no-drag
         >
-          {pinnedRecentSessions.length > 0 ? (
+          {hasPinnedContent ? (
             <section className="space-y-0.5 pt-1">
-              <nav aria-label={t('sidebar:aria.pinned_sessions', '置顶会话')}>
-                <div className="space-y-0.5" role="list">
-                  {pinnedRecentSessions.map((session) => renderRecentSessionRow(session))}
-                </div>
-              </nav>
+              {renderSidebarSectionHeader({ id: 'pinned', label: pinnedSectionLabel })}
+              {!isPinnedSectionCollapsed ? (
+                <nav aria-label={t('sidebar:aria.pinned_sessions', '置顶会话')}>
+                  <div className="space-y-0.5" role="list">
+                    {pinnedRecentGroups.map((group) => renderRecentGroup(group))}
+                    {pinnedRecentSessions.map((session) => renderRecentSessionRow(session))}
+                  </div>
+                </nav>
+              ) : null}
             </section>
           ) : null}
 
-          {recentSessionGroups.length > 0 ? (
-            <section className="space-y-0.5 pt-1">
-              <div className="flex items-center justify-between gap-2 px-3">
-                <p className="desktop-shell-nav-section-label">
-                  {t('sidebar:sections.recent', '最近')}
-                </p>
+          <section className="space-y-0.5 pt-1">
+            {renderSidebarSectionHeader({
+              id: 'topics',
+              label: topicsSectionLabel,
+              action: (
                 <div className="flex items-center gap-1">
                   <NotionButton
                     variant="ghost"
                     size="icon"
                     iconOnly
-                    aria-label={areAllRecentGroupsExpanded
-                      ? t('sidebar:actions.collapse_all_recent_sessions', '收起所有会话')
-                      : t('sidebar:actions.expand_all_recent_sessions', '展开所有会话')}
-                    title={areAllRecentGroupsExpanded
-                      ? t('sidebar:actions.collapse_all_recent_sessions', '收起所有会话')
-                      : t('sidebar:actions.expand_all_recent_sessions', '展开所有会话')}
+                    aria-label={areAllTopicGroupsExpanded
+                      ? t('sidebar:actions.collapse_all_topics', '收起所有课题')
+                      : t('sidebar:actions.expand_all_topics', '展开所有课题')}
+                    title={areAllTopicGroupsExpanded
+                      ? t('sidebar:actions.collapse_all_topics', '收起所有课题')
+                      : t('sidebar:actions.expand_all_topics', '展开所有课题')}
                     className="!h-6 !w-6 text-[color:var(--shell-navigation-muted)]"
-                    onClick={handleToggleAllRecentGroups}
+                    onClick={handleToggleAllTopicGroups}
                   >
-                    {areAllRecentGroupsExpanded ? (
+                    {areAllTopicGroupsExpanded ? (
                       <ChevronsUp className="size-3.5" strokeWidth={2} />
                     ) : (
                       <ChevronsDown className="size-3.5" strokeWidth={2} />
@@ -971,22 +1204,39 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                     variant="ghost"
                     size="icon"
                     iconOnly
-                    aria-label={t('sidebar:actions.create_recent_group', '新建文件夹')}
-                    title={t('sidebar:actions.create_recent_group', '新建文件夹')}
+                    aria-label={t('sidebar:actions.create_topic', '新建课题')}
+                    title={t('sidebar:actions.create_topic', '新建课题')}
                     className="!h-6 !w-6 text-[color:var(--shell-navigation-muted)]"
                     onClick={handleCreateRecentGroup}
                   >
                     <FolderPlus className="size-3.5" strokeWidth={2} />
                   </NotionButton>
                 </div>
-              </div>
-              <nav aria-label={t('sidebar:aria.recent_sessions', '最近会话')}>
+              ),
+            })}
+            {!isTopicsSectionCollapsed ? (
+              <nav aria-label={t('sidebar:aria.topic_sessions', '课题')}>
                 <div className="space-y-0.5" role="list">
-                  {recentSessionGroups.map((group) => renderRecentGroup(group))}
+                  {topicSessionGroups.map((group) => renderRecentGroup(group))}
                 </div>
               </nav>
-            </section>
-          ) : null}
+            ) : null}
+          </section>
+
+          <section className="space-y-0.5 pt-1">
+            {renderSidebarSectionHeader({
+              id: 'conversations',
+              label: conversationsSectionLabel,
+              action: conversationHeaderAction,
+            })}
+            {!isConversationsSectionCollapsed ? (
+              <nav aria-label={t('sidebar:aria.conversation_sessions', '对话')}>
+                <div className="space-y-0.5" role="list">
+                  {conversationSessions.map((session) => renderRecentSessionRow(session))}
+                </div>
+              </nav>
+            ) : null}
+          </section>
         </div>
       </CustomScrollArea>
 
@@ -1022,5 +1272,70 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
         </div>
       </div>
     </aside>
+
+    <NotionDialog
+      open={editingRecentSessionId !== null}
+      onOpenChange={handleRecentRenameDialogOpenChange}
+      closeOnOverlay={false}
+      showClose={false}
+      maxWidth="max-w-sm"
+    >
+      <form
+        onSubmit={(event) => {
+          event.preventDefault();
+          if (editingRecentSessionId && renamingRecentSessionId !== editingRecentSessionId) {
+            void saveRecentSessionRename(editingRecentSessionId);
+          }
+        }}
+      >
+        <NotionDialogHeader>
+          <NotionDialogTitle>重命名对话</NotionDialogTitle>
+        </NotionDialogHeader>
+        <NotionDialogBody nativeScroll className="py-4">
+          <label className="block text-sm font-medium text-foreground" htmlFor="modern-sidebar-rename-session-input">
+            对话名称
+          </label>
+          <input
+            id="modern-sidebar-rename-session-input"
+            type="text"
+            placeholder={t('chatV2:page.untitled', '未命名对话')}
+            value={editingRecentSessionTitle}
+            onChange={(event) => {
+              setEditingRecentSessionTitle(event.target.value);
+              if (recentRenameError) setRecentRenameError(null);
+            }}
+            autoFocus
+            disabled={renamingRecentSessionId !== null}
+            className="mt-2 h-9 w-full rounded-md border border-transparent bg-muted/30 px-3 text-sm text-foreground outline-none transition-colors focus:border-border focus:bg-background disabled:opacity-60"
+          />
+          {recentRenameError ? (
+            <p className="mt-2 text-xs text-destructive" role="alert">
+              {recentRenameError}
+            </p>
+          ) : null}
+        </NotionDialogBody>
+        <NotionDialogFooter>
+          <NotionButton
+            type="button"
+            variant="ghost"
+            size="sm"
+            onClick={cancelRecentSessionRename}
+            disabled={renamingRecentSessionId !== null}
+          >
+            取消
+          </NotionButton>
+          <NotionButton
+            type="submit"
+            variant="primary"
+            size="sm"
+            disabled={renamingRecentSessionId !== null || !editingRecentSessionTitle.trim()}
+          >
+            {renamingRecentSessionId !== null ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            确认
+          </NotionButton>
+        </NotionDialogFooter>
+      </form>
+    </NotionDialog>
+    </>
   );
 };

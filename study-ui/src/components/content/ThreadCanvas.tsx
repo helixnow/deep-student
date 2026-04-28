@@ -64,7 +64,7 @@ export function ThreadCanvas() {
                 data-slot="thread-empty-primary-action"
                 className="text-balance text-2xl font-semibold tracking-[-0.04em] text-foreground sm:text-xl sm:font-medium sm:tracking-normal"
               >
-                我们要开始做什么？
+                在「分组名」里学点什么？
               </h2>
             </div>
           </section>

@@ -8,4 +8,10 @@ describe('settings single sidebar layout contract', () => {
   it('does not render the global ModernSidebar while the settings view is active on desktop', () => {
     expect(appSource).toContain("{!isSmallScreen && currentView !== 'settings' ? (");
   });
+
+  it('uses the real collapsed sidebar width for settings instead of reserving a stale default column', () => {
+    expect(appSource).toContain("const desktopNavigationWidth = !isSmallScreen && leftPanelCollapsed ? 0 : shellSidebarWidth;");
+    expect(appSource).not.toContain("currentView !== 'settings' && leftPanelCollapsed ? 0 : shellSidebarWidth");
+    expect(appSource).toContain("'--shell-navigation-width': `${desktopNavigationWidth}px`");
+  });
 });

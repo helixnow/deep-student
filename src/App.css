@@ -115,11 +115,11 @@ body {
 }
 
 .desktop-shell-nav-section-label {
-  font-size: 11px;
-  line-height: 1.2;
+  font-size: 12px;
+  line-height: 16px;
   font-weight: 400;
   letter-spacing: 0;
-  color: var(--shell-navigation-muted);
+  color: var(--shell-navigation-section-label);
 }
 
 .settings-nav-item-label {
@@ -138,10 +138,18 @@ body {
   border-radius: var(--shell-nav-row-radius) !important;
   border: 1px solid transparent !important;
   background: transparent !important;
-  color: var(--shell-navigation-muted) !important;
+  color: var(--shell-navigation-row-foreground) !important;
   box-shadow: none !important;
   font-size: 14px !important;
   font-weight: 400 !important;
+}
+
+.desktop-shell-thread-row {
+  color: var(--shell-navigation-thread-foreground) !important;
+}
+
+.desktop-shell-sidebar-row-title {
+  color: var(--shell-navigation-foreground);
 }
 
 .desktop-shell-sidebar-row:hover,
@@ -157,14 +165,58 @@ body {
 .desktop-shell-sidebar-row--active,
 .desktop-shell-nav-row--active {
   background: var(--interactive-selected) !important;
-  color: var(--shell-nav-item-active-foreground) !important;
+  color: var(--shell-navigation-foreground) !important;
   font-weight: 400 !important;
 }
 
 .desktop-shell-thread-row--active {
   background: var(--interactive-selected) !important;
-  color: var(--shell-nav-item-active-foreground) !important;
+  color: var(--shell-navigation-foreground) !important;
   font-weight: 400 !important;
+}
+
+.desktop-shell-sidebar-session-scroll {
+  --desktop-shell-sidebar-session-fade-size: 36px;
+  --desktop-shell-sidebar-session-fade-surface: var(--shell-navigation-surface);
+  isolation: isolate;
+}
+
+.desktop-shell-sidebar-session-scroll::after {
+  content: "";
+  display: block;
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 45;
+  height: var(--desktop-shell-sidebar-session-fade-size);
+  pointer-events: none;
+}
+
+.desktop-shell-sidebar-session-scroll::after {
+  bottom: 0;
+  background: linear-gradient(
+    to top,
+    var(--desktop-shell-sidebar-session-fade-surface) 0%,
+    var(--desktop-shell-sidebar-session-fade-surface) 18%,
+    transparent 100%
+  );
+}
+
+.desktop-shell-sidebar-session-scroll-viewport {
+  --desktop-shell-sidebar-session-fade-mask: linear-gradient(
+    to bottom,
+    #000 0,
+    #000 calc(100% - var(--desktop-shell-sidebar-session-fade-size)),
+    transparent 100%
+  );
+  -webkit-mask-image: var(--desktop-shell-sidebar-session-fade-mask);
+  mask-image: var(--desktop-shell-sidebar-session-fade-mask);
+  -webkit-mask-position: center;
+  mask-position: center;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+  -webkit-mask-size: 100% 100%;
+  mask-size: 100% 100%;
 }
 
 .desktop-shell-header-title {
@@ -238,6 +290,8 @@ body {
 
 .study-shell-pane--flush-top {
   border-top: 0;
+  border-left: 0;
+  border-right: 0;
   border-top-left-radius: 0;
   border-top-right-radius: 0;
   box-shadow: none;
@@ -1152,7 +1206,7 @@ main {
 
 /* 暗色：提高页面背景与卡片的分层对比，使圆角更明显 */
 .dark .page-container {
-  background: hsl(var(--nav-background));
+  background: var(--shell-workspace-panel);
 }
 
 .page-container[style*="display: none"],
@@ -11144,8 +11198,8 @@ body {
 
 .dark .content-body {
   background: hsl(var(--background));
-  /* 恢复圆角在暗色下的描边，以增强可见度 */
-  border-left: 1px solid hsl(var(--border) / 0.35);
+  /* 暗色模式同样保持无左描边，避免侧边栏交界处出现竖线 */
+  border-left: none;
   border-top: none;
 }
 
