@@ -21,6 +21,7 @@ import { cn } from '@/utils/cn';
 import { MessageList } from './MessageList';
 import { InputBarV2 } from './input-bar';
 import { ChatErrorBoundary } from './ChatErrorBoundary';
+import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 // 🔧 严重修复：使用 useConnectedSession 确保后端连接
 import { useConnectedSession } from '../hooks/useConnectedSession';
 import { useSessionStatus } from '../hooks/useChatStore';
@@ -34,6 +35,7 @@ import { modeRegistry } from '../registry';
 import { useWorkspaceStore } from '../workspace/workspaceStore';
 // 🆕 2026-01-20: 工作区状态恢复
 import { useWorkspaceRestore } from '../workspace/hooks';
+import { groupCache } from '../core/store/groupCache';
 // ★ 图谱模块已废弃 - GraphSelectDialog 已移除
 // import { GraphSelectDialog } from '@/components/graph-manager/GraphSelectDialog';
 // 🆕 工具审批卡片（文档 29 P1-3）- 已移至 InputBarV2 内部渲染
@@ -82,6 +84,8 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   forceEmptyPreview = false,
 }) => {
   const { t } = useTranslation(['chatV2', 'common']);
+  const mobileLayout = useMobileLayoutSafe();
+  const isMobile = mobileLayout?.isMobile ?? (typeof window !== 'undefined' && window.innerWidth <= 768);
 
   // ★ 文梣28清理：移除 currentSubject，记忆提取功能内部获取 subject
 
@@ -102,6 +106,13 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   // 🚀 性能优化：直接从 Store 读取 isDataLoaded
   // 即使 adapter 未就绪，只要数据已加载就可以渲染消息列表
   const isDataLoaded = useStore(store, (s) => s.isDataLoaded);
+  const messageCount = useStore(store, (s) => s.messageOrder.length);
+  const sessionGroupId = useStore(store, (s) => s.groupId);
+  const resolvedEmptyStateGroupName = emptyStateGroupName ?? (
+    sessionGroupId
+      ? groupCache.get(sessionGroupId)?.name ?? null
+      : null
+  );
 
   // 🚀 防闪动优化：只有加载超过 500ms 才显示骨架屏
   const isActuallyLoading = !isDataLoaded && !adapterReady;
@@ -236,6 +247,81 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     );
   }
 
+  const shouldUseEmptyComposerLayout = showInputBar && (forceEmptyPreview || messageCount === 0);
+  const shouldUseDesktopEmptyComposerLayout = shouldUseEmptyComposerLayout && !isMobile;
+  const shouldAutoFocusMobileEmptyComposer = shouldUseEmptyComposerLayout && isMobile;
+
+  const renderMessageList = ({
+    className: messageListSlotClassName,
+    compact = false,
+    showBottomFade = true,
+  }: {
+    className?: string;
+    compact?: boolean;
+    showBottomFade?: boolean;
+  } = {}) => (
+    <div
+      className={cn(
+        compact ? 'relative overflow-visible' : 'flex-1 overflow-hidden relative',
+        messageListSlotClassName
+      )}
+    >
+      <MessageList
+        key={sessionId}
+        store={store}
+        emptyStateGroupName={resolvedEmptyStateGroupName}
+        forceEmptyPreview={forceEmptyPreview}
+      />
+      {showBottomFade ? (
+        <div
+          className="pointer-events-none absolute left-0 right-0 bottom-0 z-10 h-6"
+          style={{
+            background: 'linear-gradient(to bottom, transparent 0%, hsl(var(--background)) 100%)',
+          }}
+        />
+      ) : null}
+    </div>
+  );
+
+  const renderFooter = (className?: string) => FooterComponent ? (
+    <div className={cn('flex-shrink-0 border-t border-border', className)}>
+      <FooterComponent store={store} />
+    </div>
+  ) : null;
+
+  const renderDisclaimer = (className?: string) => showInputBar ? (
+    <div className={cn('text-center px-4 py-1', className)}>
+      <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/50 select-none">
+        <Info className="h-3 w-3" />
+        {t('common:aiDisclaimer.chatHint')}
+      </span>
+    </div>
+  ) : null;
+
+  const renderInputBar = (
+    className?: string,
+    motionState: 'empty' | 'docked' = 'docked',
+    autoFocusOnMount = false
+  ) => showInputBar ? (
+    <div
+      className={cn(
+        'chat-composer-motion-frame',
+        motionState === 'empty'
+          ? 'chat-composer-motion-frame--empty'
+          : 'chat-composer-motion-frame--docked'
+      )}
+    >
+      <InputBarV2
+        store={store}
+        textbookOpen={textbookOpen}
+        onTextbookToggle={onTextbookToggle}
+        availableModels={availableModels}
+        className={className}
+        autoFocus={autoFocusOnMount}
+      />
+    </div>
+  ) : null;
+
   return (
     <ChatErrorBoundary>
     <div
@@ -255,51 +341,36 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         </div>
       )}
 
-      {/* 消息列表 - 与输入框布局完全分离 */}
-      {/* 🚀 性能优化：使用 key={sessionId} 强制重新挂载组件 */}
-      <div className="flex-1 overflow-hidden relative">
-        <MessageList
-          key={sessionId}
-          store={store}
-          emptyStateGroupName={emptyStateGroupName}
-          forceEmptyPreview={forceEmptyPreview}
-        />
-        {/* 🎨 底部渐变过渡：平滑边缘效果 */}
-        <div 
-          className="pointer-events-none absolute left-0 right-0 bottom-0 z-10 h-6"
-          style={{
-            background: 'linear-gradient(to bottom, transparent 0%, hsl(var(--background)) 100%)',
-          }}
-        />
-      </div>
-
-      {/* 模式插件 Footer */}
-      {FooterComponent && (
-        <div className="flex-shrink-0 border-t border-border">
-          <FooterComponent store={store} />
+      {shouldUseDesktopEmptyComposerLayout ? (
+        <div className="chat-empty-composer-layout">
+          <div className="chat-empty-composer-layout__stack">
+            {renderMessageList({
+              className: 'chat-empty-composer-layout__message-list',
+              compact: true,
+              showBottomFade: false,
+            })}
+            {renderFooter('chat-empty-composer-layout__footer')}
+            {renderDisclaimer('chat-empty-composer-layout__disclaimer')}
+            {renderInputBar('chat-empty-composer-layout__input', 'empty')}
+          </div>
         </div>
-      )}
+      ) : (
+        <>
+          {/* 消息列表 - 与输入框布局完全分离 */}
+          {/* 🚀 性能优化：使用 key={sessionId} 强制重新挂载组件 */}
+          {renderMessageList()}
 
-      {/* 🆕 工具审批卡片已移至 InputBarV2 内部，作为浮动面板渲染，避免遮挡问题 */}
+          {/* 模式插件 Footer */}
+          {renderFooter()}
 
-      {/* AI 内容免责提示（合规要求） */}
-      {showInputBar && (
-        <div className="text-center px-4 py-1">
-          <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/50 select-none">
-            <Info className="h-3 w-3" />
-            {t('common:aiDisclaimer.chatHint')}
-          </span>
-        </div>
-      )}
+          {/* 🆕 工具审批卡片已移至 InputBarV2 内部，作为浮动面板渲染，避免遮挡问题 */}
 
-      {/* 输入栏 */}
-      {showInputBar && (
-        <InputBarV2
-          store={store}
-          textbookOpen={textbookOpen}
-          onTextbookToggle={onTextbookToggle}
-          availableModels={availableModels}
-        />
+          {/* AI 内容免责提示（合规要求） */}
+          {renderDisclaimer()}
+
+          {/* 输入栏 */}
+          {renderInputBar(undefined, 'docked', shouldAutoFocusMobileEmptyComposer)}
+        </>
       )}
 
       {/* 🗑️ Anki 面板已从 Chat V2 移除 */}

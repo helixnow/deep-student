@@ -2809,6 +2809,8 @@ export class ChatV2TauriAdapter {
       // 使用 Store 的 restoreFromBackend 方法恢复状态
       this.store.restoreFromBackend(response);
 
+      await this.hydrateDefaultChatModelIfMissing();
+
       // 📊 性能打点：restore_end
       const totalMs = performance.now() - t0;
       sessionSwitchPerf.mark('restore_end', { totalMs });
@@ -3245,6 +3247,33 @@ export class ChatV2TauriAdapter {
     }
   }
 
+  private async hydrateDefaultChatModelIfMissing(): Promise<void> {
+    const currentParams = this.getCurrentState().chatParams;
+    if (currentParams.modelId?.trim()) {
+      return;
+    }
+
+    try {
+      await ensureModelsCacheLoaded();
+      const normalizedSelection = await this.normalizeChatModelSelection(
+        currentParams.modelId || undefined,
+        currentParams.model2OverrideId || undefined
+      );
+      const latestParams = this.getCurrentState().chatParams;
+      if (latestParams.modelId?.trim()) {
+        return;
+      }
+
+      this.store.setChatParams({
+        modelId: normalizedSelection.modelId,
+        model2OverrideId: normalizedSelection.model2OverrideId ?? null,
+        modelDisplayName: normalizedSelection.modelDisplayName || latestParams.modelDisplayName || '',
+      });
+    } catch (error) {
+      console.warn(LOG_PREFIX, 'Failed to hydrate default chat model:', getErrorMessage(error));
+    }
+  }
+
   private async shouldResolveContextAsMultimodal(options: {
     modelId?: string;
     parallelModelIds?: string[];
@@ -3336,6 +3365,7 @@ export class ChatV2TauriAdapter {
     };
     runtimeSnapshot?: {
       activeSkillIds?: string[];
+      skillAllowedTools?: string[];
       skillContents?: Record<string, string>;
       skillDependencies?: Record<string, string[]>;
       skillEmbeddedTools?: Record<string, Array<{ name: string; serverId?: string; description?: string; inputSchema?: unknown }>>;
@@ -3416,6 +3446,15 @@ export class ChatV2TauriAdapter {
       options.activeSkillIds = replayPinnedSkillIds;
     }
 
+    const replayAllowedTools = Array.from(new Set([
+      ...(runtimeSnapshot?.skillAllowedTools || []),
+      ...(snapshot.effectiveAllowedInternalTools || []),
+      ...(snapshot.effectiveAllowedExternalTools || []),
+    ])).filter(Boolean);
+
+    if (replayAllowedTools.length > 0) {
+      options.skillAllowedTools = replayAllowedTools;
+    }
 
     const skillContents: Record<string, string> = { ...(runtimeSnapshot?.skillContents || {}) };
     const skillDependencies: Record<string, string[]> = { ...(runtimeSnapshot?.skillDependencies || {}) };
@@ -3747,6 +3786,7 @@ export class ChatV2TauriAdapter {
 
       // 🆕 激活技能列表（用于后端 allowedTools fail-closed 判定）
       activeSkillIds: authoritativeActiveSkillIds.length > 0 ? authoritativeActiveSkillIds : undefined,
+      skillAllowedTools: undefined as string[] | undefined,
 
       // ========== Canvas 智能笔记选项 ==========
       // 从 modeState 获取当前打开的笔记 ID，作为 Canvas 工具的默认目标
@@ -3762,6 +3802,16 @@ export class ChatV2TauriAdapter {
     if (schemaToolResult.schemaToolIds.length > 0) {
       options.schemaToolIds = schemaToolResult.schemaToolIds;
       console.log(LOG_PREFIX, 'Schema tools collected:', schemaToolResult);
+    }
+
+    const skillAllowedTools = Array.from(new Set(
+      authoritativeToolSkillIds.flatMap((skillId) => {
+        const skill = skillRegistry.get(skillId);
+        return skill?.allowedTools ?? skill?.tools ?? [];
+      })
+    )).filter(Boolean);
+    if (skillAllowedTools.length > 0) {
+      options.skillAllowedTools = skillAllowedTools;
     }
 
     // Transient skill injection 需要每轮拿到所有 enabled skills 的正文、依赖和工具定义。

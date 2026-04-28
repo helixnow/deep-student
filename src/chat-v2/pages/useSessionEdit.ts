@@ -34,18 +34,18 @@ export interface UseSessionEditDeps {
   setShowChatControl: React.Dispatch<React.SetStateAction<boolean>>;
   setViewMode: React.Dispatch<React.SetStateAction<'sidebar' | 'browser'>>;
   setSessionSheetOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  setPendingDeleteGroup: React.Dispatch<React.SetStateAction<SessionGroup | null>>;
+  setPendingArchiveGroup: React.Dispatch<React.SetStateAction<SessionGroup | null>>;
   setGroupPinnedIds: React.Dispatch<React.SetStateAction<Set<string>>>;
   setMobileResourcePanelOpen: React.Dispatch<React.SetStateAction<boolean>>;
   editingTitle: string;
   editingGroup: SessionGroup | null;
-  pendingDeleteGroup: SessionGroup | null;
+  pendingArchiveGroup: SessionGroup | null;
   sessionsRef: React.MutableRefObject<ChatSession[]>;
   groupPickerAddRef: React.MutableRefObject<((sourceId: string) => 'added' | 'removed' | false) | null>;
   t: TFunction<any, any>;
   updateGroup: (id: string, payload: UpdateGroupRequest) => Promise<SessionGroup | void>;
   createGroup: (payload: CreateGroupRequest) => Promise<SessionGroup | void>;
-  deleteGroup: (id: string) => Promise<void>;
+  archiveGroup: (id: string) => Promise<void>;
   reorderGroups: (ids: string[]) => void;
   loadUngroupedCount: () => Promise<void>;
   groupDragDisabled: boolean;
@@ -57,11 +57,11 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     resetDeleteConfirmation, currentSessionId, setCurrentSessionId, setEditingSessionId, setEditingTitle,
     setRenamingSessionId, setRenameError, setSessions,
     setGroupEditorOpen, setEditingGroup, setGroupEditorAutoFocusField, setShowTrash, setShowChatControl,
-    setViewMode, setSessionSheetOpen, setPendingDeleteGroup,
+    setViewMode, setSessionSheetOpen, setPendingArchiveGroup,
     setGroupPinnedIds, setMobileResourcePanelOpen,
-    editingTitle, editingGroup, pendingDeleteGroup, sessionsRef,
+    editingTitle, editingGroup, pendingArchiveGroup, sessionsRef,
     groupPickerAddRef, t,
-    updateGroup, createGroup, deleteGroup, reorderGroups,
+    updateGroup, createGroup, archiveGroup, reorderGroups,
     loadUngroupedCount, groupDragDisabled, visibleGroups,
   } = deps;
 
@@ -257,43 +257,15 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     }
   }, []);
 
-  const removeGroupFromSessions = useCallback((groupId: string) => {
-    // P1 fix: Move side-effects out of setSessions updater
-    const affectedSessionIds: string[] = [];
-    setSessions((prev) => {
-      prev.forEach((s) => {
-        if (s.groupId === groupId) {
-          affectedSessionIds.push(s.id);
-        }
-      });
-      return prev.map((s) => (s.groupId === groupId ? { ...s, groupId: undefined } : s));
-    });
-    // Apply store updates outside of setState updater
-    for (const sid of affectedSessionIds) {
-      const store = sessionManager.get(sid);
-      if (store) {
-        const meta = store.getState().sessionMetadata;
-        const storeUpdate: Record<string, unknown> = { groupId: null };
-        if (meta?.groupSystemPromptSnapshot) {
-          const { groupSystemPromptSnapshot: _, ...rest } = meta;
-          storeUpdate.sessionMetadata = Object.keys(rest).length > 0 ? rest : null;
-        }
-        store.setState(storeUpdate);
-      }
-    }
-  }, []);
-
-  const confirmDeleteGroup = useCallback(async () => {
-    if (!pendingDeleteGroup) return;
+  const confirmArchiveGroup = useCallback(async () => {
+    if (!pendingArchiveGroup) return;
     try {
-      await deleteGroup(pendingDeleteGroup.id);
-      removeGroupFromSessions(pendingDeleteGroup.id);
-      void loadUngroupedCount();
-      setPendingDeleteGroup(null);
+      await archiveGroup(pendingArchiveGroup.id);
+      setPendingArchiveGroup(null);
     } catch (error) {
-      console.error('[ChatV2Page] Failed to delete group:', getErrorMessage(error));
+      console.error('[ChatV2Page] Failed to archive group:', getErrorMessage(error));
     }
-  }, [deleteGroup, loadUngroupedCount, pendingDeleteGroup, removeGroupFromSessions]);
+  }, [archiveGroup, pendingArchiveGroup, setPendingArchiveGroup]);
 
   const moveSessionToGroup = useCallback(async (sessionId: string, groupId?: string) => {
     try {
@@ -368,8 +340,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     closeGroupEditor,
     handleSubmitGroup,
     applySessionGroupUpdate,
-    removeGroupFromSessions,
-    confirmDeleteGroup,
+    confirmArchiveGroup,
     moveSessionToGroup,
     handleGroupReorder,
     handleDragEnd,

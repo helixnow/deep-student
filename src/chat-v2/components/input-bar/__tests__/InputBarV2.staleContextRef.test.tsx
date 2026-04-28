@@ -89,6 +89,7 @@ function createMockStore() {
     inputValue: '',
     chatParams: {
       modelId: 'deepseek-official-v4',
+      maxTokens: 32_768,
       enableThinking: true,
       reasoningEffort: undefined,
       thinkingBudget: undefined,
@@ -201,6 +202,92 @@ describe('InputBarV2 stale context ref guard', () => {
       'settings:api.modal.deepseek.depth.high',
       'settings:api.modal.deepseek.depth.max',
     ]);
+  });
+
+  it('passes completed context window usage to InputBarUI after an assistant response finishes', () => {
+    const { store } = createMockStore();
+    store.setState({
+      chatParams: {
+        ...store.getState().chatParams,
+        contextLimit: 100_000,
+      },
+      messageOrder: ['msg_user_1', 'msg_assistant_1'],
+      messageMap: new Map([
+        ['msg_user_1', { id: 'msg_user_1', role: 'user', blockIds: [], timestamp: 1 }],
+        [
+          'msg_assistant_1',
+          {
+            id: 'msg_assistant_1',
+            role: 'assistant',
+            blockIds: [],
+            timestamp: 2,
+            _meta: {
+              usage: {
+                promptTokens: 32_000,
+                completionTokens: 8_000,
+                totalTokens: 40_000,
+                source: 'api',
+                lastRoundPromptTokens: 40_000,
+              },
+            },
+          },
+        ],
+      ]),
+    });
+
+    render(<InputBarV2 store={store as any} />);
+
+    expect(capturedInputBarUIProps?.contextWindowUsage).toMatchObject({
+      usedTokens: 40_000,
+      remainingTokens: 60_000,
+      limitTokens: 100_000,
+      usedPercent: 40,
+      remainingPercent: 60,
+      source: 'api',
+    });
+  });
+
+  it('keeps the last completed context usage while a newer assistant message is still streaming', () => {
+    const { store } = createMockStore();
+    store.setState({
+      chatParams: {
+        ...store.getState().chatParams,
+        contextLimit: 100_000,
+      },
+      messageOrder: ['msg_user_1', 'msg_assistant_1', 'msg_user_2', 'msg_assistant_2'],
+      messageMap: new Map([
+        ['msg_user_1', { id: 'msg_user_1', role: 'user', blockIds: [], timestamp: 1 }],
+        [
+          'msg_assistant_1',
+          {
+            id: 'msg_assistant_1',
+            role: 'assistant',
+            blockIds: [],
+            timestamp: 2,
+            _meta: {
+              usage: {
+                promptTokens: 20_000,
+                completionTokens: 5_000,
+                totalTokens: 25_000,
+                source: 'api',
+                lastRoundPromptTokens: 25_000,
+              },
+            },
+          },
+        ],
+        ['msg_user_2', { id: 'msg_user_2', role: 'user', blockIds: [], timestamp: 3 }],
+        ['msg_assistant_2', { id: 'msg_assistant_2', role: 'assistant', blockIds: [], timestamp: 4 }],
+      ]),
+    });
+
+    render(<InputBarV2 store={store as any} />);
+
+    expect(capturedInputBarUIProps?.contextWindowUsage).toMatchObject({
+      usedTokens: 25_000,
+      remainingTokens: 75_000,
+      usedPercent: 25,
+      remainingPercent: 75,
+    });
   });
 
   it('sets runtime DeepSeek V4 depth from the input bar without changing settings defaults', () => {

@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Edit2, MoreHorizontal, Plus, Settings, Trash2 } from 'lucide-react';
+import { Archive, Edit2, MoreHorizontal, Pin, Settings } from 'lucide-react';
 import {
   AppMenu,
   AppMenuContent,
@@ -9,14 +9,17 @@ import {
   AppMenuTrigger,
 } from '@/components/ui/app-menu/AppMenu';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { StudyComposeIcon } from '@/components/icons/StudySidebarIcons';
 import type { SessionGroup } from '../types/group';
 
 type SessionGroupActionLabels = {
   groupActions: string;
   newSession: string;
+  pinGroup?: string;
+  unpinGroup?: string;
   renameGroup: string;
   editGroup: string;
-  deleteGroup: string;
+  archiveGroup: string;
 };
 
 type SessionGroupActionsRenderProps = {
@@ -28,9 +31,11 @@ interface SessionGroupActionsProps {
   group: SessionGroup;
   labels: SessionGroupActionLabels;
   onCreateSession: (groupId: string) => void | Promise<void>;
+  isPinned?: boolean;
+  onTogglePinGroup?: (group: SessionGroup, pinned: boolean) => void | Promise<void>;
   onRenameGroup: (group: SessionGroup) => void;
   onEditGroup: (group: SessionGroup) => void;
-  onDeleteGroup: (group: SessionGroup) => void;
+  onArchiveGroup: (group: SessionGroup) => void;
   children: (props: SessionGroupActionsRenderProps) => React.ReactNode;
 }
 
@@ -38,9 +43,11 @@ export function SessionGroupActions({
   group,
   labels,
   onCreateSession,
+  isPinned = false,
+  onTogglePinGroup,
   onRenameGroup,
   onEditGroup,
-  onDeleteGroup,
+  onArchiveGroup,
   children,
 }: SessionGroupActionsProps) {
   const [menuOpen, setMenuOpen] = useState(false);
@@ -72,6 +79,16 @@ export function SessionGroupActions({
         </AppMenuTrigger>
         <AppMenuContent align="end" width={180}>
           <AppMenuGroup>
+            {onTogglePinGroup ? (
+              <AppMenuItem
+                icon={<Pin className="w-4 h-4" />}
+                onClick={() => onTogglePinGroup(group, !isPinned)}
+              >
+                {isPinned
+                  ? labels.unpinGroup ?? 'Unpin Group'
+                  : labels.pinGroup ?? 'Pin Group'}
+              </AppMenuItem>
+            ) : null}
             <AppMenuItem
               icon={<Edit2 className="w-4 h-4" />}
               onClick={() => onRenameGroup(group)}
@@ -86,11 +103,10 @@ export function SessionGroupActions({
             </AppMenuItem>
             <AppMenuSeparator />
             <AppMenuItem
-              destructive
-              icon={<Trash2 className="w-4 h-4" />}
-              onClick={() => onDeleteGroup(group)}
+              icon={<Archive className="w-4 h-4" />}
+              onClick={() => onArchiveGroup(group)}
             >
-              {labels.deleteGroup}
+              {labels.archiveGroup}
             </AppMenuItem>
           </AppMenuGroup>
         </AppMenuContent>
@@ -107,7 +123,7 @@ export function SessionGroupActions({
         title={labels.newSession}
         className="!h-6 !w-6"
       >
-        <Plus className="w-3.5 h-3.5" />
+        <StudyComposeIcon className="w-3.5 h-3.5" />
       </NotionButton>
     </div>
   );

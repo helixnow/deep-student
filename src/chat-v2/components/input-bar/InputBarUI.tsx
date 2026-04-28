@@ -53,6 +53,7 @@ import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cancelPdfProcessing, getBatchPdfProcessingStatus, retryPdfProcessing } from '@/api/vfsPdfProcessingApi';
 import type { InputBarUIProps } from './types';
+import type { ContextWindowUsage } from './contextWindowUsage';
 import { vfsRefApi } from '../../context/vfsRefApi';
 import { resourceStoreApi, type ContextRef } from '../../resources';
 import { IMAGE_TYPE_ID } from '../../context/definitions/image';
@@ -65,6 +66,7 @@ import { ModelMentionChips } from './ModelMentionChip';
 import { InputTokenEstimate } from '../TokenUsageDisplay';
 import { ContextRefChips } from './ContextRefChips';
 import { PageRefChips } from './PageRefChips';
+import { AttachmentPreviewChips } from './AttachmentPreviewChips';
 import { estimateTokenCount } from '../../utils/tokenUtils';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { ToolApprovalCard } from '../ToolApprovalCard';
@@ -168,6 +170,82 @@ function clampPercent(value?: number): number {
 function getCompactThinkingLabel(label?: string): string | undefined {
   const compact = label?.replace(/^(推理|Reasoning)\s*[:：]\s*/i, '').trim();
   return compact || label;
+}
+
+function ContextWindowUsageRing({
+  usage,
+  t,
+  disabled,
+}: {
+  usage: ContextWindowUsage;
+  t: TFunction;
+  disabled: boolean;
+}) {
+  const usedDegrees = `${usage.usedPercent * 3.6}deg`;
+  const contextUsageColor = 'var(--text-primary)';
+  const ariaLabel = t('chatV2:tokenUsage.contextWindow');
+  const tooltipContent = (
+    <div className="w-48 p-1.5 text-xs">
+      <div className="flex items-center justify-between gap-3">
+        <span className="font-semibold text-[color:var(--text-primary)]">
+          {t('chatV2:tokenUsage.contextWindow')}
+        </span>
+        <span className="rounded-full border border-[color:var(--input-shell-border)] bg-[color:var(--surface-panel-muted)] px-1.5 py-0.5 font-mono text-[10px] leading-none tabular-nums text-[color:var(--text-secondary)]">
+          {usage.usedPercent}%
+        </span>
+      </div>
+      <div
+        data-testid="context-window-usage-tooltip-bar"
+        className="mb-2.5 mt-2 h-1.5 overflow-hidden rounded-full bg-[color:var(--button-utility-hover)] ring-1 ring-[color:var(--input-shell-border)]"
+      >
+        <div
+          className="h-full rounded-full transition-[width] duration-150"
+          style={{ width: `${usage.usedPercent}%`, background: contextUsageColor }}
+        />
+      </div>
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-[color:var(--text-secondary)]">
+            {t('chatV2:tokenUsage.contextUsedPercent', { percent: usage.usedPercent })}
+          </span>
+          <span className="font-mono tabular-nums text-[color:var(--text-primary)]">
+            {t('chatV2:tokenUsage.contextUsedTokens', { tokens: usage.usedLabel })}
+          </span>
+        </div>
+        <div className="flex items-center justify-between gap-3">
+          <span className="text-[color:var(--text-secondary)]">
+            {t('chatV2:tokenUsage.contextRemainingPercent', { percent: usage.remainingPercent })}
+          </span>
+          <span className="font-mono tabular-nums text-[color:var(--text-primary)]">
+            {t('chatV2:tokenUsage.contextRemainingTokens', { tokens: usage.remainingLabel })}
+          </span>
+        </div>
+      </div>
+    </div>
+  );
+
+  return (
+    <CommonTooltip content={tooltipContent} position="top" disabled={disabled}>
+      <span
+        data-testid="context-window-usage-control"
+        role="img"
+        tabIndex={0}
+        aria-label={ariaLabel}
+        title={ariaLabel}
+        className="group inline-flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-[color:var(--text-secondary)] transition-colors hover:bg-[color:var(--button-utility-hover)] hover:text-[color:var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
+      >
+        <span
+          data-testid="context-window-usage-ring"
+          className="h-4 w-4 rounded-full transition-transform duration-150 ease-out group-hover:scale-105"
+          style={{
+            background: `conic-gradient(from 0deg, ${contextUsageColor} ${usedDegrees}, var(--button-utility-hover) 0deg)`,
+            WebkitMask: 'radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 0)',
+            mask: 'radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 0)',
+          }}
+        />
+      </span>
+    </CommonTooltip>
+  );
 }
 
 function getStageLabel(
@@ -339,6 +417,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   canSend,
   canAbort,
   isStreaming,
+  contextWindowUsage,
   attachments,
   panelStates,
   disabledReason,
@@ -359,6 +438,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   leftAccessory,
   extraButtonsRight,
   className,
+  autoFocus = false,
   // 模式插件面板
   renderRagPanel,
   renderModelPanel,
@@ -441,6 +521,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const [textareaViewportHeight, setTextareaViewportHeight] = useState<number>(40);
   const lastMeasuredHeightRef = useRef<number>(INITIAL_PLACEHOLDER_HEIGHT);
   const [bottomGapPx, setBottomGapPx] = useState(DESKTOP_DOCK_GAP_PX);
+  const [keyboardInsetPx, setKeyboardInsetPx] = useState(0);
   // 🔧 统一使用 MobileLayoutContext 的移动端判断
   const isMobile = mobileLayout?.isMobile ?? false;
   const [showEmptyTip, setShowEmptyTip] = useState(false);
@@ -955,7 +1036,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   // 🔧 移动端禁用 tooltip（触摸设备没有 hover 交互，tooltip 会干扰）
   const tooltipDisabled = isMobile;
   const attachmentCount = attachments.length;
-  const attachmentBadgeLabel = attachmentCount > 99 ? '99+' : String(attachmentCount);
   const compactThinkingStateLabel = getCompactThinkingLabel(thinkingStateLabel);
   const hasThinkingDepthMenu = !!(
     compactThinkingStateLabel &&
@@ -1068,9 +1148,9 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   }, [firstBlockingAttachment, formatModeList, t]);
 
   // 使用 CSS 变量作为 Android fallback，iOS 正常使用 env()
-  const bottomGapValue = `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${bottomGapPx}px)`;
+  const bottomGapValue = `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${bottomGapPx}px + ${keyboardInsetPx}px)`;
   const measuredInputHeight = inputContainerRef.current?.offsetHeight || inputContainerHeight || 96;
-  const dockedHeightWithGap = Math.max(0, Math.round(measuredInputHeight + bottomGapPx));
+  const dockedHeightWithGap = Math.max(0, Math.round(measuredInputHeight + bottomGapPx + keyboardInsetPx));
   const dockedHeightVarValue = `${dockedHeightWithGap}px`;
 
   // ========== 发送/停止按钮状态 ==========
@@ -1392,6 +1472,77 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     return () => window.removeEventListener('resize', handleResize);
   }, []);
 
+  useEffect(() => {
+    if (!isMobile) {
+      setKeyboardInsetPx(0);
+      return;
+    }
+
+    const updateKeyboardInset = () => {
+      const visualViewport = window.visualViewport;
+      const textarea = textareaRef.current;
+      if (!visualViewport || document.activeElement !== textarea) {
+        setKeyboardInsetPx(0);
+        return;
+      }
+
+      const rawInset = window.innerHeight - visualViewport.height - visualViewport.offsetTop;
+      const nextInset = rawInset > 80 ? Math.round(rawInset) : 0;
+      setKeyboardInsetPx(nextInset);
+    };
+
+    updateKeyboardInset();
+
+    const visualViewport = window.visualViewport;
+    const textarea = textareaRef.current;
+    visualViewport?.addEventListener('resize', updateKeyboardInset);
+    visualViewport?.addEventListener('scroll', updateKeyboardInset);
+    window.addEventListener('resize', updateKeyboardInset);
+    textarea?.addEventListener('focus', updateKeyboardInset);
+    textarea?.addEventListener('blur', updateKeyboardInset);
+
+    return () => {
+      visualViewport?.removeEventListener('resize', updateKeyboardInset);
+      visualViewport?.removeEventListener('scroll', updateKeyboardInset);
+      window.removeEventListener('resize', updateKeyboardInset);
+      textarea?.removeEventListener('focus', updateKeyboardInset);
+      textarea?.removeEventListener('blur', updateKeyboardInset);
+    };
+  }, [isMobile, sessionSwitchKey]);
+
+  useEffect(() => {
+    if (!autoFocus || !isMobile) return;
+
+    let disposed = false;
+    const focusTextarea = () => {
+      if (disposed) return;
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+
+      try {
+        textarea.focus({ preventScroll: true });
+      } catch {
+        textarea.focus();
+      }
+
+      const selectionEnd = textarea.value.length;
+      try {
+        textarea.setSelectionRange(selectionEnd, selectionEnd);
+      } catch {
+        // Some mobile WebViews can reject selection updates during keyboard startup.
+      }
+    };
+
+    const frame = requestAnimationFrame(focusTextarea);
+    const timer = window.setTimeout(focusTextarea, 250);
+
+    return () => {
+      disposed = true;
+      cancelAnimationFrame(frame);
+      window.clearTimeout(timer);
+    };
+  }, [autoFocus, isMobile, sessionSwitchKey]);
+
   // 使用 useRef 追踪 attachments 的引用，避免作为 useEffect 依赖导致频繁触发
   const attachmentsRef = useRef(attachments);
   attachmentsRef.current = attachments;
@@ -1709,6 +1860,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         paddingBottom: isMobile && !mobileLayout?.isFullscreenContent ? bottomGapValue : '8px',
         ['--unified-input-docked-height' as any]: dockedHeightVarValue,
         ['--unified-input-bottom-gap' as any]: bottomGapValue,
+        ['--unified-input-keyboard-inset' as any]: `${keyboardInsetPx}px`,
       }}
       {...dropZoneProps}
     >
@@ -1716,7 +1868,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         {/* study-ui 对齐：输入区回到安静的居中 composer，而不是漂浮玻璃卡片。 */}
         <div
           ref={inputContainerRef}
-          className="relative z-[200] overflow-hidden rounded-[28px] border border-[color:var(--input-shell-border)] bg-[color:var(--surface-elevated)] p-3 pl-4 shadow-[var(--shadow-shell-soft)] transition-shadow duration-150 ease-out focus-within:shadow-[var(--shadow-shell-panel)]"
+          className="relative z-[200] overflow-hidden rounded-[28px] border border-[color:var(--input-shell-border)] bg-[color:var(--unified-input-shell-surface,var(--surface-panel-strong))] p-3 pl-4 shadow-[var(--shadow-shell-soft)] transition-shadow duration-150 ease-out focus-within:shadow-[var(--shadow-shell-panel)]"
         >
         {/* 🔧 P0修复：拖拽遮罩层移到输入容器内部，确保与输入框完全重合 */}
         {isReady && isDragging && (
@@ -1794,6 +1946,13 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               disabled={isStreaming}
             />
           )}
+
+          <AttachmentPreviewChips
+            attachments={attachments}
+            onRemove={onRemoveAttachment}
+            onOpenPanel={toggleAttachmentPanel}
+            disabled={isStreaming}
+          />
 
           <CustomScrollArea
             fullHeight={false}
@@ -1962,14 +2121,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 )}
                 aria-label={t('analysis:input_bar.attachments.title')}
               >
-                <span className="relative inline-flex items-center justify-center">
-                  <Paperclip size={18} />
-                  {attachmentCount > 0 && (
-                    <span className="pointer-events-none absolute -right-1 -bottom-1 flex h-4 min-w-[1.1rem] items-center justify-center rounded-full border bg-primary px-[0.25rem] text-[10px] font-semibold text-primary-foreground shadow-sm">
-                      {attachmentBadgeLabel}
-                    </span>
-                  )}
-                </span>
+                <Plus size={18} />
               </NotionButton>
             </CommonTooltip>
 
@@ -2092,6 +2244,14 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             {/* Token 估算（防抖后） */}
             {isReady && <InputTokenEstimate tokenCount={debouncedTokenCount} />}
 
+            {contextWindowUsage && (
+              <ContextWindowUsageRing
+                usage={contextWindowUsage}
+                t={t}
+                disabled={tooltipDisabled}
+              />
+            )}
+
             {/* 推理强度 - 放在原附件按钮位置，靠近发送动作 */}
             {onToggleThinking && (
               <span
@@ -2122,10 +2282,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                     </AppMenuTrigger>
                     <AppMenuContent align="start" width={176}>
                       <AppMenuGroup label={t('chatV2:inputBar.thinkingDepthTitle', '推理强度')}>
-                        <AppMenuItem checked={!enableThinking} onClick={() => onSetThinkingDepth('off')}>
-                          {t('chatV2:inputBar.thinkingOff', '关闭')}
-                        </AppMenuItem>
-                        <AppMenuSeparator />
                         {thinkingDepthOptions.map((option) => (
                           <AppMenuItem
                             key={option.value}
@@ -2135,6 +2291,10 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                             {t(option.labelKey, option.defaultLabel)}
                           </AppMenuItem>
                         ))}
+                        <AppMenuSeparator />
+                        <AppMenuItem checked={!enableThinking} onClick={() => onSetThinkingDepth('off')}>
+                          {t('chatV2:inputBar.thinkingOff', '关闭')}
+                        </AppMenuItem>
                       </AppMenuGroup>
                     </AppMenuContent>
                   </AppMenu>

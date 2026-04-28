@@ -23,6 +23,8 @@ import { useDialogControl } from '@/contexts/DialogControlContext';
 import { isBuiltinServer } from '@/mcp/builtinMcpServer';
 import type { ModelInfo } from '../../utils/parseModelMentions';
 import { isMultiModelSelectEnabled } from '@/config/featureFlags';
+import { inferInputContextBudget } from '@/utils/modelCapabilities';
+import { deriveContextWindowUsage } from './contextWindowUsage';
 import {
   deepSeekV32EffortToBudget,
   normalizeDeepSeekV4Effort,
@@ -56,6 +58,8 @@ interface AggregatedStoreState {
   enableThinking: boolean;
   modelId: string;
   modelDisplayName?: string;
+  maxTokens: number;
+  contextLimit?: number;
   reasoningEffort?: string;
   thinkingBudget?: number;
   modelRetryTarget: string | null;
@@ -119,7 +123,7 @@ function getManualPinnedSkillIds(
 }
 
 export const InputBarV2: React.FC<InputBarV2Props> = memo(
-  ({ store, placeholder, sendShortcut, leftAccessory, extraButtonsRight, className, onFilesUpload, textbookOpen, onTextbookToggle, availableModels }) => {
+  ({ store, placeholder, sendShortcut, leftAccessory, extraButtonsRight, className, autoFocus, onFilesUpload, textbookOpen, onTextbookToggle, availableModels }) => {
     // 🔧 订阅合并：使用单个聚合选择器 + shallow 比较，避免多次重渲染
     const {
       sessionId,
@@ -128,8 +132,11 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       enableThinking,
       modelId,
       modelDisplayName,
+      maxTokens,
+      contextLimit,
       reasoningEffort,
       thinkingBudget,
+      lastAssistantUsage,
       modelRetryTarget,
       setChatParams,
       // ★ Skills 系统（多选模式）
@@ -152,8 +159,21 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         enableThinking: s.chatParams.enableThinking,
         modelId: s.chatParams.modelId,
         modelDisplayName: s.chatParams.modelDisplayName,
+        maxTokens: s.chatParams.maxTokens,
+        contextLimit: s.chatParams.contextLimit,
         reasoningEffort: s.chatParams.reasoningEffort,
         thinkingBudget: s.chatParams.thinkingBudget,
+        lastAssistantUsage: (() => {
+          const messageOrder = Array.isArray(s.messageOrder) ? s.messageOrder : [];
+          const messageMap = s.messageMap instanceof Map ? s.messageMap : new Map();
+          for (let i = messageOrder.length - 1; i >= 0; i -= 1) {
+            const message = messageMap.get(messageOrder[i]);
+            if (message?.role === 'assistant' && message._meta?.usage) {
+              return message._meta.usage;
+            }
+          }
+          return undefined;
+        })(),
         modelRetryTarget: s.modelRetryTarget,
         setChatParams: s.setChatParams,
         // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器，移除 enableAnkiTools
@@ -228,6 +248,46 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     const currentModelInfo = useMemo(
       () => availableModels?.find((model) => matchesModelIdentity(model, [modelId, modelDisplayName])),
       [availableModels, modelDisplayName, modelId]
+    );
+
+    const contextUsageLimitTokens = useMemo(() => {
+      const inferredModelMaxOutput =
+        typeof currentModelInfo?.maxOutputTokens === 'number' && Number.isFinite(currentModelInfo.maxOutputTokens)
+          ? currentModelInfo.maxOutputTokens
+          : undefined;
+      const providerScope = typeof currentModelInfo?.providerScope === 'string'
+        ? currentModelInfo.providerScope
+        : undefined;
+      const configContextWindow =
+        typeof currentModelInfo?.contextWindow === 'number' && Number.isFinite(currentModelInfo.contextWindow)
+          ? currentModelInfo.contextWindow
+          : undefined;
+
+      return inferInputContextBudget({
+        modelLike: {
+          id: currentModelInfo?.model ?? modelDisplayName ?? modelId,
+          name: currentModelInfo?.name ?? modelDisplayName ?? modelId,
+          providerScope,
+        },
+        userContextLimit: contextLimit,
+        maxOutputTokens: Math.max(maxTokens || 0, inferredModelMaxOutput || 0),
+        configContextWindow,
+      });
+    }, [
+      contextLimit,
+      currentModelInfo?.contextWindow,
+      currentModelInfo?.maxOutputTokens,
+      currentModelInfo?.model,
+      currentModelInfo?.name,
+      currentModelInfo?.providerScope,
+      maxTokens,
+      modelDisplayName,
+      modelId,
+    ]);
+
+    const contextWindowUsage = useMemo(
+      () => deriveContextWindowUsage(lastAssistantUsage, contextUsageLimitTokens),
+      [contextUsageLimitTokens, lastAssistantUsage]
     );
 
     const thinkingControl = useMemo(
@@ -574,6 +634,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         canSend={canSend}
         canAbort={canAbort}
         isStreaming={isStreaming}
+        contextWindowUsage={contextWindowUsage}
         attachments={attachments}
         panelStates={panelStates}
         // 回调
@@ -592,6 +653,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         leftAccessory={mergedLeftAccessory}
         extraButtonsRight={mergedRightAccessory}
         className={className}
+        autoFocus={autoFocus}
         // 模式插件面板
         renderRagPanel={renderRagPanel}
         renderModelPanel={renderModelPanel}

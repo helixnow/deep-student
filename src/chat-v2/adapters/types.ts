@@ -122,6 +122,9 @@ export interface SendOptions {
   /** 当前会话激活的 Skill IDs */
   activeSkillIds?: string[];
 
+  /** 当前启用 Skills 声明允许使用的工具 ID */
+  skillAllowedTools?: string[];
+
   /** Skill 内容（SKILL.md 内容） */
   skillContents?: Record<string, string>;
   /** Historical skill contents for replay/regenerate */

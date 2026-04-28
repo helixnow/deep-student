@@ -379,6 +379,13 @@ const MessageListInner: React.FC<MessageListProps> = ({
 
   // 空状态
   if (forceEmptyPreview || messageOrder.length === 0) {
+    const emptyStatePrimaryAction = emptyStateGroupName
+      ? t('messageList.empty.primaryActionInGroup', {
+          groupName: emptyStateGroupName,
+          defaultValue: '在「{{groupName}}」里学点什么？',
+        })
+      : t('messageList.empty.primaryAction', { defaultValue: '今天想学点什么？' });
+
     return (
       <div
         className={cn(
@@ -395,14 +402,11 @@ const MessageListInner: React.FC<MessageListProps> = ({
                 isSmallScreen ? 'py-10' : 'py-16'
               )}
             >
-              {emptyStateGroupName ? (
-                <p className="text-base text-muted-foreground">{emptyStateGroupName}</p>
-              ) : null}
               <h2
                 data-slot="thread-empty-primary-action"
                 className="text-balance text-xl font-medium text-foreground"
               >
-                {t('messageList.empty.primaryAction', { defaultValue: '我们要开始做什么？' })}
+                {emptyStatePrimaryAction}
               </h2>
             </section>
           </div>

@@ -501,6 +501,53 @@ describe('ChatV2TauriAdapter', () => {
       expect(mockStore.restoreFromBackend).toHaveBeenCalledWith(mockResponse);
     });
 
+    it('should hydrate empty loaded sessions with the default chat model before the first send', async () => {
+      vi.clearAllMocks();
+
+      const mockResponse = {
+        session: {
+          id: 'test-session-id',
+          mode: 'general_chat',
+          persistStatus: 'active',
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T00:00:00Z',
+        },
+        messages: [],
+        blocks: [],
+      };
+
+      vi.mocked(mockStore.restoreFromBackend).mockImplementation(() => {
+        (mockStore as any).chatParams = {
+          ...(mockStore as any).chatParams,
+          modelId: '',
+          modelDisplayName: '',
+          model2OverrideId: null,
+        };
+      });
+
+      vi.mocked(invoke).mockImplementation((command: string) => {
+        if (command === 'chat_v2_load_session') {
+          return Promise.resolve(mockResponse);
+        }
+        if (command === 'get_api_configurations') {
+          return Promise.resolve([
+            { id: 'deepseek-default-id', name: 'DeepSeek Default', model: 'deepseek-v4-pro' },
+          ]);
+        }
+        if (command === 'get_model_assignments') {
+          return Promise.resolve({ model2_config_id: 'deepseek-default-id' });
+        }
+        return Promise.resolve(undefined);
+      });
+
+      await adapter.loadSession();
+
+      expect(mockStore.setChatParams).toHaveBeenCalledWith(expect.objectContaining({
+        modelId: 'deepseek-default-id',
+        model2OverrideId: null,
+      }));
+    });
+
     it('should save session with session state', async () => {
       vi.mocked(invoke).mockResolvedValue(undefined);
       (mockStore as any).skillStateJson = '{"manualPinnedSkillIds":["cached-skill"],"version":9}';

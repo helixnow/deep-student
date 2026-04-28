@@ -21,7 +21,7 @@ function readSource(absolutePath: string) {
 }
 
 describe('MessageList empty state source guards', () => {
-  it('keeps the default new-session landing quiet and shows a group label only when provided', () => {
+  it('keeps the default new-session landing quiet and folds the group name into the primary action when provided', () => {
     const source = readSource(messageListPath);
     const emptyStateMatch = source.match(/if \(forceEmptyPreview \|\| messageOrder\.length === 0\) \{([\s\S]*?)return \(/);
     const emptyBlock = emptyStateMatch?.[1] ?? '';
@@ -29,10 +29,13 @@ describe('MessageList empty state source guards', () => {
     expect(source).toContain('data-slot="thread-empty-state"');
     expect(source).toContain('emptyStateGroupName?: string | null');
     expect(source).toContain('emptyStateGroupName = null');
-    expect(source).toContain('{emptyStateGroupName ? (');
-    expect(source).toContain('<p className="text-base text-muted-foreground">{emptyStateGroupName}</p>');
     expect(source).toContain("t('messageList.empty.primaryAction'");
-    expect(source).toContain("defaultValue: '我们要开始做什么？'");
+    expect(source).toContain("defaultValue: '今天想学点什么？'");
+    expect(source).toContain("t('messageList.empty.primaryActionInGroup'");
+    expect(source).toContain('groupName: emptyStateGroupName');
+    expect(source).toContain("defaultValue: '在「{{groupName}}」里学点什么？'");
+    expect(source).toContain('{emptyStatePrimaryAction}');
+    expect(emptyBlock).not.toContain('<p className="text-base text-muted-foreground">{emptyStateGroupName}</p>');
 
     expect(source).not.toContain(`t('chatV2:messageList.empty.${oldWorkspaceKey}'`);
     expect(source).not.toContain(`defaultValue: '${oldWorkspaceLabel}'`);
@@ -46,16 +49,21 @@ describe('MessageList empty state source guards', () => {
     expect(emptyBlock).not.toContain("const starterPrompt = t('messageList.empty.suggestion2');");
   });
 
-  it('passes the active session group name into the empty state', () => {
+  it('passes only real group names into the empty state and keeps ungrouped sessions generic', () => {
     const containerSource = readSource(chatContainerPath);
     const pageSource = readSource(chatPagePath);
 
     expect(containerSource).toContain('emptyStateGroupName?: string | null');
     expect(containerSource).toContain('emptyStateGroupName = null');
-    expect(containerSource).toContain('emptyStateGroupName={emptyStateGroupName}');
+    expect(containerSource).toContain('const sessionGroupId = useStore(store, (s) => s.groupId);');
+    expect(containerSource).toContain('const resolvedEmptyStateGroupName = emptyStateGroupName ??');
+    expect(containerSource).toContain('groupCache.get(sessionGroupId)?.name');
+    expect(containerSource).toContain('emptyStateGroupName={resolvedEmptyStateGroupName}');
 
+    expect(pageSource).not.toContain('const ungroupedGroupName = t(');
     expect(pageSource).toContain('const currentSessionGroupName = currentSession?.groupId');
     expect(pageSource).toContain('groupNameMap.get(currentSession.groupId) ?? null');
+    expect(pageSource).toContain(': null');
     expect(pageSource).toContain('emptyStateGroupName={currentSessionGroupName}');
   });
 });

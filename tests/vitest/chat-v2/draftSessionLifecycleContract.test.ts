@@ -53,4 +53,8 @@ describe('hidden draft session lifecycle contract', () => {
     expect(tauriAdapterSource).toContain('inputValue: state.inputValue || null');
     expect(restoreActionsSource).toContain("const inputValue = state?.inputValue ?? ''");
   });
+
+  it('routes left-sidebar ungrouped create actions into an ungrouped draft session', () => {
+    expect(chatPageSource).toContain("void createSession(typeof groupId === 'string' && groupId.trim() ? groupId : undefined);");
+  });
 });

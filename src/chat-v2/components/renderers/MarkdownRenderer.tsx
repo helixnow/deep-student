@@ -21,6 +21,27 @@ import { getPdfPageImageDataUrl } from '@/api/vfsRagApi';
 const pdfPageImageCache = new Map<string, string>();
 const PDF_PAGE_CACHE_MAX_SIZE = 50; // 最多缓存 50 个页面
 
+const POSIX_LOCAL_FILE_PREFIXES = [
+  '/Users/',
+  '/Volumes/',
+  '/private/',
+  '/var/',
+  '/tmp/',
+  '/home/',
+  '/mnt/',
+  '/media/',
+  '/opt/',
+];
+
+function isLocalImageFilePath(src: string): boolean {
+  if (src.startsWith('file://')) return true;
+  if (/^[a-zA-Z]:[\\/]/.test(src)) return true;
+  if (/^\\\\[^\\]/.test(src)) return true;
+  if (src.startsWith('//')) return false;
+
+  return POSIX_LOCAL_FILE_PREFIXES.some((prefix) => src.startsWith(prefix));
+}
+
 const markdownSanitizeSchema = {
   ...defaultSchema,
   attributes: {
@@ -450,18 +471,15 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
 
   const resolveImageSrc = useCallback((src?: string) => {
     if (!src) return src;
-    const isLocalPath =
-      src.startsWith('/') ||
-      /^[a-zA-Z]:[\\/]/.test(src) ||
-      src.startsWith('file://');
     const isAlreadyValid =
       src.startsWith('asset://') ||
+      src.startsWith('tauri://') ||
       src.startsWith('http://') ||
       src.startsWith('https://') ||
       src.startsWith('data:') ||
       src.startsWith('blob:');
 
-    if (isLocalPath && !isAlreadyValid) {
+    if (!isAlreadyValid && isLocalImageFilePath(src)) {
       try {
         const cleanPath = src.replace(/^file:\/\//, '');
         return convertFileSrc(cleanPath);

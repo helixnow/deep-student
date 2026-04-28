@@ -29,6 +29,21 @@ describe('InputBarUI thinking runtime state visibility', () => {
     expect(menuBranch).not.toContain('onClick={onToggleThinking}');
   });
 
+  it('orders reasoning depth choices before the off action', () => {
+    const menuGroupStart = inputBarSource.indexOf("label={t('chatV2:inputBar.thinkingDepthTitle', '推理强度')}");
+    const menuGroupEnd = inputBarSource.indexOf('</AppMenuGroup>', menuGroupStart);
+    const menuGroup = inputBarSource.slice(menuGroupStart, menuGroupEnd);
+
+    expect(menuGroupStart).toBeGreaterThan(-1);
+    expect(menuGroupEnd).toBeGreaterThan(menuGroupStart);
+    expect(menuGroup.indexOf('thinkingDepthOptions.map')).toBeLessThan(
+      menuGroup.indexOf("<AppMenuSeparator />")
+    );
+    expect(menuGroup.indexOf("<AppMenuSeparator />")).toBeLessThan(
+      menuGroup.indexOf("t('chatV2:inputBar.thinkingOff', '关闭')")
+    );
+  });
+
   it('places attachment on the left and reasoning depth in the former right attachment slot', () => {
     const leftStart = inputBarSource.indexOf('{/* 左侧按钮 - 窄屏时可横向滚动 */}');
     const rightStart = inputBarSource.indexOf('{/* 右侧按钮 - 固定不滚动 */}');
@@ -46,5 +61,77 @@ describe('InputBarUI thinking runtime state visibility', () => {
     expect(rightToolbar.indexOf('data-testid="thinking-runtime-control"')).toBeLessThan(
       rightToolbar.indexOf('data-testid="btn-send"')
     );
+  });
+
+  it('places the context window usage ring immediately before the thinking runtime control', () => {
+    const rightStart = inputBarSource.indexOf('{/* 右侧按钮 - 固定不滚动 */}');
+    const panelStart = inputBarSource.indexOf('{/* 🔧 面板容器 - 用于检测点击是否在面板内 */}');
+    const rightToolbar = inputBarSource.slice(rightStart, panelStart);
+
+    expect(inputBarSource).toContain('data-testid="context-window-usage-control"');
+    expect(rightToolbar).toContain('<ContextWindowUsageRing');
+    expect(rightToolbar.indexOf('<ContextWindowUsageRing')).toBeLessThan(
+      rightToolbar.indexOf('data-testid="thinking-runtime-control"')
+    );
+  });
+
+  it('renders the context window usage meter as a plain ring from 12 o clock clockwise', () => {
+    const ringStart = inputBarSource.indexOf('function ContextWindowUsageRing');
+    const ringEnd = inputBarSource.indexOf('function getStageLabel', ringStart);
+    const ringSource = inputBarSource.slice(ringStart, ringEnd);
+
+    expect(ringStart).toBeGreaterThan(-1);
+    expect(ringEnd).toBeGreaterThan(ringStart);
+    expect(ringSource).toContain('data-testid="context-window-usage-tooltip-bar"');
+    expect(ringSource).toContain('className="h-4 w-4 rounded-full');
+    expect(ringSource).toContain('conic-gradient(from 0deg');
+    expect(ringSource).toContain('WebkitMask');
+    expect(ringSource).toContain('calc(100% - 2.5px)');
+    expect(ringSource).toContain('mask');
+    expect(ringSource).not.toContain('data-testid="context-window-usage-progress-cap"');
+    expect(ringSource).not.toContain('conic-gradient(from -90deg');
+    expect(ringSource).not.toContain('boxShadow');
+    expect(ringSource).not.toContain('inset-[3px]');
+    expect(ringSource).not.toContain('inset-[6px]');
+    expect(ringSource).not.toContain('transform: `rotate(${usedDegrees})`');
+    expect(ringSource).toContain('width: `${usage.usedPercent}%`');
+  });
+
+  it('keeps the context window usage meter monochrome and minimal', () => {
+    const ringStart = inputBarSource.indexOf('function ContextWindowUsageRing');
+    const ringEnd = inputBarSource.indexOf('function getStageLabel', ringStart);
+    const ringSource = inputBarSource.slice(ringStart, ringEnd);
+
+    expect(ringStart).toBeGreaterThan(-1);
+    expect(ringEnd).toBeGreaterThan(ringStart);
+    expect(ringSource).toContain("const contextUsageColor = 'var(--text-primary)'");
+    expect(ringSource).toContain('background: contextUsageColor');
+    expect(ringSource).not.toContain('getContextUsageTone');
+    expect(ringSource).not.toContain('hsl(var(--warning))');
+    expect(ringSource).not.toContain('hsl(var(--destructive))');
+  });
+
+  it('uses a plus icon for the attachment toggle button', () => {
+    const buttonStart = inputBarSource.indexOf('data-testid="btn-toggle-attachments"');
+    const buttonEnd = inputBarSource.indexOf('</NotionButton>', buttonStart);
+    const attachmentButton = inputBarSource.slice(buttonStart, buttonEnd);
+
+    expect(buttonStart).toBeGreaterThan(-1);
+    expect(buttonEnd).toBeGreaterThan(buttonStart);
+    expect(attachmentButton).toContain('<Plus size={18} />');
+    expect(attachmentButton).not.toContain('<Paperclip size={18} />');
+    expect(attachmentButton).not.toContain('attachmentBadgeLabel');
+    expect(attachmentButton).not.toContain('rounded-full border bg-primary');
+  });
+
+  it('lets the input shell background token follow its surrounding composer surface', () => {
+    const shellStart = inputBarSource.indexOf('ref={inputContainerRef}');
+    const shellEnd = inputBarSource.indexOf('>', shellStart);
+    const inputShell = inputBarSource.slice(shellStart, shellEnd);
+
+    expect(shellStart).toBeGreaterThan(-1);
+    expect(shellEnd).toBeGreaterThan(shellStart);
+    expect(inputShell).toContain('bg-[color:var(--unified-input-shell-surface,var(--surface-panel-strong))]');
+    expect(inputShell).not.toContain('bg-[color:var(--surface-elevated)]');
   });
 });

@@ -27,7 +27,7 @@ export interface SortableGroupItemProps {
   toggleGroupCollapse: (groupId: string) => void;
   openEditGroup: (group: SessionGroup) => void;
   openRenameGroup: (group: SessionGroup) => void;
-  requestDeleteGroup: (group: SessionGroup) => void;
+  requestArchiveGroup: (group: SessionGroup) => void;
   createSession: (groupId?: string) => Promise<void>;
   renderSessionItem: (session: ChatSession, drag?: SessionDragState) => React.ReactNode;
   t: TFunction;
@@ -41,7 +41,7 @@ export function SortableGroupItem({
   toggleGroupCollapse,
   openEditGroup,
   openRenameGroup,
-  requestDeleteGroup,
+  requestArchiveGroup,
   createSession,
   renderSessionItem,
   t,
@@ -91,12 +91,12 @@ export function SortableGroupItem({
                 newSession: t('page.newSession'),
                 renameGroup: t('page.renameGroup'),
                 editGroup: t('page.editGroup'),
-                deleteGroup: t('page.deleteGroup'),
+                archiveGroup: t('page.archiveGroup'),
               }}
               onCreateSession={createSession}
               onRenameGroup={openRenameGroup}
               onEditGroup={openEditGroup}
-              onDeleteGroup={requestDeleteGroup}
+              onArchiveGroup={requestArchiveGroup}
             >
               {({ quickAction, onContextMenu }) => (
                 <UnifiedSidebarSection

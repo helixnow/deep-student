@@ -1,4 +1,6 @@
 import { fireEvent, render, screen } from '@testing-library/react';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { SessionGroupActions } from '../SessionGroupActions';
 import type { SessionGroup } from '../../types/group';
@@ -24,14 +26,14 @@ const labels = {
   newSession: 'New session',
   renameGroup: 'Rename group',
   editGroup: 'Edit group',
-  deleteGroup: 'Delete group',
+  archiveGroup: 'Archive group',
 };
 
 function renderHarness() {
   const onCreateSession = vi.fn();
   const onRenameGroup = vi.fn();
   const onEditGroup = vi.fn();
-  const onDeleteGroup = vi.fn();
+  const onArchiveGroup = vi.fn();
 
   render(
     <SessionGroupActions
@@ -40,7 +42,7 @@ function renderHarness() {
       onCreateSession={onCreateSession}
       onRenameGroup={onRenameGroup}
       onEditGroup={onEditGroup}
-      onDeleteGroup={onDeleteGroup}
+      onArchiveGroup={onArchiveGroup}
     >
       {({ quickAction, onContextMenu }) => (
         <div data-testid="group-header" onContextMenu={onContextMenu}>
@@ -51,10 +53,21 @@ function renderHarness() {
     </SessionGroupActions>
   );
 
-  return { onCreateSession, onRenameGroup, onEditGroup, onDeleteGroup };
+  return { onCreateSession, onRenameGroup, onEditGroup, onArchiveGroup };
 }
 
 describe('SessionGroupActions', () => {
+  it('uses the study compose icon for grouped new session quick actions', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/chat-v2/pages/SessionGroupActions.tsx'), 'utf-8');
+    const newSessionButton = source.match(
+      /aria-label=\{labels\.newSession\}[\s\S]*?<\/NotionButton>/
+    )?.[0] ?? '';
+
+    expect(source).toContain('StudyComposeIcon');
+    expect(newSessionButton).toContain('<StudyComposeIcon className="w-3.5 h-3.5" />');
+    expect(newSessionButton).not.toContain('<Plus className="w-3.5 h-3.5" />');
+  });
+
   it('shows the menu items from the ellipsis trigger', async () => {
     renderHarness();
 
@@ -62,7 +75,7 @@ describe('SessionGroupActions', () => {
 
     expect(await screen.findByRole('menuitem', { name: labels.renameGroup })).toBeInTheDocument();
     expect(screen.getByRole('menuitem', { name: labels.editGroup })).toBeInTheDocument();
-    expect(screen.getByRole('menuitem', { name: labels.deleteGroup })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: labels.archiveGroup })).toBeInTheDocument();
   });
 
   it('opens the same menu on right click', async () => {
@@ -74,7 +87,7 @@ describe('SessionGroupActions', () => {
   });
 
   it('calls the expected callbacks', async () => {
-    const { onCreateSession, onRenameGroup, onEditGroup, onDeleteGroup } = renderHarness();
+    const { onCreateSession, onRenameGroup, onEditGroup, onArchiveGroup } = renderHarness();
 
     fireEvent.click(screen.getByRole('button', { name: labels.newSession }));
     expect(onCreateSession).toHaveBeenCalledWith(group.id);
@@ -88,7 +101,7 @@ describe('SessionGroupActions', () => {
     expect(onEditGroup).toHaveBeenCalledWith(group);
 
     fireEvent.click(screen.getByRole('button', { name: labels.groupActions }));
-    fireEvent.click(await screen.findByRole('menuitem', { name: labels.deleteGroup }));
-    expect(onDeleteGroup).toHaveBeenCalledWith(group);
+    fireEvent.click(await screen.findByRole('menuitem', { name: labels.archiveGroup }));
+    expect(onArchiveGroup).toHaveBeenCalledWith(group);
   });
 });

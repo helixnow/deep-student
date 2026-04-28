@@ -1,0 +1,160 @@
+import React from 'react';
+import { describe, expect, it, vi } from 'vitest';
+import { fireEvent, render, screen, within } from '@testing-library/react';
+import { InputBarUI } from '../InputBarUI';
+import { createDefaultPanelStates } from '../../../core/types/common';
+import type { AttachmentMeta } from '../../../core/types/common';
+
+vi.mock('@/hooks/usePdfProcessingProgress', () => ({
+  usePdfProcessingProgress: vi.fn(),
+}));
+
+vi.mock('@/hooks/useTauriDragAndDrop', () => ({
+  useTauriDragAndDrop: () => ({
+    isDragging: false,
+    dropZoneProps: {},
+  }),
+}));
+
+vi.mock('@/components/layout/MobileLayoutContext', () => ({
+  useMobileLayoutSafe: () => ({
+    isMobile: false,
+    isFullscreenContent: false,
+  }),
+}));
+
+function renderInputBar(attachments: AttachmentMeta[], onRemoveAttachment = vi.fn()) {
+  render(
+    <InputBarUI
+      inputValue=""
+      canSend={false}
+      canAbort={false}
+      isStreaming={false}
+      attachments={attachments}
+      panelStates={createDefaultPanelStates()}
+      onInputChange={vi.fn()}
+      onSend={vi.fn()}
+      onAbort={vi.fn()}
+      onAddAttachment={vi.fn()}
+      onUpdateAttachment={vi.fn()}
+      onRemoveAttachment={onRemoveAttachment}
+      onClearAttachments={vi.fn()}
+      onSetPanelState={vi.fn()}
+      placeholder="输入消息"
+    />
+  );
+}
+
+describe('InputBarUI attachment preview chips', () => {
+  it('renders pending attachments as compact preview chips above the textarea', () => {
+    const attachments: AttachmentMeta[] = [
+      {
+        id: 'att_psd',
+        name: '1AI_图像 (1).psd',
+        type: 'image',
+        mimeType: 'image/vnd.adobe.photoshop',
+        size: 1024,
+        status: 'ready',
+      },
+      {
+        id: 'att_txt',
+        name: '安装教程.txt',
+        type: 'document',
+        mimeType: 'text/plain',
+        size: 512,
+        status: 'ready',
+      },
+    ];
+
+    renderInputBar(attachments);
+
+    const previewList = screen.getByRole('list', { name: '待发送附件' });
+    expect(within(previewList).getByRole('listitem', { name: '1AI_图像 (1).psd' })).toBeInTheDocument();
+    expect(within(previewList).getByRole('listitem', { name: '安装教程.txt' })).toBeInTheDocument();
+    expect(previewList).toHaveClass('attachment-preview-chips');
+  });
+
+  it('removes an attachment from its chip action', () => {
+    const onRemoveAttachment = vi.fn();
+    const attachments: AttachmentMeta[] = [
+      {
+        id: 'att_html',
+        name: '族谱纵向图谱.html',
+        type: 'document',
+        mimeType: 'text/html',
+        size: 4096,
+        status: 'ready',
+      },
+    ];
+
+    renderInputBar(attachments, onRemoveAttachment);
+
+    fireEvent.click(screen.getByRole('button', { name: '移除附件 族谱纵向图谱.html' }));
+
+    expect(onRemoveAttachment).toHaveBeenCalledWith('att_html');
+  });
+
+  it('keeps the remove action inside the chip and reveals it on hover or focus', () => {
+    const attachments: AttachmentMeta[] = [
+      {
+        id: 'att_psd',
+        name: '1AI_图像 (1).psd',
+        type: 'image',
+        mimeType: 'image/vnd.adobe.photoshop',
+        size: 1024,
+        status: 'ready',
+      },
+    ];
+
+    renderInputBar(attachments);
+
+    expect(screen.getByTestId('attachment-chip-icon-att_psd')).toHaveClass('h-5', 'w-5');
+    expect(screen.getByTitle('1AI_图像 (1).psd')).not.toHaveClass('pr-8');
+    expect(screen.getByTitle('1AI_图像 (1).psd')).toHaveClass('pr-7');
+    expect(screen.getByRole('button', { name: '移除附件 1AI_图像 (1).psd' })).toHaveClass(
+      'absolute',
+      'right-1.5',
+      'opacity-0',
+      'group-hover/attachment-chip:opacity-100',
+      'focus-visible:opacity-100'
+    );
+  });
+
+  it('does not show a ready confirmation badge on attachment preview icons', () => {
+    const attachments: AttachmentMeta[] = [
+      {
+        id: 'att_ready',
+        name: '讲义.pdf',
+        type: 'document',
+        mimeType: 'application/pdf',
+        size: 2048,
+        status: 'ready',
+      },
+    ];
+
+    renderInputBar(attachments);
+
+    const iconHost = screen.getByTestId('attachment-chip-icon-att_ready');
+    expect(iconHost.querySelector('.text-emerald-500')).not.toBeInTheDocument();
+  });
+
+  it('shows short attachment filenames without truncating the text label', () => {
+    const attachments: AttachmentMeta[] = [
+      {
+        id: 'att_icon',
+        name: 'app-icon.png',
+        type: 'image',
+        mimeType: 'image/png',
+        size: 1024,
+        status: 'ready',
+      },
+    ];
+
+    renderInputBar(attachments);
+
+    const filename = screen.getByText('app-icon.png');
+    expect(filename).toHaveClass('whitespace-nowrap');
+    expect(filename).not.toHaveClass('truncate');
+    expect(screen.getByTitle('app-icon.png')).not.toHaveClass('max-w-[220px]');
+  });
+});

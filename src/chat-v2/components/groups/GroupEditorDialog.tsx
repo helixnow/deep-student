@@ -2,7 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { 
-  Check, X, Type, Smile, AlignLeft, Terminal, Zap, Trash2,
+  Archive, Check, X, Type, Smile, AlignLeft, Terminal, Zap,
   Folder, FolderOpen, Star, Heart, BookOpen, GraduationCap,
   Code, Calculator, FlaskConical, Atom, Globe, Languages,
   Music, Palette, Camera, Lightbulb, Target, Trophy,
@@ -75,7 +75,7 @@ interface GroupEditorPanelProps {
   autoFocusField?: 'name' | null;
   onSubmit: (payload: CreateGroupRequest | UpdateGroupRequest) => Promise<void>;
   onClose: () => void;
-  onDelete?: () => void;
+  onArchive?: () => void;
   /** 移动端：通过父级 MobileSlidingLayout 右面板浏览资源，传入 togglePinnedResource 回调和当前已选 ID */
   onMobileBrowse?: (toggleResource: (sourceId: string) => 'added' | 'removed' | false, currentIds: string[]) => void;
 }
@@ -113,7 +113,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
   autoFocusField = null,
   onSubmit,
   onClose,
-  onDelete,
+  onArchive,
   onMobileBrowse,
 }) => {
   const { t } = useTranslation(['chatV2', 'common', 'skills']);
@@ -483,15 +483,15 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
             )}
           </div>
 
-          {mode === 'edit' && onDelete && (
+          {mode === 'edit' && onArchive && (
             <div className="pt-6 border-t border-border/40">
               <NotionButton
-                variant="danger"
-                onClick={onDelete}
+                variant="warning"
+                onClick={onArchive}
                 className="h-8 px-3"
               >
-                <Trash2 className="w-3.5 h-3.5 mr-1.5" />
-                {t('page.deleteGroup')}
+                <Archive className="w-3.5 h-3.5 mr-1.5" />
+                {t('page.archiveGroup')}
               </NotionButton>
             </div>
           )}

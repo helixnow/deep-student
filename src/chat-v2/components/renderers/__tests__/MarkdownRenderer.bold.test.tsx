@@ -1,8 +1,12 @@
 import React from 'react';
-import { describe, it, expect } from 'vitest';
+import { describe, it, expect, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { MarkdownRenderer } from '../MarkdownRenderer';
 import { StreamingMarkdownRenderer } from '../StreamingMarkdownRenderer';
+
+vi.mock('@tauri-apps/api/core', () => ({
+  convertFileSrc: (path: string) => `asset://mock${path}`,
+}));
 
 describe('MarkdownRenderer bold compatibility', () => {
   it('renders standard bold syntax in MarkdownRenderer', () => {
@@ -39,5 +43,12 @@ describe('MarkdownRenderer bold compatibility', () => {
     const { container } = render(<MarkdownRenderer content={md} />);
     const firstCellStrong = container.querySelector('tbody tr td strong');
     expect(firstCellStrong?.textContent).toContain('文科生指挥AI军队');
+  });
+
+  it('keeps app-root image URLs unchanged', () => {
+    const { container } = render(<MarkdownRenderer content="![DeepSeek](/icons/providers/deepseek.svg)" />);
+    const image = container.querySelector('img');
+
+    expect(image?.getAttribute('src')).toBe('/icons/providers/deepseek.svg');
   });
 });

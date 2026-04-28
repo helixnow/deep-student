@@ -252,14 +252,14 @@ export const ChatV2Page: React.FC = () => {
     loadGroups,
     createGroup,
     updateGroup,
-    deleteGroup,
+    archiveGroup,
     reorderGroups,
   } = useGroupManagement();
   const { collapsedMap, toggleGroupCollapse, expandGroup, pruneDeletedGroups } = useGroupCollapse();
   const [groupEditorOpen, setGroupEditorOpen] = useState(false);
   const [editingGroup, setEditingGroup] = useState<SessionGroup | null>(null);
   const [groupEditorAutoFocusField, setGroupEditorAutoFocusField] = useState<'name' | null>(null);
-  const [pendingDeleteGroup, setPendingDeleteGroup] = useState<SessionGroup | null>(null);
+  const [pendingArchiveGroup, setPendingArchiveGroup] = useState<SessionGroup | null>(null);
   
   // 视图模式：sidebar（侧边栏+聊天）或 browser（全宽浏览）
   const [viewMode, setViewMode] = useState<'sidebar' | 'browser'>('sidebar');
@@ -390,6 +390,7 @@ export const ChatV2Page: React.FC = () => {
     loadDeletedSessions, restoreSession, permanentlyDeleteSession,
     emptyTrash, toggleTrash, handleViewAgentSession,
   } = useSessionLifecycle({
+    currentSessionId,
     setSessions, setCurrentSessionId, setIsLoading, setTotalSessionCount,
     setUngroupedSessionCount, setHasMoreSessions, setIsInitialLoading,
     setIsLoadingMore, setDeletedSessions, setIsLoadingTrash,
@@ -505,17 +506,17 @@ export const ChatV2Page: React.FC = () => {
   const {
     startEditSession, saveSessionTitle, cancelEditSession, archiveSession, togglePinSession,
     openCreateGroup, openEditGroup, openRenameGroup, closeGroupEditor,
-    handleSubmitGroup, confirmDeleteGroup,
+    handleSubmitGroup, confirmArchiveGroup,
     moveSessionToGroup, formatTime,
   } = useSessionEdit({
     resetDeleteConfirmation, currentSessionId, setCurrentSessionId, setEditingSessionId, setEditingTitle,
     setRenamingSessionId, setRenameError, setSessions,
     setGroupEditorOpen, setEditingGroup, setGroupEditorAutoFocusField, setShowTrash, setShowChatControl,
-    setViewMode, setSessionSheetOpen, setPendingDeleteGroup,
+    setViewMode, setSessionSheetOpen, setPendingArchiveGroup,
     setGroupPinnedIds, setMobileResourcePanelOpen,
-    editingTitle, editingGroup, pendingDeleteGroup, sessionsRef,
+    editingTitle, editingGroup, pendingArchiveGroup, sessionsRef,
     groupPickerAddRef, t,
-    updateGroup, createGroup, deleteGroup, reorderGroups,
+    updateGroup, createGroup, archiveGroup, reorderGroups,
     loadUngroupedCount, groupDragDisabled, visibleGroups,
   });
 
@@ -528,7 +529,7 @@ export const ChatV2Page: React.FC = () => {
           openCreateGroup();
           break;
         case 'create-session':
-          if (groupId) void createSession(groupId);
+          void createSession(typeof groupId === 'string' && groupId.trim() ? groupId : undefined);
           break;
         case 'rename-group':
           if (group) openRenameGroup(group);
@@ -536,14 +537,14 @@ export const ChatV2Page: React.FC = () => {
         case 'edit-group':
           if (group) openEditGroup(group);
           break;
-        case 'delete-group':
-          if (group) setPendingDeleteGroup(group);
+        case 'archive-group':
+          if (group) setPendingArchiveGroup(group);
           break;
       }
     };
     window.addEventListener('modern-sidebar:group-action', handler);
     return () => window.removeEventListener('modern-sidebar:group-action', handler);
-  }, [createSession, openCreateGroup, openRenameGroup, openEditGroup, setPendingDeleteGroup]);
+  }, [createSession, openCreateGroup, openRenameGroup, openEditGroup, setPendingArchiveGroup]);
 
   useEffect(() => {
     const handler = (event: Event) => {
@@ -763,8 +764,8 @@ export const ChatV2Page: React.FC = () => {
           autoFocusField={groupEditorAutoFocusField}
           onSubmit={handleSubmitGroup}
           onClose={closeGroupEditor}
-          onDelete={editingGroup ? () => {
-            setPendingDeleteGroup(editingGroup);
+          onArchive={editingGroup ? () => {
+            setPendingArchiveGroup(editingGroup);
             closeGroupEditor();
           } : undefined}
           onMobileBrowse={isSmallScreen ? (addResource, currentIds) => {
@@ -1168,16 +1169,16 @@ export const ChatV2Page: React.FC = () => {
       {/* CardForge 2.0 Anki 编辑面板 - 监听 open-anki-panel 事件 */}
       <AnkiPanelHost />
 
-      {/* 删除分组确认对话框 */}
+      {/* 归档分组确认对话框 */}
       <NotionAlertDialog
-        open={!!pendingDeleteGroup}
-        onOpenChange={(open) => !open && setPendingDeleteGroup(null)}
-        title={t('page.deleteGroupTitle')}
-        description={t('page.deleteGroupDesc', { name: pendingDeleteGroup?.name })}
-        confirmText={t('page.deleteGroupConfirm')}
+        open={!!pendingArchiveGroup}
+        onOpenChange={(open) => !open && setPendingArchiveGroup(null)}
+        title={t('page.archiveGroupTitle')}
+        description={t('page.archiveGroupDesc', { name: pendingArchiveGroup?.name })}
+        confirmText={t('page.archiveGroupConfirm')}
         cancelText={t('common:cancel')}
-        confirmVariant="danger"
-        onConfirm={confirmDeleteGroup}
+        confirmVariant="warning"
+        onConfirm={confirmArchiveGroup}
       />
 
       {/* 清空回收站确认对话框 */}

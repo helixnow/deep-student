@@ -84,9 +84,15 @@ export function useGroupManagement(workspaceId?: string) {
     }
   }, [workspaceId]);
 
-  const deleteGroup = useCallback(async (groupId: string) => {
+  const archiveGroup = useCallback(async (groupId: string) => {
     try {
-      await invoke('chat_v2_delete_group', { groupId });
+      await invoke<SessionGroup>('chat_v2_update_group', {
+        groupId,
+        request: {
+          persistStatus: 'archived',
+          workspaceId,
+        },
+      });
       setGroups((prev) => {
         const next = sortGroups(prev.filter((g) => g.id !== groupId));
         setGroupsCache(next);
@@ -94,10 +100,10 @@ export function useGroupManagement(workspaceId?: string) {
       });
       emitGroupListUpdated();
     } catch (error: unknown) {
-      console.error('[useGroupManagement] Failed to delete group:', getErrorMessage(error));
+      console.error('[useGroupManagement] Failed to archive group:', getErrorMessage(error));
       throw error;
     }
-  }, []);
+  }, [workspaceId]);
 
   const reorderGroups = useCallback(async (groupIds: string[]) => {
     setGroups((prev) => {
@@ -137,7 +143,7 @@ export function useGroupManagement(workspaceId?: string) {
     loadGroups,
     createGroup,
     updateGroup,
-    deleteGroup,
+    archiveGroup,
     reorderGroups,
   };
 }

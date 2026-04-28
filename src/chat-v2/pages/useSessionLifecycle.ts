@@ -2,6 +2,7 @@ import React, { useCallback } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { createSessionWithDefaults } from '../core/session/createSessionWithDefaults';
+import { sessionManager } from '../core/session/sessionManager';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { TauriAPI } from '@/utils/tauriApi';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -24,6 +25,7 @@ const emitSessionListUpdated = () => {
 };
 
 export interface UseSessionLifecycleDeps {
+  currentSessionId: string | null;
   setSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>;
   setCurrentSessionId: (id: string | null | ((prev: string | null) => string | null)) => void;
   setIsLoading: React.Dispatch<React.SetStateAction<boolean>>;
@@ -47,6 +49,7 @@ export interface UseSessionLifecycleDeps {
 
 export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
   const {
+    currentSessionId,
     setSessions, setCurrentSessionId, setIsLoading, setTotalSessionCount,
     setUngroupedSessionCount, setHasMoreSessions, setIsInitialLoading,
     setIsLoadingMore, setDeletedSessions, setIsLoadingTrash,
@@ -67,6 +70,18 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
     }
   }, []);
 
+  const createHiddenDraftSession = useCallback(async (groupId?: string | null): Promise<ChatSession> => {
+    const scope = getDraftSessionScope('chat', groupId ?? null);
+    const session = await createSessionWithDefaults({
+      mode: 'chat',
+      title: null,
+      metadata: buildHiddenDraftSessionMetadata(null, scope),
+      groupId,
+    });
+    persistHiddenDraftSessionId(scope, session.id);
+    return session;
+  }, []);
+
   const getOrCreateHiddenDraftSession = useCallback(async (groupId?: string | null): Promise<ChatSession> => {
     const scope = getDraftSessionScope('chat', groupId ?? null);
     const storedDraftId = getStoredDraftSessionId(scope);
@@ -85,18 +100,27 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
       clearHiddenDraftSessionId(scope);
     }
 
-    const session = await createSessionWithDefaults({
-      mode: 'chat',
-      title: null,
-      metadata: buildHiddenDraftSessionMetadata(null, scope),
-      groupId,
-    });
-    persistHiddenDraftSessionId(scope, session.id);
-    return session;
-  }, []);
+    return createHiddenDraftSession(groupId);
+  }, [createHiddenDraftSession]);
+
+  const getCurrentHiddenDraftSessionScope = useCallback(() => {
+    if (!currentSessionId) {
+      return null;
+    }
+
+    const store = sessionManager.get(currentSessionId);
+    const metadata = store?.getState().sessionMetadata;
+    return getHiddenDraftSessionScope(metadata);
+  }, [currentSessionId]);
 
   // 创建新会话（使用全局科目）- 提前定义用于 useMobileHeader
   const createSession = useCallback(async (groupId?: string) => {
+    const currentDraftScope = getCurrentHiddenDraftSessionScope();
+    const targetDraftScope = getDraftSessionScope('chat', groupId ?? null);
+    if (currentDraftScope === targetDraftScope) {
+      return;
+    }
+
     setIsLoading(true);
     try {
       const session = await getOrCreateHiddenDraftSession(groupId);
@@ -107,7 +131,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
     } finally {
       setIsLoading(false);
     }
-  }, [getOrCreateHiddenDraftSession, t]);
+  }, [getCurrentHiddenDraftSessionScope, getOrCreateHiddenDraftSession, t]);
 
   // P1-06: 创建分析模式会话
   // 打开文件对话框让用户选择图片，然后创建 analysis 模式会话

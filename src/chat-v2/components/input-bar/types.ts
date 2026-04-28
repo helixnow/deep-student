@@ -12,6 +12,7 @@ import type { ContextRef } from '../../resources/types';
 import type { ApprovalRequestData } from '../ToolApprovalCard';
 import type { PdfPageRefsState } from './usePdfPageRefs';
 import type { DeepSeekReasoningOption, DeepSeekReasoningOptionValue } from '@/utils/deepseekReasoningControls';
+import type { ContextWindowUsage } from './contextWindowUsage';
 
 // ============================================================================
 // 模型 @mention 自动完成状态
@@ -86,6 +87,9 @@ export interface InputBarV2Props {
   /** 自定义类名 */
   className?: string;
 
+  /** 挂载后自动聚焦输入框（移动端空会话用于唤起键盘） */
+  autoFocus?: boolean;
+
   /** 文件上传处理回调（可选，用于外部业务层处理文件） */
   onFilesUpload?: (files: File[]) => void;
 
@@ -130,6 +134,9 @@ export interface InputBarUIProps {
 
   /** 是否正在流式生成 */
   isStreaming: boolean;
+
+  /** 最近一次完成回复后的上下文窗口占用 */
+  contextWindowUsage?: ContextWindowUsage | null;
 
   /** 附件列表 */
   attachments: AttachmentMeta[];
@@ -188,6 +195,9 @@ export interface InputBarUIProps {
 
   /** 自定义类名 */
   className?: string;
+
+  /** 挂载后自动聚焦输入框（移动端空会话用于唤起键盘） */
+  autoFocus?: boolean;
 
   // ========== 模式插件面板渲染 ==========
 
