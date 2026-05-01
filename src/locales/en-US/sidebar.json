@@ -46,7 +46,7 @@
     "expand_all_topics": "Expand all topics",
     "create_topic": "New topic",
     "create_conversation": "New conversation",
-    "expand_group_sessions": "Show {{count}} more",
+    "expand_group_sessions": "Show more",
     "collapse_group_sessions": "Show less"
   },
   "expand": "Expand sidebar",

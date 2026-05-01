@@ -12,15 +12,35 @@ describe('modern sidebar icon contract', () => {
     expect(sidebarSource).not.toContain("strokeWidth={currentView === 'settings' ? 2.3 : 2}");
   });
 
-  it('uses a writing icon for the conversation-section hover create action', () => {
+  it('keeps the conversation-section create action visible with the writing icon', () => {
     const conversationSectionAction = sidebarSource.match(
       /const conversationHeaderAction = \([\s\S]*?<section className="space-y-0\.5 pt-1">/
     )?.[0] ?? '';
 
+    expect(sidebarSource).toContain("import { CommonTooltip } from '@/components/shared/CommonTooltip';");
     expect(sidebarSource).toContain('StudyComposeIcon');
+    expect(conversationSectionAction).toContain('<CommonTooltip content={newConversationLabel} position="right">');
+    expect(conversationSectionAction).toContain('className="flex shrink-0 items-center gap-1"');
     expect(conversationSectionAction).toContain('<StudyComposeIcon className="w-3.5 h-3.5" />');
+    expect(conversationSectionAction).not.toContain('title={newConversationLabel}');
+    expect(conversationSectionAction).not.toContain('opacity-0');
+    expect(conversationSectionAction).not.toContain('group-hover/sidebar-top-section:opacity-100');
+    expect(conversationSectionAction).not.toContain('group-focus-within/sidebar-top-section:opacity-100');
     expect(conversationSectionAction).not.toContain('<Plus className="w-3.5 h-3.5" />');
     expect(conversationSectionAction).not.toContain('<Folder className="size-[16px]" strokeWidth={2} />');
+  });
+
+  it('uses CommonTooltip for recent-session archive quick actions', () => {
+    const recentSessionRow = sidebarSource.match(
+      /const renderRecentSessionRow = useCallback\([\s\S]*?<AppMenuContent align="end" width=\{180\}>/
+    )?.[0] ?? '';
+
+    expect(recentSessionRow).toContain('<CommonTooltip content="确认归档会话" position="right">');
+    expect(recentSessionRow).toContain('<CommonTooltip content="归档会话" position="right">');
+    expect(recentSessionRow).toContain('aria-label="确认归档会话"');
+    expect(recentSessionRow).toContain('aria-label="归档会话"');
+    expect(recentSessionRow).not.toContain('title="确认归档会话"');
+    expect(recentSessionRow).not.toContain('title="归档会话"');
   });
 
   it('keeps section disclosure arrows after the label and hidden until header hover or focus', () => {

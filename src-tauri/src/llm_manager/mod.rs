@@ -132,6 +132,48 @@ mod tests {
         }
     }
 
+    fn tool_call_message(id: &str, reasoning: Option<&str>) -> ChatMessage {
+        ChatMessage {
+            role: "assistant".to_string(),
+            content: String::new(),
+            timestamp: chrono::Utc::now(),
+            thinking_content: reasoning.map(str::to_string),
+            thought_signature: None,
+            rag_sources: None,
+            memory_sources: None,
+            graph_sources: None,
+            web_search_sources: None,
+            image_paths: None,
+            image_base64: None,
+            doc_attachments: None,
+            multimodal_content: None,
+            tool_call: Some(crate::models::ToolCall {
+                id: id.to_string(),
+                tool_name: "builtin_test".to_string(),
+                args_json: json!({}),
+            }),
+            tool_result: None,
+            overrides: None,
+            relations: None,
+            persistent_stable_id: None,
+            metadata: None,
+        }
+    }
+
+    #[test]
+    fn merge_consecutive_tool_calls_preserves_empty_reasoning_content() {
+        let history = vec![tool_call_message("call_empty_reasoning", Some(""))];
+
+        let merged = LLMManager::merge_consecutive_tool_calls(&history);
+
+        match merged.first() {
+            Some(MergedChatMessage::MergedToolCalls {
+                thinking_content, ..
+            }) => assert_eq!(thinking_content.as_deref(), Some("")),
+            _ => panic!("expected merged tool call message"),
+        }
+    }
+
     #[test]
     fn merge_builtin_profile_user_aware_preserves_user_modified_fields() {
         let mut profiles = vec![profile(
@@ -1565,7 +1607,11 @@ impl LLMManager {
     ///
     /// ## 子适配器架构
     /// 详见 `adapters` 模块文档
-    fn apply_reasoning_config(body: &mut Value, config: &ApiConfig, enable_thinking: Option<bool>) {
+    pub(crate) fn apply_reasoning_config(
+        body: &mut Value,
+        config: &ApiConfig,
+        enable_thinking: Option<bool>,
+    ) {
         let Value::Object(map) = body else {
             return;
         };
@@ -1636,7 +1682,7 @@ impl LLMManager {
     /// 输出：[MergedToolCalls([tc1, tc2], thinking1), tool(tr1), tool(tr2), MergedToolCalls([tc3], thinking2), tool(tr3)]
     ///
     /// ## 🔧 多轮工具调用边界检测
-    /// 当遇到新的 reasoning_content（非空）时，表示开始了新一轮的工具调用，
+    /// 当遇到新的 reasoning_content（包括空字符串）时，表示开始了新一轮的工具调用，
     /// 需要刷新当前的 pending 组并开始新组，以保持每轮工具调用的边界。
     /// 这确保了多轮工具调用的思维链都能被正确保留和回传。
     fn merge_consecutive_tool_calls(history: &[ChatMessage]) -> Vec<MergedChatMessage> {
@@ -1651,13 +1697,9 @@ impl LLMManager {
         for msg in history {
             if msg.role == "assistant" && msg.tool_call.is_some() {
                 if let Some(tc) = &msg.tool_call {
-                    // 🔧 多轮边界检测：如果遇到新的 reasoning_content（非空），
+                    // 🔧 多轮边界检测：如果遇到新的 reasoning_content（包括空字符串），
                     // 且已经有待处理的工具调用，则先刷新当前组
-                    let has_new_reasoning = msg
-                        .thinking_content
-                        .as_ref()
-                        .map(|s| !s.is_empty())
-                        .unwrap_or(false);
+                    let has_new_reasoning = msg.thinking_content.is_some();
 
                     if has_new_reasoning && !pending_tool_calls.is_empty() {
                         // 刷新当前组（这是前一轮的工具调用）
@@ -1679,7 +1721,7 @@ impl LLMManager {
                     // 收集工具调用
                     pending_tool_calls.push(tc.clone());
 
-                    // 保留当前轮次的思维链（只保留第一个非空的）
+                    // 保留当前轮次的思维链（只保留第一个出现的字段，空字符串也必须回传）
                     if current_thinking_content.is_none() && has_new_reasoning {
                         current_thinking_content = msg.thinking_content.clone();
                     }
@@ -4618,12 +4660,14 @@ impl LLMManager {
             }),
         ];
 
-        let request_body = json!({
+        let mut request_body = json!({
             "model": model_id,
             "messages": messages,
             "temperature": 0.3,
             "max_tokens": 4096
         });
+
+        Self::apply_reasoning_config(&mut request_body, &api_config, None);
 
         // 发送请求
         let response = self
@@ -4702,13 +4746,15 @@ impl LLMManager {
             }),
         ];
 
-        let request_body = json!({
+        let mut request_body = json!({
             "model": model_id,
             "messages": messages,
             "temperature": 0.3,
             "max_tokens": 8192,
             "stream": true
         });
+
+        Self::apply_reasoning_config(&mut request_body, &api_config, None);
 
         let response = self
             .client
@@ -4845,12 +4891,14 @@ impl LLMManager {
             }),
         ];
 
-        let request_body = json!({
+        let mut request_body = json!({
             "model": model_id,
             "messages": messages,
             "temperature": 0.3,
             "max_tokens": 4096
         });
+
+        Self::apply_reasoning_config(&mut request_body, &api_config, None);
 
         let response = self
             .client

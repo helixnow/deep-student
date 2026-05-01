@@ -478,6 +478,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
       general: { temperature: 0.7, maxOutputTokens: 8192 },
       google: { temperature: 0.7, maxOutputTokens: 8192 },
       anthropic: { temperature: 0.7, maxOutputTokens: 4096 },
+      deepseek: { temperature: 0.6, maxOutputTokens: 32768 },
       mimo: { temperature: 1.0, maxOutputTokens: 32768 },
     };
     if (formData.modelAdapter && recommended[formData.modelAdapter]) {

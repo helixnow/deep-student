@@ -62,6 +62,47 @@ describe('ChatContainer empty composer layout source contract', () => {
     expect(emptyInputRule).toContain('background: var(--surface-root);');
   });
 
+  it('keeps the docked input bottom transparent and fades only the lower gutter', () => {
+    const dockedRootStart = inputBarUiSource.indexOf('ref={dropZoneRef}');
+    const dockedRootEnd = inputBarUiSource.indexOf('style={{', dockedRootStart);
+    const dockedRoot = inputBarUiSource.slice(dockedRootStart, dockedRootEnd);
+
+    expect(dockedRootStart).toBeGreaterThan(-1);
+    expect(dockedRootEnd).toBeGreaterThan(dockedRootStart);
+    expect(dockedRoot).toContain('unified-input-docked');
+    expect(dockedRoot).toContain('isolate');
+    expect(dockedRoot).not.toContain('border-t border-[color:var(--shell-workspace-border)]');
+    expect(dockedRoot).not.toContain('bg-[color:var(--surface-panel-strong)]');
+
+    const dockRuleStart = beautifySource.indexOf('.chat-v2 .unified-input-docked {');
+    const dockRuleEnd = beautifySource.indexOf('}', dockRuleStart);
+    const dockRule = beautifySource.slice(dockRuleStart, dockRuleEnd);
+
+    expect(dockRuleStart).toBeGreaterThan(-1);
+    expect(dockRuleEnd).toBeGreaterThan(dockRuleStart);
+    expect(dockRule).toContain('--unified-input-bottom-fade-size: 42px;');
+    expect(dockRule).toContain('background: transparent;');
+    expect(dockRule).toContain('border-top: 0;');
+
+    const fadeRuleStart = beautifySource.indexOf('.chat-v2 .unified-input-docked::after');
+    const fadeRuleEnd = beautifySource.indexOf('}', fadeRuleStart);
+    const fadeRule = beautifySource.slice(fadeRuleStart, fadeRuleEnd);
+
+    expect(fadeRuleStart).toBeGreaterThan(-1);
+    expect(fadeRuleEnd).toBeGreaterThan(fadeRuleStart);
+    expect(fadeRule).toContain('bottom: 0;');
+    expect(fadeRule).toContain('pointer-events: none;');
+    expect(fadeRule).toContain('linear-gradient(to bottom');
+
+    const emptyFadeRuleStart = beautifySource.indexOf('.chat-v2 .chat-empty-composer-layout__input.unified-input-docked::after');
+    const emptyFadeRuleEnd = beautifySource.indexOf('}', emptyFadeRuleStart);
+    const emptyFadeRule = beautifySource.slice(emptyFadeRuleStart, emptyFadeRuleEnd);
+
+    expect(emptyFadeRuleStart).toBeGreaterThan(-1);
+    expect(emptyFadeRuleEnd).toBeGreaterThan(emptyFadeRuleStart);
+    expect(emptyFadeRule).toContain('content: none;');
+  });
+
   it('keeps empty mobile conversations docked at the bottom and autofocuses the keyboard-safe input', () => {
     expect(containerSource).toContain("import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';");
     expect(containerSource).toContain('const isMobile = mobileLayout?.isMobile ??');

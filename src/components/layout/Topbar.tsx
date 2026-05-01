@@ -790,6 +790,10 @@ export default function Topbar({ currentView, onNavigate, sidebarCollapsed, onTo
     return null;
   }
 
+  const sidebarToggleLabel = sidebarCollapsed
+    ? t('sidebar:expand', '展开侧边栏')
+    : t('sidebar:collapse', '收起侧边栏');
+
   // 桌面模式：显示虚拟标题栏
   const content = (
     <div
@@ -813,13 +817,15 @@ export default function Topbar({ currentView, onNavigate, sidebarCollapsed, onTo
       
       {/* 左侧：侧边栏折叠按钮 */}
       <div className="flex-shrink-0 flex items-center gap-2 pl-3" data-no-drag>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={onToggleSidebar} className="hover:bg-[hsl(var(--accent))] text-[hsl(var(--foreground))]" style={{ width: 32, height: 32, minWidth: 32, minHeight: 32, flexShrink: 0 }} title={sidebarCollapsed ? t('sidebar:expand', '展开侧边栏') : t('sidebar:collapse', '收起侧边栏')} aria-label={sidebarCollapsed ? t('sidebar:expand', '展开侧边栏') : t('sidebar:collapse', '收起侧边栏')}>
-          {sidebarCollapsed ? (
-            <ChevronsRight style={{ width: 16, height: 16, minWidth: 16, minHeight: 16 }} />
-          ) : (
-            <ChevronsLeft style={{ width: 16, height: 16, minWidth: 16, minHeight: 16 }} />
-          )}
-        </NotionButton>
+        <CommonTooltip content={sidebarToggleLabel} position="bottom">
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={onToggleSidebar} className="hover:bg-[hsl(var(--accent))] text-[hsl(var(--foreground))]" style={{ width: 32, height: 32, minWidth: 32, minHeight: 32, flexShrink: 0 }} aria-label={sidebarToggleLabel}>
+            {sidebarCollapsed ? (
+              <ChevronsRight style={{ width: 16, height: 16, minWidth: 16, minHeight: 16 }} />
+            ) : (
+              <ChevronsLeft style={{ width: 16, height: 16, minWidth: 16, minHeight: 16 }} />
+            )}
+          </NotionButton>
+        </CommonTooltip>
       </div>
       
       {/* 中间：应用标题/面包屑导航 */}

@@ -341,6 +341,8 @@ impl LLMManager {
             "stream": false,
         });
 
+        crate::llm_manager::LLMManager::apply_reasoning_config(&mut request_body, config, None);
+
         // GLM-4.5+ 支持 thinking 参数；OCR 默认关闭以降低延迟
         if crate::llm_manager::adapters::zhipu::ZhipuAdapter::supports_thinking_static(
             &config.model,
@@ -675,6 +677,8 @@ impl LLMManager {
                 "max_tokens": max_tokens,
                 "stream": false,
             });
+
+            crate::llm_manager::LLMManager::apply_reasoning_config(&mut request_body, config, None);
 
             if let Some(extra) = adapter.get_extra_request_params() {
                 if let Some(obj) = request_body.as_object_mut() {

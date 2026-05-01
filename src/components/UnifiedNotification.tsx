@@ -1,7 +1,6 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
+import { X } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { useTranslation } from 'react-i18next';
-import { CheckCircle, XCircle, Info, AlertTriangle, X } from 'lucide-react';
 import './UnifiedNotification.css';
 
 const normalizeNotificationMessage = (input: unknown): string => {
@@ -40,6 +39,7 @@ export interface NotificationProps {
     visible: boolean;
     title?: string;
     action?: GlobalNotificationAction;
+    borderTone?: GlobalNotificationBorderTone;
   };
   onClose: () => void;
 }
@@ -53,7 +53,6 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({
   notification, 
   onClose 
 }) => {
-  const { t } = useTranslation('common');
   const DURATION = 6000; // 气泡停留时长
   const [isClosing, setIsClosing] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -153,23 +152,22 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({
     notification.action?.onClick();
     handleClose();
   };
-  const icons = {
-    success: <CheckCircle size={20} aria-hidden="true" />,
-    error: <XCircle size={20} aria-hidden="true" />,
-    info: <Info size={20} aria-hidden="true" />,
-    warning: <AlertTriangle size={20} aria-hidden="true" />
-  };
-
   const classNames = {
     success: 'unified-notification-success',
     error: 'unified-notification-error',
     info: 'unified-notification-info',
     warning: 'unified-notification-warning'
   };
+  const borderToneClass = notification.borderTone === 'neutral'
+    ? 'unified-notification-border-neutral'
+    : '';
+  const displayText = [notification.title, notification.message]
+    .filter((part) => typeof part === 'string' && part.trim().length > 0)
+    .join(' ');
 
   return (
     <div
-      className={`unified-notification ${classNames[notification.type]} ${notification.visible ? (isClosing ? 'hide' : 'show') : ''}`}
+      className={`unified-notification ${classNames[notification.type]} ${borderToneClass} ${notification.visible ? (isClosing ? 'hide' : 'show') : ''}`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onFocusCapture={() => {
@@ -186,49 +184,50 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({
       aria-live={isAssertive ? 'assertive' : 'polite'}
       aria-atomic="true"
     >
-      <div className="unified-notification-icon">
-        {icons[notification.type]}
-      </div>
       <div className="unified-notification-content">
-        {notification.title && <div className="unified-notification-title">{notification.title}</div>}
-        <div className="unified-notification-message">
-          {notification.message}
-        </div>
+        <div className="unified-notification-text">{displayText}</div>
         {notification.action && (
-          <div className="unified-notification-actions">
-            <NotionButton
-              variant="ghost"
-              size="sm"
-              className="unified-notification-action"
-              onClick={handleActionClick}
-            >
-              {notification.action.label}
-            </NotionButton>
-          </div>
+          <NotionButton
+            variant="ghost"
+            size="sm"
+            className="unified-notification-action"
+            onClick={handleActionClick}
+          >
+            {notification.action.label}
+          </NotionButton>
         )}
+        <NotionButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          className="unified-notification-close"
+          aria-label="关闭通知"
+          onClick={handleClose}
+        >
+          <X className="unified-notification-close-icon" aria-hidden="true" />
+        </NotionButton>
       </div>
-      <NotionButton variant="ghost" size="icon" iconOnly className="unified-notification-close" onClick={handleClose} aria-label={t('common:close_notification', 'Close notification')}>
-        <X size={16} aria-hidden="true" />
-      </NotionButton>
     </div>
   );
 };
 
 // 用于简化调用的辅助函数
 export type GlobalNotificationType = 'success' | 'error' | 'info' | 'warning';
+export type GlobalNotificationBorderTone = 'status' | 'neutral';
 
 export interface GlobalNotificationPayload {
   type: GlobalNotificationType;
   message: string;
   title?: string;
   action?: GlobalNotificationAction;
+  borderTone?: GlobalNotificationBorderTone;
 }
 
 export const showGlobalNotification = (
   type: GlobalNotificationType,
   message: unknown,
   title?: string,
-  options?: { action?: GlobalNotificationAction }
+  options?: { action?: GlobalNotificationAction; borderTone?: GlobalNotificationBorderTone }
 ): void => {
   const normalized = normalizeNotificationMessage(message);
   const finalTitle = title;
@@ -237,7 +236,13 @@ export const showGlobalNotification = (
     const now = Date.now();
     w.__unifiedNotifCache = w.__unifiedNotifCache || { items: [] as Array<{ key: string; ts: number }> };
     const cache = w.__unifiedNotifCache as { items: Array<{ key: string; ts: number }> };
-    const key = JSON.stringify({ type, message: normalized, title: title || '' });
+    const key = JSON.stringify({
+      type,
+      message: normalized,
+      title: title || '',
+      action: options?.action?.label || '',
+      borderTone: options?.borderTone || 'status',
+    });
     const TTL = 1500;
     cache.items = cache.items.filter((e) => now - e.ts < TTL);
     if (cache.items.some((e) => e.key === key)) {
@@ -251,7 +256,13 @@ export const showGlobalNotification = (
   try {
     window.dispatchEvent(
       new CustomEvent<GlobalNotificationPayload>('showGlobalNotification', {
-        detail: { type, message: normalized, title: finalTitle, action: options?.action },
+        detail: {
+          type,
+          message: normalized,
+          title: finalTitle,
+          action: options?.action,
+          borderTone: options?.borderTone,
+        },
       })
     );
   } catch {

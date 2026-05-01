@@ -9,12 +9,14 @@ import {
   AppMenuTrigger,
 } from '@/components/ui/app-menu/AppMenu';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { StudyComposeIcon } from '@/components/icons/StudySidebarIcons';
 import type { SessionGroup } from '../types/group';
 
 type SessionGroupActionLabels = {
   groupActions: string;
   newSession: string;
+  newSessionInGroup: string;
   pinGroup?: string;
   unpinGroup?: string;
   renameGroup: string;
@@ -51,6 +53,7 @@ export function SessionGroupActions({
   children,
 }: SessionGroupActionsProps) {
   const [menuOpen, setMenuOpen] = useState(false);
+  const newSessionInGroupLabel = labels.newSessionInGroup.replace(/\{\{\s*groupName\s*\}\}/g, group.name);
 
   const handleContextMenu = useCallback<React.MouseEventHandler<HTMLElement>>((event) => {
     event.preventDefault();
@@ -111,20 +114,21 @@ export function SessionGroupActions({
           </AppMenuGroup>
         </AppMenuContent>
       </AppMenu>
-      <NotionButton
-        variant="ghost"
-        size="icon"
-        iconOnly
-        onClick={(event) => {
-          event.stopPropagation();
-          void onCreateSession(group.id);
-        }}
-        aria-label={labels.newSession}
-        title={labels.newSession}
-        className="!h-6 !w-6"
-      >
-        <StudyComposeIcon className="w-3.5 h-3.5" />
-      </NotionButton>
+      <CommonTooltip content={newSessionInGroupLabel} position="right">
+        <NotionButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          onClick={(event) => {
+            event.stopPropagation();
+            void onCreateSession(group.id);
+          }}
+          aria-label={newSessionInGroupLabel}
+          className="!h-6 !w-6"
+        >
+          <StudyComposeIcon className="w-3.5 h-3.5" />
+        </NotionButton>
+      </CommonTooltip>
     </div>
   );
 

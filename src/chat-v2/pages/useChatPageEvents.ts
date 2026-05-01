@@ -507,6 +507,10 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
     if (!sessionId) return null;
     return sessionManager.get(sessionId);
   }, []);
+  const getCurrentSessionGroupId = useCallback(() => {
+    const groupId = getCurrentStore()?.getState().groupId;
+    return typeof groupId === 'string' && groupId.trim() ? groupId : undefined;
+  }, [getCurrentStore]);
 
   // 注册命令面板事件监听
   useCommandEvents(
@@ -514,7 +518,7 @@ export function useChatPageEvents(deps: UseChatPageEventsDeps) {
       // 新建会话
       [COMMAND_EVENTS.CHAT_NEW_SESSION]: () => {
         console.log('[ChatV2Page] CHAT_NEW_SESSION triggered');
-        createSession();
+        createSession(getCurrentSessionGroupId());
       },
       // P1-06: 新建分析会话
       [COMMAND_EVENTS.CHAT_NEW_ANALYSIS_SESSION]: () => {

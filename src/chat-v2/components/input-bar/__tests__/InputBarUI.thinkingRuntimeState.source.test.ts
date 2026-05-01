@@ -131,7 +131,7 @@ describe('InputBarUI thinking runtime state visibility', () => {
 
     expect(shellStart).toBeGreaterThan(-1);
     expect(shellEnd).toBeGreaterThan(shellStart);
-    expect(inputShell).toContain('bg-[color:var(--unified-input-shell-surface,var(--surface-panel-strong))]');
+    expect(inputShell).toContain('bg-[color:var(--unified-input-shell-surface,var(--shell-inspector-panel))]');
     expect(inputShell).not.toContain('bg-[color:var(--surface-elevated)]');
   });
 });

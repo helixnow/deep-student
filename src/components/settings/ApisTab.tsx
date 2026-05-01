@@ -213,12 +213,14 @@ export const ApisTab: React.FC<ApisTabProps> = ({
   const draggableVendors = sortedVendors.filter(v => (v.providerType ?? '').toLowerCase() !== 'siliconflow');
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-4">
       <SettingSection
         dataTourId="settings-api"
         title={t('settings:sections.api_config_title')}
         description={t('settings:sections.api_config_desc')}
         hideHeader
+        className="py-0"
+        contentClassName="space-y-4"
       >
         {vendorBusy && (
           <div className="mb-4 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
@@ -227,10 +229,10 @@ export const ApisTab: React.FC<ApisTabProps> = ({
           </div>
         )}
 
-        <div className="flex flex-col gap-8 md:grid md:grid-cols-[minmax(180px,200px)_1fr]">
-          <div className="space-y-3 w-full min-w-0 pr-0 md:pr-6 md:border-r border-border/40 md:sticky md:top-6 md:self-start">
+        <div className="flex flex-col gap-6 md:grid md:grid-cols-[minmax(180px,200px)_1fr]">
+          <div className="space-y-3 w-full min-w-0 pr-0 md:border-r md:border-border/40 md:pr-6 md:sticky md:top-4 md:self-start">
             <div className="w-full">
-              <div className="mb-4 flex items-center justify-between gap-2">
+              <div className="mb-3 flex items-center justify-between gap-2">
                 <div className="text-sm font-medium text-foreground">
                   {t('settings:vendor_panel.list_title')}
                 </div>
@@ -324,11 +326,11 @@ export const ApisTab: React.FC<ApisTabProps> = ({
             </div>
           </div>
 
-          <div className="space-y-8 w-full min-w-0">
+          <div className="space-y-6 w-full min-w-0">
             {selectedVendor ? (
               <>
                 <div className="w-full">
-                  <div className="flex flex-col gap-2 mb-6">
+                  <div className="mb-5 flex flex-col gap-2">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex items-center gap-2 min-w-0">
                         {selectedVendorIsSiliconflow && <SiliconFlowLogo className="h-5" />}
@@ -433,7 +435,7 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                   </div>
                 </div>
 
-                <div className="w-full pt-8 border-t border-border/40">
+                <div className="w-full border-t border-border/40 pt-6">
                   <div className="space-y-6">
                     {!selectedVendorIsSiliconflow && (
                       <div className="flex flex-wrap items-center justify-between gap-2">

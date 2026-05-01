@@ -8,7 +8,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
-import { X, Star, Pin } from 'lucide-react';
+import { X, Star, Pin, ChevronDown, ChevronRight } from 'lucide-react';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -32,6 +32,8 @@ interface ModelConfig {
   model: string;
   /** 所属供应商 ID */
   vendorId?: string;
+  /** 所属供应商名称 */
+  vendorName?: string;
   isMultimodal?: boolean;
   isReasoning?: boolean;
   supportsTools?: boolean;
@@ -72,10 +74,12 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose }) => {
   // 本地状态
   const [models, setModels] = useState<ModelConfig[]>([]);
   const [vendorOrderMap, setVendorOrderMap] = useState<Map<string, number>>(new Map());
+  const [vendorNameMap, setVendorNameMap] = useState<Map<string, string>>(new Map());
   const [searchTerm, setSearchTerm] = useState('');
   const [defaultModelId, setDefaultModelId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [savingDefault, setSavingDefault] = useState(false);
+  const [collapsedVendors, setCollapsedVendors] = useState<Set<string>>(new Set());
 
   // 加载模型列表
   const isInitialLoad = useRef(true);
@@ -101,6 +105,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose }) => {
       try {
         const vendorConfigs = await invoke<VendorConfigSlim[]>('get_vendor_configs');
         const orderMap = new Map<string, number>();
+        const nameMap = new Map<string, string>();
         // 与设置页面排序逻辑一致：SiliconFlow 置顶 → sortOrder → name
         const sorted = [...(vendorConfigs || [])].sort((a, b) => {
           const aSilicon = (a.providerType ?? '').toLowerCase() === 'siliconflow';
@@ -111,10 +116,15 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose }) => {
           if (aOrder !== bOrder) return aOrder - bOrder;
           return a.name.localeCompare(b.name);
         });
-        sorted.forEach((v, i) => orderMap.set(v.id, i));
+        sorted.forEach((v, i) => {
+          orderMap.set(v.id, i);
+          nameMap.set(v.id, v.name);
+        });
         setVendorOrderMap(orderMap);
+        setVendorNameMap(nameMap);
       } catch {
         setVendorOrderMap(new Map());
+        setVendorNameMap(new Map());
       }
 
       // 尝试获取默认模型
@@ -158,10 +168,11 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose }) => {
     () =>
       models.map((m) => ({
         ...m,
-        searchable: `${m.name ?? ''} ${m.model ?? ''}`.toLowerCase(),
+        vendorName: m.vendorName ?? (m.vendorId ? vendorNameMap.get(m.vendorId) : undefined),
+        searchable: `${m.name ?? ''} ${m.model ?? ''} ${m.vendorName ?? ''} ${m.vendorId ? (vendorNameMap.get(m.vendorId) ?? '') : ''}`.toLowerCase(),
         isFavorite: m.isFavorite === true || m.is_favorite === true,
       })),
-    [models]
+    [models, vendorNameMap]
   );
 
   const sortedAndFilteredModels = useMemo(() => {
@@ -180,6 +191,47 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose }) => {
       return 0;
     });
   }, [normalizedModels, searchTerm, vendorOrderMap]);
+
+  type NormalizedModel = ModelConfig & { searchable: string; isFavorite: boolean };
+  const vendorGroups = useMemo(() => {
+    const groups: { vendorId: string; vendorName: string; models: NormalizedModel[] }[] = [];
+    const groupMap = new Map<string, NormalizedModel[]>();
+    const orderList: { vendorId: string; vendorName: string }[] = [];
+
+    for (const model of sortedAndFilteredModels) {
+      const vendorId = model.vendorId || '__unknown__';
+      const vendorName = model.vendorName || t('chat_host:model_panel.unknown_vendor');
+      if (!groupMap.has(vendorId)) {
+        groupMap.set(vendorId, []);
+        orderList.push({ vendorId, vendorName });
+      }
+      groupMap.get(vendorId)!.push(model);
+    }
+
+    for (const { vendorId, vendorName } of orderList) {
+      groups.push({ vendorId, vendorName, models: groupMap.get(vendorId)! });
+    }
+
+    return groups;
+  }, [sortedAndFilteredModels, t]);
+
+  useEffect(() => {
+    if (searchTerm.trim()) {
+      setCollapsedVendors(new Set());
+    }
+  }, [searchTerm]);
+
+  const toggleVendorCollapse = useCallback((vendorId: string) => {
+    setCollapsedVendors((previous) => {
+      const next = new Set(previous);
+      if (next.has(vendorId)) {
+        next.delete(vendorId);
+      } else {
+        next.add(vendorId);
+      }
+      return next;
+    });
+  }, []);
 
   // 默认模型名称
   const defaultModelName = useMemo(() => {
@@ -297,7 +349,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose }) => {
   };
 
   // 渲染模型选项
-  const renderModelOption = (option: ModelConfig & { searchable: string; isFavorite: boolean }) => {
+  const renderModelOption = (option: NormalizedModel) => {
     const isSelected = selectedValue === option.id;
     const indicatorClass = cn(
       'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold transition',
@@ -394,7 +446,35 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose }) => {
               {t('common:loading')}
             </div>
           ) : hasModels ? (
-            sortedAndFilteredModels.map(renderModelOption)
+            vendorGroups.map((group) => {
+              const isCollapsed = collapsedVendors.has(group.vendorId);
+              return (
+                <div key={group.vendorId} className="space-y-1.5">
+                  <button
+                    type="button"
+                    onClick={() => toggleVendorCollapse(group.vendorId)}
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-muted/60 active:bg-muted/80"
+                  >
+                    {isCollapsed ? (
+                      <ChevronRight size={14} className="shrink-0 text-muted-foreground" />
+                    ) : (
+                      <ChevronDown size={14} className="shrink-0 text-muted-foreground" />
+                    )}
+                    <span className="truncate text-xs font-semibold text-muted-foreground">
+                      {group.vendorName}
+                    </span>
+                    <span className="text-[11px] text-muted-foreground/60 tabular-nums">
+                      {group.models.length}
+                    </span>
+                  </button>
+                  {!isCollapsed && (
+                    <div className="space-y-2 pl-2">
+                      {group.models.map(renderModelOption)}
+                    </div>
+                  )}
+                </div>
+              );
+            })
           ) : (
             <div className="px-3 py-2 text-sm text-muted-foreground">
               {searchTerm

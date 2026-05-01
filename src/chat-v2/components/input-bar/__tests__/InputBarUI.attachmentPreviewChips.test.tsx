@@ -46,6 +46,15 @@ function renderInputBar(attachments: AttachmentMeta[], onRemoveAttachment = vi.f
 }
 
 describe('InputBarUI attachment preview chips', () => {
+  it('opens a compact attachment launcher from the plus button', () => {
+    renderInputBar([]);
+
+    fireEvent.click(screen.getByTestId('btn-toggle-attachments'));
+
+    expect(screen.getByRole('menuitem', { name: 'analysis:input_bar.attachments.add' })).toBeInTheDocument();
+    expect(screen.getByRole('menuitem', { name: 'chatV2:inputBar.resourceLibrary' })).toBeInTheDocument();
+  });
+
   it('renders pending attachments as compact preview chips above the textarea', () => {
     const attachments: AttachmentMeta[] = [
       {

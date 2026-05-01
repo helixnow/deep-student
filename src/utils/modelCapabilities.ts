@@ -219,16 +219,16 @@ export function getModelDefaultParameters(modelId: string, options: ModelDefault
       enableThinking: true,
       includeThoughts: true,
       reasoningEffort: 'high',
-      maxOutputTokens: 8192,
+      maxOutputTokens: 32_768,
       temperature: 0.6,
     };
   }
 
   if (isDeepSeekLegacyAlias(lower)) {
     if (lower === 'deepseek-chat') {
-      return { enableThinking: false, includeThoughts: false, maxOutputTokens: 8192, temperature: 0.6 };
+      return { enableThinking: false, includeThoughts: false, maxOutputTokens: 32_768, temperature: 0.6 };
     }
-    return { enableThinking: true, includeThoughts: true, reasoningEffort: 'high', maxOutputTokens: 8192, temperature: 0.6 };
+    return { enableThinking: true, includeThoughts: true, reasoningEffort: 'high', maxOutputTokens: 32_768, temperature: 0.6 };
   }
 
   if (lower.includes('deepseek-v3.2') || lower.includes('deepseek-v3.1')) {

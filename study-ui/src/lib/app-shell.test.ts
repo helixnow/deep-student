@@ -142,8 +142,8 @@ test("app titlebar keeps a dedicated shell titlebar surface instead of falling i
 test("keeps main workspace and seam semantics separate from navigation chrome", () => {
   assert.equal(getMainWorkspaceSurfaceClass("opaque"), "bg-background");
   assert.equal(getMainWorkspaceSurfaceClass("translucent"), "bg-[color:var(--shell-panel-strong)]");
-  assert.equal(getSplitSeamClass("opaque"), "bg-sidebar-border/80");
-  assert.equal(getSplitSeamClass("translucent"), "bg-sidebar-border/55");
+  assert.equal(getSplitSeamClass("opaque"), "border-sidebar-border/80");
+  assert.equal(getSplitSeamClass("translucent"), "border-sidebar-border/55");
 });
 
 test("keeps sidebar surface classes flat when returning to a docked rail", () => {

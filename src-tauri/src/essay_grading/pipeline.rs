@@ -680,13 +680,18 @@ where
         };
 
         // 构造请求体
-        let request_body = json!({
+        let mut request_body = json!({
             "model": config.model,
             "messages": messages,
             "temperature": 0.7,
-            "max_tokens": config.max_output_tokens,
+            "max_tokens": crate::llm_manager::effective_max_tokens(
+                config.max_output_tokens,
+                config.max_tokens_limit,
+            ),
             "stream": true,
         });
+
+        crate::llm_manager::LLMManager::apply_reasoning_config(&mut request_body, config, None);
 
         // 选择适配器
         let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {

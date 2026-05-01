@@ -5,6 +5,7 @@ import { fireEvent, render, screen, waitFor, within } from '@testing-library/rea
 import userEvent from '@testing-library/user-event';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { ModernSidebar, reorderSidebarSessionGroups } from '@/components/ModernSidebar';
+import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 
 const { invokeMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
@@ -16,6 +17,10 @@ const { getCurrentSessionIdMock } = vi.hoisted(() => ({
 
 const { getSessionStoreMock } = vi.hoisted(() => ({
   getSessionStoreMock: vi.fn(),
+}));
+
+const { showGlobalNotificationMock } = vi.hoisted(() => ({
+  showGlobalNotificationMock: vi.fn(),
 }));
 
 vi.mock('@/components/ui/app-menu/AppMenu', () => {
@@ -73,6 +78,10 @@ vi.mock('@/chat-v2/core/session/sessionManager', () => ({
   },
 }));
 
+vi.mock('@/components/UnifiedNotification', () => ({
+  showGlobalNotification: showGlobalNotificationMock,
+}));
+
 vi.mock('@/hooks/useEventRegistry', () => ({
   useEventRegistry: () => undefined,
 }));
@@ -81,6 +90,7 @@ describe('ModernSidebar shell navigation', () => {
   beforeEach(() => {
     getCurrentSessionIdMock.mockReturnValue(null);
     getSessionStoreMock.mockReturnValue(undefined);
+    showGlobalNotificationMock.mockReset();
     invokeMock.mockImplementation((command: string) => {
       if (command === 'chat_v2_list_sessions') {
         return Promise.resolve([]);
@@ -100,7 +110,7 @@ describe('ModernSidebar shell navigation', () => {
       />
     );
 
-    expect(await screen.findByRole('button', { name: '智能会话' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '新会话' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '学习资源' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '待办' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '技能管理' })).toBeInTheDocument();
@@ -201,8 +211,8 @@ describe('ModernSidebar shell navigation', () => {
     );
 
     const chatNavButton = await waitFor(() => container.querySelector('[data-tour-id="nav-chat-v2"]'));
-    expect(chatNavButton).toHaveAttribute('aria-label', '智能会话');
-    expect(screen.getByRole('button', { name: '智能会话' })).toBeInTheDocument();
+    expect(chatNavButton).toHaveAttribute('aria-label', '新会话');
+    expect(screen.getByRole('button', { name: '新会话' })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: '当前会话标题' })).toBeInTheDocument();
   });
 
@@ -221,8 +231,61 @@ describe('ModernSidebar shell navigation', () => {
     );
 
     const chatNavButton = await waitFor(() => container.querySelector('[data-tour-id="nav-chat-v2"]'));
-    expect(chatNavButton).toHaveAttribute('aria-label', '智能会话');
+    expect(chatNavButton).toHaveAttribute('aria-label', '新会话');
     expect(screen.getByRole('button', { name: '最近列表标题' })).toBeInTheDocument();
+  });
+
+  it('treats the primary chat nav entry as a new-session action', async () => {
+    const user = userEvent.setup();
+    const onViewChange = vi.fn();
+    const dispatchEventSpy = vi.spyOn(window, 'dispatchEvent');
+
+    render(
+      <ModernSidebar
+        currentView="learning-hub"
+        onViewChange={onViewChange}
+      />
+    );
+
+    await user.click(await screen.findByRole('button', { name: '新会话' }));
+
+    expect(onViewChange).toHaveBeenCalledWith('chat-v2');
+    await waitFor(() => {
+      expect(dispatchEventSpy).toHaveBeenCalledWith(expect.objectContaining({
+        type: COMMAND_EVENTS.CHAT_NEW_SESSION,
+      }));
+    });
+  });
+
+  it('does not mark the new-session action as the current page', async () => {
+    const { container } = render(
+      <ModernSidebar
+        currentView="chat-v2"
+        onViewChange={() => undefined}
+      />
+    );
+
+    const chatNavButton = await waitFor(() => container.querySelector('[data-tour-id="nav-chat-v2"]'));
+
+    expect(chatNavButton).not.toHaveAttribute('aria-current');
+    expect(chatNavButton).not.toHaveClass('desktop-shell-nav-row--active');
+  });
+
+  it('keeps the new-session shortcut hint scoped to macOS desktop hover', () => {
+    const sidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ModernSidebar.tsx'), 'utf-8');
+
+    expect(sidebarSource).toContain("import { formatShortcut } from '@/command-palette/registry/shortcutUtils';");
+    expect(sidebarSource).toContain("import { isMacOS, isMobilePlatform } from '@/utils/platform';");
+    expect(sidebarSource).toContain('function NewSessionShortcutHint({ shortcut }: { shortcut: string })');
+    expect(sidebarSource).toContain('function isFinePointerDesktopSurface(): boolean');
+    expect(sidebarSource).toContain("window.matchMedia('(pointer: fine)').matches");
+    expect(sidebarSource).toContain('() => isMacOS() && !isMobilePlatform() && isFinePointerDesktopSurface()');
+    expect(sidebarSource).toContain("formatShortcut('mod+n')");
+    expect(sidebarSource).toContain("className={isNewSessionAction ? 'group/new-session-action' : undefined}");
+    expect(sidebarSource).toContain('group-hover/new-session-action:opacity-100');
+    expect(sidebarSource).toContain('group-focus-visible/new-session-action:opacity-100');
+    expect(sidebarSource).toContain('lg:inline-flex');
+    expect(sidebarSource).toContain('rightSlot={isNewSessionAction && shouldShowMacDesktopNewSessionShortcut ? (');
   });
 
   it('falls back to the default chat label when the current session title is unavailable', async () => {
@@ -238,7 +301,7 @@ describe('ModernSidebar shell navigation', () => {
       />
     );
 
-    expect(await screen.findByRole('button', { name: '智能会话' })).toBeInTheDocument();
+    expect(await screen.findByRole('button', { name: '新会话' })).toBeInTheDocument();
   });
 
   it('renders topics and loose conversations as separate collapsible sidebar sections', async () => {
@@ -308,8 +371,8 @@ describe('ModernSidebar shell navigation', () => {
 
     expect(fixedRegion).not.toBeNull();
     expect(scrollRegion).not.toBeNull();
-    expect(within(fixedRegion as HTMLElement).getByRole('button', { name: '智能会话' })).toBeInTheDocument();
-    expect(within(scrollRegion as HTMLElement).queryByRole('button', { name: '智能会话' })).not.toBeInTheDocument();
+    expect(within(fixedRegion as HTMLElement).getByRole('button', { name: '新会话' })).toBeInTheDocument();
+    expect(within(scrollRegion as HTMLElement).queryByRole('button', { name: '新会话' })).not.toBeInTheDocument();
     expect(within(scrollRegion as HTMLElement).getByRole('button', { name: '数学' })).toBeInTheDocument();
     expect(within(scrollRegion as HTMLElement).getByRole('button', { name: '代数复习' })).toBeInTheDocument();
   });
@@ -434,7 +497,7 @@ describe('ModernSidebar shell navigation', () => {
       />
     );
 
-    const groupButton = await screen.findByRole('button', { name: /数学/ });
+    const groupButton = await screen.findByRole('button', { name: /^数学$/ });
     expect(screen.getByRole('button', { name: '代数复习' })).toBeInTheDocument();
 
     await user.click(groupButton);
@@ -485,15 +548,31 @@ describe('ModernSidebar shell navigation', () => {
     expect(within(groupSection).queryByRole('button', { name: '数学会话 2' })).not.toBeInTheDocument();
     expect(within(groupSection).queryByRole('button', { name: '数学会话 1' })).not.toBeInTheDocument();
 
-    const expandButton = within(groupSection).getByRole('button', { name: '展开显示 2 条更多' });
+    const expandButton = within(groupSection).getByRole('button', { name: '展开显示' });
     expect(within(groupSection).getAllByRole('button').at(-1)).toBe(expandButton);
+    expect(expandButton.querySelector('svg')).toBeNull();
+    expect(expandButton.className).not.toContain('hover:');
+    expect(expandButton).toHaveClass('text-left');
+    expect(expandButton).toHaveClass('pl-9');
+    expect(expandButton).toHaveClass('cursor-default');
+    expect(expandButton).not.toHaveClass('px-2.5');
+    expect(expandButton).not.toHaveClass('text-center');
+    expect(expandButton).not.toHaveClass('cursor-pointer');
 
     await user.click(expandButton);
 
     expect(await within(groupSection).findByRole('button', { name: '数学会话 2' })).toBeInTheDocument();
     expect(within(groupSection).getByRole('button', { name: '数学会话 1' })).toBeInTheDocument();
-    const collapseButton = within(groupSection).getByRole('button', { name: '折叠展示' });
+    const collapseButton = within(groupSection).getByRole('button', { name: '折叠显示' });
     expect(within(groupSection).getAllByRole('button').at(-1)).toBe(collapseButton);
+    expect(collapseButton.querySelector('svg')).toBeNull();
+    expect(collapseButton.className).not.toContain('hover:');
+    expect(collapseButton).toHaveClass('text-left');
+    expect(collapseButton).toHaveClass('pl-9');
+    expect(collapseButton).toHaveClass('cursor-default');
+    expect(collapseButton).not.toHaveClass('px-2.5');
+    expect(collapseButton).not.toHaveClass('text-center');
+    expect(collapseButton).not.toHaveClass('cursor-pointer');
 
     await user.click(collapseButton);
 
@@ -501,7 +580,79 @@ describe('ModernSidebar shell navigation', () => {
       expect(within(groupSection).queryByRole('button', { name: '数学会话 2' })).not.toBeInTheDocument();
     });
     expect(within(groupSection).queryByRole('button', { name: '数学会话 1' })).not.toBeInTheDocument();
-    expect(within(groupSection).getByRole('button', { name: '展开显示 2 条更多' })).toBeInTheDocument();
+    expect(within(groupSection).getByRole('button', { name: '展开显示' })).toBeInTheDocument();
+  });
+
+  it('limits loose conversation sessions to five and toggles overflow from the bottom control', async () => {
+    const user = userEvent.setup();
+    invokeMock.mockImplementation((command: string) => {
+      if (command === 'chat_v2_list_sessions') {
+        return Promise.resolve(
+          Array.from({ length: 8 }, (_, index) => {
+            const sessionNumber = index + 1;
+            return {
+              id: `conversation-${sessionNumber}`,
+              title: `对话会话 ${sessionNumber}`,
+              updatedAt: `2026-04-06T0${sessionNumber}:00:00Z`,
+              createdAt: `2026-04-06T0${sessionNumber}:00:00Z`,
+              mode: 'chat',
+            };
+          })
+        );
+      }
+      if (command === 'chat_v2_list_groups') {
+        return Promise.resolve([]);
+      }
+      return Promise.resolve([]);
+    });
+
+    render(
+      <ModernSidebar
+        currentView="chat-v2"
+        onViewChange={() => undefined}
+      />
+    );
+
+    const conversationNav = await screen.findByRole('navigation', { name: '对话' });
+
+    expect(within(conversationNav).getByRole('button', { name: '对话会话 8' })).toBeInTheDocument();
+    expect(within(conversationNav).getByRole('button', { name: '对话会话 4' })).toBeInTheDocument();
+    expect(within(conversationNav).queryByRole('button', { name: '对话会话 3' })).not.toBeInTheDocument();
+    expect(within(conversationNav).queryByRole('button', { name: '对话会话 1' })).not.toBeInTheDocument();
+
+    const expandButton = within(conversationNav).getByRole('button', { name: '展开显示' });
+    expect(within(conversationNav).getAllByRole('button').at(-1)).toBe(expandButton);
+    expect(expandButton.querySelector('svg')).toBeNull();
+    expect(expandButton.className).not.toContain('hover:');
+    expect(expandButton).toHaveClass('text-left');
+    expect(expandButton).toHaveClass('pl-9');
+    expect(expandButton).toHaveClass('cursor-default');
+    expect(expandButton).not.toHaveClass('px-2.5');
+    expect(expandButton).not.toHaveClass('text-center');
+    expect(expandButton).not.toHaveClass('cursor-pointer');
+
+    await user.click(expandButton);
+
+    expect(await within(conversationNav).findByRole('button', { name: '对话会话 3' })).toBeInTheDocument();
+    expect(within(conversationNav).getByRole('button', { name: '对话会话 1' })).toBeInTheDocument();
+    const collapseButton = within(conversationNav).getByRole('button', { name: '折叠显示' });
+    expect(within(conversationNav).getAllByRole('button').at(-1)).toBe(collapseButton);
+    expect(collapseButton.querySelector('svg')).toBeNull();
+    expect(collapseButton.className).not.toContain('hover:');
+    expect(collapseButton).toHaveClass('text-left');
+    expect(collapseButton).toHaveClass('pl-9');
+    expect(collapseButton).toHaveClass('cursor-default');
+    expect(collapseButton).not.toHaveClass('px-2.5');
+    expect(collapseButton).not.toHaveClass('text-center');
+    expect(collapseButton).not.toHaveClass('cursor-pointer');
+
+    await user.click(collapseButton);
+
+    await waitFor(() => {
+      expect(within(conversationNav).queryByRole('button', { name: '对话会话 3' })).not.toBeInTheDocument();
+    });
+    expect(within(conversationNav).queryByRole('button', { name: '对话会话 1' })).not.toBeInTheDocument();
+    expect(within(conversationNav).getByRole('button', { name: '展开显示' })).toBeInTheDocument();
   });
 
   it('does not render a trailing chevron after grouped session actions', async () => {
@@ -529,7 +680,7 @@ describe('ModernSidebar shell navigation', () => {
     const groupButton = await screen.findByRole('button', { name: /^数学$/ });
 
     expect(within(groupButton).getByRole('button', { name: 'Group Actions' })).toBeInTheDocument();
-    expect(within(groupButton).getByRole('button', { name: 'New Session' })).toBeInTheDocument();
+    expect(within(groupButton).getByRole('button', { name: '在 数学 中新建会话' })).toBeInTheDocument();
     expect(groupButton.querySelector('.lucide-chevron-right')).toBeNull();
   });
 
@@ -826,6 +977,18 @@ describe('ModernSidebar shell navigation', () => {
     await waitFor(() => {
       expect(invokeMock).toHaveBeenCalledWith('chat_v2_archive_session', { sessionId: 'session-2' });
     });
+    expect(showGlobalNotificationMock).toHaveBeenCalledWith(
+      'success',
+      '已归档。查看已归档的会话：',
+      undefined,
+      {
+        action: {
+          label: '设置',
+          onClick: expect.any(Function),
+        },
+        borderTone: 'neutral',
+      }
+    );
   });
 
   it('uses context-mode app menus for recent session rows so left click does not open the menu', () => {

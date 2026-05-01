@@ -5,7 +5,8 @@
 use crate::models::{AppError, ChatMessage, StandardModel2Output, StreamChunk};
 use crate::providers::ProviderAdapter;
 use crate::reasoning_policy::{
-    get_passback_policy, requires_reasoning_passback, ReasoningPassbackPolicy,
+    get_passback_policy, requires_reasoning_passback, should_passback_plain_assistant_reasoning,
+    ReasoningPassbackPolicy,
 };
 use crate::utils::chat_timing;
 use futures_util::StreamExt;
@@ -41,7 +42,7 @@ fn remove_thinking_fields_for_tool_compat(body: &mut Value) {
 }
 
 /// 计算有效的 max_tokens，应用供应商级别的限制
-/// DeepSeek 等供应商有 max_tokens 上限（如 8192），超出会返回 400 错误
+/// 某些供应商会为请求层 max_tokens 设置上限，超出会返回 400 错误
 #[inline]
 fn effective_max_tokens(max_output_tokens: u32, max_tokens_limit: Option<u32>) -> u32 {
     match max_tokens_limit {
@@ -82,7 +83,11 @@ fn apply_generation_token_limit(body: &mut Value, config: &ApiConfig, max_tokens
     }
 }
 
-fn apply_max_tokens_or_mimo_completion_limit(body: &mut Value, config: &ApiConfig, max_tokens: u32) {
+fn apply_max_tokens_or_mimo_completion_limit(
+    body: &mut Value,
+    config: &ApiConfig,
+    max_tokens: u32,
+) {
     if is_mimo_config(config) {
         body["max_completion_tokens"] = json!(max_tokens);
         if let Some(map) = body.as_object_mut() {
@@ -111,6 +116,25 @@ fn apply_generation_params(body: &mut Value, config: &ApiConfig) {
         if let Some(presence_penalty) = config.presence_penalty_override {
             body["presence_penalty"] = json!(presence_penalty);
         }
+    }
+}
+
+fn attach_reasoning_passback_payload(
+    assistant_msg: &mut Value,
+    config: &ApiConfig,
+    thinking: &str,
+) {
+    match get_passback_policy(config) {
+        ReasoningPassbackPolicy::DeepSeekStyle => {
+            assistant_msg["reasoning_content"] = json!(thinking);
+        }
+        ReasoningPassbackPolicy::ReasoningDetails => {
+            assistant_msg["reasoning_details"] = json!([{
+                "type": "thinking",
+                "text": thinking
+            }]);
+        }
+        ReasoningPassbackPolicy::NoPassback => {}
     }
 }
 
@@ -261,6 +285,35 @@ mod tests {
         };
 
         assert!(!should_use_openai_responses_for_config(&config));
+    }
+
+    #[test]
+    fn test_deepseek_tool_passback_preserves_empty_reasoning_content() {
+        let config = ApiConfig {
+            provider_type: Some("deepseek".to_string()),
+            model_adapter: "deepseek".to_string(),
+            model: "deepseek-v4-pro".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            supports_reasoning: true,
+            is_reasoning: true,
+            ..Default::default()
+        };
+        let mut assistant_msg = json!({
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [{
+                "id": "call_empty_reasoning",
+                "type": "function",
+                "function": {
+                    "name": "builtin_test",
+                    "arguments": "{}"
+                }
+            }]
+        });
+
+        attach_reasoning_passback_payload(&mut assistant_msg, &config, "");
+
+        assert_eq!(assistant_msg.get("reasoning_content"), Some(&json!("")));
     }
 
     #[test]
@@ -640,7 +693,8 @@ impl LLMManager {
                     };
 
                     // 🔧 使用适配器系统处理工具调用消息格式
-                    let has_thinking = thinking_content
+                    let has_thinking_payload = thinking_content.is_some();
+                    let has_non_empty_thinking = thinking_content
                         .as_ref()
                         .map(|s| !s.is_empty())
                         .unwrap_or(false);
@@ -652,7 +706,7 @@ impl LLMManager {
 
                     // 尝试使用适配器的自定义格式
                     let tool_calls_json: Vec<Value> = tool_calls_arr.clone();
-                    if has_thinking {
+                    if has_non_empty_thinking {
                         if let Some(formatted_content) = adapter
                             .format_tool_call_message(&tool_calls_json, thinking_content.as_deref())
                         {
@@ -679,18 +733,11 @@ impl LLMManager {
                             });
 
                             if let Some(ref thinking) = thinking_content {
-                                match policy {
-                                    ReasoningPassbackPolicy::DeepSeekStyle => {
-                                        assistant_msg["reasoning_content"] = json!(thinking);
-                                    }
-                                    ReasoningPassbackPolicy::ReasoningDetails => {
-                                        assistant_msg["reasoning_details"] = json!([{
-                                            "type": "thinking",
-                                            "text": thinking
-                                        }]);
-                                    }
-                                    ReasoningPassbackPolicy::NoPassback => {}
-                                }
+                                attach_reasoning_passback_payload(
+                                    &mut assistant_msg,
+                                    &config,
+                                    thinking,
+                                );
                             }
 
                             inject_thought_signature(&mut assistant_msg);
@@ -716,6 +763,30 @@ impl LLMManager {
                                 tool_calls.len()
                             );
                         }
+                    } else if has_thinking_payload && requires_reasoning_passback(&config) {
+                        let policy = get_passback_policy(&config);
+                        let mut assistant_msg = json!({
+                            "role": "assistant",
+                            "content": content,
+                            "tool_calls": tool_calls_arr
+                        });
+
+                        if let Some(ref thinking) = thinking_content {
+                            attach_reasoning_passback_payload(
+                                &mut assistant_msg,
+                                &config,
+                                thinking,
+                            );
+                        }
+
+                        inject_thought_signature(&mut assistant_msg);
+                        messages.push(assistant_msg);
+
+                        debug!(
+                            "[LLMManager] Reasoning model: {} tool_calls with empty/present thinking payload (policy={:?})",
+                            tool_calls.len(),
+                            policy
+                        );
                     } else {
                         // 无思维链
                         let mut msg = json!({
@@ -901,7 +972,8 @@ impl LLMManager {
                                     "content": content_blocks
                                 }));
                             }
-                        } else if has_thinking && requires_reasoning_passback(&config) {
+                        } else if has_thinking && should_passback_plain_assistant_reasoning(&config)
+                        {
                             // 🔧 思维链回传策略（文档 29 第 7 节）
                             // 使用统一的 reasoning_policy 模块判断是否需要回传
                             let policy = get_passback_policy(&config);

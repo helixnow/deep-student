@@ -24,6 +24,7 @@ export function useGroupManagement(workspaceId?: string) {
     const sorted = sortGroups(next);
     setGroups(sorted);
     setGroupsCache(sorted);
+    emitGroupListUpdated();
   }, []);
 
   const loadGroups = useCallback(async () => {

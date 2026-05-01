@@ -10,6 +10,7 @@ import type { ChatSession } from '../types/session';
 import type { DropResult } from '@hello-pangea/dnd';
 import type { DragEndEvent } from '@dnd-kit/core';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
+import { showArchiveSessionToast } from '../utils/archiveSessionToast';
 import type { TFunction } from 'i18next';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
@@ -161,10 +162,11 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
         setCurrentSessionId(nextCurrentSessionId);
       }
       emitSessionListUpdated();
+      showArchiveSessionToast(t);
     } catch (error) {
       console.error('[ChatV2Page] Failed to archive session:', getErrorMessage(error));
     }
-  }, [currentSessionId, setCurrentSessionId, setSessions, sessionsRef]);
+  }, [currentSessionId, setCurrentSessionId, setSessions, sessionsRef, t]);
 
   // ===== 分组管理 =====
   const openCreateGroup = useCallback(() => {

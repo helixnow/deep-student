@@ -1,11 +1,9 @@
 import React, { memo } from 'react';
 import {
-  AlertCircle,
   File,
   FileCode2,
   FileText,
   Image as ImageIcon,
-  Loader2,
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -39,16 +37,6 @@ function getAttachmentIcon(attachment: AttachmentMeta): React.ElementType {
   return File;
 }
 
-function getStatusIndicator(attachment: AttachmentMeta): React.ReactNode | null {
-  if (attachment.status === 'error') {
-    return <AlertCircle className="h-2.5 w-2.5 text-red-500" aria-hidden="true" />;
-  }
-  if (attachment.status === 'uploading' || attachment.status === 'processing' || attachment.status === 'pending') {
-    return <Loader2 className="h-2.5 w-2.5 animate-spin text-blue-500" aria-hidden="true" />;
-  }
-  return null;
-}
-
 export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = memo(({
   attachments,
   onRemove,
@@ -71,7 +59,6 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
     >
       {attachments.map((attachment) => {
         const Icon = getAttachmentIcon(attachment);
-        const statusIndicator = getStatusIndicator(attachment);
         const showImagePreview = Boolean(
           attachment.previewUrl
           && (attachment.type === 'image' || attachment.mimeType.startsWith('image/'))
@@ -109,11 +96,6 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                 ) : (
                   <Icon className="h-3 w-3" aria-hidden="true" />
                 )}
-                {statusIndicator ? (
-                  <span className="absolute -bottom-px -right-px rounded-full bg-[color:var(--surface-panel-strong)]">
-                    {statusIndicator}
-                  </span>
-                ) : null}
               </span>
               <span className="whitespace-nowrap">{attachment.name}</span>
             </NotionButton>

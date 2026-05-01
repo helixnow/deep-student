@@ -469,13 +469,19 @@ where
             json!({ "role": "user", "content": user_prompt }),
         ];
 
-        let request_body = json!({
+        let mut request_body = json!({
             "model": config.model,
             "messages": messages,
             "temperature": 0.3,
-            "max_tokens": config.max_output_tokens.min(8192),
+            "max_tokens": crate::llm_manager::effective_max_tokens(
+                config.max_output_tokens,
+                config.max_tokens_limit,
+            )
+            .min(8192),
             "stream": true,
         });
+
+        crate::llm_manager::LLMManager::apply_reasoning_config(&mut request_body, config, None);
 
         let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
             "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),

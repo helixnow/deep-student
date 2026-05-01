@@ -4,19 +4,20 @@ import { resolve } from 'node:path';
 
 describe('chat v2 conversation control entry contract', () => {
   const chatPageSource = readFileSync(resolve(process.cwd(), 'src/chat-v2/pages/ChatV2Page.tsx'), 'utf-8');
+  const inputBarSource = readFileSync(resolve(process.cwd(), 'src/chat-v2/components/input-bar/InputBarUI.tsx'), 'utf-8');
   const layoutHookSource = readFileSync(resolve(process.cwd(), 'src/chat-v2/pages/useChatPageLayout.tsx'), 'utf-8');
   const sessionSidebarSource = readFileSync(resolve(process.cwd(), 'src/chat-v2/pages/SessionSidebarContent.tsx'), 'utf-8');
 
-  it('moves the desktop conversation-control trigger into the chat toolbar as a compact icon popover', () => {
-    expect(chatPageSource).toContain('Popover');
-    expect(chatPageSource).toContain('PopoverTrigger');
-    expect(chatPageSource).toContain('PopoverContent');
-    expect(chatPageSource).toContain('chatControlPopoverOpen');
-    expect(chatPageSource).toContain('aria-label={t(\'common:chat_controls\')}');
-    expect(chatPageSource).toContain('<SlidersHorizontal className="w-4 h-4" />');
-    expect(chatPageSource).toContain('<AdvancedPanel');
-    expect(chatPageSource).toContain('onClose={() => setChatControlPopoverOpen(false)}');
-    expect(chatPageSource).not.toContain('onClick={toggleChatControl}');
+  it('moves the desktop conversation-control trigger into the input bar', () => {
+    expect(inputBarSource).toContain('renderAdvancedPanel');
+    expect(inputBarSource).toContain('SlidersHorizontal');
+    expect(inputBarSource).toContain('aria-label={t(\'common:chat_controls\')}');
+    expect(inputBarSource).toContain('togglePanel(\'advanced\')');
+  });
+
+  it('does not render conversation-control in the ChatV2Page toolbar', () => {
+    expect(chatPageSource).not.toContain('chatControlPopoverOpen');
+    expect(chatPageSource).not.toContain('<AdvancedPanel');
   });
 
   it('adds the mobile conversation-control trigger to the chat header actions instead of the session sidebar list', () => {

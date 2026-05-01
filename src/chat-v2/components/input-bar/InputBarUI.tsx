@@ -442,7 +442,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   // 模式插件面板
   renderRagPanel,
   renderModelPanel,
-  // renderAdvancedPanel 已移除（对话控制已移至侧栏）
+  renderAdvancedPanel,
   renderMcpPanel,
   renderSkillPanel,
   // 教材侧栏控制
@@ -525,6 +525,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   // 🔧 统一使用 MobileLayoutContext 的移动端判断
   const isMobile = mobileLayout?.isMobile ?? false;
   const [showEmptyTip, setShowEmptyTip] = useState(false);
+  const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
   const emptyTipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
 
@@ -565,10 +566,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     // 如果有外部 onFilesUpload 回调，优先使用
     if (onFilesUpload) {
       onFilesUpload(files);
-      // 打开附件面板（使用 ref 获取最新状态）
-      if (!panelStatesRef.current.attachment) {
-        onSetPanelState('attachment', true);
-      }
       return;
     }
 
@@ -911,11 +908,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       reader.readAsDataURL(file);
     });
 
-    // 打开附件面板（使用 ref 获取最新状态）
-    if (!panelStatesRef.current.attachment) {
-      onSetPanelState('attachment', true);
-    }
-  }, [onFilesUpload, onAddAttachment, onUpdateAttachment, onSetPanelState, onContextRefCreated, attachments.length, t]);
+  }, [onFilesUpload, onAddAttachment, onUpdateAttachment, onContextRefCreated, attachments.length, t]);
 
   // ========== 相机拍照处理 ==========
   // 检测是否在移动端环境
@@ -1015,7 +1008,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const attachmentPanelMotion = useDeferredOpen(panelStates.attachment);
   // ★ RAG面板已移至对话控制面板，不再需要独立的动画状态
   const modelPanelMotion = useDeferredOpen(panelStates.model);
-  // 🔧 P2清理：advancedPanelMotion 已移除（对话控制已移至侧栏）
+  const advancedPanelMotion = useDeferredOpen(panelStates.advanced);
   const mcpPanelMotion = useDeferredOpen(panelStates.mcp);
   const skillPanelMotion = useDeferredOpen(panelStates.skill);
 
@@ -1023,8 +1016,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const iconButtonClass = 'inline-flex items-center justify-center h-9 w-9 rounded-full text-[color:var(--button-utility-foreground)] transition-colors hover:bg-[color:var(--button-utility-hover)] hover:text-[color:var(--text-primary)] active:bg-[color:var(--button-utility-active)]';
   const studyUiButtonBaseClassName =
     'inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-[13px] font-medium leading-none tracking-[0.01em] transition-[background-color,border-color,color,box-shadow] duration-150 ease-out outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit';
-  const studyUiButtonTonePrimaryClassName =
-    'border-[color:var(--button-prominent-border)] bg-[var(--button-prominent-bg)] text-primary-foreground hover:bg-[var(--button-prominent-hover-bg)] active:bg-[var(--button-prominent-active-bg)]';
   const studyUiButtonSizeIconClassName =
     'h-[var(--button-icon-size)] w-[var(--button-icon-size)] rounded-[var(--button-radius)]';
   const studyUiSendButtonSizeClass =
@@ -1046,7 +1037,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const hasText = inputValue.trim().length > 0;
   const hasAttachments = attachmentCount > 0;
   const hasContent = hasText || hasAttachments;
-  const isComposerEmpty = !hasContent;
 
   // 🔧 检查是否有任何面板打开
   const hasAnyPanelOpen = panelStates.attachment || panelStates.rag || panelStates.model ||
@@ -1326,6 +1316,25 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     togglePanel('attachment');
   }, [togglePanel]);
 
+  const handleAttachmentMenuOpenChange = useCallback((open: boolean) => {
+    setIsAttachmentMenuOpen(open);
+  }, []);
+
+  const handleAddAttachmentAction = useCallback(() => {
+    setIsAttachmentMenuOpen(false);
+    fileInputRef.current?.click();
+  }, []);
+
+  const handleOpenResourceLibrary = useCallback(() => {
+    setIsAttachmentMenuOpen(false);
+    window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.CHAT_TOGGLE_PANEL));
+  }, []);
+
+  const handleOpenCameraAction = useCallback(() => {
+    setIsAttachmentMenuOpen(false);
+    handleCameraClick();
+  }, [handleCameraClick]);
+
   // 🔧 P2: 工具开关渲染函数（支持快捷键显示）
   const renderToolToggleSwitch = (
     key: string,
@@ -1542,6 +1551,41 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       window.clearTimeout(timer);
     };
   }, [autoFocus, isMobile, sessionSwitchKey]);
+
+  useEffect(() => {
+    const focusTextarea = () => {
+      const textarea = textareaRef.current;
+      if (!textarea) return;
+
+      try {
+        textarea.focus({ preventScroll: true });
+      } catch {
+        textarea.focus();
+      }
+
+      const selectionEnd = textarea.value.length;
+      try {
+        textarea.setSelectionRange(selectionEnd, selectionEnd);
+      } catch {
+        // Ignore selection failures from restrictive WebViews.
+      }
+    };
+
+    const handleFocusInput = (event: Event) => {
+      const detail = (event as CustomEvent<{ sessionId?: string }>).detail;
+      if (detail?.sessionId && detail.sessionId !== sessionId) {
+        return;
+      }
+
+      requestAnimationFrame(focusTextarea);
+      window.setTimeout(focusTextarea, 0);
+    };
+
+    window.addEventListener('CHAT_V2_FOCUS_INPUT', handleFocusInput);
+    return () => {
+      window.removeEventListener('CHAT_V2_FOCUS_INPUT', handleFocusInput);
+    };
+  }, [sessionId]);
 
   // 使用 useRef 追踪 attachments 的引用，避免作为 useEffect 依赖导致频繁触发
   const attachmentsRef = useRef(attachments);
@@ -1852,7 +1896,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       className={cn(
         // 🎨 布局分离：作为 flex 子项，relative 用于面板定位
         // 🔧 P0修复：移除 ring 样式，避免拖拽时显示难看的实心边框
-        'relative z-[100] w-full flex-shrink-0 border-t border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] px-4 pt-2.5 transition-all duration-500 ease-out unified-input-docked md:px-8 md:pb-4',
+        'relative z-[100] w-full flex-shrink-0 bg-gradient-to-b from-[color:var(--shell-inspector-panel)] to-[hsl(var(--background))] bg-[length:100%_200%] bg-bottom px-4 pt-2.5 transition-all duration-500 ease-out unified-input-docked md:px-8 md:pb-4',
         className
       )}
       style={{
@@ -1868,7 +1912,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         {/* study-ui 对齐：输入区回到安静的居中 composer，而不是漂浮玻璃卡片。 */}
         <div
           ref={inputContainerRef}
-          className="relative z-[200] overflow-hidden rounded-[28px] border border-[color:var(--input-shell-border)] bg-[color:var(--unified-input-shell-surface,var(--surface-panel-strong))] p-3 pl-4 shadow-[var(--shadow-shell-soft)] transition-shadow duration-150 ease-out focus-within:shadow-[var(--shadow-shell-panel)]"
+          className="relative z-[200] overflow-hidden rounded-[28px] border border-[color:var(--input-shell-border)] bg-[color:var(--unified-input-shell-surface,var(--shell-inspector-panel))] p-3 pl-4 shadow-[var(--shadow-shell-soft)] transition-shadow duration-150 ease-out focus-within:shadow-[var(--shadow-shell-panel)]"
         >
         {/* 🔧 P0修复：拖拽遮罩层移到输入容器内部，确保与输入框完全重合 */}
         {isReady && isDragging && (
@@ -2100,30 +2144,64 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
           {/* 左侧按钮 - 窄屏时可横向滚动 */}
           <div className="flex min-w-0 flex-1 items-center gap-1.5 overflow-x-auto pr-2 scrollbar-none">
             {/* 附件按钮 - 左侧首位，方便先添加上下文 */}
-            <CommonTooltip
-              content={
-                attachmentCount > 0
-                  ? `${t('analysis:input_bar.attachments.title')} (${attachmentCount})`
-                  : t('analysis:input_bar.attachments.title')
-              }
-              position={tooltipPosition}
-              disabled={tooltipDisabled}
-            >
-              <NotionButton
-                data-testid="btn-toggle-attachments"
-                variant="ghost"
-                size="icon"
-                iconOnly
-                onClick={toggleAttachmentPanel}
-                className={cn(
-                  iconButtonClass,
-                  'relative transition-colors disabled:opacity-60'
-                )}
-                aria-label={t('analysis:input_bar.attachments.title')}
+            <AppMenu open={isAttachmentMenuOpen} onOpenChange={handleAttachmentMenuOpenChange}>
+              <AppMenuTrigger asChild>
+                <span>
+                  <CommonTooltip
+                    content={
+                      attachmentCount > 0
+                        ? `${t('analysis:input_bar.attachments.title')} (${attachmentCount})`
+                        : t('analysis:input_bar.attachments.title')
+                    }
+                    position={tooltipPosition}
+                    disabled={tooltipDisabled || isAttachmentMenuOpen}
+                  >
+                    <NotionButton
+                      data-testid="btn-toggle-attachments"
+                      variant="ghost"
+                      size="icon"
+                      iconOnly
+                      className={cn(
+                        iconButtonClass,
+                        'relative transition-colors disabled:opacity-60'
+                      )}
+                      aria-label={t('analysis:input_bar.attachments.title')}
+                    >
+                      <Plus size={18} />
+                    </NotionButton>
+                  </CommonTooltip>
+                </span>
+              </AppMenuTrigger>
+              <AppMenuContent
+                align="start"
+                width={180}
+                className="chat-attachment-launcher-menu"
+                style={{ zIndex: 320 }}
               >
-                <Plus size={18} />
-              </NotionButton>
-            </CommonTooltip>
+                <AppMenuGroup>
+                  <AppMenuItem
+                    icon={<Paperclip className="w-4 h-4" />}
+                    onClick={handleAddAttachmentAction}
+                  >
+                    {t('analysis:input_bar.attachments.add')}
+                  </AppMenuItem>
+                  <AppMenuItem
+                    icon={<FolderOpen className="w-4 h-4" />}
+                    onClick={handleOpenResourceLibrary}
+                  >
+                    {t('chatV2:inputBar.resourceLibrary')}
+                  </AppMenuItem>
+                  {isMobileEnv && (
+                    <AppMenuItem
+                      icon={<Camera className="w-4 h-4" />}
+                      onClick={handleOpenCameraAction}
+                    >
+                      {t('chatV2:inputBar.camera')}
+                    </AppMenuItem>
+                  )}
+                </AppMenuGroup>
+              </AppMenuContent>
+            </AppMenu>
 
             {leftAccessory}
 
@@ -2230,6 +2308,30 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                         {selectedMcpServerCount > 9 ? '9+' : selectedMcpServerCount}
                       </span>
                     )}
+                  </span>
+                </NotionButton>
+              </CommonTooltip>
+            )}
+
+            {/* 对话控制按钮 */}
+            {renderAdvancedPanel && (
+              <CommonTooltip content={t('common:chat_controls')} position={tooltipPosition} disabled={tooltipDisabled}>
+                <NotionButton
+                  variant="ghost"
+                  size="icon"
+                  iconOnly
+                  onClick={() => togglePanel('advanced')}
+                  className={cn(
+                    iconButtonClass,
+                    'transition-colors',
+                    panelStates.advanced
+                      ? 'text-[color:var(--button-primary-foreground)] hover:text-[color:var(--button-primary-foreground)]'
+                      : 'text-[color:var(--button-utility-foreground)] hover:text-[color:var(--text-primary)]'
+                  )}
+                  aria-label={t('common:chat_controls')}
+                >
+                  <span className="relative inline-flex items-center justify-center">
+                    <SlidersHorizontal className="w-[18px] h-[18px]" />
                   </span>
                 </NotionButton>
               </CommonTooltip>
@@ -2364,10 +2466,9 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                   disabled={disabledSend}
                   className={cn(
                     studyUiButtonBaseClassName,
-                    studyUiButtonTonePrimaryClassName,
                     studyUiButtonSizeIconClassName,
                     studyUiSendButtonSizeClass,
-                    isComposerEmpty && studyUiSendButtonEmptyStateClass
+                    studyUiSendButtonEmptyStateClass
                   )}
                   aria-label={studyUiSendButtonAriaLabel}
                 >
@@ -2415,9 +2516,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                   <NotionButton
                     variant="outline"
                     size="sm"
-                    onClick={() => {
-                      window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.CHAT_TOGGLE_PANEL));
-                    }}
+                    onClick={handleOpenResourceLibrary}
                   >
                     <FolderOpen size={12} />
                     {t('chatV2:inputBar.resourceLibrary')}
@@ -2729,6 +2828,32 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
 
         {/* ★ 知识图谱选择面板已废弃（图谱模块已移除） */}
+
+        {/* 对话控制面板 */}
+        {renderAdvancedPanel && (
+          advancedPanelMotion.shouldRender && (
+            <div
+              className={cn(
+                'absolute left-0 right-0 overflow-hidden pointer-events-none z-[100]',
+                'bottom-full -mb-3 pb-4'
+              )}
+              style={{ height: 'clamp(300px, 45vh, 450px)' }}
+            >
+              <div
+                className={cn(
+                  'absolute left-3 right-3 rounded-2xl glass-panel border border-[hsl(var(--border))] p-3 transition-transform duration-200 ease-out will-change-transform motion-reduce:transition-none motion-reduce:duration-0 z-[100]',
+                  'bottom-4 origin-bottom',
+                  advancedPanelMotion.motionState === 'open' ? 'translate-y-0 pointer-events-auto' : 'translate-y-full pointer-events-none'
+                )}
+                aria-hidden={advancedPanelMotion.motionState !== 'open'}
+                data-panel-motion={advancedPanelMotion.motionState}
+                style={{ maxHeight: 'clamp(280px, 43vh, 430px)' }}
+              >
+                {renderAdvancedPanel()}
+              </div>
+            </div>
+          )
+        )}
 
         {/* 技能选择面板 - ★ 统一桌面端和移动端样式 */}
         {renderSkillPanel && (

@@ -1,155 +1,183 @@
 /* 通知容器 */
 .notification-container {
   position: fixed;
-  top: calc(80px + env(safe-area-inset-top, 0px));
-  right: 24px;
+  top: calc(12px + env(safe-area-inset-top, 0px));
+  left: 50%;
+  right: auto;
+  width: min(420px, calc(100vw - 24px));
+  transform: translateX(-50%);
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  align-items: center;
+  gap: 6px;
   z-index: 9999;
+  pointer-events: none;
 }
 
 /* 统一通知样式 */
 .unified-notification {
-  /* Accent stripe + icon background use this variable (set by variant). */
+  /* Border color carries the status. Keep the shell iconless and quiet. */
   --notif-accent: var(--border);
 
   position: relative;
-  padding: 12px 14px;
-  border-radius: 12px;
-  box-shadow: var(--shadow-notion-lg);
+  overflow: hidden;
+  width: fit-content;
+  max-width: min(320px, calc(100vw - 24px));
+  min-width: 0;
+  min-height: 28px;
+  padding: 4px 12px;
+  border-radius: 999px;
+  box-shadow:
+    0 6px 14px hsl(var(--foreground) / 0.07),
+    0 1px 3px hsl(var(--foreground) / 0.05);
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 0;
   z-index: 9999;
   color: hsl(var(--foreground));
-  background: hsl(var(--card));
-  border: 1px solid hsl(var(--border) / 0.5);
+  background: hsl(var(--card) / 0.94);
+  border: 1px solid hsl(var(--notif-accent) / 0.58);
+  backdrop-filter: blur(10px);
+  -webkit-backdrop-filter: blur(10px);
+  pointer-events: auto;
 
   opacity: 1;
-  transform: translateX(0);
-  transition: transform 180ms ease-out, opacity 180ms ease-out;
-
-  max-width: min(420px, calc(100vw - 48px));
-  min-width: 260px;
+  transform: translateY(0) scale(1);
+  transition: transform 180ms ease-out, opacity 180ms ease-out, border-color 180ms ease-out, background-color 180ms ease-out;
 }
 
 .unified-notification.show {
-  animation: notificationIn 200ms ease-out;
+  animation: notificationIn 220ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .unified-notification.hide {
   opacity: 0;
-  transform: translateX(12px);
+  transform: translateY(-8px) scale(0.98);
   transition-timing-function: ease-in;
 }
 
 @keyframes notificationIn {
-  from { opacity: 0; transform: translateX(12px); }
-  to { opacity: 1; transform: translateX(0); }
+  from { opacity: 0; transform: translateY(-10px) scale(0.98); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
 }
 
 /* 移动端：从顶部滑入 */
 @keyframes notificationSlideDown {
-  0% { transform: translateY(-100%) scale(0.95); opacity: 0; }
+  0% { transform: translateY(-12px) scale(0.98); opacity: 0; }
   100% { transform: translateY(0) scale(1); opacity: 1; }
 }
 
 .unified-notification-success {
   --notif-accent: var(--success);
+  border-color: hsl(var(--success) / 0.68);
 }
 
 .unified-notification-error {
-  --notif-accent: var(--danger);
+  --notif-accent: var(--destructive);
+  border-color: hsl(var(--destructive) / 0.72);
 }
 
 .unified-notification-info {
   --notif-accent: var(--info);
+  border-color: hsl(var(--info) / 0.68);
 }
 
 .unified-notification-warning {
   --notif-accent: var(--warning);
+  border-color: hsl(var(--warning) / 0.72);
 }
 
-.unified-notification-icon {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  flex-shrink: 0;
-  width: 28px;
-  height: 28px;
-  border-radius: 999px;
-  background: hsl(var(--notif-accent) / 0.12);
-  color: hsl(var(--notif-accent));
+.unified-notification-border-neutral {
+  border-color: rgb(28 28 28 / 0.72);
+  box-shadow:
+    inset 0 0 0 1px hsl(var(--notif-accent) / 0.14),
+    0 6px 14px hsl(var(--foreground) / 0.07),
+    0 1px 3px hsl(var(--foreground) / 0.05);
 }
 
 .unified-notification-content {
-  flex: 1;
+  flex: 1 1 auto;
   display: flex;
-  flex-direction: column;
+  align-items: center;
+  gap: 6px;
   min-width: 0;
 }
 
-.unified-notification-title {
-  font-size: 13px;
-  font-weight: 600;
-  margin-bottom: 2px;
-  line-height: 1.25;
-}
-
-.unified-notification-message {
-  font-size: 13px;
-  line-height: 1.4;
-  color: hsl(var(--muted-foreground));
-  white-space: pre-wrap;
-  overflow-wrap: anywhere;
-  word-break: break-word;
-}
-
-.unified-notification-actions {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 8px;
+.unified-notification-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 12px;
+  font-weight: 500;
+  line-height: 1.35;
+  color: hsl(var(--foreground));
+  white-space: nowrap;
+  overflow: hidden;
+  overflow-wrap: normal;
+  text-overflow: ellipsis;
+  word-break: normal;
 }
 
 .unified-notification-action {
-  height: 28px;
-  padding-inline: 10px;
-  font-size: 12px;
-}
-
-.unified-notification-close {
+  flex: 0 0 auto;
+  height: auto;
+  min-height: 0;
+  padding: 0 0 0 1px;
+  border: 0;
+  border-radius: 0;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.2;
   background: transparent;
-  border: none;
-  cursor: pointer;
-  font-size: 16px;
-  line-height: 1;
-  color: hsl(var(--muted-foreground));
-  padding: 4px;
-  border-radius: 6px;
-  transition: background-color 150ms ease-out, opacity 150ms ease-out, color 150ms ease-out;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  outline: none;
   box-shadow: none;
-  flex-shrink: 0;
-  opacity: 0.7;
-  min-width: 28px;
-  min-height: 28px;
+  color: hsl(var(--foreground));
+  opacity: 0.82;
+  text-decoration: underline;
+  text-decoration-thickness: 1px;
+  text-underline-offset: 2px;
+  transition: color 150ms ease-out, opacity 150ms ease-out, text-decoration-color 150ms ease-out;
 }
 
-.unified-notification-close:hover {
-  background-color: hsl(var(--muted) / 0.6);
+.unified-notification-action:hover,
+.unified-notification-action:focus-visible {
+  background: transparent;
   color: hsl(var(--foreground));
   opacity: 1;
 }
 
+.unified-notification-close {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  margin-right: -4px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: hsl(var(--foreground) / 0.58);
+  background: transparent;
+  box-shadow: none;
+  opacity: 0.74;
+  cursor: pointer;
+  transition: background-color 150ms ease-out, color 150ms ease-out, opacity 150ms ease-out;
+}
+
+.unified-notification-close:hover,
 .unified-notification-close:focus-visible {
-  outline: none;
-  box-shadow: 0 0 0 2px hsl(var(--ring) / 0.35);
+  color: hsl(var(--foreground) / 0.88);
+  background: hsl(var(--foreground) / 0.08);
   opacity: 1;
+}
+
+.unified-notification-close-icon {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2;
+}
+
+[data-theme="dark"] .unified-notification-border-neutral {
+  border-color: rgb(255 255 255 / 0.22);
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -158,29 +186,31 @@
     animation: none !important;
     transition: none !important;
   }
-  .unified-notification-close {
-    transition: none !important;
-  }
 }
 
 /* 响应式设计 - 移动端优化 */
 @media (max-width: 640px) {
   .notification-container {
-    top: calc(56px + env(safe-area-inset-top, 0px));
-    right: 12px;
-    left: 12px;
-    align-items: stretch;
+    top: calc(10px + env(safe-area-inset-top, 0px));
+    left: 50%;
+    right: auto;
+    width: calc(100vw - 20px);
+    transform: translateX(-50%);
+    align-items: center;
   }
 
   .unified-notification {
-    max-width: none;
+    max-width: min(320px, calc(100vw - 20px));
     min-width: 0;
-    width: 100%;
-    padding: 10px 12px;
-    gap: 10px;
-    border-radius: 12px;
+    width: fit-content;
+    min-height: 28px;
+    padding: 4px 10px;
+    gap: 0;
+    border-radius: 999px;
     border-width: 1px;
-    box-shadow: var(--shadow-notion-lg);
+    box-shadow:
+      0 6px 14px hsl(var(--foreground) / 0.09),
+      0 1px 3px hsl(var(--foreground) / 0.05);
   }
 
   .unified-notification.show {
@@ -192,28 +222,7 @@
     transition-timing-function: ease-in;
   }
 
-  .unified-notification-icon svg {
-    width: 18px;
-    height: 18px;
-  }
-
-  .unified-notification-title {
-    font-size: 13px;
-    margin-bottom: 1px;
-  }
-
-  .unified-notification-message {
+  .unified-notification-text {
     font-size: 12px;
-  }
-
-  .unified-notification-close {
-    padding: 2px;
-    min-width: 32px;
-    min-height: 32px;
-  }
-
-  .unified-notification-close svg {
-    width: 14px;
-    height: 14px;
   }
 }

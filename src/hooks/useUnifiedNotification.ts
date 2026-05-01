@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { GlobalNotificationAction, GlobalNotificationPayload, GlobalNotificationType } from '../components/UnifiedNotification';
+import type { GlobalNotificationAction, GlobalNotificationBorderTone, GlobalNotificationPayload, GlobalNotificationType } from '../components/UnifiedNotification';
 
 // 扩展为支持多个通知
 export interface UnifiedNotificationItem {
@@ -8,6 +8,7 @@ export interface UnifiedNotificationItem {
   message: string;
   title?: string;
   action?: GlobalNotificationAction;
+  borderTone?: GlobalNotificationBorderTone;
 }
 
 export const useUnifiedNotification = () => {
@@ -18,10 +19,11 @@ export const useUnifiedNotification = () => {
     type: GlobalNotificationType,
     message: string,
     title?: string,
-    action?: GlobalNotificationAction
+    action?: GlobalNotificationAction,
+    borderTone?: GlobalNotificationBorderTone
   ) => {
     const id = `un-${Date.now()}-${Math.random().toString(36).substr(2, 8)}`;
-    setNotifications(prev => [...prev, { id, type, message, title, action }]);
+    setNotifications(prev => [...prev, { id, type, message, title, action, borderTone }]);
     return id;
   }, []);
 
@@ -51,8 +53,8 @@ export const useUnifiedNotification = () => {
   useEffect(() => {
     const handleGlobalNotification = (event: CustomEvent<GlobalNotificationPayload>) => {
       if (!event.detail) return;
-      const { type, message, title, action } = event.detail;
-      showNotification(type, message, title, action);
+      const { type, message, title, action, borderTone } = event.detail;
+      showNotification(type, message, title, action, borderTone);
     };
 
     window.addEventListener('showGlobalNotification', handleGlobalNotification as EventListener);

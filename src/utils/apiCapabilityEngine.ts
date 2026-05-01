@@ -282,7 +282,8 @@ const PERPLEXITY_REASONING_REGEX = /sonar-reasoning-pro/i;
 // - DeepSeek V4 使用 thinking.type + official reasoning_effort
 // - deepseek-chat 对应非思考模式，deepseek-reasoner 对应思考模式（V4 Flash 兼容别名）
 // - V3.2-Speciale 不支持工具调用
-// 注意：R1 不支持混合推理，多轮对话时 reasoning_content 被忽略
+// 注意：DeepSeek 官方文档要求区分“同一问题内的 tool loop 回传 reasoning_content”
+// 与“下一次用户问题开始时删除旧 reasoning_content”
 const DEEPSEEK_V4_REGEX = /deepseek-v4/i;
 const DEEPSEEK_LEGACY_ALIAS_REGEX = /^deepseek-(?:chat|reasoner)$/i;
 const DEEPSEEK_HYBRID_REGEXES: RegExp[] = [

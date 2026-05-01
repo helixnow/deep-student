@@ -4,6 +4,9 @@ import { resolve } from 'node:path';
 
 describe('desktop shell sidebar collapse contract', () => {
   const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
+  const appCssSource = readFileSync(resolve(process.cwd(), 'src/App.css'), 'utf-8');
+  const settingsSource = readFileSync(resolve(process.cwd(), 'src/components/Settings.tsx'), 'utf-8');
+  const settingsCssSource = readFileSync(resolve(process.cwd(), 'src/components/Settings.css'), 'utf-8');
   const sidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ModernSidebar.tsx'), 'utf-8');
 
   it('reads the shared left-panel collapsed state when computing desktop shell navigation width', () => {
@@ -47,6 +50,25 @@ describe('desktop shell sidebar collapse contract', () => {
     expect(appSource).toContain("window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.CHAT_NEW_SESSION));");
   });
 
+  it('uses a plain frame icon when collapsed and a left-rail frame icon when expanded', () => {
+    expect(appSource).toContain('function SidebarFrameIcon()');
+    expect(appSource).toContain('function SidebarFrameWithLeftRailIcon()');
+    expect(appSource).toContain('collapsed ? <SidebarFrameIcon /> : <SidebarFrameWithLeftRailIcon />');
+    const plainFrameIconSource = appSource.slice(
+      appSource.indexOf('function SidebarFrameIcon()'),
+      appSource.indexOf('function SidebarFrameWithLeftRailIcon()')
+    );
+    const leftRailFrameIconSource = appSource.slice(
+      appSource.indexOf('function SidebarFrameWithLeftRailIcon()'),
+      appSource.indexOf('function SidebarUpdateBadge')
+    );
+    expect(plainFrameIconSource).toContain('className="size-[18px] fill-none"');
+    expect(leftRailFrameIconSource).toContain('className="size-[18px] fill-none"');
+    expect(appSource).not.toContain('PanelLeftOpen');
+    expect(appSource).not.toContain('PanelLeftClose');
+    expect(appSource).not.toContain('<SidebarDockIcon />');
+  });
+
   it('clips and animates the titlebar navigation cell with the same sidebar width rhythm as the body column', () => {
     expect(appSource).toContain(
       "'desktop-shell-header-cell desktop-shell-header-cell--nav relative z-10 flex min-w-0 items-center justify-end overflow-hidden transition-[padding] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none'"
@@ -72,5 +94,26 @@ describe('desktop shell sidebar collapse contract', () => {
     expect(sidebarSource).toMatch(
       /className="font-sidebar-study-ui[^"]*\bflex\b[^"]*\bh-full\b[^"]*\bmin-h-0\b[^"]*\bw-full\b[^"]*\bmin-w-0\b[^"]*\bflex-col\b[^"]*\boverflow-hidden\b/
     );
+  });
+
+  it('rounds the visible desktop workspace edge across the fixed titlebar and body', () => {
+    expect(appSource).toContain("const isDesktopSidebarSurfaceVisible = !isSmallScreen && !leftPanelCollapsed;");
+    expect(appSource).toContain('data-sidebar-visible={isDesktopSidebarSurfaceVisible ? \'true\' : \'false\'}');
+    expect(appCssSource).toContain('--shell-workspace-edge-radius: 24px;');
+    expect(appCssSource).toMatch(/\[data-shell-role="app-shell"\]\[data-sidebar-visible="true"\]\s*\{[\s\S]*background:\s*var\(--shell-navigation-surface\);/);
+    expect(appCssSource).toMatch(/\.desktop-shell-header-cell--workspace\[data-sidebar-visible="true"\]\s*\{[\s\S]*border-top-left-radius:\s*var\(--shell-workspace-edge-radius\);/);
+    expect(appCssSource).toMatch(/\.desktop-shell-workspace\[data-sidebar-visible="true"\]\s*\{[\s\S]*border-bottom-left-radius:\s*var\(--shell-workspace-edge-radius\);/);
+    expect(appCssSource).toMatch(/\.desktop-shell-workspace\[data-sidebar-visible="true"\]\s*\{[\s\S]*border-left:\s*1px solid var\(--shell-navigation-border\);/);
+  });
+
+  it('uses the same rounded right-pane treatment for the desktop settings content', () => {
+    expect(settingsSource).toContain("const isDesktopSettingsSidebarVisible = !isSmallScreen && !globalLeftPanelCollapsed;");
+    expect(settingsSource).toContain("settings-main-pane study-shell-pane study-shell-pane--flush-top");
+    expect(settingsSource).toContain("data-sidebar-visible={!sheetMode && isDesktopSettingsSidebarVisible ? 'true' : 'false'}");
+    expect(settingsCssSource).toMatch(/\.settings\s*\{[\s\S]*background:\s*var\(--shell-navigation-surface\);/);
+    expect(settingsCssSource).toMatch(/\.settings-main-pane\[data-sidebar-visible="true"\]\s*\{[\s\S]*border-top-left-radius:\s*0;/);
+    expect(settingsCssSource).not.toMatch(/\.settings-main-pane\[data-sidebar-visible="true"\]\s*\{[\s\S]*border-top-left-radius:\s*var\(--shell-workspace-edge-radius\);/);
+    expect(settingsCssSource).toMatch(/\.settings-main-pane\[data-sidebar-visible="true"\]\s*\{[\s\S]*border-bottom-left-radius:\s*var\(--shell-workspace-edge-radius\);/);
+    expect(settingsCssSource).toMatch(/\.settings-main-pane\[data-sidebar-visible="true"\]\s*\{[\s\S]*border-left:\s*1px solid var\(--shell-navigation-border\);/);
   });
 });

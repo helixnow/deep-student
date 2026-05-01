@@ -45,10 +45,19 @@ import { SidebarUpdateBadge } from "./SidebarUpdateBadge";
 import { Titlebar } from "./Titlebar";
 import { WindowControls } from "./WindowControls";
 
-function SidebarDockIcon() {
+function SidebarFrameIcon() {
   return (
-    <svg aria-hidden="true" viewBox="0 0 256 256" className="size-[18px] fill-current">
-      <path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM40,56H80V200H40ZM216,200H96V56H216V200Z" />
+    <svg aria-hidden="true" viewBox="0 0 256 256" className="size-[18px] fill-none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="18">
+      <rect x="32" y="48" width="192" height="160" rx="14" />
+    </svg>
+  );
+}
+
+function SidebarFrameWithLeftRailIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 256 256" className="size-[18px] fill-none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="18">
+      <rect x="32" y="48" width="192" height="160" rx="14" />
+      <path d="M88 48v160" />
     </svg>
   );
 }
@@ -121,6 +130,8 @@ export function AppChrome({
   const shouldRenderMobileSettingsSheet = layoutPolicy.formFactor === "phone";
   const isMobileSettingsSheetOpen = currentMode === "settings" && shouldRenderMobileSettingsSheet;
   const shouldShowAppSurface = currentMode === "app" || isMobileSettingsSheetOpen;
+  const showMacDesktopNewConversationShortcut =
+    desktopPlatform === "macos" && shouldRenderDockedSidebar && layoutPolicy.density === "desktop";
   const mobileSettingsDragStartYRef = useRef<number | null>(null);
   const mobileSettingsDragOffsetRef = useRef(0);
   const [mobileSettingsDragOffset, setMobileSettingsDragOffset] = useState(0);
@@ -190,7 +201,7 @@ export function AppChrome({
   const settingsScrollPaddingBottom = `calc(2.5rem + var(--safe-area-bottom))`;
   const settingsScrollPaddingLeft = "calc(var(--page-gutter-inline) + var(--layout-safe-area-left))";
   const settingsScrollPaddingRight = "calc(var(--page-gutter-inline) + var(--layout-safe-area-right))";
-  const toggleLabel = isSidebarVisible ? "收起侧边栏" : "展开侧边栏";
+  const toggleLabel = "切换边栏";
   const sidebarToggleAccessoryOffset =
     isCompactViewport ? 16 : titlebarMode === "native-transparent" ? getOverlayLeadingInset(titlebarMode) : 16;
   const titlebarAccessoryInset =
@@ -213,7 +224,7 @@ export function AppChrome({
         )}
         aria-label={toggleLabel}
       >
-        {isCompactViewport ? <List size={21} weight="regular" /> : <SidebarDockIcon />}
+        {isCompactViewport ? <List size={21} weight="regular" /> : isSidebarVisible ? <SidebarFrameWithLeftRailIcon /> : <SidebarFrameIcon />}
       </ShellButton>
       {!isCompactViewport ? <SidebarUpdateBadge className="shrink-0" /> : null}
     </div>
@@ -230,7 +241,7 @@ export function AppChrome({
           className="text-muted-foreground hover:text-foreground"
           aria-label={toggleLabel}
         >
-          <SidebarDockIcon />
+          {isSidebarVisible ? <SidebarFrameWithLeftRailIcon /> : <SidebarFrameIcon />}
         </ShellButton>
         <div
           aria-hidden={isSidebarVisible}
@@ -331,6 +342,7 @@ export function AppChrome({
                 onSelectSettingsTab={onSelectSettingsTab}
                 onToggleSidebar={handleToggleSidebar}
                 settingsNavItems={settingsNavItems}
+                showNewConversationShortcut={false}
                 showFloatingSidebarToggle={showFloatingSidebarToggle}
                 threadItems={threadItems}
                 titlebarMode={titlebarMode}
@@ -365,6 +377,7 @@ export function AppChrome({
                 onSelectSettingsTab={onSelectSettingsTab}
                 onToggleSidebar={handleToggleSidebar}
                 settingsNavItems={settingsNavItems}
+                showNewConversationShortcut={showMacDesktopNewConversationShortcut}
                 showFloatingSidebarToggle={showFloatingSidebarToggle}
                 threadItems={threadItems}
                 titlebarMode={titlebarMode}
@@ -486,18 +499,12 @@ export function AppChrome({
             isDockedSidebarExpanded && mainWorkspaceChromeClass,
           )}
         >
-          {isDockedSidebarExpanded ? (
-            <div
-              aria-hidden="true"
-              className={cn("pointer-events-none absolute inset-y-0 left-0 z-20 w-px", splitSeamClass)}
-            />
-          ) : null}
-
           <div
             className={cn(
               "relative flex min-w-0 flex-1 flex-col overflow-hidden transition-colors duration-200 ease-out",
               mainWorkspaceSurfaceClass,
-              isDockedSidebarExpanded && "ml-px rounded-tl-[var(--radius-section)] rounded-bl-[var(--radius-section)]",
+              isDockedSidebarExpanded && "rounded-tl-[var(--radius-page)] rounded-bl-[var(--radius-page)] border-l",
+              isDockedSidebarExpanded && splitSeamClass,
             )}
           >
             {shouldShowAppSurface ? (

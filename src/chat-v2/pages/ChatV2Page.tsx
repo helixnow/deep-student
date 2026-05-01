@@ -10,8 +10,7 @@
 import React, { useState, useCallback, useEffect, useMemo, useDeferredValue, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, MessageSquare, Trash2, Edit2, Check, X, LayoutGrid, Library, FileText, BookOpen, ClipboardList, Image, File, Loader2, GripVertical, Menu, ChevronRight, RefreshCw, SlidersHorizontal, Folder, ExternalLink } from 'lucide-react';
-import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
+import { Plus, MessageSquare, Trash2, Edit2, Check, X, LayoutGrid, Library, FileText, BookOpen, ClipboardList, Image, File, Loader2, GripVertical, Menu, ChevronRight, RefreshCw, Folder, ExternalLink } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { cn } from '@/lib/utils';
@@ -65,7 +64,6 @@ const UnifiedAppPanel = lazy(() => import('@/components/learning-hub/apps/Unifie
 import { AnkiPanelHost } from '../anki';
 
 // 🆕 对话控制面板（侧栏版）
-import { AdvancedPanel } from '../plugins/chat/AdvancedPanel';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { shouldShowSessionActionButtons } from './sessionItemActionVisibility';
 import { groupSessionsByTime, type TimeGroup } from './timeGroups';
@@ -377,10 +375,9 @@ export const ChatV2Page: React.FC = () => {
   const [deletedSessions, setDeletedSessions] = useState<ChatSession[]>([]);
   const [isLoadingTrash, setIsLoadingTrash] = useState(false);
   const [showEmptyTrashConfirm, setShowEmptyTrashConfirm] = useState(false);
-  const [chatControlPopoverOpen, setChatControlPopoverOpen] = useState(false);
 
   useEffect(() => {
-    setChatControlPopoverOpen(false);
+    setShowChatControl(false);
   }, [currentSessionId, viewMode, groupEditorOpen]);
 
   // ===== 会话生命周期 hook =====
@@ -694,7 +691,7 @@ export const ChatV2Page: React.FC = () => {
   // ★ 监听附件预览事件，在右侧面板打开附件
   // 使用独立的附件预览状态，不依赖于 NotesContext
   const renderMainContent = () => (
-    <div className="study-shell-pane study-shell-pane--flush-top flex h-full flex-col overflow-hidden relative">
+    <div className="flex h-full flex-col overflow-hidden relative">
       {/* 🚀 会话切换加载指示器（防闪动：只有超过 500ms 才显示） */}
       {showSwitchingIndicator && (
         <div
@@ -710,35 +707,6 @@ export const ChatV2Page: React.FC = () => {
           </div>
         </div>
       )}
-      {!isSmallScreen && viewMode !== 'browser' && !groupEditorOpen && currentSessionId ? (
-        <div className="study-shell-toolbar study-shell-toolbar--seamless flex items-center justify-end px-3 py-2 shrink-0">
-          <Popover open={chatControlPopoverOpen} onOpenChange={setChatControlPopoverOpen}>
-            <PopoverTrigger asChild>
-              <NotionButton
-                variant="ghost"
-                size="icon"
-                iconOnly
-                aria-label={t('common:chat_controls')}
-                title={t('common:chat_controls')}
-                className="!h-8 !w-8 !rounded-full text-[color:var(--shell-navigation-muted)] hover:bg-[color:var(--sidebar-study-hover)] hover:text-[color:var(--shell-navigation-foreground)]"
-              >
-                <SlidersHorizontal className="w-4 h-4" />
-              </NotionButton>
-            </PopoverTrigger>
-            <PopoverContent
-              align="end"
-              side="bottom"
-              sideOffset={10}
-              className="w-[min(24rem,calc(100vw-2rem))] rounded-[var(--radius-shell-panel)] border-[color:var(--dialog-shell-border)] bg-[color:var(--dialog-shell-surface)] p-3 shadow-[var(--shadow-shell-floating)]"
-            >
-              <AdvancedPanel
-                store={sessionManager.get(currentSessionId)!}
-                onClose={() => setChatControlPopoverOpen(false)}
-              />
-            </PopoverContent>
-          </Popover>
-        </div>
-      ) : null}
       {/* 🔧 修复：使用 currentSessionId 作为主要判断条件
           deferredSessionId 可能因为 useDeferredValue 在并发模式下的行为而延迟更新
           当 ChatContainer 渲染失败时，deferredSessionId 会一直保持旧值（null）

@@ -152,6 +152,17 @@ test("app chrome routes split sidebar state by the active sidebar mode", () => {
   assert.doesNotMatch(source, /\bonToggleSidebar: \(\) => void;/u);
 });
 
+test("new conversation shortcut hint is limited to macOS docked desktop sidebar", () => {
+  const source = readFileSync(appChromePath, "utf8");
+
+  assert.match(
+    source,
+    /const showMacDesktopNewConversationShortcut =\s*desktopPlatform === "macos" && shouldRenderDockedSidebar && layoutPolicy\.density === "desktop";/u,
+  );
+  assert.match(source, /showNewConversationShortcut=\{false\}/u);
+  assert.match(source, /showNewConversationShortcut=\{showMacDesktopNewConversationShortcut\}/u);
+});
+
 test("shell root exposes responsive policy and sidebar state datasets", () => {
   const source = readFileSync(appChromePath, "utf8");
 
@@ -271,8 +282,23 @@ test("compact leading sidebar accessory starts at the mobile edge without the up
   assert.match(source, /const sidebarToggleAccessoryOffset =\s*isCompactViewport \? 16/u);
   assert.match(accessoryBlock, /data-slot="compact-leading-sidebar-accessory"/u);
   assert.match(accessoryBlock, /isCompactViewport && "rounded-full bg-card\/85 shadow-sm shadow-black\/5 hover:bg-card"/u);
-  assert.match(accessoryBlock, /\{isCompactViewport \? <List size=\{21\} weight="regular" \/> : <SidebarDockIcon \/>\}/u);
+  assert.match(accessoryBlock, /\{isCompactViewport \? <List size=\{21\} weight="regular" \/> : isSidebarVisible \? <SidebarFrameWithLeftRailIcon \/> : <SidebarFrameIcon \/>\}/u);
   assert.match(accessoryBlock, /\{!isCompactViewport \? <SidebarUpdateBadge className="shrink-0" \/> : null\}/u);
+});
+
+test("desktop sidebar toggle changes between plain frame and left-rail frame states", () => {
+  const source = readFileSync(appChromePath, "utf8");
+
+  assert.match(source, /const toggleLabel = "切换边栏";/u);
+  assert.doesNotMatch(source, /const toggleLabel = isSidebarVisible \? "收起侧边栏" : "展开侧边栏";/u);
+  assert.match(source, /function SidebarFrameIcon\(\)/u);
+  assert.match(source, /function SidebarFrameWithLeftRailIcon\(\)/u);
+  assert.match(source, /isSidebarVisible \? <SidebarFrameWithLeftRailIcon \/> : <SidebarFrameIcon \/>/u);
+  assert.match(source, /<rect x="32" y="48" width="192" height="160" rx="14" \/>/u);
+  assert.match(source, /<path d="M88 48v160" \/>/u);
+  assert.doesNotMatch(source, /<SidebarDockIcon \/>/u);
+  assert.doesNotMatch(source, /m154 96-32 32 32 32/u);
+  assert.doesNotMatch(source, /m122 96 32 32-32 32/u);
 });
 
 test("macOS traffic lights accessory lives on the shared chrome layer immediately to the right of the lights", () => {
@@ -282,7 +308,7 @@ test("macOS traffic lights accessory lives on the shared chrome layer immediatel
   assert.match(source, /import \{[\s\S]*List,[\s\S]*NotePencil,[\s\S]*Pulse,[\s\S]*\} from "@phosphor-icons\/react";/u);
   assert.match(
     source,
-    /const sidebarToggleAccessoryContent = \(\s*<div data-slot="compact-leading-sidebar-accessory" className="flex items-center gap-1\.5">[\s\S]*<ShellButton[\s\S]*aria-label=\{toggleLabel\}[\s\S]*\{isCompactViewport \? <List size=\{21\} weight="regular" \/> : <SidebarDockIcon \/>\}[\s\S]*<\/ShellButton>[\s\S]*\{!isCompactViewport \? <SidebarUpdateBadge className="shrink-0" \/> : null\}[\s\S]*<\/div>\s*\);/u,
+    /const sidebarToggleAccessoryContent = \(\s*<div data-slot="compact-leading-sidebar-accessory" className="flex items-center gap-1\.5">[\s\S]*<ShellButton[\s\S]*aria-label=\{toggleLabel\}[\s\S]*\{isCompactViewport \? <List size=\{21\} weight="regular" \/> : isSidebarVisible \? <SidebarFrameWithLeftRailIcon \/> : <SidebarFrameIcon \/>\}[\s\S]*<\/ShellButton>[\s\S]*\{!isCompactViewport \? <SidebarUpdateBadge className="shrink-0" \/> : null\}[\s\S]*<\/div>\s*\);/u,
   );
   assert.match(
     source,
@@ -290,7 +316,7 @@ test("macOS traffic lights accessory lives on the shared chrome layer immediatel
   );
   assert.match(
     source,
-    /const sharedTrafficLightsAccessoryContent = \(\s*<div[\s\S]*className="flex items-center justify-between pr-1\.5 transition-\[width\] duration-200 ease-\[cubic-bezier\(0\.25,0\.1,0\.25,1\)\] motion-reduce:transition-none"[\s\S]*style=\{\{\s*width: sharedTrafficLightsAccessoryWidth\s*\}\}[\s\S]*<div className="flex items-center">[\s\S]*<ShellButton[\s\S]*aria-label=\{toggleLabel\}[\s\S]*<SidebarDockIcon \/>[\s\S]*<\/ShellButton>[\s\S]*<div[\s\S]*aria-hidden=\{isSidebarVisible\}[\s\S]*transition-\[width,opacity,margin-left\] duration-200 ease-\[cubic-bezier\(0\.25,0\.1,0\.25,1\)\] motion-reduce:transition-none[\s\S]*!isSidebarVisible \? "ml-1\.5 w-\[calc\(var\(--button-icon-size\)\+0\.125rem\)\] opacity-100" : "ml-0 w-0 opacity-0"[\s\S]*transition-\[transform,opacity\] duration-200 ease-\[cubic-bezier\(0\.25,0\.1,0\.25,1\)\] motion-reduce:transition-none[\s\S]*!isSidebarVisible \? "translate-x-0 opacity-100" : "-translate-x-1 opacity-0"[\s\S]*<ShellButton[\s\S]*tabIndex=\{!isSidebarVisible \? undefined : -1\}[\s\S]*aria-label="新建对话"[\s\S]*<NotePencil size=\{18\} weight="regular" \/>[\s\S]*<\/ShellButton>[\s\S]*<\/div>[\s\S]*<\/div>[\s\S]*<SidebarUpdateBadge className="shrink-0" \/>[\s\S]*<\/div>\s*\);/u,
+    /const sharedTrafficLightsAccessoryContent = \(\s*<div[\s\S]*className="flex items-center justify-between pr-1\.5 transition-\[width\] duration-200 ease-\[cubic-bezier\(0\.25,0\.1,0\.25,1\)\] motion-reduce:transition-none"[\s\S]*style=\{\{\s*width: sharedTrafficLightsAccessoryWidth\s*\}\}[\s\S]*<div className="flex items-center">[\s\S]*<ShellButton[\s\S]*aria-label=\{toggleLabel\}[\s\S]*\{isSidebarVisible \? <SidebarFrameWithLeftRailIcon \/> : <SidebarFrameIcon \/>\}[\s\S]*<\/ShellButton>[\s\S]*<div[\s\S]*aria-hidden=\{isSidebarVisible\}[\s\S]*transition-\[width,opacity,margin-left\] duration-200 ease-\[cubic-bezier\(0\.25,0\.1,0\.25,1\)\] motion-reduce:transition-none[\s\S]*!isSidebarVisible \? "ml-1\.5 w-\[calc\(var\(--button-icon-size\)\+0\.125rem\)\] opacity-100" : "ml-0 w-0 opacity-0"[\s\S]*transition-\[transform,opacity\] duration-200 ease-\[cubic-bezier\(0\.25,0\.1,0\.25,1\)\] motion-reduce:transition-none[\s\S]*!isSidebarVisible \? "translate-x-0 opacity-100" : "-translate-x-1 opacity-0"[\s\S]*<ShellButton[\s\S]*tabIndex=\{!isSidebarVisible \? undefined : -1\}[\s\S]*aria-label="新建对话"[\s\S]*<NotePencil size=\{18\} weight="regular" \/>[\s\S]*<\/ShellButton>[\s\S]*<\/div>[\s\S]*<\/div>[\s\S]*<SidebarUpdateBadge className="shrink-0" \/>[\s\S]*<\/div>\s*\);/u,
   );
   assert.match(
     source,
@@ -356,7 +382,7 @@ test("settings scroll region accounts for safe-area insets without adding route 
   assert.doesNotMatch(source, /animate-presence|framer-motion/u);
 });
 
-test("main pane seam uses one continuous divider instead of before after corner patches", () => {
+test("main pane seam is owned by the rounded workspace surface", () => {
   const source = readFileSync(appChromePath, "utf8");
 
   assert.match(source, /const splitSeamClass = getSplitSeamClass\(windowBackgroundPreference\);/u);
@@ -364,15 +390,13 @@ test("main pane seam uses one continuous divider instead of before after corner 
     source,
     /<div\s+aria-hidden="true"\s+className=\{cn\("pointer-events-none absolute inset-y-0 z-30 w-px", splitSeamClass\)\}\s+style=\{\{ left: APP_LAYOUT_TOKENS.FLOATING_SIDEBAR_WIDTH \}\}\s*\/>/u,
   );
-  assert.match(
-    source,
-    /<main[\s\S]*>\s*\{isDockedSidebarExpanded \? \(\s*<div[\s\S]*className=\{cn\("pointer-events-none absolute inset-y-0 left-0 z-20 w-px", splitSeamClass\)\}/u,
-  );
+  assert.doesNotMatch(source, /absolute inset-y-0 left-0 z-20 w-px/u);
+  assert.match(source, /isDockedSidebarExpanded && splitSeamClass/u);
   assert.doesNotMatch(source, /before:.*shadow/u);
   assert.doesNotMatch(source, /after:.*shadow/u);
 });
 
-test("visible left corners use a thin navigation-toned gutter instead of rounding the same-color surface directly", () => {
+test("visible left corners use a codex-like rounded workspace rim over the navigation gutter", () => {
   const source = readFileSync(appChromePath, "utf8");
 
   assert.match(source, /import \{[\s\S]*getNavigationSurfaceClass,[\s\S]*\} from "@\/lib\/app-shell";/u);
@@ -383,7 +407,8 @@ test("visible left corners use a thin navigation-toned gutter instead of roundin
   );
   assert.match(
     source,
-    /<div[\s\S]*className=\{cn\([\s\S]*mainWorkspaceSurfaceClass,[\s\S]*isDockedSidebarExpanded && "ml-px rounded-tl-\[var\(--radius-section\)\] rounded-bl-\[var\(--radius-section\)\]"/u,
+    /<div[\s\S]*className=\{cn\([\s\S]*mainWorkspaceSurfaceClass,[\s\S]*isDockedSidebarExpanded && "rounded-tl-\[var\(--radius-page\)\] rounded-bl-\[var\(--radius-page\)\] border-l"/u,
   );
-  assert.doesNotMatch(source, /rounded-tr-\[var\(--radius-section\)\]|rounded-br-\[var\(--radius-section\)\]/u);
+  assert.doesNotMatch(source, /rounded-tr-\[var\(--radius-page\)\]|rounded-br-\[var\(--radius-page\)\]/u);
+  assert.doesNotMatch(source, /ml-px rounded-tl-\[var\(--radius-section\)\]/u);
 });

@@ -130,6 +130,8 @@ pub struct ChatV2LLMAdapter {
     accumulated_content: std::sync::Mutex<String>,
     /// 累积的推理
     accumulated_reasoning: std::sync::Mutex<String>,
+    /// API 是否返回过 reasoning_content 字段，即使字段值为空字符串也要保留。
+    reasoning_content_observed: std::sync::Mutex<bool>,
     /// 收集的工具调用（用于递归处理）
     collected_tool_calls: std::sync::Mutex<Vec<ToolCall>>,
     /// 存储 API 返回的 usage（用于 Token 统计）
@@ -165,6 +167,7 @@ impl ChatV2LLMAdapter {
             content_block_id: std::sync::Mutex::new(None),
             accumulated_content: std::sync::Mutex::new(String::new()),
             accumulated_reasoning: std::sync::Mutex::new(String::new()),
+            reasoning_content_observed: std::sync::Mutex::new(false),
             collected_tool_calls: std::sync::Mutex::new(Vec::new()),
             api_usage: std::sync::Mutex::new(None),
             in_think_tag: std::sync::Mutex::new(false),
@@ -352,15 +355,20 @@ impl ChatV2LLMAdapter {
             .lock()
             .unwrap_or_else(|e| e.into_inner())
             .clone();
+        let observed = *self
+            .reasoning_content_observed
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
         log::info!(
-            "[ChatV2::LLMAdapter] get_accumulated_reasoning: len={}, is_empty={}",
+            "[ChatV2::LLMAdapter] get_accumulated_reasoning: len={}, is_empty={}, observed={}",
             reasoning.len(),
-            reasoning.is_empty()
+            reasoning.is_empty(),
+            observed
         );
-        if reasoning.is_empty() {
-            None
-        } else {
+        if observed || !reasoning.is_empty() {
             Some(reasoning)
+        } else {
+            None
         }
     }
 
@@ -735,7 +743,16 @@ impl LLMStreamHooks for ChatV2LLMAdapter {
     }
 
     fn on_reasoning_chunk(&self, text: &str) {
-        if text.is_empty() || !self.enable_thinking {
+        if !self.enable_thinking {
+            return;
+        }
+
+        *self
+            .reasoning_content_observed
+            .lock()
+            .unwrap_or_else(|e| e.into_inner()) = true;
+
+        if text.is_empty() {
             return;
         }
 

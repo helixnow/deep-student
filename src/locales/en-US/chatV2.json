@@ -637,6 +637,7 @@
   "page": {
     "sessions": "Sessions",
     "newSession": "New Session",
+    "newSessionInGroup": "New session in {{groupName}}",
     "noSessions": "No sessions",
     "createFirst": "Create your first session",
     "groups": "Groups",
@@ -682,6 +683,9 @@
     "unpinSession": "Unpin Thread",
     "archiveSession": "Archive Thread",
     "confirmArchiveSession": "Confirm Archive",
+    "archiveSessionToast": "Archived. View archived sessions: Settings",
+    "archiveSessionToastMessage": "Archived. View archived sessions:",
+    "archiveSessionToastSettingsAction": "Settings",
     "pinnedSession": "Pinned",
     "sessionContextMenu": "Thread actions",
     "saveSessionName": "Save",

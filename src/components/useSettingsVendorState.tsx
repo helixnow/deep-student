@@ -10,6 +10,7 @@ import { inferCapabilities, getModelDefaultParameters, applyProviderSpecificAdju
 import { inferApiCapabilities } from '../utils/apiCapabilityEngine';
 import { type UnifiedModelInfo } from './shared/UnifiedModelSelector';
 import type { UseSettingsVendorStateDeps } from './settings/hookDepsTypes';
+import { buildVendorOrderMap, sortApiConfigsByVendorOrder, sortVendorsBySettingsOrder } from '../utils/modelSorting';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
@@ -38,25 +39,9 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
   const [testingApi, setTestingApi] = useState<string | null>(null);
   const vendorBusy = vendorLoading || vendorSaving;
   const sortedVendors = useMemo(() => {
-    const sorted = [...vendors];
-    sorted.sort((a, b) => {
-      // SiliconFlow 始终置顶
-      const aSilicon = (a.providerType ?? '').toLowerCase() === 'siliconflow';
-      const bSilicon = (b.providerType ?? '').toLowerCase() === 'siliconflow';
-      if (aSilicon !== bSilicon) {
-        return aSilicon ? -1 : 1;
-      }
-      // 按 sortOrder 排序，没有 sortOrder 的放到最后
-      const aOrder = a.sortOrder ?? Number.MAX_SAFE_INTEGER;
-      const bOrder = b.sortOrder ?? Number.MAX_SAFE_INTEGER;
-      if (aOrder !== bOrder) {
-        return aOrder - bOrder;
-      }
-      // sortOrder 相同则按名称排序
-      return a.name.localeCompare(b.name);
-    });
-    return sorted;
+    return sortVendorsBySettingsOrder(vendors);
   }, [vendors]);
+  const vendorOrderMap = useMemo(() => buildVendorOrderMap(vendors), [vendors]);
   const selectedVendor = useMemo(() => {
     if (sortedVendors.length === 0) {
       return null;
@@ -654,7 +639,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     vendor: VendorConfig,
     models: Array<{ modelId: string; label: string }>
   ) => {
-    let nextProfiles = [...modelProfiles];
+    const nextProfiles = [...modelProfiles];
     let changed = false;
     for (const { modelId, label } of models) {
       const normalizedModel = modelId.trim().toLowerCase();
@@ -734,39 +719,42 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
   // 获取所有启用的对话模型，支持包含当前已分配但被禁用的模型
   const getAllEnabledApis = (currentValue?: string) => {
     const enabledApis = config.apiConfigs.filter(api => api.enabled && !api.isEmbedding && !api.isReranker);
+    let candidates: (ApiConfig & { _isDisabledInList?: boolean })[] = enabledApis;
     if (currentValue && !enabledApis.some(api => api.id === currentValue)) {
       const disabledApi = config.apiConfigs.find(api => api.id === currentValue && !api.isEmbedding && !api.isReranker);
       if (disabledApi) {
-        return [...enabledApis, { ...disabledApi, _isDisabledInList: true }];
+        candidates = [...enabledApis, { ...disabledApi, _isDisabledInList: true }];
       }
     }
-    return enabledApis;
+    return sortApiConfigsByVendorOrder(candidates, vendors);
   };
 
   // 获取嵌入模型，支持包含当前已分配但被禁用的模型
   const getEmbeddingApis = (currentValue?: string) => {
     // 只返回嵌入模型，不包含重排序模型（优先级：isEmbedding 且非 isReranker）
     const enabledApis = config.apiConfigs.filter(api => api.enabled && api.isEmbedding === true && api.isReranker !== true);
+    let candidates: (ApiConfig & { _isDisabledInList?: boolean })[] = enabledApis;
     if (currentValue && !enabledApis.some(api => api.id === currentValue)) {
       const disabledApi = config.apiConfigs.find(api => api.id === currentValue && api.isEmbedding === true && api.isReranker !== true);
       if (disabledApi) {
-        return [...enabledApis, { ...disabledApi, _isDisabledInList: true }];
+        candidates = [...enabledApis, { ...disabledApi, _isDisabledInList: true }];
       }
     }
-    return enabledApis;
+    return sortApiConfigsByVendorOrder(candidates, vendors);
   };
 
   // 获取重排序模型，支持包含当前已分配但被禁用的模型
   const getRerankerApis = (currentValue?: string) => {
     // 只返回重排序模型（优先级：isReranker）
     const enabledApis = config.apiConfigs.filter(api => api.enabled && api.isReranker === true);
+    let candidates: (ApiConfig & { _isDisabledInList?: boolean })[] = enabledApis;
     if (currentValue && !enabledApis.some(api => api.id === currentValue)) {
       const disabledApi = config.apiConfigs.find(api => api.id === currentValue && api.isReranker === true);
       if (disabledApi) {
-        return [...enabledApis, { ...disabledApi, _isDisabledInList: true }];
+        candidates = [...enabledApis, { ...disabledApi, _isDisabledInList: true }];
       }
     }
-    return enabledApis;
+    return sortApiConfigsByVendorOrder(candidates, vendors);
   };
 
   // 转换 ApiConfig 到 UnifiedModelInfo 格式
@@ -775,6 +763,10 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       id: api.id,
       name: api.name,
       model: api.model,
+      vendorId: api.vendorId,
+      vendorName: api.vendorName,
+      providerType: api.providerType,
+      vendorSortOrder: api.vendorId ? vendorOrderMap.get(api.vendorId) : undefined,
       isMultimodal: api.isMultimodal,
       isReasoning: api.isReasoning,
       isDisabled: api._isDisabledInList || false,

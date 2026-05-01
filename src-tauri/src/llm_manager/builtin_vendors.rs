@@ -54,8 +54,8 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         name: "DeepSeek",
         provider_type: "deepseek",
         base_url: "https://api.deepseek.com/v1",
-        notes: "DeepSeek 官方 API。推荐模型: deepseek-v4-flash, deepseek-v4-pro。兼容别名: deepseek-chat, deepseek-reasoner（官方计划于 2026-07-24 后逐步弃用）。",
-        max_tokens_limit: Some(384_000), // DeepSeek V4 最大输出能力；内置模型默认仍保持保守
+        notes: "DeepSeek 官方 API。推荐模型: deepseek-v4-flash, deepseek-v4-pro。兼容别名: deepseek-chat, deepseek-reasoner（官方计划于 2026-07-24 后逐步弃用）。根据 Thinking Mode 文档，当前请求层 max_tokens 默认 32K、最大 64K。",
+        max_tokens_limit: Some(65_536),
         website_url: "https://deepseek.com",
     },
     // 通义千问 (Qwen / 阿里云百炼)
@@ -161,7 +161,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         is_multimodal: false,
         is_reasoning: true,
         supports_tools: true,
-        max_output_tokens: 8192,
+        max_output_tokens: 32_768,
         temperature: 0.6,
     },
     BuiltinModel {
@@ -172,7 +172,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         is_multimodal: false,
         is_reasoning: true,
         supports_tools: true,
-        max_output_tokens: 8192,
+        max_output_tokens: 32_768,
         temperature: 0.6,
     },
     BuiltinModel {
@@ -183,7 +183,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         is_multimodal: false,
         is_reasoning: false,
         supports_tools: true,
-        max_output_tokens: 8192,
+        max_output_tokens: 32_768,
         temperature: 0.7,
     },
     BuiltinModel {
@@ -194,7 +194,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         is_multimodal: false,
         is_reasoning: true,
         supports_tools: true,
-        max_output_tokens: 8192, // DeepSeek API 限制最大 8192
+        max_output_tokens: 32_768,
         temperature: 0.7,
     },
     // ===== 通义千问模型 =====
@@ -941,7 +941,9 @@ mod tests {
         assert!(vendor.notes.contains("deepseek-v4-pro"));
         assert!(vendor.notes.contains("deepseek-chat"));
         assert!(vendor.notes.contains("deepseek-reasoner"));
-        assert_eq!(vendor.max_tokens_limit, Some(384_000));
+        assert!(vendor.notes.contains("32K"));
+        assert!(vendor.notes.contains("64K"));
+        assert_eq!(vendor.max_tokens_limit, Some(65_536));
     }
 
     #[test]
@@ -955,10 +957,10 @@ mod tests {
         assert_eq!(v4_pro.model, "deepseek-v4-pro");
         assert_eq!(v4_flash.provider_scope.as_deref(), Some("deepseek"));
         assert_eq!(v4_flash.model_adapter, "deepseek");
-        assert_eq!(v4_flash.max_tokens_limit, Some(384_000));
+        assert_eq!(v4_flash.max_tokens_limit, Some(65_536));
         assert_eq!(v4_flash.context_window, Some(1_000_000));
         assert_eq!(v4_pro.context_window, Some(1_000_000));
-        assert_eq!(v4_flash.max_output_tokens, 8192);
+        assert_eq!(v4_flash.max_output_tokens, 32_768);
         assert_eq!(v4_flash.reasoning_effort.as_deref(), Some("high"));
 
         assert_eq!(chat_alias.model, "deepseek-chat");

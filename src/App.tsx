@@ -4,6 +4,7 @@ import './i18n';
 import { useTranslation } from 'react-i18next';
 // getCurrentWebviewWindow 已无使用（2026-02 清理）
 import { invoke } from '@tauri-apps/api/core';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 // 🚀 性能优化：Settings, Dashboard, SOTADashboard 改为懒加载
 import { ChevronLeft, ChevronRight, Terminal, AlertTriangle, X } from 'lucide-react';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
@@ -74,7 +75,6 @@ import { useBreakpoint } from './hooks/useBreakpoint';
 import { useNavigationHistory } from './hooks/useNavigationHistory';
 import { useNavigationShortcuts, getNavigationShortcutText } from './hooks/useNavigationShortcuts';
 import type { CurrentView as NavigationCurrentView } from './types/navigation';
-// getCurrentWindow 已无使用（2026-02 清理）
 import { autoSaveScrollPosition, autoRestoreScrollPosition } from './utils/viewStateManager';
 import { usePreventScroll } from './hooks/usePreventScroll';
 import { CommandPaletteProvider, CommandPalette, registerBuiltinCommands, useCommandPalette } from './command-palette';
@@ -84,6 +84,7 @@ import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { useViewStore } from './stores/viewStore';
 import { debugLog } from './debug-panel/debugMasterSwitch';
 import { sessionManager } from './chat-v2/core/session/sessionManager';
+import { groupCache } from './chat-v2/core/store/groupCache';
 import { getSessionTitleText } from './chat-v2/utils/sessionTitle';
 import type { ChatStore } from './chat-v2/core/types';
 import { getHiddenDraftSessionScope } from './chat-v2/pages/draftSession';
@@ -158,32 +159,55 @@ const HEADER_HOTZONE_INTERACTIVE_SELECTOR = [
   '[data-shell-hotzone-ignore="true"]',
 ].join(', ');
 const HEADER_HOTZONE_DRAG_THRESHOLD = 4;
+const HEADER_HOTZONE_CLICK_ACTIVATION_DELAY_MS = 180;
 
-function shouldIgnoreHeaderHotzoneTarget(target: EventTarget | null) {
-  return target instanceof Element && target.closest(HEADER_HOTZONE_INTERACTIVE_SELECTOR) !== null;
+function clearHeaderHotzoneActivationTimer(element: HTMLElement) {
+  const timerId = element.dataset.shellHotzoneActivationTimer;
+  if (!timerId) {
+    return;
+  }
+
+  window.clearTimeout(Number(timerId));
+  delete element.dataset.shellHotzoneActivationTimer;
+}
+
+function shouldIgnoreHeaderHotzoneTarget(target: EventTarget | null, boundary?: Element) {
+  if (!(target instanceof Element)) {
+    return false;
+  }
+
+  const closestInteractiveTarget = target.closest(HEADER_HOTZONE_INTERACTIVE_SELECTOR);
+  return closestInteractiveTarget !== null && closestInteractiveTarget !== boundary;
 }
 
 function handleHeaderHotzoneClick(
   event: React.MouseEvent<HTMLElement>,
   activate: () => void,
 ) {
-  if (event.currentTarget.dataset.shellHotzoneSuppressClick === 'true') {
-    delete event.currentTarget.dataset.shellHotzoneSuppressClick;
+  const hotzoneElement = event.currentTarget;
+  if (hotzoneElement.dataset.shellHotzoneSuppressClick === 'true' || event.detail > 1) {
+    clearHeaderHotzoneActivationTimer(hotzoneElement);
+    delete hotzoneElement.dataset.shellHotzoneSuppressClick;
     return;
   }
 
-  if (shouldIgnoreHeaderHotzoneTarget(event.target)) {
+  if (shouldIgnoreHeaderHotzoneTarget(event.target, hotzoneElement)) {
     return;
   }
 
-  activate();
+  clearHeaderHotzoneActivationTimer(hotzoneElement);
+  const timerId = window.setTimeout(() => {
+    delete hotzoneElement.dataset.shellHotzoneActivationTimer;
+    activate();
+  }, HEADER_HOTZONE_CLICK_ACTIVATION_DELAY_MS);
+  hotzoneElement.dataset.shellHotzoneActivationTimer = String(timerId);
 }
 
 function handleHeaderHotzoneKeyDown(
   event: React.KeyboardEvent<HTMLElement>,
   activate: () => void,
 ) {
-  if (shouldIgnoreHeaderHotzoneTarget(event.target)) {
+  if (shouldIgnoreHeaderHotzoneTarget(event.target, event.currentTarget)) {
     return;
   }
 
@@ -191,6 +215,32 @@ function handleHeaderHotzoneKeyDown(
     event.preventDefault();
     activate();
   }
+}
+
+function handleDesktopToolbarButtonMouseDown(
+  event: React.MouseEvent<HTMLElement>,
+  onTitlebarDoubleClick: () => void | Promise<void>,
+) {
+  if (event.button !== 0 || event.detail !== 2) {
+    return;
+  }
+
+  event.preventDefault();
+  event.stopPropagation();
+  void onTitlebarDoubleClick();
+}
+
+function handleDesktopToolbarButtonClick(
+  event: React.MouseEvent<HTMLElement>,
+  activate: () => void,
+) {
+  event.stopPropagation();
+
+  if (event.detail > 1) {
+    return;
+  }
+
+  activate();
 }
 
 /**
@@ -229,10 +279,19 @@ function CommandPaletteButton({
   );
 }
 
-function SidebarDockIcon() {
+function SidebarFrameIcon() {
   return (
-    <svg aria-hidden="true" viewBox="0 0 256 256" className="size-[18px] fill-current">
-      <path d="M216,40H40A16,16,0,0,0,24,56V200a16,16,0,0,0,16,16H216a16,16,0,0,0,16-16V56A16,16,0,0,0,216,40ZM40,56H80V200H40ZM216,200H96V56H216V200Z" />
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="size-[18px] fill-none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2">
+      <rect x="4" y="5" width="16" height="14" rx="2" />
+    </svg>
+  );
+}
+
+function SidebarFrameWithLeftRailIcon() {
+  return (
+    <svg aria-hidden="true" viewBox="0 0 24 24" className="size-[18px] fill-none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2">
+      <rect x="4" y="5" width="16" height="14" rx="2" />
+      <path d="M9 5v14" />
     </svg>
   );
 }
@@ -279,16 +338,17 @@ function DesktopSidebarAccessory({
 }) {
   return (
     <div className="desktop-shell-accessory-group flex min-w-0 items-center">
-      <NotionButton
-        variant="ghost"
-        size="icon"
-        onClick={onToggle}
-        className="desktop-shell-toolbar-button desktop-shell-accessory-button"
-        title={label}
-        aria-label={label}
-      >
-        <SidebarDockIcon />
-      </NotionButton>
+      <CommonTooltip content={label} position="bottom">
+        <NotionButton
+          variant="ghost"
+          size="icon"
+          onClick={onToggle}
+          className="desktop-shell-toolbar-button desktop-shell-accessory-button"
+          aria-label={label}
+        >
+          {collapsed ? <SidebarFrameIcon /> : <SidebarFrameWithLeftRailIcon />}
+        </NotionButton>
+      </CommonTooltip>
       <div
         aria-hidden={collapsed}
         className={cn(
@@ -319,6 +379,7 @@ function DesktopHeaderNavControls({
   onGoBack,
   onGoForward,
   onNewSession,
+  onTitlebarDoubleClick,
   newSessionLabel,
   backTitle,
   backLabel,
@@ -331,6 +392,7 @@ function DesktopHeaderNavControls({
   onGoBack: () => void;
   onGoForward: () => void;
   onNewSession: () => void;
+  onTitlebarDoubleClick: () => void | Promise<void>;
   newSessionLabel: string;
   backTitle: string;
   backLabel: string;
@@ -345,38 +407,46 @@ function DesktopHeaderNavControls({
         collapsed ? 'mr-0 translate-x-0 opacity-100' : 'mr-1 translate-x-1 opacity-100'
       )}
     >
-      <NotionButton
-        variant="ghost"
-        size="icon"
-        onClick={onGoBack}
-        disabled={!canGoBack}
-        className="desktop-shell-toolbar-button"
-        title={backTitle}
-        aria-label={backLabel}
-      >
-        <ChevronLeft className="h-4 w-4" />
-      </NotionButton>
-      <NotionButton
-        variant="ghost"
-        size="icon"
-        onClick={onGoForward}
-        disabled={!canGoForward}
-        className="desktop-shell-toolbar-button"
-        title={forwardTitle}
-        aria-label={forwardLabel}
-      >
-        <ChevronRight className="h-4 w-4" />
-      </NotionButton>
-      <NotionButton
-        variant="ghost"
-        size="icon"
-        onClick={onNewSession}
-        className="desktop-shell-toolbar-button"
-        title={newSessionLabel}
-        aria-label={newSessionLabel}
-      >
-        <StudyComposeIcon className="h-4 w-4" />
-      </NotionButton>
+      <CommonTooltip content={backTitle} position="bottom">
+        <span className="inline-flex">
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            onClick={onGoBack}
+            disabled={!canGoBack}
+            className="desktop-shell-toolbar-button"
+            aria-label={backLabel}
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </NotionButton>
+        </span>
+      </CommonTooltip>
+      <CommonTooltip content={forwardTitle} position="bottom">
+        <span className="inline-flex">
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            onClick={onGoForward}
+            disabled={!canGoForward}
+            className="desktop-shell-toolbar-button"
+            aria-label={forwardLabel}
+          >
+            <ChevronRight className="h-4 w-4" />
+          </NotionButton>
+        </span>
+      </CommonTooltip>
+      <CommonTooltip content={newSessionLabel} position="bottom">
+        <NotionButton
+          variant="ghost"
+          size="icon"
+          onMouseDown={(event) => handleDesktopToolbarButtonMouseDown(event, onTitlebarDoubleClick)}
+          onClick={(event) => handleDesktopToolbarButtonClick(event, onNewSession)}
+          className="desktop-shell-toolbar-button"
+          aria-label={newSessionLabel}
+        >
+          <StudyComposeIcon className="h-4 w-4" />
+        </NotionButton>
+      </CommonTooltip>
     </div>
   );
 }
@@ -632,9 +702,10 @@ function App() {
   const leftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);
   const shellSidebarWidth = getShellSidebarWidth(isSmallScreen);
   const desktopNavigationWidth = !isSmallScreen && leftPanelCollapsed ? 0 : shellSidebarWidth;
+  const isDesktopSidebarSurfaceVisible = !isSmallScreen && !leftPanelCollapsed;
   const shouldUseDesktopFloatingAccessory = !isSmallScreen && currentView !== 'settings';
   const desktopFloatingAccessoryOffset = isMacOS() ? DESKTOP_SHELL.macTrafficLightsSpacer + 16 : 16;
-  const desktopSidebarToggleLabel = t('common:navigation.toggle_left_panel', '切换左侧面板');
+  const desktopSidebarToggleLabel = t('common:navigation.toggle_sidebar', '切换边栏');
   const desktopHeaderNavHotzoneLabel = t('chatV2:page.newSession', '新建会话');
   const desktopHeaderTitleHotzoneLabel = t('common:command_palette_label', '命令面板');
   const desktopCollapsedLeadingWidth = 148;
@@ -642,6 +713,19 @@ function App() {
     ? (isMacOS() ? DESKTOP_SHELL.macTrafficLightsSpacer : 0) + 16 + desktopCollapsedLeadingWidth
     : 0;
   const desktopFloatingAccessoryWidth = desktopCollapsedLeadingWidth;
+  const toggleDesktopWindowMaximize = useCallback(async () => {
+    try {
+      const appWindow = getCurrentWindow();
+      if (await appWindow.isMaximized()) {
+        await appWindow.unmaximize();
+        return;
+      }
+
+      await appWindow.maximize();
+    } catch (error: unknown) {
+      console.error('Failed to toggle desktop window maximize:', error);
+    }
+  }, []);
   const desktopSidebarAccessoryContent = (
     <DesktopSidebarAccessory
       onToggle={useUIStore.getState().toggleLeftPanel}
@@ -936,6 +1020,39 @@ function App() {
     const openNotes = () => setCurrentView('learning-hub');
     try { window.addEventListener('OPEN_NOTES' as any, openNotes as any); } catch { /* non-critical: event listener setup may fail in test env */ }
     return () => { try { window.removeEventListener('OPEN_NOTES' as any, openNotes as any); } catch { /* non-critical: cleanup */ } };
+  }, []);
+
+  // 全局新建桥接：即便事件在隐藏页面里已被处理，也要把壳层切到对应输入页
+  useEffect(() => {
+    const handleCreateChatSession = (event: Event) => {
+      const detail = (event as CustomEvent<{ action?: string }>).detail;
+      if (detail?.action && detail.action !== 'create-session') {
+        return;
+      }
+      setCurrentView('chat-v2');
+    };
+
+    const handleCreateNote = () => {
+      setCurrentView('learning-hub');
+    };
+
+    try {
+      window.addEventListener(COMMAND_EVENTS.CHAT_NEW_SESSION, handleCreateChatSession);
+      window.addEventListener('modern-sidebar:group-action', handleCreateChatSession);
+      window.addEventListener(COMMAND_EVENTS.NOTES_CREATE_NEW, handleCreateNote);
+    } catch {
+      /* non-critical: event listener setup may fail in test env */
+    }
+
+    return () => {
+      try {
+        window.removeEventListener(COMMAND_EVENTS.CHAT_NEW_SESSION, handleCreateChatSession);
+        window.removeEventListener('modern-sidebar:group-action', handleCreateChatSession);
+        window.removeEventListener(COMMAND_EVENTS.NOTES_CREATE_NEW, handleCreateNote);
+      } catch {
+        /* non-critical: cleanup */
+      }
+    };
   }, []);
 
   // Crepe minimal demo：用于排查编辑器性能的纯净示例（仅开发模式）
@@ -1541,26 +1658,46 @@ function App() {
   const commandPaletteTriggerRef = useRef<(() => void) | null>(null);
   const handleDesktopTitlebarMouseDown = useCallback((event: React.MouseEvent<HTMLElement>) => {
     const dragExclusionTarget = (event.target as HTMLElement).closest('[data-no-drag]');
-    if (dragExclusionTarget) {
+    if (dragExclusionTarget || shouldIgnoreHeaderHotzoneTarget(event.target, event.currentTarget)) {
+      return;
+    }
+
+    if (event.button !== 0) {
       return;
     }
 
     event.preventDefault();
+
+    if (event.detail === 2) {
+      void toggleDesktopWindowMaximize();
+      return;
+    }
+
     void startDragging(event);
-  }, [startDragging]);
+  }, [startDragging, toggleDesktopWindowMaximize]);
   const clearHeaderHotzonePress = useCallback((element: HTMLElement) => {
     delete element.dataset.shellHotzoneStartX;
     delete element.dataset.shellHotzoneStartY;
   }, []);
   const handleHeaderHotzoneMouseDown = useCallback((event: React.MouseEvent<HTMLElement>) => {
-    if (event.button !== 0 || shouldIgnoreHeaderHotzoneTarget(event.target)) {
+    if (event.button !== 0 || shouldIgnoreHeaderHotzoneTarget(event.target, event.currentTarget)) {
+      return;
+    }
+
+    if (event.detail === 2) {
+      event.preventDefault();
+      event.stopPropagation();
+      clearHeaderHotzonePress(event.currentTarget);
+      clearHeaderHotzoneActivationTimer(event.currentTarget);
+      event.currentTarget.dataset.shellHotzoneSuppressClick = 'true';
+      void toggleDesktopWindowMaximize();
       return;
     }
 
     event.currentTarget.dataset.shellHotzoneStartX = String(event.clientX);
     event.currentTarget.dataset.shellHotzoneStartY = String(event.clientY);
     delete event.currentTarget.dataset.shellHotzoneSuppressClick;
-  }, []);
+  }, [clearHeaderHotzonePress, toggleDesktopWindowMaximize]);
   const handleHeaderHotzoneMouseMove = useCallback((event: React.MouseEvent<HTMLElement>) => {
     if (event.buttons !== 1) {
       return;
@@ -1608,6 +1745,16 @@ function App() {
   const openCommandPalette = useCallback(() => {
     commandPaletteTriggerRef.current?.();
   }, []);
+  const [currentChatHeaderTitle, setCurrentChatHeaderTitle] = useState('');
+  const [currentChatHeaderGroupName, setCurrentChatHeaderGroupName] = useState('');
+  const currentChatHeaderStoreUnsubscribeRef = useRef<(() => void) | null>(null);
+  const currentChatHeaderSubscribedSessionIdRef = useRef<string | null>(null);
+  const desktopHeaderNewSessionTooltipLabel = currentChatHeaderGroupName
+    ? t('chatV2:page.newSessionInGroup', {
+      groupName: currentChatHeaderGroupName,
+      defaultValue: '在 {{groupName}} 中新建会话',
+    })
+    : desktopHeaderNavHotzoneLabel;
   const shouldShowDesktopHeaderNavControls = currentView !== 'settings';
   const desktopHeaderNavControls = (
     <DesktopHeaderNavControls
@@ -1616,7 +1763,8 @@ function App() {
       onGoBack={unifiedGoBack}
       onGoForward={unifiedGoForward}
       onNewSession={handleCreateChatSession}
-      newSessionLabel={desktopHeaderNavHotzoneLabel}
+      onTitlebarDoubleClick={toggleDesktopWindowMaximize}
+      newSessionLabel={desktopHeaderNewSessionTooltipLabel}
       backTitle={t('common:navigation.back_tooltip', { shortcut: navigationShortcuts.back })}
       backLabel={t('common:navigation.back')}
       forwardTitle={t('common:navigation.forward_tooltip', { shortcut: navigationShortcuts.forward })}
@@ -1624,9 +1772,6 @@ function App() {
       collapsed={leftPanelCollapsed}
     />
   );
-  const [currentChatHeaderTitle, setCurrentChatHeaderTitle] = useState('');
-  const currentChatHeaderStoreUnsubscribeRef = useRef<(() => void) | null>(null);
-  const currentChatHeaderSubscribedSessionIdRef = useRef<string | null>(null);
 
   const clearCurrentChatHeaderStoreSubscription = useCallback(() => {
     currentChatHeaderStoreUnsubscribeRef.current?.();
@@ -1646,16 +1791,26 @@ function App() {
     return getSessionTitleText(state.title, t('chatV2:page.untitled', '未命名会话'));
   }, [t]);
 
+  const getChatHeaderGroupNameFromStoreState = useCallback((state?: ChatStore | null) => {
+    if (!state?.groupId) {
+      return '';
+    }
+
+    return groupCache.get(state.groupId)?.name ?? '';
+  }, []);
+
   const syncCurrentChatHeaderTitle = useCallback((sessionId?: string | null) => {
     const chatHeaderSessionId = sessionId ?? sessionManager.getCurrentSessionId();
     if (!chatHeaderSessionId) {
       setCurrentChatHeaderTitle('');
+      setCurrentChatHeaderGroupName('');
       return;
     }
 
     const chatHeaderStore = sessionManager.get(chatHeaderSessionId);
     setCurrentChatHeaderTitle(getChatHeaderTitleFromStoreState(chatHeaderStore?.getState()));
-  }, [getChatHeaderTitleFromStoreState, t]);
+    setCurrentChatHeaderGroupName(getChatHeaderGroupNameFromStoreState(chatHeaderStore?.getState()));
+  }, [getChatHeaderGroupNameFromStoreState, getChatHeaderTitleFromStoreState, t]);
 
   useEffect(() => {
     const bindCurrentChatHeaderStore = (sessionId: string | null) => {
@@ -1678,8 +1833,13 @@ function App() {
       currentChatHeaderSubscribedSessionIdRef.current = sessionId;
       currentChatHeaderStoreUnsubscribeRef.current = activeChatHeaderStore.subscribe(
         (state, prevState) => {
-          if (state.title !== prevState.title || state.sessionMetadata !== prevState.sessionMetadata) {
+          if (
+            state.title !== prevState.title ||
+            state.sessionMetadata !== prevState.sessionMetadata ||
+            state.groupId !== prevState.groupId
+          ) {
             setCurrentChatHeaderTitle(getChatHeaderTitleFromStoreState(state));
+            setCurrentChatHeaderGroupName(getChatHeaderGroupNameFromStoreState(state));
           }
         }
       );
@@ -1718,7 +1878,31 @@ function App() {
       unsubscribeSessionManager();
       clearCurrentChatHeaderStoreSubscription();
     };
-  }, [clearCurrentChatHeaderStoreSubscription, syncCurrentChatHeaderTitle, t]);
+  }, [
+    clearCurrentChatHeaderStoreSubscription,
+    getChatHeaderGroupNameFromStoreState,
+    getChatHeaderTitleFromStoreState,
+    syncCurrentChatHeaderTitle,
+    t,
+  ]);
+
+  const syncCurrentChatHeaderGroupName = useCallback(() => {
+    const chatHeaderSessionId = sessionManager.getCurrentSessionId();
+    if (!chatHeaderSessionId) {
+      setCurrentChatHeaderGroupName('');
+      return;
+    }
+
+    const chatHeaderStore = sessionManager.get(chatHeaderSessionId);
+    setCurrentChatHeaderGroupName(getChatHeaderGroupNameFromStoreState(chatHeaderStore?.getState()));
+  }, [getChatHeaderGroupNameFromStoreState]);
+
+  useEffect(() => {
+    window.addEventListener('chat-v2:groups-updated', syncCurrentChatHeaderGroupName);
+    return () => {
+      window.removeEventListener('chat-v2:groups-updated', syncCurrentChatHeaderGroupName);
+    };
+  }, [syncCurrentChatHeaderGroupName]);
 
   const desktopShellViewLabel = useMemo(() => {
     if (currentView === 'chat-v2') {
@@ -1726,7 +1910,7 @@ function App() {
     }
 
     const labels: Partial<Record<CurrentView, string>> = {
-      'chat-v2': t('sidebar:navigation.chat_v2', '智能会话'),
+      'chat-v2': t('sidebar:navigation.chat_v2', '新会话'),
       'learning-hub': t('sidebar:navigation.learning_hub', '学习资源'),
       'settings': t('sidebar:navigation.settings', '系统'),
       'dashboard': t('common:navigation.dashboard', '总览'),
@@ -1934,6 +2118,7 @@ function App() {
       <LearningHubNavigationProvider>
       <div
         data-shell-role="app-shell"
+        data-sidebar-visible={isDesktopSidebarSurfaceVisible ? 'true' : 'false'}
         className={cn(
           'relative flex h-dvh w-full overflow-hidden font-sans text-foreground transition-colors duration-500',
           'bg-[color:var(--shell-backdrop)]'
@@ -2001,7 +2186,7 @@ function App() {
               data-shell-hotzone="desktop-nav"
               role="button"
               tabIndex={0}
-              aria-label={desktopHeaderNavHotzoneLabel}
+              aria-label={desktopHeaderNewSessionTooltipLabel}
               onMouseDown={handleHeaderHotzoneMouseDown}
               onMouseMove={handleHeaderHotzoneMouseMove}
               onMouseUp={handleHeaderHotzoneMouseUp}
@@ -2014,6 +2199,7 @@ function App() {
           </div>
 
           <div
+            data-sidebar-visible={isDesktopSidebarSurfaceVisible ? 'true' : 'false'}
             className="desktop-shell-header-cell desktop-shell-header-cell--workspace relative z-10 flex min-w-0 items-center justify-between px-5 transition-[padding-left] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none"
             style={{ paddingLeft: `${20 + desktopTitlebarLeadingInset}px` }}
           >
@@ -2066,6 +2252,7 @@ function App() {
 
         <div
           data-shell-layer="workspace"
+          data-sidebar-visible={isDesktopSidebarSurfaceVisible ? 'true' : 'false'}
           className="desktop-shell-workspace flex flex-1 flex-col h-full min-w-0 relative overflow-hidden"
           style={{
             // 移动端：48px 基础高度 + topbarTopMargin，桌面端：使用原有标题栏高度

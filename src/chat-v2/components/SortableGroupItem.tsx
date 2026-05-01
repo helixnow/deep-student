@@ -89,6 +89,10 @@ export function SortableGroupItem({
               labels={{
                 groupActions: t('page.groupActions'),
                 newSession: t('page.newSession'),
+                newSessionInGroup: t('page.newSessionInGroup', {
+                  groupName: group.name,
+                  defaultValue: '在 {{groupName}} 中新建会话',
+                }),
                 renameGroup: t('page.renameGroup'),
                 editGroup: t('page.editGroup'),
                 archiveGroup: t('page.archiveGroup'),

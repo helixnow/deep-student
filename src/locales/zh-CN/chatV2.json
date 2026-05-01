@@ -637,6 +637,7 @@
   "page": {
     "sessions": "会话列表",
     "newSession": "新建会话",
+    "newSessionInGroup": "在 {{groupName}} 中新建会话",
     "noSessions": "暂无会话",
     "createFirst": "创建第一个会话",
     "groups": "分组",
@@ -682,6 +683,9 @@
     "unpinSession": "取消置顶",
     "archiveSession": "归档线程",
     "confirmArchiveSession": "确认归档线程",
+    "archiveSessionToast": "已归档。查看已归档的会话：设置",
+    "archiveSessionToastMessage": "已归档。查看已归档的会话：",
+    "archiveSessionToastSettingsAction": "设置",
     "pinnedSession": "",
     "sessionContextMenu": "线程操作菜单",
     "saveSessionName": "保存",

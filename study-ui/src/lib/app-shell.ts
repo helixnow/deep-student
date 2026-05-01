@@ -174,7 +174,7 @@ export function getMainWorkspaceSurfaceClass(windowBackgroundPreference: WindowB
 }
 
 export function getSplitSeamClass(windowBackgroundPreference: WindowBackgroundMode) {
-  return windowBackgroundPreference === "opaque" ? "bg-sidebar-border/80" : "bg-sidebar-border/55";
+  return windowBackgroundPreference === "opaque" ? "border-sidebar-border/80" : "border-sidebar-border/55";
 }
 
 export function shouldShowCustomWindowControls(

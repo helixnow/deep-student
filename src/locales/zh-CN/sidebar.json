@@ -31,7 +31,7 @@
     "canvas_board": "白板",
     "learning_hub": "学习资源",
     "extensions": "扩展功能",
-    "chat_v2": "智能会话",
+    "chat_v2": "新会话",
     "skills_management": "技能管理"
   },
   "aria": {
@@ -46,8 +46,8 @@
     "expand_all_topics": "展开所有课题",
     "create_topic": "新建课题",
     "create_conversation": "新建对话",
-    "expand_group_sessions": "展开显示 {{count}} 条更多",
-    "collapse_group_sessions": "折叠展示"
+    "expand_group_sessions": "展开显示",
+    "collapse_group_sessions": "折叠显示"
   },
   "expand": "展开侧边栏",
   "collapse": "收起侧边栏",

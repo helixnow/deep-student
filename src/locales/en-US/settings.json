@@ -96,7 +96,7 @@
         "qwen_hint": "Heads-up: SiliconFlow's Qwen models may be limited to 4096 tokens",
         "max_tokens_limit": "API Max Tokens Limit",
         "max_tokens_limit_placeholder": "Leave empty for no limit",
-        "max_tokens_limit_hint": "Some APIs (e.g., DeepSeek) have a max_tokens cap (e.g., 8192). Exceeding it returns a 400 error. Leave empty for no limit.",
+        "max_tokens_limit_hint": "Some APIs enforce documented max_tokens caps. For example, DeepSeek V4 Thinking Mode currently documents a 64K request cap; exceeding it can return a 400 error. Leave empty for no limit.",
         "context_window": "Context Window Size",
         "context_window_placeholder": "Leave empty to use auto-inferred value",
         "context_window_hint": "The model's context window size (tokens). Leave empty to auto-infer from model name. Current inferred value:",

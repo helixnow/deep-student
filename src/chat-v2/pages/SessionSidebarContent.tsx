@@ -290,7 +290,7 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
       <CustomScrollArea className="min-h-0 flex-1" viewportClassName="px-2 py-1">
         <div className="space-y-3 pb-2 pt-1">
           <nav aria-label={t('page.primaryNavigation', '主入口')} className="space-y-0.5">
-            {renderPrimaryItem('new-chat', '新对话', ChatCenteredText, true, handleCreateSession)}
+            {renderPrimaryItem('new-chat', '新对话', ChatCenteredText, !currentSessionId, handleCreateSession)}
             {renderPrimaryItem('learning-hub', '学习资源', Books, false, () => navigateToView('learning-hub'))}
             {renderPrimaryItem('todo', '待办', CheckSquare, false, () => navigateToView('todo'))}
           </nav>

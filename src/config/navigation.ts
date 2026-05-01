@@ -48,7 +48,7 @@ export const createNavItems = (t: TFunction): NavItem[] => {
   const items: NavItem[] = [
     // 🔧 Chat V2 放第一位
     {
-      name: t('sidebar:navigation.chat_v2', '智能会话'),
+      name: t('sidebar:navigation.chat_v2', '新会话'),
       view: 'chat-v2',
       icon: StudyChatIcon,
     },

@@ -24,6 +24,17 @@ const emitSessionListUpdated = () => {
   window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
 };
 
+const requestChatInputFocus = (sessionId: string) => {
+  const emitFocus = () => {
+    window.dispatchEvent(new CustomEvent('CHAT_V2_FOCUS_INPUT', {
+      detail: { sessionId },
+    }));
+  };
+
+  requestAnimationFrame(emitFocus);
+  window.setTimeout(emitFocus, 120);
+};
+
 export interface UseSessionLifecycleDeps {
   currentSessionId: string | null;
   setSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>;
@@ -125,6 +136,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
     try {
       const session = await getOrCreateHiddenDraftSession(groupId);
       setCurrentSessionId(session.id);
+      requestChatInputFocus(session.id);
     } catch (error) {
       console.error('[ChatV2Page] Failed to create session:', getErrorMessage(error));
       showGlobalNotification('error', t('page.createSessionFailed', '创建会话失败，请稍后重试'));

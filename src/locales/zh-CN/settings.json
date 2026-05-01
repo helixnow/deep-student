@@ -96,7 +96,7 @@
         "qwen_hint": "注意：SiliconFlow 的 Qwen 模型可能限制为 4096 令牌",
         "max_tokens_limit": "API Max Tokens 限制",
         "max_tokens_limit_placeholder": "留空表示无限制",
-        "max_tokens_limit_hint": "某些 API（如 DeepSeek）有 max_tokens 上限（如 8192），超过会返回 400 错误。留空表示不限制。",
+        "max_tokens_limit_hint": "某些 API 会对 max_tokens 施加官方文档上限。例如 DeepSeek V4 Thinking Mode 当前文档给出的请求上限是 64K，超过可能返回 400 错误。留空表示不限制。",
         "context_window": "上下文窗口大小",
         "context_window_placeholder": "留空则使用自动推断值",
         "context_window_hint": "模型的上下文窗口大小（tokens）。留空将根据模型名称自动推断。当前推断值：",

@@ -24,6 +24,7 @@ const group: SessionGroup = {
 const labels = {
   groupActions: 'Group actions',
   newSession: 'New session',
+  newSessionInGroup: 'New session in {{groupName}}',
   renameGroup: 'Rename group',
   editGroup: 'Edit group',
   archiveGroup: 'Archive group',
@@ -57,15 +58,47 @@ function renderHarness() {
 }
 
 describe('SessionGroupActions', () => {
+  it('keeps topic group quick actions hidden until the group row is hovered or focused', () => {
+    const source = readFileSync(resolve(process.cwd(), 'src/chat-v2/pages/SessionGroupActions.tsx'), 'utf-8');
+    const quickAction = source.match(
+      /const quickAction = \([\s\S]*?<AppMenu open=\{menuOpen\}/
+    )?.[0] ?? '';
+
+    expect(quickAction).toContain('opacity-0');
+    expect(quickAction).toContain('group-hover/sidebar-section:opacity-100');
+    expect(quickAction).toContain('group-focus-within/sidebar-section:opacity-100');
+    expect(quickAction).toContain('data-[menu-open=true]:opacity-100');
+  });
+
   it('uses the study compose icon for grouped new session quick actions', () => {
     const source = readFileSync(resolve(process.cwd(), 'src/chat-v2/pages/SessionGroupActions.tsx'), 'utf-8');
     const newSessionButton = source.match(
-      /aria-label=\{labels\.newSession\}[\s\S]*?<\/NotionButton>/
+      /aria-label=\{newSessionInGroupLabel\}[\s\S]*?<\/NotionButton>/
     )?.[0] ?? '';
+    const sortableGroupItemSource = readFileSync(
+      resolve(process.cwd(), 'src/chat-v2/components/SortableGroupItem.tsx'),
+      'utf-8'
+    );
 
+    expect(source).toContain("import { CommonTooltip } from '@/components/shared/CommonTooltip';");
+    expect(source).toContain('const newSessionInGroupLabel = labels.newSessionInGroup.replace(/\\{\\{\\s*groupName\\s*\\}\\}/g, group.name);');
     expect(source).toContain('StudyComposeIcon');
+    expect(source).toContain('<CommonTooltip content={newSessionInGroupLabel} position="right">');
     expect(newSessionButton).toContain('<StudyComposeIcon className="w-3.5 h-3.5" />');
     expect(newSessionButton).not.toContain('<Plus className="w-3.5 h-3.5" />');
+    expect(newSessionButton).not.toContain('title={labels.newSession}');
+    expect(sortableGroupItemSource).toContain("newSessionInGroup: t('page.newSessionInGroup', {");
+    expect(sortableGroupItemSource).toContain('groupName: group.name');
+    expect(sortableGroupItemSource).toContain("defaultValue: '在 {{groupName}} 中新建会话'");
+  });
+
+  it('uses the group-aware new session label for accessibility without native title', () => {
+    renderHarness();
+
+    const button = screen.getByRole('button', { name: 'New session in Chemistry' });
+
+    expect(button).toBeInTheDocument();
+    expect(button).not.toHaveAttribute('title');
   });
 
   it('shows the menu items from the ellipsis trigger', async () => {
@@ -89,7 +122,7 @@ describe('SessionGroupActions', () => {
   it('calls the expected callbacks', async () => {
     const { onCreateSession, onRenameGroup, onEditGroup, onArchiveGroup } = renderHarness();
 
-    fireEvent.click(screen.getByRole('button', { name: labels.newSession }));
+    fireEvent.click(screen.getByRole('button', { name: 'New session in Chemistry' }));
     expect(onCreateSession).toHaveBeenCalledWith(group.id);
 
     fireEvent.click(screen.getByRole('button', { name: labels.groupActions }));

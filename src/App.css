@@ -13,6 +13,7 @@ body {
 :where(:root) {
   --shell-titlebar-height: var(--desktop-titlebar-height, 40px);
   --shell-navigation-width: var(--sidebar-width, 272px);
+  --shell-workspace-edge-radius: 24px;
   --shell-layout-gap: var(--space-shell-layout-gap);
   --shell-panel-radius: var(--radius-shell-panel);
   --shell-toolbar-radius: var(--radius-shell-toolbar);
@@ -22,6 +23,10 @@ body {
   --shell-window-control-gap: var(--space-shell-control-gap);
   --shell-window-control-radius: var(--radius-shell-window-control);
   --shell-section-gap: var(--space-shell-section-gap);
+}
+
+[data-shell-role="app-shell"][data-sidebar-visible="true"] {
+  background: var(--shell-navigation-surface);
 }
 
 .desktop-shell-titlebar {
@@ -53,6 +58,12 @@ body {
   background: var(--shell-workspace-panel);
   border: 0;
   box-shadow: none;
+}
+
+.desktop-shell-header-cell--workspace[data-sidebar-visible="true"] {
+  border-left: 1px solid var(--shell-navigation-border);
+  border-top-left-radius: var(--shell-workspace-edge-radius);
+  overflow: hidden;
 }
 
 .desktop-shell-toolbar-group {
@@ -175,15 +186,14 @@ body {
   font-weight: 400 !important;
 }
 
-.desktop-shell-sidebar-session-scroll {
-  --desktop-shell-sidebar-session-fade-size: 36px;
+.desktop-shell-sidebar-session-scroll-shell {
+  --desktop-shell-sidebar-session-fade-size: 28px;
   --desktop-shell-sidebar-session-fade-surface: var(--shell-navigation-surface);
+  position: relative;
   isolation: isolate;
 }
 
-.desktop-shell-sidebar-session-scroll::after {
-  content: "";
-  display: block;
+.desktop-shell-sidebar-session-fade {
   position: absolute;
   left: 0;
   right: 0;
@@ -192,31 +202,29 @@ body {
   pointer-events: none;
 }
 
-.desktop-shell-sidebar-session-scroll::after {
+.desktop-shell-sidebar-session-fade--top {
+  top: 0;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--desktop-shell-sidebar-session-fade-surface) 96%, transparent) 0%,
+    color-mix(in srgb, var(--desktop-shell-sidebar-session-fade-surface) 70%, transparent) 38%,
+    transparent 100%
+  );
+}
+
+.desktop-shell-sidebar-session-fade--bottom {
   bottom: 0;
   background: linear-gradient(
     to top,
-    var(--desktop-shell-sidebar-session-fade-surface) 0%,
-    var(--desktop-shell-sidebar-session-fade-surface) 18%,
+    color-mix(in srgb, var(--desktop-shell-sidebar-session-fade-surface) 96%, transparent) 0%,
+    color-mix(in srgb, var(--desktop-shell-sidebar-session-fade-surface) 72%, transparent) 38%,
     transparent 100%
   );
 }
 
 .desktop-shell-sidebar-session-scroll-viewport {
-  --desktop-shell-sidebar-session-fade-mask: linear-gradient(
-    to bottom,
-    #000 0,
-    #000 calc(100% - var(--desktop-shell-sidebar-session-fade-size)),
-    transparent 100%
-  );
-  -webkit-mask-image: var(--desktop-shell-sidebar-session-fade-mask);
-  mask-image: var(--desktop-shell-sidebar-session-fade-mask);
-  -webkit-mask-position: center;
-  mask-position: center;
-  -webkit-mask-repeat: no-repeat;
-  mask-repeat: no-repeat;
-  -webkit-mask-size: 100% 100%;
-  mask-size: 100% 100%;
+  mask-image: none;
+  -webkit-mask-image: none;
 }
 
 .desktop-shell-header-title {
@@ -230,6 +238,12 @@ body {
 .desktop-shell-workspace {
   background: var(--shell-workspace-panel);
   box-shadow: none;
+}
+
+.desktop-shell-workspace[data-sidebar-visible="true"] {
+  border-left: 1px solid var(--shell-navigation-border);
+  border-bottom-left-radius: var(--shell-workspace-edge-radius);
+  overflow: hidden;
 }
 
 .desktop-shell-view-layer {
@@ -315,6 +329,7 @@ body {
 }
 
 .study-shell-toolbar--seamless {
+  background: transparent;
   border-bottom: 0;
 }
 

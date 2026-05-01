@@ -1,23 +1,53 @@
 import React from 'react';
 import {
   AlertTriangle,
+  Bell,
   CheckCircle2,
+  Copy,
   Layers3,
+  MousePointer2,
   Palette,
   SlidersHorizontal,
   SplitSquareHorizontal,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { showGlobalNotification, type GlobalNotificationBorderTone, type GlobalNotificationType } from '@/components/UnifiedNotification';
+import { CommonTooltip, type TooltipPosition, type TooltipTheme } from '@/components/shared/CommonTooltip';
+// eslint-disable-next-line no-restricted-imports -- Style lab intentionally compares the legacy shad Button path against the target NotionButton path.
 import { Button as ShadButton } from '@/components/ui/shad/Button';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { Input } from '@/components/ui/shad/Input';
 import { Switch } from '@/components/ui/shad/Switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/shad/Tabs';
+// eslint-disable-next-line no-restricted-imports
+import {
+  Tooltip as ShadTooltip,
+  TooltipContent as ShadTooltipContent,
+  TooltipProvider as ShadTooltipProvider,
+  TooltipTrigger as ShadTooltipTrigger,
+} from '@/components/ui/shad/Tooltip';
+import {
+  Tooltip as PromptkitTooltip,
+  TooltipContent as PromptkitTooltipContent,
+  TooltipProvider as PromptkitTooltipProvider,
+  TooltipTrigger as PromptkitTooltipTrigger,
+} from '@/promptkit/ui/tooltip';
+import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 type AuditStatus = 'primary' | 'watch' | 'legacy' | 'target';
+
+type ToastDebugSample = {
+  type: GlobalNotificationType;
+  label: string;
+  title: string;
+  message: string;
+  buttonLabel: string;
+  borderTone?: GlobalNotificationBorderTone;
+};
 
 type MixedComponentRow = {
   family: string;
@@ -268,6 +298,176 @@ const tokenSwatches = [
   ['border-default', 'var(--border-default)'],
 ];
 
+const tooltipPositions: TooltipPosition[] = ['top', 'right', 'bottom', 'left'];
+const tooltipThemes: TooltipTheme[] = ['dark', 'light', 'auto'];
+
+type ButtonDebugSize = 'sm' | 'md' | 'lg';
+type SwitchDebugSize = 'sm' | 'default';
+type SwitchLibraryOption = {
+  title: string;
+  status: string;
+  fit: 'recommended' | 'optional' | 'watch';
+  summary: string;
+  tradeoff: string;
+  install: string;
+  usage: string;
+  showLiveSample?: boolean;
+};
+
+const buttonDebugSizes: Array<{ label: string; value: ButtonDebugSize; shadSize: 'sm' | 'default' | 'lg' }> = [
+  { label: 'Small', value: 'sm', shadSize: 'sm' },
+  { label: 'Medium', value: 'md', shadSize: 'default' },
+  { label: 'Large', value: 'lg', shadSize: 'lg' },
+];
+
+const buttonDebugVariants = [
+  {
+    label: 'Primary',
+    notionVariant: 'primary',
+    shadVariant: 'default',
+    nativeClassName: 'border-blue-600 bg-blue-600 text-white hover:bg-blue-700',
+  },
+  {
+    label: 'Default',
+    notionVariant: 'default',
+    shadVariant: 'secondary',
+    nativeClassName: 'border-[#d8d8d8] bg-white text-[#333333] hover:bg-[#f5f5f5]',
+  },
+  {
+    label: 'Ghost',
+    notionVariant: 'ghost',
+    shadVariant: 'ghost',
+    nativeClassName: 'border-transparent bg-transparent text-[#555555] hover:bg-[#f3f3f3]',
+  },
+  {
+    label: 'Outline',
+    notionVariant: 'outline',
+    shadVariant: 'outline',
+    nativeClassName: 'border-[#cfcfcf] bg-transparent text-[#333333] hover:bg-[#f7f7f7]',
+  },
+  {
+    label: 'Danger',
+    notionVariant: 'danger',
+    shadVariant: 'destructive',
+    nativeClassName: 'border-red-600 bg-red-600 text-white hover:bg-red-700',
+  },
+] as const;
+
+const buttonDebugTokenRows = [
+  ['入口文件', '@/components/ui/buttonPrimitiveContract'],
+  ['基础结构', 'buttonBaseClassName'],
+  ['视觉语义', 'buttonToneClassNames'],
+  ['尺寸密度', 'buttonSizeClassNames / buttonIconSizeClassNames'],
+  ['迁移建议', '业务按钮优先消费 NotionButton；缺能力时回 primitive contract 补齐。'],
+];
+
+const switchDebugSizes: Array<{ label: string; value: SwitchDebugSize; detail: string }> = [
+  { label: 'Small', value: 'sm', detail: 'lg:h-4 lg:w-7，贴近 28px / 16px compact' },
+  { label: 'Default', value: 'default', detail: 'lg:h-5 lg:w-9，用于设置项默认密度' },
+];
+
+const switchDebugTokenRows = [
+  ['入口文件', '@/components/ui/shad/Switch'],
+  ['状态来源', 'Radix data-state=checked / unchecked'],
+  ['轨道 token', 'button-primary / button-utility surface + border'],
+  ['Compact 对照', 'w-[28px] h-[16px] + thumb 12px'],
+  ['迁移建议', '业务开关保留 shad Switch 主路径；原生 compact 只作为校对样本。'],
+];
+
+const switchLibraryOptions: SwitchLibraryOption[] = [
+  {
+    title: 'Radix / shadcn 主路径',
+    status: '当前已安装',
+    fit: 'recommended',
+    summary: '最适合当前项目。Radix 负责 role、键盘、表单事件和 data-state；shadcn 负责把它包装成可维护的 Tailwind 组件。',
+    tradeoff: '仍然需要我们在本地组件里决定尺寸和 token，但不用自己实现交互行为。',
+    install: '@radix-ui/react-switch 已在 package.json 中；可对齐 shadcn switch 源码。',
+    usage: '<Switch checked={enabled} onCheckedChange={setEnabled} />',
+    showLiveSample: true,
+  },
+  {
+    title: 'Radix Themes',
+    status: '需要新依赖',
+    fit: 'optional',
+    summary: '如果希望开关、按钮、输入框等整套控件都直接吃 Radix 的主题系统，可以考虑它的成品 Switch。',
+    tradeoff: '会引入 @radix-ui/themes CSS 和主题变量，容易和当前 shell token、shadcn token 双轨并存。',
+    install: 'npm install @radix-ui/themes',
+    usage: 'import { Switch } from "@radix-ui/themes"',
+  },
+  {
+    title: 'Base UI',
+    status: '迁移候选',
+    fit: 'watch',
+    summary: '适合如果后续 study-ui 真的统一走 Base UI primitive。它和 Radix 一样偏 headless，适合做设计系统底座。',
+    tradeoff: '当前项目还没装 Base UI；只为 Switch 引入会增加迁移面，不如等整套 form primitive 一起定。',
+    install: 'npm install @base-ui/react',
+    usage: 'import { Switch } from "@base-ui/react/switch"',
+  },
+  {
+    title: 'React Aria Components',
+    status: '可访问性优先',
+    fit: 'optional',
+    summary: '如果项目希望把表单控件的键盘、焦点、屏幕阅读器语义统一交给 React Aria，它的 Switch 很完整。',
+    tradeoff: 'API 和 styling 模式会改变较多；对当前 Radix/shadcn 栈不是最小改动。',
+    install: 'npm install react-aria-components',
+    usage: 'import { Switch } from "react-aria-components"',
+  },
+];
+
+const switchLibraryFitMeta: Record<SwitchLibraryOption['fit'], { label: string; className: string }> = {
+  recommended: {
+    label: '推荐',
+    className: 'border-[color:hsl(var(--success)/0.26)] bg-[color:hsl(var(--success)/0.10)] text-[color:hsl(var(--success))]',
+  },
+  optional: {
+    label: '可选',
+    className: 'border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] text-[color:var(--text-secondary)]',
+  },
+  watch: {
+    label: '观察',
+    className: 'border-[color:hsl(var(--warning)/0.28)] bg-[color:hsl(var(--warning)/0.10)] text-[color:hsl(var(--warning))]',
+  },
+};
+
+const toastDebugSamples: ToastDebugSample[] = [
+  {
+    type: 'success',
+    label: 'Success toast',
+    title: 'Toast 调试：Success',
+    message: '资料库同步完成。这个提示应该轻、稳、可快速扫读，不抢走当前任务的注意力。',
+    buttonLabel: '触发 success toast',
+  },
+  {
+    type: 'warning',
+    label: 'Warning toast',
+    title: 'Toast 调试：Warning',
+    message: '当前索引有 3 个条目需要复核。状态要明确，但不要像错误一样刺眼。',
+    buttonLabel: '触发 warning toast',
+  },
+  {
+    type: 'error',
+    label: 'Error toast',
+    title: 'Toast 调试：Error',
+    message: '同步失败：本地数据库被占用。错误 toast 需要更高对比度、清晰操作和稳定的关闭入口。',
+    buttonLabel: '触发 error toast',
+  },
+  {
+    type: 'info',
+    label: 'Info toast',
+    title: 'Toast 调试：Info',
+    message: '已切换到新的学习会话。Info toast 应该像状态回声，而不是一张小广告卡片。',
+    buttonLabel: '触发 info toast',
+  },
+  {
+    type: 'success',
+    label: 'Neutral border toast',
+    title: 'Toast 调试：黑色边',
+    message: '已归档。查看已归档的会话：',
+    buttonLabel: '触发黑色边 toast',
+    borderTone: 'neutral',
+  },
+];
+
 const statusMeta: Record<AuditStatus, { label: string; className: string }> = {
   primary: {
     label: '主入口已形成',
@@ -445,6 +645,7 @@ function PrimitiveSampleDeck() {
           <CardDescription>原生控件只作为样式校对样本保留在本页。</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2 p-4 pt-0">
+          {/* eslint-disable-next-line ds-components/no-native-button -- Style lab keeps native samples visible for migration comparison. */}
           <button
             type="button"
             className="inline-flex min-h-8 items-center rounded-md border border-[color:var(--shell-workspace-border)] bg-transparent px-3 text-sm text-[color:var(--text-secondary)] hover:bg-[color:var(--interactive-hover)]"
@@ -551,6 +752,850 @@ function FormControlSamples() {
   );
 }
 
+function TooltipPreviewCard({
+  title,
+  path,
+  description,
+  children,
+  note,
+}: {
+  title: string;
+  path: string;
+  description: string;
+  children: React.ReactNode;
+  note?: React.ReactNode;
+}) {
+  return (
+    <section className="rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] p-4">
+      <div className="mb-3">
+        <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">{title}</h3>
+        <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">{description}</p>
+        <code className="mt-2 block text-[11px] leading-5 text-[color:var(--text-secondary)]">{path}</code>
+      </div>
+      <div className="rounded-lg border border-dashed border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] p-4">
+        {children}
+      </div>
+      {note ? (
+        <div className="mt-3 rounded-lg border border-[color:hsl(var(--warning)/0.28)] bg-[color:hsl(var(--warning)/0.10)] px-3 py-2 text-xs leading-5 text-[color:var(--text-primary)]">
+          {note}
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function TooltipStyleLab() {
+  const [position, setPosition] = React.useState<TooltipPosition>('top');
+  const [theme, setTheme] = React.useState<TooltipTheme>('dark');
+  const [showArrow, setShowArrow] = React.useState(true);
+  const [delay, setDelay] = React.useState(0);
+  const [maxWidth, setMaxWidth] = React.useState(260);
+
+  const tooltipText = React.useMemo(
+    () => `用于样式调试的示例 Tooltip
+位置: ${position}
+主题: ${theme}
+最大宽度: ${maxWidth}px
+
+这段文字故意稍长一点，方便观察圆角、阴影、换行、内边距和边界处理。`,
+    [maxWidth, position, theme]
+  );
+
+  const copySummary = React.useCallback(async () => {
+    await copyTextToClipboard([
+      'Tooltip style debug',
+      `position=${position}`,
+      `theme=${theme}`,
+      `showArrow=${showArrow}`,
+      `delay=${delay}`,
+      `maxWidth=${maxWidth}`,
+    ].join('\n'));
+  }, [delay, maxWidth, position, showArrow, theme]);
+
+  const shadClassName = theme === 'light'
+    ? 'border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] px-3 py-2 text-xs leading-5 text-[color:var(--text-primary)] shadow-[var(--shadow-shell-soft)]'
+    : 'border border-[color:var(--shell-workspace-border)] bg-zinc-900 px-3 py-2 text-xs leading-5 text-zinc-50 shadow-[var(--shadow-shell-soft)] dark:bg-zinc-100 dark:text-zinc-900';
+
+  return (
+    <div className="space-y-4">
+      <SectionHeader
+        icon={Palette}
+        title="Tooltip 对照调试"
+        description="直接在现有样式调试页里横向比较 CommonTooltip、shadcn Tooltip、promptkit Tooltip 和原生 title，不额外新开入口。"
+      />
+
+      <section className="rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">调试参数</h3>
+            <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">
+              用同一组位置、宽度、延迟和箭头参数去看三套 Tooltip 的差异；原生 <code>title</code> 只做兜底对照。
+            </p>
+          </div>
+          <NotionButton variant="ghost" size="sm" onClick={copySummary} aria-label="复制 tooltip 调试配置">
+            <Copy className="size-4" />
+            复制配置
+          </NotionButton>
+        </div>
+
+        <div className="mt-4 flex flex-wrap gap-2">
+          {tooltipPositions.map((item) => (
+            <NotionButton key={item} size="sm" variant={position === item ? 'primary' : 'ghost'} onClick={() => setPosition(item)}>
+              {item}
+            </NotionButton>
+          ))}
+          {tooltipThemes.map((item) => (
+            <NotionButton key={item} size="sm" variant={theme === item ? 'success' : 'ghost'} onClick={() => setTheme(item)}>
+              {item}
+            </NotionButton>
+          ))}
+          <NotionButton size="sm" variant={showArrow ? 'warning' : 'ghost'} onClick={() => setShowArrow((value) => !value)}>
+            Arrow {showArrow ? 'on' : 'off'}
+          </NotionButton>
+        </div>
+
+        <div className="mt-4 grid gap-3 md:grid-cols-2">
+          <label className="space-y-1">
+            <span className="text-[11px] font-medium uppercase text-[color:var(--text-secondary)]">Delay</span>
+            <input type="range" min={0} max={800} step={50} value={delay} onChange={(event) => setDelay(Number(event.target.value))} className="w-full" />
+            <span className="text-xs text-[color:var(--text-secondary)]">{delay} ms</span>
+          </label>
+          <label className="space-y-1">
+            <span className="text-[11px] font-medium uppercase text-[color:var(--text-secondary)]">Max Width</span>
+            <input type="range" min={180} max={420} step={20} value={maxWidth} onChange={(event) => setMaxWidth(Number(event.target.value))} className="w-full" />
+            <span className="text-xs text-[color:var(--text-secondary)]">{maxWidth} px</span>
+          </label>
+        </div>
+      </section>
+
+      <div className="grid gap-4 xl:grid-cols-2">
+        <TooltipPreviewCard
+          title="CommonTooltip"
+          path="@/components/shared/CommonTooltip"
+          description="项目里当前用得最多的一套。支持位置、主题、箭头、延迟、最大宽度。"
+        >
+          <div className="flex min-h-[120px] items-center justify-center">
+            <CommonTooltip content={tooltipText} position={position} theme={theme} delay={delay} maxWidth={maxWidth} showArrow={showArrow}>
+              <NotionButton variant="primary" size="sm">
+                <MousePointer2 className="size-4" />
+                Hover / Focus
+              </NotionButton>
+            </CommonTooltip>
+          </div>
+        </TooltipPreviewCard>
+
+        <TooltipPreviewCard
+          title="shadcn Tooltip"
+          path="@/components/ui/shad/Tooltip"
+          description="debug 面板历史上还在用的 Radix 风格 API。这里复用同一组位置和宽度参数。"
+        >
+          <div className="flex min-h-[120px] items-center justify-center">
+            <ShadTooltipProvider delayDuration={delay}>
+              <ShadTooltip>
+                <ShadTooltipTrigger asChild>
+                  <NotionButton variant="default" size="sm">
+                    <MousePointer2 className="size-4" />
+                    Hover / Focus
+                  </NotionButton>
+                </ShadTooltipTrigger>
+                <ShadTooltipContent side={position} sideOffset={8} className={shadClassName} style={{ maxWidth }}>
+                  {tooltipText}
+                </ShadTooltipContent>
+              </ShadTooltip>
+            </ShadTooltipProvider>
+          </div>
+        </TooltipPreviewCard>
+
+        <TooltipPreviewCard
+          title="promptkit Tooltip"
+          path="@/promptkit/ui/tooltip"
+          description="prompt-input 里在用的轻量包装。现在这个实现更像结构占位，适合直接看 className 和内容样式。"
+          note={<><strong>当前实现是轻量占位。</strong> 它不会像另外两套一样自动悬浮出层，当前内容会原地渲染，所以这里更适合调文字、边框、背景和间距。</>}
+        >
+          <div className="flex min-h-[120px] flex-col items-center justify-center gap-3">
+            <PromptkitTooltipProvider>
+              <PromptkitTooltip>
+                <PromptkitTooltipTrigger className="inline-flex">
+                  <NotionButton variant="secondary" size="sm">
+                    <MousePointer2 className="size-4" />
+                    Trigger
+                  </NotionButton>
+                </PromptkitTooltipTrigger>
+                <PromptkitTooltipContent
+                  className={theme === 'light'
+                    ? 'rounded-md border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] px-3 py-2 text-xs leading-5 text-[color:var(--text-primary)]'
+                    : 'rounded-md border border-[color:var(--shell-workspace-border)] bg-zinc-900 px-3 py-2 text-xs leading-5 text-zinc-50 dark:bg-zinc-100 dark:text-zinc-900'}
+                  style={{ maxWidth }}
+                >
+                  {tooltipText}
+                </PromptkitTooltipContent>
+              </PromptkitTooltip>
+            </PromptkitTooltipProvider>
+          </div>
+        </TooltipPreviewCard>
+
+        <TooltipPreviewCard
+          title="原生 title"
+          path="HTML title attribute"
+          description="浏览器/系统自己画气泡，前端能控制的样式几乎没有。适合做兜底，不适合承担统一视觉。"
+          note="原生 title 需要真实 hover 才会出现，这一项主要用来和前面三套对照交互与可控性。"
+        >
+          <div className="flex min-h-[120px] items-center justify-center">
+            <NotionButton
+              variant="ghost"
+              size="sm"
+              title={`原生 title\n位置由浏览器/系统接管\n建议只用来做基础兜底`}
+            >
+              <MousePointer2 className="size-4" />
+              Hover 原生 title
+            </NotionButton>
+          </div>
+        </TooltipPreviewCard>
+      </div>
+    </div>
+  );
+}
+
+function ButtonDebugPathCard({
+  title,
+  path,
+  description,
+  children,
+}: {
+  title: string;
+  path: string;
+  description: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="min-w-0 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] p-4">
+      <div className="mb-4 min-w-0">
+        <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">{title}</h3>
+        <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">{description}</p>
+        <code className="mt-2 block truncate text-[11px] leading-5 text-[color:var(--text-secondary)]">{path}</code>
+      </div>
+      <div className="grid min-w-0 gap-2">{children}</div>
+    </section>
+  );
+}
+
+function ButtonStyleLab() {
+  const [size, setSize] = React.useState<ButtonDebugSize>('md');
+  const [disabledSamples, setDisabledSamples] = React.useState(false);
+  const [iconOnlySamples, setIconOnlySamples] = React.useState(false);
+
+  const selectedSize = buttonDebugSizes.find((item) => item.value === size) ?? buttonDebugSizes[1];
+  const notionSize = iconOnlySamples ? 'icon' : selectedSize.value;
+  const shadSize = iconOnlySamples ? 'icon' : selectedSize.shadSize;
+  const nativeSizeClassName = {
+    sm: 'min-h-8 px-3 text-xs',
+    md: 'min-h-9 px-3.5 text-[13px]',
+    lg: 'min-h-10 px-4 text-sm',
+  }[size];
+  const nativeIconSizeClassName = {
+    sm: 'size-8 p-0',
+    md: 'size-9 p-0',
+    lg: 'size-10 p-0',
+  }[size];
+
+  const copyButtonSummary = React.useCallback(async () => {
+    await copyTextToClipboard([
+      'Button style debug',
+      `size=${size}`,
+      `disabled=${disabledSamples}`,
+      `iconOnly=${iconOnlySamples}`,
+      'contract=buttonPrimitiveContract',
+    ].join('\n'));
+  }, [disabledSamples, iconOnlySamples, size]);
+
+  return (
+    <div className="space-y-4">
+      <SectionHeader
+        icon={SlidersHorizontal}
+        title="统一 Button 调试"
+        description="把推荐主入口、token 包装和旧写法放在同一套尺寸与状态参数下，专门用来校对 Button 统一方向。"
+      />
+
+      <section className="rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">调试参数</h3>
+            <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">
+              切换尺寸、禁用态和图标按钮态，观察三条路径在高度、圆角、文字、图标间距和 disabled 表现上的差异。
+            </p>
+          </div>
+          <NotionButton variant="ghost" size="sm" onClick={copyButtonSummary} aria-label="复制 Button 调试配置">
+            <Copy className="size-4" />
+            复制配置
+          </NotionButton>
+        </div>
+
+        <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(220px,0.5fr)]">
+          <div className="min-w-0 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] p-3">
+            <p className="mb-2 text-[11px] font-medium uppercase text-[color:var(--text-secondary)]">Size</p>
+            <div className="flex flex-wrap gap-2">
+              {buttonDebugSizes.map((item) => (
+                <NotionButton
+                  key={item.value}
+                  variant={size === item.value ? 'primary' : 'ghost'}
+                  size="sm"
+                  onClick={() => setSize(item.value)}
+                >
+                  {item.label}
+                </NotionButton>
+              ))}
+            </div>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+            <label className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] px-3 py-2">
+              <span className="min-w-0 text-sm text-[color:var(--text-primary)]">Disabled</span>
+              <Switch checked={disabledSamples} onCheckedChange={setDisabledSamples} size="sm" aria-label="切换 Button 禁用态" />
+            </label>
+            <label className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] px-3 py-2">
+              <span className="min-w-0 text-sm text-[color:var(--text-primary)]">Icon only</span>
+              <Switch checked={iconOnlySamples} onCheckedChange={setIconOnlySamples} size="sm" aria-label="切换 Button 图标态" />
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid gap-4 xl:grid-cols-3">
+        <ButtonDebugPathCard
+          title="NotionButton / 推荐主入口"
+          path="@/components/ui/NotionButton"
+          description="主应用业务按钮的推荐消费入口，直接映射到共享 primitive contract。"
+        >
+          {buttonDebugVariants.map((item) => (
+            <NotionButton
+              key={item.label}
+              variant={item.notionVariant}
+              size={notionSize}
+              iconOnly={iconOnlySamples}
+              disabled={disabledSamples}
+              aria-label={iconOnlySamples ? `${item.label} NotionButton sample` : undefined}
+            >
+              <SlidersHorizontal className="size-4" />
+              {iconOnlySamples ? null : item.label}
+            </NotionButton>
+          ))}
+        </ButtonDebugPathCard>
+
+        <ButtonDebugPathCard
+          title="shad Button / token 包装"
+          path="@/components/ui/shad/Button"
+          description="已经接入相同 button token，但目前更像兼容包装，不应在新业务里继续扩散成第二主入口。"
+        >
+          {buttonDebugVariants.map((item) => (
+            <ShadButton
+              key={item.label}
+              type="button"
+              variant={item.shadVariant}
+              size={shadSize}
+              disabled={disabledSamples}
+              aria-label={iconOnlySamples ? `${item.label} shad Button sample` : undefined}
+            >
+              <SlidersHorizontal className="size-4" />
+              {iconOnlySamples ? null : item.label}
+            </ShadButton>
+          ))}
+        </ButtonDebugPathCard>
+
+        <ButtonDebugPathCard
+          title="原生 button / 旧写法"
+          path="HTML button + local className"
+          description="旧页面里分散存在的手写按钮样式。这里保留对照样本，用来暴露和 token 路径的差异。"
+        >
+          {buttonDebugVariants.map((item) => (
+            // eslint-disable-next-line ds-components/no-native-button -- Style lab keeps native samples visible for migration comparison.
+            <button
+              key={item.label}
+              type="button"
+              disabled={disabledSamples}
+              aria-label={iconOnlySamples ? `${item.label} native button sample` : undefined}
+              className={cn(
+                'inline-flex items-center justify-center gap-2 rounded-md border font-medium leading-none shadow-sm transition-colors disabled:cursor-not-allowed disabled:opacity-45',
+                iconOnlySamples ? nativeIconSizeClassName : nativeSizeClassName,
+                item.nativeClassName
+              )}
+            >
+              <SlidersHorizontal className="size-4" />
+              {iconOnlySamples ? null : item.label}
+            </button>
+          ))}
+        </ButtonDebugPathCard>
+      </div>
+
+      <section className="rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] p-4">
+        <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">Button primitive contract</h3>
+            <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">
+              统一时优先看这几个 contract 是否覆盖真实页面状态，而不是继续在业务层补局部 class。
+            </p>
+          </div>
+          <Badge variant="outline" className="border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] text-[color:var(--text-secondary)]">
+            buttonPrimitiveContract
+          </Badge>
+        </div>
+        <div className="mt-4 grid gap-2 lg:grid-cols-2">
+          {buttonDebugTokenRows.map(([label, value]) => (
+            <div
+              key={label}
+              className="min-w-0 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] px-3 py-2"
+            >
+              <p className="text-[11px] font-medium uppercase text-[color:var(--text-secondary)]">{label}</p>
+              <p className="mt-1 truncate text-xs text-[color:var(--text-primary)]">{value}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+const toastButtonVariantByType: Record<GlobalNotificationType, 'success' | 'warning' | 'danger' | 'primary'> = {
+  success: 'success',
+  warning: 'warning',
+  error: 'danger',
+  info: 'primary',
+};
+
+function ToastPreviewCard({
+  sample,
+  showAction,
+}: {
+  sample: ToastDebugSample;
+  showAction: boolean;
+}) {
+  const displayText = `${sample.title} ${sample.message}`;
+
+  return (
+    <section className="min-w-0 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] p-4">
+      <div className="mb-3 flex min-w-0 items-center justify-between gap-2">
+        <h3 className="truncate text-sm font-semibold text-[color:var(--text-primary)]">{sample.label}</h3>
+        <Badge variant="outline" className="border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] text-[color:var(--text-secondary)]">
+          {sample.type}
+        </Badge>
+      </div>
+      <div className="flex min-h-12 items-center justify-center overflow-hidden rounded-md border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] px-2 py-3">
+        <div
+          className={cn(
+            'unified-notification show',
+            `unified-notification-${sample.type}`,
+            sample.borderTone === 'neutral' && 'unified-notification-border-neutral'
+          )}
+          style={{ maxWidth: 'min(320px, 100%)', minWidth: 0, width: 'fit-content' }}
+          aria-label={`${sample.label} preview`}
+        >
+          <div className="unified-notification-content">
+            <div className="unified-notification-text">{displayText}</div>
+            {showAction || sample.borderTone === 'neutral' ? (
+              <NotionButton variant="ghost" size="sm" className="unified-notification-action" tabIndex={-1}>
+                {sample.borderTone === 'neutral' ? '设置' : '查看详情'}
+              </NotionButton>
+            ) : null}
+            <NotionButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              className="unified-notification-close"
+              aria-label="关闭通知预览"
+              tabIndex={-1}
+            >
+              <X className="unified-notification-close-icon" aria-hidden="true" />
+            </NotionButton>
+          </div>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function ToastStyleLab() {
+  const [showAction, setShowAction] = React.useState(false);
+  const [longCopy, setLongCopy] = React.useState(false);
+
+  const triggerToast = React.useCallback((sample: ToastDebugSample) => {
+    const message = longCopy
+      ? `${sample.message}\n\n长文案校对：这一行用于检查 toast 的换行、最大宽度、按钮位置和关闭按钮是否还能保持清楚。`
+      : sample.message;
+    const action = showAction || sample.borderTone === 'neutral'
+      ? {
+          label: sample.borderTone === 'neutral'
+            ? '设置'
+            : sample.type === 'error'
+              ? '查看日志'
+              : '查看详情',
+          onClick: () => undefined,
+        }
+      : undefined;
+
+    showGlobalNotification(
+      sample.type,
+      message,
+      sample.title,
+      action || sample.borderTone
+        ? {
+            action,
+            borderTone: sample.borderTone,
+          }
+        : undefined
+    );
+  }, [longCopy, showAction]);
+
+  const triggerSequence = React.useCallback(() => {
+    toastDebugSamples.forEach((sample, index) => {
+      window.setTimeout(() => triggerToast(sample), index * 360);
+    });
+  }, [triggerToast]);
+
+  const copyToastSummary = React.useCallback(async () => {
+    await copyTextToClipboard([
+      'Toast style debug',
+      'component=UnifiedNotification',
+      'shape=compact-pill',
+      'structure=single-line',
+      `action=${showAction}`,
+      'close=true',
+      `longCopy=${longCopy}`,
+      'variants=success,warning,error,info,neutral-border',
+    ].join('\n'));
+  }, [longCopy, showAction]);
+
+  return (
+    <div className="space-y-4">
+      <SectionHeader
+        icon={Bell}
+        title="统一 Toast 调试"
+        description="在样式调试台里直接触发全局 UnifiedNotification，并把 success、warning、error、info 和黑色边变体放在同一个静态预览区；新方向参考 Codex 的顶部居中小圆条：单行短句、无状态 icon、右侧轻量关闭入口，用边框表达状态。"
+      />
+
+      <div className="flex flex-wrap gap-2">
+        {['顶部居中', '小圆条', '无状态 icon', '右侧关闭', '低打扰', '参考 Codex', '单行短句', '边框表达状态', '黑色边'].map((rule) => (
+          <Badge
+            key={rule}
+            variant="outline"
+            className="border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] text-[color:var(--text-secondary)]"
+          >
+            {rule}
+          </Badge>
+        ))}
+      </div>
+
+      <section className="rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">UnifiedNotification / 全局入口</h3>
+            <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">
+              这里调用真实 <code>showGlobalNotification</code>，顶部中间弹出的就是产品当前 toast；下方静态预览用来比较单行小圆条密度、短文案省略和状态边框。
+            </p>
+          </div>
+          <NotionButton variant="ghost" size="sm" onClick={copyToastSummary} aria-label="复制 Toast 调试配置">
+            <Copy className="size-4" />
+            复制配置
+          </NotionButton>
+        </div>
+
+        <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(240px,0.45fr)]">
+          <div className="grid min-w-0 gap-2 sm:grid-cols-2 xl:grid-cols-4">
+            {toastDebugSamples.map((sample) => {
+              return (
+                <NotionButton
+                  key={sample.label}
+                  variant={toastButtonVariantByType[sample.type]}
+                  size="sm"
+                  onClick={() => triggerToast(sample)}
+                >
+                  {sample.buttonLabel}
+                </NotionButton>
+              );
+            })}
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+            <label className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] px-3 py-2">
+              <span className="min-w-0 text-sm text-[color:var(--text-primary)]">Action button</span>
+              <Switch checked={showAction} onCheckedChange={setShowAction} size="sm" aria-label="切换 Toast 操作按钮" />
+            </label>
+            <label className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] px-3 py-2">
+              <span className="min-w-0 text-sm text-[color:var(--text-primary)]">Long copy</span>
+              <Switch checked={longCopy} onCheckedChange={setLongCopy} size="sm" aria-label="切换 Toast 长文案" />
+            </label>
+          </div>
+        </div>
+
+        <div className="mt-3 flex flex-wrap gap-2">
+          <NotionButton variant="default" size="sm" onClick={triggerSequence}>
+            连续触发四种 toast
+          </NotionButton>
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <div className="flex min-w-0 items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">静态状态预览</h3>
+            <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">
+              这些预览复用 <code>.unified-notification</code> 和状态类，便于不用等待动画也能比较四种 compact toast 的实际外观。
+            </p>
+          </div>
+        </div>
+        <div className="grid gap-4 xl:grid-cols-2">
+          {toastDebugSamples.map((sample) => (
+            <ToastPreviewCard key={sample.label} sample={sample} showAction={showAction} />
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
+function CompactNativeSwitchSample({
+  checked,
+  disabled,
+  onCheckedChange,
+}: {
+  checked: boolean;
+  disabled: boolean;
+  onCheckedChange: (checked: boolean) => void;
+}) {
+  return (
+    // eslint-disable-next-line ds-components/no-native-button -- Style lab keeps the pasted native switch shape visible for migration comparison.
+    <button
+      type="button"
+      role="switch"
+      aria-checked={checked}
+      disabled={disabled}
+      title={checked ? '点击禁用' : '点击启用'}
+      onClick={() => onCheckedChange(!checked)}
+      className={cn(
+        'relative h-[16px] w-[28px] shrink-0 rounded-full transition-colors',
+        checked ? 'bg-primary' : 'bg-[color:var(--button-utility-surface)]',
+        disabled && 'cursor-not-allowed opacity-50'
+      )}
+    >
+      <span
+        className={cn(
+          'absolute top-[2px] block h-[12px] w-[12px] rounded-full bg-white shadow-sm transition-transform',
+          checked ? 'left-[14px]' : 'left-[2px]'
+        )}
+      />
+    </button>
+  );
+}
+
+function SwitchLibraryOptionCard({ option }: { option: SwitchLibraryOption }) {
+  const [checked, setChecked] = React.useState(true);
+  const fitMeta = switchLibraryFitMeta[option.fit];
+
+  return (
+    <section className="min-w-0 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] p-4">
+      <div className="flex min-w-0 items-start justify-between gap-3">
+        <div className="min-w-0">
+          <h4 className="text-sm font-semibold text-[color:var(--text-primary)]">{option.title}</h4>
+          <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">{option.summary}</p>
+        </div>
+        <Badge variant="outline" className={cn('shrink-0', fitMeta.className)}>
+          {fitMeta.label}
+        </Badge>
+      </div>
+
+      <div className="mt-4 grid gap-2">
+        <div className="min-w-0 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] px-3 py-2">
+          <p className="text-[11px] font-medium uppercase text-[color:var(--text-secondary)]">Status</p>
+          <p className="mt-1 text-xs leading-5 text-[color:var(--text-primary)]">{option.status}</p>
+        </div>
+        <div className="min-w-0 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] px-3 py-2">
+          <p className="text-[11px] font-medium uppercase text-[color:var(--text-secondary)]">Tradeoff</p>
+          <p className="mt-1 text-xs leading-5 text-[color:var(--text-primary)]">{option.tradeoff}</p>
+        </div>
+        <div className="min-w-0 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] px-3 py-2">
+          <p className="text-[11px] font-medium uppercase text-[color:var(--text-secondary)]">Install</p>
+          <code className="mt-1 block truncate text-[11px] leading-5 text-[color:var(--text-primary)]">{option.install}</code>
+        </div>
+        <div className="min-w-0 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] px-3 py-2">
+          <p className="text-[11px] font-medium uppercase text-[color:var(--text-secondary)]">Usage</p>
+          <code className="mt-1 block truncate text-[11px] leading-5 text-[color:var(--text-primary)]">{option.usage}</code>
+        </div>
+      </div>
+
+      {option.showLiveSample ? (
+        <div className="mt-4 flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] px-3 py-3">
+          <span className="min-w-0 text-sm font-medium text-[color:var(--text-primary)]">当前项目 live sample</span>
+          <Switch checked={checked} onCheckedChange={setChecked} size="sm" aria-label="Radix shadcn switch library sample" />
+        </div>
+      ) : null}
+    </section>
+  );
+}
+
+function SwitchStyleLab() {
+  const [size, setSize] = React.useState<SwitchDebugSize>('sm');
+  const [checkedSamples, setCheckedSamples] = React.useState(true);
+  const [disabledSamples, setDisabledSamples] = React.useState(false);
+  const selectedSize = switchDebugSizes.find((item) => item.value === size) ?? switchDebugSizes[0];
+
+  const copySwitchSummary = React.useCallback(async () => {
+    await copyTextToClipboard([
+      'Switch style debug',
+      `size=${size}`,
+      `checked=${checkedSamples}`,
+      `disabled=${disabledSamples}`,
+      'nativeCompact=w-[28px] h-[16px] thumb=w-[12px] h-[12px] left-[14px]',
+    ].join('\n'));
+  }, [checkedSamples, disabledSamples, size]);
+
+  return (
+    <div className="space-y-4">
+      <SectionHeader
+        icon={SlidersHorizontal}
+        title="统一 Switch 调试"
+        description="把 shad Switch 主路径、设置项密度和当前截图里的 28px compact 原生样本放在同一组状态下校对。"
+      />
+
+      <section className="rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] p-4">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">调试参数</h3>
+            <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">
+              同步切换尺寸、选中态和禁用态，观察轨道、thumb 位移、focus ring、透明度和点击目标。
+            </p>
+          </div>
+          <NotionButton variant="ghost" size="sm" onClick={copySwitchSummary} aria-label="复制 Switch 调试配置">
+            <Copy className="size-4" />
+            复制配置
+          </NotionButton>
+        </div>
+
+        <div className="mt-4 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(220px,0.5fr)]">
+          <div className="min-w-0 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] p-3">
+            <p className="mb-2 text-[11px] font-medium uppercase text-[color:var(--text-secondary)]">Size</p>
+            <div className="flex flex-wrap gap-2">
+              {switchDebugSizes.map((item) => (
+                <NotionButton
+                  key={item.value}
+                  variant={size === item.value ? 'primary' : 'ghost'}
+                  size="sm"
+                  onClick={() => setSize(item.value)}
+                >
+                  {item.label}
+                </NotionButton>
+              ))}
+            </div>
+            <p className="mt-2 text-xs leading-5 text-[color:var(--text-secondary)]">{selectedSize.detail}</p>
+          </div>
+
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
+            <label className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] px-3 py-2">
+              <span className="min-w-0 text-sm text-[color:var(--text-primary)]">Checked</span>
+              <Switch checked={checkedSamples} onCheckedChange={setCheckedSamples} size="sm" aria-label="切换 Switch 选中态" />
+            </label>
+            <label className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] px-3 py-2">
+              <span className="min-w-0 text-sm text-[color:var(--text-primary)]">Disabled</span>
+              <Switch checked={disabledSamples} onCheckedChange={setDisabledSamples} size="sm" aria-label="切换 Switch 禁用态" />
+            </label>
+          </div>
+        </div>
+      </section>
+
+      <div className="grid gap-4 xl:grid-cols-3">
+        <ButtonDebugPathCard
+          title="shad Switch / token path"
+          path="@/components/ui/shad/Switch"
+          description="主应用当前 Switch 入口，使用 Radix 状态和 shell/button token。"
+        >
+          <div className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] px-3 py-3">
+            <span className="min-w-0 text-sm text-[color:var(--text-primary)]">{size === 'sm' ? 'Small switch' : 'Default switch'}</span>
+            <Switch checked={checkedSamples} onCheckedChange={setCheckedSamples} disabled={disabledSamples} size={size} aria-label="shad Switch token sample" />
+          </div>
+          <p className="text-xs leading-5 text-[color:var(--text-secondary)]">
+            选中态走 <code>data-[state=checked]</code>，禁用态继承 Radix disabled attribute。
+          </p>
+        </ButtonDebugPathCard>
+
+        <ButtonDebugPathCard
+          title="贴近当前截图的原生 switch"
+          path="HTML button + span"
+          description="保留你贴出的 compact 形态，方便和 shad Switch 的桌面密度直接比对。"
+        >
+          <div className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] px-3 py-3">
+            <span className="min-w-0 text-sm text-[color:var(--text-primary)]">28px / 16px compact</span>
+            <CompactNativeSwitchSample checked={checkedSamples} disabled={disabledSamples} onCheckedChange={setCheckedSamples} />
+          </div>
+          <code className="text-[11px] leading-5 text-[color:var(--text-secondary)]">
+            w-[28px] h-[16px] / thumb w-[12px] h-[12px] left-[14px]
+          </code>
+        </ButtonDebugPathCard>
+
+        <ButtonDebugPathCard
+          title="状态矩阵"
+          path="checked / unchecked / disabled"
+          description="固定展示常见状态，避免只看当前交互参数时漏掉边界状态。"
+        >
+          <div className="grid gap-2">
+            {[
+              ['Checked', true, false],
+              ['Unchecked', false, false],
+              ['Disabled checked', true, true],
+              ['Disabled unchecked', false, true],
+            ].map(([label, checked, disabled]) => (
+              <div key={String(label)} className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] px-3 py-2">
+                <span className="min-w-0 text-sm text-[color:var(--text-primary)]">{label}</span>
+                <Switch checked={Boolean(checked)} disabled={Boolean(disabled)} size="sm" aria-label={`${label} Switch state sample`} />
+              </div>
+            ))}
+          </div>
+        </ButtonDebugPathCard>
+      </div>
+
+      <section className="space-y-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] p-4">
+        <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">现成库 Switch 方案</h3>
+            <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">
+              这里不再手写 switch 皮肤，而是按当前依赖和迁移成本对比可选库。现阶段最稳的是继续收敛 Radix / shadcn 主路径。
+            </p>
+          </div>
+          <Badge variant="outline" className="border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] text-[color:var(--text-secondary)]">
+            library options
+          </Badge>
+        </div>
+        <div className="grid gap-3 xl:grid-cols-2">
+          {switchLibraryOptions.map((option) => (
+            <SwitchLibraryOptionCard key={option.title} option={option} />
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] p-4">
+        <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
+          <div className="min-w-0">
+            <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">Switch primitive contract</h3>
+            <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">
+              校对时重点看尺寸、状态 token 和 thumb 位移是否能覆盖真实设置页。
+            </p>
+          </div>
+          <Badge variant="outline" className="border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] text-[color:var(--text-secondary)]">
+            switchPrimitiveContract
+          </Badge>
+        </div>
+        <div className="mt-4 grid gap-2 lg:grid-cols-2">
+          {switchDebugTokenRows.map(([label, value]) => (
+            <div
+              key={label}
+              className="min-w-0 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] px-3 py-2"
+            >
+              <p className="text-[11px] font-medium uppercase text-[color:var(--text-secondary)]">{label}</p>
+              <p className="mt-1 truncate text-xs text-[color:var(--text-primary)]">{value}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+    </div>
+  );
+}
+
 function PreviewLane({
   label,
   tone,
@@ -648,6 +1693,7 @@ function RepeatedComponentPreviews() {
           <p className="mt-2 text-xs text-[color:var(--text-secondary)]">已接 token，但不是产品主入口。</p>
         </PreviewLane>
         <PreviewLane label="旧写法样本" tone="legacy">
+          {/* eslint-disable-next-line ds-components/no-native-button -- Style lab keeps native samples visible for migration comparison. */}
           <button type="button" className="rounded-md border border-[#d8d8d8] bg-white px-3 py-1.5 text-sm text-[#333] shadow-sm">
             native button
           </button>
@@ -801,6 +1847,10 @@ export function StyleDebugPage() {
         <Tabs defaultValue="previews">
           <TabsList>
             <TabsTrigger value="previews">重复组件预览</TabsTrigger>
+            <TabsTrigger value="buttons">Button 调试</TabsTrigger>
+            <TabsTrigger value="switches">Switch 调试</TabsTrigger>
+            <TabsTrigger value="tooltips">Tooltip 调试</TabsTrigger>
+            <TabsTrigger value="toasts">Toast 调试</TabsTrigger>
             <TabsTrigger value="inventory">混用清单</TabsTrigger>
             <TabsTrigger value="components">组件列表</TabsTrigger>
             <TabsTrigger value="primitives">Primitive 样例</TabsTrigger>
@@ -809,6 +1859,22 @@ export function StyleDebugPage() {
 
           <TabsContent value="previews">
             <RepeatedComponentPreviews />
+          </TabsContent>
+
+          <TabsContent value="buttons" className="space-y-4">
+            <ButtonStyleLab />
+          </TabsContent>
+
+          <TabsContent value="switches" className="space-y-4">
+            <SwitchStyleLab />
+          </TabsContent>
+
+          <TabsContent value="tooltips" className="space-y-4">
+            <TooltipStyleLab />
+          </TabsContent>
+
+          <TabsContent value="toasts" className="space-y-4">
+            <ToastStyleLab />
           </TabsContent>
 
           <TabsContent value="inventory" className="space-y-4">

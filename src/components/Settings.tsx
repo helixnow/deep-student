@@ -28,7 +28,7 @@ import { UnifiedSidebar, UnifiedSidebarHeader, UnifiedSidebarContent, UnifiedSid
 import useTheme, { type ThemeMode, type ThemePalette } from '../hooks/useTheme';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useVendorModels } from '../hooks/useVendorModels';
-import { consumePendingSettingsTab } from '@/utils/pendingSettingsTab';
+import { consumePendingSettingsRoute, type PendingSettingsRoute } from '@/utils/pendingSettingsTab';
 import { isAndroid } from '../utils/platform';
 import { ShortcutSettings } from '../command-palette';
 import '../command-palette/styles/shortcut-settings.css';
@@ -43,6 +43,7 @@ import { ExternalSearchTab } from './settings/ExternalSearchTab';
 import { SettingsSidebar } from './settings/SettingsSidebar';
 import { type UnifiedModelInfo } from './shared/UnifiedModelSelector';
 import { useUIStore } from '@/stores/uiStore';
+import type { DashboardTab } from '../types/dataGovernance';
 import {
   UI_FONT_STORAGE_KEY,
   DEFAULT_UI_FONT,
@@ -99,6 +100,27 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
   const validPalettes: ThemePalette[] = ['default', 'purple', 'green', 'orange', 'pink', 'teal', 'muted', 'paper', 'custom'];
   if (validPalettes.includes(value as ThemePalette)) return value as ThemePalette;
   return 'default';
+};
+
+type DataGovernanceTabTarget = {
+  tab: DashboardTab;
+  requestId: number;
+};
+
+const DATA_GOVERNANCE_TABS: ReadonlySet<string> = new Set([
+  'overview',
+  'trash',
+  'backup',
+  'sync',
+  'audit',
+  'cache',
+  'debug',
+]);
+
+const normalizeDataGovernanceTab = (value: unknown): DashboardTab | null => {
+  if (typeof value !== 'string') return null;
+  const trimmed = value.trim();
+  return DATA_GOVERNANCE_TABS.has(trimmed) ? (trimmed as DashboardTab) : null;
 };
 
 
@@ -177,6 +199,37 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
   // 移动端统一顶栏配置 - 带面包屑导航
   // 获取当前标签页的显示名称（需要在 useMobileHeader 之前定义）
   const [activeTab, setActiveTab] = useState('apis');
+  const [dataGovernanceTabTarget, setDataGovernanceTabTarget] = useState<DataGovernanceTabTarget | null>(null);
+
+  const requestDataGovernanceTab = useCallback((tab: unknown) => {
+    const normalized = normalizeDataGovernanceTab(tab);
+    if (!normalized) return;
+    setDataGovernanceTabTarget((previous) => ({
+      tab: normalized,
+      requestId: (previous?.requestId ?? 0) + 1,
+    }));
+  }, []);
+
+  const applySettingsRoute = useCallback((route: PendingSettingsRoute) => {
+    const tabMapping: Record<string, string> = {
+      'api': 'apis',
+      'apis': 'apis',
+      'search': 'search',
+      'models': 'models',
+      'mcp': 'mcp',
+      'statistics': 'statistics',
+      'data': 'data-governance',
+      'data-governance': 'data-governance',
+      'params': 'params',
+      'shortcuts': 'shortcuts',
+      'about': 'about',
+    };
+    const mappedTab = tabMapping[route.tab] || route.tab;
+    setActiveTab(mappedTab);
+    if (mappedTab === 'data-governance') {
+      requestDataGovernanceTab(route.dataGovernanceTab);
+    }
+  }, [requestDataGovernanceTab]);
   
   // 标签页名称映射（用于面包屑显示）
   const getActiveTabLabel = useCallback(() => {
@@ -372,11 +425,15 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
     };
     try {
       window.addEventListener('api_configurations_changed', onChanged);
-    } catch {}
+    } catch {
+      // Best-effort listener registration only.
+    }
     return () => {
       try {
         window.removeEventListener('api_configurations_changed', onChanged);
-      } catch {}
+      } catch {
+        // Best-effort listener cleanup only.
+      }
     };
   }, [refreshApiConfigsFromBackend]);
 
@@ -422,6 +479,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
   const configLoadedRef = useRef(false);
   const [extra, setExtra] = useState<SettingsExtra>({});
   const globalLeftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);
+  const isDesktopSettingsSidebarVisible = !isSmallScreen && !globalLeftPanelCollapsed;
   const [sidebarOpen, setSidebarOpen] = useState(false);
   const [sidebarSearchQuery, setSidebarSearchQuery] = useState('');
   const [sidebarSearchFocused, setSidebarSearchFocused] = useState(false);
@@ -609,41 +667,29 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
 
   // 启动时消费 pending settings tab（防止导航事件竞态丢失）
   useEffect(() => {
-    const pending = consumePendingSettingsTab();
+    const pending = consumePendingSettingsRoute();
     if (pending) {
-      setActiveTab(pending);
+      applySettingsRoute(pending);
     }
-  }, []);
+  }, [applySettingsRoute]);
 
   // P1-09: 监听命令面板的 tab 跳转事件
   useEffect(() => {
     const handleNavigateTab = (event: Event) => {
-      const customEvent = event as CustomEvent<{ tab?: string }>;
+      const customEvent = event as CustomEvent<{ tab?: string; dataGovernanceTab?: string }>;
       const tab = customEvent.detail?.tab;
       if (tab) {
-        // 映射命令面板 tab 名称到设置页面内部 tab 名称
-        const tabMapping: Record<string, string> = {
-          'api': 'apis',
-          'apis': 'apis',
-          'search': 'search',
-          'models': 'models',
-          'mcp': 'mcp',
-          'statistics': 'statistics',
-          'data': 'data-governance',
-          'data-governance': 'data-governance',
-          'params': 'params',
-          'shortcuts': 'shortcuts',
-          'about': 'about',
-        };
-        const mappedTab = tabMapping[tab] || tab;
-        setActiveTab(mappedTab);
+        applySettingsRoute({
+          tab,
+          dataGovernanceTab: customEvent.detail?.dataGovernanceTab,
+        });
       }
     };
     window.addEventListener('SETTINGS_NAVIGATE_TAB', handleNavigateTab);
     return () => {
       window.removeEventListener('SETTINGS_NAVIGATE_TAB', handleNavigateTab);
     };
-  }, []);
+  }, [applySettingsRoute]);
 
   // 当进入 MCP 标签或配置变化时刷新缓存快照
   useEffect(() => {
@@ -889,7 +935,9 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
           vl_reranker_model_config_id: modelAssignments?.vl_reranker_model_config_id || '',
           memory_decision_model_config_id: modelAssignments?.memory_decision_model_config_id || '',
         }));
-      } catch {}
+      } catch {
+        // Ignore malformed cached assignments and keep current settings state.
+      }
     };
     window.addEventListener('model_assignments_changed', reloadAssignments);
     return () => window.removeEventListener('model_assignments_changed', reloadAssignments);
@@ -1018,32 +1066,18 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
     <div
       id="settings-main-content"
       className={cn(
-        "study-shell-pane study-shell-pane--flush-top flex-1 min-w-0 h-full flex flex-col overflow-hidden max-w-full relative",
+        "settings-main-pane study-shell-pane study-shell-pane--flush-top flex-1 min-w-0 h-full flex flex-col overflow-hidden max-w-full relative",
         sheetMode && "bg-[#FFFFFF] text-[#111111]"
       )}
+      data-sidebar-visible={!sheetMode && isDesktopSettingsSidebarVisible ? 'true' : 'false'}
       data-slot={sheetMode ? 'mobile-settings-sheet-content' : undefined}
     >
-        {!sheetMode && (
-        <div className="study-shell-toolbar study-shell-toolbar--seamless shrink-0 px-6 py-5 sm:px-8">
-          <div className="mx-auto w-full max-w-[72rem] text-left">
-            <p className="text-[11px] font-normal text-muted-foreground">
-              {t('settings:title')}
-            </p>
-            <h1 className="mt-1 text-2xl font-medium text-foreground">
-              {getActiveTabLabel()}
-            </h1>
-            <p className="mt-2 max-w-[42rem] text-sm leading-6 text-muted-foreground">
-              {activeTabDescription}
-            </p>
-          </div>
-        </div>
-        )}
         <CustomScrollArea
           className="flex-1 w-full max-w-full overflow-x-hidden"
           viewportClassName={cn(
             sheetMode
               ? "px-5 pb-[calc(1.25rem+var(--mobile-safe-area-bottom,0px))] pt-4"
-              : "px-6 py-6 sm:px-8 sm:py-7",
+              : "px-6 pb-6 pt-4 sm:px-8 sm:pb-7 sm:pt-5",
             effectiveMobilePanelMode && !sheetMode && "px-4 py-3 pb-20"
           )}
           trackOffsetTop={16}
@@ -1277,7 +1311,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
         {/* 数据治理 */}
         {activeTab === 'data-governance' && (
           <div className="space-y-6">
-            <DataGovernanceDashboard />
+            <DataGovernanceDashboard tabTarget={dataGovernanceTabTarget} />
           </div>
         )}
         {/* 应用设置 */}

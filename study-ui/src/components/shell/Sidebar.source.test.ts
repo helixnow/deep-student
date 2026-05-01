@@ -28,9 +28,37 @@ test("sidebar primary entries keep only conversation and learning-resource launc
   assert.doesNotMatch(source, /label: "自动化"/u);
 });
 
+test("new conversation launcher is an action without a selected state", () => {
+  const source = readFileSync(sidebarPath, "utf8");
+
+  assert.match(
+    source,
+    /\{ id: "new-conversation", label: "新对话", icon: <ChatCenteredText size=\{18\} \/>, active: false \}/u,
+  );
+  assert.doesNotMatch(
+    source,
+    /\{ id: "new-conversation", label: "新对话", icon: <ChatCenteredText size=\{18\} \/>, active: true \}/u,
+  );
+});
+
+test("new conversation launcher can reveal a macOS desktop shortcut on hover", () => {
+  const source = readFileSync(sidebarPath, "utf8");
+
+  assert.match(source, /showNewConversationShortcut\?: boolean;/u);
+  assert.match(source, /function NewConversationShortcutHint\(\)/u);
+  assert.match(source, />\s*⌘N\s*<\/kbd>/u);
+  assert.match(source, /showNewConversationShortcut = false/u);
+  assert.match(source, /const showShortcut = showNewConversationShortcut && item\.id === "new-conversation";/u);
+  assert.match(source, /showShortcut && "group\/new-conversation-action"/u);
+  assert.match(source, /group-hover\/new-conversation-action:opacity-100/u);
+  assert.match(source, /group-focus-visible\/new-conversation-action:opacity-100/u);
+  assert.match(source, /lg:inline-flex/u);
+  assert.match(source, /\{showShortcut \? <NewConversationShortcutHint \/> : null\}/u);
+});
+
 test("sidebar primary entries tighten desktop density without reducing the mobile touch target", () => {
   const source = readFileSync(sidebarPath, "utf8");
-  const primaryStart = source.indexOf("primaryItems.map((item) => (");
+  const primaryStart = source.indexOf("primaryItems.map((item) => {");
   const primaryEnd = source.indexOf("{threadGroups.pinned.length > 0 ?", primaryStart);
 
   assert.notEqual(primaryStart, -1);

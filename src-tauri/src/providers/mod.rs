@@ -1816,6 +1816,18 @@ mod tests {
     }
 
     #[test]
+    fn openai_adapter_parse_stream_preserves_empty_reasoning_content() {
+        let adapter = OpenAIAdapter;
+
+        let events =
+            adapter.parse_stream(r#"data: {"choices":[{"delta":{"reasoning_content":""}}]}"#);
+
+        assert!(
+            matches!(events.first(), Some(StreamEvent::ReasoningChunk(reasoning)) if reasoning.is_empty())
+        );
+    }
+
+    #[test]
     fn openai_responses_adapter_converts_messages_and_reasoning() {
         let body = json!({
             "messages": [

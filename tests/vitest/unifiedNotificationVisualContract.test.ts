@@ -1,0 +1,51 @@
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
+import { describe, expect, it } from 'vitest';
+
+describe('UnifiedNotification visual contract', () => {
+  const source = readFileSync(resolve(process.cwd(), 'src/components/UnifiedNotification.css'), 'utf-8');
+  const componentSource = readFileSync(resolve(process.cwd(), 'src/components/UnifiedNotification.tsx'), 'utf-8');
+
+  it('uses a top-center single-line Codex-like pill where the border carries status', () => {
+    expect(source).toContain('left: 50%');
+    expect(source).toContain('transform: translateX(-50%)');
+    expect(source).toContain('align-items: center');
+    expect(source).toContain('width: min(420px, calc(100vw - 24px))');
+    expect(source).toContain('max-width: min(320px, calc(100vw - 24px))');
+    expect(source).toContain('min-height: 28px');
+    expect(source).toContain('border-radius: 999px');
+    expect(source).toContain('padding: 4px 12px');
+    expect(source).toContain('white-space: nowrap');
+    expect(source).toContain('text-overflow: ellipsis');
+    expect(source).toContain('.unified-notification-text');
+    expect(source).not.toContain('min-width: min(280px, 100%)');
+    expect(source).not.toContain('width: 100%');
+    expect(source).not.toContain('.unified-notification-title');
+    expect(source).not.toContain('.unified-notification-message');
+    expect(source).toContain('.unified-notification-close');
+    expect(source).toContain('.unified-notification-close-icon');
+    expect(source).toContain('width: 18px');
+    expect(source).toContain('height: 18px');
+    expect(source).toContain('border-color: hsl(var(--success)');
+    expect(source).toContain('border-color: hsl(var(--warning)');
+    expect(source).toContain('border-color: hsl(var(--destructive)');
+    expect(source).toContain('border-color: hsl(var(--info)');
+    expect(source).toContain('.unified-notification-border-neutral');
+    expect(source).toContain('rgb(28 28 28 / 0.72)');
+    expect(source).toContain('unified-notification-action');
+    expect(source).not.toContain('.unified-notification::before');
+    expect(source).not.toContain('.unified-notification-icon');
+    expect(componentSource).not.toContain('CheckCircle');
+    expect(componentSource).not.toContain('XCircle');
+    expect(componentSource).not.toContain('AlertTriangle');
+    expect(componentSource).not.toContain('Info,');
+    expect(componentSource).not.toContain('unified-notification-icon');
+    expect(componentSource).not.toContain('unified-notification-title');
+    expect(componentSource).not.toContain('unified-notification-message');
+    expect(componentSource).toContain('unified-notification-close');
+    expect(componentSource).toContain('aria-label="关闭通知"');
+    expect(componentSource).toContain('<X className="unified-notification-close-icon"');
+    expect(componentSource).toContain('unified-notification-text');
+    expect(componentSource).toContain('unified-notification-border-neutral');
+  });
+});

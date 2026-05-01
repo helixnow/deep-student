@@ -389,12 +389,19 @@ export const DebugTab: React.FC = () => {
 
 // ==================== 主 Dashboard 组件 ====================
 
+export interface DataGovernanceTabTarget {
+  tab: DashboardTab;
+  requestId: number;
+}
+
 interface DataGovernanceDashboardProps {
   embedded?: boolean;
+  tabTarget?: DataGovernanceTabTarget | null;
 }
 
 export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = ({
   embedded = false,
+  tabTarget = null,
 }) => {
   const { t } = useTranslation(['data', 'common']);
   const { enterMaintenanceMode, exitMaintenanceMode } = useSystemStatusStore(
@@ -404,6 +411,11 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     }))
   );
   const [activeTab, setActiveTab] = useState<DashboardTab>('overview');
+
+  useEffect(() => {
+    if (!tabTarget) return;
+    setActiveTab(tabTarget.tab);
+  }, [tabTarget]);
 
   const [loadingState, setLoadingState] = useState({
     overview: 0,

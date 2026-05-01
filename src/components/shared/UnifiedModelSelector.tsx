@@ -20,6 +20,7 @@ import {
   PopoverContent,
   PopoverTrigger,
 } from '@/components/ui/shad/Popover';
+import { sortUnifiedModelInfosForSelector } from '@/utils/modelSorting';
 
 // ============================================================================
 // 类型
@@ -29,6 +30,10 @@ export interface UnifiedModelInfo {
   id: string;
   name: string;
   model?: string;
+  vendorId?: string;
+  vendorName?: string;
+  providerType?: string;
+  vendorSortOrder?: number;
   is_default?: boolean;
   isMultimodal?: boolean;
   isReasoning?: boolean;
@@ -109,6 +114,9 @@ function extractModelName(name: string, model?: string): string {
 
 const EMPTY_VALUE = '__none__';
 
+const sanitizeGroupTestId = (value: string) =>
+  value.toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^-+|-+$/g, '') || 'unknown';
+
 // ============================================================================
 // 组件
 // ============================================================================
@@ -145,27 +153,49 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
   // 搜索过滤
   const normalizedModels = useMemo(
     () =>
-      models.map((m) => ({
+      models.map((m, sourceIndex) => ({
         ...m,
-        searchable: `${m.name ?? ''} ${m.model ?? ''}`.toLowerCase(),
-        providerName: extractProviderName(m.name),
+        searchable: `${m.name ?? ''} ${m.model ?? ''} ${m.vendorName ?? ''} ${m.providerType ?? ''}`.toLowerCase(),
+        providerName: m.vendorName ?? extractProviderName(m.name),
         modelName: extractModelName(m.name, m.model),
+        sourceIndex,
       })),
     [models]
   );
 
   const filteredModels = useMemo(() => {
     const keyword = searchTerm.trim().toLowerCase();
-    let result = keyword 
+    const result = keyword
       ? normalizedModels.filter((m) => m.searchable.includes(keyword))
       : normalizedModels;
-    // 收藏的模型优先显示
-    return [...result].sort((a, b) => {
-      if (a.isFavorite && !b.isFavorite) return -1;
-      if (!a.isFavorite && b.isFavorite) return 1;
-      return 0;
-    });
+    return sortUnifiedModelInfosForSelector(result);
   }, [normalizedModels, searchTerm]);
+
+  type NormalizedModelOption = (typeof normalizedModels)[number];
+  const groupedFilteredModels = useMemo(() => {
+    const groups: Array<{ key: string; name: string; models: NormalizedModelOption[] }> = [];
+    const groupMap = new Map<string, NormalizedModelOption[]>();
+
+    for (const model of filteredModels) {
+      const groupKey =
+        model.vendorId ||
+        model.vendorName ||
+        model.providerName ||
+        model.providerType ||
+        '__unknown__';
+      if (!groupMap.has(groupKey)) {
+        groupMap.set(groupKey, []);
+        groups.push({
+          key: groupKey,
+          name: model.vendorName || model.providerName || model.providerType || t('chat_host:model_panel.unknown_vendor', 'Unknown vendor'),
+          models: groupMap.get(groupKey)!,
+        });
+      }
+      groupMap.get(groupKey)!.push(model);
+    }
+
+    return groups;
+  }, [filteredModels, t]);
 
   // 选中模型
   const handleSelectModel = useCallback(
@@ -280,7 +310,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
     // full 模式显示更详细的信息
     if (variant === 'full') {
       const modelName = extractModelName(selectedModel.name, selectedModel.model);
-      const providerName = extractProviderName(selectedModel.name);
+      const providerName = selectedModel.vendorName ?? extractProviderName(selectedModel.name);
       return (
         <span className="flex items-center gap-2">
            <ProviderIcon modelId={selectedModel.model || selectedModel.name} size={14} className="opacity-70" showTooltip={false} />
@@ -372,7 +402,26 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
 
              {/* 模型选项 */}
              {hasModels ? (
-               filteredModels.map(renderModelOption)
+               groupedFilteredModels.map((group) => (
+                 <div
+                   key={group.key}
+                   data-testid={`model-selector-vendor-group-${sanitizeGroupTestId(group.key)}`}
+                   className="space-y-0.5 border-t border-border/30 pt-1.5 first:border-t-0 first:pt-0"
+                 >
+                   <div
+                     data-testid="model-selector-vendor-group-header"
+                     className="sticky top-0 z-[1] mx-0.5 mb-1 flex items-center justify-between rounded-md bg-popover/95 px-2 py-1 text-[10px] font-semibold text-muted-foreground shadow-[0_1px_0_hsl(var(--border)/0.35)] backdrop-blur-sm"
+                   >
+                     <span className="min-w-0 truncate">{group.name}</span>
+                     <span className="ml-2 inline-flex h-4 min-w-4 items-center justify-center rounded-full bg-muted px-1.5 text-[10px] text-muted-foreground">
+                       {group.models.length}
+                     </span>
+                   </div>
+                   <div className="space-y-0.5 pl-1">
+                     {group.models.map(renderModelOption)}
+                   </div>
+                 </div>
+               ))
              ) : (
                <div className="px-2 py-8 text-xs text-muted-foreground text-center flex flex-col items-center gap-2">
                  <Box className="h-8 w-8 text-muted-foreground/20" />

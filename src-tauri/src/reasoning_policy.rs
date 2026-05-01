@@ -224,6 +224,40 @@ pub fn requires_reasoning_passback(config: &ApiConfig) -> bool {
     )
 }
 
+fn is_official_deepseek_v4_family(config: &ApiConfig) -> bool {
+    let model = config.model.to_lowercase();
+    let provider = config
+        .provider_type
+        .as_deref()
+        .map(|s| s.to_lowercase())
+        .unwrap_or_default();
+    let scope = config
+        .provider_scope
+        .as_deref()
+        .map(|s| s.to_lowercase())
+        .unwrap_or_default();
+    let base_url = config.base_url.to_lowercase();
+
+    let is_deepseek_host =
+        provider == "deepseek" || scope == "deepseek" || base_url.contains("api.deepseek.com");
+    let is_v4_family = model.contains("deepseek-v4")
+        || matches!(model.as_str(), "deepseek-chat" | "deepseek-reasoner");
+
+    is_deepseek_host && is_v4_family
+}
+
+/// 普通历史 assistant 消息是否应继续回传思维链
+///
+/// DeepSeek 官方 Thinking Mode 文档要求区分两类场景：
+/// - 同一个用户问题里的 tool loop：必须回传 reasoning_content
+/// - 进入下一次用户提问时：应删除上一轮普通 assistant 的 reasoning_content
+///
+/// 因此，DeepSeek 官方 V4 / 兼容别名的普通历史 assistant 消息不应继续携带
+/// reasoning_content；只有工具调用链路中的 assistant tool_calls 消息仍需回传。
+pub fn should_passback_plain_assistant_reasoning(config: &ApiConfig) -> bool {
+    requires_reasoning_passback(config) && !is_official_deepseek_v4_family(config)
+}
+
 /// 是否使用 reasoning_details 格式
 ///
 /// ## 用途
@@ -238,13 +272,15 @@ pub fn uses_reasoning_details_format(config: &ApiConfig) -> bool {
 /// 新问题是否应清理历史思维链
 ///
 /// ## 用途
-/// 某些模型要求在新问题开始时清理之前的思维链历史，避免污染。
+/// 某些模型要求在新问题开始时清理之前的思维链历史。
+/// DeepSeek 官方 V4 / 兼容别名是已确认需要清理的场景：
+/// 同一问题内工具调用要回传 reasoning_content，但进入下一个用户问题时要删除。
 ///
 /// ## 返回
-/// - `true`: 应该清理（大多数推理模型）
-/// - `false`: 不需要清理（普通模型）
+/// - `true`: 应该清理
+/// - `false`: 不需要清理或当前无官方要求
 pub fn should_clear_reasoning_on_new_question(config: &ApiConfig) -> bool {
-    requires_reasoning_passback(config)
+    is_official_deepseek_v4_family(config)
 }
 
 /// 是否需要回传 thoughtSignature（Gemini 3 工具调用专用）
@@ -344,6 +380,8 @@ mod tests {
         );
         assert!(requires_reasoning_passback(&config));
         assert!(!uses_reasoning_details_format(&config));
+        assert!(!should_passback_plain_assistant_reasoning(&config));
+        assert!(should_clear_reasoning_on_new_question(&config));
     }
 
     #[test]
@@ -375,6 +413,25 @@ mod tests {
             get_passback_policy(&config),
             ReasoningPassbackPolicy::ReasoningDetails
         );
+    }
+
+    #[test]
+    fn test_deepseek_alias_new_turn_clears_plain_reasoning_history() {
+        let config = make_config(Some("deepseek"), "deepseek-reasoner", true);
+        assert_eq!(
+            get_passback_policy(&config),
+            ReasoningPassbackPolicy::DeepSeekStyle
+        );
+        assert!(!should_passback_plain_assistant_reasoning(&config));
+        assert!(should_clear_reasoning_on_new_question(&config));
+    }
+
+    #[test]
+    fn test_non_deepseek_plain_reasoning_history_still_passes_back_when_required() {
+        let config = make_config(Some("moonshot"), "kimi-k2-thinking", true);
+        assert!(requires_reasoning_passback(&config));
+        assert!(should_passback_plain_assistant_reasoning(&config));
+        assert!(!should_clear_reasoning_on_new_question(&config));
     }
 
     #[test]
