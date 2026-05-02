@@ -8,7 +8,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
-import { X, Star, Pin, ChevronDown, ChevronRight } from 'lucide-react';
+import { X, Star, Pin, ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -16,7 +16,6 @@ import { Input } from '@/components/ui/shad/Input';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Badge } from '@/components/ui/shad/Badge';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
-import DsAnalysisIconMuted from '@/components/icons/DsAnalysisIconMuted';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import type { ChatStore } from '../../core/types';
@@ -56,13 +55,14 @@ interface VendorConfigSlim {
 interface ModelPanelProps {
   store: StoreApi<ChatStore>;
   onClose: () => void;
+  closeOnSelect?: boolean;
 }
 
 // ============================================================================
 // 组件
 // ============================================================================
 
-export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose }) => {
+export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnSelect = false }) => {
   const { t } = useTranslation(['chat_host', 'common']);
   const mobileLayout = useMobileLayoutSafe();
   const isMobile = mobileLayout?.isMobile ?? false;
@@ -242,10 +242,25 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose }) => {
 
   // 选择模型
   const handleSelectModel = useCallback(
-    (modelId: string | null) => {
-      store.getState().setChatParams({ model2OverrideId: modelId });
+    (model: ModelConfig | null) => {
+      const state = store.getState();
+      if (!model) {
+        const baseModel = models.find((candidate) => candidate.id === state.chatParams.modelId);
+        store.getState().setChatParams({
+          model2OverrideId: null,
+          modelDisplayName: baseModel?.model || baseModel?.name || state.chatParams.modelId || '',
+        });
+        if (closeOnSelect) onClose();
+        return;
+      }
+
+      store.getState().setChatParams({
+        model2OverrideId: model.id,
+        modelDisplayName: model.model || model.name || model.id,
+      });
+      if (closeOnSelect) onClose();
     },
-    [store]
+    [closeOnSelect, models, onClose, store]
   );
 
   // 设为默认模型
@@ -360,7 +375,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose }) => {
         key={option.id}
         variant="ghost"
         size="sm"
-        onClick={() => handleSelectModel(option.id)}
+        onClick={() => handleSelectModel(option)}
         className={cn(
           'w-full !justify-start gap-3 !rounded-xl border !px-3 !py-2 text-left',
           isSelected
@@ -404,7 +419,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose }) => {
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2 text-sm text-foreground">
-            <DsAnalysisIconMuted className="h-4 w-4 shrink-0" />
+            <Sparkles className="h-4 w-4 shrink-0" />
             <span>{t('chat_host:model_panel.title')}</span>
           </div>
           <span className="text-xs text-muted-foreground">{subtitle}</span>

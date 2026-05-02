@@ -1,5 +1,6 @@
 @import './thinking-scrollbar.css';
 @import './notion-animations.css';
+@import './transitions-dev.css';
 
 @tailwind base;
 @tailwind components;

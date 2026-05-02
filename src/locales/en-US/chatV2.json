@@ -72,7 +72,8 @@
       "suggestion4": "Explain the difference between 'entropy' in information theory and thermodynamics with simple examples.",
       "suggestion5": "Generate a set of Anki flashcards from my uploaded class notes for review."
     },
-    "waiting": "Thinking..."
+    "waiting": "Thinking...",
+    "modelSwitchNotice": "Model changed from {{from}} to {{to}}"
   },
   "messageItem": {
     "actions": {
@@ -167,7 +168,12 @@
     "thinking": "Reasoning mode",
     "thinkingDepthMenu": "Choose reasoning depth",
     "thinkingDepthTitle": "Reasoning depth",
+    "thinkingOn": "On",
     "thinkingOff": "Off",
+    "thinkingUnsupported": "Reasoning unsupported",
+    "thinkingUnsupportedDescription": "This model does not support reasoning",
+    "runtimeModelTitle": "Model",
+    "chooseRuntimeModel": "Choose model",
     "thinkingDepthExpensive": "Slower",
     "ankiTools": "Anki cards",
     "menuGroup": {
@@ -709,20 +715,7 @@
     "expandSidebar": "Expand sidebar",
     "searchPlaceholder": "Search sessions...",
     "switchingSession": "Switching session...",
-    "trash": "Trash",
-    "trashEmpty": "Trash is empty",
-    "trashTitle": "Deleted Sessions",
-    "emptyTrash": "Empty Trash",
-    "restoreSession": "Restore",
-    "permanentDelete": "Delete Permanently",
-    "backToSessions": "Back to Sessions",
-    "emptyTrashConfirmTitle": "Confirm Empty Trash",
-    "emptyTrashConfirmDesc": "This will permanently delete {{count}} session(s) in the trash. This action cannot be undone. Are you sure?",
-    "emptyTrashConfirm": "Empty Trash",
-    "loadTrashFailed": "Failed to load trash",
-    "restoreSessionFailed": "Failed to restore session",
     "deleteSessionFailed": "Failed to delete session",
-    "emptyTrashFailed": "Failed to empty trash",
     "analysis_session_title": "Question Analysis",
     "selectSessionFirst": "Please select a session first",
     "loading": "Loading...",

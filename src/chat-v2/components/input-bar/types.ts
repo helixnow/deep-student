@@ -211,6 +211,10 @@ export interface InputBarUIProps {
   renderMcpPanel?: () => React.ReactNode;
   /** 渲染技能选择面板 */
   renderSkillPanel?: () => React.ReactNode;
+  /** 打开模型面板（默认工具栏入口，可用于多模型/对比选择） */
+  onOpenModelPanel?: () => void;
+  /** 打开当前对话模型面板（runtime 入口，单模型） */
+  onOpenRuntimeModelPanel?: () => void;
 
   // ========== MCP 选中状态 ==========
 
@@ -235,13 +239,18 @@ export interface InputBarUIProps {
   /** 模型 @mention 自动完成操作 */
   modelMentionActions?: ModelMentionActions;
 
+  /** 当前 runtime 菜单中展示的生效模型摘要 */
+  runtimeModelLabel?: string;
+
   // ========== 推理模式开关 ==========
 
   /** 是否启用推理/思维链模式 */
   enableThinking?: boolean;
   /** 当前推理状态展示文案，例如“推理: max”或“推理: 关闭” */
   thinkingStateLabel?: string;
-  /** 当前模型支持的运行时推理深度选项；为空时按钮保持 toggle-only */
+  /** 当前生效模型是否不支持推理模式 */
+  thinkingUnsupported?: boolean;
+  /** 当前模型支持的运行时推理深度选项；为空且没有 runtime 模型菜单时按钮保持 toggle-only */
   thinkingDepthOptions?: DeepSeekReasoningOption[];
   /** 当前归一化后的运行时推理深度 */
   thinkingDepthValue?: DeepSeekReasoningOptionValue;

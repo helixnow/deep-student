@@ -27,6 +27,18 @@ describe('MarkdownRenderer bold compatibility', () => {
     expect(strong.tagName.toLowerCase()).toBe('strong');
   });
 
+  it('does not show a streaming cursor before visible content exists', () => {
+    const { container } = render(<StreamingMarkdownRenderer content="" isStreaming />);
+
+    expect(container.querySelector('.streaming-cursor')).toBeNull();
+  });
+
+  it('shows the streaming cursor only after visible content exists', () => {
+    const { container } = render(<StreamingMarkdownRenderer content="正在输出" isStreaming />);
+
+    expect(container.querySelector('.streaming-cursor')).toBeInTheDocument();
+  });
+
   it('renders strong in table first cell with CJK text and citation-like suffix', () => {
     const md = `| 事件 | 简述 | 适用话题 | 论证角度 |
 |------|------|----------|----------|

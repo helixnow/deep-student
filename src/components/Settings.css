@@ -2,22 +2,10 @@
 .settings {
   width: 100%;
   height: 100%;
-  display: flex;
-  flex-direction: row; /* 改为横向布局：侧边栏 + 内容区 */
   min-height: 0;
   overflow: hidden;
-  /* Let rounded content corners reveal the same surface as the settings sidebar. */
-  background: var(--shell-navigation-surface);
-  /* 防止水平溢出 */
   max-width: 100vw;
   box-sizing: border-box;
-}
-
-.settings-main-pane[data-sidebar-visible="true"] {
-  border-left: 1px solid var(--shell-navigation-border);
-  border-top-left-radius: 0;
-  border-bottom-left-radius: var(--shell-workspace-edge-radius);
-  overflow: hidden;
 }
 
 /* 移动端设置页面溢出控制 */

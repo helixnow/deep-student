@@ -30,17 +30,29 @@ describe('modern sidebar icon contract', () => {
     expect(conversationSectionAction).not.toContain('<Folder className="size-[16px]" strokeWidth={2} />');
   });
 
-  it('uses CommonTooltip for recent-session archive quick actions', () => {
+  it('uses CommonTooltip and icon swap for recent-session archive quick actions', () => {
     const recentSessionRow = sidebarSource.match(
       /const renderRecentSessionRow = useCallback\([\s\S]*?<AppMenuContent align="end" width=\{180\}>/
     )?.[0] ?? '';
 
-    expect(recentSessionRow).toContain('<CommonTooltip content="确认归档会话" position="right">');
-    expect(recentSessionRow).toContain('<CommonTooltip content="归档会话" position="right">');
-    expect(recentSessionRow).toContain('aria-label="确认归档会话"');
-    expect(recentSessionRow).toContain('aria-label="归档会话"');
+    expect(recentSessionRow).toContain("<CommonTooltip content={isConfirmingArchive ? '确认归档会话' : '归档会话'} position=\"right\">");
+    expect(recentSessionRow).toContain("aria-label={isConfirmingArchive ? '确认归档会话' : '归档会话'}");
+    expect(recentSessionRow).toContain('className="t-icon-swap h-3.5 w-3.5"');
+    expect(recentSessionRow).toContain("data-state={isConfirmingArchive ? 'b' : 'a'}");
+    expect(recentSessionRow).toContain('<Archive className="h-3.5 w-3.5" />');
+    expect(recentSessionRow).toContain('<Check className="h-3.5 w-3.5" />');
     expect(recentSessionRow).not.toContain('title="确认归档会话"');
     expect(recentSessionRow).not.toContain('title="归档会话"');
+  });
+
+  it('keeps the transitions-dev icon swap CSS hook installed globally', () => {
+    const transitionSource = readFileSync(resolve(process.cwd(), 'src/styles/transitions-dev.css'), 'utf-8');
+
+    expect(transitionSource).toContain('--icon-swap-dur: 200ms;');
+    expect(transitionSource).toContain('.t-icon-swap .t-icon');
+    expect(transitionSource).toContain('.t-icon-swap[data-state="a"] .t-icon[data-icon="a"]');
+    expect(transitionSource).toContain('.t-icon-swap[data-state="b"] .t-icon[data-icon="a"]');
+    expect(transitionSource).toContain('@media (prefers-reduced-motion: reduce)');
   });
 
   it('keeps section disclosure arrows after the label and hidden until header hover or focus', () => {

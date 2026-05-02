@@ -23,13 +23,27 @@ vi.mock('@/components/layout/MobileLayoutContext', () => ({
   }),
 }));
 
-function renderInputBar(attachments: AttachmentMeta[], onRemoveAttachment = vi.fn()) {
+function renderInputBar({
+  attachments,
+  inputValue = '',
+  canSend = false,
+  canAbort = false,
+  isStreaming = false,
+  onRemoveAttachment = vi.fn(),
+}: {
+  attachments: AttachmentMeta[];
+  inputValue?: string;
+  canSend?: boolean;
+  canAbort?: boolean;
+  isStreaming?: boolean;
+  onRemoveAttachment?: ReturnType<typeof vi.fn>;
+}) {
   render(
     <InputBarUI
-      inputValue=""
-      canSend={false}
-      canAbort={false}
-      isStreaming={false}
+      inputValue={inputValue}
+      canSend={canSend}
+      canAbort={canAbort}
+      isStreaming={isStreaming}
       attachments={attachments}
       panelStates={createDefaultPanelStates()}
       onInputChange={vi.fn()}
@@ -47,7 +61,7 @@ function renderInputBar(attachments: AttachmentMeta[], onRemoveAttachment = vi.f
 
 describe('InputBarUI attachment preview chips', () => {
   it('opens a compact attachment launcher from the plus button', () => {
-    renderInputBar([]);
+    renderInputBar({ attachments: [] });
 
     fireEvent.click(screen.getByTestId('btn-toggle-attachments'));
 
@@ -75,7 +89,7 @@ describe('InputBarUI attachment preview chips', () => {
       },
     ];
 
-    renderInputBar(attachments);
+    renderInputBar({ attachments });
 
     const previewList = screen.getByRole('list', { name: '待发送附件' });
     expect(within(previewList).getByRole('listitem', { name: '1AI_图像 (1).psd' })).toBeInTheDocument();
@@ -96,7 +110,7 @@ describe('InputBarUI attachment preview chips', () => {
       },
     ];
 
-    renderInputBar(attachments, onRemoveAttachment);
+    renderInputBar({ attachments, onRemoveAttachment });
 
     fireEvent.click(screen.getByRole('button', { name: '移除附件 族谱纵向图谱.html' }));
 
@@ -115,7 +129,7 @@ describe('InputBarUI attachment preview chips', () => {
       },
     ];
 
-    renderInputBar(attachments);
+    renderInputBar({ attachments });
 
     expect(screen.getByTestId('attachment-chip-icon-att_psd')).toHaveClass('h-5', 'w-5');
     expect(screen.getByTitle('1AI_图像 (1).psd')).not.toHaveClass('pr-8');
@@ -141,7 +155,7 @@ describe('InputBarUI attachment preview chips', () => {
       },
     ];
 
-    renderInputBar(attachments);
+    renderInputBar({ attachments });
 
     const iconHost = screen.getByTestId('attachment-chip-icon-att_ready');
     expect(iconHost.querySelector('.text-emerald-500')).not.toBeInTheDocument();
@@ -159,11 +173,69 @@ describe('InputBarUI attachment preview chips', () => {
       },
     ];
 
-    renderInputBar(attachments);
+    renderInputBar({ attachments });
 
     const filename = screen.getByText('app-icon.png');
     expect(filename).toHaveClass('whitespace-nowrap');
     expect(filename).not.toHaveClass('truncate');
     expect(screen.getByTitle('app-icon.png')).not.toHaveClass('max-w-[220px]');
+  });
+
+  it('keeps the enabled send and streaming stop controls pure black', () => {
+    const { rerender } = render(
+      <InputBarUI
+        inputValue="开始学习"
+        canSend
+        canAbort={false}
+        isStreaming={false}
+        attachments={[]}
+        panelStates={createDefaultPanelStates()}
+        onInputChange={vi.fn()}
+        onSend={vi.fn()}
+        onAbort={vi.fn()}
+        onAddAttachment={vi.fn()}
+        onUpdateAttachment={vi.fn()}
+        onRemoveAttachment={vi.fn()}
+        onClearAttachments={vi.fn()}
+        onSetPanelState={vi.fn()}
+        placeholder="输入消息"
+      />
+    );
+
+    expect(screen.getByTestId('btn-send')).toHaveClass(
+      '!border-black',
+      '!bg-black',
+      'hover:!bg-black',
+      'active:!bg-black',
+      '!text-white'
+    );
+
+    rerender(
+      <InputBarUI
+        inputValue=""
+        canSend={false}
+        canAbort
+        isStreaming
+        attachments={[]}
+        panelStates={createDefaultPanelStates()}
+        onInputChange={vi.fn()}
+        onSend={vi.fn()}
+        onAbort={vi.fn()}
+        onAddAttachment={vi.fn()}
+        onUpdateAttachment={vi.fn()}
+        onRemoveAttachment={vi.fn()}
+        onClearAttachments={vi.fn()}
+        onSetPanelState={vi.fn()}
+        placeholder="输入消息"
+      />
+    );
+
+    expect(screen.getByTestId('btn-stop')).toHaveClass(
+      '!border-black',
+      '!bg-black',
+      'hover:!bg-black',
+      'active:!bg-black',
+      '!text-white'
+    );
   });
 });

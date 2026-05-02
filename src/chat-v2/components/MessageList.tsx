@@ -14,12 +14,14 @@
 import React, { useRef, useEffect, useCallback, memo, useMemo, useState } from 'react';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useTranslation } from 'react-i18next';
-import type { StoreApi } from 'zustand';
+import { useStore, type StoreApi } from 'zustand';
+import { useShallow } from 'zustand/react/shallow';
 import { cn } from '@/utils/cn';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { MessageItem } from './MessageItem';
 import { useMessageOrder, useSessionStatus, useIsDataLoaded } from '../hooks/useChatStore';
 import type { ChatStore } from '../core/types';
+import type { ModelInfo } from '../utils/parseModelMentions';
 import { sessionSwitchPerf } from '../debug/sessionSwitchPerf';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 
@@ -45,6 +47,8 @@ const VIRTUALIZATION_THRESHOLD = 80;
 export interface MessageListProps {
   /** Store 实例 */
   store: StoreApi<ChatStore>;
+  /** 当前可用模型，用于把配置 ID 映射到实际模型标识 */
+  availableModels?: ModelInfo[];
   /** 自定义类名 */
   className?: string;
   /** 空态中显示的当前分组名；未分组时不显示 */
@@ -56,6 +60,153 @@ export interface MessageListProps {
   /** 🆕 强制显示空态（用于空态预览） */
   forceEmptyPreview?: boolean;
 }
+
+// ============================================================================
+// 模型切换提示（消息流插入行）
+// ============================================================================
+
+interface ModelSwitchSnapshot {
+  currentModelId?: string;
+  currentModelDisplayName?: string;
+  currentModel2OverrideId?: string | null;
+  lastAssistantModelId?: string;
+  lastAssistantModelDisplayName?: string;
+  lastAssistantChatModelId?: string;
+  lastAssistantChatModelDisplayName?: string;
+  lastAssistantModel2OverrideId?: string | null;
+  lastMessageId?: string;
+  lastAssistantMessageId?: string;
+  lastAssistantIndex?: number;
+}
+
+interface ResolvedModelReference {
+  identity: string;
+  label: string;
+}
+
+interface ModelSwitchNoticeEntry {
+  id: string;
+  anchorMessageId: string;
+  from: ResolvedModelReference;
+  to: ResolvedModelReference;
+}
+
+type MessageListRenderRow =
+  | {
+      kind: 'message';
+      key: string;
+      messageId: string;
+      messageIndex: number;
+    }
+  | {
+      kind: 'notice';
+      key: string;
+      text: string;
+    };
+
+function compactModelCandidate(value: unknown): string | undefined {
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : undefined;
+}
+
+function normalizeModelIdentity(value: string): string {
+  return value.trim().toLowerCase();
+}
+
+function collectModelIdentities(model: ModelInfo): string[] {
+  return [model.id, model.name, ...(model.provider ? [`${model.provider}/${model.name}`] : [])].filter(
+    (value): value is string => typeof value === 'string' && value.trim().length > 0
+  );
+}
+
+function resolveModelFromCandidates(
+  availableModels: ModelInfo[] | undefined,
+  candidates: Array<string | undefined>
+): ResolvedModelReference | null {
+  const resolvedCandidates = candidates
+    .map(compactModelCandidate)
+    .filter((value): value is string => !!value);
+
+  if (resolvedCandidates.length === 0) return null;
+
+  // label：严格使用输入快照里的“首选字符串”，以匹配测试/用户可见文案
+  const preferredCandidate = resolvedCandidates[0];
+
+  // identity：尽量归一到 registry 的 model.id（便于比较去重），失败则回退到 preferredLabel
+  const normalizedCandidates = new Set(resolvedCandidates.map(normalizeModelIdentity));
+  const matchedModel = availableModels?.find((model) => {
+    const identities = collectModelIdentities(model);
+    const aliasMatches = Array.isArray(model.aliases)
+      ? model.aliases.some((alias) => normalizedCandidates.has(normalizeModelIdentity(alias)))
+      : false;
+    return (
+      identities.some((identity) => normalizedCandidates.has(normalizeModelIdentity(identity))) || aliasMatches
+    );
+  });
+
+  const identity = matchedModel?.id ?? preferredCandidate;
+
+  // 展示优先级：registry.model（如 "qwen-max"）> 快照字符串（如 cfg-new / 手动 displayName）
+  const registryModel = compactModelCandidate(matchedModel?.model);
+  const label = registryModel ?? preferredCandidate;
+
+  return { identity, label };
+}
+
+function resolveCurrentModelReference(
+  snapshot: ModelSwitchSnapshot,
+  availableModels: ModelInfo[] | undefined
+): ResolvedModelReference | null {
+  return resolveModelFromCandidates(availableModels, [snapshot.currentModel2OverrideId ?? undefined, snapshot.currentModelId, snapshot.currentModelDisplayName]);
+}
+
+function resolveAssistantModelSwitchNotice(
+  snapshot: ModelSwitchSnapshot,
+  availableModels: ModelInfo[] | undefined
+): Omit<ModelSwitchNoticeEntry, 'id'> | null {
+  if (!snapshot.lastAssistantMessageId) return null;
+
+  const current = resolveCurrentModelReference(snapshot, availableModels);
+  if (!current) return null;
+
+  const assistant = resolveModelFromCandidates(availableModels, [
+    snapshot.lastAssistantModel2OverrideId ?? undefined,
+    snapshot.lastAssistantChatModelId,
+    snapshot.lastAssistantChatModelDisplayName,
+    snapshot.lastAssistantModelId,
+    snapshot.lastAssistantModelDisplayName,
+  ]);
+
+  if (!assistant) return null;
+  if (normalizeModelIdentity(assistant.identity) === normalizeModelIdentity(current.identity)) return null;
+
+  return {
+    anchorMessageId: snapshot.lastAssistantMessageId,
+    from: assistant,
+    to: current,
+  };
+}
+
+function isSameModelReference(a: ResolvedModelReference | null | undefined, b: ResolvedModelReference | null | undefined) {
+  if (!a || !b) return false;
+  return normalizeModelIdentity(a.identity) === normalizeModelIdentity(b.identity);
+}
+
+function formatModelSwitchNotice(from: ResolvedModelReference, to: ResolvedModelReference, t: (key: string, options?: any) => string) {
+  return t('messageList.modelSwitchNotice', {
+    from: from.label,
+    to: to.label,
+    defaultValue: `模型已从 ${from.label} 更改为${to.label}`,
+  });
+}
+
+const ModelSwitchNotice: React.FC<{ text: string }> = ({ text }) => (
+  <div
+    data-testid="model-switch-notice"
+    className="px-4 py-2 text-center text-xs text-muted-foreground md:px-8"
+  >
+    {text}
+  </div>
+);
 
 // ============================================================================
 // 组件实现
@@ -71,6 +222,7 @@ export interface MessageListProps {
  */
 const MessageListInner: React.FC<MessageListProps> = ({
   store,
+  availableModels,
   className,
   emptyStateGroupName = null,
   estimatedItemSize = DEFAULT_ESTIMATED_ITEM_SIZE,
@@ -168,6 +320,174 @@ const MessageListInner: React.FC<MessageListProps> = ({
   // 超长会话启用虚拟滚动，短会话保持直接渲染以降低复杂度
   const useDirectRender = messageOrder.length <= VIRTUALIZATION_THRESHOLD;
 
+  // ========== 模型切换提示（插入在消息流中） ==========
+  const previousCurrentModelRef = useRef<ResolvedModelReference | null>(null);
+  const [runtimeModelSwitchNotices, setRuntimeModelSwitchNotices] =
+    useState<ModelSwitchNoticeEntry[]>([]);
+  const [persistedAssistantModelSwitchNotices, setPersistedAssistantModelSwitchNotices] =
+    useState<ModelSwitchNoticeEntry[]>([]);
+
+  const modelSwitchSnapshot = useStore(
+    store,
+    useShallow((s) => {
+      const lastMessageId = s.messageOrder[s.messageOrder.length - 1];
+
+      let lastAssistantMessage: ReturnType<ChatStore['messageMap']['get']> | undefined;
+      let lastAssistantMessageId: string | undefined;
+      let lastAssistantIndex: number | undefined;
+
+      for (let index = s.messageOrder.length - 1; index >= 0; index -= 1) {
+        const message = s.messageMap.get(s.messageOrder[index]);
+        if (message?.role === 'assistant') {
+          lastAssistantMessage = message;
+          lastAssistantMessageId = s.messageOrder[index];
+          lastAssistantIndex = index;
+          break;
+        }
+      }
+
+      const meta = lastAssistantMessage?._meta;
+      const metaChatParams = meta?.chatParams;
+
+      // 多变体/缺失 _meta 的兜底：从 variants 推导最后助手模型
+      const activeVariant = lastAssistantMessage?.variants?.find(
+        (variant) => variant.id === lastAssistantMessage?.activeVariantId
+      );
+      const firstVariant = lastAssistantMessage?.variants?.[0];
+      const derivedVariantModelId = activeVariant?.modelId ?? firstVariant?.modelId;
+
+      return {
+        currentModelId: s.chatParams.modelId,
+        currentModelDisplayName: s.chatParams.modelDisplayName,
+        currentModel2OverrideId: s.chatParams.model2OverrideId ?? null,
+        lastAssistantModelId: meta?.modelId ?? derivedVariantModelId,
+        lastAssistantModelDisplayName: meta?.modelDisplayName ?? derivedVariantModelId,
+        lastAssistantChatModelId: metaChatParams?.modelId,
+        lastAssistantChatModelDisplayName: metaChatParams?.modelDisplayName,
+        lastAssistantModel2OverrideId: metaChatParams?.model2OverrideId ?? null,
+        lastMessageId,
+        lastAssistantMessageId,
+        lastAssistantIndex,
+      } satisfies ModelSwitchSnapshot;
+    })
+  );
+
+  const currentModelReference = useMemo(
+    () => resolveCurrentModelReference(modelSwitchSnapshot, availableModels),
+    [availableModels, modelSwitchSnapshot]
+  );
+
+  const assistantModelSwitchNotice = useMemo(
+    () => resolveAssistantModelSwitchNotice(modelSwitchSnapshot, availableModels),
+    [availableModels, modelSwitchSnapshot]
+  );
+
+  // 将“会话模型与最后助手消息模型不一致”的提示固化到 state 中，避免发送新消息后消失。
+  // （仍保留 assistantModelSwitchNotice 的即时渲染，确保首帧可见）
+  useEffect(() => {
+    if (!assistantModelSwitchNotice) return;
+    setPersistedAssistantModelSwitchNotices((previous) => {
+      const alreadyExists = previous.some((entry) =>
+        entry.anchorMessageId === assistantModelSwitchNotice.anchorMessageId &&
+        isSameModelReference(entry.from, assistantModelSwitchNotice.from) &&
+        isSameModelReference(entry.to, assistantModelSwitchNotice.to)
+      );
+      if (alreadyExists) return previous;
+      return [
+        ...previous,
+        {
+          ...assistantModelSwitchNotice,
+          id: `assistant-model-switch-${previous.length}-${assistantModelSwitchNotice.anchorMessageId}`,
+        },
+      ];
+    });
+  }, [assistantModelSwitchNotice]);
+
+  // 运行时切换（用户在面板中切换模型）——固定锚点到切换发生时的“当前最后一条消息”
+  useEffect(() => {
+    if (!currentModelReference) return;
+
+    const previous = previousCurrentModelRef.current;
+    previousCurrentModelRef.current = currentModelReference;
+
+    if (!previous || isSameModelReference(previous, currentModelReference)) return;
+    if (messageOrder.length === 0) return;
+
+    const anchorMessageId = modelSwitchSnapshot.lastMessageId ?? messageOrder[messageOrder.length - 1];
+    if (!anchorMessageId) return;
+
+    setRuntimeModelSwitchNotices((previousNotices) => [
+      ...previousNotices,
+      {
+        id: `runtime-model-switch-${previousNotices.length}-${anchorMessageId}`,
+        anchorMessageId,
+        from: previous,
+        to: currentModelReference,
+      },
+    ]);
+  }, [currentModelReference, messageOrder, modelSwitchSnapshot.lastMessageId]);
+
+  const modelSwitchNoticeEntries = useMemo(() => {
+    const rawEntries: ModelSwitchNoticeEntry[] = [
+      ...persistedAssistantModelSwitchNotices,
+      ...runtimeModelSwitchNotices,
+    ];
+
+    if (assistantModelSwitchNotice) {
+      rawEntries.push({
+        ...assistantModelSwitchNotice,
+        id: `assistant-model-switch-live-${assistantModelSwitchNotice.anchorMessageId}`,
+      });
+    }
+
+    // 去重：同一个锚点 + 同一对(from→to) 只保留一条（避免 assistant mismatch + runtime switch 重复）。
+    const seen = new Set<string>();
+    const deduped: ModelSwitchNoticeEntry[] = [];
+    rawEntries.forEach((entry) => {
+      const key = `${entry.anchorMessageId}|${normalizeModelIdentity(entry.from.identity)}|${normalizeModelIdentity(
+        entry.to.identity
+      )}`;
+      if (seen.has(key)) return;
+      seen.add(key);
+      deduped.push(entry);
+    });
+
+    return deduped;
+  }, [assistantModelSwitchNotice, persistedAssistantModelSwitchNotices, runtimeModelSwitchNotices]);
+
+  const renderRows = useMemo<MessageListRenderRow[]>(() => {
+    if (messageOrder.length === 0) return [];
+
+    const entriesByAnchor = new Map<string, ModelSwitchNoticeEntry[]>();
+    modelSwitchNoticeEntries.forEach((entry) => {
+      const existing = entriesByAnchor.get(entry.anchorMessageId);
+      if (existing) existing.push(entry);
+      else entriesByAnchor.set(entry.anchorMessageId, [entry]);
+    });
+
+    return messageOrder.flatMap((messageId, messageIndex) => {
+      const rows: MessageListRenderRow[] = [
+        {
+          kind: 'message',
+          key: messageId,
+          messageId,
+          messageIndex,
+        },
+      ];
+      const notices = entriesByAnchor.get(messageId) ?? [];
+      notices.forEach((entry) => {
+        rows.push({
+          kind: 'notice',
+          key: entry.id,
+          text: formatModelSwitchNotice(entry.from, entry.to, t),
+        });
+      });
+      return rows;
+    });
+  }, [messageOrder, modelSwitchNoticeEntries, t]);
+
+  const virtualRowCount = renderRows.length;
+
   // 🚀 虚拟化延迟初始化
   useEffect(() => {
     if (!viewportElement) return;
@@ -186,7 +506,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
 
   // 虚拟滚动配置
   const virtualizer = useVirtualizer({
-    count: virtualizerReady && !useDirectRender ? messageOrder.length : 0,
+    count: virtualizerReady && !useDirectRender ? virtualRowCount : 0,
     getScrollElement: () => viewportElement,
     estimateSize: () => estimatedItemSize,
     overscan,
@@ -220,7 +540,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
       virtualizer.measure();
     });
     return () => cancelAnimationFrame(rafId);
-  }, [useDirectRender, virtualizerReady, messageOrder.length, isStreaming, virtualizer]);
+  }, [useDirectRender, virtualizerReady, virtualRowCount, isStreaming, virtualizer]);
 
   // 滚动到底部
   const scrollToBottom = useCallback(() => {
@@ -445,14 +765,18 @@ const MessageListInner: React.FC<MessageListProps> = ({
           aria-relevant="additions"
           style={{ width: '100%' }}
         >
-          {messageOrder.map((messageId, index) => (
-            <MessageItem
-              key={messageId}
-              messageId={messageId}
-              store={store}
-              isFirst={index === 0}
-            />
-          ))}
+          {renderRows.map((row) =>
+            row.kind === 'notice' ? (
+              <ModelSwitchNotice key={row.key} text={row.text} />
+            ) : (
+              <MessageItem
+                key={row.key}
+                messageId={row.messageId}
+                store={store}
+                isFirst={row.messageIndex === 0}
+              />
+            )
+          )}
         </div>
       ) : (
         // 虚拟滚动模式
@@ -467,10 +791,31 @@ const MessageListInner: React.FC<MessageListProps> = ({
           }}
         >
           {virtualItems.map((virtualRow) => {
-            const messageId = messageOrder[virtualRow.index];
+            const row = renderRows[virtualRow.index];
+            if (!row) return null;
+
+            if (row.kind === 'notice') {
+              return (
+                <div
+                  key={row.key}
+                  data-index={virtualRow.index}
+                  ref={virtualizer.measureElement}
+                  style={{
+                    position: 'absolute',
+                    top: 0,
+                    left: 0,
+                    width: '100%',
+                    transform: `translateY(${virtualRow.start}px)`,
+                  }}
+                >
+                  <ModelSwitchNotice text={row.text} />
+                </div>
+              );
+            }
+
             return (
               <div
-                key={messageId}
+                key={row.key}
                 data-index={virtualRow.index}
                 ref={virtualizer.measureElement}
                 style={{
@@ -482,9 +827,9 @@ const MessageListInner: React.FC<MessageListProps> = ({
                 }}
               >
                 <MessageItem
-                  messageId={messageId}
+                  messageId={row.messageId}
                   store={store}
-                  isFirst={virtualRow.index === 0}
+                  isFirst={row.messageIndex === 0}
                 />
               </div>
             );
@@ -503,6 +848,7 @@ export const MessageList = memo(MessageListInner, (prevProps, nextProps) => {
   // store 内部状态变化通过订阅机制处理，不需要组件重渲染
   return (
     prevProps.store === nextProps.store &&
+    prevProps.availableModels === nextProps.availableModels &&
     prevProps.className === nextProps.className &&
     prevProps.emptyStateGroupName === nextProps.emptyStateGroupName &&
     prevProps.estimatedItemSize === nextProps.estimatedItemSize &&

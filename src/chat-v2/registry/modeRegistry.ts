@@ -141,7 +141,7 @@ export interface ModePlugin {
   renderRagPanel?: ComponentType<{ store: StoreApi<ChatStore>; onClose: () => void }>;
 
   /** 自定义模型选择面板 */
-  renderModelPanel?: ComponentType<{ store: StoreApi<ChatStore>; onClose: () => void }>;
+  renderModelPanel?: ComponentType<{ store: StoreApi<ChatStore>; onClose: () => void; closeOnSelect?: boolean }>;
 
   /** 自定义高级设置面板 */
   renderAdvancedPanel?: ComponentType<{ store: StoreApi<ChatStore>; onClose: () => void }>;

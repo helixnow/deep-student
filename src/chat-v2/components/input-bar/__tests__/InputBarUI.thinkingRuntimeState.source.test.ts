@@ -19,7 +19,7 @@ describe('InputBarUI thinking runtime state visibility', () => {
   });
 
   it('opens the depth menu instead of toggling directly when depth options exist', () => {
-    const menuBranchStart = inputBarSource.indexOf('{hasThinkingDepthMenu ? (');
+    const menuBranchStart = inputBarSource.indexOf('{hasThinkingRuntimeMenu ? (');
     const menuBranchEnd = inputBarSource.indexOf(') : (', menuBranchStart);
     const menuBranch = inputBarSource.slice(menuBranchStart, menuBranchEnd);
 
@@ -42,6 +42,22 @@ describe('InputBarUI thinking runtime state visibility', () => {
     expect(menuGroup.indexOf("<AppMenuSeparator />")).toBeLessThan(
       menuGroup.indexOf("t('chatV2:inputBar.thinkingOff', '关闭')")
     );
+  });
+
+  it('adds the runtime model selector to the thinking runtime menu', () => {
+    const menuBranchStart = inputBarSource.indexOf('{hasThinkingRuntimeMenu ? (');
+    const menuBranchEnd = inputBarSource.indexOf(') : (', menuBranchStart);
+    const menuBranch = inputBarSource.slice(menuBranchStart, menuBranchEnd);
+
+    expect(menuBranchStart).toBeGreaterThan(-1);
+    expect(menuBranchEnd).toBeGreaterThan(menuBranchStart);
+    expect(inputBarSource).toContain("t('chatV2:inputBar.runtimeModelTitle', '模型')");
+    expect(inputBarSource).toContain('onOpenRuntimeModelPanel');
+    expect(menuBranch).toContain('label={runtimeModelTitle}');
+    expect(menuBranch).toContain("t('chatV2:inputBar.chooseRuntimeModel', '选择模型')");
+    expect(menuBranch).toContain('handleOpenRuntimeModelPanel');
+    expect(menuBranch).not.toContain("togglePanel('model')");
+    expect(menuBranch).toContain('runtimeModelLabel');
   });
 
   it('places attachment on the left and reasoning depth in the former right attachment slot', () => {
@@ -75,7 +91,7 @@ describe('InputBarUI thinking runtime state visibility', () => {
     );
   });
 
-  it('renders the context window usage meter as a plain ring from 12 o clock clockwise', () => {
+  it('renders the context window usage meter as a plain rounded ring from 12 o clock clockwise', () => {
     const ringStart = inputBarSource.indexOf('function ContextWindowUsageRing');
     const ringEnd = inputBarSource.indexOf('function getStageLabel', ringStart);
     const ringSource = inputBarSource.slice(ringStart, ringEnd);
@@ -84,11 +100,13 @@ describe('InputBarUI thinking runtime state visibility', () => {
     expect(ringEnd).toBeGreaterThan(ringStart);
     expect(ringSource).toContain('data-testid="context-window-usage-tooltip-bar"');
     expect(ringSource).toContain('className="h-4 w-4 rounded-full');
-    expect(ringSource).toContain('conic-gradient(from 0deg');
-    expect(ringSource).toContain('WebkitMask');
-    expect(ringSource).toContain('calc(100% - 2.5px)');
-    expect(ringSource).toContain('mask');
+    expect(ringSource).toContain('<svg');
+    expect(ringSource).toContain('strokeLinecap="round"');
+    expect(ringSource).toContain('strokeDasharray={ringCircumference}');
+    expect(ringSource).toContain('strokeDashoffset={ringProgressOffset}');
+    expect(ringSource).toContain('transform="rotate(-90 8 8)"');
     expect(ringSource).not.toContain('data-testid="context-window-usage-progress-cap"');
+    expect(ringSource).not.toContain('conic-gradient(from 0deg');
     expect(ringSource).not.toContain('conic-gradient(from -90deg');
     expect(ringSource).not.toContain('boxShadow');
     expect(ringSource).not.toContain('inset-[3px]');
@@ -109,6 +127,20 @@ describe('InputBarUI thinking runtime state visibility', () => {
     expect(ringSource).not.toContain('getContextUsageTone');
     expect(ringSource).not.toContain('hsl(var(--warning))');
     expect(ringSource).not.toContain('hsl(var(--destructive))');
+  });
+
+  it('keeps tooltip support without adding a hover state to the ring control', () => {
+    const ringStart = inputBarSource.indexOf('function ContextWindowUsageRing');
+    const ringEnd = inputBarSource.indexOf('function getStageLabel', ringStart);
+    const ringSource = inputBarSource.slice(ringStart, ringEnd);
+
+    expect(ringStart).toBeGreaterThan(-1);
+    expect(ringEnd).toBeGreaterThan(ringStart);
+    expect(ringSource).toContain('<CommonTooltip content={tooltipContent} position="top" disabled={disabled}>');
+    expect(ringSource).not.toContain('hover:bg-[color:var(--button-utility-hover)]');
+    expect(ringSource).not.toContain('hover:text-[color:var(--text-primary)]');
+    expect(ringSource).not.toContain('group-hover:scale-105');
+    expect(ringSource).not.toContain('className="group inline-flex');
   });
 
   it('uses a plus icon for the attachment toggle button', () => {

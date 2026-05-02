@@ -24,13 +24,9 @@ export interface UseSessionSidebarContentDeps {
   setSearchQuery: React.Dispatch<React.SetStateAction<string>>;
   setViewMode: React.Dispatch<React.SetStateAction<'sidebar' | 'browser'>>;
   setSessionSheetOpen: React.Dispatch<React.SetStateAction<boolean>>;
-  setShowEmptyTrashConfirm: React.Dispatch<React.SetStateAction<boolean>>;
   setShowChatControl: React.Dispatch<React.SetStateAction<boolean>>;
   setPendingDeleteSessionId: React.Dispatch<React.SetStateAction<string | null>>;
-  showTrash: boolean;
   showChatControl: boolean;
-  deletedSessions: ChatSession[];
-  isLoadingTrash: boolean;
   isInitialLoading: boolean;
   sessions: ChatSession[];
   visibleGroups: SessionGroup[];
@@ -42,13 +38,10 @@ export interface UseSessionSidebarContentDeps {
   isLoadingMore: boolean;
   pendingDeleteSessionId: string | null;
   t: TFunction<any, any>;
-  toggleTrash: () => void;
   resetDeleteConfirmation: () => void;
   clearDeleteConfirmTimeout: () => void;
   deleteConfirmTimeoutRef: React.MutableRefObject<ReturnType<typeof setTimeout> | null>;
   createSession: (groupId?: string) => Promise<void>;
-  restoreSession: (sessionId: string) => Promise<void>;
-  permanentlyDeleteSession: (sessionId: string) => Promise<void>;
   loadMoreSessions: () => Promise<void>;
   renderSessionItem: (session: ChatSession, drag?: SessionDragState) => React.ReactNode;
 }
@@ -56,36 +49,28 @@ export interface UseSessionSidebarContentDeps {
 export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
   const {
     searchQuery, setSearchQuery, setViewMode, setSessionSheetOpen,
-    setShowEmptyTrashConfirm, setShowChatControl, setPendingDeleteSessionId,
-    showTrash, showChatControl, deletedSessions, isLoadingTrash,
+    setShowChatControl, setPendingDeleteSessionId,
+    showChatControl,
     isInitialLoading, sessions, visibleGroups, sessionsByGroup, ungroupedSessions,
     currentSessionId, totalSessionCount,
     hasMoreSessions, isLoadingMore, pendingDeleteSessionId,
     t,
-    toggleTrash,
     resetDeleteConfirmation, clearDeleteConfirmTimeout, deleteConfirmTimeoutRef,
-    createSession, restoreSession, permanentlyDeleteSession, loadMoreSessions,
+    createSession, loadMoreSessions,
     renderSessionItem,
   } = deps;
   void searchQuery;
   void setSearchQuery;
-  void setShowEmptyTrashConfirm;
   void setShowChatControl;
   void setPendingDeleteSessionId;
-  void showTrash;
   void showChatControl;
-  void deletedSessions;
-  void isLoadingTrash;
   void totalSessionCount;
   void hasMoreSessions;
   void isLoadingMore;
   void pendingDeleteSessionId;
-  void toggleTrash;
   void resetDeleteConfirmation;
   void clearDeleteConfirmTimeout;
   void deleteConfirmTimeoutRef;
-  void restoreSession;
-  void permanentlyDeleteSession;
   void loadMoreSessions;
 
   const sortedSessions = React.useMemo(

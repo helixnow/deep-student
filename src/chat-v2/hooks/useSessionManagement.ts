@@ -137,7 +137,7 @@ export function useSessionManagement() {
 
   const deleteSession = useCallback(async (sessionId: string) => {
     try {
-      await invoke('chat_v2_soft_delete_session', { sessionId });
+      await invoke('chat_v2_delete_session', { sessionId });
       setSessions((prev) => prev.filter((s) => s.id !== sessionId));
 
       try {

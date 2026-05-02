@@ -3,12 +3,18 @@ import {
   AlertTriangle,
   Bell,
   CheckCircle2,
+  CheckCheck,
   Copy,
+  Bot,
   Layers3,
+  LoaderCircle,
   MousePointer2,
   Palette,
+  Play,
+  RotateCcw,
   SlidersHorizontal,
   SplitSquareHorizontal,
+  Square,
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -36,6 +42,10 @@ import {
   TooltipProvider as PromptkitTooltipProvider,
   TooltipTrigger as PromptkitTooltipTrigger,
 } from '@/promptkit/ui/tooltip';
+import '@/chat-v2/styles/index.css';
+import '@/chat-v2/plugins/blocks';
+import { MessageItem } from '@/chat-v2/components/MessageItem';
+import { createChatStore } from '@/chat-v2/core/store';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 type AuditStatus = 'primary' | 'watch' | 'legacy' | 'target';
@@ -47,6 +57,21 @@ type ToastDebugSample = {
   message: string;
   buttonLabel: string;
   borderTone?: GlobalNotificationBorderTone;
+};
+
+type LlmOutputPlaybackStepId = 'waiting' | 'thinking' | 'content-intro' | 'tool' | 'content-resume' | 'aborting' | 'idle';
+
+type LlmOutputPlaybackState = 'waiting' | 'thinking' | 'content' | 'tool' | 'aborting' | 'idle';
+
+type LlmOutputPlaybackFrame = {
+  id: LlmOutputPlaybackStepId;
+  frameId: string;
+  state: LlmOutputPlaybackState;
+  durationMs: number;
+  thinkingContent?: string;
+  introContent?: string;
+  toolStatus?: 'running' | 'success';
+  resumeContent?: string;
 };
 
 type MixedComponentRow = {
@@ -453,9 +478,9 @@ const toastDebugSamples: ToastDebugSample[] = [
   },
   {
     type: 'info',
-    label: 'Info toast',
-    title: 'Toast 调试：Info',
-    message: '已切换到新的学习会话。Info toast 应该像状态回声，而不是一张小广告卡片。',
+    label: 'Info API / neutral toast',
+    title: 'Toast 调试：Neutral',
+    message: '已切换到新的学习会话。Info API 仍然可用，但视觉走 neutral，像状态回声。',
     buttonLabel: '触发 info toast',
   },
   {
@@ -465,6 +490,119 @@ const toastDebugSamples: ToastDebugSample[] = [
     message: '已归档。查看已归档的会话：',
     buttonLabel: '触发黑色边 toast',
     borderTone: 'neutral',
+  },
+];
+
+const llmOutputUserPrompt = '帮我把 DeepStudent 的 LLM 输出调成更像 Codex：等待、思考、正文、工具、停止这些状态都要自然。';
+const llmOutputThinkingCopy = '正在整理回答结构…';
+const llmOutputThinkingIntro = '正在整理';
+const llmOutputToolRunningCopy = '正在检索当前 Chat V2 的样式与状态机…';
+const llmOutputIntroContent = '我会先按当前 Chat V2 的真实状态机收口：首包前只显示等待点，正文开始后才出现当前内容末尾的输入态。';
+const llmOutputResumeContent = '工具阶段结束后，再继续正文；手动停止时则立刻清掉活跃态，不让 cursor 残留。';
+const llmOutputResumeAbortContent = '工具阶段结束后，再继续正文；手动停止时则立刻清掉活跃态，';
+const llmOutputPlaybackIds = {
+  userMessage: 'style-lab-llm-user',
+  assistantMessage: 'style-lab-llm-assistant',
+  userContent: 'style-lab-llm-user-content',
+  thinking: 'style-lab-llm-thinking',
+  introContent: 'style-lab-llm-content-intro',
+  tool: 'style-lab-llm-tool',
+  resumeContent: 'style-lab-llm-content-resume',
+} as const;
+
+const llmOutputPlaybackFrames: LlmOutputPlaybackFrame[] = [
+  {
+    id: 'waiting',
+    state: 'waiting',
+    frameId: 'waiting',
+    durationMs: 900,
+  },
+  {
+    id: 'thinking',
+    state: 'thinking',
+    frameId: 'thinking-1',
+    durationMs: 280,
+    thinkingContent: llmOutputThinkingIntro,
+  },
+  {
+    id: 'thinking',
+    state: 'thinking',
+    frameId: 'thinking-2',
+    durationMs: 520,
+    thinkingContent: llmOutputThinkingCopy,
+  },
+  {
+    id: 'content-intro',
+    state: 'content',
+    frameId: 'content-intro-1',
+    durationMs: 220,
+    thinkingContent: llmOutputThinkingCopy,
+    introContent: '我会先按当前 Chat V2 的真实状态机收口：',
+  },
+  {
+    id: 'content-intro',
+    state: 'content',
+    frameId: 'content-intro-2',
+    durationMs: 260,
+    thinkingContent: llmOutputThinkingCopy,
+    introContent: '我会先按当前 Chat V2 的真实状态机收口：首包前只显示等待点，',
+  },
+  {
+    id: 'content-intro',
+    state: 'content',
+    frameId: 'content-intro-3',
+    durationMs: 320,
+    thinkingContent: llmOutputThinkingCopy,
+    introContent: llmOutputIntroContent,
+  },
+  {
+    id: 'tool',
+    state: 'tool',
+    frameId: 'tool-1',
+    durationMs: 900,
+    thinkingContent: llmOutputThinkingCopy,
+    introContent: llmOutputIntroContent,
+    toolStatus: 'running',
+  },
+  {
+    id: 'content-resume',
+    state: 'content',
+    frameId: 'content-resume-1',
+    durationMs: 220,
+    thinkingContent: llmOutputThinkingCopy,
+    introContent: llmOutputIntroContent,
+    toolStatus: 'success',
+    resumeContent: '工具阶段结束后，再继续正文；',
+  },
+  {
+    id: 'content-resume',
+    state: 'content',
+    frameId: 'content-resume-2',
+    durationMs: 300,
+    thinkingContent: llmOutputThinkingCopy,
+    introContent: llmOutputIntroContent,
+    toolStatus: 'success',
+    resumeContent: llmOutputResumeAbortContent,
+  },
+  {
+    id: 'aborting',
+    state: 'aborting',
+    frameId: 'aborting',
+    durationMs: 900,
+    thinkingContent: llmOutputThinkingCopy,
+    introContent: llmOutputIntroContent,
+    toolStatus: 'success',
+    resumeContent: llmOutputResumeAbortContent,
+  },
+  {
+    id: 'idle',
+    state: 'idle',
+    frameId: 'idle',
+    durationMs: 1000,
+    thinkingContent: llmOutputThinkingCopy,
+    introContent: llmOutputIntroContent,
+    toolStatus: 'success',
+    resumeContent: llmOutputResumeAbortContent,
   },
 ];
 
@@ -486,6 +624,349 @@ const statusMeta: Record<AuditStatus, { label: string; className: string }> = {
     className: 'border-[color:hsl(var(--success)/0.26)] bg-[color:hsl(var(--success)/0.12)] text-[color:hsl(var(--success))]',
   },
 };
+
+const transitionDemoCss = `
+/* transitions-dev — copy this :root block into your project once.
+   Every transition snippet reads from these semantic names. */
+:root {
+  /* Card resize */
+  --resize-dur: 300ms;
+  --resize-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Number pop-in */
+  --digit-dur: 500ms;
+  --digit-distance: 8px;
+  --digit-stagger: 70ms;
+  --digit-blur: 2px;
+  --digit-ease: cubic-bezier(0.34, 1.45, 0.64, 1);
+  --digit-dir-x: 0;
+  --digit-dir-y: 1;
+  /* Notification badge */
+  --badge-slide-dur: 260ms;
+  --badge-pop-dur: 500ms;
+  --badge-pop-close-dur: 180ms;
+  --badge-fade-dur: 400ms;
+  --badge-fade-close-dur: 180ms;
+  --badge-blur: 2px;
+  --badge-offset-x: -8.2px;
+  --badge-offset-y: 12.4px;
+  --badge-slide-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --badge-pop-ease: cubic-bezier(0.34, 1.36, 0.64, 1);
+  --badge-close-ease: cubic-bezier(0.4, 0, 0.2, 1);
+  /* Text states swap */
+  --text-swap-dur: 200ms;
+  --text-swap-translate-y: 8px;
+  --text-swap-blur: 2px;
+  --text-swap-ease: ease-out;
+  /* Menu dropdown */
+  --dropdown-open-dur: 250ms;
+  --dropdown-close-dur: 150ms;
+  --dropdown-pre-scale: 0.97;
+  --dropdown-closing-scale: 0.99;
+  --dropdown-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Modal open / close */
+  --modal-open-dur: 250ms;
+  --modal-close-dur: 150ms;
+  --modal-scale: 0.96;
+  --modal-scale-close: 0.96;
+  --modal-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Panel reveal */
+  --panel-open-dur: 400ms;
+  --panel-close-dur: 350ms;
+  --panel-translate-y: 100px;
+  --panel-blur: 2px;
+  --panel-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Page side-by-side */
+  --page-slide-dur: 200ms;
+  --page-fade-dur: 200ms;
+  --page-slide-distance: 8px;
+  --page-blur: 3px;
+  --page-stagger: 0ms;
+  --page-exit-enabled: 1;
+  --page-slide-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --page-fade-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  /* Icon swap */
+  --icon-swap-dur: 200ms;
+  --icon-swap-blur: 2px;
+  --icon-swap-start-scale: 0.25;
+  --icon-swap-ease: ease-in-out;
+}
+
+.t-resize {
+  transition:
+    width  var(--resize-dur) var(--resize-ease),
+    height var(--resize-dur) var(--resize-ease);
+  will-change: width, height;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-resize { transition: none !important; }
+}
+
+@keyframes t-digit-pop-in {
+  0%   {
+    transform: translate(
+      calc(var(--digit-distance) * var(--digit-dir-x)),
+      calc(var(--digit-distance) * var(--digit-dir-y))
+    );
+    opacity: 0;
+    filter: blur(var(--digit-blur));
+  }
+  100% { transform: translate(0, 0); opacity: 1; filter: blur(0); }
+}
+
+.t-digit-group {
+  display: inline-flex;
+  align-items: baseline;
+}
+.t-digit {
+  display: inline-block;
+  will-change: transform, opacity, filter;
+}
+.t-digit-group.is-animating .t-digit {
+  animation: t-digit-pop-in var(--digit-dur) var(--digit-ease) both;
+}
+.t-digit-group.is-animating .t-digit[data-stagger="1"] {
+  animation-delay: var(--digit-stagger);
+}
+.t-digit-group.is-animating .t-digit[data-stagger="2"] {
+  animation-delay: calc(var(--digit-stagger) * 2);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-digit-group .t-digit { animation: none !important; }
+}
+
+.t-text-swap {
+  display: inline-block;
+  transform: translateY(0);
+  filter: blur(0);
+  opacity: 1;
+  transition:
+    transform var(--text-swap-dur) var(--text-swap-ease),
+    filter    var(--text-swap-dur) var(--text-swap-ease),
+    opacity   var(--text-swap-dur) var(--text-swap-ease);
+  will-change: transform, filter, opacity;
+}
+.t-text-swap.is-exit {
+  transform: translateY(calc(var(--text-swap-translate-y) * -1));
+  filter: blur(var(--text-swap-blur));
+  opacity: 0;
+}
+.t-text-swap.is-enter-start {
+  transform: translateY(var(--text-swap-translate-y));
+  filter: blur(var(--text-swap-blur));
+  opacity: 0;
+  transition: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-text-swap { transition: none !important; }
+}
+
+.t-dropdown {
+  transform-origin: top left;
+  transform: scale(var(--dropdown-pre-scale));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--dropdown-open-dur) var(--dropdown-ease),
+    opacity   var(--dropdown-open-dur) var(--dropdown-ease);
+  will-change: transform, opacity;
+}
+.t-dropdown[data-origin="top-right"]     { transform-origin: top right; }
+.t-dropdown[data-origin="top-center"]    { transform-origin: top center; }
+.t-dropdown[data-origin="bottom-left"]   { transform-origin: bottom left; }
+.t-dropdown[data-origin="bottom-center"] { transform-origin: bottom center; }
+.t-dropdown[data-origin="bottom-right"]  { transform-origin: bottom right; }
+
+.t-dropdown.is-open {
+  transform: scale(1);
+  opacity: 1;
+  pointer-events: auto;
+}
+.t-dropdown.is-closing {
+  transform: scale(var(--dropdown-closing-scale));
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--dropdown-close-dur) var(--dropdown-ease),
+    opacity   var(--dropdown-close-dur) var(--dropdown-ease);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-dropdown { transition: none !important; }
+}
+
+.t-page-slide {
+  position: relative;
+}
+.t-page-slide .t-page[data-page-id="1"] {
+  --t-page-from-x: calc(var(--page-slide-distance) * -1);
+}
+.t-page-slide .t-page[data-page-id="2"] {
+  --t-page-from-x: var(--page-slide-distance);
+}
+.t-page-slide .t-page {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(calc(var(--t-page-from-x, 0px) * var(--page-exit-enabled)));
+  filter: blur(calc(var(--page-blur) * var(--page-exit-enabled)));
+  transition:
+    opacity   var(--page-fade-dur)  var(--page-fade-ease),
+    transform var(--page-slide-dur) var(--page-slide-ease),
+    filter    var(--page-slide-dur) var(--page-slide-ease);
+  will-change: opacity, transform, filter;
+}
+.t-page-slide[data-page="1"] .t-page[data-page-id="1"],
+.t-page-slide[data-page="2"] .t-page[data-page-id="2"] {
+  opacity: 1;
+  pointer-events: auto;
+  transform: translateX(0);
+  filter: blur(0);
+  transition-delay: var(--page-stagger);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-page-slide .t-page { transition: none !important; }
+}
+
+.t-icon-swap {
+  position: relative;
+  display: inline-grid;
+}
+.t-icon-swap .t-icon {
+  grid-area: 1 / 1;
+  transition:
+    opacity   var(--icon-swap-dur) var(--icon-swap-ease),
+    filter    var(--icon-swap-dur) var(--icon-swap-ease),
+    transform var(--icon-swap-dur) var(--icon-swap-ease);
+  will-change: opacity, filter, transform;
+}
+.t-icon-swap[data-state="a"] .t-icon[data-icon="a"],
+.t-icon-swap[data-state="b"] .t-icon[data-icon="b"] {
+  opacity: 1;
+  filter: blur(0);
+  transform: scale(1);
+}
+.t-icon-swap[data-state="a"] .t-icon[data-icon="b"],
+.t-icon-swap[data-state="b"] .t-icon[data-icon="a"] {
+  opacity: 0;
+  filter: blur(var(--icon-swap-blur));
+  transform: scale(var(--icon-swap-start-scale));
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .t-icon-swap .t-icon { transition: none !important; }
+}
+`;
+
+const llmOutputDemoCss = `
+.llm-output-playback {
+  position: relative;
+  overflow: hidden;
+  border: 1px solid var(--shell-workspace-border);
+  border-radius: 14px;
+  background: var(--surface-panel-strong);
+  padding: 14px;
+}
+
+.llm-output-playback__header {
+  display: flex;
+  min-width: 0;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.llm-output-playback__header-meta {
+  display: grid;
+  gap: 8px;
+  min-width: 0;
+}
+
+.llm-output-playback__title {
+  min-width: 0;
+}
+
+.llm-output-playback__title h3 {
+  margin: 0;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1.4;
+  color: var(--text-primary);
+}
+
+.llm-output-playback__title p {
+  margin: 4px 0 0;
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.llm-output-playback__status {
+  display: inline-flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.llm-output-playback__actions {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.llm-output-playback__stage {
+  margin-top: 14px;
+}
+
+.llm-output-playback__chat {
+  min-width: 0;
+  border: 1px solid var(--shell-workspace-border);
+  border-radius: 12px;
+  background: var(--surface-root);
+  padding: 12px;
+}
+
+.llm-output-playback__chat {
+  display: grid;
+  gap: 10px;
+}
+
+.llm-output-playback__text {
+  font-size: 12px;
+  line-height: 1.6;
+  color: var(--text-secondary);
+}
+
+.llm-output-playback__text--muted {
+  color: var(--text-secondary);
+}
+@media (max-width: 720px) {
+  .llm-output-playback__header {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
+`;
+
+const transitionTextStates = ['Indexing', 'Synced', 'Needs review'] as const;
+
+type TransitionDropdownState = 'open' | 'closing' | 'closed';
+
+function readRootDurationMs(variableName: string, fallbackMs: number) {
+  if (typeof window === 'undefined') return fallbackMs;
+
+  const raw = window.getComputedStyle(document.documentElement).getPropertyValue(variableName).trim();
+  const parsed = Number.parseFloat(raw);
+
+  if (!Number.isFinite(parsed)) return fallbackMs;
+  return raw.endsWith('s') && !raw.endsWith('ms') ? parsed * 1000 : parsed;
+}
 
 function SectionHeader({
   icon: Icon,
@@ -956,6 +1437,689 @@ function TooltipStyleLab() {
   );
 }
 
+function TransitionDebugCard({
+  title,
+  description,
+  path,
+  children,
+}: {
+  title: string;
+  description: string;
+  path: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <section className="min-w-0 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] p-4">
+      <div className="min-w-0">
+        <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">{title}</h3>
+        <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">{description}</p>
+        <code className="mt-2 block truncate text-[11px] leading-5 text-[color:var(--text-secondary)]">{path}</code>
+      </div>
+      <div className="mt-4">{children}</div>
+    </section>
+  );
+}
+
+function TransitionStyleLab() {
+  const [cardExpanded, setCardExpanded] = React.useState(true);
+  const [dropdownState, setDropdownState] = React.useState<TransitionDropdownState>('open');
+  const [page, setPage] = React.useState<'1' | '2'>('1');
+  const [digitValue, setDigitValue] = React.useState(248);
+  const [digitAnimating, setDigitAnimating] = React.useState(true);
+  const [textIndex, setTextIndex] = React.useState(0);
+  const [textSwapClassName, setTextSwapClassName] = React.useState('');
+  const [iconState, setIconState] = React.useState<'a' | 'b'>('a');
+  const digitGroupRef = React.useRef<HTMLSpanElement | null>(null);
+  const digitReplayTimeoutRef = React.useRef<number | null>(null);
+  const dropdownCloseTimeoutRef = React.useRef<number | null>(null);
+  const textSwapTimeoutRef = React.useRef<number | null>(null);
+  const textSwapFrameRef = React.useRef<number | null>(null);
+  const textSwapRef = React.useRef<HTMLSpanElement | null>(null);
+
+  React.useEffect(() => {
+    return () => {
+      if (digitReplayTimeoutRef.current !== null) window.clearTimeout(digitReplayTimeoutRef.current);
+      if (dropdownCloseTimeoutRef.current !== null) window.clearTimeout(dropdownCloseTimeoutRef.current);
+      if (textSwapTimeoutRef.current !== null) window.clearTimeout(textSwapTimeoutRef.current);
+      if (textSwapFrameRef.current !== null) window.cancelAnimationFrame(textSwapFrameRef.current);
+    };
+  }, []);
+
+  const toggleDropdown = React.useCallback(() => {
+    if (dropdownCloseTimeoutRef.current !== null) {
+      window.clearTimeout(dropdownCloseTimeoutRef.current);
+      dropdownCloseTimeoutRef.current = null;
+    }
+
+    if (dropdownState === 'open') {
+      const closeMs = readRootDurationMs('--dropdown-close-dur', 150);
+      setDropdownState('closing');
+      dropdownCloseTimeoutRef.current = window.setTimeout(() => {
+        setDropdownState('closed');
+        dropdownCloseTimeoutRef.current = null;
+      }, closeMs);
+      return;
+    }
+
+    setDropdownState('open');
+  }, [dropdownState]);
+
+  const replayDigitPopIn = React.useCallback(() => {
+    if (digitReplayTimeoutRef.current !== null) {
+      window.clearTimeout(digitReplayTimeoutRef.current);
+    }
+
+    setDigitAnimating(false);
+    setDigitValue((current) => current + 7);
+    digitReplayTimeoutRef.current = window.setTimeout(() => {
+      if (digitGroupRef.current) void digitGroupRef.current.offsetHeight;
+      setDigitAnimating(true);
+      digitReplayTimeoutRef.current = null;
+    }, 0);
+  }, []);
+
+  const swapTextState = React.useCallback(() => {
+    const duration = readRootDurationMs('--text-swap-dur', 200);
+
+    if (textSwapTimeoutRef.current !== null) {
+      window.clearTimeout(textSwapTimeoutRef.current);
+    }
+    if (textSwapFrameRef.current !== null) {
+      window.cancelAnimationFrame(textSwapFrameRef.current);
+    }
+
+    setTextSwapClassName('is-exit');
+    textSwapTimeoutRef.current = window.setTimeout(() => {
+      setTextIndex((current) => (current + 1) % transitionTextStates.length);
+      setTextSwapClassName('is-enter-start');
+      textSwapFrameRef.current = window.requestAnimationFrame(() => {
+        if (textSwapRef.current) void textSwapRef.current.offsetHeight;
+        setTextSwapClassName('');
+        textSwapFrameRef.current = null;
+      });
+      textSwapTimeoutRef.current = null;
+    }, duration);
+  }, []);
+
+  return (
+    <div className="space-y-4">
+      <style>{transitionDemoCss}</style>
+      <SectionHeader
+        icon={SplitSquareHorizontal}
+        title="transitions.dev 动效调试"
+        description="把常见的尺寸变化、浮层、页面切换、数字更新、文案切换和图标切换放到同一页里，方便直接看 transition hooks 的实际效果。"
+      />
+
+      <div className="grid gap-3 xl:grid-cols-2">
+        <TransitionDebugCard
+          title="Card resize"
+          description="容器在紧凑和展开之间平滑过渡，适合详情卡、侧栏卡和折叠区。"
+          path=".t-resize"
+        >
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <p className="text-xs text-[color:var(--text-secondary)]">Detail card</p>
+            <NotionButton size="sm" variant="ghost" onClick={() => setCardExpanded((current) => !current)}>
+              {cardExpanded ? 'Compact' : 'Expand'}
+            </NotionButton>
+          </div>
+          <div className="mt-3 overflow-hidden rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] p-3">
+            <div
+              className="t-resize overflow-hidden rounded-[12px] border border-[color:var(--button-utility-border)] bg-[color:var(--surface-panel-strong)] p-3"
+              style={{
+                width: cardExpanded ? 320 : 220,
+                height: cardExpanded ? 152 : 96,
+                maxWidth: '100%',
+              }}
+            >
+              <div className="flex h-full flex-col justify-between">
+                <div>
+                  <p className="text-sm font-medium text-[color:var(--text-primary)]">Study card</p>
+                  <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">
+                    The box resizes without layout jumps, so scanning feels calm.
+                  </p>
+                </div>
+                <div className="flex items-center justify-between gap-2 text-[11px] text-[color:var(--text-secondary)]">
+                  <span>{cardExpanded ? 'Expanded' : 'Compact'}</span>
+                  <span>{cardExpanded ? '320 x 152' : '220 x 96'}</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </TransitionDebugCard>
+
+        <TransitionDebugCard
+          title="Menu dropdown"
+          description="从触发点长出来的菜单，闭合时保留 closing 态，方便看 origin 和 scale。"
+          path=".t-dropdown"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-[color:var(--text-secondary)]">Origin aware menu</p>
+            <NotionButton size="sm" variant="primary" onClick={toggleDropdown}>
+              Menu
+            </NotionButton>
+          </div>
+          <div className="relative mt-3 h-48 overflow-hidden rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] p-3">
+            <div
+              className={cn(
+                't-dropdown absolute left-3 top-3 z-10 w-56 rounded-xl border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] p-2 shadow-[var(--shadow-shell-soft)]',
+                dropdownState === 'open' && 'is-open',
+                dropdownState === 'closing' && 'is-closing'
+              )}
+              data-origin="top-left"
+            >
+              <NotionButton variant="ghost" size="sm" className="w-full px-3">
+                <span className="flex w-full items-center justify-between gap-3">
+                  <span className="min-w-0 truncate text-left">Open note</span>
+                  <CheckCircle2 className="size-4 shrink-0 text-[color:hsl(var(--success))]" />
+                </span>
+              </NotionButton>
+              <NotionButton variant="ghost" size="sm" className="mt-1 w-full px-3">
+                <span className="flex w-full items-center justify-between gap-3">
+                  <span className="min-w-0 truncate text-left">Archive</span>
+                  <X className="size-4 shrink-0 text-[color:hsl(var(--warning))]" />
+                </span>
+              </NotionButton>
+            </div>
+            <div className="pt-20 text-xs leading-5 text-[color:var(--text-secondary)]">
+              这个菜单会保留 closing 状态直到 timeout 结束。
+            </div>
+          </div>
+        </TransitionDebugCard>
+
+        <TransitionDebugCard
+          title="Page side-by-side"
+          description="两块页面并排切换，适合 list ↔ detail 或 step 1 ↔ step 2。"
+          path=".t-page-slide"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-[color:var(--text-secondary)]">Page {page}</p>
+            <div className="flex gap-2">
+              <NotionButton size="sm" variant={page === '1' ? 'primary' : 'ghost'} onClick={() => setPage('1')}>
+                Page 1
+              </NotionButton>
+              <NotionButton size="sm" variant={page === '2' ? 'primary' : 'ghost'} onClick={() => setPage('2')}>
+                Page 2
+              </NotionButton>
+            </div>
+          </div>
+          <div
+            className="t-page-slide mt-3 h-40 overflow-hidden rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] p-3"
+            data-page={page}
+          >
+            <section
+              className="t-page rounded-xl border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] p-4"
+              data-page-id="1"
+            >
+              <p className="text-sm font-medium text-[color:var(--text-primary)]">List view</p>
+              <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">
+                Overview first, then slide to the detail pane.
+              </p>
+            </section>
+            <section
+              className="t-page rounded-xl border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] p-4"
+              data-page-id="2"
+            >
+              <p className="text-sm font-medium text-[color:var(--text-primary)]">Detail view</p>
+              <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">
+                This screen stays anchored in the same region while the page swaps.
+              </p>
+            </section>
+          </div>
+        </TransitionDebugCard>
+
+        <TransitionDebugCard
+          title="Number pop-in"
+          description="每一位数字独立进入，适合余额、计数器和状态分值。"
+          path=".t-digit-group"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-[color:var(--text-secondary)]">Live counter</p>
+            <NotionButton size="sm" variant="ghost" onClick={replayDigitPopIn}>
+              Increment
+            </NotionButton>
+          </div>
+          <div className="mt-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] p-4">
+            <span
+              ref={digitGroupRef}
+              className={cn('t-digit-group text-3xl font-semibold tracking-tight text-[color:var(--text-primary)]', digitAnimating && 'is-animating')}
+              aria-label={`Score ${digitValue}`}
+            >
+              {String(digitValue).split('').map((digit, index, digits) => {
+                const stagger = index === digits.length - 2 ? '1' : index === digits.length - 1 ? '2' : undefined;
+
+                return (
+                  <span key={`${digitValue}-${index}`} className="t-digit" data-stagger={stagger}>
+                    {digit}
+                  </span>
+                );
+              })}
+            </span>
+          </div>
+        </TransitionDebugCard>
+
+        <TransitionDebugCard
+          title="Text states swap"
+          description="同一个文案位置里切换状态，旧文本上滑退出，新文本从下方进入。"
+          path=".t-text-swap"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-[color:var(--text-secondary)]">Status chip</p>
+            <NotionButton size="sm" variant="ghost" onClick={swapTextState}>
+              Swap
+            </NotionButton>
+          </div>
+          <div className="mt-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] p-4">
+            <span
+              ref={textSwapRef}
+              className={cn('t-text-swap text-sm font-medium text-[color:var(--text-primary)]', textSwapClassName)}
+              aria-live="polite"
+            >
+              {transitionTextStates[textIndex]}
+            </span>
+            <p className="mt-2 text-xs leading-5 text-[color:var(--text-secondary)]">
+              {textIndex === 0 ? 'Indexing documents' : textIndex === 1 ? 'Sync complete' : 'Needs review'}
+            </p>
+          </div>
+        </TransitionDebugCard>
+
+        <TransitionDebugCard
+          title="Icon swap"
+          description="同一位置里的两个 icon 交叉淡入淡出，适合 play/pause、menu/close、checked/unchecked。"
+          path=".t-icon-swap"
+        >
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-xs text-[color:var(--text-secondary)]">Button icon</p>
+            <NotionButton size="sm" variant="ghost" onClick={() => setIconState((current) => (current === 'a' ? 'b' : 'a'))}>
+              Toggle icon
+            </NotionButton>
+          </div>
+          <div className="mt-3 flex items-center gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] p-4">
+            <span
+              className="t-icon-swap size-9 shrink-0 rounded-full border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] text-[color:var(--text-primary)]"
+              data-state={iconState}
+            >
+              <span className="t-icon flex items-center justify-center" data-icon="a">
+                <CheckCircle2 className="size-4" />
+              </span>
+              <span className="t-icon flex items-center justify-center" data-icon="b">
+                <X className="size-4" />
+              </span>
+            </span>
+            <div className="min-w-0">
+              <p className="text-sm font-medium text-[color:var(--text-primary)]">
+                {iconState === 'a' ? 'Ready' : 'Closed'}
+              </p>
+              <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">
+                The icons stay stacked in the same slot.
+              </p>
+            </div>
+          </div>
+        </TransitionDebugCard>
+      </div>
+    </div>
+  );
+}
+
+const llmOutputPlaybackStepLabels: Record<LlmOutputPlaybackStepId | 'ready', string> = {
+  ready: '准备',
+  waiting: '首包前等待',
+  thinking: '思考块',
+  'content-intro': '正文起笔',
+  tool: '工具调用',
+  'content-resume': '正文续写',
+  aborting: '停止中',
+  idle: '停止完成',
+};
+
+function buildLlmOutputPlaybackState(frame: LlmOutputPlaybackFrame | 'ready') {
+  const userMessage = {
+    id: llmOutputPlaybackIds.userMessage,
+    role: 'user' as const,
+    blockIds: [llmOutputPlaybackIds.userContent],
+    timestamp: 1,
+  };
+
+  const userBlock = {
+    id: llmOutputPlaybackIds.userContent,
+    type: 'content' as const,
+    status: 'success' as const,
+    messageId: llmOutputPlaybackIds.userMessage,
+    content: llmOutputUserPrompt,
+    startedAt: 1,
+    firstChunkAt: 1,
+    endedAt: 1,
+  };
+
+  const assistantBlockIds: string[] = [];
+  const blocks = new Map<string, any>([[userBlock.id, userBlock]]);
+  let sessionStatus: 'idle' | 'streaming' | 'aborting' = 'idle';
+  let currentStreamingMessageId: string | null = null;
+  let activeBlockIds = new Set<string>();
+
+  const thinkingBlock = {
+    id: llmOutputPlaybackIds.thinking,
+    type: 'thinking' as const,
+    status: 'success' as const,
+    messageId: llmOutputPlaybackIds.assistantMessage,
+    content: llmOutputThinkingCopy,
+    startedAt: 10,
+    firstChunkAt: 10,
+    endedAt: 20,
+  };
+
+  const introContentBlock = {
+    id: llmOutputPlaybackIds.introContent,
+    type: 'content' as const,
+    status: 'success' as const,
+    messageId: llmOutputPlaybackIds.assistantMessage,
+    content: llmOutputIntroContent,
+    startedAt: 30,
+    firstChunkAt: 30,
+    endedAt: 40,
+  };
+
+  const toolBlock = {
+    id: llmOutputPlaybackIds.tool,
+    type: 'mcp_tool' as const,
+    status: 'success' as const,
+    messageId: llmOutputPlaybackIds.assistantMessage,
+    toolName: 'search_docs',
+    toolInput: { topic: 'chat-v2-output-states' },
+    startedAt: 50,
+    firstChunkAt: 50,
+    endedAt: 60,
+  };
+
+  const resumeContentBlock = {
+    id: llmOutputPlaybackIds.resumeContent,
+    type: 'content' as const,
+    status: 'success' as const,
+    messageId: llmOutputPlaybackIds.assistantMessage,
+    content: llmOutputResumeContent,
+    startedAt: 70,
+    firstChunkAt: 70,
+    endedAt: 80,
+  };
+
+  if (frame !== 'ready' && frame.id !== 'idle') {
+    currentStreamingMessageId = llmOutputPlaybackIds.assistantMessage;
+    sessionStatus = 'streaming';
+  }
+
+  if (frame !== 'ready' && frame.id !== 'waiting') {
+    assistantBlockIds.push(thinkingBlock.id);
+    blocks.set(
+      thinkingBlock.id,
+      frame.id === 'thinking'
+        ? {
+            ...thinkingBlock,
+            content: frame.thinkingContent ?? llmOutputThinkingCopy,
+            status: 'running',
+            endedAt: undefined,
+          }
+        : {
+            ...thinkingBlock,
+            content: frame.thinkingContent ?? llmOutputThinkingCopy,
+          },
+    );
+  }
+
+  if (frame !== 'ready' && frame.introContent) {
+    assistantBlockIds.push(introContentBlock.id);
+    blocks.set(
+      introContentBlock.id,
+      frame.id === 'content-intro'
+        ? {
+            ...introContentBlock,
+            content: frame.introContent,
+            status: 'running',
+            endedAt: undefined,
+          }
+        : {
+            ...introContentBlock,
+            content: frame.introContent,
+          },
+    );
+  }
+
+  if (frame !== 'ready' && frame.toolStatus) {
+    assistantBlockIds.push(toolBlock.id);
+    blocks.set(
+      toolBlock.id,
+      frame.toolStatus === 'running'
+        ? {
+            ...toolBlock,
+            status: 'running',
+            content: llmOutputToolRunningCopy,
+            endedAt: undefined,
+          }
+        : {
+            ...toolBlock,
+            status: 'success',
+            content: '',
+          },
+    );
+  }
+
+  if (frame !== 'ready' && frame.resumeContent) {
+    assistantBlockIds.push(resumeContentBlock.id);
+    blocks.set(
+      resumeContentBlock.id,
+      frame.id === 'content-resume' || frame.id === 'aborting'
+        ? {
+            ...resumeContentBlock,
+            content: frame.resumeContent,
+            status: 'running',
+            endedAt: undefined,
+          }
+        : {
+            ...resumeContentBlock,
+            content: frame.resumeContent,
+          },
+    );
+  }
+
+  if (frame !== 'ready' && frame.id === 'thinking') {
+    activeBlockIds = new Set([llmOutputPlaybackIds.thinking]);
+  } else if (frame !== 'ready' && frame.id === 'content-intro') {
+    activeBlockIds = new Set([llmOutputPlaybackIds.introContent]);
+  } else if (frame !== 'ready' && frame.id === 'tool' && frame.toolStatus === 'running') {
+    activeBlockIds = new Set([llmOutputPlaybackIds.tool]);
+  } else if (frame !== 'ready' && frame.id === 'content-resume') {
+    activeBlockIds = new Set([llmOutputPlaybackIds.resumeContent]);
+  } else if (frame !== 'ready' && frame.id === 'aborting') {
+    sessionStatus = 'aborting';
+    activeBlockIds = new Set();
+  } else if (frame !== 'ready' && frame.id === 'idle') {
+    sessionStatus = 'idle';
+    currentStreamingMessageId = null;
+    activeBlockIds = new Set();
+  }
+
+  const assistantMessage = {
+    id: llmOutputPlaybackIds.assistantMessage,
+    role: 'assistant' as const,
+    blockIds: assistantBlockIds,
+    timestamp: 2,
+    _meta: {
+      modelId: 'gpt-5',
+      modelDisplayName: 'GPT-5',
+    },
+  };
+
+  return {
+    sessionStatus,
+    isDataLoaded: true,
+    messageMap: new Map<string, any>([
+      [userMessage.id, userMessage],
+      [assistantMessage.id, assistantMessage],
+    ]),
+    messageOrder: [userMessage.id, assistantMessage.id],
+    blocks,
+    currentStreamingMessageId,
+    activeBlockIds,
+    streamingVariantIds: new Set<string>(),
+  };
+}
+
+function LlmOutputPlaybackBody({
+  stepId,
+  store,
+}: {
+  stepId: LlmOutputPlaybackStepId | 'ready';
+  store: ReturnType<typeof createChatStore>;
+}) {
+  return (
+    <div className="llm-output-playback__chat chat-v2" aria-live="polite">
+      <MessageItem
+        messageId={llmOutputPlaybackIds.userMessage}
+        store={store}
+        showActions={false}
+        isFirst
+      />
+      {stepId === 'ready' ? (
+        <p className="llm-output-playback__text llm-output-playback__text--muted px-4 pb-4">
+          点击开始后，下面这一条 assistant message 会按当前 Chat V2 的真实渲染链自动走完一遍。这里固定模拟一条“工具后继续输出，再手动停止”的真实路径。
+        </p>
+      ) : (
+        <MessageItem
+          messageId={llmOutputPlaybackIds.assistantMessage}
+          store={store}
+          showActions={false}
+        />
+      )}
+    </div>
+  );
+}
+
+function LlmOutputPlayback() {
+  const [playbackIndex, setPlaybackIndex] = React.useState(-1);
+  const [isPlaying, setIsPlaying] = React.useState(false);
+  const timeoutRef = React.useRef<number | null>(null);
+  const store = React.useMemo(() => {
+    const nextStore = createChatStore('style-lab-llm-output-playback');
+    nextStore.setState(buildLlmOutputPlaybackState('ready'));
+    return nextStore;
+  }, []);
+  const currentFrame = playbackIndex >= 0 ? llmOutputPlaybackFrames[playbackIndex] : null;
+  const currentState = currentFrame?.state ?? 'ready';
+  const currentStepId = currentFrame?.id ?? 'ready';
+  const currentFrameId = currentFrame?.frameId ?? 'ready';
+  const currentStepLabel = llmOutputPlaybackStepLabels[currentStepId];
+  const isFinished = currentStepId === 'idle' && !isPlaying;
+
+  const clearPlaybackTimer = React.useCallback(() => {
+    if (timeoutRef.current !== null) {
+      window.clearTimeout(timeoutRef.current);
+      timeoutRef.current = null;
+    }
+  }, []);
+
+  const startPlayback = React.useCallback(() => {
+    clearPlaybackTimer();
+    setPlaybackIndex(0);
+    setIsPlaying(true);
+  }, [clearPlaybackTimer]);
+
+  const resetPlayback = React.useCallback(() => {
+    clearPlaybackTimer();
+    setPlaybackIndex(-1);
+    setIsPlaying(false);
+  }, [clearPlaybackTimer]);
+
+  React.useEffect(() => {
+    store.setState(buildLlmOutputPlaybackState(currentFrame ?? 'ready'));
+  }, [currentFrame, store]);
+
+  React.useEffect(() => {
+    if (!isPlaying || playbackIndex < 0) return;
+
+    const frame = llmOutputPlaybackFrames[playbackIndex];
+    if (!frame) return;
+
+    if (playbackIndex >= llmOutputPlaybackFrames.length - 1) {
+      setIsPlaying(false);
+      return;
+    }
+
+    timeoutRef.current = window.setTimeout(() => {
+      const nextIndex = playbackIndex + 1;
+      setPlaybackIndex(nextIndex);
+      if (nextIndex >= llmOutputPlaybackFrames.length - 1) {
+        setIsPlaying(false);
+      }
+    }, frame.durationMs);
+
+    return clearPlaybackTimer;
+  }, [clearPlaybackTimer, isPlaying, playbackIndex]);
+
+  return (
+    <section
+      className="llm-output-playback"
+      data-current-frame={currentFrameId}
+      data-current-state={currentState}
+      data-current-step={currentStepId}
+    >
+      <div className="llm-output-playback__header">
+        <div className="llm-output-playback__header-meta">
+          <div className="llm-output-playback__title">
+            <h3>真实输出回放</h3>
+            <p>这里只保留一条真实 assistant message 的自动回放，用来看等待点、thinking badge、正文打字、工具块和停止收尾。</p>
+          </div>
+          <div className="llm-output-playback__status">
+            <Badge
+              variant="outline"
+              className="border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] text-[color:var(--text-secondary)]"
+            >
+              {currentStepLabel}
+            </Badge>
+            <span className="llm-output-playback__text">`sending` 只锁输入区，不会单独生成一帧 assistant 输出。</span>
+          </div>
+        </div>
+        <div className="llm-output-playback__actions">
+          <NotionButton
+            size="sm"
+            variant="primary"
+            onClick={startPlayback}
+            disabled={isPlaying}
+          >
+            <Play className="size-3.5" />
+            {isFinished ? '重新回放' : '开始回放'}
+          </NotionButton>
+          <NotionButton
+            size="sm"
+            variant="ghost"
+            onClick={resetPlayback}
+            disabled={playbackIndex < 0 && !isPlaying}
+          >
+            <RotateCcw className="size-3.5" />
+            重置
+          </NotionButton>
+        </div>
+      </div>
+
+      <div className="llm-output-playback__stage">
+        <LlmOutputPlaybackBody stepId={currentStepId} store={store} />
+      </div>
+    </section>
+  );
+}
+
+function LlmOutputStyleLab() {
+  return (
+    <div className="space-y-4">
+      <style>{llmOutputDemoCss}</style>
+      <SectionHeader
+        icon={Bot}
+        title="LLM 输出真实回放"
+        description="这里不再拆假状态卡，只保留一条真实消息的自动回放，直接对照当前 Chat V2 的实际输出状态。"
+      />
+
+      <LlmOutputPlayback />
+    </div>
+  );
+}
+
 function ButtonDebugPathCard({
   title,
   path,
@@ -1154,11 +2318,25 @@ function ButtonStyleLab() {
   );
 }
 
-const toastButtonVariantByType: Record<GlobalNotificationType, 'success' | 'warning' | 'danger' | 'primary'> = {
+const toastVisualClassByType: Record<GlobalNotificationType, string> = {
+  success: 'unified-notification-success',
+  warning: 'unified-notification-warning',
+  error: 'unified-notification-error',
+  info: 'unified-notification-neutral',
+};
+
+const toastVisualLabelByType: Record<GlobalNotificationType, string> = {
+  success: 'success',
+  warning: 'warning',
+  error: 'error',
+  info: 'info -> neutral',
+};
+
+const toastButtonVariantByType: Record<GlobalNotificationType, 'success' | 'warning' | 'danger' | 'default'> = {
   success: 'success',
   warning: 'warning',
   error: 'danger',
-  info: 'primary',
+  info: 'default',
 };
 
 function ToastPreviewCard({
@@ -1175,14 +2353,14 @@ function ToastPreviewCard({
       <div className="mb-3 flex min-w-0 items-center justify-between gap-2">
         <h3 className="truncate text-sm font-semibold text-[color:var(--text-primary)]">{sample.label}</h3>
         <Badge variant="outline" className="border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] text-[color:var(--text-secondary)]">
-          {sample.type}
+          {sample.borderTone === 'neutral' ? 'neutral border' : toastVisualLabelByType[sample.type]}
         </Badge>
       </div>
       <div className="flex min-h-12 items-center justify-center overflow-hidden rounded-md border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] px-2 py-3">
         <div
           className={cn(
             'unified-notification show',
-            `unified-notification-${sample.type}`,
+            toastVisualClassByType[sample.type],
             sample.borderTone === 'neutral' && 'unified-notification-border-neutral'
           )}
           style={{ maxWidth: 'min(320px, 100%)', minWidth: 0, width: 'fit-content' }}
@@ -1259,7 +2437,7 @@ function ToastStyleLab() {
       `action=${showAction}`,
       'close=true',
       `longCopy=${longCopy}`,
-      'variants=success,warning,error,info,neutral-border',
+      'variants=success,warning,error,info->neutral,neutral-border',
     ].join('\n'));
   }, [longCopy, showAction]);
 
@@ -1268,7 +2446,7 @@ function ToastStyleLab() {
       <SectionHeader
         icon={Bell}
         title="统一 Toast 调试"
-        description="在样式调试台里直接触发全局 UnifiedNotification，并把 success、warning、error、info 和黑色边变体放在同一个静态预览区；新方向参考 Codex 的顶部居中小圆条：单行短句、无状态 icon、右侧轻量关闭入口，用边框表达状态。"
+        description="在样式调试台里直接触发全局 UnifiedNotification，并把 success、warning、error、info-as-neutral 和黑色边变体放在同一个静态预览区；新方向参考 Codex 的顶部居中小圆条：单行短句、无状态 icon、右侧轻量关闭入口，用边框表达状态。"
       />
 
       <div className="flex flex-wrap gap-2">
@@ -1337,7 +2515,7 @@ function ToastStyleLab() {
           <div className="min-w-0">
             <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">静态状态预览</h3>
             <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">
-              这些预览复用 <code>.unified-notification</code> 和状态类，便于不用等待动画也能比较四种 compact toast 的实际外观。
+              这些预览复用 <code>.unified-notification</code> 和状态类，便于不用等待动画也能比较三种状态色、info-neutral 和黑色边 toast 的实际外观。
             </p>
           </div>
         </div>
@@ -1851,6 +3029,8 @@ export function StyleDebugPage() {
             <TabsTrigger value="switches">Switch 调试</TabsTrigger>
             <TabsTrigger value="tooltips">Tooltip 调试</TabsTrigger>
             <TabsTrigger value="toasts">Toast 调试</TabsTrigger>
+            <TabsTrigger value="llm-output">LLM 输出</TabsTrigger>
+            <TabsTrigger value="transitions">Transition 动效</TabsTrigger>
             <TabsTrigger value="inventory">混用清单</TabsTrigger>
             <TabsTrigger value="components">组件列表</TabsTrigger>
             <TabsTrigger value="primitives">Primitive 样例</TabsTrigger>
@@ -1875,6 +3055,14 @@ export function StyleDebugPage() {
 
           <TabsContent value="toasts" className="space-y-4">
             <ToastStyleLab />
+          </TabsContent>
+
+          <TabsContent value="llm-output" className="space-y-4">
+            <LlmOutputStyleLab />
+          </TabsContent>
+
+          <TabsContent value="transitions" className="space-y-4">
+            <TransitionStyleLab />
           </TabsContent>
 
           <TabsContent value="inventory" className="space-y-4">

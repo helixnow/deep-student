@@ -1,10 +1,13 @@
 import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { act, render } from '@testing-library/react';
+import { act, render, waitFor } from '@testing-library/react';
 import { createStore } from 'zustand/vanilla';
 import { InputBarV2 } from '../InputBarV2';
 
 let capturedInputBarUIProps: Record<string, any> | null = null;
+const mockModeRegistryState = vi.hoisted(() => ({
+  plugin: {} as Record<string, any>,
+}));
 
 vi.mock('../InputBarUI', () => ({
   InputBarUI: (props: Record<string, any>) => {
@@ -40,9 +43,9 @@ vi.mock('../useInputBarV2', () => ({
   }),
 }));
 
-vi.mock('../../registry', () => ({
+vi.mock('../../../registry', () => ({
   modeRegistry: {
-    getResolved: () => ({}),
+    getResolved: () => mockModeRegistryState.plugin,
   },
 }));
 
@@ -89,6 +92,7 @@ function createMockStore() {
     inputValue: '',
     chatParams: {
       modelId: 'deepseek-official-v4',
+      model2OverrideId: null,
       maxTokens: 32_768,
       enableThinking: true,
       reasoningEffort: undefined,
@@ -118,6 +122,7 @@ function createMockStore() {
 describe('InputBarV2 stale context ref guard', () => {
   beforeEach(() => {
     capturedInputBarUIProps = null;
+    mockModeRegistryState.plugin = {};
     vi.clearAllMocks();
   });
 
@@ -197,11 +202,124 @@ describe('InputBarV2 stale context ref guard', () => {
     );
 
     expect(capturedInputBarUIProps?.thinkingStateLabel).toBe('推理: 高');
+    expect(capturedInputBarUIProps?.runtimeModelLabel).toBe('deepseek-v4-pro');
     expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual(['high', 'max']);
     expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.labelKey)).toEqual([
       'settings:api.modal.deepseek.depth.high',
       'settings:api.modal.deepseek.depth.max',
     ]);
+  });
+
+  it('marks non-reasoning runtime models as unsupported instead of off', () => {
+    const { store } = createMockStore();
+
+    act(() => {
+      store.setState({
+        chatParams: {
+          ...store.getState().chatParams,
+          modelId: 'gpt-4o',
+          model2OverrideId: null,
+          enableThinking: true,
+          reasoningEffort: 'high',
+          thinkingBudget: 8192,
+        },
+      });
+    });
+
+    render(
+      <InputBarV2
+        store={store as any}
+        availableModels={[
+          {
+            id: 'gpt-4o',
+            name: 'GPT-4o',
+            model: 'gpt-4o',
+            isReasoning: false,
+          },
+        ]}
+      />
+    );
+
+    expect(capturedInputBarUIProps?.thinkingStateLabel).toBe('推理: 不支持');
+    expect(capturedInputBarUIProps?.thinkingUnsupported).toBe(true);
+    expect(capturedInputBarUIProps?.enableThinking).toBe(false);
+    expect(capturedInputBarUIProps?.thinkingDepthOptions).toEqual([]);
+  });
+
+  it('keeps pending parallel model selections out of the runtime model label', () => {
+    const { store } = createMockStore();
+
+    render(
+      <InputBarV2
+        store={store as any}
+        availableModels={[
+          {
+            id: 'deepseek-official-v4',
+            name: 'DeepSeek V4 Pro',
+            model: 'deepseek-v4-pro',
+            providerType: 'deepseek',
+            providerScope: 'deepseek',
+            baseUrl: 'https://api.deepseek.com/v1',
+          },
+          {
+            id: 'qwen-max',
+            name: 'Qwen Max',
+            model: 'qwen-max-latest',
+            providerType: 'qwen',
+          },
+        ]}
+      />
+    );
+
+    act(() => {
+      capturedInputBarUIProps?.modelMentionActions?.selectSuggestion({
+        id: 'qwen-max',
+        name: 'Qwen Max',
+        model: 'qwen-max-latest',
+      });
+    });
+
+    expect(capturedInputBarUIProps?.runtimeModelLabel).toBe('deepseek-v4-pro');
+  });
+
+  it('opens the single current-dialog model panel from the runtime menu', async () => {
+    function RuntimeModelPanel() {
+      return null;
+    }
+
+    mockModeRegistryState.plugin = {
+      renderModelPanel: RuntimeModelPanel,
+    };
+
+    const { store } = createMockStore();
+
+    render(
+      <InputBarV2
+        store={store as any}
+        availableModels={[
+          {
+            id: 'deepseek-official-v4',
+            name: 'DeepSeek V4 Pro',
+            model: 'deepseek-v4-pro',
+            providerType: 'deepseek',
+          },
+        ]}
+      />
+    );
+
+    expect(capturedInputBarUIProps?.onOpenRuntimeModelPanel).toBeTypeOf('function');
+
+    act(() => {
+      capturedInputBarUIProps?.onOpenRuntimeModelPanel();
+    });
+
+    expect(store.getState().setPanelState).toHaveBeenCalledWith('model', true);
+
+    await waitFor(() => {
+      const panel = capturedInputBarUIProps?.renderModelPanel?.();
+      expect(panel?.type).toBe(RuntimeModelPanel);
+      expect(panel?.props?.closeOnSelect).toBe(true);
+    });
   });
 
   it('passes completed context window usage to InputBarUI after an assistant response finishes', () => {
@@ -290,6 +408,71 @@ describe('InputBarV2 stale context ref guard', () => {
     });
   });
 
+  it('recalculates context window usage from the current dialog model override', () => {
+    const { store } = createMockStore();
+
+    store.setState({
+      chatParams: {
+        ...store.getState().chatParams,
+        modelId: 'wide-model',
+        model2OverrideId: 'compact-model',
+        maxTokens: 4096,
+        contextLimit: undefined,
+      },
+      messageOrder: ['msg_user_1', 'msg_assistant_1'],
+      messageMap: new Map([
+        ['msg_user_1', { id: 'msg_user_1', role: 'user', blockIds: [], timestamp: 1 }],
+        [
+          'msg_assistant_1',
+          {
+            id: 'msg_assistant_1',
+            role: 'assistant',
+            blockIds: [],
+            timestamp: 2,
+            _meta: {
+              usage: {
+                promptTokens: 40_000,
+                completionTokens: 1_000,
+                totalTokens: 41_000,
+                source: 'api',
+                lastRoundPromptTokens: 40_000,
+              },
+            },
+          },
+        ],
+      ]),
+    });
+
+    render(
+      <InputBarV2
+        store={store as any}
+        availableModels={[
+          {
+            id: 'wide-model',
+            name: 'Wide Model',
+            model: 'wide-model',
+            contextWindow: 100_000,
+            maxOutputTokens: 4096,
+          },
+          {
+            id: 'compact-model',
+            name: 'Compact Model',
+            model: 'compact-model',
+            contextWindow: 50_000,
+            maxOutputTokens: 4096,
+          },
+        ]}
+      />
+    );
+
+    expect(capturedInputBarUIProps?.contextWindowUsage).toMatchObject({
+      usedTokens: 40_000,
+      limitTokens: 41_904,
+      usedPercent: 95,
+      remainingTokens: 1_904,
+    });
+  });
+
   it('sets runtime DeepSeek V4 depth from the input bar without changing settings defaults', () => {
     const { store, setChatParams } = createMockStore();
 
@@ -349,6 +532,49 @@ describe('InputBarV2 stale context ref guard', () => {
       />
     );
 
+    expect(capturedInputBarUIProps?.thinkingStateLabel).toBe('推理: 高');
+    expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual(['high', 'max']);
+  });
+
+  it('derives runtime thinking controls from the current dialog model override', () => {
+    const { store } = createMockStore();
+
+    act(() => {
+      store.setState({
+        chatParams: {
+          modelId: 'qwen-max',
+          model2OverrideId: 'deepseek-official-v4',
+          maxTokens: 32_768,
+          enableThinking: true,
+          reasoningEffort: undefined,
+          thinkingBudget: undefined,
+        },
+      });
+    });
+
+    render(
+      <InputBarV2
+        store={store as any}
+        availableModels={[
+          {
+            id: 'qwen-max',
+            name: 'Qwen Max',
+            model: 'qwen-max',
+            providerType: 'qwen',
+          },
+          {
+            id: 'deepseek-official-v4',
+            name: 'DeepSeek V4 Pro',
+            model: 'deepseek-v4-pro',
+            providerType: 'deepseek',
+            providerScope: 'deepseek',
+            baseUrl: 'https://api.deepseek.com/v1',
+          },
+        ]}
+      />
+    );
+
+    expect(capturedInputBarUIProps?.runtimeModelLabel).toBe('deepseek-v4-pro');
     expect(capturedInputBarUIProps?.thinkingStateLabel).toBe('推理: 高');
     expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual(['high', 'max']);
   });

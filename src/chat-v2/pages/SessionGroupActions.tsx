@@ -62,58 +62,60 @@ export function SessionGroupActions({
   }, []);
 
   const quickAction = (
-    <div
-      data-menu-open={menuOpen ? 'true' : 'false'}
-      className="flex items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover/sidebar-section:opacity-100 group-focus-within/sidebar-section:opacity-100 data-[menu-open=true]:opacity-100"
-    >
-      <AppMenu open={menuOpen} onOpenChange={setMenuOpen}>
-        <AppMenuTrigger asChild>
-          <NotionButton
-            variant="ghost"
-            size="icon"
-            iconOnly
-            onClick={(event) => event.stopPropagation()}
-            aria-label={labels.groupActions}
-            title={labels.groupActions}
-            className="!h-6 !w-6"
-          >
-            <MoreHorizontal className="w-3.5 h-3.5" />
-          </NotionButton>
-        </AppMenuTrigger>
-        <AppMenuContent align="end" width={180}>
-          <AppMenuGroup>
-            {onTogglePinGroup ? (
+    <div className="flex items-center gap-0.5">
+      <div
+        data-menu-open={menuOpen ? 'true' : 'false'}
+        className="opacity-0 transition-opacity duration-150 group-hover/sidebar-section:opacity-100 group-focus-within/sidebar-section:opacity-100 data-[menu-open=true]:opacity-100"
+      >
+        <AppMenu open={menuOpen} onOpenChange={setMenuOpen}>
+          <AppMenuTrigger asChild>
+            <NotionButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              onClick={(event) => event.stopPropagation()}
+              aria-label={labels.groupActions}
+              title={labels.groupActions}
+              className="!h-6 !w-6"
+            >
+              <MoreHorizontal className="w-3.5 h-3.5" />
+            </NotionButton>
+          </AppMenuTrigger>
+          <AppMenuContent align="end" width={180}>
+            <AppMenuGroup>
+              {onTogglePinGroup ? (
+                <AppMenuItem
+                  icon={<Pin className="w-4 h-4" />}
+                  onClick={() => onTogglePinGroup(group, !isPinned)}
+                >
+                  {isPinned
+                    ? labels.unpinGroup ?? 'Unpin Group'
+                    : labels.pinGroup ?? 'Pin Group'}
+                </AppMenuItem>
+              ) : null}
               <AppMenuItem
-                icon={<Pin className="w-4 h-4" />}
-                onClick={() => onTogglePinGroup(group, !isPinned)}
+                icon={<Edit2 className="w-4 h-4" />}
+                onClick={() => onRenameGroup(group)}
               >
-                {isPinned
-                  ? labels.unpinGroup ?? 'Unpin Group'
-                  : labels.pinGroup ?? 'Pin Group'}
+                {labels.renameGroup}
               </AppMenuItem>
-            ) : null}
-            <AppMenuItem
-              icon={<Edit2 className="w-4 h-4" />}
-              onClick={() => onRenameGroup(group)}
-            >
-              {labels.renameGroup}
-            </AppMenuItem>
-            <AppMenuItem
-              icon={<Settings className="w-4 h-4" />}
-              onClick={() => onEditGroup(group)}
-            >
-              {labels.editGroup}
-            </AppMenuItem>
-            <AppMenuSeparator />
-            <AppMenuItem
-              icon={<Archive className="w-4 h-4" />}
-              onClick={() => onArchiveGroup(group)}
-            >
-              {labels.archiveGroup}
-            </AppMenuItem>
-          </AppMenuGroup>
-        </AppMenuContent>
-      </AppMenu>
+              <AppMenuItem
+                icon={<Settings className="w-4 h-4" />}
+                onClick={() => onEditGroup(group)}
+              >
+                {labels.editGroup}
+              </AppMenuItem>
+              <AppMenuSeparator />
+              <AppMenuItem
+                icon={<Archive className="w-4 h-4" />}
+                onClick={() => onArchiveGroup(group)}
+              >
+                {labels.archiveGroup}
+              </AppMenuItem>
+            </AppMenuGroup>
+          </AppMenuContent>
+        </AppMenu>
+      </div>
       <CommonTooltip content={newSessionInGroupLabel} position="right">
         <NotionButton
           variant="ghost"

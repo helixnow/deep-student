@@ -26,7 +26,7 @@
   min-width: 0;
   min-height: 28px;
   padding: 4px 12px;
-  border-radius: 999px;
+  border-radius: var(--radius-shell-control);
   box-shadow:
     0 6px 14px hsl(var(--foreground) / 0.07),
     0 1px 3px hsl(var(--foreground) / 0.05);
@@ -77,9 +77,10 @@
   border-color: hsl(var(--destructive) / 0.72);
 }
 
+.unified-notification-neutral,
 .unified-notification-info {
-  --notif-accent: var(--info);
-  border-color: hsl(var(--info) / 0.68);
+  --notif-accent: var(--border);
+  border-color: color-mix(in hsl, hsl(var(--foreground)) 22%, hsl(var(--border)) 78%);
 }
 
 .unified-notification-warning {
@@ -206,7 +207,7 @@
     min-height: 28px;
     padding: 4px 10px;
     gap: 0;
-    border-radius: 999px;
+    border-radius: var(--radius-shell-control);
     border-width: 1px;
     box-shadow:
       0 6px 14px hsl(var(--foreground) / 0.09),

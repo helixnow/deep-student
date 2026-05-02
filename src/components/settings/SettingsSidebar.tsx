@@ -16,6 +16,7 @@ import {
 export interface SettingsSidebarProps {
   isSmallScreen: boolean;
   globalLeftPanelCollapsed: boolean;
+  desktopMode?: 'self' | 'slot';
   sidebarSearchQuery: string;
   setSidebarSearchQuery: (v: string) => void;
   sidebarSearchFocused: boolean;
@@ -31,6 +32,7 @@ export interface SettingsSidebarProps {
 export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
   isSmallScreen,
   globalLeftPanelCollapsed,
+  desktopMode = 'self',
   sidebarSearchQuery: _sidebarSearchQuery,
   setSidebarSearchQuery: _setSidebarSearchQuery,
   sidebarSearchFocused: _sidebarSearchFocused,
@@ -44,12 +46,20 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
 }) => {
   const { t } = useTranslation(['settings']);
   const isCollapsed = !isSmallScreen && globalLeftPanelCollapsed;
+  const desktopShellPaddingStyle: React.CSSProperties | undefined = isSmallScreen
+    ? undefined
+    : { paddingTop: 'calc(var(--shell-titlebar-height) + var(--shell-layout-gap))' };
 
   const sidebarContent = (
-    <div className={cn(
-      'study-shell-sidebar-frame font-sidebar-study-ui h-full flex flex-col bg-[color:var(--shell-navigation-panel)] text-[color:var(--shell-navigation-foreground)]',
-      !isSmallScreen && 'border-r border-[color:var(--shell-navigation-border)]'
-    )}>
+    <div
+      data-shell-layer={!isSmallScreen ? 'navigation' : undefined}
+      data-shell-surface={!isSmallScreen ? 'navigation' : undefined}
+      className={cn(
+        'study-shell-sidebar-frame font-sidebar-study-ui h-full w-full min-w-0 flex flex-col overflow-hidden bg-[color:var(--shell-navigation-panel)] text-[color:var(--shell-navigation-foreground)]',
+        !isSmallScreen && 'border-r border-[color:var(--shell-navigation-border)]'
+      )}
+      style={desktopShellPaddingStyle}
+    >
       <div className={cn('shrink-0 px-2 py-1', isCollapsed ? 'opacity-0' : 'space-y-0.5')}>
         {!isCollapsed && onBack ? (
           <NotionButton
@@ -109,6 +119,10 @@ export const SettingsSidebar: React.FC<SettingsSidebarProps> = ({
 
   // 移动端直接返回内容（由 MobileSlidingLayout 处理滑动）
   if (isSmallScreen) {
+    return sidebarContent;
+  }
+
+  if (desktopMode === 'slot') {
     return sidebarContent;
   }
 

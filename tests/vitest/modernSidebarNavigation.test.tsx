@@ -954,7 +954,9 @@ describe('ModernSidebar shell navigation', () => {
     await user.hover(pinThreadButton);
 
     expect(screen.getByRole('button', { name: '置顶会话' })).toBeInTheDocument();
-    expect(screen.getByRole('button', { name: '归档会话' })).toBeInTheDocument();
+    const archiveQuickAction = screen.getByRole('button', { name: '归档会话' });
+    expect(archiveQuickAction).toBeInTheDocument();
+    expect(archiveQuickAction.querySelector('.t-icon-swap')).toHaveAttribute('data-state', 'a');
     expect(screen.queryByRole('button', { name: '归档线程' })).not.toBeInTheDocument();
     expect(screen.queryByText('刚刚')).not.toBeInTheDocument();
 
@@ -970,7 +972,9 @@ describe('ModernSidebar shell navigation', () => {
     await user.hover(archiveThreadButton);
     fireEvent.click(screen.getByRole('button', { name: '归档会话' }));
 
-    expect(screen.getByRole('button', { name: '确认归档会话' })).toBeInTheDocument();
+    const confirmArchiveQuickAction = screen.getByRole('button', { name: '确认归档会话' });
+    expect(confirmArchiveQuickAction).toBeInTheDocument();
+    expect(confirmArchiveQuickAction.querySelector('.t-icon-swap')).toHaveAttribute('data-state', 'b');
     expect(invokeMock).not.toHaveBeenCalledWith('chat_v2_archive_session', { sessionId: 'session-2' });
 
     fireEvent.click(screen.getByRole('button', { name: '确认归档会话' }));

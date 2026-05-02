@@ -70,6 +70,10 @@ import {
   AppMenuTrigger,
 } from '@/components/ui/app-menu/AppMenu';
 import { showArchiveSessionToast } from '@/chat-v2/utils/archiveSessionToast';
+import {
+  markSessionSidebarIndicatorSeen,
+  useSessionSidebarIndicators,
+} from '@/chat-v2/hooks/useSessionSidebarIndicators';
 import { isMacOS, isMobilePlatform } from '@/utils/platform';
 
 interface NavigationHistory {
@@ -289,6 +293,59 @@ function SidebarSessionOverflowToggle({
   );
 }
 
+const SIDEBAR_STREAMING_RING_RADIUS = 6.75;
+const SIDEBAR_STREAMING_RING_CIRCUMFERENCE = 2 * Math.PI * SIDEBAR_STREAMING_RING_RADIUS;
+const SIDEBAR_STREAMING_RING_DASH = SIDEBAR_STREAMING_RING_CIRCUMFERENCE * 0.34;
+const SIDEBAR_STREAMING_RING_GAP = SIDEBAR_STREAMING_RING_CIRCUMFERENCE - SIDEBAR_STREAMING_RING_DASH;
+const SIDEBAR_STREAMING_RING_TRACK = 'color-mix(in oklab, var(--shell-navigation-foreground) 14%, transparent)';
+const SIDEBAR_STREAMING_RING_FOREGROUND = 'var(--shell-navigation-foreground)';
+
+function SidebarStreamingIndicator() {
+  return (
+    <span
+      data-testid="sidebar-streaming-indicator"
+      className="inline-flex h-3.5 w-3.5 items-center justify-center"
+      aria-hidden="true"
+    >
+      <svg
+        className="h-3.5 w-3.5 animate-[spin_1.1s_linear_infinite] rounded-full"
+        viewBox="0 0 16 16"
+        fill="none"
+      >
+        <circle
+          cx="8"
+          cy="8"
+          r={SIDEBAR_STREAMING_RING_RADIUS}
+          stroke={SIDEBAR_STREAMING_RING_TRACK}
+          strokeWidth="2.5"
+        />
+        <circle
+          cx="8"
+          cy="8"
+          r={SIDEBAR_STREAMING_RING_RADIUS}
+          stroke={SIDEBAR_STREAMING_RING_FOREGROUND}
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeDasharray={`${SIDEBAR_STREAMING_RING_DASH} ${SIDEBAR_STREAMING_RING_GAP}`}
+          transform="rotate(-90 8 8)"
+        />
+      </svg>
+    </span>
+  );
+}
+
+function SidebarUnreadReplyDot() {
+  return (
+    <span
+      data-testid="sidebar-unread-indicator"
+      className="inline-flex h-4 w-4 items-center justify-center"
+      aria-hidden="true"
+    >
+      <span className="h-2 w-2 rounded-full bg-[hsl(var(--ring))]" />
+    </span>
+  );
+}
+
 export function reorderSidebarSessionGroups(groups: SessionGroup[], sourceGroupId: string, targetGroupId: string): SessionGroup[] {
   const sourceIndex = groups.findIndex((group) => group.id === sourceGroupId);
   const targetIndex = groups.findIndex((group) => group.id === targetGroupId);
@@ -338,6 +395,10 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       return sessionManager.getCurrentSessionId();
     }
   });
+  const streamingSessionIds = useSessionSidebarIndicators((state) => state.streamingSessionIds);
+  const unreadSessionIds = useSessionSidebarIndicators((state) => state.unreadSessionIds);
+  const streamingSessionIdSet = useMemo(() => new Set(streamingSessionIds), [streamingSessionIds]);
+  const unreadSessionIdSet = useMemo(() => new Set(unreadSessionIds), [unreadSessionIds]);
 
   const navItems = useMemo(() => createNavItems(t), [t]);
   const primaryItems = useMemo(
@@ -454,6 +515,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   }, [draggedRecentGroupId]);
 
   const handleRecentSessionOpen = useCallback((sessionId: string) => {
+    markSessionSidebarIndicatorSeen(sessionId);
     setActiveSessionId(sessionId);
     if (currentView !== 'chat-v2') {
       handleViewChange('chat-v2');
@@ -747,6 +809,9 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     const sessionTitle = getSessionTitleText(session.title, t('chatV2:page.untitled', '未命名对话'));
     const pinned = isSessionPinned(session);
     const isHovered = hoveredRecentSessionId === session.id;
+    const isSessionStreaming = streamingSessionIdSet.has(session.id);
+    const hasUnreadAssistantReply = unreadSessionIdSet.has(session.id);
+    const isConfirmingArchive = confirmingArchiveSessionId === session.id;
 
     const relativeTime = (() => {
       const ts = new Date(session.updatedAt ?? session.createdAt).getTime();
@@ -817,42 +882,44 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               ) : pinned ? (
                 <Pin data-testid="recent-session-pin-icon" className="h-3.5 w-3.5 text-[color:var(--shell-navigation-foreground)]" />
               ) : undefined}
-              rightSlot={isHovered ? (
-                confirmingArchiveSessionId === session.id ? (
-                  <CommonTooltip content="确认归档会话" position="right">
-                    <span
-                      role="button"
-                      tabIndex={-1}
-                      aria-label="确认归档会话"
-                      className="flex h-5 min-w-[20px] items-center justify-center rounded-md bg-red-500/14 px-1 text-red-600 transition-colors hover:bg-red-500/20"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        setOpenRecentSessionMenuId(null);
+              rightSlot={isSessionStreaming ? (
+                <SidebarStreamingIndicator />
+              ) : hasUnreadAssistantReply ? (
+                <SidebarUnreadReplyDot />
+              ) : isHovered ? (
+                <CommonTooltip content={isConfirmingArchive ? '确认归档会话' : '归档会话'} position="right">
+                  <span
+                    role="button"
+                    tabIndex={-1}
+                    aria-label={isConfirmingArchive ? '确认归档会话' : '归档会话'}
+                    className={cn(
+                      'flex h-5 min-w-[20px] items-center justify-center rounded-md px-1 transition-colors',
+                      isConfirmingArchive
+                        ? 'bg-red-500/14 text-red-600 hover:bg-red-500/20'
+                        : 'text-[color:var(--shell-navigation-muted)] hover:text-red-600'
+                    )}
+                    onClick={(event) => {
+                      event.preventDefault();
+                      event.stopPropagation();
+                      setOpenRecentSessionMenuId(null);
+                      if (isConfirmingArchive) {
                         void handleRecentSessionArchive(session.id);
-                      }}
-                    >
-                      <Check className="h-3.5 w-3.5" />
+                        return;
+                      }
+
+                      setConfirmingArchiveSessionId(session.id);
+                    }}
+                  >
+                    <span className="t-icon-swap h-3.5 w-3.5" data-state={isConfirmingArchive ? 'b' : 'a'}>
+                      <span className="t-icon flex h-3.5 w-3.5 items-center justify-center" data-icon="a">
+                        <Archive className="h-3.5 w-3.5" />
+                      </span>
+                      <span className="t-icon flex h-3.5 w-3.5 items-center justify-center" data-icon="b">
+                        <Check className="h-3.5 w-3.5" />
+                      </span>
                     </span>
-                  </CommonTooltip>
-                ) : (
-                  <CommonTooltip content="归档会话" position="right">
-                    <span
-                      role="button"
-                      tabIndex={-1}
-                      aria-label="归档会话"
-                      className="flex h-4 w-4 items-center justify-center rounded-sm text-[color:var(--shell-navigation-muted)] transition-colors hover:text-red-600"
-                      onClick={(event) => {
-                        event.preventDefault();
-                        event.stopPropagation();
-                        setOpenRecentSessionMenuId(null);
-                        setConfirmingArchiveSessionId(session.id);
-                      }}
-                    >
-                      <Archive className="h-3.5 w-3.5" />
-                    </span>
-                  </CommonTooltip>
-                )
+                  </span>
+                </CommonTooltip>
               ) : (
                 <span className="ml-1 shrink-0 text-[11px] font-normal tabular-nums text-[color:var(--shell-navigation-muted)]">
                   {relativeTime}
@@ -896,7 +963,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
 
       </div>
     );
-  }, [confirmingArchiveSessionId, currentView, handleRecentSessionArchive, handleRecentSessionOpen, handleRecentSessionPinToggle, hoveredRecentSessionId, openRecentSessionMenuId, startRecentSessionRename, t]);
+  }, [activeSessionId, confirmingArchiveSessionId, currentView, handleRecentSessionArchive, handleRecentSessionOpen, handleRecentSessionPinToggle, hoveredRecentSessionId, openRecentSessionMenuId, startRecentSessionRename, streamingSessionIdSet, t, unreadSessionIdSet]);
 
   const pinnedRecentSessions = useMemo(
     () => sortSessionsByUpdatedAt(recentSessions.filter((session) => isSessionPinned(session))),
@@ -1205,10 +1272,8 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       className="font-sidebar-study-ui relative z-20 flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-[color:var(--shell-navigation-surface)] text-[color:var(--shell-navigation-foreground)] transition-colors duration-500"
       style={{ paddingTop: 'calc(var(--shell-titlebar-height) + var(--shell-layout-gap))' }}
     >
-      <div className="px-2 pb-1 pt-1" data-no-drag />
-
       <div
-        className="shrink-0 px-2 pb-2 pt-1"
+        className="shrink-0 px-2 pb-2 pt-0.5"
         data-no-drag
         data-sidebar-fixed-region="primary-navigation"
       >

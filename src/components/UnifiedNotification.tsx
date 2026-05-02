@@ -155,7 +155,7 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({
   const classNames = {
     success: 'unified-notification-success',
     error: 'unified-notification-error',
-    info: 'unified-notification-info',
+    info: 'unified-notification-neutral',
     warning: 'unified-notification-warning'
   };
   const borderToneClass = notification.borderTone === 'neutral'

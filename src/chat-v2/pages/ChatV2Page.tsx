@@ -10,7 +10,7 @@
 import React, { useState, useCallback, useEffect, useMemo, useDeferredValue, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, MessageSquare, Trash2, Edit2, Check, X, LayoutGrid, Library, FileText, BookOpen, ClipboardList, Image, File, Loader2, GripVertical, Menu, ChevronRight, RefreshCw, Folder, ExternalLink } from 'lucide-react';
+import { Plus, MessageSquare, Edit2, Check, X, LayoutGrid, Library, FileText, BookOpen, ClipboardList, Image, File, Loader2, GripVertical, Menu, ChevronRight, RefreshCw, Folder, ExternalLink } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { cn } from '@/lib/utils';
@@ -368,13 +368,8 @@ export const ChatV2Page: React.FC = () => {
   const [totalSessionCount, setTotalSessionCount] = useState<number | null>(null);
   const [ungroupedSessionCount, setUngroupedSessionCount] = useState<number | null>(null);
 
-  // 🔧 P1-29: 回收站状态
-  const [showTrash, setShowTrash] = useState(false);
   // 🆕 对话控制侧栏标签页状态
   const [showChatControl, setShowChatControl] = useState(false);
-  const [deletedSessions, setDeletedSessions] = useState<ChatSession[]>([]);
-  const [isLoadingTrash, setIsLoadingTrash] = useState(false);
-  const [showEmptyTrashConfirm, setShowEmptyTrashConfirm] = useState(false);
 
   useEffect(() => {
     setShowChatControl(false);
@@ -384,15 +379,13 @@ export const ChatV2Page: React.FC = () => {
   const {
     loadUngroupedCount, createSession, createAnalysisSession,
     loadSessions, loadMoreSessions, deleteSession,
-    loadDeletedSessions, restoreSession, permanentlyDeleteSession,
-    emptyTrash, toggleTrash, handleViewAgentSession,
+    handleViewAgentSession,
   } = useSessionLifecycle({
     currentSessionId,
     setSessions, setCurrentSessionId, setIsLoading, setTotalSessionCount,
     setUngroupedSessionCount, setHasMoreSessions, setIsInitialLoading,
-    setIsLoadingMore, setDeletedSessions, setIsLoadingTrash,
-    setShowTrash, setShowChatControl,
-    isLoadingMore, hasMoreSessions, deletedSessions, sessionsRef,
+    setIsLoadingMore, setShowChatControl,
+    isLoadingMore, hasMoreSessions, sessionsRef,
     t, PAGE_SIZE, LAST_SESSION_KEY,
   });
 
@@ -508,7 +501,7 @@ export const ChatV2Page: React.FC = () => {
   } = useSessionEdit({
     resetDeleteConfirmation, currentSessionId, setCurrentSessionId, setEditingSessionId, setEditingTitle,
     setRenamingSessionId, setRenameError, setSessions,
-    setGroupEditorOpen, setEditingGroup, setGroupEditorAutoFocusField, setShowTrash, setShowChatControl,
+    setGroupEditorOpen, setEditingGroup, setGroupEditorAutoFocusField, setShowChatControl,
     setViewMode, setSessionSheetOpen, setPendingArchiveGroup,
     setGroupPinnedIds, setMobileResourcePanelOpen,
     editingTitle, editingGroup, pendingArchiveGroup, sessionsRef,
@@ -574,7 +567,7 @@ export const ChatV2Page: React.FC = () => {
     viewMode, t, sessionCount: sessions.length,
     createSession, isLoading,
     mobileResourcePanelOpen, finderBreadcrumbs, finderJumpToBreadcrumb,
-    setMobileResourcePanelOpen, setSessionSheetOpen, setShowChatControl, setShowTrash, setViewMode,
+    setMobileResourcePanelOpen, setSessionSheetOpen, setShowChatControl, setViewMode,
   });
 
   // ===== 页面事件 hook =====
@@ -604,15 +597,14 @@ export const ChatV2Page: React.FC = () => {
   // ===== 侧边栏内容 hook =====
   const { renderSessionSidebarContent } = useSessionSidebarContent({
     searchQuery, setSearchQuery, setViewMode, setSessionSheetOpen,
-    setShowEmptyTrashConfirm, setShowChatControl, setPendingDeleteSessionId,
-    showTrash, showChatControl, deletedSessions, isLoadingTrash,
+    setShowChatControl, setPendingDeleteSessionId,
+    showChatControl,
     isInitialLoading, sessions, visibleGroups, sessionsByGroup, ungroupedSessions,
     currentSessionId, totalSessionCount,
     hasMoreSessions, isLoadingMore, pendingDeleteSessionId,
     t,
-    toggleTrash,
     resetDeleteConfirmation, clearDeleteConfirmTimeout, deleteConfirmTimeoutRef,
-    createSession, restoreSession, permanentlyDeleteSession, loadMoreSessions,
+    createSession, loadMoreSessions,
     renderSessionItem,
   });
 
@@ -1149,17 +1141,6 @@ export const ChatV2Page: React.FC = () => {
         onConfirm={confirmArchiveGroup}
       />
 
-      {/* 清空回收站确认对话框 */}
-      <NotionAlertDialog
-        open={showEmptyTrashConfirm}
-        onOpenChange={setShowEmptyTrashConfirm}
-        title={t('page.emptyTrashConfirmTitle')}
-        description={t('page.emptyTrashConfirmDesc', { count: deletedSessions.length })}
-        confirmText={t('page.emptyTrashConfirm')}
-        cancelText={t('common:cancel')}
-        confirmVariant="danger"
-        onConfirm={() => { emptyTrash(); setShowEmptyTrashConfirm(false); }}
-      />
     </div>
   );
 };

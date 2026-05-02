@@ -23,7 +23,7 @@ import { useDialogControl } from '@/contexts/DialogControlContext';
 import { isBuiltinServer } from '@/mcp/builtinMcpServer';
 import type { ModelInfo } from '../../utils/parseModelMentions';
 import { isMultiModelSelectEnabled } from '@/config/featureFlags';
-import { inferInputContextBudget } from '@/utils/modelCapabilities';
+import { inferCapabilities, inferInputContextBudget } from '@/utils/modelCapabilities';
 import { deriveContextWindowUsage } from './contextWindowUsage';
 import {
   deepSeekV32EffortToBudget,
@@ -58,6 +58,7 @@ interface AggregatedStoreState {
   enableThinking: boolean;
   modelId: string;
   modelDisplayName?: string;
+  model2OverrideId: string | null;
   maxTokens: number;
   contextLimit?: number;
   reasoningEffort?: string;
@@ -100,6 +101,39 @@ function matchesModelIdentity(model: ModelInfo, candidates: unknown[]): boolean 
   );
 }
 
+function getModelDisplayLabel(model: ModelInfo | undefined): string | undefined {
+  return model?.model || model?.name || model?.id || undefined;
+}
+
+function getModelStringField(model: ModelInfo | undefined, key: string): string | undefined {
+  const value = model?.[key];
+  return typeof value === 'string' && value.trim().length > 0 ? value : undefined;
+}
+
+function getModelBooleanField(model: ModelInfo | undefined, key: string): boolean | undefined {
+  const value = model?.[key];
+  return typeof value === 'boolean' ? value : undefined;
+}
+
+function resolveModelReasoningSupport(model: ModelInfo | undefined): boolean {
+  if (!model) {
+    return true;
+  }
+
+  const explicitReasoning =
+    getModelBooleanField(model, 'isReasoning') ??
+    getModelBooleanField(model, 'supportsReasoning');
+  if (typeof explicitReasoning === 'boolean') {
+    return explicitReasoning;
+  }
+
+  return inferCapabilities({
+    id: model.model || model.id,
+    name: model.name,
+    providerScope: getModelStringField(model, 'providerScope'),
+  }).supportsReasoning;
+}
+
 function getManualPinnedSkillIds(
   skillStateJson: string | null | undefined,
   _fallbackActiveSkillIds: string[]
@@ -132,6 +166,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       enableThinking,
       modelId,
       modelDisplayName,
+      model2OverrideId,
       maxTokens,
       contextLimit,
       reasoningEffort,
@@ -159,6 +194,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         enableThinking: s.chatParams.enableThinking,
         modelId: s.chatParams.modelId,
         modelDisplayName: s.chatParams.modelDisplayName,
+        model2OverrideId: s.chatParams.model2OverrideId ?? null,
         maxTokens: s.chatParams.maxTokens,
         contextLimit: s.chatParams.contextLimit,
         reasoningEffort: s.chatParams.reasoningEffort,
@@ -250,23 +286,34 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       [availableModels, modelDisplayName, modelId]
     );
 
+    const runtimeOverrideModelInfo = useMemo(
+      () =>
+        model2OverrideId
+          ? availableModels?.find((model) => matchesModelIdentity(model, [model2OverrideId]))
+          : undefined,
+      [availableModels, model2OverrideId]
+    );
+    const activeRuntimeModelInfo = model2OverrideId ? runtimeOverrideModelInfo : currentModelInfo;
+
     const contextUsageLimitTokens = useMemo(() => {
       const inferredModelMaxOutput =
-        typeof currentModelInfo?.maxOutputTokens === 'number' && Number.isFinite(currentModelInfo.maxOutputTokens)
-          ? currentModelInfo.maxOutputTokens
+        typeof activeRuntimeModelInfo?.maxOutputTokens === 'number' && Number.isFinite(activeRuntimeModelInfo.maxOutputTokens)
+          ? activeRuntimeModelInfo.maxOutputTokens
           : undefined;
-      const providerScope = typeof currentModelInfo?.providerScope === 'string'
-        ? currentModelInfo.providerScope
+      const providerScope = typeof activeRuntimeModelInfo?.providerScope === 'string'
+        ? activeRuntimeModelInfo.providerScope
         : undefined;
       const configContextWindow =
-        typeof currentModelInfo?.contextWindow === 'number' && Number.isFinite(currentModelInfo.contextWindow)
-          ? currentModelInfo.contextWindow
+        typeof activeRuntimeModelInfo?.contextWindow === 'number' && Number.isFinite(activeRuntimeModelInfo.contextWindow)
+          ? activeRuntimeModelInfo.contextWindow
           : undefined;
+      const effectiveModelId = model2OverrideId || modelId;
+      const effectiveModelDisplayName = model2OverrideId ? undefined : modelDisplayName;
 
       return inferInputContextBudget({
         modelLike: {
-          id: currentModelInfo?.model ?? modelDisplayName ?? modelId,
-          name: currentModelInfo?.name ?? modelDisplayName ?? modelId,
+          id: activeRuntimeModelInfo?.model ?? effectiveModelDisplayName ?? effectiveModelId,
+          name: activeRuntimeModelInfo?.name ?? effectiveModelDisplayName ?? effectiveModelId,
           providerScope,
         },
         userContextLimit: contextLimit,
@@ -274,13 +321,14 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         configContextWindow,
       });
     }, [
+      activeRuntimeModelInfo?.contextWindow,
+      activeRuntimeModelInfo?.maxOutputTokens,
+      activeRuntimeModelInfo?.model,
+      activeRuntimeModelInfo?.name,
+      activeRuntimeModelInfo?.providerScope,
       contextLimit,
-      currentModelInfo?.contextWindow,
-      currentModelInfo?.maxOutputTokens,
-      currentModelInfo?.model,
-      currentModelInfo?.name,
-      currentModelInfo?.providerScope,
       maxTokens,
+      model2OverrideId,
       modelDisplayName,
       modelId,
     ]);
@@ -293,37 +341,55 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     const thinkingControl = useMemo(
       () =>
         resolveDeepSeekRuntimeReasoningControl({
-          model: currentModelInfo?.model ?? modelDisplayName ?? modelId,
-          modelId: currentModelInfo?.id ?? modelId,
-          providerType: currentModelInfo?.providerType,
-          providerScope: currentModelInfo?.providerScope,
-          baseUrl: currentModelInfo?.baseUrl,
+          model: activeRuntimeModelInfo?.model ?? model2OverrideId ?? modelDisplayName ?? modelId,
+          modelId: activeRuntimeModelInfo?.id ?? model2OverrideId ?? modelId,
+          providerType: activeRuntimeModelInfo?.providerType,
+          providerScope: activeRuntimeModelInfo?.providerScope,
+          baseUrl: activeRuntimeModelInfo?.baseUrl,
         }),
       [
-        currentModelInfo?.model,
-        currentModelInfo?.providerType,
-        currentModelInfo?.providerScope,
-        currentModelInfo?.baseUrl,
+        activeRuntimeModelInfo?.model,
+        activeRuntimeModelInfo?.id,
+        activeRuntimeModelInfo?.providerType,
+        activeRuntimeModelInfo?.providerScope,
+        activeRuntimeModelInfo?.baseUrl,
+        model2OverrideId,
         modelDisplayName,
         modelId,
       ]
     );
 
-    const effectiveReasoningEffort = reasoningEffort ?? (currentModelInfo?.reasoningEffort as string | undefined);
-    const effectiveThinkingBudget = thinkingBudget ?? (currentModelInfo?.thinkingBudget as number | undefined);
+    const runtimeModelSupportsReasoning = useMemo(
+      () => resolveModelReasoningSupport(activeRuntimeModelInfo),
+      [activeRuntimeModelInfo]
+    );
+    const effectiveEnableThinking = runtimeModelSupportsReasoning && enableThinking;
+    const effectiveReasoningEffort = reasoningEffort ?? (activeRuntimeModelInfo?.reasoningEffort as string | undefined);
+    const effectiveThinkingBudget = thinkingBudget ?? (activeRuntimeModelInfo?.thinkingBudget as number | undefined);
     const normalizedThinkingSelection = useMemo(
       () =>
         resolveDeepSeekRuntimeReasoningSelection({
           control: thinkingControl,
-          enableThinking,
+          enableThinking: effectiveEnableThinking,
           reasoningEffort: effectiveReasoningEffort,
           thinkingBudget: effectiveThinkingBudget,
         }),
-      [thinkingControl, enableThinking, effectiveReasoningEffort, effectiveThinkingBudget]
+      [thinkingControl, effectiveEnableThinking, effectiveReasoningEffort, effectiveThinkingBudget]
     );
     const runtimeDepthIsSet = reasoningEffort !== undefined || thinkingBudget !== undefined;
 
     useEffect(() => {
+      if (!runtimeModelSupportsReasoning) {
+        if (!enableThinking && reasoningEffort === undefined && thinkingBudget === undefined) return;
+
+        setChatParams({
+          enableThinking: false,
+          reasoningEffort: undefined,
+          thinkingBudget: undefined,
+        });
+        return;
+      }
+
       if (!runtimeDepthIsSet && thinkingControl.kind !== 'toggle-only') return;
 
       const nextReasoningEffort = normalizedThinkingSelection.reasoningEffort;
@@ -341,6 +407,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       normalizedThinkingSelection.thinkingBudget,
       reasoningEffort,
       runtimeDepthIsSet,
+      runtimeModelSupportsReasoning,
       setChatParams,
       thinkingBudget,
       thinkingControl.kind,
@@ -348,6 +415,15 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
 
     const handleSetThinkingDepth = useCallback(
       (value: DeepSeekReasoningOptionValue | 'off') => {
+        if (!runtimeModelSupportsReasoning) {
+          store.getState().setChatParams({
+            enableThinking: false,
+            reasoningEffort: undefined,
+            thinkingBudget: undefined,
+          });
+          return;
+        }
+
         if (value === 'off') {
           store.getState().setChatParams({ enableThinking: false });
           return;
@@ -374,16 +450,17 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
 
         store.getState().setChatParams({ enableThinking: true });
       },
-      [store, thinkingControl.kind]
+      [store, thinkingControl.kind, runtimeModelSupportsReasoning]
     );
 
     const thinkingStateLabel = useMemo(() => {
-      if (!enableThinking) return '推理: 关闭';
+      if (!runtimeModelSupportsReasoning) return '推理: 不支持';
+      if (!effectiveEnableThinking) return '推理: 关闭';
       return `推理: ${getThinkingDepthLabel(
         thinkingControl.kind,
         normalizedThinkingSelection.reasoningEffort as DeepSeekReasoningOptionValue | undefined
       )}`;
-    }, [enableThinking, normalizedThinkingSelection.reasoningEffort, thinkingControl.kind]);
+    }, [effectiveEnableThinking, normalizedThinkingSelection.reasoningEffort, runtimeModelSupportsReasoning, thinkingControl.kind]);
 
     // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器，移除 handleToggleAnkiTools
     // Anki 工具现在始终可用，无需单独开关
@@ -393,10 +470,23 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
 
     // 🔧 多选模型状态（使用外部面板，不再使用 @mention 弹窗）
     const [selectedModels, setSelectedModels] = useState<ModelInfo[]>([]);
+    const modelPanelIntentRef = useRef<'parallel' | 'runtime'>('parallel');
 
     // 使用 ref 存储 selectedModels，让回调能访问最新值
     const selectedModelsRef = useRef(selectedModels);
     selectedModelsRef.current = selectedModels;
+
+    const runtimeModelLabel = useMemo(() => {
+      return (
+        getModelDisplayLabel(runtimeOverrideModelInfo) ||
+        (model2OverrideId ? modelDisplayName : undefined) ||
+        model2OverrideId ||
+        getModelDisplayLabel(currentModelInfo) ||
+        modelDisplayName ||
+        modelId ||
+        undefined
+      );
+    }, [currentModelInfo, model2OverrideId, modelDisplayName, modelId, runtimeOverrideModelInfo]);
 
     // 🚩 Feature Flag：关闭时仅允许单模型选中
     const multiModelSelectEnabled = isMultiModelSelectEnabled();
@@ -488,6 +578,34 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       setPanelState,
     } = useInputBarV2(store, inputBarOptions);
 
+    const openModelPanelWithIntent = useCallback(
+      (intent: 'parallel' | 'runtime') => {
+        const currentState = store.getState();
+        const isSamePanelOpen = currentState.panelStates?.model && modelPanelIntentRef.current === intent;
+
+        modelPanelIntentRef.current = intent;
+
+        if (isSamePanelOpen) {
+          currentState.setPanelState('model', false);
+          return;
+        }
+
+        (['attachment', 'rag', 'advanced', 'learn', 'mcp', 'search', 'skill'] as const).forEach((panel) => {
+          currentState.setPanelState(panel, false);
+        });
+        currentState.setPanelState('model', true);
+      },
+      [store]
+    );
+
+    const handleOpenParallelModelPanel = useCallback(() => {
+      openModelPanelWithIntent('parallel');
+    }, [openModelPanelWithIntent]);
+
+    const handleOpenRuntimeModelPanel = useCallback(() => {
+      openModelPanelWithIntent('runtime');
+    }, [openModelPanelWithIntent]);
+
     // 🔧 监听 model 面板关闭，自动清除 modelRetryTarget
     // 解决：点击面板外部关闭时 closeAllPanels 不会调用 handleCloseModelPanel 的问题
     useEffect(() => {
@@ -560,9 +678,18 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     // 🔧 模型选择面板渲染函数（支持普通多选和重试模式）
     // hideHeader 参数用于移动端底部抽屉模式
     const renderModelPanel = useMemo(() => {
-      // 优先使用多选面板
-      if (availableModels && availableModels.length > 0) {
-        return (hideHeader = false) => (
+      const RuntimeModelPanel = modePlugin?.renderModelPanel;
+      if (!RuntimeModelPanel && (!availableModels || availableModels.length === 0)) {
+        return undefined;
+      }
+
+      return (hideHeader = false) => {
+        if (modelPanelIntentRef.current === 'runtime' && RuntimeModelPanel) {
+          return <RuntimeModelPanel store={store} onClose={handleCloseModelPanel} closeOnSelect />;
+        }
+
+        if (availableModels && availableModels.length > 0) {
+          return (
           <MultiSelectModelPanel
             selectedModels={selectedModels}
             onSelectModel={handleSelectModel}
@@ -574,12 +701,12 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
             onRetry={handleRetryWithModels}
             hideHeader={hideHeader}
           />
-        );
-      }
-      // 回退到模式插件的面板
-      if (!modePlugin?.renderModelPanel) return undefined;
-      const ModelPanel = modePlugin.renderModelPanel;
-      return () => <ModelPanel store={store} onClose={handleCloseModelPanel} />;
+          );
+        }
+
+        if (!RuntimeModelPanel) return null;
+        return <RuntimeModelPanel store={store} onClose={handleCloseModelPanel} />;
+      };
     }, [availableModels, selectedModels, handleSelectModel, handleDeselectModel, isStreaming, modePlugin?.renderModelPanel, store, handleCloseModelPanel, modelRetryTarget, handleRetryWithModels]);
 
     // 高级设置面板渲染函数
@@ -660,6 +787,8 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         renderAdvancedPanel={renderAdvancedPanel}
         renderMcpPanel={renderMcpPanel}
         renderSkillPanel={renderSkillPanel}
+        onOpenModelPanel={handleOpenParallelModelPanel}
+        onOpenRuntimeModelPanel={handleOpenRuntimeModelPanel}
         // 🔧 MCP 选中状态
         mcpEnabled={selectedMcpServers.length > 0}
         selectedMcpServerCount={nonBuiltinMcpServerCount}
@@ -674,11 +803,13 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         // 模型 @mention 自动完成
         modelMentionState={modelMentionState}
         modelMentionActions={modelMentionActions}
+        runtimeModelLabel={runtimeModelLabel}
         // 推理模式
-        enableThinking={enableThinking}
+        enableThinking={effectiveEnableThinking}
         thinkingStateLabel={thinkingStateLabel}
-        thinkingDepthOptions={thinkingControl.options}
-        thinkingDepthValue={normalizedThinkingSelection.reasoningEffort as DeepSeekReasoningOptionValue | undefined}
+        thinkingUnsupported={!runtimeModelSupportsReasoning}
+        thinkingDepthOptions={runtimeModelSupportsReasoning ? thinkingControl.options : []}
+        thinkingDepthValue={runtimeModelSupportsReasoning ? normalizedThinkingSelection.reasoningEffort as DeepSeekReasoningOptionValue | undefined : undefined}
         onToggleThinking={handleToggleThinking}
         onSetThinkingDepth={handleSetThinkingDepth}
         // ★ 2026-01 改造：Anki 工具已迁移到内置 MCP 服务器，移除开关

@@ -70,6 +70,7 @@ import { useDialogControl } from './contexts/DialogControlContext';
 import './styles/typography.css'; // 全局排版（字体/字号/行高）
 import './styles/shadcn-overrides.css'; // 修复图标尺寸被覆盖的问题
 import { MigrationStatusBanner } from './components/system-status/MigrationStatusBanner';
+import { SettingsShellSidebar } from './components/settings/SettingsShellSidebar';
 import { setPendingSettingsTab } from './utils/pendingSettingsTab';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useNavigationHistory } from './hooks/useNavigationHistory';
@@ -84,6 +85,7 @@ import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { useViewStore } from './stores/viewStore';
 import { debugLog } from './debug-panel/debugMasterSwitch';
 import { sessionManager } from './chat-v2/core/session/sessionManager';
+import { setSessionSidebarViewContext } from './chat-v2/hooks/useSessionSidebarIndicators';
 import { groupCache } from './chat-v2/core/store/groupCache';
 import { getSessionTitleText } from './chat-v2/utils/sessionTitle';
 import type { ChatStore } from './chat-v2/core/types';
@@ -703,13 +705,13 @@ function App() {
   const shellSidebarWidth = getShellSidebarWidth(isSmallScreen);
   const desktopNavigationWidth = !isSmallScreen && leftPanelCollapsed ? 0 : shellSidebarWidth;
   const isDesktopSidebarSurfaceVisible = !isSmallScreen && !leftPanelCollapsed;
-  const shouldUseDesktopFloatingAccessory = !isSmallScreen && currentView !== 'settings';
+  const shouldUseDesktopFloatingAccessory = !isSmallScreen;
   const desktopFloatingAccessoryOffset = isMacOS() ? DESKTOP_SHELL.macTrafficLightsSpacer + 16 : 16;
   const desktopSidebarToggleLabel = t('common:navigation.toggle_sidebar', '切换边栏');
   const desktopHeaderNavHotzoneLabel = t('chatV2:page.newSession', '新建会话');
   const desktopHeaderTitleHotzoneLabel = t('common:command_palette_label', '命令面板');
   const desktopCollapsedLeadingWidth = 148;
-  const desktopTitlebarLeadingInset = !isSmallScreen && currentView !== 'settings' && leftPanelCollapsed
+  const desktopTitlebarLeadingInset = !isSmallScreen && leftPanelCollapsed
     ? (isMacOS() ? DESKTOP_SHELL.macTrafficLightsSpacer : 0) + 16 + desktopCollapsedLeadingWidth
     : 0;
   const desktopFloatingAccessoryWidth = desktopCollapsedLeadingWidth;
@@ -1615,6 +1617,59 @@ function App() {
     // navigationHistory 已从 deps 中移除：ModernSidebar 仅解构 currentView/onViewChange/topbarTopMargin
   ), [currentView, handleViewChange, leftPanelCollapsed, noopToggle, startDragging, topbarTopMargin]);
 
+  const settingsShellSidebarElement = useMemo(() => (
+    <SettingsShellSidebar
+      isSmallScreen={false}
+      globalLeftPanelCollapsed={leftPanelCollapsed}
+      onBack={() => setCurrentView('chat-v2')}
+    />
+  ), [leftPanelCollapsed, setCurrentView]);
+
+  const desktopShellSidebarElement = currentView === 'settings' ? settingsShellSidebarElement : sidebarElement;
+
+  const syncSessionSidebarContext = useCallback(() => {
+    setSessionSidebarViewContext({
+      currentView,
+      activeSessionId: sessionManager.getCurrentSessionId(),
+      isDocumentVisible:
+        typeof document === 'undefined'
+          ? true
+          : document.visibilityState === 'visible' && document.hasFocus(),
+    });
+  }, [currentView]);
+
+  useEffect(() => {
+    syncSessionSidebarContext();
+
+    const unsubscribeSessionManager = sessionManager.subscribe((event) => {
+      if (event.type === 'current-session-changed') {
+        syncSessionSidebarContext();
+      }
+    });
+
+    return () => {
+      unsubscribeSessionManager();
+    };
+  }, [syncSessionSidebarContext]);
+
+  useEventRegistry([
+    {
+      target: 'window',
+      type: 'focus',
+      listener: syncSessionSidebarContext as EventListener,
+    },
+    {
+      target: 'window',
+      type: 'blur',
+      listener: syncSessionSidebarContext as EventListener,
+    },
+    {
+      target: 'document',
+      type: 'visibilitychange',
+      listener: syncSessionSidebarContext as EventListener,
+    },
+  ], [syncSessionSidebarContext]);
+
   // ★ 分析模式已废弃（旧错题系统已移除）- handleCoreStateUpdate, handleSaveRequest, analysisHostProps 已移除
   // const renderAnalysisView = () => null; // 已废弃
 
@@ -2238,7 +2293,7 @@ function App() {
         )}
 
         {/* 桌面端：主导航侧边栏 */}
-        {!isSmallScreen && currentView !== 'settings' ? (
+        {!isSmallScreen ? (
           <div
             className={cn(
               'h-full flex-shrink-0',
@@ -2246,7 +2301,7 @@ function App() {
               leftPanelCollapsed ? 'w-0' : 'w-[var(--shell-navigation-width)]'
             )}
           >
-            {sidebarElement}
+            {desktopShellSidebarElement}
           </div>
         ) : null}
 

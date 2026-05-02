@@ -185,6 +185,9 @@ export function AppMenuContent({
   const contentRef = ctx?.contentRef ?? fallbackContentRef;
   const searchInputRef = React.useRef<HTMLInputElement>(null);
   const isOpen = !!ctx?.open;
+  const [shouldRender, setShouldRender] = React.useState(isOpen);
+  const [isClosing, setIsClosing] = React.useState(false);
+  const closeTimeoutRef = React.useRef<number | null>(null);
   const resolvedSearchPlaceholder = searchPlaceholder || t('app_menu.search.placeholder');
 
   const actualSearchValue = searchValue !== undefined ? searchValue : internalSearchValue;
@@ -196,9 +199,42 @@ export function AppMenuContent({
     }
   };
 
+  React.useEffect(() => {
+    if (closeTimeoutRef.current !== null) {
+      window.clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+
+    if (isOpen) {
+      setShouldRender(true);
+      setIsClosing(false);
+      return;
+    }
+
+    if (!shouldRender) return;
+
+    setIsClosing(true);
+    const closeMs = parseFloat(
+      window.getComputedStyle(document.documentElement).getPropertyValue('--dropdown-close-dur')
+    ) || 150;
+
+    closeTimeoutRef.current = window.setTimeout(() => {
+      setShouldRender(false);
+      setIsClosing(false);
+      closeTimeoutRef.current = null;
+    }, closeMs);
+
+    return () => {
+      if (closeTimeoutRef.current !== null) {
+        window.clearTimeout(closeTimeoutRef.current);
+        closeTimeoutRef.current = null;
+      }
+    };
+  }, [isOpen, shouldRender]);
+
   React.useLayoutEffect(() => {
     if (typeof document === 'undefined') return;
-    if (!isOpen) return;
+    if (!shouldRender) return;
     
     const updatePosition = () => {
       const contentEl = contentRef.current;
@@ -258,7 +294,7 @@ export function AppMenuContent({
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
     };
-  }, [align, ctx, isOpen]);
+  }, [align, ctx, shouldRender]);
 
   // 自动聚焦搜索框
   React.useEffect(() => {
@@ -267,7 +303,7 @@ export function AppMenuContent({
     }
   }, [isOpen, showSearch]);
 
-  if (!ctx || !isOpen) return null;
+  if (!ctx || !shouldRender) return null;
   if (typeof document === 'undefined') return null;
 
   return createPortal(
@@ -278,6 +314,8 @@ export function AppMenuContent({
       className={cn(
         'app-menu-content',
         position.origin === 'bottom' ? 'app-menu-origin-bottom' : 'app-menu-origin-top',
+        isOpen && 'app-menu-open',
+        isClosing && 'app-menu-closing',
         className
       )}
       style={{
@@ -443,7 +481,7 @@ export function AppMenuSubTrigger({ icon, children, disabled, className, ...rest
   );
 }
 
-export interface AppMenuSubContentProps extends React.HTMLAttributes<HTMLDivElement> {}
+export type AppMenuSubContentProps = React.HTMLAttributes<HTMLDivElement>;
 
 export function AppMenuSubContent({ className, children, ...rest }: AppMenuSubContentProps) {
   const subCtx = React.useContext(AppMenuSubContext);
@@ -463,7 +501,7 @@ export function AppMenuSubContent({ className, children, ...rest }: AppMenuSubCo
 
 // ============ Separator ============
 
-export interface AppMenuSeparatorProps extends React.HTMLAttributes<HTMLDivElement> {}
+export type AppMenuSeparatorProps = React.HTMLAttributes<HTMLDivElement>;
 
 export function AppMenuSeparator({ className, ...rest }: AppMenuSeparatorProps) {
   return <div className={cn('app-menu-separator', className)} role="separator" {...rest} />;
@@ -471,7 +509,7 @@ export function AppMenuSeparator({ className, ...rest }: AppMenuSeparatorProps) 
 
 // ============ Label ============
 
-export interface AppMenuLabelProps extends React.HTMLAttributes<HTMLDivElement> {}
+export type AppMenuLabelProps = React.HTMLAttributes<HTMLDivElement>;
 
 export const AppMenuLabel = React.forwardRef<HTMLDivElement, AppMenuLabelProps>(
   ({ className, ...rest }, ref) => (
@@ -486,7 +524,7 @@ AppMenuLabel.displayName = 'AppMenuLabel';
 
 // ============ Footer ============
 
-export interface AppMenuFooterProps extends React.HTMLAttributes<HTMLDivElement> {}
+export type AppMenuFooterProps = React.HTMLAttributes<HTMLDivElement>;
 
 export function AppMenuFooter({ className, children, ...rest }: AppMenuFooterProps) {
   return (
@@ -668,7 +706,7 @@ export function AppMenuOptionGroup({
 
 // ============ Keyboard Shortcut Display ============
 
-export interface AppMenuShortcutProps extends React.HTMLAttributes<HTMLSpanElement> {}
+export type AppMenuShortcutProps = React.HTMLAttributes<HTMLSpanElement>;
 
 export function AppMenuShortcut({ className, ...rest }: AppMenuShortcutProps) {
   return (

@@ -58,16 +58,17 @@ function renderHarness() {
 }
 
 describe('SessionGroupActions', () => {
-  it('keeps topic group quick actions hidden until the group row is hovered or focused', () => {
+  it('keeps the ellipsis menu hidden until the group row is hovered/focused, while keeping the new-session icon visible', () => {
     const source = readFileSync(resolve(process.cwd(), 'src/chat-v2/pages/SessionGroupActions.tsx'), 'utf-8');
-    const quickAction = source.match(
-      /const quickAction = \([\s\S]*?<AppMenu open=\{menuOpen\}/
-    )?.[0] ?? '';
+    const quickAction = source.match(/const quickAction = \([\s\S]*?\n\s*\);/m)?.[0] ?? '';
 
-    expect(quickAction).toContain('opacity-0');
-    expect(quickAction).toContain('group-hover/sidebar-section:opacity-100');
-    expect(quickAction).toContain('group-focus-within/sidebar-section:opacity-100');
-    expect(quickAction).toContain('data-[menu-open=true]:opacity-100');
+    // Container itself should no longer be hidden.
+    expect(source).toContain('<div className="flex items-center gap-0.5">');
+    expect(source).not.toContain('className="flex items-center gap-0.5 opacity-0');
+
+    // Only the menu trigger stays hover/focus/menu-open visible.
+    expect(quickAction).toContain('className="opacity-0 transition-opacity duration-150 group-hover/sidebar-section:opacity-100 group-focus-within/sidebar-section:opacity-100 data-[menu-open=true]:opacity-100"');
+    expect(quickAction).toMatch(/opacity-0[\s\S]*?<\/div>\s*<CommonTooltip/);
   });
 
   it('uses the study compose icon for grouped new session quick actions', () => {

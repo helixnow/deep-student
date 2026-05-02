@@ -1216,18 +1216,17 @@ export async function cleanupMultiVariantTestData(
   let deleted = 0;
   try {
     const { invoke } = await import('@tauri-apps/api/core');
-    for (const status of ['active', 'deleted'] as const) {
+    for (const status of ['active', 'archived', 'deleted'] as const) {
       let offset = 0;
       const limit = 50;
       let hasMore = true;
       while (hasMore) {
-        const list = await invoke<{ sessions: Array<{ id: string; title: string }> }>('chat_v2_list_sessions', { status, offset, limit });
-        const sessions = list?.sessions || [];
+        const sessions = await invoke<Array<{ id: string; title: string }>>('chat_v2_list_sessions', { status, offset, limit });
         hasMore = sessions.length === limit;
         for (const s of sessions) {
           if (s.title?.startsWith(MV_TEST_SESSION_PREFIX)) {
             try {
-              await invoke('chat_v2_soft_delete_session', { sessionId: s.id });
+              await invoke('chat_v2_delete_session', { sessionId: s.id });
               deleted++;
               onProgress?.(`删除: ${s.title} (${s.id})`);
             } catch (e) { errors.push(`${s.id}: ${e}`); }

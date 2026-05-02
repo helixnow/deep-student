@@ -27,13 +27,15 @@ describe('desktop shell sidebar collapse contract', () => {
   });
 
   it('adds a titlebar leading inset when the desktop sidebar is fully collapsed so the header content does not overlap the floating controls', () => {
-    expect(appSource).toContain("const desktopTitlebarLeadingInset = !isSmallScreen && currentView !== 'settings' && leftPanelCollapsed");
+    expect(appSource).toContain('const desktopTitlebarLeadingInset = !isSmallScreen && leftPanelCollapsed');
+    expect(appSource).not.toContain("const desktopTitlebarLeadingInset = !isSmallScreen && currentView !== 'settings' && leftPanelCollapsed");
     expect(appSource).toContain("style={{ paddingLeft: `${20 + desktopTitlebarLeadingInset}px` }}");
     expect(appSource).toContain('transition-[padding-left] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none');
   });
 
   it('keeps the collapse affordance alive as a floating titlebar accessory instead of letting it disappear with the sidebar column', () => {
-    expect(appSource).toContain("const shouldUseDesktopFloatingAccessory = !isSmallScreen && currentView !== 'settings';");
+    expect(appSource).toContain('const shouldUseDesktopFloatingAccessory = !isSmallScreen;');
+    expect(appSource).not.toContain("const shouldUseDesktopFloatingAccessory = !isSmallScreen && currentView !== 'settings';");
     expect(appSource).toContain('const desktopCollapsedLeadingWidth = 148;');
     expect(appSource).toContain('const desktopFloatingAccessoryWidth = desktopCollapsedLeadingWidth;');
     expect(appSource).not.toContain('const desktopFloatingAccessoryWidth = leftPanelCollapsed');
@@ -82,10 +84,13 @@ describe('desktop shell sidebar collapse contract', () => {
     expect(appSource).toContain('transition-[transform,opacity,margin-right] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none');
   });
 
-  it('keeps rendering the global ModernSidebar on desktop non-settings routes so width transitions can animate', () => {
-    expect(appSource).toContain("{!isSmallScreen && currentView !== 'settings' ? (");
+  it('renders the active desktop shell sidebar for every desktop route so width transitions can animate', () => {
+    expect(appSource).toContain("const desktopShellSidebarElement = currentView === 'settings' ? settingsShellSidebarElement : sidebarElement;");
+    expect(appSource).toContain('{!isSmallScreen ? (');
+    expect(appSource).not.toContain("{!isSmallScreen && currentView !== 'settings' ? (");
     expect(appSource).toContain("'overflow-hidden transition-[width] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)]'");
     expect(appSource).toContain("leftPanelCollapsed ? 'w-0' : 'w-[var(--shell-navigation-width)]'");
+    expect(appSource).toContain('{desktopShellSidebarElement}');
   });
 
   it('lets ModernSidebar behave like a fill-content shell so the outer app column owns the collapse animation', () => {
@@ -106,14 +111,28 @@ describe('desktop shell sidebar collapse contract', () => {
     expect(appCssSource).toMatch(/\.desktop-shell-workspace\[data-sidebar-visible="true"\]\s*\{[\s\S]*border-left:\s*1px solid var\(--shell-navigation-border\);/);
   });
 
-  it('uses the same rounded right-pane treatment for the desktop settings content', () => {
-    expect(settingsSource).toContain("const isDesktopSettingsSidebarVisible = !isSmallScreen && !globalLeftPanelCollapsed;");
-    expect(settingsSource).toContain("settings-main-pane study-shell-pane study-shell-pane--flush-top");
-    expect(settingsSource).toContain("data-sidebar-visible={!sheetMode && isDesktopSettingsSidebarVisible ? 'true' : 'false'}");
-    expect(settingsCssSource).toMatch(/\.settings\s*\{[\s\S]*background:\s*var\(--shell-navigation-surface\);/);
-    expect(settingsCssSource).toMatch(/\.settings-main-pane\[data-sidebar-visible="true"\]\s*\{[\s\S]*border-top-left-radius:\s*0;/);
-    expect(settingsCssSource).not.toMatch(/\.settings-main-pane\[data-sidebar-visible="true"\]\s*\{[\s\S]*border-top-left-radius:\s*var\(--shell-workspace-edge-radius\);/);
-    expect(settingsCssSource).toMatch(/\.settings-main-pane\[data-sidebar-visible="true"\]\s*\{[\s\S]*border-bottom-left-radius:\s*var\(--shell-workspace-edge-radius\);/);
-    expect(settingsCssSource).toMatch(/\.settings-main-pane\[data-sidebar-visible="true"\]\s*\{[\s\S]*border-left:\s*1px solid var\(--shell-navigation-border\);/);
+  it('renders the settings custom left rail in the global desktop shell nav slot', () => {
+    expect(appSource).toContain("import { SettingsShellSidebar } from './components/settings/SettingsShellSidebar';");
+    expect(appSource).toContain('const settingsShellSidebarElement = useMemo(() => (');
+    expect(appSource).toContain('<SettingsShellSidebar');
+    expect(appSource).toContain('globalLeftPanelCollapsed={leftPanelCollapsed}');
+    expect(appSource).toContain("onBack={() => setCurrentView('chat-v2')}");
+    expect(appSource).toContain("const desktopShellSidebarElement = currentView === 'settings' ? settingsShellSidebarElement : sidebarElement;");
+  });
+
+  it('keeps desktop settings content inside the shared workspace boundary instead of drawing its own shell', () => {
+    expect(settingsSource).toContain("import { SettingsShellSidebar } from './settings/SettingsShellSidebar';");
+    expect(settingsSource).toContain("import { useSettingsNavigation } from './settings/useSettingsNavigation';");
+    expect(settingsSource).toContain("import { useSettingsShellStore } from '@/stores/settingsShellStore';");
+    expect(settingsSource).not.toContain("const isDesktopSettingsSidebarVisible = !isSmallScreen && !globalLeftPanelCollapsed;");
+    expect(settingsSource).not.toContain("settings-main-pane study-shell-pane study-shell-pane--flush-top");
+    expect(settingsSource).not.toContain("data-sidebar-visible={!sheetMode && isDesktopSettingsSidebarVisible ? 'true' : 'false'}");
+    expect(settingsCssSource).not.toContain('.settings-main-pane[data-sidebar-visible="true"]');
+    expect(settingsCssSource).not.toMatch(/\.settings\s*\{[\s\S]*background:\s*var\(--shell-navigation-surface\);/);
+
+    const desktopLayoutSource = settingsSource.slice(settingsSource.indexOf('// ===== 桌面端布局 ====='));
+    expect(desktopLayoutSource).not.toContain('<MacTopSafeDragZone');
+    expect(desktopLayoutSource).not.toContain('{renderSettingsSidebar()}');
+    expect(desktopLayoutSource).toContain('{renderSettingsMainContent()}');
   });
 });

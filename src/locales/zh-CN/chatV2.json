@@ -72,7 +72,8 @@
       "suggestion4": "我正在进行大学物理期末备考，请根据资源库中的相关资料，制作一套题目集。",
       "suggestion5": "根据我上传的高中英语资料，生成一套复习用的Anki闪卡。"
     },
-    "waiting": "正在思考..."
+    "waiting": "正在思考...",
+    "modelSwitchNotice": "模型已从 {{from}} 更改为{{to}}"
   },
   "messageItem": {
     "actions": {
@@ -167,7 +168,12 @@
     "thinking": "推理模式",
     "thinkingDepthMenu": "选择推理深度",
     "thinkingDepthTitle": "推理强度",
+    "thinkingOn": "开启",
     "thinkingOff": "关闭",
+    "thinkingUnsupported": "不支持推理",
+    "thinkingUnsupportedDescription": "该模型不支持推理",
+    "runtimeModelTitle": "模型",
+    "chooseRuntimeModel": "选择模型",
     "thinkingDepthExpensive": "更慢",
     "ankiTools": "Anki 制卡",
     "menuGroup": {
@@ -709,20 +715,7 @@
     "expandSidebar": "展开侧边栏",
     "searchPlaceholder": "搜索会话...",
     "switchingSession": "切换会话中...",
-    "trash": "回收站",
-    "trashEmpty": "回收站为空",
-    "trashTitle": "已删除会话",
-    "emptyTrash": "清空回收站",
-    "restoreSession": "恢复",
-    "permanentDelete": "永久删除",
-    "backToSessions": "返回会话列表",
-    "emptyTrashConfirmTitle": "确认清空回收站",
-    "emptyTrashConfirmDesc": "此操作将永久删除回收站中的 {{count}} 个会话，且无法恢复。确定要继续吗？",
-    "emptyTrashConfirm": "确认清空",
-    "loadTrashFailed": "加载回收站失败",
-    "restoreSessionFailed": "恢复会话失败",
     "deleteSessionFailed": "删除会话失败",
-    "emptyTrashFailed": "清空回收站失败",
     "analysis_session_title": "题目分析",
     "selectSessionFirst": "请先选择一个会话",
     "loading": "加载中...",

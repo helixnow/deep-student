@@ -31,36 +31,46 @@
     0 10px 15px -3px hsl(0 0% 0% / 0.15),
     0 20px 25px -5px hsl(0 0% 0% / 0.1);
   
-  /* 动画 */
-  animation: app-menu-in 0.15s ease-out;
+  /* transitions.dev dropdown motion */
   transform-origin: top left;
+  transform: scale(var(--dropdown-pre-scale, 0.97)) translateY(-4px);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--dropdown-open-dur, 250ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    opacity var(--dropdown-open-dur, 250ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
+  will-change: transform, opacity;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .app-menu-content,
+  .app-menu-sub-content {
+    transition: none !important;
+  }
 }
 
 .app-menu-origin-bottom {
   transform-origin: bottom left;
-  animation-name: app-menu-in-bottom;
+  transform: scale(var(--dropdown-pre-scale, 0.97)) translateY(4px);
 }
 
-@keyframes app-menu-in {
-  from {
-    opacity: 0;
-    transform: scale(0.96) translateY(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
+.app-menu-open {
+  transform: scale(1) translateY(0);
+  opacity: 1;
+  pointer-events: auto;
 }
 
-@keyframes app-menu-in-bottom {
-  from {
-    opacity: 0;
-    transform: scale(0.96) translateY(4px);
-  }
-  to {
-    opacity: 1;
-    transform: scale(1) translateY(0);
-  }
+.app-menu-closing {
+  transform: scale(var(--dropdown-closing-scale, 0.99)) translateY(-2px);
+  opacity: 0;
+  pointer-events: none;
+  transition:
+    transform var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    opacity var(--dropdown-close-dur, 150ms) var(--dropdown-ease, cubic-bezier(0.22, 1, 0.36, 1));
+}
+
+.app-menu-origin-bottom.app-menu-closing {
+  transform: scale(var(--dropdown-closing-scale, 0.99)) translateY(2px);
 }
 
 /* 暗色模式增强 */

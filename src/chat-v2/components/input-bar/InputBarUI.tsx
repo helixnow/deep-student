@@ -27,6 +27,7 @@ import {
   Plus,
   Camera,
   Zap,
+  Sparkles,
   Loader2,
   FolderOpen,
   ChevronDown,
@@ -35,7 +36,6 @@ import { usePdfProcessingProgress } from '@/hooks/usePdfProcessingProgress';
 import { usePdfProcessingStore } from '@/stores/pdfProcessingStore';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import DsAnalysisIconMuted from '@/components/icons/DsAnalysisIconMuted';
 import {
   AppMenu,
   AppMenuTrigger,
@@ -181,8 +181,10 @@ function ContextWindowUsageRing({
   t: TFunction;
   disabled: boolean;
 }) {
-  const usedDegrees = `${usage.usedPercent * 3.6}deg`;
   const contextUsageColor = 'var(--text-primary)';
+  const ringRadius = 6.75;
+  const ringCircumference = 2 * Math.PI * ringRadius;
+  const ringProgressOffset = ringCircumference * (1 - usage.usedPercent / 100);
   const ariaLabel = t('chatV2:tokenUsage.contextWindow');
   const tooltipContent = (
     <div className="w-48 p-1.5 text-xs">
@@ -232,17 +234,35 @@ function ContextWindowUsageRing({
         tabIndex={0}
         aria-label={ariaLabel}
         title={ariaLabel}
-        className="group inline-flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-[color:var(--text-secondary)] transition-colors hover:bg-[color:var(--button-utility-hover)] hover:text-[color:var(--text-primary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
+        className="inline-flex h-8 w-7 shrink-0 items-center justify-center rounded-md text-[color:var(--text-secondary)] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
       >
-        <span
+        <svg
           data-testid="context-window-usage-ring"
-          className="h-4 w-4 rounded-full transition-transform duration-150 ease-out group-hover:scale-105"
-          style={{
-            background: `conic-gradient(from 0deg, ${contextUsageColor} ${usedDegrees}, var(--button-utility-hover) 0deg)`,
-            WebkitMask: 'radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 0)',
-            mask: 'radial-gradient(farthest-side, transparent calc(100% - 2.5px), #000 0)',
-          }}
-        />
+          className="h-4 w-4 rounded-full"
+          viewBox="0 0 16 16"
+          fill="none"
+          aria-hidden="true"
+        >
+          <circle
+            cx="8"
+            cy="8"
+            r={ringRadius}
+            stroke="var(--button-utility-hover)"
+            strokeWidth="2.5"
+          />
+          <circle
+            cx="8"
+            cy="8"
+            r={ringRadius}
+            stroke={contextUsageColor}
+            strokeWidth="2.5"
+            strokeLinecap="round"
+            strokeDasharray={ringCircumference}
+            strokeDashoffset={ringProgressOffset}
+            transform="rotate(-90 8 8)"
+            style={{ opacity: usage.usedPercent > 0 ? 1 : 0 }}
+          />
+        </svg>
       </span>
     </CommonTooltip>
   );
@@ -445,15 +465,19 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   renderAdvancedPanel,
   renderMcpPanel,
   renderSkillPanel,
+  onOpenModelPanel,
+  onOpenRuntimeModelPanel,
   // 教材侧栏控制
   textbookOpen,
   onTextbookToggle,
   // 模型 @mention 自动完成
   modelMentionState,
   modelMentionActions,
+  runtimeModelLabel,
   // 推理模式
   enableThinking,
   thinkingStateLabel,
+  thinkingUnsupported,
   thinkingDepthOptions,
   thinkingDepthValue,
   onToggleThinking,
@@ -1020,6 +1044,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     'h-[var(--button-icon-size)] w-[var(--button-icon-size)] rounded-[var(--button-radius)]';
   const studyUiSendButtonSizeClass =
     'h-11 w-11 !rounded-full md:h-[var(--button-icon-size)] md:w-[var(--button-icon-size)]';
+  const studyUiBlackActionButtonClass =
+    '!border-black !bg-black hover:!bg-black active:!bg-black !text-white';
   const studyUiSendButtonEmptyStateClass =
     '!border-transparent !bg-muted-foreground hover:!bg-muted-foreground/90 active:!bg-muted-foreground/85 !text-[color:var(--interactive-selected)]';
   const studyUiSendButtonAriaLabel = '发送消息';
@@ -1028,15 +1054,27 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const tooltipDisabled = isMobile;
   const attachmentCount = attachments.length;
   const compactThinkingStateLabel = getCompactThinkingLabel(thinkingStateLabel);
+  const runtimeModelTitle = t('chatV2:inputBar.runtimeModelTitle', '模型');
+  const thinkingRuntimeTitle = [
+    runtimeModelLabel ? `${runtimeModelTitle}: ${runtimeModelLabel}` : undefined,
+    thinkingStateLabel,
+  ].filter(Boolean).join(' · ') || thinkingStateLabel;
   const hasThinkingDepthMenu = !!(
+    !thinkingUnsupported &&
     compactThinkingStateLabel &&
     onSetThinkingDepth &&
     thinkingDepthOptions &&
     thinkingDepthOptions.length > 0
   );
+  const hasThinkingUnsupportedMenu = !!(compactThinkingStateLabel && thinkingUnsupported);
+  const hasRuntimeModelMenu = !!renderModelPanel;
+  const hasThinkingRuntimeMenu = hasThinkingDepthMenu || hasThinkingUnsupportedMenu || hasRuntimeModelMenu;
+  const hasThinkingToggleMenu = !!(!thinkingUnsupported && compactThinkingStateLabel && (onSetThinkingDepth || onToggleThinking));
+  const thinkingRuntimeTriggerLabel = compactThinkingStateLabel || runtimeModelLabel || runtimeModelTitle;
   const hasText = inputValue.trim().length > 0;
   const hasAttachments = attachmentCount > 0;
   const hasContent = hasText || hasAttachments;
+  const isComposerEmpty = !hasContent;
 
   // 🔧 检查是否有任何面板打开
   const hasAnyPanelOpen = panelStates.attachment || panelStates.rag || panelStates.model ||
@@ -1315,6 +1353,36 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const toggleAttachmentPanel = useCallback(() => {
     togglePanel('attachment');
   }, [togglePanel]);
+
+  const handleOpenModelPanel = useCallback(() => {
+    if (onOpenModelPanel) {
+      onOpenModelPanel();
+      return;
+    }
+    togglePanel('model');
+  }, [onOpenModelPanel, togglePanel]);
+
+  const handleOpenRuntimeModelPanel = useCallback(() => {
+    if (onOpenRuntimeModelPanel) {
+      onOpenRuntimeModelPanel();
+      return;
+    }
+    togglePanel('model');
+  }, [onOpenRuntimeModelPanel, togglePanel]);
+
+  const handleTurnThinkingOn = useCallback(() => {
+    if (enableThinking) return;
+    onToggleThinking?.();
+  }, [enableThinking, onToggleThinking]);
+
+  const handleTurnThinkingOff = useCallback(() => {
+    if (!enableThinking) return;
+    if (onSetThinkingDepth) {
+      onSetThinkingDepth('off');
+      return;
+    }
+    onToggleThinking?.();
+  }, [enableThinking, onSetThinkingDepth, onToggleThinking]);
 
   const handleAttachmentMenuOpenChange = useCallback((open: boolean) => {
     setIsAttachmentMenuOpen(open);
@@ -2214,7 +2282,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 variant="ghost"
                 size="icon"
                 iconOnly
-                onClick={() => togglePanel('model')}
+                onClick={handleOpenModelPanel}
                     className={cn(
                       iconButtonClass,
                       'transition-colors',
@@ -2225,7 +2293,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 aria-label={t('chatV2:inputBar.toggleModelPanel')}
               >
                 <span className="relative inline-flex items-center justify-center">
-                  <DsAnalysisIconMuted className="w-[18px] h-[18px]" />
+                  <Sparkles size={18} />
                 </span>
               </NotionButton>
             </CommonTooltip>
@@ -2359,45 +2427,90 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               <span
                 className={cn(
                   'relative inline-flex h-8 min-w-0 max-w-[8rem] shrink-0 items-center rounded-lg px-1 text-[13px] font-semibold leading-none transition-colors duration-150 hover:bg-[color:var(--button-utility-hover)] focus-within:bg-[color:var(--button-utility-hover)]',
-                  enableThinking
+                  enableThinking && !thinkingUnsupported
                     ? 'text-[color:var(--text-primary)]'
                     : 'text-[color:var(--text-muted)]'
                 )}
                 data-testid="thinking-runtime-control"
               >
-                {hasThinkingDepthMenu ? (
+                {hasThinkingRuntimeMenu ? (
                   <AppMenu>
                     <AppMenuTrigger asChild>
                       <button
                         type="button"
                         data-testid="thinking-runtime-menu-trigger"
                         className="inline-flex h-7 min-w-0 items-center gap-1 rounded-md px-1 text-inherit transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]"
-                        title={thinkingStateLabel}
-                        aria-label={t('chatV2:inputBar.thinkingDepthMenu', '选择推理深度')}
+                        title={thinkingRuntimeTitle}
+                        aria-label={
+                          thinkingUnsupported
+                            ? t('chatV2:inputBar.thinkingUnsupported', '不支持推理')
+                            : hasThinkingDepthMenu
+                            ? t('chatV2:inputBar.thinkingDepthMenu', '选择推理深度')
+                            : t('chatV2:inputBar.thinking', '推理模式')
+                        }
                       >
-                        <Zap size={15} className={cn('shrink-0 opacity-90', enableThinking && 'fill-current')} />
+                        <Zap size={15} className={cn('shrink-0 opacity-90', enableThinking && !thinkingUnsupported && 'fill-current')} />
                         <span data-testid="thinking-runtime-state-label" className="min-w-0 max-w-[5.75rem] truncate">
-                          {compactThinkingStateLabel}
+                          {thinkingRuntimeTriggerLabel}
                         </span>
                         <ChevronDown size={13} className="shrink-0 opacity-55" />
                       </button>
                     </AppMenuTrigger>
-                    <AppMenuContent align="start" width={176}>
-                      <AppMenuGroup label={t('chatV2:inputBar.thinkingDepthTitle', '推理强度')}>
-                        {thinkingDepthOptions.map((option) => (
-                          <AppMenuItem
-                            key={option.value}
-                            checked={!!enableThinking && thinkingDepthValue === option.value}
-                            onClick={() => onSetThinkingDepth(option.value)}
-                          >
-                            {t(option.labelKey, option.defaultLabel)}
+                    <AppMenuContent align="start" width={hasRuntimeModelMenu ? 232 : 176}>
+                      {hasThinkingUnsupportedMenu ? (
+                        <AppMenuGroup label={t('chatV2:inputBar.thinking', '推理模式')}>
+                          <AppMenuItem disabled>
+                            {t('chatV2:inputBar.thinkingUnsupportedDescription', '该模型不支持推理')}
                           </AppMenuItem>
-                        ))}
+                        </AppMenuGroup>
+                      ) : hasThinkingDepthMenu ? (
+                        <AppMenuGroup label={t('chatV2:inputBar.thinkingDepthTitle', '推理强度')}>
+                          {thinkingDepthOptions.map((option) => (
+                            <AppMenuItem
+                              key={option.value}
+                              checked={!!enableThinking && thinkingDepthValue === option.value}
+                              onClick={() => onSetThinkingDepth(option.value)}
+                            >
+                              {t(option.labelKey, option.defaultLabel)}
+                            </AppMenuItem>
+                          ))}
+                          <AppMenuSeparator />
+                          <AppMenuItem checked={!enableThinking} onClick={() => onSetThinkingDepth('off')}>
+                            {t('chatV2:inputBar.thinkingOff', '关闭')}
+                          </AppMenuItem>
+                        </AppMenuGroup>
+                      ) : hasThinkingToggleMenu ? (
+                        <AppMenuGroup label={t('chatV2:inputBar.thinking', '推理模式')}>
+                          <AppMenuItem checked={!!enableThinking} onClick={handleTurnThinkingOn}>
+                            {t('chatV2:inputBar.thinkingOn', '开启')}
+                          </AppMenuItem>
+                          <AppMenuItem checked={!enableThinking} onClick={handleTurnThinkingOff}>
+                            {t('chatV2:inputBar.thinkingOff', '关闭')}
+                          </AppMenuItem>
+                        </AppMenuGroup>
+                      ) : null}
+                      {(hasThinkingToggleMenu || hasThinkingUnsupportedMenu) && hasRuntimeModelMenu && (
                         <AppMenuSeparator />
-                        <AppMenuItem checked={!enableThinking} onClick={() => onSetThinkingDepth('off')}>
-                          {t('chatV2:inputBar.thinkingOff', '关闭')}
-                        </AppMenuItem>
-                      </AppMenuGroup>
+                      )}
+                      {hasRuntimeModelMenu && (
+                        <AppMenuGroup label={runtimeModelTitle}>
+                          <AppMenuItem
+                            aria-label={t('chatV2:inputBar.chooseRuntimeModel', '选择模型')}
+                            icon={<Sparkles className="h-4 w-4" />}
+                            onClick={handleOpenRuntimeModelPanel}
+                            suffix={runtimeModelLabel ? (
+                              <span
+                                className="block max-w-[7.5rem] truncate text-[11px] text-muted-foreground"
+                                title={runtimeModelLabel}
+                              >
+                                {runtimeModelLabel}
+                              </span>
+                            ) : undefined}
+                          >
+                            {t('chatV2:inputBar.chooseRuntimeModel', '选择模型')}
+                          </AppMenuItem>
+                        </AppMenuGroup>
+                      )}
                     </AppMenuContent>
                   </AppMenu>
                 ) : (
@@ -2405,16 +2518,17 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                     <button
                       type="button"
                       data-testid="btn-toggle-thinking"
-                      onClick={onToggleThinking}
+                      onClick={thinkingUnsupported ? undefined : onToggleThinking}
+                      disabled={thinkingUnsupported}
                       className={cn(
                         'inline-flex h-7 w-6 shrink-0 items-center justify-center rounded-md text-inherit transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)]',
-                        enableThinking ? 'opacity-90' : 'opacity-65 hover:opacity-90'
+                        thinkingUnsupported ? 'opacity-55' : enableThinking ? 'opacity-90' : 'opacity-65 hover:opacity-90'
                       )}
                       title={thinkingStateLabel ?? t('chatV2:inputBar.thinking')}
                       aria-label={thinkingStateLabel ?? t('chatV2:inputBar.thinking')}
-                      aria-pressed={enableThinking}
+                      aria-pressed={enableThinking && !thinkingUnsupported}
                     >
-                      <Zap size={15} className={cn('shrink-0', enableThinking && 'fill-current')} />
+                      <Zap size={15} className={cn('shrink-0', enableThinking && !thinkingUnsupported && 'fill-current')} />
                     </button>
                     {compactThinkingStateLabel ? (
                       <span
@@ -2444,13 +2558,13 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             {showStop ? (
               <NotionButton
                 data-testid="btn-stop"
-                variant="danger"
+                variant="default"
                 size="icon"
                 iconOnly
                 onClick={handleStop}
                 disabled={!canAbort}
-                  className="!w-8 !h-8 !rounded-full shadow-sm"
-                  aria-label={t('analysis:input_bar.actions.stop')}
+                className={cn(studyUiBlackActionButtonClass, '!w-8 !h-8 !rounded-full shadow-sm')}
+                aria-label={t('analysis:input_bar.actions.stop')}
               >
                 <Square size={12} fill="currentColor" />
               </NotionButton>
@@ -2468,7 +2582,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                     studyUiButtonBaseClassName,
                     studyUiButtonSizeIconClassName,
                     studyUiSendButtonSizeClass,
-                    studyUiSendButtonEmptyStateClass
+                    isComposerEmpty ? studyUiSendButtonEmptyStateClass : studyUiBlackActionButtonClass
                   )}
                   aria-label={studyUiSendButtonAriaLabel}
                 >

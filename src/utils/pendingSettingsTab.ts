@@ -93,7 +93,7 @@ export function consumePendingSettingsTab(): string | null {
 export function openArchivedSessionsSettings(): void {
   const route: PendingSettingsRoute = {
     tab: 'data-governance',
-    dataGovernanceTab: 'trash',
+    dataGovernanceTab: 'archive',
   };
 
   setPendingSettingsRoute(route);

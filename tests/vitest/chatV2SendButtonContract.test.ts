@@ -22,32 +22,35 @@ describe('chat v2 send button contract', () => {
     expect(inputBarSource).not.toContain('StudySendArrowIcon');
   });
 
-  it('uses the same study-ui send button token family and empty-state classes', () => {
+  it('uses the study-ui button shell with black filled active and stop states', () => {
+    const stopButtonStart = inputBarSource.indexOf('data-testid="btn-stop"');
+    const stopButtonEnd = inputBarSource.indexOf('</NotionButton>', stopButtonStart);
+    const stopButtonSource = inputBarSource.slice(stopButtonStart, stopButtonEnd);
+
+    expect(stopButtonStart).toBeGreaterThan(-1);
+    expect(stopButtonEnd).toBeGreaterThan(stopButtonStart);
     expect(shadcnVariablesSource).toContain('--button-icon-size: 2rem;');
     expect(shadcnVariablesSource).toContain('--button-radius: 9px;');
     expect(themeColorsSource).toContain('--interactive-selected: #E9E9E9;');
-    expect(themeColorsSource).toContain('--button-prominent-bg: color-mix(in oklab, hsl(var(--primary)) 90%, hsl(var(--background)) 10%);');
-    expect(themeColorsSource).toContain('--button-prominent-hover-bg: color-mix(in oklab, hsl(var(--primary)) 94%, hsl(var(--foreground)) 6%);');
-    expect(themeColorsSource).toContain('--button-prominent-active-bg: color-mix(in oklab, hsl(var(--primary)) 84%, hsl(var(--foreground)) 16%);');
-    expect(themeColorsSource).toContain('--button-prominent-border: color-mix(in oklab, hsl(var(--primary)) 34%, hsl(var(--border)) 66%);');
     expect(inputBarSource).toMatch(/studyUiSendButtonSizeClass\s*=\s*['"]h-11 w-11 !rounded-full md:h-\[var\(--button-icon-size\)\] md:w-\[var\(--button-icon-size\)\]['"]/);
+    expect(inputBarSource).toMatch(/studyUiBlackActionButtonClass\s*=\s*['"]!border-black !bg-black hover:!bg-black active:!bg-black !text-white['"]/);
     expect(inputBarSource).toMatch(/studyUiSendButtonEmptyStateClass\s*=\s*['"]!border-transparent !bg-muted-foreground hover:!bg-muted-foreground\/90 active:!bg-muted-foreground\/85 !text-\[color:var\(--interactive-selected\)\]['"]/);
     expect(inputBarSource).toContain("const studyUiButtonBaseClassName =");
     expect(inputBarSource).toContain('rounded-[var(--button-radius)] border text-[13px] font-medium leading-none tracking-[0.01em]');
-    expect(inputBarSource).toContain("const studyUiButtonTonePrimaryClassName =");
-    expect(inputBarSource).toContain('border-[color:var(--button-prominent-border)] bg-[var(--button-prominent-bg)] text-primary-foreground hover:bg-[var(--button-prominent-hover-bg)] active:bg-[var(--button-prominent-active-bg)]');
     expect(inputBarSource).toContain("const studyUiButtonSizeIconClassName =");
     expect(inputBarSource).toContain('h-[var(--button-icon-size)] w-[var(--button-icon-size)] rounded-[var(--button-radius)]');
-    expect(studyUiThreadCanvasSource).toContain('h-11 w-11 rounded-full md:h-[var(--button-icon-size)] md:w-[var(--button-icon-size)]');
+    expect(studyUiThreadCanvasSource).toContain('h-11 w-11 shrink-0 rounded-full lg:h-[var(--button-icon-size)] lg:w-[var(--button-icon-size)]');
     expect(studyUiThreadCanvasSource).toContain('border-transparent bg-muted-foreground hover:bg-muted-foreground/90 active:bg-muted-foreground/85 text-[color:var(--interactive-selected)]');
     expect(inputBarSource).toContain('studyUiButtonBaseClassName,');
-    expect(inputBarSource).toContain('studyUiButtonTonePrimaryClassName,');
     expect(inputBarSource).toContain('studyUiButtonSizeIconClassName,');
+    expect(inputBarSource).toContain('const isComposerEmpty = !hasContent;');
+    expect(inputBarSource).toContain('isComposerEmpty ? studyUiSendButtonEmptyStateClass : studyUiBlackActionButtonClass');
+    expect(stopButtonSource).toContain('variant="default"');
+    expect(stopButtonSource).toContain('className={cn(studyUiBlackActionButtonClass,');
     expect(inputBarSource).not.toContain('inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap border text-[13px] font-medium leading-none tracking-[0.01em]');
     expect(inputBarSource).not.toContain('border-transparent bg-muted-foreground hover:bg-muted-foreground/90 active:bg-muted-foreground/85 text-[color:var(--interactive-selected)]" type="button"');
-    expect(inputBarSource).toContain('const isComposerEmpty = !hasContent;');
-    expect(inputBarSource).toContain('isComposerEmpty && studyUiSendButtonEmptyStateClass');
     expect(inputBarSource).not.toContain("disabledSend && studyUiSendButtonEmptyStateClass");
+    expect(stopButtonSource).not.toContain('variant="danger"');
     expect(inputBarSource).not.toContain("!disabledSend && 'shadow-[var(--shadow-shell-soft)]'");
   });
 });

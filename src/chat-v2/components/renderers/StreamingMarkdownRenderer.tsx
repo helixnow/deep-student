@@ -234,8 +234,9 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
   );
   const displayContent = processedContent.content;
   const isPartialMath = processedContent.hasPartialMath;
+  const shouldShowCursor = isStreaming && displayContent.trim().length > 0;
 
-  const [showCursor, setShowCursor] = useState(true);
+  const [showCursor, setShowCursor] = useState(false);
 
   // 🔧 P1修复：使用稳定引用比较替代 JSON.stringify
   const highlightSpansRef = React.useRef(highlightSpans);
@@ -244,7 +245,8 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
   }
 
   useEffect(() => {
-    if (isStreaming) {
+    if (shouldShowCursor) {
+      setShowCursor(true);
       const interval = setInterval(() => {
         setShowCursor(prev => !prev);
       }, 500);
@@ -252,7 +254,7 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
     } else {
       setShowCursor(false);
     }
-  }, [isStreaming]);
+  }, [shouldShowCursor]);
 
   // 解析思维链内容：同时支持 <thinking>…</thinking> 与 <think>…</think>
   // 🔔 V2 兼容性说明：V2 架构中 thinking 已是独立块，此解析主要用于：
@@ -348,7 +350,7 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
             ) : (
               renderedContent
             )}
-            {isStreaming && (
+            {shouldShowCursor && (
               <span className="streaming-cursor" data-active={showCursor ? 'true' : 'false'} aria-hidden="true">▋</span>
             )}
             {isPartialMath && isStreaming && (
@@ -359,7 +361,7 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
       ) : (
         <div className="normal-content">
           {renderedContent}
-          {isStreaming && (
+          {shouldShowCursor && (
             <span className="streaming-cursor" data-active={showCursor ? 'true' : 'false'} aria-hidden="true">▋</span>
           )}
           {isPartialMath && isStreaming && (
@@ -378,4 +380,3 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
     prevProps.extraRemarkPlugins === nextProps.extraRemarkPlugins
   );
 });
-

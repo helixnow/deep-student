@@ -23,7 +23,6 @@ export interface UseChatPageLayoutDeps {
   setMobileResourcePanelOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setSessionSheetOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setShowChatControl: React.Dispatch<React.SetStateAction<boolean>>;
-  setShowTrash: React.Dispatch<React.SetStateAction<boolean>>;
   setViewMode: React.Dispatch<React.SetStateAction<'sidebar' | 'browser'>>;
 }
 
@@ -32,7 +31,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
     currentSession, currentSessionId, expandGroup, currentSessionHasMessages,
     viewMode, t, sessionCount, createSession, isLoading,
     mobileResourcePanelOpen, finderBreadcrumbs, finderJumpToBreadcrumb,
-    setMobileResourcePanelOpen, setSessionSheetOpen, setShowChatControl, setShowTrash, setViewMode,
+    setMobileResourcePanelOpen, setSessionSheetOpen, setShowChatControl, setViewMode,
   } = deps;
 
   useEffect(() => {
@@ -80,7 +79,6 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
           iconOnly
           onClick={() => {
             setViewMode('sidebar');
-            setShowTrash(false);
             setShowChatControl(true);
             setSessionSheetOpen(true);
           }}
@@ -102,7 +100,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
         </NotionButton>
       </>
     );
-  }, [viewMode, createSession, isLoading, isEmptyNewChat, setSessionSheetOpen, setShowChatControl, setShowTrash, setViewMode, t]);
+  }, [viewMode, createSession, isLoading, isEmptyNewChat, setSessionSheetOpen, setShowChatControl, setViewMode, t]);
 
   // 📱 移动端资源库面包屑导航回调
   const handleFinderBreadcrumbNavigate = useCallback((index: number) => {

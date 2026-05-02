@@ -28,7 +28,7 @@ import { UnifiedSidebar, UnifiedSidebarHeader, UnifiedSidebarContent, UnifiedSid
 import useTheme, { type ThemeMode, type ThemePalette } from '../hooks/useTheme';
 import { useBreakpoint } from '../hooks/useBreakpoint';
 import { useVendorModels } from '../hooks/useVendorModels';
-import { consumePendingSettingsRoute, type PendingSettingsRoute } from '@/utils/pendingSettingsTab';
+import { consumePendingSettingsRoute } from '@/utils/pendingSettingsTab';
 import { isAndroid } from '../utils/platform';
 import { ShortcutSettings } from '../command-palette';
 import '../command-palette/styles/shortcut-settings.css';
@@ -40,10 +40,10 @@ import { AppTab } from './settings/AppTab';
 import { ApisTab } from './settings/ApisTab';
 import { ParamsTab } from './settings/ParamsTab';
 import { ExternalSearchTab } from './settings/ExternalSearchTab';
-import { SettingsSidebar } from './settings/SettingsSidebar';
+import { SettingsShellSidebar } from './settings/SettingsShellSidebar';
+import { useSettingsNavigation } from './settings/useSettingsNavigation';
 import { type UnifiedModelInfo } from './shared/UnifiedModelSelector';
-import { useUIStore } from '@/stores/uiStore';
-import type { DashboardTab } from '../types/dataGovernance';
+import { useSettingsShellStore } from '@/stores/settingsShellStore';
 import {
   UI_FONT_STORAGE_KEY,
   DEFAULT_UI_FONT,
@@ -102,41 +102,6 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
   return 'default';
 };
 
-type DataGovernanceTabTarget = {
-  tab: DashboardTab;
-  requestId: number;
-};
-
-const DATA_GOVERNANCE_TABS: ReadonlySet<string> = new Set([
-  'overview',
-  'trash',
-  'backup',
-  'sync',
-  'audit',
-  'cache',
-  'debug',
-]);
-
-const normalizeDataGovernanceTab = (value: unknown): DashboardTab | null => {
-  if (typeof value !== 'string') return null;
-  const trimmed = value.trim();
-  return DATA_GOVERNANCE_TABS.has(trimmed) ? (trimmed as DashboardTab) : null;
-};
-
-
-
-import {
-  BookOpen,
-  ChartBar,
-  Flask,
-  Globe,
-  Keyboard,
-  Palette,
-  Plug,
-  Robot,
-  Shield,
-  Wrench,
-} from '@phosphor-icons/react';
 import {
   Plus,
   Trash2,
@@ -198,38 +163,10 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
 
   // 移动端统一顶栏配置 - 带面包屑导航
   // 获取当前标签页的显示名称（需要在 useMobileHeader 之前定义）
-  const [activeTab, setActiveTab] = useState('apis');
-  const [dataGovernanceTabTarget, setDataGovernanceTabTarget] = useState<DataGovernanceTabTarget | null>(null);
-
-  const requestDataGovernanceTab = useCallback((tab: unknown) => {
-    const normalized = normalizeDataGovernanceTab(tab);
-    if (!normalized) return;
-    setDataGovernanceTabTarget((previous) => ({
-      tab: normalized,
-      requestId: (previous?.requestId ?? 0) + 1,
-    }));
-  }, []);
-
-  const applySettingsRoute = useCallback((route: PendingSettingsRoute) => {
-    const tabMapping: Record<string, string> = {
-      'api': 'apis',
-      'apis': 'apis',
-      'search': 'search',
-      'models': 'models',
-      'mcp': 'mcp',
-      'statistics': 'statistics',
-      'data': 'data-governance',
-      'data-governance': 'data-governance',
-      'params': 'params',
-      'shortcuts': 'shortcuts',
-      'about': 'about',
-    };
-    const mappedTab = tabMapping[route.tab] || route.tab;
-    setActiveTab(mappedTab);
-    if (mappedTab === 'data-governance') {
-      requestDataGovernanceTab(route.dataGovernanceTab);
-    }
-  }, [requestDataGovernanceTab]);
+  const activeTab = useSettingsShellStore((state) => state.activeTab);
+  const setActiveTab = useSettingsShellStore((state) => state.setActiveTab);
+  const dataGovernanceTabTarget = useSettingsShellStore((state) => state.dataGovernanceTabTarget);
+  const applySettingsRoute = useSettingsShellStore((state) => state.applySettingsRoute);
   
   // 标签页名称映射（用于面包屑显示）
   const getActiveTabLabel = useCallback(() => {
@@ -478,13 +415,9 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
   // 🔧 修复：防止 loadConfig 失败时 auto-save 用空默认值覆写后端已有配置
   const configLoadedRef = useRef(false);
   const [extra, setExtra] = useState<SettingsExtra>({});
-  const globalLeftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);
-  const isDesktopSettingsSidebarVisible = !isSmallScreen && !globalLeftPanelCollapsed;
-  const [sidebarOpen, setSidebarOpen] = useState(false);
-  const [sidebarSearchQuery, setSidebarSearchQuery] = useState('');
-  const [sidebarSearchFocused, setSidebarSearchFocused] = useState(false);
   const [showAppMenuDemo, setShowAppMenuDemo] = useState(false);
   const isMcpLoading = activeTab === 'mcp' && loading;
+  const { sidebarNavItems } = useSettingsNavigation();
 
   // 顶部栏顶部边距高度设置（用于安卓状态栏等场景）
   const [topbarTopMargin, setTopbarTopMargin] = useState<string>('');
@@ -763,89 +696,6 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
     );
   };
 
-  // 侧边栏导航项配置：按「类型」分组，渲染时用分割线隔开（搜索时不显示分割线）
-  const sidebarNavGroups = useMemo(() => ([
-    [
-      // 模型相关：放在一起（用户期望“模型服务”和“模型分配”相邻）
-      { value: 'apis', icon: Robot, label: t('settings:tabs.api_config'), tourId: 'settings-tab-apis' },
-      { value: 'models', icon: Flask, label: t('settings:tabs.model_assignment'), tourId: 'settings-tab-models' },
-    ],
-    [
-      { value: 'app', icon: Palette, label: t('settings:tabs.app') },
-    ],
-    [
-      // 工具相关
-      { value: 'mcp', icon: Plug, label: t('settings:tabs.mcp_tools') },
-      { value: 'search', icon: Globe, label: t('settings:tabs.external_search') },
-    ],
-    [
-      { value: 'statistics', icon: ChartBar, label: t('settings:tabs.statistics') },
-      { value: 'data-governance', icon: Shield, label: t('settings:tabs.data_governance') },
-    ],
-    [
-      { value: 'params', icon: Wrench, label: t('settings:tabs.params') },
-      { value: 'shortcuts', icon: Keyboard, label: t('settings:tabs.shortcuts') },
-      { value: 'about', icon: BookOpen, label: t('settings:tabs.about') },
-    ],
-  ]), [t]);
-
-  const sidebarNavItems = useMemo(() => sidebarNavGroups.flat(), [sidebarNavGroups]);
-
-  // 设置项搜索索引 - 包含所有可搜索的具体设置项
-  const settingsSearchIndex = useMemo(() => [
-    // App settings
-    { tab: 'app', label: t('settings:appearance.theme.title'), keywords: ['theme', 'dark', 'light', 'appearance'] },
-    { tab: 'app', label: t('settings:appearance.font.title'), keywords: ['font', 'typeface'] },
-    { tab: 'app', label: t('settings:appearance.font.size_label'), keywords: ['font size'] },
-    { tab: 'app', label: t('settings:appearance.font.heading_label'), keywords: ['heading font'] },
-    { tab: 'app', label: t('settings:appearance.font.body_label'), keywords: ['body font'] },
-    { tab: 'app', label: t('settings:language.title'), keywords: ['language'] },
-    { tab: 'app', label: t('settings:appearance.sidebar.title'), keywords: ['sidebar', 'navigation'] },
-    { tab: 'app', label: t('settings:appearance.sidebar.position'), keywords: ['sidebar position'] },
-    // API config
-    { tab: 'apis', label: t('settings:api.add_api_config'), keywords: ['API', 'add', 'config'] },
-    { tab: 'apis', label: t('settings:api.modal.basic_info'), keywords: ['basic', 'API name', 'endpoint'] },
-    { tab: 'apis', label: t('settings:api.modal.fields.api_key'), keywords: ['apikey', 'api key', 'key'] },
-    { tab: 'apis', label: t('settings:api.modal.model_adapter'), keywords: ['adapter', 'openai', 'azure', 'gemini', 'claude'] },
-    // Model assignment
-    { tab: 'models', label: t('settings:api.model2_title'), keywords: ['chat model', 'conversation', 'reasoning'] },
-    { tab: 'models', label: t('settings:api.embedding_title'), keywords: ['embedding', 'RAG', 'vector'] },
-    { tab: 'models', label: t('settings:api.reranker_title'), keywords: ['reranker', 'RAG'] },
-    { tab: 'models', label: t('settings:api.anki_card_title'), keywords: ['anki', 'card'] },
-    // MCP tools
-    { tab: 'mcp', label: t('settings:mcp.server'), keywords: ['mcp', 'server', 'tool'] },
-    { tab: 'mcp', label: t('settings:mcp.add_server'), keywords: ['add server', 'mcp'] },
-    // External search
-    { tab: 'search', label: t('settings:search_engine.title'), keywords: ['search engine', 'google', 'bing', 'tavily', 'searxng'] },
-    { tab: 'search', label: 'SearXNG', keywords: ['searxng', 'search'] },
-    { tab: 'search', label: 'Tavily', keywords: ['tavily', 'search', 'api'] },
-    { tab: 'search', label: 'Exa', keywords: ['exa', 'search'] },
-    // Statistics
-    { tab: 'statistics', label: t('settings:statistics.learning_time'), keywords: ['learning time', 'statistics'] },
-    { tab: 'statistics', label: t('settings:statistics.chat_stats'), keywords: ['chat stats', 'session'] },
-    { tab: 'statistics', label: t('settings:statistics.heatmap'), keywords: ['heatmap', 'activity'] },
-    // Data governance
-    { tab: 'data-governance', label: t('data:governance.title'), keywords: ['data governance', 'import', 'export'] },
-    { tab: 'data-governance', label: t('data:governance.backup'), keywords: ['backup', 'export'] },
-    { tab: 'data-governance', label: t('data:governance.restore'), keywords: ['restore', 'import'] },
-    // Parameters
-    { tab: 'params', label: t('settings:params.temperature'), keywords: ['temperature', 'parameter'] },
-    { tab: 'params', label: t('settings:params.max_tokens'), keywords: ['token', 'max tokens', 'length'] },
-    { tab: 'params', label: t('settings:params.top_p'), keywords: ['top p', 'parameter'] },
-    { tab: 'params', label: t('settings:params.frequency_penalty'), keywords: ['frequency penalty'] },
-    { tab: 'params', label: t('settings:params.presence_penalty'), keywords: ['presence penalty'] },
-    // Shortcuts
-    { tab: 'shortcuts', label: t('settings:shortcuts.title'), keywords: ['shortcuts', 'keyboard'] },
-    { tab: 'shortcuts', label: t('settings:shortcuts.new_chat'), keywords: ['new chat', 'shortcuts'] },
-    { tab: 'shortcuts', label: t('settings:shortcuts.search'), keywords: ['search', 'shortcuts'] },
-    { tab: 'shortcuts', label: t('settings:shortcuts.toggle_sidebar'), keywords: ['toggle sidebar', 'shortcuts'] },
-    // About
-    { tab: 'about', label: t('settings:about.version'), keywords: ['version', 'about'] },
-    { tab: 'about', label: t('settings:about.license'), keywords: ['license', 'open source'] },
-    { tab: 'about', label: t('settings:about.acknowledgements'), keywords: ['acknowledgements', 'credits'] },
-  ], [t]);
-
-  
   // 指示器位置更新（rAF 节流，避免同步强制回流）
   const indicatorRafId = useRef<number | null>(null);
   const updateIndicatorRaf = useCallback((tabId: string) => {
@@ -985,6 +835,16 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
       );
     }
 
+    if (!isSmallScreen) {
+      return (
+        <div className="settings absolute inset-0 flex flex-col overflow-hidden bg-[color:var(--shell-workspace-panel)]">
+          <div className="flex-1 flex items-center justify-center">
+            <div className="text-muted-foreground">{t('settings:loading')}</div>
+          </div>
+        </div>
+      );
+    }
+
     return (
       <div className="settings absolute inset-0 flex flex-row overflow-hidden bg-background">
         <MacTopSafeDragZone className="settings-top-safe-drag-zone" style={SETTINGS_TOP_SAFE_DRAG_ZONE_STYLE} />
@@ -1012,18 +872,10 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
 
   // 渲染侧边栏内容 - 提取为独立组件
   const renderSettingsSidebar = () => (
-    <SettingsSidebar
+    <SettingsShellSidebar
       isSmallScreen={effectiveMobilePanelMode}
-      globalLeftPanelCollapsed={globalLeftPanelCollapsed}
-      sidebarSearchQuery={sidebarSearchQuery}
-      setSidebarSearchQuery={setSidebarSearchQuery}
-      sidebarSearchFocused={sidebarSearchFocused}
-      setSidebarSearchFocused={setSidebarSearchFocused}
-      settingsSearchIndex={settingsSearchIndex}
-      sidebarNavItems={sidebarNavItems}
-      activeTab={activeTab}
-      setActiveTab={setActiveTab}
-      setSidebarOpen={setSidebarOpen}
+      globalLeftPanelCollapsed={false}
+      setSidebarOpen={(open) => setScreenPosition(open ? 'left' : 'center')}
       onBack={handleBack}
     />
   );
@@ -1066,10 +918,9 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
     <div
       id="settings-main-content"
       className={cn(
-        "settings-main-pane study-shell-pane study-shell-pane--flush-top flex-1 min-w-0 h-full flex flex-col overflow-hidden max-w-full relative",
+        'flex-1 min-w-0 h-full flex flex-col overflow-hidden max-w-full relative bg-[color:var(--shell-workspace-panel)]',
         sheetMode && "bg-[#FFFFFF] text-[#111111]"
       )}
-      data-sidebar-visible={!sheetMode && isDesktopSettingsSidebarVisible ? 'true' : 'false'}
       data-slot={sheetMode ? 'mobile-settings-sheet-content' : undefined}
     >
         <CustomScrollArea
@@ -1761,12 +1612,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
 
   // ===== 桌面端布局 =====
   return (
-    <div className="study-shell-page settings absolute inset-0 flex flex-row overflow-hidden">
-      <MacTopSafeDragZone className="settings-top-safe-drag-zone" style={SETTINGS_TOP_SAFE_DRAG_ZONE_STYLE} />
+    <div className="settings absolute inset-0 flex flex-col overflow-hidden bg-[color:var(--shell-workspace-panel)]">
       <UnifiedErrorHandler errors={mcpErrors} onDismiss={dismissMcpError} onClearAll={clearMcpErrors} />
-
-      {/* 侧边栏 */}
-      {renderSettingsSidebar()}
 
       {/* 主内容区域 */}
       {renderSettingsMainContent()}

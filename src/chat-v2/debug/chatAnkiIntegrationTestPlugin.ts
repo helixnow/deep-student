@@ -253,7 +253,7 @@ function createAnkiEventCapture() {
 // Store 辅助
 // =============================================================================
 
-function getAnkiBlock(store: StoreApi<ChatStore>): { blockId: string; block: { type: string; status: string; toolOutput: unknown; error?: string } } | null {
+function getAnkiBlock(store: StoreApi<ChatStore>): { blockId: string; block: { type: string; status: string; toolOutput?: unknown; error?: string } } | null {
   const blocks = store.getState().blocks;
   for (const [id, block] of blocks) {
     if (block.type === 'anki_cards') return { blockId: id, block };
@@ -903,7 +903,7 @@ export async function cleanupChatAnkiTestData(
   const errors: string[] = [];
   let deleted = 0;
   try {
-    for (const status of ['active', 'deleted'] as const) {
+    for (const status of ['active', 'archived', 'deleted'] as const) {
       let offset = 0;
       const PAGE = 50;
       // eslint-disable-next-line no-constant-condition
@@ -915,7 +915,7 @@ export async function cleanupChatAnkiTestData(
         for (const s of batch) {
           if (s.title?.startsWith(CA_TEST_SESSION_PREFIX)) {
             try {
-              await invoke('chat_v2_soft_delete_session', { sessionId: s.id });
+              await invoke('chat_v2_delete_session', { sessionId: s.id });
               deleted++;
               onLog?.(`删除: ${s.title} (${s.id})`);
             } catch (e) { errors.push(`${s.id}: ${e}`); }

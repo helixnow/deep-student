@@ -45,13 +45,9 @@ export interface UseSessionLifecycleDeps {
   setHasMoreSessions: React.Dispatch<React.SetStateAction<boolean>>;
   setIsInitialLoading: React.Dispatch<React.SetStateAction<boolean>>;
   setIsLoadingMore: React.Dispatch<React.SetStateAction<boolean>>;
-  setDeletedSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>;
-  setIsLoadingTrash: React.Dispatch<React.SetStateAction<boolean>>;
-  setShowTrash: React.Dispatch<React.SetStateAction<boolean>>;
   setShowChatControl: React.Dispatch<React.SetStateAction<boolean>>;
   isLoadingMore: boolean;
   hasMoreSessions: boolean;
-  deletedSessions: ChatSession[];
   sessionsRef: React.MutableRefObject<ChatSession[]>;
   t: TFunction<any, any>;
   PAGE_SIZE: number;
@@ -63,9 +59,8 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
     currentSessionId,
     setSessions, setCurrentSessionId, setIsLoading, setTotalSessionCount,
     setUngroupedSessionCount, setHasMoreSessions, setIsInitialLoading,
-    setIsLoadingMore, setDeletedSessions, setIsLoadingTrash,
-    setShowTrash, setShowChatControl,
-    isLoadingMore, hasMoreSessions, deletedSessions, sessionsRef,
+    setIsLoadingMore, setShowChatControl,
+    isLoadingMore, hasMoreSessions, sessionsRef,
     t, PAGE_SIZE, LAST_SESSION_KEY,
   } = deps;
 
@@ -321,13 +316,12 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
   // ========== 🔧 P1修复：基于消息数量判断是否为空对话 ==========
   // 问题：原逻辑基于标题判断，但标题是后端异步生成的，导致有消息也不能新建
   // 修复：监听当前会话 store 的消息数量，有消息则可新建对话
-  // P1-23: 软删除会话（移动到回收站）
+  // 删除会话：Codex-style active/archive/permanent-delete 模型中，删除即永久删除
   // 🔧 P1-005 修复：使用 ref 获取最新状态，避免闭包竞态条件
   const deleteSession = useCallback(
     async (sessionId: string) => {
       try {
-        // P1-23: 使用软删除代替硬删除
-        await invoke('chat_v2_soft_delete_session', { sessionId });
+        await invoke('chat_v2_delete_session', { sessionId });
         setSessions((prev) => prev.filter((s) => s.id !== sessionId));
         emitSessionListUpdated();
         setTotalSessionCount((prev) => (prev !== null ? prev - 1 : null));
@@ -374,87 +368,8 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
     [getOrCreateHiddenDraftSession, loadUngroupedCount, t] // 不再依赖 currentSessionId 和 sessions，使用 ref 和函数式更新
   );
 
-  // 🔧 P1-29: 加载已删除会话（回收站）
-  const loadDeletedSessions = useCallback(async () => {
-    setIsLoadingTrash(true);
-    try {
-      const result = await invoke<ChatSession[]>('chat_v2_list_sessions', {
-        status: 'deleted',
-        limit: 100,
-        offset: 0,
-      });
-      setDeletedSessions(result);
-    } catch (error) {
-      console.error('[ChatV2Page] Failed to load deleted sessions:', getErrorMessage(error));
-      showGlobalNotification('error', t('page.loadTrashFailed'));
-    } finally {
-      setIsLoadingTrash(false);
-    }
-  }, [t]);
-
-  // 🔧 P1-29: 恢复已删除会话
-  const restoreSession = useCallback(async (sessionId: string) => {
-    try {
-      const restoredSession = await invoke<ChatSession>('chat_v2_restore_session', { sessionId });
-      // 从回收站移除
-      setDeletedSessions((prev) => prev.filter((s) => s.id !== sessionId));
-      // 添加到活跃会话列表
-      setSessions((prev) => [restoredSession, ...prev]);
-      emitSessionListUpdated();
-      setTotalSessionCount((prev) => (prev !== null ? prev + 1 : null));
-      void loadUngroupedCount();
-      // 切换到恢复的会话
-      setCurrentSessionId(restoredSession.id);
-      // 退出回收站视图
-      setShowTrash(false);
-      console.log('[ChatV2Page] Restored session:', sessionId);
-    } catch (error) {
-      console.error('[ChatV2Page] Failed to restore session:', getErrorMessage(error));
-      showGlobalNotification('error', t('page.restoreSessionFailed'));
-    }
-  }, [loadUngroupedCount, setCurrentSessionId, t]);
-
-  // 🔧 P1-29: 永久删除会话
-  const permanentlyDeleteSession = useCallback(async (sessionId: string) => {
-    try {
-      await invoke('chat_v2_delete_session', { sessionId });
-      setDeletedSessions((prev) => prev.filter((s) => s.id !== sessionId));
-      console.log('[ChatV2Page] Permanently deleted session:', sessionId);
-    } catch (error) {
-      console.error('[ChatV2Page] Failed to permanently delete session:', getErrorMessage(error));
-      showGlobalNotification('error', t('page.deleteSessionFailed'));
-    }
-  }, [t]);
-
-  // 🔧 P1-3: 清空回收站（使用后端批量删除，解决超过 100 条无法全部清空的问题）
-  const emptyTrash = useCallback(async () => {
-    if (deletedSessions.length === 0) return;
-    try {
-      const count = await invoke<number>('chat_v2_empty_deleted_sessions');
-      setDeletedSessions([]);
-      console.log('[ChatV2Page] Emptied trash, deleted', count, 'sessions');
-    } catch (error) {
-      console.error('[ChatV2Page] Failed to empty trash:', getErrorMessage(error));
-      showGlobalNotification('error', t('page.emptyTrashFailed'));
-    }
-  }, [deletedSessions, t]);
-
-  // 🔧 P1-29: 打开/关闭回收站
-  const toggleTrash = useCallback(() => {
-    setShowChatControl(false); // 关闭对话控制
-    setShowTrash((prev) => {
-      const newValue = !prev;
-      if (newValue) {
-        // 打开回收站时加载已删除会话
-        loadDeletedSessions();
-      }
-      return newValue;
-    });
-  }, [loadDeletedSessions]);
-
   // 🆕 打开/关闭对话控制侧栏
   const toggleChatControl = useCallback(() => {
-    setShowTrash(false); // 关闭回收站
     setShowChatControl((prev) => !prev);
   }, []);
 
@@ -471,11 +386,6 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
     loadSessions,
     loadMoreSessions,
     deleteSession,
-    loadDeletedSessions,
-    restoreSession,
-    permanentlyDeleteSession,
-    emptyTrash,
-    toggleTrash,
     toggleChatControl,
     handleViewAgentSession,
   };

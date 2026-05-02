@@ -269,6 +269,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
       <MessageList
         key={sessionId}
         store={store}
+        availableModels={availableModels}
         emptyStateGroupName={resolvedEmptyStateGroupName}
         forceEmptyPreview={forceEmptyPreview}
       />

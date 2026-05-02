@@ -19,7 +19,7 @@ import {
   Shield,
   ArrowRightLeft,
   ShieldCheck,
-  Trash2,
+  Archive,
 } from 'lucide-react';
 
 import { NotionButton } from '../../ui/NotionButton';
@@ -43,8 +43,8 @@ export interface OverviewTabProps {
   isVerifying?: boolean;
   /** 触发验证最新备份 */
   onVerifyLatestBackup?: () => void;
-  /** 打开会话回收站 */
-  onOpenTrash?: () => void;
+  /** 打开归档会话 */
+  onOpenArchive?: () => void;
 }
 
 export const OverviewTab: React.FC<OverviewTabProps> = ({
@@ -56,7 +56,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
   lastAutoVerifyResult,
   isVerifying,
   onVerifyLatestBackup,
-  onOpenTrash,
+  onOpenArchive,
 }) => {
   const { t } = useTranslation(['data', 'common']);
   const pendingMigrationCount = healthCheck?.pending_migrations_count ?? 0;
@@ -139,25 +139,25 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
         </div>
       </div>
 
-      {onOpenTrash && (
+      {onOpenArchive && (
         <div className="rounded-lg border border-border/40 p-4">
           <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div className="flex min-w-0 items-start gap-3">
               <div className="mt-0.5 rounded-md bg-muted/40 p-2 text-muted-foreground">
-                <Trash2 className="h-4 w-4" />
+                <Archive className="h-4 w-4" />
               </div>
               <div className="min-w-0 space-y-1">
                 <p className="text-sm font-medium text-foreground">
-                  {t('data:governance.trash_overview_title')}
+                  {t('data:governance.archive_overview_title')}
                 </p>
                 <p className="text-sm text-muted-foreground">
-                  {t('data:governance.trash_overview_desc')}
+                  {t('data:governance.archive_overview_desc')}
                 </p>
               </div>
             </div>
-            <NotionButton variant="ghost" size="sm" onClick={onOpenTrash} className="shrink-0">
-              <Trash2 className="h-3.5 w-3.5" />
-              {t('data:governance.trash_overview_action')}
+            <NotionButton variant="ghost" size="sm" onClick={onOpenArchive} className="shrink-0">
+              <Archive className="h-3.5 w-3.5" />
+              {t('data:governance.archive_overview_action')}
             </NotionButton>
           </div>
         </div>

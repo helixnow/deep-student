@@ -1078,7 +1078,7 @@ export async function cleanupCitationTestData(
   let offset = 0;
   const testSessionIds: string[] = [];
 
-  for (const status of ['active', 'deleted'] as const) {
+  for (const status of ['active', 'archived', 'deleted'] as const) {
     offset = 0;
     // eslint-disable-next-line no-constant-condition
     while (true) {
@@ -1100,7 +1100,7 @@ export async function cleanupCitationTestData(
   for (const sid of testSessionIds) {
     try {
       if (sm.has(sid)) await sm.destroy(sid);
-      await invoke('chat_v2_soft_delete_session', { sessionId: sid });
+      await invoke('chat_v2_delete_session', { sessionId: sid });
       deletedSessions++;
     } catch (err) {
       errors.push(`session ${sid}: ${err instanceof Error ? err.message : String(err)}`);

@@ -171,6 +171,4 @@ export {
 export { useGroupManagement } from './useGroupManagement';
 export { useGroupCollapse } from './useGroupCollapse';
 
-export { useTrashManagement } from './useTrashManagement';
-
 export { useDeleteConfirmation } from './useDeleteConfirmation';

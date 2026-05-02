@@ -1015,7 +1015,13 @@ export function createMessageActions(
             _abortCallback?: (() => Promise<void>) | null
           })._abortCallback;
 
-          set({ sessionStatus: 'aborting' });
+          const activeBlockIds = Array.from(state.activeBlockIds);
+
+          set({
+            sessionStatus: 'aborting',
+            // 立即停止仅由 activeBlockIds 驱动的流式视觉，后端取消回调继续收尾。
+            activeBlockIds: new Set(),
+          });
 
           // 调用后端取消（如果有回调）
           if (abortCallback) {
@@ -1035,7 +1041,6 @@ export function createMessageActions(
           }
 
           // 处理活跃块
-          const activeBlockIds = Array.from(state.activeBlockIds);
           set((s) => {
             const newBlocks = new Map(s.blocks);
 

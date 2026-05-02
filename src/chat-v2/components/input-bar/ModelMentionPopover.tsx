@@ -62,11 +62,47 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
   const { t } = useTranslation(['chatV2']);
   const listRef = useRef<HTMLDivElement>(null);
   const itemRefs = useRef<(HTMLDivElement | null)[]>([]);
+  const closeTimeoutRef = useRef<number | null>(null);
+  const [shouldRender, setShouldRender] = React.useState(open);
+  const [isClosing, setIsClosing] = React.useState(false);
 
   // 重置 itemRefs 数组长度，避免旧引用残留
   useEffect(() => {
     itemRefs.current = itemRefs.current.slice(0, suggestions.length);
   }, [suggestions.length]);
+
+  useEffect(() => {
+    if (closeTimeoutRef.current !== null) {
+      window.clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+
+    if (open) {
+      setShouldRender(true);
+      setIsClosing(false);
+      return;
+    }
+
+    if (!shouldRender) return;
+
+    setIsClosing(true);
+    const closeMs = parseFloat(
+      window.getComputedStyle(document.documentElement).getPropertyValue('--dropdown-close-dur')
+    ) || 150;
+
+    closeTimeoutRef.current = window.setTimeout(() => {
+      setShouldRender(false);
+      setIsClosing(false);
+      closeTimeoutRef.current = null;
+    }, closeMs);
+
+    return () => {
+      if (closeTimeoutRef.current !== null) {
+        window.clearTimeout(closeTimeoutRef.current);
+        closeTimeoutRef.current = null;
+      }
+    };
+  }, [open, shouldRender]);
 
   // 确保选中项可见
   useEffect(() => {
@@ -87,9 +123,9 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
     : undefined;
 
   // 无匹配结果且有查询时显示提示
-  const showNoResults = open && suggestions.length === 0 && query.length > 0;
+  const showNoResults = shouldRender && suggestions.length === 0 && query.length > 0;
 
-  if (!open) {
+  if (!shouldRender) {
     return null;
   }
 
@@ -98,12 +134,15 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
     return (
       <div
         className={cn(
+          't-dropdown',
+          isClosing && 'is-closing',
+          open && 'is-open',
           'absolute w-72 rounded-2xl border border-border/50 bg-popover/80 backdrop-blur-xl backdrop-saturate-150 shadow-lg ring-1 ring-border/40',
-          'animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ease-out',
           'bottom-full mb-3 left-0',
           className
         )}
         style={{ zIndex: Z_INDEX.inputBarPopover }}
+        data-origin="bottom-left"
         role="listbox"
         aria-label={t('chatV2:modelMention.suggestions')}
       >
@@ -130,15 +169,17 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
   return (
     <div
       className={cn(
+        't-dropdown',
+        isClosing && 'is-closing',
+        open && 'is-open',
         // 基础样式
         'absolute w-72 rounded-2xl border border-border/50 bg-popover/80 backdrop-blur-xl backdrop-saturate-150 shadow-lg ring-1 ring-border/40',
-        // 动画
-        'animate-in fade-in-0 slide-in-from-bottom-2 duration-200 ease-out',
         // 定位：在输入框上方
         'bottom-full mb-3 left-0',
         className
       )}
       style={{ zIndex: Z_INDEX.inputBarPopover }}
+      data-origin="bottom-left"
       role="listbox"
       aria-label={t('chatV2:modelMention.suggestions')}
       aria-activedescendant={activeDescendantId}

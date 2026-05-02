@@ -29,9 +29,12 @@ describe('StyleDebugPage toast lab', () => {
     expect(screen.getByText('Success toast')).toBeInTheDocument();
     expect(screen.getByText('Warning toast')).toBeInTheDocument();
     expect(screen.getByText('Error toast')).toBeInTheDocument();
-    expect(screen.getByText('Info toast')).toBeInTheDocument();
+    expect(screen.getByText('Info API / neutral toast')).toBeInTheDocument();
+    expect(screen.getByText('info -> neutral')).toBeInTheDocument();
     expect(screen.getByText('Neutral border toast')).toBeInTheDocument();
     expect(screen.getAllByLabelText('关闭通知预览').length).toBeGreaterThan(0);
+    expect(screen.getByLabelText('Info API / neutral toast preview')).toHaveClass('unified-notification-neutral');
+    expect(screen.getByLabelText('Info API / neutral toast preview')).not.toHaveClass('unified-notification-info');
 
     await user.click(screen.getByRole('button', { name: '触发 success toast' }));
 

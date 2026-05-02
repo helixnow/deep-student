@@ -616,7 +616,7 @@ export interface BackedUpAsset {
 // ==================== UI 相关类型 ====================
 
 /** Dashboard Tab 类型 */
-export type DashboardTab = 'overview' | 'trash' | 'backup' | 'sync' | 'audit' | 'cache' | 'debug';
+export type DashboardTab = 'overview' | 'archive' | 'backup' | 'sync' | 'audit' | 'cache' | 'debug';
 
 /**
  * 数据库 ID 类型（治理范围内的数据库）

@@ -1153,39 +1153,26 @@ export async function cleanupTestData(
   let deletedAttachments = 0;
   const log = (msg: string) => { console.log(`[PipelineTest:cleanup] ${msg}`); onProgress?.(msg); };
 
-  // 1. 后端分页加载所有 active 会话，筛选测试会话
+  // 1. 后端分页加载所有可见和旧状态会话，筛选测试会话
   log('查找测试会话...');
   const PAGE = 100;
-  let offset = 0;
   const testSessionIds: string[] = [];
 
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    const batch = await invoke<Array<{ id: string; title?: string }>>('chat_v2_list_sessions', {
-      status: 'active', limit: PAGE, offset,
-    });
-    for (const s of batch) {
-      if (s.title && s.title.startsWith(PIPELINE_TEST_SESSION_PREFIX)) {
-        testSessionIds.push(s.id);
+  for (const status of ['active', 'archived', 'deleted'] as const) {
+    let offset = 0;
+    // eslint-disable-next-line no-constant-condition
+    while (true) {
+      const batch = await invoke<Array<{ id: string; title?: string }>>('chat_v2_list_sessions', {
+        status, limit: PAGE, offset,
+      });
+      for (const s of batch) {
+        if (s.title && s.title.startsWith(PIPELINE_TEST_SESSION_PREFIX)) {
+          testSessionIds.push(s.id);
+        }
       }
+      if (batch.length < PAGE) break;
+      offset += PAGE;
     }
-    if (batch.length < PAGE) break;
-    offset += PAGE;
-  }
-  // 也查找已删除的测试会话（回收站中的）
-  offset = 0;
-  // eslint-disable-next-line no-constant-condition
-  while (true) {
-    const batch = await invoke<Array<{ id: string; title?: string }>>('chat_v2_list_sessions', {
-      status: 'deleted', limit: PAGE, offset,
-    });
-    for (const s of batch) {
-      if (s.title && s.title.startsWith(PIPELINE_TEST_SESSION_PREFIX)) {
-        testSessionIds.push(s.id);
-      }
-    }
-    if (batch.length < PAGE) break;
-    offset += PAGE;
   }
   log(`找到 ${testSessionIds.length} 个测试会话`);
 
@@ -1222,7 +1209,7 @@ export async function cleanupTestData(
       if (sm.has(sid)) {
         await sm.destroy(sid);
       }
-      await invoke('chat_v2_soft_delete_session', { sessionId: sid });
+      await invoke('chat_v2_delete_session', { sessionId: sid });
       deletedSessions++;
     } catch (err) {
       errors.push(`session ${sid}: ${err instanceof Error ? err.message : String(err)}`);

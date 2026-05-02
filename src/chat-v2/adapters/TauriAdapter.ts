@@ -73,7 +73,7 @@ import {
 } from '../skills/progressiveDisclosure';
 // 🆕 工作区状态（用于传递 workspaceId 到后端）
 import { useWorkspaceStore } from '../workspace/workspaceStore';
-import { inferInputContextBudget } from '../../utils/modelCapabilities';
+import { inferCapabilities, inferInputContextBudget } from '../../utils/modelCapabilities';
 import {
   emitTemplateDesignerToolEvent,
   isTemplateDesignerToolName,
@@ -117,6 +117,16 @@ interface LlmRequestBodyEventPayload {
 interface BuildSendOptionsSnapshot {
   state?: ChatStore;
   pendingContextRefs?: ContextRef[];
+}
+
+interface NormalizedChatModelSelection {
+  /** Stable/base chat model, usually the session default assignment. */
+  modelId: string;
+  /** Runtime override picked in the current conversation, when present. */
+  model2OverrideId?: string;
+  /** The model that should be used for this backend request. */
+  effectiveModelId: string;
+  modelDisplayName?: string;
 }
 
 // ============================================================================
@@ -1880,29 +1890,23 @@ export class ChatV2TauriAdapter {
         console.log(LOG_PREFIX, 'After validation:', pendingContextRefs.length, 'valid refs');
       }
 
-      // 2. 使用指定 ID 更新本地状态
+      // 2. 构建发送选项（包含 parallelModelIds），并先同步当前会话模型
+      // 这样 sendMessageWithIds 创建的助手占位消息会立即显示本轮实际模型。
+      const activeModelId = sendStateSnapshot.chatParams.model2OverrideId || sendStateSnapshot.chatParams.modelId;
+      await this.ensureModelMetadataReady(activeModelId);
+      const options = this.buildSendOptions({
+        state: sendStateSnapshot,
+        pendingContextRefs,
+      });
+      await this.applyRuntimeModelSelection(options);
+
+      // 3. 使用指定 ID 更新本地状态
       await this.store.sendMessageWithIds(
         content,
         attachments,
         userMessageId,
         assistantMessageId
       );
-
-      // 3. 构建发送选项（包含 parallelModelIds）
-      const activeModelId = sendStateSnapshot.chatParams.modelId;
-      await this.ensureModelMetadataReady(activeModelId);
-      const options = this.buildSendOptions({
-        state: sendStateSnapshot,
-        pendingContextRefs,
-      });
-      const normalizedSelection = await this.normalizeChatModelSelection(options.modelId, options.model2OverrideId);
-      options.modelId = normalizedSelection.modelId;
-      options.model2OverrideId = normalizedSelection.model2OverrideId;
-      this.store.setChatParams({
-        modelId: normalizedSelection.modelId,
-        model2OverrideId: normalizedSelection.model2OverrideId ?? null,
-        modelDisplayName: normalizedSelection.modelDisplayName || '',
-      });
 
       // 注意：不在这里清空 pendingParallelModelIds，等待发送成功后再清空
       // 这样如果发送失败，用户可以重试而不会丢失多变体配置
@@ -2061,29 +2065,23 @@ export class ChatV2TauriAdapter {
         console.log(LOG_PREFIX, 'After validation:', pendingContextRefs.length, 'valid refs');
       }
 
-      // 1. 使用指定 ID 更新本地状态（这会清空 pendingContextRefs）
+      // 1. 构建发送选项（包含 parallelModelIds），并先同步当前会话模型
+      // 这样 sendMessageWithIds 创建的助手占位消息会立即显示本轮实际模型。
+      const activeModelId = sendStateSnapshot.chatParams.model2OverrideId || sendStateSnapshot.chatParams.modelId;
+      await this.ensureModelMetadataReady(activeModelId);
+      const options = this.buildSendOptions({
+        state: sendStateSnapshot,
+        pendingContextRefs,
+      });
+      await this.applyRuntimeModelSelection(options);
+
+      // 2. 使用指定 ID 更新本地状态（这会清空 pendingContextRefs）
       await this.store.sendMessageWithIds(
         content,
         attachments,
         userMessageId,
         assistantMessageId
       );
-
-      // 2. 构建发送选项（包含 parallelModelIds）
-      const activeModelId = sendStateSnapshot.chatParams.modelId;
-      await this.ensureModelMetadataReady(activeModelId);
-      const options = this.buildSendOptions({
-        state: sendStateSnapshot,
-        pendingContextRefs,
-      });
-      const normalizedSelection = await this.normalizeChatModelSelection(options.modelId, options.model2OverrideId);
-      options.modelId = normalizedSelection.modelId;
-      options.model2OverrideId = normalizedSelection.model2OverrideId;
-      this.store.setChatParams({
-        modelId: normalizedSelection.modelId,
-        model2OverrideId: normalizedSelection.model2OverrideId ?? null,
-        modelDisplayName: normalizedSelection.modelDisplayName || '',
-      });
 
       // 🔧 调试打点：发送消息时的状态
       if (options.parallelModelIds && options.parallelModelIds.length >= 2) {
@@ -2348,7 +2346,8 @@ export class ChatV2TauriAdapter {
       // 🔧 修复：重置事件桥接状态（确保序列号从 0 开始，与 executeSendMessage 保持一致）
       resetBridgeState(this.sessionId);
 
-      const activeModelId = this.getCurrentState().chatParams.modelId;
+      const currentParams = this.getCurrentState().chatParams;
+      const activeModelId = currentParams.model2OverrideId || currentParams.modelId;
       await this.ensureModelMetadataReady(activeModelId);
       const options = this.applyOriginalReplaySkillState(
         messageId,
@@ -2356,18 +2355,13 @@ export class ChatV2TauriAdapter {
         this.getCurrentState().chatParams.selectedMcpServers,
       );
       const validIds = await this.getValidChatModelIdSet();
-      const normalizedSelection = await this.normalizeChatModelSelection(options.modelId, options.model2OverrideId);
-      options.modelId = normalizedSelection.modelId;
-      options.model2OverrideId = normalizedSelection.model2OverrideId;
-      this.store.setChatParams({
-        modelId: normalizedSelection.modelId,
-        model2OverrideId: normalizedSelection.model2OverrideId ?? null,
-        modelDisplayName: normalizedSelection.modelDisplayName || '',
-      });
+      await this.applyRuntimeModelSelection(options);
       if (modelOverride) {
         const trimmedOverride = modelOverride.trim();
         if (trimmedOverride && (validIds.size === 0 || validIds.has(trimmedOverride))) {
           options.modelId = trimmedOverride;
+          options.model2OverrideId = trimmedOverride;
+          this.applyRuntimeThinkingCapability(options);
         }
       }
 
@@ -2538,21 +2532,15 @@ export class ChatV2TauriAdapter {
       // 🔧 修复：重置事件桥接状态（确保序列号从 0 开始，与 executeSendMessage 保持一致）
       resetBridgeState(this.sessionId);
 
-      const activeModelId = this.getCurrentState().chatParams.modelId;
+      const currentParams = this.getCurrentState().chatParams;
+      const activeModelId = currentParams.model2OverrideId || currentParams.modelId;
       await this.ensureModelMetadataReady(activeModelId);
       const options = this.applyOriginalReplaySkillState(
         messageId,
         this.buildSendOptions(),
         this.getCurrentState().chatParams.selectedMcpServers,
       );
-      const normalizedSelection = await this.normalizeChatModelSelection(options.modelId, options.model2OverrideId);
-      options.modelId = normalizedSelection.modelId;
-      options.model2OverrideId = normalizedSelection.model2OverrideId;
-      this.store.setChatParams({
-        modelId: normalizedSelection.modelId,
-        model2OverrideId: normalizedSelection.model2OverrideId ?? null,
-        modelDisplayName: normalizedSelection.modelDisplayName || '',
-      });
+      await this.applyRuntimeModelSelection(options);
 
       // 🔧 2026-01-15: 超时机制已移除
 
@@ -2674,21 +2662,15 @@ export class ChatV2TauriAdapter {
       // 重置事件桥接状态
       resetBridgeState(this.sessionId);
 
-      const activeModelId = this.getCurrentState().chatParams.modelId;
+      const currentParams = this.getCurrentState().chatParams;
+      const activeModelId = currentParams.model2OverrideId || currentParams.modelId;
       await this.ensureModelMetadataReady(activeModelId);
       const options = this.applyOriginalReplaySkillState(
         messageId,
         this.buildSendOptions(),
         this.getCurrentState().chatParams.selectedMcpServers,
       );
-      const normalizedSelection = await this.normalizeChatModelSelection(options.modelId, options.model2OverrideId);
-      options.modelId = normalizedSelection.modelId;
-      options.model2OverrideId = normalizedSelection.model2OverrideId;
-      this.store.setChatParams({
-        modelId: normalizedSelection.modelId,
-        model2OverrideId: normalizedSelection.model2OverrideId ?? null,
-        modelDisplayName: normalizedSelection.modelDisplayName || '',
-      });
+      await this.applyRuntimeModelSelection(options);
 
       // 🔧 竞态修复：invoke 前立即设置 streaming 状态，防止窗口期内重复点击
       // 与 sendMessageWithIds / retryVariant 保持一致
@@ -3034,7 +3016,8 @@ export class ChatV2TauriAdapter {
       // 🔧 修复：重置事件桥接状态（确保序列号从 0 开始，与 executeSendMessage 保持一致）
       resetBridgeState(this.sessionId);
 
-      const activeModelId = this.getCurrentState().chatParams.modelId;
+      const currentParams = this.getCurrentState().chatParams;
+      const activeModelId = currentParams.model2OverrideId || currentParams.modelId;
       await this.ensureModelMetadataReady(activeModelId);
       const options = this.applyOriginalReplaySkillState(
         messageId,
@@ -3042,19 +3025,14 @@ export class ChatV2TauriAdapter {
         this.getCurrentState().chatParams.selectedMcpServers,
         variantId,
       );
-      const normalizedSelection = await this.normalizeChatModelSelection(options.modelId, options.model2OverrideId);
-      options.modelId = normalizedSelection.modelId;
-      options.model2OverrideId = normalizedSelection.model2OverrideId;
-      this.store.setChatParams({
-        modelId: normalizedSelection.modelId,
-        model2OverrideId: normalizedSelection.model2OverrideId ?? null,
-        modelDisplayName: normalizedSelection.modelDisplayName || '',
-      });
+      await this.applyRuntimeModelSelection(options);
       if (modelOverride) {
         const validIds = await this.getValidChatModelIdSet();
         const trimmedOverride = modelOverride.trim();
         if (trimmedOverride && (validIds.size === 0 || validIds.has(trimmedOverride))) {
           options.modelId = trimmedOverride;
+          options.model2OverrideId = trimmedOverride;
+          this.applyRuntimeThinkingCapability(options);
         }
       }
 
@@ -3098,21 +3076,15 @@ export class ChatV2TauriAdapter {
       // 🔧 批量重试仅需重置一次事件桥接状态
       resetBridgeState(this.sessionId);
 
-      const activeModelId = this.getCurrentState().chatParams.modelId;
+      const currentParams = this.getCurrentState().chatParams;
+      const activeModelId = currentParams.model2OverrideId || currentParams.modelId;
       await this.ensureModelMetadataReady(activeModelId);
       const options = this.applyOriginalReplaySkillState(
         messageId,
         this.buildSendOptions(),
         this.getCurrentState().chatParams.selectedMcpServers,
       );
-      const normalizedSelection = await this.normalizeChatModelSelection(options.modelId, options.model2OverrideId);
-      options.modelId = normalizedSelection.modelId;
-      options.model2OverrideId = normalizedSelection.model2OverrideId;
-      this.store.setChatParams({
-        modelId: normalizedSelection.modelId,
-        model2OverrideId: normalizedSelection.model2OverrideId ?? null,
-        modelDisplayName: normalizedSelection.modelDisplayName || '',
-      });
+      await this.applyRuntimeModelSelection(options);
 
       await invoke('chat_v2_retry_variants', {
         sessionId: this.sessionId,
@@ -3274,13 +3246,65 @@ export class ChatV2TauriAdapter {
     }
   }
 
+  private getEffectiveRuntimeModelId(options: {
+    modelId?: string;
+    model2OverrideId?: string;
+  }): string | undefined {
+    const overrideId = options.model2OverrideId?.trim();
+    if (overrideId) {
+      return overrideId;
+    }
+    const modelId = options.modelId?.trim();
+    return modelId || undefined;
+  }
+
+  private resolveModelSupportsRuntimeThinking(modelId: string | undefined): boolean | undefined {
+    const modelInfo = getModelInfoByConfigId(modelId);
+    if (!modelInfo) {
+      return undefined;
+    }
+
+    const explicitReasoning = modelInfo.isReasoning;
+    if (typeof explicitReasoning === 'boolean') {
+      return explicitReasoning;
+    }
+
+    const explicitSupportsReasoning = (modelInfo as Record<string, unknown>).supportsReasoning;
+    if (typeof explicitSupportsReasoning === 'boolean') {
+      return explicitSupportsReasoning;
+    }
+
+    const providerScope =
+      typeof modelInfo.providerScope === 'string' ? modelInfo.providerScope : undefined;
+    return inferCapabilities({
+      id: modelInfo.model || modelInfo.id || modelId || '',
+      name: modelInfo.name,
+      providerScope,
+    }).supportsReasoning;
+  }
+
+  private applyRuntimeThinkingCapability(options: SendOptions): void {
+    const supportsThinking = this.resolveModelSupportsRuntimeThinking(
+      this.getEffectiveRuntimeModelId(options)
+    );
+    if (supportsThinking !== false) {
+      return;
+    }
+
+    options.enableThinking = false;
+    options.reasoningEffort = undefined;
+    options.thinkingBudget = undefined;
+  }
+
   private async shouldResolveContextAsMultimodal(options: {
     modelId?: string;
+    model2OverrideId?: string;
     parallelModelIds?: string[];
   }): Promise<boolean> {
+    const effectiveModelId = this.getEffectiveRuntimeModelId(options);
     const candidateIds = [
       ...(options.parallelModelIds ?? []),
-      ...(options.modelId ? [options.modelId] : []),
+      ...(effectiveModelId ? [effectiveModelId] : []),
     ].filter((id, index, list) => !!id && list.indexOf(id) === index);
 
     if (candidateIds.length === 0) {
@@ -3332,7 +3356,7 @@ export class ChatV2TauriAdapter {
   private async normalizeChatModelSelection(
     modelId: string | undefined,
     model2OverrideId: string | undefined
-  ): Promise<{ modelId: string; model2OverrideId?: string; modelDisplayName?: string }> {
+  ): Promise<NormalizedChatModelSelection> {
     const validIds = await this.getValidChatModelIdSet();
     let normalizedOverrideId = model2OverrideId?.trim() || undefined;
     if (normalizedOverrideId && validIds.size > 0 && !validIds.has(normalizedOverrideId)) {
@@ -3340,14 +3364,34 @@ export class ChatV2TauriAdapter {
     }
 
     const normalizedModelId = await this.resolveEffectiveChatModelId(modelId, validIds);
-    const modelInfo = getModelInfoByConfigId(normalizedOverrideId || normalizedModelId);
-    const modelDisplayName = modelInfo?.model || modelInfo?.name || undefined;
+    const effectiveModelId = normalizedOverrideId || normalizedModelId;
+    const modelInfo = getModelInfoByConfigId(effectiveModelId);
+    const modelDisplayName = modelInfo?.model || modelInfo?.name || effectiveModelId;
 
     return {
       modelId: normalizedModelId,
       model2OverrideId: normalizedOverrideId,
+      effectiveModelId,
       modelDisplayName,
     };
+  }
+
+  private async applyRuntimeModelSelection(options: SendOptions): Promise<NormalizedChatModelSelection> {
+    const normalizedSelection = await this.normalizeChatModelSelection(
+      options.modelId,
+      options.model2OverrideId
+    );
+
+    options.modelId = normalizedSelection.effectiveModelId;
+    options.model2OverrideId = normalizedSelection.model2OverrideId;
+    this.applyRuntimeThinkingCapability(options);
+    this.store.setChatParams({
+      modelId: normalizedSelection.modelId,
+      model2OverrideId: normalizedSelection.model2OverrideId ?? null,
+      modelDisplayName: normalizedSelection.modelDisplayName || '',
+    });
+
+    return normalizedSelection;
   }
 
   private resolveReplaySkillSnapshot(
@@ -3552,14 +3596,16 @@ export class ChatV2TauriAdapter {
 
   private resolveInputContextLimit(
     modelId: string | undefined,
+    model2OverrideId: string | undefined,
     maxTokens: number,
     userContextLimit: number | undefined
   ): number {
-    const modelInfo = getModelInfoByConfigId(modelId);
+    const effectiveModelId = model2OverrideId || modelId;
+    const modelInfo = getModelInfoByConfigId(effectiveModelId);
     const modelLike =
       (typeof modelInfo?.model === 'string' ? modelInfo.model : undefined) ||
       (typeof modelInfo?.name === 'string' ? modelInfo.name : undefined) ||
-      modelId ||
+      effectiveModelId ||
       '';
     const inferredModelMaxOutput =
       typeof modelInfo?.maxOutputTokens === 'number' && Number.isFinite(modelInfo.maxOutputTokens)
@@ -3587,7 +3633,12 @@ export class ChatV2TauriAdapter {
     // 回退：基于当前模型动态计算（而非硬编码值）
     const currentState = this.getCurrentState();
     const { chatParams } = currentState;
-    return this.resolveInputContextLimit(chatParams.modelId, chatParams.maxTokens, undefined);
+    return this.resolveInputContextLimit(
+      chatParams.modelId,
+      chatParams.model2OverrideId || undefined,
+      chatParams.maxTokens,
+      undefined
+    );
   }
 
   private notifyContextTruncated(removedCount: number): void {
@@ -3657,6 +3708,7 @@ export class ChatV2TauriAdapter {
     const parallelIds = currentState.pendingParallelModelIds;
     const contextLimit = this.resolveInputContextLimit(
       chatParams.modelId,
+      chatParams.model2OverrideId || undefined,
       chatParams.maxTokens,
       chatParams.contextLimit
     );

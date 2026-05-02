@@ -31,7 +31,6 @@ export interface UseSessionEditDeps {
   setGroupEditorOpen: React.Dispatch<React.SetStateAction<boolean>>;
   setEditingGroup: React.Dispatch<React.SetStateAction<SessionGroup | null>>;
   setGroupEditorAutoFocusField: React.Dispatch<React.SetStateAction<'name' | null>>;
-  setShowTrash: React.Dispatch<React.SetStateAction<boolean>>;
   setShowChatControl: React.Dispatch<React.SetStateAction<boolean>>;
   setViewMode: React.Dispatch<React.SetStateAction<'sidebar' | 'browser'>>;
   setSessionSheetOpen: React.Dispatch<React.SetStateAction<boolean>>;
@@ -57,7 +56,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
   const {
     resetDeleteConfirmation, currentSessionId, setCurrentSessionId, setEditingSessionId, setEditingTitle,
     setRenamingSessionId, setRenameError, setSessions,
-    setGroupEditorOpen, setEditingGroup, setGroupEditorAutoFocusField, setShowTrash, setShowChatControl,
+    setGroupEditorOpen, setEditingGroup, setGroupEditorAutoFocusField, setShowChatControl,
     setViewMode, setSessionSheetOpen, setPendingArchiveGroup,
     setGroupPinnedIds, setMobileResourcePanelOpen,
     editingTitle, editingGroup, pendingArchiveGroup, sessionsRef,
@@ -173,7 +172,6 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     setEditingGroup(null);
     setGroupEditorAutoFocusField('name');
     setGroupEditorOpen(true);
-    setShowTrash(false);
     setShowChatControl(false);
     setViewMode('sidebar');
     setSessionSheetOpen(false);
@@ -183,7 +181,6 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     setEditingGroup(group);
     setGroupEditorAutoFocusField(null);
     setGroupEditorOpen(true);
-    setShowTrash(false);
     setShowChatControl(false);
     setViewMode('sidebar');
     setSessionSheetOpen(false);
@@ -193,7 +190,6 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     setEditingGroup(group);
     setGroupEditorAutoFocusField('name');
     setGroupEditorOpen(true);
-    setShowTrash(false);
     setShowChatControl(false);
     setViewMode('sidebar');
     setSessionSheetOpen(false);
@@ -315,7 +311,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
   }, [moveSessionToGroup]);
 
   // 格式化时间
-  const formatTime = (isoString: string) => {
+  const formatTime = (isoString: string): string => {
     const date = new Date(isoString);
     const now = new Date();
     const diffMs = now.getTime() - date.getTime();
@@ -323,10 +319,10 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     const diffHours = Math.floor(diffMs / 3600000);
     const diffDays = Math.floor(diffMs / 86400000);
 
-    if (diffMins < 1) return t('common.justNow');
-    if (diffMins < 60) return t('common.minutesAgo', { count: diffMins } as any);
-    if (diffHours < 24) return t('common.hoursAgo', { count: diffHours } as any);
-    if (diffDays < 7) return t('common.daysAgo', { count: diffDays } as any);
+    if (diffMins < 1) return t('common.justNow') as string;
+    if (diffMins < 60) return t('common.minutesAgo', { count: diffMins } as any) as string;
+    if (diffHours < 24) return t('common.hoursAgo', { count: diffHours } as any) as string;
+    if (diffDays < 7) return t('common.daysAgo', { count: diffDays } as any) as string;
     return date.toLocaleDateString();
   };
 
