@@ -438,10 +438,6 @@ const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst
           'disabled:cursor-default'
         )}
       >
-        {node.isThinking && (
-          <Loader2 size={14} className="animate-spin flex-shrink-0" />
-        )}
-
         {node.isThinking ? (
           <TextShimmer
             className="text-sm"
