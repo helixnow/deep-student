@@ -23,6 +23,7 @@ import {
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { TextShimmer } from '../../components/ui/TextShimmer';
 import { useWorkspaceStore } from '../workspaceStore';
 import type { AgentStatus } from '../types';
 // 🧪 测试插件日志
@@ -312,7 +313,17 @@ export const SubagentContainer: React.FC<SubagentContainerProps> = ({
         
         {/* 状态指示 */}
         <StatusIcon />
-        <span className="text-xs text-muted-foreground">{statusLabel}</span>
+        {status === 'running' ? (
+          <TextShimmer
+            className="text-xs text-muted-foreground"
+            duration={1.5}
+            spread={3}
+          >
+            {statusLabel}
+          </TextShimmer>
+        ) : (
+          <span className="text-xs text-muted-foreground">{statusLabel}</span>
+        )}
         
         {/* 占位 */}
         <div className="flex-1" />

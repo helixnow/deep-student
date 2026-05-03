@@ -35,6 +35,7 @@ import { TodoListPanel, type TodoStep, type TodoListOutput } from '../../plugins
 import { NoteToolPreview, isNoteTool, type NoteToolPreviewProps } from './NoteToolPreview';
 import { isTemplateVisualOutput, TemplateToolOutput } from '../../plugins/blocks/components';
 import { getReadableToolName } from '@/chat-v2/utils/toolDisplayName';
+import { TextShimmer } from '../ui/TextShimmer';
 import './ActivityTimeline.css';
 
 // ============================================================================
@@ -441,11 +442,19 @@ const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst
           <Loader2 size={14} className="animate-spin flex-shrink-0" />
         )}
 
-        <span>
-          {node.isThinking
-            ? t('timeline.thinking.inProgress')
-            : t('timeline.thinking.completed', { seconds: node.durationSeconds })}
-        </span>
+        {node.isThinking ? (
+          <TextShimmer
+            className="text-sm"
+            duration={1.5}
+            spread={3}
+          >
+            {t('timeline.thinking.inProgress')}
+          </TextShimmer>
+        ) : (
+          <span>
+            {t('timeline.thinking.completed', { seconds: node.durationSeconds })}
+          </span>
+        )}
       </NotionButton>
 
       <AnimatePresence initial={false}>
@@ -664,9 +673,19 @@ const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast
             {displayToolName}
           </span>
 
-          <span className={cn('text-xs', statusColor)}>
-            {statusText}
-          </span>
+          {(isPreparing || isRunning) ? (
+            <TextShimmer
+              className={cn('text-xs', statusColor)}
+              duration={1.5}
+              spread={3}
+            >
+              {statusText}
+            </TextShimmer>
+          ) : (
+            <span className={cn('text-xs', statusColor)}>
+              {statusText}
+            </span>
+          )}
         </NotionButton>
 
         {/* 展开的详细信息 */}

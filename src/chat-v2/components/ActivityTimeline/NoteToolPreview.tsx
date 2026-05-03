@@ -28,6 +28,7 @@ import {
 import { cn } from '@/utils/cn';
 import { StreamingMarkdownRenderer } from '../renderers';
 import { humanizeToolName } from '@/chat-v2/utils/toolDisplayName';
+import { TextShimmer } from '../ui/TextShimmer';
 
 // ============================================================================
 // 类型定义
@@ -326,7 +327,17 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
             size={14}
             className={cn('flex-shrink-0', statusInfo.color, statusInfo.spin && 'animate-spin')}
           />
-          <span className={cn('text-xs', statusInfo.color)}>{statusInfo.text}</span>
+          {isRunning ? (
+            <TextShimmer
+              className={cn('text-xs', statusInfo.color)}
+              duration={1.5}
+              spread={3}
+            >
+              {statusInfo.text}
+            </TextShimmer>
+          ) : (
+            <span className={cn('text-xs', statusInfo.color)}>{statusInfo.text}</span>
+          )}
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">
           {/* 打开笔记按钮 - 使用 span 避免 button 嵌套，增强点击区域 */}

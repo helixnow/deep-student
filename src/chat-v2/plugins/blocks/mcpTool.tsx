@@ -38,6 +38,7 @@ import { TodoListBlock } from './todoList';
 import { PaperSaveBlock } from './paperSave';
 import type { Block } from '../../core/types/block';
 import { getReadableToolName } from '@/chat-v2/utils/toolDisplayName';
+import { TextShimmer } from '../../components/ui/TextShimmer';
 import {
   emitTemplateDesignerLifecycle,
   isTemplateDesignerToolName,
@@ -121,9 +122,19 @@ const ToolHeader: React.FC<ToolHeaderProps> = ({
         {/* 工具名称 */}
         <div className="flex flex-col">
           <span className="text-sm font-medium text-foreground">{displayName}</span>
-          <span className="text-xs text-muted-foreground">
-            {t(`blocks.mcpTool.status.${status}`, { ns: 'chatV2' })}
-          </span>
+          {status === 'running' ? (
+            <TextShimmer
+              className="text-xs text-muted-foreground"
+              duration={1.5}
+              spread={3}
+            >
+              {t(`blocks.mcpTool.status.${status}`, { ns: 'chatV2' })}
+            </TextShimmer>
+          ) : (
+            <span className="text-xs text-muted-foreground">
+              {t(`blocks.mcpTool.status.${status}`, { ns: 'chatV2' })}
+            </span>
+          )}
         </div>
       </div>
 
