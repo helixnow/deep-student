@@ -252,17 +252,17 @@ export const SubagentContainer: React.FC<SubagentContainerProps> = ({
     prevStatusRef.current = status;
   }, [status, isExpanded, loadMessages, subagentSessionId]);
 
-  // 状态图标
+  // 状态图标 - 只在错误状态显示图标
   const StatusIcon = () => {
     switch (status) {
       case 'running':
-        return <Loader2 className="w-4 h-4 animate-spin text-green-500" />;
+        return null;
       case 'completed':
-        return <CheckCircle2 className="w-4 h-4 text-blue-500" />;
+        return null;
       case 'failed':
         return <XCircle className="w-4 h-4 text-red-500" />;
       default:
-        return <Clock className="w-4 h-4 text-gray-400" />;
+        return null;
     }
   };
 

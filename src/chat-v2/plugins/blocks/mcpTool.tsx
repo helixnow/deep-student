@@ -39,6 +39,7 @@ import { PaperSaveBlock } from './paperSave';
 import type { Block } from '../../core/types/block';
 import { getReadableToolName } from '@/chat-v2/utils/toolDisplayName';
 import { TextShimmer } from '../../components/ui/TextShimmer';
+import { PulseDot } from '@/components/ui/PulseDot';
 import {
   emitTemplateDesignerLifecycle,
   isTemplateDesignerToolName,
@@ -84,13 +85,13 @@ const ToolHeader: React.FC<ToolHeaderProps> = ({
     [name, t]
   );
 
-  // 状态图标和颜色
+  // 状态图标和颜色 - 只在错误状态显示图标
   const StatusIcon = {
-    pending: Clock,
-    running: Loader2,
-    success: CheckCircle,
+    pending: null,
+    running: null,
+    success: null,
     error: AlertCircle,
-  }[status] || Clock;
+  }[status] || null;
 
   const statusColor = {
     pending: 'text-muted-foreground',
@@ -148,13 +149,15 @@ const ToolHeader: React.FC<ToolHeaderProps> = ({
         )}
 
         {/* 状态图标 */}
-        <StatusIcon
-          className={cn(
-            'w-4 h-4',
-            statusColor,
-            isAnimating && 'animate-spin'
-          )}
-        />
+        {StatusIcon && (
+          <StatusIcon
+            className={cn(
+              'w-4 h-4',
+              statusColor,
+              isAnimating && 'animate-spin'
+            )}
+          />
+        )}
       </div>
     </div>
   );
@@ -176,20 +179,7 @@ const ToolProgress: React.FC<ToolProgressProps> = ({ content }) => {
     <div className="px-3 py-2 border-b border-border/20">
       {/* 进度动画 */}
       <div className="flex items-center gap-2 text-sm text-muted-foreground">
-        <div className="flex gap-1">
-          <span
-            className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce"
-            style={{ animationDelay: '0ms' }}
-          />
-          <span
-            className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce"
-            style={{ animationDelay: '150ms' }}
-          />
-          <span
-            className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce"
-            style={{ animationDelay: '300ms' }}
-          />
-        </div>
+        <PulseDot className="w-1.5 h-1.5 text-primary" />
         <span>{t('blocks.mcpTool.executing')}</span>
       </div>
 
@@ -244,11 +234,7 @@ const ToolArgsPreview: React.FC<ToolArgsPreviewProps> = ({ content }) => {
     <div className="px-3 py-2 border-b border-border/20">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <div className="flex gap-1">
-            <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-            <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-            <span className="w-1.5 h-1.5 bg-primary rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-          </div>
+          <PulseDot className="w-1.5 h-1.5 text-primary" />
           <span>{t('blocks.mcpTool.generatingArgs', { defaultValue: '生成参数中...' })}</span>
           {charCount > 0 && (
             <span className="text-xs text-muted-foreground/60">

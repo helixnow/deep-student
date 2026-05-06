@@ -35,7 +35,6 @@ import {
   AppMenuItem,
   AppMenuSeparator,
 } from '@/components/ui/app-menu/AppMenu';
-import { VariantStatusIcon } from './VariantStatusIcon';
 import { BlockRendererWithStore } from '../BlockRenderer';
 import { TokenUsageDisplay } from '../TokenUsageDisplay';
 import { SourcePanelV2, hasSourcesInBlocks } from '../panels';
@@ -306,8 +305,7 @@ const VariantCard: React.FC<VariantCardProps> = ({
             )}
           </div>
         </div>
-        {/* 状态图标 */}
-        <VariantStatusIcon status={variant.status} size="md" />
+
       </div>
 
       {/* 🚀 P0修复：使用与单变体一致的分组渲染逻辑（ActivityTimeline + BlockRenderer） */}

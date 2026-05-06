@@ -499,7 +499,6 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
                   {t('enhanced_rag:enable_reranking')}
                 </span>
                 <Switch
-                  size="sm"
                   checked={ragEnableReranking}
                   onCheckedChange={(checked) => updateParam('ragEnableReranking', checked)}
                   disabled={isStreaming}

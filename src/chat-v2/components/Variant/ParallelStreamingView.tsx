@@ -10,7 +10,6 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Square, Loader2 } from 'lucide-react';
-import { VariantStatusIcon } from './VariantStatusIcon';
 import type { Variant } from '../../core/types/message';
 import type { Block } from '../../core/types/block';
 
@@ -122,7 +121,6 @@ const VariantCard: React.FC<VariantCardProps> = ({
       {/* 头部 */}
       <div className="flex items-center justify-between px-3 py-2 border-b border-border/50">
         <div className="flex items-center gap-2">
-          <VariantStatusIcon status={variant.status} size="sm" />
           <span className="text-sm font-medium truncate max-w-[120px]">
             {modelName}
           </span>

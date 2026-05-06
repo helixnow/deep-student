@@ -1182,35 +1182,11 @@
   gap: 5px;
 }
 
-.chat-thinking-indicator span {
-  width: 6px;
-  height: 6px;
-  background: hsl(var(--primary));
-  border-radius: 50%;
-  animation: waveDot 1.2s ease-in-out infinite;
-}
-
-.chat-thinking-indicator span:nth-child(1) { animation-delay: 0s; }
-.chat-thinking-indicator span:nth-child(2) { animation-delay: 0.15s; }
-.chat-thinking-indicator span:nth-child(3) { animation-delay: 0.3s; }
-
 .chat-thinking-text {
   font-size: 14px;
   color: hsl(var(--muted-foreground) / 0.8);
   margin-left: 4px;
   font-weight: 500;
-}
-
-/* 波浪点动画 */
-@keyframes waveDot {
-  0%, 100% {
-    transform: translateY(0) scale(1);
-    opacity: 0.4;
-  }
-  50% {
-    transform: translateY(-4px) scale(1.1);
-    opacity: 1;
-  }
 }
 
 /* 背景流光效果 */

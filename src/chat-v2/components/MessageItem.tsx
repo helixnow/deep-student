@@ -27,7 +27,7 @@ import { TokenUsageDisplay } from './TokenUsageDisplay';
 import { SourcePanelV2, hasSourcesInBlocks } from './panels';
 import type { TokenUsage } from '../core/types';
 import { ActivityTimelineWithStore, isTimelineBlockType } from './ActivityTimeline';
-import { ProviderIcon } from '@/components/ui/ProviderIcon';
+
 import type { ChatStore, Block } from '../core/types';
 import { sessionSwitchPerf } from '../debug/sessionSwitchPerf';
 import { getModelDisplayName, formatMessageTime } from '@/utils/formatUtils';
@@ -40,6 +40,7 @@ import { copyDebugInfoToClipboard } from '../debug/exportSessionDebug';
 import { useDevShowRawRequest, useCopyFilterConfig, type CopyFilterConfig } from '../hooks/useDevShowRawRequest';
 // 🆕 AI 内容标识（合规）
 import { AiContentLabel } from '@/components/shared/AiContentLabel';
+import { PulseDot } from '@/components/ui/PulseDot';
 import { dispatchContextRefPreview } from '../utils/contextRefPreview';
 import { notesDstuAdapter } from '@/dstu/adapters/notesDstuAdapter';
 import { fileManager } from '@/utils/fileManager';
@@ -1055,49 +1056,15 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
           />
         </div>
       ) : (
-        /* 💻 桌面端/非多变体：使用标准水平布局（头像+内容同行） */
+        /* 💻 桌面端/非多变体：消息内容布局 */
         <div
           className={cn(
             'mx-auto',
-            // 多变体模式使用全宽容器，让卡片均分填满聊天区域
             isMultiVariant ? 'max-w-full' : 'max-w-3xl',
-            // items-start 防止头像列拉伸到消息全高
-            isUser ? 'flex flex-row-reverse gap-4 items-start' : (isMultiVariant ? '' : 'flex gap-4 items-start')
           )}
         >
-          {/* 头像和模型信息（多变体模式不显示，卡片内已有头像） */}
-          {(isUser || !isMultiVariant) && (
-          <div className="flex-shrink-0 flex flex-col items-center gap-1">
-            {/* 头像 */}
-            <div
-              className={cn(
-                'w-8 h-8 min-w-8 min-h-8 rounded-full flex items-center justify-center flex-shrink-0',
-                isUser
-                  ? 'bg-primary text-primary-foreground'
-                  : ''
-              )}
-            >
-              {isUser ? (
-                <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20">
-                  <path
-                    fillRule="evenodd"
-                    d="M10 9a3 3 0 100-6 3 3 0 000 6zm-7 9a7 7 0 1114 0H3z"
-                    clipRule="evenodd"
-                  />
-                </svg>
-              ) : (
-                <ProviderIcon
-                  modelId={singleVariantModelId || message._meta?.modelId || ''}
-                  size={32}
-                  showTooltip={true}
-                />
-              )}
-            </div>
-          </div>
-          )}
-
           {/* 消息内容 */}
-          <div className={cn('flex-1 min-w-0', isUser && 'pt-1')}>
+          <div className="min-w-0">
             {/* 内联编辑模式 */}
             {isUser && isInlineEditing ? (
               <MessageInlineEdit
@@ -1156,11 +1123,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                     // 🆕 等待首次响应：displayBlockIds 为空且正在流式生成
                     if (blocks.length === 0 && sessionStatus === 'streaming') {
                       return (
-                        <div className="chat-thinking-indicator">
-                          <span />
-                          <span />
-                          <span />
-                        </div>
+                        <PulseDot className="w-1.5 h-1.5" />
                       );
                     }
 
@@ -1334,12 +1297,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
           {showActions && !isInlineEditing && !isWaitingForContent && (
             <div className={cn(
               'mt-3 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity',
-              // 多变体：底部汇总计数/操作与单变体保持同一内容宽度定位
               isMultiVariant && 'max-w-3xl mx-auto',
-              // 桌面端多变体（助手消息）：补齐单变体头像列(8) + 间距(4) = 12，确保与上方单变体竖向参考线对齐
-              !isSmallScreen && !isUser && isMultiVariant && 'pl-12',
-              // 📱 移动端 AI 消息：向左扩展到头像位置，利用左侧空间避免右侧溢出
-              isSmallScreen && !isUser && !isMultiVariant && '-ml-12 w-[calc(100%+3rem)]'
             )}>
               {/* 第一行：移动端 = Token用量(左) + 操作按钮+时间(右)；桌面端 = 模型名+操作按钮+时间(左) + AI标识+Token(右) */}
               <div

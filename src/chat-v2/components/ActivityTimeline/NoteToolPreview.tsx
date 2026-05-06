@@ -168,14 +168,14 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
     if (isSuccess) {
       const ms = durationMs ?? 0;
       return {
-        icon: CheckCircle,
+        icon: null,
         text: t('timeline.noteTool.completed', { ms }),
         color: 'text-green-500 dark:text-green-400',
         spin: false,
       };
     }
     return {
-      icon: ToolIcon,
+      icon: null,
       text: t('timeline.noteTool.pending', '等待执行'),
       color: 'text-muted-foreground',
       spin: false,
@@ -323,10 +323,12 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
         <div className="flex items-center gap-2 min-w-0">
           <ToolIcon size={16} className="text-primary flex-shrink-0" />
           <span className="font-medium text-sm truncate">{toolDisplayName}</span>
-          <statusInfo.icon
-            size={14}
-            className={cn('flex-shrink-0', statusInfo.color, statusInfo.spin && 'animate-spin')}
-          />
+          {statusInfo.icon && (
+            <statusInfo.icon
+              size={14}
+              className={cn('flex-shrink-0', statusInfo.color, statusInfo.spin && 'animate-spin')}
+            />
+          )}
           {isRunning ? (
             <TextShimmer
               className={cn('text-xs', statusInfo.color)}

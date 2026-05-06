@@ -609,19 +609,14 @@ const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast
     return t('timeline.tool.pending', { ns: 'chatV2' });
   }, [isPreparing, isRunning, isError, isSuccess, durationMs, t]);
 
-  // 获取状态图标
+  // 获取状态图标 - 只在错误状态显示图标
   const StatusIcon = useMemo(() => {
-    // 🆕 2026-01-16: preparing 状态使用旋转图标
-    if (isPreparing) return Loader2;
-    if (isRunning) return Loader2;
     if (isError) return AlertCircle;
-    if (isSuccess) return CheckCircle;
-    return Wrench;
-  }, [isPreparing, isRunning, isError, isSuccess]);
+    return null;
+  }, [isError]);
 
   // 获取状态颜色
   const statusColor = useMemo(() => {
-    // 🆕 2026-01-16: preparing 状态使用主色
     if (isPreparing) return 'text-primary';
     if (isRunning) return 'text-primary';
     if (isError) return 'text-destructive';
@@ -656,14 +651,12 @@ const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast
             'disabled:cursor-default disabled:hover:text-muted-foreground'
           )}
         >
-          <StatusIcon
-            size={14}
-            className={cn(
-              'flex-shrink-0',
-              statusColor,
-              (isPreparing || isRunning) && 'animate-spin' // 🆕 preparing 也旋转
-            )}
-          />
+          {StatusIcon && (
+            <StatusIcon
+              size={14}
+              className={cn('flex-shrink-0', statusColor)}
+            />
+          )}
 
           <span className="font-medium text-foreground">
             {displayToolName}
