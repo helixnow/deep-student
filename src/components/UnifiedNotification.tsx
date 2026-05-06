@@ -6,29 +6,15 @@ import './UnifiedNotification.css';
 const normalizeNotificationMessage = (input: unknown): string => {
   if (input == null) return '';
   if (typeof input === 'string') return input;
-  if (input instanceof Error) {
-    return input.message || input.toString();
-  }
+  if (input instanceof Error) return input.message || input.toString();
   if (typeof input === 'object') {
-    const record = input as Record<string, unknown>;
-    if (typeof record.message === 'string' && record.message.trim().length > 0) {
-      return record.message;
-    }
-    if (typeof record.error === 'string' && record.error.trim().length > 0) {
-      return record.error;
-    }
-    if (typeof record.details === 'string' && record.details.trim().length > 0) {
-      return record.details;
-    }
-    try {
-      return JSON.stringify(record, null, 2);
-    } catch {
-      return '[object Object]';
-    }
+    const r = input as Record<string, unknown>;
+    if (typeof r.message === 'string' && r.message.trim()) return r.message;
+    if (typeof r.error === 'string' && r.error.trim()) return r.error;
+    if (typeof r.details === 'string' && r.details.trim()) return r.details;
+    try { return JSON.stringify(r, null, 2); } catch { return '[object Object]'; }
   }
-  if (typeof input === 'number' || typeof input === 'boolean') {
-    return String(input);
-  }
+  if (typeof input === 'number' || typeof input === 'boolean') return String(input);
   return '';
 };
 
@@ -49,36 +35,30 @@ export interface GlobalNotificationAction {
   onClick: () => void;
 }
 
-export const UnifiedNotification: React.FC<NotificationProps> = ({ 
-  notification, 
-  onClose 
-}) => {
-  const DURATION = 6000; // 气泡停留时长
+export const UnifiedNotification: React.FC<NotificationProps> = ({ notification, onClose }) => {
+  const DURATION = Math.min(6000 + (notification.message?.length ?? 0) * 20, 15000);
   const [isClosing, setIsClosing] = useState(false);
+  const [isHoverExpanded, setIsHoverExpanded] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const startRef = useRef<number>(0);
-  const remainingRef = useRef<number>(DURATION);
-  const isClosingRef = useRef<boolean>(false);
-  const hoverRef = useRef<boolean>(false);
-  const focusWithinRef = useRef<boolean>(false);
+  const startRef = useRef(0);
+  const remainingRef = useRef(DURATION);
+  const isClosingRef = useRef(false);
+  const hoverRef = useRef(false);
+  const focusRef = useRef(false);
   const onCloseRef = useRef(onClose);
+  const expandRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const collapseRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  useEffect(() => {
-    onCloseRef.current = onClose;
-  }, [onClose]);
+  useEffect(() => { onCloseRef.current = onClose; }, [onClose]);
 
   const clear = useCallback(() => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
+    if (timerRef.current) { clearTimeout(timerRef.current); timerRef.current = null; }
   }, []);
 
   const pauseTimer = useCallback(() => {
     if (!timerRef.current) return;
     clear();
-    const elapsed = Date.now() - startRef.current;
-    remainingRef.current = Math.max(remainingRef.current - elapsed, 1000); // 至少保留1s
+    remainingRef.current = Math.max(remainingRef.current - (Date.now() - startRef.current), 1000);
   }, [clear]);
 
   const handleClose = useCallback(() => {
@@ -86,48 +66,31 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({
     isClosingRef.current = true;
     setIsClosing(true);
     clear();
-    const prefersReducedMotion =
-      typeof window !== 'undefined' &&
-      typeof window.matchMedia === 'function' &&
-      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-    // Keep in sync with `.unified-notification.hide` transition duration.
-    const delayMs = prefersReducedMotion ? 0 : 180;
-    if (delayMs === 0) {
-      onCloseRef.current();
-      return;
-    }
-    setTimeout(() => {
-      onCloseRef.current();
-    }, delayMs);
+    const noMotion = typeof window !== 'undefined' && window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    const delay = noMotion ? 0 : 180;
+    if (delay === 0) { onCloseRef.current(); return; }
+    setTimeout(() => onCloseRef.current(), delay);
   }, [clear]);
 
-  const startTimer = useCallback(
-    (time: number) => {
-      startRef.current = Date.now();
-      clear();
-      timerRef.current = setTimeout(() => {
-        handleClose();
-      }, time);
-    },
-    [clear, handleClose]
-  );
+  const startTimer = useCallback((time: number) => {
+    startRef.current = Date.now();
+    clear();
+    timerRef.current = setTimeout(handleClose, time);
+  }, [clear, handleClose]);
 
-  const maybeResumeTimer = useCallback(() => {
-    if (isClosingRef.current) return;
-    if (hoverRef.current || focusWithinRef.current) return;
+  const maybeResume = useCallback(() => {
+    if (isClosingRef.current || hoverRef.current || focusRef.current) return;
     startTimer(remainingRef.current);
   }, [startTimer]);
 
-  // 当通知状态变化时，处理计时器与关闭标记
+  // Auto-dismiss timer
   useEffect(() => {
     if (notification.visible) {
-      // 开始显示新通知，确保处于 "show" 状态
       setIsClosing(false);
       isClosingRef.current = false;
       remainingRef.current = DURATION;
       startTimer(DURATION);
     } else {
-      // 通知已隐藏，清理并复位状态，避免下次动画闪烁或重复弹出
       setIsClosing(false);
       isClosingRef.current = false;
       clear();
@@ -135,75 +98,72 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({
     return clear;
   }, [notification.visible, startTimer, clear]);
 
+  // Reset on content change
+  useEffect(() => {
+    setIsHoverExpanded(false);
+    if (expandRef.current) { clearTimeout(expandRef.current); expandRef.current = null; }
+    if (collapseRef.current) { clearTimeout(collapseRef.current); collapseRef.current = null; }
+  }, [notification.message, notification.title, notification.type]);
+
+  // Cleanup on unmount
+  useEffect(() => () => {
+    if (expandRef.current) clearTimeout(expandRef.current);
+    if (collapseRef.current) clearTimeout(collapseRef.current);
+  }, []);
+
   const handleMouseEnter = () => {
     hoverRef.current = true;
     pauseTimer();
+    if (collapseRef.current) { clearTimeout(collapseRef.current); collapseRef.current = null; }
+    expandRef.current = setTimeout(() => setIsHoverExpanded(true), 200);
   };
 
   const handleMouseLeave = () => {
     hoverRef.current = false;
-    maybeResumeTimer();
+    maybeResume();
+    if (expandRef.current) { clearTimeout(expandRef.current); expandRef.current = null; }
+    collapseRef.current = setTimeout(() => setIsHoverExpanded(false), 300);
   };
 
   if (!notification.visible) return null;
 
   const isAssertive = notification.type === 'error' || notification.type === 'warning';
-  const handleActionClick = () => {
-    notification.action?.onClick();
-    handleClose();
-  };
-  const classNames = {
+  const typeClass = {
     success: 'unified-notification-success',
     error: 'unified-notification-error',
     info: 'unified-notification-neutral',
-    warning: 'unified-notification-warning'
-  };
-  const borderToneClass = notification.borderTone === 'neutral'
-    ? 'unified-notification-border-neutral'
-    : '';
+    warning: 'unified-notification-warning',
+  }[notification.type];
+  const borderClass = notification.borderTone === 'neutral' ? 'unified-notification-border-neutral' : '';
   const displayText = [notification.title, notification.message]
-    .filter((part) => typeof part === 'string' && part.trim().length > 0)
+    .filter((p) => typeof p === 'string' && p.trim())
     .join(' ');
 
   return (
     <div
-      className={`unified-notification ${classNames[notification.type]} ${borderToneClass} ${notification.visible ? (isClosing ? 'hide' : 'show') : ''}`}
+      className={`unified-notification ${typeClass} ${borderClass} ${isClosing ? 'hide' : 'show'} ${isHoverExpanded ? 'expanded' : ''}`}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
-      onFocusCapture={() => {
-        focusWithinRef.current = true;
-        pauseTimer();
-      }}
+      onFocusCapture={() => { focusRef.current = true; pauseTimer(); }}
       onBlurCapture={(e) => {
-        const next = (e.relatedTarget as Node | null) ?? null;
-        if (next && e.currentTarget.contains(next)) return;
-        focusWithinRef.current = false;
-        maybeResumeTimer();
+        if (e.relatedTarget && e.currentTarget.contains(e.relatedTarget)) return;
+        focusRef.current = false;
+        maybeResume();
       }}
       role={isAssertive ? 'alert' : 'status'}
       aria-live={isAssertive ? 'assertive' : 'polite'}
       aria-atomic="true"
     >
       <div className="unified-notification-content">
-        <div className="unified-notification-text">{displayText}</div>
+        <div className={`unified-notification-text${isHoverExpanded ? ' expanded' : ''}`}>
+          {displayText}
+        </div>
         {notification.action && (
-          <NotionButton
-            variant="ghost"
-            size="sm"
-            className="unified-notification-action"
-            onClick={handleActionClick}
-          >
+          <NotionButton variant="ghost" size="sm" className="unified-notification-action" onClick={() => { notification.action?.onClick(); handleClose(); }}>
             {notification.action.label}
           </NotionButton>
         )}
-        <NotionButton
-          variant="ghost"
-          size="icon"
-          iconOnly
-          className="unified-notification-close"
-          aria-label="关闭通知"
-          onClick={handleClose}
-        >
+        <NotionButton variant="ghost" size="icon" iconOnly className="unified-notification-close" aria-label="关闭通知" onClick={handleClose}>
           <X className="unified-notification-close-icon" aria-hidden="true" />
         </NotionButton>
       </div>
@@ -211,7 +171,6 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({
   );
 };
 
-// 用于简化调用的辅助函数
 export type GlobalNotificationType = 'success' | 'error' | 'info' | 'warning';
 export type GlobalNotificationBorderTone = 'status' | 'neutral';
 
@@ -230,42 +189,20 @@ export const showGlobalNotification = (
   options?: { action?: GlobalNotificationAction; borderTone?: GlobalNotificationBorderTone }
 ): void => {
   const normalized = normalizeNotificationMessage(message);
-  const finalTitle = title;
   try {
     const w = window as any;
     const now = Date.now();
     w.__unifiedNotifCache = w.__unifiedNotifCache || { items: [] as Array<{ key: string; ts: number }> };
     const cache = w.__unifiedNotifCache as { items: Array<{ key: string; ts: number }> };
-    const key = JSON.stringify({
-      type,
-      message: normalized,
-      title: title || '',
-      action: options?.action?.label || '',
-      borderTone: options?.borderTone || 'status',
-    });
-    const TTL = 1500;
-    cache.items = cache.items.filter((e) => now - e.ts < TTL);
-    if (cache.items.some((e) => e.key === key)) {
-      return;
-    }
+    const key = JSON.stringify({ type, message: normalized, title: title || '', action: options?.action?.label || '', borderTone: options?.borderTone || 'status' });
+    cache.items = cache.items.filter((e) => now - e.ts < 1500);
+    if (cache.items.some((e) => e.key === key)) return;
     cache.items.push({ key, ts: now });
-  } catch {
-    // Notification de-duping is best-effort only.
-  }
+  } catch {}
 
   try {
-    window.dispatchEvent(
-      new CustomEvent<GlobalNotificationPayload>('showGlobalNotification', {
-        detail: {
-          type,
-          message: normalized,
-          title: finalTitle,
-          action: options?.action,
-          borderTone: options?.borderTone,
-        },
-      })
-    );
-  } catch {
-    // Notification dispatch is best-effort only.
-  }
+    window.dispatchEvent(new CustomEvent<GlobalNotificationPayload>('showGlobalNotification', {
+      detail: { type, message: normalized, title, action: options?.action, borderTone: options?.borderTone },
+    }));
+  } catch {}
 };

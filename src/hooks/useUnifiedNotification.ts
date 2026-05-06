@@ -23,7 +23,7 @@ export const useUnifiedNotification = () => {
     borderTone?: GlobalNotificationBorderTone
   ) => {
     const id = `un-${Date.now()}-${Math.random().toString(36).substr(2, 8)}`;
-    setNotifications(prev => [...prev, { id, type, message, title, action, borderTone }]);
+    setNotifications(prev => [{ id, type, message, title, action, borderTone }, ...prev]);
     return id;
   }, []);
 

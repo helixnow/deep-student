@@ -20,7 +20,6 @@
   --notif-accent: var(--border);
 
   position: relative;
-  overflow: hidden;
   width: fit-content;
   max-width: min(320px, calc(100vw - 24px));
   min-width: 0;
@@ -44,6 +43,10 @@
   opacity: 1;
   transform: translateY(0) scale(1);
   transition: transform 180ms ease-out, opacity 180ms ease-out, border-color 180ms ease-out, background-color 180ms ease-out;
+}
+
+.unified-notification.expanded {
+  overflow: visible;
 }
 
 .unified-notification.show {
@@ -113,9 +116,18 @@
   color: hsl(var(--foreground));
   white-space: nowrap;
   overflow: hidden;
-  overflow-wrap: normal;
   text-overflow: ellipsis;
-  word-break: normal;
+  max-height: 1.35em;
+  transition: max-height 250ms cubic-bezier(0.22, 1, 0.36, 1), white-space 0ms 250ms;
+}
+
+.unified-notification-text.expanded {
+  white-space: normal;
+  word-break: break-word;
+  overflow-wrap: break-word;
+  max-height: 60vh;
+  overflow-y: auto;
+  transition: max-height 300ms cubic-bezier(0.22, 1, 0.36, 1), white-space 0ms;
 }
 
 .unified-notification-action {
