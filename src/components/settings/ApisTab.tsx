@@ -21,6 +21,7 @@ import { ShadApiEditModal } from './ShadApiEditModal';
 import { cn } from '../../lib/utils';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { getProviderIcon } from '../../utils/providerIconEngine';
+import { ProviderIcon } from '../ui/ProviderIcon';
 import { openUrl } from '../../utils/urlOpener';
 import { SiliconFlowLogo } from '../ui/SiliconFlowLogo';
 import type { VendorConfig, ModelProfile, ApiConfig } from '../../types';
@@ -32,31 +33,6 @@ interface InlineEditState {
 }
 
 const normalizeBaseUrl = (url: string) => url.trim().replace(/\/+$/, '');
-
-/** 根据供应商 providerType 获取图标路径 */
-const getVendorIconPath = (providerType?: string | null): string | null => {
-  if (!providerType) return null;
-  const key = providerType.toLowerCase();
-  const iconMap: Record<string, string> = {
-    deepseek: 'deepseek',
-    qwen: 'qwen',
-    zhipu: 'zhipu',
-    doubao: 'doubao',
-    minimax: 'minimax',
-    moonshot: 'moonshot',
-    openai: 'openai',
-    gemini: 'gemini',
-    anthropic: 'anthropic',
-    google: 'gemini',
-    ollama: 'ollama',
-    mistral: 'mistral',
-    meta: 'meta',
-    nvidia: 'nvidia',
-    mimo: 'mimo',
-  };
-  const iconName = iconMap[key];
-  return iconName ? `/icons/providers/${iconName}.svg` : null;
-};
 
 const getProviderDisplayName = (providerType?: string | null) => {
   if (!providerType) return 'OpenAI';
@@ -277,7 +253,6 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                             const isActive = selectedVendor?.id === vendor.id;
                             const modelCount = profileCountByVendor.get(vendor.id) ?? 0;
                             const providerLabel = getProviderDisplayName(vendor.providerType);
-                            const iconPath = getVendorIconPath(vendor.providerType);
                             return (
                               <Draggable key={vendor.id} draggableId={vendor.id} index={index}>
                                 {(provided, snapshot) => {
@@ -300,9 +275,9 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                                       isActive ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
                                       snapshot.isDragging && 'shadow-lg ring-1 ring-border bg-card z-50'
                                     )}
-                                  >
-                                    {iconPath && <img src={iconPath} alt="" className="h-4 w-4 shrink-0 object-contain" />}
-                                    <div className="flex-1 min-w-0 text-left">
+                                   >
+                                     <ProviderIcon modelId={vendor.providerType || ''} size={16} showTooltip={false} />
+                                     <div className="flex-1 min-w-0 text-left">
                                       <div className="flex flex-wrap items-center justify-between gap-1.5">
                                         <div className="flex flex-col min-w-0 flex-1">
                                           <span className="truncate">{vendor.name || providerLabel}</span>
@@ -526,11 +501,11 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                               "group relative rounded-lg border border-transparent hover:bg-muted/30 transition-all duration-200",
                               isEditing ? "bg-muted/30" : ""
                             )}>
-                              {/* 卡片头部：始终显示 */}
-                              <div className="p-3 space-y-2">
-                                <div className="flex items-start gap-3">
-                                  <img src={providerIconPath} alt="" className="h-5 w-5 flex-shrink-0 rounded object-contain mt-0.5 opacity-80" style={{ opacity: providerIconPath.includes('generic.svg') ? 0.5 : 0.8 }} />
-                                  <div className="flex-1 min-w-0 space-y-1">
+                               {/* 卡片头部：始终显示 */}
+                               <div className="p-3 space-y-2">
+                                 <div className="flex items-start gap-3">
+                                   <ProviderIcon modelId={api.model} size={20} showTooltip={false} />
+                                   <div className="flex-1 min-w-0 space-y-1">
                                     <div className="flex items-center gap-2">
                                       <span className="text-sm font-medium text-foreground truncate">{profile.label || api.name}</span>
                                       {!profile.enabled && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground whitespace-nowrap shrink-0">{t('settings:status.disabled')}</span>}
@@ -550,7 +525,7 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                                     
                                     {/* 操作按钮区域 - 改为上下布局，始终显示 */}
                                     <div className="flex items-center gap-1 pt-2">
-                                      <Switch size="sm" checked={profile.enabled} onCheckedChange={value => handleToggleModelProfile(profile, value)} disabled={(api.isBuiltin && api.isReadOnly) || vendorBusy} className="mr-2" />
+                                      <Switch checked={profile.enabled} onCheckedChange={value => handleToggleModelProfile(profile, value)} disabled={(api.isBuiltin && api.isReadOnly) || vendorBusy} className="mr-2" />
                                       <NotionButton size="sm" variant="ghost" iconOnly className={cn(profile.isFavorite && "text-yellow-500")} onClick={() => handleToggleFavorite(profile)} disabled={vendorBusy} title={t('settings:api_config.toggle_favorite')}>
                                         <Star className={cn("h-3.5 w-3.5", profile.isFavorite && "fill-current")} />
                                       </NotionButton>

@@ -77,6 +77,7 @@ const toLower = (s: string | undefined | null): string => (s ?? '').toLowerCase(
 const PROVIDER_PATTERNS: Record<ProviderBrand, (string | RegExp)[]> = {
   // === 国际供应商 ===
   openai: [
+    /^openai$/i,
     /^openai\//i,
     /^gpt-/i,
     /^o1-/i, /^o3-/i, /^o4-/i,
@@ -91,12 +92,14 @@ const PROVIDER_PATTERNS: Record<ProviderBrand, (string | RegExp)[]> = {
   ],
   
   anthropic: [
+    /^anthropic$/i,
     /^anthropic\//i,
     /claude/i,
     'haiku', 'sonnet', 'opus',
   ],
   
   google: [
+    /^google$/i,
     /^google\//i,
     /gemini/i,
     /\bgemma/i,
@@ -105,6 +108,7 @@ const PROVIDER_PATTERNS: Record<ProviderBrand, (string | RegExp)[]> = {
   ],
   
   meta: [
+    /^meta$/i,
     /^meta\//i,
     /^meta-llama\//i,
     /llama-[23]/i,
@@ -129,12 +133,14 @@ const PROVIDER_PATTERNS: Record<ProviderBrand, (string | RegExp)[]> = {
   ],
 
   nvidia: [
+    /^nvidia$/i,
     /^nvidia\//i,
     /nemotron/i,
     /nim-/i,
   ],
 
   mimo: [
+    /^mimo$/i,
     /^mimo-v/i,
     /xiaomi[\s-]?mimo/i,
   ],
@@ -142,6 +148,7 @@ const PROVIDER_PATTERNS: Record<ProviderBrand, (string | RegExp)[]> = {
   // === 中国供应商 ===
   // qwen 必须在 deepseek 之前，以便 deepseek-r1-distill-qwen-* 优先匹配为 qwen
   qwen: [
+    /^qwen$/i,
     /^qwen\//i,
     /qwen\d/i,    // qwen1/qwen2/qwen3/codeqwen1.5 等所有版本
     /qwen-/i,
@@ -377,7 +384,7 @@ const PROVIDER_DISPLAY_NAMES: Record<ProviderBrand, string> = {
   nvidia: 'NVIDIA',
   mimo: 'Xiaomi MiMo',
   deepseek: 'DeepSeek',
-  qwen: '通义千问',
+  qwen: '阿里云百炼',
   alibaba: '阿里云',
   bytedance: '字节跳动',
   zhipu: '智谱AI',
@@ -434,6 +441,7 @@ function getIconPath(brand: ProviderBrand): string {
     microsoft: 'azure',     // Microsoft使用azure图标
     antling: 'ling',        // 蚂蚁百灵使用ling图标
     siliconflow: 'siliconcloud', // 硅基流动使用siliconcloud图标
+    qwen: 'bailian',        // 通义千问使用百炼图标
     alibaba: 'bailian',     // 阿里云使用百炼图标
   };
   
@@ -547,6 +555,3 @@ export function getBatchProviderInfo(modelIds: string[]): Map<string, ProviderIn
   }
   return result;
 }
-
-
-
