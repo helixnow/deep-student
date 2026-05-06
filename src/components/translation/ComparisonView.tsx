@@ -1,6 +1,7 @@
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CustomScrollArea } from '../custom-scroll-area';
+import { PulseDot } from '@/components/ui/PulseDot';
 
 interface ComparisonViewProps {
   sourceText: string;
@@ -95,11 +96,7 @@ export const ComparisonView: React.FC<ComparisonViewProps> = ({
             <div className="flex-1 text-sm leading-relaxed text-foreground/90 whitespace-pre-wrap break-words min-w-0">
               {pair.tgt || (
                 isTranslating ? (
-                  <span className="inline-flex gap-0.5">
-                    <span className="w-1 h-1 rounded-full bg-muted-foreground/30 animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <span className="w-1 h-1 rounded-full bg-muted-foreground/30 animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <span className="w-1 h-1 rounded-full bg-muted-foreground/30 animate-bounce" style={{ animationDelay: '300ms' }} />
-                  </span>
+                  <PulseDot className="w-1 h-1 text-muted-foreground/30" />
                 ) : (
                   <span className="text-muted-foreground/30 italic text-xs">—</span>
                 )

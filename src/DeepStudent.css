@@ -1208,7 +1208,7 @@ div[style*="position: absolute"][style*="top: 0"][style*="right: 0"][id*="debug"
   /* padding-top 已移除：由 page-container 的 top 值控制，避免定位冲突 */
   /* 彻底禁用content-body的滚动条，因为所有page-container都是绝对定位 */
   overflow: hidden !important;
-  background: hsl(var(--background));
+  background: var(--shell-workspace-surface);
   display: flex;
   flex-direction: column;
   min-height: 0; /* ADDED */

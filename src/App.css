@@ -61,7 +61,7 @@ body {
 }
 
 .desktop-shell-header-cell--workspace[data-sidebar-visible="true"] {
-  border-left: 1px solid var(--shell-navigation-border);
+  border-left: none;
   border-top-left-radius: var(--shell-workspace-edge-radius);
   overflow: hidden;
 }
@@ -241,7 +241,7 @@ body {
 }
 
 .desktop-shell-workspace[data-sidebar-visible="true"] {
-  border-left: 1px solid var(--shell-navigation-border);
+  border-left: none;
   border-bottom-left-radius: var(--shell-workspace-edge-radius);
   overflow: hidden;
 }
@@ -293,7 +293,7 @@ body {
 }
 
 .study-shell-page {
-  background: var(--shell-workspace-surface);
+  background: transparent;
 }
 
 .study-shell-pane {
@@ -508,86 +508,6 @@ html, body, #root {
 .edit-modal-overlay { align-items: center; justify-content: center; }
 .edit-modal { width: min(92%, 740px); max-width: 740px; }
 .edit-modal textarea { width: 100% !important; max-width: 100% !important; display: block; }
-
-/* 通用胶囊分段组件 */
-.app-pill-segmented.ant-segmented {
-  border: none;
-  border-radius: 9999px;
-  padding: 1.5px;
-  background: hsl(var(--muted));
-  box-shadow: inset 0 1px 1px rgba(15, 23, 42, 0.08);
-}
-
-.app-pill-segmented--compact.ant-segmented .ant-segmented-item {
-  font-size: 11px;
-  padding-inline: 6px;
-  min-height: 22px;
-  line-height: 1.1;
-}
-
-.app-pill-segmented--compact.ant-segmented .ant-segmented-item-label {
-  padding: 3px 5px;
-}
-
-.app-pill-segmented--compact.ant-segmented .ant-segmented-thumb {
-  margin: 1px;
-}
-
-.app-pill-segmented.ant-segmented .ant-segmented-item {
-  font-weight: 500;
-  color: hsl(var(--muted-foreground));
-  border-radius: 9999px;
-  transition: color 0.2s ease;
-}
-
-.app-pill-segmented.ant-segmented .ant-segmented-item .ant-segmented-item-label {
-  color: inherit;
-  transition: color 0.2s ease;
-}
-
-.app-pill-segmented.ant-segmented .ant-segmented-item:hover {
-  color: hsl(var(--foreground));
-}
-
-.app-pill-segmented.ant-segmented .ant-segmented-item-selected {
-  color: hsl(var(--primary));
-}
-
-.app-pill-segmented.ant-segmented .ant-segmented-item-selected .ant-segmented-item-label {
-  color: hsl(var(--primary));
-}
-
-.app-pill-segmented.ant-segmented .ant-segmented-thumb {
-  border-radius: 9999px;
-  background: hsl(var(--card));
-  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.18);
-}
-
-.dark .app-pill-segmented.ant-segmented {
-  background: hsl(var(--muted));
-  box-shadow: inset 0 1px 1px rgba(15, 23, 42, 0.4);
-}
-
-.dark .app-pill-segmented.ant-segmented .ant-segmented-item {
-  color: hsl(var(--muted-foreground));
-}
-
-.dark .app-pill-segmented.ant-segmented .ant-segmented-item:hover {
-  color: hsl(var(--foreground));
-}
-
-.dark .app-pill-segmented.ant-segmented .ant-segmented-item-selected {
-  color: hsl(var(--primary));
-}
-
-.dark .app-pill-segmented.ant-segmented .ant-segmented-item-selected .ant-segmented-item-label {
-  color: hsl(var(--primary));
-}
-
-.dark .app-pill-segmented.ant-segmented .ant-segmented-thumb {
-  background: hsl(var(--card));
-  box-shadow: 0 8px 20px rgba(14, 165, 233, 0.3);
-}
 
 /* 变体：关闭伪元素覆盖，避免遮挡子元素自身的 backdrop-filter 效果 */
 .glass-panel--no-overlay::before {
@@ -1221,7 +1141,7 @@ main {
 
 /* 暗色：提高页面背景与卡片的分层对比，使圆角更明显 */
 .dark .page-container {
-  background: var(--shell-workspace-panel);
+  background: transparent;
 }
 
 .page-container[style*="display: none"],
@@ -8025,14 +7945,6 @@ body {
   z-index: 10000;
 }
 
-/* 统一 Ant Design 遮罩为现代预览器风格 */
-.ant-modal-mask,
-.ant-drawer-mask {
-  background: transparent !important;
-  backdrop-filter: blur(12px) !important;
-  -webkit-backdrop-filter: blur(12px) !important;
-}
-
 /* 统一其他自定义遮罩类为现代预览器风格 */
 :where(
   .modal-overlay,
@@ -8059,11 +7971,6 @@ body {
   z-index: 10000 !important;
 }
 
-/* 统一 Ant Design 遮罩和容器层级，避免被顶部或侧边元素遮挡 */
-.ant-modal-mask { z-index: 10000 !important; }
-.ant-modal-wrap { z-index: 10001 !important; }
-.ant-drawer-mask { z-index: 10000 !important; }
-.ant-drawer { z-index: 10001 !important; }
 
 .modern-image-viewer-container {
   position: relative;
@@ -11212,7 +11119,7 @@ body {
 } */
 
 .dark .content-body {
-  background: hsl(var(--background));
+  background: var(--shell-workspace-surface);
   /* 暗色模式同样保持无左描边，避免侧边栏交界处出现竖线 */
   border-left: none;
   border-top: none;
