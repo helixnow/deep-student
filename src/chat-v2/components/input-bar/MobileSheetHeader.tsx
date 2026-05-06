@@ -8,7 +8,7 @@
  */
 
 import React from 'react';
-import { X } from 'lucide-react';
+import { X } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -107,7 +107,7 @@ export const MobileSheetHeader: React.FC<MobileSheetHeaderProps> = ({
             title={t('common:close')}
             style={{ touchAction: 'manipulation' }}
           >
-            <X size={20} />
+            <X size={20} weight="bold" />
           </NotionButton>
         )}
       </div>

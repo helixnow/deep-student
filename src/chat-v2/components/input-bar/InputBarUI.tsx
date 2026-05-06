@@ -9,29 +9,29 @@ import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { ArrowUp } from '@phosphor-icons/react';
 import {
+  ArrowUp,
   Square,
   Paperclip,
-  Layers,
+  StackSimple,
   SlidersHorizontal,
   GraduationCap,
   Wrench,
   BookOpen,
-  CheckCircle2,
-  AlertTriangle,
+  CheckCircle,
+  Warning,
   Clock,
   XCircle,
-  Upload,
+  UploadSimple,
   Network,
   Plus,
   Camera,
-  Zap,
-  Sparkles,
-  Loader2,
+  Lightning,
+  Sparkle,
+  CircleNotch,
   FolderOpen,
-  ChevronDown,
-} from 'lucide-react';
+  CaretDown,
+} from '@phosphor-icons/react';
 import { usePdfProcessingProgress } from '@/hooks/usePdfProcessingProgress';
 import { usePdfProcessingStore } from '@/stores/pdfProcessingStore';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
@@ -1986,7 +1986,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         {isReady && isDragging && (
           <div className="absolute inset-0 z-[300] flex items-center justify-center bg-primary/10 border-2 border-dashed border-primary backdrop-blur-sm rounded-[26px] pointer-events-none">
             <div className="flex flex-col items-center gap-2 text-primary">
-              <Upload size={32} />
+              <UploadSimple size={32} weight="bold" />
               <span className="text-sm font-medium">
                 {t('analysis:input_bar.attachments.drop_hint')}
               </span>
@@ -2235,7 +2235,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                       )}
                       aria-label={t('analysis:input_bar.attachments.title')}
                     >
-                      <Plus size={18} />
+                      <Plus size={18} weight="bold" />
                     </NotionButton>
                   </CommonTooltip>
                 </span>
@@ -2248,20 +2248,20 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               >
                 <AppMenuGroup>
                   <AppMenuItem
-                    icon={<Paperclip className="w-4 h-4" />}
+                    icon={<Paperclip className="w-4 h-4" weight="bold" />}
                     onClick={handleAddAttachmentAction}
                   >
                     {t('analysis:input_bar.attachments.add')}
                   </AppMenuItem>
                   <AppMenuItem
-                    icon={<FolderOpen className="w-4 h-4" />}
+                    icon={<FolderOpen className="w-4 h-4" weight="bold" />}
                     onClick={handleOpenResourceLibrary}
                   >
                     {t('chatV2:inputBar.resourceLibrary')}
                   </AppMenuItem>
                   {isMobileEnv && (
                     <AppMenuItem
-                      icon={<Camera className="w-4 h-4" />}
+                      icon={<Camera className="w-4 h-4" weight="bold" />}
                       onClick={handleOpenCameraAction}
                     >
                       {t('chatV2:inputBar.camera')}
@@ -2293,7 +2293,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 aria-label={t('chatV2:inputBar.toggleModelPanel')}
               >
                 <span className="relative inline-flex items-center justify-center">
-                  <Sparkles size={18} />
+                  <Sparkle size={18} weight="bold" />
                 </span>
               </NotionButton>
             </CommonTooltip>
@@ -2330,7 +2330,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                   aria-pressed={panelStates.skill || (activeSkillIds && activeSkillIds.length > 0) || !!hasLoadedSkills}
                 >
                   <span className="relative inline-flex items-center justify-center">
-                    <Zap size={18} />
+                    <Lightning size={18} weight="bold" />
                     {activeSkillIds && activeSkillIds.length > 0 ? (
                       <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-[color:var(--button-primary-foreground)] animate-pulse" />
                     ) : hasLoadedSkills ? (
@@ -2370,7 +2370,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                   aria-pressed={panelStates.mcp || mcpEnabled}
                 >
                   <span className="relative inline-flex items-center justify-center">
-                    <Wrench size={18} />
+                    <Wrench size={18} weight="bold" />
                     {selectedMcpServerCount > 0 && (
                       <span className="absolute -right-2 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full border border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] px-1 text-[10px] font-semibold text-[color:var(--button-primary-foreground)] shadow-sm">
                         {selectedMcpServerCount > 9 ? '9+' : selectedMcpServerCount}
@@ -2399,7 +2399,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                   aria-label={t('common:chat_controls')}
                 >
                   <span className="relative inline-flex items-center justify-center">
-                    <SlidersHorizontal className="w-[18px] h-[18px]" />
+                    <SlidersHorizontal className="w-[18px] h-[18px]" weight="bold" />
                   </span>
                 </NotionButton>
               </CommonTooltip>
@@ -2449,11 +2449,11 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                             : t('chatV2:inputBar.thinking', '推理模式')
                         }
                       >
-                        <Zap size={15} className={cn('shrink-0 opacity-90', enableThinking && !thinkingUnsupported && 'fill-current')} />
+                        <Lightning size={15} weight={enableThinking && !thinkingUnsupported ? "fill" : "bold"} className="shrink-0 opacity-90" />
                         <span data-testid="thinking-runtime-state-label" className="min-w-0 max-w-[5.75rem] truncate">
                           {thinkingRuntimeTriggerLabel}
                         </span>
-                        <ChevronDown size={13} className="shrink-0 opacity-55" />
+                        <CaretDown size={13} weight="bold" className="shrink-0 opacity-55" />
                       </button>
                     </AppMenuTrigger>
                     <AppMenuContent align="start" width={hasRuntimeModelMenu ? 232 : 176}>
@@ -2496,7 +2496,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                         <AppMenuGroup label={runtimeModelTitle}>
                           <AppMenuItem
                             aria-label={t('chatV2:inputBar.chooseRuntimeModel', '选择模型')}
-                            icon={<Sparkles className="h-4 w-4" />}
+                            icon={<Sparkle className="h-4 w-4" weight="bold" />}
                             onClick={handleOpenRuntimeModelPanel}
                             suffix={runtimeModelLabel ? (
                               <span
@@ -2528,7 +2528,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                       aria-label={thinkingStateLabel ?? t('chatV2:inputBar.thinking')}
                       aria-pressed={enableThinking && !thinkingUnsupported}
                     >
-                      <Zap size={15} className={cn('shrink-0', enableThinking && !thinkingUnsupported && 'fill-current')} />
+                      <Lightning size={15} weight={enableThinking && !thinkingUnsupported ? "fill" : "bold"} className="shrink-0" />
                     </button>
                     {compactThinkingStateLabel ? (
                       <span
@@ -2547,7 +2547,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             {/* 🆕 媒体处理中提示 */}
             {hasProcessingMedia && (
               <div className="text-xs text-muted-foreground flex items-center gap-1 mr-1">
-                <Loader2 className="w-3 h-3 animate-spin" />
+                <CircleNotch className="w-3 h-3 animate-spin" weight="bold" />
                 <span className="hidden sm:inline">
                   {processingIndicatorLabel || t('chatV2:inputBar.processingIndicator')}
                 </span>
@@ -2566,7 +2566,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 className={cn(studyUiBlackActionButtonClass, '!w-8 !h-8 !rounded-full shadow-sm')}
                 aria-label={t('analysis:input_bar.actions.stop')}
               >
-                <Square size={12} fill="currentColor" />
+                <Square size={12} weight="fill" />
               </NotionButton>
             ) : (
               <CommonTooltip
@@ -2619,7 +2619,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               {/* 面板头部 */}
               <div className="mb-2 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm text-foreground">
-                  <Paperclip size={16} />
+                  <Paperclip size={16} weight="bold" />
                   <span>{t('analysis:input_bar.attachments.title')} ({attachments.length})</span>
                 </div>
                 <div className="flex items-center gap-2">
@@ -2632,12 +2632,12 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                     size="sm"
                     onClick={handleOpenResourceLibrary}
                   >
-                    <FolderOpen size={12} />
+                    <FolderOpen size={12} weight="bold" />
                     {t('chatV2:inputBar.resourceLibrary')}
                   </NotionButton>
                   {isMobileEnv && (
                     <NotionButton variant="outline" size="sm" onClick={handleCameraClick}>
-                      <Camera size={12} />
+                      <Camera size={12} weight="bold" />
                       {t('chatV2:inputBar.camera')}
                     </NotionButton>
                   )}
@@ -2721,11 +2721,11 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                     const isUploading = attachment.status === 'uploading' || attachment.status === 'pending';
                     const statusIcon =
                       attachment.status === 'ready' && missingModes.length > 0
-                        ? <AlertTriangle size={12} className="text-amber-600" />
-                        : attachment.status === 'ready' ? <CheckCircle2 size={12} className="text-green-600" />
-                          : attachment.status === 'error' ? <XCircle size={12} className="text-red-600" />
-                            : (isMediaProcessing || isUploading) ? <Loader2 size={12} className="text-blue-500 animate-spin" />
-                              : <Clock size={12} className="text-muted-foreground" />;
+                        ? <Warning size={12} weight="bold" className="text-amber-600" />
+                        : attachment.status === 'ready' ? <CheckCircle size={12} weight="fill" className="text-green-600" />
+                          : attachment.status === 'error' ? <XCircle size={12} weight="fill" className="text-red-600" />
+                            : (isMediaProcessing || isUploading) ? <CircleNotch size={12} weight="bold" className="text-blue-500 animate-spin" />
+                              : <Clock size={12} weight="bold" className="text-muted-foreground" />;
                     const toneClass = isVfsRef
                       ? 'border-blue-200/60 bg-blue-50/70 dark:border-blue-800/50 dark:bg-blue-900/20'
                       : attachment.status === 'error' ? 'border-red-200/70 bg-red-50/70 dark:border-red-800/50 dark:bg-red-900/20'

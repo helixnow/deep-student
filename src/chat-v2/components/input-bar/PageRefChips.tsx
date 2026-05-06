@@ -8,7 +8,7 @@
 
 import React, { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, BookOpen } from 'lucide-react';
+import { X, BookOpen } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import type { PdfPageRefsState } from './usePdfPageRefs';
@@ -97,13 +97,13 @@ export const PageRefChips: React.FC<PageRefChipsProps> = memo(
           )}
           title={`${pageRefs.sourceName} ${label}`}
         >
-          <BookOpen size={12} className="shrink-0" />
+          <BookOpen size={12} weight="bold" className="shrink-0" />
           <span className="truncate max-w-[100px]">{pageRefs.sourceName}</span>
           <span className="opacity-60">·</span>
           <span className="whitespace-nowrap">{label}</span>
           {!disabled && (
             <NotionButton variant="ghost" size="icon" iconOnly onClick={onClearAll} className="-mr-0.5 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/10" aria-label={t('chatV2:pageRef.clearAll')} title={t('chatV2:pageRef.clearAll')}>
-              <X size={10} />
+              <X size={10} weight="bold" />
             </NotionButton>
           )}
         </div>

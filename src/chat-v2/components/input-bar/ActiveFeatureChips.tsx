@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { X, Brain, Layers, Network, BookOpen, GraduationCap, Wrench, Globe, CreditCard, Zap } from 'lucide-react';
+import { X, Brain, StackSimple, Network, BookOpen, GraduationCap, Wrench, Globe, CreditCard, Lightning } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
@@ -74,7 +74,7 @@ const FeatureChip: React.FC<FeatureChipProps> = ({ feature, disabled }) => {
       </span>
       <span className="truncate max-w-[120px]">{feature.label}</span>
       <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); feature.onClose(); }} disabled={disabled} className="!w-4 !h-4 !p-0 hover:bg-foreground/10" aria-label={`Close ${feature.label}`}>
-        <X size={10} strokeWidth={2.5} />
+        <X size={10} weight="bold" />
       </NotionButton>
     </div>
   );
@@ -146,7 +146,7 @@ export function useActiveFeatureChips(options: UseActiveFeatureChipsOptions): Ac
     features.push({
       id: 'thinking',
       label: t('chatV2:inputBar.thinking'),
-      icon: <Brain size={14} />,
+      icon: <Brain size={14} weight="bold" />,
       onClose: options.onToggleThinking,
       color: 'purple',
     });
@@ -157,7 +157,7 @@ export function useActiveFeatureChips(options: UseActiveFeatureChipsOptions): Ac
     features.push({
       id: 'rag',
       label: t('analysis:input_bar.rag.title'),
-      icon: <Layers size={14} />,
+      icon: <StackSimple size={14} weight="bold" />,
       onClose: options.onToggleRag,
       color: 'blue',
     });
@@ -168,7 +168,7 @@ export function useActiveFeatureChips(options: UseActiveFeatureChipsOptions): Ac
     features.push({
       id: 'graph',
       label: t('analysis:input_bar.graph.title'),
-      icon: <Network size={14} />,
+      icon: <Network size={14} weight="bold" />,
       onClose: options.onToggleGraph,
       color: 'blue',
     });
@@ -179,7 +179,7 @@ export function useActiveFeatureChips(options: UseActiveFeatureChipsOptions): Ac
     features.push({
       id: 'textbook',
       label: t('textbook:panel.title'),
-      icon: <BookOpen size={14} />,
+      icon: <BookOpen size={14} weight="bold" />,
       onClose: options.onTextbookToggle,
       color: 'green',
     });
@@ -193,7 +193,7 @@ export function useActiveFeatureChips(options: UseActiveFeatureChipsOptions): Ac
       label: mcpServerCount === 1 
         ? t('analysis:input_bar.mcp.title')
         : `${t('analysis:input_bar.mcp.title')} (${mcpServerCount})`,
-      icon: <Wrench size={14} />,
+      icon: <Wrench size={14} weight="bold" />,
       onClose: options.onToggleMcp,
       color: 'orange',
     });
@@ -204,7 +204,7 @@ export function useActiveFeatureChips(options: UseActiveFeatureChipsOptions): Ac
     features.push({
       id: 'search',
       label: t('analysis:input_bar.search_engine.title'),
-      icon: <Globe size={14} />,
+      icon: <Globe size={14} weight="bold" />,
       onClose: options.onToggleSearch,
       color: 'blue',
     });

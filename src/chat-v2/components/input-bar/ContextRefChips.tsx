@@ -11,7 +11,7 @@
 
 import React, { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X, FileText, BookOpen, ClipboardList, Languages, Pencil, Folder, Zap } from 'lucide-react';
+import { X, FileText, BookOpen, ClipboardText, Translate, PencilSimple, Folder, Lightning } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import type { ContextRef } from '../../resources/types';
@@ -47,16 +47,16 @@ const getTypeIcon = (typeId: string): React.ElementType => {
     case 'textbook':
       return BookOpen;
     case 'exam':
-      return ClipboardList;
+      return ClipboardText;
     case 'essay':
-      return Pencil;
+      return PencilSimple;
     case 'translation':
-      return Languages;
+      return Translate;
     case 'folder':
       return Folder;
     case 'skill':
     case 'skill_instruction':
-      return Zap;
+      return Lightning;
     default:
       return FileText;
   }
@@ -160,11 +160,11 @@ export const ContextRefChips: React.FC<ContextRefChipsProps> = memo(
               )}
               title={`${label} (${ref.resourceId.slice(0, 8)}...)`}
             >
-              <Icon size={12} className="shrink-0" />
+              <Icon size={12} weight="bold" className="shrink-0" />
               <span className="truncate max-w-[80px]">{label}</span>
               {!disabled && (
                 <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onRemove(ref.resourceId)} className="ml-1 -mr-1 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/10" aria-label={`${t('common:actions.remove')} ${label}`} title={t('common:actions.remove')}>
-                  <X size={10} />
+                  <X size={10} weight="bold" />
                 </NotionButton>
               )}
             </div>

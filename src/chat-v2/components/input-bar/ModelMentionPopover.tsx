@@ -11,7 +11,7 @@
 
 import React, { useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Sparkles, Check } from 'lucide-react';
+import { Sparkle, Check } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Z_INDEX } from '@/config/zIndex';
 import type { ModelInfo } from '../../utils/parseModelMentions';
@@ -147,7 +147,7 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
         aria-label={t('chatV2:modelMention.suggestions')}
       >
         <div className="flex items-center gap-2 px-3 py-2 border-b border-border/50">
-          <Sparkles size={14} className="text-primary" />
+          <Sparkle size={14} weight="bold" className="text-primary" />
           <span className="text-xs font-medium text-foreground/80">
             {t('chatV2:modelMention.selectModel')}
           </span>
@@ -186,7 +186,7 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
     >
       {/* 头部 */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border/50">
-        <Sparkles size={14} className="text-primary" />
+        <Sparkle size={14} weight="bold" className="text-primary" />
         <span className="text-xs font-medium text-foreground/80">
           {t('chatV2:modelMention.selectModel')}
         </span>
@@ -229,7 +229,7 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
                 'bg-primary/10 text-primary'
               )}
             >
-              <Sparkles size={14} />
+              <Sparkle size={14} weight="bold" />
             </div>
 
             {/* 模型信息 */}
@@ -242,7 +242,7 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
 
             {/* 选中标记 */}
             {index === selectedIndex && (
-              <Check size={16} className="text-primary shrink-0" />
+              <Check size={16} weight="bold" className="text-primary shrink-0" />
             )}
           </div>
         ))}

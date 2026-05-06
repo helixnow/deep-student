@@ -11,7 +11,7 @@
 
 import React, { memo, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Image, FileText, ScanText, Images, Loader2 } from 'lucide-react';
+import { Image, FileText, Scan, Images, CircleNotch } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import type { AttachmentMeta, ImageInjectMode, PdfInjectMode, AttachmentInjectModes, PdfProcessingStatus } from '../../core/types/common';
@@ -113,9 +113,9 @@ const ToggleTag: React.FC<ToggleTagProps> = memo(({
       )}
     >
       {processingNotReady ? (
-        <Loader2 size={11} className="animate-spin" />
+        <CircleNotch size={11} weight="bold" className="animate-spin" />
       ) : (
-        <Icon size={11} />
+        <Icon size={11} weight="bold" />
       )}
       <span>{label}</span>
     </NotionButton>
@@ -202,7 +202,7 @@ const ImageModeSelector: React.FC<ImageModeSelectorProps> = memo(({
         selected={selectedModes.includes('ocr')}
         onToggle={() => handleToggle('ocr')}
         disabled={disabled || (selectedModes.includes('ocr') && selectedModes.length === 1)}
-        icon={ScanText}
+        icon={Scan}
         label={t('chatV2:injectMode.image.ocr')}
         title={t('chatV2:injectMode.image.ocrDesc')}
         isProcessing={isProcessing && !isModeReady('ocr')}
@@ -292,7 +292,7 @@ const PdfModeSelector: React.FC<PdfModeSelectorProps> = memo(({
         selected={selectedModes.includes('ocr')}
         onToggle={() => handleToggle('ocr')}
         disabled={disabled || (selectedModes.includes('ocr') && selectedModes.length === 1)}
-        icon={ScanText}
+        icon={Scan}
         label={t('chatV2:injectMode.pdf.ocr')}
         title={t('chatV2:injectMode.pdf.ocrDesc')}
         isProcessing={isProcessing}
