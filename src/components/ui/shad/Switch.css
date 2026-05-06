@@ -1,0 +1,54 @@
+/**
+ * Shad Switch 组件样式。
+ * 用非 layer 选择器确保 Radix Switch 的核心视觉属性
+ * 不被 App.css / DeepStudent.css 的 unlayered * 重置覆盖。
+ */
+
+/* ---- Track ---- */
+[data-slot="switch"] {
+  height: 20px;
+  width: 36px;
+  padding: 0 3px;
+  border-radius: 9999px;
+  border: 1px solid hsl(var(--border) / 0.7);
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+  outline: none;
+  flex-shrink: 0;
+  transition: background-color 150ms;
+}
+
+[data-slot="switch"][data-state="unchecked"] {
+  background-color: hsl(var(--input));
+}
+
+[data-slot="switch"][data-state="checked"] {
+  background-color: hsl(var(--primary));
+}
+
+[data-slot="switch"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+[data-slot="switch"]:focus-visible {
+  box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--ring));
+}
+
+/* ---- Thumb ---- */
+[data-slot="switch"] > span {
+  display: block;
+  height: 16px;
+  width: 16px;
+  border-radius: 9999px;
+  background-color: hsl(var(--background));
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  pointer-events: none;
+  transition: transform 150ms;
+  transform: translateX(0);
+}
+
+[data-slot="switch"][data-state="checked"] > span {
+  transform: translateX(16px);
+}

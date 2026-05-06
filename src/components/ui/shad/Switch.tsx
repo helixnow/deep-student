@@ -1,41 +1,28 @@
-import * as React from 'react';
-import * as SwitchPrimitives from '@radix-ui/react-switch';
-import { cn } from '../../../lib/utils';
+import * as React from "react";
+import * as SwitchPrimitive from "@radix-ui/react-switch";
 
-export interface SwitchProps extends React.ComponentPropsWithoutRef<typeof SwitchPrimitives.Root> {
-  size?: 'sm' | 'default';
-}
+import { cn } from "@/lib/utils";
+import "./Switch.css";
 
-const Switch = React.forwardRef<
-  React.ElementRef<typeof SwitchPrimitives.Root>,
-  SwitchProps
->(({ className, size = 'default', ...props }, ref) => {
-  const isSmall = size === 'sm';
-
+export const Switch = React.forwardRef<
+  React.ElementRef<typeof SwitchPrimitive.Root>,
+  React.ComponentPropsWithoutRef<typeof SwitchPrimitive.Root>
+>(function Switch({ className, ...props }, ref) {
   return (
-    <SwitchPrimitives.Root
-      data-size={size}
+    <SwitchPrimitive.Root
+      data-slot="switch"
+      ref={ref}
       className={cn(
-        'peer inline-flex shrink-0 cursor-pointer items-center rounded-full border border-transparent transition-colors duration-200 ease-in-out focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--input-shell-focus)] disabled:cursor-not-allowed disabled:opacity-50 data-[state=checked]:border-[color:var(--button-primary-border)] data-[state=checked]:bg-[color:var(--button-primary-foreground)] data-[state=unchecked]:border-[color:var(--button-utility-border)] data-[state=unchecked]:bg-[color:var(--button-utility-surface)]',
-        isSmall
-          ? 'h-[var(--touch-target-size)] min-h-[var(--touch-target-size)] w-[3.25rem] min-w-[var(--touch-target-size)] p-[3px] lg:h-4 lg:min-h-4 lg:w-7 lg:min-w-7 lg:p-[2px]'
-          : 'h-[var(--touch-target-size)] min-h-[var(--touch-target-size)] w-14 min-w-[var(--touch-target-size)] p-[3px] lg:h-5 lg:min-h-5 lg:w-9 lg:min-w-9 lg:p-[2px]',
-        className
+        "peer inline-flex h-5 w-9 shrink-0 cursor-pointer items-center rounded-full border border-border/70 bg-input px-[3px] outline-none ring-offset-background transition-colors duration-150 data-[state=checked]:bg-primary focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50",
+        className,
       )}
       {...props}
-      ref={ref}
     >
-      <SwitchPrimitives.Thumb
+      <SwitchPrimitive.Thumb
         className={cn(
-          'pointer-events-none block rounded-full bg-[color:var(--surface-panel-strong)] shadow-none ring-1 ring-[color:var(--shell-workspace-border)] transition-transform duration-200 ease-in-out',
-          isSmall
-            ? 'h-6 w-6 data-[state=checked]:translate-x-[1.375rem] data-[state=unchecked]:translate-x-0 lg:h-3 lg:w-3 lg:data-[state=checked]:translate-x-3'
-            : 'h-7 w-7 data-[state=checked]:translate-x-[1.375rem] data-[state=unchecked]:translate-x-0 lg:h-4 lg:w-4 lg:data-[state=checked]:translate-x-4'
+          "pointer-events-none block size-4 rounded-full bg-background shadow-sm ring-0 transition-transform duration-150 data-[state=checked]:translate-x-4 data-[state=unchecked]:translate-x-0",
         )}
       />
-    </SwitchPrimitives.Root>
+    </SwitchPrimitive.Root>
   );
 });
-Switch.displayName = 'Switch';
-
-export { Switch };
