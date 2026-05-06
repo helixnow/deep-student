@@ -45,6 +45,7 @@ import type {
   EditMessageResult,
   RetryMessageResult,
 } from './types';
+import { notifyStreamReconnect } from './streamReconnectNotification';
 import {
   buildSendContextRefs,
   buildSendContextRefsWithPaths,
@@ -1607,6 +1608,19 @@ export class ChatV2TauriAdapter {
           }
           break;
         }
+
+        case 'stream_reconnect':
+          if (!payload.messageId || !this.isTargetingCurrentStreamMessage(payload.messageId) || this.isStaleByExpectationTimestamp(payload)) {
+            console.warn(LOG_PREFIX, 'Ignore stale stream_reconnect:', {
+              messageId: payload.messageId,
+              currentStreamingMessageId: this.getCurrentState().currentStreamingMessageId,
+              expectation: this.streamExpectation,
+              eventTimestamp: payload.timestamp,
+            });
+            break;
+          }
+          notifyStreamReconnect(payload);
+          break;
 
         case 'stream_complete':
           if (!payload.messageId || !this.isTargetingCurrentStreamMessage(payload.messageId) || this.isStaleByExpectationTimestamp(payload)) {

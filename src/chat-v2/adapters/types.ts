@@ -245,6 +245,7 @@ export interface SendMessageRequest {
  */
 export type SessionEventType =
   | 'stream_start'
+  | 'stream_reconnect'
   | 'stream_complete'
   | 'stream_error'
   | 'stream_cancelled'
@@ -270,6 +271,12 @@ export interface SessionEventPayload {
 
   /** 模型标识符（stream_start 事件携带，用于前端显示） */
   modelId?: string;
+
+  /** 重连/重试进度（stream_reconnect 事件携带） */
+  retryAttempt?: number;
+
+  /** 最大重连/重试次数（stream_reconnect 事件携带） */
+  retryMax?: number;
 
   /** 错误信息 */
   error?: string;

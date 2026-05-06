@@ -96,6 +96,8 @@ pub mod event_types {
 pub mod session_event_type {
     /// 流式生成开始
     pub const STREAM_START: &str = "stream_start";
+    /// 流式生成重连/重试
+    pub const STREAM_RECONNECT: &str = "stream_reconnect";
     /// 流式生成完成
     pub const STREAM_COMPLETE: &str = "stream_complete";
     /// 流式生成错误
@@ -447,6 +449,14 @@ pub struct SessionEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_id: Option<String>,
 
+    /// 重连/重试进度（stream_reconnect 事件时提供）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_attempt: Option<u32>,
+
+    /// 最大重连/重试次数（stream_reconnect 事件时提供）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_max: Option<u32>,
+
     /// 错误信息（error 事件时提供）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
@@ -482,6 +492,33 @@ impl SessionEvent {
             skill_state_version: None,
             replay_mode: None,
             model_id: model_id.map(|s| s.to_string()),
+            retry_attempt: None,
+            retry_max: None,
+            error: None,
+            duration_ms: None,
+            timestamp: chrono::Utc::now().timestamp_millis(),
+            usage: None,
+            title: None,
+            description: None,
+        }
+    }
+
+    /// 创建流式重连/重试事件
+    pub fn stream_reconnect(
+        session_id: &str,
+        message_id: &str,
+        retry_attempt: u32,
+        retry_max: u32,
+    ) -> Self {
+        Self {
+            session_id: session_id.to_string(),
+            event_type: session_event_type::STREAM_RECONNECT.to_string(),
+            message_id: Some(message_id.to_string()),
+            skill_state_version: None,
+            replay_mode: None,
+            model_id: None,
+            retry_attempt: Some(retry_attempt),
+            retry_max: Some(retry_max),
             error: None,
             duration_ms: None,
             timestamp: chrono::Utc::now().timestamp_millis(),
@@ -500,6 +537,8 @@ impl SessionEvent {
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
+            retry_attempt: None,
+            retry_max: None,
             error: None,
             duration_ms: Some(duration_ms),
             timestamp: chrono::Utc::now().timestamp_millis(),
@@ -529,6 +568,8 @@ impl SessionEvent {
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
+            retry_attempt: None,
+            retry_max: None,
             error: None,
             duration_ms: Some(duration_ms),
             timestamp: chrono::Utc::now().timestamp_millis(),
@@ -547,6 +588,8 @@ impl SessionEvent {
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
+            retry_attempt: None,
+            retry_max: None,
             error: Some(error.to_string()),
             duration_ms: None,
             timestamp: chrono::Utc::now().timestamp_millis(),
@@ -565,6 +608,8 @@ impl SessionEvent {
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
+            retry_attempt: None,
+            retry_max: None,
             error: None,
             duration_ms: None,
             timestamp: chrono::Utc::now().timestamp_millis(),
@@ -583,6 +628,8 @@ impl SessionEvent {
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
+            retry_attempt: None,
+            retry_max: None,
             error: None,
             duration_ms: None,
             timestamp: chrono::Utc::now().timestamp_millis(),
@@ -601,6 +648,8 @@ impl SessionEvent {
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
+            retry_attempt: None,
+            retry_max: None,
             error: Some(error.to_string()),
             duration_ms: None,
             timestamp: chrono::Utc::now().timestamp_millis(),
@@ -619,6 +668,8 @@ impl SessionEvent {
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
+            retry_attempt: None,
+            retry_max: None,
             error: None,
             duration_ms: None,
             timestamp: chrono::Utc::now().timestamp_millis(),
@@ -637,6 +688,8 @@ impl SessionEvent {
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
+            retry_attempt: None,
+            retry_max: None,
             error: None,
             duration_ms: None,
             timestamp: chrono::Utc::now().timestamp_millis(),
@@ -1208,6 +1261,13 @@ impl ChatV2EventEmitter {
         self.emit_session(event);
     }
 
+    /// 发射流式重连/重试事件
+    pub fn emit_stream_reconnect(&self, message_id: &str, retry_attempt: u32, retry_max: u32) {
+        let event =
+            SessionEvent::stream_reconnect(&self.session_id, message_id, retry_attempt, retry_max);
+        self.emit_session(event);
+    }
+
     /// 发射流式完成事件
     pub fn emit_stream_complete(&self, message_id: &str, duration_ms: u64) {
         let event = SessionEvent::stream_complete(&self.session_id, message_id, duration_ms);
@@ -1512,6 +1572,8 @@ mod tests {
             skill_state_version: None,
             replay_mode: None,
             model_id: None, // stream_complete 事件不需要 model_id
+            retry_attempt: None,
+            retry_max: None,
             error: None,
             duration_ms: Some(1500),
             timestamp: 1701619200000,
