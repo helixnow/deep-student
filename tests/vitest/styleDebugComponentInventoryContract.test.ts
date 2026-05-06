@@ -31,4 +31,34 @@ describe('style debug component inventory contract', () => {
     expect(source).toContain('src/components/ui/app-menu');
     expect(source).toContain('study-ui/src/components/shell');
   });
+
+  it('has structured repeated component data with file paths and usage counts', () => {
+    expect(source).toContain('repeatedComponentData');
+    expect(source).toContain('filePath:');
+    expect(source).toContain('imports:');
+    expect(source).toContain('refs:');
+    expect(source).toContain('files:');
+  });
+
+  it('supports priority filtering and search in repeated component previews', () => {
+    expect(source).toContain('priorityFilter');
+    expect(source).toContain('searchQuery');
+    expect(source).toContain('高优先');
+    expect(source).toContain('中优先');
+    expect(source).toContain('低优先');
+  });
+
+  it('provides action buttons for marking entries as cleaned', () => {
+    expect(source).toContain('标记已清理');
+    expect(source).toContain('cleanedEntries');
+    expect(source).toContain('style-lab-cleaned-entries');
+  });
+
+  it('includes Scroll and Icons duplicate groups', () => {
+    expect(source).toContain('Scroll 重复实现');
+    expect(source).toContain('Icons 重复实现');
+    expect(source).toContain('CustomScrollArea');
+    expect(source).toContain('lucide-react');
+    expect(source).toContain('Phosphor');
+  });
 });

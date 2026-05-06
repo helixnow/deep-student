@@ -6,12 +6,15 @@ import {
   CheckCheck,
   Copy,
   Bot,
+  ExternalLink,
+  Filter,
   Layers3,
   LoaderCircle,
   MousePointer2,
   Palette,
   Play,
   RotateCcw,
+  Search,
   SlidersHorizontal,
   SplitSquareHorizontal,
   Square,
@@ -22,6 +25,7 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { showGlobalNotification, type GlobalNotificationBorderTone, type GlobalNotificationType } from '@/components/UnifiedNotification';
 import { CommonTooltip, type TooltipPosition, type TooltipTheme } from '@/components/shared/CommonTooltip';
+import { ProviderIcon } from '@/components/ui/ProviderIcon';
 // eslint-disable-next-line no-restricted-imports -- Style lab intentionally compares the legacy shad Button path against the target NotionButton path.
 import { Button as ShadButton } from '@/components/ui/shad/Button';
 import { Badge } from '@/components/ui/shad/Badge';
@@ -59,9 +63,26 @@ type ToastDebugSample = {
   borderTone?: GlobalNotificationBorderTone;
 };
 
-type LlmOutputPlaybackStepId = 'waiting' | 'thinking' | 'content-intro' | 'tool' | 'content-resume' | 'aborting' | 'idle';
+type LlmOutputPlaybackStepId =
+  | 'waiting'
+  | 'thinking'
+  | 'content-intro'
+  | 'tool'
+  | 'tool-mcp'
+  | 'tool-image-gen'
+  | 'tool-rag'
+  | 'tool-memory'
+  | 'tool-web-search'
+  | 'tool-anki'
+  | 'tool-workspace'
+  | 'tool-ask-user'
+  | 'tool-error'
+  | 'content-resume'
+  | 'aborting'
+  | 'error'
+  | 'idle';
 
-type LlmOutputPlaybackState = 'waiting' | 'thinking' | 'content' | 'tool' | 'aborting' | 'idle';
+type LlmOutputPlaybackState = 'waiting' | 'thinking' | 'content' | 'tool' | 'error' | 'aborting' | 'idle';
 
 type LlmOutputPlaybackFrame = {
   id: LlmOutputPlaybackStepId;
@@ -70,8 +91,13 @@ type LlmOutputPlaybackFrame = {
   durationMs: number;
   thinkingContent?: string;
   introContent?: string;
-  toolStatus?: 'running' | 'success';
+  toolStatus?: 'running' | 'success' | 'error';
+  toolType?: BlockType;
+  toolName?: string;
+  toolInput?: Record<string, unknown>;
+  toolOutput?: unknown;
   resumeContent?: string;
+  error?: string;
 };
 
 type MixedComponentRow = {
@@ -100,6 +126,326 @@ type ComponentGroup = {
   path: string;
   items: string[];
 };
+
+type RepeatedEntry = {
+  name: string;
+  filePath: string;
+  imports: number;
+  refs: number;
+  files: number;
+};
+
+type RepeatedLane = {
+  tone: 'target' | 'mixed' | 'legacy';
+  label: string;
+  entries: RepeatedEntry[];
+  hint?: string;
+};
+
+type RepeatedGroup = {
+  title: string;
+  signal: string;
+  priority: 'high' | 'medium' | 'low';
+  lanes: RepeatedLane[];
+};
+
+const repeatedComponentData: RepeatedGroup[] = [
+  {
+    title: 'Button 重复实现',
+    signal: '目标：所有业务按钮最终只消费 buttonPrimitiveContract。',
+    priority: 'high',
+    lanes: [
+      {
+        tone: 'target',
+        label: '推荐统一入口',
+        entries: [
+          { name: 'NotionButton', filePath: 'src/components/ui/NotionButton.tsx', imports: 301, refs: 1560, files: 301 },
+          { name: 'buttonPrimitiveContract', filePath: 'src/components/ui/buttonPrimitiveContract.ts', imports: 1, refs: 0, files: 1 },
+        ],
+        hint: 'NotionButton 已是产品主入口。',
+      },
+      {
+        tone: 'mixed',
+        label: '当前混用入口',
+        entries: [
+          { name: 'shad Button', filePath: 'src/components/ui/shad/Button.tsx', imports: 1, refs: 1, files: 1 },
+          { name: 'study-ui Button', filePath: 'study-ui/src/components/ui/button.tsx', imports: 5, refs: 5, files: 5 },
+          { name: 'ShellButton', filePath: 'study-ui/src/components/shell/ShellButton.tsx', imports: 2, refs: 2, files: 2 },
+        ],
+        hint: '已接 token，但不是产品主入口。',
+      },
+      {
+        tone: 'legacy',
+        label: '旧写法样本',
+        entries: [
+          { name: '原生 <button>', filePath: '(散布在业务代码中)', imports: 0, refs: 184, files: 66 },
+        ],
+        hint: '66 个文件仍有原生按钮。',
+      },
+    ],
+  },
+  {
+    title: 'Form controls 重复实现',
+    signal: '目标：Input、Textarea、Select、Switch、Slider 使用同一 focus/disabled/spacing token。',
+    priority: 'high',
+    lanes: [
+      {
+        tone: 'target',
+        label: '推荐统一入口',
+        entries: [
+          { name: 'shad Input', filePath: 'src/components/ui/shad/Input.tsx', imports: 45, refs: 60, files: 40 },
+          { name: 'shad Textarea', filePath: 'src/components/ui/shad/Textarea.tsx', imports: 12, refs: 14, files: 10 },
+          { name: 'shad Switch', filePath: 'src/components/ui/shad/Switch.tsx', imports: 18, refs: 20, files: 15 },
+          { name: 'shad Checkbox', filePath: 'src/components/ui/shad/Checkbox.tsx', imports: 8, refs: 10, files: 7 },
+          { name: 'shad Slider', filePath: 'src/components/ui/shad/Slider.tsx', imports: 3, refs: 3, files: 2 },
+        ],
+        hint: 'shad controls 已是主路径。',
+      },
+      {
+        tone: 'mixed',
+        label: '当前混用入口',
+        entries: [
+          { name: 'AppSelect', filePath: 'src/components/ui/app-menu/AppSelect.tsx', imports: 49, refs: 49, files: 23 },
+          { name: 'study-ui Input', filePath: 'study-ui/src/components/ui/input.tsx', imports: 2, refs: 2, files: 2 },
+          { name: 'study-ui Textarea', filePath: 'study-ui/src/components/ui/textarea.tsx', imports: 1, refs: 1, files: 1 },
+          { name: 'study-ui Switch', filePath: 'study-ui/src/components/ui/switch.tsx', imports: 3, refs: 3, files: 3 },
+        ],
+        hint: '选择器职责需要拆清。',
+      },
+      {
+        tone: 'legacy',
+        label: '旧写法样本',
+        entries: [
+          { name: '原生 <input>', filePath: '(散布在业务代码中)', imports: 0, refs: 80, files: 50 },
+          { name: '原生 <select>', filePath: '(散布在业务代码中)', imports: 0, refs: 45, files: 30 },
+          { name: '原生 <textarea>', filePath: '(散布在业务代码中)', imports: 0, refs: 18, files: 12 },
+        ],
+        hint: '83 个文件仍有原生控件。',
+      },
+    ],
+  },
+  {
+    title: 'Dialog / Sheet 重复实现',
+    signal: '目标：一个 Dialog 主入口，一个 Sheet 主入口，共享 overlay、radius、focus-ring。',
+    priority: 'high',
+    lanes: [
+      {
+        tone: 'target',
+        label: '推荐统一入口',
+        entries: [
+          { name: 'NotionDialog', filePath: 'src/components/ui/NotionDialog.tsx', imports: 52, refs: 52, files: 52 },
+        ],
+        hint: 'NotionDialog / shell token。',
+      },
+      {
+        tone: 'mixed',
+        label: '当前混用入口',
+        entries: [
+          { name: 'shad Dialog', filePath: 'src/components/ui/shad/Dialog.tsx', imports: 13, refs: 13, files: 13 },
+          { name: 'shad Sheet', filePath: 'src/components/ui/shad/Sheet.tsx', imports: 8, refs: 8, files: 8 },
+          { name: 'study-ui Dialog', filePath: 'study-ui/src/components/ui/dialog.tsx', imports: 4, refs: 4, files: 3 },
+          { name: 'study-ui Sheet', filePath: 'study-ui/src/components/ui/sheet.tsx', imports: 2, refs: 2, files: 2 },
+          { name: 'AppMenu', filePath: 'src/components/ui/app-menu/AppMenu.tsx', imports: 47, refs: 47, files: 46 },
+        ],
+        hint: 'shad Sheet / study-ui Sheet。',
+      },
+      {
+        tone: 'legacy',
+        label: '旧写法样本',
+        entries: [
+          { name: '原生 <details>/<summary>', filePath: '(散布在业务代码中)', imports: 0, refs: 6, files: 6 },
+        ],
+        hint: '业务 Modal CSS / wrapper。',
+      },
+    ],
+  },
+  {
+    title: 'Surface / Card 重复实现',
+    signal: '目标：Surface、Card、Panel 语义分层，业务不再自定义容器视觉。',
+    priority: 'medium',
+    lanes: [
+      {
+        tone: 'target',
+        label: '推荐统一入口',
+        entries: [
+          { name: 'study-ui Surface', filePath: 'study-ui/src/components/ui/surface.tsx', imports: 4, refs: 4, files: 4 },
+          { name: 'study-ui Card', filePath: 'study-ui/src/components/ui/card.tsx', imports: 2, refs: 2, files: 2 },
+        ],
+        hint: 'Surface token。',
+      },
+      {
+        tone: 'mixed',
+        label: '当前混用入口',
+        entries: [
+          { name: 'shad Card', filePath: 'src/components/ui/shad/Card.tsx', imports: 31, refs: 31, files: 31 },
+        ],
+        hint: '部分页面已使用。',
+      },
+      {
+        tone: 'legacy',
+        label: '旧写法样本',
+        entries: [
+          { name: '业务 .card / panel', filePath: '(散布在业务代码中)', imports: 0, refs: 0, files: 0 },
+        ],
+        hint: '圆角、阴影、背景各自定义。',
+      },
+    ],
+  },
+  {
+    title: 'Tabs 重复实现',
+    signal: '目标：统一 Tabs primitive，迁移期间避免同一页面内混搭。',
+    priority: 'medium',
+    lanes: [
+      {
+        tone: 'target',
+        label: '推荐统一入口',
+        entries: [
+          { name: 'shad Tabs', filePath: 'src/components/ui/shad/Tabs.tsx', imports: 16, refs: 16, files: 16 },
+        ],
+        hint: 'shad Tabs 是当前主入口。',
+      },
+      {
+        tone: 'mixed',
+        label: '当前混用入口',
+        entries: [
+          { name: 'study-ui Tabs', filePath: 'study-ui/src/components/ui/tabs.tsx', imports: 2, refs: 2, files: 2 },
+        ],
+        hint: '两套 Tabs 同时存在。',
+      },
+      {
+        tone: 'legacy',
+        label: '旧写法样本',
+        entries: [],
+        hint: '暂无遗留原生 Tabs。',
+      },
+    ],
+  },
+  {
+    title: 'Sidebar row 重复实现',
+    signal: '目标：导航行、线程行、设置行走同一 row primitive 和选中态 token。',
+    priority: 'medium',
+    lanes: [
+      {
+        tone: 'target',
+        label: '推荐统一入口',
+        entries: [
+          { name: 'NotionButton (nav variant)', filePath: 'src/components/ui/NotionButton.tsx', imports: 301, refs: 1560, files: 301 },
+        ],
+        hint: '导航行复用 NotionButton nav variant。',
+      },
+      {
+        tone: 'mixed',
+        label: '当前混用入口',
+        entries: [
+          { name: 'UnifiedSidebar', filePath: 'src/components/ui/unified-sidebar/UnifiedSidebar.tsx', imports: 8, refs: 8, files: 8 },
+          { name: 'ModernSidebar', filePath: 'src/components/ModernSidebar.tsx', imports: 1, refs: 1, files: 1 },
+          { name: 'study-ui Sidebar', filePath: 'study-ui/src/components/shell/Sidebar.tsx', imports: 2, refs: 2, files: 2 },
+        ],
+        hint: 'Settings / Session / Notes 各有包装。',
+      },
+      {
+        tone: 'legacy',
+        label: '旧写法样本',
+        entries: [
+          { name: 'custom nav row', filePath: '(散布在业务代码中)', imports: 0, refs: 0, files: 0 },
+        ],
+        hint: '手工圆角、背景、hover。',
+      },
+    ],
+  },
+  {
+    title: 'Status badge 重复实现',
+    signal: '目标：状态色只走 success/warning/danger/info 语义 token。',
+    priority: 'medium',
+    lanes: [
+      {
+        tone: 'target',
+        label: '推荐统一入口',
+        entries: [
+          { name: 'shad Badge', filePath: 'src/components/ui/shad/Badge.tsx', imports: 45, refs: 50, files: 40 },
+        ],
+        hint: '语义 token。',
+      },
+      {
+        tone: 'mixed',
+        label: '当前混用入口',
+        entries: [
+          { name: 'shad Badge (variant=default)', filePath: 'src/components/ui/shad/Badge.tsx', imports: 45, refs: 50, files: 40 },
+          { name: 'UnifiedNotification', filePath: 'src/components/UnifiedNotification.tsx', imports: 146, refs: 146, files: 144 },
+        ],
+        hint: '区分局部 badge/progress 与全局 notification。',
+      },
+      {
+        tone: 'legacy',
+        label: '旧写法样本',
+        entries: [
+          { name: 'hard-coded badge', filePath: '(散布在业务代码中)', imports: 0, refs: 0, files: 0 },
+        ],
+        hint: '内联样式、hard-coded 颜色。',
+      },
+    ],
+  },
+  {
+    title: 'Scroll 重复实现',
+    signal: '目标：滚动容器集中到 CustomScrollArea，确认各页面 viewport padding 和滚动条密度。',
+    priority: 'low',
+    lanes: [
+      {
+        tone: 'target',
+        label: '推荐统一入口',
+        entries: [
+          { name: 'CustomScrollArea', filePath: 'src/components/custom-scroll-area.tsx', imports: 111, refs: 111, files: 111 },
+        ],
+        hint: 'CustomScrollArea 基本集中。',
+      },
+      {
+        tone: 'mixed',
+        label: '当前混用入口',
+        entries: [
+          { name: 'shad ScrollArea', filePath: 'src/components/ui/shad/ScrollArea.tsx', imports: 0, refs: 0, files: 0 },
+        ],
+        hint: 'shad ScrollArea 已无引用。',
+      },
+      {
+        tone: 'legacy',
+        label: '旧写法样本',
+        entries: [],
+        hint: '暂无遗留原生滚动容器。',
+      },
+    ],
+  },
+  {
+    title: 'Icons 重复实现',
+    signal: '目标：统一图标库为 Phosphor，人工校对同屏图标的线宽、尺寸和视觉重量。',
+    priority: 'high',
+    lanes: [
+      {
+        tone: 'target',
+        label: '推荐统一入口',
+        entries: [
+          { name: 'Phosphor (main)', filePath: 'src/ 各处', imports: 20, refs: 20, files: 11 },
+          { name: 'Phosphor (study-ui)', filePath: 'study-ui/src/ 各处', imports: 20, refs: 20, files: 9 },
+        ],
+        hint: 'Phosphor 是迁移目标。',
+      },
+      {
+        tone: 'mixed',
+        label: '当前混用入口',
+        entries: [
+          { name: 'lucide-react', filePath: 'src/ 各处', imports: 370, refs: 370, files: 365 },
+          { name: 'StudySidebarIcons', filePath: 'src/components/StudySidebarIcons.tsx', imports: 4, refs: 4, files: 4 },
+        ],
+        hint: 'lucide-react 占绝大多数。',
+      },
+      {
+        tone: 'legacy',
+        label: '旧写法样本',
+        entries: [],
+        hint: '暂无其他遗留图标库。',
+      },
+    ],
+  },
+];
 
 const scanScopeRows = [
   '扫描范围：src/ 和 study-ui/src/',
@@ -506,11 +852,21 @@ const llmOutputPlaybackIds = {
   userContent: 'style-lab-llm-user-content',
   thinking: 'style-lab-llm-thinking',
   introContent: 'style-lab-llm-content-intro',
-  tool: 'style-lab-llm-tool',
+  toolMcp: 'style-lab-llm-tool-mcp',
+  toolImageGen: 'style-lab-llm-tool-image-gen',
+  toolRag: 'style-lab-llm-tool-rag',
+  toolMemory: 'style-lab-llm-tool-memory',
+  toolWebSearch: 'style-lab-llm-tool-web-search',
+  toolAnki: 'style-lab-llm-tool-anki',
+  toolWorkspace: 'style-lab-llm-tool-workspace',
+  toolAskUser: 'style-lab-llm-tool-ask-user',
+  toolError: 'style-lab-llm-tool-error',
   resumeContent: 'style-lab-llm-content-resume',
+  error: 'style-lab-llm-error',
 } as const;
 
 const llmOutputPlaybackFrames: LlmOutputPlaybackFrame[] = [
+  // ===== 基本流程 =====
   {
     id: 'waiting',
     state: 'waiting',
@@ -555,15 +911,219 @@ const llmOutputPlaybackFrames: LlmOutputPlaybackFrame[] = [
     thinkingContent: llmOutputThinkingCopy,
     introContent: llmOutputIntroContent,
   },
+
+  // ===== MCP 工具调用 =====
   {
-    id: 'tool',
+    id: 'tool-mcp',
     state: 'tool',
-    frameId: 'tool-1',
+    frameId: 'tool-mcp-running',
     durationMs: 900,
     thinkingContent: llmOutputThinkingCopy,
     introContent: llmOutputIntroContent,
     toolStatus: 'running',
+    toolType: 'mcp_tool',
+    toolName: 'search_docs',
+    toolInput: { topic: 'chat-v2-output-states' },
   },
+  {
+    id: 'tool-mcp',
+    state: 'tool',
+    frameId: 'tool-mcp-success',
+    durationMs: 500,
+    thinkingContent: llmOutputThinkingCopy,
+    introContent: llmOutputIntroContent,
+    toolStatus: 'success',
+    toolType: 'mcp_tool',
+    toolName: 'search_docs',
+    toolOutput: { results: ['文档1', '文档2'] },
+  },
+
+  // ===== 图片生成工具 =====
+  {
+    id: 'tool-image-gen',
+    state: 'tool',
+    frameId: 'tool-image-gen-running',
+    durationMs: 1200,
+    thinkingContent: llmOutputThinkingCopy,
+    introContent: llmOutputIntroContent,
+    toolStatus: 'running',
+    toolType: 'image_gen',
+    toolName: 'image_gen',
+    toolInput: { prompt: 'A beautiful sunset', size: '1024x1024' },
+  },
+  {
+    id: 'tool-image-gen',
+    state: 'tool',
+    frameId: 'tool-image-gen-success',
+    durationMs: 500,
+    thinkingContent: llmOutputThinkingCopy,
+    introContent: llmOutputIntroContent,
+    toolStatus: 'success',
+    toolType: 'image_gen',
+    toolName: 'image_gen',
+    toolOutput: { url: 'https://example.com/image.png' },
+  },
+
+  // ===== RAG 检索 =====
+  {
+    id: 'tool-rag',
+    state: 'tool',
+    frameId: 'tool-rag-running',
+    durationMs: 800,
+    thinkingContent: llmOutputThinkingCopy,
+    introContent: llmOutputIntroContent,
+    toolStatus: 'running',
+    toolType: 'rag',
+    toolName: 'rag_search',
+    toolInput: { query: 'Chat V2 状态机', topK: 5 },
+  },
+  {
+    id: 'tool-rag',
+    state: 'tool',
+    frameId: 'tool-rag-success',
+    durationMs: 400,
+    thinkingContent: llmOutputThinkingCopy,
+    introContent: llmOutputIntroContent,
+    toolStatus: 'success',
+    toolType: 'rag',
+    toolName: 'rag_search',
+    toolOutput: { sources: [{ title: '状态机文档', snippet: '...' }] },
+  },
+
+  // ===== 记忆检索 =====
+  {
+    id: 'tool-memory',
+    state: 'tool',
+    frameId: 'tool-memory-running',
+    durationMs: 600,
+    thinkingContent: llmOutputThinkingCopy,
+    introContent: llmOutputIntroContent,
+    toolStatus: 'running',
+    toolType: 'memory',
+    toolName: 'memory_search',
+    toolInput: { query: '用户偏好设置' },
+  },
+  {
+    id: 'tool-memory',
+    state: 'tool',
+    frameId: 'tool-memory-success',
+    durationMs: 300,
+    thinkingContent: llmOutputThinkingCopy,
+    introContent: llmOutputIntroContent,
+    toolStatus: 'success',
+    toolType: 'memory',
+    toolName: 'memory_search',
+    toolOutput: { memories: ['用户喜欢简洁界面'] },
+  },
+
+  // ===== 网络搜索 =====
+  {
+    id: 'tool-web-search',
+    state: 'tool',
+    frameId: 'tool-web-search-running',
+    durationMs: 1500,
+    thinkingContent: llmOutputThinkingCopy,
+    introContent: llmOutputIntroContent,
+    toolStatus: 'running',
+    toolType: 'web_search',
+    toolName: 'web_search',
+    toolInput: { query: 'React best practices 2026' },
+  },
+  {
+    id: 'tool-web-search',
+    state: 'tool',
+    frameId: 'tool-web-search-success',
+    durationMs: 500,
+    thinkingContent: llmOutputThinkingCopy,
+    introContent: llmOutputIntroContent,
+    toolStatus: 'success',
+    toolType: 'web_search',
+    toolName: 'web_search',
+    toolOutput: { results: [{ title: 'React 2026', url: 'https://example.com' }] },
+  },
+
+  // ===== Anki 卡片生成 =====
+  {
+    id: 'tool-anki',
+    state: 'tool',
+    frameId: 'tool-anki-running',
+    durationMs: 1000,
+    thinkingContent: llmOutputThinkingCopy,
+    introContent: llmOutputIntroContent,
+    toolStatus: 'running',
+    toolType: 'anki_cards',
+    toolName: 'anki_create',
+    toolInput: { front: '什么是状态机？', back: '状态机是...' },
+  },
+  {
+    id: 'tool-anki',
+    state: 'tool',
+    frameId: 'tool-anki-success',
+    durationMs: 400,
+    thinkingContent: llmOutputThinkingCopy,
+    introContent: llmOutputIntroContent,
+    toolStatus: 'success',
+    toolType: 'anki_cards',
+    toolName: 'anki_create',
+    toolOutput: { cardId: 'card_123', created: true },
+  },
+
+  // ===== 工作区操作 =====
+  {
+    id: 'tool-workspace',
+    state: 'tool',
+    frameId: 'tool-workspace-running',
+    durationMs: 800,
+    thinkingContent: llmOutputThinkingCopy,
+    introContent: llmOutputIntroContent,
+    toolStatus: 'running',
+    toolType: 'workspace_status',
+    toolName: 'workspace_create',
+    toolInput: { name: '研究项目' },
+  },
+  {
+    id: 'tool-workspace',
+    state: 'tool',
+    frameId: 'tool-workspace-success',
+    durationMs: 400,
+    thinkingContent: llmOutputThinkingCopy,
+    introContent: llmOutputIntroContent,
+    toolStatus: 'success',
+    toolType: 'workspace_status',
+    toolName: 'workspace_create',
+    toolOutput: { workspaceId: 'ws_123', created: true },
+  },
+
+  // ===== 用户交互 =====
+  {
+    id: 'tool-ask-user',
+    state: 'tool',
+    frameId: 'tool-ask-user-running',
+    durationMs: 600,
+    thinkingContent: llmOutputThinkingCopy,
+    introContent: llmOutputIntroContent,
+    toolStatus: 'running',
+    toolType: 'ask_user',
+    toolName: 'ask_user',
+    toolInput: { question: '您想要哪种风格的界面？' },
+  },
+
+  // ===== 工具调用错误 =====
+  {
+    id: 'tool-error',
+    state: 'error',
+    frameId: 'tool-error',
+    durationMs: 800,
+    thinkingContent: llmOutputThinkingCopy,
+    introContent: llmOutputIntroContent,
+    toolStatus: 'error',
+    toolType: 'mcp_tool',
+    toolName: 'search_docs',
+    toolInput: { topic: 'error-test' },
+    error: '工具调用失败：API 超时',
+  },
+
+  // ===== 正文恢复 =====
   {
     id: 'content-resume',
     state: 'content',
@@ -572,6 +1132,8 @@ const llmOutputPlaybackFrames: LlmOutputPlaybackFrame[] = [
     thinkingContent: llmOutputThinkingCopy,
     introContent: llmOutputIntroContent,
     toolStatus: 'success',
+    toolType: 'mcp_tool',
+    toolName: 'search_docs',
     resumeContent: '工具阶段结束后，再继续正文；',
   },
   {
@@ -582,8 +1144,23 @@ const llmOutputPlaybackFrames: LlmOutputPlaybackFrame[] = [
     thinkingContent: llmOutputThinkingCopy,
     introContent: llmOutputIntroContent,
     toolStatus: 'success',
+    toolType: 'mcp_tool',
+    toolName: 'search_docs',
     resumeContent: llmOutputResumeAbortContent,
   },
+
+  // ===== API 错误 =====
+  {
+    id: 'error',
+    state: 'error',
+    frameId: 'error-api',
+    durationMs: 1000,
+    thinkingContent: llmOutputThinkingCopy,
+    introContent: llmOutputIntroContent,
+    error: 'API 请求失败：429 Too Many Requests',
+  },
+
+  // ===== 用户中止 =====
   {
     id: 'aborting',
     state: 'aborting',
@@ -592,8 +1169,12 @@ const llmOutputPlaybackFrames: LlmOutputPlaybackFrame[] = [
     thinkingContent: llmOutputThinkingCopy,
     introContent: llmOutputIntroContent,
     toolStatus: 'success',
+    toolType: 'mcp_tool',
+    toolName: 'search_docs',
     resumeContent: llmOutputResumeAbortContent,
   },
+
+  // ===== 完成 =====
   {
     id: 'idle',
     state: 'idle',
@@ -602,6 +1183,8 @@ const llmOutputPlaybackFrames: LlmOutputPlaybackFrame[] = [
     thinkingContent: llmOutputThinkingCopy,
     introContent: llmOutputIntroContent,
     toolStatus: 'success',
+    toolType: 'mcp_tool',
+    toolName: 'search_docs',
     resumeContent: llmOutputResumeAbortContent,
   },
 ];
@@ -874,9 +1457,8 @@ const llmOutputDemoCss = `
 
 .llm-output-playback__header {
   display: flex;
+  flex-direction: column;
   min-width: 0;
-  align-items: flex-start;
-  justify-content: space-between;
   gap: 12px;
 }
 
@@ -910,6 +1492,31 @@ const llmOutputDemoCss = `
   flex-wrap: wrap;
   align-items: center;
   gap: 8px;
+}
+
+.llm-output-playback__scenes {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.llm-output-playback__scenes-label {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-secondary);
+}
+
+.llm-output-playback__scenes-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.llm-output-playback__scene-btn {
+  font-size: 11px;
+  padding: 4px 8px;
+  min-height: 28px;
 }
 
 .llm-output-playback__actions {
@@ -1100,8 +1707,8 @@ function PrimitiveSampleDeck() {
           <CardDescription>NotionButton 走共享 primitive contract。</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2 p-4 pt-0">
-          <NotionButton variant="primary" size="sm">Primary</NotionButton>
-          <NotionButton variant="ghost" size="sm">Ghost</NotionButton>
+          <NotionButton variant="primary">Primary</NotionButton>
+          <NotionButton variant="ghost">Ghost</NotionButton>
           <NotionButton variant="utility" size="icon" iconOnly aria-label="Tune">
             <SlidersHorizontal className="size-4" />
           </NotionButton>
@@ -1114,9 +1721,9 @@ function PrimitiveSampleDeck() {
           <CardDescription>shad Button 已接 token，但不是产品主入口。</CardDescription>
         </CardHeader>
         <CardContent className="flex flex-wrap gap-2 p-4 pt-0">
-          <ShadButton size="sm">shad Button</ShadButton>
-          <ShadButton variant="secondary" size="sm">Secondary</ShadButton>
-          <ShadButton variant="outline" size="sm">Outline</ShadButton>
+          <ShadButton>shad Button</ShadButton>
+          <ShadButton variant="secondary">Secondary</ShadButton>
+          <ShadButton variant="outline">Outline</ShadButton>
         </CardContent>
       </Card>
 
@@ -1208,7 +1815,7 @@ function FormControlSamples() {
             <p className="truncate text-sm font-medium text-[color:var(--text-primary)]">Primitive input path</p>
             <p className="mt-1 truncate text-xs text-[color:var(--text-secondary)]">shad Input + Switch 使用 shell token。</p>
           </div>
-          <Switch defaultChecked size="sm" aria-label="Semantic token switch sample" />
+          <Switch defaultChecked aria-label="Semantic token switch sample" />
         </div>
         <Input defaultValue="var(--input-shell-surface)" aria-label="Token input sample" />
       </div>
@@ -1313,7 +1920,7 @@ function TooltipStyleLab() {
               用同一组位置、宽度、延迟和箭头参数去看三套 Tooltip 的差异；原生 <code>title</code> 只做兜底对照。
             </p>
           </div>
-          <NotionButton variant="ghost" size="sm" onClick={copySummary} aria-label="复制 tooltip 调试配置">
+          <NotionButton variant="ghost" onClick={copySummary} aria-label="复制 tooltip 调试配置">
             <Copy className="size-4" />
             复制配置
           </NotionButton>
@@ -1321,16 +1928,16 @@ function TooltipStyleLab() {
 
         <div className="mt-4 flex flex-wrap gap-2">
           {tooltipPositions.map((item) => (
-            <NotionButton key={item} size="sm" variant={position === item ? 'primary' : 'ghost'} onClick={() => setPosition(item)}>
+            <NotionButton key={item} variant={position === item ? 'primary' : 'ghost'} onClick={() => setPosition(item)}>
               {item}
             </NotionButton>
           ))}
           {tooltipThemes.map((item) => (
-            <NotionButton key={item} size="sm" variant={theme === item ? 'success' : 'ghost'} onClick={() => setTheme(item)}>
+            <NotionButton key={item} variant={theme === item ? 'success' : 'ghost'} onClick={() => setTheme(item)}>
               {item}
             </NotionButton>
           ))}
-          <NotionButton size="sm" variant={showArrow ? 'warning' : 'ghost'} onClick={() => setShowArrow((value) => !value)}>
+          <NotionButton variant={showArrow ? 'warning' : 'ghost'} onClick={() => setShowArrow((value) => !value)}>
             Arrow {showArrow ? 'on' : 'off'}
           </NotionButton>
         </div>
@@ -1357,7 +1964,7 @@ function TooltipStyleLab() {
         >
           <div className="flex min-h-[120px] items-center justify-center">
             <CommonTooltip content={tooltipText} position={position} theme={theme} delay={delay} maxWidth={maxWidth} showArrow={showArrow}>
-              <NotionButton variant="primary" size="sm">
+              <NotionButton variant="primary">
                 <MousePointer2 className="size-4" />
                 Hover / Focus
               </NotionButton>
@@ -1374,7 +1981,7 @@ function TooltipStyleLab() {
             <ShadTooltipProvider delayDuration={delay}>
               <ShadTooltip>
                 <ShadTooltipTrigger asChild>
-                  <NotionButton variant="default" size="sm">
+                  <NotionButton variant="default">
                     <MousePointer2 className="size-4" />
                     Hover / Focus
                   </NotionButton>
@@ -1397,7 +2004,7 @@ function TooltipStyleLab() {
             <PromptkitTooltipProvider>
               <PromptkitTooltip>
                 <PromptkitTooltipTrigger className="inline-flex">
-                  <NotionButton variant="secondary" size="sm">
+                  <NotionButton variant="secondary">
                     <MousePointer2 className="size-4" />
                     Trigger
                   </NotionButton>
@@ -1424,7 +2031,7 @@ function TooltipStyleLab() {
           <div className="flex min-h-[120px] items-center justify-center">
             <NotionButton
               variant="ghost"
-              size="sm"
+             
               title={`原生 title\n位置由浏览器/系统接管\n建议只用来做基础兜底`}
             >
               <MousePointer2 className="size-4" />
@@ -1558,7 +2165,7 @@ function TransitionStyleLab() {
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
             <p className="text-xs text-[color:var(--text-secondary)]">Detail card</p>
-            <NotionButton size="sm" variant="ghost" onClick={() => setCardExpanded((current) => !current)}>
+            <NotionButton variant="ghost" onClick={() => setCardExpanded((current) => !current)}>
               {cardExpanded ? 'Compact' : 'Expand'}
             </NotionButton>
           </div>
@@ -1594,7 +2201,7 @@ function TransitionStyleLab() {
         >
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-[color:var(--text-secondary)]">Origin aware menu</p>
-            <NotionButton size="sm" variant="primary" onClick={toggleDropdown}>
+            <NotionButton variant="primary" onClick={toggleDropdown}>
               Menu
             </NotionButton>
           </div>
@@ -1607,13 +2214,13 @@ function TransitionStyleLab() {
               )}
               data-origin="top-left"
             >
-              <NotionButton variant="ghost" size="sm" className="w-full px-3">
+              <NotionButton variant="ghost" className="w-full px-3">
                 <span className="flex w-full items-center justify-between gap-3">
                   <span className="min-w-0 truncate text-left">Open note</span>
                   <CheckCircle2 className="size-4 shrink-0 text-[color:hsl(var(--success))]" />
                 </span>
               </NotionButton>
-              <NotionButton variant="ghost" size="sm" className="mt-1 w-full px-3">
+              <NotionButton variant="ghost" className="mt-1 w-full px-3">
                 <span className="flex w-full items-center justify-between gap-3">
                   <span className="min-w-0 truncate text-left">Archive</span>
                   <X className="size-4 shrink-0 text-[color:hsl(var(--warning))]" />
@@ -1634,10 +2241,10 @@ function TransitionStyleLab() {
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-[color:var(--text-secondary)]">Page {page}</p>
             <div className="flex gap-2">
-              <NotionButton size="sm" variant={page === '1' ? 'primary' : 'ghost'} onClick={() => setPage('1')}>
+              <NotionButton variant={page === '1' ? 'primary' : 'ghost'} onClick={() => setPage('1')}>
                 Page 1
               </NotionButton>
-              <NotionButton size="sm" variant={page === '2' ? 'primary' : 'ghost'} onClick={() => setPage('2')}>
+              <NotionButton variant={page === '2' ? 'primary' : 'ghost'} onClick={() => setPage('2')}>
                 Page 2
               </NotionButton>
             </div>
@@ -1674,7 +2281,7 @@ function TransitionStyleLab() {
         >
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-[color:var(--text-secondary)]">Live counter</p>
-            <NotionButton size="sm" variant="ghost" onClick={replayDigitPopIn}>
+            <NotionButton variant="ghost" onClick={replayDigitPopIn}>
               Increment
             </NotionButton>
           </div>
@@ -1704,7 +2311,7 @@ function TransitionStyleLab() {
         >
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-[color:var(--text-secondary)]">Status chip</p>
-            <NotionButton size="sm" variant="ghost" onClick={swapTextState}>
+            <NotionButton variant="ghost" onClick={swapTextState}>
               Swap
             </NotionButton>
           </div>
@@ -1729,7 +2336,7 @@ function TransitionStyleLab() {
         >
           <div className="flex items-center justify-between gap-2">
             <p className="text-xs text-[color:var(--text-secondary)]">Button icon</p>
-            <NotionButton size="sm" variant="ghost" onClick={() => setIconState((current) => (current === 'a' ? 'b' : 'a'))}>
+            <NotionButton variant="ghost" onClick={() => setIconState((current) => (current === 'a' ? 'b' : 'a'))}>
               Toggle icon
             </NotionButton>
           </div>
@@ -1766,7 +2373,17 @@ const llmOutputPlaybackStepLabels: Record<LlmOutputPlaybackStepId | 'ready', str
   thinking: '思考块',
   'content-intro': '正文起笔',
   tool: '工具调用',
+  'tool-mcp': 'MCP 工具调用',
+  'tool-image-gen': '图片生成',
+  'tool-rag': '文档检索',
+  'tool-memory': '记忆检索',
+  'tool-web-search': '网络搜索',
+  'tool-anki': 'Anki 制卡',
+  'tool-workspace': '工作区操作',
+  'tool-ask-user': '用户交互',
+  'tool-error': '工具错误',
   'content-resume': '正文续写',
+  error: 'API 错误',
   aborting: '停止中',
   idle: '停止完成',
 };
@@ -1792,7 +2409,7 @@ function buildLlmOutputPlaybackState(frame: LlmOutputPlaybackFrame | 'ready') {
 
   const assistantBlockIds: string[] = [];
   const blocks = new Map<string, any>([[userBlock.id, userBlock]]);
-  let sessionStatus: 'idle' | 'streaming' | 'aborting' = 'idle';
+  let sessionStatus: 'idle' | 'streaming' | 'aborting' | 'error' = 'idle';
   let currentStreamingMessageId: string | null = null;
   let activeBlockIds = new Set<string>();
 
@@ -1818,18 +2435,6 @@ function buildLlmOutputPlaybackState(frame: LlmOutputPlaybackFrame | 'ready') {
     endedAt: 40,
   };
 
-  const toolBlock = {
-    id: llmOutputPlaybackIds.tool,
-    type: 'mcp_tool' as const,
-    status: 'success' as const,
-    messageId: llmOutputPlaybackIds.assistantMessage,
-    toolName: 'search_docs',
-    toolInput: { topic: 'chat-v2-output-states' },
-    startedAt: 50,
-    firstChunkAt: 50,
-    endedAt: 60,
-  };
-
   const resumeContentBlock = {
     id: llmOutputPlaybackIds.resumeContent,
     type: 'content' as const,
@@ -1841,7 +2446,19 @@ function buildLlmOutputPlaybackState(frame: LlmOutputPlaybackFrame | 'ready') {
     endedAt: 80,
   };
 
-  if (frame !== 'ready' && frame.id !== 'idle') {
+  // Helper function to get tool block ID based on tool type
+  const getToolBlockId = (frame: LlmOutputPlaybackFrame): string => {
+    if (frame.toolType === 'image_gen') return llmOutputPlaybackIds.toolImageGen;
+    if (frame.toolType === 'rag') return llmOutputPlaybackIds.toolRag;
+    if (frame.toolType === 'memory') return llmOutputPlaybackIds.toolMemory;
+    if (frame.toolType === 'web_search') return llmOutputPlaybackIds.toolWebSearch;
+    if (frame.toolType === 'anki_cards') return llmOutputPlaybackIds.toolAnki;
+    if (frame.toolType === 'workspace_status') return llmOutputPlaybackIds.toolWorkspace;
+    if (frame.toolType === 'ask_user') return llmOutputPlaybackIds.toolAskUser;
+    return llmOutputPlaybackIds.toolMcp;
+  };
+
+  if (frame !== 'ready' && frame.id !== 'idle' && frame.id !== 'error') {
     currentStreamingMessageId = llmOutputPlaybackIds.assistantMessage;
     sessionStatus = 'streaming';
   }
@@ -1882,7 +2499,21 @@ function buildLlmOutputPlaybackState(frame: LlmOutputPlaybackFrame | 'ready') {
     );
   }
 
+  // Handle tool blocks
   if (frame !== 'ready' && frame.toolStatus) {
+    const toolBlockId = getToolBlockId(frame);
+    const toolBlock = {
+      id: toolBlockId,
+      type: frame.toolType ?? 'mcp_tool',
+      status: 'success' as const,
+      messageId: llmOutputPlaybackIds.assistantMessage,
+      toolName: frame.toolName ?? 'unknown',
+      toolInput: frame.toolInput ?? {},
+      startedAt: 50,
+      firstChunkAt: 50,
+      endedAt: 60,
+    };
+
     assistantBlockIds.push(toolBlock.id);
     blocks.set(
       toolBlock.id,
@@ -1893,11 +2524,18 @@ function buildLlmOutputPlaybackState(frame: LlmOutputPlaybackFrame | 'ready') {
             content: llmOutputToolRunningCopy,
             endedAt: undefined,
           }
-        : {
-            ...toolBlock,
-            status: 'success',
-            content: '',
-          },
+        : frame.toolStatus === 'error'
+          ? {
+              ...toolBlock,
+              status: 'error',
+              content: frame.error ?? '工具调用失败',
+              endedAt: 60,
+            }
+          : {
+              ...toolBlock,
+              status: 'success',
+              content: frame.toolOutput ? JSON.stringify(frame.toolOutput) : '',
+            },
     );
   }
 
@@ -1919,12 +2557,31 @@ function buildLlmOutputPlaybackState(frame: LlmOutputPlaybackFrame | 'ready') {
     );
   }
 
+  // Handle error block
+  if (frame !== 'ready' && frame.id === 'error') {
+    const errorBlock = {
+      id: llmOutputPlaybackIds.error,
+      type: 'content' as const,
+      status: 'error' as const,
+      messageId: llmOutputPlaybackIds.assistantMessage,
+      content: frame.error ?? '未知错误',
+      startedAt: 90,
+      firstChunkAt: 90,
+      endedAt: 100,
+    };
+    assistantBlockIds.push(errorBlock.id);
+    blocks.set(errorBlock.id, errorBlock);
+    sessionStatus = 'error';
+    activeBlockIds = new Set();
+  }
+
   if (frame !== 'ready' && frame.id === 'thinking') {
     activeBlockIds = new Set([llmOutputPlaybackIds.thinking]);
   } else if (frame !== 'ready' && frame.id === 'content-intro') {
     activeBlockIds = new Set([llmOutputPlaybackIds.introContent]);
-  } else if (frame !== 'ready' && frame.id === 'tool' && frame.toolStatus === 'running') {
-    activeBlockIds = new Set([llmOutputPlaybackIds.tool]);
+  } else if (frame !== 'ready' && frame.toolStatus === 'running') {
+    const toolBlockId = getToolBlockId(frame);
+    activeBlockIds = new Set([toolBlockId]);
   } else if (frame !== 'ready' && frame.id === 'content-resume') {
     activeBlockIds = new Set([llmOutputPlaybackIds.resumeContent]);
   } else if (frame !== 'ready' && frame.id === 'aborting') {
@@ -1992,7 +2649,235 @@ function LlmOutputPlaybackBody({
   );
 }
 
+// Scene definitions for different playback scenarios
+const llmOutputScenes = [
+  { id: 'full', label: '完整流程', description: '等待 → 思考 → 正文 → 工具 → 恢复 → 停止' },
+  { id: 'mcp-tool', label: 'MCP 工具', description: 'MCP 工具调用流程' },
+  { id: 'image-gen', label: '图片生成', description: '图片生成工具调用' },
+  { id: 'rag', label: '文档检索', description: 'RAG 检索流程' },
+  { id: 'memory', label: '记忆检索', description: '记忆检索流程' },
+  { id: 'web-search', label: '网络搜索', description: '网络搜索流程' },
+  { id: 'anki', label: 'Anki 制卡', description: 'Anki 卡片生成' },
+  { id: 'workspace', label: '工作区', description: '工作区操作' },
+  { id: 'ask-user', label: '用户交互', description: '用户交互流程' },
+  { id: 'tool-error', label: '工具错误', description: '工具调用失败' },
+  { id: 'api-error', label: 'API 错误', description: 'API 请求失败' },
+  { id: 'abort', label: '用户中止', description: '用户中止流程' },
+] as const;
+
+type SceneId = typeof llmOutputScenes[number]['id'];
+
+function getSceneFrames(sceneId: SceneId): LlmOutputPlaybackFrame[] {
+  const base: LlmOutputPlaybackFrame[] = [
+    { id: 'waiting', state: 'waiting', frameId: 'waiting', durationMs: 900 },
+    { id: 'thinking', state: 'thinking', frameId: 'thinking-1', durationMs: 280, thinkingContent: llmOutputThinkingIntro },
+    { id: 'thinking', state: 'thinking', frameId: 'thinking-2', durationMs: 520, thinkingContent: llmOutputThinkingCopy },
+  ];
+
+  const contentIntro: LlmOutputPlaybackFrame[] = [
+    { id: 'content-intro', state: 'content', frameId: 'content-intro-1', durationMs: 220, thinkingContent: llmOutputThinkingCopy, introContent: '我会先按当前 Chat V2 的真实状态机收口：' },
+    { id: 'content-intro', state: 'content', frameId: 'content-intro-2', durationMs: 260, thinkingContent: llmOutputThinkingCopy, introContent: '我会先按当前 Chat V2 的真实状态机收口：首包前只显示等待点，' },
+    { id: 'content-intro', state: 'content', frameId: 'content-intro-3', durationMs: 320, thinkingContent: llmOutputThinkingCopy, introContent: llmOutputIntroContent },
+  ];
+
+  const getToolFrames = (toolType: BlockType, toolName: string, toolInput: Record<string, unknown>, toolOutput?: unknown): LlmOutputPlaybackFrame[] => [
+    {
+      id: `tool-${toolType === 'mcp_tool' ? 'mcp' : toolType.replace('_', '-')}` as LlmOutputPlaybackStepId,
+      state: 'tool',
+      frameId: `tool-${toolType}-running`,
+      durationMs: 900,
+      thinkingContent: llmOutputThinkingCopy,
+      introContent: llmOutputIntroContent,
+      toolStatus: 'running',
+      toolType,
+      toolName,
+      toolInput,
+    },
+    {
+      id: `tool-${toolType === 'mcp_tool' ? 'mcp' : toolType.replace('_', '-')}` as LlmOutputPlaybackStepId,
+      state: 'tool',
+      frameId: `tool-${toolType}-success`,
+      durationMs: 500,
+      thinkingContent: llmOutputThinkingCopy,
+      introContent: llmOutputIntroContent,
+      toolStatus: 'success',
+      toolType,
+      toolName,
+      toolOutput,
+    },
+  ];
+
+  const resumeAndEnd: LlmOutputPlaybackFrame[] = [
+    { id: 'content-resume', state: 'content', frameId: 'content-resume-1', durationMs: 220, thinkingContent: llmOutputThinkingCopy, introContent: llmOutputIntroContent, toolStatus: 'success', toolType: 'mcp_tool', toolName: 'search_docs', resumeContent: '工具阶段结束后，再继续正文；' },
+    { id: 'content-resume', state: 'content', frameId: 'content-resume-2', durationMs: 300, thinkingContent: llmOutputThinkingCopy, introContent: llmOutputIntroContent, toolStatus: 'success', toolType: 'mcp_tool', toolName: 'search_docs', resumeContent: llmOutputResumeAbortContent },
+    { id: 'idle', state: 'idle', frameId: 'idle', durationMs: 1000, thinkingContent: llmOutputThinkingCopy, introContent: llmOutputIntroContent, toolStatus: 'success', toolType: 'mcp_tool', toolName: 'search_docs', resumeContent: llmOutputResumeAbortContent },
+  ];
+
+  switch (sceneId) {
+    case 'full':
+      return [
+        ...base,
+        ...contentIntro,
+        ...getToolFrames('mcp_tool', 'search_docs', { topic: 'chat-v2-output-states' }, { results: ['文档1', '文档2'] }),
+        ...resumeAndEnd,
+      ];
+
+    case 'mcp-tool':
+      return [
+        ...base,
+        ...getToolFrames('mcp_tool', 'search_docs', { topic: 'chat-v2-output-states' }, { results: ['文档1', '文档2'] }),
+        ...resumeAndEnd,
+      ];
+
+    case 'image-gen':
+      return [
+        ...base,
+        ...getToolFrames('image_gen', 'image_gen', { prompt: 'A beautiful sunset', size: '1024x1024' }, { url: 'https://example.com/image.png' }),
+        ...resumeAndEnd,
+      ];
+
+    case 'rag':
+      return [
+        ...base,
+        ...getToolFrames('rag', 'rag_search', { query: 'Chat V2 状态机', topK: 5 }, { sources: [{ title: '状态机文档', snippet: '...' }] }),
+        ...resumeAndEnd,
+      ];
+
+    case 'memory':
+      return [
+        ...base,
+        ...getToolFrames('memory', 'memory_search', { query: '用户偏好设置' }, { memories: ['用户喜欢简洁界面'] }),
+        ...resumeAndEnd,
+      ];
+
+    case 'web-search':
+      return [
+        ...base,
+        ...getToolFrames('web_search', 'web_search', { query: 'React best practices 2026' }, { results: [{ title: 'React 2026', url: 'https://example.com' }] }),
+        ...resumeAndEnd,
+      ];
+
+    case 'anki':
+      return [
+        ...base,
+        ...getToolFrames('anki_cards', 'anki_create', { front: '什么是状态机？', back: '状态机是...' }, { cardId: 'card_123', created: true }),
+        ...resumeAndEnd,
+      ];
+
+    case 'workspace':
+      return [
+        ...base,
+        ...getToolFrames('workspace_status', 'workspace_create', { name: '研究项目' }, { workspaceId: 'ws_123', created: true }),
+        ...resumeAndEnd,
+      ];
+
+    case 'ask-user':
+      return [
+        ...base,
+        ...getToolFrames('ask_user', 'ask_user', { question: '您想要哪种风格的界面？' }),
+        { id: 'content-resume', state: 'content', frameId: 'content-resume-1', durationMs: 220, thinkingContent: llmOutputThinkingCopy, introContent: llmOutputIntroContent, toolStatus: 'success', toolType: 'ask_user', toolName: 'ask_user', resumeContent: '收到用户回复后，继续正文；' },
+        { id: 'content-resume', state: 'content', frameId: 'content-resume-2', durationMs: 300, thinkingContent: llmOutputThinkingCopy, introContent: llmOutputIntroContent, toolStatus: 'success', toolType: 'ask_user', toolName: 'ask_user', resumeContent: llmOutputResumeAbortContent },
+        { id: 'idle', state: 'idle', frameId: 'idle', durationMs: 1000, thinkingContent: llmOutputThinkingCopy, introContent: llmOutputIntroContent, toolStatus: 'success', toolType: 'ask_user', toolName: 'ask_user', resumeContent: llmOutputResumeAbortContent },
+      ];
+
+    case 'tool-error':
+      return [
+        ...base,
+        ...contentIntro,
+        {
+          id: 'tool-error',
+          state: 'error',
+          frameId: 'tool-error',
+          durationMs: 800,
+          thinkingContent: llmOutputThinkingCopy,
+          introContent: llmOutputIntroContent,
+          toolStatus: 'error',
+          toolType: 'mcp_tool',
+          toolName: 'search_docs',
+          toolInput: { topic: 'error-test' },
+          error: '工具调用失败：API 超时',
+        },
+        { id: 'idle', state: 'idle', frameId: 'idle', durationMs: 1000 },
+      ];
+
+    case 'api-error':
+      return [
+        ...base,
+        ...contentIntro,
+        {
+          id: 'error',
+          state: 'error',
+          frameId: 'error-api',
+          durationMs: 1000,
+          thinkingContent: llmOutputThinkingCopy,
+          introContent: llmOutputIntroContent,
+          error: 'API 请求失败：429 Too Many Requests',
+        },
+        { id: 'idle', state: 'idle', frameId: 'idle', durationMs: 1000 },
+      ];
+
+    case 'abort':
+      return [
+        ...base,
+        ...contentIntro,
+        ...getToolFrames('mcp_tool', 'search_docs', { topic: 'chat-v2-output-states' }, { results: ['文档1', '文档2'] }),
+        {
+          id: 'content-resume',
+          state: 'content',
+          frameId: 'content-resume-1',
+          durationMs: 220,
+          thinkingContent: llmOutputThinkingCopy,
+          introContent: llmOutputIntroContent,
+          toolStatus: 'success',
+          toolType: 'mcp_tool',
+          toolName: 'search_docs',
+          resumeContent: '工具阶段结束后，再继续正文；',
+        },
+        {
+          id: 'content-resume',
+          state: 'content',
+          frameId: 'content-resume-2',
+          durationMs: 300,
+          thinkingContent: llmOutputThinkingCopy,
+          introContent: llmOutputIntroContent,
+          toolStatus: 'success',
+          toolType: 'mcp_tool',
+          toolName: 'search_docs',
+          resumeContent: llmOutputResumeAbortContent,
+        },
+        {
+          id: 'aborting',
+          state: 'aborting',
+          frameId: 'aborting',
+          durationMs: 900,
+          thinkingContent: llmOutputThinkingCopy,
+          introContent: llmOutputIntroContent,
+          toolStatus: 'success',
+          toolType: 'mcp_tool',
+          toolName: 'search_docs',
+          resumeContent: llmOutputResumeAbortContent,
+        },
+        {
+          id: 'idle',
+          state: 'idle',
+          frameId: 'idle',
+          durationMs: 1000,
+          thinkingContent: llmOutputThinkingCopy,
+          introContent: llmOutputIntroContent,
+          toolStatus: 'success',
+          toolType: 'mcp_tool',
+          toolName: 'search_docs',
+          resumeContent: llmOutputResumeAbortContent,
+        },
+      ];
+
+    default:
+      return llmOutputPlaybackFrames;
+  }
+}
+
 function LlmOutputPlayback() {
+  const [selectedScene, setSelectedScene] = React.useState<SceneId>('full');
   const [playbackIndex, setPlaybackIndex] = React.useState(-1);
   const [isPlaying, setIsPlaying] = React.useState(false);
   const timeoutRef = React.useRef<number | null>(null);
@@ -2001,12 +2886,16 @@ function LlmOutputPlayback() {
     nextStore.setState(buildLlmOutputPlaybackState('ready'));
     return nextStore;
   }, []);
-  const currentFrame = playbackIndex >= 0 ? llmOutputPlaybackFrames[playbackIndex] : null;
+
+  const frames = React.useMemo(() => getSceneFrames(selectedScene), [selectedScene]);
+  const currentFrame = playbackIndex >= 0 ? frames[playbackIndex] : null;
   const currentState = currentFrame?.state ?? 'ready';
   const currentStepId = currentFrame?.id ?? 'ready';
   const currentFrameId = currentFrame?.frameId ?? 'ready';
   const currentStepLabel = llmOutputPlaybackStepLabels[currentStepId];
   const isFinished = currentStepId === 'idle' && !isPlaying;
+  const canStepForward = playbackIndex < frames.length - 1;
+  const canStepBack = playbackIndex > 0;
 
   const clearPlaybackTimer = React.useCallback(() => {
     if (timeoutRef.current !== null) {
@@ -2027,6 +2916,25 @@ function LlmOutputPlayback() {
     setIsPlaying(false);
   }, [clearPlaybackTimer]);
 
+  const stepForward = React.useCallback(() => {
+    clearPlaybackTimer();
+    setIsPlaying(false);
+    setPlaybackIndex((prev) => Math.min(prev + 1, frames.length - 1));
+  }, [clearPlaybackTimer, frames.length]);
+
+  const stepBackward = React.useCallback(() => {
+    clearPlaybackTimer();
+    setIsPlaying(false);
+    setPlaybackIndex((prev) => Math.max(prev - 1, 0));
+  }, [clearPlaybackTimer]);
+
+  const handleSceneChange = React.useCallback((sceneId: SceneId) => {
+    clearPlaybackTimer();
+    setSelectedScene(sceneId);
+    setPlaybackIndex(-1);
+    setIsPlaying(false);
+  }, [clearPlaybackTimer]);
+
   React.useEffect(() => {
     store.setState(buildLlmOutputPlaybackState(currentFrame ?? 'ready'));
   }, [currentFrame, store]);
@@ -2034,10 +2942,10 @@ function LlmOutputPlayback() {
   React.useEffect(() => {
     if (!isPlaying || playbackIndex < 0) return;
 
-    const frame = llmOutputPlaybackFrames[playbackIndex];
+    const frame = frames[playbackIndex];
     if (!frame) return;
 
-    if (playbackIndex >= llmOutputPlaybackFrames.length - 1) {
+    if (playbackIndex >= frames.length - 1) {
       setIsPlaying(false);
       return;
     }
@@ -2045,13 +2953,54 @@ function LlmOutputPlayback() {
     timeoutRef.current = window.setTimeout(() => {
       const nextIndex = playbackIndex + 1;
       setPlaybackIndex(nextIndex);
-      if (nextIndex >= llmOutputPlaybackFrames.length - 1) {
+      if (nextIndex >= frames.length - 1) {
         setIsPlaying(false);
       }
     }, frame.durationMs);
 
     return clearPlaybackTimer;
-  }, [clearPlaybackTimer, isPlaying, playbackIndex]);
+  }, [clearPlaybackTimer, isPlaying, playbackIndex, frames]);
+
+  // 键盘快捷键支持
+  React.useEffect(() => {
+    const handleKeyDown = (event: KeyboardEvent) => {
+      // 忽略输入框中的按键事件
+      if (event.target instanceof HTMLInputElement || event.target instanceof HTMLTextAreaElement) {
+        return;
+      }
+
+      switch (event.key) {
+        case ' ':
+          event.preventDefault();
+          if (isPlaying) {
+            clearPlaybackTimer();
+            setIsPlaying(false);
+          } else {
+            startPlayback();
+          }
+          break;
+        case 'ArrowLeft':
+          event.preventDefault();
+          if (canStepBack && !isPlaying) {
+            stepBackward();
+          }
+          break;
+        case 'ArrowRight':
+          event.preventDefault();
+          if (canStepForward && !isPlaying) {
+            stepForward();
+          }
+          break;
+        case 'r':
+          event.preventDefault();
+          resetPlayback();
+          break;
+      }
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isPlaying, canStepBack, canStepForward, clearPlaybackTimer, startPlayback, stepBackward, stepForward, resetPlayback]);
 
   return (
     <section
@@ -2064,7 +3013,7 @@ function LlmOutputPlayback() {
         <div className="llm-output-playback__header-meta">
           <div className="llm-output-playback__title">
             <h3>真实输出回放</h3>
-            <p>这里只保留一条真实 assistant message 的自动回放，用来看等待点、thinking badge、正文打字、工具块和停止收尾。</p>
+            <p>覆盖所有 LLM 输出场景：文本生成、工具调用、错误处理、用户中止等。</p>
           </div>
           <div className="llm-output-playback__status">
             <Badge
@@ -2073,21 +3022,68 @@ function LlmOutputPlayback() {
             >
               {currentStepLabel}
             </Badge>
-            <span className="llm-output-playback__text">`sending` 只锁输入区，不会单独生成一帧 assistant 输出。</span>
+            <span className="llm-output-playback__text">
+              帧 {playbackIndex + 1} / {frames.length}
+            </span>
           </div>
         </div>
+
+        {/* Scene selector */}
+        <div className="llm-output-playback__scenes">
+          <p className="llm-output-playback__scenes-label">场景选择：</p>
+          <div className="llm-output-playback__scenes-grid">
+            {llmOutputScenes.map((scene) => (
+              <NotionButton
+                key={scene.id}
+               
+                variant={selectedScene === scene.id ? 'primary' : 'ghost'}
+                onClick={() => handleSceneChange(scene.id)}
+                className="llm-output-playback__scene-btn"
+              >
+                {scene.label}
+              </NotionButton>
+            ))}
+          </div>
+        </div>
+
         <div className="llm-output-playback__actions">
           <NotionButton
-            size="sm"
-            variant="primary"
-            onClick={startPlayback}
-            disabled={isPlaying}
+           
+            variant="ghost"
+            onClick={stepBackward}
+            disabled={!canStepBack || isPlaying}
           >
-            <Play className="size-3.5" />
-            {isFinished ? '重新回放' : '开始回放'}
+            <RotateCcw className="size-3.5" />
+            上一步
           </NotionButton>
           <NotionButton
-            size="sm"
+           
+            variant="primary"
+            onClick={isPlaying ? clearPlaybackTimer : startPlayback}
+          >
+            {isPlaying ? (
+              <>
+                <Square className="size-3.5" />
+                暂停
+              </>
+            ) : (
+              <>
+                <Play className="size-3.5" />
+                {isFinished ? '重新回放' : '开始回放'}
+              </>
+            )}
+          </NotionButton>
+          <NotionButton
+           
+            variant="ghost"
+            onClick={stepForward}
+            disabled={!canStepForward || isPlaying}
+          >
+            下一步
+            <RotateCcw className="size-3.5 rotate-180" />
+          </NotionButton>
+          <NotionButton
+           
             variant="ghost"
             onClick={resetPlayback}
             disabled={playbackIndex < 0 && !isPlaying}
@@ -2188,7 +3184,7 @@ function ButtonStyleLab() {
               切换尺寸、禁用态和图标按钮态，观察三条路径在高度、圆角、文字、图标间距和 disabled 表现上的差异。
             </p>
           </div>
-          <NotionButton variant="ghost" size="sm" onClick={copyButtonSummary} aria-label="复制 Button 调试配置">
+          <NotionButton variant="ghost" onClick={copyButtonSummary} aria-label="复制 Button 调试配置">
             <Copy className="size-4" />
             复制配置
           </NotionButton>
@@ -2202,7 +3198,7 @@ function ButtonStyleLab() {
                 <NotionButton
                   key={item.value}
                   variant={size === item.value ? 'primary' : 'ghost'}
-                  size="sm"
+                 
                   onClick={() => setSize(item.value)}
                 >
                   {item.label}
@@ -2214,11 +3210,11 @@ function ButtonStyleLab() {
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
             <label className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] px-3 py-2">
               <span className="min-w-0 text-sm text-[color:var(--text-primary)]">Disabled</span>
-              <Switch checked={disabledSamples} onCheckedChange={setDisabledSamples} size="sm" aria-label="切换 Button 禁用态" />
+              <Switch checked={disabledSamples} onCheckedChange={setDisabledSamples} aria-label="切换 Button 禁用态" />
             </label>
             <label className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] px-3 py-2">
               <span className="min-w-0 text-sm text-[color:var(--text-primary)]">Icon only</span>
-              <Switch checked={iconOnlySamples} onCheckedChange={setIconOnlySamples} size="sm" aria-label="切换 Button 图标态" />
+              <Switch checked={iconOnlySamples} onCheckedChange={setIconOnlySamples} aria-label="切换 Button 图标态" />
             </label>
           </div>
         </div>
@@ -2369,7 +3365,7 @@ function ToastPreviewCard({
           <div className="unified-notification-content">
             <div className="unified-notification-text">{displayText}</div>
             {showAction || sample.borderTone === 'neutral' ? (
-              <NotionButton variant="ghost" size="sm" className="unified-notification-action" tabIndex={-1}>
+              <NotionButton variant="ghost" className="unified-notification-action" tabIndex={-1}>
                 {sample.borderTone === 'neutral' ? '设置' : '查看详情'}
               </NotionButton>
             ) : null}
@@ -2469,7 +3465,7 @@ function ToastStyleLab() {
               这里调用真实 <code>showGlobalNotification</code>，顶部中间弹出的就是产品当前 toast；下方静态预览用来比较单行小圆条密度、短文案省略和状态边框。
             </p>
           </div>
-          <NotionButton variant="ghost" size="sm" onClick={copyToastSummary} aria-label="复制 Toast 调试配置">
+          <NotionButton variant="ghost" onClick={copyToastSummary} aria-label="复制 Toast 调试配置">
             <Copy className="size-4" />
             复制配置
           </NotionButton>
@@ -2482,7 +3478,7 @@ function ToastStyleLab() {
                 <NotionButton
                   key={sample.label}
                   variant={toastButtonVariantByType[sample.type]}
-                  size="sm"
+                 
                   onClick={() => triggerToast(sample)}
                 >
                   {sample.buttonLabel}
@@ -2494,17 +3490,17 @@ function ToastStyleLab() {
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
             <label className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] px-3 py-2">
               <span className="min-w-0 text-sm text-[color:var(--text-primary)]">Action button</span>
-              <Switch checked={showAction} onCheckedChange={setShowAction} size="sm" aria-label="切换 Toast 操作按钮" />
+              <Switch checked={showAction} onCheckedChange={setShowAction} aria-label="切换 Toast 操作按钮" />
             </label>
             <label className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] px-3 py-2">
               <span className="min-w-0 text-sm text-[color:var(--text-primary)]">Long copy</span>
-              <Switch checked={longCopy} onCheckedChange={setLongCopy} size="sm" aria-label="切换 Toast 长文案" />
+              <Switch checked={longCopy} onCheckedChange={setLongCopy} aria-label="切换 Toast 长文案" />
             </label>
           </div>
         </div>
 
         <div className="mt-3 flex flex-wrap gap-2">
-          <NotionButton variant="default" size="sm" onClick={triggerSequence}>
+          <NotionButton variant="default" onClick={triggerSequence}>
             连续触发四种 toast
           </NotionButton>
         </div>
@@ -2601,7 +3597,7 @@ function SwitchLibraryOptionCard({ option }: { option: SwitchLibraryOption }) {
       {option.showLiveSample ? (
         <div className="mt-4 flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] px-3 py-3">
           <span className="min-w-0 text-sm font-medium text-[color:var(--text-primary)]">当前项目 live sample</span>
-          <Switch checked={checked} onCheckedChange={setChecked} size="sm" aria-label="Radix shadcn switch library sample" />
+          <Switch checked={checked} onCheckedChange={setChecked} aria-label="Radix shadcn switch library sample" />
         </div>
       ) : null}
     </section>
@@ -2640,7 +3636,7 @@ function SwitchStyleLab() {
               同步切换尺寸、选中态和禁用态，观察轨道、thumb 位移、focus ring、透明度和点击目标。
             </p>
           </div>
-          <NotionButton variant="ghost" size="sm" onClick={copySwitchSummary} aria-label="复制 Switch 调试配置">
+          <NotionButton variant="ghost" onClick={copySwitchSummary} aria-label="复制 Switch 调试配置">
             <Copy className="size-4" />
             复制配置
           </NotionButton>
@@ -2654,7 +3650,7 @@ function SwitchStyleLab() {
                 <NotionButton
                   key={item.value}
                   variant={size === item.value ? 'primary' : 'ghost'}
-                  size="sm"
+                 
                   onClick={() => setSize(item.value)}
                 >
                   {item.label}
@@ -2667,11 +3663,11 @@ function SwitchStyleLab() {
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-1">
             <label className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] px-3 py-2">
               <span className="min-w-0 text-sm text-[color:var(--text-primary)]">Checked</span>
-              <Switch checked={checkedSamples} onCheckedChange={setCheckedSamples} size="sm" aria-label="切换 Switch 选中态" />
+              <Switch checked={checkedSamples} onCheckedChange={setCheckedSamples} aria-label="切换 Switch 选中态" />
             </label>
             <label className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] px-3 py-2">
               <span className="min-w-0 text-sm text-[color:var(--text-primary)]">Disabled</span>
-              <Switch checked={disabledSamples} onCheckedChange={setDisabledSamples} size="sm" aria-label="切换 Switch 禁用态" />
+              <Switch checked={disabledSamples} onCheckedChange={setDisabledSamples} aria-label="切换 Switch 禁用态" />
             </label>
           </div>
         </div>
@@ -2685,7 +3681,7 @@ function SwitchStyleLab() {
         >
           <div className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] px-3 py-3">
             <span className="min-w-0 text-sm text-[color:var(--text-primary)]">{size === 'sm' ? 'Small switch' : 'Default switch'}</span>
-            <Switch checked={checkedSamples} onCheckedChange={setCheckedSamples} disabled={disabledSamples} size={size} aria-label="shad Switch token sample" />
+            <Switch checked={checkedSamples} onCheckedChange={setCheckedSamples} disabled={disabledSamples} aria-label="shad Switch token sample" />
           </div>
           <p className="text-xs leading-5 text-[color:var(--text-secondary)]">
             选中态走 <code>data-[state=checked]</code>，禁用态继承 Radix disabled attribute。
@@ -2720,7 +3716,7 @@ function SwitchStyleLab() {
             ].map(([label, checked, disabled]) => (
               <div key={String(label)} className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] px-3 py-2">
                 <span className="min-w-0 text-sm text-[color:var(--text-primary)]">{label}</span>
-                <Switch checked={Boolean(checked)} disabled={Boolean(disabled)} size="sm" aria-label={`${label} Switch state sample`} />
+                <Switch checked={Boolean(checked)} disabled={Boolean(disabled)} aria-label={`${label} Switch state sample`} />
               </div>
             ))}
           </div>
@@ -2802,17 +3798,30 @@ function PreviewLane({
 function RepeatedPreviewGroup({
   title,
   signal,
+  priority,
   children,
 }: {
   title: string;
   signal: string;
+  priority: 'high' | 'medium' | 'low';
   children: React.ReactNode;
 }) {
+  const priorityConfig = {
+    high: { label: '高优先', className: 'border-[color:hsl(var(--destructive)/0.3)] bg-[color:hsl(var(--destructive)/0.1)] text-[color:hsl(var(--destructive))]' },
+    medium: { label: '中优先', className: 'border-[color:hsl(var(--warning)/0.3)] bg-[color:hsl(var(--warning)/0.1)] text-[color:hsl(var(--warning))]' },
+    low: { label: '低优先', className: 'border-[color:hsl(var(--success)/0.3)] bg-[color:hsl(var(--success)/0.1)] text-[color:hsl(var(--success))]' },
+  }[priority];
+
   return (
     <section className="rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] p-4">
       <div className="mb-4 flex min-w-0 flex-wrap items-center justify-between gap-2">
         <div className="min-w-0">
-          <h3 className="truncate text-sm font-semibold text-[color:var(--text-primary)]">{title}</h3>
+          <div className="flex items-center gap-2">
+            <h3 className="truncate text-sm font-semibold text-[color:var(--text-primary)]">{title}</h3>
+            <span className={cn('inline-flex shrink-0 rounded px-1.5 py-0.5 text-[10px] font-semibold leading-none', priorityConfig.className)}>
+              {priorityConfig.label}
+            </span>
+          </div>
           <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">{signal}</p>
         </div>
       </div>
@@ -2821,30 +3830,102 @@ function RepeatedPreviewGroup({
   );
 }
 
-function DialogShellPreview({ variant }: { variant: 'target' | 'mixed' | 'legacy' }) {
-  const isLegacy = variant === 'legacy';
-  const isMixed = variant === 'mixed';
-
+function EntryRow({
+  entry,
+  onMarkCleaned,
+  cleanedEntries,
+}: {
+  entry: RepeatedEntry;
+  onMarkCleaned: (name: string) => void;
+  cleanedEntries: Set<string>;
+}) {
+  const isCleaned = cleanedEntries.has(entry.name);
   return (
-    <div className={cn(
-      'mx-auto flex min-h-[112px] w-full max-w-[260px] flex-col justify-between rounded-lg border p-3',
-      isLegacy
-        ? 'border-[#d7d7d7] bg-white shadow-[0_10px_24px_rgba(15,23,42,0.14)]'
-        : 'border-[color:var(--dialog-shell-border)] bg-[color:var(--dialog-shell-surface)] shadow-[var(--shadow-shell-soft)]'
+    <div className={cn('flex items-start justify-between gap-2 rounded-md border px-2.5 py-2 text-xs', isCleaned
+      ? 'border-[color:hsl(var(--success)/0.24)] bg-[color:hsl(var(--success)/0.06)] opacity-60'
+      : 'border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)]'
     )}>
-      <div>
-        <div className={cn('h-2.5 w-24 rounded-full', isLegacy ? 'bg-[#d8d8d8]' : 'bg-[color:var(--text-secondary)]/25')} />
-        <div className={cn('mt-2 h-2 w-36 rounded-full', isLegacy ? 'bg-[#eeeeee]' : 'bg-[color:var(--surface-muted)]')} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-1.5">
+          <span className={cn('truncate font-medium', isCleaned ? 'text-[color:hsl(var(--success))] line-through' : 'text-[color:var(--text-primary)]')}>
+            {entry.name}
+          </span>
+          {isCleaned && <CheckCircle2 className="size-3 shrink-0 text-[color:hsl(var(--success))]" />}
+        </div>
+        <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[color:var(--text-secondary)]">
+          <span className="inline-flex items-center gap-1" title="文件路径">
+            <ExternalLink className="size-3 shrink-0" />
+            <span className="max-w-[200px] truncate">{entry.filePath}</span>
+          </span>
+          {entry.refs > 0 && <span>{entry.refs} refs</span>}
+          {entry.files > 0 && <span>{entry.files} files</span>}
+          {entry.imports > 0 && <span>{entry.imports} imports</span>}
+        </div>
       </div>
-      <div className="flex justify-end gap-2">
-        <span className={cn('h-7 w-14 rounded-md', isLegacy ? 'bg-[#f2f2f2]' : 'bg-[color:var(--button-utility-surface)]')} />
-        <span className={cn('h-7 w-16 rounded-md', isMixed ? 'bg-primary' : isLegacy ? 'bg-[#333333]' : 'bg-[color:var(--button-prominent-bg)]')} />
+      <div className="flex shrink-0 gap-1">
+        {!isCleaned && (
+          <NotionButton
+            variant="ghost"
+            size="sm"
+            className="h-6 px-1.5 text-[10px]"
+            onClick={() => onMarkCleaned(entry.name)}
+          >
+            标记已清理
+          </NotionButton>
+        )}
       </div>
     </div>
   );
 }
 
 function RepeatedComponentPreviews() {
+  const [searchQuery, setSearchQuery] = React.useState('');
+  const [priorityFilter, setPriorityFilter] = React.useState<'all' | 'high' | 'medium' | 'low'>('all');
+  const [cleanedEntries, setCleanedEntries] = React.useState<Set<string>>(() => {
+    try {
+      const saved = localStorage.getItem('style-lab-cleaned-entries');
+      return saved ? new Set(JSON.parse(saved)) : new Set();
+    } catch {
+      return new Set();
+    }
+  });
+
+  const handleMarkCleaned = React.useCallback((name: string) => {
+    setCleanedEntries((prev) => {
+      const next = new Set(prev);
+      if (next.has(name)) {
+        next.delete(name);
+      } else {
+        next.add(name);
+      }
+      try {
+        localStorage.setItem('style-lab-cleaned-entries', JSON.stringify([...next]));
+      } catch { /* ignore */ }
+      return next;
+    });
+  }, []);
+
+  const filteredGroups = React.useMemo(() => {
+    return repeatedComponentData.filter((group) => {
+      if (priorityFilter !== 'all' && group.priority !== priorityFilter) return false;
+      if (!searchQuery) return true;
+      const q = searchQuery.toLowerCase();
+      if (group.title.toLowerCase().includes(q)) return true;
+      if (group.signal.toLowerCase().includes(q)) return true;
+      return group.lanes.some((lane) =>
+        lane.entries.some((entry) =>
+          entry.name.toLowerCase().includes(q) || entry.filePath.toLowerCase().includes(q)
+        )
+      );
+    });
+  }, [searchQuery, priorityFilter]);
+
+  const totalEntries = React.useMemo(() =>
+    repeatedComponentData.reduce((sum, g) => sum + g.lanes.reduce((s, l) => s + l.entries.length, 0), 0),
+    []
+  );
+  const totalCleaned = cleanedEntries.size;
+
   return (
     <div className="space-y-4">
       <SectionHeader
@@ -2853,136 +3934,73 @@ function RepeatedComponentPreviews() {
         description="每组都把推荐统一入口、当前混用入口、旧写法样本放在同一行，方便直接比较尺寸、圆角、颜色语义、密度和交互状态。"
       />
 
-      <RepeatedPreviewGroup title="Button 重复实现" signal="目标：所有业务按钮最终只消费 buttonPrimitiveContract。">
-        <PreviewLane label="推荐统一入口" tone="target">
-          <div className="flex flex-wrap gap-2">
-            <NotionButton variant="primary" size="sm">保存</NotionButton>
-            <NotionButton variant="ghost" size="sm">取消</NotionButton>
-            <NotionButton variant="utility" size="icon" iconOnly aria-label="Button preview settings">
-              <SlidersHorizontal className="size-4" />
-            </NotionButton>
-          </div>
-        </PreviewLane>
-        <PreviewLane label="当前混用入口" tone="mixed">
-          <div className="flex flex-wrap gap-2">
-            <ShadButton size="sm">shad Button</ShadButton>
-            <ShadButton variant="outline" size="sm">Outline</ShadButton>
-          </div>
-          <p className="mt-2 text-xs text-[color:var(--text-secondary)]">已接 token，但不是产品主入口。</p>
-        </PreviewLane>
-        <PreviewLane label="旧写法样本" tone="legacy">
-          {/* eslint-disable-next-line ds-components/no-native-button -- Style lab keeps native samples visible for migration comparison. */}
-          <button type="button" className="rounded-md border border-[#d8d8d8] bg-white px-3 py-1.5 text-sm text-[#333] shadow-sm">
-            native button
-          </button>
-          <p className="mt-2 text-xs text-[color:var(--text-secondary)]">66 个文件仍有原生按钮。</p>
-        </PreviewLane>
-      </RepeatedPreviewGroup>
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] p-3">
+        <div className="relative min-w-[200px] flex-1">
+          <Search className="absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-[color:var(--text-secondary)]" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder="搜索组件名、文件路径…"
+            className="h-8 w-full rounded-md border border-[color:var(--input-shell-border)] bg-[color:var(--input-shell-surface)] pl-8 pr-3 text-xs text-[color:var(--text-primary)] placeholder:text-[color:var(--text-secondary)] focus:outline-none focus:ring-1 focus:ring-[color:var(--button-primary-bg)]"
+          />
+          {searchQuery && (
+            <button
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2 top-1/2 -translate-y-1/2 text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
+            >
+              <X className="size-3.5" />
+            </button>
+          )}
+        </div>
+        <div className="flex items-center gap-1.5">
+          <Filter className="size-3.5 text-[color:var(--text-secondary)]" />
+          {(['all', 'high', 'medium', 'low'] as const).map((p) => (
+            <button
+              key={p}
+              type="button"
+              onClick={() => setPriorityFilter(p)}
+              className={cn(
+                'rounded-md px-2 py-1 text-xs font-medium transition-colors',
+                priorityFilter === p
+                  ? 'bg-[color:var(--button-primary-bg)] text-[color:var(--button-primary-fg)]'
+                  : 'text-[color:var(--text-secondary)] hover:bg-[color:var(--button-utility-surface)]'
+              )}
+            >
+              {p === 'all' ? '全部' : p === 'high' ? '高优先' : p === 'medium' ? '中优先' : '低优先'}
+            </button>
+          ))}
+        </div>
+        <div className="ml-auto text-xs text-[color:var(--text-secondary)]">
+          已清理 <span className="font-semibold text-[color:hsl(var(--success))]">{totalCleaned}</span> / {totalEntries} 项
+        </div>
+      </div>
 
-      <RepeatedPreviewGroup title="Form controls 重复实现" signal="目标：Input、Textarea、Select、Switch、Slider 使用同一 focus/disabled/spacing token。">
-        <PreviewLane label="推荐统一入口" tone="target">
-          <div className="space-y-2">
-            <Input defaultValue="shad Input token path" aria-label="Recommended input preview" />
-            <div className="flex items-center justify-between gap-3 text-sm text-[color:var(--text-secondary)]">
-              <span>Semantic switch</span>
-              <Switch defaultChecked size="sm" aria-label="Recommended switch preview" />
-            </div>
-          </div>
-        </PreviewLane>
-        <PreviewLane label="当前混用入口" tone="mixed">
-          <select className="min-h-8 w-full rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--input-shell-surface)] px-2 text-sm">
-            <option>AppSelect / ModernSelect / native select</option>
-          </select>
-          <p className="mt-2 text-xs text-[color:var(--text-secondary)]">选择器职责需要拆清。</p>
-        </PreviewLane>
-        <PreviewLane label="旧写法样本" tone="legacy">
-          <div className="grid gap-2">
-            <input className="min-h-8 rounded border border-[#cfcfcf] px-2 text-sm" defaultValue="native input" aria-label="Legacy input preview" />
-            <textarea className="min-h-10 resize-none rounded border border-[#cfcfcf] px-2 py-1 text-sm" defaultValue="native textarea" aria-label="Legacy textarea preview" />
-          </div>
-        </PreviewLane>
-      </RepeatedPreviewGroup>
+      {filteredGroups.length === 0 && (
+        <div className="rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] p-8 text-center text-sm text-[color:var(--text-secondary)]">
+          没有匹配的重复组件组。
+        </div>
+      )}
 
-      <RepeatedPreviewGroup title="Dialog / Sheet 重复实现" signal="目标：一个 Dialog 主入口，一个 Sheet 主入口，共享 overlay、radius、focus-ring。">
-        <PreviewLane label="推荐统一入口" tone="target">
-          <DialogShellPreview variant="target" />
-          <p className="mt-2 text-xs text-[color:var(--text-secondary)]">NotionDialog / shell token。</p>
-        </PreviewLane>
-        <PreviewLane label="当前混用入口" tone="mixed">
-          <DialogShellPreview variant="mixed" />
-          <p className="mt-2 text-xs text-[color:var(--text-secondary)]">shad Sheet / study-ui Sheet。</p>
-        </PreviewLane>
-        <PreviewLane label="旧写法样本" tone="legacy">
-          <DialogShellPreview variant="legacy" />
-          <p className="mt-2 text-xs text-[color:var(--text-secondary)]">业务 Modal CSS / wrapper。</p>
-        </PreviewLane>
-      </RepeatedPreviewGroup>
-
-      <RepeatedPreviewGroup title="Surface / Card 重复实现" signal="目标：Surface、Card、Panel 语义分层，业务不再自定义容器视觉。">
-        <PreviewLane label="推荐统一入口" tone="target">
-          <div className="rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] p-3">
-            <p className="text-sm font-medium text-[color:var(--text-primary)]">Surface token</p>
-            <p className="mt-1 text-xs text-[color:var(--text-secondary)]">panel / elevated / muted</p>
-          </div>
-        </PreviewLane>
-        <PreviewLane label="当前混用入口" tone="mixed">
-          <Card className="rounded-lg">
-            <CardHeader className="p-3">
-              <CardTitle className="text-sm">shad Card</CardTitle>
-              <CardDescription>部分页面已使用。</CardDescription>
-            </CardHeader>
-          </Card>
-        </PreviewLane>
-        <PreviewLane label="旧写法样本" tone="legacy">
-          <div className="rounded-2xl border border-[#dddddd] bg-[#fafafa] p-3 shadow-[0_8px_20px_rgba(0,0,0,0.08)]">
-            <p className="text-sm font-semibold text-[#222]">business .card</p>
-            <p className="mt-1 text-xs text-[#666]">圆角、阴影、背景各自定义。</p>
-          </div>
-        </PreviewLane>
-      </RepeatedPreviewGroup>
-
-      <RepeatedPreviewGroup title="Sidebar row 重复实现" signal="目标：导航行、线程行、设置行走同一 row primitive 和选中态 token。">
-        <PreviewLane label="推荐统一入口" tone="target">
-          <NotionButton variant="nav" size="md" className="w-full">
-            <span className="flex min-w-0 items-center gap-2">
-              <Palette className="size-4 shrink-0" />
-              <span className="truncate">样式调试</span>
-            </span>
-          </NotionButton>
-        </PreviewLane>
-        <PreviewLane label="当前混用入口" tone="mixed">
-          <div className="rounded-lg bg-[color:var(--sidebar-quiet-hover)] px-3 py-2 text-sm text-[color:var(--shell-navigation-foreground)]">
-            UnifiedSidebar item
-          </div>
-          <p className="mt-2 text-xs text-[color:var(--text-secondary)]">Settings / Session / Notes 各有包装。</p>
-        </PreviewLane>
-        <PreviewLane label="旧写法样本" tone="legacy">
-          <div className="rounded-xl bg-[#f3f3f3] px-3 py-2 text-sm font-semibold text-[#333]">
-            custom nav row
-          </div>
-        </PreviewLane>
-      </RepeatedPreviewGroup>
-
-      <RepeatedPreviewGroup title="Status badge 重复实现" signal="目标：状态色只走 success/warning/danger/info 语义 token。">
-        <PreviewLane label="推荐统一入口" tone="target">
-          <div className="flex flex-wrap gap-2">
-            <Badge className="bg-[color:hsl(var(--success)/0.12)] text-[color:hsl(var(--success))]">Ready</Badge>
-            <Badge className="bg-[color:hsl(var(--warning)/0.12)] text-[color:hsl(var(--warning))]">Review</Badge>
-          </div>
-        </PreviewLane>
-        <PreviewLane label="当前混用入口" tone="mixed">
-          <div className="flex flex-wrap gap-2">
-            <Badge variant="default">primary</Badge>
-            <Badge variant="secondary">secondary</Badge>
-            <Badge variant="outline">outline</Badge>
-          </div>
-        </PreviewLane>
-        <PreviewLane label="旧写法样本" tone="legacy">
-          <span className="inline-flex rounded-full bg-orange-100 px-2 py-1 text-xs font-bold text-orange-700">
-            hard-coded
-          </span>
-        </PreviewLane>
-      </RepeatedPreviewGroup>
+      {filteredGroups.map((group) => (
+        <RepeatedPreviewGroup key={group.title} title={group.title} signal={group.signal} priority={group.priority}>
+          {group.lanes.map((lane) => (
+            <PreviewLane key={lane.label} label={lane.label} tone={lane.tone}>
+              {lane.entries.length === 0 ? (
+                <p className="text-xs text-[color:var(--text-secondary)]">暂无数据</p>
+              ) : (
+                <div className="space-y-1.5">
+                  {lane.entries.map((entry) => (
+                    <EntryRow key={entry.name} entry={entry} onMarkCleaned={handleMarkCleaned} cleanedEntries={cleanedEntries} />
+                  ))}
+                </div>
+              )}
+              {lane.hint && <p className="mt-2 text-xs text-[color:var(--text-secondary)]">{lane.hint}</p>}
+            </PreviewLane>
+          ))}
+        </RepeatedPreviewGroup>
+      ))}
     </div>
   );
 }
