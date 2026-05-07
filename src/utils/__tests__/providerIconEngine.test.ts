@@ -185,8 +185,8 @@ describe('ProviderIconEngine', () => {
       expect(getProviderIcon('mimo-v2.5-pro')).toBe('/icons/providers/mimo.svg');
     });
 
-    it('未识别的模型应该返回 generic 图标路径', () => {
-      expect(getProviderIcon('unknown-model-xyz')).toBe('/icons/providers/generic.svg');
+    it('未识别的模型不应该再回退到 generic 图标路径', () => {
+      expect(getProviderIcon('unknown-model-xyz')).toBe('');
     });
   });
 
@@ -212,4 +212,3 @@ describe('ProviderIconEngine', () => {
     });
   });
 });
-

@@ -429,6 +429,10 @@ const PROVIDER_DISPLAY_NAMES: Record<ProviderBrand, string> = {
  * 图标路径映射
  */
 function getIconPath(brand: ProviderBrand): string {
+  if (brand === 'generic') {
+    return '';
+  }
+
   // 特殊映射
   const iconMap: Record<string, string> = {
     '01ai': 'yi',           // 零一万物使用yi图标
