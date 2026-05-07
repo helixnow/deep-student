@@ -1,6 +1,6 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
-import { beforeEach, describe, expect, test, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
 
 import { SiliconFlowSection } from '../SiliconFlowSection';
 import { VendorApiKeySection } from '../VendorApiKeySection';
@@ -50,10 +50,15 @@ describe('API key clearing confirmation', () => {
   beforeEach(() => {
     installLocalStorageMock();
     vi.clearAllMocks();
+    vi.useRealTimers();
     localStorage.clear();
     (TauriAPI.getSetting as any).mockResolvedValue(null);
     (TauriAPI.saveSetting as any).mockResolvedValue(undefined);
     (TauriAPI.deleteSetting as any).mockResolvedValue(undefined);
+  });
+
+  afterEach(() => {
+    vi.useRealTimers();
   });
 
   test('requires a second click before clearing the SiliconFlow key and removes legacy localStorage', async () => {
@@ -105,5 +110,40 @@ describe('API key clearing confirmation', () => {
     fireEvent.click(screen.getByRole('button', { name: /settings:vendor_panel.clear_api_key_confirm/ }));
 
     expect(onClear).toHaveBeenCalledTimes(1);
+  });
+
+  test('does not re-save a stale debounced vendor API key after clear', async () => {
+    vi.useFakeTimers();
+    const onSave = vi.fn().mockResolvedValue(undefined);
+    const onClear = vi.fn().mockResolvedValue(undefined);
+
+    render(
+      <VendorApiKeySection
+        vendor={{
+          id: 'vendor-1',
+          name: 'Vendor',
+          providerType: 'openai',
+          baseUrl: 'https://example.test/v1',
+          apiKey: '',
+          headers: {},
+        }}
+        onSave={onSave}
+        onClear={onClear}
+      />
+    );
+
+    const input = screen.getByPlaceholderText(/settings:vendor_panel.api_key_placeholder/);
+    fireEvent.change(input, { target: { value: 'sk-new-value' } });
+
+    fireEvent.click(screen.getByRole('button', { name: /settings:vendor_panel.clear_api_key/ }));
+    fireEvent.click(screen.getByRole('button', { name: /settings:vendor_panel.clear_api_key_confirm/ }));
+
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(onClear).toHaveBeenCalledTimes(1);
+
+    await vi.advanceTimersByTimeAsync(900);
+
+    expect(onSave).not.toHaveBeenCalled();
   });
 });

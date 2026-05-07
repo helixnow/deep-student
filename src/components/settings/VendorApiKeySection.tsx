@@ -74,6 +74,10 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
     if (!isInitializedRef.current) {
       return;
     }
+    // 防止旧的防抖值在用户已继续编辑或刚执行清除后被回写
+    if (debouncedApiKey !== apiKey) {
+      return;
+    }
     // 如果值为空或与上次保存的值相同，跳过
     if (!debouncedApiKey.trim() || debouncedApiKey === lastSavedKeyRef.current) {
       return;
@@ -95,7 +99,7 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
     };
     
     saveApiKey();
-  }, [debouncedApiKey, onSave, showMessage, t]);
+  }, [apiKey, debouncedApiKey, onSave, showMessage, t]);
 
   const handleApiKeyChange = (value: string) => {
     setApiKey(value);
