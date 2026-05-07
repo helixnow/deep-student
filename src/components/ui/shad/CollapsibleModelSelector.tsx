@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronUp, Check, Search } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { ProviderIcon } from '../ProviderIcon';
+import { ProviderIcon, isGenericProviderIconPath } from '../ProviderIcon';
 import { Input } from './Input';
 import { CustomScrollArea } from '../../custom-scroll-area';
 import { cn } from '../../../lib/utils';
@@ -67,12 +67,15 @@ export function CollapsibleModelSelector({
     }
 
     if (option.icon) {
+      if (isGenericProviderIconPath(option.icon)) {
+        return <ProviderIcon modelId="" size={16} showTooltip={false} variant="color" />;
+      }
+
       return (
         <img
           src={option.icon}
           alt=""
           className="h-4 w-4 flex-shrink-0 rounded object-contain"
-          style={{ opacity: option.icon.includes('generic.svg') ? 0.5 : 1 }}
         />
       );
     }
