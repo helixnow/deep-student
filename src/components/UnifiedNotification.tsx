@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState, useCallback } from 'react';
-import { X } from 'lucide-react';
+import React, { useEffect, useRef, useState, useCallback, type CSSProperties } from 'react';
+import { CheckCircle2, CircleAlert, Info, TriangleAlert, X } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import './UnifiedNotification.css';
 
@@ -26,6 +26,10 @@ export interface NotificationProps {
     title?: string;
     action?: GlobalNotificationAction;
     borderTone?: GlobalNotificationBorderTone;
+    icon?: GlobalNotificationIconMode;
+    progress?: GlobalNotificationProgressMode;
+    count?: number;
+    updatedAt?: number;
   };
   onClose: () => void;
 }
@@ -35,10 +39,25 @@ export interface GlobalNotificationAction {
   onClick: () => void;
 }
 
+export type GlobalNotificationIconMode = boolean | 'auto';
+export type GlobalNotificationProgressMode = boolean | 'auto';
+
+const shouldShowIcon = (
+  type: GlobalNotificationType,
+  icon: GlobalNotificationIconMode | undefined
+): boolean => {
+  if (icon === true) return true;
+  if (icon === false) return false;
+  return type === 'warning' || type === 'error';
+};
+
+const shouldShowProgress = (progress: GlobalNotificationProgressMode | undefined): boolean => progress === true;
+
 export const UnifiedNotification: React.FC<NotificationProps> = ({ notification, onClose }) => {
   const DURATION = Math.min(6000 + (notification.message?.length ?? 0) * 20, 15000);
   const [isClosing, setIsClosing] = useState(false);
   const [isHoverExpanded, setIsHoverExpanded] = useState(false);
+  const [isTimerPaused, setIsTimerPaused] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startRef = useRef(0);
   const remainingRef = useRef(DURATION);
@@ -56,6 +75,7 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
   }, []);
 
   const pauseTimer = useCallback(() => {
+    setIsTimerPaused(true);
     if (!timerRef.current) return;
     clear();
     remainingRef.current = Math.max(remainingRef.current - (Date.now() - startRef.current), 1000);
@@ -75,6 +95,7 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
   const startTimer = useCallback((time: number) => {
     startRef.current = Date.now();
     clear();
+    setIsTimerPaused(false);
     timerRef.current = setTimeout(handleClose, time);
   }, [clear, handleClose]);
 
@@ -93,17 +114,18 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
     } else {
       setIsClosing(false);
       isClosingRef.current = false;
+      setIsTimerPaused(false);
       clear();
     }
     return clear;
-  }, [notification.visible, startTimer, clear]);
+  }, [notification.visible, notification.updatedAt, startTimer, clear, DURATION]);
 
   // Reset on content change
   useEffect(() => {
     setIsHoverExpanded(false);
     if (expandRef.current) { clearTimeout(expandRef.current); expandRef.current = null; }
     if (collapseRef.current) { clearTimeout(collapseRef.current); collapseRef.current = null; }
-  }, [notification.message, notification.title, notification.type]);
+  }, [notification.message, notification.title, notification.type, notification.updatedAt]);
 
   // Cleanup on unmount
   useEffect(() => () => {
@@ -138,10 +160,24 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
   const displayText = [notification.title, notification.message]
     .filter((p) => typeof p === 'string' && p.trim())
     .join(' ');
+  const Icon = {
+    success: CheckCircle2,
+    error: CircleAlert,
+    info: Info,
+    warning: TriangleAlert,
+  }[notification.type];
+  const showIcon = shouldShowIcon(notification.type, notification.icon);
+  const showProgress = shouldShowProgress(notification.progress);
+  const progressKey = `${notification.updatedAt ?? ''}-${notification.count ?? 1}-${displayText}`;
+  const progressStyle = {
+    '--notif-progress-duration': `${DURATION}ms`,
+    '--notif-progress-play-state': isTimerPaused ? 'paused' : 'running',
+  } as CSSProperties;
 
   return (
     <div
       className={`unified-notification ${typeClass} ${borderClass} ${isClosing ? 'hide' : 'show'} ${isHoverExpanded ? 'expanded' : ''}`}
+      style={progressStyle}
       onMouseEnter={handleMouseEnter}
       onMouseLeave={handleMouseLeave}
       onFocusCapture={() => { focusRef.current = true; pauseTimer(); }}
@@ -155,9 +191,19 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
       aria-atomic="true"
     >
       <div className="unified-notification-content">
+        {showIcon && (
+          <span className={`unified-notification-icon unified-notification-icon-${notification.type}`} aria-hidden="true">
+            <Icon className="unified-notification-status-icon" />
+          </span>
+        )}
         <div className={`unified-notification-text${isHoverExpanded ? ' expanded' : ''}`}>
           {displayText}
         </div>
+        {(notification.count ?? 1) > 1 && (
+          <span className="unified-notification-count" aria-label={`重复 ${notification.count} 次`}>
+            x{notification.count}
+          </span>
+        )}
         {notification.action && (
           <NotionButton variant="ghost" size="sm" className="unified-notification-action" onClick={() => { notification.action?.onClick(); handleClose(); }}>
             {notification.action.label}
@@ -167,6 +213,9 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
           <X className="unified-notification-close-icon" aria-hidden="true" />
         </NotionButton>
       </div>
+      {showProgress && (
+        <span key={progressKey} className="unified-notification-progress" aria-hidden="true" />
+      )}
     </div>
   );
 };
@@ -180,29 +229,36 @@ export interface GlobalNotificationPayload {
   title?: string;
   action?: GlobalNotificationAction;
   borderTone?: GlobalNotificationBorderTone;
+  icon?: GlobalNotificationIconMode;
+  progress?: GlobalNotificationProgressMode;
 }
 
 export const showGlobalNotification = (
   type: GlobalNotificationType,
   message: unknown,
   title?: string,
-  options?: { action?: GlobalNotificationAction; borderTone?: GlobalNotificationBorderTone }
+  options?: {
+    action?: GlobalNotificationAction;
+    borderTone?: GlobalNotificationBorderTone;
+    icon?: GlobalNotificationIconMode;
+    progress?: GlobalNotificationProgressMode;
+  }
 ): void => {
   const normalized = normalizeNotificationMessage(message);
-  try {
-    const w = window as any;
-    const now = Date.now();
-    w.__unifiedNotifCache = w.__unifiedNotifCache || { items: [] as Array<{ key: string; ts: number }> };
-    const cache = w.__unifiedNotifCache as { items: Array<{ key: string; ts: number }> };
-    const key = JSON.stringify({ type, message: normalized, title: title || '', action: options?.action?.label || '', borderTone: options?.borderTone || 'status' });
-    cache.items = cache.items.filter((e) => now - e.ts < 1500);
-    if (cache.items.some((e) => e.key === key)) return;
-    cache.items.push({ key, ts: now });
-  } catch {}
 
   try {
     window.dispatchEvent(new CustomEvent<GlobalNotificationPayload>('showGlobalNotification', {
-      detail: { type, message: normalized, title, action: options?.action, borderTone: options?.borderTone },
+      detail: {
+        type,
+        message: normalized,
+        title,
+        action: options?.action,
+        borderTone: options?.borderTone,
+        icon: options?.icon,
+        progress: options?.progress,
+      },
     }));
-  } catch {}
+  } catch {
+    // Notification dispatch is best-effort; callers should not fail if the window event is unavailable.
+  }
 };

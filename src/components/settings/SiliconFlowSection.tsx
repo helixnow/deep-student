@@ -19,7 +19,6 @@ import { CollapsibleModelSelector, type CollapsibleModelOption } from '../ui/sha
 import { TauriAPI } from '../../utils/tauriApi';
 import { inferCapabilities, getModelDefaultParameters, applyProviderSpecificAdjustments } from '../../utils/modelCapabilities';
 import { inferApiCapabilities } from '../../utils/apiCapabilityEngine';
-import { getProviderIcon } from '../../utils/providerIconEngine';
 import { cn } from '@/lib/utils';
 import { vfsUnifiedIndexApi } from '../../api/vfsUnifiedIndexApi';
 
@@ -490,7 +489,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     const list = availableModels.length > 0 ? availableModels : models;
     return [...list]
       .sort((a, b) => a.id.localeCompare(b.id))
-      .map(m => ({ value: m.id, label: m.id, icon: getProviderIcon(m.id) }));
+      .map(m => ({ value: m.id, label: m.id, iconModelId: m.id }));
   }, [models, availableModels]);
 
   // 创建API配置

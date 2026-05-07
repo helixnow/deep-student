@@ -20,7 +20,6 @@ import { VendorModelFetcher, supportsModelFetching } from './VendorModelFetcher'
 import { ShadApiEditModal } from './ShadApiEditModal';
 import { cn } from '../../lib/utils';
 import { showGlobalNotification } from '../UnifiedNotification';
-import { getProviderIcon } from '../../utils/providerIconEngine';
 import { ProviderIcon } from '../ui/ProviderIcon';
 import { openUrl } from '../../utils/urlOpener';
 import { SiliconFlowLogo } from '../ui/SiliconFlowLogo';
@@ -34,8 +33,11 @@ interface InlineEditState {
 
 const normalizeBaseUrl = (url: string) => url.trim().replace(/\/+$/, '');
 
-const getProviderDisplayName = (providerType?: string | null) => {
+type TranslateFn = (key: string, options?: { defaultValue?: string }) => string;
+
+const getProviderDisplayName = (providerType?: string | null, t?: TranslateFn) => {
   if (!providerType) return 'OpenAI';
+  const normalizedProviderType = providerType.toLowerCase();
   const map: Record<string, string> = {
     openai: 'OpenAI',
     anthropic: 'Anthropic',
@@ -46,7 +48,15 @@ const getProviderDisplayName = (providerType?: string | null) => {
     nvidia: 'NVIDIA',
     mimo: 'Xiaomi MiMo',
   };
-  return map[providerType.toLowerCase()] || providerType;
+  const fallback = map[normalizedProviderType] || providerType;
+  return t?.(`settings:vendor_modal.providers.${normalizedProviderType}`, { defaultValue: fallback }) ?? fallback;
+};
+
+const getVendorDisplayName = (vendor: VendorConfig, providerLabel: string) => {
+  if ((vendor.providerType ?? '').toLowerCase() === 'siliconflow') {
+    return providerLabel;
+  }
+  return vendor.name || providerLabel;
 };
 
 /** 根据供应商类型获取官网链接（用于内置供应商的 fallback） */
@@ -69,6 +79,26 @@ const getProviderWebsiteUrl = (providerType?: string | null): string | null => {
   };
   return map[providerType.toLowerCase()] || null;
 };
+
+const hasConfiguredApiKey = (apiKey?: string | null): boolean => {
+  const trimmed = apiKey?.trim() ?? '';
+  return Boolean(trimmed);
+};
+
+const getVendorIconStyle = (vendor: VendorConfig): React.CSSProperties => {
+  if (hasConfiguredApiKey(vendor.apiKey)) {
+    return {};
+  }
+
+  return {
+    filter: 'grayscale(1)',
+    opacity: 0.46,
+  };
+};
+
+const getVendorIconTone = (vendor: VendorConfig): 'color' | 'muted' => (
+  hasConfiguredApiKey(vendor.apiKey) ? 'color' : 'muted'
+);
 
 interface ApisTabProps {
   vendors: VendorConfig[];
@@ -227,21 +257,48 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                   {siliconVendors.map(vendor => {
                     const isActive = selectedVendor?.id === vendor.id;
                     const modelCount = profileCountByVendor.get(vendor.id) ?? 0;
-                    const providerLabel = getProviderDisplayName(vendor.providerType);
+                    const providerLabel = getProviderDisplayName(vendor.providerType, t);
+                    const vendorDisplayName = getVendorDisplayName(vendor, providerLabel);
                     return (
-                      <NotionButton variant="ghost" size="sm" key={vendor.id} onClick={() => setSelectedVendorId(vendor.id)}
-                        className={cn('!rounded-lg !px-3 !py-2 text-left w-full !justify-start group relative',
-                          isActive ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground')}>
-                        <div className="flex flex-wrap items-center justify-between gap-1.5 w-full">
-                          <div className="flex items-center gap-2 min-w-0 flex-1">
-                            <SiliconFlowLogo className="h-3.5 shrink-0" />
-                            <Badge variant="default" className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1 py-0 leading-tight shrink-0">{t('settings:api.modal.capabilities.recommended')}</Badge>
-                          </div>
-                          <div className="flex flex-wrap items-center gap-1">
-                            {modelCount > 0 && <span className="text-[10px] text-muted-foreground/60 bg-muted/50 px-1.5 py-0.5 rounded-full">{modelCount}</span>}
+                      <div
+                        key={vendor.id}
+                        role="button"
+                        tabIndex={0}
+                        aria-pressed={isActive}
+                        onClick={() => setSelectedVendorId(vendor.id)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') {
+                            event.preventDefault();
+                            setSelectedVendorId(vendor.id);
+                          }
+                        }}
+                        className={cn(
+                          'rounded-lg px-3 py-2 text-left transition-all w-full flex items-center gap-2 cursor-pointer group',
+                          isActive ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                        )}
+                      >
+                        <div className="flex items-center gap-2 w-full">
+                          <span
+                            data-testid={`vendor-icon-${vendor.id}`}
+                            data-icon-tone={getVendorIconTone(vendor)}
+                            className="inline-flex shrink-0 items-center justify-center transition-[filter,opacity,color] duration-150"
+                            style={getVendorIconStyle(vendor)}
+                          >
+                            <ProviderIcon modelId={vendor.providerType || vendor.name || 'siliconflow'} size={16} showTooltip={false} variant="color" />
+                          </span>
+                          <div className="flex-1 min-w-0 text-left">
+                            <div className="flex flex-wrap items-center justify-between gap-1.5">
+                              <div className="flex min-w-0 flex-1 items-center gap-1.5">
+                                <div className="flex flex-col min-w-0 flex-1">
+                                  <span className="truncate">{vendorDisplayName}</span>
+                                </div>
+                                <Badge variant="default" className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1 py-0 leading-tight shrink-0">{t('settings:api.modal.capabilities.recommended')}</Badge>
+                              </div>
+                              {modelCount > 0 && <span className="text-[10px] text-muted-foreground/60 bg-muted/50 px-1.5 py-0.5 rounded-full">{modelCount}</span>}
+                            </div>
                           </div>
                         </div>
-                      </NotionButton>
+                      </div>
                     );
                   })}
                   {/* 其他供应商可拖拽排序 */}
@@ -252,7 +309,7 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                           {draggableVendors.map((vendor, index) => {
                             const isActive = selectedVendor?.id === vendor.id;
                             const modelCount = profileCountByVendor.get(vendor.id) ?? 0;
-                            const providerLabel = getProviderDisplayName(vendor.providerType);
+                            const providerLabel = getProviderDisplayName(vendor.providerType, t);
                             return (
                               <Draggable key={vendor.id} draggableId={vendor.id} index={index}>
                                 {(provided, snapshot) => {
@@ -276,7 +333,14 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                                       snapshot.isDragging && 'shadow-lg ring-1 ring-border bg-card z-50'
                                     )}
                                    >
-                                     <ProviderIcon modelId={vendor.providerType || ''} size={16} showTooltip={false} />
+                                     <span
+                                       data-testid={`vendor-icon-${vendor.id}`}
+                                       data-icon-tone={getVendorIconTone(vendor)}
+                                       className="inline-flex shrink-0 items-center justify-center transition-[filter,opacity,color] duration-150"
+                                       style={getVendorIconStyle(vendor)}
+                                     >
+                                       <ProviderIcon modelId={vendor.providerType || vendor.name || ''} size={16} showTooltip={false} variant="color" />
+                                     </span>
                                      <div className="flex-1 min-w-0 text-left">
                                       <div className="flex flex-wrap items-center justify-between gap-1.5">
                                         <div className="flex flex-col min-w-0 flex-1">
@@ -309,7 +373,9 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div className="flex items-center gap-2 min-w-0">
                         {selectedVendorIsSiliconflow && <SiliconFlowLogo className="h-5" />}
-                        <h3 className="text-lg font-medium text-foreground truncate">{selectedVendor.name || getProviderDisplayName(selectedVendor.providerType)}</h3>
+                        <h3 className="text-lg font-medium text-foreground truncate">
+                          {getVendorDisplayName(selectedVendor, getProviderDisplayName(selectedVendor.providerType, t))}
+                        </h3>
                         {selectedVendorIsSiliconflow && <Badge variant="default" className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5 py-0 shrink-0">{t('settings:api.modal.capabilities.recommended')}</Badge>}
                         {(() => {
                           const websiteUrl = selectedVendor.websiteUrl || getProviderWebsiteUrl(selectedVendor.providerType);
@@ -473,7 +539,6 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                       ) : (
                         <>
                         {selectedVendorModels.map(({ profile, api }) => {
-                          const providerIconPath = getProviderIcon(api.model);
                           const isEditing = inlineEditState?.profileId === profile.id;
                           // 为动画保持内容：即使收起也保留 api 数据用于动画
                           const editApiForAnimation = isEditing ? inlineEditState.api : convertProfileToApiConfig(profile, selectedVendor);

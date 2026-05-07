@@ -101,6 +101,9 @@ pub(crate) struct IncrementalJsonArrayParser {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+    use tempfile::TempDir;
 
     fn deepseek_sampling_body(model: &str) -> Value {
         json!({
@@ -129,6 +132,43 @@ mod tests {
             supports_tools,
             is_builtin,
             ..ModelProfile::default()
+        }
+    }
+
+    fn create_test_llm_manager(temp_dir: &TempDir) -> LLMManager {
+        let db_path = temp_dir.path().join("test.db");
+        let conn = rusqlite::Connection::open(&db_path).expect("open test db");
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )",
+            [],
+        )
+        .expect("create settings table");
+        let db = Arc::new(Database::new(&db_path).expect("create test database"));
+        let file_manager =
+            Arc::new(FileManager::new(temp_dir.path().to_path_buf()).expect("create file manager"));
+        LLMManager::new(db, file_manager).expect("create llm manager")
+    }
+
+    fn builtin_vendor_config(api_key: &str) -> VendorConfig {
+        VendorConfig {
+            id: "builtin-openai".to_string(),
+            name: "OpenAI".to_string(),
+            provider_type: "openai".to_string(),
+            base_url: "https://api.openai.com/v1".to_string(),
+            api_key: api_key.to_string(),
+            headers: HashMap::new(),
+            rate_limit_per_minute: None,
+            default_timeout_ms: None,
+            notes: None,
+            is_builtin: true,
+            is_read_only: false,
+            sort_order: None,
+            max_tokens_limit: None,
+            website_url: None,
         }
     }
 
@@ -269,6 +309,46 @@ mod tests {
         assert_eq!(profiles.len(), 1);
         assert_eq!(profiles[0].id, "builtin-deepseek-chat");
         assert!(profiles[0].is_builtin);
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn save_vendor_configs_returns_error_when_builtin_secret_clear_fails() {
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        let vendor = builtin_vendor_config("sk-test-openai");
+
+        manager
+            .save_vendor_configs(&[vendor.clone()])
+            .await
+            .expect("save builtin vendor secret");
+
+        let secure_dir = temp_dir.path().join(".secure");
+        let secure_file = secure_dir.join("builtin-openai.api_key.enc");
+        assert!(
+            secure_file.exists(),
+            "expected builtin vendor key to be written to secure storage"
+        );
+
+        let original_permissions = std::fs::metadata(&secure_dir)
+            .expect("read secure dir metadata")
+            .permissions();
+        let mut read_only_permissions = original_permissions.clone();
+        read_only_permissions.set_mode(0o555);
+        std::fs::set_permissions(&secure_dir, read_only_permissions)
+            .expect("make secure dir read-only");
+
+        let result = manager
+            .save_vendor_configs(&[builtin_vendor_config("")])
+            .await;
+
+        std::fs::set_permissions(&secure_dir, original_permissions)
+            .expect("restore secure dir permissions");
+
+        assert!(
+            result.is_err(),
+            "expected builtin vendor clear to surface secure-store deletion errors"
+        );
     }
 
     #[test]
@@ -2511,10 +2591,20 @@ impl LLMManager {
                     // no-op：保留安全存储中的值
                 } else if trimmed.is_empty() {
                     // 用户明确清空：删除安全存储中的密钥
-                    let _ = self.db.delete_secret(&secret_key);
+                    self.db.delete_secret(&secret_key).map_err(|e| {
+                        AppError::database(format!(
+                            "Failed to clear builtin vendor API key for {}: {}",
+                            cfg.id, e
+                        ))
+                    })?;
                     // 兼容旧的 SiliconFlow 存储格式
                     if cfg.id == "builtin-siliconflow" {
-                        let _ = self.db.delete_secret("siliconflow.api_key");
+                        self.db.delete_secret("siliconflow.api_key").map_err(|e| {
+                            AppError::database(format!(
+                                "Failed to clear SiliconFlow compatibility key: {}",
+                                e
+                            ))
+                        })?;
                     }
                 } else {
                     self.db.save_secret(&secret_key, trimmed).map_err(|e| {

@@ -10,12 +10,12 @@ import { useTranslation } from 'react-i18next';
 import { Download, Plus, Clock, Check, Search, Loader2 } from 'lucide-react';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { NotionButton } from '../ui/NotionButton';
+import { ProviderIcon } from '../ui/ProviderIcon';
 import { Badge } from '../ui/shad/Badge';
 import { Input } from '../ui/shad/Input';
 import { CustomScrollArea } from '../custom-scroll-area';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { TauriAPI } from '../../utils/tauriApi';
-import { getProviderIcon } from '../../utils/providerIconEngine';
 import { cn } from '@/lib/utils';
 import type { VendorConfig } from '../../types';
 
@@ -440,7 +440,6 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
                 <div className="space-y-0.5">
                   {newModels.map(m => {
                     const isSelected = selectedIds.has(m.id);
-                    const iconPath = getProviderIcon(m.id);
                     return (
                       <button
                         key={m.id}
@@ -457,7 +456,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
                         )}>
                           {isSelected && <Check className="h-3 w-3" />}
                         </div>
-                        <img src={iconPath} alt="" className="h-4 w-4 rounded object-contain opacity-70 shrink-0" />
+                        <ProviderIcon modelId={m.id} size={16} showTooltip={false} variant="color" style={{ opacity: 0.7 }} />
                         <span className="truncate font-mono">{m.label}</span>
                       </button>
                     );
@@ -470,14 +469,19 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
                         {t('settings:vendor_model_fetcher.already_added')}
                       </div>
                       {existingModelsInList.map(m => {
-                        const iconPath = getProviderIcon(m.id);
                         return (
                           <div
                             key={m.id}
                             className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-xs text-muted-foreground/50"
                           >
                             <div className="h-4 w-4 shrink-0" />
-                            <img src={iconPath} alt="" className="h-4 w-4 rounded object-contain opacity-30 shrink-0" />
+                            <ProviderIcon
+                              modelId={m.id}
+                              size={16}
+                              showTooltip={false}
+                              variant="color"
+                              style={{ filter: 'grayscale(1)', opacity: 0.3 }}
+                            />
                             <span className="truncate font-mono line-through">{m.label}</span>
                             <Check className="h-3 w-3 ml-auto text-green-500/50" />
                           </div>

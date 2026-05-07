@@ -135,6 +135,13 @@ describe('ProviderIconEngine', () => {
     });
   });
 
+  describe('detectProviderBrand - 其他供应商', () => {
+    it('应该正确识别 Hugging Face 供应商ID', () => {
+      expect(detectProviderBrand('huggingface')).toBe('huggingface');
+      expect(detectProviderBrand('hf')).toBe('huggingface');
+    });
+  });
+
   describe('detectProviderBrand - 带平台前缀的模型名', () => {
     it('应该正确处理 SiliconFlow 格式的模型名', () => {
       expect(detectProviderBrand('SiliconFlow - Qwen/Qwen3-8B')).toBe('qwen');
@@ -205,6 +212,4 @@ describe('ProviderIconEngine', () => {
     });
   });
 });
-
-
 

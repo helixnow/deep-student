@@ -1,5 +1,12 @@
 import { useState, useEffect, useCallback } from 'react';
-import type { GlobalNotificationAction, GlobalNotificationBorderTone, GlobalNotificationPayload, GlobalNotificationType } from '../components/UnifiedNotification';
+import type {
+  GlobalNotificationAction,
+  GlobalNotificationBorderTone,
+  GlobalNotificationIconMode,
+  GlobalNotificationPayload,
+  GlobalNotificationProgressMode,
+  GlobalNotificationType,
+} from '../components/UnifiedNotification';
 
 // 扩展为支持多个通知
 export interface UnifiedNotificationItem {
@@ -9,7 +16,30 @@ export interface UnifiedNotificationItem {
   title?: string;
   action?: GlobalNotificationAction;
   borderTone?: GlobalNotificationBorderTone;
+  icon?: GlobalNotificationIconMode;
+  progress?: GlobalNotificationProgressMode;
+  count: number;
+  updatedAt: number;
+  dedupeKey: string;
 }
+
+const createNotificationDedupeKey = (
+  type: GlobalNotificationType,
+  message: string,
+  title?: string,
+  action?: GlobalNotificationAction,
+  borderTone?: GlobalNotificationBorderTone,
+  icon?: GlobalNotificationIconMode,
+  progress?: GlobalNotificationProgressMode
+): string => JSON.stringify({
+  type,
+  message,
+  title: title || '',
+  action: action?.label || '',
+  borderTone: borderTone || 'status',
+  icon: icon ?? 'auto',
+  progress: progress === true ? true : 'auto',
+});
 
 export const useUnifiedNotification = () => {
   const [notifications, setNotifications] = useState<UnifiedNotificationItem[]>([]);
@@ -20,10 +50,31 @@ export const useUnifiedNotification = () => {
     message: string,
     title?: string,
     action?: GlobalNotificationAction,
-    borderTone?: GlobalNotificationBorderTone
+    borderTone?: GlobalNotificationBorderTone,
+    icon?: GlobalNotificationIconMode,
+    progress?: GlobalNotificationProgressMode
   ) => {
+    const updatedAt = Date.now();
+    const dedupeKey = createNotificationDedupeKey(type, message, title, action, borderTone, icon, progress);
     const id = `un-${Date.now()}-${Math.random().toString(36).substr(2, 8)}`;
-    setNotifications(prev => [{ id, type, message, title, action, borderTone }, ...prev]);
+    setNotifications(prev => {
+      const existing = prev.find(n => n.dedupeKey === dedupeKey);
+      if (existing) {
+        return prev.map(n => n.dedupeKey === dedupeKey
+          ? {
+              ...n,
+              action,
+              borderTone,
+              icon,
+              progress,
+              count: n.count + 1,
+              updatedAt,
+            }
+          : n);
+      }
+
+      return [{ id, type, message, title, action, borderTone, icon, progress, count: 1, updatedAt, dedupeKey }, ...prev];
+    });
     return id;
   }, []);
 
@@ -53,8 +104,8 @@ export const useUnifiedNotification = () => {
   useEffect(() => {
     const handleGlobalNotification = (event: CustomEvent<GlobalNotificationPayload>) => {
       if (!event.detail) return;
-      const { type, message, title, action, borderTone } = event.detail;
-      showNotification(type, message, title, action, borderTone);
+      const { type, message, title, action, borderTone, icon, progress } = event.detail;
+      showNotification(type, message, title, action, borderTone, icon, progress);
     };
 
     window.addEventListener('showGlobalNotification', handleGlobalNotification as EventListener);

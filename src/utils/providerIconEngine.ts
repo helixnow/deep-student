@@ -354,7 +354,9 @@ const PROVIDER_PATTERNS: Record<ProviderBrand, (string | RegExp)[]> = {
   ],
   
   huggingface: [
+    /^huggingface$/i,
     /^huggingface\//i,
+    /^hf$/i,
     /^hf\//i,
   ],
   

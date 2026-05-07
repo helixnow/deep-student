@@ -46,4 +46,13 @@ describe('UI style lab navigation contract', () => {
     expect(styleDebugPageSource).toContain('当前混用入口');
     expect(styleDebugPageSource).toContain('旧写法样本');
   });
+
+  it('keeps inventory and component list sections focused on DeepStudent instead of study-ui migration fixtures', () => {
+    const styleDebugPageSource = readSource('src/components/style-lab/StyleDebugPage.tsx');
+
+    expect(styleDebugPageSource).toContain('主应用包装入口');
+    expect(styleDebugPageSource).toContain('当前可用主应用业务组件');
+    expect(styleDebugPageSource).not.toContain('当前可用 study-ui 组件');
+    expect(styleDebugPageSource).not.toContain('study-ui demo shell');
+  });
 });

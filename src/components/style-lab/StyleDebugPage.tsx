@@ -4,10 +4,12 @@ import {
   Bell,
   CheckCircle2,
   CheckCheck,
+  CircleAlert,
   Copy,
   Bot,
   ExternalLink,
   Filter,
+  Info,
   Layers3,
   LoaderCircle,
   MousePointer2,
@@ -18,12 +20,19 @@ import {
   SlidersHorizontal,
   SplitSquareHorizontal,
   Square,
+  TriangleAlert,
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { showGlobalNotification, type GlobalNotificationBorderTone, type GlobalNotificationType } from '@/components/UnifiedNotification';
+import {
+  showGlobalNotification,
+  type GlobalNotificationBorderTone,
+  type GlobalNotificationIconMode,
+  type GlobalNotificationProgressMode,
+  type GlobalNotificationType,
+} from '@/components/UnifiedNotification';
 import { CommonTooltip, type TooltipPosition, type TooltipTheme } from '@/components/shared/CommonTooltip';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
 // eslint-disable-next-line no-restricted-imports -- Style lab intentionally compares the legacy shad Button path against the target NotionButton path.
@@ -60,7 +69,10 @@ type ToastDebugSample = {
   title: string;
   message: string;
   buttonLabel: string;
+  actionLabel?: string;
   borderTone?: GlobalNotificationBorderTone;
+  icon?: GlobalNotificationIconMode;
+  progress?: GlobalNotificationProgressMode;
 };
 
 type LlmOutputPlaybackStepId =
@@ -152,7 +164,7 @@ type RepeatedGroup = {
 const repeatedComponentData: RepeatedGroup[] = [
   {
     title: 'Button 重复实现',
-    signal: '目标：所有业务按钮最终只消费 buttonPrimitiveContract。',
+    signal: '目标：主应用按钮统一收口到 NotionButton / buttonPrimitiveContract，避免业务继续新增私有按钮壳。',
     priority: 'high',
     lanes: [
       {
@@ -169,10 +181,8 @@ const repeatedComponentData: RepeatedGroup[] = [
         label: '当前混用入口',
         entries: [
           { name: 'shad Button', filePath: 'src/components/ui/shad/Button.tsx', imports: 1, refs: 1, files: 1 },
-          { name: 'study-ui Button', filePath: 'study-ui/src/components/ui/button.tsx', imports: 5, refs: 5, files: 5 },
-          { name: 'ShellButton', filePath: 'study-ui/src/components/shell/ShellButton.tsx', imports: 2, refs: 2, files: 2 },
         ],
-        hint: '已接 token，但不是产品主入口。',
+        hint: '少量页面仍直接走 shad Button，没有回到主按钮入口。',
       },
       {
         tone: 'legacy',
@@ -186,7 +196,7 @@ const repeatedComponentData: RepeatedGroup[] = [
   },
   {
     title: 'Form controls 重复实现',
-    signal: '目标：Input、Textarea、Select、Switch、Slider 使用同一 focus/disabled/spacing token。',
+    signal: '目标：Input、Textarea、Switch、Checkbox、Slider、Select 共用同一套 focus/disabled/spacing token。',
     priority: 'high',
     lanes: [
       {
@@ -206,11 +216,9 @@ const repeatedComponentData: RepeatedGroup[] = [
         label: '当前混用入口',
         entries: [
           { name: 'AppSelect', filePath: 'src/components/ui/app-menu/AppSelect.tsx', imports: 49, refs: 49, files: 23 },
-          { name: 'study-ui Input', filePath: 'study-ui/src/components/ui/input.tsx', imports: 2, refs: 2, files: 2 },
-          { name: 'study-ui Textarea', filePath: 'study-ui/src/components/ui/textarea.tsx', imports: 1, refs: 1, files: 1 },
-          { name: 'study-ui Switch', filePath: 'study-ui/src/components/ui/switch.tsx', imports: 3, refs: 3, files: 3 },
+          { name: 'Combobox', filePath: 'src/components/ui/shad/Combobox.tsx', imports: 0, refs: 0, files: 1 },
         ],
-        hint: '选择器职责需要拆清。',
+        hint: '选择器能力还分散在 AppSelect 和独立 combobox 入口里。',
       },
       {
         tone: 'legacy',
@@ -226,7 +234,7 @@ const repeatedComponentData: RepeatedGroup[] = [
   },
   {
     title: 'Dialog / Sheet 重复实现',
-    signal: '目标：一个 Dialog 主入口，一个 Sheet 主入口，共享 overlay、radius、focus-ring。',
+    signal: '目标：Dialog、Sheet、Menu 统一 overlay、radius、focus-ring 和 action row 语义。',
     priority: 'high',
     lanes: [
       {
@@ -243,11 +251,9 @@ const repeatedComponentData: RepeatedGroup[] = [
         entries: [
           { name: 'shad Dialog', filePath: 'src/components/ui/shad/Dialog.tsx', imports: 13, refs: 13, files: 13 },
           { name: 'shad Sheet', filePath: 'src/components/ui/shad/Sheet.tsx', imports: 8, refs: 8, files: 8 },
-          { name: 'study-ui Dialog', filePath: 'study-ui/src/components/ui/dialog.tsx', imports: 4, refs: 4, files: 3 },
-          { name: 'study-ui Sheet', filePath: 'study-ui/src/components/ui/sheet.tsx', imports: 2, refs: 2, files: 2 },
           { name: 'AppMenu', filePath: 'src/components/ui/app-menu/AppMenu.tsx', imports: 47, refs: 47, files: 46 },
         ],
-        hint: 'shad Sheet / study-ui Sheet。',
+        hint: '主应用里弹层和菜单还没有完全压到单一入口。',
       },
       {
         tone: 'legacy',
@@ -261,25 +267,25 @@ const repeatedComponentData: RepeatedGroup[] = [
   },
   {
     title: 'Surface / Card 重复实现',
-    signal: '目标：Surface、Card、Panel 语义分层，业务不再自定义容器视觉。',
+    signal: '目标：主应用里的 Card / Panel 表达收口到稳定 surface token，减少业务页继续自带阴影、圆角和边框体系。',
     priority: 'medium',
     lanes: [
       {
         tone: 'target',
         label: '推荐统一入口',
         entries: [
-          { name: 'study-ui Surface', filePath: 'study-ui/src/components/ui/surface.tsx', imports: 4, refs: 4, files: 4 },
-          { name: 'study-ui Card', filePath: 'study-ui/src/components/ui/card.tsx', imports: 2, refs: 2, files: 2 },
+          { name: 'shad Card', filePath: 'src/components/ui/shad/Card.tsx', imports: 31, refs: 31, files: 31 },
         ],
-        hint: 'Surface token。',
+        hint: 'Card 是当前最稳定的主应用卡片入口。',
       },
       {
         tone: 'mixed',
         label: '当前混用入口',
         entries: [
-          { name: 'shad Card', filePath: 'src/components/ui/shad/Card.tsx', imports: 31, refs: 31, files: 31 },
+          { name: 'UnifiedSidebar', filePath: 'src/components/ui/unified-sidebar/UnifiedSidebar.tsx', imports: 8, refs: 8, files: 8 },
+          { name: 'UnifiedNotification', filePath: 'src/components/UnifiedNotification.tsx', imports: 146, refs: 146, files: 144 },
         ],
-        hint: '部分页面已使用。',
+        hint: '这些容器也各自带了一套 surface 表达，和通用 Card 语义还没完全统一。',
       },
       {
         tone: 'legacy',
@@ -293,7 +299,7 @@ const repeatedComponentData: RepeatedGroup[] = [
   },
   {
     title: 'Tabs 重复实现',
-    signal: '目标：统一 Tabs primitive，迁移期间避免同一页面内混搭。',
+    signal: '目标：Tabs 和 tab row 状态统一，避免同一信息架构里混用多套选中态。',
     priority: 'medium',
     lanes: [
       {
@@ -308,9 +314,10 @@ const repeatedComponentData: RepeatedGroup[] = [
         tone: 'mixed',
         label: '当前混用入口',
         entries: [
-          { name: 'study-ui Tabs', filePath: 'study-ui/src/components/ui/tabs.tsx', imports: 2, refs: 2, files: 2 },
+          { name: 'NotesTabsBar', filePath: 'src/components/notes/NotesTabsBar.tsx', imports: 1, refs: 1, files: 1 },
+          { name: 'LearningHub TabBar', filePath: 'src/components/learning-hub/components/TabBar.tsx', imports: 1, refs: 1, files: 1 },
         ],
-        hint: '两套 Tabs 同时存在。',
+        hint: '业务里仍有自定义 tab row，没有完全回到通用 Tabs primitive。',
       },
       {
         tone: 'legacy',
@@ -329,19 +336,20 @@ const repeatedComponentData: RepeatedGroup[] = [
         tone: 'target',
         label: '推荐统一入口',
         entries: [
-          { name: 'NotionButton (nav variant)', filePath: 'src/components/ui/NotionButton.tsx', imports: 301, refs: 1560, files: 301 },
+          { name: 'UnifiedSidebarItem', filePath: 'src/components/ui/unified-sidebar/UnifiedSidebar.tsx', imports: 8, refs: 8, files: 8 },
         ],
-        hint: '导航行复用 NotionButton nav variant。',
+        hint: '侧边栏行现在最接近统一入口的是 UnifiedSidebarItem。',
       },
       {
         tone: 'mixed',
         label: '当前混用入口',
         entries: [
-          { name: 'UnifiedSidebar', filePath: 'src/components/ui/unified-sidebar/UnifiedSidebar.tsx', imports: 8, refs: 8, files: 8 },
           { name: 'ModernSidebar', filePath: 'src/components/ModernSidebar.tsx', imports: 1, refs: 1, files: 1 },
-          { name: 'study-ui Sidebar', filePath: 'study-ui/src/components/shell/Sidebar.tsx', imports: 2, refs: 2, files: 2 },
+          { name: 'NotesSidebarV2', filePath: 'src/components/notes/NotesSidebarV2.tsx', imports: 1, refs: 2, files: 1 },
+          { name: 'LearningHubSidebarV2', filePath: 'src/components/learning-hub/LearningHubSidebarV2.tsx', imports: 1, refs: 1, files: 1 },
+          { name: 'TodoSidebar', filePath: 'src/components/todo/TodoSidebar.tsx', imports: 1, refs: 1, files: 1 },
         ],
-        hint: 'Settings / Session / Notes 各有包装。',
+        hint: 'Notes / Learning Hub / Todo 仍保留各自的侧边栏行实现。',
       },
       {
         tone: 'legacy',
@@ -387,7 +395,7 @@ const repeatedComponentData: RepeatedGroup[] = [
   },
   {
     title: 'Scroll 重复实现',
-    signal: '目标：滚动容器集中到 CustomScrollArea，确认各页面 viewport padding 和滚动条密度。',
+    signal: '目标：滚动容器集中到 CustomScrollArea，减少页面各自维护 padding、track 和 idle 行为。',
     priority: 'low',
     lanes: [
       {
@@ -409,31 +417,32 @@ const repeatedComponentData: RepeatedGroup[] = [
       {
         tone: 'legacy',
         label: '旧写法样本',
-        entries: [],
-        hint: '暂无遗留原生滚动容器。',
+        entries: [
+          { name: '原生 overflow-auto 容器', filePath: '(散布在业务代码中)', imports: 0, refs: 0, files: 0 },
+        ],
+        hint: '仍有页面直接把滚动行为写在业务容器上。',
       },
     ],
   },
   {
     title: 'Icons 重复实现',
-    signal: '目标：统一图标库为 Phosphor，人工校对同屏图标的线宽、尺寸和视觉重量。',
+    signal: '目标：图标入口先统一到主应用实际在用的集合，保证同屏线宽、尺寸和语义重量一致。',
     priority: 'high',
     lanes: [
       {
         tone: 'target',
         label: '推荐统一入口',
         entries: [
-          { name: 'Phosphor (main)', filePath: 'src/ 各处', imports: 20, refs: 20, files: 11 },
-          { name: 'Phosphor (study-ui)', filePath: 'study-ui/src/ 各处', imports: 20, refs: 20, files: 9 },
+          { name: 'Phosphor', filePath: 'src/ 各处', imports: 20, refs: 20, files: 11 },
         ],
-        hint: 'Phosphor 是迁移目标。',
+        hint: 'Phosphor 是当前建议的统一方向。',
       },
       {
         tone: 'mixed',
         label: '当前混用入口',
         entries: [
           { name: 'lucide-react', filePath: 'src/ 各处', imports: 370, refs: 370, files: 365 },
-          { name: 'StudySidebarIcons', filePath: 'src/components/StudySidebarIcons.tsx', imports: 4, refs: 4, files: 4 },
+          { name: 'StudySidebarIcons', filePath: 'src/components/icons/StudySidebarIcons.tsx', imports: 4, refs: 4, files: 4 },
         ],
         hint: 'lucide-react 占绝大多数。',
       },
@@ -448,8 +457,8 @@ const repeatedComponentData: RepeatedGroup[] = [
 ];
 
 const scanScopeRows = [
-  '扫描范围：src/ 和 study-ui/src/',
-  '计入文件：1188 个产品源码文件，其中 520 个 TSX 文件',
+  '扫描范围：仅 src/ 主应用源码',
+  '计入文件：1307 个产品源码文件，其中 496 个 TSX 文件',
   '排除：测试文件、*.source.test.*、src/debug-panel/、src/mcp-debug/、src/components/dev/',
   '数字口径：refs/files 是 JSX 或原生标签出现次数 / 涉及文件数；imports/files 是 import 语句次数 / 涉及文件数',
 ];
@@ -488,9 +497,9 @@ const entrySystems: InventoryEntrySystem[] = [
     examples: ['NotionButton', 'NotionDialog', 'src/components/ui/shad/*', 'AppMenu', 'CustomScrollArea', 'UnifiedSidebar'],
   },
   {
-    title: '迁移实验入口',
-    summary: 'study-ui 里已经形成一套新 shell 和 primitive，用于对照迁移目标与 macOS 风格窗口体验。',
-    examples: ['study-ui/src/components/ui/*', 'study-ui/src/components/shell/*', 'AppChrome', 'ShellButton', 'Titlebar'],
+    title: '主应用包装入口',
+    summary: '这些入口已经在主应用里承接业务语义，但还保留各自的容器、布局或交互包装，是下一步最需要继续压缩的层。',
+    examples: ['src/components/ui/unified-sidebar', 'src/components/ui/app-menu', 'src/components/notes/*', 'src/components/learning-hub/*'],
   },
   {
     title: '旧/业务直写入口',
@@ -502,45 +511,45 @@ const entrySystems: InventoryEntrySystem[] = [
 const mixedComponentRows: MixedComponentRow[] = [
   {
     family: 'Button',
-    activePaths: ['NotionButton', 'shad Button', 'study-ui Button', '原生 <button>'],
+    activePaths: ['NotionButton', 'shad Button', '原生 <button>'],
     productCount: 'NotionButton 301 imports；原生 184 refs / 66 files',
     status: 'primary',
-    nextStep: 'NotionButton 已是主入口；study-ui Button 是迁移实验入口；逐批替换原生按钮。',
+    nextStep: 'NotionButton 已是主入口；剩余 shad Button 和原生按钮按页面逐批收口。',
   },
   {
     family: 'Dialog / Overlay / Menu',
-    activePaths: ['NotionDialog', 'shad Sheet/Popover/Tooltip', 'study-ui Dialog/Sheet/Menu', 'AppMenu'],
+    activePaths: ['NotionDialog', 'shad Sheet/Popover/Tooltip', 'AppMenu'],
     productCount: 'NotionDialog 52 imports；AppMenu 47 imports',
     status: 'watch',
     nextStep: '弹层、Sheet、菜单是最明显的多入口区域；统一 overlay、radius、focus ring。',
   },
   {
     family: 'Form controls',
-    activePaths: ['shad Input/Textarea/Switch', 'AppSelect', 'study-ui controls', '原生控件'],
-    productCount: 'shad controls 165 imports；原生 198 refs / 83 files',
+    activePaths: ['shad Input/Textarea/Switch', 'AppSelect', 'Combobox', '原生控件'],
+    productCount: 'shad controls 165 imports；AppSelect 49 refs / 23 files',
     status: 'legacy',
     nextStep: '输入控件已有 shad 主路径；选择器和原生控件仍需要按页面收敛。',
   },
   {
     family: 'Surface / Card',
-    activePaths: ['shad Card', 'study-ui Surface', '业务 .card / panel'],
-    productCount: 'shad Card 31 imports；study-ui Card/Surface 6 imports',
+    activePaths: ['shad Card', 'UnifiedSidebar', 'UnifiedNotification', '业务 .card / panel'],
+    productCount: 'shad Card 31 imports；UnifiedSidebar 8 imports；notification 146 refs / 144 files',
     status: 'watch',
-    nextStep: '定义 Surface、Card、Panel 的语义边界，判断业务 panel 是否继续自定义。',
+    nextStep: '定义 Card、Panel、容器壳层的语义边界，判断业务 panel 是否继续自定义。',
   },
   {
     family: 'Tabs',
-    activePaths: ['shad Tabs', 'study-ui Tabs'],
-    productCount: 'shad Tabs 16 imports；study-ui Tabs 2 imports',
+    activePaths: ['shad Tabs', 'NotesTabsBar', 'LearningHub TabBar'],
+    productCount: 'shad Tabs 16 imports；业务 TabBar 2 refs / 2 files',
     status: 'watch',
-    nextStep: '两套 Tabs 同时存在；迁移期间避免同一页面内混搭。',
+    nextStep: '业务 TabBar 仍独立存在；同一信息架构里避免继续混搭两套选中态。',
   },
   {
     family: 'Sidebar / Shell / Layout',
-    activePaths: ['ModernSidebar', 'UnifiedSidebar', 'main layout', 'study-ui shell'],
-    productCount: 'UnifiedSidebar 8 imports；study-ui shell 2 imports',
+    activePaths: ['ModernSidebar', 'UnifiedSidebar', 'NotesSidebarV2', 'LearningHubSidebarV2', 'TodoSidebar'],
+    productCount: 'UnifiedSidebar 8 imports；业务 sidebar 4 refs / 4 files',
     status: 'watch',
-    nextStep: '重点校对导航行、标题栏、窗口控制、折叠态和 macOS safe area。',
+    nextStep: '重点校对导航行、折叠态、标题栏留白和业务侧边栏的选中态一致性。',
   },
   {
     family: 'Scroll',
@@ -559,7 +568,7 @@ const mixedComponentRows: MixedComponentRow[] = [
   {
     family: 'Icons',
     activePaths: ['lucide-react', 'Phosphor', 'StudySidebarIcons'],
-    productCount: 'lucide 370 imports；Phosphor main/study-ui 40 imports',
+    productCount: 'lucide 370 imports；Phosphor 20 imports',
     status: 'legacy',
     nextStep: '人工校对同屏图标的线宽、尺寸、视觉重量和 filled/outline 风格。',
   },
@@ -629,16 +638,16 @@ const mainComponentGroups: ComponentGroup[] = [
   },
 ];
 
-const studyUiComponentGroups: ComponentGroup[] = [
+const businessComponentGroups: ComponentGroup[] = [
   {
-    title: '当前可用 study-ui 组件',
-    path: 'study-ui/src/components/ui',
-    items: ['button', 'card', 'dialog', 'dropdown-menu', 'input', 'sheet', 'surface', 'switch', 'tabs', 'textarea', 'tooltip'],
+    title: '当前可用主应用业务组件',
+    path: 'src/components/notes',
+    items: ['NotesHeader', 'NotesSidebarV2', 'NotesTabsBar', 'PreviewPanel', 'NotesContextPanel'],
   },
   {
-    title: 'study-ui shell',
-    path: 'study-ui/src/components/shell',
-    items: ['AppChrome', 'FramelessResizeHandles', 'ShellButton', 'Sidebar', 'SidebarUpdateBadge', 'Titlebar', 'WindowControls'],
+    title: '主应用业务工作区',
+    path: 'src/components/learning-hub',
+    items: ['LearningHubPage', 'LearningHubSidebarV2', 'LearningHubToolbar', 'UnifiedAppPanel', 'TabBar'],
   },
 ];
 
@@ -648,7 +657,7 @@ const reviewTargets = [
   'Chat V2：src/chat-v2/pages/ChatV2Page.tsx、src/chat-v2/components/input-bar/InputBarUI.tsx',
   'Settings：src/components/Settings.tsx、src/components/settings/*',
   'Learning Hub / Notes：src/components/learning-hub/*、src/components/notes/*',
-  'study-ui demo shell：study-ui/src/App.tsx、study-ui/src/components/shell/*、study-ui/src/components/content/*',
+  'Todo / Template / Notification：src/components/todo/*、src/components/TemplateManagementPage.tsx、src/components/UnifiedNotification.tsx',
 ];
 
 const primitiveGoals = [
@@ -807,6 +816,7 @@ const toastDebugSamples: ToastDebugSample[] = [
     title: 'Toast 调试：Success',
     message: '资料库同步完成。这个提示应该轻、稳、可快速扫读，不抢走当前任务的注意力。',
     buttonLabel: '触发 success toast',
+    actionLabel: '查看',
   },
   {
     type: 'warning',
@@ -814,6 +824,7 @@ const toastDebugSamples: ToastDebugSample[] = [
     title: 'Toast 调试：Warning',
     message: '当前索引有 3 个条目需要复核。状态要明确，但不要像错误一样刺眼。',
     buttonLabel: '触发 warning toast',
+    actionLabel: '重试',
   },
   {
     type: 'error',
@@ -821,6 +832,7 @@ const toastDebugSamples: ToastDebugSample[] = [
     title: 'Toast 调试：Error',
     message: '同步失败：本地数据库被占用。错误 toast 需要更高对比度、清晰操作和稳定的关闭入口。',
     buttonLabel: '触发 error toast',
+    actionLabel: '重试',
   },
   {
     type: 'info',
@@ -828,6 +840,7 @@ const toastDebugSamples: ToastDebugSample[] = [
     title: 'Toast 调试：Neutral',
     message: '已切换到新的学习会话。Info API 仍然可用，但视觉走 neutral，像状态回声。',
     buttonLabel: '触发 info toast',
+    actionLabel: '撤销',
   },
   {
     type: 'success',
@@ -835,6 +848,7 @@ const toastDebugSamples: ToastDebugSample[] = [
     title: 'Toast 调试：黑色边',
     message: '已归档。查看已归档的会话：',
     buttonLabel: '触发黑色边 toast',
+    actionLabel: '设置',
     borderTone: 'neutral',
   },
 ];
@@ -3335,19 +3349,60 @@ const toastButtonVariantByType: Record<GlobalNotificationType, 'success' | 'warn
   info: 'default',
 };
 
+const toastPreviewIconByType = {
+  success: CheckCircle2,
+  warning: TriangleAlert,
+  error: CircleAlert,
+  info: Info,
+};
+
+const shouldShowToastPreviewIcon = (
+  type: GlobalNotificationType,
+  icon: GlobalNotificationIconMode | undefined
+) => {
+  if (icon === true) return true;
+  if (icon === false) return false;
+  return type === 'warning' || type === 'error';
+};
+
+const shouldShowToastPreviewProgress = (
+  progress: GlobalNotificationProgressMode | undefined
+) => progress === true;
+
 function ToastPreviewCard({
   sample,
   showAction,
+  iconMode = 'auto',
+  progressMode = false,
+  title,
+  actionLabel,
+  count = 1,
+  expanded = false,
 }: {
   sample: ToastDebugSample;
   showAction: boolean;
+  iconMode?: GlobalNotificationIconMode;
+  progressMode?: GlobalNotificationProgressMode;
+  title?: string;
+  actionLabel?: string;
+  count?: number;
+  expanded?: boolean;
 }) {
-  const displayText = `${sample.title} ${sample.message}`;
+  const Icon = toastPreviewIconByType[sample.type];
+  const displayText = expanded
+    ? `${sample.title} ${sample.message}\n\n详情展开预览：这一行用来观察 hover/focus 后的长文案换行、最大高度和关闭入口是否仍然稳定。`
+    : `${sample.title} ${sample.message}`;
+  const resolvedIconMode = sample.icon ?? iconMode;
+  const shouldShowIcon = shouldShowToastPreviewIcon(sample.type, resolvedIconMode);
+  const resolvedProgressMode = sample.progress ?? progressMode;
+  const shouldShowProgress = shouldShowToastPreviewProgress(resolvedProgressMode);
+  const shouldShowAction = showAction || Boolean(actionLabel) || sample.borderTone === 'neutral';
+  const commandLabel = actionLabel ?? sample.actionLabel ?? (sample.borderTone === 'neutral' ? '设置' : '查看详情');
 
   return (
     <section className="min-w-0 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] p-4">
       <div className="mb-3 flex min-w-0 items-center justify-between gap-2">
-        <h3 className="truncate text-sm font-semibold text-[color:var(--text-primary)]">{sample.label}</h3>
+        <h3 className="truncate text-sm font-semibold text-[color:var(--text-primary)]">{title ?? sample.label}</h3>
         <Badge variant="outline" className="border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root)] text-[color:var(--text-secondary)]">
           {sample.borderTone === 'neutral' ? 'neutral border' : toastVisualLabelByType[sample.type]}
         </Badge>
@@ -3357,16 +3412,31 @@ function ToastPreviewCard({
           className={cn(
             'unified-notification show',
             toastVisualClassByType[sample.type],
-            sample.borderTone === 'neutral' && 'unified-notification-border-neutral'
+            sample.borderTone === 'neutral' && 'unified-notification-border-neutral',
+            expanded && 'expanded'
           )}
-          style={{ maxWidth: 'min(320px, 100%)', minWidth: 0, width: 'fit-content' }}
-          aria-label={`${sample.label} preview`}
+          style={{
+            maxWidth: 'min(320px, 100%)',
+            minWidth: 0,
+            width: 'fit-content',
+            '--notif-progress-duration': '6200ms',
+            '--notif-progress-play-state': 'running',
+          } as React.CSSProperties}
+          aria-label={`${title ?? sample.label} preview`}
         >
           <div className="unified-notification-content">
-            <div className="unified-notification-text">{displayText}</div>
-            {showAction || sample.borderTone === 'neutral' ? (
+            {shouldShowIcon ? (
+              <span className={`unified-notification-icon unified-notification-icon-${sample.type}`} aria-hidden="true">
+                <Icon className="unified-notification-status-icon" />
+              </span>
+            ) : null}
+            <div className={cn('unified-notification-text', expanded && 'expanded')}>{displayText}</div>
+            {count > 1 ? (
+              <span className="unified-notification-count">x{count}</span>
+            ) : null}
+            {shouldShowAction ? (
               <NotionButton variant="ghost" className="unified-notification-action" tabIndex={-1}>
-                {sample.borderTone === 'neutral' ? '设置' : '查看详情'}
+                {commandLabel}
               </NotionButton>
             ) : null}
             <NotionButton
@@ -3380,6 +3450,9 @@ function ToastPreviewCard({
               <X className="unified-notification-close-icon" aria-hidden="true" />
             </NotionButton>
           </div>
+          {shouldShowProgress ? (
+            <span className="unified-notification-progress" aria-hidden="true" />
+          ) : null}
         </div>
       </div>
     </section>
@@ -3388,7 +3461,11 @@ function ToastPreviewCard({
 
 function ToastStyleLab() {
   const [showAction, setShowAction] = React.useState(false);
+  const [showIcon, setShowIcon] = React.useState(false);
+  const [showProgress, setShowProgress] = React.useState(false);
   const [longCopy, setLongCopy] = React.useState(false);
+  const iconMode: GlobalNotificationIconMode = showIcon ? true : 'auto';
+  const progressMode: GlobalNotificationProgressMode = showProgress ? true : false;
 
   const triggerToast = React.useCallback((sample: ToastDebugSample) => {
     const message = longCopy
@@ -3396,11 +3473,7 @@ function ToastStyleLab() {
       : sample.message;
     const action = showAction || sample.borderTone === 'neutral'
       ? {
-          label: sample.borderTone === 'neutral'
-            ? '设置'
-            : sample.type === 'error'
-              ? '查看日志'
-              : '查看详情',
+          label: sample.actionLabel ?? (sample.borderTone === 'neutral' ? '设置' : '查看详情'),
           onClick: () => undefined,
         }
       : undefined;
@@ -3409,19 +3482,28 @@ function ToastStyleLab() {
       sample.type,
       message,
       sample.title,
-      action || sample.borderTone
+      action || sample.borderTone || showIcon || showProgress
         ? {
             action,
             borderTone: sample.borderTone,
+            icon: sample.icon ?? iconMode,
+            progress: sample.progress ?? progressMode,
           }
         : undefined
     );
-  }, [longCopy, showAction]);
+  }, [iconMode, longCopy, progressMode, showAction, showIcon, showProgress]);
 
   const triggerSequence = React.useCallback(() => {
     toastDebugSamples.forEach((sample, index) => {
       window.setTimeout(() => triggerToast(sample), index * 360);
     });
+  }, [triggerToast]);
+
+  const triggerDuplicateToast = React.useCallback(() => {
+    const sample = toastDebugSamples[0];
+    for (let index = 0; index < 3; index += 1) {
+      triggerToast(sample);
+    }
   }, [triggerToast]);
 
   const copyToastSummary = React.useCallback(async () => {
@@ -3430,23 +3512,26 @@ function ToastStyleLab() {
       'component=UnifiedNotification',
       'shape=compact-pill',
       'structure=single-line',
+      `iconMode=${iconMode}`,
+      `progressMode=${progressMode}`,
+      'dedupe=count-badge',
       `action=${showAction}`,
       'close=true',
       `longCopy=${longCopy}`,
-      'variants=success,warning,error,info->neutral,neutral-border',
+      'variants=success,warning,error,info->neutral,neutral-border,action,long-copy,merged-count',
     ].join('\n'));
-  }, [longCopy, showAction]);
+  }, [iconMode, longCopy, progressMode, showAction]);
 
   return (
     <div className="space-y-4">
       <SectionHeader
         icon={Bell}
         title="统一 Toast 调试"
-        description="在样式调试台里直接触发全局 UnifiedNotification，并把 success、warning、error、info-as-neutral 和黑色边变体放在同一个静态预览区；新方向参考 Codex 的顶部居中小圆条：单行短句、无状态 icon、右侧轻量关闭入口，用边框表达状态。"
+        description="在样式调试台里直接触发全局 UnifiedNotification，并把可选 icon 参数、可选 progress 参数、状态边框、重复合并、命令 action 和 hover 展开放在同一个实验矩阵里校对。"
       />
 
       <div className="flex flex-wrap gap-2">
-        {['顶部居中', '小圆条', '无状态 icon', '右侧关闭', '低打扰', '参考 Codex', '单行短句', '边框表达状态', '黑色边'].map((rule) => (
+        {['顶部居中', '小圆条', 'icon 参数', '右侧关闭', '低打扰', '状态边框', 'progress 参数', '重复合并', '命令 action', 'hover 展开', '黑色边'].map((rule) => (
           <Badge
             key={rule}
             variant="outline"
@@ -3462,7 +3547,7 @@ function ToastStyleLab() {
           <div className="min-w-0">
             <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">UnifiedNotification / 全局入口</h3>
             <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">
-              这里调用真实 <code>showGlobalNotification</code>，顶部中间弹出的就是产品当前 toast；下方静态预览用来比较单行小圆条密度、短文案省略和状态边框。
+              这里调用真实 <code>showGlobalNotification</code>，顶部中间弹出的就是产品当前 toast；重复触发会验证合并计数，长文案会验证 hover/focus 展开。
             </p>
           </div>
           <NotionButton variant="ghost" onClick={copyToastSummary} aria-label="复制 Toast 调试配置">
@@ -3478,7 +3563,6 @@ function ToastStyleLab() {
                 <NotionButton
                   key={sample.label}
                   variant={toastButtonVariantByType[sample.type]}
-                 
                   onClick={() => triggerToast(sample)}
                 >
                   {sample.buttonLabel}
@@ -3493,6 +3577,14 @@ function ToastStyleLab() {
               <Switch checked={showAction} onCheckedChange={setShowAction} aria-label="切换 Toast 操作按钮" />
             </label>
             <label className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] px-3 py-2">
+              <span className="min-w-0 text-sm text-[color:var(--text-primary)]">Icon parameter</span>
+              <Switch checked={showIcon} onCheckedChange={setShowIcon} aria-label="切换 Toast icon 参数" />
+            </label>
+            <label className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] px-3 py-2">
+              <span className="min-w-0 text-sm text-[color:var(--text-primary)]">Progress parameter</span>
+              <Switch checked={showProgress} onCheckedChange={setShowProgress} aria-label="切换 Toast progress 参数" />
+            </label>
+            <label className="flex min-w-0 items-center justify-between gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] px-3 py-2">
               <span className="min-w-0 text-sm text-[color:var(--text-primary)]">Long copy</span>
               <Switch checked={longCopy} onCheckedChange={setLongCopy} aria-label="切换 Toast 长文案" />
             </label>
@@ -3503,6 +3595,9 @@ function ToastStyleLab() {
           <NotionButton variant="default" onClick={triggerSequence}>
             连续触发四种 toast
           </NotionButton>
+          <NotionButton variant="secondary" onClick={triggerDuplicateToast}>
+            重复触发 success toast
+          </NotionButton>
         </div>
       </section>
 
@@ -3511,14 +3606,65 @@ function ToastStyleLab() {
           <div className="min-w-0">
             <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">静态状态预览</h3>
             <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">
-              这些预览复用 <code>.unified-notification</code> 和状态类，便于不用等待动画也能比较三种状态色、info-neutral 和黑色边 toast 的实际外观。
+              这些预览复用 <code>.unified-notification</code>、可选 icon、可选 progress 线和关闭入口，便于不用等待动画也能比较基础状态。
             </p>
           </div>
         </div>
         <div className="grid gap-4 xl:grid-cols-2">
           {toastDebugSamples.map((sample) => (
-            <ToastPreviewCard key={sample.label} sample={sample} showAction={showAction} />
+            <ToastPreviewCard
+              key={sample.label}
+              sample={sample}
+              showAction={showAction}
+              iconMode={iconMode}
+              progressMode={progressMode}
+            />
           ))}
+        </div>
+      </section>
+
+      <section className="space-y-3">
+        <div className="min-w-0">
+          <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">增强实验矩阵</h3>
+          <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">
+            固定展示更容易漏看的交互组合：错误/警告强化、命令 action、长文案展开和重复合并计数。
+          </p>
+        </div>
+        <div className="grid gap-4 xl:grid-cols-2">
+          <ToastPreviewCard
+            title="Warning / Error emphasized"
+            sample={toastDebugSamples[2]}
+            showAction={false}
+            iconMode="auto"
+            progressMode={false}
+            actionLabel="重试"
+          />
+          <ToastPreviewCard
+            title="Action command toast"
+            sample={toastDebugSamples[3]}
+            showAction={false}
+            iconMode={false}
+            progressMode={false}
+            actionLabel="撤销"
+          />
+          <ToastPreviewCard
+            title="Long copy expand toast"
+            sample={toastDebugSamples[1]}
+            showAction={false}
+            iconMode="auto"
+            progressMode={false}
+            actionLabel="查看"
+            expanded
+          />
+          <ToastPreviewCard
+            title="Merged duplicate toast"
+            sample={toastDebugSamples[0]}
+            showAction={false}
+            iconMode={true}
+            progressMode={true}
+            actionLabel="查看"
+            count={3}
+          />
         </div>
       </section>
     </div>
@@ -3931,7 +4077,7 @@ function RepeatedComponentPreviews() {
       <SectionHeader
         icon={Layers3}
         title="重复组件预览"
-        description="每组都把推荐统一入口、当前混用入口、旧写法样本放在同一行，方便直接比较尺寸、圆角、颜色语义、密度和交互状态。"
+        description="这里只列 DeepStudent 主应用 src/ 里的重复入口，不再混入 study-ui 迁移实验，方便直接比较尺寸、圆角、颜色语义、密度和交互状态。"
       />
 
       <div className="flex flex-wrap items-center gap-3 rounded-lg border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] p-3">
@@ -3945,31 +4091,35 @@ function RepeatedComponentPreviews() {
             className="h-8 w-full rounded-md border border-[color:var(--input-shell-border)] bg-[color:var(--input-shell-surface)] pl-8 pr-3 text-xs text-[color:var(--text-primary)] placeholder:text-[color:var(--text-secondary)] focus:outline-none focus:ring-1 focus:ring-[color:var(--button-primary-bg)]"
           />
           {searchQuery && (
-            <button
-              type="button"
+            <NotionButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              aria-label="清空搜索"
               onClick={() => setSearchQuery('')}
-              className="absolute right-2 top-1/2 -translate-y-1/2 text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
+              className="absolute right-1 top-1/2 size-6 -translate-y-1/2 px-0 text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]"
             >
               <X className="size-3.5" />
-            </button>
+            </NotionButton>
           )}
         </div>
         <div className="flex items-center gap-1.5">
           <Filter className="size-3.5 text-[color:var(--text-secondary)]" />
           {(['all', 'high', 'medium', 'low'] as const).map((p) => (
-            <button
+            <NotionButton
               key={p}
-              type="button"
               onClick={() => setPriorityFilter(p)}
+              variant={priorityFilter === p ? 'primary' : 'ghost'}
+              size="sm"
               className={cn(
-                'rounded-md px-2 py-1 text-xs font-medium transition-colors',
+                'px-2 py-1 text-xs font-medium transition-colors',
                 priorityFilter === p
-                  ? 'bg-[color:var(--button-primary-bg)] text-[color:var(--button-primary-fg)]'
+                  ? 'text-[color:var(--button-primary-fg)]'
                   : 'text-[color:var(--text-secondary)] hover:bg-[color:var(--button-utility-surface)]'
               )}
             >
               {p === 'all' ? '全部' : p === 'high' ? '高优先' : p === 'medium' ? '中优先' : '低优先'}
-            </button>
+            </NotionButton>
           ))}
         </div>
         <div className="ml-auto text-xs text-[color:var(--text-secondary)]">
@@ -4109,7 +4259,7 @@ export function StyleDebugPage() {
               description="这里按源码目录列出当前可用组件，方便人工从真实页面反查具体实现入口。"
             />
             <ComponentGroupList groups={mainComponentGroups} />
-            <ComponentGroupList groups={studyUiComponentGroups} />
+            <ComponentGroupList groups={businessComponentGroups} />
           </TabsContent>
 
           <TabsContent value="primitives" className="space-y-4">

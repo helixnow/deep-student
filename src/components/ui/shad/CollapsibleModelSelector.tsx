@@ -2,11 +2,12 @@ import * as React from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChevronDown, ChevronUp, Check, Search } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { ProviderIcon } from '../ProviderIcon';
 import { Input } from './Input';
 import { CustomScrollArea } from '../../custom-scroll-area';
 import { cn } from '../../../lib/utils';
 
-export type CollapsibleModelOption = { value: string; label: string; icon?: string };
+export type CollapsibleModelOption = { value: string; label: string; icon?: string; iconModelId?: string };
 
 export interface CollapsibleModelSelectorProps {
   value: string;
@@ -60,6 +61,25 @@ export function CollapsibleModelSelector({
     setQuery('');
   };
 
+  const renderOptionIcon = (option: CollapsibleModelOption) => {
+    if (option.iconModelId) {
+      return <ProviderIcon modelId={option.iconModelId} size={16} showTooltip={false} variant="color" />;
+    }
+
+    if (option.icon) {
+      return (
+        <img
+          src={option.icon}
+          alt=""
+          className="h-4 w-4 flex-shrink-0 rounded object-contain"
+          style={{ opacity: option.icon.includes('generic.svg') ? 0.5 : 1 }}
+        />
+      );
+    }
+
+    return null;
+  };
+
   const toggleExpanded = () => {
     if (!disabled) {
       setExpanded(prev => !prev);
@@ -79,14 +99,7 @@ export function CollapsibleModelSelector({
         onClick={toggleExpanded}
       >
         <span className="flex items-center gap-2 truncate text-left">
-          {selectedOption?.icon && (
-            <img 
-              src={selectedOption.icon} 
-              alt="" 
-              className="h-4 w-4 flex-shrink-0 rounded object-contain"
-              style={{ opacity: selectedOption.icon.includes('generic.svg') ? 0.5 : 1 }}
-            />
-          )}
+          {selectedOption && renderOptionIcon(selectedOption)}
           <span className="truncate">{buttonLabel}</span>
         </span>
         {expanded ? (
@@ -152,14 +165,7 @@ export function CollapsibleModelSelector({
                             onClick={() => handleSelect(o.value)}
                           >
                             <span className="flex items-center gap-2 truncate text-left min-w-0">
-                              {o.icon && (
-                                <img 
-                                  src={o.icon} 
-                                  alt="" 
-                                  className="h-4 w-4 flex-shrink-0 rounded object-contain"
-                                  style={{ opacity: o.icon.includes('generic.svg') ? 0.5 : 1 }}
-                                />
-                              )}
+                              {renderOptionIcon(o)}
                               <span className="truncate">{o.label}</span>
                             </span>
                             {selected && <Check className="h-4 w-4 text-accent-foreground flex-shrink-0" />}
