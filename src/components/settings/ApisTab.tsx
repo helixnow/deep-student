@@ -20,7 +20,7 @@ import { VendorModelFetcher, supportsModelFetching } from './VendorModelFetcher'
 import { ShadApiEditModal } from './ShadApiEditModal';
 import { cn } from '../../lib/utils';
 import { showGlobalNotification } from '../UnifiedNotification';
-import { ProviderIcon } from '../ui/ProviderIcon';
+import { ProviderIcon, getProviderBadgeChromeStyle } from '../ui/ProviderIcon';
 import { openUrl } from '../../utils/urlOpener';
 import { SiliconFlowLogo } from '../ui/SiliconFlowLogo';
 import type { VendorConfig, ModelProfile, ApiConfig } from '../../types';
@@ -99,6 +99,24 @@ const getVendorIconStyle = (vendor: VendorConfig): React.CSSProperties => {
 const getVendorIconTone = (vendor: VendorConfig): 'color' | 'muted' => (
   hasConfiguredApiKey(vendor.apiKey) ? 'color' : 'muted'
 );
+
+const getVendorIconBadgeStyle = (vendor: VendorConfig): React.CSSProperties => {
+  const modelId = vendor.providerType || vendor.name || '';
+
+  return {
+    ...getProviderBadgeChromeStyle(modelId),
+    ...getVendorIconStyle(vendor),
+    alignItems: 'center',
+    borderRadius: 9999,
+    boxSizing: 'border-box',
+    display: 'inline-flex',
+    flexShrink: 0,
+    height: 20,
+    justifyContent: 'center',
+    padding: 2,
+    width: 20,
+  };
+};
 
 interface ApisTabProps {
   vendors: VendorConfig[];
@@ -281,10 +299,17 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                           <span
                             data-testid={`vendor-icon-${vendor.id}`}
                             data-icon-tone={getVendorIconTone(vendor)}
-                            className="inline-flex shrink-0 items-center justify-center transition-[filter,opacity,color] duration-150"
-                            style={getVendorIconStyle(vendor)}
+                            data-icon-chrome="badge"
+                            className="inline-flex shrink-0 items-center justify-center transition-[filter,opacity,color,background-color,border-color] duration-150"
+                            style={getVendorIconBadgeStyle(vendor)}
                           >
-                            <ProviderIcon modelId={vendor.providerType || vendor.name || 'siliconflow'} size={16} showTooltip={false} variant="color" />
+                            <ProviderIcon
+                              modelId={vendor.providerType || vendor.name || 'siliconflow'}
+                              size={14}
+                              showTooltip={false}
+                              variant="color"
+                              renderMode="glyph"
+                            />
                           </span>
                           <div className="flex-1 min-w-0 text-left">
                             <div className="flex flex-wrap items-center justify-between gap-1.5">
@@ -336,10 +361,17 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                                      <span
                                        data-testid={`vendor-icon-${vendor.id}`}
                                        data-icon-tone={getVendorIconTone(vendor)}
-                                       className="inline-flex shrink-0 items-center justify-center transition-[filter,opacity,color] duration-150"
-                                       style={getVendorIconStyle(vendor)}
+                                       data-icon-chrome="badge"
+                                       className="inline-flex shrink-0 items-center justify-center transition-[filter,opacity,color,background-color,border-color] duration-150"
+                                       style={getVendorIconBadgeStyle(vendor)}
                                      >
-                                       <ProviderIcon modelId={vendor.providerType || vendor.name || ''} size={16} showTooltip={false} variant="color" />
+                                       <ProviderIcon
+                                         modelId={vendor.providerType || vendor.name || ''}
+                                         size={14}
+                                         showTooltip={false}
+                                         variant="color"
+                                         renderMode="glyph"
+                                       />
                                      </span>
                                      <div className="flex-1 min-w-0 text-left">
                                       <div className="flex flex-wrap items-center justify-between gap-1.5">
