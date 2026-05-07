@@ -4,6 +4,7 @@
  */
 
 import React, { useEffect, useState, useMemo } from 'react';
+import { Sparkles } from 'lucide-react';
 import AzureColor from '@lobehub/icons/es/Azure/components/Color';
 import AzureMono from '@lobehub/icons/es/Azure/components/Mono';
 import BaichuanColor from '@lobehub/icons/es/Baichuan/components/Color';
@@ -78,13 +79,22 @@ export interface ProviderIconProps {
   onClick?: () => void;
   showTooltip?: boolean;
   variant?: 'mono' | 'color';
+  renderMode?: 'default' | 'glyph';
 }
 
-const GenericFallbackIcon: React.FC<{ size: number }> = ({ size }) => (
-  <img
-    src="/icons/providers/generic.svg"
-    alt="AI"
-    style={{ width: size, height: size, objectFit: 'contain', flexShrink: 0 }}
+export const isGenericProviderIconPath = (iconPath?: string | null): boolean =>
+  Boolean(iconPath?.includes('/icons/providers/generic.svg'));
+
+const UnknownFallbackGlyph: React.FC<{ size: number }> = ({ size }) => (
+  <Sparkles
+    aria-hidden="true"
+    size={size}
+    strokeWidth={2.1}
+    style={{
+      color: 'hsl(var(--muted-foreground))',
+      flexShrink: 0,
+      opacity: 0.82,
+    }}
   />
 );
 
@@ -226,6 +236,24 @@ const MONO_LOBE_COMPONENTS: Partial<Record<ProviderBrand, React.ComponentType<an
   together: TogetherMono,
 };
 
+export const getProviderBadgeChromeStyle = (modelId: string): React.CSSProperties => {
+  const providerInfo = getProviderInfo(modelId);
+  const avatarLikeStyle = AVATAR_LIKE_STYLES[providerInfo.brand];
+
+  if (avatarLikeStyle) {
+    return {
+      background: avatarLikeStyle.background,
+      border: '1px solid hsl(var(--border) / 0.72)',
+      boxShadow: avatarLikeStyle.withContrastRing ? '0 0 0 1px hsl(var(--border) / 0.36) inset' : undefined,
+    };
+  }
+
+  return {
+    background: 'hsl(var(--background))',
+    border: '1px solid hsl(var(--border) / 0.72)',
+  };
+};
+
 const LobeSvgIcon: React.FC<{ brand: ProviderBrand; size: number; style?: React.CSSProperties }> = ({ brand, size, style }) => {
   const MonoComponent = MONO_LOBE_COMPONENTS[brand];
   if (MonoComponent) {
@@ -261,6 +289,7 @@ export const ProviderIcon: React.FC<ProviderIconProps> = ({
   onClick,
   showTooltip = true,
   variant = 'mono',
+  renderMode = 'default',
 }) => {
   const providerInfo = getProviderInfo(modelId);
   const hasIcon = !!providerInfo.iconPath;
@@ -283,6 +312,34 @@ export const ProviderIcon: React.FC<ProviderIconProps> = ({
 
   const iconElement = useMemo(() => {
     if (useColorIcon) {
+      if (renderMode === 'glyph') {
+        const ColorComponent = COLOR_LOBE_COMPONENTS[providerInfo.brand];
+        if (ColorComponent) {
+          return <ColorComponent size={size} aria-hidden="true" />;
+        }
+
+        const avatarLikeStyle = AVATAR_LIKE_STYLES[providerInfo.brand];
+        if (avatarLikeStyle) {
+          const AvatarLikeIcon = avatarLikeStyle.iconComponent;
+          const glyphStyle = { transform: `scale(${avatarLikeStyle.iconMultiple})` };
+
+          if (AvatarLikeIcon) {
+            return <AvatarLikeIcon size={size} aria-hidden="true" style={glyphStyle} />;
+          }
+
+          return (
+            <LobeSvgIcon
+              brand={providerInfo.brand}
+              size={size}
+              style={{
+                color: avatarLikeStyle.color,
+                ...glyphStyle,
+              }}
+            />
+          );
+        }
+      }
+
       const ColorComponent = COLOR_LOBE_COMPONENTS[providerInfo.brand];
       if (ColorComponent) {
         return <ColorComponent size={size} aria-hidden="true" />;
@@ -344,8 +401,8 @@ export const ProviderIcon: React.FC<ProviderIconProps> = ({
       );
     }
 
-    return fallbackIcon || <GenericFallbackIcon size={size} />;
-  }, [useColorIcon, hasLobeMonoIcon, providerInfo.brand, hasIcon, iconLoadFailed, providerInfo.iconPath, providerInfo.displayName, size, fallbackIcon]);
+    return fallbackIcon || <UnknownFallbackGlyph size={size} />;
+  }, [renderMode, useColorIcon, hasLobeMonoIcon, providerInfo.brand, hasIcon, iconLoadFailed, providerInfo.iconPath, providerInfo.displayName, size, fallbackIcon]);
 
   return (
     <div
