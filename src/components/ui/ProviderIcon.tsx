@@ -62,6 +62,8 @@ import { AVATAR_BACKGROUND as REPLICATE_AVATAR_BACKGROUND, AVATAR_COLOR as REPLI
 import { AVATAR_BACKGROUND as RUNWAY_AVATAR_BACKGROUND, AVATAR_COLOR as RUNWAY_AVATAR_COLOR, AVATAR_ICON_MULTIPLE as RUNWAY_AVATAR_ICON_MULTIPLE } from '@lobehub/icons/es/Runway/style';
 import { AVATAR_BACKGROUND as SUNO_AVATAR_BACKGROUND, AVATAR_COLOR as SUNO_AVATAR_COLOR, AVATAR_ICON_MULTIPLE as SUNO_AVATAR_ICON_MULTIPLE } from '@lobehub/icons/es/Suno/style';
 import { AVATAR_BACKGROUND as XIAOMI_MIMO_AVATAR_BACKGROUND, AVATAR_COLOR as XIAOMI_MIMO_AVATAR_COLOR, AVATAR_ICON_MULTIPLE as XIAOMI_MIMO_AVATAR_ICON_MULTIPLE } from '@lobehub/icons/es/XiaomiMiMo/style';
+import { AVATAR_BACKGROUND as KIMI_AVATAR_BACKGROUND, AVATAR_COLOR as KIMI_AVATAR_COLOR, AVATAR_ICON_MULTIPLE as KIMI_AVATAR_ICON_MULTIPLE } from '@lobehub/icons/es/Kimi/style';
+import { AVATAR_BACKGROUND as ZHIPU_AVATAR_BACKGROUND, AVATAR_COLOR as ZHIPU_AVATAR_COLOR, AVATAR_ICON_MULTIPLE as ZHIPU_AVATAR_ICON_MULTIPLE } from '@lobehub/icons/es/Zhipu/style';
 import { getProviderInfo, type ProviderBrand } from '../../utils/providerIconEngine';
 import { lobeIconData } from '../../utils/lobeIconData';
 
@@ -96,9 +98,7 @@ const COLOR_LOBE_COMPONENTS: Partial<Record<ProviderBrand, React.ComponentType<a
   qwen: BailianColor,
   alibaba: BailianColor,
   bytedance: DoubaoColor,
-  zhipu: ZhipuColor,
   tencent: HunyuanColor,
-  moonshot: KimiColor,
   kuaishou: KlingColor,
   baidu: WenxinColor,
   xfyun: SparkColor,
@@ -123,6 +123,8 @@ const AVATAR_LIKE_STYLES: Partial<Record<ProviderBrand, {
   background: string;
   color: string;
   iconMultiple: number;
+  iconComponent?: React.ComponentType<any>;
+  withContrastRing?: boolean;
 }>> = {
   openai: {
     background: OPENAI_AVATAR_BACKGROUND,
@@ -188,6 +190,19 @@ const AVATAR_LIKE_STYLES: Partial<Record<ProviderBrand, {
     background: OLLAMA_AVATAR_BACKGROUND,
     color: OLLAMA_AVATAR_COLOR,
     iconMultiple: OLLAMA_AVATAR_ICON_MULTIPLE,
+  },
+  moonshot: {
+    background: KIMI_AVATAR_BACKGROUND,
+    color: KIMI_AVATAR_COLOR,
+    iconComponent: KimiColor,
+    iconMultiple: KIMI_AVATAR_ICON_MULTIPLE,
+    withContrastRing: true,
+  },
+  zhipu: {
+    background: ZHIPU_AVATAR_BACKGROUND,
+    color: ZHIPU_AVATAR_COLOR,
+    iconMultiple: ZHIPU_AVATAR_ICON_MULTIPLE,
+    withContrastRing: true,
   },
 };
 
@@ -275,6 +290,7 @@ export const ProviderIcon: React.FC<ProviderIconProps> = ({
 
       const avatarLikeStyle = AVATAR_LIKE_STYLES[providerInfo.brand];
       if (avatarLikeStyle) {
+        const AvatarLikeIcon = avatarLikeStyle.iconComponent;
         return (
           <span
             aria-hidden="true"
@@ -282,6 +298,7 @@ export const ProviderIcon: React.FC<ProviderIconProps> = ({
               alignItems: 'center',
               background: avatarLikeStyle.background,
               borderRadius: '50%',
+              boxShadow: avatarLikeStyle.withContrastRing ? '0 0 0 1px hsl(var(--border))' : undefined,
               color: avatarLikeStyle.color,
               display: 'inline-flex',
               flex: 'none',
@@ -290,11 +307,19 @@ export const ProviderIcon: React.FC<ProviderIconProps> = ({
               width: size,
             }}
           >
-            <LobeSvgIcon
-              brand={providerInfo.brand}
-              size={size}
-              style={{ transform: `scale(${avatarLikeStyle.iconMultiple})` }}
-            />
+            {AvatarLikeIcon ? (
+              <AvatarLikeIcon
+                size={size}
+                aria-hidden="true"
+                style={{ transform: `scale(${avatarLikeStyle.iconMultiple})` }}
+              />
+            ) : (
+              <LobeSvgIcon
+                brand={providerInfo.brand}
+                size={size}
+                style={{ transform: `scale(${avatarLikeStyle.iconMultiple})` }}
+              />
+            )}
           </span>
         );
       }
