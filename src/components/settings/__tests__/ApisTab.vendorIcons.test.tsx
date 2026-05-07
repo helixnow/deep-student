@@ -198,8 +198,8 @@ describe('ApisTab vendor list icons', () => {
     }
   });
 
-  it('keeps local image fallback only for providers without a precise Lobe icon mapping', () => {
-    const localFallbackModelIds = ['youdao', 'teleai', 'ant-ling', 'unknown-model-xyz'];
+  it('keeps local image fallback only for providers with explicit local brand assets', () => {
+    const localFallbackModelIds = ['youdao', 'teleai', 'ant-ling'];
 
     for (const modelId of localFallbackModelIds) {
       const { container, unmount } = render(<ProviderIcon modelId={modelId} size={16} showTooltip={false} variant="color" />);
@@ -208,6 +208,13 @@ describe('ApisTab vendor list icons', () => {
 
       unmount();
     }
+  });
+
+  it('renders unknown providers with an inline svg fallback instead of generic image assets', () => {
+    const { container } = render(<ProviderIcon modelId="unknown-model-xyz" size={16} showTooltip={false} variant="color" />);
+
+    expect(container.querySelector('svg')).toBeInTheDocument();
+    expect(container.querySelector('img')).not.toBeInTheDocument();
   });
 
   it('marks only vendors with configured API keys as color icons', () => {
@@ -235,6 +242,38 @@ describe('ApisTab vendor list icons', () => {
     expect(screen.getByTestId('vendor-icon-builtin-siliconflow')).toHaveAttribute('data-icon-tone', 'color');
     expect(screen.getByTestId('vendor-icon-openai')).toHaveAttribute('data-icon-tone', 'muted');
     expect(screen.getByTestId('vendor-icon-masked-deepseek')).toHaveAttribute('data-icon-tone', 'color');
+  });
+
+  it('wraps every vendor-list provider icon in the same badge container contract', () => {
+    renderApisTab([
+      vendor({
+        id: 'builtin-siliconflow',
+        name: 'SiliconFlow',
+        providerType: 'siliconflow',
+        apiKey: 'sk-siliconflow',
+      }),
+      vendor({
+        id: 'moonshot',
+        name: 'Moonshot',
+        providerType: 'moonshot',
+        apiKey: 'sk-moonshot',
+      }),
+      vendor({
+        id: 'openai',
+        name: 'OpenAI',
+        providerType: 'openai',
+        apiKey: '',
+      }),
+    ]);
+
+    for (const vendorId of ['vendor-icon-builtin-siliconflow', 'vendor-icon-moonshot', 'vendor-icon-openai']) {
+      expect(screen.getByTestId(vendorId)).toHaveAttribute('data-icon-chrome', 'badge');
+      expect(screen.getByTestId(vendorId)).toHaveStyle({
+        width: '20px',
+        height: '20px',
+        borderRadius: '9999px',
+      });
+    }
   });
 
   it('uses the original Lobe color icon as the enabled vendor base and desaturates disabled vendors', () => {
