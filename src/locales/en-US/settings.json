@@ -12,7 +12,72 @@
     "feature_models": "Feature Models",
     "rag_models": "RAG & Knowledge Base",
     "search_engines": "Search Engine Configuration",
-    "appearance": "Appearance"
+    "appearance": "Appearance",
+    "voice_input": "Voice Input"
+  },
+  "voice_input": {
+    "title": "Voice Input",
+    "description": "Recording controls live here. ASR model assignment belongs to Settings > Models, provider credentials belong to Settings > APIs, and usage is tracked in Statistics.",
+    "loading": "Loading voice input settings…",
+    "load_failed": "Failed to load voice input settings.",
+    "save_failed": "Failed to save voice input settings.",
+    "hotkey": "Hotkey",
+    "max_duration_ms": "Max Duration (ms)",
+    "request_access": "Request microphone access",
+    "permission_request_success": "Microphone access is ready. You can start voice input now.",
+    "permission_request_denied": "Microphone access was denied. Allow it in the system dialog or OS settings.",
+    "permission_request_missing_runtime": "This runtime is not exposing getUserMedia, so microphone capture cannot start yet.",
+    "permission_request_no_device": "No microphone was found. Connect or enable a microphone first.",
+    "permission_request_busy": "The microphone is busy in another app. Close the other app and try again.",
+    "permission_request_failed": "Unable to activate microphone access in this environment.",
+    "refresh_support": "Refresh Support",
+    "assigned_model": "Assigned ASR Model",
+    "assigned_model_hint": "Model selection is managed in Settings > Models. This page only controls recording behavior and diagnostics.",
+    "assigned_provider": "Provider",
+    "assigned_model_id": "Model ID",
+    "assignment_required_title": "Choose a voice input ASR model first",
+    "assignment_required_message": "Voice input is enabled at the app layer, but it still needs a model assignment in Settings > Models before recordings can be transcribed.",
+    "assignment_missing_title": "The assigned ASR model needs attention",
+    "assignment_missing_message": "The saved assignment no longer points to a valid voice-capable model. Reassign it in Settings > Models.",
+    "assignment_disabled_title": "The assigned ASR model is disabled",
+    "assignment_disabled_message": "Enable the assigned model or pick another ASR model in Settings > Models before using voice input.",
+    "assignment_provider_unavailable_title": "The assigned provider is not usable yet",
+    "assignment_provider_unavailable_message": "This runtime currently supports SiliconFlow transcription only. Pick a SiliconFlow ASR model for now, or keep the current assignment as a placeholder for future streaming providers.",
+    "open_model_settings": "Open Model Assignments",
+    "open_api_settings": "Open API Settings",
+    "open_usage_statistics": "Open Usage Statistics",
+    "runtime_hint": "If recording support is unavailable, the app build is still missing platform microphone capability, the runtime is not exposing getUserMedia, or OS permission is blocked.",
+    "permission_states": {
+      "granted": "Granted",
+      "prompt": "Not requested yet",
+      "denied": "Denied",
+      "unsupported": "Unavailable",
+      "unknown": "Unknown"
+    },
+    "diagnostics": {
+      "permission": "Permission",
+      "capture_api": "Capture API",
+      "recorder_backend": "Recorder Backend",
+      "secure_context": "Secure Context",
+      "available": "Available",
+      "missing": "Missing",
+      "unavailable": "Unavailable",
+      "unknown": "Unknown"
+    },
+    "labels": {
+      "coming_soon": "Coming soon",
+      "provider_unavailable_reason": "Visible in the ASR catalog, but the current runtime can only transcribe with SiliconFlow.",
+      "disabled_model_reason": "Enable this ASR model before assigning it to voice input."
+    },
+    "status": {
+      "checking": "Checking microphone support…",
+      "ready": "Ready to record",
+      "ready_fallback": "Ready with PCM/WAV fallback",
+      "permission_denied": "Microphone permission denied",
+      "insecure_context": "Runtime is not exposing a secure recording context",
+      "missing_get_user_media": "Runtime does not expose getUserMedia",
+      "unavailable": "Recording backend unavailable"
+    }
   },
   "api": {
     "title": "API Configuration",
@@ -1135,6 +1200,7 @@
     "select_summary_model": "Summary model is deprecated",
     "select_fast_model": "Please select intelligent non-reasoning model...",
     "select_exam_sheet_ocr": "Please select an OCR engine...",
+    "no_voice_input_asr": "No ASR model available",
     "default_value": "Default {{value}}",
     "preset_name_required": "Preset name (required)",
     "preset_note_optional": "Usage note (optional)",
@@ -1161,6 +1227,7 @@
     "exam_sheet_ocr_title": "OCR Engine",
     "translation_model_title": "Translation Specialized Model (text translation)",
     "qbank_ai_grading_model_title": "Question Bank AI Grading Model (grading + analysis)",
+    "voice_input_asr_title": "Voice Input ASR Model",
     "vl_reranker_title": "Multimodal Reranker Model (Optional)",
     "config_check_title": "Configuration Status Check",
     "server_list_title": "Server List",
@@ -1251,6 +1318,7 @@
     "saved": "Saved",
     "restart_hint": "Some settings require an app restart to take effect",
     "translation_saved": "Translation model configuration saved",
+    "voice_input_asr_saved": "Voice input ASR model configuration saved",
     "qbank_ai_grading_saved": "Question bank AI grading model configuration saved",
     "translation_save_failed": "Failed to save translation model configuration: {{error}}",
     "learning_mode_saved": "Learning mode preference updated",
@@ -1279,7 +1347,8 @@
     "translation_configured": "Translation Model: Configured",
     "qbank_ai_grading_configured": "Question Bank AI Grading Model: Configured",
     "question_parsing_configured": "Question Parsing Model: Configured",
-    "memory_decision_configured": "Memory Decision Model: Configured"
+    "memory_decision_configured": "Memory Decision Model: Configured",
+    "voice_input_asr_configured": "Voice Input ASR Model: Configured"
   },
   "status_labels": {
     "summary_model": "Summary Generation Model (Deprecated)",
@@ -1287,6 +1356,7 @@
     "exam_sheet_ocr": "OCR Engine",
     "translation_model": "Translation Specialized Model",
     "qbank_ai_grading_model": "Question Bank AI Grading Model",
+    "voice_input_asr_model": "Voice Input ASR Model",
     "basic_config_complete": "Basic configuration complete, you can start using mistake analysis features!",
     "unnamed_tool": "Unnamed Tool",
     "unnamed_prompt": "Unnamed Prompt",
@@ -1310,6 +1380,7 @@
     "exam_sheet_ocr_desc": "Dedicated for OCR processing in question set recognition, recommend using professional OCR models such as DeepSeek-OCR.",
     "translation_desc": "Specialized for text translation features, recommend models with strong understanding and language conversion capabilities. If not selected, will use \"Second Model\".",
     "qbank_ai_grading_desc": "Used for AI grading and AI analysis in question banks. If not configured, it falls back to \"Second Model\".",
+    "voice_input_asr_desc": "Used for speech-to-text in the input layer. All ASR-capable models stay visible here; unsupported providers are shown as coming soon, and transcripts are inserted without auto-send.",
     "vl_reranker_desc": "Used to rerank multimodal RAG retrieval results, improving relevance for mixed image-text retrieval (optional configuration)"
   },
   "common_labels": {

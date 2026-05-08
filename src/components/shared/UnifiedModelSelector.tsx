@@ -39,6 +39,9 @@ export interface UnifiedModelInfo {
   isReasoning?: boolean;
   /** 模型是否已禁用（仍在列表中但不可选择，用于显示已分配但被禁用的模型） */
   isDisabled?: boolean;
+  disabledLabel?: string;
+  disabledReason?: string;
+  disabledTone?: 'warning' | 'destructive';
   /** 是否收藏（收藏的模型在列表中优先显示） */
   isFavorite?: boolean;
 }
@@ -235,6 +238,12 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
   const renderModelOption = (option: typeof normalizedModels[0]) => {
     const isSelected = option.id === value;
     const isOptionDisabled = option.isDisabled || disabled;
+    const disabledToneClass = option.disabledTone === 'warning'
+      ? 'bg-amber-500/10 text-amber-700 dark:text-amber-300'
+      : 'bg-destructive/10 text-destructive';
+    const disabledReasonClass = option.disabledTone === 'warning'
+      ? 'text-amber-700/80 dark:text-amber-300/80'
+      : 'text-destructive/80';
 
     return (
       <NotionButton variant="ghost" size="sm" key={option.id} onClick={() => !option.isDisabled && handleSelectModel(option.id)} disabled={isOptionDisabled} className={cn('!w-full !justify-between !px-2 !py-1.5 !h-auto !text-left group', isSelected ? 'bg-primary/5' : 'hover:bg-muted/50', isOptionDisabled && 'opacity-50 cursor-not-allowed')}>
@@ -259,7 +268,11 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
                  {option.modelName}
                </span>
                {option.isFavorite && <Star className="h-3 w-3 text-amber-500 fill-amber-500 flex-shrink-0" />}
-               {option.isDisabled && <span className="text-[10px] bg-destructive/10 text-destructive px-1 rounded flex-shrink-0">{t('common:disabled', 'Disabled')}</span>}
+               {option.isDisabled && (
+                 <span className={cn('text-[10px] px-1 rounded flex-shrink-0', disabledToneClass)}>
+                   {option.disabledLabel || t('common:disabled', 'Disabled')}
+                 </span>
+               )}
              </div>
              
              {/* 第二行：供应商 + 标签 */}
@@ -287,10 +300,15 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
                {option.is_default && (
                   <>
                     <span className="w-0.5 h-0.5 rounded-full bg-muted-foreground/40" />
-                    <span className="text-green-600/80 dark:text-green-400/80">{t('common:default', 'Default')}</span>
+                   <span className="text-green-600/80 dark:text-green-400/80">{t('common:default', 'Default')}</span>
                   </>
                )}
              </div>
+             {option.isDisabled && option.disabledReason && (
+               <div className={cn('mt-1 text-[10px] leading-4', disabledReasonClass)}>
+                 {option.disabledReason}
+               </div>
+             )}
           </div>
         </div>
 

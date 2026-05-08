@@ -594,6 +594,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     { model: 'tencent/Hunyuan-MT-7B', name: 'SiliconFlow - tencent/Hunyuan-MT-7B', assignmentKey: t('settings:mapping_keys.translation_configured') },
     { model: 'deepseek-ai/DeepSeek-V3.2', name: 'SiliconFlow - deepseek-ai/DeepSeek-V3.2', assignmentKey: t('settings:mapping_keys.question_parsing_configured') },
     { model: 'inclusionAI/Ling-mini-2.0', name: 'SiliconFlow - inclusionAI/Ling-mini-2.0', assignmentKey: t('settings:mapping_keys.memory_decision_configured') },
+    { model: 'TeleAI/TeleSpeechASR', name: 'SiliconFlow - TeleAI/TeleSpeechASR', assignmentKey: t('settings:mapping_keys.voice_input_asr_configured') },
   ];
 
   // OCR 专用模型预设（支持多引擎，按优先级排列，全部默认启用）

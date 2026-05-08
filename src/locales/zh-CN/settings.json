@@ -12,7 +12,72 @@
     "feature_models": "功能增强模型",
     "rag_models": "RAG 与知识库",
     "search_engines": "搜索引擎配置",
-    "appearance": "界面外观"
+    "appearance": "界面外观",
+    "voice_input": "语音输入"
+  },
+  "voice_input": {
+    "title": "语音输入",
+    "description": "这里负责录音行为与诊断。ASR 模型分配在“设置 > 模型”，提供方密钥在“设置 > 模型服务 / APIs”，使用统计在“统计”页查看。",
+    "loading": "正在加载语音输入设置…",
+    "load_failed": "语音输入设置加载失败。",
+    "save_failed": "语音输入设置保存失败。",
+    "hotkey": "快捷键",
+    "max_duration_ms": "最长录音时长（毫秒）",
+    "request_access": "申请麦克风权限",
+    "permission_request_success": "麦克风已可用，现在可以开始语音输入。",
+    "permission_request_denied": "麦克风权限被拒绝。请在系统弹窗或系统设置里允许访问后重试。",
+    "permission_request_missing_runtime": "当前运行时没有暴露 getUserMedia，暂时无法启动麦克风采集。",
+    "permission_request_no_device": "未检测到麦克风，请先连接或启用麦克风。",
+    "permission_request_busy": "麦克风可能正被其他应用占用，请关闭占用后重试。",
+    "permission_request_failed": "当前环境下无法激活麦克风访问。",
+    "refresh_support": "刷新支持状态",
+    "assigned_model": "当前分配的 ASR 模型",
+    "assigned_model_hint": "模型选择由“设置 > 模型”统一管理；这个页面只负责录音行为和运行时诊断。",
+    "assigned_provider": "提供方",
+    "assigned_model_id": "模型 ID",
+    "assignment_required_title": "先分配一个语音输入 ASR 模型",
+    "assignment_required_message": "语音输入已经接入到应用输入层，但在录音转写前，仍需要先到“设置 > 模型”里完成 ASR 模型分配。",
+    "assignment_missing_title": "当前分配的 ASR 模型需要处理",
+    "assignment_missing_message": "已保存的分配目标不再指向一个有效的语音转写模型，请到“设置 > 模型”里重新选择。",
+    "assignment_disabled_title": "当前分配的 ASR 模型已被禁用",
+    "assignment_disabled_message": "请启用当前模型，或在“设置 > 模型”里改选另一个 ASR 模型后再使用语音输入。",
+    "assignment_provider_unavailable_title": "当前分配的提供方暂时还不能实际使用",
+    "assignment_provider_unavailable_message": "当前运行时只支持 SiliconFlow 转写。现在请选择一个 SiliconFlow ASR 模型；其他流式提供方可以继续作为后续预留。",
+    "open_model_settings": "打开模型分配",
+    "open_api_settings": "打开 API 设置",
+    "open_usage_statistics": "打开使用统计",
+    "runtime_hint": "如果录音仍不可用，通常意味着应用构建尚未声明平台麦克风能力、运行时未暴露 getUserMedia，或系统权限被拦截。",
+    "permission_states": {
+      "granted": "已允许",
+      "prompt": "尚未请求",
+      "denied": "已拒绝",
+      "unsupported": "不可用",
+      "unknown": "未知"
+    },
+    "diagnostics": {
+      "permission": "权限状态",
+      "capture_api": "采集接口",
+      "recorder_backend": "录音后端",
+      "secure_context": "安全上下文",
+      "available": "可用",
+      "missing": "缺失",
+      "unavailable": "不可用",
+      "unknown": "未知"
+    },
+    "labels": {
+      "coming_soon": "即将支持",
+      "provider_unavailable_reason": "这个 ASR 模型会显示在目录里，但当前运行时实际只能用 SiliconFlow 做转写。",
+      "disabled_model_reason": "请先启用这个 ASR 模型，再把它分配给语音输入。"
+    },
+    "status": {
+      "checking": "正在检测麦克风支持状态…",
+      "ready": "可以录音",
+      "ready_fallback": "可以录音（PCM/WAV 兜底）",
+      "permission_denied": "麦克风权限被拒绝",
+      "insecure_context": "当前运行时没有暴露安全录音上下文",
+      "missing_get_user_media": "当前运行时没有暴露 getUserMedia",
+      "unavailable": "录音后端不可用"
+    }
   },
   "api": {
     "title": "API配置",
@@ -1135,6 +1200,7 @@
     "select_summary_model": "总结模型已废弃",
     "select_fast_model": "请选择智能非推理模型...",
     "select_exam_sheet_ocr": "请选择OCR引擎...",
+    "no_voice_input_asr": "暂无可用的 ASR 模型",
     "default_value": "默认 {{value}}",
     "preset_name_required": "预设名称（必填）",
     "preset_note_optional": "用途备注（可选）",
@@ -1161,6 +1227,7 @@
     "exam_sheet_ocr_title": "OCR引擎",
     "translation_model_title": "翻译专用模型（文本翻译）",
     "qbank_ai_grading_model_title": "题库AI批改模型（评判 + 解析）",
+    "voice_input_asr_title": "语音输入 ASR 模型",
     "vl_reranker_title": "多模态重排序模型（可选）",
     "config_check_title": "配置状态检查",
     "server_list_title": "服务器列表",
@@ -1251,6 +1318,7 @@
     "saved": "已保存",
     "restart_hint": "部分设置需重启应用后生效",
     "translation_saved": "翻译模型配置已保存",
+    "voice_input_asr_saved": "语音输入 ASR 模型配置已保存",
     "qbank_ai_grading_saved": "题库AI批改模型配置已保存",
     "translation_save_failed": "保存翻译模型配置失败: {{error}}",
     "learning_mode_saved": "学习模式偏好已更新",
@@ -1279,7 +1347,8 @@
     "translation_configured": "翻译模型：已配置",
     "qbank_ai_grading_configured": "题库AI批改模型：已配置",
     "question_parsing_configured": "题目解析模型：已配置",
-    "memory_decision_configured": "记忆决策模型：已配置"
+    "memory_decision_configured": "记忆决策模型：已配置",
+    "voice_input_asr_configured": "语音输入 ASR 模型：已配置"
   },
   "status_labels": {
     "summary_model": "总结生成模型（已废弃）",
@@ -1287,6 +1356,7 @@
     "exam_sheet_ocr": "OCR引擎",
     "translation_model": "翻译专用模型",
     "qbank_ai_grading_model": "题库AI批改模型",
+    "voice_input_asr_model": "语音输入 ASR 模型",
     "basic_config_complete": "基础功能配置完成，可以开始使用智能对话功能！",
     "unnamed_tool": "未命名工具",
     "unnamed_prompt": "未命名提示",
@@ -1310,6 +1380,7 @@
     "exam_sheet_ocr_desc": "专门用于题目集识别的OCR处理，推荐使用DeepSeek-OCR等专业OCR模型。",
     "translation_desc": "专门用于文本翻译功能，建议使用理解和语言转换能力强的模型。如果未选择，将使用\"对话模型\"。",
     "qbank_ai_grading_desc": "用于题库中的 AI 评判与 AI 解析。若未配置，将回退使用\"对话模型\"。",
+    "voice_input_asr_desc": "用于输入层语音转文字。这里会展示所有具备 ASR 能力的模型，暂不支持的提供方会标记为“即将支持”；转写成功后只插入文本，不会自动发送。",
     "vl_reranker_desc": "用于对多模态 RAG 检索结果进行重排序，提高图文混合检索的相关性（可选配置）"
   },
   "common_labels": {

@@ -84,6 +84,9 @@ export interface InputBarV2Props {
   /** 右侧额外按钮 */
   extraButtonsRight?: React.ReactNode;
 
+  /** 靠近发送区的稳定工具插槽 */
+  inputToolSlot?: React.ReactNode;
+
   /** 自定义类名 */
   className?: string;
 
@@ -192,6 +195,9 @@ export interface InputBarUIProps {
 
   /** 右侧额外按钮 */
   extraButtonsRight?: React.ReactNode;
+
+  /** 靠近发送区的稳定工具插槽 */
+  inputToolSlot?: React.ReactNode;
 
   /** 自定义类名 */
   className?: string;

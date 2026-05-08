@@ -70,7 +70,7 @@ html2text = "0.16.7"
 
 # 所有平台统一依赖配置
 tauri = { version = "2", features = ["protocol-asset"] }
-reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls", "stream", "blocking"] }
+reqwest = { version = "0.11", default-features = false, features = ["json", "rustls-tls", "stream", "blocking", "multipart"] }
 # 高性能缓存库
 moka = { version = "0.12", features = ["future"] }
 lru = "0.12"

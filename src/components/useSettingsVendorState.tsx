@@ -12,6 +12,10 @@ import { type UnifiedModelInfo } from './shared/UnifiedModelSelector';
 import type { UseSettingsVendorStateDeps } from './settings/hookDepsTypes';
 import { buildVendorOrderMap, sortApiConfigsByVendorOrder, sortVendorsBySettingsOrder } from '../utils/modelSorting';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+import {
+  getVisibleVoiceInputApis,
+  type VoiceInputSelectableApi,
+} from '@/voice-input/modelSelection';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__;
@@ -757,9 +761,44 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     return sortApiConfigsByVendorOrder(candidates, vendors);
   };
 
+  // 获取语音输入 ASR 模型目录：可用模型可直接选择，暂不支持/已禁用模型保留可见并给出原因
+  const getAsrApis = (currentValue?: string) => {
+    const candidates = getVisibleVoiceInputApis(config.apiConfigs, currentValue);
+    return sortApiConfigsByVendorOrder(candidates, vendors);
+  };
+
   // 转换 ApiConfig 到 UnifiedModelInfo 格式
-  const toUnifiedModelInfo = (apis: (ApiConfig & { _isDisabledInList?: boolean })[]): UnifiedModelInfo[] => {
+  const toUnifiedModelInfo = (
+    apis: (ApiConfig & {
+      _isDisabledInList?: boolean;
+      _voiceInputDisabledReason?: VoiceInputSelectableApi['_voiceInputDisabledReason'];
+    })[]
+  ): UnifiedModelInfo[] => {
     return apis.map(api => ({
+      disabledTone:
+        api._voiceInputDisabledReason === 'provider-unavailable'
+          ? 'warning'
+          : api._isDisabledInList
+          ? 'destructive'
+          : undefined,
+      disabledLabel:
+        api._voiceInputDisabledReason === 'provider-unavailable'
+          ? t('settings:voice_input.labels.coming_soon', 'Coming soon')
+          : api._isDisabledInList
+          ? t('common:disabled', 'Disabled')
+          : undefined,
+      disabledReason:
+        api._voiceInputDisabledReason === 'provider-unavailable'
+          ? t(
+              'settings:voice_input.labels.provider_unavailable_reason',
+              'Visible in the ASR catalog, but the current runtime can only transcribe with SiliconFlow.'
+            )
+          : api._voiceInputDisabledReason === 'model-disabled'
+          ? t(
+              'settings:voice_input.labels.disabled_model_reason',
+              'Enable this ASR model before assigning it to voice input.'
+            )
+          : undefined,
       id: api.id,
       name: api.name,
       model: api.model,
@@ -849,6 +888,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       vl_embedding_model_config_id: null,
       vl_reranker_model_config_id: null,
       memory_decision_model_config_id: mapping[t('settings:mapping_keys.memory_decision_configured')] || null,
+      voice_input_asr_model_config_id: mapping[t('settings:mapping_keys.voice_input_asr_configured')] || null,
     };
     handleApplyPreset(assignments);
   };
@@ -889,5 +929,5 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     );
   };
 
-  return { selectedVendorId, setSelectedVendorId, vendorModalOpen, setVendorModalOpen, editingVendor, setEditingVendor, isEditingVendor, vendorFormData, setVendorFormData, modelEditor, setModelEditor, inlineEditState, setInlineEditState, isAddingNewModel, setIsAddingNewModel, modelDeleteDialog, setModelDeleteDialog, vendorDeleteDialog, setVendorDeleteDialog, testingApi, vendorBusy, sortedVendors, selectedVendor, selectedVendorModels, profileCountByVendor, selectedVendorIsSiliconflow, testApiConnection, handleOpenVendorModal, handleStartEditVendor, handleCancelEditVendor, handleSaveEditVendor, handleSaveVendorModal, handleDeleteVendor, handleSaveVendorApiKey, handleSaveVendorBaseUrl, handleReorderVendors, confirmDeleteVendor, handleOpenModelEditor, handleSaveModelProfile, handleSaveInlineEdit, handleAddModelInline, handleCloseModelEditor, handleSaveModelProfileAndClose, handleDeleteModelProfile, confirmDeleteModelProfile, handleToggleModelProfile, handleToggleFavorite, handleSiliconFlowConfig, handleAddVendorModels, getAllEnabledApis, getEmbeddingApis, getRerankerApis, toUnifiedModelInfo, handleBatchCreateConfigs, handleApplyPreset, handleBatchConfigsCreated, handleClearVendorApiKey, isSensitiveKey, PasswordInputWithToggle, maskApiKey, apiConfigsForApisTab };
+  return { selectedVendorId, setSelectedVendorId, vendorModalOpen, setVendorModalOpen, editingVendor, setEditingVendor, isEditingVendor, vendorFormData, setVendorFormData, modelEditor, setModelEditor, inlineEditState, setInlineEditState, isAddingNewModel, setIsAddingNewModel, modelDeleteDialog, setModelDeleteDialog, vendorDeleteDialog, setVendorDeleteDialog, testingApi, vendorBusy, sortedVendors, selectedVendor, selectedVendorModels, profileCountByVendor, selectedVendorIsSiliconflow, testApiConnection, handleOpenVendorModal, handleStartEditVendor, handleCancelEditVendor, handleSaveEditVendor, handleSaveVendorModal, handleDeleteVendor, handleSaveVendorApiKey, handleSaveVendorBaseUrl, handleReorderVendors, confirmDeleteVendor, handleOpenModelEditor, handleSaveModelProfile, handleSaveInlineEdit, handleAddModelInline, handleCloseModelEditor, handleSaveModelProfileAndClose, handleDeleteModelProfile, confirmDeleteModelProfile, handleToggleModelProfile, handleToggleFavorite, handleSiliconFlowConfig, handleAddVendorModels, getAllEnabledApis, getEmbeddingApis, getRerankerApis, getAsrApis, toUnifiedModelInfo, handleBatchCreateConfigs, handleApplyPreset, handleBatchConfigsCreated, handleClearVendorApiKey, isSensitiveKey, PasswordInputWithToggle, maskApiKey, apiConfigsForApisTab };
 }

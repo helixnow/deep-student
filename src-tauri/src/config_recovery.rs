@@ -114,6 +114,7 @@ pub fn create_default_model_assignments() -> ModelAssignments {
         vl_embedding_model_config_id: None,
         vl_reranker_model_config_id: None,
         memory_decision_model_config_id: None,
+        voice_input_asr_model_config_id: None,
     }
 }
 

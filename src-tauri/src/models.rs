@@ -1185,6 +1185,7 @@ pub struct ModelAssignments {
     pub vl_embedding_model_config_id: Option<String>, // 多模态嵌入模型（Qwen3-VL-Embedding）
     pub vl_reranker_model_config_id: Option<String>,  // 多模态重排序模型（Qwen3-VL-Reranker）
     pub memory_decision_model_config_id: Option<String>, // 记忆决策模型（smart write 去重判断）
+    pub voice_input_asr_model_config_id: Option<String>, // 语音输入 ASR 模型
 }
 
 #[derive(Debug, Deserialize)]

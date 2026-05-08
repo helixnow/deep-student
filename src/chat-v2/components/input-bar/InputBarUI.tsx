@@ -81,6 +81,7 @@ import {
   getEffectiveReadyModes as ssotGetEffectiveReadyModes,
 } from './injectModeUtils';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
+import { useVoiceInputIntegration } from '@/voice-input';
 
 // ============================================================================
 // 常量
@@ -457,6 +458,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   sendShortcut = 'enter',
   leftAccessory,
   extraButtonsRight,
+  inputToolSlot,
   className,
   autoFocus = false,
   // 模式插件面板
@@ -1227,6 +1229,23 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       setTextareaViewportHeight(minHeight);
     }
   }, []);
+
+  const { inputToolSlot: voiceInputToolSlot } = useVoiceInputIntegration({
+    targetId: sessionId ? `chat-v2-input:${sessionId}` : 'chat-v2-input',
+    textareaRef,
+    inputValue,
+    onInputChange,
+    afterInsert: adjustTextareaHeight,
+    disabled: isStreaming || !!disabledReason,
+    t,
+  });
+  const resolvedInputToolSlot =
+    inputToolSlot || voiceInputToolSlot ? (
+      <>
+        {inputToolSlot}
+        {voiceInputToolSlot}
+      </>
+    ) : null;
 
   // 空文本提示
   const triggerEmptyTip = useCallback(() => {
@@ -2553,6 +2572,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 </span>
               </div>
             )}
+
+            {resolvedInputToolSlot}
 
             {/* 发送/停止按钮 - 极简圆形风格 */}
             {showStop ? (

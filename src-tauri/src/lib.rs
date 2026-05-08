@@ -85,6 +85,7 @@ pub mod vector_store;
 pub mod vendors;
 pub mod vfs; // VFS 虚拟文件系统（统一资源存储） // DSTU 访达协议层（VFS 的文件系统语义接口）
 pub mod vlm_grounding_service;
+pub mod voice_input;
 pub mod workflow_error_handler; // SM-2 间隔重复算法 // 题目集同步冲突策略服务
 
 // 数据治理模块（条件编译，需启用 data_governance feature）
@@ -871,6 +872,7 @@ pub fn run() {
             crate::commands::delete_setting,
             crate::commands::get_settings_by_prefix,
             crate::commands::delete_settings_by_prefix,
+            crate::voice_input::voice_input_transcribe,
             // 调试日志管理
             crate::commands::get_debug_logs_info,
             crate::commands::clear_debug_logs,

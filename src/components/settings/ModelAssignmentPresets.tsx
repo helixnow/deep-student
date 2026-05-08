@@ -51,6 +51,7 @@ const BUILTIN_PRESET_CONFIG: ModelAssignments = {
   vl_embedding_model_config_id: null, // 多模态嵌入模型（已废弃）
   vl_reranker_model_config_id: null, // 多模态重排序模型
   memory_decision_model_config_id: null, // 记忆决策模型
+  voice_input_asr_model_config_id: null, // 语音输入 ASR 模型
 }; 
 
 const hasLocalStorage = () => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
@@ -241,6 +242,9 @@ export const ModelAssignmentPresets: React.FC<ModelAssignmentPresetsProps> = ({
     // 嵌入模型通过维度管理设置，不再验证 embedding_model_config_id
     if (!validateAssignment(preset.assignments.reranker_model_config_id)) {
       invalidAssignments.push(t('settings:model_presets.model_assignments.reranker'));
+    }
+    if (!validateAssignment(preset.assignments.voice_input_asr_model_config_id)) {
+      invalidAssignments.push(t('settings:cards.voice_input_asr_title'));
     }
     if (invalidAssignments.length > 0) {
       showGlobalNotification('warning', t('settings:model_presets.invalid_assignments', { assignments: invalidAssignments.join('、') }));

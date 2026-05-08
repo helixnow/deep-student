@@ -319,6 +319,8 @@ export interface ApiConfig {
   reasoningSplit?: boolean;
   effort?: string;
   verbosity?: string;
+  /** 前端基于模型能力推断的 ASR / Speech-to-Text 能力 */
+  isAudioTranscription?: boolean;
 }
 
 export interface VendorConfig {
@@ -390,6 +392,7 @@ export interface ModelAssignments {
   vl_embedding_model_config_id: string | null;  // 多模态嵌入模型（Qwen3-VL-Embedding）
   vl_reranker_model_config_id: string | null;   // 多模态重排序模型（Qwen3-VL-Reranker）
   memory_decision_model_config_id: string | null; // 记忆决策模型（smart write 去重判断）
+  voice_input_asr_model_config_id: string | null; // 语音输入 ASR 模型
 }
 
 // 子适配器类型（与后端 ADAPTER_REGISTRY 保持一致）

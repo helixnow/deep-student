@@ -37,6 +37,7 @@ interface ModelsTabProps {
     exam_sheet_ocr_model_config_id: string;
     translation_model_config_id: string;
     memory_decision_model_config_id: string;
+    voice_input_asr_model_config_id: string;
   };
   setConfig: React.Dispatch<React.SetStateAction<any>>;
   apiConfigs: ApiConfig[];
@@ -44,6 +45,7 @@ interface ModelsTabProps {
   getAllEnabledApis: (currentId?: string) => ApiConfig[];
   getEmbeddingApis: (currentId?: string) => ApiConfig[];
   getRerankerApis: (currentId?: string) => ApiConfig[];
+  getAsrApis: (currentId?: string) => ApiConfig[];
   saveSingleAssignmentField: (field: string, value: string | null) => Promise<any>;
 }
 
@@ -53,6 +55,7 @@ const ModelAssignmentRow = ({
   description,
   value,
   field,
+  configKey,
   models,
   placeholder,
   notificationKey,
@@ -64,6 +67,7 @@ const ModelAssignmentRow = ({
   description: string;
   value: string;
   field: string;
+  configKey: string;
   models: UnifiedModelInfo[];
   placeholder: string;
   notificationKey: string;
@@ -86,7 +90,7 @@ const ModelAssignmentRow = ({
         onChange={async (v) => {
           try {
             const merged = await onSave(field, v || null);
-            setConfig((prev: any) => ({ ...prev, [field.replace(/_([a-z])/g, (g) => g[1].toUpperCase())]: merged[field] || '' }));
+            setConfig((prev: any) => ({ ...prev, [configKey]: merged[field] || '' }));
             showGlobalNotification('success', notificationKey);
           } catch (error: unknown) {
           }
@@ -120,6 +124,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
   getAllEnabledApis,
   getEmbeddingApis,
   getRerankerApis,
+  getAsrApis,
   saveSingleAssignmentField,
 }) => {
   const { t } = useTranslation(['settings', 'common']);
@@ -161,6 +166,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               description={t('settings:descriptions.model2_desc')}
               value={config.model2ConfigId}
               field="model2_config_id"
+              configKey="model2ConfigId"
               models={toUnifiedModelInfo(getAllEnabledApis(config.model2ConfigId))}
               placeholder={t('settings:api.select_model')}
               notificationKey={notify('model2_saved')}
@@ -179,6 +185,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               description={t('settings:api.anki_card_description')}
               value={config.ankiCardModelConfigId}
               field="anki_card_model_config_id"
+              configKey="ankiCardModelConfigId"
               models={toUnifiedModelInfo(getAllEnabledApis(config.ankiCardModelConfigId))}
               placeholder={t('settings:api.select_model')}
               notificationKey={notify('model_saved')}
@@ -190,6 +197,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               description={t('settings:descriptions.qbank_ai_grading_desc')}
               value={config.qbank_ai_grading_model_config_id}
               field="qbank_ai_grading_model_config_id"
+              configKey="qbank_ai_grading_model_config_id"
               models={toUnifiedModelInfo(getAllEnabledApis(config.qbank_ai_grading_model_config_id))}
               placeholder={t('settings:api.select_model')}
               notificationKey={notify('qbank_ai_grading_saved')}
@@ -201,6 +209,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               description={t('settings:api_config.chat_title_model_hint')}
               value={config.chat_title_model_config_id}
               field="chat_title_model_config_id"
+              configKey="chat_title_model_config_id"
               models={toUnifiedModelInfo(getAllEnabledApis(config.chat_title_model_config_id))}
               placeholder={t('settings:api.select_model')}
               notificationKey={notify('chat_title_saved')}
@@ -212,6 +221,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               description={t('settings:descriptions.translation_desc')}
               value={config.translation_model_config_id}
               field="translation_model_config_id"
+              configKey="translation_model_config_id"
               models={toUnifiedModelInfo(getAllEnabledApis(config.translation_model_config_id))}
               placeholder={t('settings:api.select_model')}
               notificationKey={notify('translation_saved')}
@@ -223,9 +233,32 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               description={t('settings:api_config.memory_decision_model_hint')}
               value={config.memory_decision_model_config_id}
               field="memory_decision_model_config_id"
+              configKey="memory_decision_model_config_id"
               models={toUnifiedModelInfo(getAllEnabledApis(config.memory_decision_model_config_id))}
               placeholder={t('settings:api.select_model')}
               notificationKey={notify('memory_decision_saved')}
+              onSave={handleSave}
+              setConfig={setConfig}
+            />
+          </div>
+        </div>
+
+        <div>
+          <GroupTitle title={t('settings:groups.voice_input')} />
+          <div className="space-y-px">
+            <ModelAssignmentRow
+              title={t('settings:cards.voice_input_asr_title')}
+              description={t('settings:descriptions.voice_input_asr_desc')}
+              value={config.voice_input_asr_model_config_id}
+              field="voice_input_asr_model_config_id"
+              configKey="voice_input_asr_model_config_id"
+              models={toUnifiedModelInfo(getAsrApis(config.voice_input_asr_model_config_id))}
+              placeholder={t('settings:placeholders.no_voice_input_asr', 'No ASR model available')}
+              notificationKey={notify('voice_input_asr_saved')}
+              noModelsMessage={t(
+                'settings:placeholders.no_voice_input_asr',
+                'No ASR model available'
+              )}
               onSave={handleSave}
               setConfig={setConfig}
             />
@@ -241,6 +274,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               description={t('settings:descriptions.reranker_desc')}
               value={config.rerankerModelConfigId}
               field="reranker_model_config_id"
+              configKey="rerankerModelConfigId"
               models={toUnifiedModelInfo(getRerankerApis(config.rerankerModelConfigId))}
               placeholder={t('settings:placeholders.no_reranker')}
               notificationKey={notify('reranker_saved')}
@@ -285,6 +319,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               { id: config.qbank_ai_grading_model_config_id, label: t('settings:status_labels.qbank_ai_grading_model') },
               { id: config.rerankerModelConfigId, label: t('settings:config_status.reranker'), optional: true },
               { id: config.chat_title_model_config_id, label: t('settings:status_labels.chat_title_model') },
+              { id: config.voice_input_asr_model_config_id, label: t('settings:status_labels.voice_input_asr_model'), optional: true },
               { id: ocrEngineConfigured ? 'configured' : '', label: t('settings:status_labels.exam_sheet_ocr'), optional: true },
             ].map((item, idx) => (
               <div key={idx} className="flex items-center gap-1.5 py-0.5">

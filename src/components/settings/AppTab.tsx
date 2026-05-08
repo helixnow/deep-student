@@ -13,6 +13,7 @@ import { Input } from '../ui/shad/Input';
 import { Switch } from '../ui/shad/Switch';
 import { SettingSection } from './SettingsCommon';
 import { MemorySettingsSection } from './MemorySettingsSection';
+import { VoiceInputSettingsSection } from './VoiceInputSettingsSection';
 import { cn } from '../../lib/utils';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { getErrorMessage } from '../../utils/errorUtils';
@@ -24,6 +25,7 @@ import { DEFAULT_UI_FONT, DEFAULT_UI_FONT_SIZE, UI_FONT_PRESET_GROUPS, UI_FONT_S
 import { AppSelect, type AppSelectGroup } from '../ui/app-menu';
 import { UserAgreementDialog } from '../legal/UserAgreementDialog';
 import { getDefaultConfig, configFromPreset, type CopyFilterConfig } from '../../chat-v2/hooks/useDevShowRawRequest';
+import type { VoiceInputAssignedModel } from '@/voice-input/types';
 
 const DEFAULT_UI_ZOOM = 1.0;
 const UI_ZOOM_PRESETS = [
@@ -129,6 +131,7 @@ interface AppTabProps {
   setShowRawRequest: (value: boolean) => void;
   isTauriEnvironment: boolean;
   invoke: typeof tauriInvoke | null;
+  voiceInputAssignedModel: VoiceInputAssignedModel;
 }
 
 export const AppTab: React.FC<AppTabProps> = ({
@@ -138,7 +141,7 @@ export const AppTab: React.FC<AppTabProps> = ({
   themeMode, isSystemDark, setThemeMode,
   themePalette, setThemePalette, customColor, setCustomColor, topbarTopMargin, setTopbarTopMargin,
   logTypeForOpen, setLogTypeForOpen, showRawRequest, setShowRawRequest,
-  isTauriEnvironment, invoke,
+  isTauriEnvironment, invoke, voiceInputAssignedModel,
 }) => {
   const { t, i18n } = useTranslation(['settings', 'common']);
 
@@ -530,6 +533,8 @@ export const AppTab: React.FC<AppTabProps> = ({
             </div>
           </div>
         </section>
+
+        <VoiceInputSettingsSection assignedModel={voiceInputAssignedModel} />
 
         {/* 2. 开发者选项 */}
         <section className="study-shell-secondary-card overflow-hidden p-4 sm:p-5">

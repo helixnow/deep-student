@@ -6,7 +6,8 @@ export type ApiCapabilityType =
   | 'function_calling'
   | 'web_search'
   | 'embedding'
-  | 'rerank';
+  | 'rerank'
+  | 'audio_transcription';
 
 export interface ApiCapabilityOverride {
   type: ApiCapabilityType;
@@ -27,6 +28,7 @@ export interface InferredApiCapabilities {
   webSearch: boolean;
   embedding: boolean;
   rerank: boolean;
+  audioTranscription: boolean;
   imageModel: boolean;
   supportsReasoningEffort: boolean;
   supportsThinkingTokens: boolean;
@@ -46,6 +48,9 @@ const getOverride = (descriptor: ApiModelDescriptor, type: ApiCapabilityType): b
 
 const EMBEDDING_REGEX = /(?:^text-|embed|bge-|e5-|llm2vec|retrieval|uae-|gte-|jina-clip|jina-embeddings|voyage-)/i;
 const RERANK_REGEX = /(?:rerank|re-rank|re-ranker|re-ranking|retrieval|retriever)/i;
+const AUDIO_TRANSCRIPTION_REGEX =
+  /(?:^|[/_-])(?:asr|stt)(?:$|[/_-])|transcrib(?:e|er|ing|ption)|whisper|sensevoice|telespeechasr|speech(?:[-_/]to[-_/]text|[-_/]?asr)|gpt-4o(?:-mini)?-transcribe|qwen3-asr|scribe(?:[-_/]v?\d+)?/i;
+const AUDIO_TRANSCRIPTION_EXCLUDED_REGEX = /tts|text-to-speech|speech(?:[-_/]synthesis|[-_/]generation)/i;
 
 const IMAGE_MODEL_REGEX = /flux|diffusion|stabilityai|sd-|dall|cogview|janus|midjourney|mj-|image|gpt-image/i;
 const MIMO_CHAT_REGEX = /^mimo-v2(?:\.5)?(?:-(?:pro|flash))?$|^mimo-v2-omni$/i;
@@ -438,6 +443,16 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
   const rerankOverride = getOverride(descriptor, 'rerank');
   const rerank = rerankOverride !== undefined ? rerankOverride : RERANK_REGEX.test(id) || (name ? RERANK_REGEX.test(name) : false);
 
+  const audioTranscriptionOverride = getOverride(descriptor, 'audio_transcription');
+  const audioTranscription =
+    audioTranscriptionOverride !== undefined
+      ? audioTranscriptionOverride
+      : !embedding &&
+        !rerank &&
+        !AUDIO_TRANSCRIPTION_EXCLUDED_REGEX.test(id) &&
+        !(name ? AUDIO_TRANSCRIPTION_EXCLUDED_REGEX.test(name) : false) &&
+        (AUDIO_TRANSCRIPTION_REGEX.test(id) || (name ? AUDIO_TRANSCRIPTION_REGEX.test(name) : false));
+
   const imageModelById = IMAGE_MODEL_ID_SET.has(id);
   const imageModel = imageModelById || IMAGE_MODEL_REGEX.test(id) || (name ? IMAGE_MODEL_REGEX.test(name) : false);
 
@@ -615,6 +630,7 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
     webSearch,
     embedding,
     rerank,
+    audioTranscription,
     imageModel,
     supportsReasoningEffort,
     supportsThinkingTokens,

@@ -48,6 +48,7 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
             // 多模态知识库模型（嵌入模型通过维度管理设置）
             vl_reranker_model_config_id: null,
             memory_decision_model_config_id: null,
+            voice_input_asr_model_config_id: null,
           })) as Promise<{
             model2_config_id: string | null,
             anki_card_model_config_id: string | null,
@@ -59,6 +60,7 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
             // 多模态知识库模型（嵌入模型通过维度管理设置）
             vl_reranker_model_config_id: string | null,
             memory_decision_model_config_id: string | null,
+            voice_input_asr_model_config_id: string | null,
           }>,
           invoke('get_setting', { key: 'auto_save' }).catch(() => 'true') as Promise<string>,
           invoke('get_setting', { key: 'theme' }).catch(() => 'light') as Promise<string>,
@@ -228,6 +230,7 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
           // 多模态知识库模型配置（嵌入模型通过维度管理设置）
           vl_reranker_model_config_id: modelAssignments?.vl_reranker_model_config_id || '',
           memory_decision_model_config_id: modelAssignments?.memory_decision_model_config_id || '',
+          voice_input_asr_model_config_id: modelAssignments?.voice_input_asr_model_config_id || '',
           autoSave: (autoSave || 'true') === 'true',
           theme: normalizeThemeMode(theme),
           themePalette: normalizeThemePalette(themePaletteSetting),
