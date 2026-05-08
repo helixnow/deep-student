@@ -64,6 +64,35 @@ interface LlmUsageStatsPageProps {
   embedded?: boolean;
 }
 
+const PROVIDER_LABELS: Record<string, string> = {
+  openai: 'OpenAI',
+  anthropic: 'Anthropic',
+  google: 'Google',
+  siliconflow: 'SiliconFlow',
+  deepgram: 'Deepgram',
+  elevenlabs: 'ElevenLabs',
+  assemblyai: 'AssemblyAI',
+  groq: 'Groq',
+};
+
+function formatPercentage(numerator: number, denominator: number): string | null {
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) {
+    return null;
+  }
+
+  const percentage = (numerator / denominator) * 100;
+
+  if (percentage <= 0) {
+    return '0';
+  }
+
+  if (percentage < 0.1) {
+    return '<0.1';
+  }
+
+  return percentage.toFixed(1);
+}
+
 export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, embedded = false }) => {
   const { t } = useTranslation('llm_usage');
   
@@ -137,6 +166,15 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
     return translated !== key ? translated : callerType;
   };
 
+  const getProviderDisplayName = (providerId?: string): string => {
+    if (!providerId?.trim()) {
+      return t('recent.unknownProvider');
+    }
+
+    const normalized = providerId.trim().toLowerCase();
+    return PROVIDER_LABELS[normalized] ?? providerId;
+  };
+
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
@@ -158,19 +196,20 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
     );
   }
 
-  const successRate = summary && summary.totalRequests > 0
-    ? ((summary.successRequests / summary.totalRequests) * 100).toFixed(1)
-    : '0';
+  const successRate = formatPercentage(
+    Number(summary?.successRequests || 0),
+    Number(summary?.totalRequests || 0)
+  );
 
   const modelPieData = byModel.map((m, i) => ({
     name: m.modelId,
-    value: Number(m.totalTokens),
+    value: Number(m.requestCount),
     fill: DESIGN.colors.chart[i % DESIGN.colors.chart.length],
   }));
 
   const callerPieData = byCaller.map((c, i) => ({
     name: getCallerDisplayName(c.callerType),
-    value: Number(c.totalTokens),
+    value: Number(c.requestCount),
     fill: DESIGN.colors.chart[i % DESIGN.colors.chart.length],
   }));
 
@@ -256,7 +295,7 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
             </div>
           </CardHeader>
           <CardContent>
-            <div className="text-2xl font-bold">{successRate}%</div>
+            <div className="text-2xl font-bold">{successRate ? `${successRate}%` : '-'}</div>
             <p className="text-xs text-muted-foreground">
               {summary?.successRequests || 0} / {summary?.totalRequests || 0}
             </p>
@@ -351,7 +390,7 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
                       <Cell key={`cell-${index}`} fill={entry.fill} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value: number) => formatNumber(value)} />
+                  <Tooltip formatter={(value: number) => [formatNumber(value), t('byModel.calls')]} />
                 </PieChart>
               </ResponsiveContainer>
             ) : (
@@ -391,7 +430,7 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
                       <Cell key={`cell-${index}`} fill={entry.fill} />
                     ))}
                   </Pie>
-                  <Tooltip formatter={(value: number) => formatNumber(value)} />
+                  <Tooltip formatter={(value: number) => [formatNumber(value), t('byCaller.calls')]} />
                 </PieChart>
               </ResponsiveContainer>
             ) : (
@@ -416,8 +455,10 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
                   <TableHeader>
                     <TableRow>
                       <TableHead>{t('recent.model')}</TableHead>
+                      <TableHead>{t('recent.provider')}</TableHead>
                       <TableHead>{t('recent.caller')}</TableHead>
                       <TableHead className="text-right">{t('recent.tokens')}</TableHead>
+                      <TableHead className="text-right">{t('recent.duration')}</TableHead>
                       <TableHead className="text-right">{t('recent.status')}</TableHead>
                     </TableRow>
                   </TableHeader>
@@ -425,8 +466,10 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
                     {recentCalls.slice(0, 10).map((call) => (
                       <TableRow key={call.id}>
                         <TableCell className="font-mono text-xs">{call.modelId}</TableCell>
+                        <TableCell>{getProviderDisplayName(call.providerId)}</TableCell>
                         <TableCell>{getCallerDisplayName(call.callerType)}</TableCell>
                         <TableCell className="text-right">{formatNumber(call.totalTokens)}</TableCell>
+                        <TableCell className="text-right">{formatDuration(call.durationMs)}</TableCell>
                         <TableCell className="text-right">
                           {call.success ? (
                             <CheckCircle className="w-4 h-4 text-success inline" />

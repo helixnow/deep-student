@@ -72,6 +72,24 @@ const formatModelName = (modelId: string, t: (key: string) => string): string =>
   return modelId;
 };
 
+const formatPercentage = (numerator: number, denominator: number): string | null => {
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) {
+    return null;
+  }
+
+  const percentage = (numerator / denominator) * 100;
+
+  if (percentage <= 0) {
+    return '0';
+  }
+
+  if (percentage < 0.1) {
+    return '<0.1';
+  }
+
+  return percentage.toFixed(1);
+};
+
 // ============================================================================
 // PropRow - 制卡任务风格 property 行
 // ============================================================================
@@ -294,11 +312,11 @@ const ModelDistribution: React.FC<ModelDistributionProps> = ({ data }) => {
     const displayName = formatModelName(m.modelId, t);
     const existing = mergedData.get(displayName);
     if (existing) {
-      existing.value += Number(m.totalTokens);
+      existing.value += Number(m.requestCount);
       existing.originalIds.push(m.modelId);
     } else {
       mergedData.set(displayName, {
-        value: Number(m.totalTokens),
+        value: Number(m.requestCount),
         originalIds: [m.modelId],
       });
     }
@@ -311,7 +329,7 @@ const ModelDistribution: React.FC<ModelDistributionProps> = ({ data }) => {
     .map(([name, item], i) => ({
       name,
       value: item.value,
-      percent: total > 0 ? ((item.value / total) * 100).toFixed(1) : '0',
+      percent: formatPercentage(item.value, total),
       fill: CHART_COLORS[i % CHART_COLORS.length],
     }));
 
@@ -355,7 +373,7 @@ const ModelDistribution: React.FC<ModelDistributionProps> = ({ data }) => {
                 labelStyle={{ display: 'none' }}
                 itemStyle={{ color: 'hsl(var(--foreground))', fontWeight: 500 }}
                 formatter={(value: number, name: string) => [
-                  `${value.toLocaleString()} (${pieData.find(d => d.name === name)?.percent}%)`, 
+                  `${value.toLocaleString()} (${pieData.find(d => d.name === name)?.percent ?? '-'}%)`, 
                   name
                 ]}
               />
@@ -375,7 +393,7 @@ const ModelDistribution: React.FC<ModelDistributionProps> = ({ data }) => {
                   {item.name}
                 </span>
               </div>
-              <span className="text-[10px] text-muted-foreground pl-4">{item.percent}%</span>
+              <span className="text-[10px] text-muted-foreground pl-4">{item.percent ? `${item.percent}%` : '-'}</span>
             </div>
           ))}
         </div>
@@ -409,11 +427,11 @@ const CallerDistribution: React.FC<CallerDistributionProps> = ({ data }) => {
   }
 
   // 计算总量和百分比
-  const total = data.reduce((sum, c) => sum + Number(c.totalTokens), 0);
+  const total = data.reduce((sum, c) => sum + Number(c.requestCount), 0);
   const pieData = data.map((c, i) => ({
     name: c.displayName || getCallerDisplayName(c.callerType, t),
-    value: Number(c.totalTokens),
-    percent: total > 0 ? ((Number(c.totalTokens) / total) * 100).toFixed(1) : '0',
+    value: Number(c.requestCount),
+    percent: formatPercentage(Number(c.requestCount), total),
     fill: CHART_COLORS[i % CHART_COLORS.length],
   }));
 
@@ -457,7 +475,7 @@ const CallerDistribution: React.FC<CallerDistributionProps> = ({ data }) => {
                 labelStyle={{ display: 'none' }}
                 itemStyle={{ color: 'hsl(var(--foreground))', fontWeight: 500 }}
                 formatter={(value: number, name: string) => [
-                  `${value.toLocaleString()} (${pieData.find(d => d.name === name)?.percent}%)`, 
+                  `${value.toLocaleString()} (${pieData.find(d => d.name === name)?.percent ?? '-'}%)`, 
                   name
                 ]}
               />
@@ -477,7 +495,7 @@ const CallerDistribution: React.FC<CallerDistributionProps> = ({ data }) => {
                   {item.name}
                 </span>
               </div>
-               <span className="text-[10px] text-muted-foreground pl-4">{item.percent}%</span>
+               <span className="text-[10px] text-muted-foreground pl-4">{item.percent ? `${item.percent}%` : '-'}</span>
             </div>
           ))}
         </div>
@@ -596,9 +614,10 @@ export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
     );
   }
 
-  const successRate = summary && summary.totalRequests > 0
-    ? ((summary.successRequests / summary.totalRequests) * 100).toFixed(1)
-    : '0';
+  const successRate = formatPercentage(
+    Number(summary?.successRequests || 0),
+    Number(summary?.totalRequests || 0)
+  );
 
   return (
     <div className={cn('w-full', className)}>
@@ -630,7 +649,7 @@ export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
             </span>
           </PropRow>
           <PropRow icon={<CheckCircle className="h-3.5 w-3.5" />} label={t('summary.successRate')}>
-            <span className="font-semibold tabular-nums">{successRate}%</span>
+            <span className="font-semibold tabular-nums">{successRate ? `${successRate}%` : '-'}</span>
             <span className="text-muted-foreground/50 ml-1 text-[12px]">
               {summary?.successRequests || 0} / {summary?.totalRequests || 0}
             </span>

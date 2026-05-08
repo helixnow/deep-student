@@ -288,8 +288,9 @@ mod tests {
         assert!(report.success, "LLM Usage migration should succeed");
         assert_eq!(report.id, DatabaseId::LlmUsage);
         assert_eq!(
-            report.to_version, 20260201,
-            "LLM Usage should migrate to version 20260201"
+            report.to_version,
+            LLM_USAGE_MIGRATION_SET.latest_version() as u32,
+            "LLM Usage should migrate to the latest version"
         );
     }
 

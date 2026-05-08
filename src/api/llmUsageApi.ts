@@ -69,6 +69,7 @@ export interface UsageRecord {
   callerId?: string;
   modelId: string;
   configId?: string;
+  providerId?: string;
   promptTokens: number;
   completionTokens: number;
   totalTokens: number;
