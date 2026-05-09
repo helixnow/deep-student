@@ -1,46 +1,12 @@
-import React, { useState, useEffect, useMemo, useRef, useCallback, memo } from 'react';
+import React, { useMemo, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { shallowEqualSpans, makeUncertaintyHighlightPlugin } from './rendererUtils';
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
-
-const STREAMING_THROTTLE_MS = 100;
-
-function useThrottledContent(content: string, isStreaming: boolean): string {
-  const [throttled, setThrottled] = useState(content);
-  const lastUpdateRef = useRef(0);
-  const rafRef = useRef<number | null>(null);
-  const latestContentRef = useRef(content);
-  latestContentRef.current = content;
-
-  useEffect(() => {
-    if (!isStreaming) {
-      if (rafRef.current) cancelAnimationFrame(rafRef.current);
-      setThrottled(content);
-      return;
-    }
-    const now = performance.now();
-    const elapsed = now - lastUpdateRef.current;
-    if (elapsed >= STREAMING_THROTTLE_MS) {
-      lastUpdateRef.current = now;
-      setThrottled(content);
-    } else if (!rafRef.current) {
-      rafRef.current = requestAnimationFrame(() => {
-        rafRef.current = null;
-        lastUpdateRef.current = performance.now();
-        setThrottled(latestContentRef.current);
-      });
-    }
-    return () => {
-      if (rafRef.current) {
-        cancelAnimationFrame(rafRef.current);
-        rafRef.current = null;
-      }
-    };
-  }, [content, isStreaming]);
-
-  return isStreaming ? throttled : content;
-}
+import {
+  useSmoothedStreamingContent,
+  type StreamingSmoothingPreset,
+} from './streamingSmoothing';
 
 interface StreamingMarkdownRendererProps {
   content: string;
@@ -58,6 +24,11 @@ interface StreamingMarkdownRendererProps {
   onCitationClick?: (type: string, index: number) => void;
   // 引用图片解析器：根据引用类型与序号返回图片 URL
   resolveCitationImage?: (type: RetrievalSourceType, index: number) => { url: string; title?: string } | null | undefined;
+  // 流式平滑预设：参考 Lobe 的 realtime / balanced / silky 模型，默认 balanced
+  streamSmoothingPreset?: StreamingSmoothingPreset | string | null;
+  // 调试/Profiler 关联信息
+  blockId?: string;
+  messageId?: string;
 }
 
 type ParsedContent = {
@@ -224,37 +195,31 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
   extraRemarkPlugins,
   onCitationClick,
   resolveCitationImage,
+  streamSmoothingPreset = 'balanced',
+  blockId,
+  messageId,
 }) => {
   const { t } = useTranslation('chatV2');
-  // 🔧 P0修复：流式期间 throttle content 更新，减少 O(n²) 重解析开销
-  const throttledContent = useThrottledContent(content, isStreaming);
+  // 流式期间用 preset-based smoothing 代替固定 100ms throttle，
+  // 保留 MarkdownRenderer 的业务渲染能力，只改变进入渲染器前的可见文本节奏。
+  const smoothedContent = useSmoothedStreamingContent(content, isStreaming, {
+    preset: streamSmoothingPreset,
+    blockId,
+    messageId,
+  });
   const processedContent = useMemo(
-    () => preprocessStreamingContent(throttledContent, isStreaming),
-    [throttledContent, isStreaming]
+    () => preprocessStreamingContent(smoothedContent, isStreaming),
+    [smoothedContent, isStreaming]
   );
   const displayContent = processedContent.content;
   const isPartialMath = processedContent.hasPartialMath;
-  const shouldShowCursor = isStreaming && displayContent.trim().length > 0;
-
-  const [showCursor, setShowCursor] = useState(false);
+  const hasVisibleContent = displayContent.trim().length > 0;
 
   // 🔧 P1修复：使用稳定引用比较替代 JSON.stringify
   const highlightSpansRef = React.useRef(highlightSpans);
   if (!shallowEqualSpans(highlightSpansRef.current, highlightSpans)) {
     highlightSpansRef.current = highlightSpans;
   }
-
-  useEffect(() => {
-    if (shouldShowCursor) {
-      setShowCursor(true);
-      const interval = setInterval(() => {
-        setShowCursor(prev => !prev);
-      }, 500);
-      return () => clearInterval(interval);
-    } else {
-      setShowCursor(false);
-    }
-  }, [shouldShowCursor]);
 
   // 解析思维链内容：同时支持 <thinking>…</thinking> 与 <think>…</think>
   // 🔔 V2 兼容性说明：V2 架构中 thinking 已是独立块，此解析主要用于：
@@ -309,7 +274,12 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
   ]);
 
   return (
-    <div className="streaming-markdown">
+    <div
+      className="streaming-markdown"
+      data-streaming={isStreaming ? 'true' : 'false'}
+      data-has-visible-content={hasVisibleContent ? 'true' : 'false'}
+      data-stream-preset={streamSmoothingPreset || 'balanced'}
+    >
       {parsedContent ? (
         <>
           {/* 渲染思维链内容 */}
@@ -350,22 +320,16 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
             ) : (
               renderedContent
             )}
-            {shouldShowCursor && (
-              <span className="streaming-cursor" data-active={showCursor ? 'true' : 'false'} aria-hidden="true">▋</span>
-            )}
             {isPartialMath && isStreaming && (
-              <span className="partial-math-indicator" title={t('renderer.incompleteMathFormula')}>📝</span>
+              <span className="partial-math-indicator" title={t('renderer.incompleteMathFormula')} aria-label={t('renderer.incompleteMathFormula')} />
             )}
           </div>
         </>
       ) : (
         <div className="normal-content">
           {renderedContent}
-          {shouldShowCursor && (
-            <span className="streaming-cursor" data-active={showCursor ? 'true' : 'false'} aria-hidden="true">▋</span>
-          )}
           {isPartialMath && isStreaming && (
-            <span className="partial-math-indicator" title={t('renderer.incompleteMathFormula')}>📝</span>
+            <span className="partial-math-indicator" title={t('renderer.incompleteMathFormula')} aria-label={t('renderer.incompleteMathFormula')} />
           )}
         </div>
       )}
@@ -377,6 +341,9 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
     prevProps.content === nextProps.content &&
     prevProps.isStreaming === nextProps.isStreaming &&
     shallowEqualSpans(prevProps.highlightSpans, nextProps.highlightSpans) &&
-    prevProps.extraRemarkPlugins === nextProps.extraRemarkPlugins
+    prevProps.extraRemarkPlugins === nextProps.extraRemarkPlugins &&
+    prevProps.streamSmoothingPreset === nextProps.streamSmoothingPreset &&
+    prevProps.blockId === nextProps.blockId &&
+    prevProps.messageId === nextProps.messageId
   );
 });

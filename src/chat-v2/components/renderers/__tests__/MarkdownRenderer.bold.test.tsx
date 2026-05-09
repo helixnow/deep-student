@@ -33,10 +33,11 @@ describe('MarkdownRenderer bold compatibility', () => {
     expect(container.querySelector('.streaming-cursor')).toBeNull();
   });
 
-  it('shows the streaming cursor only after visible content exists', () => {
+  it('does not render a terminal-style cursor while content is streaming', () => {
     const { container } = render(<StreamingMarkdownRenderer content="正在输出" isStreaming />);
 
-    expect(container.querySelector('.streaming-cursor')).toBeInTheDocument();
+    expect(container.querySelector('.streaming-cursor')).toBeNull();
+    expect(container.querySelector('.streaming-markdown')).toHaveAttribute('data-streaming', 'true');
   });
 
   it('renders strong in table first cell with CJK text and citation-like suffix', () => {

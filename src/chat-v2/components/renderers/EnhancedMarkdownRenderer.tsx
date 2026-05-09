@@ -1,4 +1,4 @@
-import React, { memo, useEffect, useMemo, useState } from 'react';
+import React, { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { shallowEqualSpans, makeUncertaintyHighlightPlugin } from './rendererUtils';
@@ -329,24 +329,13 @@ export const EnhancedStreamingMarkdownRenderer: React.FC<BaseStreamingProps> = m
   const prepared = useMemo(() => preprocessStreaming(content, isStreaming), [content, isStreaming]);
   const displayContent = prepared.content;
   const isPartialMath = prepared.meta.hasPartialMath;
+  const hasVisibleContent = displayContent.trim().length > 0;
 
-  const [showCursor, setShowCursor] = useState(true);
   // 🔧 P1修复：使用稳定引用比较替代 JSON.stringify
   const highlightSpansRef = React.useRef(highlightSpans);
   if (!shallowEqualSpans(highlightSpansRef.current, highlightSpans)) {
     highlightSpansRef.current = highlightSpans;
   }
-
-  useEffect(() => {
-    if (isStreaming) {
-      const timer = setInterval(() => {
-        setShowCursor(prev => !prev);
-      }, 500);
-      return () => clearInterval(timer);
-    }
-    setShowCursor(false);
-    return undefined;
-  }, [isStreaming]);
 
   const parsed = useMemo(() => parseChainOfThought(displayContent), [displayContent]);
   const stableHighlightSpans = highlightSpansRef.current;
@@ -360,7 +349,11 @@ export const EnhancedStreamingMarkdownRenderer: React.FC<BaseStreamingProps> = m
   }, [displayContent, isStreaming, onLinkClick, stableHighlightSpans, t]);
 
   return (
-    <div className="streaming-markdown">
+    <div
+      className="streaming-markdown"
+      data-streaming={isStreaming ? 'true' : 'false'}
+      data-has-visible-content={hasVisibleContent ? 'true' : 'false'}
+    >
       {parsed ? (
         <>
           {parsed.thinkingContent && (
@@ -386,18 +379,16 @@ export const EnhancedStreamingMarkdownRenderer: React.FC<BaseStreamingProps> = m
             ) : (
               renderedContent
             )}
-            {isStreaming && (<span className="streaming-cursor" data-active={showCursor ? 'true' : 'false'} aria-hidden="true">▋</span>)}
             {isPartialMath && isStreaming && (
-              <span className="partial-math-indicator" title={t('renderer.incompleteMathFormula')}>📝</span>
+              <span className="partial-math-indicator" title={t('renderer.incompleteMathFormula')} aria-label={t('renderer.incompleteMathFormula')} />
             )}
           </div>
         </>
       ) : (
         <div className="normal-content">
           {renderedContent}
-          {isStreaming && (<span className="streaming-cursor" data-active={showCursor ? 'true' : 'false'} aria-hidden="true">▋</span>)}
           {isPartialMath && isStreaming && (
-            <span className="partial-math-indicator" title={t('renderer.incompleteMathFormula')}>📝</span>
+            <span className="partial-math-indicator" title={t('renderer.incompleteMathFormula')} aria-label={t('renderer.incompleteMathFormula')} />
           )}
         </div>
       )}

@@ -555,11 +555,64 @@
 
 .chat-v2 .streaming-markdown {
   position: relative;
+  --stream-reveal-duration: 220ms;
+  --stream-reveal-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --stream-tail-duration: 1.45s;
 }
 
 .chat-v2 .normal-content,
 .chat-v2 .main-content {
   position: relative;
+}
+
+.chat-v2 .streaming-markdown[data-streaming="true"] .normal-content,
+.chat-v2 .streaming-markdown[data-streaming="true"] .main-content {
+  transition:
+    opacity var(--stream-reveal-duration) var(--stream-reveal-ease),
+    filter var(--stream-reveal-duration) var(--stream-reveal-ease),
+    transform var(--stream-reveal-duration) var(--stream-reveal-ease);
+}
+
+.chat-v2 .streaming-markdown[data-streaming="true"][data-has-visible-content="true"] .normal-content::after,
+.chat-v2 .streaming-markdown[data-streaming="true"][data-has-visible-content="true"] .main-content::after {
+  content: "";
+  display: inline-block;
+  width: 28px;
+  height: 8px;
+  margin-left: 7px;
+  border-radius: 999px;
+  vertical-align: baseline;
+  background:
+    radial-gradient(circle at 20% 50%, hsl(var(--primary) / 0.46), transparent 35%),
+    linear-gradient(90deg, hsl(var(--primary) / 0.28), hsl(var(--primary) / 0));
+  box-shadow: 0 0 18px hsl(var(--primary) / 0.18);
+  transform-origin: left center;
+  animation: streamingMarkdownTail var(--stream-tail-duration) var(--stream-reveal-ease) infinite;
+}
+
+@keyframes streamingMarkdownTail {
+  0%, 100% {
+    opacity: 0.34;
+    transform: translateY(1px) scaleX(0.76);
+  }
+  48% {
+    opacity: 0.72;
+    transform: translateY(0) scaleX(1);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-v2 .streaming-markdown[data-streaming="true"] .normal-content,
+  .chat-v2 .streaming-markdown[data-streaming="true"] .main-content {
+    transition: none;
+  }
+
+  .chat-v2 .streaming-markdown[data-streaming="true"][data-has-visible-content="true"] .normal-content::after,
+  .chat-v2 .streaming-markdown[data-streaming="true"][data-has-visible-content="true"] .main-content::after {
+    animation: none;
+    opacity: 0.42;
+    transform: none;
+  }
 }
 
 .chat-v2 .chain-of-thought {

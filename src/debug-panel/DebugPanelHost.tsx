@@ -39,6 +39,7 @@ import MultiAgentDebugPlugin from './plugins/MultiAgentDebugPlugin';
 import SubagentTestPlugin from './plugins/SubagentTestPlugin';
 import SubagentMessageFlowDebugPlugin from './plugins/SubagentMessageFlowDebugPlugin';
 import ThinkingBlockDebugPlugin from './plugins/ThinkingBlockDebugPlugin';
+import MarkdownStreamingProfilerPlugin from './plugins/MarkdownStreamingProfilerPlugin';
 import { debugMasterSwitch } from './debugMasterSwitch';
 import DstuDebugPlugin from './plugins/DstuDebugPlugin';
 import AttachmentInjectionDebugPlugin from './plugins/AttachmentInjectionDebugPlugin';
@@ -204,6 +205,15 @@ const PLUGINS: DebugPanelPluginEntry[] = [
     Component: ThinkingBlockDebugPlugin,
     labelDefault: 'Thinking 块调试',
     descriptionDefault: '监听 thinking 块流式生成和数据库保存流程，诊断刷新后 thinking 丢失问题。',
+    groupId: 'chat-timeline',
+  },
+  {
+    id: 'markdown-streaming-profiler',
+    labelKey: 'debug_panel.plugin_markdown_streaming_profiler',
+    descriptionKey: 'debug_panel.plugin_markdown_streaming_profiler_desc',
+    Component: MarkdownStreamingProfilerPlugin,
+    labelDefault: 'Markdown 流式 Profiler',
+    descriptionDefault: '观察 Markdown smoothing 的 target/display 事件、lag 与 preset，调试 LLM 输出观感。',
     groupId: 'chat-timeline',
   },
   {
@@ -615,7 +625,9 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
           return new Set(parsed.filter((id): id is string => typeof id === 'string'));
         }
       }
-    } catch {}
+    } catch {
+      // localStorage 不可用或激活数据损坏，重置为空
+    }
     return new Set();
   });
 
@@ -658,7 +670,9 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
       next.add(pluginId);
       try {
         localStorage.setItem(ACTIVATED_STORAGE_KEY, JSON.stringify(Array.from(next)));
-      } catch {}
+      } catch {
+        // localStorage 写入失败时，插件激活状态仍在内存中生效
+      }
       return next;
     });
   }, []);
@@ -728,12 +742,16 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
       if (dragging) {
         try {
           localStorage.setItem(STORAGE_KEYS.POSITION, JSON.stringify(pos));
-        } catch {}
+        } catch {
+          // 拖拽位置保存失败时，下次打开使用默认位置
+        }
       }
       if (resizing) {
         try {
           localStorage.setItem(STORAGE_KEYS.SIZE, JSON.stringify(size));
-        } catch {}
+        } catch {
+          // 面板尺寸保存失败时，下次打开使用默认尺寸
+        }
       }
       setDragging(false);
       setResizing(false);
