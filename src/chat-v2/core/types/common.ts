@@ -84,6 +84,8 @@ export interface PanelStates {
   attachment: boolean;
   /** 技能选择面板 */
   skill: boolean;
+  /** 图片生成面板 */
+  imageGen: boolean;
 }
 
 /**
@@ -99,6 +101,7 @@ export function createDefaultPanelStates(): PanelStates {
     advanced: false,
     attachment: false,
     skill: false,
+    imageGen: false,
   };
 }
 

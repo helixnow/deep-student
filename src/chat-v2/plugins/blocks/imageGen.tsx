@@ -23,6 +23,7 @@ import {
   RotateCcw,
   ImageIcon,
   Sparkles,
+  MessageSquarePlus,
 } from 'lucide-react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { ImagePreview } from './components';
@@ -47,6 +48,16 @@ export interface ImageGenBlockData {
   model?: string;
   /** 生成参数 */
   params?: Record<string, unknown>;
+  /** VFS ContextRef resource id */
+  resourceId?: string;
+  /** VFS ContextRef resource hash */
+  resourceHash?: string;
+  /** VFS attachment source id */
+  sourceId?: string;
+  /** 图片 MIME 类型 */
+  mimeType?: string;
+  /** OpenAI 兼容接口可能返回的修订提示词 */
+  revisedPrompt?: string;
 }
 
 // ============================================================================
@@ -229,6 +240,7 @@ const ImageGenError: React.FC<ImageGenErrorProps> = ({
 const ImageGenBlockComponent: React.FC<BlockComponentProps> = React.memo(({
   block,
   isStreaming,
+  store,
 }) => {
   const { t } = useTranslation('chatV2');
 
@@ -244,11 +256,24 @@ const ImageGenBlockComponent: React.FC<BlockComponentProps> = React.memo(({
   const width = outputData?.width || inputData?.width;
   const height = outputData?.height || inputData?.height;
   const model = outputData?.model || inputData?.model;
+  const resourceId = outputData?.resourceId;
+  const resourceHash = outputData?.resourceHash;
 
   // 重试回调（TODO: 实际实现）
   const handleRetry = useCallback(() => {
     console.log('[ImageGenBlock] Retry generation:', prompt);
   }, [prompt]);
+
+  const handleUseForFollowup = useCallback(() => {
+    if (!store || !resourceId || !resourceHash) return;
+    store.getState().addContextRef({
+      resourceId,
+      hash: resourceHash,
+      typeId: 'image',
+      displayName: prompt || t('blocks.imageGen.generatedImage', 'AI 生成图片'),
+      injectModes: { image: ['image'] },
+    });
+  }, [store, resourceId, resourceHash, prompt, t]);
 
   // 待处理状态
   if (block.status === 'pending') {
@@ -342,6 +367,15 @@ const ImageGenBlockComponent: React.FC<BlockComponentProps> = React.memo(({
 
       {/* 图片信息 */}
       <ImageInfo width={width} height={height} model={model} />
+
+      {resourceId && resourceHash && (
+        <div className="flex items-center justify-end gap-2 border-t border-border/30 px-3 py-2">
+          <NotionButton variant="ghost" size="sm" onClick={handleUseForFollowup} className="text-primary hover:bg-primary/10">
+            <MessageSquarePlus className="w-3.5 h-3.5" />
+            <span>{t('blocks.imageGen.useForFollowup', '用于追问')}</span>
+          </NotionButton>
+        </div>
+      )}
     </div>
   );
 });
