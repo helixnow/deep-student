@@ -182,6 +182,28 @@
       "modes": "模式",
       "tools": "工具"
     },
+    "imageGen": {
+      "title": "生成图片",
+      "subtitle": "通过内置工具生成图片，结果会保存到 VFS。",
+      "configureModel": "设置模型",
+      "placeholder": "例如：光合作用概念图，清晰标注阳光、水、二氧化碳、叶绿体和葡萄糖",
+      "promptRequired": "请输入生图描述",
+      "model": "模型",
+      "autoModel": "自动选择",
+      "openAICompatible": "OpenAI 兼容 Image API",
+      "loadingModels": "正在加载生图模型...",
+      "noModelTitle": "未配置生图模型",
+      "noModelDescription": "请先在模型设置中标记并选择一个支持 /images/generations 的模型。",
+      "aspectRatio": "比例",
+      "quality": "质量",
+      "purposes": {
+        "knowledgeCard": "知识卡片插图",
+        "quizImage": "题目配图",
+        "conceptDiagram": "概念图",
+        "coverImage": "封面图"
+      },
+      "generate": "生成"
+    },
     "nonMultimodalImageFallbackUnavailable": "当前模型不支持图片输入，且有 {{count}} 个附件尚未准备好可用的文本/OCR 模式。请切换到多模态模型，或等待 OCR 完成后重试。",
     "stage": {
       "textExtraction": "提取文本",
@@ -360,6 +382,8 @@
     "imageGen": {
       "title": "图片生成",
       "prompt": "提示词",
+      "generatedImage": "生成图片",
+      "useForFollowup": "用于追问",
       "generating": "正在生成图片...",
       "pending": "等待生成...",
       "noImage": "暂无图片",

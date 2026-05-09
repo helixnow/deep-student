@@ -182,6 +182,28 @@
       "modes": "Modes",
       "tools": "Tools"
     },
+    "imageGen": {
+      "title": "Generate image",
+      "subtitle": "Generate through a built-in tool. Results are saved to VFS.",
+      "configureModel": "Set model",
+      "placeholder": "e.g. a photosynthesis concept diagram with sunlight, water, carbon dioxide, chloroplasts, and glucose clearly labeled",
+      "promptRequired": "Describe the image first",
+      "model": "Model",
+      "autoModel": "Auto select",
+      "openAICompatible": "OpenAI-compatible Image API",
+      "loadingModels": "Loading image models...",
+      "noModelTitle": "No image model configured",
+      "noModelDescription": "Mark and choose a model that supports /images/generations in model settings first.",
+      "aspectRatio": "Ratio",
+      "quality": "Quality",
+      "purposes": {
+        "knowledgeCard": "Knowledge card illustration",
+        "quizImage": "Question illustration",
+        "conceptDiagram": "Concept diagram",
+        "coverImage": "Cover image"
+      },
+      "generate": "Generate"
+    },
     "nonMultimodalImageFallbackUnavailable": "The current model does not support image input, and {{count}} attachments are not ready for text/OCR mode yet. Switch to a multimodal model or wait for OCR to complete and try again.",
     "stage": {
       "textExtraction": "Extracting text",
@@ -360,6 +382,8 @@
     "imageGen": {
       "title": "Image Generation",
       "prompt": "Prompt",
+      "generatedImage": "Generated image",
+      "useForFollowup": "Use for follow-up",
       "generating": "Generating image...",
       "pending": "Waiting to generate...",
       "noImage": "No image",
