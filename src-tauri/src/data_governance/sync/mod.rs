@@ -37,12 +37,39 @@
 //! - 进度回调和实时状态更新
 
 // 子模块声明
+pub mod conflict_resolver;
 pub mod emitter;
+pub mod hlc;
 pub mod progress;
+pub mod tombstone;
 
 // 重新导出常用类型
+pub use conflict_resolver::{
+    ConflictAwareApplyResult, ConflictOutcome, ConflictPolicy, ConflictRecordToSave,
+    ConflictResolver, ConflictSide,
+};
 pub use emitter::{OptionalEmitter, SyncProgressCallback, SyncProgressEmitter, EVENT_NAME};
+pub use hlc::{compare_hlc_strings, Hlc, HlcClock, HlcError, MAX_DRIFT_MS};
 pub use progress::{ProgressTracker, SpeedCalculator, SyncPhase, SyncProgress};
+pub use tombstone::{
+    apply_blob_tombstones, AssetTombstoneEntry, AssetTombstones, BlobTombstoneEntry,
+    BlobTombstones,
+};
+
+/// 公开的时间戳解析函数（供 conflict_resolver 等子模块复用）
+pub fn parse_flexible_timestamp_public(s: &str) -> Option<chrono::DateTime<chrono::Utc>> {
+    use chrono::{DateTime, NaiveDateTime, Utc};
+    if let Ok(dt) = DateTime::parse_from_rfc3339(s) {
+        return Some(dt.with_timezone(&Utc));
+    }
+    if let Ok(naive) = NaiveDateTime::parse_from_str(s, "%Y-%m-%d %H:%M:%S") {
+        return Some(naive.and_utc());
+    }
+    if let Ok(naive) = NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
+        return Some(naive.and_utc());
+    }
+    None
+}
 
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
@@ -1887,6 +1914,14 @@ impl SyncManager {
     ///
     /// 使用标准 UPSERT (`ON CONFLICT DO UPDATE`) 策略处理更新。
     /// 相比 `REPLACE`，它不会触发 DELETE 触发器，也不会改变 rowid，更加安全。
+    ///
+    /// ## NULL 字段语义
+    ///
+    /// - **普通字段的 null**：走 UPSERT 的 COALESCE 语义，保留本地已有值。
+    ///   这保护了"云端因为 schema 差异或序列化缺字段"场景下本地数据不被误清。
+    /// - **`deleted_at` 的显式 null**：表示"复活一条软删除记录"的明确意图，
+    ///   在 UPSERT 之后执行一条独立 `UPDATE SET deleted_at = NULL`。
+    ///   这对应 scenarios_tests 中"Delete 后又 Insert 同 id" 的幂等性需求。
     fn apply_single_record(
         conn: &Connection,
         table_name: &str,
@@ -1906,12 +1941,15 @@ impl SyncManager {
             return Err(SyncError::Database(format!("记录数据为空: {}", record_id)));
         }
 
-        // Phase 5.1 Optimization: Use ON CONFLICT DO UPDATE (True UPSERT)
+        // 只把 deleted_at 的显式 null 作为"复活意图"处理，其他 null 字段走 COALESCE
+        let revive_record =
+            matches!(obj.get("deleted_at"), Some(serde_json::Value::Null))
+                && Self::table_has_column(conn, table_name, "deleted_at");
+
+        // build_insert_parts 已经跳过所有 null，因此 deleted_at=null 不会参与 INSERT/COALESCE
         let (columns, placeholders, values) = Self::build_insert_parts(obj)?;
         let columns_list: Vec<&str> = columns.split(", ").collect();
 
-        // COALESCE 防御：当云端值为 NULL 时保留本地已有值，
-        // 防止跨版本 Schema 差异导致的 NOT NULL 约束破坏或数据误清除。
         let upsert_sql = if table_name == "llm_usage_daily" {
             let pk_cols = ["\"date\"", "\"caller_type\"", "\"model\"", "\"provider\""];
             let update_set = columns_list
@@ -1956,6 +1994,20 @@ impl SyncManager {
         conn.execute(&upsert_sql, params_refs.as_slice())
             .map_err(|e| SyncError::Database(format!("UPSERT (OnConflict) 记录失败: {}", e)))?;
 
+        // 复活意图：清空 deleted_at
+        //
+        // **优化**：只在本地 deleted_at 实际非 NULL 时才运行 UPDATE。
+        // 否则 trg_upd 触发器会产生无谓的 __change_log 条目（虽被回声抑制但仍污染日志表）。
+        if revive_record && table_name != "llm_usage_daily" {
+            let id_col_ident = Self::quote_identifier(id_column)?;
+            let null_sql = format!(
+                "UPDATE {} SET \"deleted_at\" = NULL WHERE {} = ?1 AND \"deleted_at\" IS NOT NULL",
+                table_ident, id_col_ident
+            );
+            conn.execute(&null_sql, params![record_id])
+                .map_err(|e| SyncError::Database(format!("复活软删记录失败: {}", e)))?;
+        }
+
         Ok(())
     }
 
@@ -1963,6 +2015,14 @@ impl SyncManager {
     ///
     /// # 返回
     /// * `(列名列表, 占位符列表, 参数值列表)`
+    ///
+    /// ## NULL 处理（P0 修复）
+    /// 对于值为 JSON `null` 的字段，**直接跳过不写入**。
+    /// 原因：
+    /// 1. 避免 INSERT 路径触发 NOT NULL 约束违规（即使 UPSERT 会走 UPDATE 分支，
+    ///    SQLite 仍会先校验 VALUES 列的约束）
+    /// 2. 语义上等价于"保留本地既有值"（符合项目里原本的 COALESCE 意图）
+    /// 3. 对于真正需要"清空字段"的场景，应显式传递空字符串/空数组，而不是 null
     fn build_insert_parts(
         obj: &serde_json::Map<String, serde_json::Value>,
     ) -> Result<(String, String, Vec<Box<dyn rusqlite::ToSql>>), SyncError> {
@@ -1970,13 +2030,18 @@ impl SyncManager {
         let mut placeholders = Vec::new();
         let mut values: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
-        for (i, (key, value)) in obj.iter().enumerate() {
+        let mut idx = 0usize;
+        for (key, value) in obj.iter() {
+            if matches!(value, serde_json::Value::Null) {
+                continue;
+            }
+            idx += 1;
             columns.push(Self::quote_identifier(key)?);
-            placeholders.push(format!("?{}", i + 1));
+            placeholders.push(format!("?{}", idx));
 
             // 根据 JSON 值类型转换为 SQLite 参数
             let sql_value: Box<dyn rusqlite::ToSql> = match value {
-                serde_json::Value::Null => Box::new(None::<String>),
+                serde_json::Value::Null => unreachable!("已在上面跳过"),
                 serde_json::Value::Bool(b) => Box::new(*b),
                 serde_json::Value::Number(n) => {
                     if let Some(i) = n.as_i64() {
@@ -1994,6 +2059,14 @@ impl SyncManager {
                 }
             };
             values.push(sql_value);
+        }
+
+        if columns.is_empty() {
+            // 调用方（apply_single_record）应保证至少有一个非 null 字段。
+            // 此分支保留作为防御：全 null 输入时返回错误。
+            return Err(SyncError::Database(
+                "UPSERT: 全部字段为 NULL，调用方应先用独立 UPDATE 处理".to_string(),
+            ));
         }
 
         Ok((columns.join(", "), placeholders.join(", "), values))
@@ -2150,22 +2223,26 @@ impl SyncManager {
                     result.skipped_count += 1;
                 }
 
-                // 精确抑制：只标记由本次回放产生的、且匹配当前 table+record+operation 的
-                // change_log 条目为已同步，避免误标记用户并发操作产生的条目。
-                // [P2 Fix] 增加 operation 过滤条件，防止用户恰好在回放间隙修改同一条
-                // 记录时（不同操作类型）被误标记为已同步而导致用户修改静默丢失。
+                // 精确抑制：标记由本次回放产生的、匹配当前 table+record 的所有
+                // change_log 条目为已同步。
+                //
+                // 这里**不限制 operation**，因为 apply_single_record 内部
+                // 对 "payload 含 deleted_at: null" 的情况会先 UPSERT 再做一次独立 UPDATE，
+                // 后者产生的 `operation = UPDATE` 条目也必须被视为回放产物。
+                //
+                // 并发安全性：apply_downloaded_changes 在一个事务内执行，用户手动写入
+                // 使用独立连接无法并发产生同事务内的 __change_log 条目，所以不会误标记。
                 if let Some(max_id) = pre_log_max_id {
                     let sync_version = chrono::Utc::now().timestamp();
                     let _ = conn.execute(
                         "UPDATE __change_log SET sync_version = ?1 \
                          WHERE id > ?2 AND sync_version = 0 \
-                         AND table_name = ?3 AND record_id = ?4 AND operation = ?5",
+                         AND table_name = ?3 AND record_id = ?4",
                         params![
                             sync_version,
                             max_id,
                             &change.table_name,
                             &change.record_id,
-                            change.operation.as_str()
                         ],
                     );
                 }
@@ -2224,6 +2301,278 @@ impl SyncManager {
         Ok(result)
     }
 
+    /// 以冲突感知方式应用变更（修复 #3 #4 #20）
+    ///
+    /// 与 `apply_downloaded_changes` 不同：
+    /// 1. 对每条下载的变更，先用 `ConflictResolver::resolve_one` 判定是否冲突
+    /// 2. 若冲突：
+    ///    - 把败方数据写入 `__sync_conflicts` 表（永不丢失）
+    ///    - 胜方是 Cloud → 正常应用云端变更到数据库
+    ///    - 胜方是 Local → 跳过应用，但仍写胜方本地值到冲突表作为留痕
+    /// 3. 无冲突：直接应用
+    ///
+    /// 使用一次事务保证要么全部成功要么回滚；若整体失败不写冲突表。
+    pub fn apply_downloaded_changes_with_conflict_guard(
+        conn: &Connection,
+        changes: &[SyncChangeWithData],
+        id_column_map: Option<&HashMap<String, String>>,
+        policy: conflict_resolver::ConflictPolicy,
+        cloud_device_id: Option<&str>,
+        local_device_id: Option<&str>,
+    ) -> Result<(ApplyChangesResult, conflict_resolver::ConflictAwareApplyResult), SyncError> {
+        use conflict_resolver::{ConflictResolver, ConflictSide};
+
+        if changes.is_empty() {
+            return Ok((
+                ApplyChangesResult::empty(),
+                conflict_resolver::ConflictAwareApplyResult::default(),
+            ));
+        }
+
+        // 保证冲突表存在（幂等）
+        ConflictResolver::ensure_conflict_table(conn)?;
+
+        let original_fk: i64 = conn
+            .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
+            .unwrap_or(1);
+        conn.execute_batch("PRAGMA defer_foreign_keys = ON;")
+            .map_err(|e| SyncError::Database(format!("开启延迟外键检查失败: {}", e)))?;
+        conn.execute_batch("BEGIN IMMEDIATE;")
+            .map_err(|e| SyncError::Database(format!("开始事务失败: {}", e)))?;
+
+        let resolver = ConflictResolver::new(policy);
+        let mut apply_result = ApplyChangesResult::empty();
+        let mut conflict_result = conflict_resolver::ConflictAwareApplyResult::default();
+
+        let inner: Result<(), SyncError> = (|| {
+            for change in changes {
+                let id_column = id_column_map
+                    .and_then(|m| m.get(&change.table_name))
+                    .map(|s| s.as_str())
+                    .unwrap_or("id");
+
+                match resolver.resolve_one(conn, change, id_column)? {
+                    None => {
+                        // 非冲突，正常 UPSERT
+                        let suppress = change.suppress_change_log.unwrap_or(false);
+                        let pre_log_max_id = if suppress {
+                            conn.query_row(
+                                "SELECT COALESCE(MAX(id), 0) FROM __change_log",
+                                [],
+                                |row| row.get::<_, i64>(0),
+                            )
+                            .ok()
+                        } else {
+                            None
+                        };
+
+                        let applied = Self::apply_single_change(conn, change, id_column)?;
+                        if applied {
+                            apply_result.success_count += 1;
+                            apply_result
+                                .applied_keys
+                                .insert((change.table_name.clone(), change.record_id.clone()));
+                        } else {
+                            apply_result.skipped_count += 1;
+                        }
+
+                        if let Some(max_id) = pre_log_max_id {
+                            let sync_version = chrono::Utc::now().timestamp();
+                            let _ = conn.execute(
+                                "UPDATE __change_log SET sync_version = ?1 \
+                                 WHERE id > ?2 AND sync_version = 0 \
+                                 AND table_name = ?3 AND record_id = ?4",
+                                params![
+                                    sync_version,
+                                    max_id,
+                                    &change.table_name,
+                                    &change.record_id,
+                                ],
+                            );
+                        }
+                    }
+                    Some(outcome) => {
+                        // 落败方先进冲突表（两端都各存一份，便于 UI 三路展示）
+                        ConflictResolver::save_conflict_record(
+                            conn,
+                            conflict_resolver::ConflictRecordToSave {
+                                table_name: &change.table_name,
+                                record_id: &change.record_id,
+                                side: outcome.loser,
+                                data: &outcome.loser_data,
+                                winning_device_id: if outcome.winner == ConflictSide::Cloud {
+                                    cloud_device_id
+                                } else {
+                                    local_device_id
+                                },
+                                losing_device_id: if outcome.loser == ConflictSide::Cloud {
+                                    cloud_device_id
+                                } else {
+                                    local_device_id
+                                },
+                            },
+                        )?;
+
+                        // 同时把胜方的快照也记录一份（side=winner），方便 UI 同时看到两份
+                        ConflictResolver::save_conflict_record(
+                            conn,
+                            conflict_resolver::ConflictRecordToSave {
+                                table_name: &change.table_name,
+                                record_id: &change.record_id,
+                                side: outcome.winner,
+                                data: &outcome.winner_data,
+                                winning_device_id: if outcome.winner == ConflictSide::Cloud {
+                                    cloud_device_id
+                                } else {
+                                    local_device_id
+                                },
+                                losing_device_id: if outcome.loser == ConflictSide::Cloud {
+                                    cloud_device_id
+                                } else {
+                                    local_device_id
+                                },
+                            },
+                        )?;
+
+                        conflict_result.conflicts_saved += 2;
+                        *conflict_result
+                            .conflicts_by_table
+                            .entry(change.table_name.clone())
+                            .or_insert(0) += 1;
+
+                        if outcome.winner == ConflictSide::Cloud {
+                            // Cloud 胜，按云端数据写入本地（但要抑制回声）
+                            let mut cloud_change = change.clone();
+                            cloud_change.suppress_change_log = Some(true);
+
+                            let pre_log_max_id = conn
+                                .query_row(
+                                    "SELECT COALESCE(MAX(id), 0) FROM __change_log",
+                                    [],
+                                    |row| row.get::<_, i64>(0),
+                                )
+                                .ok();
+
+                            // 冲突已裁决为 Cloud 胜，绕过 LWW 门强制应用
+                            let applied = Self::apply_single_change_force(conn, &cloud_change, id_column)?;
+                            if applied {
+                                apply_result.success_count += 1;
+                                apply_result.applied_keys.insert((
+                                    change.table_name.clone(),
+                                    change.record_id.clone(),
+                                ));
+                                conflict_result.applied += 1;
+                            } else {
+                                apply_result.skipped_count += 1;
+                            }
+
+                            if let Some(max_id) = pre_log_max_id {
+                                let sync_version = chrono::Utc::now().timestamp();
+                                let _ = conn.execute(
+                                    "UPDATE __change_log SET sync_version = ?1 \
+                                     WHERE id > ?2 AND sync_version = 0 \
+                                     AND table_name = ?3 AND record_id = ?4",
+                                    params![
+                                        sync_version,
+                                        max_id,
+                                        &change.table_name,
+                                        &change.record_id,
+                                    ],
+                                );
+                            }
+                        } else {
+                            // Local 胜，跳过应用云端变更；但记录为 rejected，上层会在下一轮把本地值上传
+                            conflict_result.rejected += 1;
+                            apply_result.skipped_count += 1;
+                        }
+                    }
+                }
+            }
+
+            let violations = Self::collect_foreign_key_violations(conn, 20)?;
+            if !violations.is_empty() {
+                return Err(SyncError::Database(format!(
+                    "外键约束检查失败（示例最多 20 条）: {}",
+                    violations.join("; ")
+                )));
+            }
+
+            Ok(())
+        })();
+
+        match inner {
+            Ok(()) => {
+                if let Err(e) = conn.execute_batch("COMMIT;") {
+                    let _ = conn.execute_batch("ROLLBACK;");
+                    let _ = if original_fk == 0 {
+                        conn.execute_batch("PRAGMA foreign_keys = OFF;")
+                    } else {
+                        conn.execute_batch("PRAGMA foreign_keys = ON;")
+                    };
+                    return Err(SyncError::Database(format!("提交事务失败: {}", e)));
+                }
+            }
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK;");
+                let _ = if original_fk == 0 {
+                    conn.execute_batch("PRAGMA foreign_keys = OFF;")
+                } else {
+                    conn.execute_batch("PRAGMA foreign_keys = ON;")
+                };
+                return Err(e);
+            }
+        }
+
+        let _ = if original_fk == 0 {
+            conn.execute_batch("PRAGMA foreign_keys = OFF;")
+        } else {
+            conn.execute_batch("PRAGMA foreign_keys = ON;")
+        };
+
+        tracing::info!(
+            "[sync] 冲突感知应用完成: applied={}, rejected={}, conflicts_saved={}",
+            conflict_result.applied,
+            conflict_result.rejected,
+            conflict_result.conflicts_saved
+        );
+
+        Ok((apply_result, conflict_result))
+    }
+
+    /// 检测"云端变更断层"：
+    /// 返回 `true` 表示 `since_version` 所指向的变更文件在云端 `min_available_version` 之前
+    /// 已被 prune 删除，**客户端无法只靠增量恢复到一致**。调用方应：
+    /// - 引导用户走一次 full-snapshot 同步（重新拉取每张表的最新记录）
+    /// - 或者退化到只同步"当前快照"而抛弃中间断层
+    pub fn has_prune_gap(since_version: u64, min_available_version: Option<u64>) -> bool {
+        match min_available_version {
+            Some(min) => since_version > 0 && since_version < min,
+            None => false,
+        }
+    }
+
+    /// 获取云端当前可用的最小变更版本号（用于断层检测）
+    pub async fn get_min_available_change_version(
+        storage: &dyn CloudStorage,
+    ) -> Result<Option<u64>, SyncError> {
+        let files = storage
+            .list(Self::CHANGES_PREFIX)
+            .await
+            .map_err(|e| SyncError::Network(format!("列出变更文件失败: {}", e)))?;
+
+        let mut min_version: Option<u64> = None;
+        for file in &files {
+            if let Some(raw) = Self::parse_version_from_key(&file.key) {
+                let v = Self::normalize_version_to_seconds(raw);
+                min_version = Some(match min_version {
+                    Some(cur) => cur.min(v),
+                    None => v,
+                });
+            }
+        }
+        Ok(min_version)
+    }
+
     /// 检查表是否拥有指定列
     fn table_has_column(conn: &Connection, table_name: &str, col_name: &str) -> bool {
         let table_ident = match Self::quote_identifier(table_name) {
@@ -2240,6 +2589,33 @@ impl SyncManager {
             .unwrap_or(false)
     }
 
+    /// 获取列的声明类型（用于 tombstone 写入时选择 INTEGER vs TEXT）
+    ///
+    /// 返回 `PRAGMA table_info` 里的 type 列（原始声明，如 "TEXT" / "INTEGER" / ""）。
+    /// SQLite 的 type affinity 规则：只要声明类型包含 "INT" 就是 INTEGER affinity。
+    fn get_column_declared_type(
+        conn: &Connection,
+        table_name: &str,
+        col_name: &str,
+    ) -> Option<String> {
+        let table_ident = Self::quote_identifier(table_name).ok()?;
+        let sql = format!("PRAGMA table_info({})", table_ident);
+        let mut stmt = conn.prepare(&sql).ok()?;
+        let rows = stmt
+            .query_map([], |row| {
+                let name: String = row.get(1)?;
+                let ty: String = row.get(2)?;
+                Ok((name, ty))
+            })
+            .ok()?;
+        for r in rows.flatten() {
+            if r.0 == col_name {
+                return Some(r.1);
+            }
+        }
+        None
+    }
+
     /// 应用单条变更
     ///
     /// # 返回
@@ -2251,11 +2627,83 @@ impl SyncManager {
         change: &SyncChangeWithData,
         id_column: &str,
     ) -> Result<bool, SyncError> {
+        Self::apply_single_change_inner(conn, change, id_column, false)
+    }
+
+    /// 同 `apply_single_change`，但跳过 LWW 时间戳门（用于 conflict_guard 已决策场景）
+    fn apply_single_change_force(
+        conn: &Connection,
+        change: &SyncChangeWithData,
+        id_column: &str,
+    ) -> Result<bool, SyncError> {
+        Self::apply_single_change_inner(conn, change, id_column, true)
+    }
+
+    fn apply_single_change_inner(
+        conn: &Connection,
+        change: &SyncChangeWithData,
+        id_column: &str,
+        skip_lww: bool,
+    ) -> Result<bool, SyncError> {
         match change.operation {
             ChangeOperation::Delete => {
                 Self::ensure_table_allowed_and_exists(conn, &change.table_name)?;
                 let table_ident = Self::quote_identifier(&change.table_name)?;
                 let has_tombstone = Self::table_has_column(conn, &change.table_name, "deleted_at");
+
+                // [LWW + HLC drift 保护 - DELETE]
+                // 1. 如果云端 changed_at 超出 wall clock "未来 60 秒" → 视为可疑漂移，跳过
+                // 2. 如果本地记录的 updated_at 严格晚于云端 DELETE 的 changed_at → 跳过（LWW）
+                if !skip_lww && has_tombstone {
+                    if let Some(cloud_ts) = parse_flexible_timestamp_public(&change.changed_at)
+                    {
+                        // ─── HLC drift check ───
+                        let now = chrono::Utc::now();
+                        if (cloud_ts - now).num_milliseconds() > hlc::MAX_DRIFT_MS {
+                            tracing::warn!(
+                                "[sync] 跳过 DELETE（时间戳漂移过大）: {}.{} = {}, drift_ms={}",
+                                change.table_name,
+                                id_column,
+                                change.record_id,
+                                (cloud_ts - now).num_milliseconds()
+                            );
+                            return Ok(false);
+                        }
+
+                        // ─── LWW check ───
+                        if Self::table_has_column(conn, &change.table_name, "updated_at") {
+                            let id_col = Self::quote_identifier(id_column)?;
+                            let sql = format!(
+                                "SELECT \"updated_at\" FROM {} WHERE {} = ?1",
+                                table_ident, id_col
+                            );
+                            let local_ts_opt: Option<chrono::DateTime<chrono::Utc>> = conn
+                                .query_row(&sql, params![&change.record_id], |row| {
+                                    if let Ok(s) = row.get::<_, String>(0) {
+                                        return Ok(parse_flexible_timestamp_public(&s));
+                                    }
+                                    if let Ok(ms) = row.get::<_, i64>(0) {
+                                        return Ok(
+                                            chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms),
+                                        );
+                                    }
+                                    Ok(None)
+                                })
+                                .ok()
+                                .flatten();
+
+                            if let Some(local_ts) = local_ts_opt {
+                                if local_ts > cloud_ts {
+                                    tracing::debug!(
+                                        "[sync] LWW skip DELETE: {}.{} = {} (本地 update 更新)",
+                                        change.table_name, id_column, change.record_id
+                                    );
+                                    return Ok(false);
+                                }
+                            }
+                        }
+                    }
+                }
 
                 let affected = if change.table_name == "llm_usage_daily" {
                     let (date, caller_type, model, provider) =
@@ -2269,13 +2717,38 @@ impl SyncManager {
                         .map_err(|e| SyncError::Database(format!("删除记录失败: {}", e)))?
                 } else if has_tombstone {
                     let id_col_ident = Self::quote_identifier(id_column)?;
-                    let now = chrono::Utc::now().to_rfc3339();
+                    // [修复] deleted_at 列可能是 TEXT（ISO 字符串）或 INTEGER（毫秒时间戳）。
+                    // 检测列的声明类型后用匹配的值写入，避免把 '2026-05-01T...' 写到 INTEGER 列
+                    // 导致后续 `row.get::<_, i64>(...)` panic。
+                    //
+                    // [幂等性修复] 使用 `change.changed_at`（来自云端变更日志）而不是 `now()`，
+                    // 确保同一 DELETE 变更被多次回放时写入相同时间戳（否则 checksum 每次都变）。
+                    let col_type = Self::get_column_declared_type(
+                        conn,
+                        &change.table_name,
+                        "deleted_at",
+                    )
+                    .unwrap_or_else(|| "TEXT".to_string());
                     let sql = format!(
                         "UPDATE {} SET \"deleted_at\" = ?1 WHERE {} = ?2 AND \"deleted_at\" IS NULL",
                         table_ident, id_col_ident
                     );
-                    conn.execute(&sql, params![now, &change.record_id])
-                        .map_err(|e| SyncError::Database(format!("软删除记录失败: {}", e)))?
+                    let upper = col_type.to_uppercase();
+                    if upper.contains("INT") {
+                        // 尝试把 changed_at 解析成毫秒时间戳；失败则回落到当前时间
+                        let ts_ms = chrono::DateTime::parse_from_rfc3339(&change.changed_at)
+                            .map(|dt| dt.timestamp_millis())
+                            .unwrap_or_else(|_| chrono::Utc::now().timestamp_millis());
+                        conn.execute(&sql, params![ts_ms, &change.record_id])
+                            .map_err(|e| SyncError::Database(format!("软删除记录失败: {}", e)))?
+                    } else {
+                        // 规范化为 RFC3339 字符串（保留 changed_at 来源但统一格式）
+                        let ts = chrono::DateTime::parse_from_rfc3339(&change.changed_at)
+                            .map(|dt| dt.with_timezone(&chrono::Utc).to_rfc3339())
+                            .unwrap_or_else(|_| change.changed_at.clone());
+                        conn.execute(&sql, params![ts, &change.record_id])
+                            .map_err(|e| SyncError::Database(format!("软删除记录失败: {}", e)))?
+                    }
                 } else {
                     let id_col_ident = Self::quote_identifier(id_column)?;
                     let sql = format!("DELETE FROM {} WHERE {} = ?1", table_ident, id_col_ident);
@@ -2294,7 +2767,7 @@ impl SyncManager {
                 Ok(true)
             }
             ChangeOperation::Insert | ChangeOperation::Update => {
-                // INSERT/UPDATE 操作：使用 DELETE + INSERT 策略
+                // INSERT/UPDATE 操作：使用 UPSERT (ON CONFLICT DO UPDATE)
                 let data = match &change.data {
                     Some(d) => d,
                     None => {
@@ -2317,6 +2790,20 @@ impl SyncManager {
                     }
                 };
 
+                // [LWW 保护] 比较云端 payload 的 updated_at 和本地记录的 updated_at。
+                // 若本地更新，跳过应用 —— 避免旧云端变更覆盖较新的本地值（这是 chaos test 暴露的
+                // 核心收敛性 bug：没有时间戳门的 UPSERT 会让 "较早的云端 change 在较晚本地写入之后
+                // 抵达" 的场景产生分叉）。
+                //
+                // 跳过的判定需要**双方的 updated_at 都能解析**，否则保持原有行为（直接 UPSERT）。
+                if !skip_lww && Self::should_skip_stale_update(conn, &change.table_name, &change.record_id, id_column, data) {
+                    tracing::debug!(
+                        "[sync] LWW skip: {}.{} = {} (本地更新)",
+                        change.table_name, id_column, change.record_id
+                    );
+                    return Ok(false);
+                }
+
                 Self::apply_single_record(
                     conn,
                     &change.table_name,
@@ -2327,6 +2814,88 @@ impl SyncManager {
                 Ok(true)
             }
         }
+    }
+
+    /// 判断是否应当跳过这条云端 UPSERT
+    ///
+    /// 两道防线：
+    /// 1. **HLC 漂移保护（防恶意超前时间戳）**：如果云端 `updated_at` 比本地 wall clock
+    ///    晚超过 `hlc::MAX_DRIFT_MS`（60 秒），视为可疑并跳过，避免一个时钟错乱的
+    ///    设备永久压制其他设备。参考 CockroachDB / YugabyteDB 的 MAX_OFFSET 设计。
+    /// 2. **LWW 比较（防过时变更覆盖较新本地值）**：如果本地 `updated_at` 严格晚于
+    ///    云端 payload，跳过这条云端 change。这保证最终一致性收敛（chaos test 暴露的关键 bug）。
+    fn should_skip_stale_update(
+        conn: &Connection,
+        table_name: &str,
+        record_id: &str,
+        id_column: &str,
+        cloud_data: &serde_json::Value,
+    ) -> bool {
+        // 云端 payload 必须带 updated_at
+        let cloud_str = match cloud_data.get("updated_at").and_then(|v| v.as_str()) {
+            Some(s) => s,
+            None => return false,
+        };
+        let cloud_ts = match parse_flexible_timestamp_public(cloud_str) {
+            Some(t) => t,
+            None => return false,
+        };
+
+        // ─── 防线 1：HLC 漂移 sanity check ───
+        // 如果云端时间戳超出本地 wall clock "未来 60 秒"，视为恶意/故障，跳过。
+        let now = chrono::Utc::now();
+        let drift_from_now = cloud_ts - now;
+        if drift_from_now.num_milliseconds() > hlc::MAX_DRIFT_MS {
+            tracing::warn!(
+                "[sync] 跳过云端变更（时间戳漂移过大）: table={}, id={}, cloud_ts={}, now={}, drift_ms={}",
+                table_name,
+                record_id,
+                cloud_ts,
+                now,
+                drift_from_now.num_milliseconds()
+            );
+            return true;
+        }
+
+        // ─── 防线 2：LWW ───
+        // 查本地当前 updated_at（要求该表也有 updated_at 列）
+        if !Self::table_has_column(conn, table_name, "updated_at") {
+            return false;
+        }
+        let table_ident = match Self::quote_identifier(table_name) {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+        let id_col = match Self::quote_identifier(id_column) {
+            Ok(s) => s,
+            Err(_) => return false,
+        };
+        let sql = format!(
+            "SELECT \"updated_at\" FROM {} WHERE {} = ?1",
+            table_ident, id_col
+        );
+        let local_ts_opt: Option<chrono::DateTime<chrono::Utc>> = conn
+            .query_row(&sql, params![record_id], |row| {
+                // updated_at 可能是 TEXT 或 INTEGER（ms）
+                if let Ok(s) = row.get::<_, String>(0) {
+                    return Ok(parse_flexible_timestamp_public(&s));
+                }
+                if let Ok(ms) = row.get::<_, i64>(0) {
+                    return Ok(chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms));
+                }
+                Ok(None)
+            })
+            .ok()
+            .flatten();
+
+        // 本地不存在 → 不跳过（需要 INSERT）
+        let local_ts = match local_ts_opt {
+            Some(t) => t,
+            None => return false,
+        };
+
+        // 严格晚于才跳过；相等时允许 UPSERT（可能是幂等回放）
+        local_ts > cloud_ts
     }
 
     /// 获取记录的完整数据
@@ -3764,6 +4333,92 @@ impl SyncManager {
             }
         }
         Ok(())
+    }
+
+    // ========================================================================
+    // 删除传播 (Tombstone) — 修复 #6
+    // ========================================================================
+
+    /// 标记 blob 已删除（本地调用）。后续 `sync_vfs_blobs_with_tombstones` 会把删除
+    /// 传播到云端和其他设备。
+    pub async fn mark_blob_deleted(
+        &self,
+        storage: &dyn CloudStorage,
+        hash: &str,
+        relative_path: Option<String>,
+        size: Option<u64>,
+    ) -> Result<(), SyncError> {
+        let mut manifest = tombstone::download_blob_tombstones(storage).await?;
+        manifest.entries.insert(
+            hash.to_string(),
+            tombstone::BlobTombstoneEntry {
+                deleted_at: chrono::Utc::now().to_rfc3339(),
+                device_id: self.device_id.clone(),
+                size,
+                relative_path,
+            },
+        );
+        tombstone::upload_blob_tombstones(storage, manifest).await
+    }
+
+    /// 标记资产已删除
+    pub async fn mark_asset_deleted(
+        &self,
+        storage: &dyn CloudStorage,
+        key: &str,
+        size: Option<u64>,
+    ) -> Result<(), SyncError> {
+        let mut manifest = tombstone::download_asset_tombstones(storage).await?;
+        manifest.entries.insert(
+            key.to_string(),
+            tombstone::AssetTombstoneEntry {
+                deleted_at: chrono::Utc::now().to_rfc3339(),
+                device_id: self.device_id.clone(),
+                size,
+            },
+        );
+        tombstone::upload_asset_tombstones(storage, manifest).await
+    }
+
+    /// 同步 VFS blobs + 消费 tombstone（修复 #6）
+    ///
+    /// 与 `sync_vfs_blobs` 不同：先按 tombstone 清理本地与云端的已删 blob，
+    /// 再走常规 "本地→上传 / 云端→下载" 流程。
+    pub async fn sync_vfs_blobs_with_tombstones(
+        &self,
+        storage: &dyn CloudStorage,
+        blobs_dir: &std::path::Path,
+    ) -> Result<BlobSyncOutcome, SyncError> {
+        // 1. 拉取 tombstone 并执行删除传播
+        let tombstones = tombstone::download_blob_tombstones(storage).await?;
+        if !tombstones.entries.is_empty() {
+            let _ = tombstone::apply_blob_tombstones(
+                storage,
+                &tombstones,
+                blobs_dir,
+                Self::BLOBS_CLOUD_PREFIX,
+            )
+            .await?;
+
+            // 同时从 blob manifest 里摘掉 tombstoned 条目
+            if let Ok(Some(bytes)) = storage.get(Self::BLOBS_MANIFEST_KEY).await {
+                if let Ok(mut mf) = serde_json::from_slice::<BlobsManifest>(&bytes) {
+                    let before = mf.entries.len();
+                    for hash in tombstones.entries.keys() {
+                        mf.entries.remove(hash);
+                    }
+                    if mf.entries.len() != before {
+                        mf.updated_at = chrono::Utc::now().to_rfc3339();
+                        if let Ok(bytes) = serde_json::to_vec(&mf) {
+                            let _ = storage.put(Self::BLOBS_MANIFEST_KEY, &bytes).await;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. 走标准上传/下载流程（现在云端/本地里已无 tombstoned 条目）
+        self.sync_vfs_blobs(storage, blobs_dir).await
     }
 }
 

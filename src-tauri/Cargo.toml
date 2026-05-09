@@ -169,6 +169,8 @@ mockito = "1.0"
 tempfile = "3.0"
 # 基准测试
 criterion = { version = "0.5", features = ["html_reports"] }
+# 属性测试（Property-Based Testing）—— 用随机输入发现场景测试遗漏的边界
+proptest = "1.5"
 
 [[bench]]
 name = "tool_performance"
