@@ -590,7 +590,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
           return;
         }
 
-        (['attachment', 'rag', 'advanced', 'learn', 'mcp', 'search', 'skill'] as const).forEach((panel) => {
+        (['attachment', 'rag', 'advanced', 'learn', 'mcp', 'search', 'skill', 'imageGen'] as const).forEach((panel) => {
           currentState.setPanelState(panel, false);
         });
         currentState.setPanelState('model', true);

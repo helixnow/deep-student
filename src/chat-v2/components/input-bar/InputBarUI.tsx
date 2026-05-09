@@ -9,6 +9,7 @@ import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react'
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
+import { invoke } from '@tauri-apps/api/core';
 import {
   ArrowUp,
   Square,
@@ -26,6 +27,7 @@ import {
   Network,
   Plus,
   Camera,
+  ImageSquare,
   Lightning,
   Sparkle,
   CircleNotch,
@@ -45,6 +47,7 @@ import {
   AppMenuSeparator,
   AppMenuSwitchItem,
 } from '@/components/ui/app-menu/AppMenu';
+import { AppSelect } from '@/components/ui/app-menu/AppSelect';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useTauriDragAndDrop } from '@/hooks/useTauriDragAndDrop';
@@ -82,6 +85,7 @@ import {
 } from './injectModeUtils';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { useVoiceInputIntegration } from '@/voice-input';
+import { inferApiCapabilities } from '@/utils/apiCapabilityEngine';
 
 // ============================================================================
 // 常量
@@ -105,6 +109,46 @@ import {
  * 集中管理输入栏的各种硬编码值，便于维护和调整
  */
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
+
+type ImageGenPurpose = 'knowledge_card' | 'quiz_image' | 'concept_diagram' | 'cover_image';
+
+type ImageGenerationApiConfig = {
+  id: string;
+  name?: string;
+  model?: string;
+  vendorName?: string;
+  vendor_name?: string;
+  providerType?: string;
+  provider_type?: string;
+  providerScope?: string;
+  provider_scope?: string;
+  enabled?: boolean;
+  isImageGeneration?: boolean;
+  is_image_generation?: boolean;
+  isEmbedding?: boolean;
+  is_embedding?: boolean;
+  isReranker?: boolean;
+  is_reranker?: boolean;
+};
+
+type ImageGenerationAssignments = Record<string, string | null | undefined> & {
+  image_generation_model_config_id?: string | null;
+};
+
+function isImageGenerationApiConfig(api: ImageGenerationApiConfig): boolean {
+  if (api.isEmbedding === true || api.is_embedding === true) return false;
+  if (api.isReranker === true || api.is_reranker === true) return false;
+  if (api.isImageGeneration === true || api.is_image_generation === true) return true;
+  return inferApiCapabilities({
+    id: api.model || api.id,
+    name: api.name,
+    providerScope: api.providerScope ?? api.provider_scope ?? api.providerType ?? api.provider_type,
+  }).imageModel;
+}
+
+function getImageGenerationModelLabel(api: ImageGenerationApiConfig): string {
+  return api.name || api.model || api.id;
+}
 
 const INPUT_BAR_CONFIG = {
   /** 延迟时间配置 */
@@ -507,6 +551,156 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   onClearPdfPageRefs,
 }) => {
   const { t } = useTranslation(['analysis', 'common', 'chatV2', 'settings']);
+  const [imageGenPrompt, setImageGenPrompt] = useState('');
+  const [imageGenPurpose, setImageGenPurpose] = useState<ImageGenPurpose>('concept_diagram');
+  const [imageGenAspectRatio, setImageGenAspectRatio] = useState<'1:1' | '4:3' | '3:4' | '16:9' | '9:16'>('1:1');
+  const [imageGenQuality, setImageGenQuality] = useState<'auto' | 'low' | 'medium' | 'high'>('auto');
+  const [imageGenModels, setImageGenModels] = useState<ImageGenerationApiConfig[]>([]);
+  const [imageGenModelId, setImageGenModelId] = useState('');
+  const [imageGenModelsLoading, setImageGenModelsLoading] = useState(false);
+  const [imageGenModelSaving, setImageGenModelSaving] = useState(false);
+
+  const imageGenPurposes = useMemo(
+    () => [
+      { value: 'knowledge_card' as const, label: t('chatV2:inputBar.imageGen.purposes.knowledgeCard', '知识卡片插图') },
+      { value: 'quiz_image' as const, label: t('chatV2:inputBar.imageGen.purposes.quizImage', '题目配图') },
+      { value: 'concept_diagram' as const, label: t('chatV2:inputBar.imageGen.purposes.conceptDiagram', '概念图') },
+      { value: 'cover_image' as const, label: t('chatV2:inputBar.imageGen.purposes.coverImage', '封面图') },
+    ],
+    [t]
+  );
+
+  const selectedImageGenPurposeLabel = useMemo(
+    () => imageGenPurposes.find((purpose) => purpose.value === imageGenPurpose)?.label || imageGenPurpose,
+    [imageGenPurpose, imageGenPurposes]
+  );
+
+  const imageGenModelOptions = useMemo(
+    () => imageGenModels.map((model) => ({
+      value: model.id,
+      label: getImageGenerationModelLabel(model),
+      description: model.model,
+    })),
+    [imageGenModels]
+  );
+
+  const selectedImageGenModel = useMemo(
+    () => imageGenModels.find((model) => model.id === imageGenModelId),
+    [imageGenModelId, imageGenModels]
+  );
+
+  const hasImageGenModels = imageGenModels.length > 0;
+
+  const loadImageGenerationModels = useCallback(async () => {
+    setImageGenModelsLoading(true);
+    try {
+      const [configs, assignments] = await Promise.all([
+        invoke<ImageGenerationApiConfig[]>('get_api_configurations'),
+        invoke<ImageGenerationAssignments>('get_model_assignments'),
+      ]);
+      const candidates = (configs || [])
+        .filter((api) => api.enabled !== false && isImageGenerationApiConfig(api));
+      const assignedId = assignments?.image_generation_model_config_id || '';
+      const selectedId = assignedId && candidates.some((api) => api.id === assignedId)
+        ? assignedId
+        : candidates[0]?.id || '';
+      setImageGenModels(candidates);
+      setImageGenModelId(selectedId);
+    } catch (error: unknown) {
+      console.warn('[InputBarUI] Failed to load image generation models:', error);
+      setImageGenModels([]);
+      setImageGenModelId('');
+    } finally {
+      setImageGenModelsLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (panelStates.imageGen) {
+      void loadImageGenerationModels();
+    }
+  }, [loadImageGenerationModels, panelStates.imageGen]);
+
+  useEffect(() => {
+    const reload = () => {
+      if (panelStates.imageGen) {
+        void loadImageGenerationModels();
+      }
+    };
+    window.addEventListener('api_configurations_changed', reload as EventListener);
+    window.addEventListener('model_assignments_changed', reload as EventListener);
+    return () => {
+      window.removeEventListener('api_configurations_changed', reload as EventListener);
+      window.removeEventListener('model_assignments_changed', reload as EventListener);
+    };
+  }, [loadImageGenerationModels, panelStates.imageGen]);
+
+  const handleImageGenModelChange = useCallback(async (modelId: string) => {
+    setImageGenModelId(modelId);
+    setImageGenModelSaving(true);
+    try {
+      const currentAssignments = await invoke<ImageGenerationAssignments>('get_model_assignments');
+      await invoke<void>('save_model_assignments', {
+        assignments: {
+          ...currentAssignments,
+          image_generation_model_config_id: modelId || null,
+        },
+      });
+      window.dispatchEvent(new CustomEvent('model_assignments_changed'));
+      showGlobalNotification('success', t('settings:notifications.image_generation_saved', '生图模型配置已保存'));
+    } catch (error: unknown) {
+      showGlobalNotification('error', t('settings:mcp.save_model_assignment_failed', { error: getErrorMessage(error) }));
+      void loadImageGenerationModels();
+    } finally {
+      setImageGenModelSaving(false);
+    }
+  }, [loadImageGenerationModels, t]);
+
+  const handleImageGenerate = useCallback(() => {
+    const prompt = imageGenPrompt.trim();
+    if (!prompt) {
+      showGlobalNotification('warning', t('chatV2:inputBar.imageGen.promptRequired', '请输入生图描述'));
+      return;
+    }
+    if (imageGenModelsLoading || imageGenModelSaving) return;
+    if (!hasImageGenModels) {
+      showGlobalNotification('warning', t('chatV2:inputBar.imageGen.noModelTitle', '未配置生图模型'));
+      return;
+    }
+    const command = [
+      '请加载 image-generation 技能并调用 builtin-image_generate 生成 1 张图片。',
+      `prompt: ${prompt}`,
+      `aspectRatio: ${imageGenAspectRatio}`,
+      `quality: ${imageGenQuality}`,
+      `purpose: ${selectedImageGenPurposeLabel}`,
+      '生成完成后请简短说明图片已保存到 VFS 的“AI 生成图片”文件夹。',
+    ].join('\n');
+    onInputChange(command);
+    onSetPanelState('imageGen', false);
+    window.setTimeout(() => {
+      onSend();
+    }, 0);
+  }, [
+    hasImageGenModels,
+    imageGenAspectRatio,
+    imageGenModelSaving,
+    imageGenModelsLoading,
+    imageGenPrompt,
+    imageGenQuality,
+    onInputChange,
+    onSend,
+    onSetPanelState,
+    selectedImageGenPurposeLabel,
+    t,
+  ]);
+
+  const handleOpenImageGenerationSettings = useCallback(() => {
+    onSetPanelState('imageGen', false);
+    window.dispatchEvent(new CustomEvent('navigate-to-tab', { detail: { tabName: 'settings' } }));
+    window.setTimeout(() => {
+      window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.SETTINGS_NAVIGATE_TAB, { detail: { tab: 'models' } }));
+    }, 120);
+  }, [onSetPanelState]);
 
   const modeLabelMap = useMemo<Record<MediaInjectMode, string>>(() => ({
     text: t('chatV2:injectMode.pdf.text'),
@@ -1037,6 +1231,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const advancedPanelMotion = useDeferredOpen(panelStates.advanced);
   const mcpPanelMotion = useDeferredOpen(panelStates.mcp);
   const skillPanelMotion = useDeferredOpen(panelStates.skill);
+  const imageGenPanelMotion = useDeferredOpen(panelStates.imageGen);
 
   // ========== 派生值 ==========
   const iconButtonClass = 'inline-flex items-center justify-center h-9 w-9 rounded-full text-[color:var(--button-utility-foreground)] transition-colors hover:bg-[color:var(--button-utility-hover)] hover:text-[color:var(--text-primary)] active:bg-[color:var(--button-utility-active)]';
@@ -1080,7 +1275,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
   // 🔧 检查是否有任何面板打开
   const hasAnyPanelOpen = panelStates.attachment || panelStates.rag || panelStates.model ||
-    panelStates.advanced || panelStates.learn || panelStates.mcp || panelStates.search || panelStates.skill;
+    panelStates.advanced || panelStates.learn || panelStates.mcp || panelStates.search || panelStates.skill || panelStates.imageGen;
 
   // 🔧 面板容器 ref，用于检测点击是否在面板内
   const panelContainerRef = useRef<HTMLDivElement>(null);
@@ -1330,6 +1525,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     onSetPanelState('model', false);
     onSetPanelState('advanced', false);
     onSetPanelState('skill', false);
+    onSetPanelState('imageGen', false);
   }, [onSetPanelState]);
 
   // 🔧 点击面板外部关闭面板（使用 document 事件监听，避免层叠上下文问题）
@@ -1359,7 +1555,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const togglePanel = useCallback((panelName: keyof PanelStates) => {
     const currentState = panelStates[panelName];
     // 关闭所有其他面板
-    const allPanels: (keyof PanelStates)[] = ['attachment', 'rag', 'model', 'advanced', 'learn', 'mcp', 'search', 'skill'];
+    const allPanels: (keyof PanelStates)[] = ['attachment', 'rag', 'model', 'advanced', 'learn', 'mcp', 'search', 'skill', 'imageGen'];
     if (!currentState) {
       allPanels.forEach(p => {
         if (p !== panelName) onSetPanelState(p, false);
@@ -2317,6 +2513,33 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               </NotionButton>
             </CommonTooltip>
 
+            <CommonTooltip
+              content={t('chatV2:inputBar.imageGen.title', '生成图片')}
+              position={tooltipPosition}
+              disabled={tooltipDisabled}
+            >
+              <NotionButton
+                data-testid="btn-toggle-image-gen"
+                variant="ghost"
+                size="icon"
+                iconOnly
+                onClick={() => togglePanel('imageGen')}
+                className={cn(
+                  iconButtonClass,
+                  'transition-colors',
+                  panelStates.imageGen
+                    ? 'text-[color:var(--button-primary-foreground)] hover:text-[color:var(--button-primary-foreground)]'
+                    : 'text-[color:var(--button-utility-foreground)] hover:text-[color:var(--text-primary)]'
+                )}
+                aria-label={t('chatV2:inputBar.imageGen.title', '生成图片')}
+                aria-pressed={panelStates.imageGen}
+              >
+                <span className="relative inline-flex items-center justify-center">
+                  <ImageSquare size={18} weight="bold" />
+                </span>
+              </NotionButton>
+            </CommonTooltip>
+
             {/* 🔧 P0: 技能选择独立按钮 */}
             {renderSkillPanel && (
               <CommonTooltip
@@ -2933,6 +3156,195 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               </div>
             </div>
           )
+        )}
+
+        {imageGenPanelMotion.shouldRender && (
+          <div
+            className={cn(
+              'absolute left-0 right-0 overflow-hidden pointer-events-none z-[100]',
+              'bottom-full -mb-3 pb-4'
+            )}
+            style={{ height: 'clamp(360px, 52vh, 500px)' }}
+          >
+            <div
+              className={cn(
+                'absolute left-3 right-3 overflow-y-auto overscroll-contain rounded-2xl glass-panel border border-[hsl(var(--border))] p-3 transition-transform duration-200 ease-out will-change-transform motion-reduce:transition-none motion-reduce:duration-0 z-[100]',
+                'bottom-4 origin-bottom',
+                imageGenPanelMotion.motionState === 'open' ? 'translate-y-0 pointer-events-auto' : 'translate-y-full pointer-events-none'
+              )}
+              aria-hidden={imageGenPanelMotion.motionState !== 'open'}
+              data-panel-motion={imageGenPanelMotion.motionState}
+              style={{ maxHeight: 'clamp(340px, 50vh, 480px)' }}
+            >
+              <div className="flex h-full min-h-0 flex-col gap-3">
+                <div className="flex items-start justify-between gap-3">
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--text-primary)]">
+                      <ImageSquare size={17} weight="bold" />
+                      <span>{t('chatV2:inputBar.imageGen.title', '生成图片')}</span>
+                    </div>
+                    <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
+                      {t('chatV2:inputBar.imageGen.subtitle', '通过内置工具生成图片，结果会保存到 VFS。')}
+                    </p>
+                  </div>
+                  <NotionButton
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleOpenImageGenerationSettings}
+                    className="shrink-0 text-xs"
+                  >
+                    {t('chatV2:inputBar.imageGen.configureModel', '设置模型')}
+                  </NotionButton>
+                </div>
+
+                {imageGenModelsLoading ? (
+                  <div className="flex items-center gap-2 rounded-xl border border-[hsl(var(--border))] bg-[color:var(--surface-panel-muted)] px-3 py-2 text-xs text-[color:var(--text-secondary)]">
+                    <CircleNotch size={14} className="animate-spin" />
+                    <span>{t('chatV2:inputBar.imageGen.loadingModels', '正在加载生图模型...')}</span>
+                  </div>
+                ) : hasImageGenModels ? (
+                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
+                    <div className="min-w-0">
+                      <div className="mb-1.5 text-[11px] font-medium text-[color:var(--text-secondary)]">
+                        {t('chatV2:inputBar.imageGen.model', '模型')}
+                      </div>
+                      <AppSelect
+                        value={imageGenModelId}
+                        onValueChange={handleImageGenModelChange}
+                        options={imageGenModelOptions}
+                        placeholder={t('settings:placeholders.no_image_generation_model', '暂无可用的生图模型')}
+                        disabled={imageGenModelSaving}
+                        className="w-full max-w-full border border-[hsl(var(--border))] bg-[color:var(--input-surface)]"
+                        width={320}
+                        size="sm"
+                        triggerIcon={<ImageSquare size={14} weight="bold" />}
+                      />
+                    </div>
+                    <div className="min-w-0 rounded-lg border border-[hsl(var(--border))] bg-[color:var(--surface-panel-muted)] px-2 py-1.5 text-[11px] text-[color:var(--text-secondary)] sm:max-w-[13rem]">
+                      <div className="truncate font-medium text-[color:var(--text-primary)]">
+                        {selectedImageGenModel ? getImageGenerationModelLabel(selectedImageGenModel) : t('chatV2:inputBar.imageGen.autoModel', '自动选择')}
+                      </div>
+                      <div className="truncate">
+                        {selectedImageGenModel?.model || t('chatV2:inputBar.imageGen.openAICompatible', 'OpenAI 兼容 Image API')}
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="rounded-xl border border-dashed border-[hsl(var(--border))] bg-[color:var(--surface-panel-muted)] px-3 py-3">
+                    <div className="text-sm font-semibold text-[color:var(--text-primary)]">
+                      {t('chatV2:inputBar.imageGen.noModelTitle', '未配置生图模型')}
+                    </div>
+                    <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">
+                      {t('chatV2:inputBar.imageGen.noModelDescription', '请先在模型设置中标记并选择一个支持 /images/generations 的模型。')}
+                    </p>
+                    <NotionButton
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleOpenImageGenerationSettings}
+                      className="mt-2 text-xs"
+                    >
+                      {t('chatV2:inputBar.imageGen.configureModel', '设置模型')}
+                    </NotionButton>
+                  </div>
+                )}
+
+                <textarea
+                  value={imageGenPrompt}
+                  onChange={(event) => setImageGenPrompt(event.target.value)}
+                  placeholder={t('chatV2:inputBar.imageGen.placeholder', '例如：光合作用概念图，清晰标注阳光、水、二氧化碳、叶绿体和葡萄糖')}
+                  className="min-h-[88px] resize-none rounded-xl border border-[hsl(var(--border))] bg-[color:var(--input-surface)] px-3 py-2 text-sm text-[color:var(--text-primary)] outline-none transition-colors placeholder:text-[color:var(--text-tertiary)] focus:border-[color:var(--button-primary-border)]"
+                />
+
+                <div className="flex flex-wrap gap-2">
+                  {imageGenPurposes.map((purpose) => (
+                    <button
+                      key={purpose.value}
+                      type="button"
+                      onClick={() => setImageGenPurpose(purpose.value)}
+                      className={cn(
+                        'rounded-full border px-3 py-1.5 text-xs transition-colors',
+                        imageGenPurpose === purpose.value
+                          ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]'
+                          : 'border-[hsl(var(--border))] text-[color:var(--text-secondary)] hover:bg-[color:var(--button-utility-hover)]'
+                      )}
+                    >
+                      {purpose.label}
+                    </button>
+                  ))}
+                </div>
+
+                <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="min-w-0">
+                    <div className="mb-1.5 text-[11px] font-medium text-[color:var(--text-secondary)]">
+                      {t('chatV2:inputBar.imageGen.aspectRatio', '比例')}
+                    </div>
+                    <div className="grid grid-cols-5 gap-1">
+                      {(['1:1', '4:3', '3:4', '16:9', '9:16'] as const).map((ratio) => (
+                        <button
+                          key={ratio}
+                          type="button"
+                          onClick={() => setImageGenAspectRatio(ratio)}
+                          className={cn(
+                            'h-8 rounded-lg border text-xs transition-colors',
+                            imageGenAspectRatio === ratio
+                              ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]'
+                              : 'border-[hsl(var(--border))] text-[color:var(--text-secondary)] hover:bg-[color:var(--button-utility-hover)]'
+                          )}
+                        >
+                          {ratio}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="min-w-0">
+                    <div className="mb-1.5 text-[11px] font-medium text-[color:var(--text-secondary)]">
+                      {t('chatV2:inputBar.imageGen.quality', '质量')}
+                    </div>
+                    <div className="grid grid-cols-4 gap-1">
+                      {(['auto', 'low', 'medium', 'high'] as const).map((quality) => (
+                        <button
+                          key={quality}
+                          type="button"
+                          onClick={() => setImageGenQuality(quality)}
+                          className={cn(
+                            'h-8 rounded-lg border text-xs capitalize transition-colors',
+                            imageGenQuality === quality
+                              ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]'
+                              : 'border-[hsl(var(--border))] text-[color:var(--text-secondary)] hover:bg-[color:var(--button-utility-hover)]'
+                          )}
+                        >
+                          {quality}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="mt-auto flex items-center justify-end gap-2">
+                  <NotionButton
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => onSetPanelState('imageGen', false)}
+                  >
+                    {t('common:actions.cancel')}
+                  </NotionButton>
+                  <NotionButton
+                    type="button"
+                    size="sm"
+                    onClick={handleImageGenerate}
+                    disabled={!hasImageGenModels || imageGenModelsLoading || imageGenModelSaving || isStreaming}
+                    className="bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)] hover:bg-[color:var(--button-primary-hover)]"
+                  >
+                    <Sparkle size={14} weight="bold" />
+                    <span>{t('chatV2:inputBar.imageGen.generate', '生成')}</span>
+                  </NotionButton>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
 
         {/* MCP 工具面板 - ★ 统一桌面端和移动端样式 */}

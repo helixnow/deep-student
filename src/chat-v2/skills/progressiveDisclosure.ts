@@ -398,55 +398,47 @@ export function handleLoadSkillsToolCall(
   }
 
   if (skillIds.length === 0) {
-    return '<error>请指定要加载的技能 ID 列表</error>';
+    return JSON.stringify({
+      result: {
+        status: 'error',
+        loaded_skill_ids: [],
+        loaded_tool_names: [],
+        skill_state_version: 0,
+        message: '请指定要加载的技能 ID 列表',
+      },
+    });
   }
 
   const { loaded, alreadyLoaded, notFound } = loadSkillsToSession(sessionId, skillIds);
+  const sessionLoadedSkills = getLoadedSkills(sessionId);
+  const loadedSkillIds = sessionLoadedSkills.map(skill => skill.id);
+  const loadedToolNames = Array.from(new Set(
+    sessionLoadedSkills.flatMap(skill => skill.tools.map(tool => tool.name).filter(Boolean))
+  ));
 
-  // 构建响应
-  const parts: string[] = [];
-
-  // 已加载的 Skills
-  for (const skill of loaded) {
-    parts.push(`<skill_loaded id="${escapeXmlAttr(skill.id)}">`);
-    
-    // 获取完整的 Skill 定义以获取 content
-    const fullSkill = skillRegistry.get(skill.id);
-    if (fullSkill?.content) {
-      parts.push(`<instructions>`);
-      parts.push(wrapCDATA(fullSkill.content));
-      parts.push(`</instructions>`);
-    }
-    
-    // 列出可用工具
-    if (skill.tools.length > 0) {
-      parts.push(`<available_tools>`);
-      for (const tool of skill.tools) {
-        parts.push(`  - ${escapeXmlText(tool.name)}: ${escapeXmlText(tool.description)}`);
-      }
-      parts.push(`</available_tools>`);
-    }
-    
-    parts.push(`</skill_loaded>`);
-  }
-
-  // 已经加载过的提示
-  if (alreadyLoaded.length > 0) {
-    parts.push(`<info>以下技能已加载，无需重复加载: ${alreadyLoaded.join(', ')}</info>`);
-  }
-
-  // 未找到的提示
-  if (notFound.length > 0) {
-    parts.push(`<warning>以下技能未找到: ${notFound.join(', ')}</warning>`);
-  }
-
-  // 加载统计
+  const messageParts: string[] = [];
   if (loaded.length > 0) {
-    const totalTools = loaded.reduce((sum, s) => sum + s.tools.length, 0);
-    parts.push(`\n共加载 ${loaded.length} 个技能，包含 ${totalTools} 个工具。这些工具现在可以使用了。`);
+    messageParts.push('Skills loaded. Instructions will be provided in the next transient skill message.');
+  }
+  if (alreadyLoaded.length > 0) {
+    messageParts.push(`Already loaded: ${alreadyLoaded.join(', ')}`);
+  }
+  if (notFound.length > 0) {
+    messageParts.push(`Missing: ${notFound.join(', ')}`);
+  }
+  if (messageParts.length === 0) {
+    messageParts.push('No new skills were loaded.');
   }
 
-  return parts.join('\n');
+  return JSON.stringify({
+    result: {
+      status: 'success',
+      loaded_skill_ids: loadedSkillIds,
+      loaded_tool_names: loadedToolNames,
+      skill_state_version: 0,
+      message: messageParts.join(' '),
+    },
+  });
 }
 
 // ============================================================================

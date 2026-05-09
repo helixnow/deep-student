@@ -26,6 +26,7 @@ export { pptxToolsSkill } from './pptx-tools';
 export { xlsxToolsSkill } from './xlsx-tools';
 export { sessionManagerSkill } from './session-manager';
 export { userTodoToolsSkill } from './user-todo-tools';
+export { imageGenerationSkill } from './image-generation';
 
 import { knowledgeRetrievalSkill } from './knowledge-retrieval';
 import { canvasNoteSkill } from './canvas-note';
@@ -46,6 +47,7 @@ import { pptxToolsSkill } from './pptx-tools';
 import { xlsxToolsSkill } from './xlsx-tools';
 import { sessionManagerSkill } from './session-manager';
 import { userTodoToolsSkill } from './user-todo-tools';
+import { imageGenerationSkill } from './image-generation';
 import type { SkillDefinition } from '../types';
 
 /**
@@ -74,6 +76,7 @@ export const builtinToolSkills: SkillDefinition[] = [
   xlsxToolsSkill,
   sessionManagerSkill,
   userTodoToolsSkill,
+  imageGenerationSkill,
 ];
 
 /**

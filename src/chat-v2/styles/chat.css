@@ -791,24 +791,6 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
   position: relative;
 }
 
-.chat-v2 .streaming-cursor {
-  display: inline-block;
-  width: 2px;
-  height: 1.2em;
-  background-color: var(--brand-primary);
-  animation: none;
-  margin-left: 2px;
-  vertical-align: text-bottom;
-}
-.chat-v2 .streaming-cursor[data-active="false"] {
-  visibility: hidden;
-}
-
-@keyframes blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
-}
-
 .chat-v2 .typing-indicator {
   display: inline-flex;
   gap: 4px;
@@ -839,9 +821,15 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
 
 .chat-v2 .partial-math-indicator {
   display: inline-block;
-  margin-left: 4px;
-  opacity: 0.7;
-  animation: pulse 1s infinite;
+  width: 0.48rem;
+  height: 0.48rem;
+  margin-left: 0.4rem;
+  border-radius: 999px;
+  background: hsl(var(--primary) / 0.66);
+  box-shadow: 0 0 12px hsl(var(--primary) / 0.24);
+  opacity: 0.76;
+  vertical-align: 0.05em;
+  animation: pulse 1.2s ease-in-out infinite;
 }
 
 @keyframes pulse {

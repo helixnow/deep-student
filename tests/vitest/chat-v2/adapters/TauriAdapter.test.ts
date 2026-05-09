@@ -23,6 +23,7 @@ import { clearModelsCache, ensureModelsCacheLoaded } from '@/chat-v2/hooks/useAv
 import type { ChatStore } from '@/chat-v2/core/types';
 import type { SessionEventPayload } from '@/chat-v2/adapters/types';
 import { skillRegistry } from '@/chat-v2/skills/registry';
+import { clearSessionSkills, syncLoadedSkillsFromBackend } from '@/chat-v2/skills/progressiveDisclosure';
 import type { SkillDefinition } from '@/chat-v2/skills/types';
 
 // ============================================================================
@@ -173,6 +174,7 @@ describe('ChatV2TauriAdapter', () => {
 
   afterEach(async () => {
     await adapter.cleanup();
+    clearSessionSkills('test-session-id');
     clearModelsCache();
     delete (window as any).__TAURI_INTERNALS__;
     delete (window as any).__TAURI_IPC__;
@@ -559,6 +561,62 @@ describe('ChatV2TauriAdapter', () => {
         );
       } finally {
         skillRegistry.unregister(skillId);
+      }
+    });
+
+    it('should include runtime loaded skills when structured skill state is stale', async () => {
+      await adapter.setup();
+
+      const skillId = 'runtime-loaded-skill';
+      const skill: SkillDefinition = {
+        id: skillId,
+        name: 'Runtime Loaded Skill',
+        description: 'Regression test skill loaded by backend tool result',
+        location: 'builtin',
+        sourcePath: 'builtin://runtime-loaded-skill',
+        content: 'runtime loaded instructions',
+        allowedTools: ['builtin-runtime_loaded_tool'],
+        embeddedTools: [
+          {
+            name: 'builtin-runtime_loaded_tool',
+            description: 'Runtime loaded tool schema',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                query: { type: 'string' },
+              },
+              required: ['query'],
+            },
+          },
+        ],
+      };
+      skillRegistry.register(skill);
+
+      try {
+        (mockStore as any).skillStateJson = JSON.stringify({
+          manualPinnedSkillIds: [],
+          agenticSessionSkillIds: [],
+          branchLocalSkillIds: [],
+          version: 11,
+        });
+        syncLoadedSkillsFromBackend('test-session-id', [skillId], { replace: true });
+
+        const options = (adapter as any).buildSendOptions();
+
+        expect(options.skillContents).toMatchObject({
+          [skillId]: 'runtime loaded instructions',
+        });
+        expect(options.mcpToolSchemas).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ name: 'builtin-runtime_loaded_tool' }),
+          ]),
+        );
+        expect(options.skillAllowedTools).toEqual(
+          expect.arrayContaining(['builtin-runtime_loaded_tool'])
+        );
+      } finally {
+        skillRegistry.unregister(skillId);
+        clearSessionSkills('test-session-id');
       }
     });
   });

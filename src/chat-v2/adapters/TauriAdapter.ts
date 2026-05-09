@@ -3736,6 +3736,7 @@ export class ChatV2TauriAdapter {
       const currentWorkspaceId = useWorkspaceStore.getState().currentWorkspaceId;
       return currentWorkspaceId ? ['workspace-tools'] : [];
     })();
+    const runtimeLoadedSkillIds = getLoadedSkills(this.sessionId).map(s => s.id);
 
     const authoritativeLoadedSkillIds = structuredSkillState
       ? Array.from(new Set([
@@ -3743,9 +3744,10 @@ export class ChatV2TauriAdapter {
           ...structuredSkillState.branchLocalSkillIds,
           ...structuredSkillState.modeRequiredBundleIds,
           ...modeRequiredSkillIds,
+          ...runtimeLoadedSkillIds,
         ]))
       : Array.from(new Set([
-          ...getLoadedSkills(this.sessionId).map(s => s.id),
+          ...runtimeLoadedSkillIds,
           ...modeRequiredSkillIds,
         ]));
 

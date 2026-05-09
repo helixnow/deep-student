@@ -82,6 +82,8 @@ const ThinkingBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStre
             <StreamingMarkdownRenderer
               content={content}
               isStreaming={isStreaming ?? false}
+              blockId={block.id}
+              messageId={block.messageId}
             />
           </div>
         </div>

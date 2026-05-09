@@ -61,9 +61,6 @@ const ContentBlockBase: React.FC<ContentBlockBaseProps> = ({ block, isStreaming,
         'prose-p:text-[15px] prose-p:leading-relaxed prose-p:tracking-wide',
         'prose-li:text-[15px] prose-li:leading-relaxed',
         'prose-headings:tracking-tight'
-        // 🔔 注意：不要在外层添加 streaming-cursor 类！
-        // StreamingMarkdownRenderer 内部已有正确的光标实现
-        // streaming-cursor CSS 定义了 width: 2px，会破坏容器布局
       )}
     >
       <StreamingMarkdownRenderer
@@ -72,6 +69,8 @@ const ContentBlockBase: React.FC<ContentBlockBaseProps> = ({ block, isStreaming,
         extraRemarkPlugins={citationPlugins}
         onCitationClick={handleCitationClick}
         resolveCitationImage={resolveCitationImage}
+        blockId={block.id}
+        messageId={block.messageId}
       />
     </div>
   );
