@@ -17,6 +17,7 @@ const DEFAULT_ASSIGNMENTS: ModelAssignments = {
   vl_reranker_model_config_id: null,
   memory_decision_model_config_id: null,
   voice_input_asr_model_config_id: null,
+  image_generation_model_config_id: null,
 };
 
 const normalizeAssignments = (input?: Partial<ModelAssignments>): ModelAssignments => ({
@@ -80,6 +81,7 @@ const buildResolvedConfigs = (vendors: VendorConfig[], profiles: ModelProfile[])
         isReasoning: Boolean(profile.isReasoning),
         isEmbedding: Boolean(profile.isEmbedding),
         isReranker: Boolean(profile.isReranker),
+        isImageGeneration: Boolean(profile.isImageGeneration),
         enabled: profileEnabled,
         modelAdapter: profile.modelAdapter,
         maxOutputTokens: profile.maxOutputTokens ?? 0,

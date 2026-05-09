@@ -52,6 +52,7 @@ const BUILTIN_PRESET_CONFIG: ModelAssignments = {
   vl_reranker_model_config_id: null, // 多模态重排序模型
   memory_decision_model_config_id: null, // 记忆决策模型
   voice_input_asr_model_config_id: null, // 语音输入 ASR 模型
+  image_generation_model_config_id: null, // 生图模型
 }; 
 
 const hasLocalStorage = () => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';

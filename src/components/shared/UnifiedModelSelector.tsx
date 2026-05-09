@@ -37,6 +37,7 @@ export interface UnifiedModelInfo {
   is_default?: boolean;
   isMultimodal?: boolean;
   isReasoning?: boolean;
+  isImageGeneration?: boolean;
   /** 模型是否已禁用（仍在列表中但不可选择，用于显示已分配但被禁用的模型） */
   isDisabled?: boolean;
   disabledLabel?: string;

@@ -63,6 +63,26 @@ export function useSettingsNavigation() {
     { tab: 'app', label: t('settings:language.title'), keywords: ['language'] },
     { tab: 'app', label: t('settings:appearance.sidebar.title'), keywords: ['sidebar', 'navigation'] },
     { tab: 'app', label: t('settings:appearance.sidebar.position'), keywords: ['sidebar position'] },
+    {
+      tab: 'app',
+      label: t('settings:voice_input.title'),
+      keywords: ['voice input', 'dictation', 'asr', 'microphone', 'speech to text', '听写', '语音输入'],
+    },
+    {
+      tab: 'app',
+      label: t('settings:voice_input.shortcut_title'),
+      keywords: ['hotkey', 'shortcut', 'keyboard', 'press to talk', 'toggle dictation', '快捷键'],
+    },
+    {
+      tab: 'app',
+      label: t('settings:voice_input.dictionary_title'),
+      keywords: ['dictionary', 'vocabulary', 'pronunciation hints', '词典', '短语'],
+    },
+    {
+      tab: 'app',
+      label: t('settings:voice_input.history_title'),
+      keywords: ['history', 'recent dictation', 'transcript recovery', '历史记录', '转写记录'],
+    },
     { tab: 'apis', label: t('settings:api.add_api_config'), keywords: ['API', 'add', 'config'] },
     { tab: 'apis', label: t('settings:api.modal.basic_info'), keywords: ['basic', 'API name', 'endpoint'] },
     { tab: 'apis', label: t('settings:api.modal.fields.api_key'), keywords: ['apikey', 'api key', 'key'] },

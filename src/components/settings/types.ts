@@ -31,6 +31,7 @@ export interface SystemConfig {
   vl_reranker_model_config_id: string;  // 多模态重排序模型（Qwen3-VL-Reranker）
   memory_decision_model_config_id: string; // 记忆决策模型（smart write 去重判断）
   voice_input_asr_model_config_id: string; // 语音输入 ASR 模型
+  image_generation_model_config_id: string; // 生图模型
 
   // MCP 工具协议设置（不再提供全局启用开关，仅保留连接与工具配置）
   mcpCommand: string;

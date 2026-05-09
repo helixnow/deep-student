@@ -767,6 +767,30 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     return sortApiConfigsByVendorOrder(candidates, vendors);
   };
 
+  const isImageGenerationApi = (api: ApiConfig) => {
+    if (api.isEmbedding || api.isReranker) return false;
+    if (api.isImageGeneration === true) return true;
+    const caps = inferApiCapabilities({
+      id: api.model,
+      name: api.name,
+      providerScope: api.providerScope ?? api.providerType,
+    });
+    return caps.imageModel;
+  };
+
+  // 获取生图模型，支持包含当前已分配但被禁用的模型
+  const getImageGenerationApis = (currentValue?: string) => {
+    const enabledApis = config.apiConfigs.filter(api => api.enabled && isImageGenerationApi(api));
+    let candidates: (ApiConfig & { _isDisabledInList?: boolean })[] = enabledApis;
+    if (currentValue && !enabledApis.some(api => api.id === currentValue)) {
+      const disabledApi = config.apiConfigs.find(api => api.id === currentValue && isImageGenerationApi(api));
+      if (disabledApi) {
+        candidates = [...enabledApis, { ...disabledApi, _isDisabledInList: true }];
+      }
+    }
+    return sortApiConfigsByVendorOrder(candidates, vendors);
+  };
+
   // 转换 ApiConfig 到 UnifiedModelInfo 格式
   const toUnifiedModelInfo = (
     apis: (ApiConfig & {
@@ -810,6 +834,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       isReasoning: api.isReasoning,
       isDisabled: api._isDisabledInList || false,
       isFavorite: api.isFavorite || false,
+      isImageGeneration: api.isImageGeneration,
     }));
   };
 
@@ -889,6 +914,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       vl_reranker_model_config_id: null,
       memory_decision_model_config_id: mapping[t('settings:mapping_keys.memory_decision_configured')] || null,
       voice_input_asr_model_config_id: mapping[t('settings:mapping_keys.voice_input_asr_configured')] || null,
+      image_generation_model_config_id: mapping[t('settings:mapping_keys.image_generation_configured')] || null,
     };
     handleApplyPreset(assignments);
   };
@@ -929,5 +955,5 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     );
   };
 
-  return { selectedVendorId, setSelectedVendorId, vendorModalOpen, setVendorModalOpen, editingVendor, setEditingVendor, isEditingVendor, vendorFormData, setVendorFormData, modelEditor, setModelEditor, inlineEditState, setInlineEditState, isAddingNewModel, setIsAddingNewModel, modelDeleteDialog, setModelDeleteDialog, vendorDeleteDialog, setVendorDeleteDialog, testingApi, vendorBusy, sortedVendors, selectedVendor, selectedVendorModels, profileCountByVendor, selectedVendorIsSiliconflow, testApiConnection, handleOpenVendorModal, handleStartEditVendor, handleCancelEditVendor, handleSaveEditVendor, handleSaveVendorModal, handleDeleteVendor, handleSaveVendorApiKey, handleSaveVendorBaseUrl, handleReorderVendors, confirmDeleteVendor, handleOpenModelEditor, handleSaveModelProfile, handleSaveInlineEdit, handleAddModelInline, handleCloseModelEditor, handleSaveModelProfileAndClose, handleDeleteModelProfile, confirmDeleteModelProfile, handleToggleModelProfile, handleToggleFavorite, handleSiliconFlowConfig, handleAddVendorModels, getAllEnabledApis, getEmbeddingApis, getRerankerApis, getAsrApis, toUnifiedModelInfo, handleBatchCreateConfigs, handleApplyPreset, handleBatchConfigsCreated, handleClearVendorApiKey, isSensitiveKey, PasswordInputWithToggle, maskApiKey, apiConfigsForApisTab };
+  return { selectedVendorId, setSelectedVendorId, vendorModalOpen, setVendorModalOpen, editingVendor, setEditingVendor, isEditingVendor, vendorFormData, setVendorFormData, modelEditor, setModelEditor, inlineEditState, setInlineEditState, isAddingNewModel, setIsAddingNewModel, modelDeleteDialog, setModelDeleteDialog, vendorDeleteDialog, setVendorDeleteDialog, testingApi, vendorBusy, sortedVendors, selectedVendor, selectedVendorModels, profileCountByVendor, selectedVendorIsSiliconflow, testApiConnection, handleOpenVendorModal, handleStartEditVendor, handleCancelEditVendor, handleSaveEditVendor, handleSaveVendorModal, handleDeleteVendor, handleSaveVendorApiKey, handleSaveVendorBaseUrl, handleReorderVendors, confirmDeleteVendor, handleOpenModelEditor, handleSaveModelProfile, handleSaveInlineEdit, handleAddModelInline, handleCloseModelEditor, handleSaveModelProfileAndClose, handleDeleteModelProfile, confirmDeleteModelProfile, handleToggleModelProfile, handleToggleFavorite, handleSiliconFlowConfig, handleAddVendorModels, getAllEnabledApis, getEmbeddingApis, getRerankerApis, getAsrApis, getImageGenerationApis, toUnifiedModelInfo, handleBatchCreateConfigs, handleApplyPreset, handleBatchConfigsCreated, handleClearVendorApiKey, isSensitiveKey, PasswordInputWithToggle, maskApiKey, apiConfigsForApisTab };
 }

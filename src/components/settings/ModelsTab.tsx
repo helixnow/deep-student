@@ -38,6 +38,7 @@ interface ModelsTabProps {
     translation_model_config_id: string;
     memory_decision_model_config_id: string;
     voice_input_asr_model_config_id: string;
+    image_generation_model_config_id: string;
   };
   setConfig: React.Dispatch<React.SetStateAction<any>>;
   apiConfigs: ApiConfig[];
@@ -46,6 +47,7 @@ interface ModelsTabProps {
   getEmbeddingApis: (currentId?: string) => ApiConfig[];
   getRerankerApis: (currentId?: string) => ApiConfig[];
   getAsrApis: (currentId?: string) => ApiConfig[];
+  getImageGenerationApis: (currentId?: string) => ApiConfig[];
   saveSingleAssignmentField: (field: string, value: string | null) => Promise<any>;
 }
 
@@ -125,6 +127,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
   getEmbeddingApis,
   getRerankerApis,
   getAsrApis,
+  getImageGenerationApis,
   saveSingleAssignmentField,
 }) => {
   const { t } = useTranslation(['settings', 'common']);
@@ -240,6 +243,19 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               onSave={handleSave}
               setConfig={setConfig}
             />
+            <ModelAssignmentRow
+              title={t('settings:cards.image_generation_model_title', 'Image generation model')}
+              description={t('settings:descriptions.image_generation_desc', 'Used by the built-in image generation tool in Chat V2.')}
+              value={config.image_generation_model_config_id}
+              field="image_generation_model_config_id"
+              configKey="image_generation_model_config_id"
+              models={toUnifiedModelInfo(getImageGenerationApis(config.image_generation_model_config_id))}
+              placeholder={t('settings:placeholders.no_image_generation_model', 'No image generation model available')}
+              notificationKey={notify('image_generation_saved')}
+              noModelsMessage={t('settings:placeholders.no_image_generation_model', 'No image generation model available')}
+              onSave={handleSave}
+              setConfig={setConfig}
+            />
           </div>
         </div>
 
@@ -320,6 +336,7 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               { id: config.rerankerModelConfigId, label: t('settings:config_status.reranker'), optional: true },
               { id: config.chat_title_model_config_id, label: t('settings:status_labels.chat_title_model') },
               { id: config.voice_input_asr_model_config_id, label: t('settings:status_labels.voice_input_asr_model'), optional: true },
+              { id: config.image_generation_model_config_id, label: t('settings:status_labels.image_generation_model', 'Image generation'), optional: true },
               { id: ocrEngineConfigured ? 'configured' : '', label: t('settings:status_labels.exam_sheet_ocr'), optional: true },
             ].map((item, idx) => (
               <div key={idx} className="flex items-center gap-1.5 py-0.5">

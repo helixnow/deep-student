@@ -287,6 +287,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
     vl_reranker_model_config_id: '', // 多模态重排序模型
     memory_decision_model_config_id: '', // 记忆决策模型
     voice_input_asr_model_config_id: '', // 语音输入 ASR 模型
+    image_generation_model_config_id: '', // 生图模型
 
     // MCP 工具协议设置（默认保持可配置；启用与否由消息级选择决定）
     mcpCommand: 'npx',
@@ -390,6 +391,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
       vl_reranker_model_config_id: modelAssignments.vl_reranker_model_config_id || '',
       memory_decision_model_config_id: modelAssignments.memory_decision_model_config_id || '',
       voice_input_asr_model_config_id: modelAssignments.voice_input_asr_model_config_id || '',
+      image_generation_model_config_id: modelAssignments.image_generation_model_config_id || '',
     }));
   }, [modelAssignments]);
 
@@ -480,7 +482,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
   const { loadConfig, handleSave, saveSingleAssignmentField, handleTabChange } = useSettingsConfig({ setLoading, configLoadedRef, setExtra, setActiveTab, activeTab, modelAssignments, vendors, modelProfiles, resolvedApiConfigs, refreshVendors: undefined, refreshProfiles: undefined, refreshApiConfigsFromBackend, persistAssignments, saving, setSaving, t, config, setConfig, loading, updateIndicatorRaf: (tabId: string) => updateIndicatorRafRef.current?.(tabId) });
 
   const vendorState = useSettingsVendorState({ resolvedApiConfigs, vendorLoading, vendorSaving, vendors, modelProfiles, modelAssignments, config, t, loading, upsertVendor, upsertModelProfile, deleteModelProfile, persistAssignments, persistModelProfiles, persistVendors, closeRightPanel, refreshVendors: undefined, refreshProfiles: undefined, refreshApiConfigsFromBackend, isSmallScreen: effectiveMobilePanelMode, setScreenPosition, setRightPanelType, activeTab, deleteVendorById: deleteVendor });
-  const { selectedVendorId, setSelectedVendorId, vendorModalOpen, setVendorModalOpen, editingVendor, setEditingVendor, isEditingVendor, vendorFormData, setVendorFormData, modelEditor, setModelEditor, inlineEditState, setInlineEditState, isAddingNewModel, setIsAddingNewModel, modelDeleteDialog, setModelDeleteDialog, vendorDeleteDialog, setVendorDeleteDialog, testingApi, vendorBusy, sortedVendors, selectedVendor, selectedVendorModels, profileCountByVendor, selectedVendorIsSiliconflow, testApiConnection, handleOpenVendorModal, handleStartEditVendor, handleCancelEditVendor, handleSaveEditVendor, handleSaveVendorModal, handleDeleteVendor, handleSaveVendorApiKey, handleSaveVendorBaseUrl, handleReorderVendors, confirmDeleteVendor, handleOpenModelEditor, handleSaveModelProfile, handleSaveInlineEdit, handleAddModelInline, handleCloseModelEditor, handleSaveModelProfileAndClose, handleDeleteModelProfile, confirmDeleteModelProfile, handleToggleModelProfile, handleToggleFavorite, handleSiliconFlowConfig, handleAddVendorModels, getAllEnabledApis, getEmbeddingApis, getRerankerApis, getAsrApis, toUnifiedModelInfo, handleBatchCreateConfigs, handleApplyPreset, handleBatchConfigsCreated, handleClearVendorApiKey, isSensitiveKey, PasswordInputWithToggle, maskApiKey, apiConfigsForApisTab } = vendorState;
+  const { selectedVendorId, setSelectedVendorId, vendorModalOpen, setVendorModalOpen, editingVendor, setEditingVendor, isEditingVendor, vendorFormData, setVendorFormData, modelEditor, setModelEditor, inlineEditState, setInlineEditState, isAddingNewModel, setIsAddingNewModel, modelDeleteDialog, setModelDeleteDialog, vendorDeleteDialog, setVendorDeleteDialog, testingApi, vendorBusy, sortedVendors, selectedVendor, selectedVendorModels, profileCountByVendor, selectedVendorIsSiliconflow, testApiConnection, handleOpenVendorModal, handleStartEditVendor, handleCancelEditVendor, handleSaveEditVendor, handleSaveVendorModal, handleDeleteVendor, handleSaveVendorApiKey, handleSaveVendorBaseUrl, handleReorderVendors, confirmDeleteVendor, handleOpenModelEditor, handleSaveModelProfile, handleSaveInlineEdit, handleAddModelInline, handleCloseModelEditor, handleSaveModelProfileAndClose, handleDeleteModelProfile, confirmDeleteModelProfile, handleToggleModelProfile, handleToggleFavorite, handleSiliconFlowConfig, handleAddVendorModels, getAllEnabledApis, getEmbeddingApis, getRerankerApis, getAsrApis, getImageGenerationApis, toUnifiedModelInfo, handleBatchCreateConfigs, handleApplyPreset, handleBatchConfigsCreated, handleClearVendorApiKey, isSensitiveKey, PasswordInputWithToggle, maskApiKey, apiConfigsForApisTab } = vendorState;
 
   const voiceInputAssignedModel = useMemo(
     () =>
@@ -787,6 +789,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
           vl_reranker_model_config_id: string | null;
           memory_decision_model_config_id: string | null;
           voice_input_asr_model_config_id: string | null;
+          image_generation_model_config_id: string | null;
         }>('get_model_assignments');
         setConfig(prev => ({
           ...prev,
@@ -800,6 +803,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
           vl_reranker_model_config_id: modelAssignments?.vl_reranker_model_config_id || '',
           memory_decision_model_config_id: modelAssignments?.memory_decision_model_config_id || '',
           voice_input_asr_model_config_id: modelAssignments?.voice_input_asr_model_config_id || '',
+          image_generation_model_config_id: modelAssignments?.image_generation_model_config_id || '',
         }));
       } catch {
         // Ignore malformed cached assignments and keep current settings state.
@@ -1139,6 +1143,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
             getEmbeddingApis={getEmbeddingApis}
             getRerankerApis={getRerankerApis}
             getAsrApis={getAsrApis}
+            getImageGenerationApis={getImageGenerationApis}
             saveSingleAssignmentField={saveSingleAssignmentField}
           />
         )}

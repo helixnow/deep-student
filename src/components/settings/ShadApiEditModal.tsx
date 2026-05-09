@@ -109,7 +109,7 @@ type EditApiConfig = BaseApiConfig & {
   verbosity?: string;
 };
 
-type CapabilityKey = 'isMultimodal' | 'isReasoning' | 'isEmbedding' | 'isReranker' | 'supportsTools';
+type CapabilityKey = 'isMultimodal' | 'isReasoning' | 'isEmbedding' | 'isReranker' | 'isImageGeneration' | 'supportsTools';
 
 interface ApiEditModalProps {
   api: EditApiConfig;
@@ -165,6 +165,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
     isReasoning: api.isReasoning ?? false,
     isEmbedding: api.isEmbedding ?? false,
     isReranker: api.isReranker ?? false,
+    isImageGeneration: api.isImageGeneration ?? false,
     modelAdapter: normalizedAdapter,
     temperature: api.temperature ?? 0.7,
     maxOutputTokens: api.maxOutputTokens ?? 8192,
@@ -283,6 +284,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
           ...prev,
           isEmbedding: caps.embedding,
           isReranker: caps.rerank,
+          isImageGeneration: caps.imageModel,
           isMultimodal: caps.vision,
           isReasoning: shouldReason,
           supportsReasoning: shouldReason,
@@ -521,6 +523,12 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
         title: t('settings:api.modal.capabilities.reranker.title'),
         description: t('settings:api.modal.capabilities.reranker.description'),
         icon: <Search className="h-5 w-5" />,
+      },
+      {
+        key: 'isImageGeneration',
+        title: t('settings:api.modal.capabilities.image_generation.title', 'Image generation'),
+        description: t('settings:api.modal.capabilities.image_generation.description', 'Can generate images through an OpenAI-compatible Image API.'),
+        icon: <ImageIcon className="h-5 w-5" />,
       },
       {
         key: 'supportsTools',
@@ -849,6 +857,11 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                   updated.includeThoughts = false;
                                   updated.thinkingBudget = undefined;
                                 }
+                              }
+                              if (option.key === 'isImageGeneration' && nextChecked) {
+                                updated.supportsTools = false;
+                                updated.isEmbedding = false;
+                                updated.isReranker = false;
                               }
                               return updated;
                             });

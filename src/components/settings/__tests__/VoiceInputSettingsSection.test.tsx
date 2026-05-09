@@ -9,11 +9,15 @@ const {
   saveVoiceInputConfigMock,
   detectVoiceRecordingSupportMock,
   requestVoiceRecordingPermissionMock,
+  loadVoiceInputHistoryMock,
+  clearVoiceInputHistoryMock,
 } = vi.hoisted(() => ({
   loadVoiceInputConfigMock: vi.fn(),
   saveVoiceInputConfigMock: vi.fn(),
   detectVoiceRecordingSupportMock: vi.fn(),
   requestVoiceRecordingPermissionMock: vi.fn(),
+  loadVoiceInputHistoryMock: vi.fn(),
+  clearVoiceInputHistoryMock: vi.fn(),
 }));
 
 vi.mock('react-i18next', () => ({
@@ -35,9 +39,16 @@ vi.mock('@/voice-input/config', () => ({
     maxDurationMs: 60000,
     insertMode: 'replace-selection',
     hotkey: 'mod+shift+space',
+    hotkeyMode: 'hold-to-talk',
   },
   loadVoiceInputConfig: loadVoiceInputConfigMock,
   saveVoiceInputConfig: saveVoiceInputConfigMock,
+}));
+
+vi.mock('@/voice-input/history', () => ({
+  VOICE_INPUT_HISTORY_CHANGED_EVENT: 'voice-input-history-changed',
+  loadVoiceInputHistory: loadVoiceInputHistoryMock,
+  clearVoiceInputHistory: clearVoiceInputHistoryMock,
 }));
 
 vi.mock('@/voice-input/support', () => ({
@@ -51,7 +62,9 @@ describe('VoiceInputSettingsSection', () => {
       maxDurationMs: 60000,
       insertMode: 'replace-selection',
       hotkey: 'mod+shift+space',
+      hotkeyMode: 'hold-to-talk',
     });
+    loadVoiceInputHistoryMock.mockResolvedValue([]);
     detectVoiceRecordingSupportMock.mockResolvedValue({
       canRecord: true,
       recorderMode: 'media-recorder',
@@ -83,7 +96,9 @@ describe('VoiceInputSettingsSection', () => {
       maxDurationMs: 60000,
       insertMode: 'replace-selection',
       hotkey: 'mod+shift+space',
+      hotkeyMode: 'hold-to-talk',
     });
+    loadVoiceInputHistoryMock.mockResolvedValue([]);
     detectVoiceRecordingSupportMock.mockResolvedValue({
       canRecord: true,
       recorderMode: 'pcm-wav',
@@ -94,6 +109,8 @@ describe('VoiceInputSettingsSection', () => {
       maxDurationMs: 90000,
       insertMode: 'replace-selection',
       hotkey: 'alt+space',
+      hotkeyMode: 'toggle-to-record',
+      dictationVocabulary: ['DeepStudent', 'Anki'],
     });
 
     render(
@@ -129,6 +146,27 @@ describe('VoiceInputSettingsSection', () => {
         expect.objectContaining({ maxDurationMs: 90000 })
       );
     });
+
+    const toggleCard = screen.getByRole('button', {
+      name: /Tap once to start, tap once to stop/i,
+    });
+    fireEvent.click(toggleCard);
+
+    await waitFor(() => {
+      expect(saveVoiceInputConfigMock).toHaveBeenCalledWith(
+        expect.objectContaining({ hotkeyMode: 'toggle-to-record' })
+      );
+    });
+
+    const dictionary = screen.getByPlaceholderText(/Photosynthesis/i);
+    fireEvent.change(dictionary, { target: { value: 'DeepStudent\nAnki' } });
+    fireEvent.blur(dictionary);
+
+    await waitFor(() => {
+      expect(saveVoiceInputConfigMock).toHaveBeenCalledWith(
+        expect.objectContaining({ dictationVocabulary: ['DeepStudent', 'Anki'] })
+      );
+    });
   });
 
   it('lets users request microphone access from the voice input settings panel', async () => {
@@ -136,7 +174,9 @@ describe('VoiceInputSettingsSection', () => {
       maxDurationMs: 60000,
       insertMode: 'replace-selection',
       hotkey: 'mod+shift+space',
+      hotkeyMode: 'hold-to-talk',
     });
+    loadVoiceInputHistoryMock.mockResolvedValue([]);
     detectVoiceRecordingSupportMock
       .mockResolvedValueOnce({
         canRecord: false,
@@ -186,7 +226,18 @@ describe('VoiceInputSettingsSection', () => {
       maxDurationMs: 60000,
       insertMode: 'replace-selection',
       hotkey: 'mod+shift+space',
+      hotkeyMode: 'hold-to-talk',
     });
+    loadVoiceInputHistoryMock.mockResolvedValue([
+      {
+        id: 'history-1',
+        text: 'Recovered transcript',
+        createdAt: '2026-05-08T10:00:00.000Z',
+        providerId: 'siliconflow',
+        model: 'TeleAI/TeleSpeechASR',
+        durationMs: 1800,
+      },
+    ]);
     detectVoiceRecordingSupportMock.mockResolvedValue({
       canRecord: true,
       recorderMode: 'media-recorder',
@@ -220,5 +271,7 @@ describe('VoiceInputSettingsSection', () => {
         detail: { tab: 'statistics' },
       })
     );
+
+    expect(await screen.findByText('Recovered transcript')).toBeInTheDocument();
   });
 });

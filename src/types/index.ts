@@ -292,6 +292,7 @@ export interface ApiConfig {
   isReasoning: boolean;
   isEmbedding: boolean;
   isReranker: boolean;
+  isImageGeneration?: boolean;
   enabled: boolean;
   modelAdapter: string;
   supportsTools?: boolean;
@@ -355,6 +356,7 @@ export interface ModelProfile {
   isReasoning: boolean;
   isEmbedding: boolean;
   isReranker: boolean;
+  isImageGeneration?: boolean;
   supportsTools?: boolean;
   supportsReasoning?: boolean;
   maxOutputTokens?: number;
@@ -393,6 +395,7 @@ export interface ModelAssignments {
   vl_reranker_model_config_id: string | null;   // 多模态重排序模型（Qwen3-VL-Reranker）
   memory_decision_model_config_id: string | null; // 记忆决策模型（smart write 去重判断）
   voice_input_asr_model_config_id: string | null; // 语音输入 ASR 模型
+  image_generation_model_config_id: string | null; // 生图模型
 }
 
 // 子适配器类型（与后端 ADAPTER_REGISTRY 保持一致）
