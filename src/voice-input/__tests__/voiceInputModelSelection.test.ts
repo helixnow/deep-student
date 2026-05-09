@@ -46,6 +46,7 @@ function createAssignments(
     vl_reranker_model_config_id: null,
     memory_decision_model_config_id: null,
     voice_input_asr_model_config_id: null,
+    image_generation_model_config_id: null,
     ...overrides,
   };
 }

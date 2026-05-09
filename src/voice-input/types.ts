@@ -1,9 +1,12 @@
 export type VoiceInputInsertMode = 'replace-selection';
+export type VoiceInputHotkeyMode = 'hold-to-talk' | 'toggle-to-record';
 
 export interface VoiceInputConfig {
   maxDurationMs: number;
   insertMode: VoiceInputInsertMode;
   hotkey: string;
+  hotkeyMode: VoiceInputHotkeyMode;
+  dictationVocabulary?: string[];
   language?: string;
   prompt?: string;
 }
@@ -27,6 +30,16 @@ export interface VoiceInputAssignedModel {
 
 export interface VoiceInputRuntimeConfig extends VoiceInputConfig {
   assignedModel: VoiceInputAssignedModel;
+}
+
+export interface VoiceInputHistoryEntry {
+  id: string;
+  text: string;
+  createdAt: string;
+  providerId?: string;
+  model?: string;
+  language?: string;
+  durationMs?: number;
 }
 
 export interface VoiceInputTarget {

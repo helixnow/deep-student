@@ -89,7 +89,10 @@ fn decode_audio_payload(audio_base64: &str) -> Result<Vec<u8>> {
     })
 }
 
-fn build_siliconflow_form(request: &VoiceInputTranscribeRequest, audio_bytes: Vec<u8>) -> Result<Form> {
+fn build_siliconflow_form(
+    request: &VoiceInputTranscribeRequest,
+    audio_bytes: Vec<u8>,
+) -> Result<Form> {
     let provider_model = request
         .model
         .as_deref()
@@ -112,10 +115,20 @@ fn build_siliconflow_form(request: &VoiceInputTranscribeRequest, audio_bytes: Ve
         .text("model", provider_model.to_string())
         .part("file", file_part);
 
-    if let Some(language) = request.language.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(language) = request
+        .language
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         form = form.text("language", language.to_string());
     }
-    if let Some(prompt) = request.prompt.as_deref().map(str::trim).filter(|value| !value.is_empty()) {
+    if let Some(prompt) = request
+        .prompt
+        .as_deref()
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+    {
         form = form.text("prompt", prompt.to_string());
     }
 
@@ -123,30 +136,27 @@ fn build_siliconflow_form(request: &VoiceInputTranscribeRequest, audio_bytes: Ve
 }
 
 fn resolve_siliconflow_api_key(state: &AppState) -> Option<String> {
-    [
-        "builtin-siliconflow.api_key",
-        "siliconflow.api_key",
-    ]
-    .iter()
-    .find_map(|key| {
-        state
-            .database
-            .get_secret(key)
-            .ok()
+    ["builtin-siliconflow.api_key", "siliconflow.api_key"]
+        .iter()
+        .find_map(|key| {
+            state
+                .database
+                .get_secret(key)
+                .ok()
+                .flatten()
+                .filter(|value| !value.trim().is_empty())
+        })
+        .or_else(|| {
+            [
+                option_env!("SILICONFLOW_BUILTIN_TEXT_KEY"),
+                option_env!("SILICONFLOW_BUILTIN_VISION_KEY"),
+                option_env!("SILICONFLOW_BUILTIN_EMBED_KEY"),
+            ]
+            .into_iter()
             .flatten()
-            .filter(|value| !value.trim().is_empty())
-    })
-    .or_else(|| {
-        [
-            option_env!("SILICONFLOW_BUILTIN_TEXT_KEY"),
-            option_env!("SILICONFLOW_BUILTIN_VISION_KEY"),
-            option_env!("SILICONFLOW_BUILTIN_EMBED_KEY"),
-        ]
-        .into_iter()
-        .flatten()
-        .find(|value| !value.trim().is_empty())
-        .map(|value| value.to_string())
-    })
+            .find(|value| !value.trim().is_empty())
+            .map(|value| value.to_string())
+        })
 }
 
 fn resolve_requested_provider_id(request: &VoiceInputTranscribeRequest) -> String {
@@ -336,13 +346,9 @@ pub async fn voice_input_transcribe(
         }
     };
 
-    let result = transcribe_with_siliconflow(
-        &client,
-        DEFAULT_SILICONFLOW_BASE_URL,
-        &api_key,
-        &request,
-    )
-    .await;
+    let result =
+        transcribe_with_siliconflow(&client, DEFAULT_SILICONFLOW_BASE_URL, &api_key, &request)
+            .await;
     let latency_ms = started_at.elapsed().as_millis().min(u64::MAX as u128) as u64;
 
     match result {
@@ -516,14 +522,10 @@ mod tests {
     #[tokio::test]
     async fn transcribe_with_siliconflow_maps_transport_failures_to_network_codes() {
         let client = build_voice_input_http_client().unwrap();
-        let error = transcribe_with_siliconflow(
-            &client,
-            "http://[::1",
-            "sk-test",
-            &sample_request(),
-        )
-        .await
-        .unwrap_err();
+        let error =
+            transcribe_with_siliconflow(&client, "http://[::1", "sk-test", &sample_request())
+                .await
+                .unwrap_err();
 
         assert!(
             matches!(error.error_type, AppErrorType::Network),
@@ -532,7 +534,10 @@ mod tests {
             error.message
         );
         let payload: serde_json::Value = serde_json::from_str(&error.message).unwrap();
-        let code = payload.get("code").and_then(|value| value.as_str()).unwrap_or("");
+        let code = payload
+            .get("code")
+            .and_then(|value| value.as_str())
+            .unwrap_or("");
         assert!(matches!(code, "network-failed" | "timeout"));
     }
 }

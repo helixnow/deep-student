@@ -1,6 +1,7 @@
 import { buildShortcutString, normalizeShortcut } from '@/command-palette/registry/shortcutUtils';
 
-import { DEFAULT_VOICE_INPUT_CONFIG } from './config';
+import { buildVoiceInputPrompt, DEFAULT_VOICE_INPUT_CONFIG } from './config';
+import { appendVoiceInputHistoryEntry } from './history';
 import { startBrowserVoiceRecording } from './audio';
 import type {
   RecordedAudioPayload,
@@ -192,7 +193,7 @@ export function createVoiceInputController(deps: VoiceInputControllerDeps = {}) 
         model: config.assignedModel.model!,
         configId: config.assignedModel.configId,
         language: config.language,
-        prompt: config.prompt,
+        prompt: buildVoiceInputPrompt(config),
         durationMs: payload.durationMs,
       });
       const transcript = result.text?.trim() ?? '';
@@ -201,6 +202,14 @@ export function createVoiceInputController(deps: VoiceInputControllerDeps = {}) 
         resetToIdle('empty-transcript');
         return;
       }
+
+      void appendVoiceInputHistoryEntry({
+        text: transcript,
+        providerId: result.providerId,
+        model: result.model,
+        language: result.language,
+        durationMs: result.durationMs ?? payload.durationMs,
+      });
 
       await target.insertTranscript(transcript, config.insertMode);
       resetToIdle(null);
@@ -324,6 +333,23 @@ export function createVoiceInputController(deps: VoiceInputControllerDeps = {}) 
       if (normalizeShortcut(shortcut ?? '') !== normalizeShortcut(config.hotkey)) {
         return;
       }
+
+      if (config.hotkeyMode === 'toggle-to-record') {
+        if (event.repeat) {
+          event.preventDefault();
+          return;
+        }
+        if (state.phase === 'transcribing') {
+          event.preventDefault();
+          event.stopPropagation();
+          return;
+        }
+        event.preventDefault();
+        event.stopPropagation();
+        void this.toggleRecording();
+        return;
+      }
+
       if (event.repeat || holdHotkeyActive) {
         event.preventDefault();
         return;
@@ -341,6 +367,15 @@ export function createVoiceInputController(deps: VoiceInputControllerDeps = {}) 
     },
     handleHotkeyKeyUp(event: KeyboardEvent) {
       if (eventTargetsUnrelatedEditable(event)) {
+        return;
+      }
+
+      if (config.hotkeyMode === 'toggle-to-record') {
+        const shortcut = buildShortcutString(event);
+        if (normalizeShortcut(shortcut ?? '') === normalizeShortcut(config.hotkey)) {
+          event.preventDefault();
+          event.stopPropagation();
+        }
         return;
       }
 

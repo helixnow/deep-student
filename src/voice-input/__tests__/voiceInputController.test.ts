@@ -3,10 +3,19 @@ import { describe, expect, it, vi } from 'vitest';
 import { createVoiceInputController } from '../controller';
 import type { VoiceInputProvider, VoiceInputRuntimeConfig, VoiceInputTarget } from '../types';
 
+const { appendVoiceInputHistoryEntryMock } = vi.hoisted(() => ({
+  appendVoiceInputHistoryEntryMock: vi.fn().mockResolvedValue(undefined),
+}));
+
+vi.mock('../history', () => ({
+  appendVoiceInputHistoryEntry: appendVoiceInputHistoryEntryMock,
+}));
+
 const defaultConfig: VoiceInputRuntimeConfig = {
   maxDurationMs: 60_000,
   insertMode: 'replace-selection',
   hotkey: 'mod+shift+space',
+  hotkeyMode: 'hold-to-talk',
   assignedModel: {
     status: 'ready',
     configId: 'voice-asr',
@@ -56,6 +65,13 @@ describe('voice input controller', () => {
 
     expect(provider.transcribeOnce).toHaveBeenCalled();
     expect(target.insertTranscript).toHaveBeenCalledWith('你好，世界', 'replace-selection');
+    expect(appendVoiceInputHistoryEntryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        text: '你好，世界',
+        providerId: 'siliconflow',
+        model: 'TeleAI/TeleSpeechASR',
+      })
+    );
     expect(notifications.show).not.toHaveBeenCalled();
   });
 
@@ -212,5 +228,61 @@ describe('voice input controller', () => {
 
     expect(createRecorderSession).not.toHaveBeenCalled();
     expect(controller.getSnapshot().phase).toBe('idle');
+  });
+
+  it('lets the configured hotkey behave like a toggle instead of hold-to-talk', async () => {
+    const target = createTarget();
+    const provider = createProvider({ text: 'toggle transcript' });
+    const stop = vi.fn().mockResolvedValue({
+      blob: new Blob(['audio']),
+      mimeType: 'audio/webm',
+      durationMs: 1500,
+    });
+    const controller = createVoiceInputController({
+      config: {
+        ...defaultConfig,
+        hotkeyMode: 'toggle-to-record',
+      },
+      notifications: { show: vi.fn() },
+      getActiveTarget: () => target,
+      getProvider: () => provider,
+      createRecorderSession: vi.fn().mockResolvedValue({
+        stop,
+        cancel: vi.fn().mockResolvedValue(undefined),
+      }),
+    });
+
+    controller.handleHotkeyKeyDown(
+      new KeyboardEvent('keydown', {
+        key: ' ',
+        ctrlKey: true,
+        shiftKey: true,
+      })
+    );
+    await Promise.resolve();
+    expect(controller.getSnapshot().phase).toBe('recording');
+
+    controller.handleHotkeyKeyUp(
+      new KeyboardEvent('keyup', {
+        key: ' ',
+        ctrlKey: true,
+        shiftKey: true,
+      })
+    );
+    expect(stop).not.toHaveBeenCalled();
+
+    controller.handleHotkeyKeyDown(
+      new KeyboardEvent('keydown', {
+        key: ' ',
+        ctrlKey: true,
+        shiftKey: true,
+      })
+    );
+
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(stop).toHaveBeenCalledTimes(1);
+    expect(target.insertTranscript).toHaveBeenCalledWith('toggle transcript', 'replace-selection');
   });
 });
