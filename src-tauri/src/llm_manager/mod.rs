@@ -888,6 +888,8 @@ pub struct ApiConfig {
     pub is_reasoning: bool,
     pub is_embedding: bool,
     pub is_reranker: bool,
+    #[serde(default)]
+    pub is_image_generation: bool,
     pub enabled: bool,
     #[serde(default = "default_model_adapter")]
     pub model_adapter: String, // 新增：模型适配器类型
@@ -973,6 +975,7 @@ impl Default for ApiConfig {
             is_reasoning: false,
             is_embedding: false,
             is_reranker: false,
+            is_image_generation: false,
             enabled: false,
             model_adapter: default_model_adapter(),
             max_output_tokens: default_max_output_tokens(),
@@ -1075,6 +1078,8 @@ pub struct ModelProfile {
     #[serde(default)]
     pub is_reranker: bool,
     #[serde(default)]
+    pub is_image_generation: bool,
+    #[serde(default)]
     pub supports_tools: bool,
     #[serde(default)]
     pub supports_reasoning: bool,
@@ -1138,6 +1143,7 @@ impl Default for ModelProfile {
             is_reasoning: false,
             is_embedding: false,
             is_reranker: false,
+            is_image_generation: false,
             supports_tools: false,
             supports_reasoning: false,
             status: default_profile_status(),
@@ -1194,6 +1200,13 @@ fn default_profile_status() -> String {
 
 fn default_profile_enabled() -> bool {
     true
+}
+
+fn looks_like_image_generation_model_id(model: &str) -> bool {
+    let model = model.to_lowercase();
+    ["gpt-image", "dall-e", "imagen", "flux"]
+        .iter()
+        .any(|needle| model.contains(needle))
 }
 
 #[inline]
@@ -2839,6 +2852,8 @@ impl LLMManager {
             is_reasoning: profile.is_reasoning,
             is_embedding: profile.is_embedding,
             is_reranker: profile.is_reranker,
+            is_image_generation: profile.is_image_generation
+                || looks_like_image_generation_model_id(&profile.model),
             enabled: profile.enabled && profile.status.to_lowercase() != "disabled" && has_api_key,
             model_adapter: profile.model_adapter.clone(),
             max_output_tokens: profile.max_output_tokens,
@@ -2943,6 +2958,7 @@ impl LLMManager {
                 is_reasoning: cfg.is_reasoning,
                 is_embedding: cfg.is_embedding,
                 is_reranker: cfg.is_reranker,
+                is_image_generation: cfg.is_image_generation,
                 supports_tools: cfg.supports_tools,
                 supports_reasoning: cfg.supports_reasoning || cfg.is_reasoning,
                 status: if cfg.enabled {
@@ -3023,6 +3039,7 @@ impl LLMManager {
                     is_reasoning: old.is_reasoning,
                     is_embedding: false,
                     is_reranker: false,
+                    is_image_generation: false,
                     enabled: old.enabled,
                     model_adapter: default_model_adapter(),
                     max_output_tokens: default_max_output_tokens(),
@@ -3073,6 +3090,7 @@ impl LLMManager {
                 is_reasoning: false,
                 is_embedding: false,
                 is_reranker: false,
+                is_image_generation: false,
                 enabled: old.enabled,
                 model_adapter: default_model_adapter(),
                 max_output_tokens: default_max_output_tokens(),
@@ -3171,6 +3189,8 @@ impl LLMManager {
                 is_reasoning: cfg.is_reasoning,
                 is_embedding: cfg.is_embedding,
                 is_reranker: cfg.is_reranker,
+                is_image_generation: cfg.is_image_generation
+                    || looks_like_image_generation_model_id(&cfg.model),
                 supports_tools: cfg.supports_tools || capability_overrides.supports_tools,
                 supports_reasoning: cfg.supports_reasoning
                     || cfg.is_reasoning

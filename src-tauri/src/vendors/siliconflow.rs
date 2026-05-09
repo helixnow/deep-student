@@ -101,6 +101,7 @@ pub fn load_builtin_api_configs() -> Result<Vec<ApiConfig>, AppError> {
                     is_reasoning: entry.is_reasoning,
                     is_embedding: entry.is_embedding,
                     is_reranker: entry.is_reranker,
+                    is_image_generation: false,
                     enabled: true,
                     model_adapter: "general".to_string(),
                     max_output_tokens: 8192,

@@ -180,6 +180,7 @@ pub(crate) fn sanitize_request_body_for_audit(body: &serde_json::Value) -> serde
         crate::debug_log_service::DebugFilterLevel::Standard,
     );
     redact_user_profile_blocks_in_value(&mut sanitized);
+    redact_skill_instruction_blocks_in_value(&mut sanitized);
     sanitized
 }
 
@@ -229,6 +230,63 @@ fn redact_user_profile_blocks_in_text(text: &str) -> String {
     out
 }
 
+fn redact_skill_instruction_blocks_in_value(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::String(s) => {
+            *s = redact_skill_instruction_blocks_in_text(s);
+        }
+        serde_json::Value::Array(items) => {
+            for v in items {
+                redact_skill_instruction_blocks_in_value(v);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for (_, v) in map {
+                redact_skill_instruction_blocks_in_value(v);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn redact_skill_instruction_blocks_in_text(text: &str) -> String {
+    const START_PREFIX: &str = "<skill_instructions";
+    const TAG_END: &str = ">";
+    const END: &str = "</skill_instructions>";
+    if !text.contains(START_PREFIX) {
+        return text.to_string();
+    }
+
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    loop {
+        let Some(start_idx) = rest.find(START_PREFIX) else {
+            out.push_str(rest);
+            break;
+        };
+        out.push_str(&rest[..start_idx]);
+
+        let after_start = &rest[start_idx..];
+        let Some(start_tag_end_rel) = after_start.find(TAG_END) else {
+            out.push_str("[REDACTED:skill_instructions]");
+            break;
+        };
+        let start_tag = &after_start[..start_tag_end_rel + TAG_END.len()];
+        let after_tag = &after_start[start_tag_end_rel + TAG_END.len()..];
+
+        if let Some(end_rel) = after_tag.find(END) {
+            out.push_str(start_tag);
+            out.push_str("[REDACTED]");
+            out.push_str(END);
+            rest = &after_tag[end_rel + END.len()..];
+        } else {
+            out.push_str("[REDACTED:skill_instructions]");
+            break;
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -259,6 +317,25 @@ mod tests {
             .unwrap_or_default();
         assert!(content.contains("[REDACTED]"));
         assert!(!content.contains("very sensitive"));
+    }
+
+    #[test]
+    fn test_sanitize_request_body_for_audit_redacts_skill_instructions() {
+        let body = json!({
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "prefix <skill_instructions id=\"secret-skill\">private skill text</skill_instructions> suffix"
+                }
+            ]
+        });
+        let sanitized = sanitize_request_body_for_audit(&body);
+        let content = sanitized["messages"][0]["content"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(content
+            .contains("<skill_instructions id=\"secret-skill\">[REDACTED]</skill_instructions>"));
+        assert!(!content.contains("private skill text"));
     }
 
     #[test]
@@ -458,7 +535,9 @@ pub(crate) fn log_llm_request_audit(
     }
 
     if let Some(c) = persist_config {
-        crate::debug_log_service::write_debug_log_entry(&c.log_dir, tag, model, url, "", body);
+        crate::debug_log_service::write_debug_log_entry(
+            &c.log_dir, tag, model, url, "", &sanitized,
+        );
     }
 }
 
@@ -473,7 +552,7 @@ pub(crate) struct DebugPersistConfig {
 ///
 /// 1. 输出 info 级别审计日志（始终 standard 级别）
 /// 2. 如果 stream_event 以 `chat_v2_event_` 开头，推送给前端
-/// 3. 如果 persist_config 存在（Some），将完整请求体写入 JSON 文件
+/// 3. 如果 persist_config 存在（Some），将脱敏请求体写入 JSON 文件
 pub(crate) fn log_and_emit_llm_request(
     tag: &str,
     window: &tauri::Window,
@@ -498,7 +577,7 @@ pub(crate) fn log_and_emit_llm_request(
         ),
     }
 
-    // 2. 文件持久化（完整未脱敏请求体）
+    // 2. 文件持久化（脱敏请求体，避免 transient skill instructions 落盘）
     let log_file_path = persist_config
         .and_then(|c| {
             crate::debug_log_service::write_debug_log_entry(
@@ -507,7 +586,7 @@ pub(crate) fn log_and_emit_llm_request(
                 model,
                 url,
                 stream_event,
-                body,
+                &sanitized,
             )
         })
         .map(|p| p.to_string_lossy().to_string());
@@ -1395,28 +1474,14 @@ impl LLMManager {
             }
         }
 
-        // 输出完整请求体用于调试（隐藏图片内容保护隐私）
-        let debug_body = {
-            let mut debug = request_body.clone();
-            if let Some(messages) = debug["messages"].as_array_mut() {
-                for message in messages {
-                    if let Some(content) = message["content"].as_array_mut() {
-                        for part in content {
-                            if part["type"] == "image_url" {
-                                part["image_url"]["url"] = json!("data:image/jpeg;base64,[hidden]");
-                            }
-                        }
-                    }
-                }
-            }
-            debug
-        };
-        debug!("[LLM_REVIEW_DEBUG] ==> 完整请求体开始 <==");
+        // 输出脱敏请求体用于调试（隐藏图片与 transient skill instructions）
+        let debug_body = sanitize_request_body_for_audit(&request_body);
+        debug!("[LLM_REVIEW_DEBUG] ==> 脱敏请求体开始 <==");
         debug!(
             "{}",
             serde_json::to_string_pretty(&debug_body).unwrap_or_default()
         );
-        debug!("[LLM_REVIEW_DEBUG] ==> 完整请求体结束 <==");
+        debug!("[LLM_REVIEW_DEBUG] ==> 脱敏请求体结束 <==");
 
         // 记录请求体大小与起始时间（简化）
         let request_json_str = serde_json::to_string(&request_body).unwrap_or_default();
@@ -2812,13 +2877,14 @@ impl LLMManager {
         let request_bytes = request_json_str.len();
         let start_instant = std::time::Instant::now();
 
-        // 输出完整请求体用于调试
-        debug!("[LLM_CONTINUE_DEBUG] ==> 完整请求体开始 <==");
+        // 输出脱敏请求体用于调试
+        let debug_body = sanitize_request_body_for_audit(&request_body);
+        debug!("[LLM_CONTINUE_DEBUG] ==> 脱敏请求体开始 <==");
         debug!(
             "{}",
-            serde_json::to_string_pretty(&request_body).unwrap_or_default()
+            serde_json::to_string_pretty(&debug_body).unwrap_or_default()
         );
-        debug!("[LLM_CONTINUE_DEBUG] ==> 完整请求体结束 <==");
+        debug!("[LLM_CONTINUE_DEBUG] ==> 脱敏请求体结束 <==");
 
         debug!("发送请求到: {}", config.base_url);
         // 使用 ProviderAdapter 统一构建请求（避免覆盖分支硬编码/chat/completions）

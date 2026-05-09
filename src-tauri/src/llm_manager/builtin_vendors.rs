@@ -819,6 +819,7 @@ impl BuiltinModel {
             is_reasoning: self.is_reasoning,
             is_embedding: false,
             is_reranker: false,
+            is_image_generation: false,
             supports_tools: self.supports_tools,
             supports_reasoning: self.is_reasoning,
             status: "enabled".to_string(),

@@ -1171,6 +1171,7 @@ pub struct StreamChunk {
 
 // 模型分配结构
 #[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[serde(default)]
 pub struct ModelAssignments {
     pub model2_config_id: Option<String>,
     pub review_analysis_model_config_id: Option<String>, // 回顾分析模型配置ID
@@ -1186,6 +1187,7 @@ pub struct ModelAssignments {
     pub vl_reranker_model_config_id: Option<String>,  // 多模态重排序模型（Qwen3-VL-Reranker）
     pub memory_decision_model_config_id: Option<String>, // 记忆决策模型（smart write 去重判断）
     pub voice_input_asr_model_config_id: Option<String>, // 语音输入 ASR 模型
+    pub image_generation_model_config_id: Option<String>, // 生图模型
 }
 
 #[derive(Debug, Deserialize)]
@@ -2082,4 +2084,19 @@ pub struct ExamSheetSessionUnlinkRequest {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ExamSheetSessionUnlinkResponse {
     pub detail: ExamSheetSessionDetail,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn image_generation_model_assignment_defaults_for_legacy_payload() {
+        let assignments: ModelAssignments = serde_json::from_str(
+            r#"{"model2_config_id":null,"review_analysis_model_config_id":null}"#,
+        )
+        .unwrap();
+
+        assert!(assignments.image_generation_model_config_id.is_none());
+    }
 }

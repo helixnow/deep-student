@@ -24,6 +24,7 @@ pub fn create_default_api_configs() -> Vec<ApiConfig> {
             is_reasoning: false,
             is_embedding: false,
             is_reranker: false,
+            is_image_generation: false,
             enabled: false, // 默认禁用，等用户填入API密钥后启用
             model_adapter: "general".to_string(),
             max_output_tokens: 4096,
@@ -67,6 +68,7 @@ pub fn create_default_api_configs() -> Vec<ApiConfig> {
             is_reasoning: false,
             is_embedding: false,
             is_reranker: false,
+            is_image_generation: false,
             enabled: false, // 默认禁用
             model_adapter: "anthropic".to_string(),
             max_output_tokens: 4096,
@@ -115,6 +117,7 @@ pub fn create_default_model_assignments() -> ModelAssignments {
         vl_reranker_model_config_id: None,
         memory_decision_model_config_id: None,
         voice_input_asr_model_config_id: None,
+        image_generation_model_config_id: None,
     }
 }
 

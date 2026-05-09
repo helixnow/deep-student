@@ -3619,9 +3619,9 @@ impl Database {
         // 从安全存储删除
         if SecureStore::is_sensitive_key(key) {
             if let Some(ref secure_store) = self.secure_store {
-                secure_store.delete_secret(key).map_err(|e| {
-                    anyhow::anyhow!("从安全存储删除失败: {} - {}", key, e)
-                })?;
+                secure_store
+                    .delete_secret(key)
+                    .map_err(|e| anyhow::anyhow!("从安全存储删除失败: {} - {}", key, e))?;
                 deleted = true;
             }
         }
