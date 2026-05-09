@@ -53,7 +53,6 @@ pub struct DeleteVariantResult {
 
 fn session_skill_state_from_snapshot(snapshot: &SkillStateSnapshot) -> SessionSkillState {
     let mut agentic_session_skill_ids = snapshot.agentic_session_skill_ids.clone();
-    agentic_session_skill_ids.extend(snapshot.branch_local_skill_ids.clone());
     agentic_session_skill_ids.sort();
     agentic_session_skill_ids.dedup();
 
@@ -1349,7 +1348,7 @@ mod tests {
     }
 
     #[test]
-    fn test_session_skill_state_from_snapshot_promotes_branch_local_into_agentic() {
+    fn test_session_skill_state_from_snapshot_drops_branch_local_without_promoting() {
         let snapshot = SkillStateSnapshot {
             manual_pinned_skill_ids: vec!["manual-a".to_string()],
             mode_required_bundle_ids: vec!["mode-a".to_string()],
@@ -1370,7 +1369,7 @@ mod tests {
         );
         assert_eq!(
             session_state.agentic_session_skill_ids,
-            vec!["agentic-a".to_string(), "branch-a".to_string()]
+            vec!["agentic-a".to_string()]
         );
         assert!(session_state.branch_local_skill_ids.is_empty());
         assert_eq!(session_state.version, 5);

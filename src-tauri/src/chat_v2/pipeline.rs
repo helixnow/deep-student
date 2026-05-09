@@ -36,9 +36,9 @@ pub(crate) use super::tools::builtin_retrieval_executor::BUILTIN_NAMESPACE;
 pub(crate) use super::tools::{
     AcademicSearchExecutor, AttemptCompletionExecutor, BuiltinResourceExecutor,
     BuiltinRetrievalExecutor, CanvasToolExecutor, ChatAnkiToolExecutor, ExecutionContext,
-    FetchExecutor, GeneralToolExecutor, KnowledgeExecutor, MemoryToolExecutor, SkillsExecutor,
-    TemplateDesignerExecutor, ToolExecutorRegistry, ToolSensitivity, UserTodoExecutor,
-    WorkspaceToolExecutor,
+    FetchExecutor, GeneralToolExecutor, ImageGenerationExecutor, KnowledgeExecutor,
+    MemoryToolExecutor, SkillsExecutor, TemplateDesignerExecutor, ToolExecutorRegistry,
+    ToolSensitivity, UserTodoExecutor, WorkspaceToolExecutor,
 };
 pub(crate) use crate::database::Database as MainDatabase;
 pub(crate) use crate::models::{
@@ -237,6 +237,7 @@ impl ChatV2Pipeline {
         registry.register(Arc::new(super::tools::DocxToolExecutor::new())); // 🆕 DOCX 文档读写工具执行器
         registry.register(Arc::new(super::tools::PptxToolExecutor::new())); // 🆕 PPTX 演示文稿读写工具执行器
         registry.register(Arc::new(super::tools::XlsxToolExecutor::new())); // 🆕 XLSX 电子表格读写工具执行器
+        registry.register(Arc::new(ImageGenerationExecutor::new())); // 🆕 内置图片生成工具执行器
 
         if let Some(coordinator) = workspace_coordinator {
             registry.register(Arc::new(WorkspaceToolExecutor::new(coordinator.clone())));
@@ -279,6 +280,7 @@ impl ChatV2Pipeline {
             "memory_search" => block_types::MEMORY.to_string(),
             "web_search" => block_types::WEB_SEARCH.to_string(),
             "graph_search" => block_types::GRAPH.to_string(),
+            "image_generate" => block_types::IMAGE_GEN.to_string(),
             "ask_user" => block_types::ASK_USER.to_string(),
             _ => block_types::MCP_TOOL.to_string(),
         }

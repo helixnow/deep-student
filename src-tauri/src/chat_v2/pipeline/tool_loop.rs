@@ -204,7 +204,12 @@ impl ChatV2Pipeline {
         let skill_audit = transient_skill_messages.audit.clone();
         let injected_skill_count = skill_audit.injected_skill_ids.len();
         let round_id = format!("tool-round-{}", recursion_depth);
-        messages.extend(transient_skill_messages.messages);
+        let insertion_index = messages.len();
+        insert_transient_skill_messages(
+            &mut messages,
+            insertion_index,
+            transient_skill_messages.messages,
+        );
         emitter.emit_skill_injection_audit(
             &ctx.assistant_message_id,
             json!({

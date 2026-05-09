@@ -946,7 +946,7 @@ fn restore_session_in_db(
 }
 
 fn session_skill_state_from_snapshot(snapshot: &SkillStateSnapshot) -> SessionSkillState {
-    SessionSkillState {
+    clear_branch_local_skill_state(&SessionSkillState {
         manual_pinned_skill_ids: snapshot.manual_pinned_skill_ids.clone(),
         mode_required_bundle_ids: snapshot.mode_required_bundle_ids.clone(),
         agentic_session_skill_ids: snapshot.agentic_session_skill_ids.clone(),
@@ -956,7 +956,7 @@ fn session_skill_state_from_snapshot(snapshot: &SkillStateSnapshot) -> SessionSk
         effective_allowed_external_servers: snapshot.effective_allowed_external_servers.clone(),
         version: snapshot.version,
         legacy_migrated: Some(false),
-    }
+    })
 }
 
 fn resolve_message_skill_snapshot(
@@ -1375,7 +1375,7 @@ fn merge_session_skill_state(
     }
 
     merged.legacy_migrated = Some(false);
-    Some(merged)
+    Some(clear_branch_local_skill_state(&merged))
 }
 
 fn clear_branch_local_skill_state(skill_state: &SessionSkillState) -> SessionSkillState {
@@ -1475,7 +1475,7 @@ mod tests {
     }
 
     #[test]
-    fn test_merge_session_skill_state_preserves_backend_loaded_state() {
+    fn test_merge_session_skill_state_clears_branch_local_state() {
         let existing = SessionState {
             session_id: "sess_1".to_string(),
             chat_params: None,
@@ -1522,11 +1522,27 @@ mod tests {
             merged.agentic_session_skill_ids,
             vec!["agentic-keep".to_string()]
         );
+        assert!(merged.branch_local_skill_ids.is_empty());
+        assert_eq!(merged.version, 9);
+    }
+
+    #[test]
+    fn test_session_skill_state_from_snapshot_clears_branch_local_state() {
+        let rebuilt = session_skill_state_from_snapshot(&SkillStateSnapshot {
+            manual_pinned_skill_ids: vec!["manual".to_string()],
+            agentic_session_skill_ids: vec!["agentic".to_string()],
+            branch_local_skill_ids: vec!["branch".to_string()],
+            version: 4,
+            ..Default::default()
+        });
+
+        assert_eq!(rebuilt.manual_pinned_skill_ids, vec!["manual".to_string()]);
         assert_eq!(
-            merged.branch_local_skill_ids,
-            vec!["branch-keep".to_string()]
+            rebuilt.agentic_session_skill_ids,
+            vec!["agentic".to_string()]
         );
-        assert_eq!(merged.version, 8);
+        assert!(rebuilt.branch_local_skill_ids.is_empty());
+        assert_eq!(rebuilt.version, 5);
     }
 
     #[test]

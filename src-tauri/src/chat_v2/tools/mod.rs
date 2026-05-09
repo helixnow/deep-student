@@ -51,6 +51,7 @@ pub mod executor;
 pub mod executor_registry;
 pub mod fetch_executor; // 🆕 内置 Web Fetch 工具执行器（参考 @anthropic/mcp-fetch）
 pub mod general_executor;
+pub mod image_generation_executor; // 🆕 内置图片生成工具执行器
 pub mod injector;
 pub mod knowledge_executor; // 🆕 知识工具执行器（内化/提取）
 pub mod memory_executor;
@@ -101,6 +102,7 @@ pub use executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 pub use executor_registry::ToolExecutorRegistry;
 pub use fetch_executor::FetchExecutor; // 🆕 内置 Web Fetch 工具执行器
 pub use general_executor::GeneralToolExecutor;
+pub use image_generation_executor::ImageGenerationExecutor; // 🆕 内置图片生成工具执行器
 pub use knowledge_executor::KnowledgeExecutor; // 🆕 知识工具执行器
 pub use memory_executor::MemoryToolExecutor;
 pub use paper_save_executor::PaperSaveExecutor; // 🆕 论文保存+引用格式化工具执行器

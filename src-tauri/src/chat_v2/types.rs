@@ -725,6 +725,24 @@ pub struct ReplaySkillPayloadSnapshot {
     pub selected_mcp_servers: Vec<String>,
 }
 
+impl ReplaySkillPayloadSnapshot {
+    /// Skill bodies are transient request data and must not be persisted in
+    /// message metadata. Keep the lightweight replay affordances, but drop the
+    /// full instruction text before writing a snapshot to history.
+    pub fn without_skill_contents(mut self) -> Self {
+        self.skill_contents.clear();
+        self
+    }
+
+    pub fn has_replay_metadata(&self) -> bool {
+        !self.active_skill_ids.is_empty()
+            || !self.skill_dependencies.is_empty()
+            || !self.skill_embedded_tools.is_empty()
+            || !self.mcp_tool_schemas.is_empty()
+            || !self.selected_mcp_servers.is_empty()
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
 pub struct SessionSkillState {
@@ -825,18 +843,6 @@ impl SessionSkillState {
         next
     }
 
-    pub fn promoted_branch_local_skills(&self) -> Self {
-        let mut next = self.clone();
-        next.agentic_session_skill_ids
-            .extend(next.branch_local_skill_ids.clone());
-        next.agentic_session_skill_ids.sort();
-        next.agentic_session_skill_ids.dedup();
-        next.branch_local_skill_ids.clear();
-        next.version = next.version.saturating_add(1);
-        next.legacy_migrated = Some(false);
-        next
-    }
-
     pub fn without_branch_local_skills(&self) -> Self {
         let mut next = self.clone();
         if !next.branch_local_skill_ids.is_empty() {
@@ -859,6 +865,30 @@ pub struct VariantMeta {
     pub skill_runtime_before: Option<ReplaySkillPayloadSnapshot>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skill_runtime_after: Option<ReplaySkillPayloadSnapshot>,
+}
+
+impl VariantMeta {
+    pub fn without_skill_runtime_contents(&self) -> Self {
+        let mut next = self.clone();
+        next.skill_runtime_before = next
+            .skill_runtime_before
+            .map(ReplaySkillPayloadSnapshot::without_skill_contents);
+        next.skill_runtime_after = next
+            .skill_runtime_after
+            .map(ReplaySkillPayloadSnapshot::without_skill_contents);
+        next
+    }
+}
+
+impl Variant {
+    pub fn without_skill_runtime_contents(&self) -> Self {
+        let mut next = self.clone();
+        next.meta = next
+            .meta
+            .as_ref()
+            .map(VariantMeta::without_skill_runtime_contents);
+        next
+    }
 }
 
 /// 共享上下文 - 检索结果，所有变体共享，只读
@@ -1249,6 +1279,19 @@ impl Default for MessageMeta {
             skill_runtime_after: None,
             replay_source: None,
         }
+    }
+}
+
+impl MessageMeta {
+    pub fn without_skill_runtime_contents(&self) -> Self {
+        let mut next = self.clone();
+        next.skill_runtime_before = next
+            .skill_runtime_before
+            .map(ReplaySkillPayloadSnapshot::without_skill_contents);
+        next.skill_runtime_after = next
+            .skill_runtime_after
+            .map(ReplaySkillPayloadSnapshot::without_skill_contents);
+        next
     }
 }
 
@@ -3487,29 +3530,6 @@ mod tests {
     }
 
     #[test]
-    fn test_session_skill_state_promoted_branch_local_skills() {
-        let state = SessionSkillState {
-            manual_pinned_skill_ids: vec!["manual-a".to_string()],
-            agentic_session_skill_ids: vec!["agentic-a".to_string()],
-            branch_local_skill_ids: vec!["branch-a".to_string()],
-            version: 3,
-            ..Default::default()
-        };
-
-        let promoted = state.promoted_branch_local_skills();
-        assert_eq!(
-            promoted.manual_pinned_skill_ids,
-            vec!["manual-a".to_string()]
-        );
-        assert_eq!(
-            promoted.agentic_session_skill_ids,
-            vec!["agentic-a".to_string(), "branch-a".to_string()]
-        );
-        assert!(promoted.branch_local_skill_ids.is_empty());
-        assert_eq!(promoted.version, 4);
-    }
-
-    #[test]
     fn test_session_skill_state_without_branch_local_skills() {
         let state = SessionSkillState {
             manual_pinned_skill_ids: vec!["manual-a".to_string()],
@@ -3525,5 +3545,68 @@ mod tests {
         );
         assert!(trimmed.branch_local_skill_ids.is_empty());
         assert_eq!(trimmed.version, 4);
+    }
+
+    #[test]
+    fn test_replay_skill_payload_snapshot_without_skill_contents_keeps_light_metadata() {
+        let snapshot = ReplaySkillPayloadSnapshot {
+            active_skill_ids: vec!["manual-a".to_string()],
+            skill_contents: std::collections::HashMap::from([(
+                "manual-a".to_string(),
+                "private instructions".to_string(),
+            )]),
+            skill_dependencies: std::collections::HashMap::from([(
+                "manual-a".to_string(),
+                vec!["dep-a".to_string()],
+            )]),
+            ..Default::default()
+        };
+
+        let redacted = snapshot.without_skill_contents();
+        assert!(redacted.skill_contents.is_empty());
+        assert_eq!(redacted.active_skill_ids, vec!["manual-a".to_string()]);
+        assert_eq!(
+            redacted
+                .skill_dependencies
+                .get("manual-a")
+                .cloned()
+                .unwrap(),
+            vec!["dep-a".to_string()]
+        );
+        assert!(redacted.has_replay_metadata());
+    }
+
+    #[test]
+    fn test_message_and_variant_meta_without_skill_runtime_contents_strip_private_text() {
+        let runtime = ReplaySkillPayloadSnapshot {
+            active_skill_ids: vec!["manual-a".to_string()],
+            skill_contents: std::collections::HashMap::from([(
+                "manual-a".to_string(),
+                "private instructions".to_string(),
+            )]),
+            ..Default::default()
+        };
+        let meta = MessageMeta {
+            skill_runtime_after: Some(runtime.clone()),
+            ..Default::default()
+        };
+        let variant_meta = VariantMeta {
+            skill_runtime_after: Some(runtime),
+            ..Default::default()
+        };
+
+        let redacted_meta = meta.without_skill_runtime_contents();
+        let redacted_variant_meta = variant_meta.without_skill_runtime_contents();
+
+        assert!(redacted_meta
+            .skill_runtime_after
+            .unwrap()
+            .skill_contents
+            .is_empty());
+        assert!(redacted_variant_meta
+            .skill_runtime_after
+            .unwrap()
+            .skill_contents
+            .is_empty());
     }
 }

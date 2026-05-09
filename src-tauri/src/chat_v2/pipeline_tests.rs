@@ -1938,7 +1938,20 @@ fn test_get_combined_user_content() {
     let ctx = PipelineContext::new(request);
     let (combined_content, context_images) = ctx.get_combined_user_content();
 
-    // 验证上下文内容在前，用户输入在后
+    assert!(
+        combined_content.contains("<runtime_facts>"),
+        "Should contain runtime facts block"
+    );
+    assert!(
+        combined_content.contains("当前日期:"),
+        "Default runtime facts should include current date"
+    );
+    assert!(
+        combined_content.contains("时区:"),
+        "Should contain timezone"
+    );
+
+    // 验证上下文内容和用户输入都存在
     assert!(
         combined_content.contains("笔记内容第一段"),
         "Should contain note content"
@@ -1952,12 +1965,12 @@ fn test_get_combined_user_content() {
         "Should contain user input"
     );
 
-    // 验证上下文内容在用户输入之前
+    // 验证用户输入优先，上下文随后
     let note_pos = combined_content.find("笔记内容第一段").unwrap();
     let user_pos = combined_content.find("用户输入的问题").unwrap();
     assert!(
-        note_pos < user_pos,
-        "Context content should be before user input"
+        user_pos < note_pos,
+        "User input should be before injected context"
     );
 
     // 验证没有图片
@@ -2006,6 +2019,10 @@ fn test_get_combined_user_content_with_images() {
     let ctx = PipelineContext::new(request);
     let (combined_content, context_images) = ctx.get_combined_user_content();
 
+    assert!(
+        combined_content.contains("<runtime_facts>"),
+        "Should contain runtime facts block"
+    );
     // 验证文本内容
     assert!(
         combined_content.contains("图片相关说明"),
@@ -2043,6 +2060,35 @@ fn test_get_combined_user_content_empty_refs() {
     let (combined_content, context_images) = ctx.get_combined_user_content();
 
     // 验证只有用户输入
-    assert_eq!(combined_content, "简单问题");
+    assert!(
+        combined_content.contains("<user_query>\n简单问题\n</user_query>"),
+        "Should wrap user content in <user_query>"
+    );
+    assert!(
+        combined_content.contains("<runtime_facts>"),
+        "Should include runtime facts even without context refs"
+    );
+    assert!(
+        combined_content.contains("当前日期:"),
+        "Default runtime facts should include current date"
+    );
     assert!(context_images.is_empty());
+}
+
+#[test]
+fn test_runtime_facts_uses_full_time_for_time_sensitive_query() {
+    let runtime_facts = PipelineContext::build_runtime_facts_block("今天是周几？现在几点？");
+    assert!(runtime_facts.contains("<runtime_facts>"));
+    assert!(runtime_facts.contains("当前时间:"));
+    assert!(runtime_facts.contains("时区:"));
+    assert!(!runtime_facts.contains("当前日期:"));
+}
+
+#[test]
+fn test_runtime_facts_uses_date_only_for_non_time_sensitive_query() {
+    let runtime_facts = PipelineContext::build_runtime_facts_block("请解释牛顿第二定律");
+    assert!(runtime_facts.contains("<runtime_facts>"));
+    assert!(runtime_facts.contains("当前日期:"));
+    assert!(runtime_facts.contains("时区:"));
+    assert!(!runtime_facts.contains("当前时间:"));
 }

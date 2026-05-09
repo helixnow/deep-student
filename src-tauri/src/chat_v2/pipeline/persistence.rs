@@ -10,16 +10,44 @@ fn build_replay_skill_payload_snapshot(
         skill_embedded_tools: options.skill_embedded_tools.clone().unwrap_or_default(),
         mcp_tool_schemas: options.mcp_tool_schemas.clone().unwrap_or_default(),
         selected_mcp_servers: options.mcp_tools.clone().unwrap_or_default(),
-    };
+    }
+    .without_skill_contents();
 
-    let has_payload = !snapshot.active_skill_ids.is_empty()
-        || !snapshot.skill_contents.is_empty()
-        || !snapshot.skill_dependencies.is_empty()
-        || !snapshot.skill_embedded_tools.is_empty()
-        || !snapshot.mcp_tool_schemas.is_empty()
-        || !snapshot.selected_mcp_servers.is_empty();
+    snapshot.has_replay_metadata().then_some(snapshot)
+}
 
-    has_payload.then_some(snapshot)
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_replay_skill_payload_snapshot_does_not_persist_skill_contents() {
+        let options = SendOptions {
+            active_skill_ids: Some(vec!["manual-a".to_string()]),
+            skill_contents: Some(std::collections::HashMap::from([(
+                "manual-a".to_string(),
+                "private instructions".to_string(),
+            )])),
+            ..Default::default()
+        };
+
+        let snapshot = build_replay_skill_payload_snapshot(&options).unwrap();
+        assert_eq!(snapshot.active_skill_ids, vec!["manual-a".to_string()]);
+        assert!(snapshot.skill_contents.is_empty());
+    }
+
+    #[test]
+    fn test_build_replay_skill_payload_snapshot_skips_content_only_payload() {
+        let options = SendOptions {
+            skill_contents: Some(std::collections::HashMap::from([(
+                "agentic-a".to_string(),
+                "private instructions".to_string(),
+            )])),
+            ..Default::default()
+        };
+
+        assert!(build_replay_skill_payload_snapshot(&options).is_none());
+    }
 }
 
 impl ChatV2Pipeline {

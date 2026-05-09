@@ -713,7 +713,7 @@ impl ChatV2Repo {
         let meta_json = message
             .meta
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(|v| serde_json::to_string(&v.without_skill_runtime_contents()))
             .transpose()?;
         let attachments_json = message
             .attachments
@@ -723,7 +723,13 @@ impl ChatV2Repo {
         let variants_json = message
             .variants
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(|v| {
+                let sanitized: Vec<Variant> = v
+                    .iter()
+                    .map(Variant::without_skill_runtime_contents)
+                    .collect();
+                serde_json::to_string(&sanitized)
+            })
             .transpose()?;
         let shared_context_json = message
             .shared_context
@@ -848,7 +854,7 @@ impl ChatV2Repo {
         let meta_json = message
             .meta
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(|v| serde_json::to_string(&v.without_skill_runtime_contents()))
             .transpose()?;
         let attachments_json = message
             .attachments
@@ -858,7 +864,13 @@ impl ChatV2Repo {
         let variants_json = message
             .variants
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(|v| {
+                let sanitized: Vec<Variant> = v
+                    .iter()
+                    .map(Variant::without_skill_runtime_contents)
+                    .collect();
+                serde_json::to_string(&sanitized)
+            })
             .transpose()?;
         let shared_context_json = message
             .shared_context
@@ -957,6 +969,7 @@ impl ChatV2Repo {
                     e
                 })
                 .ok()
+                .map(|meta: MessageMeta| meta.without_skill_runtime_contents())
         });
 
         let attachments: Option<Vec<AttachmentMeta>> = attachments_json.as_ref().and_then(|s| {
@@ -983,6 +996,12 @@ impl ChatV2Repo {
                     e
                 })
                 .ok()
+                .map(|variants: Vec<Variant>| {
+                    variants
+                        .into_iter()
+                        .map(|variant| variant.without_skill_runtime_contents())
+                        .collect()
+                })
         });
 
         let shared_context: Option<SharedContext> = shared_context_json.as_ref().and_then(|s| {
@@ -1880,7 +1899,7 @@ impl ChatV2Repo {
             message_id, meta.model_id
         );
 
-        let meta_json = serde_json::to_string(meta)?;
+        let meta_json = serde_json::to_string(&meta.without_skill_runtime_contents())?;
 
         let rows_affected = conn.execute(
             "UPDATE chat_v2_messages SET meta_json = ?2 WHERE id = ?1",

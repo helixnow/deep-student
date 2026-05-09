@@ -206,6 +206,7 @@ pub(crate) fn make_empty_message(role: &str, content: String) -> LegacyChatMessa
 }
 
 const TRANSIENT_SKILL_METADATA_KIND: &str = "skill_instruction";
+const TRANSIENT_REQUEST_ANCHOR_METADATA_KIND: &str = "request_context_anchor";
 
 #[derive(Debug, Clone, Default)]
 pub(crate) struct SkillInjectionAudit {
@@ -230,6 +231,18 @@ pub(crate) fn is_transient_skill_message(msg: &LegacyChatMessage) -> bool {
                 .and_then(Value::as_bool)
                 .unwrap_or(false)
     })
+}
+
+pub(crate) fn is_transient_llm_only_message(msg: &LegacyChatMessage) -> bool {
+    is_transient_skill_message(msg)
+        || msg.metadata.as_ref().is_some_and(|metadata| {
+            metadata.get("kind").and_then(Value::as_str)
+                == Some(TRANSIENT_REQUEST_ANCHOR_METADATA_KIND)
+                && metadata
+                    .get("hidden")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
+        })
 }
 
 fn escape_xml_attr(value: &str) -> String {
@@ -321,6 +334,37 @@ fn make_transient_skill_message(skill_id: &str, content: &str) -> LegacyChatMess
         "skillId": skill_id,
     }));
     msg
+}
+
+fn make_transient_request_anchor_message() -> LegacyChatMessage {
+    let mut msg = make_empty_message(
+        "user",
+        "<request_context>Transient skill instructions for this request follow.</request_context>"
+            .to_string(),
+    );
+    msg.metadata = Some(json!({
+        "kind": TRANSIENT_REQUEST_ANCHOR_METADATA_KIND,
+        "hidden": true,
+    }));
+    msg
+}
+
+pub(crate) fn insert_transient_skill_messages(
+    messages: &mut Vec<LegacyChatMessage>,
+    insertion_index: usize,
+    transient_skill_messages: Vec<LegacyChatMessage>,
+) {
+    if transient_skill_messages.is_empty() {
+        return;
+    }
+
+    let mut insert_at = insertion_index.min(messages.len());
+    if insert_at == 0 {
+        messages.insert(0, make_transient_request_anchor_message());
+        insert_at = 1;
+    }
+
+    messages.splice(insert_at..insert_at, transient_skill_messages);
 }
 
 pub(crate) fn build_transient_skill_messages(
@@ -465,11 +509,14 @@ pub(crate) fn trim_history_by_token_budget(
     while total_tokens > max_tokens
         && history
             .iter()
-            .filter(|m| !is_transient_skill_message(m))
+            .filter(|m| !is_transient_llm_only_message(m))
             .count()
             > 2
     {
-        let Some(remove_idx) = history.iter().position(|m| !is_transient_skill_message(m)) else {
+        let Some(remove_idx) = history
+            .iter()
+            .position(|m| !is_transient_llm_only_message(m))
+        else {
             break;
         };
         let removed = history.remove(remove_idx);
@@ -532,6 +579,21 @@ mod tests {
         assert_eq!(injected.audit.skill_state_version, 7);
         assert_eq!(injected.messages.len(), 5);
         assert!(injected.messages.iter().all(is_transient_skill_message));
+    }
+
+    #[test]
+    fn test_insert_transient_skill_messages_keeps_skill_instruction_off_first_position() {
+        let mut messages = Vec::new();
+        insert_transient_skill_messages(
+            &mut messages,
+            0,
+            vec![make_transient_skill_message("skill-a", "private body")],
+        );
+
+        assert_eq!(messages.len(), 2);
+        assert!(is_transient_llm_only_message(&messages[0]));
+        assert!(!is_transient_skill_message(&messages[0]));
+        assert!(is_transient_skill_message(&messages[1]));
     }
 
     #[test]

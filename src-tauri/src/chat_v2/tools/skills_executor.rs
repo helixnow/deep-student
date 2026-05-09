@@ -313,6 +313,10 @@ impl ToolExecutor for SkillsExecutor {
                                             .selected_mcp_servers
                                             .clone(),
                                     };
+                                    let previous_runtime_for_meta =
+                                        previous_runtime.clone().without_skill_contents();
+                                    let next_runtime_for_meta =
+                                        next_runtime.clone().without_skill_contents();
                                     if let Some(ref variant_id) = ctx.variant_id {
                                         if let Some(ref mut variants) = message.variants {
                                             if let Some(variant) = variants
@@ -326,9 +330,9 @@ impl ToolExecutor for SkillsExecutor {
                                                 variant_meta.skill_snapshot_after =
                                                     Some(next_snapshot.clone());
                                                 variant_meta.skill_runtime_before =
-                                                    Some(previous_runtime.clone());
+                                                    Some(previous_runtime_for_meta.clone());
                                                 variant_meta.skill_runtime_after =
-                                                    Some(next_runtime.clone());
+                                                    Some(next_runtime_for_meta.clone());
                                                 variant.meta = Some(variant_meta);
                                             }
                                         }
@@ -337,8 +341,8 @@ impl ToolExecutor for SkillsExecutor {
                                     let mut meta = message.meta.unwrap_or_default();
                                     meta.skill_snapshot_before = Some(previous_snapshot);
                                     meta.skill_snapshot_after = Some(next_snapshot);
-                                    meta.skill_runtime_before = Some(previous_runtime);
-                                    meta.skill_runtime_after = Some(next_runtime);
+                                    meta.skill_runtime_before = Some(previous_runtime_for_meta);
+                                    meta.skill_runtime_after = Some(next_runtime_for_meta);
                                     meta.replay_source = Some("current".to_string());
                                     message.meta = Some(meta);
                                     if let Err(err) =

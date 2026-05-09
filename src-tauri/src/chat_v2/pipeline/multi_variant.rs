@@ -26,16 +26,10 @@ fn build_replay_skill_payload_snapshot(
         skill_embedded_tools: options.skill_embedded_tools.clone().unwrap_or_default(),
         mcp_tool_schemas: options.mcp_tool_schemas.clone().unwrap_or_default(),
         selected_mcp_servers: options.mcp_tools.clone().unwrap_or_default(),
-    };
+    }
+    .without_skill_contents();
 
-    let has_payload = !snapshot.active_skill_ids.is_empty()
-        || !snapshot.skill_contents.is_empty()
-        || !snapshot.skill_dependencies.is_empty()
-        || !snapshot.skill_embedded_tools.is_empty()
-        || !snapshot.mcp_tool_schemas.is_empty()
-        || !snapshot.selected_mcp_servers.is_empty();
-
-    has_payload.then_some(snapshot)
+    snapshot.has_replay_metadata().then_some(snapshot)
 }
 
 impl ChatV2Pipeline {
@@ -780,7 +774,7 @@ impl ChatV2Pipeline {
                 .context_limit
                 .map(|v| (v as usize).min(DEFAULT_MAX_HISTORY_TOKENS)),
         );
-        messages.splice(base_history_len..base_history_len, transient_skill_messages);
+        insert_transient_skill_messages(&mut messages, base_history_len, transient_skill_messages);
 
         // 构建 LLM 上下文
         let mut llm_context: std::collections::HashMap<String, Value> =
@@ -1123,7 +1117,7 @@ impl ChatV2Pipeline {
                 break;
             }
 
-            messages.retain(|msg| !is_transient_skill_message(msg));
+            messages.retain(|msg| !is_transient_llm_only_message(msg));
             let empty_skill_contents = std::collections::HashMap::new();
             let transient_skill_messages = build_transient_skill_messages_with_audit(
                 &variant_skill_state,
@@ -1138,8 +1132,9 @@ impl ChatV2Pipeline {
                     .map(|v| (v as usize).min(DEFAULT_MAX_HISTORY_TOKENS)),
             );
             let skill_audit = transient_skill_messages.audit.clone();
-            messages.splice(
-                base_history_len..base_history_len,
+            insert_transient_skill_messages(
+                &mut messages,
+                base_history_len,
                 transient_skill_messages.messages,
             );
             let audit_round_id = format!("variant-tool-round-{}", tool_round);
@@ -2009,6 +2004,8 @@ impl ChatV2Pipeline {
         attachments: &[AttachmentInput],
         user_context_refs: &[SendContextRef],
     ) -> LegacyChatMessage {
+        let runtime_facts = PipelineContext::build_runtime_facts_block(user_content);
+
         // ★ 新路径：如果 user_context_refs 包含图片块，走多模态路径（与 prompt.rs 对齐）
         let has_context_images = user_context_refs.iter().any(|r| {
             r.formatted_blocks
@@ -2018,42 +2015,16 @@ impl ChatV2Pipeline {
 
         if has_context_images {
             let ordered_blocks =
-                PipelineContext::build_user_content_from_context_refs(user_context_refs);
-            let text_fallback_blocks =
-                PipelineContext::build_user_content_from_context_refs(user_context_refs);
-
-            let mut combined = String::new();
-            if !user_content.is_empty() {
-                combined.push_str(&format!(
-                    "<user_query>\n{}\n</user_query>",
-                    super::super::vfs_resolver::escape_xml_content(user_content)
-                ));
-            }
-            let mut injected_text = String::new();
-            for block in text_fallback_blocks {
-                if let ContentBlock::Text { text } = block {
-                    if !injected_text.is_empty() {
-                        injected_text.push('\n');
-                    }
-                    injected_text.push_str(&text);
-                }
-            }
-            if !injected_text.is_empty() {
-                if !combined.is_empty() {
-                    combined.push_str("\n\n");
-                }
-                combined.push_str("<injected_context>\n");
-                combined.push_str(&injected_text);
-                combined.push_str("\n</injected_context>");
-            }
+                PipelineContext::build_injected_context_blocks(&runtime_facts, user_context_refs);
+            let (injected_text, _) =
+                PipelineContext::collect_injected_context_text_and_images(&ordered_blocks);
+            let combined =
+                PipelineContext::wrap_user_message_text(user_content, Some(injected_text.as_str()));
 
             let mut blocks: Vec<ContentBlock> = Vec::new();
 
-            if !user_content.is_empty() {
-                blocks.push(ContentBlock::text(format!(
-                    "<user_query>\n{}\n</user_query>",
-                    super::super::vfs_resolver::escape_xml_content(user_content)
-                )));
+            if let Some(user_query) = PipelineContext::build_user_query_block(user_content) {
+                blocks.push(ContentBlock::text(user_query));
             }
 
             if !ordered_blocks.is_empty() {
@@ -2100,57 +2071,17 @@ impl ChatV2Pipeline {
             };
         }
 
-        // ★ 文本模式：user_context_refs 有文本块时，合并到 content
-        if !user_context_refs.is_empty() {
-            let content_blocks =
-                PipelineContext::build_user_content_from_context_refs(user_context_refs);
-            if !content_blocks.is_empty() {
-                let mut combined = String::new();
+        let injected_blocks =
+            PipelineContext::build_injected_context_blocks(&runtime_facts, user_context_refs);
+        let (injected_text, _) =
+            PipelineContext::collect_injected_context_text_and_images(&injected_blocks);
+        let combined =
+            PipelineContext::wrap_user_message_text(user_content, Some(injected_text.as_str()));
 
-                if !user_content.is_empty() {
-                    combined.push_str(&format!(
-                        "<user_query>\n{}\n</user_query>\n\n",
-                        super::super::vfs_resolver::escape_xml_content(user_content)
-                    ));
-                }
-
-                combined.push_str("<injected_context>\n");
-                for block in content_blocks {
-                    if let ContentBlock::Text { text } = block {
-                        combined.push_str(&text);
-                        combined.push('\n');
-                    }
-                }
-                combined.push_str("</injected_context>");
-
-                log::info!(
-                    "[ChatV2::pipeline] build_variant_user_message: Using text mode with context refs, len={}",
-                    combined.len()
-                );
-
-                return LegacyChatMessage {
-                    role: "user".to_string(),
-                    content: combined,
-                    timestamp: chrono::Utc::now(),
-                    thinking_content: None,
-                    thought_signature: None,
-                    rag_sources: None,
-                    memory_sources: None,
-                    graph_sources: None,
-                    web_search_sources: None,
-                    image_paths: None,
-                    image_base64: None,
-                    doc_attachments: None,
-                    multimodal_content: None,
-                    tool_call: None,
-                    tool_result: None,
-                    overrides: None,
-                    relations: None,
-                    persistent_stable_id: None,
-                    metadata: None,
-                };
-            }
-        }
+        log::info!(
+            "[ChatV2::pipeline] build_variant_user_message: Using text mode with injected context, len={}",
+            combined.len()
+        );
 
         // ★ 回退路径：使用旧版 attachments（兼容 retry 恢复场景）
         let image_base64: Option<Vec<String>> = {
@@ -2223,7 +2154,7 @@ impl ChatV2Pipeline {
 
         LegacyChatMessage {
             role: "user".to_string(),
-            content: user_content.to_string(),
+            content: combined,
             timestamp: chrono::Utc::now(),
             thinking_content: None,
             thought_signature: None,
@@ -2688,7 +2619,7 @@ impl ChatV2Pipeline {
                             .as_ref()
                             .or(meta.skill_snapshot_before.as_ref())
                     }) {
-                        let promoted_state = crate::chat_v2::types::SessionSkillState {
+                        let restored_base_state = crate::chat_v2::types::SessionSkillState {
                             manual_pinned_skill_ids: snapshot.manual_pinned_skill_ids.clone(),
                             mode_required_bundle_ids: snapshot.mode_required_bundle_ids.clone(),
                             agentic_session_skill_ids: snapshot.agentic_session_skill_ids.clone(),
@@ -2705,11 +2636,11 @@ impl ChatV2Pipeline {
                             version: snapshot.version,
                             legacy_migrated: Some(false),
                         }
-                        .promoted_branch_local_skills();
+                        .without_branch_local_skills();
                         let _ = ChatV2Repo::update_session_skill_state_v2(
                             &self.db,
                             &message.session_id,
-                            &promoted_state,
+                            &restored_base_state,
                         );
                     }
                 }
