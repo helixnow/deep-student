@@ -1210,6 +1210,7 @@ pub fn run() {
             // 工具审批命令（敏感工具用户确认）
             ,crate::chat_v2::handlers::approval_handlers::chat_v2_tool_approval_respond
             ,crate::chat_v2::handlers::approval_handlers::chat_v2_tool_approval_cancel
+            ,crate::chat_v2::handlers::approval_handlers::chat_v2_clear_approval_history
             // 🆕 用户提问命令（轻量级问答交互）
             ,crate::chat_v2::handlers::ask_user_handlers::chat_v2_ask_user_respond
             // Canvas 工具前端回调命令（完全前端模式）

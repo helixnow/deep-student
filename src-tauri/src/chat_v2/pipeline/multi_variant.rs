@@ -224,6 +224,43 @@ impl ChatV2Pipeline {
             shared_context.has_sources()
         );
 
+        // === 4.5. 🆕 R2-CR-R2-02 修复：多变体 fan-out 前先检查是否需要压缩 ===
+        // 估算会话接近上下文上限时主动压一次；所有变体看同一压缩视图。
+        // 失败 / 跳过时继续 fan-out，依赖 apply_compaction_view 读视图兜底。
+        if !options.parallel_model_ids.as_deref().unwrap_or(&[]).is_empty() {
+            let model_for_budget = options.model_id.as_deref();
+            let api_cfg = self.resolve_api_config_by_id(model_for_budget).await;
+            if self
+                .should_compact_before_multi_variant_fanout(&session_id, api_cfg.as_ref())
+                .await
+            {
+                let exclude = vec![user_message_id.clone(), assistant_message_id.clone()];
+                match self
+                    .run_compaction_for_session(&session_id, model_for_budget, &exclude)
+                    .await
+                {
+                    Ok(true) => {
+                        log::info!(
+                            "[ChatV2::pipeline] multi-variant: compaction ran successfully for session={}",
+                            session_id
+                        );
+                    }
+                    Ok(false) => {
+                        log::debug!(
+                            "[ChatV2::pipeline] multi-variant: compaction skipped for session={}",
+                            session_id
+                        );
+                    }
+                    Err(e) => {
+                        log::warn!(
+                            "[ChatV2::pipeline] multi-variant: compaction failed (non-fatal): {}",
+                            e
+                        );
+                    }
+                }
+            }
+        }
+
         // === 5. 发射 stream_start ===
         // 多变体模式不在 stream_start 中传递模型名称，每个变体通过 variant_start 事件传递
         emitter.emit_stream_start(&assistant_message_id, None);

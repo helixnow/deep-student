@@ -611,6 +611,20 @@ pub(crate) fn log_and_emit_llm_request(
     }
 }
 
+/// 🔧 CR-R2-01 修复：`call_raw_prompt_with_config` 的可选项，让
+/// compaction / summary 等 Markdown 场景能关掉 GPT 的 `response_format: json_object` 强制。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RawPromptOptions {
+    /// gpt-* 模型是否强制 JSON 模式（默认 true，保持旧有 model2 / title 调用的语义）
+    pub force_json: bool,
+}
+
+impl Default for RawPromptOptions {
+    fn default() -> Self {
+        Self { force_json: true }
+    }
+}
+
 impl LLMManager {
     /// 从 DB 读取 debug 持久化配置
     fn build_debug_persist_config(&self) -> Option<DebugPersistConfig> {
@@ -4499,6 +4513,9 @@ impl LLMManager {
     ///
     /// 用于 compaction：和主对话同模型生成摘要，保持语言/风格一致。
     /// 回退链：匹配 config_id → 匹配 model 显示名 → Model2 默认配置。
+    ///
+    /// 🔧 CR-R2-01 修复：compaction 需要 Markdown 输出，禁用 JSON 强制模式，
+    /// 否则 gpt-* 模型会把 Markdown 摘要编成 JSON，破坏锚定链。
     pub async fn call_with_config_id_raw_prompt(
         &self,
         config_id: &str,
@@ -4522,8 +4539,14 @@ impl LLMManager {
             }
         };
 
-        self.call_raw_prompt_with_config(config, user_prompt, None)
-            .await
+        // 🔧 CR-R2-01：force_json=false，让 gpt-* 模型按 Markdown 输出
+        self.call_raw_prompt_with_config_opts(
+            config,
+            user_prompt,
+            None,
+            RawPromptOptions { force_json: false },
+        )
+        .await
     }
 
     /// 使用记忆决策模型调用（回退链：memory_decision_model → model2）
@@ -4552,6 +4575,25 @@ impl LLMManager {
         config: ApiConfig,
         user_prompt: &str,
         image_payloads: Option<Vec<ImagePayload>>,
+    ) -> Result<StandardModel2Output> {
+        // 旧入口保留默认行为：GPT 启用 JSON 严格模式
+        self.call_raw_prompt_with_config_opts(
+            config,
+            user_prompt,
+            image_payloads,
+            RawPromptOptions { force_json: true },
+        )
+        .await
+    }
+
+    /// 带选项的 raw prompt 调用。`force_json=false` 供 compaction 等需要 Markdown
+    /// 输出的调用方使用（CR-R2-01 修复）。
+    async fn call_raw_prompt_with_config_opts(
+        &self,
+        config: ApiConfig,
+        user_prompt: &str,
+        image_payloads: Option<Vec<ImagePayload>>,
+        opts: RawPromptOptions,
     ) -> Result<StandardModel2Output> {
         // 构造最简消息，仅包含用户指令
         let mut content_parts = vec![json!({
@@ -4609,8 +4651,8 @@ impl LLMManager {
             request_body["max_total_tokens"] = max_tokens;
         }
 
-        // 如果是 OpenAI GPT 模型，启用 JSON strict 模式
-        if config.model.starts_with("gpt-") {
+        // 如果是 OpenAI GPT 模型 且调用方允许（compaction 等 Markdown 场景会关掉）
+        if opts.force_json && config.model.starts_with("gpt-") {
             request_body["response_format"] = json!({"type": "json_object"});
         }
 

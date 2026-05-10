@@ -149,9 +149,15 @@ impl ApprovalManager {
     /// 写入时走统一入口 `approval_scope::make_runtime_scope_key`。
     /// 读取时 `check_remembered` 先查 v2，未命中再查 v1（保持旧记录兼容）。
     fn make_pending_key(session_id: &str, tool_call_id: &str) -> String {
-        format!("{}:{}", session_id, tool_call_id)
+        // 🔧 R2-MED 修复：用换行符作分隔符而非 `:`，避免 session_id / tool_call_id
+        // 里包含 `:` 造成的潜在碰撞（极罕见但理论可能）
+        format!("{}\n{}", session_id, tool_call_id)
     }
 
+    /// 无 session / 无参数版本的 register — **仅供单测使用**。
+    /// 生产代码必须调用 `register_with_scope`，传入真实 session_id / tool_name / arguments，
+    /// 否则 scope_key 会落到 `::null` 这种通配桶。
+    #[cfg(test)]
     pub fn register(&self, tool_call_id: &str) -> oneshot::Receiver<ApprovalResponse> {
         self.register_with_scope("", tool_call_id, "", &Value::Null)
     }
@@ -165,13 +171,31 @@ impl ApprovalManager {
     ) -> oneshot::Receiver<ApprovalResponse> {
         let (tx, rx) = oneshot::channel();
         let pending_key = Self::make_pending_key(session_id, tool_call_id);
-        self.pending
-            .lock()
-            .unwrap_or_else(|poisoned| {
-                log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
-                poisoned.into_inner()
-            })
-            .insert(pending_key.clone(), tx);
+
+        // 🔧 R2-MED 修复：检测 tool_call_id 复用。如果已有同 key 的 sender，
+        // 新 register 会悄悄丢掉旧 sender → 旧调用方一直等到 timeout。
+        // 这里改为显式告警 + 旧 sender 主动关闭（发 "Rejected + cancelled" 让
+        // 旧等待者尽快解除阻塞）。
+        let prior = {
+            let mut map = self.pending.lock().unwrap_or_else(|p| p.into_inner());
+            map.insert(pending_key.clone(), tx)
+        };
+        if let Some(old_tx) = prior {
+            log::warn!(
+                "[ApprovalManager] Duplicate register_with_scope for pending_key session={}, tool_call_id={}; \
+                 dropping earlier receiver (likely tool_call_id reuse from adapter)",
+                session_id,
+                tool_call_id
+            );
+            // 尝试通知旧等待者：作为 rejected 返回，避免它等到 timeout
+            let resp = ApprovalResponse::rejected(
+                session_id.to_string(),
+                tool_call_id.to_string(),
+                tool_name.to_string(),
+                Some("duplicate approval request; earlier one superseded".to_string()),
+            );
+            let _ = old_tx.send(resp);
+        }
 
         // 🔧 M-081 修复：统一入口 make_runtime_scope_key（v2 优先，未知工具 fallback v1）
         let scope_key = approval_scope::make_runtime_scope_key(tool_name, arguments);
@@ -288,7 +312,8 @@ impl ApprovalManager {
     }
 
     pub fn cancel(&self, tool_call_id: &str) {
-        let suffix = format!(":{}", tool_call_id);
+        // 🔧 配合 make_pending_key 的 `\n` 分隔符；旧 `:{}` suffix 已失效
+        let suffix = format!("\n{}", tool_call_id);
         let pending_keys: Vec<String> = self
             .pending
             .lock()

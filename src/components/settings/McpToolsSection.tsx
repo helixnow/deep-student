@@ -1743,13 +1743,14 @@ function ToolPermissionsSection({ toolsByServer }: {
     }
   }, []);
 
-  /** 清除所有历史审批记录 */
+  /** 清除所有历史审批记录（DB + 内存） */
   const handleClearHistory = useCallback(async () => {
     if (!window.confirm(t('settings:tool_permissions.clear_history_confirm'))) return;
     try {
-      const result = await invoke<number>('delete_settings_by_prefix', {
-        prefix: 'tool_approval.scope.',
-      });
+      // 🔧 R2-H2 修复：调用统一命令，同时清内存 + DB。
+      // 旧实现 `delete_settings_by_prefix` 只清 DB，ApprovalManager 内存 HashMap
+      // 还留着，未重启进程期间前面的批准继续自动通过，违背"清除"承诺。
+      const result = await invoke<number>('chat_v2_clear_approval_history');
       setHistoryCount(0);
       showGlobalNotification(
         'success',

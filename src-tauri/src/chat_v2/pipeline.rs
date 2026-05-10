@@ -17,7 +17,7 @@
 //! - 工具递归：最多递归 5 次
 //! - 数据持久化：每个阶段完成后立即保存
 
-pub(crate) use std::collections::HashMap;
+pub(crate) use std::collections::{HashMap, HashSet};
 pub(crate) use std::sync::Arc;
 pub(crate) use std::time::Instant;
 
@@ -135,6 +135,9 @@ pub struct ChatV2Pipeline {
     question_bank_service: Option<Arc<crate::question_bank_service::QuestionBankService>>,
     /// 🆕 PDF 处理服务（用于论文保存后触发 OCR/压缩 Pipeline）
     pdf_processing_service: Option<Arc<crate::vfs::pdf_processing_service::PdfProcessingService>>,
+    /// 🆕 P1 / R2-MED 修复：session 级 compaction 互斥，防止多个 execute_internal
+    /// 同时触发 compaction 产生重复 LLM 调用 + 孤儿记录
+    compaction_locks: Arc<Mutex<HashSet<String>>>,
 }
 
 impl ChatV2Pipeline {
@@ -173,6 +176,7 @@ impl ChatV2Pipeline {
             workspace_coordinator: None,
             question_bank_service: None,
             pdf_processing_service: None,
+            compaction_locks: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 

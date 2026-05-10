@@ -31,6 +31,7 @@ use crate::llm_manager::ApiConfig;
 use crate::models::ChatMessage as LegacyChatMessage;
 use chrono::Utc;
 use log::{debug, info, warn};
+use std::collections::HashSet;
 
 // ============================================================================
 // 触发参数（参考 opencode overflow.ts + 2026 模型调研）
@@ -528,23 +529,91 @@ impl ChatV2Pipeline {
         if !ctx.needs_compaction {
             return Ok(());
         }
-        info!(
-            "[compaction] running for session={} assistant_msg={}",
-            ctx.session_id, ctx.assistant_message_id
-        );
-
         let session_id = ctx.session_id.clone();
+        let model_id = ctx.options.model_id.clone();
+        let exclude_ids = vec![
+            ctx.user_message_id.clone(),
+            ctx.assistant_message_id.clone(),
+        ];
+
+        let ok = self
+            .run_compaction_for_session(&session_id, model_id.as_deref(), &exclude_ids)
+            .await?;
+
+        // 无论成功/跳过，都清除 ctx 的触发标志（防止外层循环反复重试）
+        ctx.needs_compaction = false;
+        if !ok {
+            debug!("[compaction] session={} skipped", session_id);
+        }
+        Ok(())
+    }
+
+    /// 🆕 R2-CR-R2-02 修复：context-agnostic 的 compaction 入口。
+    ///
+    /// 用于单变体（通过 `run_compaction`）和多变体（通过 `execute_multi_variant`
+    /// 在 fan-out 前主动触发）共同复用。
+    ///
+    /// ## 并发控制
+    /// 通过 `compaction_locks` HashSet 对 session_id 做互斥，防止两个请求
+    /// 同时对同一会话压缩，避免重复 LLM 调用 + 孤儿记录（R2-MED 修复）。
+    ///
+    /// ## 参数
+    /// - `session_id`: 目标会话
+    /// - `model_id`: 主对话模型（用于摘要生成）；空字符串 / None 则跳过
+    /// - `exclude_ids`: 当前正在处理的 user/assistant message IDs，防止把未完成
+    ///   的消息纳入压缩范围
+    ///
+    /// ## 返回
+    /// `Ok(true)` — 执行了压缩并落盘一条记录
+    /// `Ok(false)` — 跳过（会话过短、无 model_id、LLM 失败等）
+    /// `Err(_)` — DB / 事务硬错误
+    pub(crate) async fn run_compaction_for_session(
+        &self,
+        session_id: &str,
+        model_id: Option<&str>,
+        exclude_ids: &[String],
+    ) -> ChatV2Result<bool> {
+        // --- 互斥锁：同一 session 同时只跑一个 compaction ---
+        let lock_acquired = {
+            let mut locks = self
+                .compaction_locks
+                .lock()
+                .unwrap_or_else(|p| p.into_inner());
+            locks.insert(session_id.to_string())
+        };
+        if !lock_acquired {
+            info!(
+                "[compaction] session={} already running; skip this trigger",
+                session_id
+            );
+            return Ok(false);
+        }
+
+        // RAII guard：无论函数从哪里 return，都把 session_id 从锁集合移除
+        struct LockGuard<'a> {
+            locks: &'a std::sync::Mutex<HashSet<String>>,
+            key: String,
+        }
+        impl<'a> Drop for LockGuard<'a> {
+            fn drop(&mut self) {
+                if let Ok(mut l) = self.locks.lock() {
+                    l.remove(&self.key);
+                }
+            }
+        }
+        let _guard = LockGuard {
+            locks: &self.compaction_locks,
+            key: session_id.to_string(),
+        };
+
+        info!("[compaction] running for session={}", session_id);
 
         // 1. 加载全量历史 + 所有块（用于签名保真扫描）
         let conn = self.db.get_conn_safe()?;
+        let all_messages = ChatV2Repo::get_session_messages_with_conn(&conn, session_id)?;
 
-        let all_messages = ChatV2Repo::get_session_messages_with_conn(&conn, &session_id)?;
-
-        // 排除当前正在处理的用户/助手消息（它们还没结束）
         let exclude: std::collections::HashSet<&str> =
-            [ctx.user_message_id.as_str(), ctx.assistant_message_id.as_str()]
-                .into_iter()
-                .collect();
+            exclude_ids.iter().map(|s| s.as_str()).collect();
         let messages: Vec<ChatMessage> = all_messages
             .into_iter()
             .filter(|m| !exclude.contains(m.id.as_str()))
@@ -555,11 +624,9 @@ impl ChatV2Pipeline {
                 "[compaction] session too short ({} msgs); skip",
                 messages.len()
             );
-            ctx.needs_compaction = false;
-            return Ok(());
+            return Ok(false);
         }
 
-        // 加载每条消息的块（只为签名扫描，不重建对话）
         let mut blocks_by_msg: std::collections::HashMap<String, Vec<MessageBlock>> =
             std::collections::HashMap::new();
         for m in &messages {
@@ -574,20 +641,16 @@ impl ChatV2Pipeline {
         // 2. 构建 turn 列表
         let turns = split_into_turns(&messages);
         if turns.len() < HEAD_USER_TURNS + 2 {
-            info!(
-                "[compaction] not enough turns ({}); skip",
-                turns.len()
-            );
-            ctx.needs_compaction = false;
-            return Ok(());
+            info!("[compaction] not enough turns ({}); skip", turns.len());
+            return Ok(false);
         }
 
-        // 3. 解析 ApiConfig（决定 tail 预算）
-        let api_config = self.resolve_active_api_config(ctx).await;
+        // 3. 解析 ApiConfig（基于 model_id）
+        let api_config = self.resolve_api_config_by_id(model_id).await;
         let model_id_for_tokens = api_config
             .as_ref()
             .map(|c| c.model.as_str())
-            .or(ctx.options.model_id.as_deref());
+            .or(model_id);
         let usable = usable_tokens(api_config.as_ref()) as usize;
         let tail_budget_raw = (usable as f64 * TAIL_PRESERVE_RATIO) as usize;
         let tail_budget = tail_budget_raw.clamp(MIN_TAIL_TOKENS, MAX_TAIL_TOKENS);
@@ -602,8 +665,7 @@ impl ChatV2Pipeline {
             Some(t) => t,
             None => {
                 info!("[compaction] no suitable tail cut; skip");
-                ctx.needs_compaction = false;
-                return Ok(());
+                return Ok(false);
             }
         };
 
@@ -614,20 +676,26 @@ impl ChatV2Pipeline {
         );
 
         // 4. 读取此前最近一次 compaction summary（锚定链接续）
-        let previous_summary: Option<String> = ChatV2Repo::get_active_compaction_with_conn(
-            &conn, &session_id,
-        )
-        .ok()
-        .flatten()
-        .and_then(|prev| {
-            ChatV2Repo::get_message_blocks_with_conn(&conn, &prev.summary_message_id)
-                .ok()
-                .and_then(|blks| {
-                    blks.into_iter()
-                        .find(|b| b.block_type == block_types::COMPACTION_SUMMARY)
-                        .and_then(|b| b.content)
+        let previous_summary: Option<String> =
+            ChatV2Repo::get_active_compaction_with_conn(&conn, session_id)
+                .map_err(|e| {
+                    warn!(
+                        "[compaction] get_active_compaction failed: {}; treat as no previous",
+                        e
+                    );
+                    e
                 })
-        });
+                .ok()
+                .flatten()
+                .and_then(|prev| {
+                    ChatV2Repo::get_message_blocks_with_conn(&conn, &prev.summary_message_id)
+                        .ok()
+                        .and_then(|blks| {
+                            blks.into_iter()
+                                .find(|b| b.block_type == block_types::COMPACTION_SUMMARY)
+                                .and_then(|b| b.content)
+                        })
+                });
 
         // 5. 渲染 head / middle 用于 prompt
         let head_tokens_used = HEAD_USER_TURNS.min(turns.len());
@@ -640,13 +708,10 @@ impl ChatV2Pipeline {
         let middle_end = tail.tail_start_idx;
         if middle_start >= middle_end {
             info!("[compaction] nothing in middle to summarize; skip");
-            ctx.needs_compaction = false;
-            return Ok(());
+            return Ok(false);
         }
 
         // 🔧 P1-B2 修复：渲染摘要 prompt 时包含 tool_input/tool_output。
-        // 单条消息上限按 usable 的 2% 计（例如 200K 模型 ≈ 4K token/消息），
-        // 防止单条巨大 tool_output 吞掉整个 prompt。
         let per_msg_cap = (usable / 50).max(2_000) as usize;
         let head_text = render_messages_for_prompt(
             &messages,
@@ -670,19 +735,11 @@ impl ChatV2Pipeline {
         drop(conn);
 
         // 🔧 P1-W4 修复：若没有显式 model_id，**跳过压缩**，不要默默回退到 Model2
-        // （可能是另一个 vendor / API key / endpoint，无意地泄露对话内容）
-        let effective_model_id = match ctx
-            .options
-            .model_id
-            .as_deref()
-            .map(str::trim)
-            .filter(|s| !s.is_empty())
-        {
+        let effective_model_id = match model_id.map(str::trim).filter(|s| !s.is_empty()) {
             Some(id) => id,
             None => {
-                warn!("[compaction] ctx.options.model_id is empty; skip compaction (no fallback)");
-                ctx.needs_compaction = false;
-                return Ok(());
+                warn!("[compaction] no model_id; skip compaction (no fallback)");
+                return Ok(false);
             }
         };
 
@@ -695,17 +752,15 @@ impl ChatV2Pipeline {
                 let trimmed = out.assistant_message.trim().to_string();
                 if trimmed.is_empty() {
                     warn!("[compaction] LLM returned empty summary; skip");
-                    ctx.needs_compaction = false;
-                    return Ok(());
+                    return Ok(false);
                 }
                 // 🔧 P1-W3 修复：硬性 cap，防止 runaway 摘要反而超过 tail 预算。
-                // summary_tokens 若 >= tail_budget_raw，下一轮立刻再次触发压缩 → 死循环。
                 let summary_tokens = crate::utils::token_budget::estimate_tokens_with_model(
                     &trimmed,
                     model_id_for_tokens,
                 );
-                let hard_cap_tokens = tail_budget_raw / 2; // 摘要不应大于 tail 的一半
-                if summary_tokens > hard_cap_tokens {
+                let hard_cap_tokens = tail_budget_raw / 2;
+                if summary_tokens > hard_cap_tokens && summary_tokens > 0 {
                     let ratio = hard_cap_tokens as f64 / summary_tokens as f64;
                     let keep_chars =
                         ((trimmed.chars().count() as f64) * ratio).max(500.0) as usize;
@@ -724,13 +779,11 @@ impl ChatV2Pipeline {
                     "[compaction] LLM call failed: {}; fallback to FIFO truncation",
                     e
                 );
-                ctx.needs_compaction = false;
-                return Ok(());
+                return Ok(false);
             }
         };
 
         // 7. 估算压缩后 tokens（粗略）
-        let tokens_before = ctx.token_usage.last_round_prompt_tokens;
         let summary_tokens = crate::utils::token_budget::estimate_tokens_with_model(
             &summary_text,
             model_id_for_tokens,
@@ -744,7 +797,7 @@ impl ChatV2Pipeline {
 
         let summary_message = ChatMessage {
             id: summary_msg_id.clone(),
-            session_id: session_id.clone(),
+            session_id: session_id.to_string(),
             role: MessageRole::Assistant,
             block_ids: vec![summary_block_id.clone()],
             timestamp: now_ms,
@@ -776,43 +829,34 @@ impl ChatV2Pipeline {
 
         let record = CompactionRecord {
             id: CompactionRecord::generate_id(),
-            session_id: session_id.clone(),
+            session_id: session_id.to_string(),
             summary_message_id: summary_msg_id.clone(),
             tail_start_message_id: tail_start_msg.id.clone(),
             tail_start_time_created: tail_start_msg.timestamp,
             reason: "auto".to_string(),
             is_auto: true,
             is_overflow: false,
-            tokens_before,
+            tokens_before: None,
             tokens_after,
-            model_id: ctx.options.model_id.clone(),
+            model_id: model_id.map(|s| s.to_string()),
             created_at: now_ms,
         };
 
         // 9. 单事务写入
-        // WR-01 改进：create_compaction 只写 compaction 表；set_session_last_compaction
-        // 单独调用，语义更清晰
         let mut conn = self.db.get_conn_safe()?;
         let tx = conn.transaction()?;
         ChatV2Repo::create_message_with_conn(&tx, &summary_message)?;
         ChatV2Repo::create_block_with_conn(&tx, &summary_block)?;
         ChatV2Repo::create_compaction_with_conn(&tx, &record)?;
-        ChatV2Repo::set_session_last_compaction_with_conn(&tx, &session_id, &record.id)?;
+        ChatV2Repo::set_session_last_compaction_with_conn(&tx, session_id, &record.id)?;
         tx.commit()?;
 
         info!(
-            "[compaction] committed: id={} tail_start_msg={} summary_tokens={} before={:?} after={:?}",
-            record.id, tail_start_msg.id, summary_tokens, tokens_before, tokens_after
+            "[compaction] committed: id={} tail_start_msg={} summary_tokens={} tokens_after={:?}",
+            record.id, tail_start_msg.id, summary_tokens, tokens_after
         );
 
-        ctx.needs_compaction = false;
-
-        // 🔧 P1-W6 修复：不再修改 ctx.token_usage.last_round_prompt_tokens。
-        // compaction 在 execute_internal 阶段 7 运行（save_results 之后），
-        // 此后本次请求的 ctx 即将被丢弃。下一次请求会新建 ctx。
-        // 真正要防连锁触发，应在下一轮用 apply_compaction_view 的过滤视图。
-
-        Ok(())
+        Ok(true)
     }
 
     /// 尝试从 `ctx.options.model_id` 解析活跃的 ApiConfig，用于 usable_tokens 估算
@@ -820,7 +864,16 @@ impl ChatV2Pipeline {
         &self,
         ctx: &PipelineContext,
     ) -> Option<ApiConfig> {
-        let key = ctx.options.model_id.as_deref()?;
+        self.resolve_api_config_by_id(ctx.options.model_id.as_deref())
+            .await
+    }
+
+    /// 按 model_id（config.id 或 config.model）解析 ApiConfig
+    pub(crate) async fn resolve_api_config_by_id(
+        &self,
+        key: Option<&str>,
+    ) -> Option<ApiConfig> {
+        let key = key?.trim();
         if key.is_empty() {
             return None;
         }
@@ -830,6 +883,61 @@ impl ChatV2Pipeline {
             .find(|c| c.id == key)
             .or_else(|| configs.iter().find(|c| c.model == key))
             .cloned()
+    }
+
+    /// 🆕 R2-CR-R2-02：多变体 fan-out 前的压缩预检查
+    ///
+    /// 由于多变体路径不经过 `execute_internal`，没有 checkpoint A/B 去累加 usage，
+    /// 这里直接估算"当前历史 + 共享上下文"的 token 数是否接近上限。
+    pub(crate) async fn should_compact_before_multi_variant_fanout(
+        &self,
+        session_id: &str,
+        api_config: Option<&ApiConfig>,
+    ) -> bool {
+        let usable = usable_tokens(api_config);
+        if usable == 0 {
+            return false;
+        }
+        let threshold = ((usable as f64) * TRIGGER_RATIO) as u32;
+
+        // 估算历史 token（只看 message/block 的 content + tool_input/output，
+        // 不加载其他开销；粗略但足以触发阈值判断）
+        let Ok(conn) = self.db.get_conn_safe() else {
+            return false;
+        };
+        let Ok(messages) = ChatV2Repo::get_session_messages_with_conn(&conn, session_id) else {
+            return false;
+        };
+        if messages.is_empty() {
+            return false;
+        }
+        let model_id_for_tokens = api_config.map(|c| c.model.as_str());
+
+        let mut total: usize = 0;
+        for m in &messages {
+            let blocks = ChatV2Repo::get_message_blocks_with_conn(&conn, &m.id).ok();
+            let Some(blocks) = blocks else { continue };
+            // 复用 estimate_message_tokens 的思路
+            let mut blocks_by_msg: std::collections::HashMap<String, Vec<MessageBlock>> =
+                std::collections::HashMap::new();
+            blocks_by_msg.insert(m.id.clone(), blocks);
+            total = total.saturating_add(estimate_message_tokens(
+                m,
+                &blocks_by_msg,
+                model_id_for_tokens,
+            ));
+            if total >= threshold as usize {
+                return true;
+            }
+        }
+        let trigger = (total as u32) >= threshold;
+        if trigger {
+            info!(
+                "[compaction] trigger@multi-variant-fanout: history_tokens~{} threshold={} usable={}",
+                total, threshold, usable
+            );
+        }
+        trigger
     }
 }
 
@@ -849,10 +957,20 @@ pub fn apply_compaction_view(
     session_id: &str,
     messages: Vec<ChatMessage>,
 ) -> (Option<LegacyChatMessage>, Vec<ChatMessage>) {
-    let record = match ChatV2Repo::get_active_compaction_with_conn(conn, session_id).ok().flatten()
-    {
-        Some(r) => r,
-        None => return (None, messages),
+    // 🔧 R2-W2 修复：不要把 DB 错误当成"没有压缩"吞掉。
+    // DB 错误时保持原始消息（保守行为），但显式告警，方便排查 sync 损坏之类的问题。
+    let record = match ChatV2Repo::get_active_compaction_with_conn(conn, session_id) {
+        Ok(Some(r)) => r,
+        Ok(None) => return (None, messages),
+        Err(e) => {
+            log::warn!(
+                "[compaction] apply_compaction_view: get_active_compaction failed for session={}: {}; \
+                 falling back to raw history (may exceed context window)",
+                session_id,
+                e
+            );
+            return (None, messages);
+        }
     };
 
     // 从 records 指向的 summary_message 读 summary 文本
@@ -865,8 +983,27 @@ pub fn apply_compaction_view(
             .find(|b| b.block_type == block_types::COMPACTION_SUMMARY)
             .and_then(|b| b.content)
             .unwrap_or_default(),
-        Err(_) => String::new(),
+        Err(e) => {
+            log::warn!(
+                "[compaction] apply_compaction_view: read summary blocks failed for session={} msg={}: {}",
+                session_id,
+                record.summary_message_id,
+                e
+            );
+            String::new()
+        }
     };
+
+    // 🔧 新加防御：如果摘要文本被意外清空（迁移 / 手改 DB），避免产出
+    // 空壳 `<compacted_context>` 框架把真历史都藏起来。此时保持原样不压缩。
+    if summary_text.trim().is_empty() {
+        log::warn!(
+            "[compaction] apply_compaction_view: summary text is empty for session={}; \
+             falling back to raw history",
+            session_id
+        );
+        return (None, messages);
+    }
 
     // 🔧 P1-W7 修复：
     // - summary_message 的 timestamp 用 now_ms 写入，恒 >= tail_start_time_created
@@ -1016,5 +1153,226 @@ mod tests {
             variants: None,
             shared_context: None,
         }
+    }
+
+    fn make_msg_with_timestamp(id: &str, role: MessageRole, ts: i64) -> ChatMessage {
+        let mut m = make_msg(id, role);
+        m.timestamp = ts;
+        m
+    }
+
+    fn make_text_block(id: &str, msg_id: &str, content: &str) -> MessageBlock {
+        MessageBlock {
+            id: id.to_string(),
+            message_id: msg_id.to_string(),
+            block_type: block_types::CONTENT.to_string(),
+            status: block_status::SUCCESS.to_string(),
+            content: Some(content.to_string()),
+            tool_name: None,
+            tool_input: None,
+            tool_output: None,
+            citations: None,
+            error: None,
+            started_at: None,
+            ended_at: None,
+            first_chunk_at: None,
+            block_index: 0,
+        }
+    }
+
+    fn make_tool_block(
+        id: &str,
+        msg_id: &str,
+        tool_name: &str,
+        input_json: serde_json::Value,
+        output_json: serde_json::Value,
+    ) -> MessageBlock {
+        MessageBlock {
+            id: id.to_string(),
+            message_id: msg_id.to_string(),
+            block_type: block_types::MCP_TOOL.to_string(),
+            status: block_status::SUCCESS.to_string(),
+            content: None,
+            tool_name: Some(tool_name.to_string()),
+            tool_input: Some(input_json),
+            tool_output: Some(output_json),
+            citations: None,
+            error: None,
+            started_at: None,
+            ended_at: None,
+            first_chunk_at: None,
+            block_index: 0,
+        }
+    }
+
+    /// SECURITY / CORRECTNESS: tool_input/output 必须计入 tail 预算（P1-B1）
+    #[test]
+    fn estimate_message_tokens_includes_tool_payload() {
+        let msg = make_msg("m1", MessageRole::Assistant);
+        let mut blocks_by_msg = std::collections::HashMap::new();
+
+        // 只有 text block 的消息
+        let text_only = vec![make_text_block("b1", "m1", "hi")];
+        blocks_by_msg.insert("m1".to_string(), text_only);
+        let t_text = estimate_message_tokens(&msg, &blocks_by_msg, None);
+
+        // 追加一个中等大小的 tool_output（测试速度优先，不用太大）
+        let medium_output = "lorem ipsum dolor sit amet ".repeat(50);
+        let with_tool = vec![
+            make_text_block("b1", "m1", "hi"),
+            make_tool_block(
+                "b2",
+                "m1",
+                "web_search",
+                serde_json::json!({"query": "test"}),
+                serde_json::json!({"html": medium_output}),
+            ),
+        ];
+        blocks_by_msg.insert("m1".to_string(), with_tool);
+        let t_with = estimate_message_tokens(&msg, &blocks_by_msg, None);
+
+        assert!(
+            t_with > t_text + 50,
+            "tool_output 必须显著增加 token 估算：t_text={}, t_with={}",
+            t_text,
+            t_with
+        );
+    }
+
+    /// CORRECTNESS: select_tail 在最后一个 turn 单独超过 hard_cap 时必须放弃（P1-B3）
+    #[test]
+    fn select_tail_aborts_when_last_turn_too_large() {
+        let msgs = vec![
+            make_msg_with_timestamp("u1", MessageRole::User, 100),
+            make_msg_with_timestamp("a1", MessageRole::Assistant, 101),
+            make_msg_with_timestamp("u2", MessageRole::User, 200),
+            make_msg_with_timestamp("a2", MessageRole::Assistant, 201),
+            make_msg_with_timestamp("u3", MessageRole::User, 300),
+            make_msg_with_timestamp("a3", MessageRole::Assistant, 301),
+        ];
+        let turns = split_into_turns(&msgs);
+        assert_eq!(turns.len(), 3);
+
+        // 给最后一个 turn 注入一个大 tool_output —— 用较短字符串保证测试速度
+        let mut blocks_by_msg = std::collections::HashMap::new();
+        let medium = "word ".repeat(2000); // ~2500 tokens by heuristic
+        blocks_by_msg.insert(
+            "a3".to_string(),
+            vec![make_tool_block(
+                "b1",
+                "a3",
+                "w",
+                serde_json::json!({}),
+                serde_json::json!({"data": medium}),
+            )],
+        );
+        for id in ["u1", "a1", "u2", "a2", "u3"] {
+            blocks_by_msg.insert(id.to_string(), vec![make_text_block("b", id, "hi")]);
+        }
+
+        // budget = 500 → hard_cap = 1000；最后 turn ≈ 2500 tokens >> hard_cap
+        let result = select_tail(&msgs, &turns, 500, &blocks_by_msg, None);
+        assert!(
+            result.is_none(),
+            "最后一个 turn 单独超过 hard_cap 时必须放弃压缩"
+        );
+    }
+
+    /// CORRECTNESS: select_tail 当 tail_start 原本落入 head 时应 clamp 而非放弃（P1-B4）
+    #[test]
+    fn select_tail_clamps_into_head_instead_of_giving_up() {
+        // 4 turns，全部短小；预算极大 → 原本会把 tail 选到 turn 0
+        let msgs = vec![
+            // turn 0
+            make_msg_with_timestamp("u1", MessageRole::User, 100),
+            make_msg_with_timestamp("a1", MessageRole::Assistant, 101),
+            // turn 1
+            make_msg_with_timestamp("u2", MessageRole::User, 200),
+            make_msg_with_timestamp("a2", MessageRole::Assistant, 201),
+            // turn 2
+            make_msg_with_timestamp("u3", MessageRole::User, 300),
+            make_msg_with_timestamp("a3", MessageRole::Assistant, 301),
+            // turn 3
+            make_msg_with_timestamp("u4", MessageRole::User, 400),
+            make_msg_with_timestamp("a4", MessageRole::Assistant, 401),
+        ];
+        let turns = split_into_turns(&msgs);
+        let mut blocks_by_msg = std::collections::HashMap::new();
+        for m in &msgs {
+            blocks_by_msg.insert(m.id.clone(), vec![make_text_block("b", &m.id, "x")]);
+        }
+
+        let result = select_tail(&msgs, &turns, 1_000_000, &blocks_by_msg, None);
+        let sel = result.expect("tail should be selected (clamped to HEAD_USER_TURNS)");
+        // 应从 turn[HEAD_USER_TURNS=2] 开始，而不是 turn[0]
+        assert_eq!(
+            sel.tail_start_idx, turns[HEAD_USER_TURNS].start,
+            "tail_start 应被 clamp 到 HEAD_USER_TURNS={}",
+            HEAD_USER_TURNS
+        );
+    }
+
+    /// SECURITY: turn_has_live_signature 不再把普通 thinking 块误判为需要保真（P1-W2）
+    #[test]
+    fn thinking_without_signature_does_not_pin_turn() {
+        let msgs = vec![
+            make_msg("u1", MessageRole::User),
+            make_msg("a1", MessageRole::Assistant),
+        ];
+        let turns = split_into_turns(&msgs);
+        let mut blocks_by_msg = std::collections::HashMap::new();
+        // a1 有 thinking 块但 meta.tool_results 为 None → 不应被 pin
+        blocks_by_msg.insert(
+            "a1".to_string(),
+            vec![MessageBlock {
+                id: "b".to_string(),
+                message_id: "a1".to_string(),
+                block_type: block_types::THINKING.to_string(),
+                status: block_status::SUCCESS.to_string(),
+                content: Some("let me think...".to_string()),
+                tool_name: None,
+                tool_input: None,
+                tool_output: None,
+                citations: None,
+                error: None,
+                started_at: None,
+                ended_at: None,
+                first_chunk_at: None,
+                block_index: 0,
+            }],
+        );
+        assert!(
+            !turn_has_live_signature(&msgs, &turns[0], &blocks_by_msg),
+            "单独 thinking 块不再触发签名保真"
+        );
+    }
+
+    /// SECURITY: Gemini 3 thought_signature 仍会触发签名保真
+    #[test]
+    fn gemini_thought_signature_pins_turn() {
+        use crate::chat_v2::types::{MessageMeta, ToolResultInfo};
+        let mut msg = make_msg("a1", MessageRole::Assistant);
+        msg.meta = Some(MessageMeta {
+            tool_results: Some(vec![ToolResultInfo {
+                tool_call_id: Some("tc1".to_string()),
+                block_id: None,
+                tool_name: "weather".to_string(),
+                input: serde_json::json!({}),
+                output: serde_json::json!({}),
+                success: true,
+                error: None,
+                duration_ms: None,
+                reasoning_content: None,
+                thought_signature: Some("sig_abc_xyz".to_string()),
+            }]),
+            ..Default::default()
+        });
+        let msgs = vec![make_msg("u1", MessageRole::User), msg];
+        let turns = split_into_turns(&msgs);
+        let blocks_by_msg = std::collections::HashMap::new();
+        assert!(
+            turn_has_live_signature(&msgs, &turns[0], &blocks_by_msg),
+            "Gemini 3 thought_signature 必须触发保真"
+        );
     }
 }
