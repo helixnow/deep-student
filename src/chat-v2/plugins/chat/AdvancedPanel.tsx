@@ -214,7 +214,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
   const multimodalRagEnabled = chatParams.multimodalRagEnabled ?? DEFAULT_MULTIMODAL_RAG_ENABLED;
 
   return (
-    <div className={cn('flex flex-col', isMobile ? 'h-full' : sidebarMode ? 'h-full' : 'max-h-[calc(60vh-40px)]')}>
+    <div className={cn('flex flex-col', isMobile ? 'h-full' : sidebarMode ? 'h-full' : undefined)}>
       {/* 面板头部 - 移动端/侧栏模式隐藏 */}
       {!isMobile && !sidebarMode && (
         <div className="flex items-center justify-between mb-3 shrink-0">
@@ -232,7 +232,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
       )}
 
       {/* 设置区域 - 可滚动 */}
-      <CustomScrollArea className="flex-1 min-h-0" viewportClassName={cn('pr-3', isMobile || sidebarMode ? 'h-full' : 'max-h-[calc(60vh-120px)]')}>
+      <CustomScrollArea className={isMobile || sidebarMode ? 'flex-1 min-h-0' : undefined} viewportClassName={cn('pr-3', isMobile || sidebarMode ? 'h-full' : undefined)}>
         {/* 侧栏模式强制单列布局，非侧栏模式使用响应式双列 */}
         <div className={sidebarMode ? 'flex flex-col gap-2 pb-1' : 'grid grid-cols-1 md:grid-cols-2 gap-2 pb-1'}>
         {deepSeekV4SamplingLocked && (

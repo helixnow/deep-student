@@ -452,7 +452,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
       )}
 
       {/* 模型列表 */}
-      <CustomScrollArea viewportClassName={cn('pr-2', isMobile ? 'h-full' : 'max-h-[150px]')} className={isMobile ? 'flex-1 min-h-0' : undefined}>
+      <CustomScrollArea viewportClassName={cn('pr-2', isMobile ? 'h-full' : undefined)} className={isMobile ? 'flex-1 min-h-0' : undefined}>
         <div className="space-y-2 pb-2">
           {renderDefaultOption()}
           <div className="h-px bg-border/70" />

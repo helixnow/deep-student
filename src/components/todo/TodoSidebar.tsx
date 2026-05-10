@@ -1,20 +1,40 @@
 /**
- * TodoSidebar - 待办列表侧边栏
+ * TodoSidebar - 待办侧边栏
  *
- * 显示所有待办列表 + 智能视图（今日、即将到期、已过期）
+ * 视觉严格对齐应用最左侧主导航 ModernSidebar：
+ * - 使用 .desktop-shell-nav-row / --active 行样式（32px 高，14px 圆角，14px 字号，扁平）
+ * - 使用 .desktop-shell-nav-section-label 分组标签（12px 淡色）
+ * - 容器使用 --shell-navigation-surface / --shell-navigation-foreground
+ * - 行间距 space-y-0.5，行内图标 18px + 10px 间距
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Inbox, Star, Calendar, AlertTriangle, Clock, Plus,
-  MoreHorizontal, Trash2, CheckSquare,
+  Inbox,
+  Star,
+  Calendar,
+  AlertTriangle,
+  Clock,
+  CheckSquare,
+  Plus,
+  Search,
+  Trash2,
+  X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useTodoStore } from './useTodoStore';
-import type { TodoViewFilter } from './types';
+import type { TodoList, TodoViewFilter } from './types';
 
-const SMART_VIEWS: { id: TodoViewFilter; icon: React.ElementType; labelKey: string }[] = [
+interface SmartView {
+  id: TodoViewFilter;
+  icon: React.ElementType;
+  labelKey: string;
+}
+
+const SMART_VIEWS: SmartView[] = [
   { id: 'all', icon: Inbox, labelKey: 'todo:views.inbox' },
   { id: 'today', icon: Calendar, labelKey: 'todo:views.today' },
   { id: 'upcoming', icon: Clock, labelKey: 'todo:views.upcoming' },
@@ -22,198 +42,355 @@ const SMART_VIEWS: { id: TodoViewFilter; icon: React.ElementType; labelKey: stri
   { id: 'completed', icon: CheckSquare, labelKey: 'todo:views.completed' },
 ];
 
-export const TodoSidebar: React.FC = () => {
+// ============================================================================
+// 与 ModernSidebar 保持一致的行样式原语
+// ============================================================================
+
+function getNavRowClassName(isActive: boolean, className?: string) {
+  return cn(
+    'desktop-shell-sidebar-row desktop-shell-nav-row',
+    '!w-full !justify-start !px-2.5 !py-1.5 text-left',
+    isActive && 'desktop-shell-nav-row--active',
+    className,
+  );
+}
+
+interface NavRowProps extends React.ButtonHTMLAttributes<HTMLButtonElement> {
+  isActive: boolean;
+  leftSlot?: React.ReactNode;
+  rightSlot?: React.ReactNode;
+  children: React.ReactNode;
+}
+
+const NavRow: React.FC<NavRowProps> = ({
+  isActive,
+  leftSlot,
+  rightSlot,
+  children,
+  className,
+  ...rest
+}) => (
+  <NotionButton
+    variant="nav"
+    size="md"
+    className={getNavRowClassName(isActive, className)}
+    {...rest}
+  >
+    <span className="flex min-w-0 flex-1 items-center gap-2.5">
+      <span className="flex w-4 shrink-0 items-center justify-center text-[color:inherit]">
+        {leftSlot}
+      </span>
+      <span className="desktop-shell-sidebar-row-title block min-w-0 flex-1 truncate leading-4">
+        {children}
+      </span>
+      {rightSlot !== undefined && (
+        <span className="flex min-w-[24px] shrink-0 items-center justify-end gap-0.5">
+          {rightSlot}
+        </span>
+      )}
+    </span>
+  </NotionButton>
+);
+
+// ============================================================================
+// TodoSidebar
+// ============================================================================
+
+interface TodoSidebarProps {
+  /** 移动端点击列表后回调（用于关闭滑动侧栏） */
+  onItemSelect?: () => void;
+}
+
+export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
   const { t } = useTranslation(['todo', 'common']);
+  const { isSmallScreen } = useBreakpoint();
   const {
-    lists, activeListId, filter,
-    setActiveList, setViewFilter,
-    createList, deleteList, toggleListFavorite,
+    lists,
+    activeListId,
+    filter,
+    setActiveList,
+    setViewFilter,
+    createList,
+    deleteList,
+    toggleListFavorite,
   } = useTodoStore();
 
   const [isCreating, setIsCreating] = useState(false);
   const [newListTitle, setNewListTitle] = useState('');
-  const [contextMenuId, setContextMenuId] = useState<string | null>(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
+  // ===== 回调 =====
   const handleCreateList = useCallback(async () => {
-    if (!newListTitle.trim()) return;
+    const trimmed = newListTitle.trim();
+    if (!trimmed) {
+      setIsCreating(false);
+      return;
+    }
     try {
-      const list = await createList(newListTitle.trim());
+      const list = await createList(trimmed);
       setNewListTitle('');
       setIsCreating(false);
       setActiveList(list.id);
       setViewFilter('all');
+      onItemSelect?.();
     } catch {
       // error handled in store
     }
-  }, [newListTitle, createList, setActiveList, setViewFilter]);
+  }, [newListTitle, createList, setActiveList, setViewFilter, onItemSelect]);
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter') handleCreateList();
-    if (e.key === 'Escape') {
-      setIsCreating(false);
-      setNewListTitle('');
-    }
-  }, [handleCreateList]);
+  const handleCreateKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter') handleCreateList();
+      if (e.key === 'Escape') {
+        setIsCreating(false);
+        setNewListTitle('');
+      }
+    },
+    [handleCreateList],
+  );
 
-  const handleSmartViewClick = useCallback((view: TodoViewFilter) => {
-    if (view === 'all') {
-      const defaultList = lists.find(l => l.isDefault) || lists[0];
-      if (defaultList) setActiveList(defaultList.id);
-    } else {
-      setActiveList(null);
-    }
-    setViewFilter(view);
-  }, [lists, setActiveList, setViewFilter]);
+  const handleSmartViewClick = useCallback(
+    (view: TodoViewFilter) => {
+      if (view === 'all') {
+        const defaultList = lists.find((l) => l.isDefault) || lists[0];
+        if (defaultList) setActiveList(defaultList.id);
+      } else {
+        setActiveList(null);
+      }
+      setViewFilter(view);
+      onItemSelect?.();
+    },
+    [lists, setActiveList, setViewFilter, onItemSelect],
+  );
 
-  const handleListClick = useCallback((listId: string) => {
-    if (filter.view !== 'all') {
-      setActiveList(listId);
-      setViewFilter('all');
-      return;
-    }
-    setActiveList(listId);
-  }, [filter.view, setActiveList, setViewFilter]);
+  const handleListClick = useCallback(
+    (list: TodoList) => {
+      if (filter.view !== 'all') {
+        setActiveList(list.id);
+        setViewFilter('all');
+      } else {
+        setActiveList(list.id);
+      }
+      onItemSelect?.();
+    },
+    [filter.view, setActiveList, setViewFilter, onItemSelect],
+  );
+
+  const filteredLists = useMemo(() => {
+    const q = searchQuery.trim().toLowerCase();
+    if (!q) return lists;
+    return lists.filter((l) => l.title.toLowerCase().includes(q));
+  }, [lists, searchQuery]);
+
+  const widthClass = isSmallScreen ? 'w-full' : 'w-60';
 
   return (
-    <div className="w-60 flex-shrink-0 border-r border-border flex flex-col h-full bg-muted/30">
-      {/* 智能视图 */}
-      <div className="px-3 pt-4 pb-2">
-        <div className="text-xs font-semibold text-muted-foreground/70 px-2 mb-2 tracking-wider">
-          {t('todo:sections.smartViews')}
-        </div>
-        <div className="space-y-0.5">
-          {SMART_VIEWS.map(({ id, icon: Icon, labelKey }) => (
+    <aside
+      role="navigation"
+      data-shell-layer="navigation"
+      data-shell-surface="navigation"
+      className={cn(
+        'font-sidebar-study-ui relative z-10 flex h-full min-h-0 min-w-0 flex-shrink-0 flex-col overflow-hidden',
+        'bg-[color:var(--shell-navigation-surface)] text-[color:var(--shell-navigation-foreground)]',
+        'transition-colors duration-300',
+        widthClass,
+      )}
+    >
+      {/* 头部：搜索（可折叠） */}
+      <div className="shrink-0 px-2 pb-2 pt-3">
+        <div className="relative">
+          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--shell-navigation-muted)]" />
+          <input
+            type="text"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            placeholder={t('todo:actions.searchLists', '搜索列表...')}
+            className={cn(
+              'h-8 w-full rounded-[var(--shell-nav-row-radius)] border border-transparent',
+              'bg-[color:var(--interactive-hover)]/60 pl-8 pr-8 text-[13px] text-[color:var(--shell-navigation-foreground)]',
+              'outline-none placeholder:text-[color:var(--shell-navigation-muted)]',
+              'focus:border-[color:var(--shell-navigation-border)] focus:bg-[color:var(--interactive-hover)]',
+              'transition-colors',
+            )}
+          />
+          {searchQuery && (
             <button
-              key={id}
-              onClick={() => handleSmartViewClick(id)}
-              className={cn(
-                'w-full flex items-center gap-3 px-2 py-2 rounded-lg text-sm transition-all duration-200',
-                filter.view === id && activeListId === null
-                  ? 'bg-primary/10 text-primary font-medium'
-                  : 'text-foreground/70 hover:bg-accent hover:text-foreground'
-              )}
+              type="button"
+              onClick={() => setSearchQuery('')}
+              className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-md text-[color:var(--shell-navigation-muted)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--shell-navigation-foreground)]"
+              aria-label={t('common:actions.clear')}
             >
-              <Icon className={cn(
-                "w-4 h-4 flex-shrink-0",
-                filter.view === id && activeListId === null ? "text-primary" : "text-muted-foreground"
-              )} />
-              <span className="truncate">{t(labelKey)}</span>
+              <X className="h-3 w-3" />
             </button>
-          ))}
+          )}
         </div>
       </div>
 
-      {/* 分隔线 */}
-      <div className="h-px bg-border/50 mx-4 my-2" />
+      {/* 智能视图 */}
+      <div className="shrink-0 px-2 pb-1">
+        <div className="flex items-center justify-between px-2 py-1">
+          <span className="desktop-shell-nav-section-label min-w-0 truncate">
+            {t('todo:sections.smartViews')}
+          </span>
+        </div>
+        <div className="space-y-0.5">
+          {SMART_VIEWS.map(({ id, icon: Icon, labelKey }) => {
+            const isActive =
+              filter.view === id && (id !== 'all' || activeListId === null);
+            return (
+              <NavRow
+                key={id}
+                isActive={isActive}
+                onClick={() => handleSmartViewClick(id)}
+                leftSlot={<Icon className="size-[18px]" strokeWidth={2} />}
+              >
+                {t(labelKey)}
+              </NavRow>
+            );
+          })}
+        </div>
+      </div>
 
       {/* 列表 */}
-      <div className="flex-1 overflow-y-auto px-3 py-2">
-        <div className="flex items-center justify-between px-2 mb-2 group/header">
-          <span className="text-xs font-semibold text-muted-foreground/70 tracking-wider">
+      <div className="flex min-h-0 flex-1 flex-col overflow-hidden px-2 pb-2">
+        <div className="group/list-header flex items-center justify-between px-2 py-1">
+          <span className="desktop-shell-nav-section-label min-w-0 truncate">
             {t('todo:sections.lists')}
           </span>
           <button
+            type="button"
             onClick={() => setIsCreating(true)}
-            className="p-1 rounded-md opacity-0 group-hover/header:opacity-100 hover:bg-accent text-muted-foreground hover:text-foreground transition-all duration-200"
-            title={t('todo:actions.newListPlaceholder')}
+            aria-label={t('todo:actions.newList', '新建列表')}
+            title={t('todo:actions.newList', '新建列表')}
+            className={cn(
+              'flex h-5 w-5 items-center justify-center rounded-md',
+              'text-[color:var(--shell-navigation-muted)] opacity-0 transition-opacity',
+              'hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--shell-navigation-foreground)]',
+              'group-hover/list-header:opacity-100 focus-visible:opacity-100',
+            )}
           >
-            <Plus className="w-3.5 h-3.5" />
+            <Plus className="h-3.5 w-3.5" />
           </button>
         </div>
 
-        <div className="space-y-0.5">
+        <div className="min-h-0 flex-1 overflow-y-auto">
           {/* 新建列表输入 */}
           {isCreating && (
-            <div className="px-1 mb-2">
+            <div className="px-0.5 pb-1">
               <input
                 autoFocus
                 value={newListTitle}
                 onChange={(e) => setNewListTitle(e.target.value)}
-                onKeyDown={handleKeyDown}
-                onBlur={() => { if (!newListTitle.trim()) setIsCreating(false); }}
+                onKeyDown={handleCreateKeyDown}
+                onBlur={() => {
+                  if (!newListTitle.trim()) setIsCreating(false);
+                }}
                 placeholder={t('todo:actions.newListPlaceholder')}
-                className="w-full px-3 py-1.5 text-sm bg-background border shadow-sm rounded-md focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all"
+                className={cn(
+                  'h-8 w-full rounded-[var(--shell-nav-row-radius)] border',
+                  'border-[color:var(--shell-navigation-border)]',
+                  'bg-[color:var(--interactive-hover)] px-2.5 text-[13px]',
+                  'text-[color:var(--shell-navigation-foreground)]',
+                  'outline-none placeholder:text-[color:var(--shell-navigation-muted)]',
+                )}
               />
             </div>
           )}
 
-          {/* 列表项 */}
-          {lists.map((list) => (
-            <div
-              key={list.id}
-              className="group relative"
-            >
-              <button
-                onClick={() => handleListClick(list.id)}
-                className={cn(
-                  'w-full flex items-center gap-3 px-2 py-2 rounded-lg text-sm transition-all duration-200',
-                  activeListId === list.id && filter.view === 'all'
-                    ? 'bg-primary/10 text-primary font-medium'
-                    : 'text-foreground/70 hover:bg-accent hover:text-foreground'
-                )}
-              >
-                {list.isDefault ? (
-                  <Inbox className={cn(
-                    "w-4 h-4 flex-shrink-0",
-                    activeListId === list.id && filter.view === 'all' ? "text-primary" : "text-blue-500/80"
-                  )} />
-                ) : (
-                  <CheckSquare
-                    className="w-4 h-4 flex-shrink-0"
-                    style={{ color: list.color || (activeListId === list.id && filter.view === 'all' ? undefined : 'var(--muted-foreground)') }}
-                  />
-                )}
-                <span className="truncate flex-1 text-left">{list.title}</span>
-                {list.isFavorite && (
-                  <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400 flex-shrink-0" />
-                )}
-              </button>
-
-              {/* 上下文菜单触发 */}
-              {!list.isDefault && (
-                <button
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setContextMenuId(contextMenuId === list.id ? null : list.id);
-                  }}
-                  className={cn(
-                    "absolute right-2 top-1/2 -translate-y-1/2 p-1 rounded-md transition-all duration-200",
-                    contextMenuId === list.id ? "opacity-100 bg-accent text-foreground" : "opacity-0 group-hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/10 text-muted-foreground"
-                  )}
-                >
-                  <MoreHorizontal className="w-3.5 h-3.5" />
-                </button>
-              )}
-
-              {/* 简易上下文菜单 */}
-              {contextMenuId === list.id && (
-                <div className="absolute right-0 top-full z-50 mt-1 w-40 bg-popover border border-border/50 rounded-lg shadow-lg py-1.5 overflow-hidden animate-in fade-in zoom-in-95 duration-200">
-                  <button
-                    onClick={() => {
-                      toggleListFavorite(list.id);
-                      setContextMenuId(null);
-                    }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm hover:bg-accent transition-colors"
+          <div className="space-y-0.5">
+            {filteredLists.map((list) => {
+              const isActive = activeListId === list.id && filter.view === 'all';
+              return (
+                <div key={list.id} className="group/list-item relative">
+                  <NavRow
+                    isActive={isActive}
+                    onClick={() => handleListClick(list)}
+                    leftSlot={
+                      list.isDefault ? (
+                        <Inbox className="size-[18px]" strokeWidth={2} />
+                      ) : list.color ? (
+                        <span
+                          className="size-[10px] rounded-full"
+                          style={{ backgroundColor: list.color }}
+                        />
+                      ) : (
+                        <CheckSquare className="size-[18px]" strokeWidth={2} />
+                      )
+                    }
+                    rightSlot={
+                      <>
+                        {list.isFavorite && (
+                          <Star
+                            className="size-3.5 fill-[color:hsl(var(--warning))] text-[color:hsl(var(--warning))]"
+                            aria-hidden
+                          />
+                        )}
+                        <span
+                          className={cn(
+                            'ml-0.5 flex items-center gap-0.5 opacity-0 transition-opacity',
+                            'group-hover/list-item:opacity-100 focus-within:opacity-100',
+                          )}
+                        >
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleListFavorite(list.id);
+                            }}
+                            aria-label={
+                              list.isFavorite
+                                ? t('todo:actions.unfavorite')
+                                : t('todo:actions.favorite')
+                            }
+                            title={
+                              list.isFavorite
+                                ? t('todo:actions.unfavorite')
+                                : t('todo:actions.favorite')
+                            }
+                            className="flex h-5 w-5 items-center justify-center rounded-md text-[color:var(--shell-navigation-muted)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--shell-navigation-foreground)]"
+                          >
+                            <Star
+                              className={cn(
+                                'h-3 w-3',
+                                list.isFavorite &&
+                                  'fill-[color:hsl(var(--warning))] text-[color:hsl(var(--warning))]',
+                              )}
+                            />
+                          </button>
+                          {!list.isDefault && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                deleteList(list.id);
+                              }}
+                              aria-label={t('common:actions.delete')}
+                              title={t('common:actions.delete')}
+                              className="flex h-5 w-5 items-center justify-center rounded-md text-[color:var(--shell-navigation-muted)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:hsl(var(--destructive))]"
+                            >
+                              <Trash2 className="h-3 w-3" />
+                            </button>
+                          )}
+                        </span>
+                      </>
+                    }
                   >
-                    <Star className={cn("w-4 h-4", list.isFavorite && "fill-amber-400 text-amber-400")} />
-                    {list.isFavorite ? t('todo:actions.unfavorite') : t('todo:actions.favorite')}
-                  </button>
-                  <button
-                    onClick={() => {
-                      deleteList(list.id);
-                      setContextMenuId(null);
-                    }}
-                    className="w-full flex items-center gap-2.5 px-3 py-2 text-sm text-destructive hover:bg-destructive/10 transition-colors"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                    {t('common:actions.delete')}
-                  </button>
+                    {list.title}
+                  </NavRow>
                 </div>
-              )}
-            </div>
-          ))}
+              );
+            })}
+
+            {filteredLists.length === 0 && !isCreating && (
+              <div className="px-2 py-6 text-center text-[12px] text-[color:var(--shell-navigation-muted)]">
+                {searchQuery
+                  ? t('todo:empty.noMatchingLists', '没有匹配的列表')
+                  : t('todo:empty.noLists', '暂无列表')}
+              </div>
+            )}
+          </div>
         </div>
       </div>
-    </div>
+    </aside>
   );
 };

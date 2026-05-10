@@ -4,8 +4,6 @@ import {
   BarChart3,
   CheckCircle2,
   Copy,
-  History,
-  Keyboard,
   Loader2,
   Mic2,
   RefreshCcw,
@@ -135,51 +133,24 @@ function AssignedModelCard({
   assignedModel: VoiceInputAssignedModel;
   t: ReturnType<typeof useTranslation>['t'];
 }) {
-  const metaRows = [
-    assignedModel.providerLabel
-      ? {
-          label: t('settings:voice_input.assigned_provider', { defaultValue: 'Provider' }),
-          value: assignedModel.providerLabel,
-        }
-      : null,
-    assignedModel.model
-      ? {
-          label: t('settings:voice_input.assigned_model_id', { defaultValue: 'Model ID' }),
-          value: assignedModel.model,
-        }
-      : null,
-  ].filter(Boolean) as Array<{ label: string; value: string }>;
-
   if (assignedModel.status === 'ready') {
     return (
-      <div className="rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-4">
-        <div className="flex items-start gap-3">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 text-emerald-600 dark:text-emerald-300" />
-          <div className="min-w-0 space-y-2">
-            <div>
-              <div className="text-xs font-medium uppercase tracking-[0.18em] text-emerald-700/80 dark:text-emerald-300/80">
-                {t('settings:voice_input.assigned_model', { defaultValue: 'Assigned ASR Model' })}
-              </div>
-              <div className="mt-1 text-sm font-semibold text-foreground">
-                {assignedModel.modelLabel ?? assignedModel.model ?? t('settings:voice_input.not_configured', { defaultValue: 'Not configured' })}
-              </div>
-            </div>
-            <p className="text-xs leading-5 text-muted-foreground">
+      <div className="py-2.5 px-1 hover:bg-muted/30 rounded transition-colors">
+        <div className="flex items-start gap-2">
+          <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-600 dark:text-emerald-300" />
+          <div className="min-w-0">
+            <h3 className="text-sm text-foreground/90 leading-tight">
+              {assignedModel.modelLabel ?? assignedModel.model ?? t('settings:voice_input.not_configured', { defaultValue: 'Not configured' })}
+            </h3>
+            <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">
               {t('settings:voice_input.assigned_model_hint', {
                 defaultValue: 'Model selection is managed in Settings > Models. This page only controls recording behavior and diagnostics.',
               })}
             </p>
-            {metaRows.length > 0 && (
-              <div className="grid gap-2 text-xs text-muted-foreground sm:grid-cols-2">
-                {metaRows.map((row) => (
-                  <div key={row.label} className="rounded-xl border border-border/50 bg-background/70 px-3 py-2">
-                    <div className="mb-1 text-[11px] uppercase tracking-[0.16em] text-muted-foreground/70">
-                      {row.label}
-                    </div>
-                    <div className="break-all text-foreground">{row.value}</div>
-                  </div>
-                ))}
-              </div>
+            {assignedModel.providerLabel && (
+              <p className="text-[11px] text-muted-foreground/70 mt-0.5">
+                {t('settings:voice_input.assigned_provider', { defaultValue: 'Provider' })}: {assignedModel.providerLabel}
+              </p>
             )}
           </div>
         </div>
@@ -192,14 +163,12 @@ function AssignedModelCard({
     {
       title: string;
       description: string;
-      toneClass: string;
       icon: React.ReactNode;
     }
   > = {
     ready: {
       title: '',
       description: '',
-      toneClass: '',
       icon: null,
     },
     'model-assignment-required': {
@@ -209,8 +178,7 @@ function AssignedModelCard({
       description: t('settings:voice_input.assignment_required_message', {
         defaultValue: 'Voice input is enabled at the app layer, but it still needs a model assignment in Settings > Models before recordings can be transcribed.',
       }),
-      toneClass: 'border-amber-500/20 bg-amber-500/5 text-amber-900 dark:text-amber-100',
-      icon: <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-600 dark:text-amber-300" />,
+      icon: <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-300" />,
     },
     'model-config-missing': {
       title: t('settings:voice_input.assignment_missing_title', {
@@ -219,8 +187,7 @@ function AssignedModelCard({
       description: t('settings:voice_input.assignment_missing_message', {
         defaultValue: 'The saved assignment no longer points to a valid voice-capable model. Reassign it in Settings > Models.',
       }),
-      toneClass: 'border-amber-500/20 bg-amber-500/5 text-amber-900 dark:text-amber-100',
-      icon: <Wrench className="mt-0.5 h-4 w-4 text-amber-600 dark:text-amber-300" />,
+      icon: <Wrench className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-300" />,
     },
     'model-disabled': {
       title: t('settings:voice_input.assignment_disabled_title', {
@@ -229,8 +196,7 @@ function AssignedModelCard({
       description: t('settings:voice_input.assignment_disabled_message', {
         defaultValue: 'Enable the assigned model or pick another ASR model in Settings > Models before using voice input.',
       }),
-      toneClass: 'border-amber-500/20 bg-amber-500/5 text-amber-900 dark:text-amber-100',
-      icon: <Wrench className="mt-0.5 h-4 w-4 text-amber-600 dark:text-amber-300" />,
+      icon: <Wrench className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-300" />,
     },
     'provider-unavailable': {
       title: t('settings:voice_input.assignment_provider_unavailable_title', {
@@ -239,24 +205,23 @@ function AssignedModelCard({
       description: t('settings:voice_input.assignment_provider_unavailable_message', {
         defaultValue: 'This runtime currently supports SiliconFlow transcription only. Pick a SiliconFlow ASR model for now, or keep the current assignment as a placeholder for future streaming providers.',
       }),
-      toneClass: 'border-amber-500/20 bg-amber-500/5 text-amber-900 dark:text-amber-100',
-      icon: <AlertTriangle className="mt-0.5 h-4 w-4 text-amber-600 dark:text-amber-300" />,
+      icon: <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-300" />,
     },
   };
 
   const copy = copyByStatus[assignedModel.status];
 
   return (
-    <div className={`rounded-2xl border p-4 ${copy.toneClass}`}>
-      <div className="flex items-start gap-3">
+    <div className="py-2.5 px-1 rounded bg-amber-500/5">
+      <div className="flex items-start gap-2">
         {copy.icon}
-        <div className="min-w-0 space-y-2">
-          <div className="text-sm font-semibold">{copy.title}</div>
-          <p className="text-xs leading-5 text-current/80">{copy.description}</p>
+        <div className="min-w-0">
+          <h3 className="text-sm font-medium text-foreground leading-tight">{copy.title}</h3>
+          <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">{copy.description}</p>
           {(assignedModel.modelLabel || assignedModel.model) && (
-            <div className="rounded-xl border border-current/10 bg-background/60 px-3 py-2 text-xs text-foreground">
+            <p className="text-[11px] text-muted-foreground mt-1">
               {assignedModel.modelLabel ?? assignedModel.model}
-            </div>
+            </p>
           )}
         </div>
       </div>
@@ -287,36 +252,29 @@ function ShortcutModeCard({
       onClick={onSelect}
       disabled={disabled}
       className={[
-        'w-full rounded-2xl border p-4 text-left transition-all',
+        'w-full rounded px-1 py-2.5 text-left transition-colors',
         active
-          ? 'border-primary/30 bg-primary/10 shadow-[0_12px_32px_-22px_hsl(var(--primary))]'
-          : 'border-border/60 bg-background/70 hover:border-primary/20 hover:bg-primary/[0.04]',
+          ? 'bg-primary/10'
+          : 'hover:bg-muted/30',
         disabled && 'cursor-not-allowed opacity-60',
       ].join(' ')}
     >
-      <div className="flex items-start justify-between gap-3">
-        <div className="flex min-w-0 gap-3">
-          <div
-            className={[
-              'mt-0.5 flex h-10 w-10 flex-shrink-0 items-center justify-center rounded-2xl border',
-              active
-                ? 'border-primary/25 bg-primary/15 text-primary'
-                : 'border-border/70 bg-muted/40 text-muted-foreground',
-            ].join(' ')}
-          >
+      <div className="flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-start gap-2">
+          <div className="mt-0.5 flex-shrink-0 text-muted-foreground">
             {icon}
           </div>
           <div className="min-w-0">
-            <div className="text-sm font-semibold text-foreground">{title}</div>
-            <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
+            <div className="text-sm text-foreground/90 leading-tight">{title}</div>
+            <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">{description}</p>
           </div>
         </div>
         <div
           className={[
-            'rounded-full px-2.5 py-1 text-[11px] font-medium',
+            'flex-shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium',
             active
               ? 'bg-primary text-primary-foreground'
-              : 'border border-border/70 bg-background/80 text-muted-foreground',
+              : 'text-muted-foreground',
           ].join(' ')}
         >
           {actionLabel}
@@ -336,18 +294,14 @@ function HistoryEntryCard({
   copyLabel: string;
 }) {
   return (
-    <div className="rounded-2xl border border-border/60 bg-background/70 p-3">
-      <div className="mb-2 flex items-start justify-between gap-3">
+    <div className="py-2.5 px-1 hover:bg-muted/30 rounded transition-colors">
+      <div className="mb-1 flex items-start justify-between gap-3">
         <div className="min-w-0">
-          <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground/70">
+          <div className="text-[11px] text-muted-foreground/70">
             {formatVoiceHistoryTime(entry.createdAt)}
-          </div>
-          <div className="mt-1 flex flex-wrap gap-2 text-[11px] text-muted-foreground">
-            {entry.providerId ? <span>{entry.providerId}</span> : null}
-            {entry.model ? <span>{entry.model}</span> : null}
-            {typeof entry.durationMs === 'number' ? (
-              <span>{Math.max(1, Math.round(entry.durationMs / 1000))}s</span>
-            ) : null}
+            {entry.providerId ? ` · ${entry.providerId}` : ''}
+            {entry.model ? ` · ${entry.model}` : ''}
+            {typeof entry.durationMs === 'number' ? ` · ${Math.max(1, Math.round(entry.durationMs / 1000))}s` : ''}
           </div>
         </div>
         <NotionButton type="button" variant="ghost" size="sm" onClick={() => onCopy(entry)}>
@@ -604,7 +558,7 @@ export function VoiceInputSettingsSection({
 
   if (loading) {
     return (
-      <section className="study-shell-secondary-card overflow-hidden p-4 sm:p-5">
+      <section className="mt-8">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
           <span>
@@ -621,13 +575,13 @@ export function VoiceInputSettingsSection({
   const activeHotkeyMode = config.hotkeyMode ?? DEFAULT_VOICE_INPUT_CONFIG.hotkeyMode;
 
   return (
-    <section className="study-shell-secondary-card overflow-hidden p-4 sm:p-5">
+    <section className="mt-8">
       <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
         <div className="space-y-1">
-          <h3 className="text-sm font-semibold text-foreground">
+          <h3 className="text-base font-semibold text-foreground">
             {t('settings:voice_input.title', { defaultValue: 'Voice Input' })}
           </h3>
-          <p className="text-xs leading-5 text-muted-foreground">
+          <p className="text-[11px] text-muted-foreground/70 leading-relaxed">
             {t('settings:voice_input.description', {
               defaultValue:
                 'Recording controls live here. ASR model assignment belongs to Settings > Models, provider credentials belong to Settings > APIs, and usage is tracked in Statistics.',
@@ -669,271 +623,250 @@ export function VoiceInputSettingsSection({
         </div>
       </div>
 
-      <div className="space-y-4">
+      <div className="space-y-px">
         <AssignedModelCard assignedModel={assignedModel} t={t} />
 
-        <div className="grid gap-4 xl:grid-cols-[1.3fr_0.9fr]">
-          <div className="rounded-3xl border border-border/60 bg-[linear-gradient(180deg,hsl(var(--background)),hsl(var(--muted))/0.35)] p-4">
-            <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-primary/15 bg-primary/10 text-primary">
-                <Keyboard className="h-4.5 w-4.5" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-foreground">
-                  {t('settings:voice_input.shortcut_title', {
-                    defaultValue: 'Dictation Shortcut',
-                  })}
-                </div>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {t('settings:voice_input.shortcut_description', {
-                    defaultValue:
-                      'Choose how the app-wide shortcut behaves inside DeepStudent. Dictation still inserts at the active supported text cursor and never auto-sends.',
-                  })}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-4 grid gap-3">
-              <ShortcutModeCard
-                active={activeHotkeyMode === 'hold-to-talk'}
-                disabled={saving}
-                icon={<Mic2 className="h-4 w-4" />}
-                title={t('settings:voice_input.hold_mode_title', {
-                  defaultValue: 'Press and hold the dictation shortcut',
-                })}
-                description={t('settings:voice_input.hold_mode_description', {
-                  defaultValue:
-                    'Hold the shortcut anywhere inside DeepStudent to dictate into the current supported input, then release to stop.',
-                })}
-                actionLabel={
-                  activeHotkeyMode === 'hold-to-talk'
-                    ? t('settings:voice_input.mode_active', { defaultValue: 'Active' })
-                    : t('settings:voice_input.mode_select', { defaultValue: 'Use This Mode' })
-                }
-                onSelect={() => handleSelectHotkeyMode('hold-to-talk')}
-              />
-              <ShortcutModeCard
-                active={activeHotkeyMode === 'toggle-to-record'}
-                disabled={saving}
-                icon={<RefreshCcw className="h-4 w-4" />}
-                title={t('settings:voice_input.toggle_mode_title', {
-                  defaultValue: 'Tap once to start, tap once to stop',
-                })}
-                description={t('settings:voice_input.toggle_mode_description', {
-                  defaultValue:
-                    'Use the same shortcut as a toggle when you want hands-free dictation inside DeepStudent.',
-                })}
-                actionLabel={
-                  activeHotkeyMode === 'toggle-to-record'
-                    ? t('settings:voice_input.mode_active', { defaultValue: 'Active' })
-                    : t('settings:voice_input.mode_select', { defaultValue: 'Use This Mode' })
-                }
-                onSelect={() => handleSelectHotkeyMode('toggle-to-record')}
-              />
-            </div>
-
-            <div className="mt-4 grid gap-4 md:grid-cols-2">
-              <label className="space-y-1.5">
-                <span className="text-xs font-medium text-muted-foreground">
-                  {t('settings:voice_input.hotkey', { defaultValue: 'Hotkey' })}
-                </span>
-                <Input
-                  disabled={saving}
-                  value={config.hotkey}
-                  onChange={(event) => {
-                    setConfig((current) => ({ ...current, hotkey: event.target.value }));
-                  }}
-                  onBlur={(event) => {
-                    const nextConfig = {
-                      ...config,
-                      hotkey: event.currentTarget.value,
-                    };
-                    setConfig(nextConfig);
-                    void persist(nextConfig);
-                  }}
-                />
-              </label>
-
-              <label className="space-y-1.5">
-                <span className="text-xs font-medium text-muted-foreground">
-                  {t('settings:voice_input.max_duration_ms', { defaultValue: 'Max Duration (ms)' })}
-                </span>
-                <Input
-                  disabled={saving}
-                  type="number"
-                  inputMode="numeric"
-                  value={String(config.maxDurationMs)}
-                  onChange={(event) => {
-                    setConfig((current) => ({
-                      ...current,
-                      maxDurationMs: Number(event.target.value || DEFAULT_VOICE_INPUT_CONFIG.maxDurationMs),
-                    }));
-                  }}
-                  onBlur={(event) => {
-                    const nextConfig = {
-                      ...config,
-                      maxDurationMs: Number(
-                        event.currentTarget.value || DEFAULT_VOICE_INPUT_CONFIG.maxDurationMs
-                      ),
-                    };
-                    setConfig(nextConfig);
-                    void persist(nextConfig);
-                  }}
-                />
-              </label>
-            </div>
+        {/* 听写快捷键 */}
+        <div className="mt-6">
+          <div className="px-1 mb-2">
+            <h3 className="text-sm text-foreground/90 leading-tight">
+              {t('settings:voice_input.shortcut_title', {
+                defaultValue: 'Dictation Shortcut',
+              })}
+            </h3>
+            <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">
+              {t('settings:voice_input.shortcut_description', {
+                defaultValue:
+                  'Choose how the app-wide shortcut behaves inside DeepStudent. Dictation still inserts at the active supported text cursor and never auto-sends.',
+              })}
+            </p>
           </div>
 
-          <div className="rounded-3xl border border-border/60 bg-background/75 p-4">
-            <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-muted/35 text-foreground">
-                <Settings2 className="h-4.5 w-4.5" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-foreground">
-                  {t('settings:voice_input.quick_actions_title', {
-                    defaultValue: 'Setup & Recovery',
-                  })}
-                </div>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {t('settings:voice_input.quick_actions_description', {
-                    defaultValue:
-                      'Jump straight to model assignment, provider credentials, and usage analytics when dictation needs attention.',
-                  })}
-                </p>
-              </div>
-            </div>
+          <div className="space-y-px">
+            <ShortcutModeCard
+              active={activeHotkeyMode === 'hold-to-talk'}
+              disabled={saving}
+              icon={<Mic2 className="h-4 w-4" />}
+              title={t('settings:voice_input.hold_mode_title', {
+                defaultValue: 'Press and hold the dictation shortcut',
+              })}
+              description={t('settings:voice_input.hold_mode_description', {
+                defaultValue:
+                  'Hold the shortcut anywhere inside DeepStudent to dictate into the current supported input, then release to stop.',
+              })}
+              actionLabel={
+                activeHotkeyMode === 'hold-to-talk'
+                  ? t('settings:voice_input.mode_active', { defaultValue: 'Active' })
+                  : t('settings:voice_input.mode_select', { defaultValue: 'Use This Mode' })
+              }
+              onSelect={() => handleSelectHotkeyMode('hold-to-talk')}
+            />
+            <ShortcutModeCard
+              active={activeHotkeyMode === 'toggle-to-record'}
+              disabled={saving}
+              icon={<RefreshCcw className="h-4 w-4" />}
+              title={t('settings:voice_input.toggle_mode_title', {
+                defaultValue: 'Tap once to start, tap once to stop',
+              })}
+              description={t('settings:voice_input.toggle_mode_description', {
+                defaultValue:
+                  'Use the same shortcut as a toggle when you want hands-free dictation inside DeepStudent.',
+              })}
+              actionLabel={
+                activeHotkeyMode === 'toggle-to-record'
+                  ? t('settings:voice_input.mode_active', { defaultValue: 'Active' })
+                  : t('settings:voice_input.mode_select', { defaultValue: 'Use This Mode' })
+              }
+              onSelect={() => handleSelectHotkeyMode('toggle-to-record')}
+            />
+          </div>
 
-            <div className="mt-4 flex flex-wrap gap-2">
-              <NotionButton type="button" variant="ghost" size="sm" onClick={() => openSettingsTab('models')}>
-                <Settings2 className="h-3.5 w-3.5" />
-                {t('settings:voice_input.open_model_settings', {
-                  defaultValue: 'Open Model Assignments',
+          <div className="mt-3 grid gap-4 md:grid-cols-2 px-1">
+            <label className="space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground">
+                {t('settings:voice_input.hotkey', { defaultValue: 'Hotkey' })}
+              </span>
+              <Input
+                disabled={saving}
+                value={config.hotkey}
+                onChange={(event) => {
+                  setConfig((current) => ({ ...current, hotkey: event.target.value }));
+                }}
+                onBlur={(event) => {
+                  const nextConfig = {
+                    ...config,
+                    hotkey: event.currentTarget.value,
+                  };
+                  setConfig(nextConfig);
+                  void persist(nextConfig);
+                }}
+              />
+            </label>
+
+            <label className="space-y-1.5">
+              <span className="text-xs font-medium text-muted-foreground">
+                {t('settings:voice_input.max_duration_ms', { defaultValue: 'Max Duration (ms)' })}
+              </span>
+              <Input
+                disabled={saving}
+                type="number"
+                inputMode="numeric"
+                value={String(config.maxDurationMs)}
+                onChange={(event) => {
+                  setConfig((current) => ({
+                    ...current,
+                    maxDurationMs: Number(event.target.value || DEFAULT_VOICE_INPUT_CONFIG.maxDurationMs),
+                  }));
+                }}
+                onBlur={(event) => {
+                  const nextConfig = {
+                    ...config,
+                    maxDurationMs: Number(
+                      event.currentTarget.value || DEFAULT_VOICE_INPUT_CONFIG.maxDurationMs
+                    ),
+                  };
+                  setConfig(nextConfig);
+                  void persist(nextConfig);
+                }}
+              />
+            </label>
+          </div>
+        </div>
+
+        {/* 设置与恢复 */}
+        <div className="mt-6">
+          <div className="px-1 mb-2">
+            <h3 className="text-sm text-foreground/90 leading-tight">
+              {t('settings:voice_input.quick_actions_title', {
+                defaultValue: 'Setup & Recovery',
+              })}
+            </h3>
+            <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">
+              {t('settings:voice_input.quick_actions_description', {
+                defaultValue:
+                  'Jump straight to model assignment, provider credentials, and usage analytics when dictation needs attention.',
+              })}
+            </p>
+          </div>
+          <div className="flex flex-wrap gap-2 px-1">
+            <NotionButton type="button" variant="ghost" size="sm" onClick={() => openSettingsTab('models')}>
+              <Settings2 className="h-3.5 w-3.5" />
+              {t('settings:voice_input.open_model_settings', {
+                defaultValue: 'Open Model Assignments',
+              })}
+            </NotionButton>
+            <NotionButton type="button" variant="ghost" size="sm" onClick={() => openSettingsTab('apis')}>
+              <Wrench className="h-3.5 w-3.5" />
+              {t('settings:voice_input.open_api_settings', {
+                defaultValue: 'Open API Settings',
+              })}
+            </NotionButton>
+            <NotionButton type="button" variant="ghost" size="sm" onClick={() => openSettingsTab('statistics')}>
+              <BarChart3 className="h-3.5 w-3.5" />
+              {t('settings:voice_input.open_usage_statistics', {
+                defaultValue: 'Open Usage Statistics',
+              })}
+            </NotionButton>
+          </div>
+        </div>
+
+        {/* 听写词典 */}
+        <div className="mt-6">
+          <div className="px-1 mb-2">
+            <h3 className="text-sm text-foreground/90 leading-tight">
+              {t('settings:voice_input.dictionary_title', {
+                defaultValue: 'Dictation Vocabulary',
+              })}
+            </h3>
+            <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">
+              {t('settings:voice_input.dictionary_description', {
+                defaultValue:
+                  'Add words or short phrases that dictation should prefer to recognize. Use one item per line.',
+              })}
+            </p>
+          </div>
+          <div className="px-1 space-y-2">
+            <Textarea
+              disabled={saving}
+              value={vocabularyDraft}
+              onChange={(event) => setVocabularyDraft(event.target.value)}
+              onBlur={(event) => handlePersistVocabulary(event.currentTarget.value)}
+              rows={5}
+              placeholder={t('settings:voice_input.dictionary_placeholder', {
+                defaultValue: 'Photosynthesis\nAnkylosing spondylitis\nDeepStudent',
+              })}
+            />
+            <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground/70">
+              <span>
+                {t('settings:voice_input.dictionary_count', {
+                  defaultValue: '{{count}} phrase hints',
+                  count: vocabularyCount,
                 })}
-              </NotionButton>
-              <NotionButton type="button" variant="ghost" size="sm" onClick={() => openSettingsTab('apis')}>
-                <Wrench className="h-3.5 w-3.5" />
-                {t('settings:voice_input.open_api_settings', {
-                  defaultValue: 'Open API Settings',
+              </span>
+              <span>
+                {t('settings:voice_input.dictionary_hint', {
+                  defaultValue: 'These hints are merged into the ASR prompt when supported.',
                 })}
-              </NotionButton>
-              <NotionButton type="button" variant="ghost" size="sm" onClick={() => openSettingsTab('statistics')}>
-                <BarChart3 className="h-3.5 w-3.5" />
-                {t('settings:voice_input.open_usage_statistics', {
-                  defaultValue: 'Open Usage Statistics',
-                })}
-              </NotionButton>
+              </span>
             </div>
           </div>
         </div>
 
-        <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
-          <div className="rounded-3xl border border-border/60 bg-background/75 p-4">
-            <div className="flex items-start gap-3">
-              <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-muted/35 text-foreground">
-                <Wrench className="h-4.5 w-4.5" />
-              </div>
-              <div className="min-w-0">
-                <div className="text-sm font-semibold text-foreground">
-                  {t('settings:voice_input.dictionary_title', {
-                    defaultValue: 'Dictation Vocabulary',
-                  })}
-                </div>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {t('settings:voice_input.dictionary_description', {
-                    defaultValue:
-                      'Add words or short phrases that dictation should prefer to recognize. Use one item per line.',
-                  })}
-                </p>
-              </div>
-            </div>
-
-            <div className="mt-4 space-y-2">
-              <Textarea
-                disabled={saving}
-                value={vocabularyDraft}
-                onChange={(event) => setVocabularyDraft(event.target.value)}
-                onBlur={(event) => handlePersistVocabulary(event.currentTarget.value)}
-                rows={6}
-                placeholder={t('settings:voice_input.dictionary_placeholder', {
-                  defaultValue: 'Photosynthesis\nAnkylosing spondylitis\nDeepStudent',
+        {/* 最近的听写记录 */}
+        <div className="mt-6">
+          <div className="px-1 mb-2 flex items-start justify-between gap-3">
+            <div>
+              <h3 className="text-sm text-foreground/90 leading-tight">
+                {t('settings:voice_input.history_title', {
+                  defaultValue: 'Recent Dictation History',
                 })}
-              />
-              <div className="flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                <span>
-                  {t('settings:voice_input.dictionary_count', {
-                    defaultValue: '{{count}} phrase hints',
-                    count: vocabularyCount,
-                  })}
-                </span>
-                <span>
-                  {t('settings:voice_input.dictionary_hint', {
-                    defaultValue: 'These hints are merged into the ASR prompt when supported.',
-                  })}
-                </span>
-              </div>
+              </h3>
+              <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">
+                {t('settings:voice_input.history_description', {
+                  defaultValue:
+                    'Recent transcripts stay here so you can recover them if the text lands in the wrong place or focus changes unexpectedly.',
+                })}
+              </p>
             </div>
+            {historyEntries.length > 0 && (
+              <NotionButton type="button" variant="ghost" size="sm" onClick={() => void handleClearHistory()}>
+                <Trash2 className="h-3.5 w-3.5" />
+                {t('settings:voice_input.history_clear', {
+                  defaultValue: 'Clear',
+                })}
+              </NotionButton>
+            )}
           </div>
 
-          <div className="rounded-3xl border border-border/60 bg-background/75 p-4">
-            <div className="flex items-start justify-between gap-3">
-              <div className="flex min-w-0 gap-3">
-                <div className="flex h-11 w-11 flex-shrink-0 items-center justify-center rounded-2xl border border-border/70 bg-muted/35 text-foreground">
-                  <History className="h-4.5 w-4.5" />
-                </div>
-                <div className="min-w-0">
-                  <div className="text-sm font-semibold text-foreground">
-                    {t('settings:voice_input.history_title', {
-                      defaultValue: 'Recent Dictation History',
-                    })}
-                  </div>
-                  <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                    {t('settings:voice_input.history_description', {
-                      defaultValue:
-                        'Recent transcripts stay here so you can recover them if the text lands in the wrong place or focus changes unexpectedly.',
-                    })}
-                  </p>
-                </div>
+          <div className="space-y-px">
+            {historyEntries.length === 0 ? (
+              <div className="px-1 py-3 text-[11px] text-muted-foreground/70">
+                {t('settings:voice_input.history_empty', {
+                  defaultValue: 'Your recent dictation transcripts will appear here.',
+                })}
               </div>
-              {historyEntries.length > 0 && (
-                <NotionButton type="button" variant="ghost" size="sm" onClick={() => void handleClearHistory()}>
-                  <Trash2 className="h-3.5 w-3.5" />
-                  {t('settings:voice_input.history_clear', {
-                    defaultValue: 'Clear',
+            ) : (
+              historyEntries.map((entry) => (
+                <HistoryEntryCard
+                  key={entry.id}
+                  entry={entry}
+                  onCopy={handleCopyHistoryEntry}
+                  copyLabel={t('settings:voice_input.history_copy', {
+                    defaultValue: 'Copy',
                   })}
-                </NotionButton>
-              )}
-            </div>
-
-            <div className="mt-4 space-y-3">
-              {historyEntries.length === 0 ? (
-                <div className="rounded-2xl border border-dashed border-border/60 bg-muted/20 px-4 py-5 text-sm text-muted-foreground">
-                  {t('settings:voice_input.history_empty', {
-                    defaultValue: 'Your recent dictation transcripts will appear here.',
-                  })}
-                </div>
-              ) : (
-                historyEntries.map((entry) => (
-                  <HistoryEntryCard
-                    key={entry.id}
-                    entry={entry}
-                    onCopy={handleCopyHistoryEntry}
-                    copyLabel={t('settings:voice_input.history_copy', {
-                      defaultValue: 'Copy',
-                    })}
-                  />
-                ))
-              )}
-            </div>
+                />
+              ))
+            )}
           </div>
         </div>
 
-        <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-4">
-          <div className="rounded-2xl border border-border/60 bg-background/60 px-3 py-2">
-            <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground/70">
+        {/* 诊断信息 */}
+        <div className="mt-6 grid gap-2 sm:grid-cols-2 xl:grid-cols-4 px-1">
+          <div className="py-2">
+            <div className="text-[11px] text-muted-foreground/70">
               {t('settings:voice_input.diagnostics.permission', { defaultValue: 'Permission' })}
             </div>
-            <div className="mt-1 text-sm text-foreground">
+            <div className="mt-0.5 text-sm text-foreground">
               {support?.permissionState
                 ? t(`settings:voice_input.permission_states.${support.permissionState}`, {
                     defaultValue: support.permissionState,
@@ -941,11 +874,11 @@ export function VoiceInputSettingsSection({
                 : t('settings:voice_input.permission_states.unknown', { defaultValue: 'unknown' })}
             </div>
           </div>
-          <div className="rounded-2xl border border-border/60 bg-background/60 px-3 py-2">
-            <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground/70">
+          <div className="py-2">
+            <div className="text-[11px] text-muted-foreground/70">
               {t('settings:voice_input.diagnostics.capture_api', { defaultValue: 'Capture API' })}
             </div>
-            <div className="mt-1 text-sm text-foreground">
+            <div className="mt-0.5 text-sm text-foreground">
               {support?.hasGetUserMedia === undefined
                 ? t('settings:voice_input.diagnostics.unknown', { defaultValue: 'Unknown' })
                 : support.hasGetUserMedia
@@ -953,11 +886,11 @@ export function VoiceInputSettingsSection({
                 : t('settings:voice_input.diagnostics.missing', { defaultValue: 'Missing' })}
             </div>
           </div>
-          <div className="rounded-2xl border border-border/60 bg-background/60 px-3 py-2">
-            <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground/70">
+          <div className="py-2">
+            <div className="text-[11px] text-muted-foreground/70">
               {t('settings:voice_input.diagnostics.recorder_backend', { defaultValue: 'Recorder Backend' })}
             </div>
-            <div className="mt-1 text-sm text-foreground">
+            <div className="mt-0.5 text-sm text-foreground">
               {support?.recorderMode === 'media-recorder'
                 ? 'MediaRecorder'
                 : support?.recorderMode === 'pcm-wav'
@@ -965,11 +898,11 @@ export function VoiceInputSettingsSection({
                 : t('settings:voice_input.diagnostics.unavailable', { defaultValue: 'Unavailable' })}
             </div>
           </div>
-          <div className="rounded-2xl border border-border/60 bg-background/60 px-3 py-2">
-            <div className="text-[11px] uppercase tracking-[0.16em] text-muted-foreground/70">
+          <div className="py-2">
+            <div className="text-[11px] text-muted-foreground/70">
               {t('settings:voice_input.diagnostics.secure_context', { defaultValue: 'Secure Context' })}
             </div>
-            <div className="mt-1 text-sm text-foreground">
+            <div className="mt-0.5 text-sm text-foreground">
               {support?.isSecureContext === undefined
                 ? t('settings:voice_input.diagnostics.unknown', { defaultValue: 'Unknown' })
                 : support.isSecureContext
@@ -980,9 +913,9 @@ export function VoiceInputSettingsSection({
         </div>
       </div>
 
-      <div className="mt-4 rounded-2xl border border-border/60 bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">
+      <div className="mt-4 px-1 text-[11px] leading-5 text-muted-foreground/70">
         <div className="flex items-start gap-2">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0 text-muted-foreground/80" />
+          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
           <div>
             {t('settings:voice_input.runtime_hint', {
               defaultValue:

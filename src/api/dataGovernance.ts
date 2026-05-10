@@ -1183,9 +1183,7 @@ export async function runSlotDCloneDbTest(): Promise<SlotMigrationTestResponse> 
   return invoke<SlotMigrationTestResponse>('data_governance_run_slot_d_clone_db_test');
 }
 
-// ==================== 导出统一的 API 对象 ====================
-
-export // ==================== 记录级冲突 API ====================
+// ==================== 记录级冲突 API ====================
 
 /**
  * 一条记录级冲突（__sync_conflicts 表行）
@@ -1310,7 +1308,7 @@ export async function detectPruneGap(cloudConfig: CloudCfg): Promise<PruneGapRes
   return invoke<PruneGapResponse>('data_governance_detect_prune_gap', { cloudConfig });
 }
 
-const DataGovernanceApi = {
+export const DataGovernanceApi = {
   // Schema 相关
   getSchemaRegistry,
   getMigrationStatus,

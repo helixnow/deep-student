@@ -151,17 +151,17 @@ export function parseAttachments(attachmentsJson: string): string[] {
 }
 
 export const PRIORITY_CONFIG: Record<TodoPriority, { labelKey: string; color: string; icon: string }> = {
-  none: { labelKey: 'todo:priority.none', color: 'text-muted-foreground', icon: 'Minus' },
-  low: { labelKey: 'todo:priority.low', color: 'text-blue-500', icon: 'ArrowDown' },
-  medium: { labelKey: 'todo:priority.medium', color: 'text-yellow-500', icon: 'ArrowRight' },
-  high: { labelKey: 'todo:priority.high', color: 'text-orange-500', icon: 'ArrowUp' },
-  urgent: { labelKey: 'todo:priority.urgent', color: 'text-red-500', icon: 'AlertTriangle' },
+  none: { labelKey: 'todo:priority.none', color: 'text-[color:var(--text-muted)]', icon: 'Minus' },
+  low: { labelKey: 'todo:priority.low', color: 'text-[color:hsl(var(--info))]', icon: 'ArrowDown' },
+  medium: { labelKey: 'todo:priority.medium', color: 'text-[color:hsl(var(--warning))]', icon: 'ArrowRight' },
+  high: { labelKey: 'todo:priority.high', color: 'text-[color:hsl(var(--brand-warm,var(--warning)))]', icon: 'ArrowUp' },
+  urgent: { labelKey: 'todo:priority.urgent', color: 'text-[color:hsl(var(--destructive))]', icon: 'AlertTriangle' },
 };
 
 export const STATUS_CONFIG: Record<TodoStatus, { labelKey: string; color: string }> = {
-  pending: { labelKey: 'todo:status.pending', color: 'text-muted-foreground' },
-  completed: { labelKey: 'todo:status.completed', color: 'text-green-500' },
-  cancelled: { labelKey: 'todo:status.cancelled', color: 'text-gray-400' },
+  pending: { labelKey: 'todo:status.pending', color: 'text-[color:var(--text-muted)]' },
+  completed: { labelKey: 'todo:status.completed', color: 'text-[color:hsl(var(--success))]' },
+  cancelled: { labelKey: 'todo:status.cancelled', color: 'text-[color:var(--text-muted)]' },
 };
 
 export function isOverdue(item: TodoItem): boolean {

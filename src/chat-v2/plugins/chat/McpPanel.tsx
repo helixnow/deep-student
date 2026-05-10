@@ -303,7 +303,7 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
       </div>
 
       {/* 服务器列表 */}
-      <CustomScrollArea viewportClassName={cn('pr-2', isMobile ? 'h-full' : 'max-h-[180px]')} className={isMobile ? 'flex-1 min-h-0' : undefined}>
+      <CustomScrollArea viewportClassName={cn('pr-2', isMobile ? 'h-full' : undefined)} className={isMobile ? 'flex-1 min-h-0' : undefined}>
         <div className="space-y-1.5">
         {!ready ? (
           <div className="flex items-center justify-center py-8">

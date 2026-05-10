@@ -3137,23 +3137,20 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
           modelPanelMotion.shouldRender && (
             <div
               className={cn(
-                'absolute left-0 right-0 overflow-hidden pointer-events-none z-[100]',
-                'bottom-full -mb-3 pb-4'
+                'absolute left-2 right-2 z-[100]',
+                'bottom-full mb-2',
+                'rounded-2xl glass-panel border border-[hsl(var(--border))] p-3',
+                'overflow-y-auto overscroll-contain',
+                'transition-all duration-200 ease-out will-change-transform motion-reduce:transition-none motion-reduce:duration-0',
+                modelPanelMotion.motionState === 'open'
+                  ? 'translate-y-0 opacity-100 pointer-events-auto'
+                  : 'translate-y-4 opacity-0 pointer-events-none'
               )}
-              style={{ height: 'clamp(380px, 50vh, 500px)' }}
+              aria-hidden={modelPanelMotion.motionState !== 'open'}
+              data-panel-motion={modelPanelMotion.motionState}
+              style={{ maxHeight: 'min(420px, calc(100vh - 280px))' }}
             >
-              <div
-                className={cn(
-                  'absolute left-3 right-3 rounded-2xl glass-panel border border-[hsl(var(--border))] p-3 transition-transform duration-200 ease-out will-change-transform motion-reduce:transition-none motion-reduce:duration-0 z-[100]',
-                  'bottom-4 origin-bottom',
-                  modelPanelMotion.motionState === 'open' ? 'translate-y-0 pointer-events-auto' : 'translate-y-full pointer-events-none'
-                )}
-                aria-hidden={modelPanelMotion.motionState !== 'open'}
-                data-panel-motion={modelPanelMotion.motionState}
-                style={{ maxHeight: 'clamp(360px, 48vh, 480px)' }}
-              >
-                {renderModelPanel()}
-              </div>
+              {renderModelPanel()}
             </div>
           )
         )}
@@ -3161,22 +3158,20 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         {imageGenPanelMotion.shouldRender && (
           <div
             className={cn(
-              'absolute left-0 right-0 overflow-hidden pointer-events-none z-[100]',
-              'bottom-full -mb-3 pb-4'
+              'absolute left-2 right-2 z-[100]',
+              'bottom-full mb-2',
+              'rounded-2xl glass-panel border border-[hsl(var(--border))] p-3',
+              'overflow-y-auto overscroll-contain',
+              'transition-all duration-200 ease-out will-change-transform motion-reduce:transition-none motion-reduce:duration-0',
+              imageGenPanelMotion.motionState === 'open'
+                ? 'translate-y-0 opacity-100 pointer-events-auto'
+                : 'translate-y-4 opacity-0 pointer-events-none'
             )}
-            style={{ height: 'clamp(360px, 52vh, 500px)' }}
+            aria-hidden={imageGenPanelMotion.motionState !== 'open'}
+            data-panel-motion={imageGenPanelMotion.motionState}
+            style={{ maxHeight: 'min(420px, calc(100vh - 280px))' }}
           >
-            <div
-              className={cn(
-                'absolute left-3 right-3 overflow-y-auto overscroll-contain rounded-2xl glass-panel border border-[hsl(var(--border))] p-3 transition-transform duration-200 ease-out will-change-transform motion-reduce:transition-none motion-reduce:duration-0 z-[100]',
-                'bottom-4 origin-bottom',
-                imageGenPanelMotion.motionState === 'open' ? 'translate-y-0 pointer-events-auto' : 'translate-y-full pointer-events-none'
-              )}
-              aria-hidden={imageGenPanelMotion.motionState !== 'open'}
-              data-panel-motion={imageGenPanelMotion.motionState}
-              style={{ maxHeight: 'clamp(340px, 50vh, 480px)' }}
-            >
-              <div className="flex h-full min-h-0 flex-col gap-3">
+              <div className="flex flex-col gap-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
                     <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--text-primary)]">
@@ -3344,31 +3339,27 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 </div>
               </div>
             </div>
-          </div>
         )}
 
-        {/* MCP 工具面板 - ★ 统一桌面端和移动端样式 */}
+        {/* MCP 工具面板 - ★ 统一桌面端和移动端样式 - content-adaptive */}
         {renderMcpPanel && (
           mcpPanelMotion.shouldRender && (
             <div
               className={cn(
-                'absolute left-0 right-0 overflow-hidden pointer-events-none z-[100]',
-                'bottom-full -mb-3 pb-4'
+                'absolute left-2 right-2 z-[100]',
+                'bottom-full mb-2',
+                'rounded-2xl glass-panel border border-[hsl(var(--border))] p-3',
+                'overflow-y-auto overscroll-contain',
+                'transition-all duration-200 ease-out will-change-transform motion-reduce:transition-none motion-reduce:duration-0',
+                mcpPanelMotion.motionState === 'open'
+                  ? 'translate-y-0 opacity-100 pointer-events-auto'
+                  : 'translate-y-4 opacity-0 pointer-events-none'
               )}
-              style={{ height: 'clamp(300px, 45vh, 450px)' }}
+              aria-hidden={mcpPanelMotion.motionState !== 'open'}
+              data-panel-motion={mcpPanelMotion.motionState}
+              style={{ maxHeight: 'min(380px, calc(100vh - 280px))' }}
             >
-              <div
-                className={cn(
-                  'absolute left-3 right-3 rounded-2xl glass-panel border border-[hsl(var(--border))] p-3 transition-transform duration-200 ease-out will-change-transform motion-reduce:transition-none motion-reduce:duration-0 z-[100]',
-                  'bottom-4 origin-bottom',
-                  mcpPanelMotion.motionState === 'open' ? 'translate-y-0 pointer-events-auto' : 'translate-y-full pointer-events-none'
-                )}
-                aria-hidden={mcpPanelMotion.motionState !== 'open'}
-                data-panel-motion={mcpPanelMotion.motionState}
-                style={{ maxHeight: 'clamp(280px, 43vh, 430px)' }}
-              >
-                {renderMcpPanel()}
-              </div>
+              {renderMcpPanel()}
             </div>
           )
         )}
@@ -3381,23 +3372,20 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
           advancedPanelMotion.shouldRender && (
             <div
               className={cn(
-                'absolute left-0 right-0 overflow-hidden pointer-events-none z-[100]',
-                'bottom-full -mb-3 pb-4'
+                'absolute left-2 right-2 z-[100]',
+                'bottom-full mb-2',
+                'rounded-2xl glass-panel border border-[hsl(var(--border))] p-3',
+                'overflow-y-auto overscroll-contain',
+                'transition-all duration-200 ease-out will-change-transform motion-reduce:transition-none motion-reduce:duration-0',
+                advancedPanelMotion.motionState === 'open'
+                  ? 'translate-y-0 opacity-100 pointer-events-auto'
+                  : 'translate-y-4 opacity-0 pointer-events-none'
               )}
-              style={{ height: 'clamp(300px, 45vh, 450px)' }}
+              aria-hidden={advancedPanelMotion.motionState !== 'open'}
+              data-panel-motion={advancedPanelMotion.motionState}
+              style={{ maxHeight: 'min(420px, calc(100vh - 280px))' }}
             >
-              <div
-                className={cn(
-                  'absolute left-3 right-3 rounded-2xl glass-panel border border-[hsl(var(--border))] p-3 transition-transform duration-200 ease-out will-change-transform motion-reduce:transition-none motion-reduce:duration-0 z-[100]',
-                  'bottom-4 origin-bottom',
-                  advancedPanelMotion.motionState === 'open' ? 'translate-y-0 pointer-events-auto' : 'translate-y-full pointer-events-none'
-                )}
-                aria-hidden={advancedPanelMotion.motionState !== 'open'}
-                data-panel-motion={advancedPanelMotion.motionState}
-                style={{ maxHeight: 'clamp(280px, 43vh, 430px)' }}
-              >
-                {renderAdvancedPanel()}
-              </div>
+              {renderAdvancedPanel()}
             </div>
           )
         )}
@@ -3410,7 +3398,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 'absolute left-2 right-2 z-[100]',
                 'bottom-full mb-2',
                 'rounded-2xl glass-panel border border-[hsl(var(--border))] p-3',
-                'flex flex-col overflow-hidden',
+                'overflow-y-auto overscroll-contain',
                 'transition-all duration-200 ease-out will-change-transform motion-reduce:transition-none motion-reduce:duration-0',
                 skillPanelMotion.motionState === 'open'
                   ? 'translate-y-0 opacity-100 pointer-events-auto'
@@ -3418,7 +3406,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               )}
               aria-hidden={skillPanelMotion.motionState !== 'open'}
               data-panel-motion={skillPanelMotion.motionState}
-              style={{ maxHeight: 'min(400px, calc(100vh - 280px))' }}
+              style={{ maxHeight: 'min(420px, calc(100vh - 280px))' }}
             >
               {renderSkillPanel()}
             </div>

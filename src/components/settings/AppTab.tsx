@@ -40,7 +40,7 @@ const UI_ZOOM_PRESETS = [
 const formatZoomLabel = (val: number) => `${Math.round(val * 100)}%`;
 const formatFontSizeLabel = (val: number) => `${Math.round(val * 100)}%`;
 
-// 内部组件：设置行 - Notion 风格（无 icon，简洁）
+// 内部组件：设置行 - Notion 风格（无 icon，与其他 Tab 保持一致）
 const SettingRow = ({
   title,
   description,
@@ -52,22 +52,22 @@ const SettingRow = ({
   children: React.ReactNode;
   className?: string;
 }) => (
-  <div className={cn('group flex flex-col gap-3 rounded-[var(--radius-shell-control)] border border-transparent px-3 py-3.5 transition-colors overflow-hidden sm:flex-row sm:items-start sm:justify-between sm:gap-4', className)}>
-    <div className="min-w-0 flex-1 pt-0.5 sm:min-w-[220px]">
-      <h3 className="text-sm font-medium leading-tight text-foreground">{title}</h3>
+  <div className={cn("group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 hover:bg-muted/30 rounded transition-colors overflow-hidden", className)}>
+    <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
+      <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
-        <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
+        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
           {description}
         </p>
       )}
     </div>
-    <div className="flex-shrink-0 self-start">
+    <div className="flex-shrink-0">
       {children}
     </div>
   </div>
 );
 
-// 内部组件：带开关的设置行
+// 内部组件：带开关的设置行 - 与其他 Tab 保持一致
 const SwitchRow = ({
   title,
   description,
@@ -79,11 +79,11 @@ const SwitchRow = ({
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
 }) => (
-  <div className="group flex items-center justify-between gap-4 rounded-[var(--radius-shell-control)] border border-transparent px-3 py-3.5 transition-colors">
+  <div className="group flex items-center justify-between gap-4 py-2.5 px-1 hover:bg-muted/30 rounded transition-colors">
     <div className="flex-1 min-w-0">
-      <h3 className="text-sm font-medium leading-tight text-foreground">{title}</h3>
+      <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
-        <p className="mt-1 text-[12px] leading-5 text-muted-foreground">
+        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
           {description}
         </p>
       )}
@@ -92,10 +92,10 @@ const SwitchRow = ({
   </div>
 );
 
-// 分组标题
+// 分组标题 - 与其他 Tab 保持一致
 const GroupTitle = ({ title }: { title: string }) => (
-  <div className="mb-3 px-1 first:mt-0">
-    <p className="text-[11px] font-normal text-muted-foreground">{title}</p>
+  <div className="px-1 mb-3 mt-0">
+    <h3 className="text-base font-semibold text-foreground">{title}</h3>
   </div>
 );
 
@@ -277,9 +277,9 @@ export const AppTab: React.FC<AppTabProps> = ({
         hideHeader
       >
         {/* 1. 界面外观 */}
-        <section className="study-shell-secondary-card overflow-hidden p-4 sm:p-5">
+        <div>
           <GroupTitle title={t('settings:groups.appearance', '界面外观')} />
-          <div className="space-y-1">
+          <div className="space-y-px">
             <SettingRow
               title={t('settings:theme.row_title', '外观 / 主题')}
               description={t('settings:theme.row_description', '使用浅色、深色，或匹配系统设置')}
@@ -532,14 +532,14 @@ export const AppTab: React.FC<AppTabProps> = ({
               </div>
             </div>
           </div>
-        </section>
+        </div>
 
         <VoiceInputSettingsSection assignedModel={voiceInputAssignedModel} />
 
         {/* 2. 开发者选项 */}
-        <section className="study-shell-secondary-card overflow-hidden p-4 sm:p-5">
+        <div className="mt-8">
           <GroupTitle title={t('settings:cards.developer_options_title')} />
-          <div className="space-y-1">
+          <div className="space-y-px">
             {/* 顶部栏边距 */}
             <SettingRow
               title={t('settings:developer.topbar_top_margin.title', '顶部栏顶部边距高度')}
@@ -847,18 +847,18 @@ export const AppTab: React.FC<AppTabProps> = ({
               </SettingRow>
             )}
           </div>
-        </section>
+        </div>
 
         {/* 3. 记忆设置 */}
-        <section className="study-shell-secondary-card mt-8 overflow-hidden p-4 sm:p-5">
+        <div className="mt-8">
           <GroupTitle title={t('settings:memory.title', '记忆设置')} />
           <MemorySettingsSection embedded />
-        </section>
+        </div>
 
         {/* 4. 隐私与数据（合规要求） */}
-        <section className="study-shell-secondary-card mt-8 overflow-hidden p-4 sm:p-5">
+        <div className="mt-8">
           <GroupTitle title={t('common:legal.settingsSection.title', '隐私与数据')} />
-          <div className="space-y-1">
+          <div className="space-y-px">
             <SwitchRow
               title={t('common:legal.settingsSection.sentryToggle.title', '匿名错误报告')}
               description={t('common:legal.settingsSection.sentryToggle.description', '允许发送匿名崩溃报告以帮助改善软件质量')}
@@ -912,7 +912,7 @@ export const AppTab: React.FC<AppTabProps> = ({
                 ].map((item) => (
                   <div
                     key={item.key}
-                    className="rounded-[var(--radius-shell-control)] border border-transparent px-3 py-2 transition-colors hover:bg-[color:var(--button-utility-hover)]"
+                    className="rounded px-1 py-2 transition-colors hover:bg-muted/30"
                   >
                     <div className="text-xs leading-5">
                       <span className="font-medium text-foreground">
@@ -946,7 +946,7 @@ export const AppTab: React.FC<AppTabProps> = ({
               </SettingRow>
             </div>
           </div>
-        </section>
+        </div>
 
       </SettingSection>
 

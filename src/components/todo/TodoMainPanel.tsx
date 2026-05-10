@@ -1,17 +1,38 @@
 /**
  * TodoMainPanel - 待办项主面板
  *
- * 包含快速添加、待办项列表、详情面板
+ * 设计原则：扁平工作区，避免"盒中盒"嵌套。
+ * - 顶部 study-shell-toolbar 承载标题/搜索/筛选
+ * - 中部直接平铺快速添加栏 + 列表项（或空状态）
+ * - 右侧详情抽屉（桌面端）或全屏覆盖（移动端）
+ * - 底部嵌入番茄钟面板
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Plus, Search, CheckCircle2, Loader2,
-  Calendar, AlertTriangle, ArrowUp, ArrowDown, ArrowRight,
-  Minus, Trash2, X, MoreVertical, Check, Play, BrainCircuit
+  Plus,
+  Search,
+  CheckCircle2,
+  Loader2,
+  Calendar,
+  AlertTriangle,
+  ArrowUp,
+  ArrowDown,
+  ArrowRight,
+  Minus,
+  Trash2,
+  X,
+  Check,
+  Play,
+  BrainCircuit,
+  ListTodo,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
+import { Input } from '@/components/ui/shad/Input';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useTodoStore } from './useTodoStore';
 import { usePomodoroStore } from '../pomodoro/usePomodoroStore';
 import { PomodoroPanel } from '../pomodoro/PomodoroPanel';
@@ -19,7 +40,7 @@ import type { TodoItem, TodoPriority, UpdateTodoItemInput } from './types';
 import { PRIORITY_CONFIG, isOverdue, isDueToday, parseTags } from './types';
 
 // ============================================================================
-// TodoQuickAdd
+// TodoQuickAdd — 扁平输入条
 // ============================================================================
 
 const TodoQuickAdd: React.FC = () => {
@@ -48,73 +69,71 @@ const TodoQuickAdd: React.FC = () => {
     }
   }, [title, priority, dueDate, activeListId, createItem]);
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault();
-      handleSubmit();
-    }
-  }, [handleSubmit]);
+  const handleKeyDown = useCallback(
+    (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        handleSubmit();
+      }
+      if (e.key === 'Escape') setIsExpanded(false);
+    },
+    [handleSubmit],
+  );
 
   if (!activeListId) return null;
 
   return (
-    <div className="mx-6 my-4 bg-background border border-border/60 rounded-xl shadow-sm focus-within:shadow-md focus-within:border-primary/30 transition-all duration-200 overflow-hidden">
-      <div className="flex items-center px-4 py-3">
-        <Plus className="w-5 h-5 text-primary/70 flex-shrink-0 mr-3" />
+    <div>
+      <div className="flex items-center gap-2.5 px-4 py-2.5 sm:px-6">
+        <Plus className="h-4 w-4 flex-shrink-0 text-[color:var(--text-muted)]" />
         <input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={handleKeyDown}
           onFocus={() => setIsExpanded(true)}
           placeholder={t('todo:actions.quickAddPlaceholder')}
-          className="flex-1 bg-transparent text-[15px] outline-none placeholder:text-muted-foreground/50"
+          className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/50"
         />
         {title.trim() && (
-          <button
-            onClick={handleSubmit}
-            className="ml-2 px-3 py-1.5 text-sm font-medium bg-primary text-primary-foreground rounded-md hover:bg-primary/90 transition-colors shadow-sm"
-          >
+          <NotionButton variant="shell" size="sm" onClick={handleSubmit} className="h-7 text-xs">
             {t('todo:actions.add')}
-          </button>
+          </NotionButton>
         )}
       </div>
 
-      {/* 扩展选项 */}
       {isExpanded && (
-        <div className="flex items-center justify-between px-4 py-2.5 bg-muted/20 border-t border-border/40">
-          <div className="flex items-center gap-4">
-            {/* 优先级选择 */}
-            <div className="flex items-center gap-1 bg-background border border-border/50 rounded-md p-0.5">
-              {(['none', 'low', 'medium', 'high', 'urgent'] as TodoPriority[]).map((p) => {
-                const config = PRIORITY_CONFIG[p];
-                return (
-                  <button
-                    key={p}
-                    onClick={() => setPriority(p)}
-                    className={cn(
-                      'px-2 py-1 text-xs rounded-sm transition-colors',
-                      priority === p
-                        ? 'bg-accent font-medium shadow-sm'
-                        : 'hover:bg-accent/50 text-muted-foreground'
-                    )}
-                    title={t(config.labelKey)}
-                  >
-                    <span className={priority === p ? config.color : ''}>{t(config.labelKey)}</span>
-                  </button>
-                );
-              })}
-            </div>
+        <div className="flex flex-wrap items-center gap-3 px-4 pb-2.5 sm:px-6">
+          <div className="study-shell-segmented">
+            {(['none', 'low', 'medium', 'high', 'urgent'] as TodoPriority[]).map((p) => {
+              const config = PRIORITY_CONFIG[p];
+              const isActive = priority === p;
+              return (
+                <NotionButton
+                  key={p}
+                  variant="nav"
+                  size="sm"
+                  onClick={() => setPriority(p)}
+                  className={cn(
+                    'study-shell-segmented-button !h-auto !px-2 !py-1 text-[11px] font-medium',
+                    !isActive && 'text-muted-foreground',
+                  )}
+                  data-selected={isActive}
+                  title={t(config.labelKey)}
+                >
+                  <span className={isActive ? config.color : ''}>{t(config.labelKey)}</span>
+                </NotionButton>
+              );
+            })}
+          </div>
 
-            {/* 日期选择 */}
-            <div className="flex items-center gap-2 bg-background border border-border/50 rounded-md px-2 py-1">
-              <Calendar className="w-3.5 h-3.5 text-muted-foreground" />
-              <input
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
-                className="text-xs bg-transparent outline-none cursor-pointer text-foreground/80"
-              />
-            </div>
+          <div className="flex items-center gap-1.5 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--input-shell-surface)] px-2 py-1">
+            <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              className="cursor-pointer bg-transparent text-xs text-foreground outline-none"
+            />
           </div>
         </div>
       )}
@@ -126,10 +145,17 @@ const TodoQuickAdd: React.FC = () => {
 // TodoItemRow
 // ============================================================================
 
-const PriorityIcon: React.FC<{ priority: TodoPriority; className?: string }> = ({ priority, className }) => {
+const PriorityIcon: React.FC<{ priority: TodoPriority; className?: string }> = ({
+  priority,
+  className,
+}) => {
   const config = PRIORITY_CONFIG[priority];
   const icons: Record<string, React.ElementType> = {
-    Minus, ArrowDown, ArrowRight, ArrowUp, AlertTriangle,
+    Minus,
+    ArrowDown,
+    ArrowRight,
+    ArrowUp,
+    AlertTriangle,
   };
   const Icon = icons[config.icon] || Minus;
   return <Icon className={cn('w-4 h-4', config.color, className)} />;
@@ -150,117 +176,129 @@ const TodoItemRow: React.FC<{
 
   return (
     <div
+      data-selected={isSelected}
       className={cn(
-        'group flex items-center gap-3 px-6 py-3 border-b border-border/40 cursor-pointer transition-all duration-200 hover:bg-accent/40',
-        isSelected && 'bg-primary/5 border-l-2 border-l-primary',
-        isCompleted && 'opacity-60 bg-muted/10'
+        'group relative flex cursor-pointer items-center gap-3 px-4 py-2.5 transition-colors duration-150 sm:px-6',
+        'hover:bg-[color:var(--interactive-hover)]',
+        'data-[selected=true]:bg-[color:var(--interactive-selected)]',
+        isCompleted && 'opacity-60',
       )}
       onClick={() => onSelect(item.id)}
-      style={{
-        borderLeftColor: isSelected ? 'hsl(var(--primary))' : 'transparent',
-        borderLeftWidth: '2px'
-      }}
     >
-      {/* 完成按钮 */}
       <button
         onClick={(e) => {
           e.stopPropagation();
           onToggle(item.id);
         }}
-        className="flex-shrink-0 transition-all duration-200 hover:scale-110 focus:outline-none"
+        className="flex-shrink-0 transition-transform duration-150 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] focus-visible:ring-offset-1 rounded-full"
+        aria-label={isCompleted ? '标记为未完成' : '标记为完成'}
       >
         {isCompleted ? (
-          <CheckCircle2 className="w-5 h-5 text-primary" />
+          <CheckCircle2 className="h-5 w-5 text-[color:hsl(var(--success))]" />
         ) : (
-          <div className="w-5 h-5 rounded-full border-[1.5px] border-muted-foreground/40 group-hover:border-primary/50 flex items-center justify-center transition-colors">
-            <Check className="w-3.5 h-3.5 opacity-0 group-hover:opacity-30 text-primary transition-opacity" />
+          <div className="flex h-5 w-5 items-center justify-center rounded-full border-[1.5px] border-[color:var(--border-default)] transition-colors group-hover:border-[color:hsl(var(--primary))]">
+            <Check className="h-3 w-3 text-[color:hsl(var(--primary))] opacity-0 transition-opacity group-hover:opacity-40" />
           </div>
         )}
       </button>
 
-      {/* 内容 */}
-      <div className="flex-1 min-w-0 flex flex-col justify-center">
-        <div className={cn(
-          'text-[15px] transition-all duration-200 truncate',
-          isCompleted ? 'line-through text-muted-foreground' : 'text-foreground font-medium'
-        )}>
+      <div className="flex min-w-0 flex-1 flex-col justify-center">
+        <div
+          className={cn(
+            'truncate text-sm transition-all duration-150',
+            isCompleted
+              ? 'text-muted-foreground line-through'
+              : 'font-medium text-foreground',
+          )}
+        >
           {item.title}
         </div>
 
-        {/* 元信息行 - 只有在有数据时才渲染以节省空间 */}
-        {(item.dueDate || tags.length > 0 || item.priority !== 'none' || item.estimatedPomodoros) && (
-          <div className="flex items-center gap-3 mt-1">
-            {/* Pomodoro Indicator */}
+        {(item.dueDate ||
+          tags.length > 0 ||
+          item.priority !== 'none' ||
+          item.estimatedPomodoros) && (
+          <div className="mt-1 flex flex-wrap items-center gap-x-3 gap-y-1">
             {item.estimatedPomodoros ? (
-              <div 
-                className="flex items-center gap-1 px-1.5 py-0.5 rounded bg-orange-500/10 text-orange-600 border border-orange-500/20 text-xs"
+              <span
+                className="study-shell-badge study-shell-badge--warning"
                 title={`${item.completedPomodoros || 0} / ${item.estimatedPomodoros} Pomodoros`}
               >
-                <BrainCircuit className="w-3 h-3" />
-                <span>{item.completedPomodoros || 0}/{item.estimatedPomodoros}</span>
-              </div>
+                <BrainCircuit className="h-3 w-3" />
+                {item.completedPomodoros || 0}/{item.estimatedPomodoros}
+              </span>
             ) : null}
 
             {item.priority !== 'none' && (
-              <div className="flex items-center gap-1 text-xs">
-                <PriorityIcon priority={item.priority as TodoPriority} />
-                <span className="text-muted-foreground">{t(PRIORITY_CONFIG[item.priority as TodoPriority].labelKey)}</span>
-              </div>
+              <span className="inline-flex items-center gap-1 text-[11px]">
+                <PriorityIcon priority={item.priority as TodoPriority} className="h-3 w-3" />
+                <span className="text-muted-foreground">
+                  {t(PRIORITY_CONFIG[item.priority as TodoPriority].labelKey)}
+                </span>
+              </span>
             )}
-            
+
             {item.dueDate && (
-              <span className={cn(
-                'flex items-center gap-1.5 text-xs',
-                overdue ? 'text-destructive font-medium' : dueToday ? 'text-primary font-medium' : 'text-muted-foreground'
-              )}>
-                <Calendar className="w-3.5 h-3.5" />
+              <span
+                className={cn(
+                  'inline-flex items-center gap-1 text-[11px]',
+                  overdue
+                    ? 'font-medium text-[color:hsl(var(--destructive))]'
+                    : dueToday
+                    ? 'font-medium text-[color:hsl(var(--primary))]'
+                    : 'text-muted-foreground',
+                )}
+              >
+                <Calendar className="h-3 w-3" />
                 {item.dueDate}
                 {item.dueTime && ` ${item.dueTime}`}
               </span>
             )}
-            
+
             {tags.length > 0 && (
-              <div className="flex gap-1.5">
+              <div className="flex gap-1">
                 {tags.slice(0, 3).map((tag) => (
-                  <span key={tag} className="text-[11px] px-1.5 py-0.5 bg-accent/60 text-muted-foreground rounded-md border border-border/50">
+                  <span key={tag} className="study-shell-badge">
                     {tag}
                   </span>
                 ))}
-                {tags.length > 3 && (
-                  <span className="text-[11px] px-1.5 py-0.5 bg-accent/60 text-muted-foreground rounded-md border border-border/50">
-                    +{tags.length - 3}
-                  </span>
-                )}
+                {tags.length > 3 && <span className="study-shell-badge">+{tags.length - 3}</span>}
               </div>
             )}
           </div>
         )}
       </div>
 
-      {/* Pomodoro Quick Start Button (Only for uncompleted tasks) */}
       {!isCompleted && (
-        <button
+        <NotionButton
+          variant="utility"
+          size="icon"
+          iconOnly
           onClick={(e) => {
             e.stopPropagation();
             usePomodoroStore.getState().start(item.id, item.title);
           }}
           title={t('todo:actions.startFocusSession')}
-          className="p-1.5 rounded-full opacity-0 group-hover:opacity-100 hover:bg-orange-500/10 text-muted-foreground hover:text-orange-500 transition-all duration-200 flex-shrink-0"
+          aria-label="start-focus"
+          className="flex-shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100 !p-1.5"
         >
-          <Play className="w-4 h-4" />
-        </button>
+          <Play className="h-4 w-4" />
+        </NotionButton>
       )}
 
-      {/* 删除按钮 */}
-      <button
+      <NotionButton
+        variant="utility"
+        size="icon"
+        iconOnly
         onClick={(e) => {
           e.stopPropagation();
           onDelete(item.id);
         }}
-        className="p-1.5 rounded-md opacity-0 group-hover:opacity-100 hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all duration-200 flex-shrink-0"
+        aria-label="delete-todo"
+        className="flex-shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100 !p-1.5 hover:!bg-[color:var(--button-danger-surface)] hover:!text-[color:hsl(var(--destructive))]"
       >
-        <Trash2 className="w-4 h-4" />
-      </button>
+        <Trash2 className="h-4 w-4" />
+      </NotionButton>
     </div>
   );
 };
@@ -272,7 +310,8 @@ const TodoItemRow: React.FC<{
 const TodoItemDetail: React.FC<{
   item: TodoItem;
   onClose: () => void;
-}> = ({ item, onClose }) => {
+  className?: string;
+}> = ({ item, onClose, className }) => {
   const { t } = useTranslation(['todo', 'common']);
   const { updateItem, toggleItem, deleteItem } = useTodoStore();
   const [title, setTitle] = useState(item.title);
@@ -285,19 +324,36 @@ const TodoItemDetail: React.FC<{
   const handleSave = useCallback(async () => {
     const changes: UpdateTodoItemInput = { id: item.id };
     let hasChanges = false;
-    if (title !== item.title) { changes.title = title; hasChanges = true; }
-    if (description !== (item.description || '')) { changes.description = description; hasChanges = true; }
-    if (priority !== item.priority) { changes.priority = priority; hasChanges = true; }
-    if (dueDate !== (item.dueDate || '')) { changes.dueDate = dueDate; hasChanges = true; }
-    if (dueTime !== (item.dueTime || '')) { changes.dueTime = dueTime; hasChanges = true; }
-    if (estimatedPomodoros !== (item.estimatedPomodoros || 0)) { changes.estimatedPomodoros = estimatedPomodoros; hasChanges = true; }
-    
+    if (title !== item.title) {
+      changes.title = title;
+      hasChanges = true;
+    }
+    if (description !== (item.description || '')) {
+      changes.description = description;
+      hasChanges = true;
+    }
+    if (priority !== item.priority) {
+      changes.priority = priority;
+      hasChanges = true;
+    }
+    if (dueDate !== (item.dueDate || '')) {
+      changes.dueDate = dueDate;
+      hasChanges = true;
+    }
+    if (dueTime !== (item.dueTime || '')) {
+      changes.dueTime = dueTime;
+      hasChanges = true;
+    }
+    if (estimatedPomodoros !== (item.estimatedPomodoros || 0)) {
+      changes.estimatedPomodoros = estimatedPomodoros;
+      hasChanges = true;
+    }
+
     if (hasChanges) {
       await updateItem(changes);
     }
   }, [item, title, description, priority, dueDate, dueTime, estimatedPomodoros, updateItem]);
 
-  // Auto-save on blur
   const handleBlur = useCallback(() => {
     handleSave();
   }, [handleSave]);
@@ -305,141 +361,174 @@ const TodoItemDetail: React.FC<{
   const isCompleted = item.status === 'completed';
 
   return (
-    <div className="w-[340px] flex-shrink-0 border-l border-border flex flex-col h-full bg-background/50 backdrop-blur-sm shadow-xl animate-in slide-in-from-right-8 duration-300">
-      {/* 头部 */}
-      <div className="flex items-center justify-between px-5 py-4 border-b border-border/50">
-        <div className="flex items-center gap-3">
+    <aside
+      className={cn(
+        'flex h-full flex-col bg-[color:var(--shell-inspector-panel)]',
+        'animate-in slide-in-from-right-8 duration-200',
+        className,
+      )}
+    >
+      <div className="flex items-center justify-between px-4 py-3">
+        <div className="flex items-center gap-2.5">
           <button
             onClick={() => toggleItem(item.id)}
-            className="transition-transform hover:scale-110 focus:outline-none"
+            className="transition-transform hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:hsl(var(--primary))] focus-visible:ring-offset-1 rounded-full"
+            aria-label={isCompleted ? '标记为未完成' : '标记为完成'}
           >
             {isCompleted ? (
-              <CheckCircle2 className="w-5 h-5 text-primary" />
+              <CheckCircle2 className="h-5 w-5 text-[color:hsl(var(--success))]" />
             ) : (
-              <div className="w-5 h-5 rounded-full border-[1.5px] border-muted-foreground/40 hover:border-primary/50 flex items-center justify-center">
-                <Check className="w-3.5 h-3.5 opacity-0 text-primary" />
+              <div className="flex h-5 w-5 items-center justify-center rounded-full border-[1.5px] border-[color:var(--border-default)] hover:border-[color:hsl(var(--primary))]">
+                <Check className="h-3 w-3 text-[color:hsl(var(--primary))] opacity-0" />
               </div>
             )}
           </button>
-          <span className="text-sm font-medium text-muted-foreground">{t('todo:detail.title')}</span>
+          <span className="text-sm font-medium text-muted-foreground">
+            {t('todo:detail.title')}
+          </span>
         </div>
-        <button onClick={onClose} className="p-1.5 rounded-md hover:bg-accent text-muted-foreground hover:text-foreground transition-colors">
-          <X className="w-4 h-4" />
-        </button>
+        <NotionButton
+          variant="utility"
+          size="icon"
+          iconOnly
+          onClick={onClose}
+          aria-label={t('common:actions.close')}
+          className="!p-1.5"
+        >
+          <X className="h-4 w-4" />
+        </NotionButton>
       </div>
 
-      {/* 内容 */}
-      <div className="flex-1 overflow-y-auto px-5 py-6 space-y-6">
-        {/* 标题 */}
-        <div>
-          <textarea
-            value={title}
-            onChange={(e) => setTitle(e.target.value)}
-            onBlur={handleBlur}
-            className={cn(
-              "w-full text-xl font-bold bg-transparent outline-none resize-none overflow-hidden placeholder:text-muted-foreground/50 transition-colors",
-              isCompleted && "line-through text-muted-foreground"
-            )}
-            rows={2}
-            placeholder={t('todo:placeholders.title')}
-          />
-        </div>
+      <CustomScrollArea className="flex-1 min-h-0" viewportClassName="px-5 py-5 space-y-5">
+        <textarea
+          value={title}
+          onChange={(e) => setTitle(e.target.value)}
+          onBlur={handleBlur}
+          className={cn(
+            'w-full resize-none overflow-hidden bg-transparent text-lg font-semibold tracking-tight leading-tight text-foreground outline-none placeholder:text-muted-foreground/50 transition-colors',
+            isCompleted && 'text-muted-foreground line-through',
+          )}
+          rows={2}
+          placeholder={t('todo:placeholders.title')}
+        />
 
-        {/* 属性面板 */}
-        <div className="bg-muted/30 rounded-xl border border-border/50 p-1 space-y-1">
-          {/* 优先级 */}
-          <div className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-accent/50 transition-colors group">
-            <div className="w-6 flex justify-center">
-              <MoreVertical className="w-4 h-4 text-muted-foreground/50 group-hover:text-muted-foreground" />
-            </div>
-            <span className="text-sm text-muted-foreground w-20">{t('todo:fields.priority')}</span>
-            <div className="flex-1 flex gap-1 flex-wrap">
-              {(['none', 'low', 'medium', 'high', 'urgent'] as TodoPriority[]).map((p) => (
-                <button
-                  key={p}
-                  onClick={() => {
-                    setPriority(p);
-                    updateItem({ id: item.id, priority: p });
-                  }}
-                  className={cn(
-                    'px-2 py-1 text-xs rounded-md transition-all',
-                    priority === p 
-                      ? 'bg-background shadow-sm border border-border/50 font-medium' 
-                      : 'hover:bg-background/50 text-muted-foreground border border-transparent'
-                  )}
-                >
-                  <span className={PRIORITY_CONFIG[p].color}>{t(PRIORITY_CONFIG[p].labelKey)}</span>
-                </button>
-              ))}
+        {/* 属性面板 — 扁平列表，不用卡片包裹 */}
+        <div className="space-y-1">
+          <div className="flex items-center gap-3 py-1">
+            <span className="w-16 flex-shrink-0 text-xs text-muted-foreground">
+              {t('todo:fields.priority')}
+            </span>
+            <div className="study-shell-segmented flex flex-wrap">
+              {(['none', 'low', 'medium', 'high', 'urgent'] as TodoPriority[]).map((p) => {
+                const isActive = priority === p;
+                return (
+                  <NotionButton
+                    key={p}
+                    variant="nav"
+                    size="sm"
+                    onClick={() => {
+                      setPriority(p);
+                      updateItem({ id: item.id, priority: p });
+                    }}
+                    className={cn(
+                      'study-shell-segmented-button !h-auto !px-2 !py-0.5 text-[11px] font-medium',
+                      !isActive && 'text-muted-foreground',
+                    )}
+                    data-selected={isActive}
+                  >
+                    <span className={isActive ? PRIORITY_CONFIG[p].color : ''}>
+                      {t(PRIORITY_CONFIG[p].labelKey)}
+                    </span>
+                  </NotionButton>
+                );
+              })}
             </div>
           </div>
 
-          {/* 日期 */}
-          <div className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-accent/50 transition-colors group">
-            <div className="w-6 flex justify-center">
-              <Calendar className="w-4 h-4 text-muted-foreground/50 group-hover:text-muted-foreground" />
-            </div>
-            <span className="text-sm text-muted-foreground w-20">{t('todo:fields.dueDate')}</span>
-            <div className="flex-1 flex items-center gap-2">
+          <div className="flex items-center gap-3 py-1">
+            <span className="flex w-16 flex-shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+              <Calendar className="h-3.5 w-3.5" />
+              {t('todo:fields.dueDate')}
+            </span>
+            <input
+              type="date"
+              value={dueDate}
+              onChange={(e) => setDueDate(e.target.value)}
+              onBlur={handleBlur}
+              className="flex-1 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--input-shell-surface)] px-2.5 py-1.5 text-sm text-foreground outline-none transition-colors focus:border-[color:var(--input-shell-focus)] focus:ring-1 focus:ring-[color:var(--input-shell-focus)]"
+            />
+          </div>
+
+          {dueDate && (
+            <div className="flex items-center gap-3 py-1">
+              <span className="w-16 flex-shrink-0 text-xs text-muted-foreground">
+                {t('todo:fields.dueTime')}
+              </span>
               <input
-                type="date"
-                value={dueDate}
-                onChange={(e) => setDueDate(e.target.value)}
+                type="time"
+                value={dueTime}
+                onChange={(e) => setDueTime(e.target.value)}
                 onBlur={handleBlur}
-                className="flex-1 text-sm bg-background border border-border/50 rounded-md px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all"
+                className="flex-1 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--input-shell-surface)] px-2.5 py-1.5 text-sm text-foreground outline-none transition-colors focus:border-[color:var(--input-shell-focus)] focus:ring-1 focus:ring-[color:var(--input-shell-focus)]"
               />
             </div>
-          </div>
-          
-          {/* 时间 */}
-          {dueDate && (
-             <div className="flex items-center gap-3 px-3 py-2 rounded-lg hover:bg-accent/50 transition-colors group">
-              <div className="w-6 flex justify-center"></div>
-              <span className="text-sm text-muted-foreground w-20">{t('todo:fields.dueTime')}</span>
-              <div className="flex-1 flex items-center gap-2">
-                <input
-                  type="time"
-                  value={dueTime}
-                  onChange={(e) => setDueTime(e.target.value)}
-                  onBlur={handleBlur}
-                  className="flex-1 text-sm bg-background border border-border/50 rounded-md px-2.5 py-1.5 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 transition-all"
-                />
-              </div>
-            </div>
           )}
+
+          <div className="flex items-center gap-3 py-1">
+            <span className="flex w-16 flex-shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
+              <BrainCircuit className="h-3.5 w-3.5" />
+              {t('todo:fields.pomodoros', '番茄')}
+            </span>
+            <input
+              type="number"
+              min={0}
+              max={20}
+              value={estimatedPomodoros || ''}
+              onChange={(e) => setEstimatedPomodoros(Number(e.target.value) || 0)}
+              onBlur={handleBlur}
+              placeholder="0"
+              className="w-20 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--input-shell-surface)] px-2.5 py-1.5 text-sm text-foreground outline-none transition-colors focus:border-[color:var(--input-shell-focus)] focus:ring-1 focus:ring-[color:var(--input-shell-focus)]"
+            />
+          </div>
         </div>
 
-        {/* 描述 */}
-        <div className="space-y-2">
-          <span className="text-sm font-medium text-foreground block">{t('todo:fields.description')}</span>
+        <div className="space-y-2 pt-2">
+          <span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+            {t('todo:fields.description')}
+          </span>
           <textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             onBlur={handleBlur}
             placeholder={t('todo:placeholders.description')}
             rows={8}
-            className="w-full text-sm bg-muted/30 border border-border/50 rounded-xl px-4 py-3 outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 focus:bg-background resize-none placeholder:text-muted-foreground/50 transition-all leading-relaxed"
+            className="w-full resize-none rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--input-shell-surface)] px-3 py-2.5 text-sm leading-relaxed text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-[color:var(--input-shell-focus)] focus:ring-1 focus:ring-[color:var(--input-shell-focus)]"
           />
         </div>
-      </div>
+      </CustomScrollArea>
 
-      {/* 底部操作 */}
-      <div className="px-5 py-4 border-t border-border/50 bg-muted/10 flex justify-between items-center">
+      <div className="flex items-center justify-between px-4 py-3">
         <span className="text-xs text-muted-foreground">
-          {item.updatedAt ? t('todo:detail.updatedAt', { date: new Date(item.updatedAt).toLocaleDateString() }) : ''}
+          {item.updatedAt
+            ? t('todo:detail.updatedAt', {
+                date: new Date(item.updatedAt).toLocaleDateString(),
+              })
+            : ''}
         </span>
-        <button
+        <NotionButton
+          variant="danger"
+          size="sm"
           onClick={() => {
             deleteItem(item.id);
             onClose();
           }}
-          className="flex items-center gap-2 px-3 py-1.5 text-sm text-destructive hover:bg-destructive/10 rounded-md transition-colors"
+          className="gap-1.5"
         >
-          <Trash2 className="w-4 h-4" />
+          <Trash2 className="h-4 w-4" />
           {t('common:actions.delete')}
-        </button>
+        </NotionButton>
       </div>
-    </div>
+    </aside>
   );
 };
 
@@ -449,97 +538,122 @@ const TodoItemDetail: React.FC<{
 
 export const TodoMainPanel: React.FC = () => {
   const { t } = useTranslation(['todo']);
+  const { isSmallScreen } = useBreakpoint();
   const {
-    items, activeListId, lists,
-    isLoadingItems, filter, selectedItemId,
-    toggleItem, deleteItem, selectItem,
-    setSearch, setShowCompleted,
+    items,
+    activeListId,
+    lists,
+    isLoadingItems,
+    filter,
+    selectedItemId,
+    toggleItem,
+    deleteItem,
+    selectItem,
+    setSearch,
+    setShowCompleted,
   } = useTodoStore();
 
   const activeList = lists.find((l) => l.id === activeListId);
   const selectedItem = items.find((i) => i.id === selectedItemId);
 
-  // 客户端过滤
   const filteredItems = items.filter((item) => {
     if (filter.priorityFilter && item.priority !== filter.priorityFilter) return false;
-    if (filter.view !== 'completed' && !filter.showCompleted && item.status === 'completed') return false;
+    if (filter.view !== 'completed' && !filter.showCompleted && item.status === 'completed')
+      return false;
     return true;
   });
 
   const pendingCount = items.filter((i) => i.status === 'pending').length;
   const completedCount = items.filter((i) => i.status === 'completed').length;
 
-  // 视图标题
   const viewTitle = (() => {
     switch (filter.view) {
-      case 'today': return t('todo:views.today');
-      case 'upcoming': return t('todo:views.upcoming');
-      case 'overdue': return t('todo:views.overdue');
-      case 'completed': return t('todo:views.completed');
-      default: return activeList?.title || t('todo:views.inbox');
+      case 'today':
+        return t('todo:views.today');
+      case 'upcoming':
+        return t('todo:views.upcoming');
+      case 'overdue':
+        return t('todo:views.overdue');
+      case 'completed':
+        return t('todo:views.completed');
+      default:
+        return activeList?.title || t('todo:views.inbox');
     }
   })();
 
   return (
-    <div className="flex-1 flex flex-col h-full min-w-0 bg-background">
-      {/* 头部 */}
-      <div className="flex items-center justify-between px-6 py-4 border-b border-border/40">
-        <div className="flex flex-col gap-1">
-          <h2 className="text-2xl font-bold tracking-tight text-foreground">{viewTitle}</h2>
-          <span className="text-sm font-medium text-muted-foreground/80">
-            {pendingCount} {t('todo:stats.pending')}
-            {completedCount > 0 && ` · ${completedCount} ${t('todo:stats.completed')}`}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-3">
-          {/* 搜索 */}
-          <div className="relative group">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground group-focus-within:text-primary transition-colors" />
-            <input
-              value={filter.search}
-              onChange={(e) => setSearch(e.target.value)}
-              placeholder={t('todo:actions.search')}
-              className="pl-9 pr-3 py-2 text-sm w-48 bg-muted/40 border border-border/60 rounded-full outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/50 focus:w-64 transition-all duration-300"
-            />
+    <div className="flex min-w-0 flex-1 flex-row overflow-hidden">
+      {/* 主列 */}
+      <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
+        {/* 顶部工具栏 */}
+        <div className="study-shell-toolbar study-shell-toolbar--seamless flex flex-shrink-0 flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
+          <div className="flex min-w-0 flex-1 items-baseline gap-3">
+            {!isSmallScreen && (
+              <h2 className="truncate text-xl font-semibold tracking-tight text-foreground">
+                {viewTitle}
+              </h2>
+            )}
+            <span className="text-xs text-muted-foreground">
+              {pendingCount}&nbsp;{t('todo:stats.pending')}
+              {completedCount > 0 && (
+                <>
+                  <span className="mx-1 text-muted-foreground/40">·</span>
+                  {completedCount}&nbsp;{t('todo:stats.completed')}
+                </>
+              )}
+            </span>
           </div>
 
-          {/* 显示已完成 */}
-          <button
-            onClick={() => setShowCompleted(!filter.showCompleted)}
-            className={cn(
-              'flex items-center gap-2 px-3 py-2 text-sm rounded-full border transition-all duration-200',
-              filter.showCompleted
-                ? 'bg-primary/10 border-primary/20 text-primary font-medium'
-                : 'bg-transparent border-border/60 text-muted-foreground hover:bg-accent hover:text-foreground'
-            )}
-            disabled={filter.view === 'completed'}
-          >
-            <CheckCircle2 className="w-4 h-4" />
-            {t('todo:filters.showCompleted')}
-          </button>
+          <div className="flex flex-shrink-0 items-center gap-2">
+            <div className="relative">
+              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60" />
+              <Input
+                type="text"
+                value={filter.search}
+                onChange={(e) => setSearch(e.target.value)}
+                placeholder={t('todo:actions.search')}
+                className="h-8 w-44 pl-8 pr-3 text-xs sm:w-56"
+              />
+            </div>
+
+            <NotionButton
+              variant="utility"
+              size="sm"
+              onClick={() => setShowCompleted(!filter.showCompleted)}
+              disabled={filter.view === 'completed'}
+              data-selected={filter.showCompleted}
+              className={cn(
+                'h-8 gap-1.5 !px-2.5 text-xs',
+                filter.showCompleted &&
+                  '!bg-[color:var(--button-primary-surface)] !text-[color:var(--button-primary-foreground)]',
+              )}
+            >
+              <CheckCircle2 className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">{t('todo:filters.showCompleted')}</span>
+            </NotionButton>
+          </div>
         </div>
-      </div>
 
-      <div className="flex-1 flex overflow-hidden">
-        {/* 待办列表 */}
-        <div className="flex-1 overflow-y-auto">
-          {/* 快速添加 */}
-          {filter.view === 'all' && <TodoQuickAdd />}
+        {/* 内容区 */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <CustomScrollArea className="flex-1 min-h-0" viewportClassName="pb-6">
+            {filter.view === 'all' && <TodoQuickAdd />}
 
-          {/* 列表内容 */}
-          <div className="pb-8">
             {isLoadingItems ? (
               <div className="flex items-center justify-center py-20">
-                <Loader2 className="w-8 h-8 animate-spin text-primary/50" />
+                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground/60" />
               </div>
             ) : filteredItems.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-24 text-muted-foreground animate-in fade-in duration-500">
-                <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center mb-4">
-                  <CheckCircle2 className="w-8 h-8 opacity-40" />
+              <div className="study-shell-empty-state m-4 sm:m-6 animate-in fade-in duration-300">
+                <div className="study-shell-empty-state__icon">
+                  <ListTodo className="h-6 w-6" />
                 </div>
-                <span className="text-base font-medium">{t('todo:empty.noItems')}</span>
-                <span className="text-sm text-muted-foreground/60 mt-1">{t('todo:empty.hint')}</span>
+                <h3 className="study-shell-empty-state__title">
+                  {t('todo:empty.noItems')}
+                </h3>
+                <p className="study-shell-empty-state__description">
+                  {t('todo:empty.hint')}
+                </p>
               </div>
             ) : (
               <div className="flex flex-col">
@@ -555,21 +669,33 @@ export const TodoMainPanel: React.FC = () => {
                 ))}
               </div>
             )}
-          </div>
+          </CustomScrollArea>
         </div>
 
-        {/* 详情面板 */}
-        {selectedItem && (
-          <TodoItemDetail
-            key={selectedItem.id}
-            item={selectedItem}
-            onClose={() => selectItem(null)}
-          />
+        <PomodoroPanel />
+
+        {/* 移动端详情：全屏覆盖 */}
+        {isSmallScreen && selectedItem && (
+          <div className="absolute inset-0 z-40 flex bg-[color:var(--surface-root)]">
+            <TodoItemDetail
+              key={selectedItem.id}
+              item={selectedItem}
+              onClose={() => selectItem(null)}
+              className="w-full"
+            />
+          </div>
         )}
       </div>
 
-      {/* 番茄钟面板 */}
-      <PomodoroPanel />
+      {/* 桌面端详情：右侧抽屉 */}
+      {!isSmallScreen && selectedItem && (
+        <TodoItemDetail
+          key={selectedItem.id}
+          item={selectedItem}
+          onClose={() => selectItem(null)}
+          className="w-[360px] flex-shrink-0"
+        />
+      )}
     </div>
   );
 };
