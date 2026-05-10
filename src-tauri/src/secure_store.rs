@@ -458,6 +458,9 @@ pub struct CloudStorageCredentials {
     /// S3 Secret Access Key
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub s3_secret_access_key: Option<String>,
+    /// 端到端加密密码（备份 ZIP 上传前用的）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encryption_password: Option<String>,
 }
 
 impl SecureStore {

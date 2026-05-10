@@ -94,7 +94,7 @@ impl std::fmt::Debug for S3Config {
 }
 
 /// 统一的云存储配置
-#[derive(Debug, Clone, Serialize, Deserialize, Default)]
+#[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
 pub struct CloudStorageConfig {
     /// 存储提供商类型
@@ -109,6 +109,34 @@ pub struct CloudStorageConfig {
     /// 根目录路径（所有操作都在此目录下）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub root: Option<String>,
+    /// 端到端加密密码（可选）
+    ///
+    /// 非空时：
+    /// - 上传 ZIP 备份时先用 `crypto::backup_crypto::encrypt_backup` 加密（AES-256-GCM + Argon2id）
+    /// - 下载时自动识别 `DSBK` 魔数并解密
+    ///
+    /// 留空则上传明文（向后兼容）。密码错了下载会失败（不会静默得到垃圾）。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub encryption_password: Option<String>,
+}
+
+impl std::fmt::Debug for CloudStorageConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("CloudStorageConfig")
+            .field("provider", &self.provider)
+            .field("webdav", &self.webdav)
+            .field("s3", &self.s3)
+            .field("root", &self.root)
+            .field(
+                "encryption_password",
+                &self
+                    .encryption_password
+                    .as_ref()
+                    .map(|_| "[REDACTED]")
+                    .unwrap_or("None"),
+            )
+            .finish()
+    }
 }
 
 impl CloudStorageConfig {

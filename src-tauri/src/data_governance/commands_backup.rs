@@ -83,6 +83,8 @@ pub(super) struct ApplyToDbsResult {
     /// 实际被应用（未跳过）的记录 key 集合 (table_name, record_id)
     /// 用于双向同步时过滤 enriched 列表，避免上传被下载覆盖的过时数据
     pub(super) applied_keys: std::collections::HashSet<(String, String)>,
+    /// 冲突保护产生的冲突记录总数（= 冲突次数 × 2，因为 local/cloud 各一份）
+    pub(super) total_conflicts: usize,
 }
 
 /// 根据表名推断变更所属的数据库（用于 legacy 无 database_name 的变更）
@@ -231,18 +233,22 @@ fn should_apply_change_by_strategy(
     }
 }
 
-/// 将下载的变更按数据库路由并应用
+/// 将下载的变更按数据库路由并应用（接入冲突保护 + 冲突表）
 ///
 /// 根据每条变更的 `database_name` 字段将变更路由到对应的数据库，
 /// 确保多库同步时变更不会错误地应用到单一数据库。
 /// 对于没有 `database_name` 的旧格式变更，通过表名推断目标数据库。
 ///
-/// 返回聚合的应用结果，调用方可根据 `total_skipped` 向用户发出警告。
+/// **[P0 接入]** 使用 `apply_downloaded_changes_with_conflict_guard`：
+/// - 将 `MergeStrategy` 映射为 `ConflictPolicy`
+/// - 冲突落败方进 `__sync_conflicts` 表（每库一份），前端可据此列出待处理冲突
+/// - Manual 策略特殊处理：回退到旧行为（仍用 LWW 门 + 策略过滤，不自动解决冲突）
 pub(super) fn apply_downloaded_changes_to_databases(
     changes: &[SyncChangeWithData],
     active_dir: &std::path::Path,
     strategy: MergeStrategy,
 ) -> Result<ApplyToDbsResult, String> {
+    use crate::data_governance::sync::ConflictPolicy;
     use std::collections::HashMap;
 
     let mut agg = ApplyToDbsResult {
@@ -251,9 +257,21 @@ pub(super) fn apply_downloaded_changes_to_databases(
         total_failed: 0,
         db_errors: Vec::new(),
         applied_keys: std::collections::HashSet::new(),
+        total_conflicts: 0,
     };
 
     let id_column_map = build_id_column_map();
+
+    // 策略映射
+    let policy_opt: Option<ConflictPolicy> = match strategy {
+        MergeStrategy::KeepLocal => Some(ConflictPolicy::KeepLocal),
+        MergeStrategy::UseCloud => Some(ConflictPolicy::KeepCloud),
+        MergeStrategy::KeepLatest => Some(ConflictPolicy::KeepLatest),
+        MergeStrategy::Manual => None, // 手动模式保持老行为，不自动解决
+    };
+
+    // 获取本地设备 ID（仅作为冲突记录里的 losing_device_id，真实设备 ID 由 SyncManager 持有）
+    let local_device_id = crate::cloud_storage::get_device_id();
 
     // 按数据库名称分组（legacy 变更按表名推断库）
     let mut grouped: HashMap<String, Vec<&SyncChangeWithData>> = HashMap::new();
@@ -306,6 +324,7 @@ pub(super) fn apply_downloaded_changes_to_databases(
         let conn = rusqlite::Connection::open(&db_path)
             .map_err(|e| format!("打开数据库 {} 失败: {}", db_name, e))?;
 
+        // 预过滤：先按策略决策（KeepLocal 直接跳过云端变更）
         let mut owned_changes: Vec<SyncChangeWithData> = Vec::new();
         for c in db_changes {
             let id_column = id_column_map
@@ -326,13 +345,37 @@ pub(super) fn apply_downloaded_changes_to_databases(
             continue;
         }
 
-        match SyncManager::apply_downloaded_changes(&conn, &owned_changes, Some(&id_column_map)) {
-            Ok(apply_result) => {
+        // 根据是否有 policy 决定走冲突保护还是老路径
+        let result = if let Some(policy) = policy_opt {
+            SyncManager::apply_downloaded_changes_with_conflict_guard(
+                &conn,
+                &owned_changes,
+                Some(&id_column_map),
+                policy,
+                None, // cloud_device_id — 云端变更目前没携带，留空
+                Some(&local_device_id),
+            )
+            .map(|(apply, conflict)| (apply, Some(conflict)))
+        } else {
+            SyncManager::apply_downloaded_changes(&conn, &owned_changes, Some(&id_column_map))
+                .map(|apply| (apply, None))
+        };
+
+        match result {
+            Ok((apply_result, conflict_result)) => {
                 agg.total_success += apply_result.success_count;
                 agg.total_skipped += apply_result.skipped_count;
                 agg.total_failed += apply_result.failure_count;
-                // 仅收录“真实落地成功”的 key，避免 skipped 记录误参与上传过滤。
                 agg.applied_keys.extend(apply_result.applied_keys);
+                if let Some(c) = conflict_result {
+                    agg.total_conflicts += c.conflicts_saved;
+                    if c.rejected > 0 || c.conflicts_saved > 0 {
+                        info!(
+                            "[data_governance] 数据库 {} 冲突保护: rejected={}, conflicts_saved={}",
+                            db_name, c.rejected, c.conflicts_saved
+                        );
+                    }
+                }
                 info!(
                     "[data_governance] 数据库 {} 应用变更完成: success={}, failed={}, skipped={}",
                     db_name,
@@ -342,10 +385,6 @@ pub(super) fn apply_downloaded_changes_to_databases(
                 );
             }
             Err(e) => {
-                // 不再立即中止整个同步流程，而是记录失败并继续处理其余数据库，
-                // 避免先成功的库与后失败的库之间产生不可逆的业务撕裂。
-                // 注意：失败分支不会向 applied_keys 写入任何记录，
-                // 确保对应的本地变更仍可在后续轮次上传。
                 let err_msg = format!("{}", e);
                 error!(
                     "[data_governance] 数据库 {} 应用变更失败（继续处理剩余库）: {}",

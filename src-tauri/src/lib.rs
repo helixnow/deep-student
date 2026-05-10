@@ -1635,6 +1635,16 @@ pub fn run() {
             ,crate::data_governance::commands_sync::data_governance_run_sync_with_progress
             ,crate::data_governance::commands_sync::data_governance_export_sync_data
             ,crate::data_governance::commands_sync::data_governance_import_sync_data
+            // Tombstone 删除传播
+            ,crate::data_governance::commands_sync::data_governance_mark_blob_deleted
+            ,crate::data_governance::commands_sync::data_governance_mark_asset_deleted
+            // 记录级冲突
+            ,crate::data_governance::commands_sync::data_governance_list_record_conflicts
+            ,crate::data_governance::commands_sync::data_governance_count_record_conflicts
+            ,crate::data_governance::commands_sync::data_governance_resolve_record_conflict
+            ,crate::data_governance::commands_sync::data_governance_purge_resolved_conflicts
+            // Prune 断层检测
+            ,crate::data_governance::commands_sync::data_governance_detect_prune_gap
             // 任务恢复命令（断点续传支持）
             ,crate::data_governance::commands_backup::data_governance_resume_backup_job
             ,crate::data_governance::commands_backup::data_governance_list_resumable_jobs

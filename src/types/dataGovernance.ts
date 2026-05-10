@@ -707,6 +707,8 @@ export interface CloudStorageConfig {
   s3?: S3Config;
   /** 根目录路径（所有操作都在此目录下） */
   root?: string;
+  /** 端到端加密密码（可选）。非空时备份上传前会用 AES-256-GCM + Argon2id 加密。 */
+  encryptionPassword?: string;
 }
 
 /** 同步执行响应 */

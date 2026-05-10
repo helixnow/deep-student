@@ -70,7 +70,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     pathStyle: false,
   });
   const [root, setRoot] = useState('deep-student-sync');
-  
+
+  // 端到端加密密码（可选）
+  const [encryptionPassword, setEncryptionPassword] = useState('');
+  const [showEncryptionPwd, setShowEncryptionPwd] = useState(false);
+
   // UI 状态
   const [showPassword, setShowPassword] = useState(false);
   const [showSecretKey, setShowSecretKey] = useState(false);
@@ -205,6 +209,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           if (credentials.s3SecretAccessKey) {
             setS3Config(prev => ({ ...prev, secretAccessKey: credentials.s3SecretAccessKey! }));
           }
+          if (credentials.encryptionPassword) {
+            setEncryptionPassword(credentials.encryptionPassword);
+          }
         }
       } catch (e: unknown) {
         console.warn('Failed to load credentials from secure storage:', e);
@@ -221,25 +228,28 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       webdav: provider === 'webdav' ? webdavConfig : undefined,
       s3: provider === 's3' ? s3Config : undefined,
       root,
+      encryptionPassword: encryptionPassword || undefined,
     };
-  }, [provider, webdavConfig, s3Config, root]);
+  }, [provider, webdavConfig, s3Config, root, encryptionPassword]);
 
   // 保存配置
   const saveConfig = useCallback(async () => {
-    // 保存非敏感配置到 localStorage
+    // 保存非敏感配置到 localStorage（不含加密密码——它是高敏感）
     const config = buildConfig();
     const safeConfig = {
       ...config,
       webdav: config.webdav ? { ...config.webdav, password: '' } : undefined,
       s3: config.s3 ? { ...config.s3, secretAccessKey: '' } : undefined,
+      encryptionPassword: undefined,
     };
     localStorage.setItem(CONFIG_STORAGE_KEY, JSON.stringify(safeConfig));
-    
+
     // 保存敏感凭据到安全存储
     try {
       await cloudApi.saveCredentials({
         webdavPassword: webdavConfig.password || undefined,
         s3SecretAccessKey: s3Config.secretAccessKey || undefined,
+        encryptionPassword: encryptionPassword || undefined,
       });
       showGlobalNotification('success', t('cloudStorage:messages.configSaved'));
     } catch (e: unknown) {
@@ -247,7 +257,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       showGlobalNotification('warning', t('cloudStorage:messages.configSavedButCredentialsFailed'));
     }
     onConfigChanged?.();
-  }, [buildConfig, webdavConfig.password, s3Config.secretAccessKey, t, onConfigChanged]);
+  }, [buildConfig, webdavConfig.password, s3Config.secretAccessKey, encryptionPassword, t, onConfigChanged]);
 
   // 清除配置
   const clearConfig = useCallback(async () => {
@@ -264,6 +274,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     setWebdavConfig({ endpoint: '', username: '', password: '' });
     setS3Config({ endpoint: '', bucket: '', accessKeyId: '', secretAccessKey: '', region: '', pathStyle: false });
     setRoot('deep-student-sync');
+    setEncryptionPassword('');
     setConnectionStatus('unknown');
     setSyncStatus(null);
     setVersions([]);
@@ -779,6 +790,40 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
             onChange={(e) => setRoot(e.target.value)}
           />
           <p className="text-xs text-muted-foreground">{t('cloudStorage:root.hint')}</p>
+        </div>
+
+        {/* 端到端加密配置（可选） */}
+        <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
+          <div className="flex items-center gap-2">
+            <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <Label htmlFor="cloud-encryption-password" className="font-medium">
+              端到端加密密码（可选，强烈推荐）
+            </Label>
+          </div>
+          <div className="relative">
+            <Input
+              id="cloud-encryption-password"
+              type={showEncryptionPwd ? 'text' : 'password'}
+              placeholder="留空则不加密；设置后仅你本地存储，云端无法解密"
+              value={encryptionPassword}
+              onChange={(e) => setEncryptionPassword(e.target.value)}
+              autoComplete="new-password"
+            />
+            <NotionButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="absolute right-0 top-0 h-full px-3"
+              onClick={() => setShowEncryptionPwd(!showEncryptionPwd)}
+            >
+              {showEncryptionPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </NotionButton>
+          </div>
+          <p className="text-xs text-muted-foreground leading-relaxed">
+            开启后，上传的 ZIP 备份将使用 AES-256-GCM 加密，云服务商无法读取内容。
+            <span className="text-destructive font-medium"> 密码仅存储在本机系统凭据库（Keychain/Credential Manager），
+            若遗忘则无法恢复任何已加密的云端备份。</span>所有连接此云端的设备必须使用同一密码，否则无法互相解密。
+          </p>
         </div>
 
         {/* 操作按钮 */}

@@ -1100,6 +1100,34 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
         return;
       }
       setCloudSyncConfigured(true);
+
+      // 同步断层预检：云端 prune 掉了本地 since_version 需要的变更区间时，
+      // 普通双向/下载同步会导致"静默数据丢失"——云端已有变更但本地拿不到。
+      // 此时必须提示用户改走"从版本历史恢复"流程。
+      if (direction !== 'upload') {
+        try {
+          const gap = await DataGovernanceApi.detectPruneGap(cloudConfig);
+          if (gap.has_gap) {
+            const since = gap.since_version;
+            const minAvail = gap.min_available_version ?? 0;
+            const warnMsg = t('data:governance.sync_prune_gap_warning', {
+              since,
+              minAvail,
+              defaultValue:
+                `检测到云端同步历史已被清理（本地需要 >=${since} 的变更，但云端最早仅 ${minAvail}）。` +
+                `继续同步将遗漏中间变更。建议改用"版本历史 → 恢复"进行全量恢复。是否仍要继续？`,
+            });
+            // 用 window.confirm 作为最简阻塞式确认；项目里没有通用 confirm hook
+            if (typeof window !== 'undefined' && !window.confirm(warnMsg)) {
+              setSyncProgress(null);
+              return;
+            }
+          }
+        } catch (gapErr: unknown) {
+          console.warn('[sync] detectPruneGap 检查失败（继续同步）:', gapErr);
+        }
+      }
+
       enterMaintenanceMode(t('data:governance.maintenance_sync'));
 
       const result = await DataGovernanceApi.runSyncWithProgressTracking(

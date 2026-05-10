@@ -25,7 +25,7 @@
 use chrono::{DateTime, Utc};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use super::SyncError;
 use crate::cloud_storage::CloudStorage;
@@ -189,6 +189,8 @@ pub async fn upload_workspace_tombstones(
 /// 将一批 tombstone 应用到云端清单 + 本地文件：
 /// - 云端 blob 被删除（尽力删，失败只告警）
 /// - 本地 blob 目录下对应文件一并删除
+///   - 优先用 `relative_path`（由上传端在 tombstone 元数据里提供）
+///   - 如果没有，尝试 `scan_blobs_dir` 风格的本地扫描（按 hash 前缀分桶查找）
 /// - 返回本次实际影响的 hash 列表
 pub async fn apply_blob_tombstones(
     storage: &dyn CloudStorage,
@@ -198,32 +200,71 @@ pub async fn apply_blob_tombstones(
 ) -> Result<Vec<String>, SyncError> {
     let mut affected = Vec::new();
     for (hash, entry) in &tombstones.entries {
-        // 云端删除
-        let rel = entry
-            .relative_path
-            .clone()
-            .unwrap_or_else(|| guess_relative_path(hash));
-        let key = format!("{}/{}", blobs_cloud_prefix, rel);
-        if let Err(e) = storage.delete(&key).await {
-            tracing::warn!("[sync] 删除云端 blob 失败（忽略）: {}: {}", key, e);
+        // 1) 本地文件：优先 relative_path，否则在分桶目录里按 stem 扫描（保留真实扩展名）
+        let local_path: Option<PathBuf> = match entry.relative_path.as_deref() {
+            Some(rel) => Some(blobs_dir.join(rel)),
+            None => find_blob_by_hash(blobs_dir, hash),
+        };
+        if let Some(ref lp) = local_path {
+            if lp.exists() {
+                let _ = std::fs::remove_file(lp);
+            }
         }
-        // 本地删除
-        let local = blobs_dir.join(&rel);
-        if local.exists() {
-            let _ = std::fs::remove_file(&local);
+
+        // 2) 云端删除：只有拿到真实 relative_path（带扩展名）才删；否则跳过以免乱删
+        if let Some(rel) = entry.relative_path.as_deref() {
+            let key = format!("{}/{}", blobs_cloud_prefix, rel);
+            if let Err(e) = storage.delete(&key).await {
+                tracing::warn!("[sync] 删除云端 blob 失败（忽略）: {}: {}", key, e);
+            }
+        } else {
+            // 如果本地扫描到了路径，用本地相对路径删云端
+            if let Some(lp) = local_path {
+                if let Ok(rel) = lp.strip_prefix(blobs_dir) {
+                    let rel_str = rel.to_string_lossy().replace('\\', "/");
+                    let key = format!("{}/{}", blobs_cloud_prefix, rel_str);
+                    if let Err(e) = storage.delete(&key).await {
+                        tracing::warn!("[sync] 删除云端 blob 失败（忽略）: {}: {}", key, e);
+                    }
+                } else {
+                    tracing::warn!(
+                        "[sync] tombstone {} 无 relative_path 且本地未找到，跳过云端删除",
+                        hash
+                    );
+                }
+            } else {
+                tracing::warn!(
+                    "[sync] tombstone {} 无 relative_path 且本地无此文件，跳过",
+                    hash
+                );
+            }
         }
+
         affected.push(hash.clone());
     }
     Ok(affected)
 }
 
-/// 猜测 blob 相对路径（按 blob hash 前两位分桶，与 scan_blobs_dir 一致）
-fn guess_relative_path(hash: &str) -> String {
-    if hash.len() >= 2 {
-        format!("{}/{}", &hash[..2], hash)
-    } else {
-        hash.to_string()
+/// 按 hash 在 blobs_dir 下扫描：blob 命名约定是 `<hash>.<ext>`，
+/// 放在以 hash 前两位命名的子目录里（`scan_blobs_dir` 的反向操作）。
+fn find_blob_by_hash(blobs_dir: &Path, hash: &str) -> Option<PathBuf> {
+    if hash.len() < 2 {
+        return None;
     }
+    let bucket = blobs_dir.join(&hash[..2]);
+    if !bucket.exists() {
+        return None;
+    }
+    let entries = std::fs::read_dir(&bucket).ok()?;
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if let Some(stem) = path.file_stem().and_then(|s| s.to_str()) {
+            if stem == hash {
+                return Some(path);
+            }
+        }
+    }
+    None
 }
 
 /// 清理过期的 tombstone（按 deleted_at 与保留天数比较）
@@ -278,9 +319,22 @@ mod tests {
     }
 
     #[test]
-    fn test_guess_relative_path() {
-        assert_eq!(guess_relative_path("abcdef1234"), "ab/abcdef1234");
-        assert_eq!(guess_relative_path("a"), "a");
+    fn test_find_blob_by_hash() {
+        use tempfile::TempDir;
+        let tmp = TempDir::new().unwrap();
+        let dir = tmp.path();
+        std::fs::create_dir_all(dir.join("ab")).unwrap();
+        std::fs::write(dir.join("ab").join("abhash123.pdf"), b"x").unwrap();
+        let found = find_blob_by_hash(dir, "abhash123");
+        assert!(found.is_some());
+        assert_eq!(
+            found.unwrap().file_name().unwrap().to_string_lossy(),
+            "abhash123.pdf"
+        );
+        // 不存在
+        assert!(find_blob_by_hash(dir, "ghostghost").is_none());
+        // 短 hash
+        assert!(find_blob_by_hash(dir, "a").is_none());
     }
 
     #[test]

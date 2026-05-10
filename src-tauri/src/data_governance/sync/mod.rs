@@ -1726,6 +1726,114 @@ impl SyncManager {
         Ok(deleted)
     }
 
+    /// 重建同步基线（用于 ZIP 备份恢复后）
+    ///
+    /// 从 ZIP 备份恢复数据后，`__change_log` 表的状态可能：
+    /// - 完全缺失（老备份不包含变更日志）
+    /// - 包含源设备的历史变更（sync_version 混合）
+    ///
+    /// 无论哪种情况，都需要把整个库视为"已同步"的快照，避免把恢复的数据
+    /// 当作"新变更"再次推送到云端，产生时光倒流式的数据覆盖。
+    ///
+    /// 此函数执行以下操作：
+    /// 1. 截断 `__change_log` 表（删除所有历史变更记录）
+    /// 2. 更新所有业务表的 `sync_version = local_version`（所有现存记录标记为"已同步"）
+    /// 3. 清除任何未解决的冲突记录（`__sync_conflicts` 表）
+    ///
+    /// 调用方需要**负责重新执行一次完整的 upload 同步**以发布设备清单，
+    /// 否则云端仍会认为此设备的 data_version 是恢复前的状态。
+    ///
+    /// # 参数
+    /// * `conn` - 已打开的数据库连接（应在事务内调用以确保原子性）
+    ///
+    /// # 返回
+    /// * `(truncated_changes, reset_records)` - 清理的变更日志条数 + 重置 sync_version 的业务记录条数
+    pub fn reset_sync_baseline_after_restore(
+        conn: &Connection,
+    ) -> Result<(usize, usize), SyncError> {
+        // 注意步骤顺序：必须先 UPDATE 业务表（touch local_version = sync_version），
+        // 再 DELETE __change_log。因为业务表上通常装有 trg_upd 触发器，
+        // UPDATE 会重新向 __change_log 写一批新条目——如果先清 __change_log 再 UPDATE，
+        // 清理就白做了。
+
+        // 1. 找出所有装配了同步字段的业务表，把 sync_version 提升到 local_version
+        //    schema 要求所有同步表同时具备 local_version 和 sync_version 两列。
+        let mut table_stmt = conn
+            .prepare(
+                "SELECT name FROM sqlite_master
+                 WHERE type='table'
+                   AND name NOT LIKE 'sqlite_%'
+                   AND name NOT LIKE '\\_\\_%' ESCAPE '\\'",
+            )
+            .map_err(|e| SyncError::Database(format!("查询业务表失败: {}", e)))?;
+
+        let table_names: Vec<String> = table_stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| SyncError::Database(format!("扫描业务表失败: {}", e)))?
+            .filter_map(|r| r.ok())
+            .collect();
+        drop(table_stmt);
+
+        let mut reset_count = 0usize;
+        for table in table_names {
+            // 检查表是否有 local_version/sync_version 两列
+            let col_names: Vec<String> = match conn.prepare(&format!(
+                "SELECT name FROM pragma_table_info('{}')",
+                table.replace('\'', "''")
+            )) {
+                Ok(mut stmt) => stmt
+                    .query_map([], |row| row.get::<_, String>(0))
+                    .map(|iter| iter.filter_map(|r| r.ok()).collect())
+                    .unwrap_or_default(),
+                Err(_) => continue,
+            };
+
+            if !col_names.iter().any(|c| c == "local_version")
+                || !col_names.iter().any(|c| c == "sync_version")
+            {
+                continue;
+            }
+
+            // 安全引用表名（仅允许标识符字符，双重保险）
+            if !table.chars().all(|c| c.is_ascii_alphanumeric() || c == '_') {
+                continue;
+            }
+
+            // 仅在需要时 UPDATE，避免触发器为"相等"的 row 写无谓 change_log
+            let sql = format!(
+                "UPDATE \"{}\" SET sync_version = local_version WHERE sync_version != local_version",
+                table
+            );
+            match conn.execute(&sql, []) {
+                Ok(n) => reset_count += n,
+                Err(e) => {
+                    tracing::warn!(
+                        "[sync] 重置 sync_version 失败（表 {}，非致命）: {}",
+                        table,
+                        e
+                    );
+                }
+            }
+        }
+
+        // 2. 截断 __change_log（此步必须在 UPDATE 业务表之后，
+        //    否则 trg_upd 触发器会把 UPDATE 重新记录进来）
+        let truncated = conn
+            .execute("DELETE FROM __change_log", [])
+            .map_err(|e| SyncError::Database(format!("清理变更日志失败: {}", e)))?;
+
+        // 3. 清除未解决的冲突记录（若表存在）
+        let _ = conn.execute("DELETE FROM __sync_conflicts", []);
+
+        tracing::info!(
+            "[sync] reset_sync_baseline_after_restore: 清理 __change_log {} 条, 重置业务记录 {} 条",
+            truncated,
+            reset_count
+        );
+
+        Ok((truncated, reset_count))
+    }
+
     /// 应用合并策略
     ///
     /// 根据指定的合并策略处理本地和云端的冲突记录，决定保留哪一方的数据。
@@ -1808,6 +1916,13 @@ impl SyncManager {
     const CLOCK_SKEW_TOLERANCE_SECS: i64 = 2;
 
     fn compare_timestamps(local: &str, cloud: &str) -> std::cmp::Ordering {
+        // HLC fast-path：若两端都是 HLC 字符串（fixed-width millis-counter 格式），
+        // 直接按 HLC 自然序比较——它已经内置了 "同毫秒内 counter tie-break"，
+        // 比 ISO 秒级比较 + 容差粗糙得多更精确，尤其适合同一物理时钟里爆发式的两端写入。
+        if let (Some(hl), Some(hc)) = (hlc::Hlc::parse(local), hlc::Hlc::parse(cloud)) {
+            return hl.cmp(&hc);
+        }
+
         let local_dt = Self::parse_flexible_timestamp(local);
         let cloud_dt = Self::parse_flexible_timestamp(cloud);
 
@@ -1939,6 +2054,31 @@ impl SyncManager {
 
         if obj.is_empty() {
             return Err(SyncError::Database(format!("记录数据为空: {}", record_id)));
+        }
+
+        // [安全校验] payload 里的主键必须与 record_id 一致，避免恶意或损坏的 change
+        // 用不匹配的 payload 覆盖另一条记录。
+        // 对 llm_usage_daily 跳过（复合主键，没有单一 id 字段）。
+        if table_name != "llm_usage_daily" {
+            if let Some(payload_id) = obj.get(id_column) {
+                let payload_id_str = match payload_id {
+                    serde_json::Value::String(s) => s.clone(),
+                    serde_json::Value::Number(n) => n.to_string(),
+                    serde_json::Value::Null => {
+                        return Err(SyncError::Database(format!(
+                            "payload 主键 '{}' 为 null: record_id={}",
+                            id_column, record_id
+                        )))
+                    }
+                    other => other.to_string(),
+                };
+                if payload_id_str != record_id {
+                    return Err(SyncError::Database(format!(
+                        "payload 主键不一致: record_id='{}', payload['{}']='{}'。这可能是云端数据损坏或重放攻击，已拒绝。",
+                        record_id, id_column, payload_id_str
+                    )));
+                }
+            }
         }
 
         // 只把 deleted_at 的显式 null 作为"复活意图"处理，其他 null 字段走 COALESCE
@@ -2836,6 +2976,57 @@ impl SyncManager {
             Some(s) => s,
             None => return false,
         };
+
+        // ─── HLC 快速路径 ───
+        // 若云端 updated_at 是 HLC 字符串，直接按 HLC 比较；跳过 timestamp 漂移检查
+        // （HLC 内部的 receive() 已经有 MAX_DRIFT_MS 守护，且发送端如果伪造
+        // millis 会被收端直接拒绝）。
+        let cloud_hlc = hlc::Hlc::parse(cloud_str);
+        if let Some(cloud_hlc_val) = cloud_hlc {
+            // HLC 漂移 check：云端 millis 比本地 wall clock 超前过多 → 跳过
+            let now_ms = chrono::Utc::now().timestamp_millis() as u64;
+            if cloud_hlc_val.millis as i64 - now_ms as i64 > hlc::MAX_DRIFT_MS {
+                tracing::warn!(
+                    "[sync] 跳过云端变更（HLC 漂移过大）: table={}, id={}, cloud_hlc={}, now_ms={}, drift_ms={}",
+                    table_name,
+                    record_id,
+                    cloud_str,
+                    now_ms,
+                    cloud_hlc_val.millis as i64 - now_ms as i64
+                );
+                return true;
+            }
+            // LWW by HLC：查本地 updated_at 并尝试解析为 HLC
+            if !Self::table_has_column(conn, table_name, "updated_at") {
+                return false;
+            }
+            let table_ident = match Self::quote_identifier(table_name) {
+                Ok(s) => s,
+                Err(_) => return false,
+            };
+            let id_col = match Self::quote_identifier(id_column) {
+                Ok(s) => s,
+                Err(_) => return false,
+            };
+            let sql = format!(
+                "SELECT \"updated_at\" FROM {} WHERE {} = ?1",
+                table_ident, id_col
+            );
+            let local_hlc_opt: Option<hlc::Hlc> = conn
+                .query_row(&sql, params![record_id], |row| {
+                    if let Ok(s) = row.get::<_, String>(0) {
+                        return Ok(hlc::Hlc::parse(&s));
+                    }
+                    Ok(None)
+                })
+                .ok()
+                .flatten();
+            if let Some(local_hlc_val) = local_hlc_opt {
+                return local_hlc_val > cloud_hlc_val;
+            }
+            // 本地是非 HLC 格式，继续走常规时间戳路径（降级比较）
+        }
+
         let cloud_ts = match parse_flexible_timestamp_public(cloud_str) {
             Some(t) => t,
             None => return false,
@@ -4420,6 +4611,59 @@ impl SyncManager {
         // 2. 走标准上传/下载流程（现在云端/本地里已无 tombstoned 条目）
         self.sync_vfs_blobs(storage, blobs_dir).await
     }
+
+    /// 同步资产目录 + 消费 asset tombstone
+    ///
+    /// 与 `sync_asset_directories` 不同：先按 tombstone 清理本地与云端的已删资产文件，
+    /// 再走常规上传/下载流程。
+    pub async fn sync_asset_directories_with_tombstones(
+        &self,
+        storage: &dyn CloudStorage,
+        active_dir: &std::path::Path,
+        app_data_dir: &std::path::Path,
+    ) -> Result<AssetSyncOutcome, SyncError> {
+        // 1. 拉取 asset tombstone 并删除本地/云端对应文件
+        let tombstones = tombstone::download_asset_tombstones(storage).await?;
+        if !tombstones.entries.is_empty() {
+            for (key, _entry) in &tombstones.entries {
+                // 云端删除
+                let remote_key = format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key);
+                if let Err(e) = storage.delete(&remote_key).await {
+                    tracing::warn!(
+                        "[sync] 删除云端资产失败（忽略）: {}: {}",
+                        remote_key,
+                        e
+                    );
+                }
+                // 本地删除
+                if let Some(local) = Self::asset_local_path_from_key(active_dir, app_data_dir, key)
+                {
+                    if local.exists() {
+                        let _ = std::fs::remove_file(&local);
+                    }
+                }
+            }
+
+            // 从云端资产清单摘掉 tombstoned 条目
+            if let Ok(Some(bytes)) = storage.get(Self::ASSETS_MANIFEST_KEY).await {
+                if let Ok(mut mf) = serde_json::from_slice::<AssetDirsManifest>(&bytes) {
+                    let before = mf.entries.len();
+                    for key in tombstones.entries.keys() {
+                        mf.entries.remove(key);
+                    }
+                    if mf.entries.len() != before {
+                        mf.updated_at = chrono::Utc::now().to_rfc3339();
+                        if let Ok(bytes) = serde_json::to_vec(&mf) {
+                            let _ = storage.put(Self::ASSETS_MANIFEST_KEY, &bytes).await;
+                        }
+                    }
+                }
+            }
+        }
+
+        // 2. 走标准同步流程
+        self.sync_asset_directories(storage, active_dir, app_data_dir).await
+    }
 }
 
 #[cfg(test)]
@@ -4858,6 +5102,109 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM __change_log", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 2);
+    }
+
+    #[test]
+    fn test_compare_timestamps_hlc_fast_path() {
+        // 两端都是 HLC，应走 HLC 序比较（更精确，同毫秒 counter 决胜）
+        let earlier = hlc::Hlc::new(1_700_000_000_000, 0).to_string();
+        let later = hlc::Hlc::new(1_700_000_000_000, 1).to_string();
+
+        // counter 1 > counter 0 → Greater
+        assert_eq!(
+            SyncManager::compare_timestamps(&later, &earlier),
+            std::cmp::Ordering::Greater
+        );
+        assert_eq!(
+            SyncManager::compare_timestamps(&earlier, &later),
+            std::cmp::Ordering::Less
+        );
+        assert_eq!(
+            SyncManager::compare_timestamps(&earlier, &earlier),
+            std::cmp::Ordering::Equal
+        );
+    }
+
+    #[test]
+    fn test_compare_timestamps_mixed_hlc_and_iso() {
+        // 只有一端是 HLC → 回落到 timestamp 比较路径（都解析失败或部分失败走 None 分支）
+        let hlc_str = hlc::Hlc::new(1_700_000_000_000, 0).to_string();
+        let iso_str = "2024-01-01T00:00:00Z";
+
+        // HLC 格式 Hlc::parse 成功，ISO 格式 Hlc::parse 失败 → 降级到 timestamp path
+        // HLC 的 `015-05` 固定宽度不是有效 RFC3339，parse_flexible_timestamp 会返回 None
+        // 于是落到 (None, Some) → Less
+        let r = SyncManager::compare_timestamps(&hlc_str, iso_str);
+        assert_eq!(r, std::cmp::Ordering::Less);
+    }
+
+    #[test]
+    fn test_reset_sync_baseline_after_restore() {
+        let conn = create_test_db();
+
+        // 创建一张业务表，带同步列
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS notes (
+                id TEXT PRIMARY KEY,
+                content TEXT,
+                device_id TEXT,
+                local_version INTEGER DEFAULT 0,
+                sync_version INTEGER DEFAULT 0,
+                updated_at TEXT,
+                deleted_at TEXT
+            );
+            INSERT INTO notes (id, content, local_version, sync_version, updated_at)
+            VALUES ('n1', 'hello', 5, 3, '2024-01-01T00:00:00Z'),
+                   ('n2', 'world', 2, 2, '2024-01-02T00:00:00Z');",
+        )
+        .unwrap();
+
+        // 插入 __change_log 历史条目（模拟源设备的残留）
+        conn.execute(
+            "INSERT INTO __change_log (table_name, record_id, operation, changed_at, sync_version)
+             VALUES ('notes', 'n1', 'UPDATE', '2024-01-01T00:00:00Z', 100)",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO __change_log (table_name, record_id, operation, changed_at, sync_version)
+             VALUES ('notes', 'n2', 'INSERT', '2024-01-02T00:00:00Z', 0)",
+            [],
+        )
+        .unwrap();
+
+        let (truncated, reset) =
+            SyncManager::reset_sync_baseline_after_restore(&conn).unwrap();
+        assert_eq!(truncated, 2);
+        // 优化后仅更新 "sync_version != local_version" 的行，避免不必要的 trigger。
+        // n1 (lv=5, sv=3) 需要更新；n2 (lv=2, sv=2) 相等不需更新。
+        assert_eq!(reset, 1);
+
+        // __change_log 应为空
+        let count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM __change_log", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 0);
+
+        // sync_version 应等于 local_version
+        let (lv1, sv1): (i64, i64) = conn
+            .query_row(
+                "SELECT local_version, sync_version FROM notes WHERE id = 'n1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(lv1, 5);
+        assert_eq!(sv1, 5); // 从 3 提升到 5
+        let (lv2, sv2): (i64, i64) = conn
+            .query_row(
+                "SELECT local_version, sync_version FROM notes WHERE id = 'n2'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(lv2, 2);
+        assert_eq!(sv2, 2); // 已经相等，无变化
     }
 
     #[test]

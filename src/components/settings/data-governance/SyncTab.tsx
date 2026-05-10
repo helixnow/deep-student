@@ -27,6 +27,8 @@ import { Badge } from '../../ui/shad/Badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../ui/shad/Table';
 import { AppSelect } from '../../ui/app-menu';
 import { CloudStorageSection } from '../CloudStorageSection';
+import { RecordConflictsPanel } from './RecordConflictsPanel';
+import { SyncIndicator } from './SyncIndicator';
 import type {
   SyncStatusResponse,
   ConflictDetectionResponse,
@@ -119,6 +121,9 @@ export const SyncTab: React.FC<SyncTabProps> = ({
           </div>
           <div className="text-sm font-mono truncate" title={syncStatus?.device_id}>
             {syncStatus?.device_id ? `${syncStatus.device_id.slice(0, 8)}...` : '-'}
+          </div>
+          <div className="pt-1">
+            <SyncIndicator />
           </div>
         </div>
       </div>
@@ -480,6 +485,9 @@ export const SyncTab: React.FC<SyncTabProps> = ({
           </div>
         </div>
       )}
+
+      {/* 记录级冲突面板（__sync_conflicts 表） */}
+      <RecordConflictsPanel />
     </div>
   );
 };
