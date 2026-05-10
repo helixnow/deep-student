@@ -4495,6 +4495,37 @@ impl LLMManager {
             .await
     }
 
+    /// 🆕 P1: 使用指定 config_id（或显示名称）对应的 ApiConfig 发起 raw prompt 调用
+    ///
+    /// 用于 compaction：和主对话同模型生成摘要，保持语言/风格一致。
+    /// 回退链：匹配 config_id → 匹配 model 显示名 → Model2 默认配置。
+    pub async fn call_with_config_id_raw_prompt(
+        &self,
+        config_id: &str,
+        user_prompt: &str,
+    ) -> Result<StandardModel2Output> {
+        let configs = self.get_api_configs().await?;
+        let resolved = configs
+            .iter()
+            .find(|c| c.id == config_id)
+            .or_else(|| configs.iter().find(|c| c.model == config_id))
+            .cloned();
+
+        let config = match resolved {
+            Some(c) => c,
+            None => {
+                warn!(
+                    "[compaction] config_id/model '{}' 未找到，回退到 Model2 默认配置",
+                    config_id
+                );
+                self.get_model2_config().await?
+            }
+        };
+
+        self.call_raw_prompt_with_config(config, user_prompt, None)
+            .await
+    }
+
     /// 使用记忆决策模型调用（回退链：memory_decision_model → model2）
     pub async fn call_memory_decision_raw_prompt(
         &self,

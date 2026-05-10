@@ -1412,7 +1412,9 @@ async fn w57_many_blob_tombstones() {
     for i in 0..100 {
         mgr.mark_blob_deleted(&store, &format!("hash_{}", i), None, Some(0)).await.unwrap();
     }
-    let m = tombstone::download_blob_tombstones(&store).await.unwrap();
+    // [P0-2] download helper 现在要求一个 PayloadCodec；测试里用明文即可
+    // 因为 mgr 是 SyncManager::new（未启用加密），等价于 PlainCodec
+    let m = tombstone::download_blob_tombstones(&store, &tombstone::PlainCodec).await.unwrap();
     assert_eq!(m.entries.len(), 100);
 }
 

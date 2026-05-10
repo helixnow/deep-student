@@ -53,6 +53,9 @@ import './templatePreview';
 // 🆕 用户提问块（轻量级问答交互）
 import './askUserBlock';
 
+// 🆕 P1: 上下文压缩摘要块（长会话锚定摘要 + 尾部保真）
+import './compactionSummary';
+
 // 知识检索块
 import './rag';
 import './memory';
@@ -90,6 +93,9 @@ export { default as SubagentEmbedBlockComponent } from './subagentEmbed';
 
 // 🆕 用户提问块组件
 export { AskUserBlockComponent } from './askUserBlock';
+
+// 🆕 P1: 压缩摘要块组件
+export { CompactionSummaryBlock } from './compactionSummary';
 
 // Anki 卡片块组件
 export { AnkiCardsBlock } from './ankiCardsBlock';

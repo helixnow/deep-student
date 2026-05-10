@@ -851,6 +851,15 @@ impl ChatV2Pipeline {
                     ctx.token_usage.source
                 );
 
+                // 🆕 P1: 检查点 A — LLM 回复后读取真实 usage，决定是否需要压缩
+                // 压缩本身延迟到 execute_internal 结尾执行，避免打断工具递归
+                if !ctx.needs_compaction {
+                    let cfg = self.resolve_active_api_config(ctx).await;
+                    if super::compaction::should_compact(ctx, cfg.as_ref()) {
+                        ctx.needs_compaction = true;
+                    }
+                }
+
                 // 记录 LLM 使用量到数据库
                 // 🔧 修复：优先使用解析后的模型显示名称，避免显示配置 ID
                 let model_for_usage = ctx
@@ -1145,6 +1154,7 @@ impl ChatV2Pipeline {
             // 一轮 LLM 调用可能产生多个工具调用，但只有一个思维链
             // 🔧 Gemini 3 修复：同时附加 thought_signature（工具调用必需）
             let cached_thought_sig = adapter.get_thought_signature();
+            let tool_results_count = tool_results.len();
             let tool_results_with_reasoning: Vec<_> = tool_results
                 .into_iter()
                 .enumerate()
@@ -1159,6 +1169,26 @@ impl ChatV2Pipeline {
                 })
                 .collect();
             ctx.add_tool_results(tool_results_with_reasoning);
+
+            // 🆕 P1: 检查点 B — 工具结果累加后，预估下一轮 prompt 是否会溢出
+            if !ctx.needs_compaction {
+                let cfg = self.resolve_active_api_config(ctx).await;
+                let tool_delta: u32 = ctx
+                    .tool_results
+                    .iter()
+                    .rev()
+                    .take(tool_results_count)
+                    .map(|r| {
+                        super::compaction::estimate_json_tokens(
+                            &r.output,
+                            ctx.options.model_id.as_deref(),
+                        )
+                    })
+                    .sum();
+                if super::compaction::should_compact_after_tool(ctx, cfg.as_ref(), tool_delta) {
+                    ctx.needs_compaction = true;
+                }
+            }
 
             // ============================================================
             // 🆕 P15 修复：工具执行后中间保存点
@@ -1878,14 +1908,26 @@ impl ChatV2Pipeline {
 
         if effective_sensitivity != Some(ToolSensitivity::Low) {
             if let Some(approval_manager) = &self.approval_manager {
-                // 🔧 P1-51: 优先检查数据库中的持久化审批设置
+                // 🔧 P1-51 + M-081 修复：优先查询数据库持久化设置
+                // 统一入口 `approval_scope::make_setting_key`（v2 优先，未知工具 fallback v1）
+                // 同时读取旧版 v1 键作为向后兼容（如果 v2 未命中）
                 let persisted_approval: Option<bool> = self.main_db.as_ref().and_then(|db| {
-                    let setting_key =
-                        approval_scope_setting_key(&tool_call.name, &tool_call.arguments);
-                    db.get_setting(&setting_key)
-                        .ok()
-                        .flatten()
-                        .map(|v| v == "allow")
+                    use crate::chat_v2::approval_scope;
+
+                    // v2 查询（若为已知工具）
+                    if let Some(v2_key) =
+                        approval_scope::make_setting_key_v2(&tool_call.name, &tool_call.arguments)
+                    {
+                        if let Ok(Some(v)) = db.get_setting(&v2_key) {
+                            return Some(v == "allow");
+                        }
+                    }
+                    // v1 回退查询（保证旧"记住选择"仍生效）
+                    let v1_key = approval_scope::make_setting_key_v1(
+                        &tool_call.name,
+                        &tool_call.arguments,
+                    );
+                    db.get_setting(&v1_key).ok().flatten().map(|v| v == "allow")
                 });
 
                 // 使用持久化设置或内存缓存

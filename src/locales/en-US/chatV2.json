@@ -289,6 +289,11 @@
       "title": "Thinking",
       "streaming": "Thinking..."
     },
+    "compactionSummary": {
+      "title": "Context compacted · learning state summary",
+      "expandHint": "click to expand",
+      "footnote": "This summary replaces earlier turns in the model's view. The original messages remain in the database."
+    },
     "generic": {
       "type": "Type",
       "input": "Input",

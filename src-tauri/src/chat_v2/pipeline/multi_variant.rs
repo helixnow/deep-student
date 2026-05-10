@@ -1697,6 +1697,10 @@ impl ChatV2Pipeline {
             return Ok(Vec::new());
         }
 
+        // 🆕 P1: 应用 compaction 视图（与单变体路径一致）
+        let (compaction_summary_msg, messages) =
+            super::compaction::apply_compaction_view(&conn, session_id, messages);
+
         // 🔧 使用固定的消息条数限制（对齐单变体）
         let max_messages = DEFAULT_MAX_HISTORY_MESSAGES;
         let messages_to_load: Vec<_> = if messages.len() > max_messages {
@@ -1989,6 +1993,11 @@ impl ChatV2Pipeline {
 
         // 🆕 验证工具调用链完整性
         validate_tool_chain(&chat_history);
+
+        // 🆕 P1: 如果有 compaction 摘要，插到最前面
+        if let Some(summary_msg) = compaction_summary_msg {
+            chat_history.insert(0, summary_msg);
+        }
 
         Ok(chat_history)
     }

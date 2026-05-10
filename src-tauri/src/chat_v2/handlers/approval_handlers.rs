@@ -6,11 +6,11 @@
 //! 参考：`src/chat-v2/docs/29-ChatV2-Agent能力增强改造方案.md` 第 4.7 节
 
 use serde_json::Value;
-use sha2::{Digest, Sha256};
 use std::sync::Arc;
 use tauri::{State, Window};
 
 use crate::chat_v2::approval_manager::{ApprovalManager, ApprovalResponse};
+use crate::chat_v2::approval_scope;
 use crate::chat_v2::events::{event_types, ChatV2EventEmitter};
 // 🔧 P1-51: 引入数据库用于持久化审批选择
 use crate::database::Database;
@@ -19,13 +19,8 @@ use crate::database::Database;
 // Tauri 命令
 // ============================================================================
 
-fn approval_scope_setting_key(tool_name: &str, arguments: &Value) -> String {
-    let serialized = serde_json::to_string(arguments).unwrap_or_else(|_| "null".to_string());
-    let mut hasher = Sha256::new();
-    hasher.update(serialized.as_bytes());
-    let fingerprint = hex::encode(hasher.finalize());
-    format!("tool_approval.scope.{}.{}", tool_name, fingerprint)
-}
+// 🔧 M-081 修复（P2）：不再在本模块定义 approval_scope_setting_key，
+// 统一调用 approval_scope::make_setting_key，避免多处定义漂移。
 
 /// 响应工具审批请求
 ///
@@ -93,7 +88,8 @@ pub async fn chat_v2_tool_approval_respond(
     // 🔧 P1-51: 如果用户选择"记住选择"，持久化到数据库
     if remember {
         let args_value = arguments.unwrap_or(Value::Null);
-        let setting_key = approval_scope_setting_key(&tool_name, &args_value);
+        // 🔧 M-081 修复（P2）：统一入口，v2 优先，未知工具 fallback v1
+        let setting_key = approval_scope::make_setting_key(&tool_name, &args_value);
         let setting_value = if approved { "allow" } else { "deny" };
 
         log::info!(

@@ -997,7 +997,9 @@ async fn scenario_31_blob_tombstone_upload_download() {
         .await
         .unwrap();
 
-    let m = tombstone::download_blob_tombstones(&storage).await.unwrap();
+    let m = tombstone::download_blob_tombstones(&storage, &tombstone::PlainCodec)
+        .await
+        .unwrap();
     assert_eq!(m.entries.len(), 1);
     assert!(m.entries.contains_key("hash_abc"));
     assert_eq!(m.entries["hash_abc"].device_id, "device_a");
@@ -1010,7 +1012,9 @@ async fn scenario_32_asset_tombstone_propagates() {
     mgr.mark_asset_deleted(&storage, "active/images/foo.png", Some(2048))
         .await
         .unwrap();
-    let m = tombstone::download_asset_tombstones(&storage).await.unwrap();
+    let m = tombstone::download_asset_tombstones(&storage, &tombstone::PlainCodec)
+        .await
+        .unwrap();
     assert_eq!(m.entries.len(), 1);
     assert_eq!(m.entries["active/images/foo.png"].size, Some(2048));
 }
@@ -1025,7 +1029,9 @@ async fn scenario_33_tombstone_second_device_sees_deletion() {
         .await
         .unwrap();
     // 设备 B 拉取
-    let m = tombstone::download_blob_tombstones(&storage).await.unwrap();
+    let m = tombstone::download_blob_tombstones(&storage, &tombstone::PlainCodec)
+        .await
+        .unwrap();
     assert!(m.entries.contains_key("hash_x"));
     assert_eq!(m.entries["hash_x"].device_id, "device_a");
     // 设备 B 也删了另一个
@@ -1033,7 +1039,9 @@ async fn scenario_33_tombstone_second_device_sees_deletion() {
         .mark_blob_deleted(&storage, "hash_y", None, Some(200))
         .await
         .unwrap();
-    let m = tombstone::download_blob_tombstones(&storage).await.unwrap();
+    let m = tombstone::download_blob_tombstones(&storage, &tombstone::PlainCodec)
+        .await
+        .unwrap();
     assert_eq!(m.entries.len(), 2);
 }
 

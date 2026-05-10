@@ -118,11 +118,9 @@ pub(crate) fn sanitize_tool_name_for_api(name: &str) -> String {
 }
 
 pub(crate) fn approval_scope_setting_key(tool_name: &str, arguments: &Value) -> String {
-    let serialized = serde_json::to_string(arguments).unwrap_or_else(|_| "null".to_string());
-    let mut hasher = Sha256::new();
-    hasher.update(serialized.as_bytes());
-    let fingerprint = hex::encode(hasher.finalize());
-    format!("tool_approval.scope.{}.{}", tool_name, fingerprint)
+    // 🔧 M-081 修复（P2）：统一入口，v2 优先，未知工具 fallback v1
+    use crate::chat_v2::approval_scope;
+    approval_scope::make_setting_key(tool_name, arguments)
 }
 
 /// 工具审批结果枚举

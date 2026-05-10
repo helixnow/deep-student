@@ -470,7 +470,12 @@ pub async fn data_governance_detect_conflicts(
         let storage = create_storage(&cfg)
             .await
             .map_err(|e| format!("创建云存储失败: {}", e))?;
-        let cloud = manager
+        // [P0-2] 下载清单需要解密能力：用带密码的 manager 覆盖
+        let crypto_manager = SyncManager::with_encryption(
+            device_id.clone(),
+            cfg.encryption_password.clone(),
+        );
+        let cloud = crypto_manager
             .download_manifest(storage.as_ref())
             .await
             .map_err(|e| format!("从云端下载清单失败: {}", e))?;
@@ -824,7 +829,11 @@ pub async fn data_governance_run_sync(
     let app_data_dir = get_app_data_dir(&app)?;
 
     // 创建同步管理器
-    let manager = SyncManager::new(device_id.clone());
+    // [P0-2] 透传加密密码，让所有上传/下载走 DSBK 容器
+    let manager = SyncManager::with_encryption(
+        device_id.clone(),
+        config.encryption_password.clone(),
+    );
 
     // 构建本地同步清单（遍历所有治理数据库）
     let mut local_databases: HashMap<String, DatabaseSyncState> = HashMap::new();
@@ -1867,7 +1876,11 @@ pub async fn data_governance_run_sync_with_progress(
     let app_data_dir = get_app_data_dir(&app).unwrap_or_else(|_| active_dir.clone());
 
     // 创建同步管理器（复用上方已获取的 device_id）
-    let manager = SyncManager::new(device_id.clone());
+    // [P0-2] 透传加密密码
+    let manager = SyncManager::with_encryption(
+        device_id.clone(),
+        config.encryption_password.clone(),
+    );
 
     // 构建本地同步清单（遍历所有治理数据库）
     let mut local_databases: HashMap<String, DatabaseSyncState> = HashMap::new();
@@ -2715,7 +2728,8 @@ pub async fn data_governance_mark_blob_deleted(
         .map_err(|e| format!("创建云存储失败: {}", e))?;
 
     let device_id = get_device_id(&app);
-    let manager = SyncManager::new(device_id);
+    // [P0-2] 透传加密密码，确保 tombstone 清单也走 DSBK
+    let manager = SyncManager::with_encryption(device_id, cloud_config.encryption_password.clone());
 
     manager
         .mark_blob_deleted(storage.as_ref(), &hash, relative_path, size)
@@ -2742,7 +2756,8 @@ pub async fn data_governance_mark_asset_deleted(
         .map_err(|e| format!("创建云存储失败: {}", e))?;
 
     let device_id = get_device_id(&app);
-    let manager = SyncManager::new(device_id);
+    // [P0-2] 透传加密密码
+    let manager = SyncManager::with_encryption(device_id, cloud_config.encryption_password.clone());
 
     manager
         .mark_asset_deleted(storage.as_ref(), &key, size)

@@ -18,6 +18,8 @@ use std::collections::HashMap;
 use std::sync::{Arc, Mutex};
 use tokio::sync::oneshot;
 
+use super::approval_scope;
+
 // ============================================================================
 // 审批请求/响应数据结构
 // ============================================================================
@@ -140,25 +142,12 @@ impl ApprovalManager {
 
     /// 注册待审批的工具调用
     ///
-    /// ## 参数
-    /// - `tool_call_id`: 工具调用 ID
+    /// ## 作用域键规则（M-081 修复 / P2）
+    /// - v2：按工具类型提取关键字段（noteId / path / 命令前缀），忽略 content
+    /// - v1：完整 args JSON + sha256，仅作为 v2 未命中的 fallback
     ///
-    /// ## 返回
-    /// - `Receiver`: 用于接收审批响应
-    // TODO [M-081]: 当前 scope_key 基于 tool_name + 完整参数 JSON 序列化，
-    // 导致参数中任何字段变化都会使"记住选择"失效。
-    // 更好的方案是按 tool_name 提取关键参数（如 mindmap_id、note_id、path）
-    // 生成 scope_key，忽略 content 等易变字段。例如：
-    //   "note_set" → tool_name + noteId
-    //   "mindmap_update" → tool_name + mindmapId
-    //   "file_write" → tool_name + path
-    // 这需要一个 per-tool 的 key 提取函数映射表，影响面较大，暂不实施。
-    fn make_scope_key(tool_name: &str, arguments: &Value) -> String {
-        let args_fingerprint =
-            serde_json::to_string(arguments).unwrap_or_else(|_| "{}".to_string());
-        format!("{}::{}", tool_name, args_fingerprint)
-    }
-
+    /// 写入时走统一入口 `approval_scope::make_runtime_scope_key`。
+    /// 读取时 `check_remembered` 先查 v2，未命中再查 v1（保持旧记录兼容）。
     fn make_pending_key(session_id: &str, tool_call_id: &str) -> String {
         format!("{}:{}", session_id, tool_call_id)
     }
@@ -184,7 +173,8 @@ impl ApprovalManager {
             })
             .insert(pending_key.clone(), tx);
 
-        let scope_key = Self::make_scope_key(tool_name, arguments);
+        // 🔧 M-081 修复：统一入口 make_runtime_scope_key（v2 优先，未知工具 fallback v1）
+        let scope_key = approval_scope::make_runtime_scope_key(tool_name, arguments);
         self.pending_scope_keys
             .lock()
             .unwrap_or_else(|poisoned| {
@@ -205,36 +195,13 @@ impl ApprovalManager {
     /// - `true`: 成功发送
     /// - `false`: 未找到对应的等待者（可能已超时）
     pub fn respond(&self, response: ApprovalResponse) -> bool {
-        // 如果用户选择记住，保存选择（使用 tool_name 作为 key，而非 tool_call_id）
         let pending_key = Self::make_pending_key(&response.session_id, &response.tool_call_id);
 
-        if response.remember {
-            let scope_key = self
-                .pending_scope_keys
-                .lock()
-                .unwrap_or_else(|poisoned| {
-                    log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
-                    poisoned.into_inner()
-                })
-                .get(&pending_key)
-                .cloned()
-                .unwrap_or_else(|| Self::make_scope_key(&response.tool_name, &Value::Null));
-
-            log::info!(
-                "[ApprovalManager] Remembering approval choice for scope '{}': approved={}",
-                scope_key,
-                response.approved
-            );
-            self.remembered
-                .lock()
-                .unwrap_or_else(|poisoned| {
-                    log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
-                    poisoned.into_inner()
-                })
-                .insert(scope_key, response.approved);
-        }
-
-        self.pending_scope_keys
+        // 🔧 M-081 修复（P2 - H4）：先弹出 pending 通道，确认请求仍存活。
+        // 如果 pending 不在（已被取消或超时），直接报废本次 respond —— 不要在此状态下
+        // 持久化 remember，避免把 Null 作为 "兜底 args" 构造通配作用域键。
+        let tx = self
+            .pending
             .lock()
             .unwrap_or_else(|poisoned| {
                 log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
@@ -242,24 +209,63 @@ impl ApprovalManager {
             })
             .remove(&pending_key);
 
-        // 发送响应
-        if let Some(tx) = self
-            .pending
+        let Some(tx) = tx else {
+            log::warn!(
+                "[ApprovalManager] No pending approval for tool_call_id: {}",
+                response.tool_call_id
+            );
+            // 清理可能悬挂的 scope_key（即便 pending 已不在）
+            self.pending_scope_keys
+                .lock()
+                .unwrap_or_else(|poisoned| {
+                    log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
+                    poisoned.into_inner()
+                })
+                .remove(&pending_key);
+            return false;
+        };
+
+        // 请求仍在等待：先取走 scope_key，再考虑是否 remember
+        let scope_key_opt = self
+            .pending_scope_keys
             .lock()
             .unwrap_or_else(|poisoned| {
                 log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
                 poisoned.into_inner()
             })
-            .remove(&pending_key)
-        {
-            tx.send(response).is_ok()
-        } else {
-            log::warn!(
-                "[ApprovalManager] No pending approval for tool_call_id: {}",
-                response.tool_call_id
-            );
-            false
+            .remove(&pending_key);
+
+        if response.remember {
+            match scope_key_opt {
+                Some(scope_key) => {
+                    log::info!(
+                        "[ApprovalManager] Remembering approval choice for scope '{}': approved={}",
+                        scope_key,
+                        response.approved
+                    );
+                    self.remembered
+                        .lock()
+                        .unwrap_or_else(|poisoned| {
+                            log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
+                            poisoned.into_inner()
+                        })
+                        .insert(scope_key, response.approved);
+                }
+                None => {
+                    // H4：不允许在作用域键缺失时用 Null 合成作用域。
+                    // 降级为"只响应不记住"，并明确告警。
+                    log::warn!(
+                        "[ApprovalManager] respond(remember=true) but scope_key missing; dropping remember flag (session={}, tool_call_id={}, tool={})",
+                        response.session_id,
+                        response.tool_call_id,
+                        response.tool_name
+                    );
+                }
+            }
         }
+
+        // 送达等待方
+        tx.send(response).is_ok()
     }
 
     /// 取消待审批（超时或取消时调用）
@@ -323,28 +329,42 @@ impl ApprovalManager {
     /// - `Some(true)`: 已记住，自动批准
     /// - `Some(false)`: 已记住，自动拒绝
     /// - `None`: 未记住，需要用户审批
+    ///
+    /// 🔧 M-081 修复：先查 v2 作用域键（新逻辑），未命中再查 v1（保持旧记录兼容）
+    /// 🔧 M2 修复：在获取锁**之前**完成 JSON 序列化，避免阻塞其他审批检查
     pub fn check_remembered(&self, tool_name: &str, arguments: &Value) -> Option<bool> {
-        let scope_key = Self::make_scope_key(tool_name, arguments);
-        self.remembered
-            .lock()
-            .unwrap_or_else(|poisoned| {
-                log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
-                poisoned.into_inner()
-            })
-            .get(&scope_key)
-            .copied()
+        // 在锁外计算（v1 含 serde_json::to_string，O(|args|)）
+        let v2_key = approval_scope::make_runtime_scope_key_v2(tool_name, arguments);
+        let v1_key = approval_scope::make_runtime_scope_key_v1(tool_name, arguments);
+
+        let map = self.remembered.lock().unwrap_or_else(|poisoned| {
+            log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
+            poisoned.into_inner()
+        });
+
+        if let Some(key) = v2_key {
+            if let Some(v) = map.get(&key).copied() {
+                return Some(v);
+            }
+        }
+        map.get(&v1_key).copied()
     }
 
     /// 清除记住的选择（按参数作用域）
+    /// 两个键（v1 + v2）都尝试清理
     pub fn clear_remembered(&self, tool_name: &str, arguments: &Value) {
-        let scope_key = Self::make_scope_key(tool_name, arguments);
-        self.remembered
-            .lock()
-            .unwrap_or_else(|poisoned| {
-                log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
-                poisoned.into_inner()
-            })
-            .remove(&scope_key);
+        // 同样在锁外序列化
+        let v2_key = approval_scope::make_runtime_scope_key_v2(tool_name, arguments);
+        let v1_key = approval_scope::make_runtime_scope_key_v1(tool_name, arguments);
+
+        let mut map = self.remembered.lock().unwrap_or_else(|poisoned| {
+            log::error!("[ApprovalManager] Mutex poisoned! Attempting recovery");
+            poisoned.into_inner()
+        });
+        if let Some(key) = v2_key {
+            map.remove(&key);
+        }
+        map.remove(&v1_key);
     }
 
     /// 清除所有记住的选择

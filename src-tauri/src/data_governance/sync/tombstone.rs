@@ -30,6 +30,35 @@ use std::path::{Path, PathBuf};
 use super::SyncError;
 use crate::cloud_storage::CloudStorage;
 
+/// Payload 编解码能力（P0-2 修复引入）
+///
+/// Tombstone 模块里的上传/下载函数原先直通明文字节。现在让这几个函数
+/// 接受一个实现了 `PayloadCodec` 的对象（目前由 `SyncManager` 实现），
+/// 使得 tombstone 清单也能透明享受 E2EE。
+///
+/// 这样避免了让 tombstone 模块直接依赖 `SyncManager`，保留模块边界。
+///
+/// 要求 `Send + Sync`：`SyncManager` 里的方法都是异步，codec trait object
+/// 会跨 `.await` 存活；Tauri 命令调度需要 `Future: Send`，所以 trait object
+/// 也必须 `Send + Sync`。
+pub trait PayloadCodec: Send + Sync {
+    /// 把明文 JSON 字节编码为上传格式（若未启用加密则原样返回）
+    fn encode(&self, plaintext: &[u8]) -> Result<Vec<u8>, SyncError>;
+    /// 把下载字节解码为明文（自动识别 DSBK 魔数；未加密数据原样返回）
+    fn decode(&self, data: &[u8]) -> Result<Vec<u8>, SyncError>;
+}
+
+/// 提供一个永不加密的实现，用于单元测试与向后兼容场景。
+pub struct PlainCodec;
+impl PayloadCodec for PlainCodec {
+    fn encode(&self, plaintext: &[u8]) -> Result<Vec<u8>, SyncError> {
+        Ok(plaintext.to_vec())
+    }
+    fn decode(&self, data: &[u8]) -> Result<Vec<u8>, SyncError> {
+        Ok(data.to_vec())
+    }
+}
+
 pub const BLOB_TOMBSTONE_KEY: &str = "data_governance/tombstones/blobs.json";
 pub const ASSET_TOMBSTONE_KEY: &str = "data_governance/tombstones/assets.json";
 pub const WS_TOMBSTONE_KEY: &str = "data_governance/tombstones/workspaces.json";
@@ -86,59 +115,98 @@ pub struct WorkspaceTombstones {
 }
 
 /// 从云端下载一份 tombstone 清单
+///
+/// 新增 `codec` 参数（P0-2）：负责上下行透明 encode/decode。传 `&PlainCodec` 即保留
+/// 原明文行为；传 `&SyncManager` 则在有密码时走 DSBK 容器加解密。
 pub async fn download_blob_tombstones(
     storage: &dyn CloudStorage,
+    codec: &dyn PayloadCodec,
 ) -> Result<BlobTombstones, SyncError> {
     match storage
         .get(BLOB_TOMBSTONE_KEY)
         .await
         .map_err(|e| SyncError::Network(format!("获取 blob tombstone 清单失败: {}", e)))?
     {
-        Some(bytes) => match serde_json::from_slice::<BlobTombstones>(&bytes) {
-            Ok(v) => Ok(v),
-            Err(e) => {
-                tracing::warn!("[sync] blob tombstone 清单损坏，忽略并重建: {}", e);
-                Ok(BlobTombstones::default())
+        Some(bytes) => {
+            let decoded = match codec.decode(&bytes) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!("[sync] blob tombstone 解密失败，忽略并重建: {}", e);
+                    return Ok(BlobTombstones::default());
+                }
+            };
+            match serde_json::from_slice::<BlobTombstones>(&decoded) {
+                Ok(v) => Ok(v),
+                Err(e) => {
+                    tracing::warn!("[sync] blob tombstone 清单损坏，忽略并重建: {}", e);
+                    Ok(BlobTombstones::default())
+                }
             }
-        },
+        }
         None => Ok(BlobTombstones::default()),
     }
 }
 
 pub async fn download_asset_tombstones(
     storage: &dyn CloudStorage,
+    codec: &dyn PayloadCodec,
 ) -> Result<AssetTombstones, SyncError> {
     match storage
         .get(ASSET_TOMBSTONE_KEY)
         .await
         .map_err(|e| SyncError::Network(format!("获取 asset tombstone 清单失败: {}", e)))?
     {
-        Some(bytes) => match serde_json::from_slice::<AssetTombstones>(&bytes) {
-            Ok(v) => Ok(v),
-            Err(e) => {
-                tracing::warn!("[sync] asset tombstone 清单损坏，忽略并重建: {}", e);
-                Ok(AssetTombstones::default())
+        Some(bytes) => {
+            let decoded = match codec.decode(&bytes) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!("[sync] asset tombstone 解密失败，忽略并重建: {}", e);
+                    return Ok(AssetTombstones::default());
+                }
+            };
+            match serde_json::from_slice::<AssetTombstones>(&decoded) {
+                Ok(v) => Ok(v),
+                Err(e) => {
+                    tracing::warn!("[sync] asset tombstone 清单损坏，忽略并重建: {}", e);
+                    Ok(AssetTombstones::default())
+                }
             }
-        },
+        }
         None => Ok(AssetTombstones::default()),
     }
 }
 
 pub async fn download_workspace_tombstones(
     storage: &dyn CloudStorage,
+    codec: &dyn PayloadCodec,
 ) -> Result<WorkspaceTombstones, SyncError> {
     match storage
         .get(WS_TOMBSTONE_KEY)
         .await
         .map_err(|e| SyncError::Network(format!("获取 workspace tombstone 清单失败: {}", e)))?
     {
-        Some(bytes) => match serde_json::from_slice::<WorkspaceTombstones>(&bytes) {
-            Ok(v) => Ok(v),
-            Err(e) => {
-                tracing::warn!("[sync] workspace tombstone 清单损坏，忽略并重建: {}", e);
-                Ok(WorkspaceTombstones::default())
+        Some(bytes) => {
+            let decoded = match codec.decode(&bytes) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!(
+                        "[sync] workspace tombstone 解密失败，忽略并重建: {}",
+                        e
+                    );
+                    return Ok(WorkspaceTombstones::default());
+                }
+            };
+            match serde_json::from_slice::<WorkspaceTombstones>(&decoded) {
+                Ok(v) => Ok(v),
+                Err(e) => {
+                    tracing::warn!(
+                        "[sync] workspace tombstone 清单损坏，忽略并重建: {}",
+                        e
+                    );
+                    Ok(WorkspaceTombstones::default())
+                }
             }
-        },
+        }
         None => Ok(WorkspaceTombstones::default()),
     }
 }
@@ -146,13 +214,15 @@ pub async fn download_workspace_tombstones(
 /// 上传 tombstone 清单（仅在有新增时调用）
 pub async fn upload_blob_tombstones(
     storage: &dyn CloudStorage,
+    codec: &dyn PayloadCodec,
     mut manifest: BlobTombstones,
 ) -> Result<(), SyncError> {
     manifest.updated_at = Utc::now().to_rfc3339();
     let bytes = serde_json::to_vec(&manifest)
         .map_err(|e| SyncError::Database(format!("序列化 blob tombstone 失败: {}", e)))?;
+    let payload = codec.encode(&bytes)?;
     storage
-        .put(BLOB_TOMBSTONE_KEY, &bytes)
+        .put(BLOB_TOMBSTONE_KEY, &payload)
         .await
         .map_err(|e| SyncError::Network(format!("上传 blob tombstone 失败: {}", e)))?;
     Ok(())
@@ -160,13 +230,15 @@ pub async fn upload_blob_tombstones(
 
 pub async fn upload_asset_tombstones(
     storage: &dyn CloudStorage,
+    codec: &dyn PayloadCodec,
     mut manifest: AssetTombstones,
 ) -> Result<(), SyncError> {
     manifest.updated_at = Utc::now().to_rfc3339();
     let bytes = serde_json::to_vec(&manifest)
         .map_err(|e| SyncError::Database(format!("序列化 asset tombstone 失败: {}", e)))?;
+    let payload = codec.encode(&bytes)?;
     storage
-        .put(ASSET_TOMBSTONE_KEY, &bytes)
+        .put(ASSET_TOMBSTONE_KEY, &payload)
         .await
         .map_err(|e| SyncError::Network(format!("上传 asset tombstone 失败: {}", e)))?;
     Ok(())
@@ -174,13 +246,15 @@ pub async fn upload_asset_tombstones(
 
 pub async fn upload_workspace_tombstones(
     storage: &dyn CloudStorage,
+    codec: &dyn PayloadCodec,
     mut manifest: WorkspaceTombstones,
 ) -> Result<(), SyncError> {
     manifest.updated_at = Utc::now().to_rfc3339();
     let bytes = serde_json::to_vec(&manifest)
         .map_err(|e| SyncError::Database(format!("序列化 workspace tombstone 失败: {}", e)))?;
+    let payload = codec.encode(&bytes)?;
     storage
-        .put(WS_TOMBSTONE_KEY, &bytes)
+        .put(WS_TOMBSTONE_KEY, &payload)
         .await
         .map_err(|e| SyncError::Network(format!("上传 workspace tombstone 失败: {}", e)))?;
     Ok(())

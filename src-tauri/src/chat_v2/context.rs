@@ -107,6 +107,11 @@ pub(crate) struct PipelineContext {
     /// 🔒 安全修复：连续心跳次数追踪
     /// 防止工具通过持续返回 continue_execution 无限绕过递归限制
     pub(crate) heartbeat_count: u32,
+
+    /// 🆕 P1: 需要压缩标记。由 tool_loop 在 LLM 回复完成 / 工具结果累加后检查
+    /// provider usage 决定是否设置；外层 pipeline 循环读取并在下一次
+    /// LLM 调用前执行 compaction::run，完成后重置为 false。
+    pub(crate) needs_compaction: bool,
 }
 
 impl PipelineContext {
@@ -168,6 +173,7 @@ impl PipelineContext {
             workspace_injection_count: 0,
             cancellation_token: None,
             heartbeat_count: 0,
+            needs_compaction: false,
         }
     }
 

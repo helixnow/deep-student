@@ -68,6 +68,18 @@ pub fn parse_flexible_timestamp_public(s: &str) -> Option<chrono::DateTime<chron
     if let Ok(naive) = NaiveDateTime::parse_from_str(s, "%Y-%m-%dT%H:%M:%S") {
         return Some(naive.and_utc());
     }
+    // 纯数字串：尝试作为毫秒时间戳解析
+    // （resources / chat_v2_todo_lists 等表用 INTEGER ms 存储 updated_at）
+    if let Ok(ms) = s.parse::<i64>() {
+        // 秒级 (1e9 ~ 1e10) vs 毫秒级 (1e12 ~ 1e13) 用阈值区分，避免
+        // 2038 前后年份的数值被误当毫秒
+        const MS_THRESHOLD: i64 = 100_000_000_000; // 1e11
+        if ms >= MS_THRESHOLD {
+            return DateTime::<Utc>::from_timestamp_millis(ms);
+        } else if ms >= 1_000_000_000 {
+            return DateTime::<Utc>::from_timestamp(ms, 0);
+        }
+    }
     None
 }
 
@@ -466,12 +478,99 @@ pub struct DownloadChangesResult {
 pub struct SyncManager {
     /// 本地设备 ID
     device_id: String,
+    /// 可选的端到端加密密码（对文本 payload 生效，批判报告 P0-2 修复）
+    ///
+    /// 覆盖范围：
+    /// - ✅ 加密：`SyncManifest`、`SyncChangesPayload`、`*Tombstones`、
+    ///   各种 metadata manifest（workspaces/blobs/assets）
+    /// - ❌ **不**加密：VFS blob 的 raw bytes、workspace `.db` 文件。
+    ///   原因：blob 走内容寻址（sha256 作 key），加密会破坏去重语义；
+    ///   workspace DB 的完整性校验依赖明文 sha256。这两类的加密需要
+    ///   额外的密文-明文 hash 双校验，作为后续 P1 任务单独处理。
+    ///
+    /// 语义：
+    /// - `None` 或空字符串：所有 payload 明文上传（向后兼容旧数据）
+    /// - `Some(pw)` 非空：文本 payload 使用 `DSBK` 容器加密（AES-256-GCM + Argon2id）
+    ///
+    /// 解密端自动探测：遇到 `DSBK` 魔数走解密，否则当明文处理。这让加密可以
+    /// 平滑启用，不破坏已存在的明文云端数据。
+    #[cfg(feature = "data_governance")]
+    encryption_password: Option<String>,
 }
 
 impl SyncManager {
-    /// 创建新的同步管理器
+    /// 创建新的同步管理器（不启用 payload 加密）
     pub fn new(device_id: String) -> Self {
-        Self { device_id }
+        Self {
+            device_id,
+            #[cfg(feature = "data_governance")]
+            encryption_password: None,
+        }
+    }
+
+    /// 创建带可选加密密码的同步管理器
+    ///
+    /// 空字符串 / `None` 等价于 `new()`（明文模式）。
+    #[cfg(feature = "data_governance")]
+    pub fn with_encryption(device_id: String, password: Option<String>) -> Self {
+        let password = password.filter(|s| !s.is_empty());
+        Self {
+            device_id,
+            encryption_password: password,
+        }
+    }
+
+    /// 是否启用了 payload 加密
+    #[cfg(feature = "data_governance")]
+    pub fn encryption_enabled(&self) -> bool {
+        self.encryption_password
+            .as_deref()
+            .map(|s| !s.is_empty())
+            .unwrap_or(false)
+    }
+
+    /// 加密文本 payload 为上传格式（若未启用则原样返回）
+    ///
+    /// 输出：`DSBK` 容器（参见 `crypto::backup_crypto::encrypt_backup`）
+    #[cfg(feature = "data_governance")]
+    fn encode_payload(&self, plaintext: &[u8]) -> Result<Vec<u8>, SyncError> {
+        match self.encryption_password.as_deref() {
+            Some(pw) if !pw.is_empty() => {
+                crate::crypto::backup_crypto::encrypt_backup(plaintext, pw).map_err(|e| {
+                    SyncError::Database(format!("加密 sync payload 失败: {}", e))
+                })
+            }
+            _ => Ok(plaintext.to_vec()),
+        }
+    }
+
+    /// 解密下载的 payload（若魔数匹配则解密；否则原样返回，向后兼容老明文数据）
+    ///
+    /// 失败模式：
+    /// - 数据带 `DSBK` 头但本端未配密码 → 返回错误（提示用户设置密码）
+    /// - 数据带 `DSBK` 头但密码错误 → 返回错误
+    /// - 数据未加密（无 `DSBK` 头） → 原样返回（兼容）
+    #[cfg(feature = "data_governance")]
+    fn decode_payload(&self, data: &[u8]) -> Result<Vec<u8>, SyncError> {
+        if crate::crypto::backup_crypto::is_encrypted_backup(data) {
+            match self.encryption_password.as_deref() {
+                Some(pw) if !pw.is_empty() => {
+                    crate::crypto::backup_crypto::decrypt_backup(data, pw).map_err(|e| {
+                        SyncError::Database(format!(
+                            "解密 sync payload 失败（密码错误或数据损坏）: {}",
+                            e
+                        ))
+                    })
+                }
+                _ => Err(SyncError::Database(
+                    "检测到加密的 sync payload 但本端未配置加密密码。\
+                     请在云同步设置里填入正确的密码后重试。"
+                        .to_string(),
+                )),
+            }
+        } else {
+            Ok(data.to_vec())
+        }
     }
 
     /// 获取设备 ID
@@ -747,15 +846,18 @@ impl SyncManager {
         let json = serde_json::to_vec_pretty(manifest)
             .map_err(|e| SyncError::Database(format!("序列化清单失败: {}", e)))?;
 
+        // [P0-2] 可选 payload 加密
+        let payload = self.encode_payload(&json)?;
+
         let key = Self::device_manifest_key(&self.device_id);
 
         // [P3 Fix] 降低为 2 次，避免与传输层重试叠加
         retry_async("上传清单", 2, || {
-            let json = json.clone();
+            let payload = payload.clone();
             let key = key.clone();
             async move {
                 storage
-                    .put(&key, &json)
+                    .put(&key, &payload)
                     .await
                     .map_err(|e| SyncError::Network(format!("上传清单失败: {}", e)))
             }
@@ -763,11 +865,12 @@ impl SyncManager {
         .await?;
 
         tracing::info!(
-            "[sync] 清单已上传到云端: device={}, tx={}, databases={}, key={}",
+            "[sync] 清单已上传到云端: device={}, tx={}, databases={}, key={}, encrypted={}",
             manifest.device_id,
             manifest.sync_transaction_id,
             manifest.databases.len(),
-            key
+            key,
+            self.encryption_enabled()
         );
 
         Ok(())
@@ -813,7 +916,20 @@ impl SyncManager {
                 .await
                 .map_err(|e| SyncError::Network(format!("下载设备清单失败 {}: {}", file.key, e)))?;
             if let Some(bytes) = bytes {
-                let manifest = match serde_json::from_slice::<SyncManifest>(&bytes) {
+                // [P0-2] 透明解密：data_governance feature 下走 decode_payload；
+                // 老明文数据 + 加密数据都由 decode_payload 自动识别 DSBK 魔数分流
+                let decoded = match self.decode_payload(&bytes) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::warn!(
+                            "[sync] 跳过无法解密的设备清单: key={}, error={}",
+                            file.key,
+                            e
+                        );
+                        continue;
+                    }
+                };
+                let manifest = match serde_json::from_slice::<SyncManifest>(&decoded) {
                     Ok(v) => v,
                     Err(e) => {
                         tracing::warn!("[sync] 跳过损坏设备清单: key={}, error={}", file.key, e);
@@ -869,7 +985,8 @@ impl SyncManager {
                 .await
                 .map_err(|e| SyncError::Network(format!("下载旧版清单失败: {}", e)))?
             {
-                let manifest = serde_json::from_slice::<SyncManifest>(&bytes)
+                let decoded = self.decode_payload(&bytes)?;
+                let manifest = serde_json::from_slice::<SyncManifest>(&decoded)
                     .map_err(|e| SyncError::Database(format!("解析旧版清单失败: {}", e)))?;
                 // 旧清单来自另一设备（或自己），直接使用
                 if manifest.device_id != self.device_id {
@@ -943,16 +1060,20 @@ impl SyncManager {
         let json = serde_json::to_vec_pretty(changes)
             .map_err(|e| SyncError::Database(format!("序列化变更数据失败: {}", e)))?;
 
+        // [P0-2] 保持与新链路一致的加密行为
+        let payload = self.encode_payload(&json)?;
+
         storage
-            .put(&key, &json)
+            .put(&key, &payload)
             .await
             .map_err(|e| SyncError::Network(format!("上传变更数据失败: {}", e)))?;
 
         tracing::info!(
-            "[sync] 变更数据已上传: device={}, count={}, key={}",
+            "[sync] 变更数据已上传(legacy): device={}, count={}, key={}, encrypted={}",
             self.device_id,
             changes.total_count,
-            key
+            key,
+            self.encryption_enabled()
         );
 
         Ok(())
@@ -995,17 +1116,23 @@ impl SyncManager {
             .map_err(|e| SyncError::Database(format!("序列化变更数据失败: {}", e)))?;
 
         // 2. Compress using Zstd (default level 0 is usually 3)
+        //    **顺序重要**：先压缩后加密。密文几乎不可压缩，如果反过来会浪费 CPU 且
+        //    文件反而变大；而且若先加密再压，解密端必须先解压再解密，流程不对称。
         let compressed = zstd::stream::encode_all(std::io::Cursor::new(json), 0)
             .map_err(|e| SyncError::Database(format!("压缩变更数据失败: {}", e)))?;
 
+        // 3. [P0-2] 可选端到端加密（AES-256-GCM + Argon2id）
+        let final_bytes = self.encode_payload(&compressed)?;
+
         let compressed_size = compressed.len();
-        let total_count = payload.total_count;
+        let uploaded_size = final_bytes.len();
+        let _total_count = payload.total_count;
 
         if let Some(cb) = progress {
             // 有进度回调：写入临时文件，通过 put_file 流式上传以实时汇报字节进度
             let tmp = tempfile::NamedTempFile::new()
                 .map_err(|e| SyncError::Database(format!("创建临时上传文件失败: {}", e)))?;
-            std::fs::write(tmp.path(), &compressed)
+            std::fs::write(tmp.path(), &final_bytes)
                 .map_err(|e| SyncError::Database(format!("写入临时上传文件失败: {}", e)))?;
             storage
                 .put_file(&key, tmp.path(), Some(cb))
@@ -1015,11 +1142,11 @@ impl SyncManager {
             // 无进度回调：直接 PUT 字节，带指数退避重试
             // [P3 Fix] 降低为 2 次，避免与传输层重试叠加
             retry_async("上传变更数据", 2, || {
-                let compressed = compressed.clone();
+                let final_bytes = final_bytes.clone();
                 let key = key.clone();
                 async move {
                     storage
-                        .put(&key, &compressed)
+                        .put(&key, &final_bytes)
                         .await
                         .map_err(|e| SyncError::Network(format!("上传变更数据失败: {}", e)))
                 }
@@ -1028,12 +1155,13 @@ impl SyncManager {
         }
 
         tracing::info!(
-            "[sync] 带完整数据的变更已上传(Compressed): device={}, count={}, key={}, original_size={}, compressed_size={}",
+            "[sync] 带完整数据的变更已上传: device={}, count={}, key={}, compressed_size={}, uploaded_size={}, encrypted={}",
             self.device_id,
             changes.len(),
             key,
-            total_count,
-            compressed_size
+            compressed_size,
+            uploaded_size,
+            self.encryption_enabled()
         );
 
         Ok(())
@@ -1087,8 +1215,26 @@ impl SyncManager {
                         .await
                         .map_err(|e| SyncError::Network(format!("下载变更文件失败: {}", e)))?
                     {
-                        let decoded_data = zstd::stream::decode_all(std::io::Cursor::new(&data))
-                            .unwrap_or_else(|_| data.clone());
+                        // [P0-2] 解密顺序：先 decode_payload（若带 DSBK 魔数则解密，
+                        // 否则直通），再 zstd 解压。失败时细分错误来源：
+                        // - 解密失败 → 记为 decode_failure，不致命
+                        // - 解密成功但 zstd 失败 → fallback 到原明文（兼容极老的未压缩格式）
+                        let decrypted = match self.decode_payload(&data) {
+                            Ok(v) => v,
+                            Err(e) => {
+                                decode_failures.push(file.key.clone());
+                                tracing::warn!(
+                                    "[sync] 跳过无法解密的变更文件: key={}, error={}",
+                                    file.key,
+                                    e
+                                );
+                                continue;
+                            }
+                        };
+                        let decoded_data = zstd::stream::decode_all(std::io::Cursor::new(
+                            decrypted.as_slice(),
+                        ))
+                        .unwrap_or(decrypted);
 
                         if let Ok(payload) =
                             serde_json::from_slice::<SyncChangesPayload>(&decoded_data)
@@ -2972,10 +3118,17 @@ impl SyncManager {
         cloud_data: &serde_json::Value,
     ) -> bool {
         // 云端 payload 必须带 updated_at
-        let cloud_str = match cloud_data.get("updated_at").and_then(|v| v.as_str()) {
-            Some(s) => s,
-            None => return false,
+        // 兼容 TEXT（ISO 8601 / HLC 串）和 INTEGER（毫秒时间戳）两种形式——
+        // 项目里 resources / chat_v2_todo_lists 等表用的是 INTEGER ms。
+        let cloud_str: String = match cloud_data.get("updated_at") {
+            Some(serde_json::Value::String(s)) => s.clone(),
+            Some(serde_json::Value::Number(n)) => {
+                // 数值 updated_at：统一转成字符串供下游解析
+                n.to_string()
+            }
+            _ => return false,
         };
+        let cloud_str = cloud_str.as_str();
 
         // ─── HLC 快速路径 ───
         // 若云端 updated_at 是 HLC 字符串，直接按 HLC 比较；跳过 timestamp 漂移检查
@@ -3975,6 +4128,18 @@ impl SyncExecutionResult {
     }
 }
 
+// [P0-2] 让 SyncManager 满足 tombstone 模块需要的 Codec 接口。
+// 放在文件顶层（impl 块之外）以便 tombstone.rs 里的函数签名可以引用它。
+#[cfg(feature = "data_governance")]
+impl tombstone::PayloadCodec for SyncManager {
+    fn encode(&self, plaintext: &[u8]) -> Result<Vec<u8>, SyncError> {
+        self.encode_payload(plaintext)
+    }
+    fn decode(&self, data: &[u8]) -> Result<Vec<u8>, SyncError> {
+        self.decode_payload(data)
+    }
+}
+
 impl SyncManager {
     // ========================================================================
     // 文件级云同步：工作区数据库（ws_*.db）+ VFS blobs
@@ -4101,8 +4266,10 @@ impl SyncManager {
             new_manifest.updated_at = chrono::Utc::now().to_rfc3339();
             let json = serde_json::to_vec(&new_manifest)
                 .map_err(|e| SyncError::Database(format!("序列化工作区清单失败: {}", e)))?;
+            // [P0-2] 可选加密
+            let payload = self.encode_payload(&json)?;
             storage
-                .put(Self::WORKSPACES_MANIFEST_KEY, &json)
+                .put(Self::WORKSPACES_MANIFEST_KEY, &payload)
                 .await
                 .map_err(|e| SyncError::Network(format!("上传工作区清单失败: {}", e)))?;
         }
@@ -4119,8 +4286,11 @@ impl SyncManager {
             .await
             .map_err(|e| SyncError::Network(format!("获取工作区清单失败: {}", e)))?
         {
-            Some(bytes) => serde_json::from_slice::<WorkspacesManifest>(&bytes)
-                .map_err(|e| SyncError::Database(format!("解析工作区清单失败: {}", e))),
+            Some(bytes) => {
+                let decoded = self.decode_payload(&bytes)?;
+                serde_json::from_slice::<WorkspacesManifest>(&decoded)
+                    .map_err(|e| SyncError::Database(format!("解析工作区清单失败: {}", e)))
+            }
             None => Ok(WorkspacesManifest::default()),
         }
     }
@@ -4287,8 +4457,10 @@ impl SyncManager {
             new_manifest.updated_at = chrono::Utc::now().to_rfc3339();
             let json = serde_json::to_vec(&new_manifest)
                 .map_err(|e| SyncError::Database(format!("序列化 blob 清单失败: {}", e)))?;
+            // [P0-2] 可选加密（注意：这里加密的是 **清单** 文件，blob 原文件本身不加密）
+            let payload = self.encode_payload(&json)?;
             storage
-                .put(Self::BLOBS_MANIFEST_KEY, &json)
+                .put(Self::BLOBS_MANIFEST_KEY, &payload)
                 .await
                 .map_err(|e| SyncError::Network(format!("上传 blob 清单失败: {}", e)))?;
         }
@@ -4310,8 +4482,11 @@ impl SyncManager {
             .await
             .map_err(|e| SyncError::Network(format!("获取 blob 清单失败: {}", e)))?
         {
-            Some(bytes) => serde_json::from_slice::<BlobsManifest>(&bytes)
-                .map_err(|e| SyncError::Database(format!("解析 blob 清单失败: {}", e))),
+            Some(bytes) => {
+                let decoded = self.decode_payload(&bytes)?;
+                serde_json::from_slice::<BlobsManifest>(&decoded)
+                    .map_err(|e| SyncError::Database(format!("解析 blob 清单失败: {}", e)))
+            }
             None => Ok(BlobsManifest::default()),
         }
     }
@@ -4407,8 +4582,10 @@ impl SyncManager {
             new_manifest.updated_at = chrono::Utc::now().to_rfc3339();
             let json = serde_json::to_vec(&new_manifest)
                 .map_err(|e| SyncError::Database(format!("序列化资产清单失败: {}", e)))?;
+            // [P0-2] 可选加密
+            let payload = self.encode_payload(&json)?;
             storage
-                .put(Self::ASSETS_MANIFEST_KEY, &json)
+                .put(Self::ASSETS_MANIFEST_KEY, &payload)
                 .await
                 .map_err(|e| SyncError::Network(format!("上传资产清单失败: {}", e)))?;
         }
@@ -4430,13 +4607,22 @@ impl SyncManager {
             .await
             .map_err(|e| SyncError::Network(format!("获取资产清单失败: {}", e)))?
         {
-            Some(bytes) => match serde_json::from_slice::<AssetDirsManifest>(&bytes) {
-                Ok(v) => Ok(v),
-                Err(e) => {
-                    tracing::warn!("[sync] 资产清单损坏，忽略并继续: {}", e);
-                    Ok(AssetDirsManifest::default())
+            Some(bytes) => {
+                let decoded = match self.decode_payload(&bytes) {
+                    Ok(v) => v,
+                    Err(e) => {
+                        tracing::warn!("[sync] 资产清单解密失败，忽略并继续: {}", e);
+                        return Ok(AssetDirsManifest::default());
+                    }
+                };
+                match serde_json::from_slice::<AssetDirsManifest>(&decoded) {
+                    Ok(v) => Ok(v),
+                    Err(e) => {
+                        tracing::warn!("[sync] 资产清单损坏，忽略并继续: {}", e);
+                        Ok(AssetDirsManifest::default())
+                    }
                 }
-            },
+            }
             None => Ok(AssetDirsManifest::default()),
         }
     }
@@ -4539,7 +4725,8 @@ impl SyncManager {
         relative_path: Option<String>,
         size: Option<u64>,
     ) -> Result<(), SyncError> {
-        let mut manifest = tombstone::download_blob_tombstones(storage).await?;
+        // [P0-2] tombstone 清单也走 E2EE（self 实现了 PayloadCodec）
+        let mut manifest = tombstone::download_blob_tombstones(storage, self).await?;
         manifest.entries.insert(
             hash.to_string(),
             tombstone::BlobTombstoneEntry {
@@ -4549,7 +4736,7 @@ impl SyncManager {
                 relative_path,
             },
         );
-        tombstone::upload_blob_tombstones(storage, manifest).await
+        tombstone::upload_blob_tombstones(storage, self, manifest).await
     }
 
     /// 标记资产已删除
@@ -4559,7 +4746,7 @@ impl SyncManager {
         key: &str,
         size: Option<u64>,
     ) -> Result<(), SyncError> {
-        let mut manifest = tombstone::download_asset_tombstones(storage).await?;
+        let mut manifest = tombstone::download_asset_tombstones(storage, self).await?;
         manifest.entries.insert(
             key.to_string(),
             tombstone::AssetTombstoneEntry {
@@ -4568,7 +4755,7 @@ impl SyncManager {
                 size,
             },
         );
-        tombstone::upload_asset_tombstones(storage, manifest).await
+        tombstone::upload_asset_tombstones(storage, self, manifest).await
     }
 
     /// 同步 VFS blobs + 消费 tombstone（修复 #6）
@@ -4581,7 +4768,7 @@ impl SyncManager {
         blobs_dir: &std::path::Path,
     ) -> Result<BlobSyncOutcome, SyncError> {
         // 1. 拉取 tombstone 并执行删除传播
-        let tombstones = tombstone::download_blob_tombstones(storage).await?;
+        let tombstones = tombstone::download_blob_tombstones(storage, self).await?;
         if !tombstones.entries.is_empty() {
             let _ = tombstone::apply_blob_tombstones(
                 storage,
@@ -4592,16 +4779,22 @@ impl SyncManager {
             .await?;
 
             // 同时从 blob manifest 里摘掉 tombstoned 条目
+            // [P0-2] 读写都需要透明 encode/decode
             if let Ok(Some(bytes)) = storage.get(Self::BLOBS_MANIFEST_KEY).await {
-                if let Ok(mut mf) = serde_json::from_slice::<BlobsManifest>(&bytes) {
-                    let before = mf.entries.len();
-                    for hash in tombstones.entries.keys() {
-                        mf.entries.remove(hash);
-                    }
-                    if mf.entries.len() != before {
-                        mf.updated_at = chrono::Utc::now().to_rfc3339();
-                        if let Ok(bytes) = serde_json::to_vec(&mf) {
-                            let _ = storage.put(Self::BLOBS_MANIFEST_KEY, &bytes).await;
+                if let Ok(decoded) = self.decode_payload(&bytes) {
+                    if let Ok(mut mf) = serde_json::from_slice::<BlobsManifest>(&decoded) {
+                        let before = mf.entries.len();
+                        for hash in tombstones.entries.keys() {
+                            mf.entries.remove(hash);
+                        }
+                        if mf.entries.len() != before {
+                            mf.updated_at = chrono::Utc::now().to_rfc3339();
+                            if let Ok(json) = serde_json::to_vec(&mf) {
+                                if let Ok(payload) = self.encode_payload(&json) {
+                                    let _ =
+                                        storage.put(Self::BLOBS_MANIFEST_KEY, &payload).await;
+                                }
+                            }
                         }
                     }
                 }
@@ -4623,7 +4816,7 @@ impl SyncManager {
         app_data_dir: &std::path::Path,
     ) -> Result<AssetSyncOutcome, SyncError> {
         // 1. 拉取 asset tombstone 并删除本地/云端对应文件
-        let tombstones = tombstone::download_asset_tombstones(storage).await?;
+        let tombstones = tombstone::download_asset_tombstones(storage, self).await?;
         if !tombstones.entries.is_empty() {
             for (key, _entry) in &tombstones.entries {
                 // 云端删除
@@ -4645,16 +4838,22 @@ impl SyncManager {
             }
 
             // 从云端资产清单摘掉 tombstoned 条目
+            // [P0-2] 同样需要透明 encode/decode
             if let Ok(Some(bytes)) = storage.get(Self::ASSETS_MANIFEST_KEY).await {
-                if let Ok(mut mf) = serde_json::from_slice::<AssetDirsManifest>(&bytes) {
-                    let before = mf.entries.len();
-                    for key in tombstones.entries.keys() {
-                        mf.entries.remove(key);
-                    }
-                    if mf.entries.len() != before {
-                        mf.updated_at = chrono::Utc::now().to_rfc3339();
-                        if let Ok(bytes) = serde_json::to_vec(&mf) {
-                            let _ = storage.put(Self::ASSETS_MANIFEST_KEY, &bytes).await;
+                if let Ok(decoded) = self.decode_payload(&bytes) {
+                    if let Ok(mut mf) = serde_json::from_slice::<AssetDirsManifest>(&decoded) {
+                        let before = mf.entries.len();
+                        for key in tombstones.entries.keys() {
+                            mf.entries.remove(key);
+                        }
+                        if mf.entries.len() != before {
+                            mf.updated_at = chrono::Utc::now().to_rfc3339();
+                            if let Ok(json) = serde_json::to_vec(&mf) {
+                                if let Ok(payload) = self.encode_payload(&json) {
+                                    let _ =
+                                        storage.put(Self::ASSETS_MANIFEST_KEY, &payload).await;
+                                }
+                            }
                         }
                     }
                 }

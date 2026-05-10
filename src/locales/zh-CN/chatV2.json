@@ -289,6 +289,11 @@
       "title": "思维链",
       "streaming": "思考中..."
     },
+    "compactionSummary": {
+      "title": "上下文已压缩 · 学习状态摘要",
+      "expandHint": "点击展开",
+      "footnote": "此摘要替代了更早的对话内容在模型视图中的位置。原始消息仍保存在数据库中。"
+    },
     "generic": {
       "type": "类型",
       "input": "输入",

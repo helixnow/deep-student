@@ -16,9 +16,9 @@ use std::time::Instant;
 use super::database::ChatV2Database;
 use super::error::{ChatV2Error, ChatV2Result};
 use super::types::{
-    AttachmentMeta, ChatMessage, ChatParams, ChatSession, DeleteVariantResult, LoadSessionResponse,
-    MessageBlock, MessageMeta, MessageRole, PanelStates, PersistStatus, SessionGroup,
-    SessionSkillState, SessionState, SharedContext, Variant,
+    AttachmentMeta, ChatMessage, ChatParams, ChatSession, CompactionRecord, DeleteVariantResult,
+    LoadSessionResponse, MessageBlock, MessageMeta, MessageRole, PanelStates, PersistStatus,
+    SessionGroup, SessionSkillState, SessionState, SharedContext, Variant,
 };
 
 /// Chat V2 数据存取层
@@ -3935,5 +3935,173 @@ mod tests {
 
         // active_variant_id 应该更新为第一个 success 变体
         assert_eq!(loaded.active_variant_id, Some(var3_id));
+    }
+}
+
+// ============================================================================
+// 🆕 P1: Compaction CRUD
+// ============================================================================
+impl ChatV2Repo {
+    pub fn create_compaction_with_conn(
+        conn: &Connection,
+        rec: &CompactionRecord,
+    ) -> ChatV2Result<()> {
+        // 🔧 CR-02 / WR-01 改进：只 INSERT 不 UPDATE，避免 UPSERT 意外覆盖
+        // 已有记录的 tail cutoff；session 指针更新解耦到 set_session_last_compaction
+        conn.execute(
+            r#"
+            INSERT INTO chat_v2_compactions (
+                id, session_id, summary_message_id, tail_start_message_id,
+                tail_start_time_created, reason, is_auto, is_overflow,
+                tokens_before, tokens_after, model_id, created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            "#,
+            params![
+                rec.id,
+                rec.session_id,
+                rec.summary_message_id,
+                rec.tail_start_message_id,
+                rec.tail_start_time_created,
+                rec.reason,
+                if rec.is_auto { 1 } else { 0 },
+                if rec.is_overflow { 1 } else { 0 },
+                rec.tokens_before,
+                rec.tokens_after,
+                rec.model_id,
+                rec.created_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// 把会话的"当前活跃压缩"指针指向指定记录
+    pub fn set_session_last_compaction_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        compaction_id: &str,
+    ) -> ChatV2Result<()> {
+        conn.execute(
+            "UPDATE chat_v2_sessions SET last_compaction_id = ?1 WHERE id = ?2",
+            params![compaction_id, session_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn create_compaction(db: &Database, rec: &CompactionRecord) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::create_compaction_with_conn(&conn, rec)?;
+        Self::set_session_last_compaction_with_conn(&conn, &rec.session_id, &rec.id)
+    }
+
+    pub fn get_active_compaction_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Option<CompactionRecord>> {
+        // 1) 查 session 指针
+        let last_id: Option<String> = conn
+            .query_row(
+                "SELECT last_compaction_id FROM chat_v2_sessions WHERE id = ?1",
+                params![session_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten();
+
+        // 2) 指针存在 → 查该记录；若记录不在（pointer stale，比如被同步/清理删掉），
+        //    回退到最新 compaction，保证视图不丢失
+        if let Some(id) = last_id {
+            if !id.is_empty() {
+                if let Some(rec) = Self::get_compaction_by_id_with_conn(conn, &id)? {
+                    return Ok(Some(rec));
+                }
+                log::warn!(
+                    "[chat_v2::repo] session {} last_compaction_id={} points to missing record; fallback to latest",
+                    session_id,
+                    id
+                );
+            }
+        }
+        // 3) 指针为空或悬挂 → 按 created_at DESC 取最新
+        Self::get_latest_compaction_with_conn(conn, session_id)
+    }
+
+    pub fn get_latest_compaction_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Option<CompactionRecord>> {
+        conn.query_row(
+            r#"
+            SELECT id, session_id, summary_message_id, tail_start_message_id,
+                   tail_start_time_created, reason, is_auto, is_overflow,
+                   tokens_before, tokens_after, model_id, created_at
+            FROM chat_v2_compactions
+            WHERE session_id = ?1
+            ORDER BY created_at DESC
+            LIMIT 1
+            "#,
+            params![session_id],
+            Self::row_to_compaction,
+        )
+        .optional()
+        .map_err(ChatV2Error::from)
+    }
+
+    pub fn get_compaction_by_id_with_conn(
+        conn: &Connection,
+        id: &str,
+    ) -> ChatV2Result<Option<CompactionRecord>> {
+        conn.query_row(
+            r#"
+            SELECT id, session_id, summary_message_id, tail_start_message_id,
+                   tail_start_time_created, reason, is_auto, is_overflow,
+                   tokens_before, tokens_after, model_id, created_at
+            FROM chat_v2_compactions
+            WHERE id = ?1
+            "#,
+            params![id],
+            Self::row_to_compaction,
+        )
+        .optional()
+        .map_err(ChatV2Error::from)
+    }
+
+    pub fn list_compactions_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Vec<CompactionRecord>> {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, session_id, summary_message_id, tail_start_message_id,
+                   tail_start_time_created, reason, is_auto, is_overflow,
+                   tokens_before, tokens_after, model_id, created_at
+            FROM chat_v2_compactions
+            WHERE session_id = ?1
+            ORDER BY created_at ASC
+            "#,
+        )?;
+        let iter = stmt.query_map(params![session_id], Self::row_to_compaction)?;
+        let mut out = Vec::new();
+        for r in iter {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
+    fn row_to_compaction(row: &rusqlite::Row<'_>) -> rusqlite::Result<CompactionRecord> {
+        Ok(CompactionRecord {
+            id: row.get(0)?,
+            session_id: row.get(1)?,
+            summary_message_id: row.get(2)?,
+            tail_start_message_id: row.get(3)?,
+            tail_start_time_created: row.get(4)?,
+            reason: row.get(5)?,
+            is_auto: row.get::<_, i64>(6)? != 0,
+            is_overflow: row.get::<_, i64>(7)? != 0,
+            tokens_before: row.get::<_, Option<i64>>(8)?.map(|v| v as u32),
+            tokens_after: row.get::<_, Option<i64>>(9)?.map(|v| v as u32),
+            model_id: row.get(10)?,
+            created_at: row.get(11)?,
+        })
     }
 }

@@ -687,10 +687,27 @@ fn adv_17_high_frequency_conflicts() {
     let (title, _, _, _, _) = get_item(&conn, "n1").unwrap();
     assert_eq!(title, "local_edit", "本地更新，应拒绝所有 100 条云端变更");
 
+    // 去重语义（批判报告 P0-3 修复后）：
+    // - side=local 的 save 每次传的都是同一份"本地当前值"，data_hash 全等 → 合并成 1 条
+    // - side=cloud 的 save 每次传不同的 cloud_edit_{i}，data_hash 各异 → 100 条
+    // 合计 101 条。这体现了"同内容不重复累积，不同内容如实记录"的正确行为。
     let c: i64 = conn
         .query_row("SELECT COUNT(*) FROM __sync_conflicts", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(c, 200, "每条冲突产生 2 条记录（local + cloud），100 次 → 200 条");
+    assert_eq!(
+        c, 101,
+        "dedup 后：1 条 local（内容稳定）+ 100 条 cloud（每次内容不同）"
+    );
+
+    // 并且 unresolved 同样是 101（这些还没有被标为已解决）
+    let unresolved: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM __sync_conflicts WHERE resolved_at IS NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(unresolved, 101);
 }
 
 /// **A.18** 非法 JSON value 类型（比如 NaN、Infinity）

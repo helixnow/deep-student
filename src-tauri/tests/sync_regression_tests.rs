@@ -795,25 +795,16 @@ fn r24_conflict_falls_into_table() {
     assert!(cnt >= 1, "冲突应写入 __sync_conflicts");
 }
 
-/// R25：连续两次应用同一批冲突变更 —— 不会重复写入冲突表（幂等）
+/// R25：连续两次应用同一批冲突变更 —— 不会重复写入冲突表（严格幂等）
+///
+/// 批判报告 P0-3 修复后：`save_conflict_record` 走 `(table, record, side, data_hash)`
+/// 的部分唯一索引 + `ON CONFLICT DO NOTHING`，同一未解决冲突**永远不会**在重放时
+/// 增加新条目。旧实现允许线性增长的断言（`<= 2x + 2`）是占位，现在必须严格相等。
 #[test]
 fn r25_conflict_guard_idempotent_on_replay() {
     let conn = new_db();
-    conn.execute_batch(
-        "CREATE TABLE IF NOT EXISTS __sync_conflicts (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            table_name TEXT NOT NULL,
-            record_id TEXT NOT NULL,
-            side TEXT NOT NULL CHECK(side IN ('local','cloud')),
-            data_json TEXT NOT NULL,
-            winning_device_id TEXT,
-            losing_device_id TEXT,
-            detected_at TEXT NOT NULL DEFAULT (datetime('now')),
-            resolved_at TEXT,
-            resolution TEXT
-        );",
-    )
-    .unwrap();
+    // 注意：不再预建 __sync_conflicts 表 —— 让 ensure_conflict_table 按新 schema
+    // （含 data_hash 列和部分唯一索引）建，确保测试覆盖升级后的形态。
 
     insert_item(&conn, "n1", "local", "2024-01-01T10:00:00Z");
 
@@ -850,7 +841,7 @@ fn r25_conflict_guard_idempotent_on_replay() {
     // 第二次（重放）
     SyncManager::apply_downloaded_changes_with_conflict_guard(
         &conn,
-        &[change],
+        &[change.clone()],
         None,
         ConflictPolicy::KeepLatest,
         Some("cloud"),
@@ -861,12 +852,113 @@ fn r25_conflict_guard_idempotent_on_replay() {
         .query_row("SELECT COUNT(*) FROM __sync_conflicts", [], |r| r.get(0))
         .unwrap();
 
-    // 记录本次行为：当前实现的去重语义
-    // （允许稍微增加一些条目，但不应比第一次的 2 倍还多）
+    assert_eq!(
+        after_first, after_second,
+        "严格幂等：同一未解决冲突重放不应新增条目（first={}, second={}）",
+        after_first, after_second
+    );
+
+    // 再重放 10 次，仍然严格不增长
+    for _ in 0..10 {
+        SyncManager::apply_downloaded_changes_with_conflict_guard(
+            &conn,
+            &[change.clone()],
+            None,
+            ConflictPolicy::KeepLatest,
+            Some("cloud"),
+            Some("local"),
+        )
+        .unwrap();
+    }
+    let after_many: i64 = conn
+        .query_row("SELECT COUNT(*) FROM __sync_conflicts", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(
+        after_first, after_many,
+        "重放 10 次仍应严格不变（first={}, after_many={}）",
+        after_first, after_many
+    );
+}
+
+/// R25b：用户 resolve 之后，相同内容的冲突**可以**再次记录
+///
+/// 去重范围只覆盖 `resolved_at IS NULL` 的条目。一旦用户解决，后续再出现同内容
+/// 冲突应被视为"新一轮分歧"而重新入表，让用户知道问题又发生了。
+#[test]
+fn r25b_resolved_does_not_block_new_identical_conflict() {
+    let conn = new_db();
+
+    insert_item(&conn, "n1", "local", "2024-01-01T10:00:00Z");
+
+    let change = SyncChangeWithData {
+        change_log_id: None,
+        table_name: "items".to_string(),
+        record_id: "n1".to_string(),
+        operation: ChangeOperation::Update,
+        changed_at: "2024-01-01T11:00:00Z".to_string(),
+        data: Some(json!({
+            "id": "n1",
+            "title": "cloud",
+            "counter": 0,
+            "updated_at": "2024-01-01T11:00:00Z",
+        })),
+        database_name: Some("test".to_string()),
+        suppress_change_log: None,
+    };
+
+    // 第一次：产生冲突
+    SyncManager::apply_downloaded_changes_with_conflict_guard(
+        &conn,
+        &[change.clone()],
+        None,
+        ConflictPolicy::KeepLatest,
+        Some("cloud"),
+        Some("local"),
+    )
+    .unwrap();
+    let unresolved_before: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM __sync_conflicts WHERE resolved_at IS NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert!(unresolved_before > 0);
+
+    // 模拟用户解决：把所有未解决的标为 resolved
+    conn.execute(
+        "UPDATE __sync_conflicts SET resolved_at = datetime('now'), resolution = 'keep_local' \
+         WHERE resolved_at IS NULL",
+        [],
+    )
+    .unwrap();
+
+    // 再改一次本地，再收到同一条云端变更 —— 应当产生新一轮冲突条目
+    conn.execute(
+        "UPDATE items SET title = 'local_again', updated_at = ?1 WHERE id = 'n1'",
+        params!["2024-01-02T10:00:00Z"],
+    )
+    .unwrap();
+    SyncManager::apply_downloaded_changes_with_conflict_guard(
+        &conn,
+        &[change],
+        None,
+        ConflictPolicy::KeepLatest,
+        Some("cloud"),
+        Some("local"),
+    )
+    .unwrap();
+
+    let unresolved_after: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM __sync_conflicts WHERE resolved_at IS NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
     assert!(
-        after_second <= after_first * 2 + 2,
-        "冲突表不应在重放时无限增长：first={}, second={}",
-        after_first,
-        after_second
+        unresolved_after > 0,
+        "用户 resolve 之后同内容冲突应能重新记录，当前未解决数 = {}",
+        unresolved_after
     );
 }

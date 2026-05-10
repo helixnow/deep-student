@@ -129,6 +129,18 @@ impl ConflictResolver {
     }
 
     /// 在一个数据库连接上初始化冲突表（幂等）
+    ///
+    /// 结构变更（批判报告 P0-3）：
+    /// - 新增 `data_hash` 列（`sha256(data_json)` 前 16 字节 hex），
+    ///   与 `(table_name, record_id, side)` 组合成部分唯一索引，约束条件
+    ///   `WHERE resolved_at IS NULL`。
+    /// - 语义：同一未解决记录的相同 side + 相同内容只保留一条，避免回放或
+    ///   prune gap 跨轮同步时同一对冲突被反复累积。
+    /// - 用户一旦把条目标记为 `resolved`，后续再出现同内容的冲突**会**重新记录
+    ///   （这是需要的：表示"解决之后又出现了新的分歧"）。
+    ///
+    /// 升级路径：`CREATE TABLE IF NOT EXISTS` 不会修改已有表结构。对于升级场景，
+    /// 后续通过 `ALTER TABLE ADD COLUMN` 补齐 `data_hash` 列；失败则静默（列已存在）。
     pub fn ensure_conflict_table(conn: &Connection) -> Result<(), SyncError> {
         conn.execute_batch(
             r#"
@@ -138,6 +150,7 @@ impl ConflictResolver {
                 record_id TEXT NOT NULL,
                 side TEXT NOT NULL CHECK(side IN ('local','cloud')),
                 data_json TEXT NOT NULL,
+                data_hash TEXT NOT NULL DEFAULT '',
                 winning_device_id TEXT,
                 losing_device_id TEXT,
                 detected_at TEXT NOT NULL DEFAULT (datetime('now')),
@@ -151,7 +164,51 @@ impl ConflictResolver {
             "#,
         )
         .map_err(|e| SyncError::Database(format!("创建 __sync_conflicts 失败: {}", e)))?;
+
+        // 升级老表：如果 data_hash 列不存在则追加（best-effort）
+        let has_data_hash: bool = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('__sync_conflicts') WHERE name = 'data_hash'",
+                [],
+                |row| row.get::<_, i64>(0).map(|n| n > 0),
+            )
+            .unwrap_or(false);
+        if !has_data_hash {
+            // 老数据库升级：追加列。列默认 ''，老冲突条目 hash 全为空字符串，
+            // 它们之间**可能**误合（同一 record+side 的老条目被视为重复）——
+            // 这是一次性升级代价，接受：老冲突已经没有正确的 hash 无法精确去重。
+            let _ = conn.execute(
+                "ALTER TABLE __sync_conflicts ADD COLUMN data_hash TEXT NOT NULL DEFAULT ''",
+                [],
+            );
+        }
+
+        // 部分唯一索引：对"未解决"的冲突做 (table, record, side, data_hash) 去重。
+        // 一旦 resolved_at 被写入，这条记录就退出去重空间，允许相同内容再次出现。
+        conn.execute_batch(
+            r#"
+            CREATE UNIQUE INDEX IF NOT EXISTS idx__sync_conflicts_dedup
+                ON __sync_conflicts(table_name, record_id, side, data_hash)
+                WHERE resolved_at IS NULL;
+            "#,
+        )
+        .map_err(|e| SyncError::Database(format!("创建冲突表去重索引失败: {}", e)))?;
+
         Ok(())
+    }
+
+    /// 计算冲突数据的稳定哈希（用于去重键）
+    ///
+    /// 用 `canonicalize_for_compare` 规范化后再哈希，这样：
+    /// - 字段顺序不同但内容相同的 JSON 会得到相同 hash
+    /// - 同步元字段（`sync_version` 等）的差异不会影响去重判定
+    /// - 嵌套的 JSON 字符串（SQLite TEXT 列里存 `"[]"` vs Array）语义等价
+    fn compute_data_hash(data: &serde_json::Value) -> String {
+        use sha2::{Digest, Sha256};
+        let canonical = canonicalize_for_compare(data);
+        let s = serde_json::to_string(&canonical).unwrap_or_default();
+        let h = Sha256::digest(s.as_bytes());
+        hex::encode(&h[..16])
     }
 
     /// 检查指定记录是否有"本地未同步的变更"（即 local_version > sync_version 语义的等价判断）
@@ -351,6 +408,14 @@ impl ConflictResolver {
     }
 
     /// 写一条副本到冲突表
+    ///
+    /// 去重语义（批判报告 P0-3 修复）：
+    /// - 基于 `(table_name, record_id, side, data_hash)` 做部分唯一约束，
+    ///   范围仅限 `resolved_at IS NULL`
+    /// - 重复写入相同内容会被 `ON CONFLICT(...) DO NOTHING` 吞掉，
+    ///   **不会** 递增 id、**不会** 污染冲突面板
+    /// - 一旦用户手动 resolve，后续即便同一内容再次出现也会重新记录
+    ///   （语义上这是"解决之后又发生了相同内容的新冲突"，需要告知用户）
     pub fn save_conflict_record(
         conn: &Connection,
         rec: ConflictRecordToSave<'_>,
@@ -358,10 +423,13 @@ impl ConflictResolver {
         Self::ensure_conflict_table(conn)?;
         let data_str = serde_json::to_string(rec.data)
             .map_err(|e| SyncError::Database(format!("序列化冲突数据失败: {}", e)))?;
+        let data_hash = Self::compute_data_hash(rec.data);
         conn.execute(
             "INSERT INTO __sync_conflicts
-             (table_name, record_id, side, data_json, winning_device_id, losing_device_id)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+             (table_name, record_id, side, data_json, data_hash, winning_device_id, losing_device_id)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(table_name, record_id, side, data_hash) WHERE resolved_at IS NULL
+             DO NOTHING",
             params![
                 rec.table_name,
                 rec.record_id,
@@ -370,6 +438,7 @@ impl ConflictResolver {
                     ConflictSide::Cloud => "cloud",
                 },
                 data_str,
+                data_hash,
                 rec.winning_device_id,
                 rec.losing_device_id,
             ],

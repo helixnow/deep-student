@@ -72,6 +72,7 @@ pub(crate) use super::user_message_builder::{build_user_message, UserMessagePara
 pub(crate) use super::workspace::WorkspaceCoordinator;
 pub(crate) use std::sync::Mutex;
 
+pub mod compaction; // 🆕 P1: 上下文压缩 agent（锚定摘要 + 尾部保真）
 pub mod constants;
 pub mod helpers;
 pub mod history;
@@ -85,6 +86,7 @@ pub mod token_resources;
 pub mod tool_loop;
 pub mod variant_adapter;
 
+pub use compaction::*;
 pub use constants::*;
 pub use helpers::*;
 pub use history::*;
@@ -819,6 +821,18 @@ impl ChatV2Pipeline {
 
         // 阶段 6：保存结果
         self.save_results(ctx).await?;
+
+        // 阶段 7：🆕 P1 压缩 — 本轮 LLM 若命中阈值，现在落盘 compaction 记录，
+        // 下一次 load_chat_history 就会应用视图（隐藏旧消息 + 注入摘要）
+        if ctx.needs_compaction {
+            if let Err(e) = self.run_compaction(ctx).await {
+                log::warn!(
+                    "[ChatV2::pipeline] run_compaction failed (non-fatal): {}",
+                    e
+                );
+                ctx.needs_compaction = false;
+            }
+        }
 
         Ok(())
     }

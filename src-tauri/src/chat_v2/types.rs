@@ -7,6 +7,7 @@ use chrono::{DateTime, Utc};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
+use uuid; // P1: CompactionRecord::generate_id
 
 // 导入资源库类型（统一上下文注入系统）
 use super::resource_types::{ContextSnapshot, SendContextRef};
@@ -99,6 +100,8 @@ pub mod block_types {
     // 后端扩展（前端暂无，可通过 string 扩展）
     pub const OCR_RESULT: &str = "ocr_result";
     pub const SUMMARY: &str = "summary";
+    /// 🆕 P1: 上下文压缩摘要块（每次 compaction 生成一条）
+    pub const COMPACTION_SUMMARY: &str = "compaction_summary";
 
     // 🆕 用户提问块
     pub const ASK_USER: &str = "ask_user";
@@ -2439,6 +2442,53 @@ impl Default for PanelStates {
             advanced: Some(false),
             attachment: Some(false),
         }
+    }
+}
+
+// ============================================================================
+// 🆕 P1: 上下文压缩记录（锚定摘要 + 尾部保真）
+// ============================================================================
+
+/// 一次 compaction 操作的持久化记录
+///
+/// 一个会话可以积累多条记录（按 created_at 排序）；
+/// 只有 `chat_v2_sessions.last_compaction_id` 指向的那条是"当前活跃视图"。
+///
+/// ## 视图语义
+/// - `tail_start_time_created` 及之后的消息：逐字保留
+/// - 之前的消息：在 LLM 视图中**隐藏**，仅用户点击"展开原文"时可见
+/// - 在 tail 起点前插入一条 system 伪消息承载 summary 文本
+///
+/// ## 签名保真
+/// tail_start 必须对齐 turn 边界（某个 user turn 的起点），且不能切穿
+/// 持有活跃 `thought_signature` / `anthropic.signature` 的 assistant turn。
+/// 选取逻辑在 `pipeline::compaction::select_tail`。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompactionRecord {
+    pub id: String,
+    pub session_id: String,
+    /// 承载摘要文本的 assistant 消息 ID
+    pub summary_message_id: String,
+    /// 首条逐字保留消息的 ID
+    pub tail_start_message_id: String,
+    /// 首条逐字保留消息的创建时间（ms epoch），用于 SQL 层过滤
+    pub tail_start_time_created: i64,
+    /// 'auto' | 'manual' | 'overflow'
+    pub reason: String,
+    pub is_auto: bool,
+    pub is_overflow: bool,
+    pub tokens_before: Option<u32>,
+    pub tokens_after: Option<u32>,
+    /// 触发压缩的对话主模型 ID（审计用）
+    pub model_id: Option<String>,
+    /// 创建时间戳（ms epoch）
+    pub created_at: i64,
+}
+
+impl CompactionRecord {
+    pub fn generate_id() -> String {
+        format!("cmp_{}", uuid::Uuid::new_v4())
     }
 }
 
