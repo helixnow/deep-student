@@ -122,7 +122,7 @@ export const ImageViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
           </button>
           {onClose && (
             <button
-              className="px-4 py-2 border rounded-md hover:bg-muted"
+              className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)]"
               onClick={onClose}
             >
               {t('common:actions.close')}
@@ -144,7 +144,7 @@ export const ImageViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
         </div>
         <div className="flex items-center gap-1">
           <button
-            className="p-1.5 hover:bg-muted rounded-md"
+            className="p-1.5 hover:bg-[var(--interactive-hover)] rounded-md"
             onClick={handleZoomOut}
             title={t('common:zoomOut')}
           >
@@ -154,14 +154,14 @@ export const ImageViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
             {Math.round(zoom * 100)}%
           </span>
           <button
-            className="p-1.5 hover:bg-muted rounded-md"
+            className="p-1.5 hover:bg-[var(--interactive-hover)] rounded-md"
             onClick={handleZoomIn}
             title={t('common:zoomIn')}
           >
             <ZoomIn className="w-4 h-4" />
           </button>
           <button
-            className="p-1.5 hover:bg-muted rounded-md ml-2"
+            className="p-1.5 hover:bg-[var(--interactive-hover)] rounded-md ml-2"
             onClick={handleRotate}
             title={t('common:rotate')}
           >
@@ -169,7 +169,7 @@ export const ImageViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
           </button>
           {'onClose' in props && props.onClose && (
             <button
-              className="px-3 py-1 text-sm border rounded-md hover:bg-muted ml-2"
+              className="px-3 py-1 text-sm border rounded-md hover:bg-[var(--interactive-hover)] ml-2"
               onClick={props.onClose}
             >
               {t('common:actions.close')}

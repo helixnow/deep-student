@@ -183,7 +183,7 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
           </button>
           {onClose && (
             <button
-              className="px-4 py-2 border rounded-md hover:bg-muted"
+              className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)]"
               onClick={onClose}
             >
               {t('common:actions.close')}
@@ -216,7 +216,7 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
         <div className="flex items-center gap-2">
           {'onClose' in props && props.onClose && (
             <button
-              className="px-3 py-1 text-sm border rounded-md hover:bg-muted"
+              className="px-3 py-1 text-sm border rounded-md hover:bg-[var(--interactive-hover)]"
               onClick={props.onClose}
             >
               {t('common:actions.close')}

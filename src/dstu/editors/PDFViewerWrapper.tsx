@@ -102,7 +102,7 @@ export const PDFViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (prop
           </button>
           {onClose && (
             <button
-              className="px-4 py-2 border rounded-md hover:bg-muted"
+              className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)]"
               onClick={onClose}
             >
               {t('common:actions.close')}

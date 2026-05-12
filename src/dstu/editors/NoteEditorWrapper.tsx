@@ -86,7 +86,7 @@ export const NoteEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
         </span>
         {onClose && (
           <button
-            className="px-4 py-2 border rounded-md hover:bg-muted"
+            className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)]"
             onClick={onClose}
           >
             {t('common:actions.close')}
@@ -124,7 +124,7 @@ export const NoteEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
           </button>
           {onClose && (
             <button
-              className="px-4 py-2 border rounded-md hover:bg-muted"
+              className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)]"
               onClick={onClose}
             >
               {t('common:actions.close')}

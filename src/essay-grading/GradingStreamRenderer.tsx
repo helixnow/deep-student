@@ -133,7 +133,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
                 "flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md transition-colors whitespace-nowrap",
                 activeTab === tab.id
                   ? "bg-primary/10 text-primary font-medium"
-                  : "text-muted-foreground/60 hover:text-foreground hover:bg-muted/50"
+                  : "text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]"
               )}
             >
               {tab.icon}
@@ -154,7 +154,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
                   "px-2.5 py-1 text-xs rounded-full transition-colors",
                   markerFilter === filter
                     ? "bg-primary/10 text-primary font-medium"
-                    : "text-muted-foreground/60 hover:text-foreground hover:bg-muted/50"
+                    : "text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]"
                 )}
               >
                 {t(`essay_grading:legend.filter_${filter}`)}

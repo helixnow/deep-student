@@ -115,7 +115,7 @@ export const TranslationViewerWrapper: React.FC<EditorProps | CreateEditorProps>
           </button>
           {onClose && (
             <button
-              className="px-4 py-2 border rounded-md hover:bg-muted"
+              className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)]"
               onClick={onClose}
             >
               {t('common:actions.close')}
@@ -140,7 +140,7 @@ export const TranslationViewerWrapper: React.FC<EditorProps | CreateEditorProps>
         </div>
         {'onClose' in props && props.onClose && (
           <button
-            className="px-3 py-1 text-sm border rounded-md hover:bg-muted"
+            className="px-3 py-1 text-sm border rounded-md hover:bg-[var(--interactive-hover)]"
             onClick={props.onClose}
           >
             {t('common:actions.close')}
