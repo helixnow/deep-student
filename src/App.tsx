@@ -72,6 +72,7 @@ import './styles/typography.css'; // 全局排版（字体/字号/行高）
 import './styles/shadcn-overrides.css'; // 修复图标尺寸被覆盖的问题
 import { MigrationStatusBanner } from './components/system-status/MigrationStatusBanner';
 import { SettingsShellSidebar } from './components/settings/SettingsShellSidebar';
+import { TodoShellSidebar } from './components/todo/TodoShellSidebar';
 import { settingsMobileSheetCloseButtonClassName } from './components/settings/SettingsCommon';
 import { setPendingSettingsTab } from './utils/pendingSettingsTab';
 import { useBreakpoint } from './hooks/useBreakpoint';
@@ -1688,7 +1689,19 @@ function App() {
     />
   ), [leftPanelCollapsed, setCurrentView]);
 
-  const desktopShellSidebarElement = currentView === 'settings' ? settingsShellSidebarElement : sidebarElement;
+  const todoShellSidebarElement = useMemo(() => (
+    <TodoShellSidebar
+      isSmallScreen={false}
+      globalLeftPanelCollapsed={leftPanelCollapsed}
+      onBack={() => setCurrentView('chat-v2')}
+    />
+  ), [leftPanelCollapsed, setCurrentView]);
+
+  const desktopShellSidebarElement = currentView === 'settings'
+    ? settingsShellSidebarElement
+    : currentView === 'todo'
+    ? todoShellSidebarElement
+    : sidebarElement;
 
   const syncSessionSidebarContext = useCallback(() => {
     setSessionSidebarViewContext({
@@ -1873,7 +1886,7 @@ function App() {
       defaultValue: '在 {{groupName}} 中新建会话',
     })
     : desktopHeaderNavHotzoneLabel;
-  const shouldShowDesktopHeaderNavControls = currentView !== 'settings';
+  const shouldShowDesktopHeaderNavControls = currentView !== 'settings' && currentView !== 'todo';
   const desktopHeaderNavControls = (
     <DesktopHeaderNavControls
       canGoBack={unifiedCanGoBack}
