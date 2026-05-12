@@ -3,7 +3,7 @@
  *
  * 作为 Todo 页面的顶层壳体，负责：
  * - 套用应用统一的 study-shell-page 外壳
- * - 桌面端：左侧 UnifiedSidebar + 右侧 TodoMainPanel 的两栏布局
+ * - 桌面端：仅渲染 TodoMainPanel（侧边栏已移至 Shell 导航位置，由 TodoShellSidebar 提供）
  * - 移动端：MobileSlidingLayout 手势滑动切换侧栏 / 主视图
  * - 注册 useMobileHeader，保持与其他页面一致的移动端顶栏
  */
@@ -97,7 +97,7 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
     );
   }
 
-  // ===== 桌面端：两栏 =====
+  // ===== 桌面端：仅主面板（侧边栏已移至 Shell 导航位置） =====
   return (
     <div
       className={cn(
@@ -105,7 +105,6 @@ export const TodoContentView: React.FC<TodoContentViewProps> = ({
         className,
       )}
     >
-      <TodoSidebar />
       <TodoMainPanel />
     </div>
   );

@@ -175,7 +175,7 @@ const TodoItemRow: React.FC<{
     <div
       data-selected={isSelected}
       className={cn(
-        'group relative flex cursor-pointer items-center gap-3 px-4 py-2.5 transition-colors duration-150 sm:px-6',
+        'group relative flex cursor-pointer items-center gap-3 px-4 py-2.5 transition-colors duration-100 sm:px-6',
         'hover:bg-[color:var(--interactive-hover)]',
         'data-[selected=true]:bg-[color:var(--interactive-selected)]',
         isCompleted && 'opacity-60',
@@ -277,7 +277,7 @@ const TodoItemRow: React.FC<{
           }}
           title={t('todo:actions.startFocusSession')}
           aria-label="start-focus"
-          className="flex-shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100 !p-1.5"
+          className="flex-shrink-0 opacity-40 transition-opacity duration-100 group-hover:opacity-100 !p-1.5"
         >
           <Play className="h-4 w-4" />
         </NotionButton>
@@ -292,7 +292,7 @@ const TodoItemRow: React.FC<{
           onDelete(item.id);
         }}
         aria-label="delete-todo"
-        className="flex-shrink-0 opacity-0 transition-opacity duration-150 group-hover:opacity-100 !p-1.5 hover:!bg-[color:var(--button-danger-surface)] hover:!text-[color:hsl(var(--destructive))]"
+        className="flex-shrink-0 opacity-0 transition-opacity duration-100 group-hover:opacity-100 !p-1.5 hover:!bg-[color:var(--button-danger-surface)] hover:!text-[color:hsl(var(--destructive))]"
       >
         <Trash2 className="h-4 w-4" />
       </NotionButton>
@@ -581,18 +581,18 @@ export const TodoMainPanel: React.FC = () => {
       {/* 主列 */}
       <div className="relative flex min-w-0 flex-1 flex-col overflow-hidden">
         {/* 顶部工具栏 */}
-        <div className="study-shell-toolbar study-shell-toolbar--seamless flex flex-shrink-0 flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
+        <div className="study-shell-toolbar flex flex-shrink-0 flex-wrap items-center gap-3 px-4 py-3 sm:px-6">
           <div className="flex min-w-0 flex-1 items-baseline gap-3">
             {!isSmallScreen && (
-              <h2 className="truncate text-xl font-semibold tracking-tight text-foreground">
+              <h2 className="truncate text-[15px] font-semibold text-foreground">
                 {viewTitle}
               </h2>
             )}
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs tabular-nums text-muted-foreground/40">
               {pendingCount}&nbsp;{t('todo:stats.pending')}
               {completedCount > 0 && (
                 <>
-                  <span className="mx-1 text-muted-foreground/40">·</span>
+                  <span className="mx-1 text-muted-foreground/30">·</span>
                   {completedCount}&nbsp;{t('todo:stats.completed')}
                 </>
               )}
@@ -632,7 +632,12 @@ export const TodoMainPanel: React.FC = () => {
         {/* 内容区 */}
         <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <CustomScrollArea className="flex-1 min-h-0" viewportClassName="pb-6">
-            {filter.view === 'all' && <TodoQuickAdd />}
+            {filter.view === 'all' && (
+              <>
+                <TodoQuickAdd />
+                <div className="h-px bg-border/20" />
+              </>
+            )}
 
             {isLoadingItems ? (
               <div className="flex items-center justify-center py-20">
@@ -651,7 +656,7 @@ export const TodoMainPanel: React.FC = () => {
                 </p>
               </div>
             ) : (
-              <div className="flex flex-col">
+              <div className="flex flex-col divide-y divide-border/[0.08]">
                 {filteredItems.map((item) => (
                   <TodoItemRow
                     key={item.id}
@@ -688,7 +693,7 @@ export const TodoMainPanel: React.FC = () => {
           key={selectedItem.id}
           item={selectedItem}
           onClose={() => selectItem(null)}
-          className="w-[360px] flex-shrink-0"
+          className="w-[360px] flex-shrink-0 border-l border-[color:var(--shell-seam)]"
         />
       )}
     </div>

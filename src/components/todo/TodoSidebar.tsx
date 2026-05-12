@@ -1,10 +1,9 @@
 /**
  * TodoSidebar - 待办侧边栏
  *
- * 视觉严格对齐应用最左侧主导航 ModernSidebar：
+ * 作为 Shell 导航栏的内容，由 TodoShellSidebar 包裹后替换主导航。
  * - 使用 .desktop-shell-nav-row / --active 行样式（32px 高，14px 圆角，14px 字号，扁平）
  * - 使用 .desktop-shell-nav-section-label 分组标签（12px 淡色）
- * - 容器使用 --shell-navigation-surface / --shell-navigation-foreground
  * - 行间距 space-y-0.5，行内图标 18px + 10px 间距
  */
 
@@ -182,16 +181,15 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
     return lists.filter((l) => l.title.toLowerCase().includes(q));
   }, [lists, searchQuery]);
 
-  const widthClass = isSmallScreen ? 'w-full' : 'w-60';
+  const widthClass = isSmallScreen ? 'w-full' : 'w-full';
 
   return (
     <aside
       role="navigation"
       data-shell-layer="navigation"
-      data-shell-surface="navigation"
       className={cn(
-        'font-sidebar-study-ui relative z-10 flex h-full min-h-0 min-w-0 flex-shrink-0 flex-col overflow-hidden',
-        'bg-[color:var(--shell-navigation-surface)] text-[color:var(--shell-navigation-foreground)]',
+        'font-sidebar-study-ui relative flex h-full min-h-0 min-w-0 flex-shrink-0 flex-col overflow-hidden',
+        'text-[color:var(--shell-navigation-foreground)]',
         'transition-colors duration-300',
         widthClass,
       )}
@@ -206,7 +204,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
             onChange={(e) => setSearchQuery(e.target.value)}
             placeholder={t('todo:actions.searchLists', '搜索列表...')}
             className={cn(
-              'h-8 w-full rounded-[var(--shell-nav-row-radius)] border border-transparent',
+              'h-8 w-full rounded-[var(--radius-shell-control)] border border-transparent',
               'bg-[color:var(--interactive-hover)]/60 pl-8 pr-8 text-[13px] text-[color:var(--shell-navigation-foreground)]',
               'outline-none placeholder:text-[color:var(--shell-navigation-muted)]',
               'focus:border-[color:var(--shell-navigation-border)] focus:bg-[color:var(--interactive-hover)]',
@@ -287,7 +285,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
                 }}
                 placeholder={t('todo:actions.newListPlaceholder')}
                 className={cn(
-                  'h-8 w-full rounded-[var(--shell-nav-row-radius)] border',
+                  'h-8 w-full rounded-[var(--radius-shell-control)] border',
                   'border-[color:var(--shell-navigation-border)]',
                   'bg-[color:var(--interactive-hover)] px-2.5 text-[13px]',
                   'text-[color:var(--shell-navigation-foreground)]',
