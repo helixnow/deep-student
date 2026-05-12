@@ -244,7 +244,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
                 'px-1.5 py-0.5 rounded text-[10px] transition-colors',
                 config.autoExtractFrequency === opt.value
                   ? 'bg-primary/15 text-primary font-medium'
-                  : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                  : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
               )}
             >
               {opt.label}
@@ -367,7 +367,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
             <span className="text-[10px] text-muted-foreground">{t('memory.type', '类型')}:</span>
             {(['fact', 'study', 'note'] as const).map(type => (
               <button key={type} onClick={() => setBatchImportType(type)}
-                className={cn('px-1.5 py-0.5 rounded text-[10px]', batchImportType === type ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-muted/50')}
+                className={cn('px-1.5 py-0.5 rounded text-[10px]', batchImportType === type ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-[var(--interactive-hover)]')}
               >
                 {type === 'fact' ? '事实' : type === 'study' ? '学习' : '笔记'}
               </button>
@@ -406,7 +406,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
             <span className="text-[10px] text-muted-foreground">{t('memory.type', '类型')}:</span>
             {(['fact', 'study', 'note'] as const).map(type => (
               <button key={type} onClick={() => setNewType(type)}
-                className={cn('px-1.5 py-0.5 rounded text-[10px]', newType === type ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-muted/50')}
+                className={cn('px-1.5 py-0.5 rounded text-[10px]', newType === type ? 'bg-primary/15 text-primary font-medium' : 'text-muted-foreground hover:bg-[var(--interactive-hover)]')}
               >
                 {type === 'fact' ? '事实' : type === 'study' ? '学习' : '笔记'}
               </button>

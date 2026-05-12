@@ -201,7 +201,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
         >
           {isSplitRight ? (
             <button
-              className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-accent text-left"
+              className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-[var(--interactive-hover)] text-left"
               onClick={() => { onCloseSplitView?.(); setCtxMenu(null); }}
             >
               <PanelLeftClose className="w-3.5 h-3.5" />
@@ -209,7 +209,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
             </button>
           ) : (
             <button
-              className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-accent text-left"
+              className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-[var(--interactive-hover)] text-left"
               onClick={() => { onSplitView?.(); setCtxMenu(null); }}
             >
               <PanelRight className="w-3.5 h-3.5" />
@@ -218,7 +218,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
           )}
           <div className="h-px bg-border my-1" />
           <button
-            className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-accent text-left"
+            className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-[var(--interactive-hover)] text-left"
             onClick={() => { onClose(); setCtxMenu(null); }}
           >
             <svg width="12" height="12" viewBox="0 0 10 10" fill="none">

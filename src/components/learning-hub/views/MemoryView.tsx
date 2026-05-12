@@ -942,7 +942,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   setSelectedIds(new Set(memories.map(m => m.id)));
                 }
               }}
-              className="text-muted-foreground hover:bg-muted/40"
+              className="text-muted-foreground hover:bg-[var(--interactive-hover)]"
             >
               {selectedIds.size === memories.length ? t('memory.deselect_all', '取消全选') : t('memory.select_all', '全选')}
             </NotionButton>
@@ -987,7 +987,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   'px-2 py-0.5 rounded text-[11px] transition-colors',
                   config.autoExtractFrequency === opt.value
                     ? 'bg-primary/15 text-primary font-medium'
-                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                    : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
                 )}
               >
                 {opt.label}
@@ -1165,7 +1165,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-[11px] transition-colors',
                       batchImportType === type
                         ? 'bg-primary/15 text-primary font-medium'
-                        : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                        : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
                     )}
                   >
                     {label}
@@ -1187,7 +1187,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-[11px] transition-colors',
                       batchImportPurpose === p
                         ? (PURPOSE_BADGE_STYLES[p] || 'bg-primary/15 text-primary') + ' font-medium'
-                        : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                        : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
                     )}
                   >
                     {PURPOSE_LABELS[p]}
@@ -1261,7 +1261,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-[11px] transition-colors',
                       newMemoryType === type
                         ? 'bg-primary/15 text-primary font-medium'
-                        : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                        : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
                     )}
                   >
                     {label}
@@ -1284,7 +1284,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       '!h-auto !min-h-0 !px-2 !py-0.5 rounded text-[11px] transition-colors',
                       newMemoryPurpose === p
                         ? (PURPOSE_BADGE_STYLES[p] || 'bg-primary/15 text-primary') + ' font-medium'
-                        : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                        : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
                     )}
                   >
                     {PURPOSE_LABELS[p]}
@@ -1386,7 +1386,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       <NotionButton variant="ghost" size="sm"
                         className={cn(
                           'w-full !justify-start !px-3 !py-2.5 !h-auto text-left',
-                          isExpanded ? 'bg-muted/50' : 'hover:bg-muted/40'
+                          isExpanded ? 'bg-muted/50' : 'hover:bg-[var(--interactive-hover)]'
                         )}
                         onClick={() => handleToggleExpand(result.noteId)}
                       >
@@ -1452,7 +1452,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                     <div
                       className={cn(
                         'group flex items-center gap-3 px-3 py-2.5 rounded-lg cursor-pointer transition-colors',
-                        isExpanded ? 'bg-muted/50' : 'hover:bg-muted/40',
+                        isExpanded ? 'bg-muted/50' : !isSelected && 'hover:bg-[var(--interactive-hover)]',
                         isSelected && 'bg-primary/5'
                       )}
                       onClick={() => batchMode ? toggleSelect(memory.id) : handleToggleExpand(memory.id)}
@@ -1625,7 +1625,7 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
         <div
           className={cn(
             'flex items-center gap-2 px-3 py-1.5 cursor-pointer rounded-md transition-colors',
-            'hover:bg-muted/40',
+            'hover:bg-[var(--interactive-hover)]',
             isFolderExpanded && 'bg-muted/20'
           )}
           style={{ paddingLeft: `${paddingLeft + 12}px` }}
@@ -1685,7 +1685,7 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
                   <div
                     className={cn(
                       'group flex items-center gap-2 px-3 py-2 cursor-pointer rounded-md transition-colors',
-                      isNoteExpanded ? 'bg-muted/50' : 'hover:bg-muted/40'
+                      isNoteExpanded ? 'bg-muted/50' : 'hover:bg-[var(--interactive-hover)]'
                     )}
                     style={{ paddingLeft: `${childPadding + 28}px` }}
                     onClick={() => onClickNote(noteId)}
@@ -1820,7 +1820,7 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
                 <Trash2 className="w-3 h-3" />删除
               </NotionButton>
               {!isEditing && (
-                <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onStartEdit(noteId, expandedContent.content || ''); }} className="text-muted-foreground hover:bg-muted/40 !h-auto !px-2 !py-1 text-xs">
+                <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onStartEdit(noteId, expandedContent.content || ''); }} className="text-muted-foreground hover:bg-[var(--interactive-hover)] !h-auto !px-2 !py-1 text-xs">
                   <Edit3 className="w-3 h-3" />编辑
                 </NotionButton>
               )}
@@ -1893,7 +1893,7 @@ const AuditLogRow: React.FC<{ log: MemoryAuditLogItem }> = ({ log }) => {
   return (
     <div className="group">
       <div
-        className="flex items-center gap-2 px-4 py-2 cursor-pointer hover:bg-muted/30 transition-colors"
+        className="flex items-center gap-2 px-4 py-2 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
         <ChevronRight className={cn(

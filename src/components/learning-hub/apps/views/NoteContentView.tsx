@@ -268,7 +268,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
               iconOnly
               size="sm"
               className={cn(
-                "h-6 w-6 text-muted-foreground/50 hover:text-foreground hover:bg-accent transition-colors",
+                "h-6 w-6 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors",
                 !rightPanelVisible && "text-muted-foreground/70"
               )}
               onClick={toggleRightPanel}

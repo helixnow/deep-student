@@ -185,7 +185,7 @@ export const LearningHubToolbar: React.FC<LearningHubToolbarProps> = React.memo(
                 "h-7 w-8 rounded-[6px] transition-all",
                 dataView === 'folder' 
                   ? "bg-background shadow-sm text-foreground" 
-                  : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                  : "text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
               )}
               onClick={() => onDataViewChange('folder')}
               title={t('dataView.folder')}
@@ -199,7 +199,7 @@ export const LearningHubToolbar: React.FC<LearningHubToolbarProps> = React.memo(
                 "h-7 w-8 rounded-[6px] transition-all",
                 dataView === 'resource' 
                   ? "bg-background shadow-sm text-foreground" 
-                  : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                  : "text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
               )}
               onClick={() => onDataViewChange('resource')}
               title={t('dataView.resource')}
@@ -221,7 +221,7 @@ export const LearningHubToolbar: React.FC<LearningHubToolbarProps> = React.memo(
               "h-7 w-8 rounded-[6px] transition-all",
               viewMode === 'grid' 
                 ? "bg-background shadow-sm text-foreground" 
-                : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                : "text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
             )}
             onClick={() => onViewModeChange('grid')}
             title={t('viewMode.grid')}
@@ -235,7 +235,7 @@ export const LearningHubToolbar: React.FC<LearningHubToolbarProps> = React.memo(
               "h-7 w-8 rounded-[6px] transition-all",
               viewMode === 'list' 
                 ? "bg-background shadow-sm text-foreground" 
-                : "text-muted-foreground hover:bg-muted/50 hover:text-foreground"
+                : "text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
             )}
             onClick={() => onViewModeChange('list')}
             title={t('viewMode.list')}
@@ -254,7 +254,7 @@ export const LearningHubToolbar: React.FC<LearningHubToolbarProps> = React.memo(
               <NotionButton
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40"
+                className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
                 title={t('sort.title')}
               >
                 <ArrowUpDown className="h-4 w-4" />
@@ -292,7 +292,7 @@ export const LearningHubToolbar: React.FC<LearningHubToolbarProps> = React.memo(
             <NotionButton
               variant="ghost"
               size="icon"
-              className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40"
+              className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
               title={t('toolbar.actions')}
             >
               <MoreHorizontal className="h-4 w-4" />
@@ -344,7 +344,7 @@ export const LearningHubToolbar: React.FC<LearningHubToolbarProps> = React.memo(
               'h-8 w-8 rounded-lg',
               isMultiSelectMode
                 ? 'bg-primary/20 text-primary hover:bg-primary/30'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
+                : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
             )}
             onClick={onToggleMultiSelect}
             title={t('multiSelect.enable')}
@@ -362,7 +362,7 @@ export const LearningHubToolbar: React.FC<LearningHubToolbarProps> = React.memo(
               'h-8 w-8 rounded-lg',
               showTrash
                 ? 'bg-destructive/20 text-destructive hover:bg-destructive/30'
-                : 'text-muted-foreground hover:text-foreground hover:bg-muted/40'
+                : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
             )}
             onClick={onToggleTrash}
             title={t('trash.title')}
@@ -376,7 +376,7 @@ export const LearningHubToolbar: React.FC<LearningHubToolbarProps> = React.memo(
           <NotionButton
             variant="ghost"
             size="icon"
-            className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/40"
+            className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
             onClick={onRefresh}
             disabled={isLoading}
             title={t('toolbar.refresh')}
@@ -411,7 +411,7 @@ export const LearningHubToolbar: React.FC<LearningHubToolbarProps> = React.memo(
                 onBlur={() => !searchQuery && setIsSearchExpanded(false)}
                 className={cn(
                   "pl-8 pr-8 h-8 text-xs rounded-md transition-all",
-                  "bg-muted/30 border-transparent hover:bg-muted/50 focus:bg-background focus:border-primary/30 focus:ring-2 focus:ring-primary/10"
+                  "bg-muted/30 border-transparent hover:bg-[var(--interactive-hover)] focus:bg-background focus:border-primary/30 focus:ring-2 focus:ring-primary/10"
                 )}
               />
               {searchQuery && (

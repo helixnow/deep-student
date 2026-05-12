@@ -163,7 +163,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
           "w-full !justify-start gap-3 !px-3 !py-[9px] group",
           isActive 
             ? "bg-accent/80 text-foreground font-medium" 
-            : "text-muted-foreground hover:bg-accent/40 hover:text-foreground"
+            : "text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground"
         )}
       >
         {Icon && (
@@ -216,7 +216,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
             )}
           />
           {searchQuery && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onSearchChange?.('')} className="absolute right-2 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0 hover:bg-muted/60" aria-label="clear">
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onSearchChange?.('')} className="absolute right-2 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0 hover:bg-[var(--interactive-hover)]" aria-label="clear">
               <X className="h-3.5 w-3.5 text-muted-foreground/60" />
             </NotionButton>
           )}
@@ -229,7 +229,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
             size="icon"
             iconOnly
             onClick={() => !createDisabled && setShowCreateMenu(!showCreateMenu)}
-            className={cn(showCreateMenu ? 'bg-accent text-foreground' : 'text-muted-foreground/70 hover:text-foreground hover:bg-accent/50')}
+            className={cn(showCreateMenu ? 'bg-accent text-foreground' : 'text-muted-foreground/70 hover:text-foreground hover:bg-[var(--interactive-hover)]')}
             title={t('learningHub:finder.toolbar.new')}
             aria-label="new"
             disabled={createDisabled}

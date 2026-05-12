@@ -333,7 +333,7 @@ function ShortcutCard({
         'group relative flex flex-col items-center justify-center gap-2 p-4 rounded-xl cursor-pointer select-none',
         'w-[88px] shrink-0',
         'transition-all duration-200 ease-out',
-        'hover:bg-accent/60 dark:hover:bg-accent/40',
+        'hover:bg-[var(--interactive-hover)] dark:hover:bg-[var(--interactive-hover)]',
         'active:scale-95'
       )}
       onClick={isEditing ? undefined : onClick}
@@ -437,7 +437,7 @@ function AddShortcutDialog({
                   '!h-auto flex-col items-center gap-2 !p-3 !rounded-lg border',
                   added
                     ? 'border-success/50 bg-success/10 cursor-not-allowed opacity-60'
-                    : 'border-transparent bg-muted/30 hover:border-border/40 hover:bg-muted/50'
+                    : 'border-transparent bg-muted/30 hover:border-border/40 hover:bg-[var(--interactive-hover)]'
                 )}
                 onClick={() => !added && handleAddPreset(index)}
                 disabled={added}

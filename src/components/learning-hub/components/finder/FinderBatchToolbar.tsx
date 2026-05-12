@@ -114,7 +114,7 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
                 size="icon"
                 onClick={onBatchAddToChat}
                 disabled={isProcessing}
-                className="h-7 w-7 text-accent-foreground hover:bg-accent-foreground/10"
+                className="h-7 w-7 text-accent-foreground hover:bg-[var(--interactive-hover)]-foreground/10"
                 title={t('finder.multiSelect.addToChat')}
               >
                 <MessageSquare className="h-4 w-4" />
@@ -127,7 +127,7 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
               size="icon"
               onClick={onBatchMove}
               disabled={isProcessing}
-              className="h-7 w-7 text-accent-foreground hover:bg-accent-foreground/10"
+              className="h-7 w-7 text-accent-foreground hover:bg-[var(--interactive-hover)]-foreground/10"
               title={t('finder.multiSelect.move')}
             >
               <FolderInput className="h-4 w-4" />
@@ -146,7 +146,7 @@ export const FinderBatchToolbar = React.memo(function FinderBatchToolbar({
             </NotionButton>
 
             {/* 清除选择/关闭按钮 - 放在删除按钮后面，使用明显的样式 */}
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => { onClearSelection(); if (hasOpenApp && onCloseApp) { onCloseApp(); } }} className="!h-7 !w-7 !p-1.5 hover:bg-accent-foreground/10 ml-0.5" title={hasOpenApp ? t('finder.appPanel.close') : t('common:close')} aria-label="close">
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => { onClearSelection(); if (hasOpenApp && onCloseApp) { onCloseApp(); } }} className="!h-7 !w-7 !p-1.5 hover:bg-[var(--interactive-hover)]-foreground/10 ml-0.5" title={hasOpenApp ? t('finder.appPanel.close') : t('common:close')} aria-label="close">
               <X className="h-4 w-4 text-accent-foreground" />
             </NotionButton>
           </>

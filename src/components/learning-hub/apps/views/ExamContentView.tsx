@@ -842,7 +842,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
                 viewMode === 'list' 
                   ? 'bg-foreground text-background font-medium' 
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]',
                 (!hasQuestions && viewMode !== 'upload') && 'opacity-50 cursor-not-allowed'
               )}
             >
@@ -857,7 +857,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
                 (viewMode === 'practice' || viewMode === 'launcher')
                   ? 'bg-foreground text-background font-medium' 
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50',
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]',
                 !hasQuestions && 'opacity-50 cursor-not-allowed'
               )}
             >
@@ -874,7 +874,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                     ? 'bg-amber-500 text-white font-medium' 
                     : stats.review > 0 
                       ? 'text-amber-600 dark:text-amber-400 hover:bg-amber-500/10'
-                      : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                      : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
                 )}
               >
                 {t('learningHub:exam.tab.wrongAnswers')}
@@ -893,7 +893,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                   'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
                   viewMode === 'manage'
                     ? 'bg-foreground text-background font-medium'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
                 )}
               >
                 <Settings2 className="w-3.5 h-3.5 mr-1.5" />
@@ -909,7 +909,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                   'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
                   viewMode === 'stats'
                     ? 'bg-foreground text-background font-medium'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
                 )}
               >
                 <BarChart3 className="w-3.5 h-3.5 mr-1.5" />
@@ -925,7 +925,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                   'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
                   viewMode === 'favorites'
                     ? 'bg-foreground text-background font-medium'
-                    : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
                 )}
               >
                 <Star className="w-3.5 h-3.5 mr-1.5" />
@@ -941,7 +941,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                   'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
                   viewMode === 'tags' 
                     ? 'bg-foreground text-background font-medium' 
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
                 )}
               >
                 {t('learningHub:exam.tab.topics')}
@@ -955,7 +955,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                   options={MODE_OPTIONS}
                   size="sm"
                   variant="ghost"
-                  className="h-7 sm:h-8 text-xs px-2 border-0 bg-muted/30 hover:bg-muted/50 flex-shrink-0"
+                  className="h-7 sm:h-8 text-xs px-2 border-0 bg-muted/30 hover:bg-[var(--interactive-hover)] flex-shrink-0"
                 />
                 
                 <NotionButton
@@ -968,7 +968,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                       ? 'text-rose-600 bg-rose-500/10 hover:bg-rose-500/10'
                       : isTimerRunning
                         ? 'text-primary bg-primary/5 hover:bg-primary/10'
-                        : 'text-muted-foreground hover:text-foreground hover:bg-muted/50'
+                        : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
                   )}
                   title={
                     isAdvancedRuntimeTimer

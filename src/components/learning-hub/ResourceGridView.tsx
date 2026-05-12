@@ -224,7 +224,7 @@ const ResourceGridItem = memo(function ResourceGridItem({
         'p-3 rounded-lg cursor-pointer transition-colors duration-150',
         'border border-transparent',
         // 默认状态
-        'hover:bg-muted/50 dark:hover:bg-muted/30',
+        !isSelected && 'hover:bg-[var(--interactive-hover)] dark:hover:bg-[var(--interactive-hover)]',
         // 选中状态
         isSelected && [
           'bg-primary/10 dark:bg-primary/20',

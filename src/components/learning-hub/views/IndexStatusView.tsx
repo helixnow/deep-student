@@ -30,34 +30,34 @@ import { useIsMobile } from '@/hooks/useBreakpoint';
 import { useTranslation } from 'react-i18next';
 import {
   Database,
-  RefreshCw,
+  ArrowsClockwise,
   CheckCircle,
   Clock,
-  AlertCircle,
+  WarningCircle,
   XCircle,
-  Ban,
+  Prohibit,
   FileText,
   BookOpen,
-  ClipboardList,
-  Languages,
-  PenTool,
-  Loader2,
-  AlertTriangle,
-  ChevronDown,
-  ChevronRight,
-  Zap,
+  ClipboardText,
+  Translate,
+  PenNib,
+  CircleNotch,
+  Warning,
+  CaretDown,
+  CaretRight,
+  Lightning,
   Image,
-  Search,
+  MagnifyingGlass,
   X,
   TestTube,
-  Network,
-  RotateCcw,
-  Workflow,
-  MoreHorizontal,
+  ShareNetwork,
+  ArrowCounterClockwise,
+  FlowArrow,
+  DotsThree,
   Eye,
   Eraser,
-  Layers,
-} from 'lucide-react';
+  Stack,
+} from '@phosphor-icons/react';
 // Button 组件已替换为原生 button + Tailwind（Notion 风格）
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -96,19 +96,19 @@ import type { IndexState } from '@/types/vfs-unified-index';
 const STATE_CONFIG: Record<IndexState, { labelKey: string; icon: React.ElementType; color: string; bgColor: string; ringColor: string }> = {
   indexed: { labelKey: 'indexStatus.state.indexed', icon: CheckCircle, color: 'text-emerald-600 dark:text-emerald-400', bgColor: 'bg-emerald-500/10', ringColor: 'stroke-emerald-500' },
   pending: { labelKey: 'indexStatus.state.pending', icon: Clock, color: 'text-warning', bgColor: 'bg-warning/10', ringColor: 'stroke-warning' },
-  indexing: { labelKey: 'indexStatus.state.indexing', icon: RefreshCw, color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-500/10', ringColor: 'stroke-blue-500' },
-  failed: { labelKey: 'indexStatus.state.failed', icon: AlertCircle, color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-500/10', ringColor: 'stroke-red-500' },
-  disabled: { labelKey: 'indexStatus.state.disabled', icon: Ban, color: 'text-gray-500 dark:text-gray-400', bgColor: 'bg-gray-500/10', ringColor: 'stroke-gray-400' },
+  indexing: { labelKey: 'indexStatus.state.indexing', icon: ArrowsClockwise, color: 'text-blue-600 dark:text-blue-400', bgColor: 'bg-blue-500/10', ringColor: 'stroke-blue-500' },
+  failed: { labelKey: 'indexStatus.state.failed', icon: WarningCircle, color: 'text-red-600 dark:text-red-400', bgColor: 'bg-red-500/10', ringColor: 'stroke-red-500' },
+  disabled: { labelKey: 'indexStatus.state.disabled', icon: Prohibit, color: 'text-gray-500 dark:text-gray-400', bgColor: 'bg-gray-500/10', ringColor: 'stroke-gray-400' },
 };
 
 /** 资源类型配置 */
 const RESOURCE_TYPE_CONFIG: Record<string, { icon: React.ElementType; labelKey: string; color: string }> = {
   note: { icon: FileText, labelKey: 'indexStatus.resourceType.note', color: 'text-blue-500 bg-blue-500/10' },
   textbook: { icon: BookOpen, labelKey: 'indexStatus.resourceType.textbook', color: 'text-purple-500 bg-purple-500/10' },
-  exam: { icon: ClipboardList, labelKey: 'indexStatus.resourceType.exam', color: 'text-orange-500 bg-orange-500/10' },
-  translation: { icon: Languages, labelKey: 'indexStatus.resourceType.translation', color: 'text-cyan-500 bg-cyan-500/10' },
-  essay: { icon: PenTool, labelKey: 'indexStatus.resourceType.essay', color: 'text-pink-500 bg-pink-500/10' },
-  mindmap: { icon: Network, labelKey: 'indexStatus.resourceType.mindmap', color: 'text-indigo-500 bg-indigo-500/10' },
+  exam: { icon: ClipboardText, labelKey: 'indexStatus.resourceType.exam', color: 'text-orange-500 bg-orange-500/10' },
+  translation: { icon: Translate, labelKey: 'indexStatus.resourceType.translation', color: 'text-cyan-500 bg-cyan-500/10' },
+  essay: { icon: PenNib, labelKey: 'indexStatus.resourceType.essay', color: 'text-pink-500 bg-pink-500/10' },
+  mindmap: { icon: ShareNetwork, labelKey: 'indexStatus.resourceType.mindmap', color: 'text-indigo-500 bg-indigo-500/10' },
   retrieval: { icon: Database, labelKey: 'indexStatus.resourceType.retrieval', color: 'text-success bg-success/10' },
   file: { icon: FileText, labelKey: 'indexStatus.resourceType.file', color: 'text-gray-500 bg-gray-500/10' },
   image: { icon: Image, labelKey: 'indexStatus.resourceType.image', color: 'text-warning bg-warning/10' },
@@ -1040,7 +1040,7 @@ export const IndexStatusView: React.FC = () => {
       : resource.name;
 
     return (
-      <div key={resource.resourceId} className="group border-b border-border/40 hover:bg-muted/30 transition-all">
+      <div key={resource.resourceId} className="group border-b border-border/40 hover:bg-[var(--interactive-hover)] transition-all">
         {/* 主行 - 可点击展开 */}
         <div
           className="flex items-center gap-2 md:gap-4 px-3 md:px-6 py-2.5 md:py-3 cursor-pointer"
@@ -1049,9 +1049,9 @@ export const IndexStatusView: React.FC = () => {
           {/* 🆕 展开/折叠指示器 */}
           <div className="w-5 flex-shrink-0 flex items-center justify-center text-muted-foreground/70 group-hover:text-foreground transition-colors">
             {isExpanded ? (
-              <ChevronDown className="h-4 w-4" />
+              <CaretDown className="h-4 w-4" />
             ) : (
-              <ChevronRight className="h-4 w-4" />
+              <CaretRight className="h-4 w-4" />
             )}
           </div>
 
@@ -1113,22 +1113,22 @@ export const IndexStatusView: React.FC = () => {
           >
             {isUnsupportedType && state === 'pending' ? (
               <>
-                <Ban className="h-3.5 w-3.5" />
+                <Prohibit className="h-3.5 w-3.5" />
                 <span>{t('indexStatus.detail.unsupported')}</span>
               </>
             ) : isEmptyContent ? (
               <>
-                <AlertTriangle className="h-3.5 w-3.5" />
+                <Warning className="h-3.5 w-3.5" />
                 <span>{t('indexStatus.detail.emptyContent')}</span>
               </>
             ) : hasIndexError ? (
               <>
-                <AlertCircle className="h-3.5 w-3.5" />
+                <WarningCircle className="h-3.5 w-3.5" />
                 <span>{t('indexStatus.detail.indexError')}</span>
               </>
             ) : isStale ? (
               <>
-                <AlertTriangle className="h-3.5 w-3.5" />
+                <Warning className="h-3.5 w-3.5" />
                 <span>{t('indexStatus.detail.stale')}</span>
               </>
             ) : (
@@ -1144,9 +1144,9 @@ export const IndexStatusView: React.FC = () => {
             {needsReindex && (
               <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleReindex(resource.resourceId)} disabled={isReindexing} className="opacity-0 group-hover:opacity-100 hover:text-primary hover:bg-primary/10" title={isStale ? t('indexStatus.action.update') : t('indexStatus.action.reindex')} aria-label="reindex">
                 {isReindexing ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
+                  <CircleNotch className="h-4 w-4 animate-spin" />
                 ) : (
-                  <RefreshCw className="h-4 w-4" />
+                  <ArrowsClockwise className="h-4 w-4" />
                 )}
               </NotionButton>
             )}
@@ -1237,9 +1237,9 @@ export const IndexStatusView: React.FC = () => {
                   )}>
                     {resource.mmIndexState === 'indexed' && <CheckCircle className="h-3 w-3" />}
                     {resource.mmIndexState === 'pending' && <Clock className="h-3 w-3" />}
-                    {resource.mmIndexState === 'indexing' && <RefreshCw className="h-3 w-3 animate-spin" />}
-                    {resource.mmIndexState === 'failed' && <AlertCircle className="h-3 w-3" />}
-                    {resource.mmIndexState === 'disabled' && <Ban className="h-3 w-3" />}
+                    {resource.mmIndexState === 'indexing' && <ArrowsClockwise className="h-3 w-3 animate-spin" />}
+                    {resource.mmIndexState === 'failed' && <WarningCircle className="h-3 w-3" />}
+                    {resource.mmIndexState === 'disabled' && <Prohibit className="h-3 w-3" />}
                     {t(STATE_CONFIG[resource.mmIndexState as IndexState]?.labelKey || '') || resource.mmIndexState}
                   </div>
                   {/* 页数和维度 */}
@@ -1325,7 +1325,7 @@ export const IndexStatusView: React.FC = () => {
                 )}>
                   {resource.isStale ? (
                     <>
-                      <AlertTriangle className="h-3 w-3" />
+                      <Warning className="h-3 w-3" />
                       {t('indexStatus.detail.contentUpdated')}
                     </>
                   ) : state === 'indexed' ? (
@@ -1386,7 +1386,7 @@ export const IndexStatusView: React.FC = () => {
                     onClick={(e: React.MouseEvent) => { e.stopPropagation(); handleInspectChunks(resource.resourceId); }}
                     className="text-xs gap-1.5"
                   >
-                    <Layers className="h-3.5 w-3.5" />
+                    <Stack className="h-3.5 w-3.5" />
                     查看文本块 ({resource.textChunkCount})
                   </NotionButton>
                 )}
@@ -1398,7 +1398,7 @@ export const IndexStatusView: React.FC = () => {
                     disabled={clearingOcr}
                     className="text-xs gap-1.5 text-destructive hover:text-destructive"
                   >
-                    {clearingOcr ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eraser className="h-3.5 w-3.5" />}
+                    {clearingOcr ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Eraser className="h-3.5 w-3.5" />}
                     清除 OCR 并重做
                   </NotionButton>
                 )}
@@ -1409,7 +1409,7 @@ export const IndexStatusView: React.FC = () => {
                 <div className="col-span-2 md:col-span-4 pt-2 border-t border-border/30">
                   {inspectLoading ? (
                     <div className="flex items-center justify-center py-6">
-                      <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+                      <CircleNotch className="h-5 w-5 animate-spin text-muted-foreground" />
                     </div>
                   ) : textChunks.length > 0 ? (
                     <div className="space-y-2">
@@ -1468,7 +1468,7 @@ export const IndexStatusView: React.FC = () => {
   if (isLoading && !summary) {
     return (
       <div className="flex-1 flex items-center justify-center min-h-0">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+        <CircleNotch className="h-8 w-8 animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -1527,12 +1527,12 @@ export const IndexStatusView: React.FC = () => {
                 <span className="font-semibold tabular-nums">{dimensions.reduce((acc, d) => acc + d.recordCount, 0).toLocaleString()}</span>
               </div>
               <div className="flex items-center gap-1.5 text-xs">
-                <Workflow className="h-3 w-3 text-muted-foreground shrink-0" />
+                <FlowArrow className="h-3 w-3 text-muted-foreground shrink-0" />
                 <span className="text-muted-foreground shrink-0">{t('indexStatus.stats.dimensions')}</span>
                 <span className="font-mono font-semibold">{dimensions.length > 0 ? dimensions[0].dimension : '-'}</span>
               </div>
               <div className="flex items-center gap-1.5 text-xs">
-                <AlertCircle className={cn('h-3 w-3 shrink-0', summary.failedCount > 0 ? 'text-red-500' : 'text-muted-foreground')} />
+                <WarningCircle className={cn('h-3 w-3 shrink-0', summary.failedCount > 0 ? 'text-red-500' : 'text-muted-foreground')} />
                 <span className="text-muted-foreground shrink-0">{t('indexStatus.stats.errors')}</span>
                 <span className={cn('font-semibold tabular-nums', summary.failedCount > 0 && 'text-red-500')}>{summary.failedCount + summary.mmFailedCount}</span>
               </div>
@@ -1554,23 +1554,23 @@ export const IndexStatusView: React.FC = () => {
 
           {/* 第三行：操作按钮独占一行 */}
           <div className="flex items-center gap-1.5">
-            <NotionButton variant="primary" size="sm" onClick={handleUnifiedIndex} disabled={batchIndexing || mmIndexing} className={cn('!px-3', batchIndexing || mmIndexing ? 'bg-muted text-muted-foreground' : 'bg-neutral-500 dark:bg-foreground text-white dark:text-background hover:bg-neutral-400 dark:hover:bg-foreground/90')}>
-              {(batchIndexing || mmIndexing) ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Zap className="h-3.5 w-3.5 fill-current" />}
+            <NotionButton variant="primary" size="sm" onClick={handleUnifiedIndex} disabled={batchIndexing || mmIndexing} className={cn('!px-3', batchIndexing || mmIndexing ? 'bg-muted text-muted-foreground' : 'bg-neutral-500 dark:bg-foreground text-white dark:text-background hover:bg-[var(--interactive-hover)] dark:hover:bg-foreground/90')}>
+              {(batchIndexing || mmIndexing) ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Lightning className="h-3.5 w-3.5 fill-current" />}
               {batchIndexing ? t('indexStatus.action.ocrIndexing') : mmIndexing ? t('indexStatus.action.mmIndexing') : t('indexStatus.action.oneClickIndex')}
             </NotionButton>
             <NotionButton variant="default" size="sm" onClick={() => { loadData(); }} disabled={isLoading || batchIndexing}>
-              <RefreshCw className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
+              <ArrowsClockwise className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
               {t('indexStatus.action.refresh')}
             </NotionButton>
             {/* 更多操作下拉 */}
             <div className="relative" ref={mobileMoreRef}>
               <NotionButton variant="default" size="sm" onClick={() => setMobileMoreOpen(v => !v)} className={cn(mobileMoreOpen && 'bg-accent text-accent-foreground')}>
-                <MoreHorizontal className="h-3.5 w-3.5" />
+                <DotsThree className="h-3.5 w-3.5" />
               </NotionButton>
               {mobileMoreOpen && (
                 <div className="absolute right-0 top-full mt-1 z-50 min-w-[160px] rounded-md border bg-popover shadow-md py-1 animate-in fade-in-0 zoom-in-95">
                   <button
-                    className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-accent transition-colors"
+                    className="flex w-full items-center gap-2 px-3 py-2 text-sm hover:bg-[var(--interactive-hover)] transition-colors"
                     onClick={() => { setShowTestPanel(v => !v); setMobileMoreOpen(false); }}
                   >
                     <TestTube className="h-3.5 w-3.5" />
@@ -1581,7 +1581,7 @@ export const IndexStatusView: React.FC = () => {
                     disabled={resetting || batchIndexing || mmIndexing}
                     onClick={() => { handleResetAllIndexState(); setMobileMoreOpen(false); }}
                   >
-                    {resetting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RotateCcw className="h-3.5 w-3.5" />}
+                    {resetting ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <ArrowCounterClockwise className="h-3.5 w-3.5" />}
                     {t('indexStatus.action.resetState')}
                   </button>
                 </div>
@@ -1690,7 +1690,7 @@ export const IndexStatusView: React.FC = () => {
               
               <div className="bg-muted/30 p-2 lg:p-3 rounded-md flex flex-col justify-between gap-0.5 lg:gap-1 group transition-colors">
                 <span className="text-[10px] uppercase tracking-wider text-muted-foreground font-medium flex items-center gap-1.5">
-                  <Workflow className="h-3 w-3" />
+                  <FlowArrow className="h-3 w-3" />
                   <span className="truncate">{t('indexStatus.stats.dimensions')}</span>
                 </span>
                 <div className="flex items-center gap-1.5 overflow-hidden">
@@ -1719,7 +1719,7 @@ export const IndexStatusView: React.FC = () => {
                   "text-[10px] uppercase tracking-wider font-medium flex items-center gap-1.5",
                   summary.failedCount + summary.mmFailedCount > 0 ? "text-red-600/80 dark:text-red-400/80" : "text-muted-foreground"
                 )}>
-                  <AlertCircle className="h-3 w-3" />
+                  <WarningCircle className="h-3 w-3" />
                   <span className="truncate">{t('indexStatus.stats.errors')}</span>
                 </span>
                 <span className={cn(
@@ -1789,18 +1789,18 @@ export const IndexStatusView: React.FC = () => {
 
           {/* 右侧操作按钮 - 纵向排列 */}
           <div className="flex flex-col gap-1.5 lg:gap-2 shrink-0 min-w-[140px]">
-            <NotionButton variant="primary" size="sm" onClick={handleUnifiedIndex} disabled={batchIndexing || mmIndexing} className={cn(batchIndexing || mmIndexing ? 'bg-muted text-muted-foreground' : 'bg-neutral-500 dark:bg-foreground text-white dark:text-background hover:bg-neutral-400 dark:hover:bg-foreground/90')}>
+            <NotionButton variant="primary" size="sm" onClick={handleUnifiedIndex} disabled={batchIndexing || mmIndexing} className={cn(batchIndexing || mmIndexing ? 'bg-muted text-muted-foreground' : 'bg-neutral-500 dark:bg-foreground text-white dark:text-background hover:bg-[var(--interactive-hover)] dark:hover:bg-foreground/90')}>
               {(batchIndexing || mmIndexing) ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <CircleNotch className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <Zap className="h-3.5 w-3.5 fill-current" />
+                <Lightning className="h-3.5 w-3.5 fill-current" />
               )}
               {batchIndexing ? t('indexStatus.action.ocrIndexing') : mmIndexing ? t('indexStatus.action.mmIndexing') : t('indexStatus.action.oneClickIndex')}
             </NotionButton>
             
             <div className="grid grid-cols-2 gap-2">
               <NotionButton variant="default" size="sm" onClick={() => { loadData(); }} disabled={isLoading || batchIndexing} title={t('indexStatus.action.refreshTitle')}>
-                <RefreshCw className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
+                <ArrowsClockwise className={cn('h-3.5 w-3.5', isLoading && 'animate-spin')} />
                 {t('indexStatus.action.refresh')}
               </NotionButton>
               <NotionButton variant="default" size="sm" onClick={() => setShowTestPanel(!showTestPanel)} className={cn(showTestPanel && 'bg-accent text-accent-foreground')}>
@@ -1811,9 +1811,9 @@ export const IndexStatusView: React.FC = () => {
             
             <NotionButton variant="ghost" size="sm" onClick={handleResetAllIndexState} disabled={resetting || batchIndexing || mmIndexing} title={t('indexStatus.action.resetStateTitle')} className="text-muted-foreground hover:text-destructive hover:bg-destructive/5">
               {resetting ? (
-                <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                <CircleNotch className="h-3.5 w-3.5 animate-spin" />
               ) : (
-                <RotateCcw className="h-3.5 w-3.5" />
+                <ArrowCounterClockwise className="h-3.5 w-3.5" />
               )}
               {t('indexStatus.action.resetState')}
             </NotionButton>
@@ -1842,7 +1842,7 @@ export const IndexStatusView: React.FC = () => {
           {/* 搜索输入 - Notion 风格 */}
           <div className="flex gap-2 max-w-3xl">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <MagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
               <input
                 type="text"
                 value={testQuery}
@@ -1855,10 +1855,10 @@ export const IndexStatusView: React.FC = () => {
             </div>
             <NotionButton variant="primary" size="sm" onClick={handleTestSearch} disabled={testLoading || !testQuery.trim()} className="!h-10 !px-6">
               {testLoading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <CircleNotch className="h-4 w-4 animate-spin" />
               ) : (
                 <>
-                  <Search className="h-4 w-4" />
+                  <MagnifyingGlass className="h-4 w-4" />
                   {t('indexStatus.action.search')}
                 </>
               )}
@@ -1870,7 +1870,7 @@ export const IndexStatusView: React.FC = () => {
             <div className="mt-4 space-y-3">
               {testError && (
                 <div className="p-3 rounded-md bg-destructive/10 text-destructive text-sm flex items-center gap-2">
-                  <AlertCircle className="h-4 w-4" />
+                  <WarningCircle className="h-4 w-4" />
                   {testError}
                 </div>
               )}
@@ -1887,7 +1887,7 @@ export const IndexStatusView: React.FC = () => {
                   <CustomScrollArea className="max-h-[400px]">
                     <div className="divide-y divide-border/50">
                       {testResults.map((result, idx) => (
-                        <div key={result.embeddingId} className="p-4 hover:bg-muted/30 transition-colors">
+                        <div key={result.embeddingId} className="p-4 hover:bg-[var(--interactive-hover)] transition-colors">
                           <div className="flex items-start gap-3 mb-2">
                             <span className="flex items-center justify-center w-5 h-5 rounded bg-primary/10 text-primary text-[10px] font-mono font-medium shrink-0 mt-0.5">
                               {idx + 1}
@@ -1930,7 +1930,7 @@ export const IndexStatusView: React.FC = () => {
             const isActive = selectedType === type;
             const label = type === 'all' ? t('indexStatus.filter.all') : (RESOURCE_TYPE_CONFIG[type]?.labelKey ? t(RESOURCE_TYPE_CONFIG[type].labelKey) : type);
             return (
-              <NotionButton key={type} variant="ghost" size="sm" onClick={() => setSelectedType(type)} className={cn('!rounded-full !px-2.5 !py-1 text-xs font-medium border', isActive ? 'bg-primary text-primary-foreground border-primary shadow-sm' : 'bg-background text-muted-foreground border-transparent hover:bg-muted hover:text-foreground')}>
+              <NotionButton key={type} variant="ghost" size="sm" onClick={() => setSelectedType(type)} className={cn('!rounded-full !px-2.5 !py-1 text-xs font-medium border', isActive ? 'bg-primary text-primary-foreground border-primary shadow-sm' : 'bg-background text-muted-foreground border-transparent hover:bg-[var(--interactive-hover)] hover:text-foreground')}>
                 {label}
               </NotionButton>
             );
@@ -1969,9 +1969,9 @@ export const IndexStatusView: React.FC = () => {
                   {/* 分组标题 */}
                   <NotionButton variant="ghost" size="sm" onClick={() => toggleGroup(state)} className={cn('w-full !justify-start !px-3 md:!px-4 !py-2 md:!py-2.5', config.bgColor)}>
                     {isExpanded ? (
-                      <ChevronDown className="h-4 w-4 text-muted-foreground" />
+                      <CaretDown className="h-4 w-4 text-muted-foreground" />
                     ) : (
-                      <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                      <CaretRight className="h-4 w-4 text-muted-foreground" />
                     )}
                     <Icon className={cn('h-4 w-4', config.color)} />
                     <span className={config.color}>{t(config.labelKey)}</span>
@@ -2022,7 +2022,7 @@ export const IndexStatusView: React.FC = () => {
               <div className="p-5">
                 {inspectLoading ? (
                   <div className="flex items-center justify-center py-12">
-                    <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+                    <CircleNotch className="h-6 w-6 animate-spin text-muted-foreground" />
                   </div>
                 ) : ocrInfo ? (
                   <div className="space-y-4">
@@ -2108,7 +2108,7 @@ export const IndexStatusView: React.FC = () => {
                           disabled={clearingOcr}
                           className="text-xs gap-1.5 text-destructive hover:text-destructive"
                         >
-                          {clearingOcr ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Eraser className="h-3.5 w-3.5" />}
+                          {clearingOcr ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Eraser className="h-3.5 w-3.5" />}
                           {t('indexStatus.action.clearOcrAndReindex')}
                         </NotionButton>
                       </div>

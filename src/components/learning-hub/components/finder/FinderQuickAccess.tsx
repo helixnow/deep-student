@@ -144,7 +144,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
           collapsed ? 'justify-center !px-2 !py-2.5' : '!justify-start gap-2.5 !px-2.5 !py-2',
           isActive 
             ? 'bg-accent dark:bg-accent/70 text-foreground' 
-            : 'text-muted-foreground hover:bg-accent/50 dark:hover:bg-accent/30 hover:text-foreground'
+            : 'text-muted-foreground hover:bg-[var(--interactive-hover)] dark:hover:bg-[var(--interactive-hover)] hover:text-foreground'
         )}
         onClick={() => onNavigate(type)}
       >
@@ -250,7 +250,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                   )}
                 />
                 {searchQuery && (
-                  <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onSearchChange?.('')} className="absolute right-2 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0.5 hover:bg-muted/60" aria-label="clear">
+                  <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onSearchChange?.('')} className="absolute right-2 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0.5 hover:bg-[var(--interactive-hover)]" aria-label="clear">
                     <X className="h-3.5 w-3.5 text-muted-foreground/60" />
                   </NotionButton>
                 )}
@@ -262,7 +262,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                     size="icon" 
                     className={cn(
                       "h-8 w-8 rounded-lg shrink-0",
-                      "text-muted-foreground/60 hover:text-foreground hover:bg-accent/60",
+                      "text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]",
                       "transition-all duration-150"
                     )}
                     title={t('finder.toolbar.new')}
@@ -345,7 +345,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                 <NotionButton 
                   variant="ghost" 
                   size="icon" 
-                  className="h-9 w-9 rounded-lg text-muted-foreground/60 hover:text-foreground hover:bg-accent/60"
+                  className="h-9 w-9 rounded-lg text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]"
                   title={t('finder.toolbar.new')}
                   disabled={createDisabled}
                 >
@@ -461,7 +461,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
 
         {onToggleCollapse && (
           <div className="shrink-0 h-11 flex items-center px-2 border-t border-border/40">
-            <NotionButton variant="ghost" size="sm" onClick={onToggleCollapse} className="w-full justify-center !py-1.5 text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/40" title={collapsed ? t('finder.quickAccess.expand') : t('finder.quickAccess.collapse')}>
+            <NotionButton variant="ghost" size="sm" onClick={onToggleCollapse} className="w-full justify-center !py-1.5 text-muted-foreground/50 hover:text-muted-foreground hover:bg-[var(--interactive-hover)]" title={collapsed ? t('finder.quickAccess.expand') : t('finder.quickAccess.collapse')}>
               {collapsed ? (
                 <ChevronRight className="h-4 w-4" />
               ) : (

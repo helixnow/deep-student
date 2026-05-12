@@ -384,7 +384,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
   return (
     <div className="border-t border-border/50">
       {/* 标题栏 */}
-      <NotionButton variant="ghost" size="sm" onClick={() => setIsExpanded(!isExpanded)} className="w-full !justify-start !px-4 !py-2 hover:bg-accent/30">
+      <NotionButton variant="ghost" size="sm" onClick={() => setIsExpanded(!isExpanded)} className="w-full !justify-start !px-4 !py-2 hover:bg-[var(--interactive-hover)]">
         {isExpanded ? (
           <ChevronDown className="h-4 w-4 text-muted-foreground" />
         ) : (

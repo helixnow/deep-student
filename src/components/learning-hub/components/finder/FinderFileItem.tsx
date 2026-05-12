@@ -190,7 +190,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
         className={cn(
           "group relative flex items-center gap-2 px-3 py-1.5 cursor-default select-none rounded-md mx-1 my-0.5",
           "transition-[background-color,box-shadow,border-color,opacity] duration-150 ease-out",
-          "hover:bg-accent/60 dark:hover:bg-accent/40",
+          "hover:bg-[var(--interactive-hover)] dark:hover:bg-[var(--interactive-hover)]",
           isSelected && "bg-primary/10 dark:bg-primary/20 hover:bg-primary/15 dark:hover:bg-primary/25",
           isActive && !isSelected && "bg-accent/40 dark:bg-accent/30",
           isDragging && "opacity-40 scale-[0.98]",
@@ -267,7 +267,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
               {relativeTime}
             </span>
             {/* 更多操作按钮 - 悬停时显示 */}
-            <NotionButton variant="ghost" size="icon" iconOnly className="!h-6 !w-6 !p-1 hover:bg-muted/60 opacity-0 group-hover:opacity-100 transition-opacity duration-150" onClick={(e) => { e.stopPropagation(); onContextMenu(e); }} aria-label="more">
+            <NotionButton variant="ghost" size="icon" iconOnly className="!h-6 !w-6 !p-1 hover:bg-[var(--interactive-hover)] opacity-0 group-hover:opacity-100 transition-opacity duration-150" onClick={(e) => { e.stopPropagation(); onContextMenu(e); }} aria-label="more">
               <MoreHorizontal className="h-4 w-4 text-muted-foreground/60" />
             </NotionButton>
           </div>
@@ -286,7 +286,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
         "transition-[background-color,box-shadow,border-color,opacity] duration-150 ease-out",
         "border border-transparent",
         // 悬停效果
-        "hover:bg-accent/50 dark:hover:bg-accent/30 hover:shadow-notion",
+        !isSelected && !isActive && "hover:bg-[var(--interactive-hover)] dark:hover:bg-[var(--interactive-hover)] hover:shadow-notion",
         // 选中状态
         isSelected && "bg-primary/10 dark:bg-primary/15 border-primary/30 shadow-notion",
         // 激活状态

@@ -66,7 +66,7 @@ function FolderNode({
           'transition-all duration-150 ease-out',
           'active:scale-[0.99]',
           isSelected && !isExcluded && 'bg-primary/10 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.2)]',
-          !isSelected && !isExcluded && 'hover:bg-muted/50',
+          !isSelected && !isExcluded && 'hover:bg-[var(--interactive-hover)]',
           isExcluded && 'opacity-40 cursor-not-allowed'
         )}
         style={{ paddingLeft: `${level * 16 + 12}px` }}
@@ -202,7 +202,7 @@ export function FolderPickerDialog({
                     'flex items-center gap-2 py-2 px-3 rounded-md cursor-pointer',
                     'transition-all duration-150 ease-out active:scale-[0.99]',
                     selectedId === null && 'bg-primary/10 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.2)]',
-                    selectedId !== null && 'hover:bg-muted/50'
+                    selectedId !== null && 'hover:bg-[var(--interactive-hover)]'
                   )}
                   onClick={() => setSelectedId(null)}
                 >

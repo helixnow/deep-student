@@ -109,7 +109,7 @@ export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
           </div>
           <button
             onClick={onCloseSplitView}
-            className="p-1.5 rounded-md bg-background/80 backdrop-blur-sm border border-border hover:bg-muted text-muted-foreground hover:text-foreground transition-all shadow-sm"
+            className="p-1.5 rounded-md bg-background/80 backdrop-blur-sm border border-border hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground transition-all shadow-sm"
             title={t('actions.close', '关闭分屏')}
           >
             <X className="w-3.5 h-3.5" />

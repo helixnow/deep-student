@@ -69,7 +69,7 @@ const FolderTreeItem: React.FC<FolderTreeItemProps> = ({
           'w-full !justify-start !px-2 !py-1.5',
           isSelected
             ? 'bg-primary text-primary-foreground'
-            : 'hover:bg-muted text-foreground',
+            : 'hover:bg-[var(--interactive-hover)] text-foreground',
         )}
         style={{ paddingLeft: `${depth * 16 + 8}px` }}
         onClick={() => onSelect(node.folder.id)}
@@ -199,7 +199,7 @@ export function FolderSelectorDialog({
               ) : (
                 <>
                   {/* 根目录选项 */}
-                  <NotionButton variant="ghost" size="sm" className={cn('w-full !justify-start !px-2 !py-1.5 mb-1', selectedId === null ? 'bg-primary text-primary-foreground' : 'hover:bg-muted text-foreground')} onClick={() => setSelectedId(null)}>
+                  <NotionButton variant="ghost" size="sm" className={cn('w-full !justify-start !px-2 !py-1.5 mb-1', selectedId === null ? 'bg-primary text-primary-foreground' : 'hover:bg-[var(--interactive-hover)] text-foreground')} onClick={() => setSelectedId(null)}>
                     <span className="w-5 shrink-0" />
                     <Folder className="w-4 h-4 mr-2 shrink-0 text-muted-foreground" />
                     <span className="truncate">{t('folder.root')}</span>

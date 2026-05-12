@@ -372,7 +372,8 @@ export const FolderTreeItem: React.FC<FolderTreeItemProps> = React.memo(({
       <div
         className={cn(
           'group flex items-center h-7 cursor-pointer rounded-md',
-          'hover:bg-accent/50 transition-colors',
+          !isSelected && 'hover:bg-[var(--interactive-hover)]',
+          'transition-colors',
           isSelected && 'bg-accent',
           isDragOver && 'bg-primary/10 ring-1 ring-primary/30',
           disabled && 'opacity-50 cursor-not-allowed'

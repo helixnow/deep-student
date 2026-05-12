@@ -724,7 +724,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
                         "mt-0.5 px-0.5 py-0.5 rounded-[2px] w-full overflow-hidden",
                         isSelected
                           ? "bg-primary"
-                          : "group-hover:bg-muted/30"
+                          : "group-hover:bg-[var(--interactive-hover)]"
                       )}>
                         <span className={cn(
                           "text-[9px] leading-[1.2] text-center block line-clamp-2 break-all",
@@ -788,7 +788,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
                         "mt-0.5 px-0.5 py-0.5 rounded-[2px] w-full overflow-hidden",
                         isSelected
                           ? "bg-primary"
-                          : "group-hover:bg-muted/30"
+                          : "group-hover:bg-[var(--interactive-hover)]"
                       )}>
                         <span className={cn(
                           "text-[9px] leading-[1.2] text-center block line-clamp-2 break-all",
@@ -904,7 +904,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
                                     isSelected 
                                       ? 'bg-primary/10' 
                                       : isEven ? 'bg-transparent' : 'bg-muted/20',
-                                    !isSelected && 'hover:bg-accent/50'
+                                    !isSelected && 'hover:bg-[var(--interactive-hover)]'
                                   )}
                                 >
                                   {/* 展开箭头 */}
@@ -988,7 +988,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
                                     itemSelected 
                                     ? 'bg-primary/10' 
                                     : itemIsEven ? 'bg-transparent' : 'bg-muted/20',
-                                  !itemSelected && 'hover:bg-accent/50'
+                                  !itemSelected && 'hover:bg-[var(--interactive-hover)]'
                                 )}
                               >
                                 {/* 占位（对齐箭头） */}

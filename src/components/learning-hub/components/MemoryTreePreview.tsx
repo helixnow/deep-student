@@ -57,7 +57,7 @@ const TreeNode: React.FC<{
       <div
         className={cn(
           'group flex items-center gap-1.5 py-1 px-2 rounded-md cursor-pointer transition-colors',
-          'hover:bg-accent/50',
+          'hover:bg-[var(--interactive-hover)]',
           isRoot && 'font-medium',
         )}
         style={{ paddingLeft: `${indent + 8}px` }}
