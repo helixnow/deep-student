@@ -99,7 +99,7 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       )}
     >
       {/* 卡片头部 */}
-      <NotionButton variant="ghost" size="sm" onClick={onToggle} className={cn('!w-full !justify-start !px-3 !py-2 !h-auto !text-left', 'hover:bg-muted/50 !rounded-t-lg', !isExpanded && '!rounded-b-lg')}>
+      <NotionButton variant="ghost" size="sm" onClick={onToggle} className={cn('!w-full !justify-start !px-3 !py-2 !h-auto !text-left', 'hover:bg-[var(--interactive-hover)] !rounded-t-lg', !isExpanded && '!rounded-b-lg')}>
         {isExpanded ? (
           <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
         ) : (

@@ -74,7 +74,7 @@ export const GlobalPomodoroWidget: React.FC = () => {
       <div className="flex items-center gap-1 ml-1">
         <button
           onClick={handleTogglePlay}
-          className="p-1.5 rounded-full hover:bg-muted transition-colors"
+          className="p-1.5 rounded-full hover:bg-[var(--interactive-hover)] transition-colors"
           title={status === 'running' ? '暂停' : '继续'}
         >
           {status === 'running' ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
@@ -88,7 +88,7 @@ export const GlobalPomodoroWidget: React.FC = () => {
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); setImmersive(true); }}
-          className="p-1.5 rounded-full hover:bg-muted text-muted-foreground hover:text-foreground transition-colors"
+          className="p-1.5 rounded-full hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground transition-colors"
           title="沉浸模式"
         >
           <Maximize2 className="w-3.5 h-3.5" />

@@ -97,8 +97,8 @@ function SortableTreeNode({
     <div ref={setNodeRef} style={style}>
       <div
         className={`
-          flex items-center gap-1 px-2 py-1 hover:bg-accent/50 cursor-pointer select-none
-          ${isSelected ? 'bg-accent' : ''}
+          flex items-center gap-1 px-2 py-1 cursor-pointer select-none
+          ${isSelected ? 'bg-accent' : 'hover:bg-[var(--interactive-hover)]'}
           ${isFocused ? 'ring-1 ring-primary/50' : ''}
         `}
         style={{ paddingLeft: `${depth * 20 + 8}px` }}
@@ -109,7 +109,7 @@ function SortableTreeNode({
       >
         {/* 展开/折叠箭头 */}
         {item.isFolder && (
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggle(); }} className="!p-0.5 !h-auto !w-auto hover:bg-accent" aria-label="toggle">
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggle(); }} className="!p-0.5 !h-auto !w-auto hover:bg-[var(--interactive-hover)]" aria-label="toggle">
             {isExpanded ? (
               <ChevronDown className="w-3 h-3" />
             ) : (

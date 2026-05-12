@@ -349,7 +349,7 @@ export const NotesSidebar: React.FC<NotesSidebarProps> = ({ isCollapsed, onToggl
                 <NotionButton
                     variant="ghost"
                     iconOnly size="sm"
-                    className="h-8 w-8 mb-4 hover:bg-muted"
+                    className="h-8 w-8 mb-4 hover:bg-[var(--interactive-hover)]"
                     onClick={onToggleCollapse}
                     title={t('notes:sidebar.expand')}
                 >
@@ -357,13 +357,13 @@ export const NotesSidebar: React.FC<NotesSidebarProps> = ({ isCollapsed, onToggl
                 </NotionButton>
 
                 <div className="flex flex-col gap-2 w-full items-center">
-                    <NotionButton variant="ghost" iconOnly size="sm" className="h-8 w-8 hover:bg-muted" onClick={handleCreateNote} title={t('notes:sidebar.actions.new_note')}>
+                    <NotionButton variant="ghost" iconOnly size="sm" className="h-8 w-8 hover:bg-[var(--interactive-hover)]" onClick={handleCreateNote} title={t('notes:sidebar.actions.new_note')}>
                          <Plus className="h-4 w-4 text-muted-foreground" />
                     </NotionButton>
-                    <NotionButton variant="ghost" iconOnly size="sm" className="h-8 w-8 hover:bg-muted"                     onClick={handleCreateFolder} title={t('notes:sidebar.actions.new_folder')}>
+                    <NotionButton variant="ghost" iconOnly size="sm" className="h-8 w-8 hover:bg-[var(--interactive-hover)]"                     onClick={handleCreateFolder} title={t('notes:sidebar.actions.new_folder')}>
                          <FolderPlus className="h-4 w-4 text-muted-foreground" />
                     </NotionButton>
-                     <NotionButton variant="ghost" iconOnly size="sm" className="h-8 w-8 hover:bg-muted" onClick={() => refreshNotes()} title={t('notes:sidebar.actions.refresh')}>
+                     <NotionButton variant="ghost" iconOnly size="sm" className="h-8 w-8 hover:bg-[var(--interactive-hover)]" onClick={() => refreshNotes()} title={t('notes:sidebar.actions.refresh')}>
                          <RefreshCw className="h-4 w-4 text-muted-foreground" />
                     </NotionButton>
                 </div>
@@ -530,7 +530,7 @@ export const NotesSidebar: React.FC<NotesSidebarProps> = ({ isCollapsed, onToggl
                                         className="p-1"
                                     >
                                             <div 
-                                                className="p-2 rounded-md hover:bg-muted/50 cursor-pointer text-sm group transition-colors h-full"
+                                                className="p-2 rounded-md hover:bg-[var(--interactive-hover)] cursor-pointer text-sm group transition-colors h-full"
                                                 onClick={() => {
                                                     const note = notes.find(n => n.id === res.id);
                                                     if (note) setActive(note);

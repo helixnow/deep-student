@@ -137,7 +137,7 @@ export function TrashDialog() {
                         ) : (
                             <div className="space-y-2">
                                 {items.map(item => (
-                                    <div key={item.id} className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-card hover:bg-accent/50 transition-colors">
+                                    <div key={item.id} className="flex items-center justify-between p-3 rounded-lg border border-border/40 bg-card hover:bg-[var(--interactive-hover)] transition-colors">
                                         <div className="min-w-0 flex-1 mr-4">
                                             <h4 className="font-medium truncate">{item.title || t('notes:common.untitled')}</h4>
                                             <p className="text-xs text-muted-foreground mt-1">

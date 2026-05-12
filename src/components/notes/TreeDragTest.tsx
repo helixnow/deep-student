@@ -143,7 +143,7 @@ export default function TreeDragTest() {
                     const data = e.dataTransfer.getData('text');
                     console.log('放置:', data, '到', item);
                   }}
-                  className="p-2 bg-muted rounded cursor-move hover:bg-accent"
+                  className="p-2 bg-muted rounded cursor-move hover:bg-[var(--interactive-hover)]"
                 >
                   {item}
                 </div>

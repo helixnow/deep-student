@@ -159,7 +159,7 @@ export const NoteTagsEditor: React.FC<NoteTagsEditorProps> = ({
                 <div 
                     className={cn(
                         "flex items-center gap-1 transition-colors rounded-md px-2 py-1 -ml-2",
-                        readonly ? "opacity-70 cursor-default" : "hover:bg-muted cursor-pointer"
+                        readonly ? "opacity-70 cursor-default" : "hover:bg-[var(--interactive-hover)] cursor-pointer"
                     )}
                     role="button"
                     aria-label={t('notes:header.manage_tags')}
@@ -259,7 +259,7 @@ export const NoteTagsEditor: React.FC<NoteTagsEditorProps> = ({
                                                 .map(tag => (
                                                 <div 
                                                     key={tag}
-                                                    className="flex items-center gap-2 px-2 py-1.5 hover:bg-muted rounded-sm cursor-pointer text-xs"
+                                                    className="flex items-center gap-2 px-2 py-1.5 hover:bg-[var(--interactive-hover)] rounded-sm cursor-pointer text-xs"
                                                     onClick={() => handleAddTag(tag)}
                                                 >
                                                     <Plus className="h-3 w-3 text-muted-foreground" />

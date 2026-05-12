@@ -216,7 +216,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
               )}
               {dialogTitle}
             </NotionDialogTitle>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onOpenChange(false)} className="!rounded-full !p-1 hover:bg-accent" aria-label="close">
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onOpenChange(false)} className="!rounded-full !p-1 hover:bg-[var(--interactive-hover)]" aria-label="close">
               <X className="h-4 w-4 text-muted-foreground" />
             </NotionButton>
           </div>
@@ -240,7 +240,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
               )}
             />
             {searchQuery && (
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 !p-0.5 !rounded-full hover:bg-accent" aria-label="clear">
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 !p-0.5 !rounded-full hover:bg-[var(--interactive-hover)]" aria-label="clear">
                 <X className="h-3.5 w-3.5 text-muted-foreground" />
               </NotionButton>
             )}
@@ -313,7 +313,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
             )}
           </div>
           <div className="flex items-center gap-2">
-            <NotionButton variant="default" size="sm" onClick={() => onOpenChange(false)} className="text-muted-foreground hover:text-foreground hover:bg-accent">
+            <NotionButton variant="default" size="sm" onClick={() => onOpenChange(false)} className="text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]">
               {t('common:cancel')}
             </NotionButton>
             <NotionButton variant="primary" size="sm" onClick={handleConfirm} disabled={!selectedId} className="font-medium">

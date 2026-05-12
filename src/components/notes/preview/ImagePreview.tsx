@@ -236,7 +236,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
           <NotionButton
             variant="ghost"
             size="sm"
-            className="absolute right-4 top-4 h-10 w-10 p-0 text-white hover:bg-white/10"
+            className="absolute right-4 top-4 h-10 w-10 p-0 text-white hover:bg-[var(--overlay-control-hover)]"
             onClick={toggleFullscreen}
           >
             <X className="h-6 w-6" />
@@ -247,7 +247,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
             <NotionButton
               variant="ghost"
               size="sm"
-              className="h-8 w-8 p-0 text-white hover:bg-white/10"
+              className="h-8 w-8 p-0 text-white hover:bg-[var(--overlay-control-hover)]"
               onClick={(e) => {
                 e.stopPropagation();
                 handleZoomOut();
@@ -262,7 +262,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
             <NotionButton
               variant="ghost"
               size="sm"
-              className="h-8 w-8 p-0 text-white hover:bg-white/10"
+              className="h-8 w-8 p-0 text-white hover:bg-[var(--overlay-control-hover)]"
               onClick={(e) => {
                 e.stopPropagation();
                 handleZoomIn();

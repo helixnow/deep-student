@@ -74,7 +74,7 @@ export const ReferenceSelectorItem: React.FC<ReferenceSelectorItemProps> = ({
           ? 'opacity-50 cursor-not-allowed bg-muted/30'
           : isSelected
             ? 'bg-primary/10 border border-primary/30'
-            : 'hover:bg-accent/50 active:bg-accent'
+            : 'hover:bg-[var(--interactive-hover)] active:bg-accent'
       )}
     >
       {/* 图标 */}

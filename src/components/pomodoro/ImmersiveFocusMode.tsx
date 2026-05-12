@@ -283,8 +283,8 @@ export const ImmersiveFocusMode: React.FC<{
             className={cn(
               'p-2 rounded-lg transition-colors',
               noiseOn
-                ? 'bg-white/10 text-white/80 hover:bg-white/15'
-                : 'text-white/30 hover:text-white/50 hover:bg-white/5'
+                ? 'bg-white/10 text-white/80 hover:bg-[var(--overlay-control-hover)]'
+                : 'text-white/30 hover:text-white/50 hover:bg-[var(--overlay-control-hover)]'
             )}
             title={noiseOn ? '关闭环境音' : '开启环境音'}
           >
@@ -293,7 +293,7 @@ export const ImmersiveFocusMode: React.FC<{
           {/* 关闭按钮 */}
           <button
             onClick={onClose}
-            className="p-2 rounded-lg text-white/30 hover:text-white/60 hover:bg-white/5 transition-colors"
+            className="p-2 rounded-lg text-white/30 hover:text-white/60 hover:bg-[var(--overlay-control-hover)] transition-colors"
             title="退出专注模式 (ESC)"
           >
             <X className="w-5 h-5" />
@@ -347,7 +347,7 @@ export const ImmersiveFocusMode: React.FC<{
             className={cn(
               'flex items-center justify-center w-16 h-16 rounded-full transition-all',
               status === 'running'
-                ? 'bg-white/10 text-white hover:bg-white/15'
+                ? 'bg-white/10 text-white hover:bg-[var(--overlay-control-hover)]'
                 : 'bg-orange-500 text-white hover:bg-orange-400 shadow-lg shadow-orange-500/20'
             )}
             title={status === 'running' ? '暂停 (Space)' : '开始 (Space)'}
@@ -365,7 +365,7 @@ export const ImmersiveFocusMode: React.FC<{
               onClick={() => {
                 stop(false);
               }}
-              className="flex items-center justify-center w-12 h-12 rounded-full bg-white/5 text-white/40 hover:text-white/70 hover:bg-white/10 transition-all"
+              className="flex items-center justify-center w-12 h-12 rounded-full bg-white/5 text-white/40 hover:text-white/70 hover:bg-[var(--overlay-control-hover)] transition-all"
               title="跳过休息"
             >
               <SkipForward className="w-5 h-5" />

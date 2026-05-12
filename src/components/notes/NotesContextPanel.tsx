@@ -327,7 +327,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                 <Badge
                                     key={tag}
                                     variant="secondary"
-                                    className="h-5 px-1.5 text-[10px] font-normal gap-1 hover:bg-muted-foreground/20 transition-colors cursor-default group"
+                                    className="h-5 px-1.5 text-[10px] font-normal gap-1 hover:bg-[var(--interactive-hover)]-foreground/20 transition-colors cursor-default group"
                                 >
                                     {tag}
                                     <X
@@ -394,7 +394,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
                                     key={heading.id}
                                     variant="ghost" size="sm"
                                     className={cn(
-                                        "!w-full !text-left !py-1 !px-2 !h-auto !rounded-md hover:bg-muted/60 truncate text-[11px]",
+                                        "!w-full !text-left !py-1 !px-2 !h-auto !rounded-md hover:bg-[var(--interactive-hover)] truncate text-[11px]",
                                         heading.level === 1 && "font-medium text-foreground",
                                         heading.level === 2 && "!pl-4 text-muted-foreground",
                                         heading.level === 3 && "!pl-6 text-muted-foreground/80",

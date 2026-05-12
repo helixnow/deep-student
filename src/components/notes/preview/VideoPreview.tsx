@@ -440,7 +440,7 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
               <NotionButton
                 variant="ghost"
                 size="sm"
-                className="h-9 w-9 p-0 text-white hover:bg-white/20"
+                className="h-9 w-9 p-0 text-white hover:bg-[var(--overlay-control-hover)]"
                 onClick={togglePlay}
                 disabled={videoLoading}
               >
@@ -455,7 +455,7 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
               <NotionButton
                 variant="ghost"
                 size="sm"
-                className="h-9 w-9 p-0 text-white hover:bg-white/20"
+                className="h-9 w-9 p-0 text-white hover:bg-[var(--overlay-control-hover)]"
                 onClick={skipBackward}
                 disabled={videoLoading}
               >
@@ -466,7 +466,7 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
               <NotionButton
                 variant="ghost"
                 size="sm"
-                className="h-9 w-9 p-0 text-white hover:bg-white/20"
+                className="h-9 w-9 p-0 text-white hover:bg-[var(--overlay-control-hover)]"
                 onClick={skipForward}
                 disabled={videoLoading}
               >
@@ -485,7 +485,7 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
                 <NotionButton
                   variant="ghost"
                   size="sm"
-                  className="h-9 w-9 p-0 text-white hover:bg-white/20"
+                  className="h-9 w-9 p-0 text-white hover:bg-[var(--overlay-control-hover)]"
                   onClick={toggleMute}
                 >
                   <VolumeIcon className="h-4 w-4" />
@@ -505,7 +505,7 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
               <NotionButton
                 variant="ghost"
                 size="sm"
-                className="h-9 w-9 p-0 text-white hover:bg-white/20"
+                className="h-9 w-9 p-0 text-white hover:bg-[var(--overlay-control-hover)]"
                 onClick={toggleFullscreen}
               >
                 {isFullscreen ? (
