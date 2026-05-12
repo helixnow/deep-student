@@ -13,17 +13,19 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  HardDrive,
-  RefreshCw,
+  Archive,
+  Bug,
   Cloud,
   FileText,
+  Gauge,
+  HardDrive,
+  Image,
+} from '@phosphor-icons/react';
+import {
+  RefreshCw,
   AlertTriangle,
   XCircle,
   Play,
-  Activity,
-  Archive,
-  Bug,
-  Image,
   Database,
 } from 'lucide-react';
 
@@ -1470,7 +1472,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
     <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as DashboardTab)}>
       <TabsList className="mb-4">
         <TabsTrigger value="overview" className="flex items-center gap-1">
-          <Activity className="h-4 w-4" />
+          <Gauge className="h-4 w-4" />
           <span className="hidden sm:inline">{t('data:governance.tab_overview')}</span>
         </TabsTrigger>
         <TabsTrigger value="archive" className="flex items-center gap-1">

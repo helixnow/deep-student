@@ -6,14 +6,21 @@
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
-import { Plus, Loader2, Edit, Trash2, Activity, GripVertical, Star, ChevronDown, ChevronUp, X, ExternalLink } from 'lucide-react';
+import { ArrowSquareOut, CaretUp, Key, LinkSimple, NotePencil, PencilSimple, Plus, Pulse, Spinner, Star, Trash } from '@phosphor-icons/react';
 import { NotionButton } from '../ui/NotionButton';
 import { Input } from '../ui/shad/Input';
 import { Textarea } from '../ui/shad/Textarea';
 import { Label } from '../ui/shad/Label';
 import { Badge } from '../ui/shad/Badge';
 import { Switch } from '../ui/shad/Switch';
-import { SettingSection } from './SettingsCommon';
+import {
+  SettingSection,
+  settingsQuietActiveSurfaceClassName,
+  settingsQuietIdleRowClassName,
+  settingsQuietInteractiveRowClassName,
+  settingsQuietRowBaseClassName,
+  settingsQuietSelectedRowClassName,
+} from './SettingsCommon';
 import { SiliconFlowSection } from './SiliconFlowSection';
 import { VendorApiKeySection } from './VendorApiKeySection';
 import { VendorModelFetcher, supportsModelFetching } from './VendorModelFetcher';
@@ -23,6 +30,7 @@ import { showGlobalNotification } from '../UnifiedNotification';
 import { ProviderIcon, getProviderBadgeChromeStyle } from '../ui/ProviderIcon';
 import { openUrl } from '../../utils/urlOpener';
 import { SiliconFlowLogo } from '../ui/SiliconFlowLogo';
+import { ModelCapabilityIcons } from '../shared/ModelCapabilityIcons';
 import type { VendorConfig, ModelProfile, ApiConfig } from '../../types';
 
 // 内联编辑状态类型
@@ -248,7 +256,7 @@ export const ApisTab: React.FC<ApisTabProps> = ({
       >
         {vendorBusy && (
           <div className="mb-4 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <Spinner className="h-3.5 w-3.5 animate-spin" />
             <span>{t('settings:saving')}</span>
           </div>
         )}
@@ -260,7 +268,14 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                 <div className="text-sm font-medium text-foreground">
                   {t('settings:vendor_panel.list_title')}
                 </div>
-                <NotionButton variant="ghost" size="sm" iconOnly onClick={() => handleOpenVendorModal(null)}>
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  iconOnly
+                  onClick={() => handleOpenVendorModal(null)}
+                  title={t('settings:vendor_panel.add_vendor_button')}
+                  aria-label={t('settings:vendor_panel.add_vendor_button')}
+                >
                   <Plus className="h-3.5 w-3.5" />
                 </NotionButton>
               </div>
@@ -291,8 +306,10 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                           }
                         }}
                         className={cn(
-                          'rounded-lg px-3 py-2 text-left transition-all w-full flex items-center gap-2 cursor-pointer group',
-                          isActive ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                          'px-3 py-2 text-left w-full flex items-center gap-2 cursor-pointer group',
+                          isActive
+                            ? settingsQuietSelectedRowClassName
+                            : cn(settingsQuietInteractiveRowClassName, settingsQuietIdleRowClassName)
                         )}
                       >
                         <div className="flex items-center gap-2 w-full">
@@ -353,8 +370,10 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                                     style={draggingStyle}
                                     onClick={() => setSelectedVendorId(vendor.id)}
                                     className={cn(
-                                      'rounded-lg px-3 py-2 text-left transition-all w-full flex items-center gap-2 cursor-grab active:cursor-grabbing group',
-                                      isActive ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground',
+                                      'px-3 py-2 text-left w-full flex items-center gap-2 cursor-grab active:cursor-grabbing group',
+                                      isActive
+                                        ? settingsQuietSelectedRowClassName
+                                        : cn(settingsQuietInteractiveRowClassName, settingsQuietIdleRowClassName),
                                       snapshot.isDragging && 'shadow-lg ring-1 ring-border bg-card z-50'
                                     )}
                                    >
@@ -420,7 +439,7 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                               onClick={() => void openUrl(websiteUrl)}
                               title={t('settings:vendor_panel.open_website')}
                             >
-                              <ExternalLink className="h-3.5 w-3.5" />
+                              <ArrowSquareOut className="h-3.5 w-3.5" />
                             </NotionButton>
                           ) : null;
                         })()}
@@ -434,7 +453,9 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                         ) : (
                           <>
                             <NotionButton size="sm" variant="ghost" onClick={() => handleStartEditVendor(selectedVendor)}>{t('common:actions.edit')}</NotionButton>
-                            {!selectedVendorIsSiliconflow && <NotionButton size="sm" variant="danger" onClick={() => handleDeleteVendor(selectedVendor)}>{t('common:actions.delete')}</NotionButton>}
+                            {!selectedVendorIsSiliconflow && !selectedVendor.isBuiltin && !selectedVendor.isReadOnly && (
+                              <NotionButton size="sm" variant="danger" onClick={() => handleDeleteVendor(selectedVendor)}>{t('common:actions.delete')}</NotionButton>
+                            )}
                           </>
                         )}
                       </div>
@@ -448,18 +469,27 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                           <Input value={vendorFormData.name || ''} onChange={e => setVendorFormData(prev => ({ ...prev, name: e.target.value }))} placeholder={t('settings:vendor_modal.name_placeholder')} />
                         </div>
                         <div className="md:col-span-2 space-y-2">
-                          <Label className="text-xs font-medium text-muted-foreground">{t('settings:vendor_modal.base_url_label')}</Label>
+                          <Label className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                            <LinkSimple className="h-3.5 w-3.5" aria-hidden="true" />
+                            <span>{t('settings:vendor_modal.base_url_label')}</span>
+                          </Label>
                           <Input value={vendorFormData.baseUrl || ''} onChange={e => setVendorFormData(prev => ({ ...prev, baseUrl: e.target.value }))} placeholder="https://api.openai.com/v1" className="font-mono" />
                         </div>
                         <div className="md:col-span-2 space-y-2">
-                          <Label className="text-xs font-medium text-muted-foreground">{t('settings:vendor_modal.notes_label')}</Label>
+                          <Label className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                            <NotePencil className="h-3.5 w-3.5" aria-hidden="true" />
+                            <span>{t('settings:vendor_modal.notes_label')}</span>
+                          </Label>
                           <Textarea value={vendorFormData.notes || ''} onChange={e => setVendorFormData(prev => ({ ...prev, notes: e.target.value }))} placeholder={t('settings:vendor_modal.notes_placeholder')} rows={3} />
                         </div>
                       </>
                     ) : (
                       <>
                         <div className="md:col-span-2 space-y-2">
-                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:vendor_panel.base_url')}</div>
+                          <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                            <LinkSimple className="h-3.5 w-3.5" aria-hidden="true" />
+                            <span>{t('settings:vendor_panel.base_url')}</span>
+                          </div>
                           <Input
                             value={baseUrlDraft}
                             onChange={(e) => setBaseUrlDraft(e.target.value)}
@@ -488,7 +518,10 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                           />
                         </div>
                         <div className="md:col-span-2 space-y-2">
-                          <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:vendor_panel.api_key')}</div>
+                          <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                            <Key className="h-3.5 w-3.5" aria-hidden="true" />
+                            <span>{t('settings:vendor_panel.api_key')}</span>
+                          </div>
                           <div className="mt-1">
                             {selectedVendorIsSiliconflow ? (
                               <SiliconFlowSection variant="inline" onCreateConfig={handleSiliconFlowConfig} onBatchCreateConfigs={handleBatchCreateConfigs} onBatchConfigsCreated={handleBatchConfigsCreated} showMessage={showGlobalNotification} />
@@ -499,7 +532,10 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                         </div>
                         {selectedVendor.notes && (
                           <div className="md:col-span-2 space-y-2">
-                            <div className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{t('settings:vendor_panel.notes')}</div>
+                            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
+                              <NotePencil className="h-3.5 w-3.5" aria-hidden="true" />
+                              <span>{t('settings:vendor_panel.notes')}</span>
+                            </div>
                             <div className="text-sm text-foreground leading-relaxed">{selectedVendor.notes}</div>
                           </div>
                         )}
@@ -595,8 +631,10 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                           
                           return (
                             <div key={profile.id} className={cn(
-                              "group relative rounded-lg border border-transparent hover:bg-muted/30 transition-all duration-200",
-                              isEditing ? "bg-muted/30" : ""
+                              "group relative border border-transparent",
+                              isEditing
+                                ? cn(settingsQuietRowBaseClassName, settingsQuietActiveSurfaceClassName)
+                                : settingsQuietInteractiveRowClassName
                             )}>
                                {/* 卡片头部：始终显示 */}
                                <div className="p-3 space-y-2">
@@ -610,21 +648,21 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                                     </div>
                                     <div className="font-mono text-xs text-muted-foreground truncate">{api.model}</div>
                                     
-                                    {(profile.isMultimodal || profile.isReasoning || profile.isEmbedding || profile.isReranker || profile.supportsTools) && (
-                                      <div className="flex flex-wrap items-center gap-1.5 pt-1">
-                                        {profile.isMultimodal && <span className="text-[10px] px-1.5 py-0.5 rounded border border-border text-muted-foreground">{t('common:api_config_section.model_types.multimodal')}</span>}
-                                        {profile.isReasoning && <span className="text-[10px] px-1.5 py-0.5 rounded border border-purple-200 text-purple-600 dark:border-purple-900/30 dark:text-purple-400">{t('settings:api_config.badge_reasoning')}</span>}
-                                        {profile.isEmbedding && <span className="text-[10px] px-1.5 py-0.5 rounded border border-border text-muted-foreground">{t('common:api_config_section.model_types.embedding')}</span>}
-                                        {profile.isReranker && <span className="text-[10px] px-1.5 py-0.5 rounded border border-border text-muted-foreground">{t('common:api_config_section.model_types.reranker')}</span>}
-                                        {profile.supportsTools && <span className="text-[10px] px-1.5 py-0.5 rounded border border-blue-200 text-blue-600 dark:border-blue-900/30 dark:text-blue-400">{t('common:api_config_section.badges.tools')}</span>}
-                                      </div>
-                                    )}
+                                    <ModelCapabilityIcons
+                                      className="pt-1"
+                                      isMultimodal={profile.isMultimodal}
+                                      isReasoning={profile.isReasoning}
+                                      isEmbedding={profile.isEmbedding}
+                                      isReranker={profile.isReranker}
+                                      supportsTools={profile.supportsTools}
+                                      size="sm"
+                                    />
                                     
                                     {/* 操作按钮区域 - 改为上下布局，始终显示 */}
                                     <div className="flex items-center gap-1 pt-2">
                                       <Switch checked={profile.enabled} onCheckedChange={value => handleToggleModelProfile(profile, value)} disabled={(api.isBuiltin && api.isReadOnly) || vendorBusy} className="mr-2" />
                                       <NotionButton size="sm" variant="ghost" iconOnly className={cn(profile.isFavorite && "text-yellow-500")} onClick={() => handleToggleFavorite(profile)} disabled={vendorBusy} title={t('settings:api_config.toggle_favorite')}>
-                                        <Star className={cn("h-3.5 w-3.5", profile.isFavorite && "fill-current")} />
+                                        <Star className="h-3.5 w-3.5" weight={profile.isFavorite ? 'fill' : 'regular'} />
                                       </NotionButton>
                                       <NotionButton 
                                         size="sm" 
@@ -634,12 +672,12 @@ export const ApisTab: React.FC<ApisTabProps> = ({
                                         disabled={vendorBusy} 
                                         title={!isSmallScreen && isEditing ? t('common:actions.close') : t('common:actions.edit')}
                                       >
-                                        {!isSmallScreen && isEditing ? <ChevronUp className="h-3.5 w-3.5" /> : <Edit className="h-3.5 w-3.5" />}
+                                        {!isSmallScreen && isEditing ? <CaretUp className="h-3.5 w-3.5" /> : <PencilSimple className="h-3.5 w-3.5" />}
                                       </NotionButton>
                                       <NotionButton size="sm" variant="ghost" iconOnly onClick={() => void testApiConnection(api)} disabled={testingApi === api.id || vendorBusy} title={t('settings:api_config.test_button')}>
-                                        {testingApi === api.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Activity className="h-3.5 w-3.5" />}
+                                        {testingApi === api.id ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <Pulse className="h-3.5 w-3.5" />}
                                       </NotionButton>
-                                      <NotionButton size="sm" variant="ghost" iconOnly onClick={() => handleDeleteModelProfile(profile)} disabled={(api.isBuiltin && api.isReadOnly) || vendorBusy} title={t('common:actions.delete')} className="text-muted-foreground hover:text-destructive"><Trash2 className="h-3.5 w-3.5" /></NotionButton>
+                                      <NotionButton size="sm" variant="ghost" iconOnly onClick={() => handleDeleteModelProfile(profile)} disabled={(api.isBuiltin && api.isReadOnly) || vendorBusy} title={t('common:actions.delete')} className="text-muted-foreground hover:text-destructive"><Trash className="h-3.5 w-3.5" /></NotionButton>
                                     </div>
                                   </div>
                                 </div>

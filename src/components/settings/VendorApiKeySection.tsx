@@ -5,11 +5,11 @@
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Trash2, Eye, EyeOff } from 'lucide-react';
-import { Input } from '../ui/shad/Input';
+import { Trash } from '@phosphor-icons/react';
 import { NotionButton } from '../ui/NotionButton';
 import { useDebounce } from '../../hooks/useDebounce';
 import type { VendorConfig } from '../../types';
+import { ApiKeyField } from './ApiKeyField';
 
 interface VendorApiKeySectionProps {
   vendor: VendorConfig;
@@ -30,7 +30,7 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
   const [saving, setSaving] = useState(false);
   const [maskedConfigured, setMaskedConfigured] = useState(false);
   const [confirmingClear, setConfirmingClear] = useState(false);
-  
+
   // 防抖保存：用户停止输入 800ms 后才触发保存
   const debouncedApiKey = useDebounce(apiKey, 800);
   // 用于跳过初始化时的保存
@@ -58,6 +58,7 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
       lastSavedKeyRef.current = '';
     }
     setConfirmingClear(false);
+    setShowApiKey(false);
     // 重置初始化标记，并在下一个 tick 允许自动保存。
     // 不能延迟过久（例如 900ms），否则用户首次输入后若刚好在防抖窗口内结束，
     // 会被误判为“初始化阶段”而跳过保存，导致配置未持久化。
@@ -82,7 +83,7 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
     if (!debouncedApiKey.trim() || debouncedApiKey === lastSavedKeyRef.current) {
       return;
     }
-    
+
     const saveApiKey = async () => {
       try {
         setSaving(true);
@@ -97,13 +98,16 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
         setSaving(false);
       }
     };
-    
+
     saveApiKey();
   }, [apiKey, debouncedApiKey, onSave, showMessage, t]);
 
   const handleApiKeyChange = (value: string) => {
     setApiKey(value);
     setConfirmingClear(false);
+    if (!value.trim()) {
+      setShowApiKey(false);
+    }
     if (maskedConfigured) {
       setMaskedConfigured(false);
     }
@@ -122,6 +126,7 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
       lastSavedKeyRef.current = ''; // 重置保存记录
       setMaskedConfigured(false);
       setConfirmingClear(false);
+      setShowApiKey(false);
       if (showMessage) {
         showMessage('success', t('settings:vendor_panel.api_key_cleared'));
       }
@@ -135,34 +140,35 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
     }
   };
 
+  const canRevealApiKey = apiKey.trim().length > 0;
+
   return (
     <div className="space-y-3">
-      <div className="relative">
-        <Input
-          type={showApiKey ? 'text' : 'password'}
-          value={apiKey}
-          onChange={e => handleApiKeyChange(e.target.value)}
-          placeholder={
-            maskedConfigured
-              ? t('settings:vendor_panel.api_key_configured')
-              : t('settings:vendor_panel.api_key_placeholder')
-          }
-          className="pr-10 font-mono"
-          disabled={saving}
-        />
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowApiKey(v => !v)} disabled={saving} className="absolute inset-y-0 right-0 !rounded-none" title={showApiKey ? t('common:hide') : t('common:show')} aria-label={showApiKey ? t('settings:vendor_panel.hide_api_key') : t('settings:vendor_panel.show_api_key')}>
-          {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-        </NotionButton>
-      </div>
+      <ApiKeyField
+        value={apiKey}
+        onChange={e => handleApiKeyChange(e.target.value)}
+        placeholder={
+          maskedConfigured
+            ? t('settings:vendor_panel.api_key_configured')
+            : t('settings:vendor_panel.api_key_placeholder')
+        }
+        inputClassName="font-mono"
+        disabled={saving}
+        revealed={showApiKey}
+        canReveal={canRevealApiKey}
+        onToggle={() => setShowApiKey(v => !v)}
+        showLabel={t('settings:vendor_panel.show_api_key')}
+        hideLabel={t('settings:vendor_panel.hide_api_key')}
+      />
       <div className="flex flex-wrap gap-2 pt-1">
-        <NotionButton 
-          variant="danger" 
+        <NotionButton
+          variant="danger"
           size="sm"
-          onClick={handleClearApiKey} 
+          onClick={handleClearApiKey}
           disabled={saving || (!apiKey && !maskedConfigured)}
           title={t('settings:vendor_panel.clear_api_key_title')}
         >
-          <Trash2 className="h-3.5 w-3.5" />
+          <Trash className="h-3.5 w-3.5" />
           {confirmingClear
             ? t('settings:vendor_panel.clear_api_key_confirm')
             : t('settings:vendor_panel.clear_api_key')}

@@ -1,8 +1,10 @@
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Globe, Github, Bug, Shield, ExternalLink, RefreshCw, Download } from 'lucide-react';
+import { Shield as PhosphorShield } from '@phosphor-icons/react';
+import { Globe, Github, Bug, ExternalLink, RefreshCw, Download } from 'lucide-react';
 import { OpenSourceAcknowledgementsSection } from './OpenSourceAcknowledgementsSection';
 import { SiliconFlowLogo } from '../ui/SiliconFlowLogo';
+import { DeepStudentLogo } from '../ui/DeepStudentLogo';
 import { NotionButton } from '../ui/NotionButton';
 import { SettingSection } from './SettingsCommon';
 import { PrivacyPolicyDialog } from '../legal/PrivacyPolicyDialog';
@@ -40,26 +42,74 @@ const SettingRow = ({
   </div>
 );
 
-const LinkRow = ({
+const aboutActionRowClassName =
+  'flex w-full items-center gap-3 rounded-[var(--button-radius)] px-2 py-2.5 text-left outline-none transition-[background-color] duration-150 ease-out hover:bg-[color:var(--sidebar-quiet-hover)] focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] motion-reduce:transition-none';
+
+const aboutActionIconClassName =
+  'h-4 w-4 flex-shrink-0 text-muted-foreground/70';
+
+const aboutActionLabelClassName =
+  'min-w-0 flex-1 text-sm text-foreground/90';
+
+const aboutActionTrailingIconClassName =
+  'ml-auto h-3 w-3 flex-shrink-0 text-muted-foreground/40';
+
+type AboutActionRowProps = {
+  icon: React.FC<{ className?: string }>;
+  label: string;
+  trailingIcon?: React.FC<{ className?: string }>;
+} & (
+  | {
+      href: string;
+      onClick?: never;
+    }
+  | {
+      href?: never;
+      onClick: () => void;
+    }
+);
+
+const AboutActionRow = ({
   icon: Icon,
   label,
   href,
-}: {
-  icon: React.FC<{ className?: string }>;
-  label: string;
-  href: string;
-}) => (
-  <a
-    href={href}
-    target="_blank"
-    rel="noopener noreferrer"
-    className="group flex items-center gap-3 py-2.5 px-1 hover:bg-muted/30 rounded transition-colors"
-  >
-    <Icon className="h-4 w-4 text-muted-foreground/70 group-hover:text-primary transition-colors flex-shrink-0" />
-    <span className="text-sm text-foreground/90 group-hover:text-primary transition-colors">{label}</span>
-    <ExternalLink className="h-3 w-3 text-muted-foreground/40 group-hover:text-primary/60 transition-colors ml-auto" />
-  </a>
-);
+  onClick,
+  trailingIcon: TrailingIcon,
+}: AboutActionRowProps) => {
+  const content = (
+    <>
+      <Icon className={aboutActionIconClassName} />
+      <span className={aboutActionLabelClassName}>{label}</span>
+      {TrailingIcon && <TrailingIcon className={aboutActionTrailingIconClassName} />}
+    </>
+  );
+
+  if (href) {
+    return (
+      <a
+        data-about-action-row
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={aboutActionRowClassName}
+      >
+        {content}
+      </a>
+    );
+  }
+
+  return (
+    // eslint-disable-next-line ds-components/no-native-button -- This row primitive needs anchor/button parity while keeping native button semantics.
+    <button
+      data-about-action-row
+      type="button"
+      onClick={onClick}
+      className={aboutActionRowClassName}
+    >
+      {content}
+    </button>
+  );
+};
 
 export const AboutTab: React.FC = () => {
   const { t } = useTranslation(['common', 'settings']);
@@ -101,9 +151,8 @@ export const AboutTab: React.FC = () => {
       <SettingSection title="" hideHeader className="overflow-hidden">
         <div className="flex flex-col sm:flex-row gap-6 py-6">
           <div className="flex flex-col items-center justify-center sm:w-1/3 gap-5">
-            <img src="/logo.svg" alt="DeepStudent" className="h-16 w-16" />
+            <DeepStudentLogo className="w-44 max-w-full" />
             <div className="text-center">
-              <h2 className="text-lg font-semibold text-foreground">DeepStudent</h2>
               <p className="text-xs text-muted-foreground/70 mt-0.5">{VERSION_INFO.FULL_VERSION}</p>
             </div>
           </div>
@@ -321,19 +370,19 @@ export const AboutTab: React.FC = () => {
               { icon: Github, label: t('acknowledgements.links.github', 'GitHub'), href: 'https://github.com/helixnow/deep-student' },
               { icon: Bug, label: t('acknowledgements.links.issues', 'Issue 反馈'), href: 'https://github.com/helixnow/deep-student/issues' },
             ].map((item) => (
-              <LinkRow key={item.href} icon={item.icon} label={item.label} href={item.href} />
+              <AboutActionRow
+                key={item.href}
+                icon={item.icon}
+                label={item.label}
+                href={item.href}
+                trailingIcon={ExternalLink}
+              />
             ))}
-            {/* 应用内隐私政策（合规要求） */}
-            <NotionButton
-              variant="ghost"
+            <AboutActionRow
+              icon={PhosphorShield}
+              label={t('legal.settingsSection.viewPrivacyPolicy', '查看隐私政策')}
               onClick={() => setShowPrivacyPolicy(true)}
-              className="group flex h-auto w-full items-center gap-3 py-2.5 px-1 text-left hover:bg-muted/30 rounded"
-            >
-              <Shield className="h-4 w-4 text-muted-foreground/70 group-hover:text-primary transition-colors flex-shrink-0" />
-              <span className="text-sm text-foreground/90 group-hover:text-primary transition-colors">
-                {t('legal.settingsSection.viewPrivacyPolicy', '查看隐私政策')}
-              </span>
-            </NotionButton>
+            />
           </div>
         </div>
 

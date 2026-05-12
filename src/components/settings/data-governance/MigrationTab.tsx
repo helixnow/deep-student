@@ -10,6 +10,7 @@ import { AlertTriangle, CheckCircle2, Copy, RefreshCw, ShieldAlert } from 'lucid
 
 import { NotionButton } from '../../ui/NotionButton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../ui/shad/Table';
+import { settingsQuietTableRowClassName } from '../SettingsCommon';
 import type { MigrationStatusResponse } from '../../../types/dataGovernance';
 import { getDatabaseDisplayName } from '../../../types/dataGovernance';
 import { getMigrationDiagnosticReport } from '../../../api/dataGovernance';
@@ -156,7 +157,7 @@ export const MigrationTab: React.FC<MigrationTabProps> = ({
           <TableBody>
             {hasData ? (
               databases.map((db) => (
-                <TableRow key={db.id} className="hover:bg-muted/30 border-border/40">
+                <TableRow key={db.id} className={settingsQuietTableRowClassName}>
                   <TableCell className="font-medium py-3 whitespace-nowrap">
                     {getDatabaseDisplayName(db.id, t)}
                   </TableCell>

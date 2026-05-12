@@ -38,6 +38,7 @@ import { NotionAlertDialog, NotionDialog, NotionDialogHeader, NotionDialogTitle,
 import { Checkbox } from '../../ui/shad/Checkbox';
 import { Label } from '../../ui/shad/Label';
 import { Switch } from '../../ui/shad/Switch';
+import { settingsQuietTableRowClassName } from '../SettingsCommon';
 import type {
   BackupInfoResponse,
   BackupVerifyResponse,
@@ -515,7 +516,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                   className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
                     selectedTiers.includes(tier.value)
                       ? 'border-primary/50 bg-primary/5'
-                      : 'border-border/60 hover:border-border hover:bg-muted/30'
+                      : 'border-border/60 hover:border-border hover:bg-[color:var(--sidebar-quiet-hover)]'
                   }`}
                   onClick={() => handleTierToggle(tier.value)}
                 >
@@ -555,7 +556,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                       className={`flex items-center gap-2 p-2 rounded-md border cursor-pointer transition-colors ${
                         selectedAssetTypes.includes(asset.value)
                           ? 'border-primary/50 bg-primary/5'
-                          : 'border-border/60 hover:border-border hover:bg-muted/30'
+                          : 'border-border/60 hover:border-border hover:bg-[color:var(--sidebar-quiet-hover)]'
                       }`}
                       onClick={() => handleAssetTypeToggle(asset.value)}
                     >
@@ -782,7 +783,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             </TableHeader>
             <TableBody>
               {backups.map((backup) => (
-                <TableRow key={backup.path} className="hover:bg-muted/30 border-border/40">
+                <TableRow key={backup.path} className={settingsQuietTableRowClassName}>
                   <TableCell className="font-medium py-3 whitespace-nowrap">
                     {formatTimestamp(backup.created_at)}
                   </TableCell>

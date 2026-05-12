@@ -8,6 +8,48 @@ import React, { useState, useEffect } from 'react';
 import { cn } from '../../lib/utils';
 import { motion, useSpring } from 'framer-motion';
 
+export const settingsQuietHoverClassName = 'hover:bg-[color:var(--sidebar-quiet-hover)]';
+
+export const settingsQuietRowBaseClassName =
+  'rounded-[var(--button-radius)] transition-[background-color] duration-150 ease-out motion-reduce:transition-none';
+
+export const settingsQuietActiveSurfaceClassName = 'bg-[color:var(--sidebar-quiet-active)]';
+
+export const settingsQuietInteractiveRowClassName = cn(
+  settingsQuietRowBaseClassName,
+  settingsQuietHoverClassName,
+);
+
+export const settingsQuietIdleRowClassName = 'text-muted-foreground';
+
+export const settingsQuietSelectedRowClassName = cn(
+  settingsQuietRowBaseClassName,
+  settingsQuietActiveSurfaceClassName,
+  'text-foreground font-medium',
+);
+
+export const settingsQuietButtonIdleRowClassName = cn(
+  settingsQuietInteractiveRowClassName,
+  settingsQuietIdleRowClassName,
+  '!bg-transparent hover:!bg-[color:var(--sidebar-quiet-hover)] hover:!text-muted-foreground',
+);
+
+export const settingsQuietButtonSelectedRowClassName = cn(
+  settingsQuietSelectedRowClassName,
+  '!bg-[color:var(--sidebar-quiet-active)] hover:!bg-[color:var(--sidebar-quiet-active)] hover:!text-foreground',
+);
+
+export const settingsQuietTableRowClassName = cn(
+  'border-border/40 transition-[background-color] duration-150 ease-out motion-reduce:transition-none',
+  settingsQuietHoverClassName,
+);
+
+export const settingsMobileSheetCloseButtonClassName = cn(
+  'inline-flex min-h-11 min-w-11 items-center justify-center rounded-[var(--button-radius)] text-[color:var(--text-secondary)]',
+  'transition-[background-color] duration-150 ease-out hover:bg-[color:var(--sidebar-quiet-hover)]',
+  'focus:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] motion-reduce:transition-none',
+);
+
 export interface SettingSectionProps {
   title: string;
   description?: string;

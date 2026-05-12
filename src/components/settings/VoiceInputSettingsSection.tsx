@@ -1,11 +1,23 @@
+/**
+ * 听写设置区块
+ *
+ * Notion 风格：标题 + 精简描述 + GroupTitle/SettingRow 模式。
+ * 视觉层次：
+ *   1. 状态条（随时可见的"是否可录音 + 申请权限"）
+ *   2. ASR 模型分配（一行，异常状态用内联琥珀提示）
+ *   3. 触发方式（segmented）/ 快捷键 / 最长时长（SettingRow）
+ *   4. 自定义词典（块）
+ *   5. 最近听写记录（块，若有内容）
+ *   6. 运行时诊断（可折叠，默认收起）
+ */
+
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   AlertTriangle,
   BarChart3,
-  CheckCircle2,
+  ChevronDown,
   Copy,
   Loader2,
-  Mic2,
   RefreshCcw,
   Settings2,
   Trash2,
@@ -13,7 +25,9 @@ import {
 } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 
+import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -66,7 +80,6 @@ function formatVoiceHistoryTime(value: string): string {
   if (Number.isNaN(parsed.getTime())) {
     return value;
   }
-
   return new Intl.DateTimeFormat(undefined, {
     month: 'short',
     day: 'numeric',
@@ -75,214 +88,239 @@ function formatVoiceHistoryTime(value: string): string {
   }).format(parsed);
 }
 
-function StatusPill({
+// —— 公共小组件 ————————————————————————————————————————————
+
+const GroupTitle: React.FC<{ title: string; description?: string; rightSlot?: React.ReactNode }> = ({
+  title,
+  description,
+  rightSlot,
+}) => (
+  <div className="px-1 mb-3 flex items-start justify-between gap-3">
+    <div className="min-w-0">
+      <h3 className="text-base font-semibold text-foreground leading-tight">{title}</h3>
+      {description && (
+        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">{description}</p>
+      )}
+    </div>
+    {rightSlot && <div className="flex-shrink-0 flex items-center gap-1">{rightSlot}</div>}
+  </div>
+);
+
+const SettingRow: React.FC<{
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}> = ({ title, description, children }) => (
+  <div className="group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 hover:bg-muted/30 rounded transition-colors">
+    <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
+      <div className="text-sm text-foreground/90 leading-tight">{title}</div>
+      {description && (
+        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+          {description}
+        </p>
+      )}
+    </div>
+    <div className="flex-shrink-0">{children}</div>
+  </div>
+);
+
+const Subsection: React.FC<{
+  title: string;
+  description?: string;
+  rightSlot?: React.ReactNode;
+  children: React.ReactNode;
+}> = ({ title, description, rightSlot, children }) => (
+  <div className="py-2.5 px-1">
+    <div className="flex items-start justify-between gap-3">
+      <div className="min-w-0">
+        <div className="text-sm text-foreground/90 leading-tight">{title}</div>
+        {description && (
+          <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">
+            {description}
+          </p>
+        )}
+      </div>
+      {rightSlot}
+    </div>
+    <div className="mt-2">{children}</div>
+  </div>
+);
+
+// —— 顶部状态条 ————————————————————————————————————————————
+
+function StatusBar({
   support,
+  requestingAccess,
+  onRequestAccess,
   t,
 }: {
   support: VoiceRecordingSupport | null;
+  requestingAccess: boolean;
+  onRequestAccess: () => void;
   t: ReturnType<typeof useTranslation>['t'];
 }) {
-  const label = useMemo(() => {
+  const { tone, label } = useMemo(() => {
     if (!support) {
-      return t('settings:voice_input.status.checking', { defaultValue: 'Checking microphone support…' });
+      return {
+        tone: 'muted' as const,
+        label: t('settings:voice_input.status.checking', { defaultValue: 'Checking microphone support…' }),
+      };
     }
     if (support.canRecord) {
-      return support.recorderMode === 'pcm-wav'
-        ? t('settings:voice_input.status.ready_fallback', {
-            defaultValue: 'Ready with PCM/WAV fallback',
-          })
-        : t('settings:voice_input.status.ready', { defaultValue: 'Ready to record' });
+      return {
+        tone: 'ok' as const,
+        label:
+          support.recorderMode === 'pcm-wav'
+            ? t('settings:voice_input.status.ready_fallback', {
+                defaultValue: 'Ready with PCM/WAV fallback',
+              })
+            : t('settings:voice_input.status.ready', { defaultValue: 'Ready to record' }),
+      };
     }
-    if (support.reasonCode === 'permission-denied') {
-      return t('settings:voice_input.status.permission_denied', {
+    const code = support.reasonCode;
+    const map: Record<string, string> = {
+      'permission-denied': t('settings:voice_input.status.permission_denied', {
         defaultValue: 'Microphone permission denied',
-      });
-    }
-    if (support.reasonCode === 'insecure-context') {
-      return t('settings:voice_input.status.insecure_context', {
+      }),
+      'insecure-context': t('settings:voice_input.status.insecure_context', {
         defaultValue: 'Runtime is not exposing a secure recording context',
-      });
-    }
-    if (support.reasonCode === 'missing-get-user-media') {
-      return t('settings:voice_input.status.missing_get_user_media', {
+      }),
+      'missing-get-user-media': t('settings:voice_input.status.missing_get_user_media', {
         defaultValue: 'Runtime does not expose getUserMedia',
-      });
-    }
-    return t('settings:voice_input.status.unavailable', {
-      defaultValue: 'Recording backend unavailable',
-    });
+      }),
+    };
+    return {
+      tone: 'warn' as const,
+      label:
+        (code && map[code]) ??
+        t('settings:voice_input.status.unavailable', { defaultValue: 'Recording backend unavailable' }),
+    };
   }, [support, t]);
 
-  const toneClass = !support
-    ? 'border-border/60 bg-muted/40 text-muted-foreground'
-    : support.canRecord
-      ? 'border-emerald-500/25 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300'
-      : 'border-amber-500/25 bg-amber-500/10 text-amber-700 dark:text-amber-300';
+  const dotClass =
+    tone === 'ok'
+      ? 'bg-emerald-500'
+      : tone === 'warn'
+        ? 'bg-amber-500'
+        : 'bg-muted-foreground/40';
+  const labelClass =
+    tone === 'ok'
+      ? 'text-foreground/80'
+      : tone === 'warn'
+        ? 'text-amber-700 dark:text-amber-300'
+        : 'text-muted-foreground/70';
 
   return (
-    <div className={`inline-flex rounded-full border px-3 py-1 text-xs font-medium ${toneClass}`}>
-      {label}
+    <div className="flex items-center justify-between gap-3 py-2.5 px-1 rounded">
+      <div className="flex items-center gap-2 min-w-0">
+        <span className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', dotClass)} />
+        <span className={cn('text-sm truncate', labelClass)}>{label}</span>
+      </div>
+      <NotionButton
+        type="button"
+        variant="ghost"
+        size="sm"
+        onClick={onRequestAccess}
+        disabled={requestingAccess}
+      >
+        {requestingAccess ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+        {t('settings:voice_input.request_access', { defaultValue: 'Request microphone access' })}
+      </NotionButton>
     </div>
   );
 }
 
-function AssignedModelCard({
+// —— ASR 模型状态内联提示 ————————————————————————————————————
+
+function ModelStatusHint({
   assignedModel,
   t,
 }: {
   assignedModel: VoiceInputAssignedModel;
   t: ReturnType<typeof useTranslation>['t'];
 }) {
-  if (assignedModel.status === 'ready') {
-    return (
-      <div className="py-2.5 px-1 hover:bg-muted/30 rounded transition-colors">
-        <div className="flex items-start gap-2">
-          <CheckCircle2 className="mt-0.5 h-4 w-4 flex-shrink-0 text-emerald-600 dark:text-emerald-300" />
-          <div className="min-w-0">
-            <h3 className="text-sm text-foreground/90 leading-tight">
-              {assignedModel.modelLabel ?? assignedModel.model ?? t('settings:voice_input.not_configured', { defaultValue: 'Not configured' })}
-            </h3>
-            <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">
-              {t('settings:voice_input.assigned_model_hint', {
-                defaultValue: 'Model selection is managed in Settings > Models. This page only controls recording behavior and diagnostics.',
-              })}
-            </p>
-            {assignedModel.providerLabel && (
-              <p className="text-[11px] text-muted-foreground/70 mt-0.5">
-                {t('settings:voice_input.assigned_provider', { defaultValue: 'Provider' })}: {assignedModel.providerLabel}
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
-    );
-  }
+  if (assignedModel.status === 'ready') return null;
 
-  const copyByStatus: Record<
-    VoiceInputAssignedModel['status'],
-    {
-      title: string;
-      description: string;
-      icon: React.ReactNode;
-    }
-  > = {
-    ready: {
-      title: '',
-      description: '',
-      icon: null,
-    },
-    'model-assignment-required': {
-      title: t('settings:voice_input.assignment_required_title', {
-        defaultValue: 'Choose a voice input ASR model first',
-      }),
-      description: t('settings:voice_input.assignment_required_message', {
-        defaultValue: 'Voice input is enabled at the app layer, but it still needs a model assignment in Settings > Models before recordings can be transcribed.',
-      }),
-      icon: <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-300" />,
-    },
-    'model-config-missing': {
-      title: t('settings:voice_input.assignment_missing_title', {
-        defaultValue: 'The assigned ASR model needs attention',
-      }),
-      description: t('settings:voice_input.assignment_missing_message', {
-        defaultValue: 'The saved assignment no longer points to a valid voice-capable model. Reassign it in Settings > Models.',
-      }),
-      icon: <Wrench className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-300" />,
-    },
-    'model-disabled': {
-      title: t('settings:voice_input.assignment_disabled_title', {
-        defaultValue: 'The assigned ASR model is disabled',
-      }),
-      description: t('settings:voice_input.assignment_disabled_message', {
-        defaultValue: 'Enable the assigned model or pick another ASR model in Settings > Models before using voice input.',
-      }),
-      icon: <Wrench className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-300" />,
-    },
-    'provider-unavailable': {
-      title: t('settings:voice_input.assignment_provider_unavailable_title', {
-        defaultValue: 'The assigned provider is not usable yet',
-      }),
-      description: t('settings:voice_input.assignment_provider_unavailable_message', {
-        defaultValue: 'This runtime currently supports SiliconFlow transcription only. Pick a SiliconFlow ASR model for now, or keep the current assignment as a placeholder for future streaming providers.',
-      }),
-      icon: <AlertTriangle className="mt-0.5 h-4 w-4 flex-shrink-0 text-amber-600 dark:text-amber-300" />,
-    },
+  const map: Record<Exclude<VoiceInputAssignedModel['status'], 'ready'>, string> = {
+    'model-assignment-required': t('settings:voice_input.assignment_required_message', {
+      defaultValue:
+        'Voice input is enabled at the app layer, but it still needs a model assignment in Settings > Models before recordings can be transcribed.',
+    }),
+    'model-config-missing': t('settings:voice_input.assignment_missing_message', {
+      defaultValue:
+        'The saved assignment no longer points to a valid voice-capable model. Reassign it in Settings > Models.',
+    }),
+    'model-disabled': t('settings:voice_input.assignment_disabled_message', {
+      defaultValue:
+        'Enable the assigned model or pick another ASR model in Settings > Models before using voice input.',
+    }),
+    'provider-unavailable': t('settings:voice_input.assignment_provider_unavailable_message', {
+      defaultValue:
+        'This runtime currently supports SiliconFlow transcription only. Pick a SiliconFlow ASR model for now, or keep the current assignment as a placeholder for future streaming providers.',
+    }),
   };
 
-  const copy = copyByStatus[assignedModel.status];
-
   return (
-    <div className="py-2.5 px-1 rounded bg-amber-500/5">
+    <div className="mx-1 my-1 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
       <div className="flex items-start gap-2">
-        {copy.icon}
-        <div className="min-w-0">
-          <h3 className="text-sm font-medium text-foreground leading-tight">{copy.title}</h3>
-          <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">{copy.description}</p>
-          {(assignedModel.modelLabel || assignedModel.model) && (
-            <p className="text-[11px] text-muted-foreground mt-1">
-              {assignedModel.modelLabel ?? assignedModel.model}
-            </p>
-          )}
-        </div>
+        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+        <span>{map[assignedModel.status]}</span>
       </div>
     </div>
   );
 }
 
-function ShortcutModeCard({
-  active,
-  disabled = false,
-  icon,
-  title,
-  description,
-  actionLabel,
-  onSelect,
+// —— Segmented control (触发方式) ——————————————————————————————
+
+function HotkeyModeSegmented({
+  value,
+  disabled,
+  onChange,
+  t,
 }: {
-  active: boolean;
-  disabled?: boolean;
-  icon: React.ReactNode;
-  title: string;
-  description: string;
-  actionLabel: string;
-  onSelect: () => void;
+  value: VoiceInputHotkeyMode;
+  disabled: boolean;
+  onChange: (mode: VoiceInputHotkeyMode) => void;
+  t: ReturnType<typeof useTranslation>['t'];
 }) {
+  const segments: Array<{
+    mode: VoiceInputHotkeyMode;
+    label: string;
+    ariaLabel: string;
+  }> = [
+    {
+      mode: 'hold-to-talk',
+      label: t('settings:voice_input.hold_mode_short', { defaultValue: 'Hold' }),
+      ariaLabel: t('settings:voice_input.hold_mode_title', {
+        defaultValue: 'Press and hold the dictation shortcut',
+      }),
+    },
+    {
+      mode: 'toggle-to-record',
+      label: t('settings:voice_input.toggle_mode_short', { defaultValue: 'Toggle' }),
+      ariaLabel: t('settings:voice_input.toggle_mode_title', {
+        defaultValue: 'Tap once to start, tap once to stop',
+      }),
+    },
+  ];
+
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      disabled={disabled}
-      className={[
-        'w-full rounded px-1 py-2.5 text-left transition-colors',
-        active
-          ? 'bg-primary/10'
-          : 'hover:bg-muted/30',
-        disabled && 'cursor-not-allowed opacity-60',
-      ].join(' ')}
-    >
-      <div className="flex items-center justify-between gap-3">
-        <div className="flex min-w-0 items-start gap-2">
-          <div className="mt-0.5 flex-shrink-0 text-muted-foreground">
-            {icon}
-          </div>
-          <div className="min-w-0">
-            <div className="text-sm text-foreground/90 leading-tight">{title}</div>
-            <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">{description}</p>
-          </div>
-        </div>
-        <div
-          className={[
-            'flex-shrink-0 rounded-full px-2.5 py-1 text-[11px] font-medium',
-            active
-              ? 'bg-primary text-primary-foreground'
-              : 'text-muted-foreground',
-          ].join(' ')}
-        >
-          {actionLabel}
-        </div>
-      </div>
-    </button>
+    <SegmentedControl
+      ariaLabel={t('settings:voice_input.trigger_mode_title', { defaultValue: 'Trigger Mode' })}
+      value={value}
+      onValueChange={onChange}
+      size="compact"
+      options={segments.map((segment) => ({
+        value: segment.mode,
+        label: segment.label,
+        ariaLabel: segment.ariaLabel,
+        disabled,
+      }))}
+    />
   );
 }
+
+// —— 历史记录条目 —————————————————————————————————————————
 
 function HistoryEntryCard({
   entry,
@@ -296,31 +334,33 @@ function HistoryEntryCard({
   return (
     <div className="py-2.5 px-1 hover:bg-muted/30 rounded transition-colors">
       <div className="mb-1 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <div className="text-[11px] text-muted-foreground/70">
-            {formatVoiceHistoryTime(entry.createdAt)}
-            {entry.providerId ? ` · ${entry.providerId}` : ''}
-            {entry.model ? ` · ${entry.model}` : ''}
-            {typeof entry.durationMs === 'number' ? ` · ${Math.max(1, Math.round(entry.durationMs / 1000))}s` : ''}
-          </div>
+        <div className="text-[11px] text-muted-foreground/70">
+          {formatVoiceHistoryTime(entry.createdAt)}
+          {entry.providerId ? ` · ${entry.providerId}` : ''}
+          {entry.model ? ` · ${entry.model}` : ''}
+          {typeof entry.durationMs === 'number'
+            ? ` · ${Math.max(1, Math.round(entry.durationMs / 1000))}s`
+            : ''}
         </div>
         <NotionButton type="button" variant="ghost" size="sm" onClick={() => onCopy(entry)}>
           <Copy className="h-3.5 w-3.5" />
           {copyLabel}
         </NotionButton>
       </div>
-      <p className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground">{entry.text}</p>
+      <p className="whitespace-pre-wrap break-words text-sm leading-6 text-foreground">
+        {entry.text}
+      </p>
     </div>
   );
 }
+
+// —— 主组件 ———————————————————————————————————————————————
 
 interface VoiceInputSettingsSectionProps {
   assignedModel: VoiceInputAssignedModel;
 }
 
-export function VoiceInputSettingsSection({
-  assignedModel,
-}: VoiceInputSettingsSectionProps) {
+export function VoiceInputSettingsSection({ assignedModel }: VoiceInputSettingsSectionProps) {
   const { t } = useTranslation(['settings', 'common']);
   const [config, setConfig] = useState<VoiceInputConfig>(DEFAULT_VOICE_INPUT_CONFIG);
   const [loading, setLoading] = useState(true);
@@ -329,6 +369,7 @@ export function VoiceInputSettingsSection({
   const [support, setSupport] = useState<VoiceRecordingSupport | null>(null);
   const [historyEntries, setHistoryEntries] = useState<VoiceInputHistoryEntry[]>([]);
   const [vocabularyDraft, setVocabularyDraft] = useState('');
+  const [diagnosticsOpen, setDiagnosticsOpen] = useState(false);
   const savedConfigRef = useRef<VoiceInputConfig>(DEFAULT_VOICE_INPUT_CONFIG);
 
   const refreshSupport = useCallback(async () => {
@@ -351,15 +392,13 @@ export function VoiceInputSettingsSection({
           detectVoiceRecordingSupport(),
           loadVoiceInputHistory(),
         ]);
-        if (disposed) {
-          return;
-        }
+        if (disposed) return;
         savedConfigRef.current = loadedConfig;
         setConfig(loadedConfig);
         setVocabularyDraft(serializeVocabularyDraft(loadedConfig.dictationVocabulary));
         setSupport(loadedSupport);
         setHistoryEntries(loadedHistory);
-      } catch (error) {
+      } catch {
         if (!disposed) {
           showGlobalNotification(
             'error',
@@ -369,9 +408,7 @@ export function VoiceInputSettingsSection({
           );
         }
       } finally {
-        if (!disposed) {
-          setLoading(false);
-        }
+        if (!disposed) setLoading(false);
       }
     })();
 
@@ -384,7 +421,6 @@ export function VoiceInputSettingsSection({
     const handleHistoryChanged = () => {
       void refreshHistory();
     };
-
     window.addEventListener(VOICE_INPUT_HISTORY_CHANGED_EVENT, handleHistoryChanged);
     return () => window.removeEventListener(VOICE_INPUT_HISTORY_CHANGED_EVENT, handleHistoryChanged);
   }, [refreshHistory]);
@@ -397,7 +433,7 @@ export function VoiceInputSettingsSection({
         savedConfigRef.current = savedConfig;
         setConfig(savedConfig);
         setVocabularyDraft(serializeVocabularyDraft(savedConfig.dictationVocabulary));
-      } catch (error) {
+      } catch {
         const fallbackConfig = savedConfigRef.current;
         setConfig(fallbackConfig);
         setVocabularyDraft(serializeVocabularyDraft(fallbackConfig.dictationVocabulary));
@@ -423,15 +459,18 @@ export function VoiceInputSettingsSection({
     [config, persist]
   );
 
-  const handlePersistVocabulary = useCallback((value: string) => {
-    const nextConfig = {
-      ...config,
-      dictationVocabulary: parseVocabularyDraft(value),
-    };
-    setConfig(nextConfig);
-    setVocabularyDraft(value);
-    void persist(nextConfig);
-  }, [config, persist]);
+  const handlePersistVocabulary = useCallback(
+    (value: string) => {
+      const nextConfig = {
+        ...config,
+        dictationVocabulary: parseVocabularyDraft(value),
+      };
+      setConfig(nextConfig);
+      setVocabularyDraft(value);
+      void persist(nextConfig);
+    },
+    [config, persist]
+  );
 
   const handleCopyHistoryEntry = useCallback(
     async (entry: VoiceInputHistoryEntry) => {
@@ -439,9 +478,7 @@ export function VoiceInputSettingsSection({
         await navigator.clipboard.writeText(entry.text);
         showGlobalNotification(
           'success',
-          t('settings:voice_input.history_copy_success', {
-            defaultValue: 'Dictation text copied.',
-          })
+          t('settings:voice_input.history_copy_success', { defaultValue: 'Dictation text copied.' })
         );
       } catch {
         showGlobalNotification(
@@ -488,67 +525,19 @@ export function VoiceInputSettingsSection({
           })
         );
       } else {
-        const copyByCode: Record<string, string> = {
-          'permission-denied': t('settings:voice_input.permission_request_denied', {
-            defaultValue: 'Microphone access was denied. Allow it in the system dialog or OS settings.',
-          }),
-          'missing-get-user-media': t('settings:voice_input.permission_request_missing_runtime', {
-            defaultValue: 'This runtime is not exposing getUserMedia, so microphone capture cannot start yet.',
-          }),
-          'microphone-not-found': t('settings:voice_input.permission_request_no_device', {
-            defaultValue: 'No microphone was found. Connect or enable a microphone first.',
-          }),
-          'microphone-busy': t('settings:voice_input.permission_request_busy', {
-            defaultValue: 'The microphone is busy in another app. Close the other app and try again.',
-          }),
-          'missing-recorder-backend': t('settings:voice_input.permission_request_missing_backend', {
-            defaultValue: 'Microphone access is granted, but this runtime still lacks a usable recording backend.',
-          }),
-          'insecure-context': t('settings:voice_input.permission_request_insecure_context', {
-            defaultValue: 'Microphone access is granted, but this runtime is not exposing a secure recording context yet.',
-          }),
-        };
         const reasonCode = nextSupport.reasonCode ?? 'recording-unavailable';
-        showGlobalNotification(
-          reasonCode === 'permission-denied' || reasonCode === 'microphone-not-found' || reasonCode === 'microphone-busy'
-            ? 'warning'
-            : 'error',
-          copyByCode[reasonCode] ??
-            t('settings:voice_input.permission_request_failed', {
-              defaultValue: 'Unable to activate microphone access in this environment.',
-            })
-        );
+        // Note: 'microphone-not-found' / 'microphone-busy' / 'permission-denied' are
+        // runtime-only sentinels coming from async recorder errors (see catch block below).
+        // They are not part of the static `reasonCode` union, so we only check the dynamic path here.
+        showGlobalNotification('error', translatePermissionFailure(t, reasonCode));
       }
     } catch (error) {
       const code = error instanceof Error ? error.message : 'recording-unavailable';
-      const copyByCode: Record<string, string> = {
-        'permission-denied': t('settings:voice_input.permission_request_denied', {
-          defaultValue: 'Microphone access was denied. Allow it in the system dialog or OS settings.',
-        }),
-        'missing-get-user-media': t('settings:voice_input.permission_request_missing_runtime', {
-          defaultValue: 'This runtime is not exposing getUserMedia, so microphone capture cannot start yet.',
-        }),
-        'microphone-not-found': t('settings:voice_input.permission_request_no_device', {
-          defaultValue: 'No microphone was found. Connect or enable a microphone first.',
-        }),
-        'microphone-busy': t('settings:voice_input.permission_request_busy', {
-          defaultValue: 'The microphone is busy in another app. Close the other app and try again.',
-        }),
-        'missing-recorder-backend': t('settings:voice_input.permission_request_missing_backend', {
-          defaultValue: 'Microphone access is granted, but this runtime still lacks a usable recording backend.',
-        }),
-        'insecure-context': t('settings:voice_input.permission_request_insecure_context', {
-          defaultValue: 'Microphone access is granted, but this runtime is not exposing a secure recording context yet.',
-        }),
-      };
       showGlobalNotification(
         code === 'permission-denied' || code === 'microphone-not-found' || code === 'microphone-busy'
           ? 'warning'
           : 'error',
-        copyByCode[code] ??
-          t('settings:voice_input.permission_request_failed', {
-            defaultValue: 'Unable to activate microphone access in this environment.',
-          })
+        translatePermissionFailure(t, code)
       );
       await refreshSupport();
     } finally {
@@ -559,7 +548,10 @@ export function VoiceInputSettingsSection({
   if (loading) {
     return (
       <section className="mt-8">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+        <GroupTitle
+          title={t('settings:voice_input.title', { defaultValue: 'Dictation' })}
+        />
+        <div className="flex items-center gap-2 py-3 px-1 text-sm text-muted-foreground">
           <Loader2 className="h-4 w-4 animate-spin" />
           <span>
             {t('settings:voice_input.loading', {
@@ -573,358 +565,333 @@ export function VoiceInputSettingsSection({
 
   const vocabularyCount = parseVocabularyDraft(vocabularyDraft).length;
   const activeHotkeyMode = config.hotkeyMode ?? DEFAULT_VOICE_INPUT_CONFIG.hotkeyMode;
+  const assignedLabel =
+    assignedModel.modelLabel ??
+    assignedModel.model ??
+    t('settings:voice_input.not_configured', { defaultValue: 'Not configured' });
+  const assignedProvider = assignedModel.providerLabel ?? null;
 
   return (
     <section className="mt-8">
-      <div className="mb-4 flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h3 className="text-base font-semibold text-foreground">
-            {t('settings:voice_input.title', { defaultValue: 'Voice Input' })}
-          </h3>
-          <p className="text-[11px] text-muted-foreground/70 leading-relaxed">
-            {t('settings:voice_input.description', {
-              defaultValue:
-                'Recording controls live here. ASR model assignment belongs to Settings > Models, provider credentials belong to Settings > APIs, and usage is tracked in Statistics.',
-            })}
-          </p>
-        </div>
-        <div className="flex flex-wrap items-center gap-2">
-          <StatusPill support={support} t={t} />
-          <NotionButton
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              void requestMicrophoneAccess();
-            }}
-            disabled={saving || requestingAccess}
-          >
-            {requestingAccess ? (
-              <Loader2 className="h-3.5 w-3.5 animate-spin" />
-            ) : (
-              <CheckCircle2 className="h-3.5 w-3.5" />
-            )}
-            {t('settings:voice_input.request_access', {
-              defaultValue: 'Request microphone access',
-            })}
-          </NotionButton>
-          <NotionButton
-            type="button"
-            variant="ghost"
-            size="sm"
-            onClick={() => {
-              void refreshSupport();
-            }}
-            disabled={saving || requestingAccess}
-          >
-            <RefreshCcw className="h-3.5 w-3.5" />
-            {t('settings:voice_input.refresh_support', { defaultValue: 'Refresh Support' })}
-          </NotionButton>
-        </div>
-      </div>
+      <GroupTitle
+        title={t('settings:voice_input.title', { defaultValue: 'Dictation' })}
+        description={t('settings:voice_input.description_short', {
+          defaultValue: 'Shortcuts, vocabulary, and history for dictation.',
+        })}
+        rightSlot={
+          <>
+            <NotionButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => openSettingsTab('models')}
+            >
+              <Settings2 className="h-3.5 w-3.5" />
+              {t('settings:voice_input.open_model_settings', { defaultValue: 'Open Model Assignments' })}
+            </NotionButton>
+            <NotionButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => openSettingsTab('apis')}
+            >
+              <Wrench className="h-3.5 w-3.5" />
+              {t('settings:voice_input.open_api_settings', { defaultValue: 'Open API Settings' })}
+            </NotionButton>
+            <NotionButton
+              type="button"
+              variant="ghost"
+              size="sm"
+              onClick={() => openSettingsTab('statistics')}
+            >
+              <BarChart3 className="h-3.5 w-3.5" />
+              {t('settings:voice_input.open_usage_statistics', { defaultValue: 'Open Usage Statistics' })}
+            </NotionButton>
+          </>
+        }
+      />
 
       <div className="space-y-px">
-        <AssignedModelCard assignedModel={assignedModel} t={t} />
+        <StatusBar
+          support={support}
+          requestingAccess={requestingAccess}
+          onRequestAccess={() => {
+            void requestMicrophoneAccess();
+          }}
+          t={t}
+        />
 
-        {/* 听写快捷键 */}
-        <div className="mt-6">
-          <div className="px-1 mb-2">
-            <h3 className="text-sm text-foreground/90 leading-tight">
-              {t('settings:voice_input.shortcut_title', {
-                defaultValue: 'Dictation Shortcut',
-              })}
-            </h3>
-            <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">
-              {t('settings:voice_input.shortcut_description', {
-                defaultValue:
-                  'Choose how the app-wide shortcut behaves inside DeepStudent. Dictation still inserts at the active supported text cursor and never auto-sends.',
-              })}
-            </p>
-          </div>
+        <SettingRow
+          title={t('settings:voice_input.assigned_model', { defaultValue: 'Assigned ASR Model' })}
+          description={assignedProvider ?? undefined}
+        >
+          <div className="text-sm text-foreground/80 text-right">{assignedLabel}</div>
+        </SettingRow>
+        <ModelStatusHint assignedModel={assignedModel} t={t} />
 
-          <div className="space-y-px">
-            <ShortcutModeCard
-              active={activeHotkeyMode === 'hold-to-talk'}
-              disabled={saving}
-              icon={<Mic2 className="h-4 w-4" />}
-              title={t('settings:voice_input.hold_mode_title', {
-                defaultValue: 'Press and hold the dictation shortcut',
-              })}
-              description={t('settings:voice_input.hold_mode_description', {
-                defaultValue:
-                  'Hold the shortcut anywhere inside DeepStudent to dictate into the current supported input, then release to stop.',
-              })}
-              actionLabel={
-                activeHotkeyMode === 'hold-to-talk'
-                  ? t('settings:voice_input.mode_active', { defaultValue: 'Active' })
-                  : t('settings:voice_input.mode_select', { defaultValue: 'Use This Mode' })
-              }
-              onSelect={() => handleSelectHotkeyMode('hold-to-talk')}
-            />
-            <ShortcutModeCard
-              active={activeHotkeyMode === 'toggle-to-record'}
-              disabled={saving}
-              icon={<RefreshCcw className="h-4 w-4" />}
-              title={t('settings:voice_input.toggle_mode_title', {
-                defaultValue: 'Tap once to start, tap once to stop',
-              })}
-              description={t('settings:voice_input.toggle_mode_description', {
-                defaultValue:
-                  'Use the same shortcut as a toggle when you want hands-free dictation inside DeepStudent.',
-              })}
-              actionLabel={
-                activeHotkeyMode === 'toggle-to-record'
-                  ? t('settings:voice_input.mode_active', { defaultValue: 'Active' })
-                  : t('settings:voice_input.mode_select', { defaultValue: 'Use This Mode' })
-              }
-              onSelect={() => handleSelectHotkeyMode('toggle-to-record')}
-            />
-          </div>
+        <SettingRow
+          title={t('settings:voice_input.trigger_mode_title', { defaultValue: 'Trigger Mode' })}
+          description={t('settings:voice_input.trigger_mode_description', {
+            defaultValue:
+              'Hold the hotkey to speak, or tap once to toggle. Dictation inserts at the cursor without auto-sending.',
+          })}
+        >
+          <HotkeyModeSegmented
+            value={activeHotkeyMode}
+            disabled={saving}
+            onChange={handleSelectHotkeyMode}
+            t={t}
+          />
+        </SettingRow>
 
-          <div className="mt-3 grid gap-4 md:grid-cols-2 px-1">
-            <label className="space-y-1.5">
-              <span className="text-xs font-medium text-muted-foreground">
-                {t('settings:voice_input.hotkey', { defaultValue: 'Hotkey' })}
-              </span>
-              <Input
-                disabled={saving}
-                value={config.hotkey}
-                onChange={(event) => {
-                  setConfig((current) => ({ ...current, hotkey: event.target.value }));
-                }}
-                onBlur={(event) => {
-                  const nextConfig = {
-                    ...config,
-                    hotkey: event.currentTarget.value,
-                  };
-                  setConfig(nextConfig);
-                  void persist(nextConfig);
-                }}
-              />
-            </label>
+        <SettingRow title={t('settings:voice_input.hotkey', { defaultValue: 'Hotkey' })}>
+          <Input
+            disabled={saving}
+            value={config.hotkey}
+            onChange={(event) => {
+              setConfig((current) => ({ ...current, hotkey: event.target.value }));
+            }}
+            onBlur={(event) => {
+              const nextConfig = { ...config, hotkey: event.currentTarget.value };
+              setConfig(nextConfig);
+              void persist(nextConfig);
+            }}
+            className="h-8 w-40 text-xs"
+          />
+        </SettingRow>
 
-            <label className="space-y-1.5">
-              <span className="text-xs font-medium text-muted-foreground">
-                {t('settings:voice_input.max_duration_ms', { defaultValue: 'Max Duration (ms)' })}
-              </span>
-              <Input
-                disabled={saving}
-                type="number"
-                inputMode="numeric"
-                value={String(config.maxDurationMs)}
-                onChange={(event) => {
-                  setConfig((current) => ({
-                    ...current,
-                    maxDurationMs: Number(event.target.value || DEFAULT_VOICE_INPUT_CONFIG.maxDurationMs),
-                  }));
-                }}
-                onBlur={(event) => {
-                  const nextConfig = {
-                    ...config,
-                    maxDurationMs: Number(
-                      event.currentTarget.value || DEFAULT_VOICE_INPUT_CONFIG.maxDurationMs
-                    ),
-                  };
-                  setConfig(nextConfig);
-                  void persist(nextConfig);
-                }}
-              />
-            </label>
-          </div>
-        </div>
+        <SettingRow
+          title={t('settings:voice_input.max_duration_ms', { defaultValue: 'Max Duration (ms)' })}
+        >
+          <Input
+            disabled={saving}
+            type="number"
+            inputMode="numeric"
+            value={String(config.maxDurationMs)}
+            onChange={(event) => {
+              setConfig((current) => ({
+                ...current,
+                maxDurationMs: Number(event.target.value || DEFAULT_VOICE_INPUT_CONFIG.maxDurationMs),
+              }));
+            }}
+            onBlur={(event) => {
+              const nextConfig = {
+                ...config,
+                maxDurationMs: Number(
+                  event.currentTarget.value || DEFAULT_VOICE_INPUT_CONFIG.maxDurationMs
+                ),
+              };
+              setConfig(nextConfig);
+              void persist(nextConfig);
+            }}
+            className="h-8 w-32 text-xs"
+          />
+        </SettingRow>
 
-        {/* 设置与恢复 */}
-        <div className="mt-6">
-          <div className="px-1 mb-2">
-            <h3 className="text-sm text-foreground/90 leading-tight">
-              {t('settings:voice_input.quick_actions_title', {
-                defaultValue: 'Setup & Recovery',
-              })}
-            </h3>
-            <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">
-              {t('settings:voice_input.quick_actions_description', {
-                defaultValue:
-                  'Jump straight to model assignment, provider credentials, and usage analytics when dictation needs attention.',
-              })}
-            </p>
+        <Subsection
+          title={t('settings:voice_input.dictionary_title', { defaultValue: 'Dictation Vocabulary' })}
+          description={t('settings:voice_input.dictionary_description', {
+            defaultValue: 'Words or short phrases dictation should prefer. One per line.',
+          })}
+        >
+          <Textarea
+            disabled={saving}
+            value={vocabularyDraft}
+            onChange={(event) => setVocabularyDraft(event.target.value)}
+            onBlur={(event) => handlePersistVocabulary(event.currentTarget.value)}
+            rows={4}
+            placeholder={t('settings:voice_input.dictionary_placeholder', {
+              defaultValue: 'Photosynthesis\nAnkylosing spondylitis\nDeepStudent',
+            })}
+          />
+          <div className="mt-1.5 text-[11px] text-muted-foreground/70">
+            {t('settings:voice_input.dictionary_count', {
+              defaultValue: '{{count}} phrase hints',
+              count: vocabularyCount,
+            })}
           </div>
-          <div className="flex flex-wrap gap-2 px-1">
-            <NotionButton type="button" variant="ghost" size="sm" onClick={() => openSettingsTab('models')}>
-              <Settings2 className="h-3.5 w-3.5" />
-              {t('settings:voice_input.open_model_settings', {
-                defaultValue: 'Open Model Assignments',
-              })}
-            </NotionButton>
-            <NotionButton type="button" variant="ghost" size="sm" onClick={() => openSettingsTab('apis')}>
-              <Wrench className="h-3.5 w-3.5" />
-              {t('settings:voice_input.open_api_settings', {
-                defaultValue: 'Open API Settings',
-              })}
-            </NotionButton>
-            <NotionButton type="button" variant="ghost" size="sm" onClick={() => openSettingsTab('statistics')}>
-              <BarChart3 className="h-3.5 w-3.5" />
-              {t('settings:voice_input.open_usage_statistics', {
-                defaultValue: 'Open Usage Statistics',
-              })}
-            </NotionButton>
-          </div>
-        </div>
+        </Subsection>
 
-        {/* 听写词典 */}
-        <div className="mt-6">
-          <div className="px-1 mb-2">
-            <h3 className="text-sm text-foreground/90 leading-tight">
-              {t('settings:voice_input.dictionary_title', {
-                defaultValue: 'Dictation Vocabulary',
-              })}
-            </h3>
-            <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">
-              {t('settings:voice_input.dictionary_description', {
-                defaultValue:
-                  'Add words or short phrases that dictation should prefer to recognize. Use one item per line.',
-              })}
-            </p>
-          </div>
-          <div className="px-1 space-y-2">
-            <Textarea
-              disabled={saving}
-              value={vocabularyDraft}
-              onChange={(event) => setVocabularyDraft(event.target.value)}
-              onBlur={(event) => handlePersistVocabulary(event.currentTarget.value)}
-              rows={5}
-              placeholder={t('settings:voice_input.dictionary_placeholder', {
-                defaultValue: 'Photosynthesis\nAnkylosing spondylitis\nDeepStudent',
-              })}
-            />
-            <div className="flex items-center justify-between gap-3 text-[11px] text-muted-foreground/70">
-              <span>
-                {t('settings:voice_input.dictionary_count', {
-                  defaultValue: '{{count}} phrase hints',
-                  count: vocabularyCount,
-                })}
-              </span>
-              <span>
-                {t('settings:voice_input.dictionary_hint', {
-                  defaultValue: 'These hints are merged into the ASR prompt when supported.',
-                })}
-              </span>
-            </div>
-          </div>
-        </div>
-
-        {/* 最近的听写记录 */}
-        <div className="mt-6">
-          <div className="px-1 mb-2 flex items-start justify-between gap-3">
-            <div>
-              <h3 className="text-sm text-foreground/90 leading-tight">
-                {t('settings:voice_input.history_title', {
-                  defaultValue: 'Recent Dictation History',
-                })}
-              </h3>
-              <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">
-                {t('settings:voice_input.history_description', {
-                  defaultValue:
-                    'Recent transcripts stay here so you can recover them if the text lands in the wrong place or focus changes unexpectedly.',
-                })}
-              </p>
-            </div>
-            {historyEntries.length > 0 && (
-              <NotionButton type="button" variant="ghost" size="sm" onClick={() => void handleClearHistory()}>
-                <Trash2 className="h-3.5 w-3.5" />
-                {t('settings:voice_input.history_clear', {
-                  defaultValue: 'Clear',
-                })}
-              </NotionButton>
-            )}
-          </div>
-
-          <div className="space-y-px">
-            {historyEntries.length === 0 ? (
-              <div className="px-1 py-3 text-[11px] text-muted-foreground/70">
-                {t('settings:voice_input.history_empty', {
+        <Subsection
+          title={t('settings:voice_input.history_title', {
+            defaultValue: 'Recent Dictation History',
+          })}
+          description={
+            historyEntries.length === 0
+              ? t('settings:voice_input.history_empty', {
                   defaultValue: 'Your recent dictation transcripts will appear here.',
-                })}
-              </div>
-            ) : (
-              historyEntries.map((entry) => (
+                })
+              : undefined
+          }
+          rightSlot={
+            historyEntries.length > 0 ? (
+              <NotionButton
+                type="button"
+                variant="ghost"
+                size="sm"
+                onClick={() => void handleClearHistory()}
+              >
+                <Trash2 className="h-3.5 w-3.5" />
+                {t('settings:voice_input.history_clear', { defaultValue: 'Clear' })}
+              </NotionButton>
+            ) : null
+          }
+        >
+          {historyEntries.length > 0 && (
+            <div className="space-y-px">
+              {historyEntries.map((entry) => (
                 <HistoryEntryCard
                   key={entry.id}
                   entry={entry}
                   onCopy={handleCopyHistoryEntry}
-                  copyLabel={t('settings:voice_input.history_copy', {
-                    defaultValue: 'Copy',
-                  })}
+                  copyLabel={t('settings:voice_input.history_copy', { defaultValue: 'Copy' })}
                 />
-              ))
-            )}
-          </div>
-        </div>
+              ))}
+            </div>
+          )}
+        </Subsection>
 
-        {/* 诊断信息 */}
-        <div className="mt-6 grid gap-2 sm:grid-cols-2 xl:grid-cols-4 px-1">
-          <div className="py-2">
-            <div className="text-[11px] text-muted-foreground/70">
-              {t('settings:voice_input.diagnostics.permission', { defaultValue: 'Permission' })}
+        {/* 诊断（默认折叠） */}
+        <div className="px-1">
+          <NotionButton
+            variant="ghost"
+            size="sm"
+            onClick={() => setDiagnosticsOpen((prev) => !prev)}
+            aria-expanded={diagnosticsOpen}
+            className="!h-auto !px-0 !py-2 text-xs text-muted-foreground hover:text-foreground"
+          >
+            <ChevronDown
+              className={cn(
+                'h-3.5 w-3.5 transition-transform',
+                diagnosticsOpen ? 'rotate-0' : '-rotate-90'
+              )}
+            />
+            {t('settings:voice_input.diagnostics_title', { defaultValue: 'Diagnostics' })}
+          </NotionButton>
+          {diagnosticsOpen && (
+            <div className="pl-5 pb-2 space-y-2">
+              <div className="grid gap-1.5 grid-cols-2 xl:grid-cols-4">
+                <DiagnosticItem
+                  label={t('settings:voice_input.diagnostics.permission', {
+                    defaultValue: 'Permission',
+                  })}
+                  value={
+                    support?.permissionState
+                      ? t(`settings:voice_input.permission_states.${support.permissionState}`, {
+                          defaultValue: support.permissionState,
+                        })
+                      : t('settings:voice_input.permission_states.unknown', {
+                          defaultValue: 'unknown',
+                        })
+                  }
+                />
+                <DiagnosticItem
+                  label={t('settings:voice_input.diagnostics.capture_api', {
+                    defaultValue: 'Capture API',
+                  })}
+                  value={
+                    support?.hasGetUserMedia === undefined
+                      ? t('settings:voice_input.diagnostics.unknown', { defaultValue: 'Unknown' })
+                      : support.hasGetUserMedia
+                        ? 'getUserMedia'
+                        : t('settings:voice_input.diagnostics.missing', { defaultValue: 'Missing' })
+                  }
+                />
+                <DiagnosticItem
+                  label={t('settings:voice_input.diagnostics.recorder_backend', {
+                    defaultValue: 'Recorder Backend',
+                  })}
+                  value={
+                    support?.recorderMode === 'media-recorder'
+                      ? 'MediaRecorder'
+                      : support?.recorderMode === 'pcm-wav'
+                        ? 'PCM/WAV fallback'
+                        : t('settings:voice_input.diagnostics.unavailable', {
+                            defaultValue: 'Unavailable',
+                          })
+                  }
+                />
+                <DiagnosticItem
+                  label={t('settings:voice_input.diagnostics.secure_context', {
+                    defaultValue: 'Secure Context',
+                  })}
+                  value={
+                    support?.isSecureContext === undefined
+                      ? t('settings:voice_input.diagnostics.unknown', { defaultValue: 'Unknown' })
+                      : support.isSecureContext
+                        ? t('settings:voice_input.diagnostics.available', { defaultValue: 'Available' })
+                        : t('settings:voice_input.diagnostics.missing', { defaultValue: 'Missing' })
+                  }
+                />
+              </div>
+              <div className="flex items-center gap-2">
+                <NotionButton
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => {
+                    void refreshSupport();
+                  }}
+                  disabled={saving || requestingAccess}
+                >
+                  <RefreshCcw className="h-3.5 w-3.5" />
+                  {t('settings:voice_input.refresh_support', { defaultValue: 'Refresh Support' })}
+                </NotionButton>
+              </div>
+              <p className="text-[11px] leading-5 text-muted-foreground/70">
+                {t('settings:voice_input.runtime_hint', {
+                  defaultValue:
+                    'If recording support is unavailable, the app build is still missing platform microphone capability, the runtime is not exposing getUserMedia, or OS permission is blocked.',
+                })}
+              </p>
             </div>
-            <div className="mt-0.5 text-sm text-foreground">
-              {support?.permissionState
-                ? t(`settings:voice_input.permission_states.${support.permissionState}`, {
-                    defaultValue: support.permissionState,
-                  })
-                : t('settings:voice_input.permission_states.unknown', { defaultValue: 'unknown' })}
-            </div>
-          </div>
-          <div className="py-2">
-            <div className="text-[11px] text-muted-foreground/70">
-              {t('settings:voice_input.diagnostics.capture_api', { defaultValue: 'Capture API' })}
-            </div>
-            <div className="mt-0.5 text-sm text-foreground">
-              {support?.hasGetUserMedia === undefined
-                ? t('settings:voice_input.diagnostics.unknown', { defaultValue: 'Unknown' })
-                : support.hasGetUserMedia
-                ? 'getUserMedia'
-                : t('settings:voice_input.diagnostics.missing', { defaultValue: 'Missing' })}
-            </div>
-          </div>
-          <div className="py-2">
-            <div className="text-[11px] text-muted-foreground/70">
-              {t('settings:voice_input.diagnostics.recorder_backend', { defaultValue: 'Recorder Backend' })}
-            </div>
-            <div className="mt-0.5 text-sm text-foreground">
-              {support?.recorderMode === 'media-recorder'
-                ? 'MediaRecorder'
-                : support?.recorderMode === 'pcm-wav'
-                ? 'PCM/WAV fallback'
-                : t('settings:voice_input.diagnostics.unavailable', { defaultValue: 'Unavailable' })}
-            </div>
-          </div>
-          <div className="py-2">
-            <div className="text-[11px] text-muted-foreground/70">
-              {t('settings:voice_input.diagnostics.secure_context', { defaultValue: 'Secure Context' })}
-            </div>
-            <div className="mt-0.5 text-sm text-foreground">
-              {support?.isSecureContext === undefined
-                ? t('settings:voice_input.diagnostics.unknown', { defaultValue: 'Unknown' })
-                : support.isSecureContext
-                ? t('settings:voice_input.diagnostics.available', { defaultValue: 'Available' })
-                : t('settings:voice_input.diagnostics.missing', { defaultValue: 'Missing' })}
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 px-1 text-[11px] leading-5 text-muted-foreground/70">
-        <div className="flex items-start gap-2">
-          <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
-          <div>
-            {t('settings:voice_input.runtime_hint', {
-              defaultValue:
-                'If recording support is unavailable, the app build is still missing platform microphone capability, the runtime is not exposing getUserMedia, or OS permission is blocked.',
-            })}
-          </div>
+          )}
         </div>
       </div>
     </section>
+  );
+}
+
+function DiagnosticItem({ label, value }: { label: string; value: React.ReactNode }) {
+  return (
+    <div>
+      <div className="text-[10px] uppercase tracking-wide text-muted-foreground/60">{label}</div>
+      <div className="mt-0.5 text-xs text-foreground/80">{value}</div>
+    </div>
+  );
+}
+
+function translatePermissionFailure(
+  t: ReturnType<typeof useTranslation>['t'],
+  code: string
+): string {
+  const map: Record<string, string> = {
+    'permission-denied': t('settings:voice_input.permission_request_denied', {
+      defaultValue: 'Microphone access was denied. Allow it in the system dialog or OS settings.',
+    }),
+    'missing-get-user-media': t('settings:voice_input.permission_request_missing_runtime', {
+      defaultValue: 'This runtime is not exposing getUserMedia, so microphone capture cannot start yet.',
+    }),
+    'microphone-not-found': t('settings:voice_input.permission_request_no_device', {
+      defaultValue: 'No microphone was found. Connect or enable a microphone first.',
+    }),
+    'microphone-busy': t('settings:voice_input.permission_request_busy', {
+      defaultValue: 'The microphone is busy in another app. Close the other app and try again.',
+    }),
+    'missing-recorder-backend': t('settings:voice_input.permission_request_missing_backend', {
+      defaultValue:
+        'Microphone access is granted, but this runtime still lacks a usable recording backend.',
+    }),
+    'insecure-context': t('settings:voice_input.permission_request_insecure_context', {
+      defaultValue:
+        'Microphone access is granted, but this runtime is not exposing a secure recording context yet.',
+    }),
+  };
+  return (
+    map[code] ??
+    t('settings:voice_input.permission_request_failed', {
+      defaultValue: 'Unable to activate microphone access in this environment.',
+    })
   );
 }
 

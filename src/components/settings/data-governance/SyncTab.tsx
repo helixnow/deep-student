@@ -29,6 +29,7 @@ import { AppSelect } from '../../ui/app-menu';
 import { CloudStorageSection } from '../CloudStorageSection';
 import { RecordConflictsPanel } from './RecordConflictsPanel';
 import { SyncIndicator } from './SyncIndicator';
+import { settingsQuietTableRowClassName } from '../SettingsCommon';
 import type {
   SyncStatusResponse,
   ConflictDetectionResponse,
@@ -165,7 +166,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             </TableHeader>
             <TableBody>
               {syncDatabases.map((db) => (
-                <TableRow key={db.id} className="hover:bg-muted/30 border-border/40">
+                <TableRow key={db.id} className={settingsQuietTableRowClassName}>
                   <TableCell className="font-medium py-3 whitespace-nowrap">
                     {getDatabaseDisplayName(db.id, t)}
                   </TableCell>

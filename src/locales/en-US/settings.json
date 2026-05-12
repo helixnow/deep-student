@@ -381,10 +381,10 @@
     "add_failed": "Failed to add models: {{error}}"
   },
   "vendor_modal": {
-    "title_new": "New Provider",
+    "title_new": "Add Provider",
     "title_edit": "Edit Provider",
     "subtitle": "Configure provider API credentials and base parameters",
-    "name_label": "Name",
+    "name_label": "Provider Name",
     "name_placeholder": "Enter provider name",
     "provider_label": "Provider Type",
     "providers": {
@@ -393,6 +393,15 @@
       "google": "Google",
       "general": "General Adapter",
       "siliconflow": "SiliconFlow",
+      "deepseek": "DeepSeek",
+      "qwen": "Qwen",
+      "zhipu": "Zhipu",
+      "doubao": "Doubao",
+      "minimax": "MiniMax",
+      "moonshot": "Moonshot",
+      "nvidia": "NVIDIA",
+      "mimo": "Xiaomi MiMo",
+      "ollama": "Ollama",
       "custom": "Custom"
     },
     "base_url_label": "Base URL",
@@ -434,12 +443,14 @@
   },
   "theme": {
     "title": "Theme Settings",
-    "description": "Switch appearance modes and curated palettes tailored for different environments",
+    "description": "Switch appearance modes and refined palettes tailored for different environments",
     "row_title": "Appearance / Theme",
     "row_description": "Use light, dark, or match the system setting",
     "mode_label": "Select theme mode",
-    "palette_label": "Theme Palette",
-    "palette_hint": "Choose your preferred theme color for buttons, links, and interactive elements.",
+    "font_smoothing_title": "macOS Native Font Smoothing",
+    "font_smoothing_description": "Prefer the macOS system font smoothing behavior instead of forcing antialiased text globally. Turn this off to restore the previous grayscale smoothing look.",
+    "accent_label": "Accent color",
+    "accent_hint": "Only tunes buttons, links, and selected states. Background, cards, and text stay stable.",
     "system_default": "System Default",
     "system_default_hint": "Match the system appearance setting",
     "system_status": "Current system: {{mode}}",
@@ -448,30 +459,21 @@
       "light": "Light",
       "dark": "Dark"
     },
-    "palettes": {
-      "default_name": "Aurora Blue",
-      "default_desc": "Deep blue tones, balanced interaction and status feedback",
-      "purple_name": "Lavender Purple",
-      "purple_desc": "Elegant purple tones for calm and focused atmosphere",
-      "green_name": "Forest Green",
-      "green_desc": "Natural green tones, soothing and eye-friendly",
-      "orange_name": "Sunset Orange",
-      "orange_desc": "Warm orange tones, vibrant and energetic",
-      "pink_name": "Rose Pink",
-      "pink_desc": "Soft pink tones, warm and romantic",
-      "teal_name": "Teal Cyan",
-      "teal_desc": "Fresh teal tones, modern and minimal",
-      "muted_name": "Soft Tones",
-      "muted_desc": "Low saturation colors, reduces eye strain for extended use",
-      "paper_name": "Paper Texture",
-      "paper_desc": "Paper-like background with soft ink colors, comfortable for long reading",
-      "custom_name": "Custom",
-      "custom_desc": "Pick any color as your theme accent, the system will generate a full palette automatically"
+    "accent": {
+      "default": "Still Blue",
+      "purple": "Ink Violet",
+      "green": "Forest Ink",
+      "orange": "Amber",
+      "pink": "Carmine",
+      "teal": "Stone Teal",
+      "muted": "Graphite",
+      "paper": "Clay Brown",
+      "custom": "Custom"
     },
     "status": {
       "current": "Current: {{mode}} theme",
       "auto_follow": " (following system {{system}} preference)",
-      "palette": "Active palette: {{palette}}"
+      "accent": "Accent: {{accent}}"
     }
   },
   "zoom": {
@@ -681,9 +683,6 @@
       "closeDialog": "Close",
       "expand": "Expand {{category}}",
       "collapse": "Collapse {{category}}",
-      "previewLabel": "Showing {{count}} items first",
-      "itemCount": "{{count}} items",
-      "moreCount": "+{{count}}",
       "categories": {
         "coreStack": "Core Framework & Build Stack",
         "uiAndInteraction": "UI & Interaction",

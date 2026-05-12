@@ -8,22 +8,23 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Database,
-  HardDrive,
-  RefreshCw,
-  Activity,
-  CheckCircle2,
-  XCircle,
-  AlertTriangle,
-  Loader2,
-  Shield,
-  ArrowRightLeft,
-  ShieldCheck,
   Archive,
-} from 'lucide-react';
+  ArrowClockwise,
+  ArrowsLeftRight,
+  CheckCircle,
+  Database,
+  Gauge,
+  HardDrive,
+  Shield,
+  ShieldCheck,
+  Spinner,
+  Warning,
+  XCircle,
+} from '@phosphor-icons/react';
 
 import { NotionButton } from '../../ui/NotionButton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../ui/shad/Table';
+import { settingsQuietTableRowClassName } from '../SettingsCommon';
 import type {
   HealthCheckResponse,
   MigrationStatusResponse,
@@ -80,20 +81,20 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <Activity className="h-4 w-4" />
+            <Gauge className="h-4 w-4" />
             {t('data:governance.health_status')}
           </div>
           <div className="flex items-center gap-2 h-8">
             {healthCheck?.overall_healthy ? (
               <>
-                <CheckCircle2 className="h-5 w-5 text-emerald-500" />
+                <CheckCircle className="h-5 w-5 text-emerald-500" />
                 <span className="text-emerald-600 font-medium">
                   {t('data:governance.healthy')}
                 </span>
               </>
             ) : (
               <>
-                <AlertTriangle className="h-5 w-5 text-amber-500" />
+                <Warning className="h-5 w-5 text-amber-500" />
                 <span className="text-amber-600 font-medium">
                   {t('data:governance.needs_attention')}
                 </span>
@@ -119,7 +120,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
 
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <ArrowRightLeft className="h-4 w-4" />
+            <ArrowsLeftRight className="h-4 w-4" />
             {t('data:governance.pending_migrations_label')}
           </div>
           <div className="flex items-baseline gap-2">
@@ -179,7 +180,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               className="h-7"
             >
               {isVerifying ? (
-                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                <Spinner className="h-3.5 w-3.5 mr-1.5 animate-spin" />
               ) : (
                 <Shield className="h-3.5 w-3.5 mr-1.5" />
               )}
@@ -205,14 +206,14 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
               <div className="flex items-center gap-1.5">
                 {lastAutoVerifyResult.is_valid ? (
                   <>
-                    <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                    <CheckCircle className="h-4 w-4 text-emerald-500" />
                     <span className="text-sm text-emerald-600 dark:text-emerald-400 font-medium">
                       {t('data:governance.last_verification_passed')}
                     </span>
                   </>
                 ) : (
                   <>
-                    <AlertTriangle className="h-4 w-4 text-red-500" />
+                    <Warning className="h-4 w-4 text-red-500" />
                     <span className="text-sm text-red-600 dark:text-red-400 font-medium">
                       {t('data:governance.last_verification_failed')}
                     </span>
@@ -238,7 +239,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           <div className="text-sm text-muted-foreground">
             {isVerifying ? (
               <div className="flex items-center gap-2">
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <Spinner className="h-4 w-4 animate-spin" />
                 {t('data:governance.verification_verifying')}
               </div>
             ) : (
@@ -266,7 +267,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       {hasPendingMigrations && !(migrationStatus?.has_pending_migrations && migrationStatus.last_error) && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-2">
           <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-medium">
-            <AlertTriangle className="h-4 w-4" />
+            <Warning className="h-4 w-4" />
             {t('data:governance.pending_migrations_next_step')}
           </div>
           <p className="text-sm text-amber-600/90 dark:text-amber-400/90 pl-6">
@@ -279,7 +280,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       {migrationStatus?.has_pending_migrations && migrationStatus.last_error && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-4 space-y-2">
           <div className="flex items-center gap-2 text-red-600 dark:text-red-400 font-medium">
-            <AlertTriangle className="h-4 w-4" />
+            <Warning className="h-4 w-4" />
             {t('data:governance.migration_incomplete_title')}
           </div>
           <p className="text-sm font-mono text-red-600/80 dark:text-red-400/80 pl-6 break-all">
@@ -295,7 +296,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       {auditDegraded && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-2">
           <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400 font-medium">
-            <AlertTriangle className="h-4 w-4" />
+            <Warning className="h-4 w-4" />
             {t('data:governance.audit_degraded_title')}
           </div>
           <p className="text-sm text-amber-600/90 dark:text-amber-400/90 pl-6">
@@ -330,7 +331,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
           </div>
           <div className="flex gap-2">
             <NotionButton variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="h-8">
-              <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
+              <ArrowClockwise className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
               {t('common:actions.refresh')}
             </NotionButton>
             <NotionButton variant="default" size="sm" onClick={onRunHealthCheck} disabled={loading} className="h-8">
@@ -353,7 +354,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
             </TableHeader>
             <TableBody>
               {healthCheckDatabases.map((db) => (
-                <TableRow key={db.id} className="hover:bg-muted/30 border-border/40">
+                <TableRow key={db.id} className={settingsQuietTableRowClassName}>
                   <TableCell className="font-medium py-3 whitespace-nowrap">
                     {getDatabaseDisplayName(db.id, t)}
                   </TableCell>
@@ -378,12 +379,12 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                   <TableCell className="py-3">
                     {db.is_healthy ? (
                       <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 text-xs whitespace-nowrap">
-                        <CheckCircle2 className="h-3 w-3 shrink-0" />
+                        <CheckCircle className="h-3 w-3 shrink-0" />
                         {t('data:governance.healthy')}
                       </div>
                     ) : db.pending_count > 0 ? (
                       <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400 text-xs whitespace-nowrap">
-                        <AlertTriangle className="h-3 w-3 shrink-0" />
+                        <Warning className="h-3 w-3 shrink-0" />
                         {t('data:governance.pending_migration_status')}
                       </div>
                     ) : (
@@ -395,9 +396,9 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                   </TableCell>
                   <TableCell className="py-3">
                     {db.dependencies_met ? (
-                      <CheckCircle2 className="h-4 w-4 text-emerald-500/70" />
+                      <CheckCircle className="h-4 w-4 text-emerald-500/70" />
                     ) : (
-                      <AlertTriangle className="h-4 w-4 text-amber-500/70" />
+                      <Warning className="h-4 w-4 text-amber-500/70" />
                     )}
                   </TableCell>
                   <TableCell className="py-3">
@@ -420,7 +421,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
                   <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                     {loading ? (
                       <div className="flex items-center justify-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <Spinner className="h-4 w-4 animate-spin" />
                         {t('common:status.loading')}
                       </div>
                     ) : (
@@ -438,7 +439,7 @@ export const OverviewTab: React.FC<OverviewTabProps> = ({
       {healthCheck && !healthCheck.dependency_check_passed && healthCheck.dependency_error && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
           <div className="flex items-center gap-2 text-destructive font-medium mb-1">
-            <AlertTriangle className="h-4 w-4" />
+            <Warning className="h-4 w-4" />
             {t('data:governance.dependency_error')}
           </div>
           <p className="text-sm text-destructive/90 pl-6">{healthCheck.dependency_error}</p>

@@ -31,13 +31,13 @@ vi.mock('react-i18next', () => ({
         'acknowledgements.openSource.categories.uiAndInteraction': '界面与交互',
         'acknowledgements.openSource.categories.contentEditing': '内容与编辑',
         'acknowledgements.openSource.categories.stateAndData': '状态管理与数据协作',
+        'acknowledgements.openSource.categories.visualization': '拖拽与可视化',
+        'acknowledgements.openSource.categories.utilities': '工具与体验增强',
         'acknowledgements.openSource.categories.aiAndAgents': 'AI 与协议能力',
         'acknowledgements.openSource.categories.rustEcosystem': 'Tauri 与 Rust 生态',
+        'acknowledgements.openSource.categories.testingAndTooling': '测试与工程工具',
         'acknowledgements.openSource.expand': `展开${String(options?.category ?? '')}`,
         'acknowledgements.openSource.collapse': `收起${String(options?.category ?? '')}`,
-        'acknowledgements.openSource.previewLabel': `先展示 ${String(options?.count ?? '')} 项`,
-        'acknowledgements.openSource.itemCount': `${String(options?.count ?? '')} 项`,
-        'acknowledgements.openSource.moreCount': `+${String(options?.count ?? '')}`,
       };
 
       return translations[key] ?? fallback ?? key;
@@ -48,20 +48,43 @@ vi.mock('react-i18next', () => ({
 import { OpenSourceAcknowledgementsSection } from '@/components/settings/OpenSourceAcknowledgementsSection';
 
 describe('OpenSourceAcknowledgementsSection', () => {
+  it('keeps the acknowledgements collapsed until the user opens the dialog', () => {
+    render(<OpenSourceAcknowledgementsSection />);
+
+    expect(screen.getByText('开源项目致谢')).toBeInTheDocument();
+    expect(screen.getByText('DeepStudent 依托以下成熟的开源生态快速发展，感谢所有社区长期的维护与创新。')).toBeInTheDocument();
+    expect(screen.getByRole('button', { name: '查看致谢名单' })).toBeInTheDocument();
+    expect(screen.queryByText('9 个生态分组，77 个项目')).not.toBeInTheDocument();
+    expect(screen.queryByText('核心框架与构建')).not.toBeInTheDocument();
+    expect(screen.queryByText('React 18')).not.toBeInTheDocument();
+    expect(screen.queryByText('Tailwind CSS')).not.toBeInTheDocument();
+  });
+
   it('opens the full acknowledgements list in a dialog only after the user clicks the trigger', async () => {
     const user = userEvent.setup();
 
     render(<OpenSourceAcknowledgementsSection />);
 
     expect(screen.getByRole('button', { name: '查看致谢名单' })).toBeInTheDocument();
-    expect(screen.queryByText('Tailwind CSS 4')).not.toBeInTheDocument();
-    expect(screen.queryByText('React Tooltip')).not.toBeInTheDocument();
+    expect(screen.queryByText('Tailwind CSS')).not.toBeInTheDocument();
+    expect(screen.queryByText('ESLint')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '查看致谢名单' }));
 
     expect(await screen.findByRole('dialog')).toBeInTheDocument();
-    expect(screen.getByText('Tailwind CSS 4')).toBeInTheDocument();
-    expect(screen.getByText('React Tooltip')).toBeInTheDocument();
+    expect(screen.queryByText('9 个生态分组，77 个项目')).not.toBeInTheDocument();
+    expect(screen.queryAllByText('6 项')).toHaveLength(0);
+    expect(screen.queryAllByText('7 项')).toHaveLength(0);
+    expect(screen.getByText('核心框架与构建')).toBeInTheDocument();
+    expect(screen.getByText('React 18')).toBeInTheDocument();
+    expect(screen.getByText('Tailwind CSS')).toBeInTheDocument();
+    expect(screen.getByText('Phosphor Icons')).toBeInTheDocument();
+    expect(screen.getByText('React Heat Map')).toBeInTheDocument();
+    expect(screen.getAllByText('Vitest').length).toBeGreaterThan(0);
+    expect(screen.getByText('ESLint')).toBeInTheDocument();
+    expect(screen.getAllByText('测试与工程工具').length).toBeGreaterThan(0);
+    expect(screen.queryByText('Reactour')).not.toBeInTheDocument();
+    expect(screen.queryByText('Defuddle')).not.toBeInTheDocument();
 
     await user.click(screen.getByRole('button', { name: '关闭' }));
 

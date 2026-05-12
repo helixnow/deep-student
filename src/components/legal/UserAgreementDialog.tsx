@@ -19,7 +19,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { ChevronRight } from 'lucide-react';
+import { CaretRight } from '@phosphor-icons/react';
 import { Z_INDEX } from '@/config/zIndex';
 
 // ============================================================================
@@ -126,12 +126,13 @@ const ToggleBlock: React.FC<ToggleBlockProps> = ({
       {/* Toggle 触发行 —— Notion 风格：无边框，hover 浅色背景 */}
       <NotionButton variant="ghost" size="sm" onClick={() => setIsOpen(!isOpen)} className={cn('!w-full !justify-start !px-2 !py-1.5 !h-auto -mx-2 !rounded-[4px] !text-left', 'text-[14px] font-medium text-foreground/90', 'hover:bg-foreground/[0.04] active:bg-foreground/[0.06]')}>
         {/* 展开箭头 —— Notion 三角形风格 */}
-        <ChevronRight
+        <CaretRight
           className={cn(
             'h-[18px] w-[18px] text-foreground/40 flex-shrink-0',
             'transition-transform duration-150 ease-out',
             isOpen && 'rotate-90'
           )}
+          weight="regular"
         />
         <span className="flex-1 min-w-0 truncate">{title}</span>
       </NotionButton>

@@ -5,13 +5,12 @@
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Download, Plus, Minus, Key, Server, Cpu, Brain, Image, Trash2, CheckCircle, Settings, Zap, Eye, EyeOff, Clock } from 'lucide-react';
+import { Brain, Clock, Cpu, DownloadSimple, GearSix, Image, Lightning, LinkSimple, Minus, Plus, Spinner, Stack, Trash } from '@phosphor-icons/react';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http'; // 使用Tauri v2 http插件
 import { invoke } from '@tauri-apps/api/core';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { SiliconFlowLogo } from '../ui/SiliconFlowLogo';
 import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter } from '../ui/shad/Card';
-import { Input } from '../ui/shad/Input';
 import { NotionButton } from '../ui/NotionButton';
 import { Label } from '../ui/shad/Label';
 import { Badge } from '../ui/shad/Badge';
@@ -21,6 +20,7 @@ import { inferCapabilities, getModelDefaultParameters, applyProviderSpecificAdju
 import { inferApiCapabilities } from '../../utils/apiCapabilityEngine';
 import { cn } from '@/lib/utils';
 import { vfsUnifiedIndexApi } from '../../api/vfsUnifiedIndexApi';
+import { ApiKeyField } from './ApiKeyField';
 
 interface SiliconFlowModel {
   id: string;
@@ -275,6 +275,9 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       if (customEvent.detail?.apiKey !== undefined) {
         setApiKey(customEvent.detail.apiKey);
         setConfirmingClearApiKey(false);
+        if (!customEvent.detail.apiKey.trim()) {
+          setShowApiKey(false);
+        }
       }
     };
 
@@ -314,6 +317,9 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     // 立即更新状态（修复移动端输入后按钮仍禁用的问题）
     setApiKey(value);
     setConfirmingClearApiKey(false);
+    if (!value.trim()) {
+      setShowApiKey(false);
+    }
     // 异步保存到后端
     void persistApiKey(value);
   };
@@ -326,6 +332,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     }
 
     setApiKey('');
+    setShowApiKey(false);
     setConfirmingClearApiKey(false);
     setModels([]);
     setAvailableModels([]);
@@ -881,30 +888,29 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   const showQuickCard = variant === 'full' || variant === 'quick';
   const showModelControls = variant === 'full' || variant === 'models';
   const isInline = variant === 'inline';
+  const canRevealApiKey = apiKey.trim().length > 0;
 
   const quickBody = (
     <div className="space-y-3">
-      <div className="relative">
-        <Input
-          type={showApiKey ? 'text' : 'password'}
-          value={apiKey}
-          onChange={e => handleApiKeyChange(e.target.value)}
-          placeholder={t('common:siliconflow.api_key_placeholder_local')}
-          className="pr-10"
-        />
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowApiKey(v => !v)} className="absolute inset-y-0 right-0 !rounded-none" title={showApiKey ? t('common:siliconflow.hide') : t('common:siliconflow.show')} aria-label={showApiKey ? t('common:siliconflow.hide_api_key') : t('common:siliconflow.show_api_key')}>
-          {showApiKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-        </NotionButton>
-      </div>
+      <ApiKeyField
+        value={apiKey}
+        onChange={e => handleApiKeyChange(e.target.value)}
+        placeholder={t('common:siliconflow.api_key_placeholder_local')}
+        revealed={showApiKey}
+        canReveal={canRevealApiKey}
+        onToggle={() => setShowApiKey(v => !v)}
+        showLabel={t('common:siliconflow.show_api_key')}
+        hideLabel={t('common:siliconflow.hide_api_key')}
+      />
       <div className="flex items-center justify-between pt-2">
         {/* Notion 风格按钮 - 一键分配 */}
         <NotionButton variant="ghost" size="sm" onClick={handleOneClickAssign} disabled={loading || !apiKey.trim()} className="text-blue-600 dark:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20">
-          <Zap className="h-3.5 w-3.5" />
+          <Lightning className="h-3.5 w-3.5" />
           {t('common:siliconflow.one_click_assign')}
         </NotionButton>
         {/* Notion 风格按钮 - 清除 (右对齐) */}
         <NotionButton variant={confirmingClearApiKey ? 'danger' : 'ghost'} size="sm" onClick={clearSavedApiKey} disabled={loading || !apiKey} title={t('common:siliconflow.clear_api_key_title')} className={confirmingClearApiKey ? undefined : 'text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20'}>
-          <Trash2 className="h-3.5 w-3.5" />
+          <Trash className="h-3.5 w-3.5" />
           {confirmingClearApiKey
             ? t('common:siliconflow.clear_confirm_button')
             : t('common:siliconflow.clear_button')}
@@ -956,22 +962,22 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       </div>
       <div className="grid gap-2 sm:grid-cols-2">
         <div className="flex items-center gap-2 text-muted-foreground"><Cpu className="h-4 w-4" /> {t('common:siliconflow.model_label')}: {selectedModel}</div>
-        <div className="flex items-center gap-2 text-muted-foreground"><Server className="h-4 w-4" /> {t('common:siliconflow.api_address_label')}: https://api.siliconflow.cn/v1</div>
+        <div className="flex items-center gap-2 text-muted-foreground"><LinkSimple className="h-4 w-4" /> {t('common:siliconflow.api_address_label')}: https://api.siliconflow.cn/v1</div>
         <div className="flex items-center gap-2 text-muted-foreground"><Image className="h-4 w-4" /> {t('common:siliconflow.multimodal_label')}: {selectedModelCapabilities.isMultimodal ? t('common:siliconflow.yes') : t('common:siliconflow.no')}</div>
         <div className="flex items-center gap-2 text-muted-foreground"><Brain className="h-4 w-4" /> {t('common:siliconflow.reasoning_model_label')}: {selectedModelCapabilities.isReasoning ? t('common:siliconflow.yes') : t('common:siliconflow.no')}</div>
-        <div className="flex items-center gap-2 text-muted-foreground"><Settings className="h-4 w-4" /> {t('common:siliconflow.embedding_model_label')}: {selectedModelCapabilities.isEmbedding ? t('common:siliconflow.yes') : t('common:siliconflow.no')}</div>
-        <div className="flex items-center gap-2 text-muted-foreground"><Settings className="h-4 w-4" /> {t('common:siliconflow.reranker_model_label')}: {selectedModelCapabilities.isReranker ? t('common:siliconflow.yes') : t('common:siliconflow.no')}</div>
-        <div className="flex items-center gap-2 text-muted-foreground"><Settings className="h-4 w-4" /> {t('common:siliconflow.thinking_params_label')}: {selectedModelCapabilities.supportsReasoning ? t('common:siliconflow.supports') : t('common:siliconflow.not_supports')}</div>
-        <div className="flex items-center gap-2 text-muted-foreground"><Settings className="h-4 w-4" /> {t('common:siliconflow.adapter_label')}: {selectedModelCapabilities.modelAdapter}</div>
+        <div className="flex items-center gap-2 text-muted-foreground"><GearSix className="h-4 w-4" /> {t('common:siliconflow.embedding_model_label')}: {selectedModelCapabilities.isEmbedding ? t('common:siliconflow.yes') : t('common:siliconflow.no')}</div>
+        <div className="flex items-center gap-2 text-muted-foreground"><GearSix className="h-4 w-4" /> {t('common:siliconflow.reranker_model_label')}: {selectedModelCapabilities.isReranker ? t('common:siliconflow.yes') : t('common:siliconflow.no')}</div>
+        <div className="flex items-center gap-2 text-muted-foreground"><GearSix className="h-4 w-4" /> {t('common:siliconflow.thinking_params_label')}: {selectedModelCapabilities.supportsReasoning ? t('common:siliconflow.supports') : t('common:siliconflow.not_supports')}</div>
+        <div className="flex items-center gap-2 text-muted-foreground"><GearSix className="h-4 w-4" /> {t('common:siliconflow.adapter_label')}: {selectedModelCapabilities.modelAdapter}</div>
         {(() => {
           const defaults = getModelDefaultParameters(selectedModel, { providerScope: 'siliconflow' });
           return (
             <>
               {defaults.maxOutputTokens && (
-                <div className="flex items-center gap-2 text-muted-foreground"><Settings className="h-4 w-4" /> {t('common:siliconflow.default_max_tokens_label')}: {defaults.maxOutputTokens}</div>
+                <div className="flex items-center gap-2 text-muted-foreground"><GearSix className="h-4 w-4" /> {t('common:siliconflow.default_max_tokens_label')}: {defaults.maxOutputTokens}</div>
               )}
               {defaults.temperature !== undefined && (
-                <div className="flex items-center gap-2 text-muted-foreground"><Settings className="h-4 w-4" /> {t('common:siliconflow.default_temperature_label')}: {defaults.temperature}</div>
+                <div className="flex items-center gap-2 text-muted-foreground"><GearSix className="h-4 w-4" /> {t('common:siliconflow.default_temperature_label')}: {defaults.temperature}</div>
               )}
             </>
           );
@@ -990,11 +996,14 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
             onClick={() => fetchSiliconFlowModels(true)}
             disabled={loading || !apiKey.trim()}
           >
-            <Download className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+            {loading ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <DownloadSimple className="h-3.5 w-3.5" />}
             {loading ? t('common:siliconflow.fetching_models') : t('common:siliconflow.get_model_list')}
           </NotionButton>
         </div>
-        <p className="text-sm text-muted-foreground">{t('common:siliconflow.models_count', { count: models.length })}</p>
+        <p className="inline-flex items-center gap-1.5 text-sm text-muted-foreground">
+          <Stack className="h-3.5 w-3.5" aria-hidden="true" />
+          <span>{t('common:siliconflow.models_count', { count: models.length })}</span>
+        </p>
       </div>
       <CollapsibleModelSelector
         value={selectedModel}

@@ -12,25 +12,32 @@
   --surface-panel-muted: color-mix(in hsl, var(--surface-muted) 82%, var(--surface-elevated) 18%);
   --surface-panel-strong: color-mix(in hsl, var(--surface-elevated) 92%, var(--surface-root) 8%);
 
-  /* Desktop shell surfaces */
-  --interactive-hover: #E9E9E9;
-  --interactive-selected: #E9E9E9;
-  --overlay: rgba(248, 248, 244, 0.78);
-  --sidebar-hover: #F9F9F9;
-  --sidebar: #FAFAFA;
-  --sidebar-foreground: oklch(0.29 0.014 264.2);
-  --sidebar-muted: oklch(0.546 0.012 264.2);
-  --sidebar-border: oklch(0.83 0.006 264.2 / 0.08);
-  --sidebar-accent: #EFEFEA;
-  --shell-backdrop: #FFFFFF;
+  /* Desktop shell surfaces
+     ------------------------------------------------------------
+     设计原则（2026-05 反向迁移）：
+     Shell 层的所有表面/交互 token 必须通过 shadcn 基础变量派生，
+     禁止出现硬编码十六进制。这样整套主题（亮/暗、accent palette）
+     只需改 shadcn-variables.css 的基础灰度即可统一联动。
+     ------------------------------------------------------------ */
+  --interactive-hover: hsl(var(--accent));
+  --interactive-selected: color-mix(in hsl, hsl(var(--accent)) 70%, hsl(var(--border)) 30%);
+  --overlay: hsl(var(--background) / 0.78);
+  --sidebar-hover: color-mix(in hsl, hsl(var(--nav-background)) 55%, hsl(var(--background)) 45%);
+  --sidebar: hsl(var(--nav-background));
+  --sidebar-foreground: hsl(var(--foreground));
+  --sidebar-muted: hsl(var(--muted-foreground));
+  --sidebar-border: color-mix(in hsl, hsl(var(--border)) 55%, transparent 45%);
+  --sidebar-accent: hsl(var(--accent));
+  --shell-backdrop: hsl(var(--muted));
   --shell-panel: hsl(var(--background));
   --shell-panel-strong: hsl(var(--card));
-  --shell-rim: oklch(0.83 0.006 264.2 / 0.08);
-  --shell-float: #FFFFFF;
+  --shell-rim: color-mix(in hsl, hsl(var(--border)) 55%, transparent 45%);
+  --shell-seam: color-mix(in hsl, hsl(var(--border)) 75%, transparent 25%);
+  --shell-float: hsl(var(--background));
   --shell-glow: transparent;
   --shell-grid: transparent;
-  --shell-titlebar: #FFFFFF;
-  --shell-surface: #FFFFFF;
+  --shell-titlebar: hsl(var(--titlebar-background));
+  --shell-surface: hsl(var(--muted));
   --shell-titlebar-surface: var(--shell-titlebar);
   --shell-navigation-surface: var(--sidebar);
   --shell-navigation-panel: var(--sidebar);
@@ -64,10 +71,17 @@
   --sidebar-quiet-active: var(--interactive-selected);
   --sidebar-quiet-active-foreground: var(--text-primary);
 
-  --shadow-shell-soft: 0 12px 24px hsl(var(--foreground) / 0.04);
-  --shadow-shell-panel: 0 16px 32px hsl(var(--foreground) / 0.05);
-  --shadow-shell-floating: 0 18px 36px hsl(var(--foreground) / 0.08);
-  --shadow-shell-pressed: 0 8px 20px hsl(var(--foreground) / 0.05);
+  --shadow-base: 0 0% 0%;
+  --shadow-shell-soft: 0 12px 24px hsl(var(--shadow-base) / 0.04);
+  --shadow-shell-panel: 0 16px 32px hsl(var(--shadow-base) / 0.05);
+  --shadow-shell-floating: 0 18px 36px hsl(var(--shadow-base) / 0.08);
+  --shadow-shell-pressed: 0 8px 20px hsl(var(--shadow-base) / 0.05);
+  --shadow-content-subtle: 0 1px 3px hsl(var(--shadow-base) / 0.05);
+  --shadow-content-soft: 0 2px 8px hsl(var(--shadow-base) / 0.10);
+  --shadow-content-elevated: 0 6px 18px hsl(var(--shadow-base) / 0.06);
+  --text-shadow-contrast-subtle: 0 1px 2px hsl(var(--shadow-base) / 0.10);
+  --text-shadow-contrast-medium: 0 1px 2px hsl(var(--shadow-base) / 0.30);
+  --text-shadow-contrast-strong: 0 1px 3px hsl(var(--shadow-base) / 0.50);
   --shell-shadow-soft: var(--shadow-shell-panel);
   --shell-shadow-active: var(--shadow-shell-pressed);
 
@@ -108,8 +122,48 @@
   --input-shell-surface: color-mix(in hsl, var(--surface-panel-muted) 84%, var(--surface-root) 16%);
   --input-shell-border: color-mix(in hsl, var(--border-default) 70%, transparent 30%);
   --input-shell-focus: color-mix(in hsl, hsl(var(--primary)) 24%, transparent 76%);
+  --composer-panel-surface: color-mix(in hsl, var(--surface-panel-strong) 92%, var(--input-shell-surface) 8%);
+  --composer-panel-border: color-mix(in hsl, var(--input-shell-border) 82%, transparent 18%);
+  --composer-panel-foreground: var(--text-primary);
+  --composer-panel-muted-foreground: var(--text-secondary);
+  --composer-panel-shadow: var(--shadow-shell-floating);
+  --composer-panel-backdrop-filter: blur(18px) saturate(140%);
+  --composer-panel-muted-surface: color-mix(in hsl, var(--surface-panel-muted) 88%, var(--composer-panel-surface) 12%);
+  --composer-panel-control-surface: color-mix(in hsl, var(--input-shell-surface) 86%, var(--composer-panel-surface) 14%);
+  --composer-panel-control-border: color-mix(in hsl, var(--composer-panel-border) 86%, transparent 14%);
+  --composer-panel-control-hover: var(--button-utility-hover);
+  --composer-panel-focus-border: var(--button-primary-border);
+  --composer-panel-placeholder: var(--text-muted);
   --dialog-shell-surface: color-mix(in hsl, var(--surface-panel-strong) 90%, var(--surface-root) 10%);
   --dialog-shell-border: color-mix(in hsl, var(--border-default) 72%, transparent 28%);
+  --mobile-sheet-scrim: hsl(var(--shadow-base) / 0.40);
+  --mobile-sheet-surface: var(--surface-elevated);
+  --mobile-sheet-foreground: var(--text-primary);
+  --mobile-sheet-muted-foreground: var(--text-secondary);
+  --mobile-sheet-border: var(--border-soft);
+  --mobile-sheet-header-border: var(--surface-divider);
+  --mobile-sheet-handle: var(--border-strong);
+  --mobile-sheet-shadow: 0 -12px 34px hsl(var(--shadow-base) / 0.10);
+
+  /* Menu shell — AppMenu 下拉/右键菜单外壳，与 composer shell 同族
+     设计目的：让弹出菜单看起来像"从输入框延伸出来的一片"，而不是独立风格的 popover。
+     修改任一 token 即可全局统一调整所有 AppMenu 实例。 */
+  --menu-shell-surface: var(--composer-panel-surface);
+  --menu-shell-border: var(--composer-panel-border);
+  --menu-shell-foreground: var(--composer-panel-foreground);
+  --menu-shell-muted-foreground: var(--composer-panel-muted-foreground);
+  --menu-shell-shadow: var(--shadow-shell-floating);
+  --menu-shell-backdrop-filter: var(--composer-panel-backdrop-filter);
+  --menu-shell-radius: var(--radius-shell-toolbar);          /* 16px — 对齐输入框外壳 */
+  --menu-shell-row-radius: var(--radius-shell-control);      /* 12px — 严格小于容器 */
+  --menu-shell-sub-radius: var(--radius-shell-control);
+  --menu-shell-row-hover: var(--interactive-hover);
+  --menu-shell-row-active: var(--interactive-selected);
+  --menu-shell-padding: 6px;
+  --menu-shell-row-padding-y: 7px;
+  --menu-shell-row-padding-x: 10px;
+  --menu-shell-row-gap: 8px;
+  --menu-shell-font-size: 13px;
 
   /* Borders */
   --border-default: hsl(var(--border));
@@ -125,6 +179,16 @@
   --scrollbar-track: color-mix(in hsl, hsl(var(--muted)) 70%, transparent 30%);
   --scrollbar-thumb: color-mix(in hsl, hsl(var(--muted-foreground)) 85%, hsl(var(--foreground)) 15%);
   --scrollbar-thumb-hover: color-mix(in hsl, hsl(var(--muted-foreground)) 95%, hsl(var(--foreground)) 5%);
+
+  /* OverlayScrollbars → project scrollbar palette bridge (milestone v1.1) */
+  --os-handle-bg: var(--scrollbar-thumb);
+  --os-handle-bg-hover: var(--scrollbar-thumb-hover);
+  --os-handle-bg-active: var(--scrollbar-thumb-hover);
+  --os-size: 8px;
+  --os-padding-perpendicular: 2px;
+  --os-padding-axis: 2px;
+  --os-handle-min-size: 36px;
+  --os-handle-border-radius: 999px;
 
   /* Text semantics */
   --text-primary: hsl(var(--foreground));
@@ -156,34 +220,46 @@
   --neutral-foreground: var(--background);
   --neutral-muted: var(--neutral) / 0.35;
   --neutral-bg: var(--neutral) / 0.14;
+
+  /* Citation/source semantics */
+  --citation-badge-bg-alpha: 0.10;
+  --citation-badge-hover-alpha: 0.20;
+  --citation-source-rag: var(--info);
+  --citation-source-multimodal: var(--primary);
+  --citation-source-memory: var(--warning);
+  --citation-source-web-search: var(--success);
+  --diagram-node-contrast-text: hsl(var(--destructive-foreground));
 }
 
 :root.dark {
-  --interactive-hover: rgba(255, 255, 255, 0.08);
-  --interactive-selected: rgba(255, 255, 255, 0.14);
-  --overlay: rgba(27, 27, 25, 0.84);
-  --sidebar-hover: #2A2A2A;
-  --sidebar: hsl(var(--background));
-  --sidebar-foreground: #FFFFFF;
-  --sidebar-muted: rgba(255, 255, 255, 0.5);
-  --sidebar-border: oklch(0.7 0.008 264.2 / 0.12);
-  --sidebar-accent: #20201E;
-  --shell-backdrop: #141413;
+  --interactive-hover: color-mix(in hsl, hsl(var(--foreground)) 8%, transparent 92%);
+  --interactive-selected: color-mix(in hsl, hsl(var(--foreground)) 14%, transparent 86%);
+  --overlay: hsl(var(--background) / 0.84);
+  --sidebar-hover: color-mix(in hsl, hsl(var(--nav-background)) 55%, hsl(var(--background)) 45%);
+  --sidebar: hsl(var(--nav-background));
+  --sidebar-foreground: hsl(var(--foreground));
+  --sidebar-muted: hsl(var(--muted-foreground));
+  --sidebar-border: color-mix(in hsl, hsl(var(--border)) 70%, transparent 30%);
+  --sidebar-accent: hsl(var(--accent));
+  --shell-backdrop: hsl(var(--muted));
   --shell-panel: hsl(var(--background));
   --shell-panel-strong: hsl(var(--card));
-  --shell-rim: oklch(0.7 0.008 264.2 / 0.12);
-  --shell-float: #232321;
+  --shell-rim: color-mix(in hsl, hsl(var(--border)) 70%, transparent 30%);
+  --shell-seam: color-mix(in hsl, hsl(var(--border)) 82%, transparent 18%);
+  --shell-float: hsl(var(--card));
   --shell-glow: transparent;
   --shell-grid: transparent;
-  --shell-titlebar: #1D1D1B;
-  --shell-surface: #171917;
+  --shell-titlebar: hsl(var(--titlebar-background));
+  --shell-surface: hsl(var(--muted));
   --shell-navigation-row-foreground: var(--shell-navigation-foreground);
   --shell-navigation-depth-overlay: linear-gradient(
     90deg,
-    rgba(255, 255, 255, 0.035) 0%,
-    rgba(255, 255, 255, 0.025) calc(100% - 48px),
-    rgba(255, 255, 255, 0) 100%
+    hsl(var(--destructive-foreground) / 0.035) 0%,
+    hsl(var(--destructive-foreground) / 0.025) calc(100% - 48px),
+    hsl(var(--destructive-foreground) / 0) 100%
   );
+  --composer-panel-surface: color-mix(in hsl, var(--shell-float) 86%, var(--surface-root) 14%);
+  --composer-panel-border: color-mix(in hsl, var(--shell-inspector-border) 85%, transparent 15%);
   --button-prominent-bg: color-mix(in oklab, hsl(var(--primary)) 74%, hsl(var(--background)) 26%);
   --button-prominent-hover-bg: color-mix(in oklab, hsl(var(--primary)) 78%, hsl(var(--background)) 22%);
   --button-prominent-active-bg: color-mix(in oklab, hsl(var(--primary)) 68%, hsl(var(--background)) 32%);
@@ -202,6 +278,9 @@
   --button-destructive-hover-bg: color-mix(in oklab, hsl(var(--destructive)) 80%, hsl(var(--background)) 20%);
   --button-destructive-active-bg: color-mix(in oklab, hsl(var(--destructive)) 70%, hsl(var(--background)) 30%);
   --button-destructive-border: color-mix(in oklab, hsl(var(--destructive)) 36%, hsl(var(--border)) 64%);
+  --mobile-sheet-scrim: hsl(var(--shadow-base) / 0.58);
+  --citation-badge-bg-alpha: 0.15;
+  --citation-badge-hover-alpha: 0.25;
 }
 
 @media (prefers-reduced-transparency: reduce) {

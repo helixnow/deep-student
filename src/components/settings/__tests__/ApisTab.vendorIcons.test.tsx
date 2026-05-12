@@ -45,17 +45,22 @@ const vendor = (overrides: Partial<VendorConfig>): VendorConfig => ({
   ...overrides,
 });
 
-const renderApisTab = (sortedVendors: VendorConfig[]) => {
+interface RenderApisTabOptions {
+  selectedVendor?: VendorConfig | null;
+}
+
+const renderApisTab = (sortedVendors: VendorConfig[], options: RenderApisTabOptions = {}) => {
   const noop = vi.fn();
+  const selectedVendor = options.selectedVendor ?? null;
   return render(
     <ApisTab
       vendors={sortedVendors}
       sortedVendors={sortedVendors}
-      selectedVendor={null}
-      selectedVendorId={null}
+      selectedVendor={selectedVendor}
+      selectedVendorId={selectedVendor?.id ?? null}
       setSelectedVendorId={noop}
       selectedVendorModels={[]}
-      selectedVendorIsSiliconflow={false}
+      selectedVendorIsSiliconflow={(selectedVendor?.providerType ?? '').toLowerCase() === 'siliconflow'}
       profileCountByVendor={new Map()}
       vendorBusy={false}
       vendorSaving={false}
@@ -331,5 +336,20 @@ describe('ApisTab vendor list icons', () => {
 
     expect(screen.getByText('硅基流动')).toBeInTheDocument();
     expect(screen.queryByText('SiliconFlow')).not.toBeInTheDocument();
+  });
+
+  it('does not render a delete action for built-in vendors', () => {
+    const builtinOpenAiVendor = vendor({
+      id: 'builtin-openai',
+      name: 'OpenAI',
+      providerType: 'openai',
+      apiKey: 'sk-openai',
+      isBuiltin: true,
+    });
+
+    renderApisTab([builtinOpenAiVendor], { selectedVendor: builtinOpenAiVendor });
+
+    expect(screen.getByRole('button', { name: 'common:actions.edit' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'common:actions.delete' })).not.toBeInTheDocument();
   });
 });

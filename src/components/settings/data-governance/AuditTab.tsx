@@ -21,6 +21,7 @@ import { NotionButton } from '../../ui/NotionButton';
 import { Badge } from '../../ui/shad/Badge';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '../../ui/shad/Table';
 import { AppSelect } from '../../ui/app-menu';
+import { settingsQuietTableRowClassName } from '../SettingsCommon';
 import type {
   AuditLogResponse,
   AuditOperationType,
@@ -194,7 +195,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({
           </TableHeader>
           <TableBody>
             {logs.map((log) => (
-              <TableRow key={log.id} className="hover:bg-muted/30 border-border/40">
+              <TableRow key={log.id} className={settingsQuietTableRowClassName}>
                 <TableCell className="text-xs text-muted-foreground py-3 whitespace-nowrap">
                   {formatTimestamp(log.timestamp)}
                 </TableCell>

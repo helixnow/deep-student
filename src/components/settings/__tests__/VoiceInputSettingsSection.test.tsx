@@ -147,7 +147,7 @@ describe('VoiceInputSettingsSection', () => {
       );
     });
 
-    const toggleCard = screen.getByRole('button', {
+    const toggleCard = screen.getByRole('radio', {
       name: /Tap once to start, tap once to stop/i,
     });
     fireEvent.click(toggleCard);

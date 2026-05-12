@@ -245,33 +245,16 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
 
   const handleOpenVendorModal = (vendor?: VendorConfig | null) => {
     if (!vendor) {
-      void (async () => {
-        try {
-          const created = await upsertVendor({
-            id: '',
-            name: t('settings:vendor_panel.default_new_vendor_name'),
-            providerType: 'custom',
-            baseUrl: '',
-            apiKey: '',
-            headers: {},
-            rateLimitPerMinute: undefined,
-            defaultTimeoutMs: undefined,
-            notes: '',
-            isBuiltin: false,
-            isReadOnly: false,
-            sortOrder: vendors.length,
-          });
-          setSelectedVendorId(created.id);
-          setVendorFormData({
-            ...created,
-            headers: created.headers || {},
-          });
-          setIsEditingVendor(true);
-        } catch (error) {
-          const errorMessage = getErrorMessage(error);
-          showGlobalNotification('error', t('settings:notifications.vendor_save_failed', { error: errorMessage }));
-        }
-      })();
+      setEditingVendor(null);
+      setVendorFormData({});
+      setIsEditingVendor(false);
+      setInlineEditState(null);
+      setIsAddingNewModel(false);
+      setVendorModalOpen(true);
+      if (isSmallScreen) {
+        setRightPanelType('vendorConfig');
+        setScreenPosition('right');
+      }
       return;
     }
     setEditingVendor(vendor ?? null);
@@ -324,7 +307,10 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
 
   const handleSaveVendorModal = async (vendorData: VendorConfig) => {
     try {
-      const saved = await upsertVendor(vendorData);
+      const saved = await upsertVendor({
+        ...vendorData,
+        sortOrder: vendorData.sortOrder ?? (!vendorData.id ? vendors.length : vendorData.sortOrder),
+      });
       setVendorModalOpen(false);
       setEditingVendor(null);
       setSelectedVendorId(saved.id);
@@ -832,6 +818,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       vendorSortOrder: api.vendorId ? vendorOrderMap.get(api.vendorId) : undefined,
       isMultimodal: api.isMultimodal,
       isReasoning: api.isReasoning,
+      supportsTools: api.supportsTools,
       isDisabled: api._isDisabledInList || false,
       isFavorite: api.isFavorite || false,
       isImageGeneration: api.isImageGeneration,

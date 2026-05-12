@@ -20,7 +20,7 @@ export function normalizeVoiceInputHistory(
   }
 
   return input
-    .map((item, index) => {
+    .map((item, index): VoiceInputHistoryEntry | null => {
       if (typeof item !== 'object' || !item) {
         return null;
       }
@@ -51,9 +51,9 @@ export function normalizeVoiceInputHistory(
           typeof row.durationMs === 'number' && Number.isFinite(row.durationMs)
             ? row.durationMs
             : undefined,
-      } satisfies VoiceInputHistoryEntry;
+      };
     })
-    .filter((item): item is VoiceInputHistoryEntry => Boolean(item))
+    .filter((item): item is VoiceInputHistoryEntry => item !== null)
     .sort((left, right) => right.createdAt.localeCompare(left.createdAt))
     .slice(0, MAX_VOICE_INPUT_HISTORY_ITEMS);
 }

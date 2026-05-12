@@ -9,6 +9,7 @@ import { useTranslation } from 'react-i18next';
 import { Loader2, Monitor, Moon, SunMedium } from 'lucide-react';
 import { debugMasterSwitch } from '../../debug-panel/debugMasterSwitch';
 import { NotionButton } from '../ui/NotionButton';
+import { SegmentedControl } from '../ui/SegmentedControl';
 import { Input } from '../ui/shad/Input';
 import { Switch } from '../ui/shad/Switch';
 import { SettingSection } from './SettingsCommon';
@@ -18,9 +19,13 @@ import { cn } from '../../lib/utils';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { setPendingSettingsTab } from '../../utils/pendingSettingsTab';
-import { isAndroid } from '../../utils/platform';
+import { isAndroid, isMacOS } from '../../utils/platform';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
-import { PRESET_PALETTES, PALETTE_PREVIEW_COLORS, type ThemeMode, type ThemePalette } from '../../hooks/useTheme';
+import {
+  type ThemeMode,
+  type ThemePalette,
+} from '../../hooks/useTheme';
+import { AccentPicker } from './AccentPicker';
 import { DEFAULT_UI_FONT, DEFAULT_UI_FONT_SIZE, UI_FONT_PRESET_GROUPS, UI_FONT_SIZE_PRESETS } from '../../config/fontConfig';
 import { AppSelect, type AppSelectGroup } from '../ui/app-menu';
 import { UserAgreementDialog } from '../legal/UserAgreementDialog';
@@ -28,6 +33,7 @@ import { getDefaultConfig, configFromPreset, type CopyFilterConfig } from '../..
 import type { VoiceInputAssignedModel } from '@/voice-input/types';
 
 const DEFAULT_UI_ZOOM = 1.0;
+const MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY = 'macos.native_font_smoothing';
 const UI_ZOOM_PRESETS = [
   { value: 0.8, label: '80%' },
   { value: 0.9, label: '90%' },
@@ -99,6 +105,8 @@ const GroupTitle = ({ title }: { title: string }) => (
   </div>
 );
 
+// Phase 3.1: 调色板预览样式函数已被 AccentPicker 取代
+
 interface AppTabProps {
   uiZoom: number;
   zoomLoading: boolean;
@@ -167,6 +175,7 @@ export const AppTab: React.FC<AppTabProps> = ({
   
   // 隐私协议预览弹窗状态
   const [showAgreementPreview, setShowAgreementPreview] = useState(false);
+  const [macosNativeFontSmoothingEnabled, setMacosNativeFontSmoothingEnabled] = useState(true);
 
   // 调试日志持久化 + 过滤配置
   const [debugPersistLogs, setDebugPersistLogs] = useState(false);
@@ -197,6 +206,31 @@ export const AppTab: React.FC<AppTabProps> = ({
         }
       } catch { /* defaults */ }
     })();
+  }, []);
+
+  useEffect(() => {
+    if (!isMacOS()) {
+      return;
+    }
+
+    let cancelled = false;
+
+    (async () => {
+      try {
+        const raw = await tauriInvoke<string | null>('get_setting', {
+          key: MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY,
+        }).catch(() => null);
+        if (cancelled) return;
+        setMacosNativeFontSmoothingEnabled(String(raw ?? '').trim() !== 'false');
+      } catch {
+        if (cancelled) return;
+        setMacosNativeFontSmoothingEnabled(true);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const refreshDebugLogsInfo = React.useCallback(async () => {
@@ -267,6 +301,34 @@ export const AppTab: React.FC<AppTabProps> = ({
     }
   }, [invoke, setThemeMode, themeMode]);
 
+  const handleMacosNativeFontSmoothingChange = React.useCallback(async (checked: boolean) => {
+    const previousValue = macosNativeFontSmoothingEnabled;
+    setMacosNativeFontSmoothingEnabled(checked);
+
+    if (!invoke) return;
+
+    try {
+      await (invoke as typeof tauriInvoke)('save_setting', {
+        key: MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY,
+        value: String(checked),
+      });
+
+      window.dispatchEvent(
+        new CustomEvent('systemSettingsChanged', {
+          detail: {
+            macosFontSmoothing: true,
+            settingKey: MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY,
+          },
+        }),
+      );
+    } catch (error: unknown) {
+      setMacosNativeFontSmoothingEnabled(previousValue);
+      showGlobalNotification('error', getErrorMessage(error));
+    }
+  }, [invoke, macosNativeFontSmoothingEnabled]);
+
+  // Phase 3.1: customPalettePreviewSwatch 已被 AccentPicker 取代（它直接使用 customColor）
+
   return (
     <div className="space-y-1 pb-10 text-left animate-in fade-in duration-500" data-tour-id="app-settings">
       <SettingSection
@@ -285,38 +347,37 @@ export const AppTab: React.FC<AppTabProps> = ({
               description={t('settings:theme.row_description', '使用浅色、深色，或匹配系统设置')}
               className="items-center"
             >
-              <div
-                role="group"
-                aria-label={t('settings:theme.mode_label', '选择主题模式')}
-                className="study-shell-segmented w-full max-w-full flex-wrap rounded-full border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] p-2 sm:w-auto sm:flex-nowrap"
-              >
-                {themeModeOptions.map(({ mode, label, icon: Icon, title }) => {
-                  const isSelected = themeMode === mode;
-
-                  return (
-                    <NotionButton
-                      key={mode}
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      title={title}
-                      aria-pressed={isSelected}
-                      data-selected={isSelected ? 'true' : 'false'}
-                      onClick={() => { void handleThemeModeChange(mode); }}
-                      className={cn(
-                        'study-shell-segmented-button !h-11 flex-1 rounded-full !border-transparent px-4 text-[15px] font-semibold text-foreground/70 hover:!bg-[color:var(--interactive-hover)] hover:text-foreground sm:flex-none sm:px-5',
-                        isSelected
-                          ? '!bg-[color:var(--interactive-selected)] text-foreground shadow-none hover:!bg-[color:var(--interactive-selected)]'
-                          : 'bg-transparent'
-                      )}
-                    >
+              <SegmentedControl
+                ariaLabel={t('settings:theme.mode_label', '选择主题模式')}
+                value={themeMode}
+                onValueChange={(nextMode) => { void handleThemeModeChange(nextMode); }}
+                stretch
+                options={themeModeOptions.map(({ mode, label, icon: Icon, title }) => ({
+                  value: mode,
+                  title,
+                  label: (
+                    <>
                       <Icon className="h-[18px] w-[18px]" strokeWidth={2} />
                       <span>{label}</span>
-                    </NotionButton>
-                  );
-                })}
-              </div>
+                    </>
+                  ),
+                }))}
+              />
             </SettingRow>
+
+            {isMacOS() && (
+              <SwitchRow
+                title={t('settings:theme.font_smoothing_title', 'macOS 原生字体平滑')}
+                description={t(
+                  'settings:theme.font_smoothing_description',
+                  '在 macOS 下优先跟随系统默认字体平滑策略，不再全局强制 antialiased。关闭后回退为兼容旧版观感的灰度平滑。',
+                )}
+                checked={macosNativeFontSmoothingEnabled}
+                onCheckedChange={(checked) => {
+                  void handleMacosNativeFontSmoothingChange(checked);
+                }}
+              />
+            )}
 
             {/* 语言切换 */}
             <SettingRow
@@ -324,35 +385,18 @@ export const AppTab: React.FC<AppTabProps> = ({
               description={t('common:status.current', '当前') + ': ' + (i18n.language === 'zh-CN' ? t('settings:language.chinese', '中文') : t('settings:language.english', 'English'))}
               className="items-center"
             >
-              <div
-                role="group"
-                aria-label={t('settings:language.select_label', '选择语言')}
-                className="study-shell-segmented w-full max-w-full flex-wrap rounded-full border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-panel-strong)] p-2 sm:w-auto sm:flex-nowrap"
-              >
-                {languageOptions.map(({ value, label }) => {
-                  const isSelected = i18n.language === value;
-
-                  return (
-                    <NotionButton
-                      key={value}
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      aria-pressed={isSelected}
-                      data-selected={isSelected ? 'true' : 'false'}
-                      onClick={() => i18n.changeLanguage(value)}
-                      className={cn(
-                        'study-shell-segmented-button !h-11 flex-1 rounded-full !border-transparent px-4 text-[15px] font-semibold text-foreground/70 hover:!bg-[color:var(--interactive-hover)] hover:text-foreground sm:flex-none sm:px-5',
-                        isSelected
-                          ? '!bg-[color:var(--interactive-selected)] text-foreground shadow-none hover:!bg-[color:var(--interactive-selected)]'
-                          : 'bg-transparent'
-                      )}
-                    >
-                      <span>{label}</span>
-                    </NotionButton>
-                  );
-                })}
-              </div>
+              <SegmentedControl
+                ariaLabel={t('settings:language.select_label', '选择语言')}
+                value={i18n.language === 'zh-CN' ? 'zh-CN' : 'en-US'}
+                onValueChange={(nextValue) => {
+                  void i18n.changeLanguage(nextValue);
+                }}
+                stretch
+                options={languageOptions.map((option) => ({
+                  value: option.value,
+                  label: <span>{option.label}</span>,
+                }))}
+              />
             </SettingRow>
 
             {/* 界面缩放 */}
@@ -450,86 +494,22 @@ export const AppTab: React.FC<AppTabProps> = ({
               </div>
             </SettingRow>
 
-            {/* 调色板 */}
-            <div className="group py-2.5 px-1 hover:bg-muted/30 rounded transition-colors">
+            {/* 强调色 */}
+            <div className="group py-2.5 px-1">
               <div className="mb-3">
-                <h3 className="text-sm text-foreground/90 leading-tight">{t('settings:theme.palette_label')}</h3>
+                <h3 className="text-sm text-foreground/90 leading-tight">
+                  {t('settings:theme.accent_label', '强调色')}
+                </h3>
                 <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">
-                  {t('settings:theme.palette_hint')}
+                  {t('settings:theme.accent_hint', '只调整按钮、链接和选中态的颜色。不影响背景、卡片和文本。')}
                 </p>
               </div>
-              <div className="flex flex-wrap gap-2">
-                {PRESET_PALETTES.map((paletteKey) => {
-                  const isSelected = themePalette === paletteKey;
-                  const previewColor = PALETTE_PREVIEW_COLORS[paletteKey];
-                  return (
-                    <NotionButton 
-                      key={paletteKey} 
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => setThemePalette(paletteKey)} 
-                      className={cn(
-                        'group/palette relative !h-auto flex-col items-center gap-1.5 !rounded-lg !p-2',
-                        isSelected && 'bg-muted'
-                      )} 
-                      title={t(`settings:theme.palettes.${paletteKey}_desc`)}
-                    >
-                      <div 
-                        className={cn(
-                          'h-7 w-7 rounded-full shadow-sm transition-transform duration-200',
-                          'group-hover/palette:scale-105',
-                          isSelected && 'ring-1 ring-primary/30'
-                        )} 
-                        style={{ backgroundColor: previewColor }} 
-                      />
-                      <span className={cn(
-                        'text-[10px] font-medium transition-colors',
-                        isSelected ? 'text-foreground' : 'text-muted-foreground/70'
-                      )}>
-                        {t(`settings:theme.palettes.${paletteKey}_name`)}
-                      </span>
-                    </NotionButton>
-                  );
-                })}
-                <NotionButton
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setCustomColor(customColor)}
-                  className={cn(
-                    'group/palette relative !h-auto flex-col items-center gap-1.5 !rounded-lg !p-2',
-                    themePalette === 'custom' && 'bg-muted'
-                  )}
-                  title={t('settings:theme.palettes.custom_desc')}
-                >
-                  <div className="relative">
-                    <div
-                      className={cn(
-                        'h-7 w-7 rounded-full shadow-sm transition-transform duration-200',
-                        'group-hover/palette:scale-105',
-                        themePalette === 'custom' && 'ring-1 ring-primary/30'
-                      )}
-                      style={{
-                        // Intentional decorative: rainbow conic-gradient for color picker preview
-                        background: `conic-gradient(from 0deg, #f44, #f90, #ff0, #0c0, #09f, #a0f, #f44)`,
-                      }}
-                    />
-                    <input
-                      type="color"
-                      value={customColor}
-                      onChange={(e) => setCustomColor(e.target.value)}
-                      onClick={(e) => e.stopPropagation()}
-                      className="absolute inset-0 w-full h-full opacity-0 cursor-pointer"
-                      title={t('settings:theme.palettes.custom_desc')}
-                    />
-                  </div>
-                  <span className={cn(
-                    'text-[10px] font-medium transition-colors',
-                    themePalette === 'custom' ? 'text-foreground' : 'text-muted-foreground/70'
-                  )}>
-                    {t('settings:theme.palettes.custom_name')}
-                  </span>
-                </NotionButton>
-              </div>
+              <AccentPicker
+                palette={themePalette}
+                customColor={customColor}
+                onSelectPreset={setThemePalette}
+                onSelectCustomColor={setCustomColor}
+              />
             </div>
           </div>
         </div>
@@ -564,7 +544,9 @@ export const AppTab: React.FC<AppTabProps> = ({
                       showGlobalNotification('success', t('settings:save_success'));
                       try { 
                         window.dispatchEvent(new CustomEvent('systemSettingsChanged', { detail: { topbarTopMargin: true } })); 
-                      } catch {}
+                      } catch {
+                        // noop: this event is best-effort
+                      }
                     } catch (error: unknown) { 
                       showGlobalNotification('error', getErrorMessage(error)); 
                     }
@@ -607,7 +589,9 @@ export const AppTab: React.FC<AppTabProps> = ({
                     } else { 
                       window.dispatchEvent(new Event('DSTU_OPEN_DEBUGGER')); 
                     } 
-                  } catch {} 
+                  } catch {
+                    // noop: opening the unified debugger is best-effort
+                  }
                 }}
               >
                 {t('common:debug_panel.open_unified', t('common:debug_panel.open'))}
@@ -678,7 +662,9 @@ export const AppTab: React.FC<AppTabProps> = ({
                   showGlobalNotification('success', t('settings:save_notifications.saved', '已保存'));
                   try { 
                     window.dispatchEvent(new CustomEvent('systemSettingsChanged', { detail: { showRawRequest: newValue } })); 
-                  } catch {}
+                  } catch {
+                    // noop: this event is best-effort
+                  }
                 } catch (error: unknown) { 
                   showGlobalNotification('error', getErrorMessage(error)); 
                 }
@@ -693,7 +679,9 @@ export const AppTab: React.FC<AppTabProps> = ({
                 try {
                   await tauriInvoke('save_setting', { key: 'debug.filter_config', value: JSON.stringify(cfg) });
                   window.dispatchEvent(new CustomEvent('systemSettingsChanged', { detail: { copyFilterConfig: cfg } }));
-                } catch {}
+                } catch {
+                  // noop: local persistence already updated optimistic state
+                }
               };
 
               return (

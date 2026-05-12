@@ -7,7 +7,7 @@
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Download, Plus, Clock, Check, Search, Loader2 } from 'lucide-react';
+import { CaretDown, CaretUp, Check, Clock, DownloadSimple, MagnifyingGlass, Plus, Spinner, Stack } from '@phosphor-icons/react';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { NotionButton } from '../ui/NotionButton';
 import { ProviderIcon } from '../ui/ProviderIcon';
@@ -368,12 +368,13 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
           onClick={() => fetchModels(true)}
           disabled={loading || !hasApiKey || !hasBaseUrl}
         >
-          {loading ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+          {loading ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <DownloadSimple className="h-3.5 w-3.5" />}
           {loading ? t('settings:vendor_model_fetcher.fetching') : t('settings:vendor_model_fetcher.fetch_button')}
         </NotionButton>
         <div className="flex items-center gap-2">
           {models.length > 0 && (
-            <span className="text-xs text-muted-foreground">
+            <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
+              <Stack className="h-3.5 w-3.5" aria-hidden="true" />
               {t('settings:vendor_model_fetcher.model_count', { count: models.length })}
             </span>
           )}
@@ -405,8 +406,8 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
                 ? t('settings:vendor_model_fetcher.selected_count', { count: selectedIds.size })
                 : t('settings:vendor_model_fetcher.select_models')}
             </span>
-            <span className="text-muted-foreground text-xs ml-2">
-              {expanded ? '▲' : '▼'}
+            <span className="text-muted-foreground ml-2">
+              {expanded ? <CaretUp className="h-3.5 w-3.5" /> : <CaretDown className="h-3.5 w-3.5" />}
             </span>
           </NotionButton>
 
@@ -414,7 +415,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
             <div className="space-y-2">
               {/* 搜索框 */}
               <div className="relative">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
                 <Input
                   value={searchQuery}
                   onChange={e => setSearchQuery(e.target.value)}

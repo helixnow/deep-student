@@ -112,6 +112,74 @@ describe('API key clearing confirmation', () => {
     expect(onClear).toHaveBeenCalledTimes(1);
   });
 
+  test('does not show a reveal toggle for a masked generic vendor API key', () => {
+    render(
+      <VendorApiKeySection
+        vendor={{
+          id: 'vendor-1',
+          name: 'Vendor',
+          providerType: 'openai',
+          baseUrl: 'https://example.test/v1',
+          apiKey: '***',
+          headers: {},
+        }}
+        onSave={vi.fn()}
+        onClear={vi.fn()}
+      />
+    );
+
+    const input = screen.getByPlaceholderText(/settings:vendor_panel.api_key_configured/);
+    expect(input).toBeInTheDocument();
+    expect(input).not.toHaveClass('pr-12');
+    expect(screen.queryByRole('button', { name: /settings:vendor_panel.show_api_key/ })).not.toBeInTheDocument();
+  });
+
+  test('keeps the generic vendor reveal toggle inside the input shell without absolute overlay', () => {
+    render(
+      <VendorApiKeySection
+        vendor={{
+          id: 'vendor-1',
+          name: 'Vendor',
+          providerType: 'openai',
+          baseUrl: 'https://example.test/v1',
+          apiKey: 'sk-test',
+          headers: {},
+        }}
+        onSave={vi.fn()}
+        onClear={vi.fn()}
+      />
+    );
+
+    const input = screen.getByDisplayValue('sk-test');
+    const revealButton = screen.getByRole('button', { name: /settings:vendor_panel.show_api_key/ });
+
+    expect(input).toHaveClass('api-key-field__input');
+    expect(input).not.toHaveClass('pr-12');
+    expect(revealButton).toHaveAttribute('aria-pressed', 'false');
+    expect(revealButton).not.toHaveClass('absolute', 'inset-y-0', 'right-0');
+    expect(revealButton).toHaveClass('api-key-field__toggle');
+    expect(revealButton.className).not.toContain('rounded-[var(--button-radius)]');
+  });
+
+  test('keeps the SiliconFlow reveal toggle inside the input shell without absolute overlay', async () => {
+    (TauriAPI.getSetting as any).mockImplementation((key: string) => {
+      if (key === 'builtin-siliconflow.api_key') return Promise.resolve('sf-key');
+      return Promise.resolve(null);
+    });
+
+    render(<SiliconFlowSection variant="inline" onCreateConfig={vi.fn()} />);
+
+    const input = await screen.findByDisplayValue('sf-key');
+    const revealButton = screen.getByRole('button', { name: /common:siliconflow.show_api_key/ });
+
+    expect(input).toHaveClass('api-key-field__input');
+    expect(input).not.toHaveClass('pr-12');
+    expect(revealButton).toHaveAttribute('aria-pressed', 'false');
+    expect(revealButton).not.toHaveClass('absolute', 'inset-y-0', 'right-0');
+    expect(revealButton).toHaveClass('api-key-field__toggle');
+    expect(revealButton.className).not.toContain('rounded-[var(--button-radius)]');
+  });
+
   test('does not re-save a stale debounced vendor API key after clear', async () => {
     vi.useFakeTimers();
     const onSave = vi.fn().mockResolvedValue(undefined);

@@ -16,6 +16,11 @@ import { SecurePasswordInput } from '../SecurePasswordInput';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
+import {
+  settingsQuietButtonIdleRowClassName,
+  settingsQuietButtonSelectedRowClassName,
+  settingsQuietInteractiveRowClassName,
+} from './SettingsCommon';
 
 const isTauri = typeof window !== 'undefined' && (window as any).__TAURI_INTERNALS__;
 const invoke = isTauri ? tauriInvoke : null;
@@ -58,7 +63,7 @@ const SettingRow = ({
   children: React.ReactNode;
   className?: string;
 }) => (
-  <div className={cn("group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 hover:bg-muted/30 rounded transition-colors overflow-hidden", className)}>
+  <div className={cn("group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 overflow-hidden", settingsQuietInteractiveRowClassName, className)}>
     <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
@@ -324,8 +329,10 @@ export const EngineSettingsSection: React.FC<{
                     variant="ghost"
                     onClick={() => setActiveEngine(id)}
                     className={cn(
-                      '!rounded-lg !px-3 !py-2 text-sm text-left w-full !justify-start group relative',
-                      isActive ? 'bg-muted text-foreground font-medium' : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                      '!px-3 !py-2 text-sm text-left w-full !justify-start group relative',
+                      isActive
+                        ? settingsQuietButtonSelectedRowClassName
+                        : settingsQuietButtonIdleRowClassName
                     )}
                   >
                     <div className="flex flex-wrap items-center justify-between gap-1.5 w-full">

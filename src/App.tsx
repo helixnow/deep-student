@@ -48,6 +48,7 @@ import './styles/tailwind.css'; // Tailwind (should be first to provide base/uti
 import './styles/shadcn-variables.css'; // 设计令牌：支持亮/暗色变量（必须优先）
 import './styles/theme-colors.css';
 import './App.css';
+import 'overlayscrollbars/overlayscrollbars.css';
 import './DeepStudent.css';
 
 import './styles/ios-safe-area.css'; // iOS安全区域适配
@@ -71,6 +72,7 @@ import './styles/typography.css'; // 全局排版（字体/字号/行高）
 import './styles/shadcn-overrides.css'; // 修复图标尺寸被覆盖的问题
 import { MigrationStatusBanner } from './components/system-status/MigrationStatusBanner';
 import { SettingsShellSidebar } from './components/settings/SettingsShellSidebar';
+import { settingsMobileSheetCloseButtonClassName } from './components/settings/SettingsCommon';
 import { setPendingSettingsTab } from './utils/pendingSettingsTab';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useNavigationHistory } from './hooks/useNavigationHistory';
@@ -121,6 +123,15 @@ import {
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 const LazyGlobalDebugPanel = React.lazy(() => import('./components/dev/GlobalDebugPanel'));
 const DESKTOP_CHAT_TITLE_TYPEWRITER_INTERVAL_MS = 26;
+const MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY = 'macos.native_font_smoothing';
+
+function applyMacOSFontSmoothingPreference(enabled: boolean) {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  document.documentElement.dataset.fontSmoothing = enabled ? 'macos-native' : 'macos-grayscale';
+}
 
 /**
  * 启动时自动更新检查弹窗
@@ -672,6 +683,54 @@ function App() {
       try { window.removeEventListener('systemSettingsChanged' as any, handleSettingsChange as any); } catch { /* non-critical: cleanup */ }
     };
   }, [isSmallScreen]); // 响应窗口大小变化，自动切换移动端/桌面端默认值
+
+  useEffect(() => {
+    if (!isMacOS()) {
+      delete document.documentElement.dataset.fontSmoothing;
+      return;
+    }
+
+    let cancelled = false;
+
+    const loadFontSmoothingSetting = async () => {
+      try {
+        const value = await invoke<string | null>('get_setting', {
+          key: MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY,
+        });
+        if (cancelled) return;
+        applyMacOSFontSmoothingPreference(String(value ?? '').trim() !== 'false');
+      } catch {
+        if (cancelled) return;
+        applyMacOSFontSmoothingPreference(true);
+      }
+    };
+
+    void loadFontSmoothingSetting();
+
+    const handleSettingsChange = (event: any) => {
+      if (
+        event?.detail?.macosFontSmoothing ||
+        event?.detail?.settingKey === MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY
+      ) {
+        void loadFontSmoothingSetting();
+      }
+    };
+
+    try {
+      window.addEventListener('systemSettingsChanged' as any, handleSettingsChange as any);
+    } catch {
+      /* non-critical: event listener setup may fail in test env */
+    }
+
+    return () => {
+      cancelled = true;
+      try {
+        window.removeEventListener('systemSettingsChanged' as any, handleSettingsChange as any);
+      } catch {
+        /* non-critical: cleanup */
+      }
+    };
+  }, []);
   
   // 🎯 命令面板：注册内置命令
   useEffect(() => {
@@ -1028,7 +1087,11 @@ function App() {
   useEffect(() => {
     const handleCreateChatSession = (event: Event) => {
       const detail = (event as CustomEvent<{ action?: string }>).detail;
-      if (detail?.action && detail.action !== 'create-session') {
+      if (
+        detail?.action &&
+        detail.action !== 'create-session' &&
+        detail.action !== 'create-group'
+      ) {
         return;
       }
       setCurrentView('chat-v2');
@@ -2414,26 +2477,26 @@ function App() {
             <SheetContent
               side="bottom"
               data-slot="mobile-settings-sheet"
-              overlayClassName="bg-[rgba(17,17,17,0.4)]"
+              overlayClassName="bg-[color:var(--mobile-sheet-scrim)]"
               hideCloseButton
-              className="flex h-[min(86dvh,calc(100dvh-0.5rem))] max-h-[calc(100dvh-0.5rem)] flex-col overflow-hidden rounded-b-none rounded-t-[24px] border-x-0 border-b-0 border-t border-[#E0E3EA] bg-[#FFFFFF] p-0 text-[#111111] shadow-[0_-12px_34px_rgba(17,17,17,0.10)] duration-200 ease-out"
+              className="flex h-[min(86dvh,calc(100dvh-0.5rem))] max-h-[calc(100dvh-0.5rem)] flex-col overflow-hidden rounded-b-none rounded-t-[24px] border-x-0 border-b-0 border-t border-[color:var(--mobile-sheet-border)] bg-[color:var(--mobile-sheet-surface)] p-0 text-[color:var(--mobile-sheet-foreground)] shadow-[var(--mobile-sheet-shadow)] duration-200 ease-out"
             >
               <div className="flex h-7 shrink-0 items-center justify-center">
-                <div className="h-1 w-12 rounded-full bg-[#C9CDD6]" />
+                <div className="h-1 w-12 rounded-full bg-[color:var(--mobile-sheet-handle)]" />
               </div>
-              <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[rgba(17,17,17,0.08)] px-5 pb-3 pt-1">
+              <div className="flex shrink-0 items-start justify-between gap-4 border-b border-[color:var(--mobile-sheet-header-border)] px-5 pb-3 pt-1">
                 <div className="min-w-0">
-                  <SheetTitle className="text-[18px] font-semibold leading-6 text-[#111111]">
+                  <SheetTitle className="text-[18px] font-semibold leading-6 text-[color:var(--mobile-sheet-foreground)]">
                     {t('settings:title', '系统设置')}
                   </SheetTitle>
-                  <SheetDescription className="mt-1 text-[13px] leading-5 text-[#6E737D]">
+                  <SheetDescription className="mt-1 text-[13px] leading-5 text-[color:var(--mobile-sheet-muted-foreground)]">
                     {t('settings:study_ui_descriptions.default', '应用偏好与数据选项')}
                   </SheetDescription>
                 </div>
                 <SheetClose asChild>
                   <button
                     type="button"
-                    className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-xl text-[#5F636D] transition-colors hover:bg-[#F1F3F6] hover:text-[#111111] focus:outline-none focus-visible:ring-2 focus-visible:ring-[#6AA5FF]"
+                    className={settingsMobileSheetCloseButtonClassName}
                     aria-label={t('common:actions.close', '关闭')}
                   >
                     <X className="h-5 w-5" />

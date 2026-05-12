@@ -1,7 +1,7 @@
-import React, { useMemo, useState } from 'react';
+import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
-import { ExternalLink } from 'lucide-react';
+import { ListChecks } from 'lucide-react';
 import { NotionButton } from '../ui/NotionButton';
 import {
   NotionDialog,
@@ -18,80 +18,84 @@ const GroupTitle = ({ title }: { title: string }) => (
   </div>
 );
 
+const ACKNOWLEDGEMENT_GROUPS = [
+  {
+    key: 'coreStack',
+    items: ['React 18', 'TypeScript 5', 'Vite 6', 'Tailwind CSS', 'PostCSS', 'Vite React Plugin'],
+  },
+  {
+    key: 'uiAndInteraction',
+    items: [
+      'Radix UI', 'Framer Motion', 'Lucide React', 'Phosphor Icons',
+      'cmdk', 'React Complex Tree', 'React Resizable Panels',
+    ],
+  },
+  {
+    key: 'contentEditing',
+    items: [
+      'Milkdown', 'CodeMirror', 'ProseMirror', 'Mermaid', 'KaTeX',
+      'React Markdown', 'React PDF', 'PDF.js', 'docx-preview',
+      'pptx-preview', 'ExcelJS',
+    ],
+  },
+  {
+    key: 'stateAndData',
+    items: [
+      'Zustand', 'Immer', 'i18next', 'react-i18next',
+      'i18next Browser LanguageDetector', 'date-fns', 'nanoid',
+      'uuid', 'YAML', 'diff', 'DOMPurify',
+    ],
+  },
+  {
+    key: 'visualization',
+    items: ['DnD Kit', 'Hello Pangea DnD', 'React Flow', 'Recharts', 'React Heat Map'],
+  },
+  {
+    key: 'utilities',
+    items: [
+      'Class Variance Authority', 'Tailwind Merge', 'Mustache',
+      'heic2any', 'React Textarea Autosize', 'SnapDOM',
+    ],
+  },
+  {
+    key: 'aiAndAgents',
+    items: [
+      'MCP SDK', 'LanceDB', 'Apache Arrow', 'tiktoken-rs',
+      'EventSource Stream', 'Reqwest EventSource',
+    ],
+  },
+  {
+    key: 'rustEcosystem',
+    items: [
+      'Tauri 2', 'Tauri Plugin Suite', 'Tokio', 'Serde', 'Rusqlite',
+      'Reqwest', 'Rayon', 'Moka', 'Chrono', 'docx-rs',
+      'pdfium-render', 'Calamine', 'ppt-rs', 'pptx-to-md',
+      'Umya Spreadsheet', 'encoding_rs', 'anyhow', 'tracing', 'Sentry',
+    ],
+  },
+  {
+    key: 'testingAndTooling',
+    items: ['Vitest', 'Playwright', 'Testing Library', 'ESLint', 'JSDOM', 'Vite Static Copy'],
+  },
+] as const;
+
 export const OpenSourceAcknowledgementsSection: React.FC = () => {
   const { t } = useTranslation('settings');
   const [open, setOpen] = useState(false);
-
-  const groups = useMemo(() => [
-    {
-      key: 'coreStack',
-      color: 'bg-blue-50/80 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 border-blue-200/50 dark:border-blue-800/50',
-      hoverColor: 'hover:bg-blue-100 hover:border-blue-300 dark:hover:bg-blue-900/40 dark:hover:border-blue-700/50',
-      items: ['React 18', 'TypeScript 5', 'Vite 6', 'Tailwind CSS 4', 'PostCSS'],
-    },
-    {
-      key: 'uiAndInteraction',
-      color: 'bg-purple-50/80 text-purple-600 dark:bg-purple-900/20 dark:text-purple-400 border-purple-200/50 dark:border-purple-800/50',
-      hoverColor: 'hover:bg-purple-100 hover:border-purple-300 dark:hover:bg-purple-900/40 dark:hover:border-purple-700/50',
-      items: [
-        'Radix UI', 'Framer Motion', 'Lucide React', 'DnD Kit',
-        'React Flow', 'Hello Pangea DnD', 'cmdk', 'Recharts',
-        'React Tooltip', 'React Dropzone', 'React Complex Tree',
-        'React Resizable Panels', 'React Hotkeys Hook',
-        'React Zoom Pan Pinch', 'html-to-image', 'Reactour',
-      ],
-    },
-    {
-      key: 'contentEditing',
-      color: 'bg-pink-50/80 text-pink-600 dark:bg-pink-900/20 dark:text-pink-400 border-pink-200/50 dark:border-pink-800/50',
-      hoverColor: 'hover:bg-pink-100 hover:border-pink-300 dark:hover:bg-pink-900/40 dark:hover:border-pink-700/50',
-      items: [
-        'Milkdown', 'CodeMirror', 'ProseMirror', 'Mermaid', 'KaTeX',
-        'React PDF', 'PDF.js', 'React Markdown', 'Prism.js', 'Defuddle',
-        'remark-gfm', 'remark-math', 'rehype-katex', 'rehype-raw', 'rehype-sanitize',
-      ],
-    },
-    {
-      key: 'stateAndData',
-      color: 'bg-orange-50/80 text-orange-600 dark:bg-orange-900/20 dark:text-orange-400 border-orange-200/50 dark:border-orange-800/50',
-      hoverColor: 'hover:bg-orange-100 hover:border-orange-300 dark:hover:bg-orange-900/40 dark:hover:border-orange-700/50',
-      items: [
-        'Zustand', 'Immer', 'i18next', 'react-i18next',
-        'date-fns', 'nanoid', 'uuid', 'yaml', 'diff', 'clsx', 'Mustache', 'DOMPurify',
-      ],
-    },
-    {
-      key: 'aiAndAgents',
-      color: 'bg-green-50/80 text-green-600 dark:bg-green-900/20 dark:text-green-400 border-green-200/50 dark:border-green-800/50',
-      hoverColor: 'hover:bg-green-100 hover:border-green-300 dark:hover:bg-green-900/40 dark:hover:border-green-700/50',
-      items: ['MCP SDK', 'LanceDB', 'Apache Arrow', 'TanStack Virtual', 'SnapDOM'],
-    },
-    {
-      key: 'rustEcosystem',
-      color: 'bg-amber-50/80 text-amber-600 dark:bg-amber-900/20 dark:text-amber-400 border-amber-200/50 dark:border-amber-800/50',
-      hoverColor: 'hover:bg-amber-100 hover:border-amber-300 dark:hover:bg-amber-900/40 dark:hover:border-amber-700/50',
-      items: [
-        'Tauri 2', 'Tokio', 'Serde', 'Rusqlite', 'Reqwest', 'Rayon', 'Moka', 'Chrono',
-        'docx-rs', 'pdfium-render', 'Calamine', 'ppt-rs', 'pptx-to-md', 'Umya Spreadsheet',
-        'epub-rs', 'encoding_rs', 'ExcelJS', 'docx-preview', 'pptx-preview',
-        'Anyhow', 'Tracing', 'Sentry',
-      ],
-    },
-  ], []);
 
   const container = {
     hidden: { opacity: 0 },
     show: {
       opacity: 1,
       transition: {
-        staggerChildren: 0.03,
+        staggerChildren: 0.02,
       },
     },
   };
 
   const itemAnim = {
-    hidden: { opacity: 0, scale: 0.95, y: 10 },
-    show: { opacity: 1, scale: 1, y: 0, transition: { type: 'spring' as const, stiffness: 300, damping: 24 } },
+    hidden: { opacity: 0, y: 4 },
+    show: { opacity: 1, y: 0, transition: { duration: 0.16, ease: 'easeOut' as const } },
   };
 
   return (
@@ -107,7 +111,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
             className="mr-1 h-7 gap-1.5 text-xs text-muted-foreground"
           >
             <span>{t('acknowledgements.openSource.openDialog')}</span>
-            <ExternalLink className="h-3.5 w-3.5" />
+            <ListChecks className="h-3.5 w-3.5" />
           </NotionButton>
         </div>
         <p className="text-[12.5px] text-muted-foreground/70 leading-relaxed px-1 mt-2 mb-5">
@@ -117,45 +121,51 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
 
       <NotionDialog open={open} onOpenChange={setOpen} maxWidth="max-w-[760px]">
         <NotionDialogHeader>
-          <NotionDialogTitle>{t('acknowledgements.openSource.title')}</NotionDialogTitle>
-          <NotionDialogDescription>
-            {t('acknowledgements.openSource.description')}
-          </NotionDialogDescription>
+          <div className="min-w-0 pr-8">
+            <NotionDialogTitle>{t('acknowledgements.openSource.title')}</NotionDialogTitle>
+            <NotionDialogDescription>
+              {t('acknowledgements.openSource.description')}
+            </NotionDialogDescription>
+          </div>
         </NotionDialogHeader>
 
         <NotionDialogBody className="py-4">
-          <div className="grid grid-cols-1 gap-6 md:grid-cols-2">
-            {groups.map((group) => (
-              <div key={group.key} className="flex flex-col space-y-3">
-                <h4 className="text-[13px] font-medium text-muted-foreground flex items-center gap-2">
-                  <span className={`w-1.5 h-1.5 rounded-full ${group.color.split(' ')[0]}`} />
-                  {t(`acknowledgements.openSource.categories.${group.key}`)}
-                </h4>
+          <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+            {ACKNOWLEDGEMENT_GROUPS.map((group) => (
+              <section
+                key={group.key}
+                className="rounded-lg border border-border/45 bg-muted/15 p-3.5 transition-colors hover:bg-muted/25"
+              >
+                <div className="mb-3 flex items-center justify-between gap-3">
+                  <h4 className="flex min-w-0 items-center gap-2 text-[13px] font-medium text-foreground/90">
+                    <span className="h-1.5 w-1.5 shrink-0 rounded-full bg-muted-foreground/45" />
+                    <span className="truncate">{t(`acknowledgements.openSource.categories.${group.key}`)}</span>
+                  </h4>
+                </div>
                 <motion.div
+                  role="list"
                   variants={container}
                   initial="hidden"
                   animate="show"
-                  className="flex flex-wrap gap-2"
+                  className="flex flex-wrap gap-1.5"
                 >
                   {group.items.map((item) => (
                     <motion.span
+                      role="listitem"
                       variants={itemAnim}
-                      whileHover={{ scale: 1.05 }}
                       key={item}
-                      className={`
-                        inline-block cursor-default select-none
-                        px-2.5 py-1 rounded-md
-                        text-[11.5px] font-medium
-                        border shadow-sm
-                        transition-all duration-200
-                        ${group.color} ${group.hoverColor}
-                      `}
+                      className="
+                        inline-block cursor-default select-none rounded-md
+                        border border-border/45 bg-background/70 px-2.5 py-1
+                        text-[11.5px] font-medium text-foreground/70 shadow-sm
+                        transition-colors duration-150 hover:bg-muted/35 hover:text-foreground/85
+                      "
                     >
                       {item}
                     </motion.span>
                   ))}
                 </motion.div>
-              </div>
+              </section>
             ))}
           </div>
         </NotionDialogBody>
