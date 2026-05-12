@@ -673,7 +673,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         }
       : undefined,
     rightActions: !isEditorView ? (
-      <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCreate} className="!p-1.5 hover:bg-accent text-muted-foreground hover:text-foreground" title={t('skills:management.create', '新建技能')} aria-label="create">
+      <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCreate} className="!p-1.5 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground" title={t('skills:management.create', '新建技能')} aria-label="create">
         <Plus className="w-5 h-5" />
       </NotionButton>
     ) : undefined,

@@ -168,7 +168,7 @@ const SidebarContentComponent: React.FC<SidebarContentProps> = React.memo(({
                   '!px-2.5 !py-1 !h-auto text-[11px] font-medium whitespace-nowrap',
                   isActiveTab
                     ? 'bg-secondary text-secondary-foreground shadow-sm'
-                    : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
+                    : 'text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground'
                 )}
               >
                 <span className={cn("opacity-70", isActiveTab && "opacity-100")}>{tab.icon}</span>

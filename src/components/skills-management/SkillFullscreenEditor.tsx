@@ -555,7 +555,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                     variant="ghost"
                     onClick={handleCloseRequest}
                     disabled={isSaving}
-                    className="flex-1 hover:bg-muted/50 text-muted-foreground hover:text-foreground"
+                    className="flex-1 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground"
                   >
                     {t('common:actions.cancel', '取消')}
                   </NotionButton>

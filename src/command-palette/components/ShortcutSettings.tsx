@@ -240,7 +240,7 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
             </div>
 
             <select
-              className="h-8 px-2.5 py-1 bg-transparent border border-border/50 rounded-md text-xs text-foreground/80 focus:outline-none focus:ring-1 focus:ring-primary/30 hover:bg-muted/30 transition-colors"
+              className="h-8 px-2.5 py-1 bg-transparent border border-border/50 rounded-md text-xs text-foreground/80 focus:outline-none focus:ring-1 focus:ring-primary/30 hover:bg-[var(--interactive-hover)] transition-colors"
               value={selectedCategory}
               onChange={(e) => setSelectedCategory(e.target.value as CommandCategory | 'all')}
             >
@@ -283,7 +283,7 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
                         'group flex items-center justify-between py-2.5 px-1 rounded transition-colors',
                         isEditing
                           ? 'bg-primary/5'
-                          : 'hover:bg-muted/30'
+                          : 'hover:bg-[var(--interactive-hover)]'
                       )}
                     >
                       <div className="flex items-center gap-2 min-w-0 flex-1">

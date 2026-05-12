@@ -342,7 +342,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
             variant="ghost"
             size="icon"
             onClick={handleCancel}
-            className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground hover:bg-muted/50"
+            className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
           >
             <X size={18} />
           </NotionButton>
@@ -652,7 +652,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
           variant="ghost"
           onClick={handleCancel}
           disabled={isSaving}
-          className="hover:bg-muted/50 text-muted-foreground hover:text-foreground"
+          className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground"
         >
           {t('common:actions.cancel', '取消')}
         </NotionButton>
