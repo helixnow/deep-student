@@ -276,8 +276,8 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                 onClick={() => handleModeClick(key, isAdvanced)}
                 className={cn(
                   '!h-auto !p-4 !rounded-xl !text-left !justify-start !items-start flex-col',
-                  'border border-transparent hover:border-border/60 hover:bg-muted/30',
-                  'hover:shadow-[var(--shadow-notion)]',
+                  !isActive && 'border border-transparent hover:border-border/60 hover:bg-[var(--interactive-hover)]',
+                  !isActive && 'hover:shadow-[var(--shadow-notion)]',
                   isActive && 'ring-2 ring-primary/50 bg-primary/5 border-primary/30'
                 )}
               >

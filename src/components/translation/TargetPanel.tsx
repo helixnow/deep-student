@@ -103,7 +103,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                     </CommonTooltip>
 
                     {/* Sync Scroll Toggle */}
-                    <div className="flex items-center gap-2 mr-3 px-2 py-1 rounded-md hover:bg-muted/50 transition-colors">
+                    <div className="flex items-center gap-2 mr-3 px-2 py-1 rounded-md hover:bg-[var(--interactive-hover)] transition-colors">
                         <Switch
                             id="sync-scroll"
                             checked={isSyncScroll}
@@ -234,7 +234,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                             variant="ghost"
                                             size="icon"
                                             onClick={() => onRateTranslation(rating)}
-                                            className="h-7 w-7 p-1.5 hover:bg-muted rounded-full"
+                                            className="h-7 w-7 p-1.5 hover:bg-[var(--interactive-hover)] rounded-full"
                                         >
                                             <Star
                                                 className={`w-3.5 h-3.5 transition-colors ${translationQuality && rating <= translationQuality

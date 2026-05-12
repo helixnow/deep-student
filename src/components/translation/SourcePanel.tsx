@@ -89,7 +89,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                             size="icon"
                             onClick={onSwapLanguages}
                             disabled={isTranslating || srcLang === 'auto'}
-                            className="h-7 w-7 sm:h-8 sm:w-8 rounded-full hover:bg-muted/80 shrink-0"
+                            className="h-7 w-7 sm:h-8 sm:w-8 rounded-full hover:bg-[var(--interactive-hover)] shrink-0"
                         >
                             <ArrowLeftRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
                         </NotionButton>

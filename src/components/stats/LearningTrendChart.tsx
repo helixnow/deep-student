@@ -22,7 +22,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { TrendingUp, Calendar, RefreshCw } from 'lucide-react';
+import { TrendUp, ArrowsClockwise } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -131,13 +131,13 @@ const EmptyState: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => {
   
   return (
     <div className="flex flex-col items-center justify-center h-64 text-center">
-      <TrendingUp className="w-12 h-12 text-muted-foreground/30 mb-3" />
+      <TrendUp size={48} className="text-muted-foreground/30 mb-3" />
       <p className="text-muted-foreground mb-4">
         {t('trendChart.noRecord')}
       </p>
       {onRefresh && (
         <NotionButton variant="ghost" size="sm" onClick={onRefresh}>
-          <RefreshCw className="w-4 h-4 mr-2" />
+          <ArrowsClockwise size={16} className="mr-2" />
           {t('trendChart.refreshData')}
         </NotionButton>
       )}
@@ -236,7 +236,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
       {/* 标题栏 */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <TrendingUp className="w-5 h-5 text-primary" />
+          <TrendUp size={20} className="text-primary" />
           <h3 className="font-semibold">{t('trendChart.title')}</h3>
         </div>
         
@@ -269,7 +269,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
             className="h-8 w-8"
             onClick={handleRefresh}
           >
-            <RefreshCw className="w-4 h-4" />
+            <ArrowsClockwise size={16} />
           </NotionButton>
         </div>
       </div>

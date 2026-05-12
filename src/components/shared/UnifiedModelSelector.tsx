@@ -222,7 +222,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
     if (!allowEmpty) return null;
 
     return (
-      <NotionButton variant="ghost" size="sm" onClick={() => handleSelectModel(EMPTY_VALUE)} disabled={disabled} className={cn('!w-full !justify-between !px-2 !py-1.5 !h-auto !text-left group', isEmptySelected ? 'bg-primary/5 text-primary' : 'text-foreground hover:bg-muted/50', disabled && 'opacity-60 cursor-not-allowed')}>
+      <NotionButton variant="ghost" size="sm" onClick={() => handleSelectModel(EMPTY_VALUE)} disabled={disabled} className={cn('!w-full !justify-between !px-2 !py-1.5 !h-auto !text-left group', isEmptySelected ? 'bg-primary/5 text-primary' : 'text-foreground hover:bg-[var(--interactive-hover)]', disabled && 'opacity-60 cursor-not-allowed')}>
         <div className="flex items-center gap-2">
            <div className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground group-hover:text-foreground">
              <Ban className="h-3.5 w-3.5" />
@@ -246,7 +246,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
       : 'text-destructive/80';
 
     return (
-      <NotionButton variant="ghost" size="sm" key={option.id} onClick={() => !option.isDisabled && handleSelectModel(option.id)} disabled={isOptionDisabled} className={cn('!w-full !justify-between !px-2 !py-1.5 !h-auto !text-left group', isSelected ? 'bg-primary/5' : 'hover:bg-muted/50', isOptionDisabled && 'opacity-50 cursor-not-allowed')}>
+      <NotionButton variant="ghost" size="sm" key={option.id} onClick={() => !option.isDisabled && handleSelectModel(option.id)} disabled={isOptionDisabled} className={cn('!w-full !justify-between !px-2 !py-1.5 !h-auto !text-left group', isSelected ? 'bg-primary/5' : 'hover:bg-[var(--interactive-hover)]', isOptionDisabled && 'opacity-50 cursor-not-allowed')}>
         <div className="flex items-center gap-2.5 min-w-0 flex-1">
           {/* 供应商图标 */}
           <div className="flex-shrink-0">
@@ -343,7 +343,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
     if (variant === 'full') {
       // 全宽选择器样式（类似 SelectTrigger）
       return (
-        <NotionButton variant="default" size="sm" disabled={disabled} className={cn('!h-9 !w-full !justify-between !px-3 !py-2 border border-input bg-transparent text-sm shadow-sm hover:bg-muted/20 disabled:cursor-not-allowed disabled:opacity-50', className)}>
+        <NotionButton variant="default" size="sm" disabled={disabled} className={cn('!h-9 !w-full !justify-between !px-3 !py-2 border border-input bg-transparent text-sm shadow-sm hover:bg-[var(--interactive-hover)] disabled:cursor-not-allowed disabled:opacity-50', className)}>
           <span className="flex-1 min-w-0 pr-2 text-left text-sm truncate">
             {isEmptySelected && !allowEmpty ? (
               <span className="text-muted-foreground">{triggerDisplayText}</span>

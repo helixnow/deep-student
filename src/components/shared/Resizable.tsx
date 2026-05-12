@@ -120,7 +120,7 @@ export const VerticalResizable: React.FC<VerticalResizableProps> = ({
         aria-orientation="horizontal"
         onMouseDown={() => setDragging(true)}
         onTouchStart={() => setDragging(true)}
-        className={`h-6 cursor-row-resize flex items-center justify-center shrink-0 ${dragging ? 'bg-accent/20' : 'hover:bg-accent/10'} transition-colors`}
+        className={`h-6 cursor-row-resize flex items-center justify-center shrink-0 ${dragging ? 'bg-accent/20' : 'hover:bg-[var(--interactive-hover)]'} transition-colors`}
         title={t('resizable.dragToResizeHeight')}
       >
         {/* 拖拽手柄指示器 */}

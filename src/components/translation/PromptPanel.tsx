@@ -122,7 +122,7 @@ const GlossaryEditor: React.FC<{
           {glossary.map(([src, tgt], index) => (
             <div
               key={`${src}::${tgt}::${index}`}
-              className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-muted/20 hover:bg-muted/40 transition-colors group"
+              className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-muted/20 hover:bg-[var(--interactive-hover)] transition-colors group"
             >
               <span className="flex-1 text-sm truncate font-mono">{src}</span>
               <span className="text-muted-foreground/40 text-xs shrink-0">→</span>
