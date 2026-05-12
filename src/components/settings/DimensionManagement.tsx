@@ -532,7 +532,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                       
                       return (
                         <React.Fragment key={rowId}>
-                          <TableRow className={cn("group h-12 transition-colors", isExpanded && "bg-muted/40 hover:bg-muted/40")}>
+                          <TableRow className={cn("group h-12 transition-colors", isExpanded && "bg-muted/40 hover:bg-[var(--interactive-hover)]")}>
                             <TableCell className="font-mono py-1">
                               <div className="flex items-center gap-1.5">
                                 <span className="text-sm font-medium">{dim.dimension}</span>
@@ -619,7 +619,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                           
                           {/* 行内展开：分配模型面板 */}
                           {isExpanded && (
-                            <TableRow className="bg-muted/20 hover:bg-muted/20 border-b border-border/40">
+                            <TableRow className="bg-muted/20 border-b border-border/40">
                               <TableCell colSpan={6} className="p-0">
                                 <div className="px-6 py-3 space-y-2 animate-in fade-in slide-in-from-top-1 duration-200">
                                   <div className="flex items-start justify-between gap-4">
@@ -676,7 +676,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                               "!h-auto !px-2.5 !py-1 text-xs",
                                               model.id === selectedModelId
                                                 ? "bg-primary/10 text-primary border border-primary/30"
-                                                : "bg-muted/50 text-foreground/70 hover:bg-muted hover:text-foreground border border-transparent"
+                                                : "bg-muted/50 text-foreground/70 hover:bg-[var(--interactive-hover)] hover:text-foreground border border-transparent"
                                             )}
                                           >
                                             {model.name}

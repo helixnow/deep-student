@@ -381,7 +381,7 @@ const ClearOption: React.FC<ClearOptionProps> = ({
   warning,
 }) => (
   <div
-    className="flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-muted/30"
+    className="flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors hover:bg-[var(--interactive-hover)]"
     onClick={() => onChange(!checked)}
   >
     <Checkbox

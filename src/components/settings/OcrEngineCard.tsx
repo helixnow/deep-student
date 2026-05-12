@@ -250,7 +250,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
                 key={engine.configId}
                 className={cn(
                   "group flex items-center gap-2 py-1.5 px-1.5 rounded transition-all duration-200",
-                  engine.enabled ? "hover:bg-muted/30" : "opacity-50 hover:bg-muted/20"
+                  engine.enabled ? "" : "opacity-50"
                 )}
               >
                 {/* 优先级序号 */}
@@ -425,7 +425,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
               onChange={handleAddEngineById}
               variant="full"
               placeholder={t('settings:ocr.select_multimodal_model')}
-              className="bg-transparent hover:bg-muted/20 transition-colors"
+              className="bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
               popoverClassName="w-[280px]"
             />
             {multimodalModels.length === 0 && (

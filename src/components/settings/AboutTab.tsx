@@ -27,7 +27,7 @@ const SettingRow = ({
   description?: string;
   children: React.ReactNode;
 }) => (
-  <div className="group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 hover:bg-muted/30 rounded transition-colors overflow-hidden">
+  <div className="group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
     <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
@@ -388,7 +388,7 @@ export const AboutTab: React.FC = () => {
 
         <div className="mt-8">
           <GroupTitle title={t('acknowledgements.partners.title', '技术合作伙伴致谢')} />
-          <div className="relative p-4 rounded-lg bg-muted/30 hover:bg-muted/40 transition-colors">
+          <div className="relative p-4 rounded-lg bg-muted/30">
             <h4 className="text-sm font-medium text-foreground/90 mb-1.5">
               {t('acknowledgements.partners.cards.siliconflow.title', 'SiliconFlow')}
             </h4>

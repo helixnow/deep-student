@@ -58,7 +58,7 @@ const SettingRow = ({
   children: React.ReactNode;
   className?: string;
 }) => (
-  <div className={cn("group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 hover:bg-muted/30 rounded transition-colors overflow-hidden", className)}>
+  <div className={cn("group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 rounded overflow-hidden", className)}>
     <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
@@ -85,7 +85,7 @@ const SwitchRow = ({
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
 }) => (
-  <div className="group flex items-center justify-between gap-4 py-2.5 px-1 hover:bg-muted/30 rounded transition-colors">
+  <div className="group flex items-center justify-between gap-4 py-2.5 px-1 rounded">
     <div className="flex-1 min-w-0">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
@@ -414,7 +414,7 @@ export const AppTab: React.FC<AppTabProps> = ({
                     options={UI_ZOOM_PRESETS.map(option => ({ value: option.value.toString(), label: option.label }))}
                     size="sm"
                     variant="ghost"
-                    className="h-8 text-xs bg-transparent hover:bg-muted/20 transition-colors"
+                    className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
                     width={90}
                   />
                   <NotionButton 
@@ -459,7 +459,7 @@ export const AppTab: React.FC<AppTabProps> = ({
                   disabled={fontSaving || fontLoading}
                   width={180}
                   variant="outline"
-                  className="h-8 text-xs bg-transparent hover:bg-muted/20 transition-colors"
+                  className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
                 />
               </div>
             </SettingRow>
@@ -478,7 +478,7 @@ export const AppTab: React.FC<AppTabProps> = ({
                   options={UI_FONT_SIZE_PRESETS.map(option => ({ value: option.value.toString(), label: option.label }))}
                   size="sm"
                   variant="ghost"
-                  className="h-8 text-xs bg-transparent hover:bg-muted/20 transition-colors"
+                  className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
                   width={90}
                 />
                 <NotionButton
@@ -616,7 +616,7 @@ export const AppTab: React.FC<AppTabProps> = ({
                   ]}
                   size="sm"
                   variant="ghost"
-                  className="h-8 text-xs bg-transparent hover:bg-muted/20 transition-colors"
+                  className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
                   width={80}
                 />
                 <NotionButton 
@@ -691,7 +691,7 @@ export const AppTab: React.FC<AppTabProps> = ({
                     <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5">{t('settings:developer.copy_filter.desc')}</p>
                   </div>
                   <div className="mt-1.5 space-y-1.5 pl-1">
-                    <div className="flex items-center justify-between gap-3 hover:bg-muted/30 rounded px-1 py-1 transition-colors">
+                    <div className="flex items-center justify-between gap-3 rounded px-1 py-1">
                       <span className="text-xs text-muted-foreground">{t('settings:developer.copy_filter.fields.images')}</span>
                       <AppSelect
                         value={filterConfig.images}
@@ -702,10 +702,10 @@ export const AppTab: React.FC<AppTabProps> = ({
                           { value: 'remove', label: t('settings:developer.copy_filter.options.images.remove') },
                         ]}
                         size="sm" variant="ghost"
-                        className="h-7 text-xs bg-transparent hover:bg-muted/20" width={140}
+                        className="h-7 text-xs bg-transparent hover:bg-[var(--interactive-hover)]" width={140}
                       />
                     </div>
-                    <div className="flex items-center justify-between gap-3 hover:bg-muted/30 rounded px-1 py-1 transition-colors">
+                    <div className="flex items-center justify-between gap-3 rounded px-1 py-1">
                       <span className="text-xs text-muted-foreground">{t('settings:developer.copy_filter.fields.tools')}</span>
                       <AppSelect
                         value={filterConfig.tools}
@@ -717,10 +717,10 @@ export const AppTab: React.FC<AppTabProps> = ({
                           { value: 'remove', label: t('settings:developer.copy_filter.options.tools.remove') },
                         ]}
                         size="sm" variant="ghost"
-                        className="h-7 text-xs bg-transparent hover:bg-muted/20" width={140}
+                        className="h-7 text-xs bg-transparent hover:bg-[var(--interactive-hover)]" width={140}
                       />
                     </div>
-                    <div className="flex items-center justify-between gap-3 hover:bg-muted/30 rounded px-1 py-1 transition-colors">
+                    <div className="flex items-center justify-between gap-3 rounded px-1 py-1">
                       <span className="text-xs text-muted-foreground">{t('settings:developer.copy_filter.fields.messages')}</span>
                       <AppSelect
                         value={filterConfig.messages}
@@ -731,11 +731,11 @@ export const AppTab: React.FC<AppTabProps> = ({
                           { value: 'summary', label: t('settings:developer.copy_filter.options.messages.summary') },
                         ]}
                         size="sm" variant="ghost"
-                        className="h-7 text-xs bg-transparent hover:bg-muted/20" width={140}
+                        className="h-7 text-xs bg-transparent hover:bg-[var(--interactive-hover)]" width={140}
                       />
                     </div>
                     {filterConfig.messages === 'truncate' && (
-                      <div className="flex items-center justify-between gap-3 hover:bg-muted/30 rounded px-1 py-1 transition-colors">
+                      <div className="flex items-center justify-between gap-3 rounded px-1 py-1">
                         <span className="text-xs text-muted-foreground">{t('settings:developer.copy_filter.fields.truncate_length')}</span>
                         <div className="flex items-center gap-1.5">
                           <Input
@@ -754,7 +754,7 @@ export const AppTab: React.FC<AppTabProps> = ({
                         </div>
                       </div>
                     )}
-                    <div className="flex items-center justify-between gap-3 hover:bg-muted/30 rounded px-1 py-1 transition-colors">
+                    <div className="flex items-center justify-between gap-3 rounded px-1 py-1">
                       <span className="text-xs text-muted-foreground">{t('settings:developer.copy_filter.fields.thinking')}</span>
                       <AppSelect
                         value={filterConfig.thinking}
@@ -764,7 +764,7 @@ export const AppTab: React.FC<AppTabProps> = ({
                           { value: 'remove', label: t('settings:developer.copy_filter.options.thinking.remove') },
                         ]}
                         size="sm" variant="ghost"
-                        className="h-7 text-xs bg-transparent hover:bg-muted/20" width={140}
+                        className="h-7 text-xs bg-transparent hover:bg-[var(--interactive-hover)]" width={140}
                       />
                     </div>
                   </div>
@@ -900,7 +900,7 @@ export const AppTab: React.FC<AppTabProps> = ({
                 ].map((item) => (
                   <div
                     key={item.key}
-                    className="rounded px-1 py-2 transition-colors hover:bg-muted/30"
+                    className="rounded px-1 py-2 transition-colors"
                   >
                     <div className="text-xs leading-5">
                       <span className="font-medium text-foreground">

@@ -246,7 +246,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 variant="ghost"
                 size="sm"
                 onClick={() => onSetCloudSettingsEditorOpen(true)}
-                className="bg-background hover:bg-accent"
+                className="bg-background hover:bg-[var(--interactive-hover)]"
               >
                 {t('data:governance.cloud_sync_configure_now')}
               </NotionButton>
@@ -306,7 +306,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 size="sm"
                 onClick={() => onRunSync('upload', syncStrategy)}
                 disabled={loading || syncRunning}
-                className="h-8 bg-background hover:bg-accent"
+                className="h-8 bg-background hover:bg-[var(--interactive-hover)]"
               >
                 <Upload className="h-3.5 w-3.5 mr-1.5" />
                 {t('data:governance.sync_upload')}
@@ -316,7 +316,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 size="sm"
                 onClick={() => onRunSync('download', syncStrategy)}
                 disabled={loading || syncRunning}
-                className="h-8 bg-background hover:bg-accent"
+                className="h-8 bg-background hover:bg-[var(--interactive-hover)]"
               >
                 <Download className="h-3.5 w-3.5 mr-1.5" />
                 {t('data:governance.sync_download')}
@@ -452,7 +452,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               size="sm"
               onClick={() => onResolveConflicts('keep_local')}
               disabled={loading || conflicts.needs_migration}
-              className="bg-background hover:bg-accent"
+              className="bg-background hover:bg-[var(--interactive-hover)]"
             >
               {t('data:governance.keep_local')}
             </NotionButton>
@@ -461,7 +461,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               size="sm"
               onClick={() => onResolveConflicts('use_cloud')}
               disabled={loading || conflicts.needs_migration}
-              className="bg-background hover:bg-accent"
+              className="bg-background hover:bg-[var(--interactive-hover)]"
             >
               {t('data:governance.use_cloud')}
             </NotionButton>
@@ -470,7 +470,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               size="sm"
               onClick={() => onResolveConflicts('keep_latest')}
               disabled={loading || conflicts.needs_migration}
-              className="bg-background hover:bg-accent"
+              className="bg-background hover:bg-[var(--interactive-hover)]"
             >
               {t('data:governance.keep_latest')}
             </NotionButton>
@@ -479,7 +479,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               size="sm"
               onClick={() => onResolveConflicts('manual')}
               disabled={loading || conflicts.needs_migration}
-              className="bg-background hover:bg-accent"
+              className="bg-background hover:bg-[var(--interactive-hover)]"
             >
               {t('data:governance.manual')}
             </NotionButton>

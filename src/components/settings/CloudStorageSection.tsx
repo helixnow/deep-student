@@ -630,7 +630,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               ? 'opacity-50 border-border'
               : provider === 's3'
                 ? 'border-primary bg-primary/5 hover:bg-primary/10'
-                : 'border-border bg-transparent hover:bg-accent/50'
+                : 'border-border bg-transparent hover:bg-[var(--interactive-hover)]'
           }`}
         >
           {provider === 's3' && s3Enabled !== false && (

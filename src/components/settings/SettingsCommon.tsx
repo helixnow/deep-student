@@ -140,33 +140,12 @@ export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ checked, onChange })
     role="switch"
     aria-checked={checked}
     onClick={() => onChange(!checked)}
-    className="relative inline-flex h-6 w-11 items-center rounded-full transition-all duration-300 ease-in-out focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/30"
-    style={{
-      backgroundColor: checked ? 'hsl(var(--primary))' : 'hsl(var(--muted-foreground))',
-      border: checked ? 'none' : '2px solid hsl(var(--border))'
-    }}
-    onMouseEnter={(e) => {
-      if (checked) {
-        e.currentTarget.style.backgroundColor = 'hsl(var(--primary) / 0.9)';
-      } else {
-        e.currentTarget.style.backgroundColor = 'hsl(var(--neutral))';
-      }
-    }}
-    onMouseLeave={(e) => {
-      if (checked) {
-        e.currentTarget.style.backgroundColor = 'hsl(var(--primary))';
-      } else {
-        e.currentTarget.style.backgroundColor = 'hsl(var(--muted-foreground))';
-      }
-    }}
+    className="relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-300 ease-in-out focus:outline-none focus-visible:ring-1 focus-visible:ring-primary/30 bg-[hsl(var(--muted-foreground))] border-2 border-[hsl(var(--border))] hover:bg-[hsl(var(--neutral))] aria-checked:bg-[hsl(var(--primary))] aria-checked:border-transparent aria-checked:hover:bg-[hsl(var(--primary)/0.9)]"
   >
     <span
-      className={`inline-block h-4 w-4 transform rounded-full bg-background transition duration-300 ease-in-out ${
+      className={`inline-block h-4 w-4 transform rounded-full bg-background shadow-[0_2px_6px_hsl(var(--foreground)/0.15)] transition duration-300 ease-in-out ${
         checked ? 'translate-x-5' : 'translate-x-1'
       }`}
-      style={{
-        boxShadow: '0 2px 6px hsl(var(--foreground) / 0.15)'
-      }}
     />
   </button>
 );

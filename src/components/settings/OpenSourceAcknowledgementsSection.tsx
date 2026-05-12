@@ -134,7 +134,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
             {ACKNOWLEDGEMENT_GROUPS.map((group) => (
               <section
                 key={group.key}
-                className="rounded-lg border border-border/45 bg-muted/15 p-3.5 transition-colors hover:bg-muted/25"
+                className="rounded-lg border border-border/45 bg-muted/15 p-3.5"
               >
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <h4 className="flex min-w-0 items-center gap-2 text-[13px] font-medium text-foreground/90">
@@ -158,7 +158,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
                         inline-block cursor-default select-none rounded-md
                         border border-border/45 bg-background/70 px-2.5 py-1
                         text-[11.5px] font-medium text-foreground/70 shadow-sm
-                        transition-colors duration-150 hover:bg-muted/35 hover:text-foreground/85
+                        transition-colors duration-150
                       "
                     >
                       {item}

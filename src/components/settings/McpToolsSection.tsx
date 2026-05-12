@@ -5,7 +5,7 @@
  * - 使用 bg-card rounded-lg border border-border 作为卡片基础
  * - 使用 bg-muted/50 rounded-md/lg 作为内嵌区域
  * - 状态使用小圆点 w-2 h-2 rounded-full
- * - 交互使用 hover:bg-accent/50，选中用 bg-accent
+ * - 交互使用 hover:bg-[var(--interactive-hover)]，选中用 bg-accent
  * - 没有装饰性元素（顶部彩色条）
  * - 紧凑的间距和字体
  */
@@ -225,7 +225,7 @@ function ServerListItem({
     <div
       className={cn(
         'rounded-lg overflow-hidden transition-all duration-200 border border-transparent',
-        isExpanded ? 'bg-muted/30 border-border/40' : 'hover:bg-muted/30 hover:border-border/20'
+        isExpanded ? 'bg-muted/30 border-border/40' : 'hover:bg-[var(--interactive-hover)] hover:border-border/20'
       )}
     >
       {/* 删除确认栏 */}
@@ -1426,7 +1426,7 @@ function ActionMenu({
 
   return (
     <div className="relative">
-      <NotionButton variant="ghost" size="sm" onClick={() => setIsOpen(!isOpen)} className="bg-muted/50 hover:bg-muted">
+      <NotionButton variant="ghost" size="sm" onClick={() => setIsOpen(!isOpen)} className="bg-muted/50 hover:bg-[var(--interactive-hover)]">
         <Ellipsis className="w-4 h-4" />
         {t('settings:mcp_descriptions.quick_actions')}
       </NotionButton>
@@ -1792,7 +1792,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                 '!h-auto !px-2 !py-0.5 text-xs font-medium',
                 isActive
                   ? config.badge
-                  : 'text-muted-foreground hover:text-foreground hover:bg-muted/60'
+                  : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
               )}
               title={isActive
                 ? t('settings:tool_permissions.reset_to_default')
@@ -1903,7 +1903,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                         key={name}
                         className={cn(
                           'flex items-center justify-between px-3 py-2 rounded-lg transition-colors',
-                          override ? 'bg-muted/30' : 'hover:bg-muted/20'
+                          override ? 'bg-muted/30' : ''
                         )}
                       >
                         <div className="flex items-center gap-2 min-w-0 flex-1 mr-3">
@@ -2208,7 +2208,7 @@ export function McpToolsSection({
                     <span className="text-xs text-muted-foreground/70 italic">{t('settings:mcp_server_list.none')}</span>
                   ) : (
                     prompts.items.slice(0, 5).map((item, i) => (
-                      <div key={i} className="flex items-center gap-2 text-sm p-2 rounded-md hover:bg-muted/30 transition-colors">
+                      <div key={i} className="flex items-center gap-2 text-sm p-2 rounded-md">
                         <span className="w-1.5 h-1.5 rounded-full bg-blue-400 flex-shrink-0" />
                         <span className="text-foreground truncate">{item.name}</span>
                       </div>
@@ -2224,7 +2224,7 @@ export function McpToolsSection({
                     <span className="text-xs text-muted-foreground/70 italic">{t('settings:mcp_server_list.none')}</span>
                   ) : (
                     resources.items.slice(0, 5).map((item, i) => (
-                      <div key={i} className="flex items-center gap-2 text-sm p-2 rounded-md hover:bg-muted/30 transition-colors">
+                      <div key={i} className="flex items-center gap-2 text-sm p-2 rounded-md">
                         <span className="w-1.5 h-1.5 rounded-full bg-teal-400 flex-shrink-0" />
                         <span className="text-foreground truncate">{item.name || item.uri}</span>
                       </div>

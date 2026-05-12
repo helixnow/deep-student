@@ -111,7 +111,7 @@ const SettingRow: React.FC<{
   description?: string;
   children: React.ReactNode;
 }> = ({ title, description, children }) => (
-  <div className="group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 hover:bg-muted/30 rounded transition-colors">
+  <div className="group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 rounded">
     <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
       <div className="text-sm text-foreground/90 leading-tight">{title}</div>
       {description && (
@@ -332,7 +332,7 @@ function HistoryEntryCard({
   copyLabel: string;
 }) {
   return (
-    <div className="py-2.5 px-1 hover:bg-muted/30 rounded transition-colors">
+    <div className="py-2.5 px-1 rounded">
       <div className="mb-1 flex items-start justify-between gap-3">
         <div className="text-[11px] text-muted-foreground/70">
           {formatVoiceHistoryTime(entry.createdAt)}

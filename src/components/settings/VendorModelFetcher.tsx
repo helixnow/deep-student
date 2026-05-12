@@ -448,7 +448,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
                         onClick={() => toggleSelect(m.id)}
                         className={cn(
                           "flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-left text-xs transition-colors",
-                          isSelected ? "bg-primary/10 text-primary" : "hover:bg-muted/50 text-foreground"
+                          isSelected ? "bg-primary/10 text-primary" : "hover:bg-[var(--interactive-hover)] text-foreground"
                         )}
                       >
                         <div className={cn(

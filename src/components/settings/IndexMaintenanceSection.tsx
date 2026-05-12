@@ -230,7 +230,7 @@ export const LanceOptimizationPanel: React.FC = () => {
           variant="ghost"
           disabled={optimizing.chat}
           onClick={() => optimizeTable('chat', 'optimize_chat_embeddings_table')}
-          className="flex flex-col items-center gap-1 h-auto py-3 rounded-lg border border-border/40 hover:bg-muted/30"
+          className="flex flex-col items-center gap-1 h-auto py-3 rounded-lg border border-border/40 hover:bg-[var(--interactive-hover)]"
         >
           {optimizing.chat ? (
             <Loader2 className="h-4 w-4 animate-spin" />
@@ -244,7 +244,7 @@ export const LanceOptimizationPanel: React.FC = () => {
           variant="ghost"
           disabled={optimizing.vfs}
           onClick={() => optimizeTable('vfs', 'vfs_optimize_lance')}
-          className="flex flex-col items-center gap-1 h-auto py-3 rounded-lg border border-border/40 hover:bg-muted/30"
+          className="flex flex-col items-center gap-1 h-auto py-3 rounded-lg border border-border/40 hover:bg-[var(--interactive-hover)]"
         >
           {optimizing.vfs ? (
             <Loader2 className="h-4 w-4 animate-spin" />

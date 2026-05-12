@@ -134,7 +134,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({
               size="sm"
               onClick={onRefresh}
               disabled={loading}
-              className="bg-background hover:bg-accent"
+              className="bg-background hover:bg-[var(--interactive-hover)]"
             >
               <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
               {t('common:actions.retry')}

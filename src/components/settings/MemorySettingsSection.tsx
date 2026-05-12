@@ -42,7 +42,7 @@ const SettingRow = ({
   description?: string;
   children: React.ReactNode;
 }) => (
-  <div className="group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 hover:bg-muted/30 rounded transition-colors overflow-hidden">
+  <div className="group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
     <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
@@ -214,7 +214,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
       <GroupTitle title={t('settings:memory.title')} />
       <div className="space-y-px">
         {/* 配置状态 */}
-        <div className="group py-2.5 px-1 hover:bg-muted/30 rounded transition-colors">
+        <div className="group py-2.5 px-1 rounded">
           <div className="flex items-center gap-2">
             <span className={cn(
               "w-1.5 h-1.5 rounded-full flex-shrink-0",
@@ -249,7 +249,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
               }
               size="sm"
               variant="ghost"
-              className="h-8 text-xs bg-transparent hover:bg-muted/20 transition-colors"
+              className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
               width={160}
             />
 
@@ -267,7 +267,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
 
         {/* 创建新文件夹输入 */}
         {showCreateInput && (
-          <div className="group py-2.5 px-1 hover:bg-muted/30 rounded transition-colors">
+          <div className="group py-2.5 px-1 rounded">
             <div className="flex items-center gap-2 ml-0 sm:ml-auto sm:max-w-[280px]">
               <Input
                 value={newFolderName}
@@ -322,7 +322,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
             ]}
             size="sm"
             variant="ghost"
-            className="h-8 text-xs bg-transparent hover:bg-muted/20 transition-colors"
+            className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
             width={120}
           />
         </SettingRow>

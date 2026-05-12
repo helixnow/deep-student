@@ -590,7 +590,7 @@ export const EngineSettingsSection: React.FC<{
                 ]}
                 size="sm"
                 variant="ghost"
-                className="h-8 text-xs bg-transparent hover:bg-muted/20 transition-colors"
+                className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
                 width={140}
               />
             );

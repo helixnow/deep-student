@@ -20,14 +20,12 @@ import {
   Gauge,
   HardDrive,
   Image,
-} from '@phosphor-icons/react';
-import {
-  RefreshCw,
-  AlertTriangle,
+  ArrowsClockwise,
+  Warning,
   XCircle,
   Play,
   Database,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/shad/Tabs';
 import { NotionButton } from '../ui/NotionButton';
@@ -252,7 +250,7 @@ export const DebugTab: React.FC = () => {
 
       <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
         <NotionButton variant="warning" size="sm" onClick={triggerWarning}>
-          <AlertTriangle className="h-3.5 w-3.5 mr-1.5" />
+          <Warning className="h-3.5 w-3.5 mr-1.5" />
           {t('data:governance.debug_trigger_warning')}
         </NotionButton>
         <NotionButton variant="danger" size="sm" onClick={triggerError}>

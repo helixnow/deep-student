@@ -768,7 +768,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                 '!h-auto flex-col items-center justify-center gap-1 !p-3 !rounded-lg border text-center',
                                 isSelected
                                   ? 'border-primary bg-primary/10 text-foreground'
-                                  : 'border-border/40 bg-muted/20 text-muted-foreground hover:border-border hover:bg-muted/40 hover:text-foreground'
+                                  : 'border-border/40 bg-muted/20 text-muted-foreground hover:border-border hover:bg-[var(--interactive-hover)] hover:text-foreground'
                               )}
                             >
                               <span className={cn('text-sm', isSelected && 'font-medium')}>{option.label}</span>
@@ -870,7 +870,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                             'relative flex cursor-pointer items-start gap-4 rounded-xl border p-4 transition-all duration-200 select-none group',
                             checked
                               ? 'border-primary/50 bg-primary/5 shadow-sm'
-                              : 'border-border/40 bg-card hover:border-primary/20 hover:bg-accent/30',
+                              : 'border-border/40 bg-card hover:border-primary/20 hover:bg-[var(--interactive-hover)]',
                             option.key === 'supportsTools' && 'sm:col-span-2'
                           )}
                         >
@@ -1704,7 +1704,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
 
           {/* Footer - Fixed & Minimal */}
           <div className="flex-none px-3 pt-2 pb-8 sm:pb-2 border-t border-border/40 flex items-center justify-end gap-2">
-            <NotionButton type="button" variant="ghost" onClick={onCancel} className="hover:bg-muted/50 text-muted-foreground hover:text-foreground">
+            <NotionButton type="button" variant="ghost" onClick={onCancel} className="hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground">
               {t('common:actions.cancel')}
             </NotionButton>
             <NotionButton type="submit" variant="primary" className="min-w-[100px]">
