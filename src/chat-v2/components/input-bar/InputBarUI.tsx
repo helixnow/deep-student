@@ -6,7 +6,6 @@
  */
 
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
-import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import { invoke } from '@tauri-apps/api/core';
@@ -63,19 +62,18 @@ import { IMAGE_TYPE_ID } from '../../context/definitions/image';
 import { FILE_TYPE_ID } from '../../context/definitions/file';
 import { logAttachment } from '../../debug/chatV2Logger';
 import { debugLog } from '../../../debug-panel/debugMasterSwitch';
-import type { AttachmentMeta, PanelStates, PdfProcessingStatus } from '../../core/types/common';
+import { COMPOSER_PANEL_KEYS, type AttachmentMeta, type PanelStates, type PdfProcessingStatus } from '../../core/types/common';
 import { ModelMentionPopover, shouldHandleModelMentionKey } from './ModelMentionPopover';
 import { ModelMentionChips } from './ModelMentionChip';
-import { InputTokenEstimate } from '../TokenUsageDisplay';
 import { ContextRefChips } from './ContextRefChips';
 import { PageRefChips } from './PageRefChips';
 import { AttachmentPreviewChips } from './AttachmentPreviewChips';
-import { estimateTokenCount } from '../../utils/tokenUtils';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { ToolApprovalCard } from '../ToolApprovalCard';
 import { MobileBottomSheet } from './MobileBottomSheet';
 import { MobileSheetHeader } from './MobileSheetHeader';
 import { AttachmentInjectModeSelector } from './AttachmentInjectModeSelector';
+import { ComposerPanelOverlay } from './ComposerPanelOverlay';
 import type { AttachmentInjectModes } from '../../core/types/common';
 import {
   type MediaInjectMode,
@@ -157,8 +155,6 @@ const INPUT_BAR_CONFIG = {
     idle: 100,
     /** 重 UI/重计算延迟挂载时间 */
     heavyUI: 400,
-    /** Token 估算防抖延迟 */
-    tokenDebounce: 300,
   },
   /** 高度相关配置 */
   heights: {
@@ -520,6 +516,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   modelMentionState,
   modelMentionActions,
   runtimeModelLabel,
+  runtimeModelProviderLabel,
   // 推理模式
   enableThinking,
   thinkingStateLabel,
@@ -751,9 +748,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
   // 🔧 首帧轻量化：isReady 控制重 UI 延迟挂载
   const [isReady, setIsReady] = useState(false);
-  // 🔧 Token 估算防抖
-  const [debouncedTokenCount, setDebouncedTokenCount] = useState(0);
-  const tokenDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   // 🔧 会话切换 key 跟踪
   const prevSessionSwitchKeyRef = useRef(sessionSwitchKey);
 
@@ -1234,7 +1228,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const imageGenPanelMotion = useDeferredOpen(panelStates.imageGen);
 
   // ========== 派生值 ==========
-  const iconButtonClass = 'inline-flex items-center justify-center h-9 w-9 rounded-full text-[color:var(--button-utility-foreground)] transition-colors hover:bg-[color:var(--button-utility-hover)] hover:text-[color:var(--text-primary)] active:bg-[color:var(--button-utility-active)]';
+  const iconButtonClass = 'inline-flex items-center justify-center h-9 w-9 rounded-[var(--radius-shell-control)] text-[color:var(--button-utility-foreground)] transition-colors hover:bg-[color:var(--button-utility-hover)] hover:text-[color:var(--text-primary)] active:bg-[color:var(--button-utility-active)]';
   const studyUiButtonBaseClassName =
     'inline-flex shrink-0 items-center justify-center gap-2 whitespace-nowrap rounded-[var(--button-radius)] border text-[13px] font-medium leading-none tracking-[0.01em] transition-[background-color,border-color,color,box-shadow] duration-150 ease-out outline-none ring-offset-background focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-50 select-none motion-reduce:transition-none [&_svg]:pointer-events-none [&_svg]:shrink-0 [&_svg]:text-inherit';
   const studyUiButtonSizeIconClassName =
@@ -1252,8 +1246,20 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const attachmentCount = attachments.length;
   const compactThinkingStateLabel = getCompactThinkingLabel(thinkingStateLabel);
   const runtimeModelTitle = t('chatV2:inputBar.runtimeModelTitle', '模型');
+  const chooseRuntimeModelLabel = t('chatV2:inputBar.chooseRuntimeModel', '选择模型');
+  const runtimeModelAccessibleCurrent = runtimeModelLabel
+    ? runtimeModelProviderLabel
+      ? `${runtimeModelProviderLabel} / ${runtimeModelLabel}`
+      : runtimeModelLabel
+    : undefined;
+  const runtimeModelSwitchLabel = runtimeModelAccessibleCurrent
+    ? `${chooseRuntimeModelLabel}，当前：${runtimeModelAccessibleCurrent}`
+    : chooseRuntimeModelLabel;
+  const runtimeModelSwitchTitle = runtimeModelAccessibleCurrent
+    ? `${chooseRuntimeModelLabel}: ${runtimeModelAccessibleCurrent}`
+    : chooseRuntimeModelLabel;
   const thinkingRuntimeTitle = [
-    runtimeModelLabel ? `${runtimeModelTitle}: ${runtimeModelLabel}` : undefined,
+    runtimeModelAccessibleCurrent ? `${runtimeModelTitle}: ${runtimeModelAccessibleCurrent}` : undefined,
     thinkingStateLabel,
   ].filter(Boolean).join(' · ') || thinkingStateLabel;
   const hasThinkingDepthMenu = !!(
@@ -1274,11 +1280,12 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const isComposerEmpty = !hasContent;
 
   // 🔧 检查是否有任何面板打开
-  const hasAnyPanelOpen = panelStates.attachment || panelStates.rag || panelStates.model ||
-    panelStates.advanced || panelStates.learn || panelStates.mcp || panelStates.search || panelStates.skill || panelStates.imageGen;
+  const hasAnyPanelOpen = COMPOSER_PANEL_KEYS.some((panel) => panelStates[panel]);
+  const activeComposerPanel = COMPOSER_PANEL_KEYS.find((panel) => panelStates[panel]) ?? null;
 
   // 🔧 面板容器 ref，用于检测点击是否在面板内
   const panelContainerRef = useRef<HTMLDivElement>(null);
+  const composerPanelOverlayRef = useRef<HTMLDivElement | null>(null);
   // 🔧 P1修复：检查是否有附件正在上传
   const hasUploadingAttachments = attachments.some(a => a.status === 'uploading' || a.status === 'pending');
   // 允许 ready 或 processing 但选中模式已就绪的附件发送
@@ -1517,16 +1524,12 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
   // 🔧 关闭所有面板（点击外部时调用）
   const closeAllPanels = useCallback(() => {
-    onSetPanelState('attachment', false);
-    onSetPanelState('rag', false);
-    onSetPanelState('mcp', false);
-    onSetPanelState('search', false);
-    onSetPanelState('learn', false);
-    onSetPanelState('model', false);
-    onSetPanelState('advanced', false);
-    onSetPanelState('skill', false);
-    onSetPanelState('imageGen', false);
-  }, [onSetPanelState]);
+    COMPOSER_PANEL_KEYS.forEach((panel) => {
+      if (panelStates[panel]) {
+        onSetPanelState(panel, false);
+      }
+    });
+  }, [onSetPanelState, panelStates]);
 
   // 🔧 点击面板外部关闭面板（使用 document 事件监听，避免层叠上下文问题）
   useEffect(() => {
@@ -1537,6 +1540,9 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       // 检查点击是否在面板容器内
       if (panelContainerRef.current?.contains(target)) {
         return; // 点击在面板内，不关闭
+      }
+      if (composerPanelOverlayRef.current?.contains(target)) {
+        return; // Portal 面板内点击，不关闭
       }
       // 检查点击是否在输入栏内（包括按钮）
       if (inputContainerRef.current?.contains(target)) {
@@ -1554,15 +1560,16 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   // 统一的面板切换函数，自动处理互斥逻辑
   const togglePanel = useCallback((panelName: keyof PanelStates) => {
     const currentState = panelStates[panelName];
-    // 关闭所有其他面板
-    const allPanels: (keyof PanelStates)[] = ['attachment', 'rag', 'model', 'advanced', 'learn', 'mcp', 'search', 'skill', 'imageGen'];
+    setIsAttachmentMenuOpen(false);
+    modelMentionActions?.closeAutoComplete();
+
     if (!currentState) {
-      allPanels.forEach(p => {
-        if (p !== panelName) onSetPanelState(p, false);
+      COMPOSER_PANEL_KEYS.forEach(p => {
+        if (p !== panelName && panelStates[p]) onSetPanelState(p, false);
       });
     }
     onSetPanelState(panelName, !currentState);
-  }, [panelStates, onSetPanelState]);
+  }, [modelMentionActions, panelStates, onSetPanelState]);
 
   // 切换附件面板（使用统一函数）
   const toggleAttachmentPanel = useCallback(() => {
@@ -1570,20 +1577,26 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   }, [togglePanel]);
 
   const handleOpenModelPanel = useCallback(() => {
+    setIsAttachmentMenuOpen(false);
+    modelMentionActions?.closeAutoComplete();
+
     if (onOpenModelPanel) {
       onOpenModelPanel();
       return;
     }
     togglePanel('model');
-  }, [onOpenModelPanel, togglePanel]);
+  }, [modelMentionActions, onOpenModelPanel, togglePanel]);
 
   const handleOpenRuntimeModelPanel = useCallback(() => {
+    setIsAttachmentMenuOpen(false);
+    modelMentionActions?.closeAutoComplete();
+
     if (onOpenRuntimeModelPanel) {
       onOpenRuntimeModelPanel();
       return;
     }
     togglePanel('model');
-  }, [onOpenRuntimeModelPanel, togglePanel]);
+  }, [modelMentionActions, onOpenRuntimeModelPanel, togglePanel]);
 
   const handleTurnThinkingOn = useCallback(() => {
     if (enableThinking) return;
@@ -1601,7 +1614,19 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
   const handleAttachmentMenuOpenChange = useCallback((open: boolean) => {
     setIsAttachmentMenuOpen(open);
-  }, []);
+    if (open) {
+      modelMentionActions?.closeAutoComplete();
+      closeAllPanels();
+    }
+  }, [closeAllPanels, modelMentionActions]);
+
+  const handleThinkingRuntimeMenuOpenChange = useCallback((open: boolean) => {
+    if (open) {
+      setIsAttachmentMenuOpen(false);
+      modelMentionActions?.closeAutoComplete();
+      closeAllPanels();
+    }
+  }, [closeAllPanels, modelMentionActions]);
 
   const handleAddAttachmentAction = useCallback(() => {
     setIsAttachmentMenuOpen(false);
@@ -1658,7 +1683,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   useEffect(() => {
     return () => {
       if (emptyTipTimerRef.current) clearTimeout(emptyTipTimerRef.current);
-      if (tokenDebounceRef.current) clearTimeout(tokenDebounceRef.current);
     };
   }, []);
 
@@ -1726,7 +1750,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       prevSessionSwitchKeyRef.current = sessionSwitchKey;
       // 会话切换时重置 isReady，触发重新延迟
       setIsReady(false);
-      setDebouncedTokenCount(0);
     }
 
     // idle 后再延迟挂载重 UI/计算
@@ -1739,19 +1762,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       if (delayTimer) clearTimeout(delayTimer);
     };
   }, [sessionSwitchKey]);
-
-  // 🔧 Token 估算防抖
-  useEffect(() => {
-    // 首帧跳过 token 计算
-    if (!isReady) return;
-
-    if (tokenDebounceRef.current) {
-      clearTimeout(tokenDebounceRef.current);
-    }
-    tokenDebounceRef.current = setTimeout(() => {
-      setDebouncedTokenCount(estimateTokenCount(inputValue));
-    }, INPUT_BAR_CONFIG.delays.tokenDebounce);
-  }, [inputValue, isReady]);
 
   // 响应式 bottom gap + 移动端检测
   useEffect(() => {
@@ -2176,6 +2186,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   return (
     <div
       ref={dropZoneRef}
+      data-testid="input-bar-v2-root"
       className={cn(
         // 🎨 布局分离：作为 flex 子项，relative 用于面板定位
         // 🔧 P0修复：移除 ring 样式，避免拖拽时显示难看的实心边框
@@ -2195,11 +2206,12 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         {/* study-ui 对齐：输入区回到安静的居中 composer，而不是漂浮玻璃卡片。 */}
         <div
           ref={inputContainerRef}
-          className="relative z-[200] overflow-hidden rounded-[28px] border border-[color:var(--input-shell-border)] bg-[color:var(--unified-input-shell-surface,var(--shell-inspector-panel))] p-3 pl-4 shadow-[var(--shadow-shell-soft)] transition-shadow duration-150 ease-out focus-within:shadow-[var(--shadow-shell-panel)]"
+          data-composer-panel-anchor
+          className="relative z-[200] overflow-hidden rounded-[var(--radius-shell-toolbar)] border border-[color:var(--input-shell-border)] bg-[color:var(--unified-input-shell-surface,var(--shell-inspector-panel))] p-3 pl-4 shadow-[var(--shadow-shell-soft)] transition-shadow duration-150 ease-out focus-within:shadow-[var(--shadow-shell-panel)]"
         >
         {/* 🔧 P0修复：拖拽遮罩层移到输入容器内部，确保与输入框完全重合 */}
         {isReady && isDragging && (
-          <div className="absolute inset-0 z-[300] flex items-center justify-center bg-primary/10 border-2 border-dashed border-primary backdrop-blur-sm rounded-[26px] pointer-events-none">
+          <div className="absolute inset-0 z-[300] flex items-center justify-center rounded-[inherit] border-2 border-dashed border-primary bg-primary/10 backdrop-blur-sm pointer-events-none">
             <div className="flex flex-col items-center gap-2 text-primary">
               <UploadSimple size={32} weight="bold" />
               <span className="text-sm font-medium">
@@ -2429,7 +2441,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             {/* 附件按钮 - 左侧首位，方便先添加上下文 */}
             <AppMenu open={isAttachmentMenuOpen} onOpenChange={handleAttachmentMenuOpenChange}>
               <AppMenuTrigger asChild>
-                <span>
+                <span className="inline-flex rounded-[var(--radius-shell-control)]">
                   <CommonTooltip
                     content={
                       attachmentCount > 0
@@ -2458,7 +2470,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               <AppMenuContent
                 align="start"
                 width={180}
-                className="chat-attachment-launcher-menu"
                 style={{ zIndex: 320 }}
               >
                 <AppMenuGroup>
@@ -2653,9 +2664,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
           <div className="flex items-center gap-2 flex-shrink-0">
             {extraButtonsRight}
 
-            {/* Token 估算（防抖后） */}
-            {isReady && <InputTokenEstimate tokenCount={debouncedTokenCount} />}
-
             {contextWindowUsage && (
               <ContextWindowUsageRing
                 usage={contextWindowUsage}
@@ -2668,7 +2676,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             {onToggleThinking && (
               <span
                 className={cn(
-                  'relative inline-flex h-8 min-w-0 max-w-[8rem] shrink-0 items-center rounded-lg px-1 text-[13px] font-semibold leading-none transition-colors duration-150 hover:bg-[color:var(--button-utility-hover)] focus-within:bg-[color:var(--button-utility-hover)]',
+                  'relative inline-flex h-8 min-w-0 max-w-[8rem] shrink-0 items-center rounded-[var(--radius-shell-control)] px-1 text-[13px] font-semibold leading-none transition-colors duration-150 hover:bg-[color:var(--button-utility-hover)] focus-within:bg-[color:var(--button-utility-hover)]',
                   enableThinking && !thinkingUnsupported
                     ? 'text-[color:var(--text-primary)]'
                     : 'text-[color:var(--text-muted)]'
@@ -2676,7 +2684,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 data-testid="thinking-runtime-control"
               >
                 {hasThinkingRuntimeMenu ? (
-                  <AppMenu>
+                  <AppMenu onOpenChange={handleThinkingRuntimeMenuOpenChange}>
                     <AppMenuTrigger asChild>
                       <button
                         type="button"
@@ -2737,19 +2745,31 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                       {hasRuntimeModelMenu && (
                         <AppMenuGroup label={runtimeModelTitle}>
                           <AppMenuItem
-                            aria-label={t('chatV2:inputBar.chooseRuntimeModel', '选择模型')}
-                            icon={<Sparkle className="h-4 w-4" weight="bold" />}
+                            aria-label={runtimeModelSwitchLabel}
+                            className={runtimeModelLabel ? '[&_.app-menu-item-content]:whitespace-normal' : undefined}
+                            title={runtimeModelSwitchTitle}
                             onClick={handleOpenRuntimeModelPanel}
-                            suffix={runtimeModelLabel ? (
-                              <span
-                                className="block max-w-[7.5rem] truncate text-[11px] text-muted-foreground"
-                                title={runtimeModelLabel}
-                              >
-                                {runtimeModelLabel}
-                              </span>
-                            ) : undefined}
                           >
-                            {t('chatV2:inputBar.chooseRuntimeModel', '选择模型')}
+                            {runtimeModelLabel ? (
+                              <span className="flex min-w-0 max-w-full flex-col gap-0.5 leading-tight">
+                                <span
+                                  className="block min-w-0 max-w-full truncate text-[12px] font-medium text-foreground"
+                                  title={runtimeModelLabel}
+                                >
+                                  {runtimeModelLabel}
+                                </span>
+                                {runtimeModelProviderLabel && (
+                                  <span
+                                    className="block min-w-0 max-w-full truncate text-[10.5px] text-muted-foreground"
+                                    title={runtimeModelProviderLabel}
+                                  >
+                                    {runtimeModelProviderLabel}
+                                  </span>
+                                )}
+                              </span>
+                            ) : (
+                              chooseRuntimeModelLabel
+                            )}
                           </AppMenuItem>
                         </AppMenuGroup>
                       )}
@@ -2843,23 +2863,15 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       {/* 🔧 P0修复：stopPropagation 防止面板内点击冒泡到 document 触发 handleClickOutside */}
       <div ref={panelContainerRef} onMouseDown={(e) => e.stopPropagation()}>
         {/* 附件面板 - ★ 统一桌面端和移动端样式 */}
-        {attachmentPanelMotion.shouldRender && (
-          <div
-            className={cn(
-              'absolute left-0 right-0 overflow-hidden pointer-events-none z-[100]',
-              'bottom-full -mb-3 pb-4'
-            )}
-            style={{ height: 'clamp(200px, 40vh, 400px)' }}
+        {activeComposerPanel === 'attachment' && attachmentPanelMotion.shouldRender && (
+          <ComposerPanelOverlay
+            panelKey="attachment"
+            anchorRef={inputContainerRef}
+            overlayRef={composerPanelOverlayRef}
+            motionState={attachmentPanelMotion.motionState}
+            maxHeight={400}
+            className="overflow-hidden"
           >
-            <div
-              className={cn(
-                'absolute left-3 right-3 rounded-2xl glass-panel border border-[hsl(var(--border))] p-3 transition-transform duration-200 ease-out will-change-transform motion-reduce:transition-none motion-reduce:duration-0 z-[100]',
-                'bottom-4 origin-bottom',
-                attachmentPanelMotion.motionState === 'open' ? 'translate-y-0 pointer-events-auto' : 'translate-y-full pointer-events-none'
-              )}
-              aria-hidden={attachmentPanelMotion.motionState !== 'open'}
-              data-panel-motion={attachmentPanelMotion.motionState}
-            >
               {/* 面板头部 */}
               <div className="mb-2 flex items-center justify-between">
                 <div className="flex items-center gap-2 text-sm text-foreground">
@@ -3122,8 +3134,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 )}
               </CustomScrollArea>
 
-            </div>
-          </div>
+          </ComposerPanelOverlay>
         )}
 
         {/* 🔧 P1修复：隐藏的文件选择器移到顶层，确保在任何情况下都可用 */}
@@ -3134,51 +3145,39 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
         {/* 模型选择面板 - ★ 统一桌面端和移动端样式 */}
         {renderModelPanel && (
-          modelPanelMotion.shouldRender && (
-            <div
-              className={cn(
-                'absolute left-2 right-2 z-[100]',
-                'bottom-full mb-2',
-                'rounded-2xl glass-panel border border-[hsl(var(--border))] p-3',
-                'overflow-y-auto overscroll-contain',
-                'transition-all duration-200 ease-out will-change-transform motion-reduce:transition-none motion-reduce:duration-0',
-                modelPanelMotion.motionState === 'open'
-                  ? 'translate-y-0 opacity-100 pointer-events-auto'
-                  : 'translate-y-4 opacity-0 pointer-events-none'
-              )}
-              aria-hidden={modelPanelMotion.motionState !== 'open'}
-              data-panel-motion={modelPanelMotion.motionState}
-              style={{ maxHeight: 'min(420px, calc(100vh - 280px))' }}
+          activeComposerPanel === 'model' && modelPanelMotion.shouldRender && (
+            <ComposerPanelOverlay
+              panelKey="model"
+              anchorRef={inputContainerRef}
+              overlayRef={composerPanelOverlayRef}
+              motionState={modelPanelMotion.motionState}
+              maxHeight={560}
+              widthMode="wide"
             >
               {renderModelPanel()}
-            </div>
+            </ComposerPanelOverlay>
           )
         )}
 
-        {imageGenPanelMotion.shouldRender && (
-          <div
-            className={cn(
-              'absolute left-2 right-2 z-[100]',
-              'bottom-full mb-2',
-              'rounded-2xl glass-panel border border-[hsl(var(--border))] p-3',
-              'overflow-y-auto overscroll-contain',
-              'transition-all duration-200 ease-out will-change-transform motion-reduce:transition-none motion-reduce:duration-0',
-              imageGenPanelMotion.motionState === 'open'
-                ? 'translate-y-0 opacity-100 pointer-events-auto'
-                : 'translate-y-4 opacity-0 pointer-events-none'
-            )}
-            aria-hidden={imageGenPanelMotion.motionState !== 'open'}
-            data-panel-motion={imageGenPanelMotion.motionState}
-            style={{ maxHeight: 'min(420px, calc(100vh - 280px))' }}
+        {activeComposerPanel === 'imageGen' && imageGenPanelMotion.shouldRender && (
+          <ComposerPanelOverlay
+            panelKey="imageGen"
+            anchorRef={inputContainerRef}
+            overlayRef={composerPanelOverlayRef}
+            motionState={imageGenPanelMotion.motionState}
+            maxHeight={640}
+            widthMode="wide"
+            preferredWidth={880}
+            heightMode="available"
           >
-              <div className="flex flex-col gap-3">
+              <div className="flex h-full min-h-0 flex-col gap-3">
                 <div className="flex items-start justify-between gap-3">
                   <div className="min-w-0">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--text-primary)]">
+                    <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--composer-panel-foreground)]">
                       <ImageSquare size={17} weight="bold" />
                       <span>{t('chatV2:inputBar.imageGen.title', '生成图片')}</span>
                     </div>
-                    <p className="mt-1 text-xs text-[color:var(--text-secondary)]">
+                    <p className="mt-1 text-xs text-[color:var(--composer-panel-muted-foreground)]">
                       {t('chatV2:inputBar.imageGen.subtitle', '通过内置工具生成图片，结果会保存到 VFS。')}
                     </p>
                   </div>
@@ -3194,14 +3193,14 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 </div>
 
                 {imageGenModelsLoading ? (
-                  <div className="flex items-center gap-2 rounded-xl border border-[hsl(var(--border))] bg-[color:var(--surface-panel-muted)] px-3 py-2 text-xs text-[color:var(--text-secondary)]">
+                  <div className="flex items-center gap-2 rounded-xl border border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-muted-surface)] px-3 py-2 text-xs text-[color:var(--composer-panel-muted-foreground)]">
                     <CircleNotch size={14} className="animate-spin" />
                     <span>{t('chatV2:inputBar.imageGen.loadingModels', '正在加载生图模型...')}</span>
                   </div>
                 ) : hasImageGenModels ? (
                   <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                     <div className="min-w-0">
-                      <div className="mb-1.5 text-[11px] font-medium text-[color:var(--text-secondary)]">
+                      <div className="mb-1.5 text-[11px] font-medium text-[color:var(--composer-panel-muted-foreground)]">
                         {t('chatV2:inputBar.imageGen.model', '模型')}
                       </div>
                       <AppSelect
@@ -3210,14 +3209,14 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                         options={imageGenModelOptions}
                         placeholder={t('settings:placeholders.no_image_generation_model', '暂无可用的生图模型')}
                         disabled={imageGenModelSaving}
-                        className="w-full max-w-full border border-[hsl(var(--border))] bg-[color:var(--input-surface)]"
+                        className="w-full max-w-full border border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-control-surface)]"
                         width={320}
                         size="sm"
                         triggerIcon={<ImageSquare size={14} weight="bold" />}
                       />
                     </div>
-                    <div className="min-w-0 rounded-lg border border-[hsl(var(--border))] bg-[color:var(--surface-panel-muted)] px-2 py-1.5 text-[11px] text-[color:var(--text-secondary)] sm:max-w-[13rem]">
-                      <div className="truncate font-medium text-[color:var(--text-primary)]">
+                    <div className="min-w-0 rounded-lg border border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-muted-surface)] px-2 py-1.5 text-[11px] text-[color:var(--composer-panel-muted-foreground)] sm:max-w-[13rem]">
+                      <div className="truncate font-medium text-[color:var(--composer-panel-foreground)]">
                         {selectedImageGenModel ? getImageGenerationModelLabel(selectedImageGenModel) : t('chatV2:inputBar.imageGen.autoModel', '自动选择')}
                       </div>
                       <div className="truncate">
@@ -3226,11 +3225,11 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <div className="rounded-xl border border-dashed border-[hsl(var(--border))] bg-[color:var(--surface-panel-muted)] px-3 py-3">
-                    <div className="text-sm font-semibold text-[color:var(--text-primary)]">
+                  <div className="rounded-xl border border-dashed border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-muted-surface)] px-3 py-3">
+                    <div className="text-sm font-semibold text-[color:var(--composer-panel-foreground)]">
                       {t('chatV2:inputBar.imageGen.noModelTitle', '未配置生图模型')}
                     </div>
-                    <p className="mt-1 text-xs leading-5 text-[color:var(--text-secondary)]">
+                    <p className="mt-1 text-xs leading-5 text-[color:var(--composer-panel-muted-foreground)]">
                       {t('chatV2:inputBar.imageGen.noModelDescription', '请先在模型设置中标记并选择一个支持 /images/generations 的模型。')}
                     </p>
                     <NotionButton
@@ -3249,7 +3248,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                   value={imageGenPrompt}
                   onChange={(event) => setImageGenPrompt(event.target.value)}
                   placeholder={t('chatV2:inputBar.imageGen.placeholder', '例如：光合作用概念图，清晰标注阳光、水、二氧化碳、叶绿体和葡萄糖')}
-                  className="min-h-[88px] resize-none rounded-xl border border-[hsl(var(--border))] bg-[color:var(--input-surface)] px-3 py-2 text-sm text-[color:var(--text-primary)] outline-none transition-colors placeholder:text-[color:var(--text-tertiary)] focus:border-[color:var(--button-primary-border)]"
+                  className="min-h-[88px] resize-none rounded-xl border border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-control-surface)] px-3 py-2 text-sm text-[color:var(--composer-panel-foreground)] outline-none transition-colors placeholder:text-[color:var(--composer-panel-placeholder)] focus:border-[color:var(--composer-panel-focus-border)]"
                 />
 
                 <div className="flex flex-wrap gap-2">
@@ -3262,7 +3261,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                         'rounded-full border px-3 py-1.5 text-xs transition-colors',
                         imageGenPurpose === purpose.value
                           ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]'
-                          : 'border-[hsl(var(--border))] text-[color:var(--text-secondary)] hover:bg-[color:var(--button-utility-hover)]'
+                          : 'border-[color:var(--composer-panel-control-border)] text-[color:var(--composer-panel-muted-foreground)] hover:bg-[color:var(--composer-panel-control-hover)]'
                       )}
                     >
                       {purpose.label}
@@ -3272,7 +3271,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
                 <div className="grid gap-3 sm:grid-cols-2">
                   <div className="min-w-0">
-                    <div className="mb-1.5 text-[11px] font-medium text-[color:var(--text-secondary)]">
+                    <div className="mb-1.5 text-[11px] font-medium text-[color:var(--composer-panel-muted-foreground)]">
                       {t('chatV2:inputBar.imageGen.aspectRatio', '比例')}
                     </div>
                     <div className="grid grid-cols-5 gap-1">
@@ -3285,7 +3284,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                             'h-8 rounded-lg border text-xs transition-colors',
                             imageGenAspectRatio === ratio
                               ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]'
-                              : 'border-[hsl(var(--border))] text-[color:var(--text-secondary)] hover:bg-[color:var(--button-utility-hover)]'
+                              : 'border-[color:var(--composer-panel-control-border)] text-[color:var(--composer-panel-muted-foreground)] hover:bg-[color:var(--composer-panel-control-hover)]'
                           )}
                         >
                           {ratio}
@@ -3294,7 +3293,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                     </div>
                   </div>
                   <div className="min-w-0">
-                    <div className="mb-1.5 text-[11px] font-medium text-[color:var(--text-secondary)]">
+                    <div className="mb-1.5 text-[11px] font-medium text-[color:var(--composer-panel-muted-foreground)]">
                       {t('chatV2:inputBar.imageGen.quality', '质量')}
                     </div>
                     <div className="grid grid-cols-4 gap-1">
@@ -3307,7 +3306,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                             'h-8 rounded-lg border text-xs capitalize transition-colors',
                             imageGenQuality === quality
                               ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]'
-                              : 'border-[hsl(var(--border))] text-[color:var(--text-secondary)] hover:bg-[color:var(--button-utility-hover)]'
+                              : 'border-[color:var(--composer-panel-control-border)] text-[color:var(--composer-panel-muted-foreground)] hover:bg-[color:var(--composer-panel-control-hover)]'
                           )}
                         >
                           {quality}
@@ -3338,29 +3337,23 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                   </NotionButton>
                 </div>
               </div>
-            </div>
+            </ComposerPanelOverlay>
         )}
 
         {/* MCP 工具面板 - ★ 统一桌面端和移动端样式 - content-adaptive */}
         {renderMcpPanel && (
-          mcpPanelMotion.shouldRender && (
-            <div
-              className={cn(
-                'absolute left-2 right-2 z-[100]',
-                'bottom-full mb-2',
-                'rounded-2xl glass-panel border border-[hsl(var(--border))] p-3',
-                'overflow-y-auto overscroll-contain',
-                'transition-all duration-200 ease-out will-change-transform motion-reduce:transition-none motion-reduce:duration-0',
-                mcpPanelMotion.motionState === 'open'
-                  ? 'translate-y-0 opacity-100 pointer-events-auto'
-                  : 'translate-y-4 opacity-0 pointer-events-none'
-              )}
-              aria-hidden={mcpPanelMotion.motionState !== 'open'}
-              data-panel-motion={mcpPanelMotion.motionState}
-              style={{ maxHeight: 'min(380px, calc(100vh - 280px))' }}
+          activeComposerPanel === 'mcp' && mcpPanelMotion.shouldRender && (
+            <ComposerPanelOverlay
+              panelKey="mcp"
+              anchorRef={inputContainerRef}
+              overlayRef={composerPanelOverlayRef}
+              motionState={mcpPanelMotion.motionState}
+              maxHeight={560}
+              widthMode="wide"
+              heightMode="available"
             >
               {renderMcpPanel()}
-            </div>
+            </ComposerPanelOverlay>
           )
         )}
 
@@ -3369,47 +3362,34 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
         {/* 对话控制面板 */}
         {renderAdvancedPanel && (
-          advancedPanelMotion.shouldRender && (
-            <div
-              className={cn(
-                'absolute left-2 right-2 z-[100]',
-                'bottom-full mb-2',
-                'rounded-2xl glass-panel border border-[hsl(var(--border))] p-3',
-                'overflow-y-auto overscroll-contain',
-                'transition-all duration-200 ease-out will-change-transform motion-reduce:transition-none motion-reduce:duration-0',
-                advancedPanelMotion.motionState === 'open'
-                  ? 'translate-y-0 opacity-100 pointer-events-auto'
-                  : 'translate-y-4 opacity-0 pointer-events-none'
-              )}
-              aria-hidden={advancedPanelMotion.motionState !== 'open'}
-              data-panel-motion={advancedPanelMotion.motionState}
-              style={{ maxHeight: 'min(420px, calc(100vh - 280px))' }}
+          activeComposerPanel === 'advanced' && advancedPanelMotion.shouldRender && (
+            <ComposerPanelOverlay
+              panelKey="advanced"
+              anchorRef={inputContainerRef}
+              overlayRef={composerPanelOverlayRef}
+              motionState={advancedPanelMotion.motionState}
+              maxHeight={560}
+              widthMode="wide"
             >
               {renderAdvancedPanel()}
-            </div>
+            </ComposerPanelOverlay>
           )
         )}
 
         {/* 技能选择面板 - ★ 统一桌面端和移动端样式 */}
         {renderSkillPanel && (
-          skillPanelMotion.shouldRender && (
-            <div
-              className={cn(
-                'absolute left-2 right-2 z-[100]',
-                'bottom-full mb-2',
-                'rounded-2xl glass-panel border border-[hsl(var(--border))] p-3',
-                'overflow-y-auto overscroll-contain',
-                'transition-all duration-200 ease-out will-change-transform motion-reduce:transition-none motion-reduce:duration-0',
-                skillPanelMotion.motionState === 'open'
-                  ? 'translate-y-0 opacity-100 pointer-events-auto'
-                  : 'translate-y-4 opacity-0 pointer-events-none'
-              )}
-              aria-hidden={skillPanelMotion.motionState !== 'open'}
-              data-panel-motion={skillPanelMotion.motionState}
-              style={{ maxHeight: 'min(420px, calc(100vh - 280px))' }}
+          activeComposerPanel === 'skill' && skillPanelMotion.shouldRender && (
+            <ComposerPanelOverlay
+              panelKey="skill"
+              anchorRef={inputContainerRef}
+              overlayRef={composerPanelOverlayRef}
+              motionState={skillPanelMotion.motionState}
+              maxHeight={620}
+              widthMode="wide"
+              heightMode="available"
             >
               {renderSkillPanel()}
-            </div>
+            </ComposerPanelOverlay>
           )
         )}
 

@@ -247,6 +247,8 @@ export interface InputBarUIProps {
 
   /** 当前 runtime 菜单中展示的生效模型摘要 */
   runtimeModelLabel?: string;
+  /** 当前 runtime 菜单中展示的生效模型供应商摘要 */
+  runtimeModelProviderLabel?: string;
 
   // ========== 推理模式开关 ==========
 

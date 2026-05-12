@@ -282,6 +282,29 @@ describe('InputBarV2 stale context ref guard', () => {
     expect(capturedInputBarUIProps?.runtimeModelLabel).toBe('deepseek-v4-pro');
   });
 
+  it('passes the active runtime model provider label to the presentation layer', () => {
+    const { store } = createMockStore();
+
+    render(
+      <InputBarV2
+        store={store as any}
+        availableModels={[
+          {
+            id: 'deepseek-official-v4',
+            name: 'DeepSeek V4 Pro',
+            model: 'deepseek-v4-pro',
+            providerType: 'deepseek',
+            providerScope: 'deepseek',
+            vendorName: 'DeepSeek Official',
+          },
+        ]}
+      />
+    );
+
+    expect(capturedInputBarUIProps?.runtimeModelLabel).toBe('deepseek-v4-pro');
+    expect(capturedInputBarUIProps?.runtimeModelProviderLabel).toBe('DeepSeek Official');
+  });
+
   it('opens the single current-dialog model panel from the runtime menu', async () => {
     function RuntimeModelPanel() {
       return null;

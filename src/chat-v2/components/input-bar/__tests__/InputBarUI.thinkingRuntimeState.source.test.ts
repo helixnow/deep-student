@@ -143,6 +143,17 @@ describe('InputBarUI thinking runtime state visibility', () => {
     expect(ringSource).not.toContain('className="group inline-flex');
   });
 
+  it('does not mount the input token estimate badge in the right action rail', () => {
+    const rightStart = inputBarSource.indexOf('{/* 右侧按钮 - 固定不滚动 */}');
+    const panelStart = inputBarSource.indexOf('{/* 🔧 面板容器 - 用于检测点击是否在面板内 */}');
+    const rightToolbar = inputBarSource.slice(rightStart, panelStart);
+
+    expect(rightStart).toBeGreaterThan(-1);
+    expect(panelStart).toBeGreaterThan(rightStart);
+    expect(inputBarSource).not.toContain("import { InputTokenEstimate } from '../TokenUsageDisplay';");
+    expect(rightToolbar).not.toContain('<InputTokenEstimate');
+  });
+
   it('uses a plus icon for the attachment toggle button', () => {
     const buttonStart = inputBarSource.indexOf('data-testid="btn-toggle-attachments"');
     const buttonEnd = inputBarSource.indexOf('</NotionButton>', buttonStart);

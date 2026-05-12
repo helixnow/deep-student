@@ -3,7 +3,7 @@ import type { AttachmentMeta } from '../types/message';
 import type { ContextRef } from '../../resources/types';
 import type { EditMessageResult, RetryMessageResult } from '../../adapters/types';
 import type { ChatStore } from '../types';
-import type { ChatParams, PanelStates } from '../types/common';
+import { COMPOSER_PANEL_KEYS, type ChatParams, type PanelStates } from '../types/common';
 import type { ChatStoreState, SetState, GetState } from './types';
 import { createDefaultChatParams, createDefaultPanelStates } from './types';
 import { getErrorMessage } from '../../../utils/errorUtils';
@@ -245,9 +245,19 @@ export function createSessionActions(
         },
 
         setPanelState: (panel: keyof PanelStates, open: boolean): void => {
-          set((s) => ({
-            panelStates: { ...s.panelStates, [panel]: open },
-          }));
+          set((s) => {
+            const nextPanelStates = { ...s.panelStates, [panel]: open };
+
+            if (open) {
+              COMPOSER_PANEL_KEYS.forEach((otherPanel) => {
+                if (otherPanel !== panel) {
+                  nextPanelStates[otherPanel] = false;
+                }
+              });
+            }
+
+            return { panelStates: nextPanelStates };
+          });
         },
 
         // ========== 🆕 工具审批 Actions（文档 29 P1-3） ==========

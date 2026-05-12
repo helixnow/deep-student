@@ -598,11 +598,12 @@ type ActionStatus = 'idle' | 'loading' | 'success' | 'error';
 const ActionButtons: React.FC<{
   cards: AnkiCard[];
   data: AnkiCardsBlockData | undefined;
+  blockId: string;
   blockStatus: string;
   isStreaming?: boolean;
   isExpanded: boolean;
   onToggleExpand: () => void;
-}> = ({ cards, data, blockStatus, isStreaming, isExpanded, onToggleExpand }) => {
+}> = ({ cards, data, blockId, blockStatus, isStreaming, isExpanded, onToggleExpand }) => {
   const { t } = useTranslation('chatV2');
   const [saveStatus, setSaveStatus] = useState<ActionStatus>('idle');
   const [exportStatus, setExportStatus] = useState<ActionStatus>('idle');
@@ -624,11 +625,11 @@ const ActionButtons: React.FC<{
       documentId: data?.documentId ?? null,
       businessSessionId: data?.businessSessionId ?? null,
       messageStableId: data?.messageStableId ?? null,
-      blockId: block.id,
+      blockId,
       templateId: data?.templateId ?? null,
       options: data?.options,
     }),
-    [block.id, data]
+    [blockId, data]
   );
 
   const resetStatusAfterDelay = useCallback(
@@ -1292,6 +1293,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
             <ActionButtons
               cards={cards}
               data={data}
+              blockId={block.id}
               blockStatus={block.status}
               isStreaming={isStreaming}
               isExpanded={isExpanded}

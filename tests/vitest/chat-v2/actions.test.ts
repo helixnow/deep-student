@@ -631,6 +631,16 @@ describe('Store Actions', () => {
       state.setPanelState('rag', false);
       expect(getState().panelStates.rag).toBe(false);
     });
+
+    it('setPanelState should keep composer panels mutually exclusive when opening', () => {
+      const state = getState();
+
+      state.setPanelState('model', true);
+      state.setPanelState('mcp', true);
+
+      expect(getState().panelStates.model).toBe(false);
+      expect(getState().panelStates.mcp).toBe(true);
+    });
   });
 
   // ==========================================================================

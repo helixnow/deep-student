@@ -31,7 +31,9 @@ describe('chat v2 send button contract', () => {
     expect(stopButtonEnd).toBeGreaterThan(stopButtonStart);
     expect(shadcnVariablesSource).toContain('--button-icon-size: 2rem;');
     expect(shadcnVariablesSource).toContain('--button-radius: 9px;');
-    expect(themeColorsSource).toContain('--interactive-selected: #E9E9E9;');
+    // --interactive-selected 已改为派生 token（theme 去色迁移），不再锁定硬编码 hex。
+    // 通过派生链定义仍然保证 send button 的文字色稳定。
+    expect(themeColorsSource).toMatch(/--interactive-selected:\s*color-mix\(/);
     expect(inputBarSource).toMatch(/studyUiSendButtonSizeClass\s*=\s*['"]h-11 w-11 !rounded-full md:h-\[var\(--button-icon-size\)\] md:w-\[var\(--button-icon-size\)\]['"]/);
     expect(inputBarSource).toMatch(/studyUiBlackActionButtonClass\s*=\s*['"]!border-black !bg-black hover:!bg-black active:!bg-black !text-white['"]/);
     expect(inputBarSource).toMatch(/studyUiSendButtonEmptyStateClass\s*=\s*['"]!border-transparent !bg-muted-foreground hover:!bg-muted-foreground\/90 active:!bg-muted-foreground\/85 !text-\[color:var\(--interactive-selected\)\]['"]/);

@@ -18,6 +18,7 @@ import { SkillSelector } from '../../skills/components/SkillSelector';
 import { reloadSkills } from '../../skills/loader';
 import { useLoadedSkills } from '../../skills/hooks/useLoadedSkills';
 import type { InputBarV2Props, ModelMentionState, ModelMentionActions } from './types';
+import { COMPOSER_PANEL_KEYS } from '../../core/types/common';
 import { usePdfPageRefs } from './usePdfPageRefs';
 import { useDialogControl } from '@/contexts/DialogControlContext';
 import { isBuiltinServer } from '@/mcp/builtinMcpServer';
@@ -103,6 +104,16 @@ function matchesModelIdentity(model: ModelInfo, candidates: unknown[]): boolean 
 
 function getModelDisplayLabel(model: ModelInfo | undefined): string | undefined {
   return model?.model || model?.name || model?.id || undefined;
+}
+
+function getModelProviderLabel(model: ModelInfo | undefined): string | undefined {
+  return (
+    getModelStringField(model, 'vendorName') ||
+    getModelStringField(model, 'providerName') ||
+    getModelStringField(model, 'provider') ||
+    getModelStringField(model, 'providerScope') ||
+    getModelStringField(model, 'providerType')
+  );
 }
 
 function getModelStringField(model: ModelInfo | undefined, key: string): string | undefined {
@@ -487,6 +498,10 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         undefined
       );
     }, [currentModelInfo, model2OverrideId, modelDisplayName, modelId, runtimeOverrideModelInfo]);
+    const runtimeModelProviderLabel = useMemo(
+      () => getModelProviderLabel(activeRuntimeModelInfo),
+      [activeRuntimeModelInfo]
+    );
 
     // 🚩 Feature Flag：关闭时仅允许单模型选中
     const multiModelSelectEnabled = isMultiModelSelectEnabled();
@@ -590,8 +605,10 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
           return;
         }
 
-        (['attachment', 'rag', 'advanced', 'learn', 'mcp', 'search', 'skill', 'imageGen'] as const).forEach((panel) => {
-          currentState.setPanelState(panel, false);
+        COMPOSER_PANEL_KEYS.forEach((panel) => {
+          if (panel !== 'model') {
+            currentState.setPanelState(panel, false);
+          }
         });
         currentState.setPanelState('model', true);
       },
@@ -804,6 +821,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         modelMentionState={modelMentionState}
         modelMentionActions={modelMentionActions}
         runtimeModelLabel={runtimeModelLabel}
+        runtimeModelProviderLabel={runtimeModelProviderLabel}
         // 推理模式
         enableThinking={effectiveEnableThinking}
         thinkingStateLabel={thinkingStateLabel}

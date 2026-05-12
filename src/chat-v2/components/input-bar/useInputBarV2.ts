@@ -9,7 +9,7 @@ import { useCallback, useMemo, useRef } from 'react';
 import { useStore, type StoreApi } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import type { ChatStore } from '../../core/types/store';
-import type { AttachmentMeta, PanelStates, PdfProcessingStatus } from '../../core/types/common';
+import { COMPOSER_PANEL_KEYS, type AttachmentMeta, type PanelStates, type PdfProcessingStatus } from '../../core/types/common';
 import type { UseInputBarV2Return } from './types';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
@@ -529,16 +529,7 @@ export function useTogglePanelExclusive(
 
       if (open) {
         // 关闭其他所有面板
-        const panels: (keyof PanelStates)[] = [
-          'rag',
-          'mcp',
-          'search',
-          'learn',
-          'model',
-          'advanced',
-          'attachment',
-        ];
-        panels.forEach((panel) => {
+        COMPOSER_PANEL_KEYS.forEach((panel) => {
           if (panel !== currentPanel && state.panelStates[panel]) {
             state.setPanelState(panel, false);
           }

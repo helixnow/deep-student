@@ -88,6 +88,18 @@ export interface PanelStates {
   imageGen: boolean;
 }
 
+export const COMPOSER_PANEL_KEYS = [
+  'rag',
+  'mcp',
+  'search',
+  'learn',
+  'model',
+  'advanced',
+  'attachment',
+  'skill',
+  'imageGen',
+] as const satisfies readonly (keyof PanelStates)[];
+
 /**
  * 创建默认面板状态
  */

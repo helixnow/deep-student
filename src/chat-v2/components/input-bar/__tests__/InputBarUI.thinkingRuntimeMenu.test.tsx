@@ -62,6 +62,47 @@ function renderInputBar(overrides: Partial<React.ComponentProps<typeof InputBarU
 }
 
 describe('InputBarUI thinking/runtime model menu', () => {
+  it('closes the active composer panel before opening the attachment launcher', async () => {
+    const user = userEvent.setup();
+    const onSetPanelState = vi.fn();
+
+    renderInputBar({
+      panelStates: {
+        ...createDefaultPanelStates(),
+        model: true,
+      },
+      onSetPanelState,
+      renderModelPanel: () => <div data-testid="runtime-model-panel" />,
+    });
+
+    await user.click(screen.getByTestId('btn-toggle-attachments'));
+
+    expect(onSetPanelState).toHaveBeenCalledWith('model', false);
+  });
+
+  it('closes the active composer panel before opening the thinking runtime menu', async () => {
+    const user = userEvent.setup();
+    const onSetPanelState = vi.fn();
+
+    renderInputBar({
+      panelStates: {
+        ...createDefaultPanelStates(),
+        model: true,
+      },
+      onSetPanelState,
+      enableThinking: false,
+      thinkingStateLabel: '推理: 关闭',
+      thinkingDepthOptions: [],
+      onToggleThinking: vi.fn(),
+      renderModelPanel: () => <div data-testid="runtime-model-panel" />,
+      runtimeModelLabel: 'DeepSeek V3.2',
+    });
+
+    await user.click(screen.getByTestId('thinking-runtime-menu-trigger'));
+
+    expect(onSetPanelState).toHaveBeenCalledWith('model', false);
+  });
+
   it('keeps the runtime model dropdown available when the model has no depth options', async () => {
     const user = userEvent.setup();
     const onOpenRuntimeModelPanel = vi.fn();
@@ -77,7 +118,7 @@ describe('InputBarUI thinking/runtime model menu', () => {
     });
 
     await user.click(screen.getByTestId('thinking-runtime-menu-trigger'));
-    await user.click(screen.getByRole('menuitem', { name: '选择模型' }));
+    await user.click(screen.getByRole('menuitem', { name: /选择模型/ }));
 
     expect(onOpenRuntimeModelPanel).toHaveBeenCalledTimes(1);
   });
@@ -96,6 +137,36 @@ describe('InputBarUI thinking/runtime model menu', () => {
     const triggerLabel = screen.getByTestId('thinking-runtime-state-label');
     expect(triggerLabel).toHaveTextContent('关闭');
     expect(triggerLabel).not.toHaveTextContent('DeepSeek V3.2');
+  });
+
+  it('shows the current runtime model with its provider as the compact switch row', async () => {
+    const user = userEvent.setup();
+    const runtimeModelLabel = 'deepseek-ai/DeepSeek-V4-Flash';
+    const runtimeModelProviderLabel = 'SiliconFlow';
+
+    renderInputBar({
+      enableThinking: false,
+      thinkingStateLabel: '推理: 关闭',
+      thinkingDepthOptions: [],
+      onToggleThinking: vi.fn(),
+      onOpenRuntimeModelPanel: vi.fn(),
+      renderModelPanel: () => <div data-testid="runtime-model-panel" />,
+      runtimeModelLabel,
+      runtimeModelProviderLabel,
+    });
+
+    await user.click(screen.getByTestId('thinking-runtime-menu-trigger'));
+
+    const modelSwitchItem = screen.getByRole('menuitem', {
+      name: `选择模型，当前：${runtimeModelProviderLabel} / ${runtimeModelLabel}`,
+    });
+    const visibleContent = modelSwitchItem.querySelector('.app-menu-item-content');
+
+    expect(modelSwitchItem.querySelector('.app-menu-item-icon')).toBeNull();
+    expect(modelSwitchItem.querySelector('.app-menu-item-suffix')).toBeNull();
+    expect(visibleContent).toHaveTextContent(runtimeModelLabel);
+    expect(visibleContent).toHaveTextContent(runtimeModelProviderLabel);
+    expect(visibleContent).not.toHaveTextContent('选择模型');
   });
 
   it('lets toggle-only models turn thinking on and off from the same dropdown', async () => {
@@ -143,7 +214,7 @@ describe('InputBarUI thinking/runtime model menu', () => {
     expect(screen.queryByRole('menuitem', { name: '开启' })).not.toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: '关闭' })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('menuitem', { name: '选择模型' }));
+    await user.click(screen.getByRole('menuitem', { name: /选择模型/ }));
     expect(onOpenRuntimeModelPanel).toHaveBeenCalledTimes(1);
   });
 });

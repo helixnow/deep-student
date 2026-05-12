@@ -18,6 +18,7 @@ import { Badge } from '@/components/ui/shad/Badge';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
+import { ModelCapabilityIcons } from '@/components/shared/ModelCapabilityIcons';
 import type { ChatStore } from '../../core/types';
 import type { ModelAssignments } from '@/types';
 
@@ -154,12 +155,16 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
     try {
       window.addEventListener('api_configurations_changed', reload as EventListener);
       window.addEventListener('model_assignments_changed', reload as EventListener);
-    } catch {}
+    } catch (error: unknown) {
+      void error;
+    }
     return () => {
       try {
         window.removeEventListener('api_configurations_changed', reload as EventListener);
         window.removeEventListener('model_assignments_changed', reload as EventListener);
-      } catch {}
+      } catch (error: unknown) {
+        void error;
+      }
     };
   }, [loadModels]);
 
@@ -329,8 +334,6 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
     onClose();
   }, [onClose]);
 
-  const multBadge = t('chat_host:advanced.model.tag_multimodal');
-  const textBadge = t('chat_host:advanced.model.tag_text');
   const systemBadge = t('chat_host:model_panel.badges.system_default');
   const systemBadgeTooltip = t('chat_host:model_panel.badges.system_default_tooltip');
 
@@ -404,9 +407,13 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
           </div>
           <div className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
             <span className="max-w-[200px] truncate">{option.model}</span>
-            <Badge variant="secondary" className="h-5 px-1.5 py-0 text-[10px] font-medium shrink-0">
-              {option.isMultimodal ? multBadge : textBadge}
-            </Badge>
+            <ModelCapabilityIcons
+              isMultimodal={option.isMultimodal}
+              isReasoning={option.isReasoning}
+              supportsTools={option.supportsTools}
+              showTextOnly
+              size="xs"
+            />
           </div>
         </div>
       </NotionButton>

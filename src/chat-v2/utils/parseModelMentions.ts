@@ -52,6 +52,10 @@ export interface ModelInfo {
   aliases?: string[];
   /** 模型提供商（可选，用于 UI 显示） */
   provider?: string;
+  /** 供应商配置 ID（可选，用于区分同模型的不同 API 供应商） */
+  vendorId?: string;
+  /** 供应商显示名称（可选，用于 UI 显示） */
+  vendorName?: string;
   /** 允许其他字段以兼容 ModelConfig */
   [key: string]: unknown;
 }

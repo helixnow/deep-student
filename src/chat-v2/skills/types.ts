@@ -46,6 +46,9 @@ export interface ToolInputSchema {
   properties: Record<string, JsonSchemaProperty>;
   required?: string[];
   additionalProperties?: boolean;
+  /** JSON Schema anyOf/oneOf 支持（与 JsonSchemaProperty 对齐） */
+  anyOf?: JsonSchemaProperty[];
+  oneOf?: JsonSchemaProperty[];
 }
 
 /**

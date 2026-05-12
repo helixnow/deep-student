@@ -21,6 +21,10 @@ interface ModelConfig {
   id: string;
   name: string;
   model: string;
+  vendorId?: string;
+  vendor_id?: string;
+  vendorName?: string;
+  vendor_name?: string;
   providerType?: string;
   providerScope?: string;
   baseUrl?: string;
@@ -102,6 +106,8 @@ async function fetchAvailableModelInfos(): Promise<ModelInfo[]> {
     name: config.name || config.model, // 用户定义的名称（用于显示和 @mention 插入）
     // 模型标识符（如 "gpt-4", "deepseek-chat"）- 用于 Popover 副标题显示
     model: config.model,
+    vendorId: config.vendorId ?? config.vendor_id,
+    vendorName: config.vendorName ?? config.vendor_name,
     providerType: config.providerType,
     providerScope: config.providerScope,
     baseUrl: config.baseUrl,

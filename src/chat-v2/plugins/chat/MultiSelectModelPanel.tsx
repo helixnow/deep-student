@@ -16,6 +16,7 @@ import { ProviderIcon } from '@/components/ui/ProviderIcon';
 import DsAnalysisIconMuted from '@/components/icons/DsAnalysisIconMuted';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
+import { ModelCapabilityIcons } from '@/components/shared/ModelCapabilityIcons';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { ModelInfo } from '../../utils/parseModelMentions';
 import type { ModelAssignments } from '@/types';
@@ -171,12 +172,16 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
     try {
       window.addEventListener('api_configurations_changed', reload as EventListener);
       window.addEventListener('model_assignments_changed', reload as EventListener);
-    } catch {}
+    } catch (error: unknown) {
+      void error;
+    }
     return () => {
       try {
         window.removeEventListener('api_configurations_changed', reload as EventListener);
         window.removeEventListener('model_assignments_changed', reload as EventListener);
-      } catch {}
+      } catch (error: unknown) {
+        void error;
+      }
     };
   }, [loadModels]);
 
@@ -265,8 +270,6 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
   );
 
   const hasModels = sortedAndFilteredModels.length > 0;
-  const multBadge = t('chat_host:advanced.model.tag_multimodal');
-  const textBadge = t('chat_host:advanced.model.tag_text');
   const systemBadge = t('chat_host:model_panel.badges.system_default');
   const systemBadgeTooltip = t('chat_host:model_panel.badges.system_default_tooltip');
 
@@ -288,7 +291,9 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
         if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
           window.dispatchEvent(new CustomEvent('model_assignments_changed'));
         }
-      } catch {}
+      } catch (error: unknown) {
+        void error;
+      }
 
       setDefaultModelId(modelId);
       
@@ -362,20 +367,14 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
             {option.isFavorite && (
               <Star size={12} className="text-warning fill-warning" />
             )}
-            <Badge
-              variant="secondary"
-              className="h-4 px-1 py-0 text-[10px] font-medium shrink-0"
-            >
-              {option.isMultimodal ? multBadge : textBadge}
-            </Badge>
-            {option.isReasoning && (
-              <Badge
-                variant="secondary"
-                className="h-4 px-1 py-0 text-[10px] font-medium shrink-0 bg-amber-500/10 text-amber-600 border-amber-500/20"
-              >
-                {t('chat_host:advanced.model.tag_reasoning')}
-              </Badge>
-            )}
+            <ModelCapabilityIcons
+              isMultimodal={option.isMultimodal}
+              isReasoning={option.isReasoning}
+              supportsTools={option.supportsTools}
+              showTextOnly
+              size="xs"
+              className={isMobile ? 'gap-1' : undefined}
+            />
             {isDefault && (
               <CommonTooltip content={systemBadgeTooltip} position="top">
                 <Badge 

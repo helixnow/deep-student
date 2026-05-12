@@ -329,7 +329,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
       className={cn(
         'chat-v2',
         'flex flex-col h-full',
-        'bg-background',
+        'bg-[color:var(--shell-workspace-panel)]',
         'relative',
         'overflow-hidden',
         className

@@ -229,9 +229,8 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
       </div>
 
       {/* 分栏布局：左侧技能列表 + 右侧详情面板 */}
-      {/* 🔧 设置固定高度确保 CustomScrollArea 可以正确滚动（参考 MultiSelectModelPanel 的实现） */}
       {/* 📱 移动端：列表和详情切换显示，非移动端：并排显示 */}
-      <div className="h-[240px] flex gap-3 min-h-0 overflow-hidden">
+      <div className="flex min-h-0 flex-1 gap-3 overflow-hidden">
         {/* 左侧：技能列表（紧凑模式） */}
         {/* 📱 移动端：选中技能后隐藏列表，显示详情 */}
         <CustomScrollArea 
