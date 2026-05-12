@@ -14,13 +14,18 @@
 
   /* Desktop shell surfaces
      ------------------------------------------------------------
-     设计原则（2026-05 反向迁移）：
-     Shell 层的所有表面/交互 token 必须通过 shadcn 基础变量派生，
-     禁止出现硬编码十六进制。这样整套主题（亮/暗、accent palette）
-     只需改 shadcn-variables.css 的基础灰度即可统一联动。
-     ------------------------------------------------------------ */
-  --interactive-hover: hsl(var(--accent));
-  --interactive-selected: color-mix(in hsl, hsl(var(--accent)) 70%, hsl(var(--border)) 30%);
+     设计原则（2026-05，方向 C：扁平单色）：
+     整个工作区只有两层——
+       1. 侧边栏（--sidebar / --nav-background）：唯一的"淡灰"区域
+       2. 其余所有 shell 表面：一律 --background（白）
+     即 backdrop / titlebar / workspace / inspector / float / surface
+     都合流到 --background，不再有桌面/纸片双层。所有 shell 表面
+     通过 shadcn 基础灰度派生，改主题只改 shadcn-variables.css。
+      ------------------------------------------------------------ */
+  --interactive-hover: color-mix(in hsl, hsl(var(--foreground)) 10%, transparent 90%);
+  --interactive-selected: color-mix(in hsl, hsl(var(--foreground)) 10%, transparent 90%);
+  --overlay-control-hover: rgba(255, 255, 255, 0.2);
+  --overlay-control-hover-strong: rgba(0, 0, 0, 0.6);
   --overlay: hsl(var(--background) / 0.78);
   --sidebar-hover: color-mix(in hsl, hsl(var(--nav-background)) 55%, hsl(var(--background)) 45%);
   --sidebar: hsl(var(--nav-background));
@@ -28,16 +33,16 @@
   --sidebar-muted: hsl(var(--muted-foreground));
   --sidebar-border: color-mix(in hsl, hsl(var(--border)) 55%, transparent 45%);
   --sidebar-accent: hsl(var(--accent));
-  --shell-backdrop: hsl(var(--muted));
+  --shell-backdrop: hsl(var(--background));
   --shell-panel: hsl(var(--background));
-  --shell-panel-strong: hsl(var(--card));
+  --shell-panel-strong: hsl(var(--background));
   --shell-rim: color-mix(in hsl, hsl(var(--border)) 55%, transparent 45%);
   --shell-seam: color-mix(in hsl, hsl(var(--border)) 75%, transparent 25%);
   --shell-float: hsl(var(--background));
   --shell-glow: transparent;
   --shell-grid: transparent;
-  --shell-titlebar: hsl(var(--titlebar-background));
-  --shell-surface: hsl(var(--muted));
+  --shell-titlebar: hsl(var(--background));
+  --shell-surface: hsl(var(--background));
   --shell-titlebar-surface: var(--shell-titlebar);
   --shell-navigation-surface: var(--sidebar);
   --shell-navigation-panel: var(--sidebar);
@@ -232,8 +237,10 @@
 }
 
 :root.dark {
-  --interactive-hover: color-mix(in hsl, hsl(var(--foreground)) 8%, transparent 92%);
-  --interactive-selected: color-mix(in hsl, hsl(var(--foreground)) 14%, transparent 86%);
+  --interactive-hover: color-mix(in hsl, hsl(var(--foreground)) 10%, transparent 90%);
+  --interactive-selected: color-mix(in hsl, hsl(var(--foreground)) 10%, transparent 90%);
+  --overlay-control-hover: rgba(255, 255, 255, 0.2);
+  --overlay-control-hover-strong: rgba(255, 255, 255, 0.35);
   --overlay: hsl(var(--background) / 0.84);
   --sidebar-hover: color-mix(in hsl, hsl(var(--nav-background)) 55%, hsl(var(--background)) 45%);
   --sidebar: hsl(var(--nav-background));
@@ -241,16 +248,16 @@
   --sidebar-muted: hsl(var(--muted-foreground));
   --sidebar-border: color-mix(in hsl, hsl(var(--border)) 70%, transparent 30%);
   --sidebar-accent: hsl(var(--accent));
-  --shell-backdrop: hsl(var(--muted));
+  --shell-backdrop: hsl(var(--background));
   --shell-panel: hsl(var(--background));
-  --shell-panel-strong: hsl(var(--card));
+  --shell-panel-strong: hsl(var(--background));
   --shell-rim: color-mix(in hsl, hsl(var(--border)) 70%, transparent 30%);
   --shell-seam: color-mix(in hsl, hsl(var(--border)) 82%, transparent 18%);
-  --shell-float: hsl(var(--card));
+  --shell-float: hsl(var(--background));
   --shell-glow: transparent;
   --shell-grid: transparent;
-  --shell-titlebar: hsl(var(--titlebar-background));
-  --shell-surface: hsl(var(--muted));
+  --shell-titlebar: hsl(var(--background));
+  --shell-surface: hsl(var(--background));
   --shell-navigation-row-foreground: var(--shell-navigation-foreground);
   --shell-navigation-depth-overlay: linear-gradient(
     90deg,
