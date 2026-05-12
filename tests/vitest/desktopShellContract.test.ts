@@ -17,13 +17,16 @@ describe('desktop shell migration contract', () => {
     expect(sidebarSource).toContain('data-shell-layer="navigation"');
   });
 
-  it('routes desktop shell surfaces through semantic tokens', () => {
+  it('routes desktop shell surfaces through semantic tokens (flat-white architecture)', () => {
+    // 2026-05 方向 C：所有 shell 表面合流到 --background，侧边栏是唯一非白区域。
     expect(themeSource).toContain('--shell-backdrop');
     expect(themeSource).toContain('--shell-titlebar-surface');
     expect(themeSource).toContain('--shell-navigation-surface');
     expect(themeSource).toContain('--shell-workspace-surface');
     expect(themeSource).toContain('--shell-panel: hsl(var(--background));');
-    expect(themeSource).toContain('--shell-panel-strong: hsl(var(--card));');
+    expect(themeSource).toContain('--shell-panel-strong: hsl(var(--background));');
+    expect(themeSource).toContain('--shell-backdrop: hsl(var(--background));');
+    expect(themeSource).toContain('--shell-titlebar: hsl(var(--background));');
     expect(themeSource).toContain('--shell-nav-item-hover');
     expect(themeSource).toContain('--shell-nav-item-active');
   });

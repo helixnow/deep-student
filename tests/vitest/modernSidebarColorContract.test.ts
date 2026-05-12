@@ -49,20 +49,24 @@ describe('modern sidebar color contract', () => {
   });
 
   it('routes shell/sidebar surface tokens through shadcn base variables (no hardcoded hex)', () => {
-    // 所有 shell 表面必须走派生链
-    expect(themeSource).toMatch(/:where\(:root\)\s*\{[\s\S]*--shell-backdrop:\s*hsl\(var\(--muted\)\);/);
+    // 方向 C（扁平单色）：所有 shell 表面一律 --background，
+    // 侧边栏是唯一非白的区域（nav-background）。
+    expect(themeSource).toMatch(/:where\(:root\)\s*\{[\s\S]*--shell-backdrop:\s*hsl\(var\(--background\)\);/);
     expect(themeSource).toMatch(/:where\(:root\)\s*\{[\s\S]*--shell-panel:\s*hsl\(var\(--background\)\);/);
-    expect(themeSource).toMatch(/:where\(:root\)\s*\{[\s\S]*--shell-panel-strong:\s*hsl\(var\(--card\)\);/);
-    expect(themeSource).toMatch(/:where\(:root\)\s*\{[\s\S]*--shell-titlebar:\s*hsl\(var\(--titlebar-background\)\);/);
-    expect(themeSource).toMatch(/:where\(:root\)\s*\{[\s\S]*--shell-surface:\s*hsl\(var\(--muted\)\);/);
+    expect(themeSource).toMatch(/:where\(:root\)\s*\{[\s\S]*--shell-panel-strong:\s*hsl\(var\(--background\)\);/);
+    expect(themeSource).toMatch(/:where\(:root\)\s*\{[\s\S]*--shell-titlebar:\s*hsl\(var\(--background\)\);/);
+    expect(themeSource).toMatch(/:where\(:root\)\s*\{[\s\S]*--shell-surface:\s*hsl\(var\(--background\)\);/);
+    expect(themeSource).toMatch(/:where\(:root\)\s*\{[\s\S]*--shell-float:\s*hsl\(var\(--background\)\);/);
+    // 侧边栏保留淡灰区分
     expect(themeSource).toMatch(/:where\(:root\)\s*\{[\s\S]*--sidebar:\s*hsl\(var\(--nav-background\)\);/);
     expect(themeSource).toMatch(/:where\(:root\)\s*\{[\s\S]*--sidebar-accent:\s*hsl\(var\(--accent\)\);/);
     expect(themeSource).toMatch(/:where\(:root\)\s*\{[\s\S]*--interactive-hover:\s*hsl\(var\(--accent\)\);/);
 
-    // 暗色走同样的派生链（差异只在 shadcn 基础灰度层）
-    expect(themeSource).toMatch(/:root\.dark\s*\{[\s\S]*--shell-backdrop:\s*hsl\(var\(--muted\)\);/);
+    // 暗色走同样的派生链（扁平，shell 表面 = --background）
+    expect(themeSource).toMatch(/:root\.dark\s*\{[\s\S]*--shell-backdrop:\s*hsl\(var\(--background\)\);/);
     expect(themeSource).toMatch(/:root\.dark\s*\{[\s\S]*--shell-panel:\s*hsl\(var\(--background\)\);/);
-    expect(themeSource).toMatch(/:root\.dark\s*\{[\s\S]*--shell-panel-strong:\s*hsl\(var\(--card\)\);/);
+    expect(themeSource).toMatch(/:root\.dark\s*\{[\s\S]*--shell-titlebar:\s*hsl\(var\(--background\)\);/);
+    expect(themeSource).toMatch(/:root\.dark\s*\{[\s\S]*--shell-surface:\s*hsl\(var\(--background\)\);/);
     expect(themeSource).toMatch(/:root\.dark\s*\{[\s\S]*--sidebar:\s*hsl\(var\(--nav-background\)\);/);
   });
 
