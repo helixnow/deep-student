@@ -60,8 +60,8 @@ const MenuItem: React.FC<MenuItemProps> = ({ icon, label, shortcut, destructive,
       destructive
         ? 'text-destructive hover:bg-destructive/10'
         : active
-          ? 'text-primary font-medium hover:bg-accent'
-          : 'text-foreground hover:bg-accent',
+          ? 'text-primary font-medium hover:bg-[var(--interactive-hover)]'
+          : 'text-foreground hover:bg-[var(--interactive-hover)]',
       disabled && 'opacity-40 pointer-events-none'
     )}
     onClick={onClick}
@@ -101,7 +101,7 @@ const ColorPalette: React.FC<{
         onClick={(e) => { e.stopPropagation(); onSelect(color); }}
       />
     ))}
-    <NotionButton variant="ghost" size="icon" iconOnly className="!w-[18px] !h-[18px] !min-w-0 !p-0 !rounded-full border border-border text-muted-foreground hover:bg-accent flex-shrink-0" onClick={(e) => { e.stopPropagation(); onSelect(undefined); }} aria-label="clear color">
+    <NotionButton variant="ghost" size="icon" iconOnly className="!w-[18px] !h-[18px] !min-w-0 !p-0 !rounded-full border border-border text-muted-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0" onClick={(e) => { e.stopPropagation(); onSelect(undefined); }} aria-label="clear color">
       <X className="w-2.5 h-2.5" />
     </NotionButton>
   </div>

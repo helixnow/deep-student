@@ -219,7 +219,7 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
                   '!w-full !justify-start !px-2 !py-1.5 !h-auto !rounded-md !text-left',
                   isAdded
                     ? 'opacity-50 cursor-not-allowed'
-                    : 'hover:bg-accent cursor-pointer',
+                    : 'hover:bg-[var(--interactive-hover)] cursor-pointer',
                 )}
               >
                 <IconComp size={20} className="shrink-0" />

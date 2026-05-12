@@ -70,7 +70,7 @@ export const EmojiPicker: React.FC<EmojiPickerProps> = ({
               "text-sm px-1.5 py-0.5 rounded transition-colors",
               activeTab === i
                 ? "bg-accent text-accent-foreground"
-                : "text-muted-foreground hover:bg-accent/50"
+                : "text-muted-foreground hover:bg-[var(--interactive-hover)]"
             )}
             onClick={() => setActiveTab(i)}
           >
@@ -85,7 +85,7 @@ export const EmojiPicker: React.FC<EmojiPickerProps> = ({
           <button
             key={emoji}
             className={cn(
-              "w-6 h-6 flex items-center justify-center rounded text-base hover:bg-accent transition-colors",
+              "w-6 h-6 flex items-center justify-center rounded text-base hover:bg-[var(--interactive-hover)] transition-colors",
               value === emoji && "bg-accent ring-1 ring-primary"
             )}
             onClick={() => {

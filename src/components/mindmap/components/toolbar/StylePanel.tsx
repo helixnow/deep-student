@@ -178,7 +178,7 @@ export const StyleSettings: React.FC<{
               onClick={() => setStyleId(theme.id)}
               className={cn(
                 "flex items-center justify-between px-3 py-2 rounded-md text-sm border border-transparent transition-colors",
-                "hover:bg-accent hover:text-accent-foreground",
+                "hover:bg-[var(--interactive-hover)] hover:text-accent-foreground",
                 styleId === theme.id && "bg-primary/10 text-primary border-primary/20"
               )}
             >
@@ -224,7 +224,7 @@ export const StyleSettings: React.FC<{
                   "p-1.5 rounded-md transition-colors",
                   cur === val
                     ? "bg-primary text-primary-foreground"
-                    : "hover:bg-accent text-muted-foreground"
+                    : "hover:bg-[var(--interactive-hover)] text-muted-foreground"
                 )}
                 title={t(`contextMenu.${key}`)}
               ><Icon className="w-4 h-4" /></NotionButton>
@@ -242,7 +242,7 @@ export const StyleSettings: React.FC<{
                     "p-1.5 rounded-md transition-colors",
                     focusedNode.style?.headingLevel === level
                       ? "bg-primary text-primary-foreground"
-                      : "hover:bg-accent text-muted-foreground"
+                      : "hover:bg-[var(--interactive-hover)] text-muted-foreground"
                   )}
                   title={t(`contextMenu.${level === 'h1' ? 'heading1' : level === 'h2' ? 'heading2' : 'heading3'}`)}
                 ><Icon className="w-4 h-4" /></NotionButton>
@@ -253,7 +253,7 @@ export const StyleSettings: React.FC<{
                   "p-1.5 rounded-md transition-colors",
                   !focusedNode.style?.headingLevel
                     ? "bg-primary text-primary-foreground"
-                    : "hover:bg-accent text-muted-foreground"
+                    : "hover:bg-[var(--interactive-hover)] text-muted-foreground"
                 )}
                 title={t('contextMenu.normalText')}
               ><Type className="w-4 h-4" /></NotionButton>
@@ -303,7 +303,7 @@ export const StyleSettings: React.FC<{
           onClick={() => setIsOpen(!isOpen)}
           className={cn(
             'flex items-center gap-2 px-3 py-1.5 rounded-lg',
-            'bg-background hover:bg-accent hover:text-accent-foreground',
+            'bg-background hover:bg-[var(--interactive-hover)] hover:text-accent-foreground',
             'border border-input',
             'transition-all duration-200',
             'text-sm font-medium',

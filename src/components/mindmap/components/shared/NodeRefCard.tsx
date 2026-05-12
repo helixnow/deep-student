@@ -57,7 +57,7 @@ export const NodeRefCard: React.FC<NodeRefCardProps> = ({
         'group/ref nopan nodrag',
         'inline-flex items-center gap-1 px-1.5 py-0.5 rounded',
         'text-[11px] leading-tight',
-        'bg-[var(--mm-bg-elevated)] hover:bg-accent/50',
+        'bg-[var(--mm-bg-elevated)] hover:bg-[var(--interactive-hover)]',
         'border border-border/30',
         'cursor-pointer transition-colors duration-150',
         className

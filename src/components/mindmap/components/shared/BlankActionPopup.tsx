@@ -56,7 +56,7 @@ export const BlankActionPopup: React.FC<BlankActionPopupProps> = ({
       }}
     >
       {isAlreadyBlanked ? (
-        <NotionButton variant="ghost" size="sm" className="!px-3 !py-1.5 !h-auto !rounded-full bg-zinc-700/90 text-zinc-200 hover:bg-zinc-600 text-xs font-medium whitespace-nowrap" onClick={(e) => { e.stopPropagation(); onUnblank(); }}>
+        <NotionButton variant="ghost" size="sm" className="!px-3 !py-1.5 !h-auto !rounded-full bg-zinc-700/90 text-zinc-200 hover:bg-[var(--interactive-hover)] text-xs font-medium whitespace-nowrap" onClick={(e) => { e.stopPropagation(); onUnblank(); }}>
           <Eye className="w-3 h-3" />
           {t('recite.unblank')}
         </NotionButton>

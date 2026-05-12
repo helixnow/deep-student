@@ -744,7 +744,7 @@ const SortableOutlineNode: React.FC<{
                     />
                   ))}
                   <NotionButton variant="ghost"
-                    className="w-[18px] h-[18px] rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-accent flex-shrink-0"
+                    className="w-[18px] h-[18px] rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0"
                     onClick={(e) => {
                       e.stopPropagation();
                       updateNode(node.id, { style: { ...node.style, textColor: undefined } });
@@ -773,7 +773,7 @@ const SortableOutlineNode: React.FC<{
                     />
                   ))}
                   <NotionButton variant="ghost"
-                    className="w-[18px] h-[18px] rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-accent flex-shrink-0"
+                    className="w-[18px] h-[18px] rounded-full border border-border flex items-center justify-center text-muted-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0"
                     onClick={(e) => {
                       e.stopPropagation();
                       updateNode(node.id, { style: { ...node.style, bgColor: undefined } });

@@ -82,7 +82,7 @@ const PresetItem: React.FC<PresetItemProps> = ({ preset, isActive, onClick }) =>
         isActive
           ? 'border-primary bg-primary/10 shadow-sm'
           : 'border-border hover:border-primary/50',
-        !isActive && 'hover:bg-accent',
+        !isActive && 'hover:bg-[var(--interactive-hover)]',
         preset.locked && 'opacity-60 cursor-not-allowed'
       )}
       onClick={onClick}
@@ -358,7 +358,7 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
             'flex items-center gap-2 px-3 py-1.5 rounded-lg',
             'bg-white dark:bg-gray-800',
             'border border-gray-200 dark:border-gray-700',
-            'hover:bg-gray-50 dark:hover:bg-gray-750',
+            'hover:bg-[var(--interactive-hover)] dark:hover:bg-[var(--interactive-hover)]',
             'hover:border-gray-300 dark:hover:border-gray-600',
             'transition-all duration-200',
             'text-sm font-medium text-gray-700 dark:text-gray-200',
