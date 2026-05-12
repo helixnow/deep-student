@@ -35,7 +35,10 @@ export function isSpecialViewPath(path: FinderPathLike | null | undefined): bool
 }
 
 export function getCreatableFolderId(pathOrFolderId: FinderPathLike | string | null | undefined): string | null {
-  if (typeof pathOrFolderId === 'string' || pathOrFolderId == null) {
+  if (pathOrFolderId == null) {
+    return null;
+  }
+  if (typeof pathOrFolderId === 'string') {
     return isRealFolderId(pathOrFolderId) ? pathOrFolderId : null;
   }
 

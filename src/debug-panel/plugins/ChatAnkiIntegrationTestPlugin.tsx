@@ -122,7 +122,7 @@ const ChatAnkiIntegrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
       console.error('[CATest] 运行异常:', err);
       setStatus(isAbortRequested() ? 'aborted' : 'completed');
     }
-  }, [activeScenarios.length, prompt, longDocPrompt, timeoutMs, pollMs, settleMs, skipScenarios]);
+  }, [activeScenarios.length, prompt, timeoutMs, pollMs, settleMs, skipScenarios]);
 
   const handleAbort = useCallback(() => { requestAbort(); setStatus('aborted'); }, []);
 
@@ -133,7 +133,7 @@ const ChatAnkiIntegrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url; a.download = `chatanki-test-${new Date().toISOString().replace(/[:.]/g, '-')}.json`; a.click(); URL.revokeObjectURL(url);
-  }, [results, prompt, longDocPrompt, timeoutMs, settleMs, skipScenarios]);
+  }, [results, prompt, timeoutMs, settleMs, skipScenarios]);
 
   const handleCopyLogs = useCallback(() => {
     copyTextToClipboard(liveLogs.map(l => `[${fmtTime(l.timestamp)}][${l.phase}] ${l.message}`).join('\n'));

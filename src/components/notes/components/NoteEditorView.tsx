@@ -154,7 +154,7 @@ export const NoteEditorView: React.FC<NoteEditorViewProps> = ({
     return () => {
       isUnmountedRef.current = true;
       const pendingContent = contentRef.current;
-      const shouldFlush = !!pendingContent && pendingContent !== noteContent;
+      const shouldFlush = !!pendingContent && pendingContent !== initialValue;
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
         saveTimerRef.current = undefined;
@@ -176,7 +176,7 @@ export const NoteEditorView: React.FC<NoteEditorViewProps> = ({
         contentChangedTimerRef.current = undefined;
       }
     };
-  }, [isDstuMode, noteId, noteContent, onSave, saveNoteContent]);
+  }, [isDstuMode, noteId, initialValue, onSave, saveNoteContent]);
 
   // 监听 IME composition 事件，在合成期间跳过实时事件派发
   // 🔧 修复：绑定到编辑器容器而非 window，避免换行后首次输入法卡顿
