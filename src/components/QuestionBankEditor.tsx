@@ -203,7 +203,7 @@ const SourceImagesBubble: React.FC<{
     <div className="rounded-lg border border-border/40 bg-muted/10 overflow-hidden">
       <button
         type="button"
-        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:bg-muted/30 transition-colors"
+        className="w-full flex items-center gap-2 px-3 py-2 text-xs text-muted-foreground hover:bg-[var(--interactive-hover)] transition-colors"
         onClick={() => setExpanded(v => !v)}
       >
         <ImageIcon className="w-3.5 h-3.5 flex-shrink-0" />
@@ -251,7 +251,7 @@ interface StatCardProps {
 
 const StatCard: React.FC<StatCardProps> = ({ icon: Icon, label, value, color, delay = 0 }) => (
   <div 
-    className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-muted/40 transition-colors"
+    className="flex items-center gap-2.5 px-3 py-2.5 rounded-lg hover:bg-[var(--interactive-hover)] transition-colors"
     style={{ 
       animationDelay: `${delay}ms`,
       animation: 'fadeSlideUp 0.4s ease-out backwards'
@@ -1518,7 +1518,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                       <>
                         {/* 暗记模式遮罩 */}
                         {hideAnswerMode && !answerRevealed && !submitResult && (
-                          <NotionButton variant="ghost" size="sm" onClick={() => setAnswerRevealed(true)} className="w-full !h-auto !p-8 !rounded-lg border-2 border-dashed border-muted-foreground/30 bg-muted/30 flex-col items-center justify-center gap-2 hover:bg-muted/50">
+                          <NotionButton variant="ghost" size="sm" onClick={() => setAnswerRevealed(true)} className="w-full !h-auto !p-8 !rounded-lg border-2 border-dashed border-muted-foreground/30 bg-muted/30 flex-col items-center justify-center gap-2 hover:bg-[var(--interactive-hover)]">
                             <Eye className="w-8 h-8 text-muted-foreground" />
                             <span className="text-sm text-muted-foreground">{t('editor.clickToReveal')}</span>
                           </NotionButton>
@@ -1972,7 +1972,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                 <>
                   {/* 暗记模式遮罩 */}
                   {hideAnswerMode && !answerRevealed && !submitResult && (
-                    <NotionButton variant="ghost" size="sm" onClick={() => setAnswerRevealed(true)} className="w-full !h-auto !p-12 !rounded-lg border-2 border-dashed border-muted-foreground/30 bg-muted/30 flex-col items-center justify-center gap-3 hover:bg-muted/50">
+                    <NotionButton variant="ghost" size="sm" onClick={() => setAnswerRevealed(true)} className="w-full !h-auto !p-12 !rounded-lg border-2 border-dashed border-muted-foreground/30 bg-muted/30 flex-col items-center justify-center gap-3 hover:bg-[var(--interactive-hover)]">
                       <Eye className="w-10 h-10 text-muted-foreground" />
                       <span className="text-muted-foreground">{t('editor.clickToRevealWithKey')}</span>
                     </NotionButton>
@@ -2360,7 +2360,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                       size="sm"
                       onClick={() => setIsEditingNote(true)}
                       disabled={!onUpdateUserNote}
-                      className="w-full !justify-start !h-auto !p-3 !rounded-lg border border-dashed border-border/50 hover:border-border hover:bg-muted/30 group"
+                      className="w-full !justify-start !h-auto !p-3 !rounded-lg border border-dashed border-border/50 hover:border-border hover:bg-[var(--interactive-hover)] group"
                     >
                       <div className="flex items-center gap-2 text-sm w-full">
                         <StickyNote className="w-4 h-4 text-amber-500" />
@@ -2398,7 +2398,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
 
             <Popover>
               <PopoverTrigger asChild>
-                <NotionButton variant="ghost" size="sm" className="!px-3 !py-1.5 hover:bg-muted/50">
+                <NotionButton variant="ghost" size="sm" className="!px-3 !py-1.5 hover:bg-[var(--interactive-hover)]">
                   <span className="font-medium">{currentIndex + 1}</span>
                   <span className="text-muted-foreground">/ {totalQuestions}</span>
                   <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
@@ -2425,7 +2425,7 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                     const q = questions[idx];
                     const status = q.status || 'new';
                     return (
-                      <NotionButton key={q.id} variant="ghost" size="icon" iconOnly onClick={() => { onNavigate?.(idx); setSearchQuery(''); }} className={cn('!w-7 !h-7 text-xs font-medium', idx === currentIndex && 'bg-primary text-primary-foreground', idx !== currentIndex && status === 'mastered' && 'bg-success/10 text-success hover:bg-success/20', idx !== currentIndex && status === 'review' && 'bg-warning/10 text-warning hover:bg-warning/20', idx !== currentIndex && status === 'new' && 'bg-muted/50 text-muted-foreground hover:bg-muted', idx !== currentIndex && status === 'in_progress' && 'bg-primary/10 text-primary hover:bg-primary/20')}>
+                      <NotionButton key={q.id} variant="ghost" size="icon" iconOnly onClick={() => { onNavigate?.(idx); setSearchQuery(''); }} className={cn('!w-7 !h-7 text-xs font-medium', idx === currentIndex && 'bg-primary text-primary-foreground', idx !== currentIndex && status === 'mastered' && 'bg-success/10 text-success hover:bg-success/20', idx !== currentIndex && status === 'review' && 'bg-warning/10 text-warning hover:bg-warning/20', idx !== currentIndex && status === 'new' && 'bg-muted/50 text-muted-foreground hover:bg-[var(--interactive-hover)]', idx !== currentIndex && status === 'in_progress' && 'bg-primary/10 text-primary hover:bg-primary/20')}>
                         {idx + 1}
                       </NotionButton>
                     );

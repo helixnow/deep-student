@@ -18,14 +18,14 @@ import {
   BookOpen,
   CheckCircle,
   Clock,
-  Target,
-  TrendingUp,
-  AlertCircle,
+  Crosshair,
+  TrendUp,
+  WarningCircle,
   Star,
-  BarChart3,
-  ChevronDown,
-  ChevronUp,
-} from 'lucide-react';
+  ChartBar,
+  CaretDown,
+  CaretUp,
+} from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import type { QuestionBankStats } from '@/api/questionBankApi';
 import { LearningTrendChart } from './stats/LearningTrendChart';
@@ -60,7 +60,7 @@ interface StatCardProps {
 // ============================================================================
 
 const StatCard: React.FC<StatCardProps> = ({ icon, label, value, description, color = 'text-primary' }) => (
-  <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
+  <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 hover:bg-[var(--interactive-hover)] transition-colors">
     <div className={cn('p-2 rounded-lg bg-background', color)}>
       {icon}
     </div>
@@ -130,7 +130,7 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
     return (
       <div className={cn('flex items-center justify-center p-8', className)}>
         <div className="text-center text-muted-foreground">
-          <BarChart3 className="w-12 h-12 mx-auto mb-2 opacity-50" />
+          <ChartBar size={48} className="mx-auto mb-2 opacity-50" />
           <p>{t('exam_sheet:questionBank.stats.noData')}</p>
         </div>
       </div>
@@ -142,27 +142,27 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
       {/* 概览卡片 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
         <StatCard
-          icon={<BookOpen className="w-5 h-5" />}
+          icon={<BookOpen size={20} />}
           label={t('exam_sheet:questionBank.stats.total')}
           value={stats.total}
           color="text-blue-500"
         />
         <StatCard
-          icon={<CheckCircle className="w-5 h-5" />}
+          icon={<CheckCircle size={20} />}
           label={t('exam_sheet:questionBank.stats.mastered')}
           value={stats.mastered}
           description={`${progressData.masteredPercent}%`}
           color="text-green-500"
         />
         <StatCard
-          icon={<Clock className="w-5 h-5" />}
+          icon={<Clock size={20} />}
           label={t('exam_sheet:questionBank.stats.inProgress')}
           value={stats.inProgress}
           description={`${progressData.inProgressPercent}%`}
           color="text-amber-500"
         />
         <StatCard
-          icon={<AlertCircle className="w-5 h-5" />}
+          icon={<WarningCircle size={20} />}
           label={t('exam_sheet:questionBank.stats.review')}
           value={stats.review}
           description={`${progressData.reviewPercent}%`}
@@ -174,7 +174,7 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
       <div className="space-y-3">
         <div className="flex items-center justify-between text-sm">
           <div className="flex items-center gap-2">
-            <Target className="w-4 h-4 text-muted-foreground" />
+            <Crosshair size={16} className="text-muted-foreground" />
             <span className="font-medium">{t('exam_sheet:questionBank.stats.progress')}</span>
           </div>
           <span className="text-muted-foreground">{progressData.masteredPercent}%</span>
@@ -226,7 +226,7 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
       {/* 正确率 */}
       <div className="flex items-center justify-between py-2">
         <div className="flex items-center gap-2">
-          <TrendingUp className="w-4 h-4 text-muted-foreground" />
+          <TrendUp size={16} className="text-muted-foreground" />
           <span className="text-sm font-medium">{t('exam_sheet:questionBank.stats.accuracy')}</span>
         </div>
         <div className="flex items-center gap-3">
@@ -246,7 +246,7 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
             </div>
           </div>
           <div className="flex items-center gap-1 text-xs">
-            <Star className="w-3 h-3 text-amber-400" />
+            <Star size={12} className="text-amber-400" />
             <span className="text-muted-foreground">
               {correctRatePercent >= 80
                 ? t('exam_sheet:questionBank.stats.excellent')
@@ -265,12 +265,12 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
         <>
           {/* 展开/收起按钮 */}
           <NotionButton variant="ghost" size="sm" onClick={() => setExpandedCharts(!expandedCharts)} className="w-full justify-center !py-2 text-muted-foreground hover:text-foreground border-t border-border/50">
-            <BarChart3 className="w-4 h-4" />
+            <ChartBar size={16} />
             <span>{expandedCharts ? t('exam_sheet:questionBank.stats.collapseCharts') : t('exam_sheet:questionBank.stats.expandCharts')}</span>
             {expandedCharts ? (
-              <ChevronUp className="w-4 h-4" />
+              <CaretUp size={16} />
             ) : (
-              <ChevronDown className="w-4 h-4" />
+              <CaretDown size={16} />
             )}
           </NotionButton>
 

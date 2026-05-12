@@ -9,19 +9,19 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import {
   Check,
   X,
-  ChevronRight,
-  Trash2,
-  RefreshCw,
+  CaretRight as ChevronRight,
+  Trash as Trash2,
+  ArrowsClockwise as RefreshCw,
   BookOpen,
-  Zap,
-  History,
-  ArrowUpDown,
-  ChevronDown,
+  Lightning as Zap,
+  ClockCounterClockwise as History,
+  ArrowsDownUp as ArrowUpDown,
+  CaretDown as ChevronDown,
   Target,
   Clock,
-  Award,
-  AlertTriangle,
-} from 'lucide-react';
+  Trophy as Award,
+  Warning as AlertTriangle,
+} from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/shad/Badge';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useTranslation, Trans } from 'react-i18next';
@@ -190,7 +190,7 @@ const ReviewQuestionCard: React.FC<{
     <div
       className={cn(
         'group flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all cursor-pointer',
-        'hover:bg-muted/40',
+        !isSelected && 'hover:bg-[var(--interactive-hover)]',
         isSelected && 'bg-amber-500/5'
       )}
       onClick={onClick}
@@ -372,7 +372,7 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
 
           {/* 右侧：批量操作 */}
           <div className="flex items-center gap-1.5">
-            <NotionButton variant="ghost" size="sm" onClick={toggleSelectAll} className="!px-2 !py-1 !h-auto text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50">
+            <NotionButton variant="ghost" size="sm" onClick={toggleSelectAll} className="!px-2 !py-1 !h-auto text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]">
               {selectedIds.size === reviewQuestions.length ? t('review:questions.cancel') : t('review:questions.selectAll')}
             </NotionButton>
             

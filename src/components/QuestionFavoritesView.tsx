@@ -145,7 +145,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
   const renderQuestionCard = (question: ApiQuestion) => (
     <Card
       key={question.id}
-      className="cursor-pointer hover:bg-muted/50 transition-colors"
+      className="cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
       onClick={() => onSelectQuestion?.(question)}
     >
       <CardHeader className="p-3 pb-2">

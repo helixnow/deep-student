@@ -456,7 +456,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                     'flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
                     format === f
                       ? 'border-primary bg-primary/5'
-                      : 'border-border hover:bg-muted/50'
+                      : 'border-border hover:bg-[var(--interactive-hover)]'
                   )}
                   onClick={() => setFormat(f)}
                 >

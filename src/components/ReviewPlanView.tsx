@@ -21,19 +21,19 @@ import {
   Play,
   Clock,
   CheckCircle,
-  AlertTriangle,
+  Warning as AlertTriangle,
   Calendar,
   Target,
-  TrendingUp,
-  RotateCcw,
-  ChevronRight,
-  Loader2,
+  TrendUp as TrendingUp,
+  ArrowCounterClockwise as RotateCcw,
+  CaretRight as ChevronRight,
+  CircleNotch as Loader2,
   BookOpen,
-  Flame,
-  Zap,
-  Award,
-  RefreshCw,
-} from 'lucide-react';
+  Fire as Flame,
+  Lightning as Zap,
+  Trophy as Award,
+  ArrowsClockwise as RefreshCw,
+} from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import {
   useReviewPlanStore,
@@ -156,7 +156,7 @@ const ReviewQueueItem: React.FC<ReviewQueueItemProps> = ({
       onClick={onClick}
       className={cn(
         'group flex items-center gap-3 p-3 rounded-lg',
-        'bg-muted/20 hover:bg-muted/40',
+        'bg-muted/20 hover:bg-[var(--interactive-hover)]',
         'border border-transparent hover:border-border/50',
         'cursor-pointer transition-all duration-200',
         isOverdue && 'border-red-500/30 bg-red-500/5'

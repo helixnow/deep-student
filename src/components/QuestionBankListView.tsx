@@ -166,7 +166,7 @@ const QuestionGridCard: React.FC<{
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); (isEditMode ? () => onSelect?.(!isSelected) : onClick)?.(); } }}
       className={cn(
         'group relative flex flex-col p-4 rounded-lg text-left transition-all duration-200 cursor-pointer',
-        'border border-transparent hover:border-border/60 hover:bg-muted/30',
+        'border border-transparent hover:border-border/60 hover:bg-[var(--interactive-hover)]',
         'hover:shadow-[var(--shadow-notion)]',
         status === 'mastered' && 'bg-emerald-500/[0.03]',
         status === 'review' && 'bg-amber-500/[0.03]',
@@ -198,7 +198,7 @@ const QuestionGridCard: React.FC<{
           )}
           {/* 编辑按钮 - 非编辑模式下显示 */}
           {!isEditMode && onEdit && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleEditClick} className="!w-5 !h-5 !p-0 opacity-0 group-hover:opacity-100 hover:bg-muted/60 text-muted-foreground hover:text-foreground" title={t('questionBank.editQuestion')} aria-label="edit">
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleEditClick} className="!w-5 !h-5 !p-0 opacity-0 group-hover:opacity-100 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground" title={t('questionBank.editQuestion')} aria-label="edit">
               <Edit3 className="w-3 h-3" />
             </NotionButton>
           )}
@@ -256,7 +256,7 @@ const QuestionListRow: React.FC<{
       onClick={isEditMode ? () => onSelect?.(!isSelected) : onClick}
       className={cn(
         'group w-full !justify-start gap-4 !px-3 !py-3 !h-auto !rounded-lg',
-        'hover:bg-muted/40',
+        !isSelected && 'hover:bg-[var(--interactive-hover)]',
         isSelected && 'bg-primary/5'
       )}
     >
@@ -294,7 +294,7 @@ const QuestionListRow: React.FC<{
         )}
         {/* 编辑按钮 - 非编辑模式下显示 */}
         {!isEditMode && onEdit && (
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleEditClick} className="!w-6 !h-6 !p-0 opacity-0 group-hover:opacity-100 hover:bg-muted/60 text-muted-foreground hover:text-foreground" title={t('questionBank.editQuestion')} aria-label="edit">
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleEditClick} className="!w-6 !h-6 !p-0 opacity-0 group-hover:opacity-100 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground" title={t('questionBank.editQuestion')} aria-label="edit">
             <Edit3 className="w-3.5 h-3.5" />
           </NotionButton>
         )}
@@ -552,20 +552,20 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
           </div>
           
           {/* 收藏和书签按钮 */}
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleFilterChange(searchQuery, statusFilter, difficultyFilter, !showFavoriteOnly)} className={cn('!h-7 !w-7 !p-1.5 flex-shrink-0', showFavoriteOnly ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50')} aria-label="favorites">
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleFilterChange(searchQuery, statusFilter, difficultyFilter, !showFavoriteOnly)} className={cn('!h-7 !w-7 !p-1.5 flex-shrink-0', showFavoriteOnly ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label="favorites">
             <Star className={cn('w-4 h-4', showFavoriteOnly && 'fill-current')} />
           </NotionButton>
 
           {/* 手动添加题目按钮 */}
           {examId && onCreateQuestion && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setExpandedEditId(prev => prev === '__new__' ? null : '__new__')} className={cn('!h-7 !w-7 !p-1.5 flex-shrink-0', expandedEditId === '__new__' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50')} aria-label="add question">
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setExpandedEditId(prev => prev === '__new__' ? null : '__new__')} className={cn('!h-7 !w-7 !p-1.5 flex-shrink-0', expandedEditId === '__new__' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label="add question">
               <Plus className="w-4 h-4" />
             </NotionButton>
           )}
 
           {/* 编辑模式按钮 */}
           {hasBatchOperations && !isEditMode && (
-            <NotionButton variant="ghost" size="sm" onClick={() => setIsEditMode(true)} className="!h-7 !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 flex-shrink-0" aria-label="batch manage">
+            <NotionButton variant="ghost" size="sm" onClick={() => setIsEditMode(true)} className="!h-7 !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0" aria-label="batch manage">
               <ListChecks className="w-3.5 h-3.5 mr-1" />
               <span className="hidden sm:inline">{t('common:manage')}</span>
             </NotionButton>
@@ -576,7 +576,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
         {isEditMode && (
           <div className="flex items-center justify-between gap-2 mt-3 px-1 py-2 rounded-lg bg-muted/30">
             <div className="flex items-center gap-2 min-w-0">
-              <NotionButton variant="ghost" size="sm" onClick={toggleSelectAll} className="!h-auto !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50">
+              <NotionButton variant="ghost" size="sm" onClick={toggleSelectAll} className="!h-auto !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]">
                 <CheckSquare className="w-3.5 h-3.5" />
                 <span className="hidden sm:inline">{selectedIds.size === filteredQuestions.length ? t('practice:questionBank.deselectAll') : t('practice:questionBank.selectAll')}</span>
               </NotionButton>
@@ -598,7 +598,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                 </NotionButton>
               )}
               <div className="w-px h-3 bg-border/60 mx-1" />
-              <NotionButton variant="ghost" size="sm" onClick={exitEditMode} className="!h-auto !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 gap-1">
+              <NotionButton variant="ghost" size="sm" onClick={exitEditMode} className="!h-auto !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] gap-1">
                 <X className="w-3 h-3" />
                 <span className="hidden sm:inline">{t('common:cancel')}</span>
               </NotionButton>
@@ -608,11 +608,11 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
         
         {/* 筛选 Tab */}
         <div className="flex flex-wrap items-center gap-1.5 mt-3">
-          <NotionButton variant="ghost" size="sm" onClick={() => handleFilterChange(searchQuery, 'all', difficultyFilter, showFavoriteOnly)} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'all' ? 'bg-foreground text-background font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50')}>
+          <NotionButton variant="ghost" size="sm" onClick={() => handleFilterChange(searchQuery, 'all', difficultyFilter, showFavoriteOnly)} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'all' ? 'bg-foreground text-background font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
             {t('practice:questionBank.all')} {questions.length}
           </NotionButton>
           {stats && stats.newCount > 0 && (
-            <NotionButton variant="ghost" size="sm" onClick={() => handleFilterChange(searchQuery, 'new', difficultyFilter, showFavoriteOnly)} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'new' ? 'bg-foreground text-background font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50')}>
+            <NotionButton variant="ghost" size="sm" onClick={() => handleFilterChange(searchQuery, 'new', difficultyFilter, showFavoriteOnly)} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'new' ? 'bg-foreground text-background font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
               {t('practice:questionBank.newQuestions')} {stats.newCount}
             </NotionButton>
           )}

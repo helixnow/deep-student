@@ -618,7 +618,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                       size="sm"
                       iconOnly
                       onClick={() => handleRemoveImage(img.id)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity text-white hover:text-white hover:bg-white/20 h-6 w-6"
+                      className="opacity-0 group-hover:opacity-100 transition-opacity text-white hover:text-white hover:bg-[var(--overlay-control-hover)] h-6 w-6"
                     >
                       <Trash2 className="w-3 h-3" />
                     </NotionButton>
@@ -629,7 +629,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
           )}
 
           {editData.images.length === 0 && (
-            <NotionButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isUploadingImage} className="w-full !h-auto !p-4 !rounded-md border border-dashed border-border/50 hover:border-border bg-muted/10 hover:bg-muted/20 flex-col items-center justify-center gap-2">
+            <NotionButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isUploadingImage} className="w-full !h-auto !p-4 !rounded-md border border-dashed border-border/50 hover:border-border bg-muted/10 hover:bg-[var(--interactive-hover)] flex-col items-center justify-center gap-2">
               <ImagePlus className="w-4 h-4 text-muted-foreground" />
               <span className="text-xs text-muted-foreground">
                 {t('exam_sheet:questionBank.edit.imagePlaceholder', '点击添加题目图片')}

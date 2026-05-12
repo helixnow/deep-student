@@ -326,13 +326,13 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
           {showCsvActions && (
             <div className="flex items-center gap-1">
               {onCsvImport && (
-                <NotionButton variant="ghost" size="sm" onClick={onCsvImport} className="!h-auto !px-2.5 !py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50" title={t('exam_sheet:csv.import_title', 'CSV 导入')}>
+                <NotionButton variant="ghost" size="sm" onClick={onCsvImport} className="!h-auto !px-2.5 !py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]" title={t('exam_sheet:csv.import_title', 'CSV 导入')}>
                   <Upload className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">{t('exam_sheet:csv.import_title', 'CSV 导入')}</span>
                 </NotionButton>
               )}
               {onCsvExport && (
-                <NotionButton variant="ghost" size="sm" onClick={onCsvExport} className="!h-auto !px-2.5 !py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50" title={t('exam_sheet:questionBank.export.title', '导出')}>
+                <NotionButton variant="ghost" size="sm" onClick={onCsvExport} className="!h-auto !px-2.5 !py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]" title={t('exam_sheet:questionBank.export.title', '导出')}>
                   <Download className="w-3.5 h-3.5" />
                   <span className="hidden sm:inline">{t('exam_sheet:questionBank.export.title', '导出')}</span>
                 </NotionButton>
@@ -340,7 +340,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
             </div>
           )}
           
-          <NotionButton variant="ghost" size="sm" onClick={() => setShowFilters(!showFilters)} className={cn('!h-auto !px-2.5 !py-1.5 text-xs', showFilters ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50')}>
+          <NotionButton variant="ghost" size="sm" onClick={() => setShowFilters(!showFilters)} className={cn('!h-auto !px-2.5 !py-1.5 text-xs', showFilters ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
             <Filter className="w-3.5 h-3.5" />
             {t('common:filter', '筛选')}
           </NotionButton>
@@ -420,7 +420,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                 <TableRow
                   key={q.id}
                   className={cn(
-                    'cursor-pointer hover:bg-muted/50',
+                    'cursor-pointer hover:bg-[var(--interactive-hover)]',
                     selectedIds.has(q.id) && 'bg-muted/30'
                   )}
                   onClick={() => onViewDetail?.(q)}
