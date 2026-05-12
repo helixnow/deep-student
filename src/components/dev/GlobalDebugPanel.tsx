@@ -4,14 +4,9 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Bug } from 'lucide-react';
 import clsx from 'clsx';
+import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { getDebugEnabled } from '../../utils/emitDebug';
 import type { DebugEvent } from '../../utils/emitDebug';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '../ui/shad/Tooltip';
 import './GlobalDebugPanel.css';
 
 import DebugPanelHost from '../../debug-panel/DebugPanelHost';
@@ -215,51 +210,50 @@ const GlobalDebugPanel = () => {
 
   if (!debugEnabled) return null;
 
+  const tooltipContent = (
+    <>
+      <div className="dstu-debug-toggle__tooltip-label">
+        {visible ? t('debug_panel.close_hint') : t('debug_panel.open_hint')}
+      </div>
+      {hasUnseenEvent && !visible && (
+        <div className="dstu-debug-toggle__tooltip-sub">
+          {t('debug_panel.new_events')}
+        </div>
+      )}
+      {currentStreamId && (
+        <div className="dstu-debug-toggle__tooltip-sub">
+          {t('debug_panel.current_stream', { id: currentStreamId })}
+        </div>
+      )}
+    </>
+  );
+
   const toggleButton = (
-    <TooltipProvider>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <NotionButton
-            ref={toggleBtnRef}
-            variant="ghost" size="icon" iconOnly
-            className={clsx(
-              'dstu-debug-toggle',
-              visible && 'dstu-debug-toggle--open',
-              hasUnseenEvent && !visible && 'dstu-debug-toggle--pulse',
-            )}
-            aria-label={visible ? t('debug_panel.close') : t('debug_panel.open')}
-            aria-pressed={visible}
-            onClick={togglePanel}
-            style={{ pointerEvents: 'auto' }}
-          >
-            <Bug className="dstu-debug-toggle__icon" aria-hidden="true" />
-            <span
-              className={clsx(
-                'dstu-debug-toggle__status',
-                hasUnseenEvent &&
-                  !visible &&
-                  'dstu-debug-toggle__status--active',
-              )}
-            />
-          </NotionButton>
-        </TooltipTrigger>
-        <TooltipContent className="dstu-debug-toggle__tooltip">
-          <div className="dstu-debug-toggle__tooltip-label">
-            {visible ? t('debug_panel.close_hint') : t('debug_panel.open_hint')}
-          </div>
-          {hasUnseenEvent && !visible && (
-            <div className="dstu-debug-toggle__tooltip-sub">
-              {t('debug_panel.new_events')}
-            </div>
+    <CommonTooltip content={tooltipContent} className="dstu-debug-toggle__tooltip">
+      <NotionButton
+        ref={toggleBtnRef}
+        variant="ghost" size="icon" iconOnly
+        className={clsx(
+          'dstu-debug-toggle',
+          visible && 'dstu-debug-toggle--open',
+          hasUnseenEvent && !visible && 'dstu-debug-toggle--pulse',
+        )}
+        aria-label={visible ? t('debug_panel.close') : t('debug_panel.open')}
+        aria-pressed={visible}
+        onClick={togglePanel}
+        style={{ pointerEvents: 'auto' }}
+      >
+        <Bug className="dstu-debug-toggle__icon" aria-hidden="true" />
+        <span
+          className={clsx(
+            'dstu-debug-toggle__status',
+            hasUnseenEvent &&
+              !visible &&
+              'dstu-debug-toggle__status--active',
           )}
-          {currentStreamId && (
-            <div className="dstu-debug-toggle__tooltip-sub">
-              {t('debug_panel.current_stream', { id: currentStreamId })}
-            </div>
-          )}
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
+        />
+      </NotionButton>
+    </CommonTooltip>
   );
 
   return (
