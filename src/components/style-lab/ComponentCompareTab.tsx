@@ -4,6 +4,9 @@ import { NotionButton } from '@/components/ui/NotionButton';
 // eslint-disable-next-line no-restricted-imports -- Style lab intentionally compares the legacy shad Button path against the target NotionButton path.
 import { Button as ShadButton } from '@/components/ui/shad/Button';
 import { Switch } from '@/components/ui/shad/Switch';
+import { Input as ShadInput } from '@/components/ui/shad/Input';
+import { Textarea as ShadTextarea } from '@/components/ui/shad/Textarea';
+import { Checkbox as ShadCheckbox } from '@/components/ui/shad/Checkbox';
 import { CommonTooltip, type TooltipPosition, type TooltipTheme } from '@/components/shared/CommonTooltip';
 // eslint-disable-next-line no-restricted-imports
 import {
@@ -122,29 +125,193 @@ function ButtonCompareSection() {
   );
 }
 
-// ─── Switch 对比 ────────────────────────────────────────────────
+// ─── Form Controls 对比 ────────────────────────────────────────
 
-function SwitchCompareSection() {
-  const [checked, setChecked] = useState(true);
+function FormControlsCompareSection() {
+  const [inputValue, setInputValue] = useState('DeepStudent');
+  const [textareaValue, setTextareaValue] = useState('多行文本示例\n支持垂直拉伸。');
+  const [switchChecked, setSwitchChecked] = useState(true);
+  const [checkboxChecked, setCheckboxChecked] = useState(true);
+  const [selectValue, setSelectValue] = useState('b');
+  const [disabled, setDisabled] = useState(false);
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-6">
-        <div className="space-y-2">
-          <p className="text-xs text-[color:var(--text-muted)]">shad Switch (Radix, 推荐)</p>
-          <div className="flex items-center gap-3">
-            <Switch checked={checked} onCheckedChange={setChecked} />
-            <Switch checked={checked} onCheckedChange={setChecked} className="scale-[0.8]" />
-          </div>
-        </div>
-        <div className="space-y-2">
-          <p className="text-xs text-[color:var(--text-muted)]">原生 checkbox (对照)</p>
-          <input type="checkbox" checked={checked} onChange={e => setChecked(e.target.checked)} className="w-4 h-4" />
-        </div>
+      <div className="flex items-center gap-4">
+        <label className="flex items-center gap-1.5 text-xs text-[color:var(--text-muted)]">
+          <Switch checked={disabled} onCheckedChange={setDisabled} />
+          Disabled
+        </label>
       </div>
-      <p className="text-[11px] text-[color:var(--text-muted)]">
-        迁移建议：业务开关保留 shad Switch 主路径。Radix 负责 role、键盘、表单事件和 data-state。
-      </p>
+
+      <div className="overflow-x-auto">
+        <table className="w-full text-xs">
+          <colgroup>
+            <col className="w-[12%]" />
+            <col className="w-[29%]" />
+            <col className="w-[29%]" />
+            <col className="w-[30%]" />
+          </colgroup>
+          <thead>
+            <tr className="border-b border-[color:var(--border-soft)]">
+              <th className="text-left py-2 pr-4 text-[color:var(--text-muted)] font-medium">控件</th>
+              <th className="text-left py-2 pr-4 text-[color:var(--text-muted)] font-medium">shad (目标)</th>
+              <th className="text-left py-2 pr-4 text-[color:var(--text-muted)] font-medium">— 备用 —</th>
+              <th className="text-left py-2 text-[color:var(--text-muted)] font-medium">原生 (遗留)</th>
+            </tr>
+          </thead>
+          <tbody>
+            {/* Input */}
+            <tr className="border-b border-[color:var(--border-soft)]">
+              <td className="py-3 pr-4 align-top text-[color:var(--text-secondary)]">Input</td>
+              <td className="py-3 pr-4 align-top">
+                <ShadInput
+                  value={inputValue}
+                  onChange={e => setInputValue(e.target.value)}
+                  placeholder="shad Input"
+                  disabled={disabled}
+                />
+              </td>
+              <td className="py-3 pr-4 align-top text-[color:var(--text-muted)]">
+                <span className="text-[11px]">（Input 无备用组件路径）</span>
+              </td>
+              <td className="py-3 align-top">
+                <input
+                  type="text"
+                  value={inputValue}
+                  onChange={e => setInputValue(e.target.value)}
+                  placeholder="native <input>"
+                  disabled={disabled}
+                  className="w-full px-3 py-1.5 rounded border text-sm disabled:opacity-50"
+                />
+              </td>
+            </tr>
+
+            {/* Textarea */}
+            <tr className="border-b border-[color:var(--border-soft)]">
+              <td className="py-3 pr-4 align-top text-[color:var(--text-secondary)]">Textarea</td>
+              <td className="py-3 pr-4 align-top">
+                <ShadTextarea
+                  rows={3}
+                  value={textareaValue}
+                  onChange={e => setTextareaValue(e.target.value)}
+                  placeholder="shad Textarea"
+                  disabled={disabled}
+                />
+              </td>
+              <td className="py-3 pr-4 align-top text-[color:var(--text-muted)]">
+                <span className="text-[11px]">（Textarea 无备用组件路径）</span>
+              </td>
+              <td className="py-3 align-top">
+                <textarea
+                  rows={3}
+                  value={textareaValue}
+                  onChange={e => setTextareaValue(e.target.value)}
+                  placeholder="native <textarea>"
+                  disabled={disabled}
+                  className="w-full px-3 py-1.5 rounded border text-sm disabled:opacity-50 resize-y"
+                />
+              </td>
+            </tr>
+
+            {/* Switch */}
+            <tr className="border-b border-[color:var(--border-soft)]">
+              <td className="py-3 pr-4 align-top text-[color:var(--text-secondary)]">Switch</td>
+              <td className="py-3 pr-4 align-top">
+                <div className="flex items-center gap-3">
+                  <Switch
+                    checked={switchChecked}
+                    onCheckedChange={setSwitchChecked}
+                    disabled={disabled}
+                  />
+                  <Switch
+                    checked={switchChecked}
+                    onCheckedChange={setSwitchChecked}
+                    disabled={disabled}
+                    className="scale-[0.8]"
+                  />
+                </div>
+              </td>
+              <td className="py-3 pr-4 align-top text-[color:var(--text-muted)]">
+                <span className="text-[11px]">（Switch 无备用组件路径）</span>
+              </td>
+              <td className="py-3 align-top">
+                <label className="inline-flex items-center gap-2 text-[11px] text-[color:var(--text-muted)]">
+                  <input
+                    type="checkbox"
+                    checked={switchChecked}
+                    onChange={e => setSwitchChecked(e.target.checked)}
+                    disabled={disabled}
+                    className="w-4 h-4"
+                  />
+                  native checkbox (无真正原生 switch)
+                </label>
+              </td>
+            </tr>
+
+            {/* Checkbox */}
+            <tr className="border-b border-[color:var(--border-soft)]">
+              <td className="py-3 pr-4 align-top text-[color:var(--text-secondary)]">Checkbox</td>
+              <td className="py-3 pr-4 align-top">
+                <label className="inline-flex items-center gap-2 text-[color:var(--text-secondary)]">
+                  <ShadCheckbox
+                    checked={checkboxChecked}
+                    onCheckedChange={v => setCheckboxChecked(v === true)}
+                    disabled={disabled}
+                  />
+                  shad Checkbox
+                </label>
+              </td>
+              <td className="py-3 pr-4 align-top text-[color:var(--text-muted)]">
+                <span className="text-[11px]">（Checkbox 无备用组件路径）</span>
+              </td>
+              <td className="py-3 align-top">
+                <label className="inline-flex items-center gap-2 text-[color:var(--text-secondary)]">
+                  <input
+                    type="checkbox"
+                    checked={checkboxChecked}
+                    onChange={e => setCheckboxChecked(e.target.checked)}
+                    disabled={disabled}
+                    className="w-4 h-4"
+                  />
+                  native checkbox
+                </label>
+              </td>
+            </tr>
+
+            {/* Select */}
+            <tr className="border-b border-[color:var(--border-soft)]">
+              <td className="py-3 pr-4 align-top text-[color:var(--text-secondary)]">Select</td>
+              <td className="py-3 pr-4 align-top text-[color:var(--text-muted)]">
+                <span className="text-[11px]">
+                  无 shad Select。推荐用 Combobox / SegmentedControl 替代。
+                </span>
+              </td>
+              <td className="py-3 pr-4 align-top text-[color:var(--text-muted)]">
+                <span className="text-[11px]">—</span>
+              </td>
+              <td className="py-3 align-top">
+                <select
+                  value={selectValue}
+                  onChange={e => setSelectValue(e.target.value)}
+                  disabled={disabled}
+                  className="w-full px-2 py-1.5 rounded border text-sm disabled:opacity-50"
+                >
+                  <option value="a">选项 A</option>
+                  <option value="b">选项 B</option>
+                  <option value="c">选项 C</option>
+                </select>
+              </td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <ul className="text-[11px] text-[color:var(--text-muted)] space-y-1 list-disc pl-4">
+        <li>Input / Textarea / Switch / Checkbox：业务代码保留 shad 主路径，原生元素仅作对照观察样式差异。</li>
+        <li>原生 <code>&lt;select&gt;</code>：不在目标设计系统内，应迁移到 Combobox 或 SegmentedControl；留在表内便于识别遗留用法。</li>
+        <li>Switch 无对应原生元素，原生 checkbox 仅作语义近似对照。</li>
+      </ul>
     </div>
   );
 }
@@ -342,14 +509,14 @@ function ToastCompareSection() {
 
 // ─── 导出主组件 ─────────────────────────────────────────────────
 
-type CompareSection = 'button' | 'switch' | 'tooltip' | 'toast';
+type CompareSection = 'button' | 'form' | 'tooltip' | 'toast';
 
 export function ComponentCompareTab() {
   const [activeSection, setActiveSection] = useState<CompareSection>('button');
 
   const sections: Array<{ id: CompareSection; label: string }> = [
     { id: 'button', label: 'Button' },
-    { id: 'switch', label: 'Switch' },
+    { id: 'form', label: 'Form Controls' },
     { id: 'tooltip', label: 'Tooltip' },
     { id: 'toast', label: 'Toast' },
   ];
@@ -378,7 +545,7 @@ export function ComponentCompareTab() {
       {/* Content */}
       <div className="pt-2">
         {activeSection === 'button' && <ButtonCompareSection />}
-        {activeSection === 'switch' && <SwitchCompareSection />}
+        {activeSection === 'form' && <FormControlsCompareSection />}
         {activeSection === 'tooltip' && <TooltipCompareSection />}
         {activeSection === 'toast' && <ToastCompareSection />}
       </div>
