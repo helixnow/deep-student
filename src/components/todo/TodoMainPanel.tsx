@@ -30,6 +30,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Input } from '@/components/ui/shad/Input';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
@@ -103,28 +104,24 @@ const TodoQuickAdd: React.FC = () => {
 
       {isExpanded && (
         <div className="flex flex-wrap items-center gap-3 px-4 pb-2.5 sm:px-6">
-          <div className="study-shell-segmented">
-            {(['none', 'low', 'medium', 'high', 'urgent'] as TodoPriority[]).map((p) => {
+          <SegmentedControl<TodoPriority>
+            ariaLabel={t('todo:fields.priority')}
+            value={priority}
+            onValueChange={setPriority}
+            size="compact"
+            itemClassName="!h-auto !px-2 !py-1 text-[11px] font-medium"
+            options={(['none', 'low', 'medium', 'high', 'urgent'] as TodoPriority[]).map((p) => {
               const config = PRIORITY_CONFIG[p];
               const isActive = priority === p;
-              return (
-                <NotionButton
-                  key={p}
-                  variant="nav"
-                  size="sm"
-                  onClick={() => setPriority(p)}
-                  className={cn(
-                    'study-shell-segmented-button !h-auto !px-2 !py-1 text-[11px] font-medium',
-                    !isActive && 'text-muted-foreground',
-                  )}
-                  data-selected={isActive}
-                  title={t(config.labelKey)}
-                >
+              return {
+                value: p,
+                title: t(config.labelKey),
+                label: (
                   <span className={isActive ? config.color : ''}>{t(config.labelKey)}</span>
-                </NotionButton>
-              );
+                ),
+              };
             })}
-          </div>
+          />
 
           <div className="flex items-center gap-1.5 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--input-shell-surface)] px-2 py-1">
             <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
@@ -418,31 +415,29 @@ const TodoItemDetail: React.FC<{
             <span className="w-16 flex-shrink-0 text-xs text-muted-foreground">
               {t('todo:fields.priority')}
             </span>
-            <div className="study-shell-segmented flex flex-wrap">
-              {(['none', 'low', 'medium', 'high', 'urgent'] as TodoPriority[]).map((p) => {
+            <SegmentedControl<TodoPriority>
+              ariaLabel={t('todo:fields.priority')}
+              value={priority}
+              onValueChange={(p) => {
+                setPriority(p);
+                updateItem({ id: item.id, priority: p });
+              }}
+              size="compact"
+              className="flex-wrap"
+              itemClassName="!h-auto !px-2 !py-0.5 text-[11px] font-medium"
+              options={(['none', 'low', 'medium', 'high', 'urgent'] as TodoPriority[]).map((p) => {
                 const isActive = priority === p;
-                return (
-                  <NotionButton
-                    key={p}
-                    variant="nav"
-                    size="sm"
-                    onClick={() => {
-                      setPriority(p);
-                      updateItem({ id: item.id, priority: p });
-                    }}
-                    className={cn(
-                      'study-shell-segmented-button !h-auto !px-2 !py-0.5 text-[11px] font-medium',
-                      !isActive && 'text-muted-foreground',
-                    )}
-                    data-selected={isActive}
-                  >
+                return {
+                  value: p,
+                  title: t(PRIORITY_CONFIG[p].labelKey),
+                  label: (
                     <span className={isActive ? PRIORITY_CONFIG[p].color : ''}>
                       {t(PRIORITY_CONFIG[p].labelKey)}
                     </span>
-                  </NotionButton>
-                );
+                  ),
+                };
               })}
-            </div>
+            />
           </div>
 
           <div className="flex items-center gap-3 py-1">
