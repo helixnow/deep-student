@@ -82,7 +82,7 @@ export const LazyTemplateManagementPage = React.lazy(() =>
 
 // UI 样式调试
 export const LazyStyleDebugPage = React.lazy(() =>
-  import('./components/style-lab/StyleDebugPage').then(m => ({ default: m.StyleDebugPage }))
+  import('./components/style-lab/StyleDebugPage')
 );
 
 // 模板 JSON 预览
