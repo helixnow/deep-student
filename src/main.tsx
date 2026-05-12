@@ -94,6 +94,7 @@ import ReactDOM from "react-dom/client";
 // 🚀 性能优化：KaTeX CSS 改为按需加载，见 src/utils/lazyStyles.ts
 import App from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { OverlayCoordinatorProvider } from './components/shared/OverlayCoordinator';
 // 日志与错误上报初始化（跨平台）：结合 Tauri 日志插件与自定义上报
 import { disposeGlobalCacheManager } from './utils/cacheConsistencyManager';
 import { DialogControlProvider } from './contexts/DialogControlContext';
@@ -356,9 +357,11 @@ const TopLevelFallback: React.FC<{ error?: any; componentStack?: string }> = ({ 
 
 const appTree = (
   <ErrorBoundary name="TopLevel" fallback={(error, componentStack) => <TopLevelFallback error={error} componentStack={componentStack} />}>
-    <DialogControlProvider>
-      <App />
-    </DialogControlProvider>
+    <OverlayCoordinatorProvider>
+      <DialogControlProvider>
+        <App />
+      </DialogControlProvider>
+    </OverlayCoordinatorProvider>
   </ErrorBoundary>
 );
 

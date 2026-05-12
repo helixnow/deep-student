@@ -1,16 +1,16 @@
 /* 思维链滚动条通用样式 */
 
 :root {
-  --thinking-scrollbar-thumb: rgba(148, 163, 184, 0.45);
-  --thinking-scrollbar-thumb-hover: rgba(148, 163, 184, 0.7);
-  --thinking-scrollbar-track: rgba(226, 232, 240, 0.16);
+  --thinking-scrollbar-thumb: var(--scrollbar-thumb);
+  --thinking-scrollbar-thumb-hover: var(--scrollbar-thumb-hover);
+  --thinking-scrollbar-track: var(--scrollbar-track);
 }
 
 /* 暗色模式滚动条 - 所有暗色palette通用 */
 [data-theme="dark"], .dark {
-  --thinking-scrollbar-thumb: rgba(148, 163, 184, 0.45);
-  --thinking-scrollbar-thumb-hover: rgba(165, 180, 252, 0.75);
-  --thinking-scrollbar-track: rgba(15, 23, 42, 0.25);
+  --thinking-scrollbar-thumb: var(--scrollbar-thumb);
+  --thinking-scrollbar-thumb-hover: var(--scrollbar-thumb-hover);
+  --thinking-scrollbar-track: var(--scrollbar-track);
 }
 
 /* 思维链滚动容器快捷类 */

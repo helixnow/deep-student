@@ -13,8 +13,8 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/shad/Input';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { Badge } from '@/components/ui/shad/Badge';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
+import { ModelCapabilityIcons } from '@/components/shared/ModelCapabilityIcons';
 import {
   Popover,
   PopoverContent,
@@ -37,6 +37,7 @@ export interface UnifiedModelInfo {
   is_default?: boolean;
   isMultimodal?: boolean;
   isReasoning?: boolean;
+  supportsTools?: boolean;
   isImageGeneration?: boolean;
   /** 模型是否已禁用（仍在列表中但不可选择，用于显示已分配但被禁用的模型） */
   isDisabled?: boolean;
@@ -214,8 +215,6 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
   );
 
   const hasModels = filteredModels.length > 0 || allowEmpty;
-  const multBadge = t('chat_host:advanced.model.tag_multimodal', '多模态');
-  const textBadge = t('chat_host:advanced.model.tag_text', '纯文本');
   const defaultEmptyLabel = emptyLabel || t('settings:select_options.none', '无');
 
   // 渲染空选项
@@ -280,21 +279,18 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
                <span className="truncate max-w-[80px]">{option.providerName}</span>
                
-               {/* 简化标签显示 */}
-               {(option.isMultimodal || option.isReasoning) && (
+               {/* 能力图标：保留 tooltip/aria-label，避免长文字挤占模型名。 */}
+               {(option.isMultimodal || option.isReasoning || option.supportsTools || option.isImageGeneration) && (
                  <>
                    <span className="w-0.5 h-0.5 rounded-full bg-muted-foreground/40" />
-                   {option.isMultimodal && (
-                     <span className="flex items-center gap-0.5 text-blue-600/80 dark:text-blue-400/80">
-                       <Box className="h-2.5 w-2.5" />
-                       {multBadge}
-                     </span>
-                   )}
-                   {option.isReasoning && (
-                      <span className="flex items-center gap-0.5 text-amber-600/80 dark:text-amber-400/80 ml-1">
-                        {t('common:reasoning', 'Reasoning')}
-                      </span>
-                   )}
+                   <ModelCapabilityIcons
+                     isMultimodal={option.isMultimodal}
+                     isReasoning={option.isReasoning}
+                     supportsTools={option.supportsTools}
+                     isImageGeneration={option.isImageGeneration}
+                     size="xs"
+                     className="gap-1"
+                   />
                  </>
                )}
                

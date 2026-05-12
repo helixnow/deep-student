@@ -43,7 +43,6 @@
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
   color: var(--mm-text);
   background: var(--mm-bg);
-  -webkit-font-smoothing: antialiased;
 }
 
 /* 隐藏滚动条但保留滚动功能 */
@@ -426,8 +425,6 @@
   border: none;
   box-shadow: none;
   padding: 0;
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
   /* 防止文字在拖拽/缩放时模糊 */
   transform: translateZ(0);
@@ -449,8 +446,6 @@
 
 /* 确保 ReactFlow viewport 不使用 3D transform 以避免文字模糊 */
 .mindmap-container .react-flow__viewport {
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
 }
 
 .mindmap-container .react-flow__edge-path {

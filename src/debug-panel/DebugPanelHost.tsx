@@ -27,7 +27,8 @@ import NotesTypographyDebugPlugin from './plugins/NotesTypographyDebugPlugin';
 import NotesOutlineDebugPlugin from './plugins/NotesOutlineDebugPlugin';
 import CrepeEditorDebugPlugin from './plugins/CrepeEditorDebugPlugin';
 import CrepeDragDropDebugPlugin from './plugins/CrepeDragDropDebugPlugin';
-import ScrollAreaDebugPlugin from './plugins/ScrollAreaDebugPlugin';
+
+
 import CrepeImageUploadDebugPlugin from './plugins/CrepeImageUploadDebugPlugin';
 import EssayGradingTooltipDebugPlugin from './plugins/EssayGradingTooltipDebugPlugin';
 import { DEBUG_PANEL_PLUGIN_IDS } from '../config/debugPanel';
@@ -444,15 +445,6 @@ const PLUGINS: DebugPanelPluginEntry[] = [
     Component: CrepeDragDropDebugPlugin,
     labelDefault: 'Crepe拖放调试',
     descriptionDefault: '全面监控 Crepe 编辑器拖放功能的完整生命周期：dragstart/dragover/drop 事件、BlockService 状态、dataTransfer 数据、事件传播等。实时诊断拖放问题，支持一键复制日志。',
-    groupId: 'notes-editor',
-  },
-  {
-    id: 'scroll-area-debug',
-    labelKey: 'debug_panel.plugin_scroll_area_debug',
-    descriptionKey: 'debug_panel.plugin_scroll_area_debug_desc',
-    Component: ScrollAreaDebugPlugin,
-    labelDefault: '滚动区域调试',
-    descriptionDefault: '全面监控 CustomScrollArea 与 ProseMirror 选区的交互：MutationObserver/ResizeObserver 触发、滚动条状态变化、选区变化、DOM 尺寸变化等。用于诊断选中文本时滚动条闪烁问题。',
     groupId: 'notes-editor',
   },
   {
