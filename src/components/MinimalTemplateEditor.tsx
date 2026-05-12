@@ -626,7 +626,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                             {formData.fields.map(field => (
                               <code
                                 key={field}
-                                className="px-1.5 py-0.5 bg-muted/50 rounded text-[10px] font-mono cursor-pointer hover:bg-muted transition-colors"
+                                className="px-1.5 py-0.5 bg-muted/50 rounded text-[10px] font-mono cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
                                 onClick={() => {
                                   copyTextToClipboard(`{{${field}}}`);
                                 }}
@@ -740,7 +740,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                               {formData.fields.map(field => (
                                 <code
                                   key={field}
-                                  className="px-1.5 py-0.5 bg-muted/50 rounded text-[10px] font-mono cursor-pointer hover:bg-muted transition-colors"
+                                  className="px-1.5 py-0.5 bg-muted/50 rounded text-[10px] font-mono cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
                                   onClick={() => {
                                     copyTextToClipboard(`{{${field}}}`);
                                   }}
@@ -845,7 +845,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                                   [fieldName]: { ...rule, field_type: e.target.value as any }
                                 });
                               }}
-                              className="flex h-9 w-full rounded-md border border-transparent bg-transparent hover:bg-muted/30 focus-within:bg-background focus-within:border-border/60 focus-within:ring-1 focus-within:ring-border/50 px-3 py-2 text-sm text-foreground focus:outline-none transition-colors"
+                              className="flex h-9 w-full rounded-md border border-transparent bg-transparent hover:bg-[var(--interactive-hover)] focus-within:bg-background focus-within:border-border/60 focus-within:ring-1 focus-within:ring-border/50 px-3 py-2 text-sm text-foreground focus:outline-none transition-colors"
                             >
                               <option value="Text">{t('field_type.text', '文本')}</option>
                               <option value="Integer">{t('field_type_option.integer', '整数')}</option>

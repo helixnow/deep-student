@@ -1130,7 +1130,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                 <div className="rounded-xl border border-border/50 overflow-hidden">
                   {/* 筛选头部 */}
                   <div
-                    className="flex items-center justify-between px-4 py-2.5 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors"
+                    className="flex items-center justify-between px-4 py-2.5 bg-muted/30 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
                     onClick={() => setShowQuestionFilter(prev => !prev)}
                   >
                     <div className="flex items-center gap-2">
@@ -1189,7 +1189,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                               key={card.card_id}
                               className={cn(
                                 'flex items-start gap-2.5 px-4 py-2.5 cursor-pointer transition-colors',
-                                isExcluded ? 'bg-muted/20 opacity-60' : 'hover:bg-muted/10'
+                                isExcluded ? 'bg-muted/20 opacity-60' : 'hover:bg-[var(--interactive-hover)]'
                               )}
                               onClick={() => {
                                 setExcludedCardIds(prev => {

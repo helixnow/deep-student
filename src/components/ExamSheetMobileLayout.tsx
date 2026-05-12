@@ -170,7 +170,7 @@ const CardSelector: React.FC<CardSelectorProps> = ({
               'border-2',
               isSelected
                 ? 'bg-primary text-primary-foreground border-primary scale-110 shadow-lg'
-                : 'bg-card text-foreground border-border hover:border-primary/50 hover:bg-accent'
+                : 'bg-card text-foreground border-border hover:border-primary/50 hover:bg-[var(--interactive-hover)]'
             )}
           >
             {index + 1}
@@ -376,7 +376,7 @@ export const ExamSheetMobileLayout: React.FC<ExamSheetMobileLayoutProps> = ({
               variant="ghost"
               size="icon"
               onClick={onBack}
-              className="w-10 h-10 rounded-full text-white hover:bg-white/20"
+              className="w-10 h-10 rounded-full text-white hover:bg-[var(--overlay-control-hover)]"
             >
               <ArrowLeft className="w-5 h-5" />
             </NotionButton>

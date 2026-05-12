@@ -450,7 +450,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                     <NotionButton
                       variant="ghost"
                       size="sm"
-                      className="!h-6 !px-2 text-white hover:bg-white/20"
+                      className="!h-6 !px-2 text-white hover:bg-[var(--overlay-control-hover)]"
                       onClick={(e) => { e.stopPropagation(); executeCrop(); }}
                     >
                       <Check size={14} className="mr-1" />
@@ -460,7 +460,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                   <NotionButton
                     variant="ghost"
                     size="sm"
-                    className="!h-6 !px-2 text-white hover:bg-white/20"
+                    className="!h-6 !px-2 text-white hover:bg-[var(--overlay-control-hover)]"
                     onClick={(e) => { e.stopPropagation(); setIsCropMode(false); setCropRect(null); }}
                   >
                     <X size={14} className="mr-1" />

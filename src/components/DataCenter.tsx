@@ -1,5 +1,5 @@
 import React from 'react';
-import { Database } from 'lucide-react';
+import { Database } from '@phosphor-icons/react';
 import { HeaderTemplate } from './HeaderTemplate';
 import { DataImportExport } from './DataImportExport';
 import { CustomScrollArea } from './custom-scroll-area';

@@ -361,7 +361,7 @@ function DatabaseConflictCard({
     <Card className="overflow-hidden">
       {/* 卡片头部 */}
       <div
-        className="flex items-center gap-3 p-4 cursor-pointer hover:bg-muted/50 transition-colors"
+        className="flex items-center gap-3 p-4 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
         onClick={onToggleExpand}
       >
         {isExpanded ? (
@@ -634,7 +634,7 @@ function RecordConflictCard({
   return (
     <Card className="overflow-hidden">
       <div
-        className="flex items-center gap-3 p-4 cursor-pointer hover:bg-muted/50 transition-colors"
+        className="flex items-center gap-3 p-4 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
         onClick={onToggleExpand}
       >
         {isExpanded ? (

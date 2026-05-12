@@ -96,7 +96,7 @@ const McpStatusIndicator: React.FC<{ compact?: boolean }> = ({ compact }) => {
           ? (isConnected ? t('mcpStatus.connectedOk') : `${t('mcpStatus.initFailed')}${status?.last_error ? '：' + String(status.last_error).slice(0, 120) : ''}`)
           : (status?.available ? (status?.enabled_reason || t('mcpStatus.notEnabledMcpTools')) : `${t('mcpStatus.initFailed')}${status?.last_error ? '：' + String(status.last_error).slice(0, 120) : ''}`)}
       </span>
-      <NotionButton variant="ghost" size="sm" onClick={() => { McpService.connectAll().catch((err) => { debugLog.warn('[MCP] Connect failed:', err); }); load(); }} title={t('actions.refresh')} className="!px-2 !py-1 !h-auto text-xs border border-border text-muted-foreground hover:bg-muted/80">
+      <NotionButton variant="ghost" size="sm" onClick={() => { McpService.connectAll().catch((err) => { debugLog.warn('[MCP] Connect failed:', err); }); load(); }} title={t('actions.refresh')} className="!px-2 !py-1 !h-auto text-xs border border-border text-muted-foreground hover:bg-[var(--interactive-hover)]">
         <RefreshCcw size={12} /> {t('actions.refresh')}
       </NotionButton>
       {status?.server_info && (

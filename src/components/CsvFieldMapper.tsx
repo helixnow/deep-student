@@ -228,7 +228,7 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
       <div className="rounded-lg border border-border overflow-hidden">
         <Table>
           <TableHeader>
-            <TableRow className="bg-muted/30 hover:bg-muted/30">
+            <TableRow className="bg-muted/30 hover:bg-[var(--interactive-hover)]">
               <TableHead className="w-[180px] font-medium">
                 {t('exam_sheet:csv.csv_column', 'CSV 列')}
               </TableHead>
@@ -322,7 +322,7 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
           <div className="rounded-lg border border-border overflow-auto max-h-[200px]">
             <Table>
               <TableHeader>
-                <TableRow className="bg-muted/30 hover:bg-muted/30">
+                <TableRow className="bg-muted/30 hover:bg-[var(--interactive-hover)]">
                   <TableHead className="w-10 text-center">#</TableHead>
                   {headers.map((header) => (
                     <TableHead key={header} className="min-w-[120px]">
