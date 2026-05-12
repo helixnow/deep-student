@@ -21,6 +21,7 @@ import {
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Input } from '@/components/ui/shad/Input';
 import { NotionAlertDialog } from '../ui/NotionDialog';
 import { showGlobalNotification } from '../UnifiedNotification';
@@ -783,36 +784,42 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             />
           </div>
 
-          <div className={cn("study-shell-segmented flex items-center gap-1 overflow-x-auto scrollbar-none", isSmallScreen && "-mx-1 px-1")}>
-            {locationTabs.map(tab => {
-              const count = locationCounts[tab.id];
-              const isActiveTab = locationFilter === tab.id;
-              if (tab.id !== 'all' && count === 0) return null;
-              return (
-                <NotionButton
-                  key={tab.id}
-                  variant="nav" size="sm"
-                  onClick={() => setLocationFilter(tab.id)}
-                  className={cn(
-                    'study-shell-segmented-button !px-2.5 !py-1 !h-auto text-[11px] font-medium whitespace-nowrap',
-                    isActiveTab
-                      ? 'text-foreground'
-                      : 'text-muted-foreground hover:text-foreground'
-                  )}
-                  data-selected={isActiveTab}
-                >
-                  <span className={cn("opacity-70", isActiveTab && "opacity-100")}>{tab.icon}</span>
-                  <span>{tab.label}</span>
-                  <span className={cn(
-                    'ml-0.5 text-[10px] opacity-60',
-                    isActiveTab && 'opacity-100 font-bold'
-                  )}>
-                    {count}
-                  </span>
-                </NotionButton>
-              );
-            })}
-          </div>
+          <SegmentedControl<typeof locationFilter>
+            ariaLabel={t('skills:location.all', '全部')}
+            value={locationFilter}
+            onValueChange={setLocationFilter}
+            size="compact"
+            className={cn(
+              'flex items-center gap-1 overflow-x-auto scrollbar-none',
+              isSmallScreen && '-mx-1 px-1',
+            )}
+            itemClassName="!h-auto !px-2.5 !py-1 text-[11px] font-medium whitespace-nowrap"
+            options={locationTabs
+              .filter((tab) => tab.id === 'all' || locationCounts[tab.id] > 0)
+              .map((tab) => {
+                const count = locationCounts[tab.id];
+                const isActiveTab = locationFilter === tab.id;
+                return {
+                  value: tab.id,
+                  label: (
+                    <>
+                      <span className={cn('opacity-70', isActiveTab && 'opacity-100')}>
+                        {tab.icon}
+                      </span>
+                      <span>{tab.label}</span>
+                      <span
+                        className={cn(
+                          'ml-0.5 text-[10px] opacity-60',
+                          isActiveTab && 'opacity-100 font-bold',
+                        )}
+                      >
+                        {count}
+                      </span>
+                    </>
+                  ),
+                };
+              })}
+          />
         </div>
       </div>
 
