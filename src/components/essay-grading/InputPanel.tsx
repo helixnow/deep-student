@@ -89,7 +89,7 @@ const CancelConfirmButton: React.FC<{ onCancel: () => void }> = ({ onCancel }) =
 
   return (
     <>
-      <NotionButton variant="ghost" size="sm" onClick={() => setShowConfirm(true)} className="text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50">
+      <NotionButton variant="ghost" size="sm" onClick={() => setShowConfirm(true)} className="text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]">
         <Loader2 className="w-3.5 h-3.5 animate-spin" />
         {t('common:cancel')}
       </NotionButton>
@@ -213,7 +213,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
               variant="ghost"
               size="sm"
               triggerIcon={<GraduationCap className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />}
-              className="max-w-full text-sm text-foreground/80 hover:text-foreground hover:bg-muted/50 transition-colors"
+              className="max-w-full text-sm text-foreground/80 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors"
               placeholder={t('essay_grading:mode.select')}
               options={modes.map((mode) => ({
                 value: mode.id,
@@ -230,7 +230,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
         {/* 右侧：操作按钮组 - 不收缩 */}
         <div className="flex items-center gap-1 shrink-0">
           <CommonTooltip content={t('essay_grading:import_images.hint', { max: ocrMaxFiles })}>
-            <NotionButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isGrading} aria-label={t('common:aria.upload_image')} className="hidden sm:flex h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 disabled:opacity-40">
+            <NotionButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isGrading} aria-label={t('common:aria.upload_image')} className="hidden sm:flex h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-40">
               <ImagePlus className="w-3.5 h-3.5" />
               <span className="text-xs hidden xl:inline">{t('essay_grading:import_images.button')}</span>
             </NotionButton>
@@ -239,7 +239,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
           {/* 非移动端：设置按钮（始终显示图标，大屏显示文字） */}
           {onOpenSettings && (
             <CommonTooltip content={t('essay_grading:settings.title')}>
-              <NotionButton variant="ghost" size="sm" onClick={onOpenSettings} className="h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-muted/50">
+              <NotionButton variant="ghost" size="sm" onClick={onOpenSettings} className="h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]">
                 <PenTool className="w-3.5 h-3.5" />
                 <span className="text-xs hidden xl:inline">{t('essay_grading:settings.title')}</span>
               </NotionButton>
@@ -255,7 +255,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
 
           {roundNavigation && roundNavigation.total > 1 && (
             <div className="hidden sm:flex items-center gap-1">
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onPrev} disabled={roundNavigation.currentIndex <= 0} aria-label={t('common:aria.previous_round')} className="!h-6 !w-6 text-muted-foreground/50 hover:text-foreground hover:bg-muted/50 disabled:opacity-30">
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onPrev} disabled={roundNavigation.currentIndex <= 0} aria-label={t('common:aria.previous_round')} className="!h-6 !w-6 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30">
                 <ChevronLeft className="w-3.5 h-3.5" />
               </NotionButton>
               <div className="flex items-center gap-0.5">
@@ -271,7 +271,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                   />
                 ))}
               </div>
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onNext} disabled={roundNavigation.currentIndex >= roundNavigation.total - 1} aria-label={t('common:aria.next_round')} className="!h-6 !w-6 text-muted-foreground/50 hover:text-foreground hover:bg-muted/50 disabled:opacity-30">
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onNext} disabled={roundNavigation.currentIndex >= roundNavigation.total - 1} aria-label={t('common:aria.next_round')} className="!h-6 !w-6 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30">
                 <ChevronRight className="w-3.5 h-3.5" />
               </NotionButton>
             </div>
@@ -287,12 +287,12 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
               {t('essay_grading:stats.punctuation_total')}: {textStats.punctuationTotal.toLocaleString()}
             </span>
             {safeInputText && !isGrading && (
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={onClear} aria-label={t('common:aria.clear_content')} className="!h-7 !w-7 text-muted-foreground/60 hover:text-foreground hover:bg-muted/50">
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={onClear} aria-label={t('common:aria.clear_content')} className="!h-7 !w-7 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]">
                 <Trash2 className="w-3.5 h-3.5" />
               </NotionButton>
             )}
             {isGrading ? (
-              <NotionButton variant="ghost" size="sm" onClick={onCancelGrading} aria-label={t('common:aria.cancel_grading')} className="h-7 px-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50">
+              <NotionButton variant="ghost" size="sm" onClick={onCancelGrading} aria-label={t('common:aria.cancel_grading')} className="h-7 px-2 text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]">
                 <Loader2 className="w-3.5 h-3.5 animate-spin" />
               </NotionButton>
             ) : (
@@ -377,7 +377,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
               'flex items-center gap-2 w-full px-4 py-2 text-xs transition-colors',
               showTopicSection
                 ? 'text-foreground bg-muted/25'
-                : 'text-muted-foreground/70 hover:text-foreground hover:bg-muted/20'
+                : 'text-muted-foreground/70 hover:text-foreground hover:bg-[var(--interactive-hover)]'
             )}
           >
             <span className="inline-flex items-center justify-center w-4 h-4 rounded bg-muted/60">
@@ -425,7 +425,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                 {onTopicFilesDropped && !isGrading && (
                   <button
                     onClick={() => topicFileInputRef.current?.click()}
-                    className="w-11 h-11 rounded-md border border-dashed border-border/60 bg-background/60 flex items-center justify-center text-muted-foreground/55 hover:text-foreground hover:border-foreground/35 hover:bg-muted/20 transition-colors"
+                    className="w-11 h-11 rounded-md border border-dashed border-border/60 bg-background/60 flex items-center justify-center text-muted-foreground/55 hover:text-foreground hover:border-foreground/35 hover:bg-[var(--interactive-hover)] transition-colors"
                     aria-label={t('essay_grading:topic.add_image')}
                   >
                     <ImagePlus className="w-4 h-4" />
@@ -455,7 +455,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                   <h3 className="text-sm font-medium text-foreground/70">{t('essay_grading:empty_state.title')}</h3>
                   <p className="text-xs text-muted-foreground/50 mt-1 max-w-[240px]">{t('essay_grading:empty_state.description')}</p>
                 </div>
-                <NotionButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} className="text-xs text-muted-foreground/70 hover:text-foreground hover:bg-muted/50 border border-border/30">
+                <NotionButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} className="text-xs text-muted-foreground/70 hover:text-foreground hover:bg-[var(--interactive-hover)] border border-border/30">
                   <ImagePlus className="w-3.5 h-3.5" />
                   {t('essay_grading:empty_state.ocr_hint')}
                 </NotionButton>

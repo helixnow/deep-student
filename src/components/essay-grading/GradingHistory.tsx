@@ -86,7 +86,7 @@ export const GradingHistory: React.FC<GradingHistoryProps> = ({
               value={historySearch}
               onChange={(e) => setHistorySearch(e.target.value)}
               placeholder={t('essay_grading:history.search_placeholder')}
-              className="pl-8 h-8 text-xs bg-muted/30 border-transparent hover:bg-muted/50 focus:bg-background focus:border-primary/50 transition-all shadow-none rounded-md"
+              className="pl-8 h-8 text-xs bg-muted/30 border-transparent hover:bg-[var(--interactive-hover)] focus:bg-background focus:border-primary/50 transition-all shadow-none rounded-md"
             />
           </div>
         </div>
@@ -117,7 +117,7 @@ export const GradingHistory: React.FC<GradingHistoryProps> = ({
                 {filteredHistory.map((item) => (
                   <div
                     key={item.id}
-                    className="group relative border-b hover:bg-muted/30 transition-colors cursor-pointer"
+                    className="group relative border-b hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer"
                     onClick={() => onRestoreHistory(item)}
                   >
                     <div className="px-6 py-4">

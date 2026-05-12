@@ -65,7 +65,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
           {currentRound > 0 && (
             <div className="flex items-center gap-0.5">
               {roundNavigation && roundNavigation.total > 1 && (
-                <NotionButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onPrev} disabled={roundNavigation.currentIndex <= 0} className="sm:hidden !h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-muted/50 disabled:opacity-30">
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onPrev} disabled={roundNavigation.currentIndex <= 0} className="sm:hidden !h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30">
                   <ChevronLeft className="w-3 h-3" />
                 </NotionButton>
               )}
@@ -80,7 +80,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
                 )}
               </span>
               {roundNavigation && roundNavigation.total > 1 && (
-                <NotionButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onNext} disabled={roundNavigation.currentIndex >= roundNavigation.total - 1} className="sm:hidden !h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-muted/50 disabled:opacity-30">
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onNext} disabled={roundNavigation.currentIndex >= roundNavigation.total - 1} className="sm:hidden !h-5 !w-5 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30">
                   <ChevronRight className="w-3 h-3" />
                 </NotionButton>
               )}
@@ -100,12 +100,12 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
           {gradingResult && (
             <>
               <CommonTooltip content={t('essay_grading:result_section.copy')}>
-                <NotionButton variant="ghost" size="icon" iconOnly onClick={onCopyResult} className="!h-7 !w-7 text-muted-foreground/60 hover:text-foreground hover:bg-muted/50" aria-label="copy">
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={onCopyResult} className="!h-7 !w-7 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]" aria-label="copy">
                   <Copy className="w-3.5 h-3.5" />
                 </NotionButton>
               </CommonTooltip>
               <CommonTooltip content={t('essay_grading:result_section.export')}>
-                <NotionButton variant="ghost" size="icon" iconOnly onClick={onExportResult} className="!h-7 !w-7 text-muted-foreground/60 hover:text-foreground hover:bg-muted/50" aria-label="export">
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={onExportResult} className="!h-7 !w-7 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]" aria-label="export">
                   <Download className="w-3.5 h-3.5" />
                 </NotionButton>
               </CommonTooltip>
@@ -144,7 +144,7 @@ export const ResultPanel = React.forwardRef<HTMLDivElement, ResultPanelProps>(({
                   {error}
                 </div>
                 {canRetry && onRetry && (
-                  <NotionButton variant="default" size="sm" onClick={onRetry} className="mt-3 text-xs text-foreground/80 hover:text-foreground border border-border/50 hover:bg-muted/50">
+                  <NotionButton variant="default" size="sm" onClick={onRetry} className="mt-3 text-xs text-foreground/80 hover:text-foreground border border-border/50 hover:bg-[var(--interactive-hover)]">
                     <RefreshCw className="w-3 h-3" />
                     {t('essay_grading:actions.retry')}
                   </NotionButton>

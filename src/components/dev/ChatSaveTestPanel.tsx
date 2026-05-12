@@ -1128,7 +1128,7 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
               <Play size={16} />
               {isRunning ? t('dev:save_test.buttons.running') : t('dev:save_test.buttons.start')}
             </NotionButton>
-            <NotionButton variant="default" size="sm" data-testid="btn-reset-test" onClick={resetTest} disabled={isRunning || isAutoTesting} className="!px-4 !py-2 bg-muted/50 text-[hsl(var(--foreground))] hover:bg-accent disabled:opacity-50">
+            <NotionButton variant="default" size="sm" data-testid="btn-reset-test" onClick={resetTest} disabled={isRunning || isAutoTesting} className="!px-4 !py-2 bg-muted/50 text-[hsl(var(--foreground))] hover:bg-[var(--interactive-hover)] disabled:opacity-50">
               <RotateCcw size={16} />
             </NotionButton>
           </div>
@@ -1331,7 +1331,7 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
                 )}
               </NotionButton>
               <div className="flex items-center gap-2">
-                <NotionButton variant="ghost" size="sm" data-testid="btn-copy-logs" onClick={copyLogs} className="!px-2 !py-1 !h-auto text-xs bg-muted/50 hover:bg-accent text-[hsl(var(--foreground))]">
+                <NotionButton variant="ghost" size="sm" data-testid="btn-copy-logs" onClick={copyLogs} className="!px-2 !py-1 !h-auto text-xs bg-muted/50 hover:bg-[var(--interactive-hover)] text-[hsl(var(--foreground))]">
                   <Copy size={12} />
                   {t('common:copy')}
                 </NotionButton>

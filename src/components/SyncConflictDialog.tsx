@@ -235,7 +235,7 @@ function ConflictItem({
     <div className="border rounded-lg overflow-hidden">
       {/* 冲突头部 */}
       <div 
-        className="flex items-center gap-3 p-3 bg-muted/50 cursor-pointer hover:bg-muted/80 transition-colors"
+        className="flex items-center gap-3 p-3 bg-muted/50 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
         onClick={onToggleExpand}
       >
         <Checkbox
@@ -484,7 +484,7 @@ export function SyncConflictDialog({
                           className={`cursor-pointer transition-all bg-transparent ${
                             batchStrategy === strategy
                               ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
-                              : 'hover:border-border/60 hover:bg-muted/30 border-muted'
+                              : 'hover:border-border/60 hover:bg-[var(--interactive-hover)] border-muted'
                           }`}
                         >
                           <input

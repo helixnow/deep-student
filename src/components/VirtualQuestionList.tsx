@@ -123,7 +123,7 @@ export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
                   'flex items-center gap-3 px-3 py-2 border-b border-border/50 cursor-pointer transition-colors',
                   isActive
                     ? 'bg-primary/10 border-l-2 border-l-primary'
-                    : 'hover:bg-muted/50',
+                    : 'hover:bg-[var(--interactive-hover)]',
                 )}
                 onClick={() => handleSelect(question, virtualItem.index)}
               >

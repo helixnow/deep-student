@@ -20,14 +20,14 @@ import {
   Legend,
 } from 'recharts';
 import {
-  Zap,
-  Activity,
+  Lightning,
+  Pulse,
   CheckCircle,
   Clock,
-  TrendingUp,
+  TrendUp,
   Cpu,
-  RefreshCw,
-} from 'lucide-react';
+  ArrowsClockwise,
+} from '@phosphor-icons/react';
 import { cn } from '../../lib/utils';
 import { Skeleton } from '../ui/shad/Skeleton';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -173,7 +173,7 @@ const CombinedTrend: React.FC<CombinedTrendProps> = ({ tokenData, sessionData })
     return (
       <div>
         <div className="flex items-center gap-2 mb-4">
-          <TrendingUp className="w-4 h-4 text-muted-foreground/70" />
+        <TrendUp size={16} className="text-muted-foreground/70" />
           <h3 className="font-medium text-sm text-foreground/80">{t('activity_trend')}</h3>
         </div>
         <div className="h-[220px] flex items-center justify-center text-muted-foreground/40 text-xs">
@@ -186,7 +186,7 @@ const CombinedTrend: React.FC<CombinedTrendProps> = ({ tokenData, sessionData })
   return (
     <div>
       <div className="flex items-center gap-2 mb-6 pl-1">
-        <TrendingUp className="w-4 h-4 text-muted-foreground/70" />
+        <TrendUp size={16} className="text-muted-foreground/70" />
         <h3 className="font-medium text-sm text-foreground/80">{t('activity_trend')}</h3>
       </div>
       <div className="w-full h-[220px]">
@@ -296,7 +296,7 @@ const ModelDistribution: React.FC<ModelDistributionProps> = ({ data }) => {
     return (
       <div>
         <div className="flex items-center gap-2 mb-4">
-          <Cpu className="w-4 h-4 text-muted-foreground/70" />
+          <Cpu size={16} className="text-muted-foreground/70" />
           <h3 className="font-medium text-sm text-foreground/80">{t('model_distribution')}</h3>
         </div>
         <div className="h-[220px] flex items-center justify-center text-muted-foreground/40 text-xs">
@@ -336,7 +336,7 @@ const ModelDistribution: React.FC<ModelDistributionProps> = ({ data }) => {
   return (
     <div>
       <div className="flex items-center gap-2 mb-6 pl-1">
-        <Cpu className="w-4 h-4 text-muted-foreground/70" />
+        <Cpu size={16} className="text-muted-foreground/70" />
         <h3 className="font-medium text-sm text-foreground/80">{t('model_distribution')}</h3>
       </div>
       <div className="flex items-center">
@@ -416,7 +416,7 @@ const CallerDistribution: React.FC<CallerDistributionProps> = ({ data }) => {
     return (
       <div>
         <div className="flex items-center gap-2 mb-4">
-          <Activity className="w-4 h-4 text-muted-foreground/70" />
+          <Pulse size={16} className="text-muted-foreground/70" />
           <h3 className="font-medium text-sm text-foreground/80">{t('module_stats')}</h3>
         </div>
         <div className="h-[220px] flex items-center justify-center text-muted-foreground/40 text-xs">
@@ -438,7 +438,7 @@ const CallerDistribution: React.FC<CallerDistributionProps> = ({ data }) => {
   return (
     <div>
       <div className="flex items-center gap-2 mb-6 pl-1">
-        <Activity className="w-4 h-4 text-muted-foreground/70" />
+        <Pulse size={16} className="text-muted-foreground/70" />
         <h3 className="font-medium text-sm text-foreground/80">{t('module_stats')}</h3>
       </div>
       <div className="flex items-center">
@@ -602,7 +602,7 @@ export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
       <div className={cn('w-full', className)}>
         <div className="flex items-center justify-end mb-4">
           <NotionButton variant="ghost" size="sm" onClick={loadData}>
-            <RefreshCw className="w-3.5 h-3.5 mr-2" />
+            <ArrowsClockwise size={14} className="mr-2" />
             {t('actions.retry')}
           </NotionButton>
         </div>
@@ -625,7 +625,7 @@ export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
       {!statsOnly && (
         <div className="flex justify-end mb-4">
           <NotionButton variant="ghost" size="sm" onClick={loadData} className="text-muted-foreground hover:text-foreground h-8 px-2">
-            <RefreshCw className="w-3.5 h-3.5" />
+            <ArrowsClockwise size={14} />
           </NotionButton>
         </div>
       )}
@@ -633,13 +633,13 @@ export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
       {/* 统计属性列表 */}
       {!chartsOnly && (
         <div className={statsOnly ? 'space-y-0' : 'space-y-0 mb-8'}>
-          <PropRow icon={<Activity className="h-3.5 w-3.5" />} label={t('summary.totalCalls')}>
+          <PropRow icon={<Pulse size={14} />} label={t('summary.totalCalls')}>
             <span className="font-semibold tabular-nums">{formatNumber(Number(summary?.totalRequests || 0))}</span>
             <span className="text-muted-foreground/50 ml-1 text-[12px]">
               {t('summary.cumulativeRequests')}
             </span>
           </PropRow>
-          <PropRow icon={<Zap className="h-3.5 w-3.5" />} label={t('summary.totalTokens')}>
+          <PropRow icon={<Lightning size={14} />} label={t('summary.totalTokens')}>
             <span className="font-semibold tabular-nums">{formatNumber(Number(summary?.totalTokens || 0))}</span>
             <span className="text-muted-foreground/50 ml-1 text-[12px]">
               {t('summary.tokenBreakdown', {
@@ -648,13 +648,13 @@ export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
               })}
             </span>
           </PropRow>
-          <PropRow icon={<CheckCircle className="h-3.5 w-3.5" />} label={t('summary.successRate')}>
+          <PropRow icon={<CheckCircle size={14} />} label={t('summary.successRate')}>
             <span className="font-semibold tabular-nums">{successRate ? `${successRate}%` : '-'}</span>
             <span className="text-muted-foreground/50 ml-1 text-[12px]">
               {summary?.successRequests || 0} / {summary?.totalRequests || 0}
             </span>
           </PropRow>
-          <PropRow icon={<Clock className="h-3.5 w-3.5" />} label={t('summary.avgDuration')}>
+          <PropRow icon={<Clock size={14} />} label={t('summary.avgDuration')}>
             <span className="tabular-nums">{formatDuration(summary?.avgDurationMs)}</span>
             <span className="text-muted-foreground/50 ml-1 text-[12px]">
               {t('summary.perRequestAvg')}

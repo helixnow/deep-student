@@ -169,7 +169,7 @@ export function DocumentUploadPanel({
               variant="outline"
               size="sm"
               onClick={() => fileInputRef.current?.click()}
-              className="border-transparent ring-1 ring-border/40 bg-card text-foreground hover:bg-accent/50"
+              className="border-transparent ring-1 ring-border/40 bg-card text-foreground hover:bg-[var(--interactive-hover)]"
             >
               {t('upload_button')}
             </NotionButton>

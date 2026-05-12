@@ -30,11 +30,11 @@ import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { useMobileHeader } from '@/components/layout';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import {
-  RefreshCw, ChevronDown, ChevronRight, Play, Pause, RotateCcw,
-  Trash2, Download, ExternalLink, AlertTriangle, CheckCircle2,
-  Loader2, FileText, Hash, TrendingUp,
-  BarChart3, Circle, Search, X, ArrowUpDown, MessageSquarePlus,
-} from 'lucide-react';
+  ArrowsClockwise, CaretDown, CaretRight, Play, Pause, ArrowCounterClockwise,
+  Trash, DownloadSimple, ArrowSquareOut, Warning, CheckCircle,
+  CircleNotch, FileText, Hash, TrendUp,
+  ChartBar, Circle, MagnifyingGlass, X, ArrowsDownUp, ChatCircleDots,
+} from '@phosphor-icons/react';
 import type { AnkiCard, CustomAnkiTemplate } from '@/types';
 import { exportCardsAsApkg } from '@/chat-v2/anki';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
@@ -553,15 +553,15 @@ const SessionRow: React.FC<{
       {/* ---- 主行 ---- */}
       <div
         className="flex items-center gap-3 px-3 py-2 cursor-pointer
-          hover:bg-muted/5
+          hover:bg-[var(--interactive-hover)]
           transition-colors duration-100"
         onClick={onToggle}
       >
         {/* 展开箭头 */}
         <span className="text-muted-foreground/30 w-4 flex-shrink-0">
           {expanded
-            ? <ChevronDown className="h-3.5 w-3.5" />
-            : <ChevronRight className="h-3.5 w-3.5" />}
+            ? <CaretDown className="h-3.5 w-3.5" />
+            : <CaretRight className="h-3.5 w-3.5" />}
         </span>
 
         {/* 文档名 */}
@@ -616,7 +616,7 @@ const SessionRow: React.FC<{
           {group === 'attention' && session.pausedTasks === 0 && (
             <CommonTooltip content={t('taskDashboard.retryFailed')}>
               <NotionButton size="sm" variant="ghost" onClick={() => act('retryFailed')} disabled={!!busy} className="h-6 w-6 p-0">
-                <RotateCcw className="h-3 w-3" />
+                <ArrowCounterClockwise className="h-3 w-3" />
               </NotionButton>
             </CommonTooltip>
           )}
@@ -624,14 +624,14 @@ const SessionRow: React.FC<{
           {session.totalCards > 0 && (
             <CommonTooltip content={t('taskDashboard.quickExport')}>
               <NotionButton size="sm" variant="ghost" onClick={handleQuickExport} disabled={!!busy || loadingCards} className="h-6 w-6 p-0">
-                <Download className="h-3 w-3" />
+                <DownloadSimple className="h-3 w-3" />
               </NotionButton>
             </CommonTooltip>
           )}
           {session.sourceSessionId && (
             <CommonTooltip content={t('taskDashboard.jumpToChat')}>
               <NotionButton size="sm" variant="ghost" onClick={onJump} className="h-6 w-6 p-0">
-                <ExternalLink className="h-3 w-3" />
+                <ArrowSquareOut className="h-3 w-3" />
               </NotionButton>
             </CommonTooltip>
           )}
@@ -644,7 +644,7 @@ const SessionRow: React.FC<{
               disabled={!!busy}
               className={`h-6 p-0 ${deleteConfirm ? 'px-2 gap-1' : 'w-6'}`}
             >
-              <Trash2 className="h-3 w-3" />
+              <Trash className="h-3 w-3" />
               {deleteConfirm && (
                 <span className="text-[10px]">{t('taskDashboard.confirmDeleteHint')}</span>
               )}
@@ -666,10 +666,10 @@ const SessionRow: React.FC<{
                 </span>
               )}
             </PropRow>
-            <PropRow icon={<BarChart3 className="h-3.5 w-3.5" />} label={t('taskDashboard.progressLabel')}>
+            <PropRow icon={<ChartBar className="h-3.5 w-3.5" />} label={t('taskDashboard.progressLabel')}>
               <InlineProgress completed={session.completedTasks} total={session.totalTasks} failed={session.failedTasks} />
             </PropRow>
-            <PropRow icon={<TrendingUp className="h-3.5 w-3.5" />} label={t('taskDashboard.propTotalCards')}>
+            <PropRow icon={<TrendUp className="h-3.5 w-3.5" />} label={t('taskDashboard.propTotalCards')}>
               <span className="tabular-nums">{session.totalCards}</span>
             </PropRow>
             <PropRow icon={<Circle className="h-3.5 w-3.5" />} label={t('taskDashboard.timeCreated')}>
@@ -684,12 +684,12 @@ const SessionRow: React.FC<{
           <div className="flex flex-wrap gap-1.5 pt-1">
             {session.totalCards > 0 && (
               <NotionButton size="sm" variant="default" onClick={handleQuickExport} disabled={!!busy || loadingCards}>
-                <Download className="h-3.5 w-3.5" />{t('taskDashboard.exportApkg')}
+                <DownloadSimple className="h-3.5 w-3.5" />{t('taskDashboard.exportApkg')}
               </NotionButton>
             )}
             {group === 'attention' && (
               <NotionButton size="sm" variant="primary" onClick={() => act('retryFailed')} disabled={!!busy}>
-                <RotateCcw className="h-3.5 w-3.5" />{t('taskDashboard.retryFailed')}
+                <ArrowCounterClockwise className="h-3.5 w-3.5" />{t('taskDashboard.retryFailed')}
               </NotionButton>
             )}
             <NotionButton
@@ -698,7 +698,7 @@ const SessionRow: React.FC<{
               onClick={handleDelete}
               disabled={!!busy}
             >
-              <Trash2 className="h-3.5 w-3.5" />
+              <Trash className="h-3.5 w-3.5" />
               {deleteConfirm ? t('taskDashboard.confirmDeleteHint') : t('taskDashboard.deleteSession')}
             </NotionButton>
           </div>
@@ -707,7 +707,7 @@ const SessionRow: React.FC<{
           {session.failedTasks > 0 && (
             <div className="text-xs text-[color:hsl(var(--warning))] py-1.5 space-y-1.5">
               <div className="flex items-center gap-2">
-                <AlertTriangle className="h-3.5 w-3.5 flex-shrink-0" />
+                <Warning className="h-3.5 w-3.5 flex-shrink-0" />
                 {t('taskDashboard.failedSegments', { count: session.failedTasks })}
               </div>
             </div>
@@ -742,7 +742,7 @@ const SessionRow: React.FC<{
           {/* 卡片列表 */}
           {loadingCards ? (
             <div className="flex items-center gap-2 py-4 text-sm text-muted-foreground justify-center">
-              <Loader2 className="h-4 w-4 animate-spin" />{t('taskDashboard.loadingCards')}
+              <CircleNotch className="h-4 w-4 animate-spin" />{t('taskDashboard.loadingCards')}
             </div>
           ) : normalCards.length > 0 ? (
             <div>
@@ -773,7 +773,7 @@ const SessionRow: React.FC<{
                   {/* P2: show-more 分页 — 展开后解除高度限制 */}
                   <CustomScrollArea className={showAllCards ? 'max-h-[600px]' : 'max-h-[280px]'}>
                     {visibleCards.map((c, i) => (
-                      <div key={c.id || i} className="flex items-start gap-3 px-2 py-2 hover:bg-muted/10 transition-colors">
+                      <div key={c.id || i} className="flex items-start gap-3 px-2 py-2 hover:bg-[var(--interactive-hover)] transition-colors">
                         <span className="text-[10px] text-muted-foreground/30 mt-0.5 w-6 text-right flex-shrink-0 tabular-nums">
                           {i + 1}
                         </span>
@@ -1054,7 +1054,7 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
     return (
       <div className="study-shell-page flex h-full items-center justify-center">
         <div className="study-shell-panel flex items-center gap-2 px-4 py-3 text-muted-foreground">
-          <Loader2 className="h-5 w-5 animate-spin" />
+          <CircleNotch className="h-5 w-5 animate-spin" />
           <span className="text-sm">{t('taskDashboard.loading')}</span>
         </div>
       </div>
@@ -1092,20 +1092,20 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
             <PropRow icon={<FileText className="h-3.5 w-3.5" />} label={t('taskDashboard.propDocuments')}>
               <span className="font-semibold tabular-nums">{metrics.totalDocs}</span>
             </PropRow>
-            <PropRow icon={<TrendingUp className="h-3.5 w-3.5" />} label={t('taskDashboard.propActiveJobs')}>
+            <PropRow icon={<TrendUp className="h-3.5 w-3.5" />} label={t('taskDashboard.propActiveJobs')}>
               {groups.active.length > 0 ? (
                 <span className="inline-flex items-center gap-1.5">
-                  <Loader2 className="h-3 w-3 text-[color:hsl(var(--info))] animate-spin" />
+                  <CircleNotch className="h-3 w-3 text-[color:hsl(var(--info))] animate-spin" />
                   <span className="text-[color:hsl(var(--info))] font-medium">{groups.active.length}</span>
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1.5">
-                  <CheckCircle2 className="h-3 w-3 text-[color:hsl(var(--success))]" />
+                  <CheckCircle className="h-3 w-3 text-[color:hsl(var(--success))]" />
                   <span className="text-[color:hsl(var(--success))]">{t('taskDashboard.allDone')}</span>
                 </span>
               )}
             </PropRow>
-            <PropRow icon={<AlertTriangle className="h-3.5 w-3.5" />} label={t('taskDashboard.propErrorRate')}>
+            <PropRow icon={<Warning className="h-3.5 w-3.5" />} label={t('taskDashboard.propErrorRate')}>
               <span className={`tabular-nums ${Number(metrics.errorRate) > 0 ? 'text-[color:hsl(var(--warning))]' : ''}`}>
                 {metrics.errorRate}%
               </span>
@@ -1121,7 +1121,7 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
                 {t('taskDashboard.openTemplateLib')}
               </NotionButton>
             </PropRow>
-            <PropRow icon={<BarChart3 className="h-3.5 w-3.5" />} label={t('taskDashboard.todayCards')}>
+            <PropRow icon={<ChartBar className="h-3.5 w-3.5" />} label={t('taskDashboard.todayCards')}>
               <span className="tabular-nums font-medium">{metrics.todayCards}</span>
               <span className="text-muted-foreground/40 mx-1.5">·</span>
               <span className="text-muted-foreground/60 text-xs">{t('taskDashboard.weekCards')}</span>
@@ -1196,19 +1196,19 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
             <div className="flex items-center gap-1">
               {/* P2: 排序 */}
               <NotionButton size="sm" variant="utility" onClick={cycleSort} className="h-7">
-                <ArrowUpDown className="h-3.5 w-3.5" />
+                <ArrowsDownUp className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline text-[11px]">{sortLabel}</span>
               </NotionButton>
               <CommonTooltip content={t('taskDashboard.refresh')}>
                 <NotionButton size="sm" variant="utility" onClick={load} className="h-7 w-7 p-0">
-                  <RefreshCw className="h-3.5 w-3.5" />
+                  <ArrowsClockwise className="h-3.5 w-3.5" />
                 </NotionButton>
               </CommonTooltip>
               <CommonTooltip content={t('taskDashboard.recoverStuckHint')}>
                 <NotionButton size="sm" variant="utility" onClick={handleRecover} disabled={recovering} className="h-7">
                   {recovering
-                    ? <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                    : <RotateCcw className="h-3.5 w-3.5" />}
+                    ? <CircleNotch className="h-3.5 w-3.5 animate-spin" />
+                    : <ArrowCounterClockwise className="h-3.5 w-3.5" />}
                   <span className="hidden sm:inline">{t('taskDashboard.recoverStuck')}</span>
                 </NotionButton>
               </CommonTooltip>
@@ -1253,7 +1253,7 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
 
             {/* P2: 搜索框改善可发现性 */}
             <div className="relative max-w-[220px] flex-shrink-0">
-              <Search className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/30" />
+              <MagnifyingGlass className="absolute left-2 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/30" />
               <Input
                 value={search}
                 onChange={e => setSearch(e.target.value)}
@@ -1293,7 +1293,7 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
                 }}
                 disabled={!onNavigateToChat}
               >
-                <MessageSquarePlus className="h-3.5 w-3.5" />
+                <ChatCircleDots className="h-3.5 w-3.5" />
                 {t('taskDashboard.goToChat')}
               </NotionButton>
             </div>

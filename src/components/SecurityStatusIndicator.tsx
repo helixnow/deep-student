@@ -110,7 +110,7 @@ export const SecurityStatusIndicator: React.FC<SecurityStatusIndicatorProps> = (
             <h3 className={`text-sm font-medium ${textClass}`}>
               {t('securityStatus.title', '安全存储状态')}
             </h3>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={loadSecurityStatus} disabled={loading} className="!p-1 hover:bg-white/50" title={t('securityStatus.refresh', '刷新状态')} aria-label="refresh">
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={loadSecurityStatus} disabled={loading} className="!p-1 hover:bg-[var(--overlay-control-hover)]" title={t('securityStatus.refresh', '刷新状态')} aria-label="refresh">
               <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''} ${textClass}`} />
             </NotionButton>
           </div>

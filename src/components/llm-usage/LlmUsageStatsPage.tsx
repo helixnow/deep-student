@@ -1,17 +1,17 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Activity,
-  BarChart3,
+  Pulse,
+  ChartBar,
   Clock,
   Cpu,
-  RefreshCw,
-  TrendingUp,
-  Zap,
+  ArrowsClockwise,
+  TrendUp,
+  Lightning,
   CheckCircle,
   XCircle,
-  Loader2,
-} from 'lucide-react';
+  SpinnerGap,
+} from '@phosphor-icons/react';
 import { Card, CardContent, CardHeader, CardTitle } from '../ui/shad/Card';
 import { NotionButton } from '@/components/ui/NotionButton';
 import {
@@ -178,7 +178,7 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
   if (loading) {
     return (
       <div className="flex items-center justify-center h-64">
-        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+        <SpinnerGap size={32} className="animate-spin text-primary" />
       </div>
     );
   }
@@ -186,10 +186,10 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-64 gap-4">
-        <XCircle className="w-12 h-12 text-destructive" />
+        <XCircle size={48} className="text-destructive" />
         <p className="text-destructive">{error}</p>
         <NotionButton onClick={() => loadData()}>
-          <RefreshCw className="w-4 h-4 mr-2" />
+          <ArrowsClockwise size={16} className="mr-2" />
           {t('actions.refresh')}
         </NotionButton>
       </div>
@@ -247,7 +247,7 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
             onClick={() => loadData(true)}
             disabled={refreshing}
           >
-            <RefreshCw className={`w-4 h-4 mr-2 ${refreshing ? 'animate-spin' : ''}`} />
+            <ArrowsClockwise size={16} className={`mr-2 ${refreshing ? 'animate-spin' : ''}`} />
             {t('actions.refresh')}
           </NotionButton>
         </div>
@@ -258,7 +258,7 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
               <div className="p-2 rounded-md bg-primary/10">
-                <Activity className="w-4 h-4 text-primary" />
+                <Pulse size={16} className="text-primary" />
               </div>
               <CardTitle className="text-sm font-medium">{t('summary.totalCalls')}</CardTitle>
             </div>
@@ -272,7 +272,7 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
               <div className="p-2 rounded-md bg-info/10">
-                <Zap className="w-4 h-4 text-info" />
+                <Lightning size={16} className="text-info" />
               </div>
               <CardTitle className="text-sm font-medium">{t('summary.totalTokens')}</CardTitle>
             </div>
@@ -289,7 +289,7 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
               <div className="p-2 rounded-md bg-success/10">
-                <CheckCircle className="w-4 h-4 text-success" />
+                <CheckCircle size={16} className="text-success" />
               </div>
               <CardTitle className="text-sm font-medium">{t('summary.successRate')}</CardTitle>
             </div>
@@ -306,7 +306,7 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
           <CardHeader className="pb-2">
             <div className="flex items-center gap-2">
               <div className="p-2 rounded-md bg-warning/10">
-                <Clock className="w-4 h-4 text-warning" />
+                <Clock size={16} className="text-warning" />
               </div>
               <CardTitle className="text-sm font-medium">{t('summary.avgDuration')}</CardTitle>
             </div>
@@ -321,7 +321,7 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <TrendingUp className="w-5 h-5" />
+              <TrendUp size={20} />
               {t('trends.title')}
             </CardTitle>
           </CardHeader>
@@ -366,7 +366,7 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Cpu className="w-5 h-5" />
+              <Cpu size={20} />
               {t('byModel.title')}
             </CardTitle>
           </CardHeader>
@@ -406,7 +406,7 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <BarChart3 className="w-5 h-5" />
+              <ChartBar size={20} />
               {t('byCaller.title')}
             </CardTitle>
           </CardHeader>
@@ -444,7 +444,7 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
         <Card>
           <CardHeader>
             <CardTitle className="flex items-center gap-2">
-              <Activity className="w-5 h-5" />
+              <Pulse size={20} />
               {t('recent.title')}
             </CardTitle>
           </CardHeader>
@@ -472,9 +472,9 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
                         <TableCell className="text-right">{formatDuration(call.durationMs)}</TableCell>
                         <TableCell className="text-right">
                           {call.success ? (
-                            <CheckCircle className="w-4 h-4 text-success inline" />
+                            <CheckCircle size={16} className="text-success inline" />
                           ) : (
-                            <XCircle className="w-4 h-4 text-destructive inline" />
+                            <XCircle size={16} className="text-destructive inline" />
                           )}
                         </TableCell>
                       </TableRow>

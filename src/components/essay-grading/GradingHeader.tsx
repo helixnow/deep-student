@@ -114,7 +114,7 @@ export const GradingHeader: React.FC<GradingHeaderProps> = ({
         )}
 
         {showHistoryTab && historyTotal > 0 && (
-          <Badge variant="secondary" className="h-7 px-2.5 bg-muted/50 text-muted-foreground hover:bg-muted font-normal text-xs">
+          <Badge variant="secondary" className="h-7 px-2.5 bg-muted/50 text-muted-foreground hover:bg-[var(--interactive-hover)] font-normal text-xs">
             <History className="w-3 h-3 mr-1.5" />
             {historyTotal}
           </Badge>
@@ -125,7 +125,7 @@ export const GradingHeader: React.FC<GradingHeaderProps> = ({
             size="icon"
             onClick={onRefreshHistory}
             disabled={isGrading}
-            className="h-8 w-8 rounded-full hover:bg-muted"
+            className="h-8 w-8 rounded-full hover:bg-[var(--interactive-hover)]"
           >
             <RefreshCw className={`h-3.5 w-3.5 ${isGrading ? 'animate-spin' : ''}`} />
           </NotionButton>

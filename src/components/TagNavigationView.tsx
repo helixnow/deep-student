@@ -146,7 +146,7 @@ const TagGroupCard: React.FC<{
   return (
     <div className="group">
       {/* 标签头部 - 紧凑行 */}
-      <NotionButton variant="ghost" size="sm" onClick={onToggle} className="!w-full !justify-start !px-2 !py-2 !h-auto !text-left !rounded-lg hover:bg-muted/40">
+      <NotionButton variant="ghost" size="sm" onClick={onToggle} className="!w-full !justify-start !px-2 !py-2 !h-auto !text-left !rounded-lg hover:bg-[var(--interactive-hover)]">
         {/* 展开/收起图标 */}
         <div className="flex-shrink-0 text-muted-foreground/60">
           {isExpanded ? (
@@ -218,7 +218,7 @@ const TagGroupCard: React.FC<{
                   key={q.id}
                   variant="ghost" size="sm"
                   onClick={() => onQuestionClick(q.id)}
-                  className="!w-full !justify-start !px-2 !py-1.5 !h-auto !text-left !rounded hover:bg-muted/30"
+                  className="!w-full !justify-start !px-2 !py-1.5 !h-auto !text-left !rounded hover:bg-[var(--interactive-hover)]"
                 >
                   {/* 状态指示器 */}
                   <div className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', statusConfig.bg)} />

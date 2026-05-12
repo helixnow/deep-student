@@ -84,7 +84,7 @@ const getActionStyles = (variant: RecoveryAction['variant'] = 'secondary') => {
     case 'danger':
       return 'bg-red-600 hover:bg-red-700 text-white';
     default:
-      return 'bg-gray-600 hover:bg-gray-700 text-white';
+      return 'bg-gray-600 hover:bg-[var(--interactive-hover)] text-white';
   }
 };
 

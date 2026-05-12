@@ -22,7 +22,7 @@ const SwitchRow = ({
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
 }) => (
-  <div className="group flex items-center justify-between gap-4 py-2.5 px-1 hover:bg-muted/30 rounded transition-colors">
+  <div className="group flex items-center justify-between gap-4 py-2.5 px-1 hover:bg-[var(--interactive-hover)] rounded transition-colors">
     <div className="flex-1 min-w-0">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
@@ -47,7 +47,7 @@ const SettingRow = ({
   children: React.ReactNode;
   className?: string;
 }) => (
-  <div className={cn("group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 hover:bg-muted/30 rounded transition-colors", className)}>
+  <div className={cn("group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 hover:bg-[var(--interactive-hover)] rounded transition-colors", className)}>
     <div className="flex-1 min-w-0 pt-1.5">
       <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
       {description && (
@@ -409,7 +409,7 @@ const WebSearchAdvancedConfigInner: React.FC<WebSearchAdvancedConfigProps> = ({
           ]}
           size="sm"
           variant="ghost"
-          className="h-8 text-xs bg-transparent hover:bg-muted/20 transition-colors"
+          className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
           width={100}
         />
       </SettingRow>
