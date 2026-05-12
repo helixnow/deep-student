@@ -21,6 +21,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Input } from '@/components/ui/shad/Input';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -1216,35 +1217,37 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
 
           {/* 筛选 tabs + 搜索 */}
           <div className="flex items-center gap-3 flex-wrap px-4 py-3">
-            <div className="study-shell-segmented flex-shrink-0">
-              {(['all', 'active', 'attention', 'completed'] as FilterTab[]).map(tab => (
-                <NotionButton
-                  key={tab}
-                  variant="nav" size="sm"
-                  onClick={() => setFilter(tab)}
-                  className={`
-                    study-shell-segmented-button !px-2.5 !py-1 !h-auto text-[12px] whitespace-nowrap
-                    ${filter === tab
-                      ? 'text-foreground font-medium'
-                      : 'text-muted-foreground/60'}
-                  `}
-                  data-selected={filter === tab}
-                >
-                  {tab === 'all'
+            <SegmentedControl<FilterTab>
+              ariaLabel={t('taskDashboard.filterAll')}
+              value={filter}
+              onValueChange={setFilter}
+              size="compact"
+              className="flex-shrink-0"
+              itemClassName="!h-auto !px-2.5 !py-1 text-[12px] whitespace-nowrap"
+              options={(['all', 'active', 'attention', 'completed'] as FilterTab[]).map((tab) => {
+                const labelText =
+                  tab === 'all'
                     ? t('taskDashboard.filterAll')
                     : tab === 'active'
                       ? t('taskDashboard.statusActive')
                       : tab === 'attention'
                         ? t('taskDashboard.statusFailed')
-                        : t('taskDashboard.statusDone')}
-                  {tabCounts[tab] > 0 && (
-                    <span className="ml-1 text-[10px] text-muted-foreground/40 tabular-nums">
-                      {tabCounts[tab]}
-                    </span>
-                  )}
-                </NotionButton>
-              ))}
-            </div>
+                        : t('taskDashboard.statusDone');
+                return {
+                  value: tab,
+                  label: (
+                    <>
+                      <span>{labelText}</span>
+                      {tabCounts[tab] > 0 && (
+                        <span className="ml-1 text-[10px] text-muted-foreground/40 tabular-nums">
+                          {tabCounts[tab]}
+                        </span>
+                      )}
+                    </>
+                  ),
+                };
+              })}
+            />
 
             <div className="flex-1" />
 
