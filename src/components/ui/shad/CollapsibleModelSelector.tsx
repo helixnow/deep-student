@@ -97,7 +97,7 @@ export function CollapsibleModelSelector({
       <NotionButton
         type="button"
         variant="ghost"
-        className={cn('w-full justify-between border border-border/30 hover:bg-muted/30', buttonClassName)}
+        className={cn('w-full justify-between border border-border/30 hover:bg-[var(--interactive-hover)]', buttonClassName)}
         disabled={disabled}
         onClick={toggleExpanded}
       >
@@ -160,7 +160,7 @@ export function CollapsibleModelSelector({
                             type="button"
                             className={cn(
                               'w-full flex items-center justify-between rounded-md px-2 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30',
-                              'hover:bg-accent/70 hover:text-accent-foreground',
+                              'hover:bg-[var(--interactive-hover)] hover:text-accent-foreground',
                               selected
                                 ? 'bg-accent text-accent-foreground'
                                 : 'text-foreground'

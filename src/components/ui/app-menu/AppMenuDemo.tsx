@@ -128,7 +128,7 @@ export function AppMenuDemo() {
             <div className="p-6 border border-border rounded-lg bg-card">
               <AppMenu>
                 <AppMenuTrigger>
-                  <button className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary text-secondary-foreground hover:bg-accent transition-colors">
+                  <button className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary text-secondary-foreground hover:bg-[var(--interactive-hover)] transition-colors">
                     <Settings className="w-4 h-4" />
                     <span>页面设置</span>
                     <ChevronDown className="w-4 h-4" />
@@ -248,7 +248,7 @@ export function AppMenuDemo() {
             <h2 className="text-lg font-semibold">{t('app_menu.demo.context_demo', '右键菜单演示')}</h2>
             <AppMenu mode="context">
               <AppMenuTrigger>
-                <div className="p-12 border-2 border-dashed border-border rounded-lg bg-muted/30 flex items-center justify-center text-muted-foreground hover:border-primary/50 hover:bg-muted/50 transition-colors cursor-context-menu">
+                <div className="p-12 border-2 border-dashed border-border rounded-lg bg-muted/30 flex items-center justify-center text-muted-foreground hover:border-primary/50 hover:bg-[var(--interactive-hover)] transition-colors cursor-context-menu">
                   <span>{t('app_menu.demo.context_hint', '右键点击此区域')}</span>
                 </div>
               </AppMenuTrigger>
