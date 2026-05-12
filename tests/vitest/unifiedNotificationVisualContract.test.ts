@@ -31,8 +31,8 @@ describe('UnifiedNotification visual contract', () => {
     expect(source).toContain('--notif-stroke-color: hsl(var(--destructive)');
     expect(source).toContain('.unified-notification-neutral');
     expect(source).not.toContain('border-color: hsl(var(--info)');
-    expect(source).toContain('.unified-notification-border-neutral');
-    expect(source).toContain('rgb(28 28 28 / 0.72)');
+    expect(source).not.toContain('.unified-notification-border-neutral');
+    expect(source).not.toContain('rgb(28 28 28 / 0.72)');
     expect(source).toContain('unified-notification-action');
     expect(source).toContain('.unified-notification-icon');
     expect(source).toContain('.unified-notification-progress');
@@ -51,10 +51,16 @@ describe('UnifiedNotification visual contract', () => {
     expect(componentSource).toContain('shouldShowProgress');
     expect(componentSource).toContain('icon?: GlobalNotificationIconMode');
     expect(componentSource).toContain('progress?: GlobalNotificationProgressMode');
-    expect(componentSource).toContain('CheckCircle2');
-    expect(componentSource).toContain('CircleAlert');
-    expect(componentSource).toContain('TriangleAlert');
+    expect(componentSource).toContain("from '@phosphor-icons/react'");
+    expect(componentSource).toContain('CheckCircle');
+    expect(componentSource).toContain('WarningCircle');
+    expect(componentSource).toContain('Warning');
     expect(componentSource).toContain('Info');
+    expect(componentSource).toContain('weight="regular"');
+    expect(componentSource).not.toContain("from 'lucide-react'");
+    expect(componentSource).not.toContain('CheckCircle2');
+    expect(componentSource).not.toContain('CircleAlert');
+    expect(componentSource).not.toContain('TriangleAlert');
     expect(componentSource).toContain('unified-notification-icon');
     expect(componentSource).toContain('unified-notification-progress');
     expect(componentSource).toContain('unified-notification-count');
@@ -67,6 +73,6 @@ describe('UnifiedNotification visual contract', () => {
     expect(componentSource).toContain('<X className="unified-notification-close-icon"');
     expect(componentSource).toContain('unified-notification-text');
     expect(componentSource).toContain("info: 'unified-notification-neutral'");
-    expect(componentSource).toContain('unified-notification-border-neutral');
+    expect(componentSource).not.toContain('unified-notification-border-neutral');
   });
 });

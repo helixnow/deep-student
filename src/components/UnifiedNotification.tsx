@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState, useCallback, type CSSProperties } from 'react';
-import { CheckCircle2, CircleAlert, Info, TriangleAlert, X } from 'lucide-react';
+import { CheckCircle, Info, Warning, WarningCircle, X } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import './UnifiedNotification.css';
 
@@ -156,15 +156,15 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
     info: 'unified-notification-neutral',
     warning: 'unified-notification-warning',
   }[notification.type];
-  const borderClass = notification.borderTone === 'neutral' ? 'unified-notification-border-neutral' : '';
+  const borderClass = '';
   const displayText = [notification.title, notification.message]
     .filter((p) => typeof p === 'string' && p.trim())
     .join(' ');
   const Icon = {
-    success: CheckCircle2,
-    error: CircleAlert,
+    success: CheckCircle,
+    error: WarningCircle,
     info: Info,
-    warning: TriangleAlert,
+    warning: Warning,
   }[notification.type];
   const showIcon = shouldShowIcon(notification.type, notification.icon);
   const showProgress = shouldShowProgress(notification.progress);
@@ -193,7 +193,7 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
       <div className="unified-notification-content">
         {showIcon && (
           <span className={`unified-notification-icon unified-notification-icon-${notification.type}`} aria-hidden="true">
-            <Icon className="unified-notification-status-icon" />
+            <Icon className="unified-notification-status-icon" weight="regular" />
           </span>
         )}
         <div className={`unified-notification-text${isHoverExpanded ? ' expanded' : ''}`}>
@@ -210,7 +210,7 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
           </NotionButton>
         )}
         <NotionButton variant="ghost" size="icon" iconOnly className="unified-notification-close" aria-label="关闭通知" onClick={handleClose}>
-          <X className="unified-notification-close-icon" aria-hidden="true" />
+          <X className="unified-notification-close-icon" weight="regular" aria-hidden="true" />
         </NotionButton>
       </div>
       {showProgress && (

@@ -61,7 +61,7 @@ body {
 }
 
 .desktop-shell-header-cell--workspace[data-sidebar-visible="true"] {
-  border-left: none;
+  border-left: 1px solid var(--shell-seam);
   border-top-left-radius: var(--shell-workspace-edge-radius);
   overflow: hidden;
 }
@@ -241,7 +241,7 @@ body {
 }
 
 .desktop-shell-workspace[data-sidebar-visible="true"] {
-  border-left: none;
+  border-left: 1px solid var(--shell-seam);
   border-bottom-left-radius: var(--shell-workspace-edge-radius);
   overflow: hidden;
 }
@@ -551,31 +551,31 @@ html, body, #root {
 }
 
 /* 全局滚动条样式 - 确保所有滚动条都有浅色背景 */
-*::-webkit-scrollbar {
+*:not([data-overlayscrollbars-viewport])::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
-*::-webkit-scrollbar-track {
+*:not([data-overlayscrollbars-viewport])::-webkit-scrollbar-track {
   background: var(--scrollbar-track) !important;
   border-radius: 4px;
 }
 
-*::-webkit-scrollbar-thumb {
+*:not([data-overlayscrollbars-viewport])::-webkit-scrollbar-thumb {
   background: var(--scrollbar-thumb) !important;
   border-radius: 4px;
 }
 
-*::-webkit-scrollbar-thumb:hover {
+*:not([data-overlayscrollbars-viewport])::-webkit-scrollbar-thumb:hover {
   background: var(--scrollbar-thumb-hover) !important;
 }
 
-*::-webkit-scrollbar-corner {
+*:not([data-overlayscrollbars-viewport])::-webkit-scrollbar-corner {
   background: var(--scrollbar-track) !important;
 }
 
 /* Firefox 滚动条样式 */
-* {
+*:not([data-overlayscrollbars-viewport]) {
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track) !important;
 }
@@ -4144,31 +4144,32 @@ body {
 }
 
 /* 全局滚动条样式 - 确保所有滚动条都有浅色背景 */
-*::-webkit-scrollbar {
+/* 注：[data-overlayscrollbars-viewport] 内部由 OverlayScrollbars 接管，排除以免污染覆盖层 DOM */
+*:not([data-overlayscrollbars-viewport])::-webkit-scrollbar {
   width: 8px;
   height: 8px;
 }
 
-*::-webkit-scrollbar-track {
+*:not([data-overlayscrollbars-viewport])::-webkit-scrollbar-track {
   background: #f1f1f1 !important;
   border-radius: 4px;
 }
 
-*::-webkit-scrollbar-thumb {
+*:not([data-overlayscrollbars-viewport])::-webkit-scrollbar-thumb {
   background: #c1c1c1 !important;
   border-radius: 4px;
 }
 
-*::-webkit-scrollbar-thumb:hover {
+*:not([data-overlayscrollbars-viewport])::-webkit-scrollbar-thumb:hover {
   background: #a8a8a8 !important;
 }
 
-*::-webkit-scrollbar-corner {
+*:not([data-overlayscrollbars-viewport])::-webkit-scrollbar-corner {
   background: #f1f1f1 !important;
 }
 
 /* Firefox 滚动条样式 */
-* {
+*:not([data-overlayscrollbars-viewport]) {
   scrollbar-width: thin;
   scrollbar-color: #c1c1c1 #f1f1f1 !important;
 }
@@ -11911,4 +11912,41 @@ max-width: calc(100vw - var(--sidebar-collapsed-width, 63px)) !important;
 /* Y 轴旋转 180 度 */
 .rotate-y-180 {
   transform: rotateY(180deg);
+}
+
+/* OverlayScrollbars print preservation (milestone v1.1). Ensure printing expands
+   overlay-scroll containers so content is never clipped at print time. */
+@media print {
+  [data-overlayscrollbars-viewport] {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+}
+
+/* Native scrollbar styling for the ScrollArea primitive's `nativeScrollbars`
+   fallback path (used on iOS WebView to preserve rubber-band + inertia).
+   Moved from study-ui so DeepStudent can own this style end-to-end. */
+.scroll-area--native {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+  scrollbar-gutter: stable;
+}
+
+.scroll-area--native::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scroll-area--native::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
+}
+
+.scroll-area--native::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+.scroll-area--native::-webkit-scrollbar-track {
+  background: transparent;
 }

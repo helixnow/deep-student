@@ -6,7 +6,15 @@ describe('semantic token migration contract', () => {
   const shadcnVarsSource = readFileSync(resolve(process.cwd(), 'src/styles/shadcn-variables.css'), 'utf-8');
   const themeSource = readFileSync(resolve(process.cwd(), 'src/styles/theme-colors.css'), 'utf-8');
   const appCssSource = readFileSync(resolve(process.cwd(), 'src/App.css'), 'utf-8');
+  const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
+  const thinkingScrollbarSource = readFileSync(resolve(process.cwd(), 'src/styles/thinking-scrollbar.css'), 'utf-8');
+  const analysisCssSource = readFileSync(resolve(process.cwd(), 'src/chat-v2/styles/analysis.css'), 'utf-8');
+  const markdownCssSource = readFileSync(resolve(process.cwd(), 'src/chat-v2/styles/markdown.css'), 'utf-8');
   const modernButtonsSource = readFileSync(resolve(process.cwd(), 'src/styles/modern-buttons.css'), 'utf-8');
+  const styleLabScannerSource = readFileSync(resolve(process.cwd(), 'scripts/scan-component-usage.mjs'), 'utf-8');
+
+  const stripCssComments = (source: string) => source.replace(/\/\*[\s\S]*?\*\//g, '');
+  const hardcodedColorPattern = /#[0-9a-fA-F]{3,8}\b|rgba?\(|hsla?\(\s*\d|oklch\(\s*\d|oklab\(\s*\d/;
 
   it('defines canonical shell geometry and shadow tokens in the token layer', () => {
     expect(shadcnVarsSource).toContain('--radius-shell-panel');
@@ -28,10 +36,10 @@ describe('semantic token migration contract', () => {
   });
 
   it('aligns the default blue tokens with the study-ui primary and ring values', () => {
-    expect(shadcnVarsSource).toContain('--primary: 215 72% 54.2%;');
-    expect(shadcnVarsSource).toContain('--ring: 214.2 62.1% 62.6%;');
-    expect(shadcnVarsSource).toContain('--primary: 213.9 77.9% 68.7%;');
-    expect(shadcnVarsSource).toContain('--ring: 214 70.8% 70.8%;');
+    expect(shadcnVarsSource).toContain('--primary: 215 72% 42%;');
+    expect(shadcnVarsSource).toContain('--ring: 214 62% 50%;');
+    expect(shadcnVarsSource).toContain('--primary: 214 64% 72%;');
+    expect(shadcnVarsSource).toContain('--ring: 214 58% 68%;');
   });
 
   it('consumes shell geometry through semantic vars instead of local hardcoded islands', () => {
@@ -40,5 +48,25 @@ describe('semantic token migration contract', () => {
     expect(modernButtonsSource).not.toContain('#eff6ff');
     expect(modernButtonsSource).not.toContain('#3b82f6');
     expect(modernButtonsSource).toContain('var(--button-primary-surface)');
+  });
+
+  it('keeps migrated color consumers on semantic tokens instead of raw color literals', () => {
+    const consumers = {
+      'src/App.tsx': appSource,
+      'src/styles/thinking-scrollbar.css': thinkingScrollbarSource,
+      'src/chat-v2/styles/analysis.css': analysisCssSource,
+      'src/chat-v2/styles/markdown.css': markdownCssSource,
+    };
+
+    for (const [file, source] of Object.entries(consumers)) {
+      expect(stripCssComments(source), `${file} should use semantic color tokens`).not.toMatch(hardcodedColorPattern);
+    }
+  });
+
+  it('tracks hardcoded color debt in CSS files and modern color functions', () => {
+    expect(styleLabScannerSource).toMatch(/SCAN_EXTS\s*=\s*new Set\(\[[^\]]*'\.css'/s);
+    expect(styleLabScannerSource).toMatch(/hsl\[a\]\?\\\(/);
+    expect(styleLabScannerSource).toMatch(/oklch\\\(/);
+    expect(styleLabScannerSource).toMatch(/oklab\\\(/);
   });
 });

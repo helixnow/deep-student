@@ -68,8 +68,6 @@
 /* 应用美观的字体到整个聊天容器 */
 .chat-v2 .chat-container {
   font-family: var(--chat-font-family);
-  -webkit-font-smoothing: antialiased;
-  -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
 }
 

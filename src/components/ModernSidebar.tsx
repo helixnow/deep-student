@@ -1196,6 +1196,10 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   const topicsSectionLabel = t('sidebar:sections.topics', '课题');
   const conversationsSectionLabel = t('sidebar:sections.conversations', '对话');
   const newConversationLabel = t('sidebar:actions.create_conversation', t('chatV2:page.newSession', 'New Session'));
+  const toggleAllTopicsLabel = areAllTopicGroupsExpanded
+    ? t('sidebar:actions.collapse_all_topics', '收起所有课题')
+    : t('sidebar:actions.expand_all_topics', '展开所有课题');
+  const createTopicLabel = t('sidebar:actions.create_topic', '新建课题');
   const hasConversationSessionOverflow = conversationSessions.length > SIDEBAR_SESSION_PREVIEW_LIMIT;
   const visibleConversationSessions = hasConversationSessionOverflow && !conversationSessionsExpanded
     ? conversationSessions.slice(0, SIDEBAR_SESSION_PREVIEW_LIMIT)
@@ -1324,36 +1328,34 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                 label: topicsSectionLabel,
                 action: (
                   <div className="flex items-center gap-1">
-                    <NotionButton
-                      variant="ghost"
-                      size="icon"
-                      iconOnly
-                      aria-label={areAllTopicGroupsExpanded
-                        ? t('sidebar:actions.collapse_all_topics', '收起所有课题')
-                        : t('sidebar:actions.expand_all_topics', '展开所有课题')}
-                      title={areAllTopicGroupsExpanded
-                        ? t('sidebar:actions.collapse_all_topics', '收起所有课题')
-                        : t('sidebar:actions.expand_all_topics', '展开所有课题')}
-                      className="!h-6 !w-6 text-[color:var(--shell-navigation-muted)]"
-                      onClick={handleToggleAllTopicGroups}
-                    >
-                      {areAllTopicGroupsExpanded ? (
-                        <ChevronsUp className="size-3.5" strokeWidth={2} />
-                      ) : (
-                        <ChevronsDown className="size-3.5" strokeWidth={2} />
-                      )}
-                    </NotionButton>
-                    <NotionButton
-                      variant="ghost"
-                      size="icon"
-                      iconOnly
-                      aria-label={t('sidebar:actions.create_topic', '新建课题')}
-                      title={t('sidebar:actions.create_topic', '新建课题')}
-                      className="!h-6 !w-6 text-[color:var(--shell-navigation-muted)]"
-                      onClick={handleCreateRecentGroup}
-                    >
-                      <FolderPlus className="size-3.5" strokeWidth={2} />
-                    </NotionButton>
+                    <CommonTooltip content={toggleAllTopicsLabel} position="right">
+                      <NotionButton
+                        variant="ghost"
+                        size="icon"
+                        iconOnly
+                        aria-label={toggleAllTopicsLabel}
+                        className="!h-6 !w-6 text-[color:var(--shell-navigation-muted)]"
+                        onClick={handleToggleAllTopicGroups}
+                      >
+                        {areAllTopicGroupsExpanded ? (
+                          <ChevronsUp className="size-3.5" strokeWidth={2} />
+                        ) : (
+                          <ChevronsDown className="size-3.5" strokeWidth={2} />
+                        )}
+                      </NotionButton>
+                    </CommonTooltip>
+                    <CommonTooltip content={createTopicLabel} position="right">
+                      <NotionButton
+                        variant="ghost"
+                        size="icon"
+                        iconOnly
+                        aria-label={createTopicLabel}
+                        className="!h-6 !w-6 text-[color:var(--shell-navigation-muted)]"
+                        onClick={handleCreateRecentGroup}
+                      >
+                        <FolderPlus className="size-3.5" strokeWidth={2} />
+                      </NotionButton>
+                    </CommonTooltip>
                   </div>
                 ),
               })}

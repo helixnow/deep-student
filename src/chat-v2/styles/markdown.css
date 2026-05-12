@@ -263,7 +263,7 @@
   border-radius: 12px;
   background: transparent; /* 透明背景 */
   overflow: hidden; /* 让内部头部与pre无缝衔接 */
-  box-shadow: 0 6px 18px rgba(2,6,23,0.06); /* 保留外层阴影 */
+  box-shadow: var(--shadow-content-elevated); /* 保留外层阴影 */
 }
 
 /* Mermaid 预览容器：设置最小高度与拖拽态样式 */
@@ -328,7 +328,7 @@
   min-height: 120px;
   border: none;
   border-radius: 0 0 12px 12px;
-  background: #fff;
+  background: hsl(var(--background));
 }
 
 .chat-v2 .markdown-content .code-block-header {
@@ -516,7 +516,7 @@
   overflow-x: auto;
   margin: 1em 0;
   border-radius: 8px;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-content-soft);
 }
 
 .chat-v2 .markdown-table {
@@ -695,7 +695,7 @@
   background: hsl(var(--card));
   border-radius: 6px;
   border: 1px solid hsl(var(--border));
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--shadow-content-subtle);
 }
 
 .chat-v2 .rag-source-item:last-child {
@@ -1005,9 +1005,9 @@
 .chat-v2 .mermaid-content svg g[class*="section"] tspan,
 .chat-v2 .mermaid-content svg .mindmap-node text,
 .chat-v2 .mermaid-content svg .mindmap-node tspan {
-  fill: #ffffff !important;
+  fill: var(--diagram-node-contrast-text) !important;
   font-weight: 500;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.3);
+  text-shadow: var(--text-shadow-contrast-medium);
 }
 
 /* 暗色模式 - Mindmap 文字使用浅灰色 */
@@ -1017,8 +1017,8 @@
 .dark .chat-v2 .mermaid-content svg g[class*="section"] tspan,
 .dark .chat-v2 .mermaid-content svg .mindmap-node text,
 .dark .chat-v2 .mermaid-content svg .mindmap-node tspan {
-  fill: #f5f5f5 !important;
-  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.5);
+  fill: var(--diagram-node-contrast-text) !important;
+  text-shadow: var(--text-shadow-contrast-strong);
 }
 
 /* Mindmap 节点边框增强 */
@@ -1049,7 +1049,7 @@
   font-size: 0.75rem;
   font-weight: 500;
   border-radius: 0.25rem;
-  background-color: hsl(var(--primary) / 0.1);
+  background-color: hsl(var(--primary) / var(--citation-badge-bg-alpha));
   color: hsl(var(--primary));
   cursor: pointer;
   transition: background-color 0.2s;
@@ -1058,74 +1058,74 @@
 }
 
 .chat-v2 .citation-badge-placeholder:hover {
-  background-color: hsl(var(--primary) / 0.2);
+  background-color: hsl(var(--primary) / var(--citation-badge-hover-alpha));
 }
 
 /* 暗色模式适配 */
 .dark .chat-v2 .citation-badge-placeholder {
-  background-color: hsl(var(--primary) / 0.15);
+  background-color: hsl(var(--primary) / var(--citation-badge-bg-alpha));
 }
 
 .dark .chat-v2 .citation-badge-placeholder:hover {
-  background-color: hsl(var(--primary) / 0.25);
+  background-color: hsl(var(--primary) / var(--citation-badge-hover-alpha));
 }
 
 /* 不同来源类型的颜色变体 */
 .chat-v2 .citation-badge-placeholder[data-citation-type="rag"] {
-  background-color: hsl(217 91% 60% / 0.1);
-  color: hsl(217 91% 60%);
+  background-color: hsl(var(--citation-source-rag) / var(--citation-badge-bg-alpha));
+  color: hsl(var(--citation-source-rag));
 }
 
 .chat-v2 .citation-badge-placeholder[data-citation-type="rag"]:hover {
-  background-color: hsl(217 91% 60% / 0.2);
+  background-color: hsl(var(--citation-source-rag) / var(--citation-badge-hover-alpha));
 }
 
 .chat-v2 .citation-badge-placeholder[data-citation-type="multimodal"] {
-  background-color: hsl(190 90% 45% / 0.1);
-  color: hsl(190 90% 45%);
+  background-color: hsl(var(--citation-source-multimodal) / var(--citation-badge-bg-alpha));
+  color: hsl(var(--citation-source-multimodal));
 }
 
 .chat-v2 .citation-badge-placeholder[data-citation-type="multimodal"]:hover {
-  background-color: hsl(190 90% 45% / 0.2);
+  background-color: hsl(var(--citation-source-multimodal) / var(--citation-badge-hover-alpha));
 }
 
 .chat-v2 .citation-badge-placeholder[data-citation-type="memory"] {
-  background-color: hsl(38 92% 50% / 0.1);
-  color: hsl(38 92% 50%);
+  background-color: hsl(var(--citation-source-memory) / var(--citation-badge-bg-alpha));
+  color: hsl(var(--citation-source-memory));
 }
 
 .chat-v2 .citation-badge-placeholder[data-citation-type="memory"]:hover {
-  background-color: hsl(38 92% 50% / 0.2);
+  background-color: hsl(var(--citation-source-memory) / var(--citation-badge-hover-alpha));
 }
 
 .chat-v2 .citation-badge-placeholder[data-citation-type="web_search"] {
-  background-color: hsl(142 71% 45% / 0.1);
-  color: hsl(142 71% 45%);
+  background-color: hsl(var(--citation-source-web-search) / var(--citation-badge-bg-alpha));
+  color: hsl(var(--citation-source-web-search));
 }
 
 .chat-v2 .citation-badge-placeholder[data-citation-type="web_search"]:hover {
-  background-color: hsl(142 71% 45% / 0.2);
+  background-color: hsl(var(--citation-source-web-search) / var(--citation-badge-hover-alpha));
 }
 
 /* 暗色模式下的类型颜色 */
 .dark .chat-v2 .citation-badge-placeholder[data-citation-type="rag"] {
-  background-color: hsl(217 91% 60% / 0.15);
-  color: hsl(217 91% 70%);
+  background-color: hsl(var(--citation-source-rag) / var(--citation-badge-bg-alpha));
+  color: hsl(var(--citation-source-rag));
 }
 
 .dark .chat-v2 .citation-badge-placeholder[data-citation-type="multimodal"] {
-  background-color: hsl(190 90% 45% / 0.15);
-  color: hsl(190 90% 60%);
+  background-color: hsl(var(--citation-source-multimodal) / var(--citation-badge-bg-alpha));
+  color: hsl(var(--citation-source-multimodal));
 }
 
 .dark .chat-v2 .citation-badge-placeholder[data-citation-type="memory"] {
-  background-color: hsl(38 92% 50% / 0.15);
-  color: hsl(38 92% 60%);
+  background-color: hsl(var(--citation-source-memory) / var(--citation-badge-bg-alpha));
+  color: hsl(var(--citation-source-memory));
 }
 
 .dark .chat-v2 .citation-badge-placeholder[data-citation-type="web_search"] {
-  background-color: hsl(142 71% 45% / 0.15);
-  color: hsl(142 71% 55%);
+  background-color: hsl(var(--citation-source-web-search) / var(--citation-badge-bg-alpha));
+  color: hsl(var(--citation-source-web-search));
 }
 
 /* 引用徽章 + 内联图片渲染（按来源序号自动解析） */
@@ -1162,7 +1162,7 @@
   object-fit: contain;
   border: 1px solid hsl(var(--border));
   background: hsl(var(--muted) / 0.2);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-content-soft);
 }
 
 /* 图片加载中占位符 */

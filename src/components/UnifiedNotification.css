@@ -16,9 +16,10 @@
 
 /* 统一通知样式 */
 .unified-notification {
-  /* Border color carries the status. Micro icons stay secondary. */
+  /* Border color carries the status. Fill is a light tint of accent. */
   --notif-accent: var(--border);
   --notif-stroke-color: hsl(var(--border) / 0.58);
+  --notif-fill: hsl(var(--card));
   --notif-progress-duration: 6000ms;
   --notif-progress-play-state: running;
 
@@ -38,10 +39,8 @@
   gap: 0;
   z-index: 9999;
   color: hsl(var(--foreground));
-  background: hsl(var(--card) / 0.94);
+  background: var(--notif-fill);
   border: 1px solid var(--notif-stroke-color);
-  backdrop-filter: blur(10px);
-  -webkit-backdrop-filter: blur(10px);
   pointer-events: auto;
 
   opacity: 1;
@@ -77,30 +76,26 @@
 .unified-notification-success {
   --notif-accent: var(--success);
   --notif-stroke-color: hsl(var(--success) / 0.68);
+  --notif-fill: color-mix(in srgb, hsl(var(--success)) 6%, hsl(var(--card)) 94%);
 }
 
 .unified-notification-error {
   --notif-accent: var(--destructive);
   --notif-stroke-color: hsl(var(--destructive) / 0.72);
+  --notif-fill: color-mix(in srgb, hsl(var(--destructive)) 6%, hsl(var(--card)) 94%);
 }
 
 .unified-notification-neutral,
 .unified-notification-info {
   --notif-accent: var(--border);
   --notif-stroke-color: color-mix(in hsl, hsl(var(--foreground)) 22%, hsl(var(--border)) 78%);
+  --notif-fill: hsl(0 0% 100%);
 }
 
 .unified-notification-warning {
   --notif-accent: var(--warning);
   --notif-stroke-color: hsl(var(--warning) / 0.72);
-}
-
-.unified-notification-border-neutral {
-  --notif-stroke-color: rgb(28 28 28 / 0.72);
-  box-shadow:
-    inset 0 0 0 1px hsl(var(--notif-accent) / 0.14),
-    0 6px 14px hsl(var(--foreground) / 0.07),
-    0 1px 3px hsl(var(--foreground) / 0.05);
+  --notif-fill: color-mix(in srgb, hsl(var(--warning)) 6%, hsl(var(--card)) 94%);
 }
 
 .unified-notification-content {
@@ -251,8 +246,9 @@
   to { transform: scaleX(0); }
 }
 
-[data-theme="dark"] .unified-notification-border-neutral {
-  --notif-stroke-color: rgb(255 255 255 / 0.22);
+[data-theme="dark"] .unified-notification-neutral,
+[data-theme="dark"] .unified-notification-info {
+  --notif-fill: hsl(0 0% 12%);
 }
 
 @media (prefers-reduced-motion: reduce) {

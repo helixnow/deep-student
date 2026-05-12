@@ -77,9 +77,9 @@ export const BottomTabBar: React.FC<BottomTabBarProps> = ({
       style={{
         boxSizing: 'border-box',
         minHeight: 'var(--mobile-bottom-bar-total-height, 56px)',
-        ['--mobile-bottom-bar-height' as const]: `${barHeight}px`,
-        ['--mobile-bottom-bar-total-height' as const]: `calc(${barHeight}px + var(--mobile-safe-area-bottom, 0px))`,
-      }}
+        ['--mobile-bottom-bar-height' as string]: `${barHeight}px`,
+        ['--mobile-bottom-bar-total-height' as string]: `calc(${barHeight}px + var(--mobile-safe-area-bottom, 0px))`,
+      } as React.CSSProperties}
       role="tablist"
       aria-label={t('common:navigation_label', 'Navigation')}
       aria-hidden={isHidden}

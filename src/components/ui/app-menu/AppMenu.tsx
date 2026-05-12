@@ -16,8 +16,10 @@ import { Slot } from '@radix-ui/react-slot';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../../lib/utils';
-import { ChevronRight, Search, Check } from 'lucide-react';
+import { Check as PhosphorCheck } from '@phosphor-icons/react';
+import { ChevronRight, Search } from 'lucide-react';
 import { CustomScrollArea } from '../../custom-scroll-area';
+import { useOverlayCoordinator } from '../../shared/OverlayCoordinator';
 import './AppMenu.css';
 
 // ============ Context ============
@@ -53,13 +55,17 @@ export function AppMenu({ open, onOpenChange, mode = 'dropdown', className, chil
   const [internalOpen, setInternalOpen] = React.useState(false);
   const [position, setPosition] = React.useState({ x: 0, y: 0 });
   const actualOpen = isControlled ? !!open : internalOpen;
+  const { dismissTooltips, registerInteractiveOverlay } = useOverlayCoordinator();
 
   const setOpen = React.useCallback(
     (next: boolean) => {
+      if (next) {
+        dismissTooltips();
+      }
       if (!isControlled) setInternalOpen(next);
       onOpenChange?.(next);
     },
-    [isControlled, onOpenChange]
+    [dismissTooltips, isControlled, onOpenChange]
   );
 
   const handleKeyDown = React.useCallback(
@@ -73,6 +79,11 @@ export function AppMenu({ open, onOpenChange, mode = 'dropdown', className, chil
 
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const contentRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (!actualOpen) return;
+    return registerInteractiveOverlay();
+  }, [actualOpen, registerInteractiveOverlay]);
 
   React.useEffect(() => {
     if (!actualOpen) return;
@@ -101,18 +112,22 @@ export function AppMenu({ open, onOpenChange, mode = 'dropdown', className, chil
 
 // ============ Trigger ============
 
-export interface AppMenuTriggerProps {
+export interface AppMenuTriggerProps extends React.HTMLAttributes<HTMLElement> {
   asChild?: boolean;
   children: React.ReactNode;
 }
 
-export function AppMenuTrigger({ asChild, children }: AppMenuTriggerProps) {
+export const AppMenuTrigger = React.forwardRef<HTMLElement, AppMenuTriggerProps>(
+  ({ asChild, children, className, onClick, onContextMenu, ...rest }, ref) => {
   const ctx = React.useContext(AppMenuContext);
-  const Comp = asChild ? Slot : 'button';
+  const Comp = (asChild ? Slot : 'button') as React.ElementType;
   
   if (!ctx) return <>{children}</>;
 
   const handleClick = (e: React.MouseEvent) => {
+    onClick?.(e as React.MouseEvent<HTMLElement>);
+    if (e.defaultPrevented) return;
+
     if (ctx.mode === 'dropdown') {
       ctx.setOpen(!ctx.open);
       return;
@@ -125,6 +140,9 @@ export function AppMenuTrigger({ asChild, children }: AppMenuTriggerProps) {
   };
 
   const handleContextMenu = (e: React.MouseEvent) => {
+    onContextMenu?.(e as React.MouseEvent<HTMLElement>);
+    if (e.defaultPrevented && ctx.mode !== 'context') return;
+
     if (ctx.mode === 'context') {
       e.preventDefault();
       ctx.setPosition({ x: e.clientX, y: e.clientY });
@@ -134,17 +152,21 @@ export function AppMenuTrigger({ asChild, children }: AppMenuTriggerProps) {
 
   return (
     <Comp
+      ref={ref}
       type={asChild ? undefined : 'button'}
       aria-haspopup="menu"
       aria-expanded={ctx.open}
       onClick={handleClick}
       onContextMenu={handleContextMenu}
-      className="app-menu-trigger"
+      className={cn('app-menu-trigger', className)}
+      {...rest}
     >
       {children}
     </Comp>
   );
-}
+  }
+);
+AppMenuTrigger.displayName = 'AppMenuTrigger';
 
 // ============ Content ============
 
@@ -283,9 +305,14 @@ export function AppMenuContent({
       const maxTop = window.innerHeight - contentRect.height - 8;
       top = Math.min(Math.max(8, top), maxTop < 8 ? 8 : maxTop);
 
-      setPosition({ top, left, origin });
+      setPosition((prev) => (
+        prev.top === top && prev.left === left && prev.origin === origin
+          ? prev
+          : { top, left, origin }
+      ));
     };
 
+    updatePosition();
     const rafId = requestAnimationFrame(updatePosition);
     window.addEventListener('resize', updatePosition);
     window.addEventListener('scroll', updatePosition, true);
@@ -411,12 +438,12 @@ export const AppMenuItem = React.forwardRef<HTMLButtonElement, AppMenuItemProps>
         {...rest}
       >
         {icon && <span className="app-menu-item-icon">{icon}</span>}
+        <span className="app-menu-item-content">{children}</span>
         {checked !== undefined && (
           <span className="app-menu-item-check">
-            {checked && <Check className="w-4 h-4" />}
+            {checked && <PhosphorCheck className="w-4 h-4" weight="bold" />}
           </span>
         )}
-        <span className="app-menu-item-content">{children}</span>
         {suffix && <span className="app-menu-item-suffix">{suffix}</span>}
         {shortcut && <span className="app-menu-item-shortcut">{shortcut}</span>}
       </button>

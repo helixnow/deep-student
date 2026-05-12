@@ -30,6 +30,19 @@ describe('modern sidebar icon contract', () => {
     expect(conversationSectionAction).not.toContain('<Folder className="size-[16px]" strokeWidth={2} />');
   });
 
+  it('routes topic header actions through CommonTooltip instead of native title tooltips', () => {
+    const topicSectionAction = sidebarSource.match(
+      /<section className="space-y-0\.5 pt-1">\s*\{renderSidebarSectionHeader\(\{[\s\S]*?\}\)\}\s*\{!isTopicsSectionCollapsed/u
+    )?.[0] ?? '';
+
+    expect(topicSectionAction).toContain('<CommonTooltip content={toggleAllTopicsLabel} position="right">');
+    expect(topicSectionAction).toContain('<CommonTooltip content={createTopicLabel} position="right">');
+    expect(topicSectionAction).toContain('aria-label={toggleAllTopicsLabel}');
+    expect(topicSectionAction).toContain('aria-label={createTopicLabel}');
+    expect(topicSectionAction).not.toContain("title={areAllTopicGroupsExpanded");
+    expect(topicSectionAction).not.toContain("title={t('sidebar:actions.create_topic', '新建课题')}");
+  });
+
   it('uses CommonTooltip and icon swap for recent-session archive quick actions', () => {
     const recentSessionRow = sidebarSource.match(
       /const renderRecentSessionRow = useCallback\([\s\S]*?<AppMenuContent align="end" width=\{180\}>/

@@ -437,8 +437,8 @@
   padding: 0;
   border-radius: 12px;
   white-space: nowrap;
-  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
-  border: 1px solid rgba(255, 255, 255, 0.2);
+  text-shadow: var(--text-shadow-contrast-subtle);
+  border: 1px solid hsl(var(--destructive-foreground) / 0.2);
 }
 
 .chat-v2 .analysis-delete-btn {
@@ -483,40 +483,40 @@
 }
 
 .chat-v2 .analysis-subject-tag {
-  background: #eff6ff;
-  color: #1d4ed8;
+  background: hsl(var(--info) / 0.12);
+  color: hsl(var(--info));
   font-weight: 500;
 }
 
 .chat-v2 .analysis-mistake-count {
-  background: #f0fdf4;
-  color: #166534;
+  background: hsl(var(--success) / 0.12);
+  color: hsl(var(--success));
 }
 
 .chat-v2 .analysis-chat-count {
-  background: #fef3c7;
-  color: #92400e;
+  background: hsl(var(--warning) / 0.16);
+  color: hsl(var(--warning));
 }
 
 .chat-v2 .analysis-target-section,
 .chat-v2 .analysis-preview-section {
-  background: #f9fafb;
+  background: var(--surface-panel-muted);
   padding: 0;
   border-radius: 8px;
-  border-left: 3px solid #3b82f6;
+  border-left: 3px solid hsl(var(--primary));
   transition: all 0.2s ease;
 }
 
 .chat-v2 .analysis-library-card:hover .analysis-target-section,
 .chat-v2 .analysis-library-card:hover .analysis-preview-section {
-  background: #f3f4f6;
+  background: var(--surface-panel-strong);
 }
 
 .chat-v2 .analysis-target-label,
 .chat-v2 .analysis-preview-label {
   font-size: 12px;
   font-weight: 600;
-  color: #374151;
+  color: var(--text-secondary);
   margin-bottom: 4px;
   text-transform: uppercase;
   letter-spacing: 0.5px;
@@ -525,7 +525,7 @@
 .chat-v2 .analysis-target-content,
 .chat-v2 .analysis-preview-content {
   font-size: 14px;
-  color: #6b7280;
+  color: var(--text-muted);
   line-height: 1.5;
   overflow: hidden;
   display: -webkit-box;
@@ -538,17 +538,17 @@
   align-items: center;
   gap: 6px;
   padding: 0;
-  border-top: 1px solid #f3f4f6;
+  border-top: 1px solid var(--border-soft);
 }
 
 .chat-v2 .analysis-date-icon {
   font-size: 14px;
-  color: #9ca3af;
+  color: var(--text-muted);
 }
 
 .chat-v2 .analysis-date-text {
   font-size: 12px;
-  color: #6b7280;
+  color: var(--text-muted);
   font-weight: 500;
 }
 
@@ -557,7 +557,7 @@
    ============================================================================ */
 
 .chat-v2 .analysis-selected-preview {
-  background: #f9fafb;
+  background: var(--surface-panel-muted);
   padding: 0;
   border-radius: 6px;
   max-height: 120px;
@@ -567,7 +567,7 @@
 
 .analysis-selected-item {
   font-size: 14px;
-  color: #374151;
+  color: var(--text-secondary);
   margin-bottom: 4px;
   line-height: 1.4;
 }
@@ -661,8 +661,8 @@
   align-items: center;
   gap: 8px;
   padding: 6px 10px;
-  background: rgba(59,130,246,0.08);
-  border: 1px solid rgba(59,130,246,0.25);
+  background: hsl(var(--primary) / 0.08);
+  border: 1px solid hsl(var(--primary) / 0.25);
   border-radius: 999px;
 }
 
@@ -719,7 +719,7 @@
 
 .analysis-stats-filter {
   font-size: 14px;
-  color: #6b7280;
+  color: var(--text-muted);
 }
 
 /* ============================================================================
@@ -761,21 +761,21 @@
 .analysis-mistakes-grid::-webkit-scrollbar-track,
 .analysis-selected-preview::-webkit-scrollbar-track,
 .analysis-library-grid::-webkit-scrollbar-track {
-  background: #f1f5f9;
+  background: var(--scrollbar-track);
   border-radius: 3px;
 }
 
 .analysis-mistakes-grid::-webkit-scrollbar-thumb,
 .analysis-selected-preview::-webkit-scrollbar-thumb,
 .analysis-library-grid::-webkit-scrollbar-thumb {
-  background: #cbd5e1;
+  background: var(--scrollbar-thumb);
   border-radius: 3px;
 }
 
 .analysis-mistakes-grid::-webkit-scrollbar-thumb:hover,
 .analysis-selected-preview::-webkit-scrollbar-thumb:hover,
 .analysis-library-grid::-webkit-scrollbar-thumb:hover {
-  background: #94a3b8;
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* ============================================================================
