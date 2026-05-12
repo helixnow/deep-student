@@ -345,7 +345,7 @@ const TimelineNode: React.FC<TimelineNodeProps> = ({
                 ? 'bg-primary ring-2 ring-primary/30'
                 : isExpanded
                   ? 'bg-primary/70 ring-2 ring-primary/20'
-                  : 'bg-muted-foreground/50 hover:bg-muted-foreground/70'
+                  : 'bg-muted-foreground/50 hover:bg-[var(--interactive-hover)]-foreground/70'
             )}
             aria-label={isExpanded ? t('activityTimeline.collapse') : t('activityTimeline.expand')}
             title={isExpanded ? t('activityTimeline.collapse') : t('activityTimeline.expand')}

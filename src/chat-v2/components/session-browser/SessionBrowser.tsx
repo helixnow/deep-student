@@ -233,7 +233,7 @@ const SessionCard: React.FC<SessionCardProps> = ({
         'group relative flex flex-col justify-between',
         'p-3 sm:p-3.5 min-h-[120px] sm:min-h-[140px]',
         'rounded-lg border border-transparent',
-        'hover:bg-muted/40 hover:border-border/40 transition-colors',
+        'hover:bg-[var(--interactive-hover)] hover:border-border/40 transition-colors',
         'cursor-pointer'
       )}
     >

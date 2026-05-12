@@ -217,7 +217,7 @@ export const ModelMentionPopover: React.FC<ModelMentionPopoverProps> = ({
               'text-sm',
               index === selectedIndex
                 ? 'bg-accent text-accent-foreground'
-                : 'hover:bg-accent/50 text-foreground'
+                : 'hover:bg-[var(--interactive-hover)] text-foreground'
             )}
             onClick={() => onSelect(model)}
             onMouseEnter={() => onSelectedIndexChange(index)}

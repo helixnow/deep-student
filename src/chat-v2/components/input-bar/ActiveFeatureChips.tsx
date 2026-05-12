@@ -42,11 +42,11 @@ export interface ActiveFeatureChipsProps {
 // ============================================================================
 
 const colorClasses: Record<string, string> = {
-  default: 'bg-muted/80 text-foreground hover:bg-muted',
-  purple: 'bg-muted/80 text-purple-600 hover:bg-muted dark:text-purple-400',
-  blue: 'bg-muted/80 text-blue-600 hover:bg-muted dark:text-blue-400',
-  green: 'bg-muted/80 text-emerald-600 hover:bg-muted dark:text-emerald-400',
-  orange: 'bg-muted/80 text-orange-600 hover:bg-muted dark:text-orange-400',
+  default: 'bg-muted/80 text-foreground hover:bg-[var(--interactive-hover)]',
+  purple: 'bg-muted/80 text-purple-600 hover:bg-[var(--interactive-hover)] dark:text-purple-400',
+  blue: 'bg-muted/80 text-blue-600 hover:bg-[var(--interactive-hover)] dark:text-blue-400',
+  green: 'bg-muted/80 text-emerald-600 hover:bg-[var(--interactive-hover)] dark:text-emerald-400',
+  orange: 'bg-muted/80 text-orange-600 hover:bg-[var(--interactive-hover)] dark:text-orange-400',
 };
 
 // ============================================================================

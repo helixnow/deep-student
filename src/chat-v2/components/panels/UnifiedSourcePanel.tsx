@@ -518,7 +518,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
           else cardRefs.current.delete(entry.globalIndex);
         }}
         className={cn(
-          'p-3 rounded-lg border bg-card hover:bg-accent/50 transition-all',
+          'p-3 rounded-lg border bg-card hover:bg-[var(--interactive-hover)] transition-all',
           isHighlighted && 'ring-1 ring-primary/30'
         )}
       >
@@ -926,7 +926,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                       id={`source-card-${entry.globalIndex}`}
                       data-source-index={entry.globalIndex}
                       className={cn(
-                        'usp-item-card rounded-lg border bg-card p-2.5 hover:bg-accent/50 transition-all cursor-default group',
+                        'usp-item-card rounded-lg border bg-card p-2.5 hover:bg-[var(--interactive-hover)] transition-all cursor-default group',
                         !isExpanded && 'w-56 flex-shrink-0',
                         isHighlighted && 'shadow-[inset_0_0_0_2px_hsl(var(--primary)),0_10px_15px_-3px_rgb(0_0_0/0.1)]'
                       )}

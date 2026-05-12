@@ -126,7 +126,7 @@ const FolderTreeItem: React.FC<FolderTreeItemProps> = ({
         aria-selected={isSelected}
         className={cn(
           'flex items-center gap-2 px-3 py-2 cursor-pointer transition-colors rounded-md mx-1',
-          'hover:bg-muted/80',
+          !isSelected && 'hover:bg-[var(--interactive-hover)]',
           isSelected && 'bg-primary/10 text-primary'
         )}
         style={{ paddingLeft: `${12 + depth * 16}px` }}

@@ -53,7 +53,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
         onClick ? 'cursor-pointer' : '',
         isCurrentAgent
           ? 'border-primary bg-primary/10'
-          : 'border-border hover:bg-muted/50'
+          : 'border-border hover:bg-[var(--interactive-hover)]'
       )}
       onClick={onClick}
     >

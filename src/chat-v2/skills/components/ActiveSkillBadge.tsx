@@ -83,7 +83,7 @@ const SingleBadge: React.FC<SingleBadgeProps> = ({
         'inline-flex items-center rounded-md',
         'bg-muted/80 text-primary',
         'transition-all duration-200',
-        !disabled && onClick && 'cursor-pointer hover:bg-muted',
+        !disabled && onClick && 'cursor-pointer hover:bg-[var(--interactive-hover)]',
         disabled && 'opacity-50 cursor-not-allowed',
         sizeClasses[size],
         className
@@ -252,7 +252,7 @@ export const NoActiveSkillButton: React.FC<NoActiveSkillProps> = ({
       className={cn(
         '!rounded-full',
         'bg-muted text-muted-foreground border border-border',
-        'hover:bg-accent hover:text-accent-foreground hover:border-primary/30',
+        'hover:bg-[var(--interactive-hover)] hover:text-accent-foreground hover:border-primary/30',
         sizeClasses[size],
         className
       )}

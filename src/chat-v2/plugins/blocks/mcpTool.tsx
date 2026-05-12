@@ -688,7 +688,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
                       }
                     }));
                   }}
-                  className="bg-muted/30 hover:bg-muted/60 gap-1.5"
+                  className="bg-muted/30 hover:bg-[var(--interactive-hover)] gap-1.5"
                 >
                   <DocIcon size={12} />
                   <span className="truncate max-w-[200px]">{fileInfo.fileName}</span>
@@ -716,7 +716,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
                     }
                   }));
                 }}
-                className="mt-2 bg-muted/30 hover:bg-muted/60 gap-1.5"
+                className="mt-2 bg-muted/30 hover:bg-[var(--interactive-hover)] gap-1.5"
               >
                 <DocIcon size={12} />
                 <Eye size={10} />
@@ -738,7 +738,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
                     detail: { noteId, source: 'mcp_tool_block' }
                   }));
                 }}
-                className="mt-2 bg-muted/30 hover:bg-muted/60"
+                className="mt-2 bg-muted/30 hover:bg-[var(--interactive-hover)]"
               >
                 <ExternalLink size={12} />
                 {t('timeline.noteTool.openNote')}

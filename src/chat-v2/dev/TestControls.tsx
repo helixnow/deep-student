@@ -233,7 +233,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
               className={cn(
                 'px-3 py-1.5 text-xs rounded-md flex items-center gap-1.5',
                 'bg-secondary text-secondary-foreground',
-                'hover:bg-secondary/80 transition-colors',
+                'hover:bg-[var(--interactive-hover)] transition-colors',
                 (!canSend || loading) && 'opacity-50 cursor-not-allowed'
               )}
             >
@@ -266,7 +266,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
               className={cn(
                 'px-3 py-1.5 text-xs rounded-md flex items-center gap-1.5',
                 'bg-muted text-muted-foreground',
-                'hover:bg-muted/80 transition-colors',
+                'hover:bg-[var(--interactive-hover)] transition-colors',
                 (messageCount === 0 || sessionStatus !== 'idle') &&
                   'opacity-50 cursor-not-allowed'
               )}
@@ -280,7 +280,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
               className={cn(
                 'px-3 py-1.5 text-xs rounded-md flex items-center gap-1.5',
                 'bg-muted text-muted-foreground',
-                'hover:bg-muted/80 transition-colors',
+                'hover:bg-[var(--interactive-hover)] transition-colors',
                 sessionStatus !== 'idle' && 'opacity-50 cursor-not-allowed'
               )}
             >
@@ -293,7 +293,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
               className={cn(
                 'px-3 py-1.5 text-xs rounded-md flex items-center gap-1.5',
                 'bg-muted text-muted-foreground',
-                'hover:bg-muted/80 transition-colors',
+                'hover:bg-[var(--interactive-hover)] transition-colors',
                 sessionStatus !== 'streaming' && 'opacity-50 cursor-not-allowed'
               )}
             >
@@ -333,7 +333,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
               className={cn(
                 'px-3 py-1.5 text-xs rounded-md flex items-center gap-1.5',
                 'bg-muted text-muted-foreground',
-                'hover:bg-muted/80 transition-colors'
+                'hover:bg-[var(--interactive-hover)] transition-colors'
               )}
             >
               {isDarkMode ? (

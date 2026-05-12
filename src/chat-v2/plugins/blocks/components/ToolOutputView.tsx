@@ -144,7 +144,7 @@ const TableOutput: React.FC<{ data: Record<string, unknown>[] }> = ({ data }) =>
             <tr
               key={idx}
               className={cn(
-                'hover:bg-muted/30 transition-colors',
+                'hover:bg-[var(--interactive-hover)] transition-colors',
                 idx % 2 === 0 ? 'bg-transparent' : 'bg-muted/10'
               )}
             >

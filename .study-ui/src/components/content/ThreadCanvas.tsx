@@ -143,7 +143,7 @@ export function ThreadCanvas() {
                 aria-label="发送消息"
                 className={cn(
                   "h-11 w-11 shrink-0 rounded-full lg:h-[var(--button-icon-size)] lg:w-[var(--button-icon-size)]",
-                  isComposerEmpty && "border-transparent bg-muted-foreground hover:bg-muted-foreground/90 active:bg-muted-foreground/85 text-[color:var(--interactive-selected)]",
+                  isComposerEmpty && "border-transparent bg-muted text-muted-foreground hover:bg-muted/80 active:bg-muted/70",
                 )}
                 size="icon"
                 variant="primary"

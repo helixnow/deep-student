@@ -136,7 +136,7 @@ export const MultimodalSourceCard: React.FC<MultimodalSourceCardProps> = ({
     <div
       className={cn(
         // 与 UnifiedSourcePanel 中的卡片样式保持一致
-        'usp-item-card w-56 flex-shrink-0 rounded-lg border bg-card p-2.5 hover:bg-accent/50 transition-all cursor-default group',
+        'usp-item-card w-56 flex-shrink-0 rounded-lg border bg-card p-2.5 hover:bg-[var(--interactive-hover)] transition-all cursor-default group',
         highlighted && 'ring-1 ring-primary/30 shadow-lg scale-[1.02]',
         className
       )}

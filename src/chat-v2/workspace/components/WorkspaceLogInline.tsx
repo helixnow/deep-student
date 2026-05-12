@@ -281,7 +281,7 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
     >
       {/* 头部 - 可折叠 */}
       <div
-        className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-muted/30 transition-colors"
+        className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center gap-2">

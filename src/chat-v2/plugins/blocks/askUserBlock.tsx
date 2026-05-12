@@ -268,7 +268,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
                 'border',
                 isRecommended
                   ? 'border-blue-300 dark:border-blue-600 bg-blue-100/60 dark:bg-blue-900/30 hover:bg-blue-200/60 dark:hover:bg-blue-800/40'
-                  : 'border-border/50 bg-card hover:bg-muted/50',
+                  : 'border-border/50 bg-card hover:bg-[var(--interactive-hover)]',
                 isResponding && 'opacity-50'
               )}
             >

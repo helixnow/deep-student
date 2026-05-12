@@ -187,9 +187,9 @@ export const TokenUsageDisplay: React.FC<TokenUsageDisplayProps> = memo(
           className={cn(
             'inline-flex items-center gap-2 px-2.5 py-1 rounded-full',
             // 亮色模式：浅灰背景，深色文字
-            'bg-gray-100/80 hover:bg-gray-200/80 border border-gray-200/50 hover:border-gray-300/60',
+            'bg-gray-100/80 hover:bg-[var(--interactive-hover)] border border-gray-200/50 hover:border-gray-300/60',
             // 暗色模式：半透明深色背景，浅色文字
-            'dark:bg-white/5 dark:hover:bg-white/10 dark:border-white/10 dark:hover:border-white/20',
+            'dark:bg-white/5 dark:hover:bg-[var(--interactive-hover)] dark:border-white/10 dark:hover:border-white/20',
             'text-[11px] font-medium tabular-nums',
             'transition-all duration-200 cursor-default select-none',
             className

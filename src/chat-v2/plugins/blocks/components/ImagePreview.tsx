@@ -112,13 +112,13 @@ const FullscreenModal: React.FC<FullscreenModalProps> = ({
     >
       {/* 操作按钮 */}
       <div className="absolute top-4 right-4 flex gap-2">
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleDownload} className="!rounded-full bg-white/10 hover:bg-white/20 text-white" aria-label={t('blocks.imageGen.download')} title={t('blocks.imageGen.download')}>
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleDownload} className="!rounded-full bg-white/10 hover:bg-[var(--overlay-control-hover)] text-white" aria-label={t('blocks.imageGen.download')} title={t('blocks.imageGen.download')}>
           <Download className="w-5 h-5" />
         </NotionButton>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenInNewTab} className="!rounded-full bg-white/10 hover:bg-white/20 text-white" aria-label={t('blocks.imageGen.openInNewTab')} title={t('blocks.imageGen.openInNewTab')}>
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenInNewTab} className="!rounded-full bg-white/10 hover:bg-[var(--overlay-control-hover)] text-white" aria-label={t('blocks.imageGen.openInNewTab')} title={t('blocks.imageGen.openInNewTab')}>
           <ExternalLink className="w-5 h-5" />
         </NotionButton>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="!rounded-full bg-white/10 hover:bg-white/20 text-white" aria-label={t('blocks.imageGen.close')} title={t('blocks.imageGen.close')}>
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="!rounded-full bg-white/10 hover:bg-[var(--overlay-control-hover)] text-white" aria-label={t('blocks.imageGen.close')} title={t('blocks.imageGen.close')}>
           <X className="w-5 h-5" />
         </NotionButton>
       </div>
@@ -247,7 +247,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
             )}
           >
             <div className="flex items-center gap-2 text-white pointer-events-auto">
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={handleClick} className="!rounded-full bg-white/20 hover:bg-white/30 text-white" aria-label={t('blocks.imageGen.fullscreen')} title={t('blocks.imageGen.fullscreen')}>
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={handleClick} className="!rounded-full bg-white/20 hover:bg-[var(--overlay-control-hover)] text-white" aria-label={t('blocks.imageGen.fullscreen')} title={t('blocks.imageGen.fullscreen')}>
                 <Maximize2 className="w-5 h-5" />
               </NotionButton>
             </div>

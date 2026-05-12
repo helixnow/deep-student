@@ -249,6 +249,8 @@ export interface InputBarUIProps {
   runtimeModelLabel?: string;
   /** 当前 runtime 菜单中展示的生效模型供应商摘要 */
   runtimeModelProviderLabel?: string;
+  /** 运行时模型选择独立 AppMenu（渲染在 thinking 控件旁，由点击模型项触发） */
+  runtimeModelMenu?: React.ReactNode;
 
   // ========== 推理模式开关 ==========
 

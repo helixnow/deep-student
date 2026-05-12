@@ -14,6 +14,7 @@ import { InputBarUI } from './InputBarUI';
 import { useInputBarV2 } from './useInputBarV2';
 import { modeRegistry } from '../../registry';
 import { MultiSelectModelPanel } from '../../plugins/chat/MultiSelectModelPanel';
+import { RuntimeModelMenu } from './RuntimeModelMenu';
 import { SkillSelector } from '../../skills/components/SkillSelector';
 import { reloadSkills } from '../../skills/loader';
 import { useLoadedSkills } from '../../skills/hooks/useLoadedSkills';
@@ -619,9 +620,13 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       openModelPanelWithIntent('parallel');
     }, [openModelPanelWithIntent]);
 
+    // 🔧 Runtime 模型选择：使用独立 AppMenu 而非 ComposerPanelOverlay
+    const [runtimeModelMenuOpen, setRuntimeModelMenuOpen] = useState(false);
+    const runtimeModelMenuAnchorRef = useRef<HTMLElement | null>(null);
+
     const handleOpenRuntimeModelPanel = useCallback(() => {
-      openModelPanelWithIntent('runtime');
-    }, [openModelPanelWithIntent]);
+      setRuntimeModelMenuOpen((prev) => !prev);
+    }, []);
 
     // 🔧 监听 model 面板关闭，自动清除 modelRetryTarget
     // 解决：点击面板外部关闭时 closeAllPanels 不会调用 handleCloseModelPanel 的问题
@@ -822,6 +827,14 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         modelMentionActions={modelMentionActions}
         runtimeModelLabel={runtimeModelLabel}
         runtimeModelProviderLabel={runtimeModelProviderLabel}
+        runtimeModelMenu={
+          <RuntimeModelMenu
+            store={store}
+            open={runtimeModelMenuOpen}
+            onOpenChange={setRuntimeModelMenuOpen}
+            anchorRef={runtimeModelMenuAnchorRef}
+          />
+        }
         // 推理模式
         enableThinking={effectiveEnableThinking}
         thinkingStateLabel={thinkingStateLabel}

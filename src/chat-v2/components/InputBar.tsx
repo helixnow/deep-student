@@ -179,7 +179,7 @@ export const InputBar: React.FC<InputBarProps> = ({
               iconOnly
               disabled={attachments.length >= maxAttachments}
               className={cn(
-                '!rounded-full bg-muted/50 hover:bg-muted active:scale-95',
+                '!rounded-full bg-muted/50 hover:bg-[var(--interactive-hover)] active:scale-95',
                 attachments.length >= maxAttachments
                   ? 'opacity-50 text-muted-foreground'
                   : 'text-muted-foreground hover:text-foreground'

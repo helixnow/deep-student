@@ -67,7 +67,7 @@ export const TagFilterPanel: React.FC<TagFilterProps> = ({
                 'inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] border transition-colors',
                 isSelected
                   ? 'bg-primary/10 border-primary/50 text-primary'
-                  : 'bg-muted/30 border-transparent text-muted-foreground hover:bg-muted/50'
+                  : 'bg-muted/30 border-transparent text-muted-foreground hover:bg-[var(--interactive-hover)]'
               )}
             >
               <span>{tag}</span>
@@ -152,7 +152,7 @@ export const AddTagInput: React.FC<{
     return (
       <button
         onClick={() => setShowInput(true)}
-        className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] text-muted-foreground/50 hover:text-muted-foreground hover:bg-muted/30 transition-colors"
+        className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] text-muted-foreground/50 hover:text-muted-foreground hover:bg-[var(--interactive-hover)] transition-colors"
       >
         <Plus className="w-3 h-3" />
       </button>

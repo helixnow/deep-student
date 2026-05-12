@@ -420,7 +420,7 @@ export const AttachmentUploader: React.FC<AttachmentUploaderProps> = ({
             'cursor-pointer transition-all',
             isDragging
               ? 'border-primary bg-primary/5 dark:bg-primary/10'
-              : 'border-border/50 hover:border-primary/50 hover:bg-muted/30',
+              : 'border-border/50 hover:border-primary/50 hover:bg-[var(--interactive-hover)]',
             'text-muted-foreground'
           )}
         >

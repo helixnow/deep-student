@@ -497,7 +497,7 @@ export const AnkiCardStackPreview: React.FC<AnkiCardStackPreviewProps> = ({
               key={card.id || index}
               className={[
                 'p-3 border rounded-lg bg-card transition-colors',
-                disabled ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-accent/50',
+                disabled ? 'cursor-not-allowed' : 'cursor-pointer hover:bg-[var(--interactive-hover)]',
               ]
                 .filter(Boolean)
                 .join(' ')}

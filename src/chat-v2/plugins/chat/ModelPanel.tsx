@@ -354,7 +354,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
           'w-full !justify-start gap-3 !rounded-xl border !px-3 !py-2 text-left',
           isSelected
             ? 'border-primary/80 bg-primary/5 shadow-sm'
-            : 'border-transparent bg-card/80 hover:border hover:bg-muted/70'
+            : 'border-transparent bg-card/80 hover:border hover:bg-[var(--interactive-hover)]'
         )}
       >
         <span className={indicatorClass}>{isSelected ? '✓' : ''}</span>
@@ -383,7 +383,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
           'w-full !justify-start gap-3 !rounded-xl border !px-3 !py-2 text-left',
           isSelected
             ? 'border-primary/80 bg-primary/5 shadow-sm'
-            : 'border-transparent bg-card/80 hover:border hover:bg-muted/70'
+            : 'border-transparent bg-card/80 hover:border hover:bg-[var(--interactive-hover)]'
         )}
       >
         <span className={indicatorClass}>{isSelected ? '✓' : ''}</span>
@@ -475,7 +475,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
                   <button
                     type="button"
                     onClick={() => toggleVendorCollapse(group.vendorId)}
-                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-muted/60 active:bg-muted/80"
+                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-[var(--interactive-hover)] active:bg-muted/80"
                   >
                     {isCollapsed ? (
                       <ChevronRight size={14} className="shrink-0 text-muted-foreground" />

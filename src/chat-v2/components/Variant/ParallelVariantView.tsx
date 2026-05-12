@@ -747,7 +747,7 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
               className={cn(
                 'p-1 rounded-md transition-colors',
                 hasPrev
-                  ? 'text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer'
+                  ? 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] cursor-pointer'
                   : 'text-muted-foreground/20 cursor-default'
               )}
               aria-label="Previous variant"
@@ -775,7 +775,7 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
                       '!rounded-full flex-shrink-0 !p-0',
                       isActive
                         ? 'variant-indicator-dot-active bg-primary'
-                        : 'variant-indicator-dot bg-muted-foreground/30 hover:bg-muted-foreground/50'
+                        : 'variant-indicator-dot bg-muted-foreground/30 hover:bg-[var(--interactive-hover)]-foreground/50'
                     )}
                     aria-label={t('variant.switchToVariant', { index: index + 1, defaultValue: `Switch to variant ${index + 1}` })}
                   />
@@ -795,7 +795,7 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
               className={cn(
                 'p-1 rounded-md transition-colors',
                 hasNext
-                  ? 'text-muted-foreground hover:text-foreground hover:bg-muted cursor-pointer'
+                  ? 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] cursor-pointer'
                   : 'text-muted-foreground/20 cursor-default'
               )}
               aria-label="Next variant"

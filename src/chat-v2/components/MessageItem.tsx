@@ -401,7 +401,7 @@ function RawRequestPreview({ rawRequests, rawRequest, copyFilterConfig }: RawReq
                 className={`px-2 py-0.5 text-[10px] rounded transition-colors ${
                   i === activeIdx
                     ? 'bg-primary/10 text-primary font-medium'
-                    : 'text-muted-foreground/60 hover:bg-muted/50'
+                    : 'text-muted-foreground/60 hover:bg-[var(--interactive-hover)]'
                 }`}
                 title={rStats.toolCallMsgCount > 0
                   ? t('messageItem.rawRequest.roundTooltipWithToolCalls', {

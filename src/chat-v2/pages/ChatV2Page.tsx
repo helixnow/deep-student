@@ -183,7 +183,7 @@ export const ChatV2Page: React.FC = () => {
   }, [globalLeftPanelCollapsed]);
   const [pendingDeleteSessionId, setPendingDeleteSessionId] = useState<string | null>(null);
   const [pendingArchiveSessionId, setPendingArchiveSessionId] = useState<string | null>(null);
-  const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
+
   const deleteConfirmTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clearDeleteConfirmTimeout = useCallback(() => {
     if (!deleteConfirmTimeoutRef.current) return;
@@ -585,9 +585,9 @@ export const ChatV2Page: React.FC = () => {
   const {
     renderSessionItem, handleBrowserSelectSession, handleBrowserRenameSession,
   } = useSessionItemRenderer({
-    editingSessionId, hoveredSessionId, currentSessionId, pendingDeleteSessionId, pendingArchiveSessionId,
+    editingSessionId, hoveredSessionId: null, currentSessionId, pendingDeleteSessionId, pendingArchiveSessionId,
     editingTitle, renamingSessionId, renameError, groups, sessions, totalSessionCount,
-    t, resetDeleteConfirmation, setCurrentSessionId, setHoveredSessionId,
+    t, resetDeleteConfirmation, setCurrentSessionId, setHoveredSessionId: () => {},
     setEditingTitle, setPendingDeleteSessionId, setPendingArchiveSessionId, setSessions, setViewMode,
     clearDeleteConfirmTimeout, deleteConfirmTimeoutRef,
     startEditSession, saveSessionTitle, cancelEditSession,

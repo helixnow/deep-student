@@ -81,7 +81,7 @@ const AnkiConnectRefreshButton: React.FC<{ onRefresh: () => Promise<void> }> = (
       type="button"
       onClick={handleClick}
       disabled={refreshing}
-      className="inline-flex items-center justify-center w-5 h-5 rounded-full hover:bg-accent/60 transition-colors disabled:opacity-50"
+      className="inline-flex items-center justify-center w-5 h-5 rounded-full hover:bg-[var(--interactive-hover)] transition-colors disabled:opacity-50"
       title="Refresh AnkiConnect status"
       aria-label="Refresh AnkiConnect status"
     >

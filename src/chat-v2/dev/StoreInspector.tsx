@@ -119,7 +119,7 @@ const JsonViewer: React.FC<JsonViewerProps> = ({ data, name, depth = 0 }) => {
     <div className="text-xs font-mono">
       <div
         className={cn(
-          'flex items-center gap-1 py-0.5 hover:bg-muted/50 rounded cursor-pointer',
+          'flex items-center gap-1 py-0.5 hover:bg-[var(--interactive-hover)] rounded cursor-pointer',
           isExpandable && 'cursor-pointer'
         )}
         onClick={() => isExpandable && setExpanded(!expanded)}
@@ -271,7 +271,7 @@ export const StoreInspector: React.FC<StoreInspectorProps> = ({
               e.stopPropagation();
               handleRefresh();
             }}
-            className="p-1 hover:bg-muted rounded"
+            className="p-1 hover:bg-[var(--interactive-hover)] rounded"
             title="Refresh"
           >
             <RefreshCw className="w-3.5 h-3.5" />
@@ -281,7 +281,7 @@ export const StoreInspector: React.FC<StoreInspectorProps> = ({
               e.stopPropagation();
               handleCopy();
             }}
-            className="p-1 hover:bg-muted rounded"
+            className="p-1 hover:bg-[var(--interactive-hover)] rounded"
             title="Copy JSON"
           >
             {copied ? (

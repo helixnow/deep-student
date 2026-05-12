@@ -184,7 +184,7 @@ const AttachmentItem: React.FC<AttachmentItemProps> = ({
       className={cn(
         'relative group rounded-xl overflow-hidden',
         'border border-border/40',
-        'bg-background hover:bg-muted/30 transition-colors', // 更干净的背景
+        'bg-background hover:bg-[var(--interactive-hover)] transition-colors', // 更干净的背景
         'shadow-sm hover:shadow-md transition-shadow duration-200',
         config.container,
         isError && 'border-destructive/50 bg-destructive/5'

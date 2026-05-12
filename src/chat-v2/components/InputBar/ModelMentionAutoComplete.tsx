@@ -107,7 +107,7 @@ const ModelSuggestionItem: React.FC<ModelSuggestionItemProps> = ({
         'transition-colors duration-100',
         isSelected
           ? 'bg-primary/10 dark:bg-primary/20'
-          : 'hover:bg-muted/50 dark:hover:bg-muted/30'
+          : 'hover:bg-[var(--interactive-hover)] dark:hover:bg-[var(--interactive-hover)]'
       )}
     >
       {/* 模型图标 */}

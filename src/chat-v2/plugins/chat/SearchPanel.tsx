@@ -171,7 +171,7 @@ export const SearchPanel: React.FC<SearchPanelProps> = ({ store, onClose }) => {
                   'w-full !justify-start gap-3 !rounded-lg border !p-3 text-left',
                   isSelected
                     ? 'border-primary bg-primary/5'
-                    : 'border-border hover:border-primary/50 hover:bg-accent/30',
+                    : 'border-border hover:border-primary/50 hover:bg-[var(--interactive-hover)]',
                   isStreaming && 'pointer-events-none opacity-60'
                 )}
               >

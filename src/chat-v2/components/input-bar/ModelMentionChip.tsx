@@ -119,7 +119,7 @@ export const ModelMentionChip: React.FC<ModelMentionChipProps> = ({
       {/* 🔧 样式统一：与技能标签保持一致 */}
       <span className="truncate max-w-[80px]">{displayName}</span>
       {!disabled && (
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRemove} className="ml-1 -mr-1 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/10" aria-label={`Remove ${model.name}`}>
+        <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRemove} className="ml-1 -mr-1 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--interactive-hover)]" aria-label={`Remove ${model.name}`}>
           <X size={10} weight="bold" />
         </NotionButton>
       )}

@@ -517,6 +517,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   modelMentionActions,
   runtimeModelLabel,
   runtimeModelProviderLabel,
+  runtimeModelMenu,
   // 推理模式
   enableThinking,
   thinkingStateLabel,
@@ -1238,7 +1239,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const studyUiBlackActionButtonClass =
     '!border-black !bg-black hover:!bg-black active:!bg-black !text-white';
   const studyUiSendButtonEmptyStateClass =
-    '!border-transparent !bg-muted-foreground hover:!bg-muted-foreground/90 active:!bg-muted-foreground/85 !text-[color:var(--interactive-selected)]';
+    '!border-transparent !bg-muted !text-muted-foreground hover:!bg-muted/80 active:!bg-muted/70';
   const studyUiSendButtonAriaLabel = '发送消息';
   const tooltipPosition = 'top' as const;
   // 🔧 移动端禁用 tooltip（触摸设备没有 hover 交互，tooltip 会干扰）
@@ -2676,7 +2677,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             {onToggleThinking && (
               <span
                 className={cn(
-                  'relative inline-flex h-8 min-w-0 max-w-[8rem] shrink-0 items-center rounded-[var(--radius-shell-control)] px-1 text-[13px] font-semibold leading-none transition-colors duration-150 hover:bg-[color:var(--button-utility-hover)] focus-within:bg-[color:var(--button-utility-hover)]',
+                  'relative inline-flex h-8 min-w-0 max-w-[8rem] shrink-0 items-center rounded-[var(--radius-shell-control)] px-1 text-[13px] font-semibold leading-none',
                   enableThinking && !thinkingUnsupported
                     ? 'text-[color:var(--text-primary)]'
                     : 'text-[color:var(--text-muted)]'
@@ -2805,6 +2806,9 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 )}
               </span>
             )}
+
+            {/* 运行时模型选择独立 AppMenu */}
+            {runtimeModelMenu}
 
             {/* 🆕 媒体处理中提示 */}
             {hasProcessingMedia && (

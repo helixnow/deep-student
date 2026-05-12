@@ -111,9 +111,9 @@ export const SourceCard: React.FC<SourceCardProps> = ({
       onKeyDown={handleKeyDown}
       className={cn(
         'group relative rounded-lg border transition-all',
-        'bg-card hover:bg-accent/50',
+        'bg-card hover:bg-[var(--interactive-hover)]',
         'border-border/50 hover:border-border',
-        'dark:bg-card/50 dark:hover:bg-accent/30',
+        'dark:bg-card/50 dark:hover:bg-[var(--interactive-hover)]',
         'cursor-pointer',
         compact ? 'p-2' : 'p-3',
         className

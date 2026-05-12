@@ -406,7 +406,7 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
     <div className="rounded-lg border border-border/50 bg-card overflow-hidden">
       {/* 头部 */}
       <div
-        className="flex items-center justify-between p-3 cursor-pointer hover:bg-muted/30 transition-colors"
+        className="flex items-center justify-between p-3 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center gap-2">
@@ -480,7 +480,7 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
             {recentMessages.length > 0 && (
               <div className="border-t border-border/50">
                 <div
-                  className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-muted/30 transition-colors"
+                  className="flex items-center justify-between px-3 py-2 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
                   onClick={(e) => {
                     e.stopPropagation();
                     setShowMessages(!showMessages);

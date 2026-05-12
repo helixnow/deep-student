@@ -86,7 +86,7 @@ export const SearchResultList: React.FC<SearchResultListProps> = ({
           <div key={sessionId} className="space-y-1">
             <button
               onClick={() => onSelectResult(sessionId)}
-              className="flex items-center gap-2 w-full text-left px-2 py-1.5 rounded-md hover:bg-muted/50 transition-colors group"
+              className="flex items-center gap-2 w-full text-left px-2 py-1.5 rounded-md hover:bg-[var(--interactive-hover)] transition-colors group"
             >
               <MessageSquare className="w-3.5 h-3.5 text-muted-foreground/60 shrink-0" />
               <span className="text-sm font-medium text-foreground truncate group-hover:text-primary transition-colors">
@@ -101,7 +101,7 @@ export const SearchResultList: React.FC<SearchResultListProps> = ({
                 <button
                   key={item.blockId}
                   onClick={() => onSelectResult(item.sessionId)}
-                  className="w-full text-left px-2 py-1 rounded hover:bg-muted/30 transition-colors"
+                  className="w-full text-left px-2 py-1 rounded hover:bg-[var(--interactive-hover)] transition-colors"
                 >
                   <div className="flex items-start gap-1.5">
                     {item.role === 'user' ? (

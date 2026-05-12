@@ -159,7 +159,7 @@ const ToggleControl: React.FC<ToggleControlProps> = ({
       className={cn(
         'flex items-center justify-between gap-3 p-3',
         'rounded-lg',
-        'hover:bg-muted/50 transition-colors',
+        'hover:bg-[var(--interactive-hover)] transition-colors',
         !disabled && 'cursor-pointer',
         disabled && 'opacity-50'
       )}
@@ -288,7 +288,7 @@ export const ChatParamsPanel: React.FC<ChatParamsPanelProps> = ({
         className={cn(
           'flex items-center justify-between px-4 py-3',
           'border-b border-border/50',
-          onExpandedChange && 'cursor-pointer hover:bg-muted/50'
+          onExpandedChange && 'cursor-pointer hover:bg-[var(--interactive-hover)]'
         )}
         onClick={() => onExpandedChange?.(!expanded)}
       >

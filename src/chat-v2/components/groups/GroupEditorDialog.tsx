@@ -335,7 +335,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                         "w-9 h-9 flex items-center justify-center rounded-md cursor-pointer transition-all",
                         icon === iconName
                           ? "bg-primary/15 text-primary ring-1 ring-primary/30"
-                          : "hover:bg-muted/50 text-muted-foreground hover:text-foreground"
+                          : "hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground"
                       )}
                       title={iconName}
                     >
@@ -358,7 +358,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                   value={icon}
                   onChange={(e) => setIcon(e.target.value)}
                   placeholder={t('page.groupIconPlaceholder')}
-                  className="h-8 text-sm border-transparent shadow-none bg-transparent hover:bg-muted/30 focus:bg-muted/20 focus:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 outline-none px-2 transition-all"
+                  className="h-8 text-sm border-transparent shadow-none bg-transparent hover:bg-[var(--interactive-hover)] focus:bg-muted/20 focus:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 outline-none px-2 transition-all"
                 />
               </div>
             </PropertyRow>
@@ -368,7 +368,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder={t('page.groupDescriptionPlaceholder')}
-                className="h-9 border-transparent shadow-none bg-transparent hover:bg-muted/30 focus:bg-muted/20 focus:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 outline-none px-2 transition-all"
+                className="h-9 border-transparent shadow-none bg-transparent hover:bg-[var(--interactive-hover)] focus:bg-muted/20 focus:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 outline-none px-2 transition-all"
               />
             </PropertyRow>
 
@@ -378,7 +378,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                 value={systemPrompt}
                 onChange={(e) => setSystemPrompt(e.target.value)}
                 rows={5}
-                className="min-h-[120px] border-transparent shadow-none bg-transparent hover:bg-muted/30 focus:bg-muted/20 focus:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 outline-none px-2 py-2 transition-all resize-none overflow-hidden"
+                className="min-h-[120px] border-transparent shadow-none bg-transparent hover:bg-[var(--interactive-hover)] focus:bg-muted/20 focus:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 outline-none px-2 py-2 transition-all resize-none overflow-hidden"
                 placeholder={t('page.groupSystemPromptPlaceholder')}
               />
             </PropertyRow>
@@ -402,7 +402,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                                         "inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-sm border cursor-pointer transition-colors select-none",
                                         checked 
                                           ? "bg-primary/10 text-primary border-primary/20" 
-                                          : "bg-background border-border hover:bg-muted text-muted-foreground"
+                                          : "bg-background border-border hover:bg-[var(--interactive-hover)] text-muted-foreground"
                                     )}
                                 >
                                     {checked && <Check className="w-3 h-3" />}
@@ -436,7 +436,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                   return (
                     <div
                       key={ref.sourceId}
-                      className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-md bg-muted/30 hover:bg-muted/50 transition-colors group"
+                      className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-md bg-muted/30 hover:bg-[var(--interactive-hover)] transition-colors group"
                     >
                       <div className="flex items-center gap-2 min-w-0">
                         <TypeIcon className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
@@ -470,7 +470,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                   setPickerOpen(true);
                 }
               }}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-border/60 text-sm text-muted-foreground hover:bg-muted/40 hover:text-foreground hover:border-border transition-all cursor-pointer"
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-border/60 text-sm text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground hover:border-border transition-all cursor-pointer"
             >
               <Plus className="w-4 h-4" />
               <span>{t('page.groupPinnedBrowse')}</span>

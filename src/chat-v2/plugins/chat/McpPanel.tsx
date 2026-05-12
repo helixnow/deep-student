@@ -200,7 +200,7 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
           'w-full flex items-center gap-2 rounded-md border p-2 text-left transition-colors',
           isSelected
             ? 'border-primary bg-primary/5'
-            : 'border-border hover:border-primary/50 hover:bg-accent/30',
+            : 'border-border hover:border-primary/50 hover:bg-[var(--interactive-hover)]',
           !isConnected && !isBuiltin && 'opacity-70',
           isStreaming && 'pointer-events-none opacity-60',
           isBuiltin ? 'cursor-default' : 'cursor-pointer'

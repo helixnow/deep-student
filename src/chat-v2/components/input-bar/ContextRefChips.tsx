@@ -163,7 +163,7 @@ export const ContextRefChips: React.FC<ContextRefChipsProps> = memo(
               <Icon size={12} weight="bold" className="shrink-0" />
               <span className="truncate max-w-[80px]">{label}</span>
               {!disabled && (
-                <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onRemove(ref.resourceId)} className="ml-1 -mr-1 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-black/5 dark:hover:bg-white/10" aria-label={`${t('common:actions.remove')} ${label}`} title={t('common:actions.remove')}>
+                <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onRemove(ref.resourceId)} className="ml-1 -mr-1 !h-4 !w-4 !p-0 !rounded-full opacity-60 hover:opacity-100 hover:bg-[var(--interactive-hover)]" aria-label={`${t('common:actions.remove')} ${label}`} title={t('common:actions.remove')}>
                   <X size={10} weight="bold" />
                 </NotionButton>
               )}

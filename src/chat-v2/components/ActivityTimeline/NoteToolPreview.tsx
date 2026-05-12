@@ -363,7 +363,7 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
                   handleOpenNote();
                 }
               }}
-              className="p-1.5 rounded hover:bg-muted/80 transition-colors cursor-pointer relative z-10"
+              className="p-1.5 rounded hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer relative z-10"
               title={t('timeline.noteTool.openNote', '在学习资源中打开')}
             >
               <ExternalLink size={14} className="text-muted-foreground hover:text-foreground" />

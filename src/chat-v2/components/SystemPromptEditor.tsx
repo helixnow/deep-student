@@ -183,7 +183,7 @@ const TemplateSelector: React.FC<TemplateSelectorProps> = ({
                 key={template.id}
                 className={cn(
                   'flex items-center justify-between gap-2 px-3 py-2',
-                  'hover:bg-muted/50 cursor-pointer'
+                  'hover:bg-[var(--interactive-hover)] cursor-pointer'
                 )}
                 onClick={() => {
                   onSelect(template);
@@ -272,7 +272,7 @@ const VariableInserter: React.FC<VariableInserterProps> = ({
               <div
                 key={variable.name}
                 className={cn(
-                  'px-3 py-2 hover:bg-muted/50 cursor-pointer'
+                  'px-3 py-2 hover:bg-[var(--interactive-hover)] cursor-pointer'
                 )}
                 onClick={() => {
                   onInsert(variable);

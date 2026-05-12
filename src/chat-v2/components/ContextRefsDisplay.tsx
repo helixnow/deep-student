@@ -200,7 +200,7 @@ const ContextRefItem: React.FC<ContextRefItemProps> = ({
     <div
       className={cn(
         "relative w-16 h-16 rounded-xl overflow-hidden border border-border/40",
-        "bg-background hover:bg-muted/30 transition-colors shadow-sm",
+        "bg-background hover:bg-[var(--interactive-hover)] transition-colors shadow-sm",
         "flex flex-col items-center justify-center cursor-pointer",
         "group shrink-0"
       )}
@@ -231,7 +231,7 @@ const ImageRefItem: React.FC<ImageRefItemProps> = ({ preview, onClick }) => {
     <div
       className={cn(
         "relative w-16 h-16 rounded-xl overflow-hidden border border-border/40",
-        "bg-background hover:bg-muted/30 transition-colors shadow-sm",
+        "bg-background hover:bg-[var(--interactive-hover)] transition-colors shadow-sm",
         "group cursor-pointer shrink-0"
       )}
       title={preview.name}
@@ -266,7 +266,7 @@ const FileRefItem: React.FC<FileRefItemProps> = ({ preview, onClick }) => {
     <div
       className={cn(
         "relative w-16 h-16 rounded-xl overflow-hidden border border-border/40",
-        "bg-background hover:bg-muted/30 transition-colors shadow-sm",
+        "bg-background hover:bg-[var(--interactive-hover)] transition-colors shadow-sm",
         "flex flex-col items-center justify-center cursor-pointer",
         "group shrink-0"
       )}
@@ -456,7 +456,7 @@ export const ContextRefsDisplay: React.FC<ContextRefsDisplayProps> = ({
           variant="ghost"
           size="sm"
           onClick={() => setIsExpanded(!isExpanded)}
-          className="!h-auto !px-2 !py-0.5 border border-border/50 hover:border-border bg-muted/50 hover:bg-muted text-muted-foreground hover:text-foreground"
+          className="!h-auto !px-2 !py-0.5 border border-border/50 hover:border-border bg-muted/50 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground"
         >
           {isExpanded ? (
             <span>{t('contextRefs.collapse')}</span>

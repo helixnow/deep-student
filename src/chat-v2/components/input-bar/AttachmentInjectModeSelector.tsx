@@ -107,7 +107,7 @@ const ToggleTag: React.FC<ToggleTagProps> = memo(({
           ? 'bg-blue-50/50 text-blue-500/70 border-blue-200/40 dark:bg-blue-900/20 dark:text-blue-400/70 dark:border-blue-700/40 cursor-wait'
           : selected
             ? 'bg-primary/15 text-primary border-primary/40 dark:bg-primary/20 dark:border-primary/50'
-            : 'bg-muted/30 text-muted-foreground/70 border-transparent hover:bg-muted/50 hover:text-muted-foreground',
+            : 'bg-muted/30 text-muted-foreground/70 border-transparent hover:bg-[var(--interactive-hover)] hover:text-muted-foreground',
         (disabled && !processingNotReady) && 'opacity-40',
         className
       )}
