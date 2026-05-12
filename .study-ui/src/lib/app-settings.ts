@@ -18,6 +18,7 @@ export type AppSettings = {
   interfaceScale: number;
   fontFamily: AppFontFamily;
   fontSizeScale: number;
+  macosNativeFontSmoothing: boolean;
   sidebarGlassIntensity: number;
   titlebarTopInset: number;
   debugLoggingEnabled: boolean;
@@ -50,6 +51,7 @@ export const DEFAULT_APP_SETTINGS: AppSettings = {
   interfaceScale: 100,
   fontFamily: "system",
   fontSizeScale: 100,
+  macosNativeFontSmoothing: true,
   sidebarGlassIntensity: 100,
   titlebarTopInset: 0,
   debugLoggingEnabled: false,
@@ -184,6 +186,10 @@ export function normalizeAppSettings(value: unknown): AppSettings {
       input.fontSizeScale,
       FONT_SIZE_SCALE_RANGE,
       DEFAULT_APP_SETTINGS.fontSizeScale,
+    ),
+    macosNativeFontSmoothing: toBoolean(
+      input.macosNativeFontSmoothing,
+      DEFAULT_APP_SETTINGS.macosNativeFontSmoothing,
     ),
     sidebarGlassIntensity: normalizeScale(
       input.sidebarGlassIntensity,

@@ -17,6 +17,7 @@ import {
   type AppSettings,
   type DebugLogType,
 } from "@/lib/app-settings";
+import { detectDesktopPlatform } from "@/lib/app-shell";
 
 type AppSettingsContextValue = {
   settings: AppSettings;
@@ -40,8 +41,19 @@ function getInitialSettings() {
 function applyAppSettingsToDocument(settings: AppSettings) {
   const root = document.documentElement;
   const sidebarGlassAlphaShift = getSidebarGlassAlphaShift(settings.sidebarGlassIntensity);
+  const desktopPlatform = detectDesktopPlatform({
+    platform: typeof navigator === "undefined" ? "" : navigator.platform,
+    userAgent: typeof navigator === "undefined" ? "" : navigator.userAgent,
+  });
+  const fontSmoothing =
+    desktopPlatform !== "macos"
+      ? "system-default"
+      : settings.macosNativeFontSmoothing
+        ? "macos-native"
+        : "macos-grayscale";
 
   root.lang = settings.language;
+  root.dataset.fontSmoothing = fontSmoothing;
   root.style.setProperty("--app-interface-scale", `${settings.interfaceScale / 100}`);
   root.style.setProperty("--app-font-scale", `${settings.fontSizeScale / 100}`);
   root.style.setProperty("--app-font-family", getFontFamilyStack(settings.fontFamily));

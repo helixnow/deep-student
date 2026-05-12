@@ -37,6 +37,7 @@ import {
   type CopyThinkingMode,
   type CopyToolsMode,
 } from "@/lib/app-settings";
+import { detectDesktopPlatform } from "@/lib/app-shell";
 import { getVisibleSettingsPanelSections } from "@/lib/settings-panel";
 import type { ThemePreference } from "@/lib/theme";
 import { cn } from "@/lib/utils";
@@ -1067,6 +1068,12 @@ export function SettingsPanel({ activeTab, onSelectTab }: SettingsPanelProps) {
   const currentFontSizeLabel = `当前字号：${settings.fontSizeScale}%`;
   const currentSidebarGlassIntensityLabel = `${settings.sidebarGlassIntensity}%`;
   const currentTitlebarInsetLabel = `${settings.titlebarTopInset} px`;
+  const isMacPlatform =
+    typeof navigator !== "undefined" &&
+    detectDesktopPlatform({
+      platform: navigator.platform,
+      userAgent: navigator.userAgent,
+    }) === "macos";
   const currentPageMeta = settingsPageMeta[activeTab] ?? {
     title: "设置",
     description: "按当前分类查看和调整应用偏好。",
@@ -1255,6 +1262,17 @@ export function SettingsPanel({ activeTab, onSelectTab }: SettingsPanelProps) {
               }
             />
 
+            {isMacPlatform ? (
+              <SettingsSwitchRow
+                title="macOS 原生字体平滑"
+                description="macOS 下优先跟随系统默认字体平滑策略，不再全局强制 antialiased。关闭后回退为兼容旧版观感的灰度平滑。"
+                ariaLabel="切换 macOS 原生字体平滑"
+                checked={settings.macosNativeFontSmoothing}
+                onCheckedChange={(checked) => updateSetting("macosNativeFontSmoothing", checked)}
+                controlSurfaceClassName={controlSurfaceClassName}
+              />
+            ) : null}
+
             <SettingsSwitchRow
               title="毛玻璃侧边栏"
               description="开启后使用系统毛玻璃侧边栏（Windows 为系统材质）；关闭后使用纯色侧边栏。系统减少透明度或材质不可用时会自动回退。"
@@ -1302,6 +1320,53 @@ export function SettingsPanel({ activeTab, onSelectTab }: SettingsPanelProps) {
                     }
                     className="h-2 w-full cursor-pointer appearance-none rounded-full bg-background accent-primary"
                   />
+                </div>
+              }
+            />
+
+            <SettingBlock
+              title="当前主题预览"
+              description="用真实语义 token 预览侧栏、阅读面板和主行动色，确认主题是稳定材质加克制重点色，而不是整页染色。"
+              controls={
+                <div
+                  data-slot="settings-theme-preview"
+                  className="overflow-hidden rounded-2xl border border-border/70 bg-[color:var(--shell-backdrop)] p-3 shadow-sm shadow-black/5"
+                >
+                  <div className="grid min-h-36 gap-3 md:grid-cols-[7.5rem_minmax(0,1fr)]">
+                    <aside
+                      data-slot="settings-theme-preview-sidebar"
+                      className="rounded-xl border border-border/60 bg-sidebar px-3 py-3 text-sidebar-foreground"
+                    >
+                      <div className="mb-4 h-2 w-14 rounded-full bg-sidebar-muted/45" />
+                      <div className="space-y-2">
+                        <div className="h-7 rounded-lg bg-interactive-selected" />
+                        <div className="h-7 rounded-lg bg-interactive-hover" />
+                        <div className="h-7 rounded-lg bg-transparent ring-1 ring-inset ring-border/55" />
+                      </div>
+                    </aside>
+                    <section
+                      data-slot="settings-theme-preview-panel"
+                      className="flex min-w-0 flex-col justify-between rounded-xl border border-border/60 bg-[color:var(--shell-panel-strong)] px-4 py-4"
+                    >
+                      <div className="space-y-3">
+                        <div className="flex items-center justify-between gap-3">
+                          <div className="h-2.5 w-24 rounded-full bg-foreground/72" />
+                          <div className="h-7 w-16 rounded-full bg-secondary" />
+                        </div>
+                        <div className="space-y-2">
+                          <div className="h-2 w-full max-w-72 rounded-full bg-muted-foreground/26" />
+                          <div className="h-2 w-4/5 max-w-60 rounded-full bg-muted-foreground/18" />
+                        </div>
+                      </div>
+                      <div className="mt-5 flex items-center justify-between gap-3">
+                        <div className="h-8 flex-1 rounded-xl border border-border/60 bg-background/88" />
+                        <div
+                          data-slot="settings-theme-preview-action"
+                          className="h-8 w-24 rounded-xl bg-primary shadow-sm shadow-black/10"
+                        />
+                      </div>
+                    </section>
+                  </div>
                 </div>
               }
             />

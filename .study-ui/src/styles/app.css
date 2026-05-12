@@ -12,16 +12,16 @@
   --card-foreground: oklch(0.272 0.012 264.2);
   --popover: #FCFCFA;
   --popover-foreground: oklch(0.272 0.012 264.2);
-  --primary: oklch(0.592 0.166 257.8);
-  --primary-foreground: #FFFFFF;
+  --primary: oklch(0.52 0.16 257.8);
+  --primary-foreground: #FAFBFF;
   --secondary: #F9F9F9;
   --secondary-foreground: oklch(0.338 0.018 264.3);
   --muted: #F1F1EE;
   --muted-foreground: oklch(0.548 0.013 264.2);
   --accent: #EFEFEA;
   --accent-foreground: oklch(0.31 0.02 264.3);
-  --interactive-hover: #E9E9E9;
-  --interactive-selected: #E9E9E9;
+  --interactive-hover: #EBEAE5;
+  --interactive-selected: #DDDCD4;
   --sidebar-hover: #F9F9F9;
   --destructive: oklch(0.61 0.21 27.4);
   --destructive-foreground: #FFFFFF;
@@ -166,8 +166,8 @@
   --card-foreground: #F5F5F5;
   --popover: #20201E;
   --popover-foreground: #F5F5F5;
-  --primary: oklch(0.72 0.118 255.4);
-  --primary-foreground: #FFFFFF;
+  --primary: oklch(0.78 0.09 255.4);
+  --primary-foreground: #101827;
   --secondary: #232321;
   --secondary-foreground: #F5F5F5;
   --muted: #232321;
@@ -409,8 +409,17 @@
     background: var(--background);
     color: var(--foreground);
     font-family: var(--app-font-family);
-    -webkit-font-smoothing: antialiased;
     text-rendering: optimizeLegibility;
+  }
+
+  [data-font-smoothing="macos-native"] body {
+    -webkit-font-smoothing: auto;
+    -moz-osx-font-smoothing: auto;
+  }
+
+  [data-font-smoothing="macos-grayscale"] body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
   }
 
   html[data-window-background="translucent"],
@@ -440,25 +449,48 @@
     color: var(--color-sidebar-foreground);
   }
 
-  .custom-scrollbar {
+  :root {
+    /* OverlayScrollbars → project color bridge (v1.1) */
+    --os-handle-bg: var(--scrollbar-thumb);
+    --os-handle-bg-hover: var(--scrollbar-thumb-hover);
+    --os-handle-bg-active: var(--scrollbar-thumb-hover);
+    --os-size: 6px;
+    --os-padding-perpendicular: 2px;
+    --os-padding-axis: 2px;
+    --os-handle-min-size: 36px;
+    --os-handle-border-radius: 999px;
+    --scrollbar-overlay-z: 20;
+  }
+
+  .scroll-area--native {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
     scrollbar-gutter: stable;
   }
 
-  .custom-scrollbar::-webkit-scrollbar {
-    width: 5px;
-    height: 5px;
+  .scroll-area--native::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
   }
 
-  .custom-scrollbar::-webkit-scrollbar-thumb {
+  .scroll-area--native::-webkit-scrollbar-thumb {
     background: var(--scrollbar-thumb);
     border-radius: 999px;
   }
 
-  .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+  .scroll-area--native::-webkit-scrollbar-thumb:hover {
     background: var(--scrollbar-thumb-hover);
   }
 
-  .custom-scrollbar::-webkit-scrollbar-track {
+  .scroll-area--native::-webkit-scrollbar-track {
     background: transparent;
+  }
+}
+
+@media print {
+  [data-overlayscrollbars-viewport] {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
   }
 }

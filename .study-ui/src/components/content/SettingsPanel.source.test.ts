@@ -23,6 +23,7 @@ test("settings panel keeps the requested settings controls while adopting a quie
     "全局字体",
     "字体大小",
     "外观 / 主题",
+    "macOS 原生字体平滑",
     "侧边栏毛玻璃强度",
     "记忆系统",
     "匿名错误报告",
@@ -99,6 +100,16 @@ test("appearance panel removes both palette selection and self color customizati
   assert.equal(source.includes("自选色"), false, "unexpected label: 自选色");
 });
 
+test("appearance panel shows a real theme material preview instead of palette chips", () => {
+  const source = readFileSync(settingsPanelPath, "utf8");
+
+  assert.match(source, /title="当前主题预览"/u);
+  assert.match(source, /data-slot="settings-theme-preview"/u);
+  assert.match(source, /data-slot="settings-theme-preview-sidebar"/u);
+  assert.match(source, /data-slot="settings-theme-preview-panel"/u);
+  assert.match(source, /data-slot="settings-theme-preview-action"/u);
+});
+
 test("appearance panel exposes a compact slider for sidebar glass strength", () => {
   const source = readFileSync(settingsPanelPath, "utf8");
 
@@ -111,6 +122,16 @@ test("appearance panel exposes a compact slider for sidebar glass strength", () 
   assert.match(source, /SIDEBAR_GLASS_INTENSITY_RANGE\.max/u);
   assert.match(source, /SIDEBAR_GLASS_INTENSITY_RANGE\.step/u);
   assert.match(source, /updateSetting\("sidebarGlassIntensity", Number\(event\.currentTarget\.value\)\)/u);
+});
+
+test("appearance panel exposes a dedicated macOS native font smoothing toggle", () => {
+  const source = readFileSync(settingsPanelPath, "utf8");
+
+  assert.match(source, /title="macOS 原生字体平滑"/u);
+  assert.match(source, /macOS 下优先跟随系统默认字体平滑策略，不再全局强制 antialiased/u);
+  assert.match(source, /ariaLabel="切换 macOS 原生字体平滑"/u);
+  assert.match(source, /checked=\{settings\.macosNativeFontSmoothing\}/u);
+  assert.match(source, /updateSetting\("macosNativeFontSmoothing", checked\)/u);
 });
 
 test("settings panel explains why preview-only actions stay disabled", () => {
@@ -142,6 +163,19 @@ test("settings panel uses a native language dropdown while keeping theme tabs co
   assert.match(source, /grid h-auto w-full grid-cols-3 rounded-2xl px-1 py-1/u);
   assert.match(source, /className="min-h-\[var\(--touch-target-size\)\] gap-2 rounded-xl px-3 text-sm font-medium lg:min-h-9 lg:px-4\.5"/u);
   assert.doesNotMatch(source, /md:min-h-9/u);
+});
+
+test("appearance theme selector uses Phosphor icons", () => {
+  const source = readFileSync(settingsPanelPath, "utf8");
+  const phosphorImport = source.match(/import \{[\s\S]*?\} from "@phosphor-icons\/react";/u)?.[0] ?? "";
+
+  assert.match(phosphorImport, /\bSun\b/u);
+  assert.match(phosphorImport, /\bMoon\b/u);
+  assert.match(phosphorImport, /\bDesktop\b/u);
+  assert.match(source, /title="外观 \/ 主题"[\s\S]*description="使用浅色、深色，或匹配系统设置"/u);
+  assert.match(source, /<Sun size=\{20\} weight="regular" \/>[\s\S]*浅色/u);
+  assert.match(source, /<Moon size=\{20\} weight="regular" \/>[\s\S]*深色/u);
+  assert.match(source, /<Desktop size=\{20\} weight="regular" \/>[\s\S]*系统默认/u);
 });
 
 test("settings switch rows expose row-level touch targets without rewriting the global switch primitive", () => {

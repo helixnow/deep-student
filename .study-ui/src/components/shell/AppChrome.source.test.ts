@@ -234,8 +234,11 @@ test("phone settings are presented as a real sheet instead of replacing the main
   assert.match(source, /isActiveMobileSettingsTab[\s\S]*\? "bg-\[#EEF0F4\] text-\[#111111\] shadow-none"[\s\S]*: "bg-transparent text-\[#3A3A3C\] hover:bg-\[#EEF0F4\]"/u);
   assert.doesNotMatch(source, /border-\[rgba\(17,17,17,0\.08\)\] bg-white text-\[#3A3A3C\]/u);
   assert.match(source, /data-slot="mobile-settings-sheet-nav-edge"[\s\S]*bg-gradient-to-l from-white via-white\/85 to-transparent/u);
-  assert.match(source, /data-slot="mobile-settings-sheet-scroll"[\s\S]*custom-scrollbar[\s\S]*overflow-y-auto[\s\S]*pb-\[calc\(1\.25rem\+var\(--safe-area-bottom\)\)\]/u);
-  assert.match(source, /data-slot="mobile-settings-sheet-real-content"[\s\S]*data-theme="light"[\s\S]*data-window-background="opaque"[\s\S]*\[--background:#F5F5F7\][\s\S]*\[--primary:#0071E3\][\s\S]*\[--ring:rgba\(0,113,227,0\.5\)\][\s\S]*\[--touch-target-size:var\(--control-height-touch\)\][\s\S]*\[--workspace-max-width:100%\][\s\S]*\[&_\[data-slot=settings-page-header\]\]:hidden[\s\S]*\{settingsContent\}/u);
+  assert.match(source, /data-slot="mobile-settings-sheet-scroll"[\s\S]*viewportClassName="px-5 pb-\[calc\(1\.25rem\+var\(--safe-area-bottom\)\)\] pt-4"/u);
+  assert.match(source, /data-slot="mobile-settings-sheet-real-content"[\s\S]*\[--touch-target-size:var\(--control-height-touch\)\][\s\S]*\[--workspace-max-width:100%\][\s\S]*\[&_\[data-slot=settings-page-header\]\]:hidden[\s\S]*\{settingsContent\}/u);
+  assert.doesNotMatch(source, /data-slot="mobile-settings-sheet-real-content"[\s\S]*data-theme="light"/u);
+  assert.doesNotMatch(source, /data-slot="mobile-settings-sheet-real-content"[\s\S]*\[--background:#F5F5F7\]/u);
+  assert.doesNotMatch(source, /data-slot="mobile-settings-sheet-real-content"[\s\S]*\[--primary:#0071E3\]/u);
   assert.match(source, /\[&_input\[type=range\]\]:min-h-11/u);
   assert.doesNotMatch(source, /mobileSettingsSheetTabs/u);
   assert.doesNotMatch(source, /账号管理/u);

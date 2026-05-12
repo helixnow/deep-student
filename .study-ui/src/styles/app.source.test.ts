@@ -47,13 +47,26 @@ test("reduced transparency mode strengthens the shell tokens and stops relying o
   assert.doesNotMatch(source, /@media\s*\(prefers-reduced-transparency: reduce\)\s*\{[\s\S]*backdrop-filter:/u);
 });
 
-test("light theme hover and selected tokens share the same neutral gray", () => {
+test("light theme hover and selected tokens use separate neutral steps for clear state hierarchy", () => {
   const source = readFileSync(appStylesPath, "utf8");
 
-  assert.match(source, /:root\s*\{[\s\S]*--interactive-hover:\s*#E9E9E9;/u);
-  assert.match(source, /:root\s*\{[\s\S]*--interactive-selected:\s*#E9E9E9;/u);
+  const hoverMatch = source.match(/:root\s*\{[\s\S]*--interactive-hover:\s*(#[0-9A-Fa-f]{6});/u);
+  const selectedMatch = source.match(/:root\s*\{[\s\S]*--interactive-selected:\s*(#[0-9A-Fa-f]{6});/u);
+
+  assert.ok(hoverMatch, "expected light theme hover token");
+  assert.ok(selectedMatch, "expected light theme selected token");
+  assert.notEqual(hoverMatch?.[1], selectedMatch?.[1]);
   assert.match(source, /\[data-theme="dark"\]\s*\{[\s\S]*--interactive-hover:\s*rgba\(255, 255, 255, 0\.08\);/u);
   assert.match(source, /\[data-theme="dark"\]\s*\{[\s\S]*--interactive-selected:\s*rgba\(255, 255, 255, 0\.14\);/u);
+});
+
+test("primary action colors keep readable foreground contrast in both themes", () => {
+  const source = readFileSync(appStylesPath, "utf8");
+
+  assert.match(source, /:root\s*\{[\s\S]*--primary:\s*oklch\(0\.52 0\.16 257\.8\);/u);
+  assert.match(source, /:root\s*\{[\s\S]*--primary-foreground:\s*#FAFBFF;/u);
+  assert.match(source, /\[data-theme="dark"\]\s*\{[\s\S]*--primary:\s*oklch\(0\.78 0\.09 255\.4\);/u);
+  assert.match(source, /\[data-theme="dark"\]\s*\{[\s\S]*--primary-foreground:\s*#101827;/u);
 });
 
 test("selection token is defined directly in both themes without runtime palette injection", () => {
@@ -90,10 +103,42 @@ test("translucent shell tokens add a Windows-specific mapping on top of the macO
   assert.match(source, /\[data-theme="dark"\]\[data-platform="windows"\]\[data-window-background="translucent"\]\s*\{[\s\S]*--shell-panel-strong:\s*#[0-9A-Fa-f]{6};/u);
 });
 
-test("custom scroll regions reserve a stable gutter so zoomed layouts do not shift at the right edge", () => {
+test("legacy .custom-scrollbar utility is removed in favor of the unified ScrollArea primitive (milestone v1.1 Phase 4)", () => {
   const source = readFileSync(appStylesPath, "utf8");
 
-  assert.match(source, /\.custom-scrollbar\s*\{[\s\S]*scrollbar-gutter:\s*stable;/u);
+  assert.doesNotMatch(source, /\.custom-scrollbar\s*\{/u);
+  assert.doesNotMatch(source, /\.custom-scrollbar::-webkit-scrollbar/u);
+});
+
+test("overlayscrollbars variables bridge to the project scrollbar palette so theme switches update overlay colors via CSS variables alone", () => {
+  const source = readFileSync(appStylesPath, "utf8");
+
+  assert.match(source, /--os-handle-bg:\s*var\(--scrollbar-thumb\);/u);
+  assert.match(source, /--os-handle-bg-hover:\s*var\(--scrollbar-thumb-hover\);/u);
+  assert.match(source, /--os-handle-bg-active:\s*var\(--scrollbar-thumb-hover\);/u);
+  assert.match(source, /--os-size:\s*6px;/u);
+  assert.match(source, /--os-handle-min-size:\s*36px;/u);
+  assert.match(source, /--os-handle-border-radius:\s*999px;/u);
+  assert.match(source, /--scrollbar-overlay-z:\s*20;/u);
+});
+
+test("native scrollbar fallback is self-contained and reuses the project scrollbar tokens without depending on .custom-scrollbar", () => {
+  const source = readFileSync(appStylesPath, "utf8");
+
+  assert.match(source, /\.scroll-area--native\s*\{[\s\S]*scrollbar-width:\s*thin;/u);
+  assert.match(source, /\.scroll-area--native\s*\{[\s\S]*scrollbar-color:\s*var\(--scrollbar-thumb\)\s*transparent;/u);
+  assert.match(source, /\.scroll-area--native\s*\{[\s\S]*scrollbar-gutter:\s*stable;/u);
+  assert.match(source, /\.scroll-area--native::-webkit-scrollbar\s*\{[\s\S]*width:\s*6px;[\s\S]*height:\s*6px;/u);
+  assert.match(source, /\.scroll-area--native::-webkit-scrollbar-thumb\s*\{[\s\S]*background:\s*var\(--scrollbar-thumb\);/u);
+  assert.match(source, /\.scroll-area--native::-webkit-scrollbar-thumb:hover\s*\{[\s\S]*background:\s*var\(--scrollbar-thumb-hover\);/u);
+});
+
+test("print media keeps overlayscrollbars viewports unclipped so window.print shows full content", () => {
+  const source = readFileSync(appStylesPath, "utf8");
+
+  assert.match(source, /@media print\s*\{[\s\S]*\[data-overlayscrollbars-viewport\]\s*\{[\s\S]*overflow:\s*visible\s*!important;/u);
+  assert.match(source, /@media print\s*\{[\s\S]*\[data-overlayscrollbars-viewport\]\s*\{[\s\S]*height:\s*auto\s*!important;/u);
+  assert.match(source, /@media print\s*\{[\s\S]*\[data-overlayscrollbars-viewport\]\s*\{[\s\S]*max-height:\s*none\s*!important;/u);
 });
 
 test("unified ui whitelist locks the allowed radii, type steps, shadows, and control heights", () => {
@@ -165,6 +210,18 @@ test("root layout tokens define shared names for gutters, sidebar, safe-area, co
   assert.match(source, /:root\s*\{[\s\S]*--sidebar-width:\s*17rem;/u);
   assert.match(source, /:root\s*\{[\s\S]*--composer-bottom-offset:\s*calc\(1rem \+ var\(--layout-safe-area-bottom\)\);/u);
   assert.match(source, /:root\s*\{[\s\S]*--touch-target-size:\s*var\(--control-height-compact\);/u);
+});
+
+test("body font smoothing no longer hardcodes grayscale antialiasing and instead follows the macOS preference dataset", () => {
+  const source = readFileSync(appStylesPath, "utf8");
+  const baseBodyRuleMatch = source.match(/body\s*\{[\s\S]*?text-rendering:\s*optimizeLegibility;[\s\S]*?\n\s*\}/u);
+
+  assert.ok(baseBodyRuleMatch, "expected to find the shared base body rule");
+  assert.doesNotMatch(baseBodyRuleMatch?.[0] ?? "", /-webkit-font-smoothing:\s*antialiased;/u);
+  assert.match(source, /\[data-font-smoothing="macos-native"\]\s*body\s*\{[\s\S]*-webkit-font-smoothing:\s*auto;/u);
+  assert.match(source, /\[data-font-smoothing="macos-native"\]\s*body\s*\{[\s\S]*-moz-osx-font-smoothing:\s*auto;/u);
+  assert.match(source, /\[data-font-smoothing="macos-grayscale"\]\s*body\s*\{[\s\S]*-webkit-font-smoothing:\s*antialiased;/u);
+  assert.match(source, /\[data-font-smoothing="macos-grayscale"\]\s*body\s*\{[\s\S]*-moz-osx-font-smoothing:\s*grayscale;/u);
 });
 
 test("responsive datasets override the same layout token names instead of creating mobile-specific token families", () => {

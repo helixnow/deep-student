@@ -6,6 +6,7 @@ import {
 } from "@phosphor-icons/react";
 
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
 
@@ -39,10 +40,10 @@ export function ThreadCanvas() {
 
   return (
     <div className="flex h-full min-h-0 flex-col">
-      <div
+      <ScrollArea
         data-slot="thread-content-shell"
-        className="custom-scrollbar min-h-0 flex-1 overflow-y-auto"
-        style={threadContentShellStyle}
+        className="min-h-0 flex-1"
+        viewportProps={{ style: threadContentShellStyle }}
       >
         <div
           data-slot="thread-content-column"
@@ -69,7 +70,7 @@ export function ThreadCanvas() {
             </div>
           </section>
         </div>
-      </div>
+      </ScrollArea>
 
       <div
         data-slot="thread-composer-shell"

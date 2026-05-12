@@ -26,17 +26,34 @@ test("normalization still keeps unrelated interface settings intact", () => {
     interfaceScale: 110,
     fontFamily: "serif",
     fontSizeScale: 95,
+    macosNativeFontSmoothing: false,
   });
 
   assert.equal(normalized.language, "en-US");
   assert.equal(normalized.interfaceScale, 110);
   assert.equal(normalized.fontFamily, "serif");
   assert.equal(normalized.fontSizeScale, 95);
+  assert.equal(normalized.macosNativeFontSmoothing, false);
 });
 
 test("defaults include a dedicated sidebar glass intensity setting", () => {
   assert.equal(DEFAULT_APP_SETTINGS.sidebarGlassIntensity, 100);
   assert.equal(SIDEBAR_GLASS_INTENSITY_RANGE.max, 180);
+});
+
+test("defaults prefer macOS native font smoothing", () => {
+  assert.equal(DEFAULT_APP_SETTINGS.macosNativeFontSmoothing, true);
+});
+
+test("macOS font smoothing normalization preserves explicit booleans and rejects invalid values", () => {
+  assert.equal(
+    normalizeAppSettings({ macosNativeFontSmoothing: false }).macosNativeFontSmoothing,
+    false,
+  );
+  assert.equal(
+    normalizeAppSettings({ macosNativeFontSmoothing: "legacy" }).macosNativeFontSmoothing,
+    true,
+  );
 });
 
 test("sidebar glass intensity snaps into the supported range during normalization", () => {

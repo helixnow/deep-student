@@ -14,3 +14,12 @@ test("app settings provider applies the sidebar glass strength as a document var
   assert.match(source, /settings\.sidebarGlassIntensity/u);
   assert.match(source, /getSidebarGlassAlphaShift\(settings\.sidebarGlassIntensity\)/u);
 });
+
+test("app settings provider writes the macOS font smoothing mode into the document dataset", () => {
+  const source = readFileSync(providerPath, "utf8");
+
+  assert.match(source, /dataset\.fontSmoothing/u);
+  assert.match(source, /settings\.macosNativeFontSmoothing/u);
+  assert.match(source, /macos-native/u);
+  assert.match(source, /macos-grayscale/u);
+});

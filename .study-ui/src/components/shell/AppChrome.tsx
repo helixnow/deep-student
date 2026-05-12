@@ -9,6 +9,7 @@ import {
 import { useAppSettings } from "@/components/settings/AppSettingsProvider";
 import { useTheme } from "@/components/theme/theme-provider";
 import { Button } from "@/components/ui/button";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Sheet,
   SheetClose,
@@ -305,7 +306,7 @@ export function AppChrome({
       data-sidebar-mode={layoutPolicy.sidebarMode}
       data-sidebar-visible={isSidebarVisible ? "true" : "false"}
       className={cn(
-        "relative flex h-dvh w-screen overflow-hidden font-sans text-foreground subpixel-antialiased transition-colors duration-200 ease-out motion-reduce:transition-none",
+        "relative flex h-dvh w-screen overflow-hidden font-sans text-foreground transition-colors duration-200 ease-out motion-reduce:transition-none",
         getShellBackdropClass(desktopPlatform, titlebarMode, windowBackgroundPreference),
       )}
       style={{ zoom: settings.interfaceScale / 100 }}
@@ -475,19 +476,18 @@ export function AppChrome({
                 />
               </div>
 
-              <div
+              <ScrollArea
                 data-slot="mobile-settings-sheet-scroll"
-                className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-5 pb-[calc(1.25rem+var(--safe-area-bottom))] pt-4"
+                className="min-h-0 flex-1"
+                viewportClassName="px-5 pb-[calc(1.25rem+var(--safe-area-bottom))] pt-4"
               >
                 <div
                   data-slot="mobile-settings-sheet-real-content"
-                  data-theme="light"
-                  data-window-background="opaque"
-                  className="[--background:#F5F5F7] [--border:rgba(17,17,17,0.08)] [--button-outline-active-bg:#E6E8EE] [--button-outline-bg:#FFFFFF] [--button-outline-border:#E0E3EA] [--button-outline-hover-bg:#EEF0F4] [--button-plain-hover-bg:#EEF0F4] [--button-tonal-bg:#EEF0F4] [--button-tonal-border:#E0E3EA] [--card:#FFFFFF] [--foreground:#111111] [--input:#EEF0F4] [--interactive-hover:#EEF0F4] [--interactive-selected:#E6E8EE] [--muted:#EEF0F4] [--muted-foreground:#5C5C5F] [--primary:#0071E3] [--primary-foreground:#FFFFFF] [--ring:rgba(0,113,227,0.5)] [--secondary:#EEF0F4] [--shell-panel-strong:#FFFFFF] [--touch-target-size:var(--control-height-touch)] [--workspace-max-width:100%] [&_[data-slot=settings-page-header]]:hidden [&_input[type=range]]:min-h-11"
+                  className="[--touch-target-size:var(--control-height-touch)] [--workspace-max-width:100%] [&_[data-slot=settings-page-header]]:hidden [&_input[type=range]]:min-h-11"
                 >
                   {settingsContent}
                 </div>
-              </div>
+              </ScrollArea>
             </SheetContent>
           </Sheet>
         ) : null}
@@ -585,17 +585,19 @@ export function AppChrome({
                     visible={shouldShowCustomWindowControls(desktopPlatform, titlebarMode)}
                   />
                 </div>
-                <div
-                  className="custom-scrollbar box-border flex-1 overflow-y-auto"
-                  style={{
-                    paddingBottom: settingsScrollPaddingBottom,
-                    paddingLeft: settingsScrollPaddingLeft,
-                    paddingRight: settingsScrollPaddingRight,
-                    paddingTop: settingsScrollPaddingTop,
+                <ScrollArea
+                  className="box-border flex-1"
+                  viewportProps={{
+                    style: {
+                      paddingBottom: settingsScrollPaddingBottom,
+                      paddingLeft: settingsScrollPaddingLeft,
+                      paddingRight: settingsScrollPaddingRight,
+                      paddingTop: settingsScrollPaddingTop,
+                    },
                   }}
                 >
                   {settingsContent}
-                </div>
+                </ScrollArea>
               </div>
             )}
           </div>

@@ -22,6 +22,7 @@ import { cn } from "@/lib/utils";
 
 import { ShellButton } from "./ShellButton";
 import { SidebarUpdateBadge } from "./SidebarUpdateBadge";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   SETTINGS_BACK_BUTTON_LABEL,
   SETTINGS_NAV_ITEM_LABEL_CLASS_NAME,
@@ -206,7 +207,7 @@ export function Sidebar({
             }}
           />
 
-          <div className="custom-scrollbar h-full min-w-0 overflow-y-auto overflow-x-hidden px-2">
+          <ScrollArea className="h-full min-w-0" viewportClassName="px-2">
             {currentMode === "app" ? (
               <div className="space-y-3">
                 <div aria-hidden="true" className="h-6 shrink-0" />
@@ -410,7 +411,7 @@ export function Sidebar({
                 <div aria-hidden="true" className="h-16 shrink-0" />
               </div>
             )}
-          </div>
+          </ScrollArea>
         </div>
 
         <div aria-label="侧边栏底部" className="mt-auto px-2 pb-2 pt-1.5">
