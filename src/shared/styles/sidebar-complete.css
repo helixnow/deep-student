@@ -1,0 +1,1429 @@
+/* =============================================================
+   sidebar-complete.css — 侧边栏完整样式（权威来源）
+   
+   从 App.css + DeepStudent.css 完整提取，DeepStudent.css 优先。
+   此文件是侧边栏样式的唯一来源，其他文件不应包含重复规则。
+   ============================================================= */
+
+/* --- From App.css --- */
+
+[data-shell-role="app-shell"] {
+  /*
+   * 默认背景 = 工作区背景，保证侧栏折叠时底层颜色正确。
+   * 侧栏可见时会被下面的 `[data-sidebar-visible="true"]` 规则覆盖为
+   * `--shell-navigation-surface`，与侧栏同色同源，确保工作区左上/左下凹角
+   * 透出的颜色与侧栏始终一致，主题切换时不会出现中间色差。
+   */
+  background: var(--shell-backdrop);
+}
+
+[data-shell-role="app-shell"][data-sidebar-visible="true"] {
+  background: var(--shell-navigation-surface);
+}
+
+.desktop-shell-titlebar {
+  background: var(--shell-navigation-surface);
+  border-bottom: none;
+}
+
+.desktop-shell-header-cell {
+  min-width: 0;
+  min-height: var(--shell-titlebar-height);
+  background: transparent;
+}
+
+.desktop-shell-header-hotzone {
+  cursor: pointer;
+}
+
+.desktop-shell-header-hotzone:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.desktop-shell-header-cell--nav {
+  background: var(--shell-navigation-surface);
+  border-right: 0;
+}
+
+.desktop-shell-header-cell--workspace {
+  background: var(--shell-workspace-panel);
+  border: 0;
+  box-shadow: none;
+}
+
+.desktop-shell-header-cell--workspace[data-sidebar-visible="true"] {
+  border-top-left-radius: var(--shell-workspace-edge-radius);
+}
+
+.desktop-shell-toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border-radius: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.desktop-shell-toolbar-button {
+  height: var(--shell-control-size) !important;
+  width: var(--shell-control-size) !important;
+  border-radius: var(--shell-nav-row-radius) !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: var(--shell-navigation-foreground) !important;
+  box-shadow: none !important;
+}
+
+.desktop-shell-toolbar-button:hover,
+.desktop-shell-toolbar-button:focus-visible {
+  background: var(--shell-control-hover) !important;
+  color: var(--shell-navigation-foreground) !important;
+}
+
+.desktop-shell-toolbar-button:active {
+  background: var(--shell-control-active) !important;
+}
+
+.desktop-shell-accessory-group {
+  flex-shrink: 0;
+  color: var(--shell-navigation-muted);
+}
+
+.desktop-shell-accessory-button {
+  color: var(--shell-navigation-muted) !important;
+}
+
+.desktop-shell-accessory-group .desktop-shell-accessory-button:hover,
+.desktop-shell-accessory-group .desktop-shell-accessory-button:focus-visible {
+  color: var(--shell-navigation-foreground) !important;
+}
+
+.desktop-shell-update-badge {
+  display: inline-flex;
+  height: 24px;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: hsl(var(--primary));
+  padding-inline: 8px;
+  color: hsl(var(--primary-foreground));
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 500;
+}
+
+.desktop-shell-nav-section-label {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--shell-navigation-section-label);
+}
+
+.settings-nav-item-label {
+  color: var(--shell-navigation-foreground);
+}
+
+[data-theme="dark"] .settings-nav-item-label {
+  color: var(--shell-navigation-foreground);
+}
+
+.desktop-shell-sidebar-row,
+.desktop-shell-nav-row,
+.desktop-shell-thread-row {
+  min-height: 32px !important;
+  justify-content: flex-start !important;
+  border-radius: var(--shell-nav-row-radius) !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: var(--shell-navigation-row-foreground) !important;
+  box-shadow: none !important;
+  font-size: 14px !important;
+  font-weight: 400 !important;
+}
+
+.desktop-shell-thread-row {
+  color: var(--shell-navigation-thread-foreground) !important;
+}
+
+.desktop-shell-sidebar-row-title {
+  color: var(--shell-navigation-foreground);
+}
+
+.desktop-shell-sidebar-row:hover:not(.desktop-shell-sidebar-row--active),
+.desktop-shell-sidebar-row:focus-visible:not(.desktop-shell-sidebar-row--active),
+.desktop-shell-nav-row:hover:not(.desktop-shell-nav-row--active),
+.desktop-shell-nav-row:focus-visible:not(.desktop-shell-nav-row--active),
+.desktop-shell-thread-row:hover:not(.desktop-shell-thread-row--active),
+.desktop-shell-thread-row:focus-visible:not(.desktop-shell-thread-row--active) {
+  background: var(--interactive-hover) !important;
+  color: var(--shell-navigation-foreground) !important;
+}
+
+.desktop-shell-sidebar-row--active,
+.desktop-shell-nav-row--active {
+  background: var(--interactive-selected) !important;
+  color: var(--shell-navigation-foreground) !important;
+  font-weight: 400 !important;
+}
+
+.desktop-shell-thread-row--active {
+  background: var(--interactive-selected) !important;
+  color: var(--shell-navigation-foreground) !important;
+  font-weight: 400 !important;
+}
+
+.desktop-shell-sidebar-session-scroll-shell {
+  --desktop-shell-sidebar-session-fade-size: 28px;
+  --desktop-shell-sidebar-session-fade-surface: var(--shell-navigation-surface);
+  position: relative;
+  isolation: isolate;
+}
+
+.desktop-shell-sidebar-session-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 45;
+  height: var(--desktop-shell-sidebar-session-fade-size);
+  pointer-events: none;
+}
+
+.desktop-shell-sidebar-session-fade--top {
+  top: 0;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--desktop-shell-sidebar-session-fade-surface) 96%, transparent) 0%,
+    color-mix(in srgb, var(--desktop-shell-sidebar-session-fade-surface) 70%, transparent) 38%,
+    transparent 100%
+  );
+}
+
+.desktop-shell-sidebar-session-fade--bottom {
+  bottom: 0;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--desktop-shell-sidebar-session-fade-surface) 96%, transparent) 0%,
+    color-mix(in srgb, var(--desktop-shell-sidebar-session-fade-surface) 72%, transparent) 38%,
+    transparent 100%
+  );
+}
+
+.desktop-shell-sidebar-session-scroll-viewport {
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+
+.desktop-shell-header-title {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.25;
+  font-weight: 500;
+  color: var(--shell-navigation-foreground);
+}
+
+.desktop-shell-workspace {
+  background: var(--shell-workspace-panel);
+  box-shadow: none;
+}
+
+.desktop-shell-workspace[data-sidebar-visible="true"] {
+  border-bottom-left-radius: var(--shell-workspace-edge-radius);
+  overflow: hidden;
+}
+
+.desktop-shell-view-layer {
+  isolation: isolate;
+}
+
+.sidebar-shell-surface {
+  background: var(--shell-navigation-surface);
+  border-right: 1px solid var(--shell-seam);
+  box-shadow: 14px 0 28px -24px hsl(var(--foreground) / 0.4);
+}
+
+.sidebar-shell-header {
+  border-bottom: 1px solid transparent;
+  border-color: var(--shell-navigation-border);
+}
+
+.sidebar-shell-search {
+  background: var(--input-shell-surface) !important;
+  border-color: var(--input-shell-border) !important;
+}
+
+.sidebar-shell-item {
+  border: 1px solid transparent;
+  border-radius: var(--radius-shell-row);
+}
+
+.sidebar-shell-item:hover,
+.sidebar-shell-item:focus-visible {
+  background: var(--interactive-hover);
+}
+
+.sidebar-shell-item[data-selected="true"] {
+  background: var(--interactive-selected);
+  color: var(--sidebar-quiet-active-foreground);
+}
+
+.sidebar-shell-footer {
+  border-color: var(--shell-navigation-border);
+}
+
+.sidebar-shell-sheet,
+.sidebar-shell-drawer {
+  background: var(--dialog-shell-surface) !important;
+  border-color: var(--dialog-shell-border) !important;
+  box-shadow: var(--shadow-shell-floating) !important;
+}
+
+.study-shell-sidebar-frame {
+  background: var(--shell-navigation-surface);
+  border-right: 1px solid var(--shell-seam);
+  box-shadow: 14px 0 28px -24px hsl(var(--foreground) / 0.4);
+}
+
+.app-header,
+.title-bar {
+  /* Windows下使用系统窗口装饰，不应有圆角 */
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+main {
+  /* Windows下使用系统窗口装饰，不应有圆角 */
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  overflow: hidden;
+  height: 100vh;
+  max-height: 100vh;
+}
+
+@media (max-width: 768px) {
+  .siliconflow-config .config-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .siliconflow-config .config-row .form-group {
+    margin-bottom: 1rem;
+  }
+  
+  .siliconflow-config .info-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .api-config-section .section-header {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+  
+  .config-actions {
+    flex-direction: column;
+  }
+  
+  .section-actions {
+    flex-direction: column;
+  }
+  
+  /* 移动端：header 隐藏，content-body 不需要 margin-top */
+  .content-body {
+    margin-top: 0;
+  }
+}
+
+.page-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* 彻底禁用page-container的滚动条 */
+  overflow: hidden !important;
+  position: relative;
+}
+
+.dark .page-container {
+  background: transparent;
+}
+
+.page-container[style*="display: none"],
+.page-container[style*="display:none"] {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.page-container.scrollable {
+  overflow: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+.app-header {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  color: white;
+  padding: 1rem;
+  text-align: center;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.app-header h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.app-main {
+  flex: 1;
+  padding: 1rem;
+  max-width: 1200px;
+  margin: 0 auto;
+  width: 100%;
+}
+
+.detail-main {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+}
+
+@media (prefers-color-scheme: dark) {
+  #root {
+    background-color: hsl(var(--card));
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+  }
+  
+  .app {
+    background-color: hsl(var(--card));
+  }
+}
+
+@media (max-width: 768px) {
+  .app-main {
+    padding: 0.5rem;
+  }
+  
+  .analysis-form {
+    padding: 1rem;
+  }
+  
+  .result-header {
+    flex-direction: column;
+    gap: 1rem;
+    text-align: center;
+  }
+  
+  .result-actions {
+    justify-content: center;
+  }
+  
+  .message {
+    max-width: 90%;
+  }
+  
+  .chat-input {
+    flex-direction: column;
+  }
+  
+  .chat-input button {
+    width: 100%;
+  }
+  
+  .library-filters {
+    flex-direction: column;
+  }
+  
+  .mistakes-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .form-row {
+    grid-template-columns: 1fr;
+  }
+  
+  .data-actions {
+    flex-direction: column;
+  }
+  
+  .settings-footer {
+    flex-direction: column;
+    gap: 1rem;
+  }
+  
+  .api-key-input {
+    flex-direction: column;
+  }
+
+  .stats-overview {
+    grid-template-columns: 1fr;
+  }
+  
+  .stats-details {
+    grid-template-columns: 1fr;
+  }
+  
+  .stat-card {
+    padding: 1rem;
+  }
+  
+  .stat-number {
+    font-size: 1.5rem;
+  }
+  
+  .chart-item {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 0.5rem;
+  }
+  
+  .chart-label {
+    min-width: auto;
+  }
+  
+  .recent-header {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 0.5rem;
+  }
+
+  .detail-content {
+    grid-template-columns: 1fr;
+  }
+
+  .header-title {
+    margin: 1rem 0;
+  }
+
+  .header-actions {
+    flex-direction: column;
+    gap: 0.5rem;
+  }
+
+  .image-grid {
+    grid-template-columns: repeat(auto-fill, minmax(80px, 1fr));
+  }
+
+  .modal-overlay {
+    padding: 1rem;
+  }
+
+  .data-stats {
+    grid-template-columns: 1fr;
+  }
+}
+
+.main-content {
+  animation: fadeIn 0.3s ease-out;
+}
+
+.dark .content-body {
+  background: var(--shell-workspace-surface);
+  /* 暗色模式同样保持无左描边，避免侧边栏交界处出现竖线 */
+  border-left: none;
+  border-top: none;
+}
+
+.dark .content-header {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.content-header.virtual-titlebar {
+  padding: 0 4px;
+}
+
+.content-header .nav-history-button {
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent; /* 去掉背景 */
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+  color: hsl(var(--muted-foreground));
+  margin-right: 0.15rem;
+}
+
+.content-header .nav-history-button:hover:not(:disabled) {
+  background: hsl(var(--accent) / 0.1); /* 半透明背景 */
+  color: hsl(var(--accent-foreground));
+}
+
+.content-header .nav-history-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.content-body.settings-view {
+  border-top: none;
+  border-top-left-radius: 0;
+}
+
+.dark .content-body.settings-view {
+  border-left: none;
+  border-top: none;
+}
+
+.sidebar-collapsed ~ main .chat-container.chat-fullscreen,
+body.sidebar-collapsed .chat-container.chat-fullscreen {
+  left: var(--sidebar-collapsed-width, 63px) !important;
+width: calc(100vw - var(--sidebar-collapsed-width, 63px)) !important;
+max-width: calc(100vw - var(--sidebar-collapsed-width, 63px)) !important;
+}
+
+/* --- From DeepStudent.css (overrides) --- */
+
+.app {
+  display: flex !important;
+  flex-direction: row !important;
+  /* 视口高度铺满；顶部占位由 page-container 的 top 控制 */
+  min-height: 100vh !important;
+  background-color: hsl(var(--muted));
+  font-family: var(--font-family);
+  color: hsl(var(--foreground));
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  /* CSS变量用于动态设置侧边栏宽度 */
+  --sidebar-width: 110px; /* 侧边栏默认宽度 */
+  --sidebar-collapsed-width: 48px;
+  --sidebar-expanded-width: var(--sidebar-width); /* 保持与modern-sidebar一致 */
+  
+  /* 侧边栏和顶部栏一体化主题变量 */
+  --sidebar-bg: var(--background);
+  --sidebar-border: var(--border);
+  --header-sidebar-inner-radius: 16px;
+  
+  /* 确保CSS变量变化时也有过渡效果 */
+  --transition-timing: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.back-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.5rem 1rem;
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  text-decoration: none;
+}
+
+.back-button:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--border));
+  transform: translateX(-2px);
+}
+
+.app-content {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important; /* 改为hidden，避免外层和内层同时滚动 */
+  background: hsl(var(--sidebar-bg, var(--background))); /* 使用与顶部栏相同的背景色，确保圆角外侧区域颜色一致 */
+  min-width: 0; /* ADDED: Prevent flexbox overflow */
+  position: relative; /* 确保内容区域定位正确 */
+  /* 固定margin-left，侧边栏通过transform实现收起效果 */
+  margin-left: var(--sidebar-collapsed-width);
+}
+
+.content-header {
+  display: block;
+  overflow: visible;
+  /* 桌面端显示，小屏幕隐藏（在@media中控制） */
+}
+
+.content-body {
+  flex: 1;
+  padding: 0;
+  /* 🔧 关键修复：添加 position: relative，让内部的 page-container 相对于 content-body 定位 */
+  position: relative !important;
+  /* padding-top 已移除：由 page-container 的 top 值控制，避免定位冲突 */
+  /* 彻底禁用content-body的滚动条，因为所有page-container都是绝对定位 */
+  overflow: hidden !important;
+  background: var(--shell-workspace-surface);
+  display: flex;
+  flex-direction: column;
+  min-height: 0; /* ADDED */
+  margin-top: 0; /* 确保不会有意外的边距 */
+  z-index: 1; /* 确保正确的层叠顺序 */
+  /* 移除强制高度，让 flex: 1 自动填充剩余空间，避免溢出 */
+}
+
+@media (max-width: 767px) {
+  :root {
+    --sidebar-width: 110px;
+    /* 移动端隐藏固定标题栏，因此高度扣减为 0 */
+    --desktop-titlebar-height: 0px;
+  }
+  
+  /* 显示旧版侧边栏（桌面端隐藏，小屏幕显示） */
+  .app-sidebar {
+    display: flex !important;
+    width: var(--sidebar-width) !important;
+    min-width: var(--sidebar-width) !important;
+  }
+  
+  /* 隐藏浮动导航栏 */
+  .dstu-topbar {
+    display: none !important;
+  }
+  
+  /* 隐藏固定顶部栏（content-header） */
+  .content-header {
+    display: none !important;
+  }
+
+  .content-header::after {
+    display: none;
+  }
+  
+  /* 内容主体区域：移除桌面版的88px padding */
+  .content-body {
+    padding-top: 0 !important;
+  }
+  
+  /* 主内容区域：不需要margin，因为侧边栏占据了左侧空间 */
+  .app-content {
+    margin-left: 0 !important;
+  }
+}
+
+[data-shell-layer="navigation"] {
+  position: relative;
+  background: var(--shell-navigation-surface);
+  border-right: 0;
+  isolation: isolate;
+}
+
+[data-shell-layer="navigation"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--shell-navigation-depth-overlay);
+}
+
+[data-shell-window-controls] {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--shell-window-control-gap);
+  padding: 2px;
+  border-radius: calc(var(--shell-window-control-radius) + 2px);
+  border: 1px solid var(--shell-control-border);
+  background: var(--shell-control-surface);
+  box-shadow: var(--shell-shadow-active);
+}
+
+[data-shell-window-button] {
+  height: var(--shell-window-control-size) !important;
+  width: var(--shell-window-control-size) !important;
+  min-height: var(--shell-window-control-size) !important;
+  min-width: var(--shell-window-control-size) !important;
+  border-radius: var(--shell-window-control-radius) !important;
+  background: transparent !important;
+  color: var(--shell-navigation-foreground) !important;
+  border: 1px solid transparent !important;
+  box-shadow: none !important;
+}
+
+[data-shell-window-button]:hover,
+[data-shell-window-button]:focus-visible {
+  background: var(--shell-control-hover) !important;
+  color: var(--shell-navigation-foreground) !important;
+}
+
+[data-shell-window-button]:active {
+  background: var(--shell-control-active) !important;
+}
+
+[data-shell-window-button="close"]:hover,
+[data-shell-window-button="close"]:focus-visible {
+  background: var(--shell-window-close-hover) !important;
+  color: var(--shell-window-close-foreground) !important;
+}
+
+[data-shell-window-button="close"]:active {
+  background: var(--shell-window-close-active) !important;
+}
+
+.custom-titlebar {
+  height: 32px;
+  background: hsl(var(--background)) !important; /* 与侧边栏一致 */
+  border-bottom: none !important; /* 去除标题栏描边 */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0;
+  user-select: none;
+  position: relative;
+  z-index: 1000;
+  box-shadow: none !important; /* 移除标题栏阴影 */
+}
+
+.titlebar-content {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  height: 100%;
+}
+
+.titlebar-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding-left: 12px;
+  flex: 1;
+}
+
+.app-icon {
+  font-size: 16px;
+  width: 20px;
+  height: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.app-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.titlebar-controls {
+  display: flex;
+  height: 100%;
+}
+
+.titlebar-button {
+  width: 48px;
+  height: 32px;
+  border: none;
+  background: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  color: var(--text-muted);
+}
+
+.titlebar-button:hover {
+  background: var(--shell-control-hover);
+}
+
+.titlebar-button.close:hover {
+  background: var(--button-danger-surface);
+  color: var(--button-danger-foreground);
+}
+
+.titlebar-button svg {
+  flex-shrink: 0;
+}
+
+.window-controls {
+  pointer-events: auto;
+  z-index: 10000; /* 🎯 修复：确保窗口控制按钮在最上层 */
+}
+
+html.is-macos .window-controls {
+  border-top-right-radius: 12px !important;
+  overflow: hidden !important;
+}
+
+@media print {
+  /* ===== 打印时隐藏所有 UI 元素 ===== */
+  .window-controls,
+  .dstu-topbar,
+  .custom-titlebar,
+  #dstu-topbar-portal,
+  .app-sidebar,
+  .content-header,
+  .topbar-portal,
+  /* 笔记模块特定元素 */
+  [data-panel-id="notes-sidebar"],
+  [data-panel-id="notes-context"],
+  [data-panel-group-id] > [data-resize-handle],
+  .notes-home-container [data-radix-popper-content-wrapper],
+  .notes-home-container .notes-header-wrapper,
+  /* 编辑器工具栏 */
+  .notes-editor-toolbar,
+  .milkdown-toolbar,
+  .milkdown-block-handle,
+  .milkdown-slash-menu {
+    display: none !important;
+    visibility: hidden !important;
+  }
+  
+  /* ===== 打印时的基础样式 ===== */
+  html, body {
+    background: white !important;
+    color: black !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  /* 移除应用外层布局约束 */
+  .app,
+  .app-body,
+  .app-content,
+  .content-body {
+    position: static !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    height: auto !important;
+    min-height: auto !important;
+  }
+  
+  /* 页面容器打印适配 */
+  .page-container {
+    position: static !important;
+    overflow: visible !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+  }
+}
+
+.dstu-topbar button.icon-ghost-btn {
+  padding: 0 16px !important;
+}
+
+.window-button {
+  pointer-events: auto;
+  z-index: 10001; /* 🎯 修复：确保窗口按钮在最上层 */
+  position: relative;
+}
+
+.window-button:hover {
+  background: var(--shell-control-hover) !important;
+}
+
+.window-button.close:hover {
+  background: var(--button-danger-surface) !important;
+  color: var(--button-danger-foreground) !important;
+}
+
+.window-button:first-child {
+  border-radius: 0 !important; /* 取消所有圆角 */
+}
+
+.window-button:last-child {
+  border-radius: 0 !important; /* 取消所有圆角 */
+}
+
+html.is-macos .window-button:last-child {
+  border-top-right-radius: 12px !important;
+}
+
+.window-button svg {
+  flex-shrink: 0;
+  /* 🎯 修复：确保SVG图标正常显示 */
+  display: block !important;
+  visibility: visible !important;
+  opacity: 1 !important;
+  pointer-events: none;
+}
+
+.sidebar-header {
+  padding: 0.75rem 0.5rem; /* 与content-header垂直padding保持一致 */
+  border: none; /* 完全移除所有边框 */
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: hsl(var(--background)) !important;
+  height: 48px; /* 与content-header保持完全一致的高度 */
+  box-sizing: border-box;
+  overflow: visible;
+  position: relative;
+  z-index: 10; /* 确保与标题栏在同一层级 */
+}
+
+.sidebar-header:active {
+  cursor: grabbing;
+}
+
+.header-drag-region {
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+  /* 移除 -webkit-app-region: drag; 避免影响整个应用 */
+}
+
+.header-drag-region:active {
+  cursor: grabbing;
+}
+
+.app-content,
+.content-body,
+.sidebar-content,
+.page-container,
+.window-controls,
+.window-button,
+button,
+input,
+select,
+textarea,
+a {
+  -webkit-app-region: no-drag !important;
+}
+
+.sidebar-toggle {
+  width: 24px; /* Reduce from 28px to 24px */
+  height: 24px; /* Reduce from 28px to 24px */
+  border: none;
+  background: hsl(var(--muted));
+  border-radius: 5px; /* Reduce border-radius proportionally */
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease, color 0.2s ease, border-color 0.2s ease;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.75rem; /* Reduce font size */
+  box-shadow: none; /* 移除阴影 */
+}
+
+body::after,
+html::after,
+*:not(.window-controls):not(.window-button):not(.app-sidebar)::after,
+*:not(.window-controls):not(.window-button):not(.app-sidebar)::before {
+  content: none !important;
+}
+
+div[style*="position: fixed"][style*="top: 0"][style*="right: 0"][class*="debug"]:not(.window-controls),
+div[style*="position: absolute"][style*="top: 0"][style*="right: 0"][class*="debug"]:not(.window-controls),
+div[style*="position: fixed"][style*="top: 0"][style*="right: 0"][id*="debug"]:not(.window-controls),
+div[style*="position: absolute"][style*="top: 0"][style*="right: 0"][id*="debug"]:not(.window-controls) {
+  display: none !important;
+}
+
+.app-body {
+  display: flex;
+  /* content-header 是固定标题栏，高度为48px */
+  padding-top: 0;
+  /* 🎯 修复：移除最小宽度限制，解决响应式布局在小窗口下的突变问题 */
+  flex-direction: row !important;
+  flex: 1 !important;
+  overflow: hidden !important; /* 修复：改为hidden，避免多层滚动冲突 */
+}
+
+.app-sidebar {
+  display: flex !important;
+  flex-direction: column;
+  /* 始终保持展开的宽度，通过 transform 实现收起效果 */
+  width: var(--sidebar-expanded-width);
+  min-width: var(--sidebar-expanded-width);
+  will-change: width;
+  /* 固定定位，从顶部开始 */
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 1001;
+  /* 与顶部栏完全相同的背景 */
+  background: hsl(var(--sidebar-bg, var(--background))) !important;
+  /* 完全移除边框，与顶部栏一体化 */
+  border: none !important;
+  /* 顶部留出虚拟标题栏空间 */
+  padding-top: var(--desktop-titlebar-height);
+  /* box-shadow 在 modern-sidebar.css 中定义 */
+}
+
+.app-logo {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  justify-content: center;
+  flex-shrink: 0; /* Prevent logo from shrinking */
+  min-width: fit-content; /* Ensure minimum width for logo */
+}
+
+.app-sidebar:not(.collapsed) .app-logo {
+  justify-content: flex-start;
+  padding-left: 0; /* Remove left padding to prevent logo cutoff */
+  padding-right: 0.5rem; /* Add right padding */
+}
+
+.logo-icon {
+  width: 26px; /* Reduce from 32px to 26px */
+  height: 26px; /* Reduce from 32px to 26px */
+  border-radius: 6px; /* Reduce border-radius proportionally */
+  object-fit: contain;
+}
+
+.logo-full {
+  height: 26px; /* Reduce from 32px to 26px */
+  width: auto; /* Let width be automatic based on height */
+  max-width: 180px; /* Reduce from 200px to 180px */
+  object-fit: contain;
+  object-position: center center; /* Center the logo to prevent cutoff */
+  margin-left: 0;
+}
+
+.logo-text {
+  font-size: 1rem;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  white-space: nowrap;
+}
+
+.sidebar-toggle:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground));
+}
+
+.sidebar-nav {
+  flex: 1;
+  padding: 0.375rem 0.75rem; /* Maximum compression: reduce top/bottom to 0.375rem */
+  overflow: visible; /* Remove scroll since content fits properly */
+  min-height: 0; /* ADDED: Good practice for flex children that scroll */
+}
+
+.nav-section {
+  margin: 8px; /* Set all margins to 8px */
+  /* overflow: visible !important; -- This was part of the problematic block */
+}
+
+.nav-label {
+  font-size: 0.7rem; /* Reduce from 0.75rem to 0.7rem */
+  font-weight: 600;
+  color: hsl(var(--foreground)) !important;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.125rem; /* Compress further from 0.25rem to 0.125rem */
+  padding-left: 0.75rem;
+}
+
+.nav-item {
+  animation: slideIn 0.3s ease;
+}
+
+.nav-item:hover {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground)) !important; /* 悬停时变深 */
+}
+
+.nav-item.active {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground)) !important;
+  font-weight: 600;
+}
+
+.nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 3px;
+  height: 20px;
+  background: #3182ce;
+  border-radius: 0 2px 2px 0;
+}
+
+.nav-icon {
+  font-size: 1.125rem;
+  width: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.nav-text {
+  white-space: nowrap;
+  overflow: hidden;
+}
+
+.sidebar-footer {
+  height: auto;
+  padding: 0 !important;
+  border-top: none !important;
+  background: transparent !important;
+  backdrop-filter: none;
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+}
+
+.sidebar-footer .nav-item {
+  background: transparent !important;
+  color: hsl(var(--muted-foreground)) !important; /* 底部图标也用灰色 */
+}
+
+.content-header::after {
+  content: '';
+  position: absolute;
+  width: var(--header-sidebar-inner-radius, 16px);
+  height: var(--header-sidebar-inner-radius, 16px);
+  left: calc(var(--sidebar-expanded-width, 160px) - var(--header-sidebar-inner-radius, 16px));
+  top: calc(var(--desktop-titlebar-height, 40px) - var(--header-sidebar-inner-radius, 16px) + 100px); /* 🎨 向下平移100px */
+  background:
+    radial-gradient(circle at 100% 100%, hsl(var(--border) / 0.35) 0 calc(var(--header-sidebar-inner-radius, 16px) - 0.5px), transparent calc(var(--header-sidebar-inner-radius, 16px) - 0.5px)),
+    radial-gradient(circle at 100% 100%, hsl(var(--background)) 0 calc(var(--header-sidebar-inner-radius, 16px) - 1.5px), transparent calc(var(--header-sidebar-inner-radius, 16px) - 1.5px));
+  background-repeat: no-repeat;
+  pointer-events: none;
+  z-index: 0;
+}
+
+.content-header > * {
+  position: relative;
+  z-index: 1;
+}
+
+.content-title {
+  font-size: 1.5rem;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  margin: 0;
+}
+
+.content-header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem; /* 进一步缩小左侧容器按钮间距 */
+}
+
+.content-header-right {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem; /* 进一步缩小右侧容器间距 */
+}
+
+.content-header .sidebar-toggle {
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent; /* 去掉背景 */
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+  transform: none;
+  color: hsl(var(--muted-foreground));
+  margin-right: 0.15rem;
+  box-shadow: none;
+}
+
+.content-header .sidebar-toggle svg {
+  flex-shrink: 0;
+  stroke: currentColor;
+  fill: none;
+  width: 16px; /* 缩小图标尺寸 */
+  height: 16px;
+}
+
+.content-header .sidebar-toggle:hover {
+  background: hsl(var(--accent) / 0.1); /* 半透明背景 */
+  color: hsl(var(--accent-foreground));
+}
+
+.back-button svg {
+  flex-shrink: 0;
+}
+
+.fullscreen-toggle {
+  padding: 0.5rem 1rem;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--background));
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1rem;
+  color: hsl(var(--muted-foreground));
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+.fullscreen-toggle:hover {
+  background: hsl(var(--accent));
+  border-color: hsl(var(--border));
+  color: hsl(var(--accent-foreground));
+}
+
+.content-body > .page-container {
+  height: auto !important;
+}
+
+.content-body .analysis-layout {
+  /* 不再强制绝对定位，交由父容器自然布局以避免覆盖兄弟侧栏 */
+  position: relative !important;
+  inset: auto !important;
+  display: flex !important;
+  flex-direction: row !important;
+  min-height: 0 !important;
+  height: 100% !important;
+  box-sizing: border-box !important;
+}
+
+@media (max-width: 700px) {
+  :root {
+    --sidebar-width: 90px; /* 减少到90px */
+  }
+  
+  .chat-container.chat-fullscreen {
+    left: 90px !important;
+    /* 🎯 修复：同步更新宽度计算 */
+    width: calc(100vw - 90px) !important;
+    max-width: calc(100vw - 90px) !important;
+  }
+  
+  /* Adjust logo for smaller viewports */
+  .logo-full {
+    max-width: 100px; /* Reduce logo width for smaller sidebar */
+  }
+}
+
+@media (max-width: 500px) {
+  .app-sidebar {
+    width: 60px;
+    /* 确保过渡动画仍然有效 */
+    transition: width 0.3s cubic-bezier(0.4, 0, 0.2, 1), min-width 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  }
+
+  .app-sidebar:not(.collapsed) {
+    position: absolute;
+    width: 110px;
+    z-index: 100;
+    box-shadow: 2px 0 8px -2px hsl(var(--border) / 0.2);
+  }
+
+  .content-header {
+    padding: 0.5rem 1rem;
+  }
+
+  .content-body {
+    padding: 0;
+  }
+  
+  /* 确保聊天容器在移动设备上正确调整 */
+  .chat-container.chat-fullscreen {
+    left: 60px !important;
+    width: calc(100vw - 60px) !important;
+    max-width: calc(100vw - 60px) !important;
+  }
+}
+
+.sidebar-nav::-webkit-scrollbar,
+.content-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.sidebar-nav::-webkit-scrollbar-track,
+.content-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb,
+.content-body::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted));
+  border-radius: 3px;
+}
+
+.sidebar-nav::-webkit-scrollbar-thumb:hover,
+.content-body::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted));
+}
+
+.app-sidebar.collapsed ~ .app-content .chat-container.chat-fullscreen {
+  left: var(--sidebar-collapsed-width, 48px) !important;
+  width: calc(100vw - var(--sidebar-collapsed-width, 48px)) !important;
+  max-width: calc(100vw - var(--sidebar-collapsed-width, 48px)) !important;
+}
+
+.app-sidebar.collapsed .tooltip-test[data-tooltip]:not([data-tooltip=""]):hover::before {
+  content: attr(data-tooltip) !important;
+  position: absolute !important;
+  top: 50% !important;
+  left: calc(100% + 12px) !important;
+  bottom: auto !important;
+  right: auto !important;
+  transform: translateY(-50%) scale(1) !important;
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%) !important;
+  color: white !important;
+  padding: 6px 10px !important;
+  border-radius: 8px !important;
+  font-size: 12px !important;
+  font-weight: 500 !important;
+  white-space: nowrap !important;
+  min-width: max-content !important;
+  max-width: none !important;
+  overflow: visible !important;
+  z-index: 999999 !important;
+  box-shadow: 
+    0 4px 20px rgba(102, 126, 234, 0.3),
+    0 2px 8px rgba(0, 0, 0, 0.15) !important;
+  backdrop-filter: blur(8px) !important;
+  border: 1px solid rgba(255, 255, 255, 0.2) !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: none !important;
+  animation: tooltipFadeIn 0.15s cubic-bezier(0.68, -0.55, 0.265, 1.55) !important;
+}
+
+.app-sidebar.collapsed .tooltip-test[data-tooltip]:not([data-tooltip=""]):hover::after {
+  content: '' !important;
+  position: absolute !important;
+  top: 50% !important;
+  left: calc(100% + 6px) !important;
+  bottom: auto !important;
+  right: auto !important;
+  transform: translateY(-50%) scale(1) !important;
+  border: 5px solid transparent !important;
+  border-right: 5px solid #3b82f6 !important;
+  border-left: none !important;
+  border-top: 5px solid transparent !important;
+  border-bottom: 5px solid transparent !important;
+  z-index: 999998 !important;
+  opacity: 1 !important;
+  visibility: visible !important;
+  pointer-events: none !important;
+  filter: drop-shadow(0 1px 3px rgba(0, 0, 0, 0.1)) !important;
+  animation: tooltipFadeIn 0.15s cubic-bezier(0.68, -0.55, 0.265, 1.55) !important;
+}
+
+*:not(.tooltip-test):not(.window-controls):not(.window-button):not(.app-sidebar)::before,
+*:not(.tooltip-test):not(.window-controls):not(.window-button):not(.app-sidebar)::after {
+  /* 确保非tooltip元素的伪元素不会意外显示 */
+  display: none !important;
+  content: none !important;
+}
+
+body::before,
+body::after,
+html::before,
+html::after,
+#root::before,
+#root::after,
+.app::before,
+.app::after,
+.app-body::before,
+.app-body::after {
+  display: none !important;
+  content: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+}
+
