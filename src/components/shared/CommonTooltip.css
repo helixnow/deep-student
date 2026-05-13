@@ -127,29 +127,27 @@
   border-bottom-color: hsl(var(--border));
 }
 
-/* 暗色模式适配 - 保持与侧边栏一致 */
-@media (prefers-color-scheme: dark) {
-  .common-tooltip--auto .common-tooltip__content {
-    background: hsl(var(--nav-background));
-    color: hsl(var(--foreground));
-    border-color: hsl(var(--border) / 0.4);
-  }
-  
-  .common-tooltip--auto .common-tooltip__arrow {
-    background: hsl(var(--nav-background));
-  }
+/* 暗色模式适配 - 使用 .dark 类选择器与项目主题系统一致 */
+:root.dark .common-tooltip--auto .common-tooltip__content,
+.dark .common-tooltip--auto .common-tooltip__content {
+  background: hsl(var(--nav-background));
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--border) / 0.4);
 }
 
-@media (prefers-color-scheme: light) {
-  .common-tooltip--auto .common-tooltip__content {
-    background: hsl(var(--nav-background));
-    color: hsl(var(--foreground));
-    border-color: hsl(var(--border) / 0.4);
-  }
-  
-  .common-tooltip--auto .common-tooltip__arrow {
-    background: hsl(var(--nav-background));
-  }
+:root.dark .common-tooltip--auto .common-tooltip__arrow,
+.dark .common-tooltip--auto .common-tooltip__arrow {
+  background: hsl(var(--nav-background));
+}
+
+:root:not(.dark) .common-tooltip--auto .common-tooltip__content {
+  background: hsl(var(--nav-background));
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--border) / 0.4);
+}
+
+:root:not(.dark) .common-tooltip--auto .common-tooltip__arrow {
+  background: hsl(var(--nav-background));
 }
 
 /* 响应式调整 */
@@ -175,7 +173,7 @@
   max-height: min(400px, 80vh);
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+  scrollbar-color: hsl(var(--foreground) / 0.3) transparent;
 }
 
 .common-tooltip__content::-webkit-scrollbar {
@@ -187,11 +185,11 @@
 }
 
 .common-tooltip__content::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.3);
+  background: hsl(var(--foreground) / 0.3);
   border-radius: 2px;
 }
 
 .common-tooltip__content::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.5);
+  background: hsl(var(--foreground) / 0.5);
 }
 
