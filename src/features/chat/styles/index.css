@@ -28,15 +28,3 @@
 
 /* 来源面板样式 - 从 panels 目录导入 */
 @import '../components/panels/UnifiedSourcePanel.css';
-
-/* App.css 提取的聊天样式 */
-@import './app-chat.css';
-
-/* App.css 提取的分析样式 */
-@import './app-analysis.css';
-
-/* DeepStudent.css 提取的图片上传/画廊样式 */
-@import './image-upload.css';
-
-/* DeepStudent.css 提取的聊天布局覆盖 */
-@import './layout-overrides.css';
