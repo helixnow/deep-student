@@ -6,12 +6,12 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import i18n from 'i18next';
-import { createChatStore } from '@/chat-v2/core/store/createChatStore';
+import { createChatStore } from '@/features/chat/core/store/createChatStore';
 import type { StoreApi } from 'zustand';
-import type { ChatStore } from '@/chat-v2/core/types';
+import type { ChatStore } from '@/features/chat/core/types';
 
 // 导入块插件以完成 blockRegistry 注册（abortStream 等行为依赖 onAbort 配置）
-import '@/chat-v2/plugins/blocks';
+import '@/features/chat/plugins/blocks';
 
 // ============================================================================
 // 测试辅助

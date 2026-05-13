@@ -26,7 +26,7 @@ import {
   type ChatV2LogEntry,
   type ChatV2LogCategory,
   type ChatV2LogStage,
-} from '../../chat-v2/debug/chatV2Logger';
+} from '../../features/chat/debug/chatV2Logger';
 
 // =============================================================================
 // 类型定义（兼容旧接口）

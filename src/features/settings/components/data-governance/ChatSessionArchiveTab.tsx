@@ -15,7 +15,7 @@ import {
 import { NotionButton } from '@/components/ui/NotionButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
-import type { ChatSession } from '@/chat-v2/types/session';
+import type { ChatSession } from '@/features/chat/types/session';
 
 function formatSessionTime(value: string | undefined) {
   if (!value) return '-';

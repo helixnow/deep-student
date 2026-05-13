@@ -9,7 +9,7 @@
  * - 两种数据视图：文件夹视图 / 资源浏览视图
  */
 
-import type { ContextRef } from '@/chat-v2/context/types';
+import type { ContextRef } from '@/features/chat/context/types';
 import type { ReferenceNode } from '@/features/notes/types/reference';
 import type { FolderItemType, VfsFolderItem } from '@/dstu/types/folder';
 import type { DstuNode, DstuNodeType } from '@/dstu/types';

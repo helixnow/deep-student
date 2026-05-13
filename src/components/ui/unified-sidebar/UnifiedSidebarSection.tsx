@@ -2,7 +2,7 @@ import React, { useState, useContext } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { ChevronRight } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { getSidebarStudyRowClassName } from '@/chat-v2/pages/sessionSidebarStyles';
+import { getSidebarStudyRowClassName } from '@/features/chat/pages/sessionSidebarStyles';
 import { UnifiedSidebarContext } from './UnifiedSidebar';
 
 export interface UnifiedSidebarSectionProps {

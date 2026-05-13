@@ -47,9 +47,9 @@ import {
   type PipelineLogEntry,
   type OverallStatus,
   type PdfExtractionDiagResult,
-} from '../../chat-v2/debug/attachmentPipelineTestPlugin';
-import { ensureModelsCacheLoaded } from '../../chat-v2/hooks/useAvailableModels';
-import type { ModelInfo } from '../../chat-v2/utils/parseModelMentions';
+} from '../../features/chat/debug/attachmentPipelineTestPlugin';
+import { ensureModelsCacheLoaded } from '../../features/chat/hooks/useAvailableModels';
+import type { ModelInfo } from '../../features/chat/utils/parseModelMentions';
 import { fileManager } from '../../utils/fileManager';
 import { TauriAPI } from '../../utils/tauriApi';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';

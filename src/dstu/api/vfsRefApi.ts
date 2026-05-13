@@ -20,7 +20,7 @@ export {
   // 其他
   createSingleResourceRefData,
   uploadAttachment,
-} from '@/chat-v2/context/vfsRefApi';
+} from '@/features/chat/context/vfsRefApi';
 
 // 重导出类型
-export type { VfsRefApiType } from '@/chat-v2/context/vfsRefApi';
+export type { VfsRefApiType } from '@/features/chat/context/vfsRefApi';

@@ -23,7 +23,7 @@ import {
   cleanupChatAnkiTestData,
   type ScenarioName, type ScenarioResult, type OverallStatus,
   type ChatAnkiTestConfig, type LogEntry, type CapturedConsoleEntry,
-} from '../../chat-v2/debug/chatAnkiIntegrationTestPlugin';
+} from '../../features/chat/debug/chatAnkiIntegrationTestPlugin';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 function fmtTime(ts: string) {

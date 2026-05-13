@@ -12,7 +12,7 @@ import type { DstuNode } from '../types';
 import {
   invalidateResourceCache,
   clearAllCaches,
-} from '@/chat-v2/context/vfsRefApiEnhancements';
+} from '@/features/chat/context/vfsRefApiEnhancements';
 
 const LOG_PREFIX = '[DSTU:TrashAPI]';
 

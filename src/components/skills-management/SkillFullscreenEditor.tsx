@@ -23,8 +23,8 @@ import { Z_INDEX } from '@/config/zIndex';
 import { HorizontalResizable } from '../shared/Resizable';
 import { cn } from '@/lib/utils';
 import { unifiedConfirm } from '@/utils/unifiedDialogs';
-import type { SkillDefinition, SkillLocation, SkillType, ToolSchema } from '@/chat-v2/skills/types';
-import { SKILL_DEFAULT_PRIORITY } from '@/chat-v2/skills/types';
+import type { SkillDefinition, SkillLocation, SkillType, ToolSchema } from '@/features/chat/skills/types';
+import { SKILL_DEFAULT_PRIORITY } from '@/features/chat/skills/types';
 import { EmbeddedToolsEditor } from './EmbeddedToolsEditor';
 import { CodeMirrorScrollOverlay } from './CodeMirrorScrollOverlay';
 

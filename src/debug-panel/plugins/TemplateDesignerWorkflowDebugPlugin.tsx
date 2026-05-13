@@ -16,7 +16,7 @@ import {
   toTemplateDebugPhase,
   type TemplateDebugLevel,
   type TemplateDebugPhase,
-} from '@/chat-v2/debug/templateDesignerDebug';
+} from '@/features/chat/debug/templateDesignerDebug';
 
 type LogEntry = {
   id: string;

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { getSessionTitleText } from '@/chat-v2/utils/sessionTitle';
+import { getSessionTitleText } from '@/features/chat/utils/sessionTitle';
 
 describe('getSessionTitleText', () => {
   it('returns a trimmed string title', () => {

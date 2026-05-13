@@ -6,8 +6,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { Resource } from '@/chat-v2/context';
-import { fileDefinition, isImageContentBlock } from '@/chat-v2/context';
+import type { Resource } from '@/features/chat/context';
+import { fileDefinition, isImageContentBlock } from '@/features/chat/context';
 
 describe('fileDefinition (PDF multimodal)', () => {
   it('should convert multimodalBlocks image {mediaType, base64} into an image ContentBlock', () => {

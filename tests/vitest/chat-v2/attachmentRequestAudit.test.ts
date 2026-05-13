@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
-import type { SendMessageRequest } from "../../../src/chat-v2/adapters/types";
-import { buildAttachmentRequestAudit } from "../../../src/chat-v2/debug/attachmentRequestAudit";
+import type { SendMessageRequest } from "../../../src/features/chat/adapters/types";
+import { buildAttachmentRequestAudit } from "../../../src/features/chat/debug/attachmentRequestAudit";
 
 describe("buildAttachmentRequestAudit", () => {
   it("marks multimodal request as matched when pdf/image mode results in image blocks", () => {

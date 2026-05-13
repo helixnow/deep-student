@@ -6,8 +6,8 @@ import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Trash2, AlertTriangle } from 'lucide-react';
 import { NotionAlertDialog } from '../ui/NotionDialog';
-import type { SkillDefinition } from '@/chat-v2/skills/types';
-import { getLocalizedSkillDescription, getLocalizedSkillName } from '@/chat-v2/skills/utils';
+import type { SkillDefinition } from '@/features/chat/skills/types';
+import { getLocalizedSkillDescription, getLocalizedSkillName } from '@/features/chat/skills/utils';
 
 // ============================================================================
 // 类型定义

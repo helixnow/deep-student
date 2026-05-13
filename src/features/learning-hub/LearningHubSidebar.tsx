@@ -80,7 +80,7 @@ import {
   FolderPickerDialog,
 } from './components/finder';
 import { dstu, type DstuNode, folderApi, createEmpty, trashApi } from '@/dstu';
-import { updatePathCacheV2 } from '@/chat-v2/context/vfsRefApi';
+import { updatePathCacheV2 } from '@/features/chat/context/vfsRefApi';
 import { dstuNodeToResourceListItem } from './types';
 import type { LearningHubSidebarProps, ResourceListItem } from './types';
 import type { FolderItemType, FolderTreeNode } from '@/dstu/types/folder';
@@ -95,7 +95,7 @@ import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { pLimit } from '@/utils/concurrency';
 import { ImportProgressModal, type ImportProgressState, type ImportStage } from './components/ImportProgressModal';
 import { useVfsContextInject } from './hooks';
-import type { VfsResourceType } from '@/chat-v2/context/types';
+import type { VfsResourceType } from '@/features/chat/context/types';
 import {
   consumePathsDropHandledFlag,
   isDragDropBlockedView,
@@ -1300,7 +1300,7 @@ export function LearningHubSidebar({
   // 右键菜单 - 删除资源（软删除到回收站，显示引用计数）
   const handleDeleteResource = useCallback(async (resource: ResourceListItem) => {
     // ★ MEDIUM-004: 删除前查询引用数量
-    const { getResourceRefCountV2 } = await import('@/chat-v2/context/vfsRefApi');
+    const { getResourceRefCountV2 } = await import('@/features/chat/context/vfsRefApi');
     const refCountResult = await getResourceRefCountV2(resource.id);
 
     let confirmMessage = t('contextMenu.confirmDelete', '确定要删除此资源吗？');

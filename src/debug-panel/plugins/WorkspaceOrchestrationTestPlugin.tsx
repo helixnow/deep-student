@@ -38,7 +38,7 @@ import {
   type OverallStatus,
   type WorkspaceOrchestrationTestConfig,
   type LogEntry,
-} from '../../chat-v2/debug/workspaceOrchestrationTestPlugin';
+} from '../../features/chat/debug/workspaceOrchestrationTestPlugin';
 
 function fmtTime(ts: string) {
   const d = new Date(ts);

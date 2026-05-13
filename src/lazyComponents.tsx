@@ -121,11 +121,11 @@ export const LazyCrepeDemoPage = import.meta.env.DEV
   : React.lazy(devLazy);
 
 export const LazyChatV2IntegrationTest = import.meta.env.DEV
-  ? React.lazy(() => import('./chat-v2/dev').then(m => ({ default: m.IntegrationTest })))
+  ? React.lazy(() => import('./features/chat/dev').then(m => ({ default: m.IntegrationTest })))
   : React.lazy(devLazy);
 
 export const LazyLLMOutputPlayground = import.meta.env.DEV
-  ? React.lazy(() => import('./chat-v2/dev/playground').then(m => ({ default: m.LLMOutputPlayground })))
+  ? React.lazy(() => import('./features/chat/dev/playground').then(m => ({ default: m.LLMOutputPlayground })))
   : React.lazy(devLazy);
 
 // 图片查看器
@@ -136,5 +136,5 @@ export const LazyImageViewer = React.lazy(() =>
 // 🚀 Chat V2 主页面（默认视图，改为懒加载以减少初始 bundle）
 // 其依赖链包含 @hello-pangea/dnd、framer-motion、chat-v2/init 等重量级模块
 export const LazyChatV2Page = React.lazy(() =>
-  import('./chat-v2/pages').then(m => ({ default: m.ChatV2Page }))
+  import('./features/chat/pages').then(m => ({ default: m.ChatV2Page }))
 );

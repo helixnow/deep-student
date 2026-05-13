@@ -14,8 +14,8 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/sh
 import { Separator } from '../../components/ui/shad/Separator';
 import { Copy, Trash2, Brain, Database, Zap, RefreshCw, Radio } from 'lucide-react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
-import { sessionManager } from '../../chat-v2/core/session';
-import { useStreamingSessions } from '../../chat-v2/hooks/useStreamingSessions';
+import { sessionManager } from '../../features/chat/core/session';
+import { useStreamingSessions } from '../../features/chat/hooks/useStreamingSessions';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 // =============================================================================
 // 类型定义

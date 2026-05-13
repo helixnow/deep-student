@@ -3,8 +3,8 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { createAutoSaveMiddleware } from '@/chat-v2/core/middleware/autoSave';
-import type { ChatStore } from '@/chat-v2/core/types';
+import { createAutoSaveMiddleware } from '@/features/chat/core/middleware/autoSave';
+import type { ChatStore } from '@/features/chat/core/types';
 
 // ============================================================================
 // Mock Store 创建

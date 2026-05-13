@@ -49,12 +49,12 @@ import {
   NotionDialogTitle,
 } from '@/components/ui/NotionDialog';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { sessionManager } from '@/chat-v2/core/session/sessionManager';
-import type { ChatSession } from '@/chat-v2/types/session';
-import type { SessionGroup } from '@/chat-v2/types/group';
-import { buildPinnedSessionMetadata, isSessionPinned } from '@/chat-v2/utils/sessionPin';
-import { getSessionTitleText } from '@/chat-v2/utils/sessionTitle';
-import { SessionGroupActions } from '@/chat-v2/pages/SessionGroupActions';
+import { sessionManager } from '@/features/chat/core/session/sessionManager';
+import type { ChatSession } from '@/features/chat/types/session';
+import type { SessionGroup } from '@/features/chat/types/group';
+import { buildPinnedSessionMetadata, isSessionPinned } from '@/features/chat/utils/sessionPin';
+import { getSessionTitleText } from '@/features/chat/utils/sessionTitle';
+import { SessionGroupActions } from '@/features/chat/pages/SessionGroupActions';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import type { AppUpdaterController } from '@/hooks/useAppUpdater';
 import type { CurrentView } from '@/types/navigation';
@@ -69,11 +69,11 @@ import {
   AppMenuItem,
   AppMenuTrigger,
 } from '@/components/ui/app-menu/AppMenu';
-import { showArchiveSessionToast } from '@/chat-v2/utils/archiveSessionToast';
+import { showArchiveSessionToast } from '@/features/chat/utils/archiveSessionToast';
 import {
   markSessionSidebarIndicatorSeen,
   useSessionSidebarIndicators,
-} from '@/chat-v2/hooks/useSessionSidebarIndicators';
+} from '@/features/chat/hooks/useSessionSidebarIndicators';
 import { isMacOS, isMobilePlatform } from '@/utils/platform';
 
 interface NavigationHistory {

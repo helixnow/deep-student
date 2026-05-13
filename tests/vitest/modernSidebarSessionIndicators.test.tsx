@@ -6,7 +6,7 @@ import { ModernSidebar } from '@/components/ModernSidebar';
 import {
   __resetSessionSidebarIndicatorsForTests,
   useSessionSidebarIndicators,
-} from '@/chat-v2/hooks/useSessionSidebarIndicators';
+} from '@/features/chat/hooks/useSessionSidebarIndicators';
 
 const { invokeMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
@@ -68,7 +68,7 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: invokeMock,
 }));
 
-vi.mock('@/chat-v2/core/session/sessionManager', () => ({
+vi.mock('@/features/chat/core/session/sessionManager', () => ({
   sessionManager: {
     getCurrentSessionId: getCurrentSessionIdMock,
     get: getSessionStoreMock,

@@ -15,12 +15,12 @@
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { sessionManager } from '@/chat-v2/core/session';
-import { resourceStoreApi } from '@/chat-v2/resources';
-import { getResourceRefsV2 } from '@/chat-v2/context/vfsRefApi';
-import type { VfsContextRefData, VfsResourceType } from '@/chat-v2/context/types';
-import type { ContextRef } from '@/chat-v2/resources/types';
-import type { AttachmentMeta } from '@/chat-v2/core/types/common';
+import { sessionManager } from '@/features/chat/core/session';
+import { resourceStoreApi } from '@/features/chat/resources';
+import { getResourceRefsV2 } from '@/features/chat/context/vfsRefApi';
+import type { VfsContextRefData, VfsResourceType } from '@/features/chat/context/types';
+import type { ContextRef } from '@/features/chat/resources/types';
+import type { AttachmentMeta } from '@/features/chat/core/types/common';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { VfsErrorCode } from '@/shared/result';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';

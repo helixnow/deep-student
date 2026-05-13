@@ -71,7 +71,7 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: invokeMock,
 }));
 
-vi.mock('@/chat-v2/core/session/sessionManager', () => ({
+vi.mock('@/features/chat/core/session/sessionManager', () => ({
   sessionManager: {
     getCurrentSessionId: getCurrentSessionIdMock,
     get: getSessionStoreMock,

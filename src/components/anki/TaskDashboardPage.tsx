@@ -36,7 +36,7 @@ import {
   ChartBar, Circle, MagnifyingGlass, X, ArrowsDownUp, ChatCircleDots,
 } from '@phosphor-icons/react';
 import type { AnkiCard, CustomAnkiTemplate } from '@/types';
-import { exportCardsAsApkg } from '@/chat-v2/anki';
+import { exportCardsAsApkg } from '@/features/chat/anki';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { useViewVisibility } from '@/hooks/useViewVisibility';
 import {

@@ -37,9 +37,9 @@ import {
   type StepResult,
   type LogEntry,
   type OverallStatus,
-} from '../../chat-v2/debug/citationTestPlugin';
-import { ensureModelsCacheLoaded } from '../../chat-v2/hooks/useAvailableModels';
-import type { ModelInfo } from '../../chat-v2/utils/parseModelMentions';
+} from '../../features/chat/debug/citationTestPlugin';
+import { ensureModelsCacheLoaded } from '../../features/chat/hooks/useAvailableModels';
+import type { ModelInfo } from '../../features/chat/utils/parseModelMentions';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // =============================================================================

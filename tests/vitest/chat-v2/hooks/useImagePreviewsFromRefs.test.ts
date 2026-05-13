@@ -1,20 +1,20 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { renderHook, waitFor } from '@testing-library/react';
-import type { ContextSnapshot } from '@/chat-v2/context/types';
-import { useImagePreviewsFromRefs } from '@/chat-v2/hooks/useImagePreviewsFromRefs';
+import type { ContextSnapshot } from '@/features/chat/context/types';
+import { useImagePreviewsFromRefs } from '@/features/chat/hooks/useImagePreviewsFromRefs';
 
-vi.mock('@/chat-v2/resources', () => ({
+vi.mock('@/features/chat/resources', () => ({
   resourceStoreApi: {
     get: vi.fn(),
   },
 }));
 
-vi.mock('@/chat-v2/context/vfsRefApi', () => ({
+vi.mock('@/features/chat/context/vfsRefApi', () => ({
   resolveResourceRefsV2: vi.fn(),
 }));
 
-import { resourceStoreApi } from '@/chat-v2/resources';
-import { resolveResourceRefsV2 } from '@/chat-v2/context/vfsRefApi';
+import { resourceStoreApi } from '@/features/chat/resources';
+import { resolveResourceRefsV2 } from '@/features/chat/context/vfsRefApi';
 
 const mockGetResource = vi.mocked(resourceStoreApi.get);
 const mockResolveResourceRefsV2 = vi.mocked(resolveResourceRefsV2);

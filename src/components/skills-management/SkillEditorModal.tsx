@@ -19,8 +19,8 @@ import { CustomScrollArea } from '../custom-scroll-area';
 import { FileText, Settings, X, Wrench } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { unifiedConfirm } from '@/utils/unifiedDialogs';
-import type { SkillDefinition, SkillLocation, SkillType, ToolSchema } from '@/chat-v2/skills/types';
-import { SKILL_DEFAULT_PRIORITY } from '@/chat-v2/skills/types';
+import type { SkillDefinition, SkillLocation, SkillType, ToolSchema } from '@/features/chat/skills/types';
+import { SKILL_DEFAULT_PRIORITY } from '@/features/chat/skills/types';
 import { EmbeddedToolsEditor } from './EmbeddedToolsEditor';
 
 // ============================================================================

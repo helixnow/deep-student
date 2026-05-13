@@ -1,5 +1,5 @@
 import React from 'react';
-import { streamingMarkdownProfiler, type StreamingMarkdownProfilerSnapshot } from '@/chat-v2/components/renderers/streamingProfiler';
+import { streamingMarkdownProfiler, type StreamingMarkdownProfilerSnapshot } from '@/features/chat/components/renderers/streamingProfiler';
 
 export interface MarkdownStreamingProfilerPluginProps {
   visible: boolean;

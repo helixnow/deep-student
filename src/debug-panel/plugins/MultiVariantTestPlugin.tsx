@@ -21,9 +21,9 @@ import {
   ALL_STEPS, STEP_LABELS, GROUP_A, GROUP_B, GROUP_C, GROUP_D, GROUP_E, GROUP_F,
   runAllMultiVariantTests, requestAbort, resetAbort, cleanupMultiVariantTestData,
   type StepName, type MultiVariantTestConfig, type StepResult, type LogEntry, type OverallStatus,
-} from '../../chat-v2/debug/multiVariantTestPlugin';
-import { ensureModelsCacheLoaded } from '../../chat-v2/hooks/useAvailableModels';
-import type { ModelInfo } from '../../chat-v2/utils/parseModelMentions';
+} from '../../features/chat/debug/multiVariantTestPlugin';
+import { ensureModelsCacheLoaded } from '../../features/chat/hooks/useAvailableModels';
+import type { ModelInfo } from '../../features/chat/utils/parseModelMentions';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // =============================================================================

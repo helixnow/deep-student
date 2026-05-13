@@ -16,7 +16,7 @@ import { useQbankAiGrading } from '@/hooks/useQbankAiGrading';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { formatTime } from '@/utils/formatUtils';
-import { MarkdownRenderer, StreamingMarkdownRenderer } from '@/chat-v2/components/renderers';
+import { MarkdownRenderer, StreamingMarkdownRenderer } from '@/features/chat/components/renderers';
 import { LatexText } from '@/components/LatexText';
 import { ImageCropDialog } from '@/components/ImageCropDialog';
 import DsAnalysisIconMuted from '@/components/icons/DsAnalysisIconMuted';

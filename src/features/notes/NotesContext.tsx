@@ -37,11 +37,11 @@ import { type PreviewType, type SourceDatabase, getSourceDbPreviewType } from ".
 // Prompt 10: 引用有效性校验
 import { useReferenceValidation, type UseReferenceValidationReturn } from "./hooks/useReferenceValidation";
 // Learning Hub - 引用到对话 (Prompt 9)
-import type { ContextRef } from "@/chat-v2/resources/types";
-import { sessionManager } from "@/chat-v2/core/session";
-import { NOTE_TYPE_ID } from "@/chat-v2/context/definitions/note";
-import { TEXTBOOK_TYPE_ID } from "@/chat-v2/context/definitions/textbook";
-import { EXAM_TYPE_ID } from "@/chat-v2/context/definitions/exam";
+import type { ContextRef } from "@/features/chat/resources/types";
+import { sessionManager } from "@/features/chat/core/session";
+import { NOTE_TYPE_ID } from "@/features/chat/context/definitions/note";
+import { TEXTBOOK_TYPE_ID } from "@/features/chat/context/definitions/textbook";
+import { EXAM_TYPE_ID } from "@/features/chat/context/definitions/exam";
 // 统一资源库修复：直接写入 VFS 资源表
 import {
     createResource,

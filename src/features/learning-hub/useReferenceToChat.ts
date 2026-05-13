@@ -24,19 +24,19 @@
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { sessionManager } from '@/chat-v2/core/session';
-import { resourceStoreApi } from '@/chat-v2/resources';
-import type { ContextRef, ResourceType as StoreResourceType } from '@/chat-v2/resources/types';
-import { vfsRefApi, type VfsContextRefData } from '@/chat-v2/context';
+import { sessionManager } from '@/features/chat/core/session';
+import { resourceStoreApi } from '@/features/chat/resources';
+import type { ContextRef, ResourceType as StoreResourceType } from '@/features/chat/resources/types';
+import { vfsRefApi, type VfsContextRefData } from '@/features/chat/context';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { VfsErrorCode } from '@/shared/result';
 
 // 类型定义
-import { NOTE_TYPE_ID } from '@/chat-v2/context/definitions/note';
-import { TEXTBOOK_TYPE_ID } from '@/chat-v2/context/definitions/textbook';
-import { EXAM_TYPE_ID } from '@/chat-v2/context/definitions/exam';
-import { ESSAY_TYPE_ID } from '@/chat-v2/context/definitions/essay';
-import { TRANSLATION_TYPE_ID } from '@/chat-v2/context/definitions/translation';
+import { NOTE_TYPE_ID } from '@/features/chat/context/definitions/note';
+import { TEXTBOOK_TYPE_ID } from '@/features/chat/context/definitions/textbook';
+import { EXAM_TYPE_ID } from '@/features/chat/context/definitions/exam';
+import { ESSAY_TYPE_ID } from '@/features/chat/context/definitions/essay';
+import { TRANSLATION_TYPE_ID } from '@/features/chat/context/definitions/translation';
 
 // ============================================================================
 // 类型定义

@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import type { ChatStore } from '@/chat-v2/core/types';
+import type { ChatStore } from '@/features/chat/core/types';
 
 vi.mock('@/components/UnifiedNotification', () => ({
   showGlobalNotification: vi.fn(),
@@ -12,8 +12,8 @@ vi.mock('i18next', () => ({
 }));
 
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { eventRegistry } from '@/chat-v2/registry/eventRegistry';
-import '@/chat-v2/plugins/events/approval';
+import { eventRegistry } from '@/features/chat/registry/eventRegistry';
+import '@/features/chat/plugins/events/approval';
 
 function createMockStore(): ChatStore {
   const store = {

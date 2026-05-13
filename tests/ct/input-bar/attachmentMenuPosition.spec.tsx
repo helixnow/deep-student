@@ -1,7 +1,7 @@
 import React from 'react';
 import { expect, test } from '@playwright/experimental-ct-react';
-import { InputBarUI } from '@/chat-v2/components/input-bar/InputBarUI';
-import { createDefaultPanelStates } from '@/chat-v2/core/types/common';
+import { InputBarUI } from '@/features/chat/components/input-bar/InputBarUI';
+import { createDefaultPanelStates } from '@/features/chat/core/types/common';
 
 test('opens attachment launcher at the trigger position on the first visible frame', async ({ mount, page }) => {
   const component = await mount(

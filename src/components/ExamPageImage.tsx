@@ -9,7 +9,7 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { getBlobAsDataUrl } from '@/chat-v2/context/blobApi';
+import { getBlobAsDataUrl } from '@/features/chat/context/blobApi';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { AlertCircle, ImageOff } from 'lucide-react';

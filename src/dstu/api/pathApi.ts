@@ -11,7 +11,7 @@
 
 import { invoke } from '@tauri-apps/api/core';
 import { getErrorMessage } from '@/utils/errorUtils';
-import { invalidateResourceCache } from '@/chat-v2/context/vfsRefApiEnhancements';
+import { invalidateResourceCache } from '@/features/chat/context/vfsRefApiEnhancements';
 import type {
   ParsedPath,
   ResourceLocation,

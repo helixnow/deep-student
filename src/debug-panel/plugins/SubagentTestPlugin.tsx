@@ -56,7 +56,7 @@ import {
   type TestStatus,
   type SubagentTestConfig,
   type SubagentTestReport,
-} from '../../chat-v2/debug/subagentTestPlugin';
+} from '../../features/chat/debug/subagentTestPlugin';
 
 // =============================================================================
 // 类型定义

@@ -36,15 +36,15 @@ import {
   Plus,
 } from 'lucide-react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
-import { useWorkspaceStore } from '../../chat-v2/workspace/workspaceStore';
-import { WORKSPACE_EVENTS } from '../../chat-v2/workspace/events';
+import { useWorkspaceStore } from '../../features/chat/workspace/workspaceStore';
+import { WORKSPACE_EVENTS } from '../../features/chat/workspace/events';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import type {
   WorkspaceMessage,
   WorkspaceAgent,
-} from '../../chat-v2/workspace/types';
-import { sessionManager } from '../../chat-v2/core/session/sessionManager';
-import type { BackendEvent } from '../../chat-v2/core/middleware/eventBridge';
+} from '../../features/chat/workspace/types';
+import { sessionManager } from '../../features/chat/core/session/sessionManager';
+import type { BackendEvent } from '../../features/chat/core/middleware/eventBridge';
 import { debugLog } from '../debugMasterSwitch';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
@@ -486,7 +486,7 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
     logMultiAgent('system', 'REFRESH_START', { workspaceId: currentWorkspaceId }, 'info');
 
     try {
-      const { listAgents, listMessages } = await import('../../chat-v2/workspace/api');
+      const { listAgents, listMessages } = await import('../../features/chat/workspace/api');
       const [agentsData, messagesData] = await Promise.all([
         listAgents(currentSessionId, currentWorkspaceId),
         listMessages(currentSessionId, currentWorkspaceId),

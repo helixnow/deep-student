@@ -16,15 +16,15 @@ import {
   EVENT_TYPE_VARIANT_END,
   type BackendEvent,
   type EventBridgeState,
-} from '@/chat-v2/core/middleware/eventBridge';
-import { eventRegistry } from '@/chat-v2/registry/eventRegistry';
+} from '@/features/chat/core/middleware/eventBridge';
+import { eventRegistry } from '@/features/chat/registry/eventRegistry';
 
 // ============================================================================
 // Mock 设置
 // ============================================================================
 
 // Mock autoSave
-vi.mock('@/chat-v2/core/middleware/autoSave', () => ({
+vi.mock('@/features/chat/core/middleware/autoSave', () => ({
   autoSave: {
     scheduleAutoSave: vi.fn(),
     forceImmediateSave: vi.fn().mockResolvedValue(undefined),
@@ -36,7 +36,7 @@ vi.mock('@/chat-v2/core/middleware/autoSave', () => ({
 }));
 
 // Mock chunkBuffer
-vi.mock('@/chat-v2/core/middleware/chunkBuffer', () => ({
+vi.mock('@/features/chat/core/middleware/chunkBuffer', () => ({
   chunkBuffer: {
     setStore: vi.fn(),
     push: vi.fn(),
@@ -45,7 +45,7 @@ vi.mock('@/chat-v2/core/middleware/chunkBuffer', () => ({
 }));
 
 // 获取 mock 的 chunkBuffer 引用
-import { chunkBuffer as mockChunkBuffer } from '@/chat-v2/core/middleware/chunkBuffer';
+import { chunkBuffer as mockChunkBuffer } from '@/features/chat/core/middleware/chunkBuffer';
 
 // Mock Store
 function createMockStore(sessionId: string = 'test-session') {

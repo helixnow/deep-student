@@ -34,8 +34,8 @@ import {
 } from 'lucide-react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
-import { sessionManager } from '../../chat-v2/core/session/sessionManager';
-import { adapterManager } from '../../chat-v2/adapters/AdapterManager';
+import { sessionManager } from '../../features/chat/core/session/sessionManager';
+import { adapterManager } from '../../features/chat/adapters/AdapterManager';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // =============================================================================

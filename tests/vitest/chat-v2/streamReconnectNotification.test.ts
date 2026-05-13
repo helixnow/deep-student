@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { formatStreamReconnectMessage } from '@/chat-v2/adapters/streamReconnectNotification';
+import { formatStreamReconnectMessage } from '@/features/chat/adapters/streamReconnectNotification';
 
 describe('stream reconnect notification', () => {
   it('formats retry progress with a default maximum of five attempts', () => {

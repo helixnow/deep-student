@@ -10,12 +10,12 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, cleanup } from '@testing-library/react';
 import React from 'react';
-import { BlockRenderer } from '@/chat-v2/components/BlockRenderer';
-import { blockRegistry } from '@/chat-v2/registry';
-import type { Block } from '@/chat-v2/core/types';
+import { BlockRenderer } from '@/features/chat/components/BlockRenderer';
+import { blockRegistry } from '@/features/chat/registry';
+import type { Block } from '@/features/chat/core/types';
 
 // Mock blockRegistry
-vi.mock('@/chat-v2/registry', () => ({
+vi.mock('@/features/chat/registry', () => ({
   blockRegistry: {
     get: vi.fn(),
   },

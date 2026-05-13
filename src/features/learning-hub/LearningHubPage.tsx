@@ -41,7 +41,7 @@ import type {
   OpenResourceEventDetail,
   NavigateToKnowledgeEventDetail,
 } from './hooks';
-import type { VfsResourceType } from '@/chat-v2/context/types';
+import type { VfsResourceType } from '@/features/chat/context/types';
 import { usePageMount } from '@/debug-panel/hooks/usePageLifecycle';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { useBreakpoint } from '@/hooks/useBreakpoint';

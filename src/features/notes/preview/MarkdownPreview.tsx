@@ -8,7 +8,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../../lib/utils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
-import { MarkdownRenderer } from '../../../chat-v2/components/renderers/MarkdownRenderer';
+import { MarkdownRenderer } from '../../../features/chat/components/renderers/MarkdownRenderer';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { AlertCircle, FileText } from 'lucide-react';
 import type { MarkdownPreviewProps } from './types';

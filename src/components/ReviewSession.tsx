@@ -12,7 +12,7 @@
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import { MarkdownRenderer } from '@/chat-v2/components/renderers';
+import { MarkdownRenderer } from '@/features/chat/components/renderers';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Progress } from '@/components/ui/shad/Progress';
 import { Badge } from '@/components/ui/shad/Badge';

@@ -1,7 +1,7 @@
 import { act, renderHook } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useGroupManagement } from '@/chat-v2/hooks/useGroupManagement';
-import type { SessionGroup } from '@/chat-v2/types/group';
+import { useGroupManagement } from '@/features/chat/hooks/useGroupManagement';
+import type { SessionGroup } from '@/features/chat/types/group';
 
 const { invokeMock, setGroupsCacheMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(),
@@ -12,7 +12,7 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: invokeMock,
 }));
 
-vi.mock('@/chat-v2/core/store/groupCache', () => ({
+vi.mock('@/features/chat/core/store/groupCache', () => ({
   setGroupsCache: setGroupsCacheMock,
 }));
 

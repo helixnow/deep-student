@@ -32,7 +32,7 @@ import { AccentPicker } from './AccentPicker';
 import { DEFAULT_UI_FONT, DEFAULT_UI_FONT_SIZE, UI_FONT_PRESET_GROUPS, UI_FONT_SIZE_PRESETS } from '@/config/fontConfig';
 import { AppSelect, type AppSelectGroup } from '@/components/ui/app-menu';
 import { UserAgreementDialog } from '@/components/legal/UserAgreementDialog';
-import { getDefaultConfig, configFromPreset, type CopyFilterConfig } from '@/chat-v2/hooks/useDevShowRawRequest';
+import { getDefaultConfig, configFromPreset, type CopyFilterConfig } from '@/features/chat/hooks/useDevShowRawRequest';
 import type { VoiceInputAssignedModel } from '@/voice-input/types';
 
 const DEFAULT_UI_ZOOM = 1.0;

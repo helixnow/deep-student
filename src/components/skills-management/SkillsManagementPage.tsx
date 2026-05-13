@@ -43,9 +43,9 @@ import {
   parseSkillFile,
   useSkillDefaults,
   extractCustomizationFromSkill,
-} from '@/chat-v2/skills';
-import type { SkillDefinition, SkillLocation } from '@/chat-v2/skills/types';
-import { getLocalizedSkillDescription, getLocalizedSkillName } from '@/chat-v2/skills/utils';
+} from '@/features/chat/skills';
+import type { SkillDefinition, SkillLocation } from '@/features/chat/skills/types';
+import { getLocalizedSkillDescription, getLocalizedSkillName } from '@/features/chat/skills/utils';
 
 // 子组件
 import { SkillsList } from './SkillsList';

@@ -87,12 +87,12 @@ import { useEventRegistry } from './hooks/useEventRegistry';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { useViewStore } from './stores/viewStore';
 import { debugLog } from './debug-panel/debugMasterSwitch';
-import { sessionManager } from './chat-v2/core/session/sessionManager';
-import { setSessionSidebarViewContext } from './chat-v2/hooks/useSessionSidebarIndicators';
-import { groupCache } from './chat-v2/core/store/groupCache';
-import { getSessionTitleText } from './chat-v2/utils/sessionTitle';
-import type { ChatStore } from './chat-v2/core/types';
-import { getHiddenDraftSessionScope } from './chat-v2/pages/draftSession';
+import { sessionManager } from './features/chat/core/session/sessionManager';
+import { setSessionSidebarViewContext } from './features/chat/hooks/useSessionSidebarIndicators';
+import { groupCache } from './features/chat/core/store/groupCache';
+import { getSessionTitleText } from './features/chat/utils/sessionTitle';
+import type { ChatStore } from './features/chat/core/types';
+import { getHiddenDraftSessionScope } from './features/chat/pages/draftSession';
 
 import { ViewLayerRenderer } from './app/components';
 import { ErrorBoundary } from './components/ErrorBoundary';

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 
 import type { DstuNode } from '@/dstu/types';
-import { mapDstuNodeToLearningHubItem } from '@/chat-v2/pages/openResourceMapping';
+import { mapDstuNodeToLearningHubItem } from '@/features/chat/pages/openResourceMapping';
 
 const makeNode = (overrides: Partial<DstuNode>): DstuNode => ({
   id: 'file_123',

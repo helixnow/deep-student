@@ -17,9 +17,9 @@ import {
   AppMenuSeparator,
 } from '@/components/ui/app-menu';
 import { cn } from '@/lib/utils';
-import type { SkillDefinition, SkillLocation } from '@/chat-v2/skills/types';
-import { useSkillFavorites } from '@/chat-v2/skills/hooks/useSkillFavorites';
-import { getLocalizedSkillDescription, getLocalizedSkillName } from '@/chat-v2/skills/utils';
+import type { SkillDefinition, SkillLocation } from '@/features/chat/skills/types';
+import { useSkillFavorites } from '@/features/chat/skills/hooks/useSkillFavorites';
+import { getLocalizedSkillDescription, getLocalizedSkillName } from '@/features/chat/skills/utils';
 
 // ============================================================================
 // 类型定义

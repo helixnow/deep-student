@@ -32,7 +32,7 @@ import {
   type PerfTrace, 
   type PerfStage,
   type PerfSummary,
-} from '../../chat-v2/debug/sessionSwitchPerf';
+} from '../../features/chat/debug/sessionSwitchPerf';
 
 // =============================================================================
 // 常量

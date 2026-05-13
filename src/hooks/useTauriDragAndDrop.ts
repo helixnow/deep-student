@@ -5,7 +5,7 @@ import { showGlobalNotification } from '../components/UnifiedNotification';
 import {
   ATTACHMENT_IMAGE_EXTENSIONS,
   ATTACHMENT_DOCUMENT_EXTENSIONS,
-} from '@/chat-v2/core/constants';
+} from '@/features/chat/core/constants';
 import i18n from '@/i18n';
 
 // 扩展名到 MIME 类型映射表（与 UnifiedDragDropZone EXTENSION_TO_MIME 保持一致）

@@ -1,8 +1,8 @@
 import React from 'react';
 import { act, render } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { useSessionLifecycle, type UseSessionLifecycleDeps } from '@/chat-v2/pages/useSessionLifecycle';
-import type { ChatSession } from '@/chat-v2/types/session';
+import { useSessionLifecycle, type UseSessionLifecycleDeps } from '@/features/chat/pages/useSessionLifecycle';
+import type { ChatSession } from '@/features/chat/types/session';
 
 const { createSessionWithDefaultsMock, invokeMock, sessionManagerGetMock } = vi.hoisted(() => ({
   createSessionWithDefaultsMock: vi.fn(),
@@ -10,11 +10,11 @@ const { createSessionWithDefaultsMock, invokeMock, sessionManagerGetMock } = vi.
   sessionManagerGetMock: vi.fn(),
 }));
 
-vi.mock('@/chat-v2/core/session/createSessionWithDefaults', () => ({
+vi.mock('@/features/chat/core/session/createSessionWithDefaults', () => ({
   createSessionWithDefaults: createSessionWithDefaultsMock,
 }));
 
-vi.mock('@/chat-v2/core/session/sessionManager', () => ({
+vi.mock('@/features/chat/core/session/sessionManager', () => ({
   sessionManager: {
     get: sessionManagerGetMock,
   },

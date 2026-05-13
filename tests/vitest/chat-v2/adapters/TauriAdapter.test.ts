@@ -18,13 +18,13 @@ vi.mock('@tauri-apps/api/event', () => ({
 // Import after mocking
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { ChatV2TauriAdapter } from '@/chat-v2/adapters/TauriAdapter';
-import { clearModelsCache, ensureModelsCacheLoaded } from '@/chat-v2/hooks/useAvailableModels';
-import type { ChatStore } from '@/chat-v2/core/types';
-import type { SessionEventPayload } from '@/chat-v2/adapters/types';
-import { skillRegistry } from '@/chat-v2/skills/registry';
-import { clearSessionSkills, syncLoadedSkillsFromBackend } from '@/chat-v2/skills/progressiveDisclosure';
-import type { SkillDefinition } from '@/chat-v2/skills/types';
+import { ChatV2TauriAdapter } from '@/features/chat/adapters/TauriAdapter';
+import { clearModelsCache, ensureModelsCacheLoaded } from '@/features/chat/hooks/useAvailableModels';
+import type { ChatStore } from '@/features/chat/core/types';
+import type { SessionEventPayload } from '@/features/chat/adapters/types';
+import { skillRegistry } from '@/features/chat/skills/registry';
+import { clearSessionSkills, syncLoadedSkillsFromBackend } from '@/features/chat/skills/progressiveDisclosure';
+import type { SkillDefinition } from '@/features/chat/skills/types';
 
 // ============================================================================
 // Mock Store

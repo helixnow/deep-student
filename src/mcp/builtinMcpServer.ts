@@ -24,7 +24,7 @@
  * @see docs/design/Skills渐进披露架构设计.md
  */
 
-import { builtinToolSkills } from '../chat-v2/skills/builtin-tools';
+import { builtinToolSkills } from '../features/chat/skills/builtin-tools';
 
 // 内置服务器常量
 export const BUILTIN_SERVER_ID = '__builtin__tools';

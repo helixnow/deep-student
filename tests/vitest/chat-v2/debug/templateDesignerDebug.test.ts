@@ -7,7 +7,7 @@ import {
   emitTemplateDesignerToolEvent,
   isTemplateDesignerToolName,
   normalizeToolName,
-} from '@/chat-v2/debug/templateDesignerDebug';
+} from '@/features/chat/debug/templateDesignerDebug';
 
 describe('templateDesignerDebug', () => {
   it('normalizes tool names from multiple namespaces', () => {

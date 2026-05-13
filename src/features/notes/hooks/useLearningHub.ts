@@ -18,7 +18,7 @@ import { buildContextMenu, registerContextMenuActionHandler } from '@/dstu/conte
 import type { DstuNode, DstuListOptions, DstuCreateOptions } from '@/dstu/types';
 import type { ContextMenuItem } from '@/dstu/editorTypes';
 import { type VfsError, reportError } from '@/shared/result';
-import { updatePathCacheV2 } from '@/chat-v2/context/vfsRefApi';
+import { updatePathCacheV2 } from '@/features/chat/context/vfsRefApi';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import i18next from 'i18next';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';

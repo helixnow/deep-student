@@ -5,18 +5,18 @@
  */
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
-import { eventRegistry } from '@/chat-v2/registry/eventRegistry';
-import type { ChatStore } from '@/chat-v2/core/types';
+import { eventRegistry } from '@/features/chat/registry/eventRegistry';
+import type { ChatStore } from '@/features/chat/core/types';
 
 // 导入插件（触发自动注册）
-import '@/chat-v2/plugins/events/retrieval';
+import '@/features/chat/plugins/events/retrieval';
 import {
   RETRIEVAL_TYPES,
   ragEventHandler,
   memoryEventHandler,
   webSearchEventHandler,
   multimodalRagEventHandler,
-} from '@/chat-v2/plugins/events/retrieval';
+} from '@/features/chat/plugins/events/retrieval';
 
 // ============================================================================
 // Mock Store 创建

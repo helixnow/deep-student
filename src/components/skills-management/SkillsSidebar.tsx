@@ -17,8 +17,8 @@ import {
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Zap, Globe, FolderOpen, Package, Pencil, Trash2, Check } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { SkillDefinition, SkillLocation } from '@/chat-v2/skills/types';
-import { getLocalizedSkillDescription, getLocalizedSkillName } from '@/chat-v2/skills/utils';
+import type { SkillDefinition, SkillLocation } from '@/features/chat/skills/types';
+import { getLocalizedSkillDescription, getLocalizedSkillName } from '@/features/chat/skills/utils';
 
 // ============================================================================
 // 类型定义

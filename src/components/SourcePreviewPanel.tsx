@@ -7,7 +7,7 @@ import React, { useMemo, useState } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { X, Copy, ExternalLink, FileText, Download } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
-import { MarkdownRenderer } from '../chat-v2/components/renderers';
+import { MarkdownRenderer } from '../features/chat/components/renderers';
 import { CustomScrollArea } from './custom-scroll-area';
 import { fileManager } from '@/utils/fileManager';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';

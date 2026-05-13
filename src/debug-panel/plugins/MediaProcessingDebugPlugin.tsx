@@ -51,7 +51,7 @@ import {
   CHATV2_LOG_EVENT,
   CHATV2_LOGS_CLEARED,
   type ChatV2LogEntry,
-} from '../../chat-v2/debug/chatV2Logger';
+} from '../../features/chat/debug/chatV2Logger';
 
 // =============================================================================
 // 类型定义

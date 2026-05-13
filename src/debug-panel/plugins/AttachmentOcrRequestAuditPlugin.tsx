@@ -6,7 +6,7 @@ import {
   CHATV2_LOG_EVENT,
   CHATV2_LOGS_CLEARED,
   type ChatV2LogEntry,
-} from "../../chat-v2/debug/chatV2Logger";
+} from "../../features/chat/debug/chatV2Logger";
 import { Badge } from "../../components/ui/shad/Badge";
 import { Button } from "../../components/ui/shad/Button";
 import { Card, CardContent } from "../../components/ui/shad/Card";

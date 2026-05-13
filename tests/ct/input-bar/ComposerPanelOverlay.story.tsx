@@ -1,6 +1,6 @@
 import React from 'react';
-import { InputBarUI } from '@/chat-v2/components/input-bar/InputBarUI';
-import { createDefaultPanelStates } from '@/chat-v2/core/types/common';
+import { InputBarUI } from '@/features/chat/components/input-bar/InputBarUI';
+import { createDefaultPanelStates } from '@/features/chat/core/types/common';
 
 export function InputBarWithOpenMcpPanel() {
   return (

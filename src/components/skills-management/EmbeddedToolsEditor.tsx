@@ -14,7 +14,7 @@ import { Textarea } from '../ui/shad/Textarea';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/shad/Collapsible';
 import { Plus, Trash2, ChevronDown, ChevronRight, Wrench, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import type { ToolSchema, ToolInputSchema, JsonSchemaProperty } from '@/chat-v2/skills/types';
+import type { ToolSchema, ToolInputSchema, JsonSchemaProperty } from '@/features/chat/skills/types';
 
 interface EmbeddedToolsEditorProps {
   tools: ToolSchema[];

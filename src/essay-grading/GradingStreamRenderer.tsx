@@ -9,7 +9,7 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StreamingMarkdownRenderer } from '../chat-v2/components/renderers';
+import { StreamingMarkdownRenderer } from '../features/chat/components/renderers';
 import { StreamingAnnotatedText } from '../components/essay-grading/StreamingAnnotatedText';
 import { hasInlineMarkers, hasScoreMarker, parseStreamingContent, removeScoreTag, removeSectionTags } from './streamingMarkerParser';
 import { ScoreCard } from '../components/essay-grading/ScoreCard';

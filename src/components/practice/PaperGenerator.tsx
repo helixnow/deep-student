@@ -9,7 +9,7 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import { MarkdownRenderer } from '@/chat-v2/components/renderers';
+import { MarkdownRenderer } from '@/features/chat/components/renderers';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { Badge } from '@/components/ui/shad/Badge';

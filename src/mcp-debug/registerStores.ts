@@ -24,7 +24,7 @@ export async function registerAllStores(): Promise<void> {
     // Chat V2 相关
     {
       name: 'workspace',
-      module: () => import('../chat-v2/workspace/workspaceStore'),
+      module: () => import('../features/chat/workspace/workspaceStore'),
       exportName: 'useWorkspaceStore',
     },
     // 主要功能 stores
