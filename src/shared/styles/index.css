@@ -1,14 +1,6 @@
 /**
- * Shared styles index - extracted from App.css
- *
- * Shell layout, utilities, and practice styles that are used globally.
+ * Shared styles - original App.css and DeepStudent.css preserved intact.
+ * These will be decomposed into feature-scoped files in a future phase.
  */
-
-@import './shell-layout.css';
-@import './platform-compat.css';
-@import './vendor-overrides.css';
-@import './utilities.css';
-@import './practice.css';
-@import './tooltips.css';
-@import './recovered.css';
-@import './sidebar-complete.css';
+@import './app.css';
+@import './deep-student.css';

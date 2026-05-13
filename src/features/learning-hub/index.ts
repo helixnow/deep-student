@@ -3,7 +3,6 @@
  *
  * 根据文档20《统一资源库与访达层改造任务分配》实现
  */
-import './styles/dashboard.css';
 
 // Prompt 4: 访达侧栏容器
 export { LearningHubSidebar } from './LearningHubSidebar';
