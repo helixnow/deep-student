@@ -9,3 +9,10 @@
 @import './vendor-overrides.css';
 @import './utilities.css';
 @import './practice.css';
+
+/**
+ * Legacy fallback — restores styles lost during decomposition.
+ * TODO: diff against extracted files, identify missing selectors, merge properly, then remove.
+ */
+@import './_legacy-app.css';
+@import './_legacy-deepstudent.css';
