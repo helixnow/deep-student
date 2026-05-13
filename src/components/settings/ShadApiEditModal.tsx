@@ -11,9 +11,8 @@ import { CustomScrollArea } from '../custom-scroll-area';
 import { Badge } from '../ui/shad/Badge';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/shad/Tabs';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '../../components/ui/shad/Card';
+import { ApiKeyField } from './ApiKeyField';
 import { 
-  Eye, 
-  EyeOff, 
   Sparkles, 
   Info, 
   Bot, 
@@ -811,25 +810,18 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           <Label htmlFor={fieldIds.apiKey} className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
                             {t('common:api_config_modal.api_key')}
                           </Label>
-                          <div className="relative">
-                            <Input
-                              id={fieldIds.apiKey}
-                              type={showApiKey ? 'text' : 'password'}
-                              value={formData.apiKey}
-                              onChange={e => setFormData(prev => ({ ...prev, apiKey: (e.target as HTMLInputElement).value }))}
-                              placeholder={t('common:api_config_modal.api_key_placeholder')}
-                              className="pr-10 font-mono text-sm bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-all h-[50px]"
-                            />
-                            <NotionButton
-                              type="button"
-                              variant="ghost"
-                              size="icon"
-                              onClick={() => setShowApiKey(!showApiKey)}
-                              className="absolute right-1 top-1 h-8 w-8 text-muted-foreground/50 hover:text-foreground transition-colors"
-                            >
-                              {showApiKey ? <EyeOff size={14} /> : <Eye size={14} />}
-                            </NotionButton>
-                          </div>
+                          <ApiKeyField
+                            id={fieldIds.apiKey}
+                            value={formData.apiKey}
+                            onChange={e => setFormData(prev => ({ ...prev, apiKey: (e.target as HTMLInputElement).value }))}
+                            placeholder={t('common:api_config_modal.api_key_placeholder')}
+                            inputClassName="font-mono"
+                            revealed={showApiKey}
+                            canReveal={formData.apiKey.trim().length > 0}
+                            onToggle={() => setShowApiKey(!showApiKey)}
+                            showLabel={t('common:securePassword.showPassword')}
+                            hideLabel={t('common:securePassword.hidePassword')}
+                          />
                         </div>
                       </div>
                     </div>

@@ -7,7 +7,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { Cloud, CheckCircle2, XCircle, Loader2, Eye, EyeOff, History, Upload, Download, Trash2, AlertCircle } from 'lucide-react';
+import { Cloud, CheckCircle2, XCircle, Loader2, History, Upload, Download, Trash2, AlertCircle } from 'lucide-react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '../ui/shad/Card';
 import { NotionButton } from '../ui/NotionButton';
 import { Input } from '../ui/shad/Input';
@@ -15,6 +15,7 @@ import { Label } from '../ui/shad/Label';
 import { Switch } from '../ui/shad/Switch';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '../ui/shad/Tabs';
 import { NotionAlertDialog } from '../ui/NotionDialog';
+import { ApiKeyField } from './ApiKeyField';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { debugLog } from '../../debug-panel/debugMasterSwitch';
@@ -674,24 +675,17 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="webdav-password">{t('cloudStorage:webdav.password')}</Label>
-                <div className="relative">
-                  <Input
-                    id="webdav-password"
-                    type={showPassword ? 'text' : 'password'}
-                    placeholder={t('cloudStorage:webdav.passwordPlaceholder')}
-                    value={webdavConfig.password}
-                    onChange={(e) => setWebdavConfig({ ...webdavConfig, password: e.target.value })}
-                  />
-                  <NotionButton
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3"
-                    onClick={() => setShowPassword(!showPassword)}
-                  >
-                    {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </NotionButton>
-                </div>
+                <ApiKeyField
+                  id="webdav-password"
+                  placeholder={t('cloudStorage:webdav.passwordPlaceholder')}
+                  value={webdavConfig.password}
+                  onChange={(e) => setWebdavConfig({ ...webdavConfig, password: e.target.value })}
+                  revealed={showPassword}
+                  canReveal={webdavConfig.password.trim().length > 0}
+                  onToggle={() => setShowPassword(!showPassword)}
+                  showLabel={t('common:securePassword.showPassword')}
+                  hideLabel={t('common:securePassword.hidePassword')}
+                />
                 <p className="text-xs text-muted-foreground">{t('cloudStorage:webdav.passwordHint')}</p>
               </div>
             </div>
@@ -732,24 +726,17 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               </div>
               <div className="space-y-2">
                 <Label htmlFor="s3-secret-key">{t('cloudStorage:s3.secretAccessKey')}</Label>
-                <div className="relative">
-                  <Input
-                    id="s3-secret-key"
-                    type={showSecretKey ? 'text' : 'password'}
-                    placeholder={t('cloudStorage:s3.secretAccessKeyPlaceholder')}
-                    value={s3Config.secretAccessKey}
-                    onChange={(e) => setS3Config({ ...s3Config, secretAccessKey: e.target.value })}
-                  />
-                  <NotionButton
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="absolute right-0 top-0 h-full px-3"
-                    onClick={() => setShowSecretKey(!showSecretKey)}
-                  >
-                    {showSecretKey ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </NotionButton>
-                </div>
+                <ApiKeyField
+                  id="s3-secret-key"
+                  placeholder={t('cloudStorage:s3.secretAccessKeyPlaceholder')}
+                  value={s3Config.secretAccessKey}
+                  onChange={(e) => setS3Config({ ...s3Config, secretAccessKey: e.target.value })}
+                  revealed={showSecretKey}
+                  canReveal={s3Config.secretAccessKey.trim().length > 0}
+                  onToggle={() => setShowSecretKey(!showSecretKey)}
+                  showLabel={t('common:securePassword.showPassword')}
+                  hideLabel={t('common:securePassword.hidePassword')}
+                />
               </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
@@ -800,25 +787,18 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               端到端加密密码（可选，强烈推荐）
             </Label>
           </div>
-          <div className="relative">
-            <Input
-              id="cloud-encryption-password"
-              type={showEncryptionPwd ? 'text' : 'password'}
-              placeholder="留空则不加密；设置后仅你本地存储，云端无法解密"
-              value={encryptionPassword}
-              onChange={(e) => setEncryptionPassword(e.target.value)}
-              autoComplete="new-password"
-            />
-            <NotionButton
-              type="button"
-              variant="ghost"
-              size="sm"
-              className="absolute right-0 top-0 h-full px-3"
-              onClick={() => setShowEncryptionPwd(!showEncryptionPwd)}
-            >
-              {showEncryptionPwd ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-            </NotionButton>
-          </div>
+          <ApiKeyField
+            id="cloud-encryption-password"
+            placeholder="留空则不加密；设置后仅你本地存储，云端无法解密"
+            value={encryptionPassword}
+            onChange={(e) => setEncryptionPassword(e.target.value)}
+            autoComplete="new-password"
+            revealed={showEncryptionPwd}
+            canReveal={encryptionPassword.trim().length > 0}
+            onToggle={() => setShowEncryptionPwd(!showEncryptionPwd)}
+            showLabel={t('common:securePassword.showPassword')}
+            hideLabel={t('common:securePassword.hidePassword')}
+          />
           <p className="text-xs text-muted-foreground leading-relaxed">
             开启后，上传的 ZIP 备份将使用 AES-256-GCM 加密，云服务商无法读取内容。
             <span className="text-destructive font-medium"> 密码仅存储在本机系统凭据库（Keychain/Credential Manager），

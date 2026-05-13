@@ -12,6 +12,13 @@ interface ApiKeyFieldProps extends Omit<React.InputHTMLAttributes<HTMLInputEleme
   onToggle: () => void;
   inputClassName?: string;
   className?: string;
+  /**
+   * Optional slot for additional adornments (e.g. a copy button) rendered
+   * inside the shell, to the left of the reveal toggle.
+   * Use `.api-key-field__action` class on child buttons to match the
+   * built-in toggle's styling.
+   */
+  extraActions?: React.ReactNode;
 }
 
 export const ApiKeyField = React.forwardRef<HTMLInputElement, ApiKeyFieldProps>(({
@@ -23,6 +30,7 @@ export const ApiKeyField = React.forwardRef<HTMLInputElement, ApiKeyFieldProps>(
   onToggle,
   inputClassName,
   className,
+  extraActions,
   ...props
 }, ref) => {
   const label = revealed ? hideLabel : showLabel;
@@ -47,6 +55,7 @@ export const ApiKeyField = React.forwardRef<HTMLInputElement, ApiKeyFieldProps>(
         )}
         {...props}
       />
+      {extraActions}
       {canReveal && (
         // eslint-disable-next-line ds-components/no-native-button -- Input adornment needs exact height/edge control instead of shared button primitive sizing.
         <button
@@ -56,9 +65,9 @@ export const ApiKeyField = React.forwardRef<HTMLInputElement, ApiKeyFieldProps>(
           aria-label={label}
           aria-pressed={revealed}
           title={label}
-          className="api-key-field__toggle"
+          className="api-key-field__action api-key-field__toggle"
         >
-          {revealed ? <EyeSlash className="api-key-field__icon" /> : <Eye className="api-key-field__icon" />}
+          {revealed ? <Eye className="api-key-field__icon" /> : <EyeSlash className="api-key-field__icon" />}
         </button>
       )}
     </div>

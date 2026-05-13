@@ -10,6 +10,7 @@ import { AppSelect } from './ui/app-menu';
 import { Popover, PopoverContent, PopoverTrigger } from './ui/shad/Popover';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from './ui/shad/Tabs';
 import { Checkbox } from './ui/shad/Checkbox';
+import { ApiKeyField } from './settings/ApiKeyField';
 import { cn } from '../lib/utils';
 import { UnifiedCodeEditor } from './shared/UnifiedCodeEditor';
 import { CustomScrollArea } from './custom-scroll-area';
@@ -111,6 +112,8 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
   const [mcpPreview, setMcpPreview] = useState<{ open: boolean; loading: boolean; serverId?: string; serverName?: string; error?: string; tools: McpPreviewItem[]; prompts: McpPreviewItem[]; resources: McpPreviewResource[] }>({ open: false, loading: false, tools: [], prompts: [], resources: [] });
   // stdio 测试细粒度进度步骤（null = 未在测试）
   const [mcpTestStep, setMcpTestStep] = useState<string | null>(null);
+  // MCP API Key 输入框的显示/隐藏切换
+  const [showMcpApiKey, setShowMcpApiKey] = useState(false);
   // 缓存详情（不触发新体检）：按照服务器聚合的工具清单 + 全局提示/资源
   const [mcpCachedDetails, setMcpCachedDetails] = useState<{
     toolsByServer: Record<string, { items: Array<{ name: string; description?: string }>; at?: number }>;
@@ -929,7 +932,17 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                 </div>
                 <div className="space-y-2">
                   <label className="text-sm font-medium text-foreground">{t('settings:mcp.api_key')}</label>
-                  <Input type="password" value={draft.apiKey || ''} onChange={e => updateDraft({ apiKey: e.target.value })} placeholder={t('settings:placeholders.api_key')} />
+                  <ApiKeyField
+                    value={draft.apiKey || ''}
+                    onChange={e => updateDraft({ apiKey: e.target.value })}
+                    placeholder={t('settings:placeholders.api_key')}
+                    inputClassName="font-mono"
+                    revealed={showMcpApiKey}
+                    canReveal={(draft.apiKey || '').trim().length > 0}
+                    onToggle={() => setShowMcpApiKey(v => !v)}
+                    showLabel={t('common:securePassword.showPassword')}
+                    hideLabel={t('common:securePassword.hidePassword')}
+                  />
                 </div>
               </div>
             )}
@@ -1287,7 +1300,17 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                       </div>
                       <div className="space-y-2">
                         <label className="text-sm font-medium">{t('settings:mcp.api_key')}</label>
-                        <Input type="password" value={draft.apiKey || ''} onChange={e => updateDraft({ apiKey: e.target.value })} placeholder={t('settings:placeholders.api_key')} />
+                        <ApiKeyField
+                          value={draft.apiKey || ''}
+                          onChange={e => updateDraft({ apiKey: e.target.value })}
+                          placeholder={t('settings:placeholders.api_key')}
+                          inputClassName="font-mono"
+                          revealed={showMcpApiKey}
+                          canReveal={(draft.apiKey || '').trim().length > 0}
+                          onToggle={() => setShowMcpApiKey(v => !v)}
+                          showLabel={t('common:securePassword.showPassword')}
+                          hideLabel={t('common:securePassword.hidePassword')}
+                        />
                       </div>
                     </>
                   )}

@@ -42,6 +42,7 @@ import { isBuiltinServer, BUILTIN_SERVER_ID } from '../../mcp/builtinMcpServer';
 import { SettingSection } from './SettingsCommon';
 import { NotionButton } from '../ui/NotionButton';
 import { Switch } from '../ui/shad/Switch';
+import { ApiKeyField } from './ApiKeyField';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { CustomScrollArea } from '../custom-scroll-area';
 import { 
@@ -511,6 +512,7 @@ function ServerEditPanel({
 
   const [jsonInput, setJsonInput] = useState(() => buildServerJson(server));
   const [showAdvanced, setShowAdvanced] = useState(false);
+  const [showApiKey, setShowApiKey] = useState(false);
 
   // 环境变量操作
   const envEntries = Object.entries(formData.env);
@@ -799,12 +801,16 @@ function ServerEditPanel({
                     <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
                       {t('settings:mcp_server_edit.api_key')}
                     </label>
-                    <input
-                      type="password"
+                    <ApiKeyField
                       value={formData.apiKey}
                       onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
-                      className="w-full px-3 py-2 bg-background border border-border/60 rounded-md text-sm text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                       placeholder={t('settings:mcp_server_edit.api_key_placeholder')}
+                      inputClassName="font-mono"
+                      revealed={showApiKey}
+                      canReveal={formData.apiKey.trim().length > 0}
+                      onToggle={() => setShowApiKey(!showApiKey)}
+                      showLabel={t('common:securePassword.showPassword')}
+                      hideLabel={t('common:securePassword.hidePassword')}
                     />
                   </div>
 
@@ -942,6 +948,7 @@ function NewServerEditItem({
     apiKey: '',
     env: {} as Record<string, string>
   });
+  const [showApiKey, setShowApiKey] = useState(false);
 
   const buildServerJson = () => {
     const config: Record<string, unknown> = {
@@ -1270,12 +1277,16 @@ function NewServerEditItem({
                       <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
                         {t('settings:mcp_server_edit.api_key')}
                       </label>
-                      <input
-                        type="password"
+                      <ApiKeyField
                         value={formData.apiKey}
                         onChange={(e) => setFormData({ ...formData, apiKey: e.target.value })}
-                        className="w-full px-3 py-2 bg-background border border-border/60 rounded-md text-sm text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                         placeholder={t('settings:mcp_server_edit.api_key_placeholder')}
+                        inputClassName="font-mono"
+                        revealed={showApiKey}
+                        canReveal={formData.apiKey.trim().length > 0}
+                        onToggle={() => setShowApiKey(!showApiKey)}
+                        showLabel={t('common:securePassword.showPassword')}
+                        hideLabel={t('common:securePassword.hidePassword')}
                       />
                     </div>
 

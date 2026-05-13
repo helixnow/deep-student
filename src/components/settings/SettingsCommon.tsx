@@ -134,6 +134,10 @@ export interface ToggleSwitchProps {
   onChange: (value: boolean) => void;
 }
 
+/**
+ * @deprecated 改用 `@/components/ui/shad/Switch` 的 `<Switch>`。
+ * 保留仅为兼容遗留引用；在当前代码库中已无调用点。
+ */
 export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ checked, onChange }) => (
   <button
     type="button"

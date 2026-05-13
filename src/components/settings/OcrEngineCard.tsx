@@ -12,6 +12,8 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NotionButton } from '../ui/NotionButton';
+import { NotionAlertDialog } from '../ui/NotionDialog';
+import { Switch } from '../ui/shad/Switch';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { invoke } from '@tauri-apps/api/core';
 import { OcrEngineTestPanel } from './OcrEngineTestPanel';
@@ -66,6 +68,9 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
   const [showTestPanel, setShowTestPanel] = useState(false);
   const [showAddDialog, setShowAddDialog] = useState(false);
   const [thinkingEnabled, setThinkingEnabled] = useState(false);
+
+  // ★ 删除确认对话框状态（替代 window.confirm）
+  const [deleteTarget, setDeleteTarget] = useState<{ configId: string; name: string } | null>(null);
 
   const loadEngines = useCallback(async () => {
     try {
@@ -259,24 +264,14 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
                 </span>
 
                 {/* 启用/禁用开关 */}
-                <button
-                  onClick={() => handleToggleEnabled(engine.configId)}
+                <Switch
+                  size="sm"
+                  checked={engine.enabled}
+                  onCheckedChange={() => handleToggleEnabled(engine.configId)}
                   disabled={saving}
-                  className={cn(
-                    "relative shrink-0 rounded-full transition-colors",
-                    "w-[28px] h-[16px]",
-                    engine.enabled ? "bg-primary" : "bg-muted-foreground/20"
-                  )}
                   title={engine.enabled ? t('settings:ocr.click_to_disable') : t('settings:ocr.click_to_enable')}
-                >
-                  <span
-                    className={cn(
-                      "block absolute rounded-full bg-white shadow-sm transition-transform",
-                      "w-[12px] h-[12px] top-[2px]",
-                      engine.enabled ? "left-[14px]" : "left-[2px]"
-                    )}
-                  />
-                </button>
+                  className="shrink-0"
+                />
 
                 {/* 引擎信息 */}
                 <div className="flex-1 min-w-0 space-y-0">
@@ -331,7 +326,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
                     <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 9L3 5H9L6 9Z" fill="currentColor"/></svg>
                   </NotionButton>
                   {engine.engineType !== 'system_ocr' && (
-                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => { if (window.confirm(t('settings:ocr.confirm_remove', { name: engine.name }))) { handleRemoveEngine(engine.configId); } }} disabled={saving} className="!h-5 !w-5 !p-0 text-muted-foreground/30 hover:text-red-500 ml-0.5" title={t('common:delete')} aria-label="delete">
+                    <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setDeleteTarget({ configId: engine.configId, name: engine.name })} disabled={saving} className="!h-5 !w-5 !p-0 text-muted-foreground/30 hover:text-red-500 ml-0.5" title={t('common:delete')} aria-label="delete">
                       <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M3 3L9 9M9 3L3 9" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"/></svg>
                     </NotionButton>
                   )}
@@ -359,9 +354,10 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
                 {t('settings:ocr.thinking_desc', '关闭可显著降低 OCR / 题目集导入延迟')}
               </p>
             </div>
-            <button
-              onClick={async () => {
-                const next = !thinkingEnabled;
+            <Switch
+              size="sm"
+              checked={thinkingEnabled}
+              onCheckedChange={async (next) => {
                 setThinkingEnabled(next);
                 try {
                   await invoke('set_ocr_thinking_enabled', { enabled: next });
@@ -370,21 +366,9 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
                 }
               }}
               disabled={saving}
-              className={cn(
-                "relative shrink-0 rounded-full transition-colors",
-                "w-[28px] h-[16px]",
-                thinkingEnabled ? "bg-primary" : "bg-muted-foreground/20"
-              )}
               title={thinkingEnabled ? t('settings:ocr.thinking_on', '推理已开启') : t('settings:ocr.thinking_off', '推理已关闭')}
-            >
-              <span
-                className={cn(
-                  "block absolute rounded-full bg-white shadow-sm transition-transform",
-                  "w-[12px] h-[12px] top-[2px]",
-                  thinkingEnabled ? "left-[14px]" : "left-[2px]"
-                )}
-              />
-            </button>
+              className="shrink-0"
+            />
           </div>
         )}
 
@@ -446,6 +430,27 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
           </div>
         )}
       </div>
+
+      {/* ★ 删除确认对话框 - 替代原生 window.confirm */}
+      <NotionAlertDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title={t('common:delete')}
+        description={deleteTarget ? t('settings:ocr.confirm_remove', { name: deleteTarget.name }) : undefined}
+        confirmText={t('common:delete')}
+        cancelText={t('common:cancel')}
+        confirmVariant="danger"
+        loading={saving}
+        disabled={saving}
+        onConfirm={async () => {
+          if (!deleteTarget) return;
+          const id = deleteTarget.configId;
+          setDeleteTarget(null);
+          await handleRemoveEngine(id);
+        }}
+      />
     </div>
   );
 };
