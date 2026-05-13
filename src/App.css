@@ -25,6 +25,16 @@ body {
   --shell-section-gap: var(--space-shell-section-gap);
 }
 
+[data-shell-role="app-shell"] {
+  /*
+   * 默认背景 = 工作区背景，保证侧栏折叠时底层颜色正确。
+   * 侧栏可见时会被下面的 `[data-sidebar-visible="true"]` 规则覆盖为
+   * `--shell-navigation-surface`，与侧栏同色同源，确保工作区左上/左下凹角
+   * 透出的颜色与侧栏始终一致，主题切换时不会出现中间色差。
+   */
+  background: var(--shell-backdrop);
+}
+
 [data-shell-role="app-shell"][data-sidebar-visible="true"] {
   background: var(--shell-navigation-surface);
 }

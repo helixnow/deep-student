@@ -1273,7 +1273,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       aria-label={t('sidebar:aria.sidebar_navigation', '主导航')}
       data-shell-layer="navigation"
       data-shell-surface="navigation"
-      className="font-sidebar-study-ui relative z-20 flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-[color:var(--shell-navigation-surface)] text-[color:var(--shell-navigation-foreground)] transition-colors duration-500"
+      className="font-sidebar-study-ui relative z-20 flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden bg-[color:var(--shell-navigation-surface)] text-[color:var(--shell-navigation-foreground)]"
       style={{ paddingTop: 'calc(var(--shell-titlebar-height) + var(--shell-layout-gap))' }}
     >
       <div
