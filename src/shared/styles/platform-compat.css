@@ -1,0 +1,326 @@
+/* =================== 安卓 WebView 兼容性修复 =================== */
+
+/*
+ * 安卓 WebView 会自动调整以下内容：
+ * 1. 小字体会被放大以提高可读性（text-size-adjust）
+ * 2. 触摸目标会被放大以提高可用性
+ * 3. 输入框聚焦时页面会自动缩放（font-size < 16px）
+ *
+ * 解决方案：
+ * - 使用 text-size-adjust: 100% 禁止字体自动调整
+ * - 使用固定像素值限制元素尺寸（!important 确保优先级）
+ * - 输入框使用 16px 最小字号防止缩放
+ */
+
+/* 全局禁止文字大小自动调整 */
+html {
+  -webkit-text-size-adjust: 100%;
+  -moz-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* ★ 全局移动端触控优化：消除双击缩放的 300ms 延迟 */
+html {
+  touch-action: manipulation;
+}
+
+/* ---- 1. 小字体元素保护（10px-15px 全覆盖）---- */
+
+/* 10px-11px 字体保护 */
+.text-\[10px\],
+.text-\[11px\],
+[class*="text-[10px]"],
+[class*="text-[11px]"] {
+  -webkit-text-size-adjust: 100% !important;
+  text-size-adjust: 100% !important;
+  line-height: 1.2;
+}
+
+/* 12px-15px 字体保护（扩展覆盖） */
+.text-\[12px\],
+.text-\[13px\],
+.text-\[14px\],
+.text-\[15px\],
+[class*="text-[12px]"],
+[class*="text-[13px]"],
+[class*="text-[14px]"],
+[class*="text-[15px]"] {
+  -webkit-text-size-adjust: 100% !important;
+  text-size-adjust: 100% !important;
+}
+
+/* Tailwind text-xs (12px) 和 text-sm (14px) 保护 */
+.text-xs,
+.text-sm {
+  -webkit-text-size-adjust: 100% !important;
+  text-size-adjust: 100% !important;
+}
+
+/* ---- 2. Badge/Chip/Tag 类元素固定尺寸保护 ---- */
+
+.inline-flex.items-center.rounded-full,
+.inline-flex.items-center.rounded-md {
+  -webkit-text-size-adjust: 100% !important;
+  text-size-adjust: 100% !important;
+  flex-shrink: 0;
+}
+
+/* ---- 3. 小尺寸 UI 组件保护 ---- */
+
+/* Checkbox 组件 (16x16) */
+[data-state="checked"],
+[data-state="unchecked"] {
+  -webkit-text-size-adjust: 100% !important;
+  text-size-adjust: 100% !important;
+}
+
+.peer.h-4.w-4,
+[class*="h-4"][class*="w-4"].rounded {
+  min-width: 16px !important;
+  min-height: 16px !important;
+  flex-shrink: 0 !important;
+}
+
+/* Progress 组件 (高度 8px) */
+[role="progressbar"] {
+  min-height: 8px !important;
+  flex-shrink: 0 !important;
+}
+
+[role="progressbar"] .bar,
+[role="progressbar"] > div {
+  min-height: 8px !important;
+}
+
+/* ---- 4. 小图标保护 (12px-16px) ---- */
+
+/*
+ * 注意：使用精确类名匹配，避免子字符串误伤
+ * 例如：.w-3 不会匹配 w-32，.h-3 不会匹配 h-36
+ */
+
+/* w-3 h-3 (12px) 图标 - 精确匹配 */
+.w-3.h-3 {
+  min-width: 12px !important;
+  min-height: 12px !important;
+  flex-shrink: 0 !important;
+}
+
+/* w-3.5 h-3.5 (14px) 图标 */
+.w-3\.5.h-3\.5 {
+  min-width: 14px !important;
+  min-height: 14px !important;
+  flex-shrink: 0 !important;
+}
+
+/* w-4 h-4 (16px) 图标 - 精确匹配 */
+.w-4.h-4 {
+  min-width: 16px !important;
+  min-height: 16px !important;
+  flex-shrink: 0 !important;
+}
+
+/* w-5 h-5 (20px) 图标 */
+.w-5.h-5 {
+  min-width: 20px !important;
+  min-height: 20px !important;
+  flex-shrink: 0 !important;
+}
+
+/* w-6 h-6 (24px) 图标 */
+.w-6.h-6 {
+  min-width: 24px !important;
+  min-height: 24px !important;
+  flex-shrink: 0 !important;
+}
+
+/* SVG 图标通用保护 - 精确匹配 */
+svg.w-3 {
+  min-width: 12px !important;
+}
+
+svg.h-3 {
+  min-height: 12px !important;
+}
+
+svg.w-4 {
+  min-width: 16px !important;
+}
+
+svg.h-4 {
+  min-height: 16px !important;
+}
+
+/* size-* 工具类保护 (Tailwind v3.3+) */
+.size-3 {
+  min-width: 12px !important;
+  min-height: 12px !important;
+}
+
+.size-4 {
+  min-width: 16px !important;
+  min-height: 16px !important;
+}
+
+.size-5 {
+  min-width: 20px !important;
+  min-height: 20px !important;
+}
+
+/* ---- 5. 输入框防缩放 ---- */
+
+/*
+ * Android WebView 会在 font-size < 16px 的输入框聚焦时自动缩放页面
+ *
+ * 检测策略：
+ * - pointer: coarse → 排除鼠标设备
+ * - hover: none → 排除可悬停设备（桌面触屏）
+ * - max-width: 1024px → 排除平板横屏/笔记本
+ *
+ * 这样可以更精准地定位移动端 WebView，减少对桌面触屏的影响
+ *
+ * 如需更精准控制，可在 JS 中检测 navigator.userAgent 并添加 .is-android-webview 类
+ */
+@media (pointer: coarse) and (hover: none) and (max-width: 1024px) {
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  input[type="password"],
+  input[type="search"],
+  input[type="tel"],
+  input[type="url"],
+  textarea,
+  [contenteditable="true"] {
+    font-size: 16px !important;
+    -webkit-text-size-adjust: 100% !important;
+    text-size-adjust: 100% !important;
+  }
+}
+
+/* JavaScript 检测到 Android WebView 时的专用类 */
+html.is-android-webview input,
+html.is-android-webview textarea,
+html.is-android-webview [contenteditable="true"] {
+  font-size: 16px !important;
+}
+
+/* ---- 6. 固定高度小元素保护 ---- */
+
+/*
+ * 使用精确类名匹配，需要转义方括号
+ * 注意：CSS 类选择器自动是完整匹配，不会误伤
+ */
+
+/* h-[14px] - ModelMentionChip 等 */
+.h-\[14px\] {
+  min-height: 14px !important;
+  flex-shrink: 0 !important;
+}
+
+.min-h-\[14px\] {
+  min-height: 14px !important;
+}
+
+/* h-[18px] - Badge, Chip 等 */
+.h-\[18px\] {
+  min-height: 18px !important;
+  flex-shrink: 0 !important;
+}
+
+.min-h-\[18px\] {
+  min-height: 18px !important;
+}
+
+/* h-[20px] - NotesEditorHeader 等 */
+.h-\[20px\] {
+  min-height: 20px !important;
+  flex-shrink: 0 !important;
+}
+
+.min-h-\[20px\] {
+  min-height: 20px !important;
+}
+
+/* h-[22px] - ModelMentionChip 等 */
+.h-\[22px\] {
+  min-height: 22px !important;
+  flex-shrink: 0 !important;
+}
+
+.min-h-\[22px\] {
+  min-height: 22px !important;
+}
+
+/* h-[24px] - NoteTagsEditor 等 */
+.h-\[24px\] {
+  min-height: 24px !important;
+  flex-shrink: 0 !important;
+}
+
+.min-h-\[24px\] {
+  min-height: 24px !important;
+}
+
+/* h-[25px] - Select 组件 */
+.h-\[25px\] {
+  min-height: 25px !important;
+  flex-shrink: 0 !important;
+}
+
+/* ---- 7. backdrop-filter 兼容性 fallback ---- */
+
+@supports not (backdrop-filter: blur(1px)) {
+  /* 毛玻璃效果降级为半透明背景 */
+  .backdrop-blur-sm {
+    background-color: color-mix(in hsl, var(--shell-titlebar-surface) 96%, transparent) !important;
+  }
+
+  .backdrop-blur {
+    background-color: color-mix(in hsl, var(--shell-titlebar-surface) 93%, transparent) !important;
+  }
+
+  .backdrop-blur-md {
+    background-color: color-mix(in hsl, var(--shell-titlebar-surface) 90%, transparent) !important;
+  }
+
+  .backdrop-blur-lg,
+  .backdrop-blur-xl {
+    background-color: color-mix(in hsl, var(--shell-titlebar-surface) 87%, transparent) !important;
+  }
+}
+
+/* ---- 8. env() 安全区域 fallback ---- */
+
+/*
+ * Android 安全区域处理策略：
+ * 
+ * 1. iOS 使用 env(safe-area-inset-*) - 浏览器原生支持
+ * 2. Android WebView 可能不支持 env()，使用 CSS 变量作为 fallback
+ * 3. CSS 变量由 platform.ts 的 initAndroidSafeArea() 在应用启动时设置
+ * 
+ * 推荐在组件中使用：
+ * var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))
+ */
+
+/* 旧版 @supports 检测作为最后防线 */
+@supports not (padding: env(safe-area-inset-bottom)) {
+  /* 仅在浏览器完全不支持 env() 时生效 */
+  .pb-safe,
+  .safe-area-bottom {
+    padding-bottom: var(--android-safe-area-bottom, 48px) !important;
+  }
+
+  .pt-safe,
+  .safe-area-top {
+    padding-top: var(--android-safe-area-top, 24px) !important;
+  }
+}
+
+/* Android 专用安全区域类 - 始终使用 CSS 变量 */
+html.is-android .android-safe-bottom {
+  padding-bottom: var(--android-safe-area-bottom, 48px);
+}
+
+html.is-android .android-safe-top {
+  padding-top: var(--android-safe-area-top, 24px);
+}

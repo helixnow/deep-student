@@ -1,0 +1,256 @@
+/**
+ * Chat Layout Overrides (from DeepStudent.css)
+ *
+ * Chat-specific layout fixes that were previously in the global DeepStudent.css.
+ * These styles target chat containers, fullscreen mode, and message overflow.
+ */
+
+/* 聊天区域全屏增强 - 统一所有聊天容器样式 */
+.chat-container {
+  position: relative;
+  background: transparent;
+  border-radius: 0;
+  border: none;
+  transition:
+    all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1),
+    transform 0.3s cubic-bezier(0.25, 0.1, 0.25, 1),
+    position 0.3s cubic-bezier(0.25, 0.1, 0.25, 1),
+    top 0.3s cubic-bezier(0.25, 0.1, 0.25, 1),
+    left 0.3s cubic-bezier(0.25, 0.1, 0.25, 1),
+    right 0.3s cubic-bezier(0.25, 0.1, 0.25, 1),
+    bottom 0.3s cubic-bezier(0.25, 0.1, 0.25, 1),
+    width 0.3s cubic-bezier(0.25, 0.1, 0.25, 1),
+    height 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  /* 设置变换原点为右下角，实现自然缩放 */
+  transform-origin: bottom right;
+}
+
+/* 全屏聊天容器样式 */
+.chat-container.chat-fullscreen {
+  position: fixed;
+  top: var(--desktop-titlebar-height);
+  /* 动态计算left值，根据侧边栏是否收缩调整 */
+  left: var(--sidebar-width, 160px);
+  /* 移除 right: 0，改用 width 计算确保正确的宽度 */
+  width: calc(100vw - var(--sidebar-width, 160px));
+  max-width: calc(100vw - var(--sidebar-width, 160px));
+  bottom: 0;
+  /* 由 chat-history::after 统一负责底部占位，避免重复留白 */
+  padding-bottom: 0;
+  z-index: 999; /* 低于窗口控制按钮 */
+  border-radius: 0;
+  border: none;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.1);
+  background: hsl(var(--background));
+  /* 保持变换原点为右下角 */
+  transform-origin: bottom right;
+  display: flex;
+  flex-direction: column;
+  /* 使用统一标题栏变量，避免魔法数字 */
+  height: calc(100vh - var(--desktop-titlebar-height, 40px));
+  min-height: unset;
+  max-height: unset;
+  min-width: 0;
+  flex: none;
+  overflow: hidden;
+  /* 防止内容撑开容器 */
+  contain: layout size;
+}
+
+/* 全屏聊天容器子元素样式优化 */
+.chat-container.chat-fullscreen * {
+  min-width: 0;
+  box-sizing: border-box;
+  max-width: 100%;
+}
+
+/* 编辑模态中的 textarea 样式 */
+.chat-container.chat-fullscreen .edit-modal textarea,
+.edit-modal textarea {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  display: block;
+  box-sizing: border-box;
+}
+
+/* 全屏聊天容器内元素宽度控制 */
+.chat-container.chat-fullscreen .chat-history,
+.chat-container.chat-fullscreen .chat-input,
+.chat-container.chat-fullscreen .message-content,
+.chat-container.chat-fullscreen input,
+.chat-container.chat-fullscreen textarea {
+  min-width: 0;
+  max-width: 100%;
+  width: auto;
+  box-sizing: border-box;
+}
+
+.chat-fullscreen-toggle {
+  padding: 0.75rem 1rem;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--background));
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1rem;
+  color: hsl(var(--muted-foreground));
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+}
+
+.chat-fullscreen-toggle:hover {
+  background: hsl(var(--muted));
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
+  transform: scale(1.05);
+}
+
+.chat-history {
+  flex: 1;
+  overflow-y: auto;
+  padding: 1rem;
+  min-height: 0;
+  height: 100%;
+  border-radius: 0;
+}
+
+/* 聊天历史底部占位符 - 统一管理 */
+.chat-history::after {
+  content: '';
+  display: block;
+  height: 0;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+.chat-container.chat-fullscreen .chat-history {
+  padding: 2rem 2rem 1rem;
+  flex: 1;
+  overflow-y: auto;
+  max-height: none;
+  min-height: 0;
+  height: auto;
+  border-radius: 0;
+}
+
+/* 聊天输入区域样式 */
+.chat-input {
+  height: var(--ds-footer-height);
+  padding: 0 1.5rem;
+  border-top: none;
+  background: hsl(var(--background));
+  border-radius: 0;
+  display: flex;
+  flex-direction: row;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: nowrap;
+  flex-shrink: 0;
+}
+
+.chat-container.chat-fullscreen .chat-input {
+  border-radius: 0;
+  padding: 1rem 2rem;
+  background: hsl(var(--background));
+  border-top: none;
+  box-shadow: none;
+}
+
+.chat-input input {
+  flex: 1;
+  padding: 0.75rem 1rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  outline: none;
+  transition: border-color 0.2s ease;
+}
+
+.chat-input input:focus {
+  border-color: hsl(var(--ring));
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.1);
+}
+
+.send-button {
+  padding: 0.75rem 1rem;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border: none;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 44px;
+}
+
+.send-button:hover:not(:disabled) {
+  background: hsl(var(--primary) / 0.9);
+  transform: translateY(-1px);
+}
+
+.send-button:disabled {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* 侧边栏收起时调整聊天容器全屏宽度 */
+.app-sidebar.collapsed ~ .app-content .chat-container.chat-fullscreen {
+  left: var(--sidebar-collapsed-width, 48px);
+  width: calc(100vw - var(--sidebar-collapsed-width, 48px));
+  max-width: calc(100vw - var(--sidebar-collapsed-width, 48px));
+}
+
+/* 覆盖：彻底解除固定高度，让 flex 接管聊天布局 */
+.analysis-result {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.result-header,
+.result-info,
+.chat-input {
+  flex: 0 0 auto;
+}
+
+/* 防止输入框和消息内容撑开容器 */
+.chat-container.chat-fullscreen .chat-input input[type="text"],
+.chat-container.chat-fullscreen textarea,
+.chat-container.chat-fullscreen .message-content {
+  min-width: 0;
+  max-width: 100%;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* 确保消息容器也能正确收缩 */
+.chat-container.chat-fullscreen .message {
+  min-width: 0;
+  width: 100%;
+}
+
+/* 防止长文本或代码块撑开容器 */
+.chat-container.chat-fullscreen pre,
+.chat-container.chat-fullscreen code {
+  max-width: 100%;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+}

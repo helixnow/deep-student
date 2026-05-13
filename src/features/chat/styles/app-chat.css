@@ -2236,3 +2236,74 @@
     animation: attachmentRowEnter 0.18s ease-out;
   }
 }
+
+/* =================== DeepStudent.css 聊天布局覆盖 =================== */
+
+/* 🎯 修复：侧边栏收起时调整聊天容器全屏宽度 */
+.app-sidebar.collapsed ~ .app-content .chat-container.chat-fullscreen {
+  left: var(--sidebar-collapsed-width, 48px) !important;
+  width: calc(100vw - var(--sidebar-collapsed-width, 48px)) !important;
+  max-width: calc(100vw - var(--sidebar-collapsed-width, 48px)) !important;
+}
+
+/* 覆盖：彻底解除固定高度，让 flex 接管聊天布局 */
+.analysis-result {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+  background: transparent;
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.result-header,
+.result-info,
+.chat-input {
+  flex: 0 0 auto;
+}
+
+/* 聊天历史底部占位符 - 统一管理 */
+.chat-history::after {
+  content: '';
+  display: block;
+  height: 0;
+  width: 100%;
+  flex-shrink: 0;
+}
+
+/* 🎯 修复：防止输入框和消息内容撑开容器 */
+.chat-container.chat-fullscreen .chat-input input[type="text"],
+.chat-container.chat-fullscreen textarea,
+.chat-container.chat-fullscreen .message-content {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  word-wrap: break-word !important;
+  overflow-wrap: break-word !important;
+}
+
+/* 🎯 修复：确保消息容器也能正确收缩 */
+.chat-container.chat-fullscreen .message {
+  min-width: 0 !important;
+  width: 100% !important;
+}
+
+/* 🎯 修复：防止长文本或代码块撑开容器 */
+.chat-container.chat-fullscreen pre,
+.chat-container.chat-fullscreen code {
+  max-width: 100% !important;
+  overflow-x: auto !important;
+  white-space: pre-wrap !important;
+  word-wrap: break-word !important;
+}
+
+/* 编辑模态中的 textarea 样式 */
+.chat-container.chat-fullscreen .edit-modal textarea,
+.edit-modal textarea {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  display: block;
+  box-sizing: border-box;
+}

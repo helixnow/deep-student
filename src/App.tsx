@@ -49,7 +49,6 @@ import './styles/shadcn-variables.css'; // 设计令牌：支持亮/暗色变量
 import './styles/theme-colors.css';
 import './shared/styles/index.css';
 import 'overlayscrollbars/overlayscrollbars.css';
-import './DeepStudent.css';
 
 import './styles/ios-safe-area.css'; // iOS安全区域适配
 import './styles/modern-buttons.css'; // 现代化按钮样式

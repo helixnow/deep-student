@@ -5,5 +5,7 @@
  */
 
 @import './shell-layout.css';
+@import './platform-compat.css';
+@import './vendor-overrides.css';
 @import './utilities.css';
 @import './practice.css';
