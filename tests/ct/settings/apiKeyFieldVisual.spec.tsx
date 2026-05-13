@@ -1,6 +1,6 @@
 import React from 'react';
 import { expect, test } from '@playwright/experimental-ct-react';
-import { VendorApiKeySection } from '@/components/settings/VendorApiKeySection';
+import { VendorApiKeySection } from '@/features/settings';
 
 const vendor = {
   id: 'vendor-1',

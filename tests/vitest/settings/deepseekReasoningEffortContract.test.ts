@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 describe('DeepSeek V4 reasoning effort settings contract', () => {
   const source = readFileSync(
-    resolve(process.cwd(), 'src/components/settings/ShadApiEditModal.tsx'),
+    resolve(process.cwd(), 'src/features/settings/components/ShadApiEditModal.tsx'),
     'utf-8'
   );
   const blockStart = source.indexOf("{formData.enableThinking && deepSeekReasoningControl.kind !== 'toggle-only' && (");

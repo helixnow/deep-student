@@ -45,7 +45,7 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-import { OpenSourceAcknowledgementsSection } from '@/components/settings/OpenSourceAcknowledgementsSection';
+import { OpenSourceAcknowledgementsSection } from '@/features/settings';
 
 describe('OpenSourceAcknowledgementsSection', () => {
   it('keeps the acknowledgements collapsed until the user opens the dialog', () => {

@@ -15,7 +15,7 @@ import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from '@
 import { useUIStore } from '@/stores/uiStore';
 
 // 🚀 性能优化：DataImportExport, ImportConversationDialog 改为懒加载
-import { CloudStorageSection } from './components/settings/CloudStorageSection';
+import { CloudStorageSection } from '@/features/settings';
 import { NotionDialog, NotionDialogBody } from './components/ui/NotionDialog';
 // 🚀 性能优化：Template*, IrecInsightRecall 等页面组件改为懒加载
 import { TaskDashboardPage } from '@/components/anki/TaskDashboardPage';
@@ -62,7 +62,7 @@ import { getErrorMessage } from './utils/errorUtils';
 import { useAppInitialization } from './hooks/useAppInitialization';
 import { useAppUpdater } from './hooks/useAppUpdater';
 import type { AppUpdaterController } from './hooks/useAppUpdater';
-import { UpdateNotificationDialog } from './components/settings/UpdateNotificationDialog';
+import { UpdateNotificationDialog } from '@/features/settings';
 import { UserAgreementDialog, useUserAgreement } from './components/legal/UserAgreementDialog';
 import { useMigrationStatusListener } from './hooks/useMigrationStatusListener';
 import useTheme from './hooks/useTheme';
@@ -71,9 +71,9 @@ import { useDialogControl } from './contexts/DialogControlContext';
 import './styles/typography.css'; // 全局排版（字体/字号/行高）
 import './styles/shadcn-overrides.css'; // 修复图标尺寸被覆盖的问题
 import { MigrationStatusBanner } from './components/system-status/MigrationStatusBanner';
-import { SettingsShellSidebar } from './components/settings/SettingsShellSidebar';
+import { SettingsShellSidebar } from '@/features/settings';
 import { TodoShellSidebar } from './components/todo/TodoShellSidebar';
-import { settingsMobileSheetCloseButtonClassName } from './components/settings/SettingsCommon';
+import { settingsMobileSheetCloseButtonClassName } from '@/features/settings';
 import { setPendingSettingsTab } from './utils/pendingSettingsTab';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useNavigationHistory } from './hooks/useNavigationHistory';

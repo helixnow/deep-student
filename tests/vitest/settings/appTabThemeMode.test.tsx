@@ -10,7 +10,7 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: invokeMock,
 }));
 
-import { AppTab } from '@/components/settings/AppTab';
+import { AppTab } from '@/features/settings';
 import type { ThemeMode, ThemePalette } from '@/hooks/useTheme';
 
 describe('AppTab theme mode settings', () => {

@@ -5,8 +5,8 @@ import { resolve } from 'node:path';
 describe('desktop shell sidebar collapse contract', () => {
   const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
   const appCssSource = readFileSync(resolve(process.cwd(), 'src/App.css'), 'utf-8');
-  const settingsSource = readFileSync(resolve(process.cwd(), 'src/components/Settings.tsx'), 'utf-8');
-  const settingsCssSource = readFileSync(resolve(process.cwd(), 'src/components/Settings.css'), 'utf-8');
+  const settingsSource = readFileSync(resolve(process.cwd(), 'src/features/settings/components/Settings.tsx'), 'utf-8');
+  const settingsCssSource = readFileSync(resolve(process.cwd(), 'src/features/settings/styles/settings.css'), 'utf-8');
   const sidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ModernSidebar.tsx'), 'utf-8');
 
   it('reads the shared left-panel collapsed state when computing desktop shell navigation width', () => {
@@ -112,7 +112,7 @@ describe('desktop shell sidebar collapse contract', () => {
   });
 
   it('renders the settings custom left rail in the global desktop shell nav slot', () => {
-    expect(appSource).toContain("import { SettingsShellSidebar } from './components/settings/SettingsShellSidebar';");
+    expect(appSource).toContain("import { SettingsShellSidebar } from '@/features/settings';");
     expect(appSource).toContain('const settingsShellSidebarElement = useMemo(() => (');
     expect(appSource).toContain('<SettingsShellSidebar');
     expect(appSource).toContain('globalLeftPanelCollapsed={leftPanelCollapsed}');
@@ -121,8 +121,8 @@ describe('desktop shell sidebar collapse contract', () => {
   });
 
   it('keeps desktop settings content inside the shared workspace boundary instead of drawing its own shell', () => {
-    expect(settingsSource).toContain("import { SettingsShellSidebar } from './settings/SettingsShellSidebar';");
-    expect(settingsSource).toContain("import { useSettingsNavigation } from './settings/useSettingsNavigation';");
+    expect(settingsSource).toContain("import { SettingsShellSidebar } from './SettingsShellSidebar';");
+    expect(settingsSource).toContain("import { useSettingsNavigation } from './useSettingsNavigation';");
     expect(settingsSource).toContain("import { useSettingsShellStore } from '@/stores/settingsShellStore';");
     expect(settingsSource).not.toContain("const isDesktopSettingsSidebarVisible = !isSmallScreen && !globalLeftPanelCollapsed;");
     expect(settingsSource).not.toContain("settings-main-pane study-shell-pane study-shell-pane--flush-top");

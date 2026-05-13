@@ -12,7 +12,7 @@ describe('shared switch size contract', () => {
     'utf-8'
   );
   const apisTabSource = readFileSync(
-    resolve(process.cwd(), 'src/components/settings/ApisTab.tsx'),
+    resolve(process.cwd(), 'src/features/settings/components/ApisTab.tsx'),
     'utf-8'
   );
 

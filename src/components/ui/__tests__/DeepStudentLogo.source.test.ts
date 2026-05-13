@@ -8,7 +8,7 @@ const readSource = (file: string) => {
 };
 
 describe('DeepStudent about logo token contract', () => {
-  const aboutTabSource = readSource('src/components/settings/AboutTab.tsx');
+  const aboutTabSource = readSource('src/features/settings/components/AboutTab.tsx');
   const logoSource = readSource('src/components/ui/DeepStudentLogo.tsx');
 
   it('uses the DeepStudent SVG wordmark in the About tab instead of the generic image asset', () => {

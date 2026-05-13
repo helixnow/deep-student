@@ -4,15 +4,15 @@ import { resolve } from 'node:path';
 
 describe('settings sidebar study-ui contract', () => {
   const settingsSidebarSource = readFileSync(
-    resolve(process.cwd(), 'src/components/settings/SettingsSidebar.tsx'),
+    resolve(process.cwd(), 'src/features/settings/components/SettingsSidebar.tsx'),
     'utf-8'
   );
   const settingsSource = readFileSync(
-    resolve(process.cwd(), 'src/components/Settings.tsx'),
+    resolve(process.cwd(), 'src/features/settings/components/Settings.tsx'),
     'utf-8'
   );
   const sidebarSettingsSource = readFileSync(
-    resolve(process.cwd(), 'src/components/settings/sidebarSettings.ts'),
+    resolve(process.cwd(), 'src/features/settings/components/sidebarSettings.ts'),
     'utf-8'
   );
   const appCssSource = readFileSync(resolve(process.cwd(), 'src/App.css'), 'utf-8');

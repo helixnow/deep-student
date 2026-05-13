@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { Shield, Copy, Check } from 'lucide-react';
 import { useTranslation } from 'react-i18next';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
-import { ApiKeyField } from './settings/ApiKeyField';
+import { ApiKeyField } from '@/features/settings/components/ApiKeyField';
 
 interface SecurePasswordInputProps {
   value: string;

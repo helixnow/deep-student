@@ -40,7 +40,7 @@ export const PageLoadingFallback: React.FC = () => {
 
 // 设置页
 export const LazySettings = React.lazy(() =>
-  import('./components/Settings').then(m => ({ default: m.Settings }))
+  import('./features/settings/components/Settings').then(m => ({ default: m.Settings }))
 );
 
 // ★ 2026-02：批量分析已废弃（旧错题系统已移除）

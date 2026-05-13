@@ -40,7 +40,7 @@ vi.mock('@/version', () => ({
   },
 }));
 
-vi.mock('@/components/settings/OpenSourceAcknowledgementsSection', () => ({
+vi.mock('@/features/settings/components/OpenSourceAcknowledgementsSection', () => ({
   OpenSourceAcknowledgementsSection: () => <div data-testid="acknowledgements" />,
 }));
 
@@ -56,12 +56,12 @@ vi.mock('@/components/ui/SiliconFlowLogo', () => ({
   SiliconFlowLogo: () => <div data-testid="siliconflow-logo" />,
 }));
 
-import { AboutTab } from '@/components/settings/AboutTab';
+import { AboutTab } from '@/features/settings';
 
 const actionRowLabels = ['访问官网', 'GitHub', 'Issue 反馈', '查看隐私政策'] as const;
 
 describe('AboutTab official link action rows', () => {
-  const source = readFileSync(resolve(process.cwd(), 'src/components/settings/AboutTab.tsx'), 'utf-8');
+  const source = readFileSync(resolve(process.cwd(), 'src/features/settings/components/AboutTab.tsx'), 'utf-8');
 
   it('uses one shared hover/focus contract for external links and the privacy action', () => {
     render(<AboutTab />);

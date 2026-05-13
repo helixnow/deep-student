@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 
 describe('settings desktop collapse contract', () => {
   const settingsSource = readFileSync(
-    resolve(process.cwd(), 'src/components/Settings.tsx'),
+    resolve(process.cwd(), 'src/features/settings/components/Settings.tsx'),
     'utf-8'
   );
 

@@ -4,7 +4,7 @@ import { describe, expect, it } from 'vitest';
 
 describe('AppTab macOS font smoothing source contract', () => {
   it('defines a dedicated macOS font smoothing setting row with persistence and settings reload signaling', () => {
-    const source = readFileSync(resolve(process.cwd(), 'src/components/settings/AppTab.tsx'), 'utf8');
+    const source = readFileSync(resolve(process.cwd(), 'src/features/settings/components/AppTab.tsx'), 'utf8');
 
     expect(source).toContain("const MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY = 'macos.native_font_smoothing';");
     expect(source).toContain("title={t('settings:theme.font_smoothing_title', 'macOS 原生字体平滑')}");

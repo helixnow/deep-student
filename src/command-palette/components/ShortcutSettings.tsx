@@ -18,7 +18,7 @@ import { shortcutManager, type ShortcutConflict } from '../registry/shortcutMana
 import { formatShortcut, buildShortcutString } from '../registry/shortcutUtils';
 import { CATEGORY_CONFIG, type Command, type CommandCategory } from '../registry/types';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { SettingSection } from '@/components/settings/SettingsCommon';
+import { SettingSection } from '@/features/settings';
 
 interface ShortcutSettingsProps {
   className?: string;

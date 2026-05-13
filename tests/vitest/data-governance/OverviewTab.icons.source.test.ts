@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 describe('OverviewTab icon source contract', () => {
   it('uses Phosphor icons for the overview status surfaces', () => {
     const overviewSource = readFileSync(
-      resolve(process.cwd(), 'src/components/settings/data-governance/OverviewTab.tsx'),
+      resolve(process.cwd(), 'src/features/settings/components/data-governance/OverviewTab.tsx'),
       'utf-8'
     );
 

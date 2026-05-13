@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 
 describe('McpToolsSection global bypass toggle contract', () => {
   const source = readFileSync(
-    resolve(process.cwd(), 'src/components/settings/McpToolsSection.tsx'),
+    resolve(process.cwd(), 'src/features/settings/components/McpToolsSection.tsx'),
     'utf-8'
   );
 

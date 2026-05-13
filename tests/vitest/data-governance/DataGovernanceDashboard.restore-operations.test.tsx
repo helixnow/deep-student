@@ -79,15 +79,15 @@ vi.mock('@/hooks/useBackupJobListener', () => ({
   },
 }));
 
-vi.mock('@/components/settings/data-governance/MigrationTab', () => ({
+vi.mock('@/features/settings/components/data-governance/MigrationTab', () => ({
   MigrationTab: () => <div data-testid="schema-migration-tab">migration-tab</div>,
 }));
 
-vi.mock('@/components/settings/MediaCacheSection', () => ({
+vi.mock('@/features/settings/components/MediaCacheSection', () => ({
   MediaCacheSection: () => <div data-testid="media-cache-section">cache-section</div>,
 }));
 
-import { DataGovernanceDashboard } from '@/components/settings/DataGovernanceDashboard';
+import { DataGovernanceDashboard } from '@/features/settings';
 
 // ============================================================================
 // 默认 mock 数据

@@ -5,7 +5,7 @@ import { describe, expect, it } from 'vitest';
 describe('DataGovernanceDashboard tab icon source contract', () => {
   it('uses Phosphor icons for the data governance tab row', () => {
     const dashboardSource = readFileSync(
-      resolve(process.cwd(), 'src/components/settings/DataGovernanceDashboard.tsx'),
+      resolve(process.cwd(), 'src/features/settings/components/DataGovernanceDashboard.tsx'),
       'utf-8'
     );
 

@@ -6,7 +6,7 @@ const readSource = (path: string) => readFileSync(resolve(process.cwd(), path), 
 
 describe('settings quiet hover contract', () => {
   it('centralizes quiet hover tokens for settings navigation, mobile shell controls, and data tables', () => {
-    const settingsCommon = readSource('src/components/settings/SettingsCommon.tsx');
+    const settingsCommon = readSource('src/features/settings/components/SettingsCommon.tsx');
 
     expect(settingsCommon).toContain('settingsQuietHoverClassName');
     expect(settingsCommon).toContain('settingsQuietRowBaseClassName');
@@ -23,8 +23,8 @@ describe('settings quiet hover contract', () => {
 
   it('keeps settings navigation rows quiet without hover text changes', () => {
     const sources = [
-      readSource('src/components/settings/ApisTab.tsx'),
-      readSource('src/components/settings/EngineSettingsSection.tsx'),
+      readSource('src/features/settings/components/ApisTab.tsx'),
+      readSource('src/features/settings/components/EngineSettingsSection.tsx'),
     ].join('\n');
 
     expect(sources).toContain('settingsQuietInteractiveRowClassName');
@@ -46,11 +46,11 @@ describe('settings quiet hover contract', () => {
 
   it('uses tokenized quiet hover for data governance table rows', () => {
     const sources = [
-      readSource('src/components/settings/data-governance/OverviewTab.tsx'),
-      readSource('src/components/settings/data-governance/BackupTab.tsx'),
-      readSource('src/components/settings/data-governance/MigrationTab.tsx'),
-      readSource('src/components/settings/data-governance/AuditTab.tsx'),
-      readSource('src/components/settings/data-governance/SyncTab.tsx'),
+      readSource('src/features/settings/components/data-governance/OverviewTab.tsx'),
+      readSource('src/features/settings/components/data-governance/BackupTab.tsx'),
+      readSource('src/features/settings/components/data-governance/MigrationTab.tsx'),
+      readSource('src/features/settings/components/data-governance/AuditTab.tsx'),
+      readSource('src/features/settings/components/data-governance/SyncTab.tsx'),
     ].join('\n');
 
     expect(sources).toContain('settingsQuietTableRowClassName');

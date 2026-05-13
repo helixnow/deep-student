@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 
 describe('mcp tools section global bypass contract', () => {
   const source = readFileSync(
-    resolve(process.cwd(), 'src/components/settings/McpToolsSection.tsx'),
+    resolve(process.cwd(), 'src/features/settings/components/McpToolsSection.tsx'),
     'utf-8'
   );
 

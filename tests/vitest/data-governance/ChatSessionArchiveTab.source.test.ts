@@ -3,8 +3,8 @@ import path from 'node:path';
 import { describe, expect, it } from 'vitest';
 
 const repoRoot = process.cwd();
-const dashboardPath = path.join(repoRoot, 'src/components/settings/DataGovernanceDashboard.tsx');
-const archiveTabPath = path.join(repoRoot, 'src/components/settings/data-governance/ChatSessionArchiveTab.tsx');
+const dashboardPath = path.join(repoRoot, 'src/features/settings/components/DataGovernanceDashboard.tsx');
+const archiveTabPath = path.join(repoRoot, 'src/features/settings/components/data-governance/ChatSessionArchiveTab.tsx');
 
 describe('chat session archive settings source contract', () => {
   it('adds a dedicated archive tab under data governance', () => {
@@ -29,7 +29,7 @@ describe('chat session archive settings source contract', () => {
   it('exposes the archive tab from the data governance overview', () => {
     const dashboardSource = readFileSync(dashboardPath, 'utf8');
     const overviewSource = readFileSync(
-      path.join(repoRoot, 'src/components/settings/data-governance/OverviewTab.tsx'),
+      path.join(repoRoot, 'src/features/settings/components/data-governance/OverviewTab.tsx'),
       'utf8'
     );
 
