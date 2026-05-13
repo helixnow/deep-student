@@ -19,7 +19,7 @@ const read = (relativePath: string) =>
 // in the file. TodoMainPanel has two (quick-add + detail pane); the others
 // have one.
 const migrated: Array<{ path: string; minUsages: number }> = [
-  { path: 'src/components/todo/TodoMainPanel.tsx', minUsages: 2 },
+  { path: 'src/features/todo/components/TodoMainPanel.tsx', minUsages: 2 },
   { path: 'src/components/anki/TaskDashboardPage.tsx', minUsages: 1 },
   { path: 'src/components/skills-management/SkillsManagementPage.tsx', minUsages: 1 },
 ];

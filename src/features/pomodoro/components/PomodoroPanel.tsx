@@ -22,8 +22,8 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { usePomodoroStore } from './usePomodoroStore';
-import { getPomodoroTodayStats, type PomodoroTodayStats } from './api';
+import { usePomodoroStore } from '../stores/usePomodoroStore';
+import { getPomodoroTodayStats, type PomodoroTodayStats } from '../api';
 
 interface ModeInfo {
   label: string;

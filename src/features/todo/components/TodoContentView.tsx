@@ -13,7 +13,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { MobileSlidingLayout, useMobileHeader } from '@/components/layout';
-import { useTodoStore } from './useTodoStore';
+import { useTodoStore } from '../stores/useTodoStore';
 import { TodoSidebar } from './TodoSidebar';
 import { TodoMainPanel } from './TodoMainPanel';
 

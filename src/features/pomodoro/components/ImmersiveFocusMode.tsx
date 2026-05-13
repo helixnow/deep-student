@@ -1,7 +1,7 @@
 import React, { useEffect, useCallback, useState, useRef } from 'react';
 import { Play, Pause, Square, X, Coffee, BrainCircuit, Volume2, VolumeX, SkipForward } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { usePomodoroStore } from './usePomodoroStore';
+import { usePomodoroStore } from '../stores/usePomodoroStore';
 
 /**
  * 沉浸式专注模式 —— 全屏覆盖视图

@@ -105,7 +105,7 @@ export const LazyPdfReader = React.lazy(() =>
 
 // 待办事项
 export const LazyTodoPage = React.lazy(() =>
-  import('./components/todo/TodoPage').then(m => ({ default: m.TodoPage }))
+  import('@/features/todo/components/TodoPage').then(m => ({ default: m.TodoPage }))
 );
 
 // 开发专用组件：生产构建中 import.meta.env.DEV 为 false，动态 import 被 Rollup 死代码消除

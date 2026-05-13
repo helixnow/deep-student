@@ -34,11 +34,11 @@ import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Input } from '@/components/ui/shad/Input';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { useTodoStore } from './useTodoStore';
-import { usePomodoroStore } from '../pomodoro/usePomodoroStore';
-import { PomodoroPanel } from '../pomodoro/PomodoroPanel';
-import type { TodoItem, TodoPriority, UpdateTodoItemInput } from './types';
-import { PRIORITY_CONFIG, isOverdue, isDueToday, parseTags } from './types';
+import { useTodoStore } from '../stores/useTodoStore';
+import { usePomodoroStore } from '@/features/pomodoro';
+import { PomodoroPanel } from '@/features/pomodoro';
+import type { TodoItem, TodoPriority, UpdateTodoItemInput } from '../types';
+import { PRIORITY_CONFIG, isOverdue, isDueToday, parseTags } from '../types';
 
 // ============================================================================
 // TodoQuickAdd — 扁平输入条

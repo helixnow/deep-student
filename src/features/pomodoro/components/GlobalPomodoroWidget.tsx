@@ -1,6 +1,6 @@
 import React, { useEffect } from 'react';
 import { Pause, Play, Square, Coffee, BrainCircuit, Maximize2 } from 'lucide-react';
-import { usePomodoroStore } from './usePomodoroStore';
+import { usePomodoroStore } from '../stores/usePomodoroStore';
 import { useViewStore } from '@/stores/viewStore';
 import { ImmersiveFocusMode } from './ImmersiveFocusMode';
 

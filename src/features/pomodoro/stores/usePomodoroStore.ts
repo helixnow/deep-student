@@ -1,8 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
-import type { PomodoroState, PomodoroMode } from './types';
-import { DEFAULT_POMODORO_SETTINGS } from './types';
-import { createPomodoroRecord } from './api';
+import type { PomodoroState, PomodoroMode } from '../types';
+import { DEFAULT_POMODORO_SETTINGS } from '../types';
+import { createPomodoroRecord } from '../api';
 
 // TODO: Replace with Tauri system notifications in Phase 3
 const playNotificationSound = () => {

@@ -26,7 +26,7 @@ import { StudyComposeIcon } from './components/icons/StudySidebarIcons';
 import { WindowControls } from './components/WindowControls';
 import { useFinderStore } from './components/learning-hub/stores/finderStore';
 import { MobileLayoutProvider, MobileHeaderProvider, UnifiedMobileHeader, MobileHeaderActiveViewSync, MOBILE_APP_NAVIGATE_EVENT } from '@/components/layout';
-import { GlobalPomodoroWidget } from '@/components/pomodoro/GlobalPomodoroWidget';
+import { GlobalPomodoroWidget } from '@/features/pomodoro';
 // 🚀 性能优化：IrecServiceSwitcher, IrecGraphFlow, IrecGraphFlowDemo, CrepeDemoPage, ChatV2IntegrationTest, BridgeToIrec 改为懒加载
 import { TauriAPI } from './utils/tauriApi';
 // ★ MistakeItem 类型导入已废弃（2026-01 清理）
@@ -72,7 +72,7 @@ import './styles/typography.css'; // 全局排版（字体/字号/行高）
 import './styles/shadcn-overrides.css'; // 修复图标尺寸被覆盖的问题
 import { MigrationStatusBanner } from './components/system-status/MigrationStatusBanner';
 import { SettingsShellSidebar } from '@/features/settings';
-import { TodoShellSidebar } from './components/todo/TodoShellSidebar';
+import { TodoShellSidebar } from '@/features/todo';
 import { settingsMobileSheetCloseButtonClassName } from '@/features/settings';
 import { setPendingSettingsTab } from './utils/pendingSettingsTab';
 import { useBreakpoint } from './hooks/useBreakpoint';

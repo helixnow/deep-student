@@ -24,8 +24,8 @@ import {
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { useTodoStore } from './useTodoStore';
-import type { TodoList, TodoViewFilter } from './types';
+import { useTodoStore } from '../stores/useTodoStore';
+import type { TodoList, TodoViewFilter } from '../types';
 
 interface SmartView {
   id: TodoViewFilter;

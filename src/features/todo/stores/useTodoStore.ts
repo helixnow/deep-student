@@ -11,8 +11,8 @@ import type {
   UpdateTodoItemInput,
   TodoPriority,
   TodoViewFilter,
-} from './types';
-import * as api from './api';
+} from '../types';
+import * as api from '../api';
 
 interface TodoState {
   // 数据
