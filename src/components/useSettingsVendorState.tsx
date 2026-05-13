@@ -3,7 +3,6 @@ import { VendorConfig, ModelProfile, ApiConfig, ModelAssignments } from '../type
 import { showGlobalNotification } from './UnifiedNotification';
 import { getErrorMessage } from '../utils/errorUtils';
 import { debugLog } from '../debug-panel/debugMasterSwitch';
-import { NotionButton } from '@/components/ui/NotionButton';
 import { GENERAL_DEFAULT_MIN_P, GENERAL_DEFAULT_TOP_K } from './settings/ShadApiEditModal';
 import { convertProfileToApiConfig, convertApiConfigToProfile, normalizeBaseUrl, providerTypeFromConfig } from './settings/modelConverters';
 import { inferCapabilities, getModelDefaultParameters, applyProviderSpecificAdjustments } from '../utils/modelCapabilities';
@@ -918,29 +917,6 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     ];
     return sensitivePatterns.some(pattern => key.includes(pattern));
   };
-  // 简易密码输入带明文切换
-  const PasswordInputWithToggle: React.FC<{ value: string; onChange: (v: string) => void; placeholder?: string; widthClass?: string }>
-    = ({ value, onChange, placeholder, widthClass }) => {
-    const [show, setShow] = useState(false);
-    return (
-      <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-            <input
-              type={show ? 'text' : 'password'}
-              value={value}
-              onChange={(e) => onChange(e.target.value)}
-              placeholder={placeholder}
-              className={`${widthClass || 'w-80'} rounded-lg border border-input bg-muted px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent`}
-            />
-        <NotionButton
-          type="button"
-          size="sm"
-          variant="ghost"
-          onClick={() => setShow(s => !s)}
-          title={show ? t('common:actions.hide') : t('common:actions.show')}
-        >{show ? t('common:actions.hide') : t('common:actions.show')}</NotionButton>
-      </div>
-    );
-  };
 
-  return { selectedVendorId, setSelectedVendorId, vendorModalOpen, setVendorModalOpen, editingVendor, setEditingVendor, isEditingVendor, vendorFormData, setVendorFormData, modelEditor, setModelEditor, inlineEditState, setInlineEditState, isAddingNewModel, setIsAddingNewModel, modelDeleteDialog, setModelDeleteDialog, vendorDeleteDialog, setVendorDeleteDialog, testingApi, vendorBusy, sortedVendors, selectedVendor, selectedVendorModels, profileCountByVendor, selectedVendorIsSiliconflow, testApiConnection, handleOpenVendorModal, handleStartEditVendor, handleCancelEditVendor, handleSaveEditVendor, handleSaveVendorModal, handleDeleteVendor, handleSaveVendorApiKey, handleSaveVendorBaseUrl, handleReorderVendors, confirmDeleteVendor, handleOpenModelEditor, handleSaveModelProfile, handleSaveInlineEdit, handleAddModelInline, handleCloseModelEditor, handleSaveModelProfileAndClose, handleDeleteModelProfile, confirmDeleteModelProfile, handleToggleModelProfile, handleToggleFavorite, handleSiliconFlowConfig, handleAddVendorModels, getAllEnabledApis, getEmbeddingApis, getRerankerApis, getAsrApis, getImageGenerationApis, toUnifiedModelInfo, handleBatchCreateConfigs, handleApplyPreset, handleBatchConfigsCreated, handleClearVendorApiKey, isSensitiveKey, PasswordInputWithToggle, maskApiKey, apiConfigsForApisTab };
+  return { selectedVendorId, setSelectedVendorId, vendorModalOpen, setVendorModalOpen, editingVendor, setEditingVendor, isEditingVendor, vendorFormData, setVendorFormData, modelEditor, setModelEditor, inlineEditState, setInlineEditState, isAddingNewModel, setIsAddingNewModel, modelDeleteDialog, setModelDeleteDialog, vendorDeleteDialog, setVendorDeleteDialog, testingApi, vendorBusy, sortedVendors, selectedVendor, selectedVendorModels, profileCountByVendor, selectedVendorIsSiliconflow, testApiConnection, handleOpenVendorModal, handleStartEditVendor, handleCancelEditVendor, handleSaveEditVendor, handleSaveVendorModal, handleDeleteVendor, handleSaveVendorApiKey, handleSaveVendorBaseUrl, handleReorderVendors, confirmDeleteVendor, handleOpenModelEditor, handleSaveModelProfile, handleSaveInlineEdit, handleAddModelInline, handleCloseModelEditor, handleSaveModelProfileAndClose, handleDeleteModelProfile, confirmDeleteModelProfile, handleToggleModelProfile, handleToggleFavorite, handleSiliconFlowConfig, handleAddVendorModels, getAllEnabledApis, getEmbeddingApis, getRerankerApis, getAsrApis, getImageGenerationApis, toUnifiedModelInfo, handleBatchCreateConfigs, handleApplyPreset, handleBatchConfigsCreated, handleClearVendorApiKey, isSensitiveKey, maskApiKey, apiConfigsForApisTab };
 }

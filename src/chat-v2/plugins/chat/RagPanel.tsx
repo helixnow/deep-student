@@ -14,6 +14,7 @@ import { Layers, X, Image } from 'lucide-react';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { Switch } from '@/components/ui/shad/Switch';
 import { SnappySlider } from '@/components/ui/SnappySlider';
 import type { ChatStore } from '../../core/types';
 
@@ -167,24 +168,13 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
             <span className="text-[13px] text-foreground">
               {t('enhanced_rag:enable_reranking')}
             </span>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={enableReranking}
+            <Switch
+              size="sm"
+              checked={enableReranking}
+              onCheckedChange={toggleReranking}
               disabled={ragControlsDisabled}
-              onClick={toggleReranking}
-              className={cn(
-                'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50',
-                enableReranking ? 'bg-primary' : 'bg-muted'
-              )}
-            >
-              <span
-                className={cn(
-                  'pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform',
-                  enableReranking ? 'translate-x-4' : 'translate-x-0'
-                )}
-              />
-            </button>
+              aria-label={t('enhanced_rag:enable_reranking')}
+            />
           </label>
           <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
             {t('chat_host:rag.panel.rerank_helper')}
@@ -200,24 +190,13 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
                 {t('chat_host:rag.panel.multimodal_label')}
               </span>
             </div>
-            <button
-              type="button"
-              role="switch"
-              aria-checked={multimodalEnabled}
+            <Switch
+              size="sm"
+              checked={multimodalEnabled}
+              onCheckedChange={toggleMultimodal}
               disabled={ragControlsDisabled}
-              onClick={toggleMultimodal}
-              className={cn(
-                'relative inline-flex h-5 w-9 shrink-0 cursor-pointer rounded-full border-2 border-transparent transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30 disabled:cursor-not-allowed disabled:opacity-50',
-                multimodalEnabled ? 'bg-primary' : 'bg-muted'
-              )}
-            >
-              <span
-                className={cn(
-                  'pointer-events-none block h-4 w-4 rounded-full bg-background shadow-lg ring-0 transition-transform',
-                  multimodalEnabled ? 'translate-x-4' : 'translate-x-0'
-                )}
-              />
-            </button>
+              aria-label={t('chat_host:rag.panel.multimodal_label')}
+            />
           </label>
           <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
             {t('chat_host:rag.panel.multimodal_helper')}

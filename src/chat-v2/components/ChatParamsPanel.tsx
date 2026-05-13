@@ -18,6 +18,7 @@ import { useTranslation } from 'react-i18next';
 import type { StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { Switch } from '@/components/ui/shad/Switch';
 import {
   Bot,
   Thermometer,
@@ -176,31 +177,15 @@ const ToggleControl: React.FC<ToggleControlProps> = ({
           )}
         </div>
       </div>
-      <button
-        type="button"
-        role="switch"
+      <Switch
         aria-label={label}
-        aria-checked={checked}
-        onClick={(e) => {
-          e.stopPropagation();
-          if (!disabled) onChange(!checked);
+        checked={checked}
+        onCheckedChange={(next) => {
+          if (!disabled) onChange(next);
         }}
         disabled={disabled}
-        className={cn(
-          'relative inline-flex h-6 w-11 flex-shrink-0 items-center rounded-full',
-          'transition-colors',
-          checked ? 'bg-primary' : 'bg-muted',
-          disabled && 'cursor-not-allowed'
-        )}
-      >
-        <span
-          className={cn(
-            'inline-block h-4 w-4 transform rounded-full bg-white shadow',
-            'transition-transform',
-            checked ? 'translate-x-6' : 'translate-x-1'
-          )}
-        />
-      </button>
+        onClick={(e) => e.stopPropagation()}
+      />
     </div>
   );
 };
