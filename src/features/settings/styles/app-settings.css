@@ -1,0 +1,684 @@
+/* Extracted from App.css - settings styles */
+
+.settings-nav-item-label {
+  color: var(--shell-navigation-foreground);
+}
+
+[data-theme="dark"] .settings-nav-item-label {
+  color: var(--shell-navigation-foreground);
+}
+
+.settings-textarea-scrollbar::-webkit-scrollbar {
+  width: 8px !important;
+  height: 8px !important;
+  display: block !important;
+}
+
+.settings-textarea-scrollbar::-webkit-scrollbar-track {
+  background: var(--scrollbar-track, hsl(var(--muted) / 0.3)) !important;
+  border-radius: 4px;
+}
+
+.settings-textarea-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb, hsl(var(--muted-foreground) / 0.3)) !important;
+  border-radius: 4px;
+}
+
+.settings-textarea-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover, hsl(var(--muted-foreground) / 0.5)) !important;
+}
+
+.siliconflow-section {
+  background: var(--surface-elevated);
+  
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.siliconflow-section .section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  background: var(--surface-muted);
+  border-bottom: 1px solid var(--border-soft);
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.siliconflow-section .section-header:hover {
+  background: var(--surface-root);
+}
+
+.siliconflow-section .header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.siliconflow-section .expand-icon {
+  transition: transform 0.2s ease;
+  color: hsl(var(--muted-foreground));
+}
+
+.siliconflow-section .expand-icon.expanded {
+  transform: rotate(90deg);
+}
+
+.siliconflow-section .section-title {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.siliconflow-section .section-description {
+  font-size: 0.875rem;
+  color: hsl(var(--muted-foreground));
+  font-style: italic;
+}
+
+.siliconflow-section .siliconflow-logo {
+  height: 20px;
+  width: auto;
+  max-width: 160px;
+  object-fit: contain;
+}
+
+.siliconflow-config .siliconflow-logo-small {
+  height: 16px;
+  width: auto;
+  max-width: 130px;
+  object-fit: contain;
+}
+
+.siliconflow-config {
+  padding: 1.5rem;
+  background: hsl(var(--card));
+}
+
+.siliconflow-config .config-row {
+  display: flex;
+  align-items: flex-end;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.siliconflow-config .config-row .form-group {
+  flex: 1;
+  margin-bottom: 0;
+}
+
+.siliconflow-config .form-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+  margin-bottom: 0.5rem;
+  flex-wrap: wrap;
+}
+
+.siliconflow-config .saved-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.75rem;
+  color: #22c55e;
+  margin-left: auto;
+  font-weight: 400;
+}
+
+.siliconflow-config .input-with-actions {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.siliconflow-config .input-with-actions .form-input {
+  width: 100%;
+  padding-right: 2.5rem;
+}
+
+.siliconflow-config .clear-key-button {
+  position: absolute;
+  right: 0.5rem;
+  background: none;
+  border: none;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  padding: 0.25rem;
+  border-radius: 4px;
+  transition: all 0.2s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.siliconflow-config .clear-key-button:hover {
+  color: #ef4444;
+  background: #fef2f2;
+}
+
+.siliconflow-config .form-input,
+
+.siliconflow-config .form-select {
+  width: 100%;
+  padding: 0.75rem 1rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  font-size: 0.875rem;
+  transition: all 0.2s ease;
+  background: hsl(var(--card));
+}
+
+.siliconflow-config .form-input:focus,
+
+.siliconflow-config .form-select:focus {
+  outline: none;
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+}
+
+.siliconflow-config .btn-primary,
+
+.siliconflow-config .btn-success {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: none;
+  padding: 0.75rem 1.5rem;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  white-space: nowrap;
+  height: fit-content;
+}
+
+.siliconflow-config .btn-primary {
+  background: hsl(var(--primary));
+  color: white;
+}
+
+.siliconflow-config .btn-success {
+  background: #22c55e;
+  color: white;
+}
+
+.siliconflow-config .btn-primary:hover:not(:disabled) {
+  background: #2563eb;
+  transform: translateY(-1px);
+}
+
+.siliconflow-config .btn-success:hover:not(:disabled) {
+  background: #16a34a;
+  transform: translateY(-1px);
+}
+
+.siliconflow-config .btn-primary:disabled,
+
+.siliconflow-config .btn-success:disabled {
+  background: hsl(var(--muted));
+  cursor: not-allowed;
+  transform: none;
+}
+
+.siliconflow-config .model-info {
+  background: hsl(var(--muted));
+  
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: 1rem;
+}
+
+.siliconflow-config .info-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.siliconflow-config .info-header h4 {
+  color: hsl(var(--foreground));
+  font-size: 1rem;
+  margin: 0;
+}
+
+.siliconflow-config .info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 0.75rem;
+}
+
+.siliconflow-config .info-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.875rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.siliconflow-config .info-item strong {
+  color: hsl(var(--foreground));
+}
+
+.siliconflow-config .help-text {
+  background: #eff6ff;
+  border: 1px solid #dbeafe;
+  border-radius: 8px;
+  padding: 1rem;
+  margin-top: 1rem;
+}
+
+.siliconflow-config .help-text p {
+  color: #1e40af;
+  font-weight: 500;
+  margin-bottom: 0.5rem;
+}
+
+.siliconflow-config .help-text ul {
+  color: #3730a3;
+  padding-left: 1.25rem;
+}
+
+.siliconflow-config .help-text li {
+  margin-bottom: 0.25rem;
+}
+
+/* API配置管理样式 */
+
+.api-config-section .section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1.5rem;
+  background: hsl(var(--muted));
+  border-bottom: 1px solid hsl(var(--border));
+  margin-bottom: 0;
+}
+
+.api-config-section .header-left {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+
+.api-config-section .header-left h3 {
+  color: hsl(var(--foreground));
+  margin: 0;
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.config-actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .siliconflow-config .config-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+  
+  .siliconflow-config .config-row .form-group {
+    margin-bottom: 1rem;
+  }
+  
+  .siliconflow-config .info-grid {
+    grid-template-columns: 1fr;
+  }
+  
+  .api-config-section .section-header {
+    flex-direction: column;
+    gap: 1rem;
+    align-items: flex-start;
+  }
+  
+  .config-actions {
+    flex-direction: column;
+  }
+  
+  .section-actions {
+    flex-direction: column;
+  }
+  
+  /* 移动端：header 隐藏，content-body 不需要 margin-top */
+  .content-body {
+    margin-top: 0;
+  }
+}
+
+.data-management-button {
+  background: #e8f5e8 !important;
+  color: #28a745 !important;
+  font-weight: 600;
+}
+
+.data-management-button:hover {
+  background: #d4edda !important;
+}
+
+.form-group {
+  margin-bottom: 1.5rem;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.5rem;
+  font-weight: 500;
+  color: hsl(var(--foreground));
+}
+
+.form-group select,
+
+.form-group input,
+
+.form-group textarea {
+  width: 100%;
+  padding: 0.75rem;
+  border: 2px solid hsl(var(--border));
+  border-radius: 8px;
+  font-size: 1rem;
+  transition: border-color 0.3s ease;
+}
+
+.form-group select:focus,
+
+.form-group input:focus,
+
+.form-group textarea:focus {
+  outline: none;
+  border-color: hsl(var(--primary));
+}
+
+.form-group textarea {
+  resize: vertical;
+  min-height: 80px;
+}
+
+.save-button {
+  padding: 0.5rem 1rem;
+  background: #f0f9ff;
+  color: #0369a1;
+  
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.save-button:hover {
+  background: #e0f2fe;
+  border-color: #0369a1;
+  box-shadow: 0 2px 4px rgba(3, 105, 161, 0.1);
+}
+
+.settings-header {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+  padding: 1.5rem;
+  background: hsl(var(--muted));
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.settings-content {
+  padding: 1.5rem;
+}
+
+.settings-section {
+  margin-bottom: 2rem;
+}
+
+.settings-section:last-child {
+  margin-bottom: 0;
+}
+
+.settings-section h3 {
+  margin-bottom: 1rem;
+  color: hsl(var(--foreground));
+  font-size: 1.1rem;
+}
+
+.form-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 1rem;
+}
+
+.api-key-input {
+  display: flex;
+  gap: 0.5rem;
+}
+
+.api-key-input input {
+  flex: 1;
+}
+
+.checkbox-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+}
+
+.checkbox-label input[type="checkbox"] {
+  width: auto;
+}
+
+.settings-footer {
+  display: flex;
+  justify-content: space-between;
+  padding: 1.5rem;
+  background: hsl(var(--muted));
+  border-top: none;
+}
+
+.edit-form .form-group {
+  margin-bottom: 1rem;
+}
+
+.edit-form .form-group:last-child {
+  margin-bottom: 0;
+}
+
+.siliconflow-section {
+  background: hsl(var(--card));
+  
+  border-radius: 12px;
+  margin-bottom: 1.5rem;
+  overflow: hidden;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+}
+
+.siliconflow-section .section-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 1rem 1.5rem;
+  background: hsl(var(--muted));
+  border-bottom: 1px solid hsl(var(--border));
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+}
+
+.siliconflow-section .section-header:hover {
+  background: hsl(var(--accent));
+}
+
+.format-selector {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.format-selector label {
+  font-weight: 500;
+  color: hsl(var(--foreground));
+}
+
+.format-selector select {
+  padding: 0.5rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 6px;
+  background: hsl(var(--card));
+}
+
+.batch-detail-page .save-button-inline {
+  padding: 0.75rem 1rem;
+  background: #f0f9ff;
+  color: #0369a1;
+  
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.15s ease;
+  margin-left: 0.5rem;
+  white-space: nowrap;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.batch-detail-page .save-button-inline:hover:not(:disabled) {
+  background: #e0f2fe;
+  border-color: #0369a1;
+  box-shadow: 0 2px 4px rgba(3, 105, 161, 0.1);
+}
+
+.batch-detail-page .save-button-inline:disabled {
+  background: hsl(var(--accent));
+  color: hsl(var(--muted-foreground));
+  border-color: hsl(var(--border));
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.task-form .form-group {
+  margin-bottom: 1rem;
+}
+
+.task-form .form-group:last-child {
+  margin-bottom: 0;
+}
+
+.save-all-button {
+  padding: 0.75rem 1.5rem;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 500;
+  transition: background-color 0.3s ease;
+}
+
+.save-all-button:hover:not(:disabled) {
+  background: #218838;
+}
+
+.save-all-button:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.form-row {
+  display: flex;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.save-all-button {
+  padding: 0.75rem 1rem;
+  border: 1px solid var(--button-utility-border);
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 500;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+}
+
+.save-all-button {
+  background: var(--button-primary-surface);
+  color: var(--button-primary-foreground);
+  border-color: var(--button-primary-border);
+}
+
+.save-all-button:hover:not(:disabled) {
+  background: var(--button-primary-hover);
+}
+
+.save-all-button:disabled {
+  background: hsl(var(--muted));
+  cursor: not-allowed;
+}
+
+.save-all-settings-button {
+  background: var(--button-primary-surface) !important;
+  color: var(--button-primary-foreground) !important;
+  border: 1px solid var(--button-primary-border) !important;
+  box-shadow: none !important;
+  font-weight: 500 !important;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease !important;
+}
+
+.save-all-settings-button:hover:not(:disabled) {
+  background: var(--button-primary-hover) !important;
+  border-color: var(--button-primary-border) !important;
+  box-shadow: none !important;
+}
+
+.save-all-settings-button:disabled {
+  background: var(--surface-panel-muted) !important;
+  color: var(--text-muted) !important;
+  border-color: var(--shell-workspace-border) !important;
+  box-shadow: none !important;
+  cursor: not-allowed !important;
+}
+
+/* API配置卡片中的按钮样式 */
+
+.checkbox-group .checkbox-container {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.75rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 10px;
+  background: var(--surface-panel-muted);
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.checkbox-group .checkbox-container:hover {
+  border-color: var(--button-primary-border);
+  background: var(--button-primary-surface);
+}
+
+.checkbox-group .checkbox-container span {
+  font-weight: 500;
+  color: hsl(var(--foreground));
+  user-select: none;
+}
+
+.checkbox-group .checkbox-container input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  accent-color: hsl(var(--primary));
+}
+
+.content-body.settings-view {
+  border-top: none;
+  border-top-left-radius: 0;
+}
+
+.dark .content-body.settings-view {
+  border-left: none;
+  border-top: none;
+}

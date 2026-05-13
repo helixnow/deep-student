@@ -1,0 +1,915 @@
+/* Extracted from App.css - shell styles */
+
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+body {
+  font-family: var(--font-family);
+}
+
+:where(:root) {
+  --shell-titlebar-height: var(--desktop-titlebar-height, 40px);
+  --shell-navigation-width: var(--sidebar-width, 272px);
+  --shell-workspace-edge-radius: 24px;
+  --shell-layout-gap: var(--space-shell-layout-gap);
+  --shell-panel-radius: var(--radius-shell-panel);
+  --shell-toolbar-radius: var(--radius-shell-toolbar);
+  --shell-nav-row-radius: var(--radius-shell-row);
+  --shell-control-size: var(--size-shell-control);
+  --shell-window-control-size: var(--size-shell-window-control);
+  --shell-window-control-gap: var(--space-shell-control-gap);
+  --shell-window-control-radius: var(--radius-shell-window-control);
+  --shell-section-gap: var(--space-shell-section-gap);
+}
+
+[data-shell-role="app-shell"] {
+  /*
+   * 默认背景 = 工作区背景，保证侧栏折叠时底层颜色正确。
+   * 侧栏可见时会被下面的 `[data-sidebar-visible="true"]` 规则覆盖为
+   * `--shell-navigation-surface`，与侧栏同色同源，确保工作区左上/左下凹角
+   * 透出的颜色与侧栏始终一致，主题切换时不会出现中间色差。
+   */
+  background: var(--shell-backdrop);
+}
+
+[data-shell-role="app-shell"][data-sidebar-visible="true"] {
+  background: var(--shell-navigation-surface);
+}
+
+.desktop-shell-titlebar {
+  background: var(--shell-navigation-surface);
+  border-bottom: none;
+}
+
+.desktop-shell-header-cell {
+  min-width: 0;
+  min-height: var(--shell-titlebar-height);
+  background: transparent;
+}
+
+.desktop-shell-header-hotzone {
+  cursor: pointer;
+}
+
+.desktop-shell-header-hotzone:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.desktop-shell-header-cell--nav {
+  background: var(--shell-navigation-surface);
+  border-right: 0;
+}
+
+.desktop-shell-header-cell--workspace {
+  background: var(--shell-workspace-panel);
+  border: 0;
+  box-shadow: none;
+}
+
+.desktop-shell-header-cell--workspace[data-sidebar-visible="true"] {
+  border-top-left-radius: var(--shell-workspace-edge-radius);
+}
+
+.desktop-shell-toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border-radius: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.desktop-shell-toolbar-button {
+  height: var(--shell-control-size) !important;
+  width: var(--shell-control-size) !important;
+  border-radius: var(--shell-nav-row-radius) !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: var(--shell-navigation-foreground) !important;
+  box-shadow: none !important;
+}
+
+.desktop-shell-toolbar-button:hover,
+
+.desktop-shell-toolbar-button:focus-visible {
+  background: var(--shell-control-hover) !important;
+  color: var(--shell-navigation-foreground) !important;
+}
+
+.desktop-shell-toolbar-button:active {
+  background: var(--shell-control-active) !important;
+}
+
+.desktop-shell-accessory-group {
+  flex-shrink: 0;
+  color: var(--shell-navigation-muted);
+}
+
+.desktop-shell-accessory-button {
+  color: var(--shell-navigation-muted) !important;
+}
+
+.desktop-shell-accessory-group .desktop-shell-accessory-button:hover,
+
+.desktop-shell-accessory-group .desktop-shell-accessory-button:focus-visible {
+  color: var(--shell-navigation-foreground) !important;
+}
+
+.desktop-shell-update-badge {
+  display: inline-flex;
+  height: 24px;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: hsl(var(--primary));
+  padding-inline: 8px;
+  color: hsl(var(--primary-foreground));
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 500;
+}
+
+.desktop-shell-nav-section-label {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--shell-navigation-section-label);
+}
+
+.desktop-shell-sidebar-row,
+
+.desktop-shell-nav-row,
+
+.desktop-shell-thread-row {
+  min-height: 32px !important;
+  justify-content: flex-start !important;
+  border-radius: var(--shell-nav-row-radius) !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: var(--shell-navigation-row-foreground) !important;
+  box-shadow: none !important;
+  font-size: 14px !important;
+  font-weight: 400 !important;
+}
+
+.desktop-shell-thread-row {
+  color: var(--shell-navigation-thread-foreground) !important;
+}
+
+.desktop-shell-sidebar-row-title {
+  color: var(--shell-navigation-foreground);
+}
+
+.desktop-shell-sidebar-row:hover:not(.desktop-shell-sidebar-row--active),
+
+.desktop-shell-sidebar-row:focus-visible:not(.desktop-shell-sidebar-row--active),
+
+.desktop-shell-nav-row:hover:not(.desktop-shell-nav-row--active),
+
+.desktop-shell-nav-row:focus-visible:not(.desktop-shell-nav-row--active),
+
+.desktop-shell-thread-row:hover:not(.desktop-shell-thread-row--active),
+
+.desktop-shell-thread-row:focus-visible:not(.desktop-shell-thread-row--active) {
+  background: var(--interactive-hover) !important;
+  color: var(--shell-navigation-foreground) !important;
+}
+
+.desktop-shell-sidebar-row--active,
+
+.desktop-shell-nav-row--active {
+  background: var(--interactive-selected) !important;
+  color: var(--shell-navigation-foreground) !important;
+  font-weight: 400 !important;
+}
+
+.desktop-shell-thread-row--active {
+  background: var(--interactive-selected) !important;
+  color: var(--shell-navigation-foreground) !important;
+  font-weight: 400 !important;
+}
+
+.desktop-shell-sidebar-session-scroll-shell {
+  --desktop-shell-sidebar-session-fade-size: 28px;
+  --desktop-shell-sidebar-session-fade-surface: var(--shell-navigation-surface);
+  position: relative;
+  isolation: isolate;
+}
+
+.desktop-shell-sidebar-session-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 45;
+  height: var(--desktop-shell-sidebar-session-fade-size);
+  pointer-events: none;
+}
+
+.desktop-shell-sidebar-session-fade--top {
+  top: 0;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--desktop-shell-sidebar-session-fade-surface) 96%, transparent) 0%,
+    color-mix(in srgb, var(--desktop-shell-sidebar-session-fade-surface) 70%, transparent) 38%,
+    transparent 100%
+  );
+}
+
+.desktop-shell-sidebar-session-fade--bottom {
+  bottom: 0;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--desktop-shell-sidebar-session-fade-surface) 96%, transparent) 0%,
+    color-mix(in srgb, var(--desktop-shell-sidebar-session-fade-surface) 72%, transparent) 38%,
+    transparent 100%
+  );
+}
+
+.desktop-shell-sidebar-session-scroll-viewport {
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+
+.desktop-shell-header-title {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.25;
+  font-weight: 500;
+  color: var(--shell-navigation-foreground);
+}
+
+.desktop-shell-workspace {
+  background: var(--shell-workspace-panel);
+  box-shadow: none;
+}
+
+.desktop-shell-workspace[data-sidebar-visible="true"] {
+  border-bottom-left-radius: var(--shell-workspace-edge-radius);
+  overflow: hidden;
+}
+
+.desktop-shell-view-layer {
+  isolation: isolate;
+}
+
+.sidebar-shell-surface {
+  background: var(--shell-navigation-surface);
+  border-right: 1px solid var(--shell-seam);
+  box-shadow: 14px 0 28px -24px hsl(var(--foreground) / 0.4);
+}
+
+.sidebar-shell-header {
+  border-bottom: 1px solid transparent;
+  border-color: var(--shell-navigation-border);
+}
+
+.sidebar-shell-search {
+  background: var(--input-shell-surface) !important;
+  border-color: var(--input-shell-border) !important;
+}
+
+.sidebar-shell-item {
+  border: 1px solid transparent;
+  border-radius: var(--radius-shell-row);
+}
+
+.sidebar-shell-item:hover,
+
+.sidebar-shell-item:focus-visible {
+  background: var(--interactive-hover);
+}
+
+.sidebar-shell-item[data-selected="true"] {
+  background: var(--interactive-selected);
+  color: var(--sidebar-quiet-active-foreground);
+}
+
+.sidebar-shell-footer {
+  border-color: var(--shell-navigation-border);
+}
+
+.sidebar-shell-sheet,
+
+.sidebar-shell-drawer {
+  background: var(--dialog-shell-surface) !important;
+  border-color: var(--dialog-shell-border) !important;
+  box-shadow: var(--shadow-shell-floating) !important;
+}
+
+.study-shell-page {
+  background: transparent;
+}
+
+.study-shell-pane {
+  background: var(--shell-workspace-panel);
+  border: 1px solid var(--shell-workspace-border);
+  box-shadow: var(--shadow-shell-soft);
+}
+
+.study-shell-pane--flush-top {
+  border-top: 0;
+  border-left: 0;
+  border-right: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  box-shadow: none;
+}
+
+.study-shell-panel {
+  background: var(--shell-inspector-panel);
+  border: 1px solid var(--shell-inspector-border);
+  box-shadow: var(--shadow-shell-soft);
+}
+
+.study-shell-sidebar-frame {
+  background: var(--shell-navigation-surface);
+  border-right: 1px solid var(--shell-seam);
+  box-shadow: 14px 0 28px -24px hsl(var(--foreground) / 0.4);
+}
+
+.study-shell-toolbar {
+  background: var(--shell-toolbar-surface);
+  border-bottom: 1px solid var(--shell-inspector-border);
+}
+
+.study-shell-toolbar--seamless {
+  background: transparent;
+  border-bottom: 0;
+}
+
+.study-shell-toolbar--floating {
+  background: var(--shell-toolbar-floating-surface);
+}
+
+.study-shell-secondary-card {
+  background: var(--surface-panel-strong);
+  border: 1px solid var(--shell-workspace-border);
+  border-radius: var(--radius-shell-panel);
+  box-shadow: var(--shadow-shell-soft);
+  transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.study-shell-secondary-card:hover {
+  border-color: var(--shell-navigation-border);
+  background: var(--shell-workspace-panel);
+}
+
+.study-shell-secondary-card[data-selected="true"] {
+  border-color: var(--button-primary-border);
+  box-shadow: var(--shadow-shell-panel);
+}
+
+.study-shell-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--button-utility-border);
+  background: var(--button-utility-surface);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 500;
+}
+
+.study-shell-badge--primary {
+  border-color: var(--button-primary-border);
+  background: var(--button-primary-surface);
+  color: var(--button-primary-foreground);
+}
+
+.study-shell-badge--success {
+  border-color: color-mix(in hsl, hsl(var(--success)) 28%, transparent 72%);
+  background: color-mix(in hsl, hsl(var(--success)) 10%, var(--surface-elevated) 90%);
+  color: hsl(var(--success));
+}
+
+.study-shell-badge--warning {
+  border-color: color-mix(in hsl, hsl(var(--warning)) 28%, transparent 72%);
+  background: color-mix(in hsl, hsl(var(--warning)) 10%, var(--surface-elevated) 90%);
+  color: hsl(var(--warning));
+}
+
+.study-shell-badge--danger {
+  border-color: var(--button-danger-border);
+  background: var(--button-danger-surface);
+  color: var(--button-danger-foreground);
+}
+
+.study-shell-segmented {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.study-shell-segmented-thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  border-radius: var(--radius-shell-control);
+  background: var(--button-utility-surface);
+  border: 1px solid var(--button-utility-border);
+  pointer-events: none;
+}
+
+.study-shell-segmented[data-size="compact"] .study-shell-segmented-thumb {
+  border-radius: calc(var(--radius-shell-control) - 2px);
+}
+
+.study-shell-segmented-button {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.study-shell-segmented-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.study-shell-segmented-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.study-shell-segmented-button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.study-shell-empty-state {
+  display: flex;
+  min-height: 240px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  text-align: center;
+  border: 1px dashed var(--shell-workspace-border);
+  border-radius: var(--radius-shell-panel);
+  background: color-mix(in hsl, var(--surface-panel-strong) 86%, var(--surface-root) 14%);
+}
+
+.study-shell-empty-state__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 16px;
+  border-radius: 999px;
+  background: var(--button-utility-surface);
+  color: var(--text-muted);
+}
+
+.study-shell-empty-state__title {
+  font-size: 16px;
+  line-height: 1.3;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.study-shell-empty-state__description {
+  margin-top: 6px;
+  max-width: 320px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+html, body, #root {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+@media (max-width: 768px) {
+  /* 移动端全局溢出控制 - 仅在根级别应用 */
+  html, body, #root {
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100vw;
+  }
+
+  /* 移动端表单元素宽度限制 */
+  input,
+  select,
+  textarea {
+    max-width: 100%;
+  }
+}
+
+.glass-panel {
+  background: var(--glass-bg);
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  border: 1px solid var(--glass-border);
+}
+
+.glass-panel::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  backdrop-filter: blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  background: var(--glass-overlay);
+  pointer-events: none;
+}
+
+.glass-panel--no-overlay::before {
+  content: none !important;
+  display: none !important;
+}
+
+*:not([data-overlayscrollbars-viewport])::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+*:not([data-overlayscrollbars-viewport])::-webkit-scrollbar-track {
+  background: var(--scrollbar-track) !important;
+  border-radius: 4px;
+}
+
+*:not([data-overlayscrollbars-viewport])::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb) !important;
+  border-radius: 4px;
+}
+
+*:not([data-overlayscrollbars-viewport])::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover) !important;
+}
+
+*:not([data-overlayscrollbars-viewport])::-webkit-scrollbar-corner {
+  background: var(--scrollbar-track) !important;
+}
+
+*:not([data-overlayscrollbars-viewport]) {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track) !important;
+}
+
+.scrollbar-none {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
+}
+
+html {
+  background-color: transparent !important;
+  background: transparent !important;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background-color: transparent !important;
+  background: transparent !important;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  /* 让 body 占满视口，但实际内容高度由容器按标题栏扣减 */
+  height: 100vh;
+  /* Windows下使用系统窗口装饰，不应有圆角 */
+  /* 在macOS等平台会通过media query覆盖 */
+  border-radius: 0;
+}
+
+#root {
+  background-color: var(--surface-root);
+  overflow: hidden;
+  /* 交由 .app 进行高度扣减，root 保持视口高 */
+  height: 100vh;
+  width: 100vw;
+  /* Windows下使用系统窗口装饰，不应有圆角 */
+  border-radius: 0;
+  position: relative;
+  box-shadow: 0 0 0 1px var(--border-soft);
+  max-height: 100vh;
+}
+
+.app {
+  /* Windows下使用系统窗口装饰，不应有圆角 */
+  border-radius: 0;
+  overflow: hidden;
+  background-color: var(--surface-elevated);
+  /* 保持视口高度，页面内部通过 absolute top/bottom 扣除标题栏空间 */
+  height: 100vh;
+  max-height: 100vh;
+}
+
+.app-header,
+
+.title-bar {
+  /* Windows下使用系统窗口装饰，不应有圆角 */
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+.page-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* 彻底禁用page-container的滚动条 */
+  overflow: hidden !important;
+  /* 🔧 移除 position: relative，让 inline style 的 absolute 正常生效 */
+  /* position: relative; */
+  flex: 1;
+}
+
+.dark .page-container {
+  background: transparent;
+}
+
+.page-container[style*="display: none"],
+
+.page-container[style*="display:none"] {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.page-container.scrollable {
+  overflow: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
+
+body {
+  font-family: var(--font-family);
+  background-color: hsl(var(--background));
+  color: hsl(var(--foreground));
+}
+
+.app {
+  min-height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  color: white;
+  padding: 1rem;
+  text-align: center;
+  box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
+
+.app-header h1 {
+  font-size: 1.5rem;
+  font-weight: 600;
+}
+
+.app-nav {
+  display: flex;
+  background: hsl(var(--card));
+  border-bottom: 1px solid hsl(var(--border));
+  box-shadow: 0 2px 4px rgba(0,0,0,0.05);
+}
+
+.app-nav button {
+  flex: 1;
+  padding: 1rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  font-size: 1rem;
+  transition: all 0.3s ease;
+  border-bottom: 3px solid transparent;
+}
+
+.app-nav button:hover {
+  background: hsl(var(--muted));
+}
+
+.app-nav button.active {
+  background: hsl(var(--muted));
+  border-bottom-color: hsl(var(--primary));
+  color: hsl(var(--primary));
+  font-weight: 600;
+}
+
+*:not([data-overlayscrollbars-viewport])::-webkit-scrollbar-track {
+  background: #f1f1f1 !important;
+  border-radius: 4px;
+}
+
+*:not([data-overlayscrollbars-viewport])::-webkit-scrollbar-thumb {
+  background: #c1c1c1 !important;
+  border-radius: 4px;
+}
+
+*:not([data-overlayscrollbars-viewport])::-webkit-scrollbar-thumb:hover {
+  background: #a8a8a8 !important;
+}
+
+*:not([data-overlayscrollbars-viewport])::-webkit-scrollbar-corner {
+  background: #f1f1f1 !important;
+}
+
+*:not([data-overlayscrollbars-viewport]) {
+  scrollbar-width: thin;
+  scrollbar-color: #c1c1c1 #f1f1f1 !important;
+}
+
+html {
+  background-color: transparent !important;
+  background: transparent !important;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background-color: transparent !important;
+  background: transparent !important;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  height: 100vh;
+  border-radius: 0;
+}
+
+#root {
+  background-color: var(--surface-root);
+  overflow: hidden;
+  height: 100vh;
+  width: 100vw;
+  border-radius: 0;
+  position: relative;
+  box-shadow: 0 0 0 1px var(--border-soft);
+  max-height: 100vh;
+}
+
+.app {
+  border-radius: 0;
+  overflow: hidden;
+  background-color: var(--surface-elevated);
+  height: 100vh;
+  max-height: 100vh;
+}
+
+.app-header,
+.title-bar {
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+}
+
+@media (prefers-color-scheme: dark) {
+  #root {
+    background-color: hsl(var(--card));
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+  }
+  
+  .app {
+    background-color: hsl(var(--card));
+  }
+}
+
+.page-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* 彻底禁用page-container的滚动条 */
+  overflow: hidden !important;
+  position: relative;
+}
+
+body {
+  font-family: var(--font-family);
+  background-color: hsl(var(--muted));
+  color: hsl(var(--foreground));
+}
+
+.nav-button {
+  position: absolute;
+  top: 50%;
+  transform: translateY(-50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  border: none;
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  font-size: 1.5rem;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  z-index: 1001;
+}
+
+.nav-button:hover:not(:disabled) {
+  background: rgba(0, 0, 0, 0.9);
+}
+
+.nav-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.nav-prev {
+  left: 20px;
+}
+
+.nav-next {
+  right: 20px;
+}
+
+.app-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+  background-color: hsl(var(--card)); /* 统一改为纯白 */
+  /* 移除左侧圆角，避免与侧边栏圆角重叠 */
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  /* 移除左边框，避免覆盖侧边栏圆角遮罩 */
+  border-left: none;
+  /* 溢出裁剪，确保子元素不会超出圆角 */
+  overflow: hidden;
+}
+
+/* 注意：亮色模式下 app-content 使用 --sidebar-bg 以确保圆角外侧区域颜色一致 */
+
+.content-header .nav-history-button {
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+  color: hsl(var(--muted-foreground));
+  margin-right: 0.15rem;
+}
+
+.content-header .nav-history-button:hover:not(:disabled) {
+  background: hsl(var(--accent) / 0.1); /* 半透明背景 */
+  color: hsl(var(--accent-foreground));
+}
+
+.content-header .nav-history-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.sidebar-collapsed ~ main .chat-container.chat-fullscreen,
+
+body.sidebar-collapsed .chat-container.chat-fullscreen {
+  left: var(--sidebar-collapsed-width, 63px) !important;
+width: calc(100vw - var(--sidebar-collapsed-width, 63px)) !important;
+max-width: calc(100vw - var(--sidebar-collapsed-width, 63px)) !important;
+}
+
+.scroll-area--native {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+  scrollbar-gutter: stable;
+}
+
+.scroll-area--native::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scroll-area--native::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
+}
+
+.scroll-area--native::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+.scroll-area--native::-webkit-scrollbar-track {
+  background: transparent;
+}

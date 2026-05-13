@@ -47,7 +47,7 @@ import { pageLifecycleTracker } from './debug-panel/services/pageLifecycleTracke
 import './styles/tailwind.css'; // Tailwind (should be first to provide base/utility layers)
 import './styles/shadcn-variables.css'; // 设计令牌：支持亮/暗色变量（必须优先）
 import './styles/theme-colors.css';
-import './App.css';
+import './shared/styles/index.css';
 import 'overlayscrollbars/overlayscrollbars.css';
 import './DeepStudent.css';
 

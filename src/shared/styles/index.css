@@ -1,0 +1,9 @@
+/**
+ * Shared styles index - extracted from App.css
+ *
+ * Shell layout, utilities, and practice styles that are used globally.
+ */
+
+@import './shell-layout.css';
+@import './utilities.css';
+@import './practice.css';

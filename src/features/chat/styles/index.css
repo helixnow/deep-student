@@ -28,3 +28,9 @@
 
 /* 来源面板样式 - 从 panels 目录导入 */
 @import '../components/panels/UnifiedSourcePanel.css';
+
+/* App.css 提取的聊天样式 */
+@import './app-chat.css';
+
+/* App.css 提取的分析样式 */
+@import './app-analysis.css';
