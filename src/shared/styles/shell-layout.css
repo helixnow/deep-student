@@ -890,6 +890,13 @@ width: calc(100vw - var(--sidebar-collapsed-width, 63px)) !important;
 max-width: calc(100vw - var(--sidebar-collapsed-width, 63px)) !important;
 }
 
+/* 侧边栏收起时聊天全屏定位 (from DeepStudent.css) */
+.app-sidebar.collapsed ~ .app-content .chat-container.chat-fullscreen {
+  left: var(--sidebar-collapsed-width, 48px) !important;
+  width: calc(100vw - var(--sidebar-collapsed-width, 48px)) !important;
+  max-width: calc(100vw - var(--sidebar-collapsed-width, 48px)) !important;
+}
+
 .scroll-area--native {
   scrollbar-width: thin;
   scrollbar-color: var(--scrollbar-thumb) transparent;
