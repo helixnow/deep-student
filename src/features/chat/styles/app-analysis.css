@@ -532,3 +532,259 @@
     width: 100%;
   }
 }
+
+/* ============================================================= */
+/* DeepStudent overrides (migrated from DeepStudent.css)          */
+/* ============================================================= */
+
+/* 上传区域标题 */
+.upload-section h3 {
+  margin: 0 0 1.5rem 0;
+  color: var(--text-primary);
+  font-size: 1.25rem !important;
+  font-weight: 600 !important;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid var(--surface-divider);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+}
+
+/* 表单组样式 - 统一表单组件样式 */
+.form-group {
+  margin-bottom: 1.5rem;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.form-group select,
+.form-group input,
+.form-group textarea {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--input-shell-border);
+  border-radius: 10px;
+  font-size: 0.9rem;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+  background: var(--input-shell-surface);
+  box-shadow: none;
+  color: var(--text-primary);
+}
+
+.form-group select:focus,
+.form-group input:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--input-shell-focus);
+  box-shadow: 0 0 0 3px var(--input-shell-focus);
+}
+
+/* 分析按钮 - shell design tokens */
+.analyze-button {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  background: var(--button-primary-surface);
+  color: var(--button-primary-foreground);
+  border: 1px solid var(--button-primary-border);
+  border-radius: 10px;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  margin-top: auto;
+  flex-shrink: 0;
+  box-shadow: none;
+}
+
+.analyze-button:hover:not(:disabled) {
+  background: var(--button-primary-hover);
+}
+
+.analyze-button:disabled {
+  background: var(--surface-panel-muted);
+  border-color: var(--shell-workspace-border);
+  color: var(--text-muted);
+  cursor: not-allowed;
+}
+
+/* 操作按钮组 */
+.action-buttons {
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 1.5rem;
+  padding-top: 1.5rem;
+  border-top: 1px solid var(--surface-divider);
+}
+
+/* 保存和重置按钮 */
+.save-button,
+.reset-button {
+  flex: 1;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--button-utility-border);
+  border-radius: 10px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s ease, border-color 0.15s ease, color 0.15s ease;
+  box-shadow: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+}
+
+.save-button {
+  background: var(--button-primary-surface);
+  color: var(--button-primary-foreground);
+  border-color: var(--button-primary-border);
+}
+
+.save-button:hover:not(:disabled) {
+  background: var(--button-primary-hover);
+}
+
+.reset-button {
+  background: var(--button-utility-surface);
+  color: var(--button-utility-foreground);
+}
+
+.reset-button:hover:not(:disabled) {
+  background: var(--button-utility-hover);
+  border-color: var(--shell-workspace-border);
+  color: var(--text-primary);
+}
+
+/* 空状态 */
+.empty-result {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  color: var(--text-muted);
+  background: var(--shell-workspace-panel);
+  border-radius: 12px;
+  border: 1px solid var(--shell-workspace-border);
+  box-shadow: none;
+  padding: 2rem;
+}
+
+/* 分析指示器 */
+.analyzing-indicator {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: hsl(var(--warning));
+  font-size: 0.875rem;
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+/* 结果信息项 */
+.info-item {
+  margin-bottom: 0.5rem;
+  display: flex;
+  gap: 0.5rem;
+  align-items: flex-start;
+}
+
+.info-item strong {
+  color: hsl(var(--muted-foreground));
+  min-width: 80px;
+  font-weight: 600;
+}
+
+.info-value {
+  color: hsl(var(--foreground));
+}
+
+/* 标签 - shell design tokens */
+.tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+
+.tag {
+  background: var(--surface-panel-muted);
+  color: var(--text-secondary);
+  border: 1px solid var(--shell-workspace-border);
+  padding: 0.25rem 0.75rem;
+  border-radius: 16px;
+  font-size: 0.75rem;
+  font-weight: 500;
+}
+
+/* OCR文本 - shell design tokens */
+.ocr-text {
+  background: var(--surface-panel-muted);
+  padding: 0.5rem;
+  border-radius: 6px;
+  border: 1px solid var(--shell-workspace-border);
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-primary);
+  max-height: 80px;
+  overflow-y: auto;
+}
+
+/* =============================================================
+   🎛️ Modern Select (Subject Picker) – improved native look
+   ============================================================= */
+.form-group select {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  background-color: hsl(var(--muted)) !important;
+  background-image: url("data:image/svg+xml,%3Csvg fill='none' stroke='%23667eea' stroke-width='2' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 1rem center !important;
+  background-size: 1rem !important;
+  padding-right: 3rem !important;
+  cursor: pointer !important;
+  border: 2px solid #e2e8f0 !important;
+  border-radius: 10px !important;
+  font-weight: 500 !important;
+  transition: all 0.2s ease !important;
+}
+
+.form-group select:hover {
+  border-color: #3b82f6 !important;
+}
+
+.form-group select:focus {
+  outline: none !important;
+  border-color: #3b82f6 !important;
+  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15) !important;
+}
+
+.form-group select::-ms-expand {
+  display: none !important;
+}
+
+.form-group select:disabled {
+  background-color: hsl(var(--muted)) !important;
+  cursor: not-allowed !important;
+  opacity: 0.6 !important;
+}

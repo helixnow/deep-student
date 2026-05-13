@@ -1,0 +1,403 @@
+/* ============================================================= */
+/* Image Gallery/Upload System (migrated from DeepStudent.css)    */
+/* ============================================================= */
+
+/* 文件上传区域样式 */
+.file-upload-area {
+  position: relative;
+  border: 1px dashed var(--shell-workspace-border) !important;
+  border-radius: 12px !important;
+  padding: 2rem;
+  text-align: center;
+  background: var(--surface-panel-muted) !important;
+  transition: background-color 0.18s ease, border-color 0.18s ease !important;
+  cursor: pointer;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.file-upload-area:hover {
+  background: var(--button-utility-hover) !important;
+  box-shadow: none !important;
+  transform: none !important;
+  border-color: var(--border-strong) !important;
+}
+
+.file-upload-area.drag-over {
+  background: var(--button-primary-surface) !important;
+  border-color: var(--button-primary-border) !important;
+  animation: none !important;
+}
+
+.upload-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.upload-icon {
+  width: 48px !important;
+  height: 48px !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 1.5rem !important;
+  color: hsl(var(--muted-foreground)) !important;
+  transition: all 0.3s ease !important;
+}
+
+.upload-text {
+  font-size: 0.95rem !important;
+  color: hsl(var(--foreground)) !important;
+}
+
+.file-input {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  cursor: pointer;
+}
+
+/* 新的图片画廊样式 */
+.image-gallery {
+  margin-top: 1rem;
+}
+
+.image-list {
+  display: flex;
+  gap: 1rem;
+  overflow-x: auto;
+  padding: 1rem;
+  background: hsl(var(--card));
+  border-radius: 12px;
+  border: 1px solid hsl(var(--border));
+  scroll-behavior: smooth;
+}
+
+.image-list::-webkit-scrollbar {
+  height: 6px;
+}
+
+.image-list::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+  border-radius: 3px;
+}
+
+.image-list::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted));
+  border-radius: 3px;
+}
+
+.image-list::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted));
+}
+
+.image-item {
+  position: relative;
+  flex-shrink: 0;
+  width: 120px;
+  height: 120px;
+  border-radius: 8px;
+  overflow: hidden;
+  border: 2px solid hsl(var(--border));
+  transition: all 0.2s ease;
+}
+
+.image-item:hover {
+  border-color: hsl(var(--primary));
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px hsl(var(--primary) / 0.2);
+}
+
+.gallery-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  cursor: pointer;
+  transition: transform 0.2s ease;
+}
+
+.gallery-image:hover {
+  transform: scale(1.05);
+}
+
+.remove-image {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(239, 68, 68, 0.9);
+  color: white;
+  font-size: 16px;
+  font-weight: bold;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+  backdrop-filter: blur(4px);
+}
+
+.remove-image:hover {
+  background: rgba(239, 68, 68, 1);
+  transform: scale(1.1);
+}
+
+.add-image-btn {
+  flex-shrink: 0;
+  width: 120px;
+  height: 120px;
+  border: 2px dashed hsl(var(--border));
+  border-radius: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  position: relative;
+  background: hsl(var(--muted));
+}
+
+.add-image-btn:hover {
+  border-color: hsl(var(--primary));
+  background: hsl(var(--accent));
+  transform: translateY(-2px);
+}
+
+.add-content {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
+  color: hsl(var(--muted-foreground));
+}
+
+.add-icon {
+  font-size: 2rem;
+  font-weight: 300;
+}
+
+.add-text {
+  font-size: 0.875rem;
+  font-weight: 500;
+}
+
+/* 图片错误显示优化 */
+.image-error {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 120px;
+  background: hsl(var(--muted));
+  border: 2px dashed hsl(var(--border));
+  border-radius: 8px;
+  padding: 1rem;
+  text-align: center;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.9rem;
+}
+
+.error-path {
+  margin-top: 0.5rem;
+  font-size: 0.75rem;
+  color: hsl(var(--muted-foreground));
+  word-break: break-all;
+  max-width: 100%;
+}
+
+/* 多图片网格显示样式 */
+.image-grid-container {
+  margin-top: 0.75rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--muted));
+  padding: 0.75rem;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.image-grid-scroll {
+  display: flex;
+  gap: 0.75rem;
+  overflow-x: auto;
+  overflow-y: hidden;
+  padding: 0.25rem;
+  scroll-behavior: smooth;
+  width: 100%;
+  min-width: 0;
+}
+
+.image-grid-scroll::-webkit-scrollbar {
+  height: 6px;
+}
+
+.image-grid-scroll::-webkit-scrollbar-track {
+  background: hsl(var(--muted));
+  border-radius: 3px;
+}
+
+.image-grid-scroll::-webkit-scrollbar-thumb {
+  background: hsl(var(--muted));
+  border-radius: 3px;
+}
+
+.image-grid-scroll::-webkit-scrollbar-thumb:hover {
+  background: hsl(var(--muted));
+}
+
+.image-thumbnail-container {
+  position: relative;
+  flex-shrink: 0;
+  width: 120px;
+  height: 120px;
+  border-radius: 10px !important;
+  overflow: hidden !important;
+  background: hsl(var(--card));
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.image-thumbnail-container:hover {
+  border-color: #4299e1;
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+}
+
+.image-thumbnail {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  transition: transform 0.2s ease;
+}
+
+.image-thumbnail-container:hover .image-thumbnail {
+  transform: scale(1.05) !important;
+}
+
+.remove-image-btn {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 24px;
+  height: 24px;
+  border: none;
+  background: rgba(239, 68, 68, 0.9);
+  color: white;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 12px;
+  font-weight: bold;
+  transition: all 0.2s ease;
+  opacity: 0;
+}
+
+.image-thumbnail-container:hover .remove-image-btn {
+  opacity: 1;
+}
+
+.remove-image-btn:hover {
+  background: rgba(220, 38, 38, 1);
+  transform: scale(1.1);
+}
+
+.add-image-placeholder {
+  flex-shrink: 0;
+  width: 120px;
+  height: 120px;
+  border: 2px dashed hsl(var(--border));
+  border-radius: 8px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  background: hsl(var(--muted));
+}
+
+.add-image-placeholder:hover {
+  border-color: #4299e1;
+  background: #f0f8ff;
+}
+
+.add-image-input {
+  display: none;
+}
+
+.add-image-label {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 100%;
+  height: 100%;
+  cursor: pointer;
+  color: hsl(var(--muted-foreground));
+  transition: color 0.2s ease;
+}
+
+.add-image-placeholder:hover .add-image-label {
+  color: #4299e1;
+}
+
+.add-image-icon {
+  font-size: 24px;
+  margin-bottom: 4px;
+}
+
+.add-image-text {
+  font-size: 12px;
+  font-weight: 500;
+  text-align: center;
+}
+
+/* 拖拽状态样式 */
+.file-upload-area.drag-over {
+  border-color: #4299e1;
+  background: #f0f8ff;
+  transform: scale(1.02);
+}
+
+.file-upload-area.drag-over .upload-icon {
+  transform: scale(1.1);
+  color: #4299e1;
+}
+
+.file-upload-area.drag-over .upload-text {
+  color: #4299e1;
+  font-weight: 600;
+}
+
+.image-grid-container.drag-over {
+  border-color: #4299e1;
+  background: #f0f8ff;
+  transform: scale(1.01);
+  box-shadow: 0 0 10px rgba(66, 153, 225, 0.3);
+}
+
+/* 响应式padding调整 */
+@media (max-width: 1400px) {
+  .upload-section {
+    padding: 1.25rem;
+  }
+}
+
+@media (max-width: 1200px) {
+  .upload-section {
+    padding: 1rem;
+  }
+}

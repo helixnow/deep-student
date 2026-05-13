@@ -2716,3 +2716,71 @@ overlay-scroll containers so content is never clipped at print time. */
 fallback path (used on iOS WebView to preserve rubber-band + inertia).
 
 Moved from study-ui so DeepStudent can own this style end-to-end. */
+
+/* ============================================================= */
+/* DeepStudent overrides (migrated from DeepStudent.css)          */
+/* ============================================================= */
+
+/* 🎯 现代化简约按钮样式 */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.625rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-decoration: none;
+  gap: 0.5rem;
+  background: hsl(var(--background));
+  position: relative;
+  overflow: hidden;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.btn-danger {
+  background: #fef2f2;
+  color: #dc2626;
+  border-color: #fecaca;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: #fee2e2;
+  border-color: #fca5a5;
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+}
+
+/* 标签页按钮美化 */
+.tab {
+  padding: 0.75rem 1.5rem;
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px 8px 0 0;
+  cursor: pointer;
+  font-weight: 500;
+  transition: all 0.2s ease;
+  border-bottom: none;
+}
+
+.tab:hover {
+  background: hsl(var(--accent));
+  color: hsl(var(--foreground));
+}
+
+.tab.active {
+  background: hsl(var(--card));
+  color: #3182ce;
+  border-color: #3182ce;
+  border-bottom: 2px solid #3182ce;
+  font-weight: 600;
+}

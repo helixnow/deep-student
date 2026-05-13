@@ -35,5 +35,8 @@
 /* App.css 提取的分析样式 */
 @import './app-analysis.css';
 
+/* DeepStudent.css 提取的图片上传/画廊样式 */
+@import './image-upload.css';
+
 /* DeepStudent.css 提取的聊天布局覆盖 */
 @import './layout-overrides.css';
