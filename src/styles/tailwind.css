@@ -1,5 +1,3 @@
-@import '../tokens/primitives.css';
-@import '../tokens/semantic.css';
 @import './thinking-scrollbar.css' layer(base);
 @import './notion-animations.css' layer(base);
 @import './transitions-dev.css' layer(base);
