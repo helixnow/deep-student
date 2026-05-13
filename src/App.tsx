@@ -24,7 +24,7 @@ import { useWindowDrag } from './hooks/useWindowDrag';
 import { ModernSidebar } from './components/ModernSidebar';
 import { StudyComposeIcon } from './components/icons/StudySidebarIcons';
 import { WindowControls } from './components/WindowControls';
-import { useFinderStore } from './components/learning-hub/stores/finderStore';
+import { useFinderStore } from './features/learning-hub/stores/finderStore';
 import { MobileLayoutProvider, MobileHeaderProvider, UnifiedMobileHeader, MobileHeaderActiveViewSync, MOBILE_APP_NAVIGATE_EVENT } from '@/components/layout';
 import { GlobalPomodoroWidget } from '@/features/pomodoro';
 // 🚀 性能优化：IrecServiceSwitcher, IrecGraphFlow, IrecGraphFlowDemo, CrepeDemoPage, ChatV2IntegrationTest, BridgeToIrec 改为懒加载
@@ -39,10 +39,10 @@ import {
   LearningHubNavigationProvider,
   getGlobalLearningHubNavigation,
   subscribeLearningHubNavigation,
-} from './components/learning-hub';
+} from './features/learning-hub';
 import { setActiveOpenResourceHandler } from './dstu/openResource';
-import type { ResourceLocator } from './components/learning-hub/learningHubContracts';
-import { getQuickAccessTypeFromPath } from './components/learning-hub/learningHubContracts';
+import type { ResourceLocator } from './features/learning-hub/learningHubContracts';
+import { getQuickAccessTypeFromPath } from './features/learning-hub/learningHubContracts';
 import { pageLifecycleTracker } from './debug-panel/services/pageLifecycleTracker';
 import './styles/tailwind.css'; // Tailwind (should be first to provide base/utility layers)
 import './styles/shadcn-variables.css'; // 设计令牌：支持亮/暗色变量（必须优先）

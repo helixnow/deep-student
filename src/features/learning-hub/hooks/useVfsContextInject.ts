@@ -8,7 +8,7 @@
  * - 发送时实时解析获取当前路径和内容
  * - 文件移动后引用仍然有效
  *
- * @module components/learning-hub/hooks/useVfsContextInject
+ * @module features/learning-hub/hooks/useVfsContextInject
  * @see 24-LRFS统一入口模型与访达式资源管理器.md - Prompt 10
  */
 

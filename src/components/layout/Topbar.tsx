@@ -2,8 +2,8 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { NotionButton } from '@/components/ui/NotionButton';
 import { createPortal } from 'react-dom';
 import { ChevronsLeft, ChevronsRight, Pin, PinOff, Beaker, Minus, Square, X, Command, ChevronRight, Home } from 'lucide-react';
-import { useFinderStore } from '@/components/learning-hub/stores/finderStore';
-import { getQuickAccessTypeFromPath } from '@/components/learning-hub/learningHubContracts';
+import { useFinderStore } from '@/features/learning-hub/stores/finderStore';
+import { getQuickAccessTypeFromPath } from '@/features/learning-hub/learningHubContracts';
 import { useCommandPalette } from '@/command-palette';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 // ★ 文档31清理：SubjectSelectShad 已删除

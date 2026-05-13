@@ -12,7 +12,7 @@ import { cn } from '@/utils/cn';
 import { InlineImageViewer } from '../InlineImageViewer';
 import { InlineDocumentViewer } from '../InlineDocumentViewer';
 import type { FilePreview } from '../../hooks/useFilePreviewsFromRefs';
-import { getFileTypeIconByMime } from '@/components/learning-hub/icons/ResourceIcons';
+import { getFileTypeIconByMime } from '@/features/learning-hub/icons/ResourceIcons';
 
 interface ImagePreview {
   id: string;

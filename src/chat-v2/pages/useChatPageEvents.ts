@@ -8,7 +8,7 @@ import { registerOpenResourceHandler } from '@/dstu/openResource';
 import type { DstuNode } from '@/dstu/types';
 import { mapDstuNodeToLearningHubItem } from './openResourceMapping';
 import { RESOURCE_ID_PREFIX_MAP } from '@/dstu/types/path';
-import type { ResourceListItem, ResourceType } from '@/components/learning-hub/types';
+import type { ResourceListItem, ResourceType } from '@/features/learning-hub/types';
 import { useCommandEvents, COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { useEventRegistry } from '@/hooks/useEventRegistry';
 import type { ChatSession } from '../types/session';

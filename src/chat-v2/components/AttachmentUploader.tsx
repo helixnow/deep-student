@@ -46,7 +46,7 @@ import {
 import { 
   ImageFileIcon, 
   DocxFileIcon 
-} from '@/components/learning-hub/icons/ResourceIcons';
+} from '@/features/learning-hub/icons/ResourceIcons';
 
 // ============================================================================
 // Props 定义

@@ -95,7 +95,7 @@ export const LazyTemplateJsonPreviewPage = React.lazy(() =>
 
 // 学习中心
 export const LazyLearningHubPage = React.lazy(() =>
-  import('./components/learning-hub').then(m => ({ default: m.LearningHubPage }))
+  import('./features/learning-hub').then(m => ({ default: m.LearningHubPage }))
 );
 
 // PDF 阅读器

@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Z_INDEX } from '@/config/zIndex';
-import { getResourceIcon, type ResourceIconType } from '@/components/learning-hub/icons';
+import { getResourceIcon, type ResourceIconType } from '@/features/learning-hub/icons';
 import * as dstuApi from '@/dstu/api';
 import type { DstuNode } from '@/dstu/types';
 import type { MindMapNodeRef } from '../../types';

@@ -19,7 +19,7 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 // 懒加载 ExamContentView（DSTU 模式实现）
-const ExamContentView = lazy(() => import('@/components/learning-hub/apps/views/ExamContentView'));
+const ExamContentView = lazy(() => import('@/features/learning-hub/apps/views/ExamContentView'));
 
 /**
  * 题目集编辑器包装组件

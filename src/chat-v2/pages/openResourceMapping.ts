@@ -1,9 +1,9 @@
 import type { DstuNode } from '@/dstu/types';
-import type { ResourceListItem } from '@/components/learning-hub/types';
+import type { ResourceListItem } from '@/features/learning-hub/types';
 import {
   dstuNodeToResourceListItem,
   nodeTypeToFolderItemType,
-} from '@/components/learning-hub/types';
+} from '@/features/learning-hub/types';
 
 /**
  * 将 openResource 返回的 DstuNode 映射为 Learning Hub 可打开资源

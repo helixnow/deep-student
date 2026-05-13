@@ -17,13 +17,13 @@
  * | essay        | 'essay'        | 'essay'      |
  * | translation  | 'translation'  | 'translation'|
  *
- * @module components/learning-hub/useReferenceToChat
+ * @module features/learning-hub/useReferenceToChat
  * @see 24-LRFS统一入口模型与访达式资源管理器.md Prompt 7
  */
 
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { showGlobalNotification } from '../UnifiedNotification';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { sessionManager } from '@/chat-v2/core/session';
 import { resourceStoreApi } from '@/chat-v2/resources';
 import type { ContextRef, ResourceType as StoreResourceType } from '@/chat-v2/resources/types';

@@ -28,24 +28,24 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { cn } from '../../lib/utils';
+import { cn } from '@/lib/utils';
 import { FileQuestion } from 'lucide-react';
 
 // 预览组件导入
-import { MarkdownPreview } from '../notes/preview/MarkdownPreview';
-import { PDFPreview } from '../notes/preview/PDFPreview';
-import { ImagePreview } from '../notes/preview/ImagePreview';
-import { ExamPreview } from '../notes/preview/ExamPreview';
-import { AudioPreview } from '../notes/preview/AudioPreview';
-import { VideoPreview } from '../notes/preview/VideoPreview';
-import { MindMapEmbed } from '../mindmap/components/mindmap/MindMapEmbed';
+import { MarkdownPreview } from '@/components/notes/preview/MarkdownPreview';
+import { PDFPreview } from '@/components/notes/preview/PDFPreview';
+import { ImagePreview } from '@/components/notes/preview/ImagePreview';
+import { ExamPreview } from '@/components/notes/preview/ExamPreview';
+import { AudioPreview } from '@/components/notes/preview/AudioPreview';
+import { VideoPreview } from '@/components/notes/preview/VideoPreview';
+import { MindMapEmbed } from '@/components/mindmap/components/mindmap/MindMapEmbed';
 
 // 类型导入
-import type { PreviewType } from '../notes/types/reference';
+import type { PreviewType } from '@/components/notes/types/reference';
 import type {
   ExamPreviewData,
   ExamCardPreviewData,
-} from '../notes/preview/types';
+} from '@/components/notes/preview/types';
 
 // ============================================================================
 // 类型定义

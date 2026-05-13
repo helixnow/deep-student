@@ -2,10 +2,10 @@ import React, { useEffect, useMemo, useCallback } from 'react';
 import { Plus, SlidersHorizontal } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useMobileHeader } from '@/components/layout';
-import { MobileBreadcrumb } from '@/components/learning-hub/components/MobileBreadcrumb';
+import { MobileBreadcrumb } from '@/features/learning-hub/components/MobileBreadcrumb';
 import type { TFunction } from 'i18next';
 import type { ChatSession } from '../types/session';
-import type { BreadcrumbItem } from '@/components/learning-hub/stores/finderStore';
+import type { BreadcrumbItem } from '@/features/learning-hub/stores/finderStore';
 
 export interface UseChatPageLayoutDeps {
   currentSession: ChatSession | undefined;

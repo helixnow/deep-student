@@ -35,7 +35,7 @@ import {
   Image as ImageIcon,
   Plus,
 } from 'lucide-react';
-import { ExamIcon } from '@/components/learning-hub/icons/ResourceIcons';
+import { ExamIcon } from '@/features/learning-hub/icons/ResourceIcons';
 import { useTranslation } from 'react-i18next';
 import type { Question, QuestionBankStats, QuestionStatus, Difficulty } from '@/api/questionBankApi';
 import { QuestionInlineEditor } from './QuestionInlineEditor';

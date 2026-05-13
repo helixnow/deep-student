@@ -51,7 +51,7 @@ import {
   MindmapIcon,
   GenericFileIcon,
   type ResourceIconProps
-} from '@/components/learning-hub/icons/ResourceIcons';
+} from '@/features/learning-hub/icons/ResourceIcons';
 import type { ImagePreview } from '../hooks/useImagePreviewsFromRefs';
 import type { FilePreview } from '../hooks/useFilePreviewsFromRefs';
 

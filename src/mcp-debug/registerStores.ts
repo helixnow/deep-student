@@ -92,12 +92,12 @@ export async function registerAllStores(): Promise<void> {
     // Learning Hub
     {
       name: 'finder',
-      module: () => import('../components/learning-hub/stores/finderStore'),
+      module: () => import('../features/learning-hub/stores/finderStore'),
       exportName: 'useFinderStore',
     },
     {
       name: 'recent',
-      module: () => import('../components/learning-hub/stores/recentStore'),
+      module: () => import('../features/learning-hub/stores/recentStore'),
       exportName: 'useRecentStore',
     },
     // 研究相关

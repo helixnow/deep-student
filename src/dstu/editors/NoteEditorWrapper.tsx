@@ -22,7 +22,7 @@ import type { DstuNode } from '../types';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 // 懒加载 NoteContentView（DSTU 原生实现）
-const NoteContentView = lazy(() => import('@/components/learning-hub/apps/views/NoteContentView'));
+const NoteContentView = lazy(() => import('@/features/learning-hub/apps/views/NoteContentView'));
 
 /**
  * 笔记编辑器包装组件

@@ -19,7 +19,7 @@ import {
   canLocateResource,
   DSTU_NAVIGATE_TO_KNOWLEDGE_BASE_EVENT,
   type ResourceLocator,
-} from '@/components/learning-hub/learningHubContracts';
+} from '@/features/learning-hub/learningHubContracts';
 import './UnifiedSourcePanel.css';
 
 // 来源类型映射到引用类型（与 citationParser 保持一致）

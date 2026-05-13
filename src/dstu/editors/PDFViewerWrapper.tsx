@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 // 懒加载 TextbookContentView（DSTU 原生实现）
-const TextbookContentView = lazy(() => import('@/components/learning-hub/apps/views/TextbookContentView'));
+const TextbookContentView = lazy(() => import('@/features/learning-hub/apps/views/TextbookContentView'));
 
 /**
  * PDF 查看器包装组件

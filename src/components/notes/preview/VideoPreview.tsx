@@ -30,7 +30,7 @@ import {
   Loader2,
 } from 'lucide-react';
 import type { VideoPreviewProps } from './types';
-import { formatMediaTime as formatTime } from '../../learning-hub/apps/views/previewUtils';
+import { formatMediaTime as formatTime } from '@/features/learning-hub/apps/views/previewUtils';
 
 /**
  * 视频预览骨架屏

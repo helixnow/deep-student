@@ -12,8 +12,8 @@ import {
 } from 'lucide-react';
 import type { VfsResourceRef } from '../../context/vfsRefTypes';
 import { getResourceRefsV2 } from '../../context/vfsRefApi';
-import { LearningHubSidebar } from '@/components/learning-hub';
-import type { ResourceListItem } from '@/components/learning-hub/types';
+import { LearningHubSidebar } from '@/features/learning-hub';
+import type { ResourceListItem } from '@/features/learning-hub/types';
 
 function getResourceTypeIcon(type: string): React.ElementType {
   switch (type) {

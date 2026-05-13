@@ -26,7 +26,7 @@ import {
   SkipForward,
 } from 'lucide-react';
 import type { AudioPreviewProps } from './types';
-import { formatMediaTime as formatTime } from '../../learning-hub/apps/views/previewUtils';
+import { formatMediaTime as formatTime } from '@/features/learning-hub/apps/views/previewUtils';
 
 /**
  * 音频预览骨架屏

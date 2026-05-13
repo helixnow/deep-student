@@ -21,10 +21,10 @@ import { SessionBrowser } from '../components/session-browser';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { TauriAPI } from '@/utils/tauriApi';
 // Learning Hub 学习资源侧边栏
-import { LearningHubSidebar } from '@/components/learning-hub';
-import type { ResourceListItem, ResourceType } from '@/components/learning-hub/types';
-import { useFinderStore } from '@/components/learning-hub/stores/finderStore';
-import { MobileBreadcrumb } from '@/components/learning-hub/components/MobileBreadcrumb';
+import { LearningHubSidebar } from '@/features/learning-hub';
+import type { ResourceListItem, ResourceType } from '@/features/learning-hub/types';
+import { useFinderStore } from '@/features/learning-hub/stores/finderStore';
+import { MobileBreadcrumb } from '@/features/learning-hub/components/MobileBreadcrumb';
 import { useNotesOptional } from '@/components/notes/NotesContext';
 import { registerOpenResourceHandler } from '@/dstu/openResource';
 import type { DstuNode } from '@/dstu/types';
@@ -58,7 +58,7 @@ import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { convertFileSrc } from '@tauri-apps/api/core';
 
 // 懒加载统一应用面板
-const UnifiedAppPanel = lazy(() => import('@/components/learning-hub/apps/UnifiedAppPanel').then(m => ({ default: m.UnifiedAppPanel })));
+const UnifiedAppPanel = lazy(() => import('@/features/learning-hub/apps/UnifiedAppPanel').then(m => ({ default: m.UnifiedAppPanel })));
 
 // CardForge 2.0 Anki 面板 (Chat V2 集成)
 import { AnkiPanelHost } from '../anki';
