@@ -213,58 +213,99 @@ export function TokenInspectorTab() {
       </p>
 
       {/* Token 分组 */}
-      {filteredGroups.map(group => (
-        <div key={group.title}>
-          <h4 className="text-xs font-medium text-[color:var(--text-secondary)] mb-2">{group.title}</h4>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
-            {group.tokens.map(token => (
-              <button
-                key={token.var}
-                type="button"
-                className="flex items-center gap-2.5 rounded-md px-2.5 py-1.5 hover:bg-[color:var(--interactive-hover)] transition-colors text-left group"
-                onClick={() => handleCopy(token.var)}
-                title={`点击复制 var(${token.var})`}
+      {filteredGroups.map(group => {
+        // 阴影 / 圆角分组用更大尺寸的独立网格展示，体现实际视觉强度
+        const isVisualGroup = group.tokens.every(t => t.type === 'shadow' || t.type === 'size');
+
+        if (isVisualGroup && group.tokens.length > 0) {
+          const visualKind = group.tokens[0].type as 'shadow' | 'size';
+          return (
+            <div key={group.title}>
+              <h4 className="text-xs font-medium text-[color:var(--text-secondary)] mb-2">{group.title}</h4>
+              <div
+                className={cn(
+                  'grid gap-3',
+                  visualKind === 'shadow'
+                    ? 'grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 rounded-[var(--radius-shell-row)] bg-[color:var(--surface-muted)] p-4'
+                    : 'grid-cols-2 sm:grid-cols-3 lg:grid-cols-5',
+                )}
               >
-                {/* 色块 */}
-                {token.type === 'color' && (
-                  <div
-                    className="w-7 h-7 rounded-md border border-[color:var(--border-soft)] shrink-0"
-                    style={{ backgroundColor: resolveTokenValue(token.var) }}
-                  />
-                )}
-                {token.type === 'shadow' && (
-                  <div
-                    className="w-7 h-7 rounded-md bg-[color:var(--surface-elevated)] shrink-0"
-                    style={{ boxShadow: resolveTokenValue(token.var) }}
-                  />
-                )}
-                {token.type === 'size' && (
-                  <div className="w-7 h-7 flex items-center justify-center shrink-0">
+                {group.tokens.map(token => (
+                  <button
+                    key={token.var}
+                    type="button"
+                    onClick={() => handleCopy(token.var)}
+                    title={`点击复制 var(${token.var})`}
+                    className={cn(
+                      'group flex flex-col items-center gap-2 rounded-[var(--radius-shell-row)] p-3 text-center transition-colors',
+                      'hover:bg-[color:var(--interactive-hover)]',
+                    )}
+                  >
+                    {visualKind === 'shadow' && (
+                      <div
+                        className="h-14 w-full rounded-[var(--radius-shell-row)] bg-[color:var(--surface-elevated)] border border-[color:var(--border-soft)]"
+                        style={{ boxShadow: resolveTokenValue(token.var) }}
+                      />
+                    )}
+                    {visualKind === 'size' && (
+                      <div
+                        className="h-14 w-14 bg-[color:var(--brand-200)] border border-[color:var(--brand-outline)]"
+                        style={{ borderRadius: resolveTokenValue(token.var) }}
+                      />
+                    )}
+                    <div className="min-w-0 w-full">
+                      <p className="text-[11px] font-mono text-[color:var(--text-primary)] truncate">{token.name}</p>
+                      <p className="text-[10px] font-mono text-[color:var(--text-muted)] truncate">{token.var}</p>
+                    </div>
+                    {copiedToken === token.var && (
+                      <span className="text-[10px] text-[color:hsl(var(--success))]">已复制</span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        }
+
+        return (
+          <div key={group.title}>
+            <h4 className="text-xs font-medium text-[color:var(--text-secondary)] mb-2">{group.title}</h4>
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1.5">
+              {group.tokens.map(token => (
+                <button
+                  key={token.var}
+                  type="button"
+                  className="flex items-center gap-2.5 rounded-[var(--radius-shell-row)] px-2.5 py-1.5 hover:bg-[color:var(--interactive-hover)] transition-colors text-left group"
+                  onClick={() => handleCopy(token.var)}
+                  title={`点击复制 var(${token.var})`}
+                >
+                  {/* 色块 */}
+                  {token.type === 'color' && (
                     <div
-                      className="w-5 h-5 border-2 border-[color:var(--text-muted)]"
-                      style={{ borderRadius: resolveTokenValue(token.var) }}
+                      className="w-7 h-7 rounded-md border border-[color:var(--border-soft)] shrink-0"
+                      style={{ backgroundColor: resolveTokenValue(token.var) }}
                     />
+                  )}
+                  {token.type === 'other' && (
+                    <div className="w-7 h-7 rounded-md bg-[color:var(--surface-muted)] shrink-0" />
+                  )}
+
+                  {/* 名称 */}
+                  <div className="min-w-0 flex-1">
+                    <p className="text-[11px] font-mono text-[color:var(--text-primary)] truncate">{token.name}</p>
+                    <p className="text-[10px] font-mono text-[color:var(--text-muted)] truncate">{token.var}</p>
                   </div>
-                )}
-                {token.type === 'other' && (
-                  <div className="w-7 h-7 rounded-md bg-[color:var(--surface-muted)] shrink-0" />
-                )}
 
-                {/* 名称 */}
-                <div className="min-w-0 flex-1">
-                  <p className="text-[11px] font-mono text-[color:var(--text-primary)] truncate">{token.name}</p>
-                  <p className="text-[10px] font-mono text-[color:var(--text-muted)] truncate">{token.var}</p>
-                </div>
-
-                {/* 复制反馈 */}
-                {copiedToken === token.var && (
-                  <span className="text-[10px] text-[color:hsl(var(--success))] shrink-0">已复制</span>
-                )}
-              </button>
-            ))}
+                  {/* 复制反馈 */}
+                  {copiedToken === token.var && (
+                    <span className="text-[10px] text-[color:hsl(var(--success))] shrink-0">已复制</span>
+                  )}
+                </button>
+              ))}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

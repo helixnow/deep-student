@@ -1,12 +1,23 @@
 import React, { useState } from 'react';
+// Phosphor icons for the SegmentedControl demo — matches the production
+// AppTab usage so the style-lab preview reflects what users actually see.
+import { Monitor, Moon, Sun } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 // eslint-disable-next-line no-restricted-imports -- Style lab intentionally compares the legacy shad Button path against the target NotionButton path.
 import { Button as ShadButton } from '@/components/ui/shad/Button';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Switch } from '@/components/ui/shad/Switch';
 import { Input as ShadInput } from '@/components/ui/shad/Input';
 import { Textarea as ShadTextarea } from '@/components/ui/shad/Textarea';
 import { Checkbox as ShadCheckbox } from '@/components/ui/shad/Checkbox';
+import {
+  Select as ShadSelect,
+  SelectTrigger as ShadSelectTrigger,
+  SelectValue as ShadSelectValue,
+  SelectContent as ShadSelectContent,
+  SelectItem as ShadSelectItem,
+} from '@/components/ui/shad/Select';
 import { CommonTooltip, type TooltipPosition, type TooltipTheme } from '@/components/shared/CommonTooltip';
 // eslint-disable-next-line no-restricted-imports
 import {
@@ -225,15 +236,45 @@ function FormControlsCompareSection() {
                     disabled={disabled}
                   />
                   <Switch
+                    size="sm"
                     checked={switchChecked}
                     onCheckedChange={setSwitchChecked}
                     disabled={disabled}
-                    className="scale-[0.8]"
                   />
+                  <span className="text-[10px] text-[color:var(--text-muted)] leading-tight">
+                    默认 44×24 / sm 28×16
+                  </span>
                 </div>
               </td>
-              <td className="py-3 pr-4 align-top text-[color:var(--text-muted)]">
-                <span className="text-[11px]">（Switch 无备用组件路径）</span>
+              <td className="py-3 pr-4 align-top">
+                <div className="flex flex-col gap-1.5">
+                  {/* 历史实现：OcrEngineCard 曾手写的 28×16 迷你开关。
+                      已迁移为 <Switch size="sm" />，此处保留作视觉对照与回归基线。 */}
+                  <button
+                    type="button"
+                    role="switch"
+                    aria-checked={switchChecked}
+                    onClick={() => !disabled && setSwitchChecked(!switchChecked)}
+                    disabled={disabled}
+                    className={cn(
+                      'relative shrink-0 rounded-full transition-colors disabled:opacity-50',
+                      'w-[28px] h-[16px]',
+                      switchChecked ? 'bg-primary' : 'bg-muted-foreground/20',
+                    )}
+                    title="legacy mini switch"
+                  >
+                    <span
+                      className={cn(
+                        'block absolute rounded-full bg-white shadow-sm transition-transform',
+                        'w-[12px] h-[12px] top-[2px]',
+                        switchChecked ? 'left-[14px]' : 'left-[2px]',
+                      )}
+                    />
+                  </button>
+                  <span className="text-[10px] text-[color:var(--text-muted)] leading-tight">
+                    legacy mini (已被 sm 变体取代)
+                  </span>
+                </div>
               </td>
               <td className="py-3 align-top">
                 <label className="inline-flex items-center gap-2 text-[11px] text-[color:var(--text-muted)]">
@@ -282,13 +323,22 @@ function FormControlsCompareSection() {
             {/* Select */}
             <tr className="border-b border-[color:var(--border-soft)]">
               <td className="py-3 pr-4 align-top text-[color:var(--text-secondary)]">Select</td>
-              <td className="py-3 pr-4 align-top text-[color:var(--text-muted)]">
-                <span className="text-[11px]">
-                  无 shad Select。推荐用 Combobox / SegmentedControl 替代。
-                </span>
+              <td className="py-3 pr-4 align-top">
+                <ShadSelect value={selectValue} onValueChange={setSelectValue} disabled={disabled}>
+                  <ShadSelectTrigger>
+                    <ShadSelectValue placeholder="请选择" />
+                  </ShadSelectTrigger>
+                  <ShadSelectContent>
+                    <ShadSelectItem value="a">选项 A</ShadSelectItem>
+                    <ShadSelectItem value="b">选项 B</ShadSelectItem>
+                    <ShadSelectItem value="c">选项 C</ShadSelectItem>
+                  </ShadSelectContent>
+                </ShadSelect>
               </td>
               <td className="py-3 pr-4 align-top text-[color:var(--text-muted)]">
-                <span className="text-[11px]">—</span>
+                <span className="text-[11px]">
+                  选项多 / 需搜索时改用 Combobox；固定 2-4 项可用 SegmentedControl。
+                </span>
               </td>
               <td className="py-3 align-top">
                 <select
@@ -308,9 +358,14 @@ function FormControlsCompareSection() {
       </div>
 
       <ul className="text-[11px] text-[color:var(--text-muted)] space-y-1 list-disc pl-4">
-        <li>Input / Textarea / Switch / Checkbox：业务代码保留 shad 主路径，原生元素仅作对照观察样式差异。</li>
-        <li>原生 <code>&lt;select&gt;</code>：不在目标设计系统内，应迁移到 Combobox 或 SegmentedControl；留在表内便于识别遗留用法。</li>
+        <li>Input / Textarea / Select / Switch / Checkbox：业务代码保留 shad 主路径，原生元素仅作对照观察样式差异。</li>
+        <li>Input / Textarea / Select 共享 <code>inputShellClass</code>，三者在同一表单中外壳视觉完全对齐。</li>
+        <li>原生 <code>&lt;select&gt;</code>：不在目标设计系统内，应迁移到 shad Select；选项多 / 需搜索改用 Combobox。</li>
         <li>Switch 无对应原生元素，原生 checkbox 仅作语义近似对照。</li>
+        <li>
+          Switch 新增 <code>size="sm"</code> 变体（28×16）用于密集列表；OcrEngineCard 的两处手写 mini 已迁移。
+          中列的 legacy mini 仅留作视觉回归基线，未来可删除。
+        </li>
       </ul>
     </div>
   );
@@ -507,9 +562,152 @@ function ToastCompareSection() {
   );
 }
 
+// ─── SegmentedControl 对比 ─────────────────────────────────────
+
+type ThemeMode = 'light' | 'dark' | 'system';
+type TriggerMode = 'hold' | 'toggle';
+
+function SegmentedCompareSection() {
+  const [themeMode, setThemeMode] = useState<ThemeMode>('light');
+  const [triggerMode, setTriggerMode] = useState<TriggerMode>('hold');
+  const [legacyThemeMode, setLegacyThemeMode] = useState<ThemeMode>('light');
+
+  const themeOptions = [
+    { value: 'light' as const, label: (
+      <>
+        <Sun className="h-[18px] w-[18px]" weight="bold" aria-hidden="true" />
+        <span>亮色</span>
+      </>
+    ) },
+    { value: 'dark' as const, label: (
+      <>
+        <Moon className="h-[18px] w-[18px]" weight="bold" aria-hidden="true" />
+        <span>暗色</span>
+      </>
+    ) },
+    { value: 'system' as const, label: (
+      <>
+        <Monitor className="h-[18px] w-[18px]" weight="bold" aria-hidden="true" />
+        <span>系统默认</span>
+      </>
+    ), title: '匹配系统外观设置' },
+  ];
+
+  const triggerOptions = [
+    { value: 'hold' as const, label: '按住', ariaLabel: '按住听写快捷键' },
+    { value: 'toggle' as const, label: '切换', ariaLabel: '按一次开始，再按一次停止' },
+  ];
+
+  return (
+    <div className="space-y-4">
+      {/* 两种规格并排 — 卡片式预览 */}
+      <div className="grid gap-3 lg:grid-cols-2">
+        {/* default */}
+        <div className="rounded-[var(--radius-shell-row)] border border-[color:var(--border-soft)] bg-[color:var(--surface-elevated)] p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[11px] text-[color:var(--text-primary)]">size="default"</span>
+              <span className="rounded-full bg-[color:var(--surface-muted)] px-2 py-0.5 text-[10px] text-[color:var(--text-muted)]">stretch</span>
+            </div>
+            <span className="text-[10px] text-[color:var(--text-muted)]">主题 · 语言 · 会话粒度</span>
+          </div>
+          <SegmentedControl<ThemeMode>
+            ariaLabel="选择主题模式"
+            value={themeMode}
+            onValueChange={setThemeMode}
+            options={themeOptions}
+            stretch
+          />
+          <p className="text-[11px] text-[color:var(--text-muted)]">
+            胶囊外壳 · 44px 高 · 图标 + 文案。窄屏下配 <code className="font-mono">stretch</code> 占满宽度。
+          </p>
+        </div>
+
+        {/* compact */}
+        <div className="rounded-[var(--radius-shell-row)] border border-[color:var(--border-soft)] bg-[color:var(--surface-elevated)] p-4 space-y-3">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2">
+              <span className="font-mono text-[11px] text-[color:var(--text-primary)]">size="compact"</span>
+            </div>
+            <span className="text-[10px] text-[color:var(--text-muted)]">内联表单 · 2-3 项</span>
+          </div>
+          <div className="flex min-h-[44px] items-center">
+            <SegmentedControl<TriggerMode>
+              ariaLabel="触发方式"
+              value={triggerMode}
+              onValueChange={setTriggerMode}
+              options={triggerOptions}
+              size="compact"
+            />
+          </div>
+          <p className="text-[11px] text-[color:var(--text-muted)]">
+            28px 高 · <code className="font-mono">muted/40</code> 背景。密集表单或侧栏的二选一场景。
+          </p>
+        </div>
+      </div>
+
+      {/* 遗留形态 — 迁移基线，视觉弱化 */}
+      <details className="rounded-[var(--radius-shell-row)] border border-dashed border-[color:var(--border-soft)] bg-[color:var(--surface-muted)]/50 px-4 py-3 group">
+        <summary className="cursor-pointer list-none text-[11px] text-[color:var(--text-muted)] flex items-center gap-2">
+          <span className="inline-block h-1.5 w-1.5 rounded-full bg-[color:var(--text-muted)]" />
+          <span>遗留形态（手写 div + button，禁止新增）</span>
+          <span className="ml-auto text-[10px] opacity-60 group-open:hidden">展开查看</span>
+        </summary>
+        <div className="mt-3 flex items-center gap-3">
+          <div
+            role="radiogroup"
+            aria-label="选择主题模式（遗留示例）"
+            className="inline-flex items-center gap-1 rounded-full border border-[color:var(--border-soft)] bg-[color:var(--surface-panel-strong)] p-1"
+          >
+            {(['light', 'dark', 'system'] as const).map(mode => {
+              const selected = legacyThemeMode === mode;
+              return (
+                <button
+                  key={mode}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  onClick={() => setLegacyThemeMode(mode)}
+                  className={cn(
+                    'px-3 py-1 rounded-full text-xs transition-colors',
+                    selected
+                      ? 'bg-[color:var(--interactive-selected)] text-[color:var(--text-primary)]'
+                      : 'text-[color:var(--text-muted)] hover:bg-[color:var(--interactive-hover)]',
+                  )}
+                >
+                  {mode === 'light' ? '亮色' : mode === 'dark' ? '暗色' : '系统'}
+                </button>
+              );
+            })}
+          </div>
+          <span className="text-[10px] text-[color:var(--text-muted)]">
+            无键盘导航 · 无 aria-label · 已被迁移契约守护
+          </span>
+        </div>
+      </details>
+
+      {/* 迁移要点 — 紧凑信息条 */}
+      <div className="rounded-[var(--radius-shell-row)] bg-[color:var(--surface-muted)]/60 px-4 py-3 text-[11px] text-[color:var(--text-secondary)] leading-relaxed">
+        <div className="flex items-start gap-3">
+          <span className="mt-0.5 rounded-sm bg-[color:var(--brand-200)] px-1.5 py-0.5 font-mono text-[10px] text-[color:var(--text-primary)]">APG</span>
+          <div className="space-y-1">
+            <p>
+              <code className="font-mono">role="radiogroup"</code> + 箭头 / Home / End 键盘导航；选项 &gt; 4 或需搜索 → 改用
+              <code className="font-mono"> shad Select</code> / <code className="font-mono">Combobox</code>。
+            </p>
+            <p className="text-[color:var(--text-muted)]">
+              迁移契约：<code className="font-mono">tests/vitest/segmentedControlMigrationContract.test.ts</code> 守护 3 个已迁移 surface。
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── 导出主组件 ─────────────────────────────────────────────────
 
-type CompareSection = 'button' | 'form' | 'tooltip' | 'toast';
+type CompareSection = 'button' | 'form' | 'segmented' | 'tooltip' | 'toast';
 
 export function ComponentCompareTab() {
   const [activeSection, setActiveSection] = useState<CompareSection>('button');
@@ -517,6 +715,7 @@ export function ComponentCompareTab() {
   const sections: Array<{ id: CompareSection; label: string }> = [
     { id: 'button', label: 'Button' },
     { id: 'form', label: 'Form Controls' },
+    { id: 'segmented', label: 'Segmented' },
     { id: 'tooltip', label: 'Tooltip' },
     { id: 'toast', label: 'Toast' },
   ];
@@ -546,6 +745,7 @@ export function ComponentCompareTab() {
       <div className="pt-2">
         {activeSection === 'button' && <ButtonCompareSection />}
         {activeSection === 'form' && <FormControlsCompareSection />}
+        {activeSection === 'segmented' && <SegmentedCompareSection />}
         {activeSection === 'tooltip' && <TooltipCompareSection />}
         {activeSection === 'toast' && <ToastCompareSection />}
       </div>

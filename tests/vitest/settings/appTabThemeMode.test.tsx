@@ -83,11 +83,16 @@ describe('AppTab theme mode settings', () => {
     const selectedButton = screen.getByRole('radio', { name: '浅色' });
     const unselectedButton = screen.getByRole('radio', { name: '深色' });
 
+    // Behavioural contracts only: selection state is advertised via aria-
+    // checked + data-selected, and every option carries the shared primitive
+    // hook class. Implementation-level hover/background utility classes are
+    // intentionally not asserted here — the sliding-thumb refactor moved the
+    // highlight off the button and onto a sibling, so pinning specific
+    // background utility names would re-couple tests to internal styling.
     expect(selectedButton).toHaveAttribute('data-selected', 'true');
     expect(selectedButton).toHaveAttribute('aria-checked', 'true');
-    expect(selectedButton.className).toContain('!bg-[color:var(--interactive-selected)]');
-    expect(selectedButton.className).toContain('hover:!bg-[color:var(--interactive-selected)]');
-    expect(unselectedButton.className).toContain('hover:!bg-[color:var(--interactive-hover)]');
+    expect(unselectedButton).toHaveAttribute('data-selected', 'false');
+    expect(unselectedButton).toHaveAttribute('aria-checked', 'false');
 
     const zhButton = screen.getByRole('radio', { name: '中文' });
     const enButton = screen.getByRole('radio', { name: 'English' });
@@ -96,7 +101,7 @@ describe('AppTab theme mode settings', () => {
     expect(enButton.className).toContain('study-shell-segmented-button');
     expect(enButton).toHaveAttribute('data-selected', 'true');
     expect(enButton).toHaveAttribute('aria-checked', 'true');
-    expect(enButton.className).toContain('!bg-[color:var(--interactive-selected)]');
+    expect(zhButton).toHaveAttribute('data-selected', 'false');
 
     const languageRow = screen.getByText('settings:language.title').closest('div.group');
     expect(languageRow).not.toBeNull();
