@@ -11,7 +11,7 @@
  * ★ 2026-01 清理：notes_rag_* 操作已移除，VFS RAG 完全替代
  *
  * @see src/dstu/adapters/notesDstuAdapter.ts for CRUD operations
- * @see src/components/notes/NotesContext.tsx for DSTU integration
+ * @see src/features/notes/NotesContext.tsx for DSTU integration
  */
 import { invoke } from '@tauri-apps/api/core';
 

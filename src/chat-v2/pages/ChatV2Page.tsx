@@ -25,7 +25,7 @@ import { LearningHubSidebar } from '@/features/learning-hub';
 import type { ResourceListItem, ResourceType } from '@/features/learning-hub/types';
 import { useFinderStore } from '@/features/learning-hub/stores/finderStore';
 import { MobileBreadcrumb } from '@/features/learning-hub/components/MobileBreadcrumb';
-import { useNotesOptional } from '@/components/notes/NotesContext';
+import { useNotesOptional } from '@/features/notes/NotesContext';
 import { registerOpenResourceHandler } from '@/dstu/openResource';
 import type { DstuNode } from '@/dstu/types';
 import { mapDstuNodeToLearningHubItem } from './openResourceMapping';

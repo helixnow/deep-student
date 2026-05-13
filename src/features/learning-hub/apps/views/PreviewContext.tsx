@@ -26,7 +26,7 @@ import {
   clampNumber,
 } from './previewUtils';
 
-import type { PreviewType as FullPreviewType } from '@/components/notes/types/reference';
+import type { PreviewType as FullPreviewType } from '@/features/notes/types/reference';
 
 // ============================================================================
 // 类型定义

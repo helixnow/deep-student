@@ -10,7 +10,7 @@
  */
 
 import type { ContextRef } from '@/chat-v2/context/types';
-import type { ReferenceNode } from '@/components/notes/types/reference';
+import type { ReferenceNode } from '@/features/notes/types/reference';
 import type { FolderItemType, VfsFolderItem } from '@/dstu/types/folder';
 import type { DstuNode, DstuNodeType } from '@/dstu/types';
 

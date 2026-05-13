@@ -31,9 +31,9 @@ import { cn } from '@/lib/utils';
 import type {
   TreeData,
   TreeNode as TreeNodeType,
-} from '@/components/notes/DndFileTree/types';
-import type { SourceDatabase, PreviewType } from '@/components/notes/types/reference';
-import { isReferenceId } from '@/components/notes/types/reference';
+} from '@/features/notes/DndFileTree/types';
+import type { SourceDatabase, PreviewType } from '@/features/notes/types/reference';
+import { isReferenceId } from '@/features/notes/types/reference';
 
 // ============================================================================
 // 类型定义

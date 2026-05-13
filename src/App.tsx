@@ -33,7 +33,7 @@ import { TauriAPI } from './utils/tauriApi';
 import { isWindows, isMacOS } from './utils/platform';
 // 🚀 性能优化：ChatV2Page 改为懒加载，见 lazyComponents.tsx
 // 🚀 P0-1 性能优化：NoteEditorPortal 改为懒加载，避免 CrepeEditor → mermaid (~1.6MB) 进入首屏 bundle
-const LazyNoteEditorPortal = React.lazy(() => import('./components/notes/NoteEditorPortal').then(m => ({ default: m.NoteEditorPortal })));
+const LazyNoteEditorPortal = React.lazy(() => import('./features/notes/NoteEditorPortal').then(m => ({ default: m.NoteEditorPortal })));
 // 🚀 性能优化：TreeDragTest, PdfReader, LearningHubPage 改为懒加载
 import {
   LearningHubNavigationProvider,

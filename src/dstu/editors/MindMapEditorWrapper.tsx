@@ -22,7 +22,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 // 懒加载 MindMapContentView
 const MindMapContentView = lazy(() => 
-  import('@/components/mindmap/MindMapContentView').then(m => ({ default: m.MindMapContentView }))
+  import('@/features/mindmap/MindMapContentView').then(m => ({ default: m.MindMapContentView }))
 );
 
 /**

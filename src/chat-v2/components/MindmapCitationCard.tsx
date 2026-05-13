@@ -12,7 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Network } from 'lucide-react';
-import { MindMapEmbed } from '@/components/mindmap/components/mindmap/MindMapEmbed';
+import { MindMapEmbed } from '@/features/mindmap/components/mindmap/MindMapEmbed';
 
 // ============================================================================
 // 类型定义

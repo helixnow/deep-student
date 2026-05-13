@@ -34,7 +34,7 @@ const EssayContentView = lazy(() => import('./views/EssayContentView'));
 const ImageContentView = lazy(() => import('./views/ImageContentView'));
 const FileContentView = lazy(() => import('./views/FileContentView'));
 // 🔧 MindMapContentView
-const MindMapContentView = lazy(() => import('@/components/mindmap/MindMapContentView').then(module => ({ default: module.MindMapContentView })));
+const MindMapContentView = lazy(() => import('@/features/mindmap/MindMapContentView').then(module => ({ default: module.MindMapContentView })));
 
 // ============================================================================
 // 类型定义
