@@ -131,8 +131,10 @@ class SessionManagerImpl implements ISessionManager {
     // 6. 订阅流式状态变化
     this.subscribeToStreamingState(sessionId, store);
 
-    // 7. 发送事件
-    this.emit({ type: 'session-created', sessionId });
+    // 7. 发送事件（延迟到微任务，避免在 React render 中同步触发 setState）
+    queueMicrotask(() => {
+      this.emit({ type: 'session-created', sessionId });
+    });
 
     // 8. 可选：预加载历史
     if (options?.preload) {

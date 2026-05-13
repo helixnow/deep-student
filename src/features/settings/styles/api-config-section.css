@@ -1,6 +1,6 @@
 /* API配置管理区域样式 - 参考Irec管理器风格 */
 
-/* CSS变量定义 */
+/* CSS变量 + 主容器布局（合并为单一规则，避免重复定义） */
 .api-config-section {
   --section-bg: hsl(var(--background));
   --card-bg: hsl(var(--card));
@@ -22,10 +22,6 @@
   --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
   --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
   --shadow-hover: 0 8px 16px rgba(0, 0, 0, 0.12);
-}
-
-/* 主容器 */
-.api-config-section {
   width: 100%;
   padding: 1.5rem;
   background: var(--section-bg);
