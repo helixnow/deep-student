@@ -5,13 +5,7 @@ import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
 import { viteStaticCopy } from "vite-plugin-static-copy";
 import { visualizer } from "rollup-plugin-visualizer";
-// Explicit PostCSS config to ensure Tailwind is applied even if auto-detection fails
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore
-import tailwindcss from "tailwindcss";
-// eslint-disable-next-line @typescript-eslint/ban-ts-comment
-// @ts-ignore
-import autoprefixer from "autoprefixer";
+import tailwindcss from "@tailwindcss/vite";
 
 // PDF.js 资源路径配置（用于支持非拉丁字符、JPEG 2000 图片、标准字体）
 const require = createRequire(import.meta.url);
@@ -29,6 +23,7 @@ export default defineConfig(({ command, mode }) => ({
   // dev 使用默认根路径，build 使用相对路径
   base: command === 'serve' ? '/' : './',
   plugins: [
+    tailwindcss(),
     // 生产构建排除 mcp-debug 模块（4,573 行调试代码），替换为空实现
     mode === 'production' && {
       name: 'exclude-mcp-debug',
@@ -89,11 +84,6 @@ export default defineConfig(({ command, mode }) => ({
       '@lezer/common',
       '@lezer/highlight'
     ],
-  },
-  css: {
-    postcss: {
-      plugins: [tailwindcss(), autoprefixer()],
-    },
   },
 
   // Vite options tailored for Tauri development and only applied in `tauri dev` or `tauri build`

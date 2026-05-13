@@ -1,12 +1,187 @@
-@import './thinking-scrollbar.css';
-@import './notion-animations.css';
-@import './transitions-dev.css';
+@import './thinking-scrollbar.css' layer(base);
+@import './notion-animations.css' layer(base);
+@import './transitions-dev.css' layer(base);
 
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import 'tailwindcss';
 
-/* shadcn/ui 基础样式：设置默认边框颜色 */
+/* Dark mode uses class strategy */
+@custom-variant dark (&:where(.dark, .dark *));
+
+@theme {
+  /* Breakpoints (xs is custom, rest match defaults) */
+  --breakpoint-xs: 480px;
+
+  /* Font families */
+  --font-sans: var(--font-family);
+  --font-cn: var(--font-family-cn);
+  --font-mono: var(--font-mono);
+
+  /* Font sizes */
+  --text-xs: var(--font-size-xs);
+  --text-sm: var(--font-size-sm);
+  --text-base: var(--font-size-base);
+  --text-md: var(--font-size-md);
+  --text-lg: var(--font-size-lg);
+  --text-xl: var(--font-size-xl);
+  --text-2xl: var(--font-size-2xl);
+  --text-3xl: var(--font-size-3xl);
+
+  /* Font weights */
+  --font-weight-normal: var(--font-weight-normal);
+  --font-weight-medium: var(--font-weight-medium);
+  --font-weight-semibold: var(--font-weight-semibold);
+  --font-weight-bold: var(--font-weight-bold);
+
+  /* Line heights */
+  --leading-tight: var(--line-height-tight);
+  --leading-snug: var(--line-height-snug);
+  --leading-normal: var(--line-height-normal);
+  --leading-relaxed: var(--line-height-relaxed);
+
+  /* Letter spacing */
+  --tracking-tight: var(--letter-spacing-tight);
+  --tracking-normal: var(--letter-spacing-normal);
+  --tracking-wide: var(--letter-spacing-wide);
+
+  /* Colors */
+  --color-border: hsl(var(--border));
+  --color-input: hsl(var(--input));
+  --color-ring: hsl(var(--ring));
+  --color-background: hsl(var(--background));
+  --color-foreground: hsl(var(--foreground));
+
+  --color-primary: hsl(var(--primary));
+  --color-primary-foreground: hsl(var(--primary-foreground));
+
+  --color-secondary: hsl(var(--secondary));
+  --color-secondary-foreground: hsl(var(--secondary-foreground));
+
+  --color-destructive: hsl(var(--destructive));
+  --color-destructive-foreground: hsl(var(--destructive-foreground));
+
+  --color-muted: hsl(var(--muted));
+  --color-muted-foreground: hsl(var(--muted-foreground));
+
+  --color-accent: hsl(var(--accent));
+  --color-accent-foreground: hsl(var(--accent-foreground));
+
+  --color-popover: hsl(var(--popover));
+  --color-popover-foreground: hsl(var(--popover-foreground));
+
+  --color-card: hsl(var(--card));
+  --color-card-foreground: hsl(var(--card-foreground));
+
+  --color-info: hsl(var(--info));
+  --color-info-foreground: hsl(var(--info-foreground));
+
+  --color-success: hsl(var(--success));
+  --color-success-foreground: hsl(var(--success-foreground));
+
+  --color-warning: hsl(var(--warning));
+  --color-warning-foreground: hsl(var(--warning-foreground));
+
+  --color-danger: hsl(var(--danger));
+  --color-danger-foreground: hsl(var(--danger-foreground));
+
+  --color-neutral: hsl(var(--neutral));
+  --color-neutral-foreground: hsl(var(--neutral-foreground));
+
+  --color-brand-primary: var(--brand-primary);
+  --color-brand-secondary: var(--brand-secondary);
+  --color-brand-accent: var(--brand-accent);
+
+  /* Border radius */
+  --radius-lg: var(--radius);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-shell: var(--radius-shell-panel);
+  --radius-toolbar: var(--radius-shell-toolbar);
+  --radius-row: var(--radius-shell-row);
+  --radius-control: var(--radius-shell-control);
+  --radius-dialog: var(--radius-shell-dialog);
+
+  /* Box shadows */
+  --shadow-shell: var(--shadow-shell-panel);
+  --shadow-floating: var(--shadow-shell-floating);
+  --shadow-pressed: var(--shadow-shell-pressed);
+  --shadow-soft: var(--shadow-shell-soft);
+
+  /* Animations */
+  --animate-sweep: sweep 1.2s ease-in-out infinite;
+  --animate-dropzone-pulse: dropzonePulse 1.5s ease-in-out infinite;
+  --animate-card-pop: cardPop 0.45s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-marquee-y: marqueeY 6s linear infinite;
+  --animate-fade-slide-up: fadeSlideUp 0.6s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-blink: blink 1s steps(2, start) infinite;
+  --animate-in: fade-in 200ms ease-out;
+  --animate-out: fade-out 200ms ease-in;
+}
+
+/* Keyframes */
+@keyframes sweep {
+  0% { transform: translateX(-30%); }
+  50% { transform: translateX(100%); }
+  100% { transform: translateX(-30%); }
+}
+
+@keyframes dropzonePulse {
+  0% { transform: scale(0.98); box-shadow: 0 0 0 0 hsl(var(--primary) / 0.18); }
+  70% { transform: scale(1); box-shadow: 0 0 0 12px hsl(var(--primary) / 0); }
+  100% { transform: scale(0.98); box-shadow: 0 0 0 0 hsl(var(--primary) / 0); }
+}
+
+@keyframes cardPop {
+  0% { transform: scale(0.97); opacity: 0; }
+  60% { transform: scale(1.01); opacity: 1; }
+  100% { transform: scale(1); opacity: 1; }
+}
+
+@keyframes marqueeY {
+  0% { transform: translateY(0); }
+  100% { transform: translateY(-50%); }
+}
+
+@keyframes fadeSlideUp {
+  0% { opacity: 0; transform: translateY(12px); }
+  100% { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+@keyframes slide-in-from-left {
+  0% { transform: translateX(-100%); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes slide-out-to-left {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(-100%); }
+}
+
+@keyframes slide-in-from-right {
+  0% { transform: translateX(100%); }
+  100% { transform: translateX(0); }
+}
+
+@keyframes slide-out-to-right {
+  0% { transform: translateX(0); }
+  100% { transform: translateX(100%); }
+}
+
+@keyframes fade-in {
+  0% { opacity: 0; }
+  100% { opacity: 1; }
+}
+
+@keyframes fade-out {
+  0% { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+/* shadcn/ui base styles */
 @layer base {
   * {
     border-color: hsl(var(--border));
@@ -14,7 +189,6 @@
   html {
     font-size: calc(16px * var(--font-size-scale));
   }
-  /* 全局字体：覆盖 Tailwind preflight 的默认字体 */
   body {
     font-family: var(--font-family);
   }
@@ -22,6 +196,6 @@
 
 /* Custom utilities to match template helpers */
 @layer utilities {
-	.line-clamp-1 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; }
-	.line-clamp-2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+  .line-clamp-1 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 1; overflow: hidden; }
+  .line-clamp-2 { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
 }
