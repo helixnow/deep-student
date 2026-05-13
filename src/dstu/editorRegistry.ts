@@ -90,7 +90,7 @@ const lazyNoteEditor = (): Promise<{ default: EditorComponent }> =>
 /**
  * 懒加载 PDF 查看器
  *
- * 实际组件路径：src/components/TextbookPdfViewer.tsx
+ * 实际组件路径：src/features/pdf/components/TextbookPdfViewer.tsx
  */
 const lazyPDFViewer = (): Promise<{ default: EditorComponent }> =>
   import('./editors/PDFViewerWrapper').then((m) => ({ default: m.PDFViewerWrapper }));

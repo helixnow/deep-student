@@ -50,7 +50,7 @@ export async function registerAllStores(): Promise<void> {
     },
     {
       name: 'pdfSettings',
-      module: () => import('../stores/pdfSettingsStore'),
+      module: () => import('../features/pdf/stores/pdfSettingsStore'),
       exportName: 'usePdfSettingsStore',
     },
     {

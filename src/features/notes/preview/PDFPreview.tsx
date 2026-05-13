@@ -13,7 +13,7 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { AlertCircle, BookOpen, ExternalLink, FileText } from 'lucide-react';
 import { getErrorMessage } from '../../../utils/errorUtils';
 import type { PDFPreviewProps } from './types';
-import { EnhancedPdfViewer } from '@/components/pdf/EnhancedPdfViewer';
+import { EnhancedPdfViewer } from '@/features/pdf/components/EnhancedPdfViewer';
 import { cleanBase64String, estimateBase64Size, LARGE_FILE_THRESHOLD } from '@/utils/base64FileUtils';
 import { openUrl } from '@/utils/urlOpener';
 

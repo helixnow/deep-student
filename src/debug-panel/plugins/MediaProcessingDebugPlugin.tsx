@@ -45,7 +45,7 @@ import {
   Send,
 } from 'lucide-react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
-import { usePdfProcessingStore, type PdfProcessingStatus, type MediaType } from '../../stores/pdfProcessingStore';
+import { usePdfProcessingStore, type PdfProcessingStatus, type MediaType } from '@/features/pdf/stores/pdfProcessingStore';
 import { NotionButton } from '../../components/ui/NotionButton';
 import {
   CHATV2_LOG_EVENT,

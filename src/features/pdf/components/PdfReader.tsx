@@ -12,14 +12,14 @@ import {
   Download,
   X
 } from 'lucide-react';
-import useTheme from '../hooks/useTheme';
-import { TauriAPI } from '../utils/tauriApi';
-import { fileManager } from '../utils/fileManager';
+import useTheme from '@/hooks/useTheme';
+import { TauriAPI } from '@/utils/tauriApi';
+import { fileManager } from '@/utils/fileManager';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
-import './PdfReader.css';
-import { EnhancedPdfViewer } from './pdf/EnhancedPdfViewer';
-import { usePdfRenderTracker } from '../utils/pdfDebug';
+import '../styles/pdf-reader.css';
+import { EnhancedPdfViewer } from './EnhancedPdfViewer';
+import { usePdfRenderTracker } from '@/utils/pdfDebug';
 
 interface PdfReaderProps {}
 

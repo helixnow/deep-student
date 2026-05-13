@@ -4,7 +4,7 @@ import { Document, Page, Thumbnail, pdfjs } from 'react-pdf';
 import type { PDFDocumentProxy } from 'pdfjs-dist';
 import { useTranslation } from 'react-i18next';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { usePdfSettingsStore } from '../../stores/pdfSettingsStore';
+import { usePdfSettingsStore } from '../stores/pdfSettingsStore';
 import { dstu } from '@/dstu';
 import {
   ChevronLeft,
@@ -35,9 +35,9 @@ import {
 } from 'lucide-react';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
-import './enhanced-pdf.css';
-import { PDF_OPTIONS } from '../../utils/pdfConfig';
-import { CustomScrollArea } from '../custom-scroll-area';
+import '../styles/enhanced-pdf.css';
+import { PDF_OPTIONS } from '@/utils/pdfConfig';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
 
 // 配置 PDF.js worker - 使用构建基路径，避免打包后绝对路径失效
 pdfjs.GlobalWorkerOptions.workerSrc = `${import.meta.env.BASE_URL}pdf.worker.wrapper.mjs`;

@@ -9,7 +9,7 @@ import { RotateCcw } from 'lucide-react';
 import { Switch } from '@/components/ui/shad/Switch';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { usePdfSettingsStore } from '@/stores/pdfSettingsStore';
+import { usePdfSettingsStore } from '@/features/pdf/stores/pdfSettingsStore';
 import { cn } from '@/lib/utils';
 import { AppSelect } from '@/components/ui/app-menu';
 

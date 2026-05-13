@@ -34,7 +34,7 @@ import {
   CaretDown,
 } from '@phosphor-icons/react';
 import { usePdfProcessingProgress } from '@/hooks/usePdfProcessingProgress';
-import { usePdfProcessingStore } from '@/stores/pdfProcessingStore';
+import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {

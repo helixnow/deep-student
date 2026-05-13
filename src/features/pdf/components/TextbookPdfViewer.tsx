@@ -2,13 +2,13 @@ import React, { useState, useCallback, useRef, useMemo, useEffect } from 'react'
 import { NotionButton } from '@/components/ui/NotionButton';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
-import './TextbookPdfViewer.css';
-import { EnhancedPdfViewer, type Bookmark } from './pdf/EnhancedPdfViewer';
-import { usePdfRenderTracker } from '../utils/pdfDebug';
-import useTheme from '../hooks/useTheme';
-import { getErrorMessage } from '../utils/errorUtils';
+import '../styles/textbook-pdf-viewer.css';
+import { EnhancedPdfViewer, type Bookmark } from './EnhancedPdfViewer';
+import { usePdfRenderTracker } from '@/utils/pdfDebug';
+import useTheme from '@/hooks/useTheme';
+import { getErrorMessage } from '@/utils/errorUtils';
 import { BookOpen } from 'lucide-react';
-import { showGlobalNotification } from './UnifiedNotification';
+import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 
 /**

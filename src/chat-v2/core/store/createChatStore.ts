@@ -72,7 +72,7 @@ import type { ContextRef } from '../../resources/types';
 import type { EditMessageResult, RetryMessageResult } from '../../adapters/types';
 import { SKILL_INSTRUCTION_TYPE_ID } from '../../skills/types';
 import { skillDefaults } from '../../skills/skillDefaults';
-import { usePdfProcessingStore } from '../../../stores/pdfProcessingStore';
+import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
 import {
   updateSingleBlock,
   updateSingleMessage,

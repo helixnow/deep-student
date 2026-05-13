@@ -31,7 +31,7 @@ import { fileManager } from '@/utils/fileManager';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 // PDF 预览组件
-import { TextbookPdfViewer } from '@/components/TextbookPdfViewer';
+import { TextbookPdfViewer } from '@/features/pdf/components/TextbookPdfViewer';
 import { resolveFilePreviewMode } from './filePreviewResolver';
 import { RichDocumentPreview } from './RichDocumentPreview';
 

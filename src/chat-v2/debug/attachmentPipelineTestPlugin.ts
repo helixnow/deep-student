@@ -16,7 +16,7 @@
 import { CHATV2_LOG_EVENT, type ChatV2LogEntry } from './chatV2Logger';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { createSessionWithDefaults } from '../core/session/createSessionWithDefaults';
-import { usePdfProcessingStore } from '../../stores/pdfProcessingStore';
+import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
 import { getEffectiveReadyModes, getSelectedInjectModes } from '../components/input-bar/injectModeUtils';
 import type { AttachmentMediaType } from '../components/input-bar/injectModeUtils';
 

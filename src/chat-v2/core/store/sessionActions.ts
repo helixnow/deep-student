@@ -9,7 +9,7 @@ import { createDefaultChatParams, createDefaultPanelStates } from './types';
 import { getErrorMessage } from '../../../utils/errorUtils';
 import { logAttachment } from '../../debug/chatV2Logger';
 import { modeRegistry } from '../../registry';
-import { usePdfProcessingStore } from '../../../stores/pdfProcessingStore';
+import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
 import { debugLog } from '../../../debug-panel/debugMasterSwitch';
 
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;

@@ -100,7 +100,7 @@ export const LazyLearningHubPage = React.lazy(() =>
 
 // PDF 阅读器
 export const LazyPdfReader = React.lazy(() =>
-  import('./components/PdfReader').then(m => ({ default: m.default }))
+  import('./features/pdf/components/PdfReader').then(m => ({ default: m.default }))
 );
 
 // 待办事项

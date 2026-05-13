@@ -9,7 +9,7 @@
 
 import { useEffect } from 'react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { usePdfProcessingStore, type MediaType, type ProcessingStage } from '@/stores/pdfProcessingStore';
+import { usePdfProcessingStore, type MediaType, type ProcessingStage } from '@/features/pdf/stores/pdfProcessingStore';
 import { invalidateResourceCache } from '@/chat-v2/context/vfsRefApiEnhancements';
 import { debugLog } from '../debug-panel/debugMasterSwitch';
 

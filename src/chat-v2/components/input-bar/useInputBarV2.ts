@@ -16,7 +16,7 @@ import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import i18n from 'i18next';
 import type { ModelInfo } from '../../utils/parseModelMentions';
 import { isMultiModelSelectEnabled } from '@/config/featureFlags';
-import { usePdfProcessingStore } from '@/stores/pdfProcessingStore';
+import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
 import { isModelMultimodalAsync } from '@/chat-v2/hooks/useAvailableModels';
 import {
   areAttachmentInjectModesReady,

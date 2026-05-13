@@ -18,7 +18,7 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react'
 import { useTranslation } from 'react-i18next';
 import { AlertCircle, FileText, Loader2, RefreshCw } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { TextbookPdfViewer, type ReadingProgress, type Bookmark } from '@/components/TextbookPdfViewer';
+import { TextbookPdfViewer, type ReadingProgress, type Bookmark } from '@/features/pdf/components/TextbookPdfViewer';
 import type { ContentViewProps } from '../UnifiedAppPanel';
 import { dstu } from '@/dstu';
 import { reportError } from '@/shared/result';
