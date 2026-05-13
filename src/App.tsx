@@ -117,6 +117,7 @@ import {
   LazyTreeDragTest,
   LazyCrepeDemoPage,
   LazyChatV2IntegrationTest,
+  LazyLLMOutputPlayground,
   LazyChatV2Page,
 } from './lazyComponents';
 
@@ -2055,6 +2056,7 @@ function App() {
       'tree-test': t('common:navigation.tree_test', 'Tree Test'),
       'crepe-demo': t('common:navigation.crepe_demo', 'Crepe Demo'),
       'chat-v2-test': t('common:navigation.chat_v2_test', 'Chat V2 Test'),
+      'llm-playground': 'LLM Playground',
     };
 
     return labels[currentView] ?? t('common:app.default_header', '新对话');
@@ -2251,8 +2253,15 @@ function App() {
         data-shell-role="app-shell"
         data-sidebar-visible={isDesktopSidebarSurfaceVisible ? 'true' : 'false'}
         className={cn(
-          'relative flex h-dvh w-full overflow-hidden font-sans text-foreground transition-colors duration-500',
-          'bg-[color:var(--shell-backdrop)]'
+          'relative flex h-dvh w-full overflow-hidden font-sans text-foreground'
+          // 背景由 App.css 的 [data-shell-role="app-shell"] 规则根据 data-sidebar-visible
+          // 切换到 --shell-navigation-surface / --shell-backdrop，保证工作区左下凹角
+          // 透出的颜色与侧边栏严格同源，避免主题切换时出现色差（与左上凹角一致）。
+          //
+          // 注意：刻意不在此层加 `transition-colors duration-500`。
+          // 工作区圆角凹陷处会透出本层背景；如果本层做颜色过渡，而相邻的 workspace、
+          // titlebar 是瞬间变色，主题切换中间帧就会出现色差（左下凹角白底闪烁问题）。
+          // 业界最佳实践（Notion / Linear / VS Code）：主题切换瞬间生效，避免接缝问题。
         )}
         style={appShellCustomProperties}
       >
@@ -2475,6 +2484,8 @@ function App() {
               {import.meta.env.DEV && renderViewLayer('crepe-demo', <Suspense fallback={<PageLoadingFallback />}><LazyCrepeDemoPage onBack={() => setCurrentView('settings')} /></Suspense>)}
 
               {import.meta.env.DEV && renderViewLayer('chat-v2-test', <Suspense fallback={<PageLoadingFallback />}><LazyChatV2IntegrationTest /></Suspense>)}
+
+              {import.meta.env.DEV && renderViewLayer('llm-playground', <Suspense fallback={<PageLoadingFallback />}><LazyLLMOutputPlayground /></Suspense>)}
 
               {/* Chat V2 正式入口 */}
               {renderViewLayer('chat-v2', chatV2Content)}

@@ -40,7 +40,7 @@ const BASE_CANONICAL_VIEWS: CurrentView[] = [
   'todo',
 ];
 
-const DEV_ONLY_VIEWS: CurrentView[] = ['crepe-demo', 'chat-v2-test', 'tree-test'];
+const DEV_ONLY_VIEWS: CurrentView[] = ['crepe-demo', 'chat-v2-test', 'tree-test', 'llm-playground'];
 
 export const CANONICAL_VIEWS: ReadonlySet<CurrentView> = new Set([
   ...BASE_CANONICAL_VIEWS,

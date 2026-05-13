@@ -124,6 +124,10 @@ export const LazyChatV2IntegrationTest = import.meta.env.DEV
   ? React.lazy(() => import('./chat-v2/dev').then(m => ({ default: m.IntegrationTest })))
   : React.lazy(devLazy);
 
+export const LazyLLMOutputPlayground = import.meta.env.DEV
+  ? React.lazy(() => import('./chat-v2/dev/playground').then(m => ({ default: m.LLMOutputPlayground })))
+  : React.lazy(devLazy);
+
 // 图片查看器
 export const LazyImageViewer = React.lazy(() =>
   import('./components/ImageViewer').then(m => ({ default: m.ImageViewer }))

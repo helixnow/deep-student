@@ -875,6 +875,17 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
               >
                 {t('debug_panel.home')}
               </NotionButton>
+              <NotionButton
+                onClick={() => {
+                  window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { detail: { view: 'llm-playground' } }));
+                }}
+                variant="ghost"
+                size="sm"
+                className="text-[10px] h-6 px-2"
+                title="LLM 输出模拟游乐场"
+              >
+                LLM Playground
+              </NotionButton>
             </div>
           </div>
           <div className="flex items-center gap-1.5" onMouseDown={ev => ev.stopPropagation()}>
