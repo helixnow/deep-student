@@ -391,27 +391,64 @@ body {
   color: var(--button-danger-foreground);
 }
 
+/*
+ * SegmentedControl — flat, restrained.
+ *
+ * Thumb is a direct child of root, positioned absolutely. Only translates
+ * on X; width/height snap instantly. No hover, no press animation, no
+ * color transitions. The only motion is the thumb sliding.
+ */
+
 .study-shell-segmented {
+  position: relative;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 4px;
-  border: 1px solid var(--shell-workspace-border);
-  border-radius: var(--radius-shell-toolbar);
-  background: var(--surface-panel-strong);
+  gap: 2px;
+}
+
+.study-shell-segmented-thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  border-radius: var(--radius-shell-control);
+  background: var(--button-utility-surface);
+  border: 1px solid var(--button-utility-border);
+  pointer-events: none;
+}
+
+.study-shell-segmented[data-size="compact"] .study-shell-segmented-thumb {
+  border-radius: calc(var(--radius-shell-control) - 2px);
 }
 
 .study-shell-segmented-button {
-  min-height: 28px;
-  border-radius: var(--radius-shell-control);
-  border: 1px solid transparent;
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
 }
 
-.study-shell-segmented-button[data-selected="true"] {
-  border-color: var(--button-utility-border);
-  background: var(--button-utility-surface);
-  color: var(--text-primary);
-  box-shadow: var(--shadow-shell-soft);
+.study-shell-segmented-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.study-shell-segmented-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.study-shell-segmented-button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
 }
 
 .study-shell-empty-state {
