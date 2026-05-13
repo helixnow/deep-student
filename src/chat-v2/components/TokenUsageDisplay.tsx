@@ -7,7 +7,7 @@
 
 import React, { memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Zap } from 'lucide-react';
+import { Lightning } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import type { TokenUsage } from '../core/types';
@@ -140,7 +140,7 @@ export const TokenUsageDisplay: React.FC<TokenUsageDisplayProps> = memo(
           {/* 总计 */}
           <div className="flex items-center justify-between">
              <span className="text-gray-900 dark:text-white font-medium flex items-center gap-2">
-               <Zap size={13} className="text-amber-500" />
+               <Lightning size={13} className="text-amber-500" />
                {t('tokenUsage.total')}
              </span>
              <span className="font-mono tabular-nums font-bold text-gray-900 dark:text-white">{usage.totalTokens.toLocaleString()}</span>
@@ -171,7 +171,7 @@ export const TokenUsageDisplay: React.FC<TokenUsageDisplayProps> = memo(
               className
             )}
           >
-            <Zap size={12} className="text-amber-500 dark:text-amber-400" />
+            <Lightning size={12} className="text-amber-500 dark:text-amber-400" />
             <span className="font-medium text-gray-700 dark:text-gray-200">{formatTokenCount(usage.totalTokens)}</span>
             <span className="text-emerald-600 dark:text-emerald-400">↑{formatTokenCount(usage.promptTokens)}</span>
             <span className="text-blue-600 dark:text-blue-400">↓{formatTokenCount(usage.completionTokens)}</span>
@@ -195,7 +195,7 @@ export const TokenUsageDisplay: React.FC<TokenUsageDisplayProps> = memo(
             className
           )}
         >
-          <Zap size={11} className="text-amber-500 dark:text-amber-400" />
+          <Lightning size={11} className="text-amber-500 dark:text-amber-400" />
           <span className="font-semibold text-gray-700 dark:text-gray-100">{formatTokenCount(usage.totalTokens)}</span>
           <span className="flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400">
             <span className="text-[9px] opacity-70">↑</span>{formatTokenCount(usage.promptTokens)}

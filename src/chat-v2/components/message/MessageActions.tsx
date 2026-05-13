@@ -2,7 +2,7 @@
  * MessageActions - 消息操作按钮组件
  */
 import React, { useCallback, useState } from 'react';
-import { Copy, Check, RotateCcw, Trash2, Edit3, Bug, BookmarkPlus, GitBranch } from 'lucide-react';
+import { CopySimple, Check, ArrowCounterClockwise, Trash, PencilSimple, Bug, BookmarkSimple, GitBranch } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -125,13 +125,13 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
     <div className={cn('flex items-center gap-1', className)}>
       {/* 复制按钮 */}
       <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCopy} aria-label={t('messageItem.actions.copy')} title={t('messageItem.actions.copy')}>
-        {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+        {copied ? <Check className="w-4 h-4 text-green-500" /> : <CopySimple className="w-4 h-4" />}
       </NotionButton>
 
       {/* 🆕 保存为笔记按钮（仅助手消息） */}
       {onSaveAsNote && (
         <NotionButton variant="ghost" size="icon" iconOnly onClick={handleSaveAsNote} disabled={isSavingNote} aria-label={t('messageItem.actions.saveAsNote')} title={t('messageItem.actions.saveAsNote')}>
-          <BookmarkPlus className={cn('w-4 h-4', isSavingNote && 'animate-pulse')} />
+          <BookmarkSimple className={cn('w-4 h-4', isSavingNote && 'animate-pulse')} />
         </NotionButton>
       )}
 
@@ -152,34 +152,34 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
       {/* 重试按钮（仅助手消息） */}
       {!isUser && onRetry && (
         <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRetry} disabled={isLocked || isRetrying} aria-label={t('messageItem.actions.retry')} title={t('messageItem.actions.retry')}>
-          <RotateCcw className={cn('w-4 h-4', isRetrying && 'animate-spin')} />
+          <ArrowCounterClockwise className={cn('w-4 h-4', isRetrying && 'animate-spin')} />
         </NotionButton>
       )}
 
       {/* 重新发送按钮（仅用户消息） */}
       {isUser && onResend && (
         <NotionButton variant="ghost" size="icon" iconOnly onClick={handleResend} disabled={isLocked || isResending} aria-label={t('messageItem.actions.resend')} title={t('messageItem.actions.resend')}>
-          <RotateCcw className={cn('w-4 h-4', isResending && 'animate-spin')} />
+          <ArrowCounterClockwise className={cn('w-4 h-4', isResending && 'animate-spin')} />
         </NotionButton>
       )}
 
       {/* 编辑按钮（仅用户消息） */}
       {isUser && onEdit && (
         <NotionButton variant="ghost" size="icon" iconOnly onClick={onEdit} disabled={!canEdit} aria-label={t('messageItem.actions.edit')} title={t('messageItem.actions.edit')}>
-          <Edit3 className="w-4 h-4" />
+          <PencilSimple className="w-4 h-4" />
         </NotionButton>
       )}
 
       {/* 删除按钮 - 带二次确认 */}
       <NotionButton variant="ghost" size="icon" iconOnly disabled={!canDelete || isDeleting} className={cn(!canDelete || isDeleting ? '' : 'hover:text-destructive')} aria-label={t('messageItem.actions.delete')} title={t('messageItem.actions.delete')} onClick={() => setDeleteConfirmOpen(true)}>
-        <Trash2 className={cn('w-4 h-4', isDeleting && 'animate-pulse')} />
+        <Trash className={cn('w-4 h-4', isDeleting && 'animate-pulse')} />
       </NotionButton>
       <NotionAlertDialog
         open={deleteConfirmOpen}
         onOpenChange={setDeleteConfirmOpen}
         title={t('messageItem.actions.deleteConfirmTitle', '确认删除')}
         description={t('messageItem.actions.deleteConfirmDesc', '确定要删除这条消息吗？此操作无法撤销。')}
-        icon={<Trash2 className="h-5 w-5 text-red-500" />}
+        icon={<Trash className="h-5 w-5 text-red-500" />}
         confirmText={t('messageItem.actions.delete', '删除')}
         cancelText={t('common.cancel', '取消')}
         confirmVariant="danger"

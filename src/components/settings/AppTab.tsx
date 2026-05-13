@@ -6,7 +6,10 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, Monitor, Moon, SunMedium } from 'lucide-react';
+import { Loader2 } from 'lucide-react';
+// Phosphor icons for the theme-mode SegmentedControl — rounded weight sits
+// more comfortably inside the control's 36px thumb than lucide's SunMedium.
+import { Monitor, Moon, Sun } from '@phosphor-icons/react';
 import { debugMasterSwitch } from '../../debug-panel/debugMasterSwitch';
 import { NotionButton } from '../ui/NotionButton';
 import { SegmentedControl } from '../ui/SegmentedControl';
@@ -265,7 +268,7 @@ export const AppTab: React.FC<AppTabProps> = ({
     {
       mode: 'light' as const,
       label: t('settings:theme.modes.light', '浅色'),
-      icon: SunMedium,
+      icon: Sun,
     },
     {
       mode: 'dark' as const,
@@ -357,7 +360,11 @@ export const AppTab: React.FC<AppTabProps> = ({
                   title,
                   label: (
                     <>
-                      <Icon className="h-[18px] w-[18px]" strokeWidth={2} />
+                      {/* Phosphor icons pick their visual weight via the
+                          `weight` prop; `bold` sits closest to lucide
+                          SunMedium/strokeWidth=2 density without ever
+                          triggering currentColor re-hint jitter. */}
+                      <Icon className="h-[18px] w-[18px]" weight="bold" aria-hidden="true" />
                       <span>{label}</span>
                     </>
                   ),
