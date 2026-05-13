@@ -1959,3 +1959,613 @@ div[style*="position: fixed"][style*="top: 0"][style*="right: 0"][id*="debug"]:n
 div[style*="position: absolute"][style*="top: 0"][style*="right: 0"][id*="debug"]:not(.window-controls) {
   display: none !important;
 }
+
+/* ============================================================= */
+/* Recovered sidebar & shell styles (App.css + DeepStudent.css)   */
+/* ============================================================= */
+
+/* --- !important overrides for .app container (DeepStudent.css) --- */
+.app {
+  display: flex !important;
+  flex-direction: row !important;
+  min-height: 100vh !important;
+  background-color: hsl(var(--muted));
+  font-family: var(--font-family);
+  color: hsl(var(--foreground));
+  transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+  --sidebar-width: 110px;
+  --sidebar-collapsed-width: 48px;
+  --sidebar-expanded-width: var(--sidebar-width);
+  --sidebar-bg: var(--background);
+  --sidebar-border: var(--border);
+  --header-sidebar-inner-radius: 16px;
+  --transition-timing: 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* --- !important overrides for .app-body --- */
+.app-body {
+  display: flex;
+  padding-top: 0;
+  flex-direction: row !important;
+  flex: 1 !important;
+  overflow: hidden !important;
+}
+
+/* --- !important overrides for .app-sidebar (DeepStudent.css) --- */
+.app-sidebar {
+  display: flex !important;
+  flex-direction: column;
+  width: var(--sidebar-expanded-width);
+  min-width: var(--sidebar-expanded-width);
+  will-change: width;
+  position: fixed;
+  top: 0;
+  left: 0;
+  bottom: 0;
+  z-index: 1001;
+  background: hsl(var(--sidebar-bg, var(--background))) !important;
+  border: none !important;
+  padding-top: var(--desktop-titlebar-height);
+}
+
+/* --- !important overrides for .app-content (DeepStudent.css) --- */
+.app-content {
+  flex: 1 !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
+  background: hsl(var(--sidebar-bg, var(--background)));
+  min-width: 0;
+  position: relative;
+  margin-left: var(--sidebar-collapsed-width);
+}
+
+/* --- !important overrides for .content-body (DeepStudent.css) --- */
+.content-body {
+  flex: 1;
+  padding: 0;
+  position: relative !important;
+  overflow: hidden !important;
+  background: var(--shell-workspace-surface);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  margin-top: 0;
+  z-index: 1;
+}
+
+/* --- .sidebar element (App.css) --- */
+.sidebar {
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+/* --- main element (App.css) --- */
+main {
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  overflow: hidden;
+  height: 100vh;
+  max-height: 100vh;
+}
+
+/* --- .settings-nav-item-label (App.css) --- */
+.settings-nav-item-label {
+  color: var(--shell-navigation-foreground);
+}
+
+[data-theme="dark"] .settings-nav-item-label {
+  color: var(--shell-navigation-foreground);
+}
+
+/* --- .settings-textarea-scrollbar (App.css) --- */
+.settings-textarea-scrollbar::-webkit-scrollbar {
+  width: 8px !important;
+  height: 8px !important;
+  display: block !important;
+}
+
+.settings-textarea-scrollbar::-webkit-scrollbar-track {
+  background: var(--scrollbar-track, hsl(var(--muted) / 0.3)) !important;
+  border-radius: 4px;
+}
+
+.settings-textarea-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb, hsl(var(--muted-foreground) / 0.3)) !important;
+  border-radius: 4px;
+}
+
+.settings-textarea-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover, hsl(var(--muted-foreground) / 0.5)) !important;
+}
+
+/* --- .floating-panel-occlusion-host (App.css) --- */
+.floating-panel-occlusion-host::before,
+.floating-panel-occlusion-host::after {
+  content: "";
+  position: absolute;
+  left: 0.75rem;
+  right: 0.75rem;
+  height: clamp(160px, 24vh, 320px);
+  pointer-events: none;
+  border-radius: 32px;
+  opacity: 0;
+  transition: opacity 0.18s ease;
+  z-index: 95;
+}
+
+.floating-panel-occlusion-host::before {
+  bottom: calc(100% - 12px);
+  background: linear-gradient(180deg, hsl(var(--card)) 0%, hsl(var(--card)) 65%, hsl(var(--card) / 0) 100%);
+  box-shadow: 0 -14px 40px rgba(2, 6, 23, 0.12);
+}
+
+.floating-panel-occlusion-host::after {
+  top: calc(100% - 12px);
+  background: linear-gradient(0deg, hsl(var(--card)) 0%, hsl(var(--card)) 65%, hsl(var(--card) / 0) 100%);
+  box-shadow: 0 18px 48px rgba(2, 6, 23, 0.16);
+}
+
+.floating-panel-occlusion-host[data-occlude-top='true']::before {
+  opacity: 1;
+}
+
+.floating-panel-occlusion-host[data-occlude-bottom='true']::after {
+  opacity: 1;
+}
+
+/* --- .edit-modal (App.css) --- */
+.edit-modal-overlay { align-items: center; justify-content: center; }
+.edit-modal { width: min(92%, 740px); max-width: 740px; }
+.edit-modal textarea { width: 100% !important; max-width: 100% !important; display: block; }
+
+/* --- Chat container fullscreen (DeepStudent.css) --- */
+.chat-container {
+  position: relative;
+  background: transparent;
+  border-radius: 0;
+  border: none;
+  transition:
+    all 0.3s cubic-bezier(0.25, 0.1, 0.25, 1),
+    transform 0.3s cubic-bezier(0.25, 0.1, 0.25, 1);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  transform-origin: bottom right;
+  height: 100%;
+  overflow: hidden;
+}
+
+.chat-container.chat-fullscreen {
+  position: fixed !important;
+  top: var(--desktop-titlebar-height) !important;
+  left: var(--sidebar-width, 160px) !important;
+  width: calc(100vw - var(--sidebar-width, 160px)) !important;
+  max-width: calc(100vw - var(--sidebar-width, 160px)) !important;
+  bottom: 0 !important;
+  padding-bottom: 0 !important;
+  z-index: 999 !important;
+  border-radius: 0 !important;
+  border: none !important;
+  box-shadow: 0 0 20px rgba(0, 0, 0, 0.1) !important;
+  background: hsl(var(--background)) !important;
+  transform-origin: bottom right !important;
+  display: flex !important;
+  flex-direction: column !important;
+  height: calc(100vh - var(--desktop-titlebar-height, 40px)) !important;
+  min-height: unset !important;
+  max-height: unset !important;
+  min-width: 0 !important;
+  flex: none !important;
+  overflow: hidden !important;
+  contain: layout size !important;
+}
+
+.chat-container.chat-fullscreen * {
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  max-width: 100% !important;
+}
+
+.chat-container.chat-fullscreen .edit-modal textarea,
+.edit-modal textarea {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  display: block !important;
+  box-sizing: border-box !important;
+}
+
+.chat-container.chat-fullscreen .chat-history,
+.chat-container.chat-fullscreen .chat-input,
+.chat-container.chat-fullscreen .message-content,
+.chat-container.chat-fullscreen input,
+.chat-container.chat-fullscreen textarea {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  width: auto !important;
+  box-sizing: border-box !important;
+}
+
+.chat-container.chat-fullscreen .chat-history {
+  padding: 2rem 2rem 1rem !important;
+  flex: 1 !important;
+  overflow-y: auto !important;
+  max-height: none !important;
+  min-height: 0 !important;
+  height: auto !important;
+  border-radius: 0 !important;
+}
+
+.chat-container.chat-fullscreen .chat-input {
+  border-radius: 0 !important;
+  padding: 1rem 2rem !important;
+  background: hsl(var(--background)) !important;
+  border-top: none !important;
+  box-shadow: none !important;
+}
+
+/* 聊天历史底部占位符 */
+.chat-history::after {
+  content: '' !important;
+  display: block !important;
+  height: 0 !important;
+  width: 100% !important;
+  flex-shrink: 0 !important;
+}
+
+/* 聊天输入区域样式 */
+.chat-input {
+  height: var(--ds-footer-height);
+  padding: 0 1.5rem;
+  border-top: none;
+  background: hsl(var(--background));
+  border-radius: 0;
+  display: flex;
+  flex-direction: row;
+  gap: 0.75rem;
+  align-items: center;
+  flex-wrap: nowrap;
+  flex-shrink: 0 !important;
+}
+
+/* 🎯 修复：防止输入框和消息内容撑开容器 */
+.chat-container.chat-fullscreen .chat-input input[type="text"],
+.chat-container.chat-fullscreen textarea,
+.chat-container.chat-fullscreen .message-content {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  word-wrap: break-word !important;
+  overflow-wrap: break-word !important;
+}
+
+.chat-container.chat-fullscreen .message {
+  min-width: 0 !important;
+  width: 100% !important;
+}
+
+.chat-container.chat-fullscreen pre,
+.chat-container.chat-fullscreen code {
+  max-width: 100% !important;
+  overflow-x: auto !important;
+  white-space: pre-wrap !important;
+  word-wrap: break-word !important;
+}
+
+/* --- Chat fullscreen responsive (DeepStudent.css) --- */
+@media (max-width: 1200px) {
+  .chat-container.chat-fullscreen {
+    width: calc(100vw - 110px) !important;
+    max-width: calc(100vw - 110px) !important;
+  }
+}
+
+@media (max-width: 900px) {
+  .chat-container.chat-fullscreen {
+    left: 100px !important;
+    width: calc(100vw - 100px) !important;
+    max-width: calc(100vw - 100px) !important;
+  }
+}
+
+@media (max-width: 700px) {
+  .chat-container.chat-fullscreen {
+    left: 90px !important;
+    width: calc(100vw - 90px) !important;
+    max-width: calc(100vw - 90px) !important;
+  }
+}
+
+@media (max-width: 500px) {
+  .chat-container.chat-fullscreen {
+    left: 60px !important;
+    width: calc(100vw - 60px) !important;
+    max-width: calc(100vw - 60px) !important;
+  }
+}
+
+/* --- 特别针对右上角的调试信息 (DeepStudent.css) --- */
+body::after,
+html::after,
+*:not(.window-controls):not(.window-button):not(.app-sidebar)::after,
+*:not(.window-controls):not(.window-button):not(.app-sidebar)::before {
+  content: none !important;
+}
+
+/* =================== 安卓 WebView 兼容性修复 (DeepStudent.css) =================== */
+
+/* 全局禁止文字大小自动调整 */
+html {
+  -webkit-text-size-adjust: 100%;
+  -moz-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* ★ 全局移动端触控优化：消除双击缩放的 300ms 延迟 */
+html {
+  touch-action: manipulation;
+}
+
+/* ---- 小字体元素保护（10px-15px 全覆盖）---- */
+.text-\[10px\],
+.text-\[11px\],
+[class*="text-[10px]"],
+[class*="text-[11px]"] {
+  -webkit-text-size-adjust: 100% !important;
+  text-size-adjust: 100% !important;
+  line-height: 1.2;
+}
+
+.text-\[12px\],
+.text-\[13px\],
+.text-\[14px\],
+.text-\[15px\],
+[class*="text-[12px]"],
+[class*="text-[13px]"],
+[class*="text-[14px]"],
+[class*="text-[15px]"] {
+  -webkit-text-size-adjust: 100% !important;
+  text-size-adjust: 100% !important;
+}
+
+.text-xs,
+.text-sm {
+  -webkit-text-size-adjust: 100% !important;
+  text-size-adjust: 100% !important;
+}
+
+/* ---- Badge/Chip/Tag 类元素固定尺寸保护 ---- */
+.inline-flex.items-center.rounded-full,
+.inline-flex.items-center.rounded-md {
+  -webkit-text-size-adjust: 100% !important;
+  text-size-adjust: 100% !important;
+  flex-shrink: 0;
+}
+
+/* ---- 小尺寸 UI 组件保护 ---- */
+[data-state="checked"],
+[data-state="unchecked"] {
+  -webkit-text-size-adjust: 100% !important;
+  text-size-adjust: 100% !important;
+}
+
+.peer.h-4.w-4,
+[class*="h-4"][class*="w-4"].rounded {
+  min-width: 16px !important;
+  min-height: 16px !important;
+  flex-shrink: 0 !important;
+}
+
+[role="progressbar"] {
+  min-height: 8px !important;
+  flex-shrink: 0 !important;
+}
+
+[role="progressbar"] .bar,
+[role="progressbar"] > div {
+  min-height: 8px !important;
+}
+
+/* ---- 小图标保护 (12px-16px) ---- */
+.w-3.h-3 {
+  min-width: 12px !important;
+  min-height: 12px !important;
+  flex-shrink: 0 !important;
+}
+
+.w-3\.5.h-3\.5 {
+  min-width: 14px !important;
+  min-height: 14px !important;
+  flex-shrink: 0 !important;
+}
+
+.w-4.h-4 {
+  min-width: 16px !important;
+  min-height: 16px !important;
+  flex-shrink: 0 !important;
+}
+
+.w-5.h-5 {
+  min-width: 20px !important;
+  min-height: 20px !important;
+  flex-shrink: 0 !important;
+}
+
+.w-6.h-6 {
+  min-width: 24px !important;
+  min-height: 24px !important;
+  flex-shrink: 0 !important;
+}
+
+svg.w-3 { min-width: 12px !important; }
+svg.h-3 { min-height: 12px !important; }
+svg.w-4 { min-width: 16px !important; }
+svg.h-4 { min-height: 16px !important; }
+
+.size-3 {
+  min-width: 12px !important;
+  min-height: 12px !important;
+}
+
+.size-4 {
+  min-width: 16px !important;
+  min-height: 16px !important;
+}
+
+.size-5 {
+  min-width: 20px !important;
+  min-height: 20px !important;
+}
+
+/* ---- 输入框防缩放 ---- */
+@media (pointer: coarse) and (hover: none) and (max-width: 1024px) {
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  input[type="password"],
+  input[type="search"],
+  input[type="tel"],
+  input[type="url"],
+  textarea,
+  [contenteditable="true"] {
+    font-size: 16px !important;
+    -webkit-text-size-adjust: 100% !important;
+    text-size-adjust: 100% !important;
+  }
+}
+
+html.is-android-webview input,
+html.is-android-webview textarea,
+html.is-android-webview [contenteditable="true"] {
+  font-size: 16px !important;
+}
+
+/* ---- 固定高度小元素保护 ---- */
+.h-\[14px\] {
+  min-height: 14px !important;
+  flex-shrink: 0 !important;
+}
+
+.min-h-\[14px\] { min-height: 14px !important; }
+
+.h-\[18px\] {
+  min-height: 18px !important;
+  flex-shrink: 0 !important;
+}
+
+.min-h-\[18px\] { min-height: 18px !important; }
+
+.h-\[20px\] {
+  min-height: 20px !important;
+  flex-shrink: 0 !important;
+}
+
+.min-h-\[20px\] { min-height: 20px !important; }
+
+.h-\[22px\] {
+  min-height: 22px !important;
+  flex-shrink: 0 !important;
+}
+
+.min-h-\[22px\] { min-height: 22px !important; }
+
+.h-\[24px\] {
+  min-height: 24px !important;
+  flex-shrink: 0 !important;
+}
+
+.min-h-\[24px\] { min-height: 24px !important; }
+
+.h-\[25px\] {
+  min-height: 25px !important;
+  flex-shrink: 0 !important;
+}
+
+/* ---- backdrop-filter 兼容性 fallback ---- */
+@supports not (backdrop-filter: blur(1px)) {
+  .backdrop-blur-sm {
+    background-color: color-mix(in hsl, var(--shell-titlebar-surface) 96%, transparent) !important;
+  }
+
+  .backdrop-blur {
+    background-color: color-mix(in hsl, var(--shell-titlebar-surface) 93%, transparent) !important;
+  }
+
+  .backdrop-blur-md {
+    background-color: color-mix(in hsl, var(--shell-titlebar-surface) 90%, transparent) !important;
+  }
+
+  .backdrop-blur-lg,
+  .backdrop-blur-xl {
+    background-color: color-mix(in hsl, var(--shell-titlebar-surface) 87%, transparent) !important;
+  }
+}
+
+/* ---- env() 安全区域 fallback ---- */
+@supports not (padding: env(safe-area-inset-bottom)) {
+  .pb-safe,
+  .safe-area-bottom {
+    padding-bottom: var(--android-safe-area-bottom, 48px) !important;
+  }
+
+  .pt-safe,
+  .safe-area-top {
+    padding-top: var(--android-safe-area-top, 24px) !important;
+  }
+}
+
+html.is-android .android-safe-bottom {
+  padding-bottom: var(--android-safe-area-bottom, 48px);
+}
+
+html.is-android .android-safe-top {
+  padding-top: var(--android-safe-area-top, 24px);
+}
+
+/* ---- 紧急修复：彻底禁用所有旧tooltip相关的伪元素 (DeepStudent.css) ---- */
+.tooltip-container,
+.tooltip-container::before,
+.tooltip-container::after,
+.tooltip-container.tooltip-right::before,
+.tooltip-container.tooltip-right::after,
+.tooltip-container.tooltip-left::before,
+.tooltip-container.tooltip-left::after,
+.tooltip-container.tooltip-bottom::before,
+.tooltip-container.tooltip-bottom::after,
+.tooltip-container.tooltip-success::before,
+.tooltip-container.tooltip-success::after,
+.tooltip-container.tooltip-warning::before,
+.tooltip-container.tooltip-warning::after,
+.tooltip-container.tooltip-info::before,
+.tooltip-container.tooltip-info::after,
+*[class*="tooltip-container"]::before,
+*[class*="tooltip-container"]::after,
+*[data-tooltip]:not(.tooltip-test)::before,
+*[data-tooltip]:not(.tooltip-test)::after {
+  display: none !important;
+  content: none !important;
+  opacity: 0 !important;
+  visibility: hidden !important;
+  position: static !important;
+  background: none !important;
+  border: none !important;
+  box-shadow: none !important;
+  width: 0 !important;
+  height: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+/* --- .dark .page-container (App.css) --- */
+@media (prefers-color-scheme: dark) {
+  #root {
+    background-color: hsl(var(--card));
+    box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.1);
+  }
+
+  .app {
+    background-color: hsl(var(--card));
+  }
+}
