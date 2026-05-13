@@ -18,6 +18,8 @@ type StreamEventDetail = DebugEvent & {
   targetMessageId?: string;
 };
 
+const TOGGLE_POS_STORAGE_KEY = 'dstu-debug-toggle-pos';
+
 const GlobalDebugPanel = () => {
   const debugEnabled = useMemo(() => getDebugEnabled(), []);
   const { t } = useTranslation('common');
@@ -30,6 +32,22 @@ const GlobalDebugPanel = () => {
   const toggleBtnRef = useRef<HTMLButtonElement | null>(null);
   const [currentStreamId, setCurrentStreamId] = useState<string | undefined>();
   const visibleRef = useRef(false);
+
+  // 悬浮球拖拽状态
+  const [togglePos, setTogglePos] = useState<{ x: number; y: number }>(() => {
+    try {
+      const stored = localStorage.getItem(TOGGLE_POS_STORAGE_KEY);
+      if (stored) {
+        const parsed = JSON.parse(stored);
+        if (typeof parsed.x === 'number' && typeof parsed.y === 'number') {
+          return parsed;
+        }
+      }
+    } catch {}
+    return { x: window.innerWidth - 60, y: window.innerHeight - 60 };
+  });
+  const [isDraggingToggle, setIsDraggingToggle] = useState(false);
+  const toggleDragStart = useRef({ dx: 0, dy: 0, moved: false });
 
   // 在测试/autorun参数存在时自动挂载面板宿主（即使不可见也会创建插件，便于autorun）
   useEffect(() => {
@@ -172,10 +190,12 @@ const GlobalDebugPanel = () => {
     const el = document.createElement('div');
     el.id = 'dstu-debug-toggle-portal';
     el.style.position = 'fixed';
-    el.style.right = '16px';
-    el.style.bottom = '16px';
+    el.style.left = '0';
+    el.style.top = '0';
+    el.style.width = '0';
+    el.style.height = '0';
     el.style.zIndex = '2147483600';
-    el.style.pointerEvents = 'auto';
+    el.style.pointerEvents = 'none';
     document.body.appendChild(el);
     setTogglePortalEl(el);
     return () => {
@@ -186,27 +206,49 @@ const GlobalDebugPanel = () => {
     };
   }, []);
 
-  // 强制确保悬浮球样式不会被任何全局规则隐藏
+  // 悬浮球拖拽逻辑
   useEffect(() => {
-    const applyStrongStyle = () => {
-      const el = toggleBtnRef.current;
-      if (!el) return;
+    if (!isDraggingToggle) return;
+
+    const handleMove = (ev: MouseEvent) => {
+      const dx = Math.abs(ev.clientX - (togglePos.x + toggleDragStart.current.dx));
+      const dy = Math.abs(ev.clientY - (togglePos.y + toggleDragStart.current.dy));
+      if (dx > 3 || dy > 3) {
+        toggleDragStart.current.moved = true;
+      }
+      setTogglePos({
+        x: Math.max(0, Math.min(window.innerWidth - 44, ev.clientX - toggleDragStart.current.dx)),
+        y: Math.max(0, Math.min(window.innerHeight - 44, ev.clientY - toggleDragStart.current.dy)),
+      });
+    };
+
+    const handleUp = () => {
+      setIsDraggingToggle(false);
+      // 保存位置
       try {
-        el.removeAttribute('hidden');
-        el.style.setProperty('display', 'inline-flex', 'important');
-        el.style.setProperty('opacity', '1', 'important');
-        el.style.setProperty('visibility', 'visible', 'important');
-        el.style.setProperty('pointer-events', 'auto', 'important');
-        el.style.setProperty('position', 'fixed', 'important');
-        el.style.setProperty('right', '16px', 'important');
-        el.style.setProperty('bottom', '16px', 'important');
-        el.style.setProperty('z-index', '2147483600', 'important');
+        localStorage.setItem(TOGGLE_POS_STORAGE_KEY, JSON.stringify(togglePos));
       } catch {}
     };
-    applyStrongStyle();
-    const id = window.setInterval(applyStrongStyle, 500);
-    return () => window.clearInterval(id);
-  }, [togglePortalEl, visible]);
+
+    window.addEventListener('mousemove', handleMove);
+    window.addEventListener('mouseup', handleUp);
+    return () => {
+      window.removeEventListener('mousemove', handleMove);
+      window.removeEventListener('mouseup', handleUp);
+    };
+  }, [isDraggingToggle, togglePos]);
+
+  // 窗口 resize 时 clamp 位置
+  useEffect(() => {
+    const clamp = () => {
+      setTogglePos(prev => ({
+        x: Math.min(prev.x, Math.max(0, window.innerWidth - 44)),
+        y: Math.min(prev.y, Math.max(0, window.innerHeight - 44)),
+      }));
+    };
+    window.addEventListener('resize', clamp);
+    return () => window.removeEventListener('resize', clamp);
+  }, []);
 
   if (!debugEnabled) return null;
 
@@ -228,6 +270,27 @@ const GlobalDebugPanel = () => {
     </>
   );
 
+  const handleToggleMouseDown = (ev: React.MouseEvent) => {
+    // 只响应左键
+    if (ev.button !== 0) return;
+    ev.preventDefault();
+    toggleDragStart.current = {
+      dx: ev.clientX - togglePos.x,
+      dy: ev.clientY - togglePos.y,
+      moved: false,
+    };
+    setIsDraggingToggle(true);
+  };
+
+  const handleToggleClick = () => {
+    // 如果拖拽过，不触发 toggle
+    if (toggleDragStart.current.moved) {
+      toggleDragStart.current.moved = false;
+      return;
+    }
+    togglePanel();
+  };
+
   const toggleButton = (
     <CommonTooltip content={tooltipContent} className="dstu-debug-toggle__tooltip">
       <NotionButton
@@ -237,11 +300,23 @@ const GlobalDebugPanel = () => {
           'dstu-debug-toggle',
           visible && 'dstu-debug-toggle--open',
           hasUnseenEvent && !visible && 'dstu-debug-toggle--pulse',
+          isDraggingToggle && 'dstu-debug-toggle--dragging',
         )}
         aria-label={visible ? t('debug_panel.close') : t('debug_panel.open')}
         aria-pressed={visible}
-        onClick={togglePanel}
-        style={{ pointerEvents: 'auto' }}
+        onMouseDown={handleToggleMouseDown}
+        onClick={handleToggleClick}
+        style={{
+          pointerEvents: 'auto',
+          position: 'fixed',
+          left: togglePos.x,
+          top: togglePos.y,
+          right: 'auto',
+          bottom: 'auto',
+          cursor: isDraggingToggle ? 'grabbing' : 'grab',
+          userSelect: 'none',
+          transition: isDraggingToggle ? 'none' : 'transform 0.2s, box-shadow 0.2s, border-color 0.2s',
+        }}
       >
         <Bug className="dstu-debug-toggle__icon" aria-hidden="true" />
         <span

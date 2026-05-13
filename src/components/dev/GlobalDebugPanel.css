@@ -1,7 +1,5 @@
 .dstu-debug-toggle {
   position: fixed !important;
-  right: 16px !important;
-  bottom: 16px !important;
   z-index: 2147483600 !important;
   width: 44px !important;
   height: 44px !important;
@@ -18,10 +16,18 @@
               box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), 
               border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
               opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
-  cursor: pointer !important;
+  cursor: grab !important;
   opacity: 1 !important;
   visibility: visible !important;
   pointer-events: auto !important;
+  -webkit-app-region: no-drag !important;
+}
+
+.dstu-debug-toggle--dragging {
+  cursor: grabbing !important;
+  transform: scale(1.08) !important;
+  box-shadow: 0 20px 40px rgba(15, 23, 42, 0.3) !important;
+  transition: none !important;
 }
 
 .dstu-debug-toggle:hover,
