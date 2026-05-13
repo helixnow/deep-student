@@ -1,0 +1,305 @@
+/* =============================================
+   Layer 2: Semantic Tokens
+   Maps primitives → semantic names consumed by components.
+   Includes light/dark mode, accent palettes, typography, sizing.
+   ============================================= */
+
+/* ----- Typography, Radius, Sizing (mode-independent) ----- */
+:root {
+  --radius: 0.5rem;
+  --radius-shell-panel: 18px;
+  --radius-shell-toolbar: 16px;
+  --radius-shell-row: 14px;
+  --radius-shell-control: 12px;
+  --radius-shell-window-control: 10px;
+  --radius-shell-dialog: 22px;
+
+  --size-shell-control: 32px;
+  --size-shell-window-control: 34px;
+  --size-shell-touch-target: 36px;
+  --size-shell-touch-target-lg: 40px;
+  --control-height-compact: 32px;
+  --control-height-touch: 44px;
+  --touch-target-size: var(--control-height-touch);
+
+  --space-shell-layout-gap: 14px;
+  --space-shell-section-gap: 18px;
+  --space-shell-control-gap: 2px;
+  --button-height: 2rem;
+  --button-height-sm: 1.875rem;
+  --button-height-lg: 2.25rem;
+  --button-icon-size: 2rem;
+  --button-padding-x: 0.875rem;
+  --button-padding-x-sm: 0.75rem;
+  --button-padding-x-lg: 1rem;
+  --button-radius: 9px;
+  --button-plain-border: transparent;
+  --button-plain-bg: transparent;
+  --button-plain-hover-bg: var(--button-utility-hover);
+  --button-plain-active-bg: var(--button-utility-active);
+
+  /* Font stacks */
+  --font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "Noto Sans", Helvetica, Arial, sans-serif, "Apple Color Emoji", "Segoe UI Emoji";
+  --font-family-cn: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --app-font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Microsoft YaHei", sans-serif;
+  --font-family-sidebar-study-ui: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Microsoft YaHei", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
+
+  /* Font sizes */
+  --font-size-scale: 1;
+  --font-size-xs: calc(11px * var(--font-size-scale));
+  --font-size-sm: calc(12px * var(--font-size-scale));
+  --font-size-base: calc(14px * var(--font-size-scale));
+  --font-size-md: calc(15px * var(--font-size-scale));
+  --font-size-lg: calc(16px * var(--font-size-scale));
+  --font-size-xl: calc(18px * var(--font-size-scale));
+  --font-size-2xl: calc(20px * var(--font-size-scale));
+  --font-size-3xl: calc(24px * var(--font-size-scale));
+
+  /* Font weights */
+  --font-weight-normal: 400;
+  --font-weight-medium: 500;
+  --font-weight-semibold: 600;
+  --font-weight-bold: 700;
+
+  /* Line heights */
+  --line-height-tight: 1.25;
+  --line-height-snug: 1.375;
+  --line-height-normal: 1.5;
+  --line-height-relaxed: 1.625;
+
+  /* Letter spacing */
+  --letter-spacing-tight: -0.01em;
+  --letter-spacing-normal: 0;
+  --letter-spacing-wide: 0.01em;
+}
+
+/* ----- Light mode semantic colors ----- */
+:root {
+  --titlebar-background: var(--gray-150);
+  --nav-background: var(--gray-200);
+  --background: var(--gray-0);
+  --foreground: var(--gray-700);
+  --card: var(--gray-50);
+  --card-foreground: var(--gray-700);
+  --popover: var(--gray-50);
+  --popover-foreground: var(--gray-700);
+  --secondary: var(--gray-100);
+  --secondary-foreground: var(--gray-700);
+  --muted: var(--gray-300);
+  --muted-foreground: var(--gray-600);
+  --accent: var(--gray-400);
+  --accent-foreground: var(--gray-700);
+  --destructive: var(--red-500);
+  --destructive-foreground: var(--gray-0);
+  --border: var(--gray-500);
+  --input: var(--gray-200);
+
+  /* Semantic status colors */
+  --success: var(--green-500);
+  --success-foreground: var(--gray-0);
+  --warning: var(--amber-500);
+  --warning-foreground: var(--gray-0);
+  --info: var(--info-500);
+  --info-foreground: var(--gray-0);
+  --danger: var(--red-600);
+  --danger-foreground: var(--gray-0);
+
+  /* Status indicators */
+  --status-working: var(--status-working-light);
+  --status-paused: var(--status-paused-light);
+  --status-blocked: var(--status-blocked-light);
+  --status-idle: var(--status-idle-light);
+  --status-completed: var(--status-completed-light);
+}
+
+/* ----- Dark mode semantic colors ----- */
+:root.dark {
+  --titlebar-background: var(--gray-900);
+  --nav-background: var(--gray-950);
+  --background: var(--gray-925);
+  --foreground: var(--gray-150);
+  --card: var(--gray-850);
+  --card-foreground: var(--gray-150);
+  --popover: var(--gray-850);
+  --popover-foreground: var(--gray-150);
+  --secondary: var(--gray-800);
+  --secondary-foreground: var(--gray-150);
+  --muted: var(--gray-800);
+  --muted-foreground: 0 0% 60%;
+  --accent: 0 0% 15%;
+  --accent-foreground: var(--gray-150);
+  --destructive: var(--red-700);
+  --destructive-foreground: var(--gray-0);
+  --border: 0 0% 18%;
+  --input: var(--gray-800);
+
+  /* Semantic status colors */
+  --success: var(--green-600);
+  --success-foreground: 144 100% 10%;
+  --warning: var(--amber-600);
+  --warning-foreground: 40 100% 10%;
+  --info: var(--info-600);
+  --info-foreground: 210 100% 10%;
+  --danger: var(--red-800);
+  --danger-foreground: 0 0% 98%;
+
+  /* Status indicators */
+  --status-working: var(--status-working-dark);
+  --status-paused: var(--status-paused-dark);
+  --status-blocked: var(--status-blocked-dark);
+  --status-idle: var(--status-idle-dark);
+  --status-completed: var(--status-completed-dark);
+}
+
+/* =============================================
+   Accent Palettes
+   Each preset only overrides accent-related tokens.
+   Neutral/background/border/input/status colors are NOT affected.
+   ============================================= */
+
+/* 1. Default blue */
+:root,
+:root[data-theme-palette='default'] {
+  --primary: var(--blue-600);
+  --primary-foreground: var(--gray-0);
+  --ring: var(--blue-ring);
+  --brand-primary: var(--primary);
+  --brand-primary-dark: var(--blue-700);
+  --primary-color: hsl(var(--primary));
+}
+:root.dark,
+:root.dark[data-theme-palette='default'] {
+  --primary: var(--blue-400);
+  --primary-foreground: 220 30% 10%;
+  --ring: var(--blue-ring-dark);
+  --brand-primary: var(--primary);
+  --brand-primary-dark: 214 64% 82%;
+  --primary-color: hsl(var(--primary));
+}
+
+/* 2. Purple */
+:root[data-theme-palette='purple'] {
+  --primary: 262 52% 42%;
+  --primary-foreground: var(--gray-0);
+  --ring: 262 45% 48%;
+  --brand-primary: var(--primary);
+  --brand-primary-dark: 262 54% 30%;
+  --primary-color: hsl(var(--primary));
+}
+:root.dark[data-theme-palette='purple'] {
+  --primary: 262 52% 74%;
+  --primary-foreground: 262 28% 12%;
+  --ring: 262 44% 66%;
+  --brand-primary: var(--primary);
+  --brand-primary-dark: 262 52% 84%;
+  --primary-color: hsl(var(--primary));
+}
+
+/* 3. Green */
+:root[data-theme-palette='green'] {
+  --primary: 154 45% 31%;
+  --primary-foreground: var(--gray-0);
+  --ring: 154 42% 38%;
+  --brand-primary: var(--primary);
+  --brand-primary-dark: 154 48% 23%;
+  --primary-color: hsl(var(--primary));
+}
+:root.dark[data-theme-palette='green'] {
+  --primary: 154 42% 68%;
+  --primary-foreground: 154 30% 10%;
+  --ring: 154 38% 62%;
+  --brand-primary: var(--primary);
+  --brand-primary-dark: 154 42% 78%;
+  --primary-color: hsl(var(--primary));
+}
+
+/* 4. Orange */
+:root[data-theme-palette='orange'] {
+  --primary: 24 78% 35%;
+  --primary-foreground: var(--gray-0);
+  --ring: 24 70% 42%;
+  --brand-primary: var(--primary);
+  --brand-primary-dark: 24 76% 25%;
+  --primary-color: hsl(var(--primary));
+}
+:root.dark[data-theme-palette='orange'] {
+  --primary: 32 72% 70%;
+  --primary-foreground: 28 32% 10%;
+  --ring: 32 66% 64%;
+  --brand-primary: var(--primary);
+  --brand-primary-dark: 32 72% 80%;
+  --primary-color: hsl(var(--primary));
+}
+
+/* 5. Pink */
+:root[data-theme-palette='pink'] {
+  --primary: 342 58% 39%;
+  --primary-foreground: var(--gray-0);
+  --ring: 342 52% 46%;
+  --brand-primary: var(--primary);
+  --brand-primary-dark: 342 58% 28%;
+  --primary-color: hsl(var(--primary));
+}
+:root.dark[data-theme-palette='pink'] {
+  --primary: 340 58% 72%;
+  --primary-foreground: 340 30% 10%;
+  --ring: 340 48% 66%;
+  --brand-primary: var(--primary);
+  --brand-primary-dark: 340 58% 82%;
+  --primary-color: hsl(var(--primary));
+}
+
+/* 6. Teal */
+:root[data-theme-palette='teal'] {
+  --primary: 184 54% 30%;
+  --primary-foreground: var(--gray-0);
+  --ring: 184 48% 38%;
+  --brand-primary: var(--primary);
+  --brand-primary-dark: 184 56% 22%;
+  --primary-color: hsl(var(--primary));
+}
+:root.dark[data-theme-palette='teal'] {
+  --primary: 184 48% 68%;
+  --primary-foreground: 190 34% 10%;
+  --ring: 184 44% 62%;
+  --brand-primary: var(--primary);
+  --brand-primary-dark: 184 48% 78%;
+  --primary-color: hsl(var(--primary));
+}
+
+/* 7. Muted (slate blue accent) */
+:root[data-theme-palette='muted'] {
+  --primary: 220 30% 38%;
+  --primary-foreground: var(--gray-0);
+  --ring: 220 28% 44%;
+  --brand-primary: var(--primary);
+  --brand-primary-dark: 220 30% 28%;
+  --primary-color: hsl(var(--primary));
+}
+:root.dark[data-theme-palette='muted'] {
+  --primary: 220 24% 70%;
+  --primary-foreground: 220 28% 10%;
+  --ring: 220 24% 64%;
+  --brand-primary: var(--primary);
+  --brand-primary-dark: 220 24% 80%;
+  --primary-color: hsl(var(--primary));
+}
+
+/* 8. Paper (warm brown accent) */
+:root[data-theme-palette='paper'] {
+  --primary: 24 35% 32%;
+  --primary-foreground: 36 29% 94%;
+  --ring: 24 30% 40%;
+  --brand-primary: var(--primary);
+  --brand-primary-dark: 24 38% 22%;
+  --primary-color: hsl(var(--primary));
+}
+:root.dark[data-theme-palette='paper'] {
+  --primary: 36 40% 70%;
+  --primary-foreground: 20 20% 12%;
+  --ring: 36 40% 62%;
+  --brand-primary: var(--primary);
+  --brand-primary-dark: 36 40% 80%;
+  --primary-color: hsl(var(--primary));
+}

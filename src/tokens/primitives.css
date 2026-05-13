@@ -1,0 +1,62 @@
+/* =============================================
+   Layer 1: Primitives
+   Raw color palette — not consumed directly by components.
+   These are the atomic HSL values from which semantic tokens derive.
+   ============================================= */
+
+:root {
+  /* Neutral grays (hue 0, pure neutral) */
+  --gray-0: 0 0% 100%;
+  --gray-50: 0 0% 99%;
+  --gray-100: 0 0% 98%;
+  --gray-150: 0 0% 96%;
+  --gray-200: 0 0% 95%;
+  --gray-300: 0 0% 94%;
+  --gray-400: 0 0% 93%;
+  --gray-500: 0 0% 88%;
+  --gray-600: 220 6% 42%;
+  --gray-700: 220 9% 18%;
+  --gray-800: 0 0% 14%;
+  --gray-850: 0 0% 12%;
+  --gray-900: 0 0% 11%;
+  --gray-925: 0 0% 9%;
+  --gray-950: 0 0% 0%;
+
+  /* Blue (default accent) */
+  --blue-400: 214 64% 72%;
+  --blue-500: 217 70% 50%;
+  --blue-600: 215 72% 42%;
+  --blue-700: 215 72% 32%;
+  --blue-ring: 214 62% 50%;
+  --blue-ring-dark: 214 58% 68%;
+
+  /* Red / Destructive */
+  --red-500: 0 65% 51%;
+  --red-600: 0 55% 50%;
+  --red-700: 0 55% 45%;
+  --red-800: 0 50% 48%;
+
+  /* Green / Success */
+  --green-500: 152 60% 36%;
+  --green-600: 152 55% 42%;
+
+  /* Amber / Warning */
+  --amber-500: 38 70% 45%;
+  --amber-600: 38 65% 50%;
+
+  /* Info */
+  --info-500: 217 70% 50%;
+  --info-600: 217 65% 55%;
+
+  /* Status (derived from above but kept explicit for clarity) */
+  --status-working-light: 152 60% 36%;
+  --status-paused-light: 38 70% 45%;
+  --status-blocked-light: 0 55% 50%;
+  --status-idle-light: 220 8% 50%;
+  --status-completed-light: 217 70% 50%;
+  --status-working-dark: 152 55% 42%;
+  --status-paused-dark: 38 65% 50%;
+  --status-blocked-dark: 0 50% 48%;
+  --status-idle-dark: 220 6% 55%;
+  --status-completed-dark: 217 65% 55%;
+}
