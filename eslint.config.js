@@ -1,6 +1,7 @@
 import js from '@eslint/js';
 import globals from 'globals';
 import tseslint from 'typescript-eslint';
+import boundaries from 'eslint-plugin-boundaries';
 import noNativeButton from './eslint-rules/no-native-button.js';
 
 export default tseslint.config(
@@ -170,6 +171,39 @@ export default tseslint.config(
     rules: {
       'ds-components/no-native-button': 'off'
     }
+  },
+
+  // ============================================================
+  // Feature module boundary enforcement
+  // ============================================================
+  {
+    files: ['src/**/*.{ts,tsx,js,jsx}'],
+    plugins: {
+      boundaries
+    },
+    settings: {
+      'boundaries/elements': [
+        { type: 'feature', pattern: ['src/features/*'], capture: ['feature'] },
+        { type: 'shared', pattern: ['src/shared/*'] },
+        { type: 'app', pattern: ['src/app/*'] },
+        { type: 'tokens', pattern: ['src/tokens/*'] },
+        { type: 'lib', pattern: ['src/lib/*'] },
+      ],
+      'boundaries/ignore': ['**/*.test.*', '**/*.spec.*'],
+    },
+    rules: {
+      'boundaries/element-types': [
+        'warn',
+        {
+          default: 'disallow',
+          rules: [
+            { from: 'feature', allow: ['shared', 'lib', 'tokens'] },
+            { from: 'shared', allow: ['shared', 'lib', 'tokens'] },
+            { from: 'app', allow: ['feature', 'shared', 'lib', 'tokens'] },
+          ],
+        },
+      ],
+    },
   },
 
   // ============================================================
