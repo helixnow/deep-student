@@ -7,6 +7,7 @@
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
+import './image-preview.css';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { openUrl } from '@/utils/urlOpener';
 import { fileManager } from '@/utils/fileManager';

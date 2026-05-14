@@ -1,0 +1,9 @@
+/* 隐藏滚动条的工具类 - 用于横向滚动的 Tab 栏等 */
+.scrollbar-none {
+  -ms-overflow-style: none;  /* IE and Edge */
+  scrollbar-width: none;  /* Firefox */
+}
+
+.scrollbar-none::-webkit-scrollbar {
+  display: none;  /* Chrome, Safari and Opera */
+}
