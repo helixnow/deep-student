@@ -14,10 +14,10 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { 
-  Copy, Trash2, RefreshCw, Eye, Image, Upload, 
-  MousePointer, FileImage, CheckCircle, XCircle, 
-  AlertTriangle, Folder, Code, Zap, Camera
-} from 'lucide-react';
+  Copy, Trash, ArrowClockwise, Eye, Image, Upload, 
+  Cursor, FileImage, CheckCircle, XCircle, 
+  Warning, Folder, Code, Lightning, Camera
+} from '@phosphor-icons/react';
 import { showGlobalNotification } from '../../components/UnifiedNotification';
 import { debugMasterSwitch } from '../debugMasterSwitch';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
@@ -101,13 +101,13 @@ const LEVEL_BG: Record<LogLevel, string> = {
 };
 
 const STAGE_LABELS: Record<EventStage, { label: string; icon: React.FC<any>; color: string }> = {
-  click_detected: { label: '点击检测', icon: MousePointer, color: '#8b5cf6' },
+  click_detected: { label: '点击检测', icon: Cursor, color: '#8b5cf6' },
   selector_check: { label: '选择器检查', icon: Code, color: '#6366f1' },
-  tauri_check: { label: 'Tauri检测', icon: Zap, color: '#10b981' },
+  tauri_check: { label: 'Tauri检测', icon: Lightning, color: '#10b981' },
   dialog_open: { label: '打开对话框', icon: Folder, color: '#f97316' },
   dialog_result: { label: '对话框结果', icon: FileImage, color: '#3b82f6' },
   file_read: { label: '文件读取', icon: Eye, color: '#06b6d4' },
-  file_convert: { label: '文件转换', icon: RefreshCw, color: '#8b5cf6' },
+  file_convert: { label: '文件转换', icon: ArrowClockwise, color: '#8b5cf6' },
   upload_start: { label: '开始上传', icon: Upload, color: '#f59e0b' },
   upload_complete: { label: '上传完成', icon: CheckCircle, color: '#22c55e' },
   node_find: { label: '查找节点', icon: Code, color: '#6366f1' },
@@ -487,7 +487,7 @@ export const CrepeImageUploadDebugPlugin: React.FC<DebugPanelPluginProps> = ({ v
             fontSize: '11px',
           }}
         >
-          <MousePointer size={12} />
+          <Cursor size={12} />
           测试选择器
         </button>
         
@@ -569,7 +569,7 @@ export const CrepeImageUploadDebugPlugin: React.FC<DebugPanelPluginProps> = ({ v
           }}
           title="清空日志"
         >
-          <Trash2 size={12} />
+          <Trash size={12} />
         </button>
       </div>
       
@@ -584,7 +584,7 @@ export const CrepeImageUploadDebugPlugin: React.FC<DebugPanelPluginProps> = ({ v
         fontSize: '11px',
       }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
-          <Zap size={12} />
+          <Lightning size={12} />
           <span>Tauri:</span>
           <span style={{ 
             color: (typeof window !== 'undefined' && Boolean((window as any).__TAURI_INTERNALS__)) ? '#22c55e' : '#ef4444',

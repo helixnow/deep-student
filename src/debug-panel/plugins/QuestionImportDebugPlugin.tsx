@@ -27,7 +27,7 @@
  * 支持一键复制/下载全部日志。
  */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Copy, Trash2, Download, Search, ChevronDown, ChevronRight, AlertTriangle, CheckCircle, XCircle, Clock, Zap, Activity, FileText } from 'lucide-react';
+import { Copy, Trash, Download, MagnifyingGlass, CaretDown, CaretRight, Warning, CheckCircle, XCircle, Clock, Lightning, Pulse, FileText } from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { Switch } from '@/components/ui/shad/Switch';
@@ -389,10 +389,10 @@ const LEVEL_COLORS: Record<ImportLogLevel, string> = {
 };
 
 const LEVEL_ICONS: Record<ImportLogLevel, React.FC<any>> = {
-  debug: Activity,
-  info: Zap,
+  debug: Pulse,
+  info: Lightning,
   success: CheckCircle,
-  warn: AlertTriangle,
+  warn: Warning,
   error: XCircle,
 };
 
@@ -591,13 +591,13 @@ const QuestionImportDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           <Download size={14} />
         </button>
         <button onClick={handleClear} title="清空" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: '#6b7280' }}>
-          <Trash2 size={14} />
+          <Trash size={14} />
         </button>
       </div>
 
       {/* 过滤栏 */}
       <div style={{ padding: '4px 8px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-        <Search size={12} style={{ color: '#6b7280' }} />
+        <MagnifyingGlass size={12} style={{ color: '#6b7280' }} />
         <input
           type="text"
           value={filter}
@@ -636,7 +636,7 @@ const QuestionImportDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           </div>
         ) : (
           filteredLogs.map((entry) => {
-            const LevelIcon = LEVEL_ICONS[entry.level] || Activity;
+            const LevelIcon = LEVEL_ICONS[entry.level] || Pulse;
             const isExpanded = expandedIds.has(entry.id);
             const hasDetail = entry.detail != null;
             return (
@@ -662,7 +662,7 @@ const QuestionImportDebugPlugin: React.FC<DebugPanelPluginProps> = ({
                   onClick={() => hasDetail && toggleExpand(entry.id)}
                 >
                   {hasDetail ? (
-                    isExpanded ? <ChevronDown size={12} style={{ marginTop: 1, flexShrink: 0, color: '#6b7280' }} /> : <ChevronRight size={12} style={{ marginTop: 1, flexShrink: 0, color: '#6b7280' }} />
+                    isExpanded ? <CaretDown size={12} style={{ marginTop: 1, flexShrink: 0, color: '#6b7280' }} /> : <CaretRight size={12} style={{ marginTop: 1, flexShrink: 0, color: '#6b7280' }} />
                   ) : (
                     <span style={{ width: 12, flexShrink: 0 }} />
                   )}

@@ -1,7 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
-import { Copy, Save, AlertTriangle, CheckCircle, XCircle, Filter, Server, Send, RefreshCw, Settings, Activity, Database, Zap, Clock } from 'lucide-react';
+import { Copy, FloppyDisk, Warning, CheckCircle, XCircle, Funnel, HardDrives, PaperPlaneRight, ArrowClockwise, Gear, Pulse, Database, Lightning, Clock } from '@phosphor-icons/react';
 import { showGlobalNotification } from '../../components/UnifiedNotification';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
@@ -59,10 +59,10 @@ const LEVEL_COLORS: Record<LogLevel, string> = {
 };
 
 const LEVEL_ICONS: Record<LogLevel, React.FC<any>> = {
-  debug: Activity,
-  info: Server,
+  debug: Pulse,
+  info: HardDrives,
   success: CheckCircle,
-  warning: AlertTriangle,
+  warning: Warning,
   error: XCircle,
 };
 
@@ -87,23 +87,23 @@ const EVENT_TYPE_LABELS: Record<McpEventType, string> = {
 };
 
 const EVENT_TYPE_ICONS: Record<McpEventType, React.FC<any>> = {
-  config_init: Settings,
-  config_change: RefreshCw,
-  connect_start: Activity,
+  config_init: Gear,
+  config_change: ArrowClockwise,
+  connect_start: Pulse,
   connect_success: CheckCircle,
   connect_fail: XCircle,
-  connect_retry: RefreshCw,
+  connect_retry: ArrowClockwise,
   disconnect: XCircle,
-  stdio_message_send: Send,
-  stdio_message_recv: Server,
-  stdio_error: AlertTriangle,
+  stdio_message_send: PaperPlaneRight,
+  stdio_message_recv: HardDrives,
+  stdio_error: Warning,
   stdio_closed: XCircle,
-  tool_call_start: Zap,
+  tool_call_start: Lightning,
   tool_call_success: CheckCircle,
   tool_call_error: XCircle,
   cache_hit: Database,
   cache_miss: Database,
-  transport_error: AlertTriangle,
+  transport_error: Warning,
 };
 
 // 敏感字段列表
@@ -595,7 +595,7 @@ const McpDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActive, is
     <div className="p-4 space-y-4 h-full flex flex-col overflow-hidden">
       <div className="flex items-center justify-between gap-4 flex-shrink-0">
         <h2 className="text-lg font-semibold flex items-center gap-2">
-          <Server className="h-5 w-5" />
+          <HardDrives size={20} />
           MCP 调试
         </h2>
         <div className="flex items-center gap-2">
@@ -604,7 +604,7 @@ const McpDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActive, is
             className={`px-3 py-1 text-sm rounded flex items-center gap-1 ${throttleEnabled ? 'bg-green-500 text-white' : 'bg-gray-200 text-gray-700'}`}
             title={throttleEnabled ? '节流已启用（防日志风暴）' : '节流已禁用'}
           >
-            <Clock className="h-4 w-4" />
+            <Clock size={16} />
             {throttleEnabled ? '节流' : '无节流'}
           </button>
           <button
@@ -619,7 +619,7 @@ const McpDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActive, is
             className={`px-3 py-1 text-sm rounded ${errorsOnly ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-700'}`}
             title="仅显示错误和警告"
           >
-            <Filter className="h-4 w-4" />
+            <Funnel size={16} />
           </button>
           <button
             onClick={copyAllLogs}
@@ -627,7 +627,7 @@ const McpDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActive, is
             disabled={filteredLogs.length === 0}
             title="复制所有日志到剪贴板"
           >
-            <Copy className="h-4 w-4" />
+            <Copy size={16} />
           </button>
           <button
             onClick={exportLogs}
@@ -635,7 +635,7 @@ const McpDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActive, is
             disabled={logs.length === 0}
             title="导出日志为JSON文件"
           >
-            <Save className="h-4 w-4" />
+            <FloppyDisk size={16} />
           </button>
           <button
             onClick={clearLogs}
@@ -759,7 +759,7 @@ const McpDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActive, is
                   <div key={log.id} className="p-3 hover:bg-gray-50">
                     <div className="flex items-start gap-3">
                       <Icon 
-                        className="h-5 w-5 mt-0.5 flex-shrink-0" 
+                        size={20} className="mt-0.5 flex-shrink-0" 
                         style={{ color: LEVEL_COLORS[log.level] }}
                       />
                       
@@ -785,7 +785,7 @@ const McpDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActive, is
                             </span>
                           )}
                           <span className="px-2 py-0.5 text-xs bg-blue-100 text-blue-700 rounded flex items-center gap-1">
-                            <EventIcon className="h-3 w-3" />
+                            <EventIcon size={12} />
                             {EVENT_TYPE_LABELS[log.type]}
                           </span>
                           {log.sessionId && (
@@ -816,7 +816,7 @@ const McpDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActive, is
                         className="p-1 text-gray-400 hover:text-gray-600"
                         title="复制日志"
                       >
-                        <Copy className="h-4 w-4" />
+                        <Copy size={16} />
                       </button>
                     </div>
                   </div>

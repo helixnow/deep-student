@@ -2,7 +2,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { Minus, Maximize2 } from 'lucide-react';
+import { Minus, ArrowsOut } from '@phosphor-icons/react';
 // ★ 图谱模块已废弃 - IrecAutoNotePlugin 已移除
 // import IrecAutoNotePlugin from './plugins/IrecAutoNotePlugin';
 // ★ ExamSheetWorkbench 已废弃（2026-02 清理）- ExamSheetLifecyclePlugin 已移除
@@ -945,7 +945,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                 className="text-[10px] h-6 px-2"
                 title={t('debug_panel.expand', '展开')}
               >
-                <Maximize2 size={12} />
+                <ArrowsOut size={12} />
               </NotionButton>
             ) : (
               <NotionButton

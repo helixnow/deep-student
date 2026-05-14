@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
-import { Trash2, Copy, Play, Pause, FolderInput, FileText, Folder, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Trash, Copy, Play, Pause, FolderOpen, FileText, Folder, Warning, CheckCircle } from '@phosphor-icons/react';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 interface DragEvent {
@@ -57,12 +57,12 @@ export default function FinderDragDropDebugPlugin({ isActive, isActivated }: Deb
 
   const getEventIcon = (event: DragEvent) => {
     if (event.type === 'drag_start') {
-      return <Play className="w-4 h-4 text-primary" />;
+      return <Play size={16} className="text-primary" />;
     }
     if (event.overId === null) {
-      return <AlertTriangle className="w-4 h-4 text-warning" />;
+      return <Warning size={16} className="text-warning" />;
     }
-    return <CheckCircle className="w-4 h-4 text-success" />;
+    return <CheckCircle size={16} className="text-success" />;
   };
 
   const formatTime = (ts: number) => {
@@ -84,7 +84,7 @@ export default function FinderDragDropDebugPlugin({ isActive, isActivated }: Deb
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-border bg-muted/30">
         <div className="flex items-center gap-2">
-          <FolderInput className="w-5 h-5 text-primary" />
+          <FolderOpen size={20} className="text-primary" />
           <span className="font-medium">Finder 拖放调试</span>
           <span className="text-xs text-muted-foreground">({events.length} 事件)</span>
         </div>
@@ -94,21 +94,21 @@ export default function FinderDragDropDebugPlugin({ isActive, isActivated }: Deb
             className={`p-1.5 rounded hover:bg-muted ${isPaused ? 'text-warning' : 'text-muted-foreground'}`}
             title={isPaused ? '继续记录' : '暂停记录'}
           >
-            {isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
+            {isPaused ? <Play size={16} /> : <Pause size={16} />}
           </button>
           <button
             onClick={copyToClipboard}
             className="p-1.5 rounded hover:bg-muted text-muted-foreground"
             title="复制日志"
           >
-            <Copy className="w-4 h-4" />
+            <Copy size={16} />
           </button>
           <button
             onClick={clearEvents}
             className="p-1.5 rounded hover:bg-muted text-muted-foreground"
             title="清除日志"
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash size={16} />
           </button>
         </div>
       </div>
@@ -130,7 +130,7 @@ export default function FinderDragDropDebugPlugin({ isActive, isActivated }: Deb
       <div ref={containerRef} className="flex-1 overflow-auto p-2 space-y-1">
         {events.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-            <FolderInput className="w-12 h-12 mb-2 opacity-30" />
+            <FolderOpen size={48} className="mb-2 opacity-30" />
             <p className="text-sm">等待拖放事件...</p>
             <p className="text-xs mt-1">在 Learning Hub 中拖拽文件到文件夹</p>
           </div>

@@ -13,9 +13,9 @@
 import React from 'react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { 
-  Copy, Save, AlertTriangle, CheckCircle, XCircle, Filter, 
-  Clipboard, Trash2, RefreshCw, Eye, Play, Settings, Code 
-} from 'lucide-react';
+  Copy, FloppyDisk, Warning, CheckCircle, XCircle, Funnel, 
+  Clipboard, Trash, ArrowClockwise, Eye, Play, Gear, Code 
+} from '@phosphor-icons/react';
 import { showGlobalNotification } from '../../components/UnifiedNotification';
 import { debugMasterSwitch } from '../debugMasterSwitch';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
@@ -75,15 +75,15 @@ const LEVEL_COLORS: Record<LogLevel, string> = {
 };
 
 const LEVEL_ICONS: Record<LogLevel, React.FC<any>> = {
-  debug: RefreshCw,
+  debug: ArrowClockwise,
   info: CheckCircle,
-  warning: AlertTriangle,
+  warning: Warning,
   error: XCircle,
 };
 
 const CATEGORY_LABELS: Record<EventCategory, { label: string; icon: React.FC<any>; color: string }> = {
-  lifecycle: { label: '生命周期', icon: RefreshCw, color: '#8b5cf6' },
-  init: { label: '初始化', icon: Settings, color: '#6366f1' },
+  lifecycle: { label: '生命周期', icon: ArrowClockwise, color: '#8b5cf6' },
+  init: { label: '初始化', icon: Gear, color: '#6366f1' },
   dependency: { label: '依赖加载', icon: Code, color: '#10b981' },
   dom: { label: 'DOM状态', icon: Eye, color: '#f97316' },
   editor: { label: '编辑器事件', icon: Play, color: '#3b82f6' },
@@ -421,7 +421,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
       {/* 标题栏 */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h2 className="text-lg font-semibold flex items-center gap-2">
-          <Code className="h-5 w-5" />
+          <Code size={20} />
           Crepe 编辑器调试
         </h2>
         <div className="flex items-center gap-2 flex-wrap">
@@ -430,7 +430,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
             className="px-3 py-1 text-sm bg-cyan-500 text-white rounded hover:bg-cyan-600"
             title="手动捕获 DOM 快照"
           >
-            <Eye className="h-4 w-4 inline mr-1" />
+            <Eye size={16} className="inline mr-1" />
             快照
           </button>
           <button
@@ -438,7 +438,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
             className={`px-3 py-1 text-sm rounded ${errorsOnly ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-700'}`}
             title="仅显示错误和警告"
           >
-            <Filter className="h-4 w-4" />
+            <Funnel size={16} />
           </button>
           <button
             onClick={() => setAutoScroll(!autoScroll)}
@@ -453,7 +453,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
             disabled={filteredLogs.length === 0}
             title="复制所有日志到剪贴板"
           >
-            <Clipboard className="h-4 w-4" />
+            <Clipboard size={16} />
           </button>
           <button
             onClick={exportLogs}
@@ -461,14 +461,14 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
             disabled={logs.length === 0}
             title="导出日志为JSON文件"
           >
-            <Save className="h-4 w-4" />
+            <FloppyDisk size={16} />
           </button>
           <button
             onClick={clearLogs}
             className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
             title="清空日志"
           >
-            <Trash2 className="h-4 w-4" />
+            <Trash size={16} />
           </button>
         </div>
       </div>
@@ -478,7 +478,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
         {/* DOM 快照 */}
         <div className="border rounded-lg p-3 bg-slate-50">
           <div className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-            <Eye className="h-4 w-4" />
+            <Eye size={16} />
             实时 DOM 快照
           </div>
           {liveSnapshot ? (
@@ -518,12 +518,12 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
           <div className="text-sm font-medium mb-2 flex items-center gap-2">
             {diagnosis?.isHealthy ? (
               <>
-                <CheckCircle className="h-4 w-4 text-green-600" />
+                <CheckCircle size={16} className="text-green-600" />
                 <span className="text-green-700">状态正常</span>
               </>
             ) : (
               <>
-                <AlertTriangle className="h-4 w-4 text-red-600" />
+                <Warning size={16} className="text-red-600" />
                 <span className="text-red-700">检测到问题</span>
               </>
             )}
@@ -660,13 +660,13 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
               {filteredLogs.map((log) => {
                 const Icon = LEVEL_ICONS[log.level];
                 const categoryInfo = CATEGORY_LABELS[log.category];
-                const CategoryIcon = categoryInfo?.icon || RefreshCw;
+                const CategoryIcon = categoryInfo?.icon || ArrowClockwise;
                 
                 return (
                   <div key={log.id} className="p-3 hover:bg-gray-50">
                     <div className="flex items-start gap-3">
                       <Icon 
-                        className="h-5 w-5 mt-0.5 flex-shrink-0" 
+                        size={20} className="mt-0.5 flex-shrink-0" 
                         style={{ color: LEVEL_COLORS[log.level] }}
                       />
                       
@@ -684,7 +684,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
                             backgroundColor: `${categoryInfo?.color || '#64748b'}20`,
                             color: categoryInfo?.color || '#64748b'
                           }}>
-                            <CategoryIcon className="h-3 w-3" />
+                            <CategoryIcon size={12} />
                             {categoryInfo?.label || log.category}
                           </span>
                           <span className="px-2 py-0.5 text-xs rounded" style={{ 
@@ -738,7 +738,7 @@ const CrepeEditorDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
                         className="p-1 text-gray-400 hover:text-gray-600"
                         title="复制日志"
                       >
-                        <Copy className="h-4 w-4" />
+                        <Copy size={16} />
                       </button>
                     </div>
                   </div>
