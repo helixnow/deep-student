@@ -10,7 +10,7 @@
 import React, { useState, useCallback, useEffect, useMemo, useDeferredValue, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, MessageSquare, Edit2, Check, X, LayoutGrid, Library, FileText, BookOpen, ClipboardList, Image, File, Loader2, GripVertical, Menu, ChevronRight, RefreshCw, Folder, ExternalLink } from 'lucide-react';
+import { Plus, Chat, PencilSimple, Check, X, SquaresFour, Books, FileText, BookOpen, ClipboardText, Image, File, CircleNotch, DotsSixVertical, List, CaretRight, ArrowClockwise, Folder, ArrowSquareOut } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { cn } from '@/lib/utils';
@@ -100,7 +100,7 @@ const getAppIcon = (type: ResourceType) => {
   switch (type) {
     case 'note': return FileText;
     case 'textbook': return BookOpen;
-    case 'exam': return ClipboardList;
+    case 'exam': return ClipboardText;
     case 'image': return Image;
     case 'file': return File;
     default: return FileText;
@@ -692,7 +692,7 @@ export const ChatV2Page: React.FC = () => {
           aria-live="polite"
         >
           <div className="flex items-center gap-2 px-4 py-2 rounded-lg bg-card shadow-lg border">
-            <Loader2 className="w-4 h-4 animate-spin text-primary" aria-hidden="true" />
+            <CircleNotch size={16} className="animate-spin text-primary" aria-hidden="true" />
             <span className="text-sm text-muted-foreground">
               {t('page.switchingSession')}
             </span>
@@ -775,7 +775,7 @@ export const ChatV2Page: React.FC = () => {
                     <div className="flex items-center gap-2 min-w-0">
                       {(() => {
                         const AppIcon = getAppIcon(openApp.type);
-                        return <AppIcon className="w-4 h-4 text-muted-foreground shrink-0" />;
+                        return <AppIcon size={16} className="text-muted-foreground shrink-0" />;
                       })()}
                       <span className="text-sm font-medium truncate">
                         {openApp.title || t('common:untitled')}
@@ -783,10 +783,10 @@ export const ChatV2Page: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label="在学习中心打开" title="在学习中心打开" className="!h-7 !w-7">
-                        <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
+                        <ArrowSquareOut size={14} className="text-muted-foreground" />
                       </NotionButton>
                       <NotionButton variant="ghost" size="icon" iconOnly onClick={() => { handleCloseApp(); setMobileResourcePanelOpen(false); }} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
-                        <X className="w-4 h-4 text-muted-foreground" />
+                        <X size={16} className="text-muted-foreground" />
                       </NotionButton>
                     </div>
                   </div>
@@ -795,7 +795,7 @@ export const ChatV2Page: React.FC = () => {
                     <Suspense
                       fallback={
                         <div className="flex items-center justify-center h-full">
-                          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                          <CircleNotch size={24} className="animate-spin text-muted-foreground" />
                           <span className="ml-2 text-muted-foreground">{t('common:loading')}</span>
                         </div>
                       }
@@ -919,7 +919,7 @@ export const ChatV2Page: React.FC = () => {
                     <div className="flex items-center gap-2 min-w-0">
                       {(() => {
                         const AppIcon = getAppIcon(openApp.type);
-                        return <AppIcon className="w-4 h-4 text-muted-foreground shrink-0" />;
+                        return <AppIcon size={16} className="text-muted-foreground shrink-0" />;
                       })()}
                       <span className="text-sm font-medium truncate">
                         {openApp.title || t('common:untitled')}
@@ -930,10 +930,10 @@ export const ChatV2Page: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label="在学习中心打开" title="在学习中心打开" className="!h-7 !w-7">
-                        <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
+                        <ArrowSquareOut size={14} className="text-muted-foreground" />
                       </NotionButton>
                       <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCloseApp} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
-                        <X className="w-4 h-4 text-muted-foreground" />
+                        <X size={16} className="text-muted-foreground" />
                       </NotionButton>
                     </div>
                   </div>
@@ -943,7 +943,7 @@ export const ChatV2Page: React.FC = () => {
                     <Suspense
                       fallback={
                         <div className="flex items-center justify-center h-full">
-                          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                          <CircleNotch size={24} className="animate-spin text-muted-foreground" />
                           <span className="ml-2 text-muted-foreground">
                             {t('common:loading')}
                           </span>
@@ -981,7 +981,7 @@ export const ChatV2Page: React.FC = () => {
                   {openApp && (
                     <>
                       <PanelResizeHandle className="w-1 bg-border hover:bg-primary/30 transition-colors flex items-center justify-center">
-                        <GripVertical className="w-3 h-3 text-muted-foreground/50" />
+                        <DotsSixVertical size={12} className="text-muted-foreground/50" />
                       </PanelResizeHandle>
                       <Panel
                         defaultSize={65}
@@ -994,7 +994,7 @@ export const ChatV2Page: React.FC = () => {
                             <div className="flex items-center gap-2 min-w-0">
                               {(() => {
                                 const AppIcon = getAppIcon(openApp.type);
-                                return <AppIcon className="w-4 h-4 text-muted-foreground shrink-0" />;
+                                return <AppIcon size={16} className="text-muted-foreground shrink-0" />;
                               })()}
                               <span className="text-sm font-medium truncate">
                                 {openApp.title || t('common:untitled')}
@@ -1005,10 +1005,10 @@ export const ChatV2Page: React.FC = () => {
                             </div>
                             <div className="flex items-center gap-1 shrink-0">
                               <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label="在学习中心打开" title="在学习中心打开" className="!h-7 !w-7">
-                                <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
+                                <ArrowSquareOut size={14} className="text-muted-foreground" />
                               </NotionButton>
                               <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCloseApp} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
-                                <X className="w-4 h-4 text-muted-foreground" />
+                                <X size={16} className="text-muted-foreground" />
                               </NotionButton>
                             </div>
                           </div>
@@ -1018,7 +1018,7 @@ export const ChatV2Page: React.FC = () => {
                             <Suspense
                               fallback={
                                 <div className="flex items-center justify-center h-full">
-                                  <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                                  <CircleNotch size={24} className="animate-spin text-muted-foreground" />
                                   <span className="ml-2 text-muted-foreground">
                                     {t('common:loading')}
                                   </span>
@@ -1060,7 +1060,7 @@ export const ChatV2Page: React.FC = () => {
             <div className="study-shell-toolbar flex items-center justify-between px-4 py-3 border-b shrink-0">
               <span className="font-medium">{t('learningHub:title')}</span>
               <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setLearningHubSheetOpen(false)} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
-                <X className="w-4 h-4 text-muted-foreground" />
+                <X size={16} className="text-muted-foreground" />
               </NotionButton>
             </div>
             <div className="flex-1 overflow-hidden">
@@ -1071,7 +1071,7 @@ export const ChatV2Page: React.FC = () => {
                     <div className="flex items-center gap-2 min-w-0">
                       {(() => {
                         const AppIcon = getAppIcon(openApp.type);
-                        return <AppIcon className="w-4 h-4 text-muted-foreground shrink-0" />;
+                        return <AppIcon size={16} className="text-muted-foreground shrink-0" />;
                       })()}
                       <span className="text-sm font-medium truncate">
                         {openApp.title || t('common:untitled')}
@@ -1082,10 +1082,10 @@ export const ChatV2Page: React.FC = () => {
                     </div>
                     <div className="flex items-center gap-1 shrink-0">
                       <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label="在学习中心打开" title="在学习中心打开" className="!h-7 !w-7">
-                        <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
+                        <ArrowSquareOut size={14} className="text-muted-foreground" />
                       </NotionButton>
                       <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCloseApp} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
-                        <X className="w-4 h-4 text-muted-foreground" />
+                        <X size={16} className="text-muted-foreground" />
                       </NotionButton>
                     </div>
                   </div>
@@ -1095,7 +1095,7 @@ export const ChatV2Page: React.FC = () => {
                     <Suspense
                       fallback={
                         <div className="flex items-center justify-center h-full">
-                          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                          <CircleNotch size={24} className="animate-spin text-muted-foreground" />
                           <span className="ml-2 text-muted-foreground">
                             {t('common:loading')}
                           </span>

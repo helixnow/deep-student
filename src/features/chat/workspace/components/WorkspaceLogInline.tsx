@@ -12,15 +12,15 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ChevronDown,
-  ChevronUp,
-  MessageSquare,
+  CaretDown,
+  CaretUp,
+  Chat,
   Copy,
   Check,
   User,
-  Bot,
+  Robot,
   Bug,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { cn } from '@/utils/cn';
 import { useShallow } from 'zustand/react/shallow';
@@ -139,18 +139,18 @@ const LogMessageItem: React.FC<LogMessageItemProps> = ({ message, agents }) => {
         <MessageTypeBadge type={message.messageType} />
         <div className="flex items-center gap-1 text-xs text-muted-foreground">
           {senderInfo?.role === 'coordinator' ? (
-            <User className="w-3 h-3" />
+            <User size={12} />
           ) : (
-            <Bot className="w-3 h-3" />
+            <Robot size={12} />
           )}
           <span className="font-medium">{getSenderName()}</span>
           {getTargetName() && (
             <>
               <span className="mx-0.5">→</span>
               {targetInfo?.role === 'coordinator' ? (
-                <User className="w-3 h-3" />
+                <User size={12} />
               ) : (
-                <Bot className="w-3 h-3" />
+                <Robot size={12} />
               )}
               <span className="font-medium">{getTargetName()}</span>
             </>
@@ -285,7 +285,7 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center gap-2">
-          <MessageSquare className="w-4 h-4 text-primary" />
+          <Chat size={16} className="text-primary" />
           <span className="text-sm font-medium">
             {t('workspace.log.title')}
           </span>
@@ -297,17 +297,17 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
           {/* 🆕 复制完整调试信息按钮 */}
           {store && (
             <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopyDebugInfo(); }} aria-label={t('debug.copyDebugInfo')} title={t('debug.copyDebugInfo')}>
-              {debugCopied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Bug className="w-3.5 h-3.5" />}
+              {debugCopied ? <Check size={14} className="text-green-500" /> : <Bug size={14} />}
             </NotionButton>
           )}
           {/* 复制日志按钮 */}
           <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopyLog(); }} aria-label={t('workspace.log.copy')} title={t('workspace.log.copy')}>
-            {copied ? <Check className="w-3.5 h-3.5 text-green-500" /> : <Copy className="w-3.5 h-3.5" />}
+            {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
           </NotionButton>
           {isExpanded ? (
-            <ChevronUp className="w-4 h-4 text-muted-foreground" />
+            <CaretUp size={16} className="text-muted-foreground" />
           ) : (
-            <ChevronDown className="w-4 h-4 text-muted-foreground" />
+            <CaretDown size={16} className="text-muted-foreground" />
           )}
         </div>
       </div>

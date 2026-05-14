@@ -11,7 +11,7 @@
 
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronUp, ExternalLink, Loader2, Bot, Maximize2, Minimize2, Send } from 'lucide-react';
+import { CaretDown, CaretUp, ArrowSquareOut, CircleNotch, Robot, ArrowsOut, ArrowsIn, PaperPlaneRight } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
@@ -190,16 +190,16 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
       >
         <div className="flex items-center gap-2 min-w-0">
           {isExpanded ? (
-            <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            <CaretDown size={16} className="text-muted-foreground flex-shrink-0" />
           ) : (
-            <ChevronUp className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+            <CaretUp size={16} className="text-muted-foreground flex-shrink-0" />
           )}
-          <Bot className={cn('w-4 h-4 flex-shrink-0', statusColors[status])} />
+          <Robot size={16} className={cn('flex-shrink-0', statusColors[status])} />
           <span className="text-sm font-medium truncate">
             {skillName || t('subagent.title')}
           </span>
           {status === 'running' && (
-            <Loader2 className="w-3 h-3 animate-spin text-blue-500" />
+            <CircleNotch size={12} className="animate-spin text-blue-500" />
           )}
         </div>
         <div className="flex items-center gap-1.5">
@@ -221,7 +221,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
                 : t('chatV2:workspace.dispatch.title')
             }
           >
-            <Send className="w-3 h-3 mr-1" />
+            <PaperPlaneRight size={12} className="mr-1" />
             {t('chatV2:workspace.dispatch.title')}
           </NotionButton>
 
@@ -239,7 +239,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
           {/* 高度切换按钮（仅展开时显示） */}
           {isExpanded && (
             <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); setIsFullHeight(!isFullHeight); }} className="!h-6 !w-6" aria-label={isFullHeight ? t('subagent.collapse') : t('subagent.expand')} title={isFullHeight ? t('subagent.collapse') : t('subagent.expand')}>
-              {isFullHeight ? <Minimize2 className="w-3.5 h-3.5 text-muted-foreground" /> : <Maximize2 className="w-3.5 h-3.5 text-muted-foreground" />}
+              {isFullHeight ? <ArrowsIn size={14} className="text-muted-foreground" /> : <ArrowsOut size={14} className="text-muted-foreground" />}
             </NotionButton>
           )}
           
@@ -254,7 +254,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
                 onViewFullSession();
               }}
             >
-              <ExternalLink className="w-3 h-3 mr-1" />
+              <ArrowSquareOut size={12} className="mr-1" />
               {t('workspace.viewFull')}
             </NotionButton>
           )}
@@ -342,9 +342,9 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
               disabled={dispatching || !isOnline}
             >
               {dispatching ? (
-                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                <CircleNotch size={12} className="mr-1 animate-spin" />
               ) : (
-                <Send className="w-3 h-3 mr-1" />
+                <PaperPlaneRight size={12} className="mr-1" />
               )}
               {t('chatV2:workspace.dispatch.send')}
             </NotionButton>

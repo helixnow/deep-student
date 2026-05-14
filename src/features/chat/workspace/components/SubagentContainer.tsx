@@ -9,16 +9,16 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { 
-  ChevronDown, 
-  ChevronRight, 
-  Loader2, 
-  Bot, 
-  CheckCircle2, 
+  CaretDown, 
+  CaretRight, 
+  CircleNotch, 
+  Robot, 
+  CheckCircle, 
   XCircle, 
   Clock,
-  ExternalLink,
-  RefreshCw,
-} from 'lucide-react';
+  ArrowSquareOut,
+  ArrowClockwise,
+} from '@phosphor-icons/react';
 
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -260,7 +260,7 @@ export const SubagentContainer: React.FC<SubagentContainerProps> = ({
       case 'completed':
         return null;
       case 'failed':
-        return <XCircle className="w-4 h-4 text-red-500" />;
+        return <XCircle size={16} className="text-red-500" />;
       default:
         return null;
     }
@@ -300,13 +300,13 @@ export const SubagentContainer: React.FC<SubagentContainerProps> = ({
       >
         {/* 折叠图标 */}
         {isExpanded ? (
-          <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+          <CaretDown size={16} className="text-muted-foreground flex-shrink-0" />
         ) : (
-          <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+          <CaretRight size={16} className="text-muted-foreground flex-shrink-0" />
         )}
         
         {/* 子代理图标和名称 */}
-        <Bot className="w-4 h-4 text-primary flex-shrink-0" />
+        <Robot size={16} className="text-primary flex-shrink-0" />
         <span className="text-sm font-medium">
           {skillId || t('workspace.subagent.title', '子代理')}
         </span>
@@ -341,7 +341,7 @@ export const SubagentContainer: React.FC<SubagentContainerProps> = ({
               onViewFullSession(subagentSessionId);
             }}
           >
-            <ExternalLink className="w-3 h-3 mr-1" />
+            <ArrowSquareOut size={12} className="mr-1" />
             {t('workspace.viewFull', '查看完整')}
           </NotionButton>
         )}
@@ -352,7 +352,7 @@ export const SubagentContainer: React.FC<SubagentContainerProps> = ({
         <div className="border-t bg-muted/20">
           {loading ? (
             <div className="flex items-center justify-center py-6">
-              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+              <CircleNotch size={20} className="animate-spin text-muted-foreground" />
               <span className="ml-2 text-sm text-muted-foreground">
                 {t('workspace.subagent.loading', '加载中...')}
               </span>

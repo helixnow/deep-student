@@ -15,14 +15,14 @@ import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  ChevronDown,
-  ChevronRight,
-  Loader2,
+  CaretDown,
+  CaretRight,
+  CircleNotch,
   Wrench,
   CheckCircle,
-  AlertCircle,
-  AlertTriangle,
-} from 'lucide-react';
+  WarningCircle,
+  Warning,
+} from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { useStore } from 'zustand';
 import type { StoreApi } from 'zustand';
@@ -611,7 +611,7 @@ const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast
 
   // 获取状态图标 - 只在错误状态显示图标
   const StatusIcon = useMemo(() => {
-    if (isError) return AlertCircle;
+    if (isError) return WarningCircle;
     return null;
   }, [isError]);
 
@@ -620,7 +620,7 @@ const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast
     if (isPreparing) return 'text-primary';
     if (isRunning) return 'text-primary';
     if (isError) return 'text-destructive';
-    if (isSuccess) return 'text-green-500 dark:text-green-400';
+    if (isSuccess) return 'text-success';
     return 'text-muted-foreground';
   }, [isPreparing, isRunning, isError, isSuccess]);
 
@@ -691,7 +691,7 @@ const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast
                 {/* 错误信息 */}
                 {isError && node.toolError && (
                   <div className="flex items-start gap-1.5 p-2 rounded-md bg-destructive/10 border border-destructive/20">
-                    <AlertCircle size={12} className="text-destructive flex-shrink-0 mt-0.5" />
+                    <WarningCircle size={12} className="text-destructive flex-shrink-0 mt-0.5" />
                     <span className="text-destructive break-words">
                       {node.toolError}
                     </span>
@@ -702,7 +702,7 @@ const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast
                 {node.toolInput && Object.keys(node.toolInput).length > 0 && (
                   <div className="space-y-1">
                     <div className="flex items-center gap-1 text-muted-foreground">
-                      <ChevronRight size={12} />
+                      <CaretRight size={12} />
                       <span>{t('timeline.tool.input', { ns: 'chatV2' })}</span>
                     </div>
                     <div className="pl-4 space-y-0.5">
@@ -731,7 +731,7 @@ const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast
                 {isSuccess && node.toolOutput !== undefined && (
                   <div className="space-y-1">
                     <div className="flex items-center gap-1 text-muted-foreground">
-                      <ChevronRight size={12} />
+                      <CaretRight size={12} />
                       <span>{t('timeline.tool.output', { ns: 'chatV2' })}</span>
                     </div>
                     <div className="pl-4 text-muted-foreground">
@@ -839,7 +839,7 @@ const ToolLimitNodeContent: React.FC<ToolLimitNodeContentProps> = ({ node, isFir
             'text-amber-600 dark:text-amber-400'
           )}
         >
-          <AlertTriangle size={14} className="flex-shrink-0" />
+          <Warning size={14} className="flex-shrink-0" />
           <span className="font-medium">
             {t('timeline.limit.reached')}
           </span>
@@ -855,9 +855,9 @@ const ToolLimitNodeContent: React.FC<ToolLimitNodeContentProps> = ({ node, isFir
             className="bg-primary/10 hover:bg-primary/20 text-primary border-primary/20 hover:border-primary/30"
           >
             {isContinuing ? (
-              <Loader2 size={14} className="flex-shrink-0 animate-spin" />
+              <CircleNotch size={14} className="flex-shrink-0 animate-spin" />
             ) : (
-              <ChevronRight size={14} className="flex-shrink-0" />
+              <CaretRight size={14} className="flex-shrink-0" />
             )}
             <span>{isContinuing ? t('timeline.limit.continuing', '继续中...') : t('timeline.limit.continue')}</span>
           </NotionButton>

@@ -8,7 +8,7 @@
 import React, { useMemo, useCallback } from 'react';
 import { cn } from '@/utils/cn';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
-import { StreamingMarkdownRenderer } from '../../components/renderers';
+import { StreamingBlockRenderer } from '../../components/renderers';
 import { makeCitationRemarkPlugin } from '../../utils/citationRemarkPlugin';
 import { citationEvents } from '../../utils/citationEvents';
 import type { RetrievalSourceType } from './components/types';
@@ -63,7 +63,7 @@ const ContentBlockBase: React.FC<ContentBlockBaseProps> = ({ block, isStreaming,
         'prose-headings:tracking-tight'
       )}
     >
-      <StreamingMarkdownRenderer
+      <StreamingBlockRenderer
         content={content}
         isStreaming={isStreaming ?? false}
         extraRemarkPlugins={citationPlugins}

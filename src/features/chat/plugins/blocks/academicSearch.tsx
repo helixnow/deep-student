@@ -8,7 +8,7 @@
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { GraduationCap, Loader2, AlertCircle, Search } from 'lucide-react';
+import { GraduationCap, CircleNotch, WarningCircle, MagnifyingGlass } from '@phosphor-icons/react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { SourceList } from './components/SourceList';
 import { convertBackendSources, type BackendSourceInfo } from './components/types';
@@ -116,7 +116,7 @@ const AcademicSearchBlock: React.FC<BlockComponentProps> = React.memo(({ block, 
             'dark:bg-blue-500/20'
           )}
         >
-          <GraduationCap className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+          <GraduationCap size={16} className="text-blue-600 dark:text-blue-400" />
         </div>
 
         {/* 标题 */}
@@ -140,14 +140,14 @@ const AcademicSearchBlock: React.FC<BlockComponentProps> = React.memo(({ block, 
         {/* 状态指示器 */}
         {(isPending || isRunning) && (
           <span className="flex items-center gap-1 ml-auto text-xs text-muted-foreground">
-            <Loader2 className="w-3 h-3 animate-spin" />
+            <CircleNotch size={12} className="animate-spin" />
             <span>{t('blocks.academicSearch.searching')}</span>
           </span>
         )}
 
         {isError && (
           <span className="flex items-center gap-1 ml-auto text-xs text-red-600 dark:text-red-400">
-            <AlertCircle className="w-3 h-3" />
+            <WarningCircle size={12} />
             <span>{t('blocks.academicSearch.error')}</span>
           </span>
         )}
@@ -164,7 +164,7 @@ const AcademicSearchBlock: React.FC<BlockComponentProps> = React.memo(({ block, 
         {/* 查询信息 */}
         {query && (
           <div className="flex items-center gap-2 mb-3 text-sm text-muted-foreground">
-            <Search className="w-4 h-4" />
+            <MagnifyingGlass size={16} />
             <span className="truncate" title={query}>
               {query}
             </span>
@@ -175,7 +175,7 @@ const AcademicSearchBlock: React.FC<BlockComponentProps> = React.memo(({ block, 
         {(isPending || isRunning) && (
           <div className="flex items-center justify-center py-6">
             <div className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="w-5 h-5 animate-spin" />
+              <CircleNotch size={20} className="animate-spin" />
               <span className="text-sm">{t('blocks.academicSearch.loading')}</span>
             </div>
           </div>
@@ -185,7 +185,7 @@ const AcademicSearchBlock: React.FC<BlockComponentProps> = React.memo(({ block, 
         {isError && (
           <div className="flex items-center justify-center py-6">
             <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
-              <AlertCircle className="w-5 h-5" />
+              <WarningCircle size={20} />
               <span className="text-sm">
                 {block.error || t('blocks.academicSearch.errorMessage')}
               </span>

@@ -1716,6 +1716,8 @@ export class ChatV2TauriAdapter {
           console.log(LOG_PREFIX, 'Session title updated:', payload.title);
           if (payload.title) {
             this.store.setTitle(payload.title);
+            // 通知侧边栏等组件刷新会话列表
+            window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
           }
           break;
 
@@ -1727,6 +1729,8 @@ export class ChatV2TauriAdapter {
           });
           if (payload.title) {
             this.store.setSummary(payload.title, payload.description ?? '');
+            // 通知侧边栏等组件刷新会话列表
+            window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
           }
           break;
 

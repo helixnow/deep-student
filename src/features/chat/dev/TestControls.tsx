@@ -13,15 +13,15 @@ import { cn } from '@/utils/cn';
 import {
   Play,
   Square,
-  Trash2,
-  RotateCcw,
-  Settings,
-  MessageSquare,
-  Zap,
+  Trash,
+  ArrowCounterClockwise,
+  Gear,
+  Chat,
+  Lightning,
   Moon,
   Sun,
-  AlertCircle,
-} from 'lucide-react';
+  WarningCircle,
+} from '@phosphor-icons/react';
 import type { ChatStore } from '../core/types';
 
 // ============================================================================
@@ -177,7 +177,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
       <div className="px-3 py-2 bg-muted/50 border-b border-border">
         <div className="flex items-center justify-between">
           <span className="font-medium text-sm flex items-center gap-2">
-            <Settings className="w-4 h-4" />
+            <Gear size={16} />
             测试控制
           </span>
           <div className="flex items-center gap-2">
@@ -203,7 +203,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
       {/* 错误提示 */}
       {error && (
         <div className="px-3 py-2 bg-destructive/10 border-b border-destructive/20 text-destructive text-sm flex items-center gap-2">
-          <AlertCircle className="w-4 h-4" />
+          <WarningCircle size={16} />
           {error}
         </div>
       )}
@@ -224,7 +224,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
                 (!canSend || loading) && 'opacity-50 cursor-not-allowed'
               )}
             >
-              <Zap className="w-3.5 h-3.5" />
+              <Lightning size={14} />
               {t('dev.testControls.randomTest', 'Random Test')}
             </button>
             <button
@@ -237,7 +237,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
                 (!canSend || loading) && 'opacity-50 cursor-not-allowed'
               )}
             >
-              <MessageSquare className="w-3.5 h-3.5" />
+              <Chat size={14} />
               {t('dev.testControls.customMessage', 'Custom Message')}
             </button>
             <button
@@ -250,7 +250,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
                 (!canAbort || loading) && 'opacity-50 cursor-not-allowed'
               )}
             >
-              <Square className="w-3.5 h-3.5" />
+              <Square size={14} />
               {t('dev.testControls.stop', 'Stop')}
             </button>
           </div>
@@ -271,7 +271,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
                   'opacity-50 cursor-not-allowed'
               )}
             >
-              <Trash2 className="w-3.5 h-3.5" />
+              <Trash size={14} />
               {t('dev.testControls.clearMessages', 'Clear Messages')}
             </button>
             <button
@@ -284,7 +284,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
                 sessionStatus !== 'idle' && 'opacity-50 cursor-not-allowed'
               )}
             >
-              <RotateCcw className="w-3.5 h-3.5" />
+              <ArrowCounterClockwise size={14} />
               {t('dev.testControls.resetSession', 'Reset Session')}
             </button>
             <button
@@ -297,7 +297,7 @@ export const TestControls: React.FC<TestControlsProps> = ({
                 sessionStatus !== 'streaming' && 'opacity-50 cursor-not-allowed'
               )}
             >
-              <Play className="w-3.5 h-3.5" />
+              <Play size={14} />
               {t('dev.testControls.simulateComplete', 'Simulate Complete')}
             </button>
           </div>
@@ -338,12 +338,12 @@ export const TestControls: React.FC<TestControlsProps> = ({
             >
               {isDarkMode ? (
                 <>
-                  <Sun className="w-3.5 h-3.5" />
+                  <Sun size={14} />
                   {t('dev.testControls.switchToLight', 'Switch to Light')}
                 </>
               ) : (
                 <>
-                  <Moon className="w-3.5 h-3.5" />
+                  <Moon size={14} />
                   {t('dev.testControls.switchToDark', 'Switch to Dark')}
                 </>
               )}

@@ -11,7 +11,7 @@ import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { Network } from 'lucide-react';
+import { TreeStructure } from '@phosphor-icons/react';
 import { MindMapEmbed } from '@/features/mindmap/components/mindmap/MindMapEmbed';
 
 // ============================================================================
@@ -126,7 +126,7 @@ export const MindmapCitationBadge: React.FC<MindmapCitationBadgeProps> = ({
       )}
       title={t('mindmapCitation.mindmapTitle', { title: title || mindmapId })}
     >
-      <Network className="w-3 h-3" />
+      <TreeStructure size={12} />
       <span className="truncate max-w-[120px]">{title || t('mindmapCitation.mindmap')}</span>
     </NotionButton>
   );

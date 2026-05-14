@@ -12,16 +12,16 @@ import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '@/components/ui/shad/Input';
 import {
-  ChevronLeft,
-  ChevronRight,
-  ChevronsLeft,
-  ChevronsRight,
+  CaretLeft,
+  CaretRight,
+  CaretDoubleLeft,
+  CaretDoubleRight,
   BookOpen,
-  Loader2,
-  AlertCircle,
-  RefreshCw,
+  CircleNotch,
+  WarningCircle,
+  ArrowClockwise,
   Image,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import type { ChatStore } from '../../../core/types';
 import type { TextbookModeState, TextbookPage } from '../textbook';
 import {
@@ -122,7 +122,7 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
           'flex items-center gap-3'
         )}
       >
-        <Loader2 className="w-5 h-5 animate-spin text-primary" />
+        <CircleNotch size={20} className="animate-spin text-primary" />
         <span className="text-sm text-muted-foreground">
           {t('textbook.loading')}
         </span>
@@ -142,13 +142,13 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
         )}
       >
         <div className="flex items-center gap-2">
-          <AlertCircle className="w-5 h-5 text-destructive" />
+          <WarningCircle size={20} className="text-destructive" />
           <span className="text-sm text-destructive">
             {loadingError || t('textbook.loadError')}
           </span>
         </div>
         <NotionButton variant="ghost" size="sm" onClick={handleRetry} className="text-primary hover:bg-primary/10">
-          <RefreshCw className="w-3 h-3" />
+          <ArrowClockwise size={12} />
           {t('textbook.retry')}
         </NotionButton>
       </div>
@@ -166,7 +166,7 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
           'flex items-center gap-2 text-muted-foreground'
         )}
       >
-        <BookOpen className="w-5 h-5" />
+        <BookOpen size={20} />
         <span className="text-sm">{t('textbook.noPages')}</span>
       </div>
     );
@@ -185,7 +185,7 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
       <div className="flex items-center justify-between px-3 py-2">
         {/* 左侧：标题和图标 */}
         <div className="flex items-center gap-2">
-          <BookOpen className="w-4 h-4 text-primary" />
+          <BookOpen size={16} className="text-primary" />
           <span className="text-sm font-medium text-foreground">
             {t('textbook.title')}
           </span>
@@ -199,7 +199,7 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
             disabled={currentPage <= 1}
             title={t('textbook.firstPage')}
           >
-            <ChevronsLeft className="w-4 h-4" />
+            <CaretDoubleLeft size={16} />
           </NavigationButton>
 
           {/* 上一页按钮 */}
@@ -208,7 +208,7 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
             disabled={currentPage <= 1}
             title={t('textbook.prevPage')}
           >
-            <ChevronLeft className="w-4 h-4" />
+            <CaretLeft size={16} />
           </NavigationButton>
 
           {/* 页码显示/输入 */}
@@ -236,7 +236,7 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
             disabled={currentPage >= totalPages}
             title={t('textbook.nextPage')}
           >
-            <ChevronRight className="w-4 h-4" />
+            <CaretRight size={16} />
           </NavigationButton>
 
           {/* 末页按钮 */}
@@ -245,13 +245,13 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
             disabled={currentPage >= totalPages}
             title={t('textbook.lastPage')}
           >
-            <ChevronsRight className="w-4 h-4" />
+            <CaretDoubleRight size={16} />
           </NavigationButton>
         </div>
 
         {/* 右侧：缩略图切换 */}
         <NotionButton variant="ghost" size="sm" onClick={() => setIsThumbExpanded((prev) => !prev)} className={cn(isThumbExpanded && 'bg-muted/50 text-foreground')}>
-          <Image className="w-3 h-3" />
+          <Image size={12} />
           {t('textbook.preview')}
         </NotionButton>
       </div>

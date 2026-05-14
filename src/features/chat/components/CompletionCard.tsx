@@ -8,7 +8,7 @@
 
 import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CheckCircle2, Copy, Terminal } from 'lucide-react';
+import { CheckCircle, Copy, Terminal } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { cn } from '@/lib/utils';
@@ -59,7 +59,7 @@ export const CompletionCard: React.FC<CompletionCardProps> = ({ data, className 
     >
       <CardHeader className="pb-2">
         <CardTitle className="flex items-center gap-2 text-base text-green-700 dark:text-green-400">
-          <CheckCircle2 className="h-5 w-5" />
+          <CheckCircle size={20} />
           {t('completion.title')}
         </CardTitle>
       </CardHeader>
@@ -73,7 +73,7 @@ export const CompletionCard: React.FC<CompletionCardProps> = ({ data, className 
           <div className="rounded-md bg-muted p-3">
             <div className="flex items-center justify-between mb-2">
               <span className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                <Terminal className="h-3.5 w-3.5" />
+                <Terminal size={14} />
                 {t('completion.suggestedCommand')}
               </span>
               <NotionButton
@@ -82,7 +82,7 @@ export const CompletionCard: React.FC<CompletionCardProps> = ({ data, className 
                 onClick={handleCopyCommand}
                 className="h-6 px-2 text-xs"
               >
-                <Copy className="h-3 w-3 mr-1" />
+                <Copy size={12} className="mr-1" />
                 {t('completion.copy')}
               </NotionButton>
             </div>

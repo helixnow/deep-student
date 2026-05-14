@@ -7,7 +7,7 @@
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { X, Check, RotateCcw, Search, Star, Pin, ChevronDown, ChevronRight } from 'lucide-react';
+import { X, Check, ArrowCounterClockwise, MagnifyingGlass, Star, PushPin, CaretDown, CaretRight } from '@phosphor-icons/react';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/shad/Input';
@@ -410,7 +410,7 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
               )}
               aria-label={t('chat_host:model_panel.set_as_default')}
             >
-              <Pin size={12} />
+              <PushPin size={12} />
             </NotionButton>
           </CommonTooltip>
         )}
@@ -428,7 +428,7 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
             <div className="flex items-center gap-2 flex-wrap min-w-0">
               <div className="flex items-center gap-2 text-sm text-foreground flex-wrap">
                 {isRetryMode ? (
-                  <RotateCcw className="h-4 w-4 shrink-0 text-primary" />
+                  <ArrowCounterClockwise size={16} className="shrink-0 text-primary" />
                 ) : (
                   <DsAnalysisIconMuted className="h-4 w-4 shrink-0 text-primary" />
                 )}
@@ -475,7 +475,7 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
                   disabled={disabled || selectedModels.length === 0}
                   title={t('chatV2:modelMention.retry')}
                 >
-                  <RotateCcw size={14} />
+                  <ArrowCounterClockwise size={14} />
                   {t('chatV2:modelRetry.retry')}
                 </NotionButton>
               )}
@@ -490,7 +490,7 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
 
       {/* 搜索框 */}
       <div className="relative">
-        <Search
+        <MagnifyingGlass
           size={12}
           className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
         />
@@ -535,9 +535,9 @@ export const MultiSelectModelPanel: React.FC<MultiSelectModelPanelProps> = ({
                     )}
                   >
                     {isCollapsed ? (
-                      <ChevronRight size={14} className="shrink-0 text-muted-foreground" />
+                      <CaretRight size={14} className="shrink-0 text-muted-foreground" />
                     ) : (
-                      <ChevronDown size={14} className="shrink-0 text-muted-foreground" />
+                      <CaretDown size={14} className="shrink-0 text-muted-foreground" />
                     )}
                     <span className="text-xs font-semibold text-muted-foreground truncate">
                       {group.vendorName}

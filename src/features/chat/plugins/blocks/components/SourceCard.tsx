@@ -12,10 +12,10 @@ import {
   FileText,
   Globe,
   Brain,
-  ImageIcon,
-  ExternalLink,
-  ChevronRight,
-} from 'lucide-react';
+  Image as ImageIcon,
+  ArrowSquareOut,
+  CaretRight,
+} from '@phosphor-icons/react';
 import type { RetrievalSource, RetrievalSourceType } from './types';
 import { openUrl } from '@/utils/urlOpener';
 
@@ -165,7 +165,7 @@ export const SourceCard: React.FC<SourceCardProps> = ({
 
           {/* 来源类型标签 */}
           <div className="flex items-center gap-1 mt-0.5">
-            <Icon className="w-3 h-3 text-muted-foreground" />
+            <Icon size={12} className="text-muted-foreground" />
             <span className="text-xs text-muted-foreground">
               {t(`blocks.retrieval.sourceTypes.${source.type}`)}
             </span>
@@ -174,7 +174,7 @@ export const SourceCard: React.FC<SourceCardProps> = ({
 
         {/* 跳转指示器 */}
         {hasUrl && (
-          <ChevronRight
+          <CaretRight
             className={cn(
               'flex-shrink-0 text-muted-foreground',
               'opacity-0 group-hover:opacity-100 transition-opacity',
@@ -199,7 +199,7 @@ export const SourceCard: React.FC<SourceCardProps> = ({
       {/* URL 显示（紧凑模式不显示） */}
       {!compact && hasUrl && (
         <div className="mt-2 flex items-center gap-1 text-xs text-muted-foreground">
-          <ExternalLink className="w-3 h-3" />
+          <ArrowSquareOut size={12} />
           <span className="truncate" title={source.url}>
             {source.url}
           </span>

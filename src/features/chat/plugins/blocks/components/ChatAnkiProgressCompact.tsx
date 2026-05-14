@@ -1,6 +1,6 @@
 import React, { useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, Loader2, X, RefreshCw } from 'lucide-react';
+import { Check, CircleNotch, X, ArrowClockwise } from '@phosphor-icons/react';
 
 import { cn } from '@/utils/cn';
 import { Progress } from '@/components/ui/shad/Progress';
@@ -85,7 +85,7 @@ const AnkiConnectRefreshButton: React.FC<{ onRefresh: () => Promise<void> }> = (
       title="Refresh AnkiConnect status"
       aria-label="Refresh AnkiConnect status"
     >
-      <RefreshCw className={cn('w-3 h-3 text-muted-foreground', refreshing && 'animate-spin')} />
+      <ArrowClockwise className={cn('w-3 h-3 text-muted-foreground', refreshing && 'animate-spin')} />
     </button>
   );
 };
@@ -275,7 +275,7 @@ export const ChatAnkiProgressCompact: React.FC<{
                       isTerminalActive ? (
                         <X className="h-2.5 w-2.5 sm:h-3 sm:w-3" />
                       ) : (
-                        <Loader2 className={cn('h-2.5 w-2.5 sm:h-3 sm:w-3', blockStatus === 'running' && 'animate-spin')} />
+                        <CircleNotch className={cn('h-2.5 w-2.5 sm:h-3 sm:w-3', blockStatus === 'running' && 'animate-spin')} />
                       )
                     ) : (
                       <span>{idx + 1}</span>

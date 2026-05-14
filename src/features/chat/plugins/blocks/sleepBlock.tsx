@@ -19,18 +19,18 @@ import { listen } from '@tauri-apps/api/event';
 import {
   Moon,
   Sun,
-  ChevronDown,
-  ChevronRight,
+  CaretDown,
+  CaretRight,
   Clock,
-  CheckCircle2,
-  Loader2,
-  AlertCircle,
-  Users,
-  MessageSquare,
-  Bot,
-  Maximize2,
-  Minimize2,
-} from 'lucide-react';
+  CheckCircle,
+  CircleNotch,
+  WarningCircle,
+  UsersThree,
+  Chat,
+  Robot,
+  ArrowsOut,
+  ArrowsIn,
+} from '@phosphor-icons/react';
 
 import type { BlockComponentProps } from '../../registry/blockRegistry';
 import { blockRegistry } from '../../registry/blockRegistry';
@@ -154,13 +154,13 @@ const SubagentEmbedItem: React.FC<SubagentEmbedItemProps> = ({
   const statusIcon = useMemo(() => {
     switch (agent.status) {
       case 'running':
-        return <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin" />;
+        return <CircleNotch size={14} className="text-blue-500 animate-spin" />;
       case 'completed':
-        return <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />;
+        return <CheckCircle size={14} className="text-green-500" />;
       case 'failed':
-        return <AlertCircle className="w-3.5 h-3.5 text-red-500" />;
+        return <WarningCircle size={14} className="text-red-500" />;
       default:
-        return <Clock className="w-3.5 h-3.5 text-muted-foreground" />;
+        return <Clock size={14} className="text-muted-foreground" />;
     }
   }, [agent.status]);
 
@@ -190,11 +190,11 @@ const SubagentEmbedItem: React.FC<SubagentEmbedItemProps> = ({
         className="w-full !justify-start gap-2 !px-3 !py-2 text-left"
       >
         {isCollapsed ? (
-          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+          <CaretRight size={14} className="text-muted-foreground" />
         ) : (
-          <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+          <CaretDown size={14} className="text-muted-foreground" />
         )}
-        <Bot className="w-3.5 h-3.5 text-primary" />
+        <Robot size={14} className="text-primary" />
         <span className="text-sm font-medium truncate">{skillName}</span>
         <div className="flex items-center gap-1 ml-auto">
           {statusIcon}
@@ -213,9 +213,9 @@ const SubagentEmbedItem: React.FC<SubagentEmbedItemProps> = ({
             aria-label="toggle size"
           >
             {isFullHeight ? (
-              <Minimize2 className="w-3.5 h-3.5 text-muted-foreground" />
+              <ArrowsIn size={14} className="text-muted-foreground" />
             ) : (
-              <Maximize2 className="w-3.5 h-3.5 text-muted-foreground" />
+              <ArrowsOut size={14} className="text-muted-foreground" />
             )}
           </NotionButton>
         )}
@@ -415,7 +415,7 @@ const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, 
         };
       case 'cancelled':
         return {
-          icon: <AlertCircle className="w-4 h-4" />,
+          icon: <WarningCircle size={16} />,
           bgColor: 'bg-red-50 dark:bg-red-900/20',
           borderColor: 'border-red-200 dark:border-red-800',
           textColor: 'text-red-700 dark:text-red-300',
@@ -515,13 +515,13 @@ const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, 
             disabled={isWaking}
             className="bg-white dark:bg-gray-800"
           >
-            {isWaking ? <Loader2 className="w-3 h-3 animate-spin" /> : t('sleep.wakeButton')}
+            {isWaking ? <CircleNotch size={12} className="animate-spin" /> : t('sleep.wakeButton')}
           </NotionButton>
         )}
         {isExpanded ? (
-          <ChevronDown className="w-4 h-4 text-muted-foreground" />
+          <CaretDown size={16} className="text-muted-foreground" />
         ) : (
-          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+          <CaretRight size={16} className="text-muted-foreground" />
         )}
       </div>
 
@@ -542,7 +542,7 @@ const SleepBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block, 
           <div className="flex items-center gap-2 px-3 py-1.5 border-t border-border/30 bg-muted/20 text-[10px] text-muted-foreground">
             {status === 'awakened' && awakenedBy && (
               <>
-                <MessageSquare className="w-3 h-3 text-green-500" />
+                <Chat size={12} className="text-green-500" />
                 <span className="text-green-600 dark:text-green-400">
                   {t('sleep.awakenedBy', { agent: awakenedBy.slice(-8) })}
                 </span>

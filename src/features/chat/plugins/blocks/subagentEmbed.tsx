@@ -16,16 +16,16 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import {
-  ChevronDown,
-  ChevronRight,
-  Bot,
-  CheckCircle2,
-  Loader2,
-  AlertCircle,
+  CaretDown,
+  CaretRight,
+  Robot,
+  CheckCircle,
+  CircleNotch,
+  WarningCircle,
   Clock,
-  Maximize2,
-  Minimize2,
-} from 'lucide-react';
+  ArrowsOut,
+  ArrowsIn,
+} from '@phosphor-icons/react';
 
 import type { BlockComponentProps } from '../../registry/blockRegistry';
 import { blockRegistry } from '../../registry/blockRegistry';
@@ -167,13 +167,13 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
   const statusIcon = useMemo(() => {
     switch (status) {
       case 'running':
-        return <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />;
+        return <CircleNotch size={16} className="text-blue-500 animate-spin" />;
       case 'completed':
-        return <CheckCircle2 className="w-4 h-4 text-green-500" />;
+        return <CheckCircle size={16} className="text-green-500" />;
       case 'failed':
-        return <AlertCircle className="w-4 h-4 text-red-500" />;
+        return <WarningCircle size={16} className="text-red-500" />;
       default:
-        return <Clock className="w-4 h-4 text-muted-foreground" />;
+        return <Clock size={16} className="text-muted-foreground" />;
     }
   }, [status]);
 
@@ -198,7 +198,7 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
   if (!sessionId) {
     return (
       <div className="flex items-center gap-2 p-3 rounded-lg bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800">
-        <AlertCircle className="w-4 h-4 text-red-500" />
+        <WarningCircle size={16} className="text-red-500" />
         <span className="text-sm text-red-700 dark:text-red-300">
           {t('subagent.noSessionId')}
         </span>
@@ -220,13 +220,13 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
       >
         {/* 折叠图标 */}
         {isCollapsed ? (
-          <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+          <CaretRight size={16} className="text-muted-foreground flex-shrink-0" />
         ) : (
-          <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+          <CaretDown size={16} className="text-muted-foreground flex-shrink-0" />
         )}
 
         {/* 代理图标 */}
-        <Bot className="w-4 h-4 text-primary flex-shrink-0" />
+        <Robot size={16} className="text-primary flex-shrink-0" />
 
         {/* 技能名称 */}
         <span className="text-sm font-medium flex-1 truncate">{skillName}</span>
@@ -240,7 +240,7 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
         {/* 高度切换按钮（仅展开时显示） */}
         {!isCollapsed && (
           <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); setIsFullHeight(!isFullHeight); }} className="!h-6 !w-6" aria-label={isFullHeight ? t('subagent.collapse') : t('subagent.expand')} title={isFullHeight ? t('subagent.collapse') : t('subagent.expand')}>
-            {isFullHeight ? <Minimize2 className="w-3.5 h-3.5 text-muted-foreground" /> : <Maximize2 className="w-3.5 h-3.5 text-muted-foreground" />}
+            {isFullHeight ? <ArrowsIn size={14} className="text-muted-foreground" /> : <ArrowsOut size={14} className="text-muted-foreground" />}
           </NotionButton>
         )}
       </NotionButton>
@@ -285,13 +285,13 @@ const SubagentEmbedBlockComponent: React.FC<BlockComponentProps> = React.memo(({
       <div className="flex items-center gap-3 px-3 py-1.5 border-t border-border/30 bg-muted/20 text-[10px] text-muted-foreground">
         {createdAt && (
           <div className="flex items-center gap-1">
-            <Clock className="w-3 h-3" />
+            <Clock size={12} />
             <span>{new Date(createdAt).toLocaleTimeString()}</span>
           </div>
         )}
         {completedAt && (
           <div className="flex items-center gap-1">
-            <CheckCircle2 className="w-3 h-3 text-green-500" />
+            <CheckCircle size={12} className="text-green-500" />
             <span>{new Date(completedAt).toLocaleTimeString()}</span>
           </div>
         )}

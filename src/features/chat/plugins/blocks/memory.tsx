@@ -10,12 +10,12 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import {
   Brain,
-  Loader2,
-  AlertCircle,
-  MessageSquare,
+  CircleNotch,
+  WarningCircle,
+  Chat,
   Clock,
   User,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { SourceList } from './components/SourceList';
 import { convertBackendSources, type BackendSourceInfo, type MemoryType } from './components/types';
@@ -42,7 +42,7 @@ interface BackendMemoryResult {
 // ============================================================================
 
 const memoryTypeIcons: Record<MemoryType, typeof Brain> = {
-  conversation: MessageSquare,
+  conversation: Chat,
   long_term: Clock,
   user_profile: User,
 };
@@ -135,7 +135,7 @@ const MemoryBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStream
             'dark:bg-amber-500/20'
           )}
         >
-          <Brain className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+          <Brain size={16} className="text-amber-600 dark:text-amber-400" />
         </div>
 
         {/* 标题 */}
@@ -152,7 +152,7 @@ const MemoryBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStream
               'dark:bg-amber-500/20 dark:text-amber-400'
             )}
           >
-            <MemoryIcon className="w-3 h-3" />
+            <MemoryIcon size={12} />
             <span>{memoryTypeText}</span>
           </span>
         )}
@@ -160,14 +160,14 @@ const MemoryBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStream
         {/* 状态指示器 */}
         {(isPending || isRunning) && (
           <span className="flex items-center gap-1 ml-auto text-xs text-muted-foreground">
-            <Loader2 className="w-3 h-3 animate-spin" />
+            <CircleNotch size={12} className="animate-spin" />
             <span>{t('blocks.memory.searching')}</span>
           </span>
         )}
 
         {isError && (
           <span className="flex items-center gap-1 ml-auto text-xs text-red-600 dark:text-red-400">
-            <AlertCircle className="w-3 h-3" />
+            <WarningCircle size={12} />
             <span>{t('blocks.memory.error')}</span>
           </span>
         )}
@@ -185,7 +185,7 @@ const MemoryBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStream
         {(isPending || isRunning) && (
           <div className="flex items-center justify-center py-6">
             <div className="flex items-center gap-2 text-muted-foreground">
-              <Loader2 className="w-5 h-5 animate-spin" />
+              <CircleNotch size={20} className="animate-spin" />
               <span className="text-sm">{t('blocks.memory.loading')}</span>
             </div>
           </div>
@@ -195,7 +195,7 @@ const MemoryBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStream
         {isError && (
           <div className="flex items-center justify-center py-6">
             <div className="flex items-center gap-2 text-red-600 dark:text-red-400">
-              <AlertCircle className="w-5 h-5" />
+              <WarningCircle size={20} />
               <span className="text-sm">
                 {block.error || t('blocks.memory.errorMessage')}
               </span>

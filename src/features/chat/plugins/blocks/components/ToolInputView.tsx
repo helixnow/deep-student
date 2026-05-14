@@ -9,7 +9,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { ChevronDown, ChevronRight, Code2 } from 'lucide-react';
+import { CaretDown, CaretRight, CodeBlock } from '@phosphor-icons/react';
 
 // ============================================================================
 // 类型定义
@@ -142,8 +142,8 @@ export const ToolInputView: React.FC<ToolInputViewProps> = ({
     <div className={cn('tool-input-view', className)}>
       {/* 折叠头部 */}
       <NotionButton variant="ghost" size="sm" onClick={toggleExpanded} className="w-full !justify-start gap-1.5 !py-1 text-muted-foreground hover:text-foreground">
-        {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
-        <Code2 className="w-3 h-3" />
+        {isExpanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
+        <CodeBlock size={12} />
         <span>{t('blocks.mcpTool.input')}</span>
         <span className="text-muted-foreground/60">({paramKeys.length})</span>
       </NotionButton>

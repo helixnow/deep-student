@@ -9,7 +9,7 @@ import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { Square, Loader2 } from 'lucide-react';
+import { Square, CircleNotch } from '@phosphor-icons/react';
 import type { Variant } from '../../core/types/message';
 import type { Block } from '../../core/types/block';
 
@@ -127,7 +127,7 @@ const VariantCard: React.FC<VariantCardProps> = ({
         </div>
         {isStreaming && onStop && (
           <NotionButton variant="ghost" size="icon" iconOnly onClick={onStop} className="!h-6 !w-6" aria-label={t('variant.cancel')} title={t('variant.cancel')}>
-            <Square className="w-3 h-3" />
+            <Square size={12} />
           </NotionButton>
         )}
       </div>
@@ -150,7 +150,7 @@ const VariantCard: React.FC<VariantCardProps> = ({
           </p>
         ) : isStreaming ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Loader2 className="w-4 h-4 animate-spin" />
+            <CircleNotch size={16} className="animate-spin" />
             <span>{t('variant.streaming')}</span>
           </div>
         ) : variant.status === 'error' ? (
@@ -207,7 +207,7 @@ export const ParallelStreamingView: React.FC<ParallelStreamingViewProps> = ({
       {/* 标题栏 */}
       <div className="flex items-center justify-between mb-3">
         <div className="flex items-center gap-2">
-          <Loader2 className="w-4 h-4 animate-spin text-primary" />
+          <CircleNotch size={16} className="animate-spin text-primary" />
           <span className="text-sm font-medium">
             {t('variant.parallelStreaming')}
           </span>
@@ -217,7 +217,7 @@ export const ParallelStreamingView: React.FC<ParallelStreamingViewProps> = ({
         </div>
         {onStopAll && streamingCount > 0 && (
           <NotionButton variant="ghost" size="sm" onClick={onStopAll} className="text-destructive hover:bg-destructive/10">
-            <Square className="w-3 h-3" />
+            <Square size={12} />
             <span>{t('variant.stopAll')}</span>
           </NotionButton>
         )}

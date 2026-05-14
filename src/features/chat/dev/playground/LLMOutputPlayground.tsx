@@ -13,7 +13,7 @@ import '../../init';
 import React, { useMemo, useState, useCallback, useEffect } from 'react';
 import { useStore } from 'zustand';
 import { cn } from '@/utils/cn';
-import { Moon, Sun, PanelRightOpen, PanelRightClose, RotateCcw } from 'lucide-react';
+import { Moon, Sun, SidebarSimple, ArrowCounterClockwise } from '@phosphor-icons/react';
 import { MessageList } from '../../components/MessageList';
 import { InputBarV2 } from '../../components/input-bar';
 import { PlaygroundControlPanel } from './PlaygroundControlPanel';
@@ -108,14 +108,14 @@ export const LLMOutputPlayground: React.FC = () => {
             className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
             title="重置 (Ctrl+Shift+R)"
           >
-            <RotateCcw className="w-3.5 h-3.5" />
+            <ArrowCounterClockwise size={14} />
           </button>
           <button
             onClick={handleToggleDarkMode}
             className="p-1.5 rounded hover:bg-muted transition-colors text-muted-foreground hover:text-foreground"
             title="切换主题 (Ctrl+Shift+D)"
           >
-            {isDarkMode ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+            {isDarkMode ? <Sun size={14} /> : <Moon size={14} />}
           </button>
           <button
             onClick={() => setShowPanel((v) => !v)}
@@ -127,7 +127,7 @@ export const LLMOutputPlayground: React.FC = () => {
             )}
             title="切换控制面板 (Ctrl+Shift+P)"
           >
-            {showPanel ? <PanelRightClose className="w-3.5 h-3.5" /> : <PanelRightOpen className="w-3.5 h-3.5" />}
+            {showPanel ? <SidebarSimple size={14} /> : <SidebarSimple size={14} />}
           </button>
         </div>
       </header>
@@ -140,13 +140,6 @@ export const LLMOutputPlayground: React.FC = () => {
           <div className="flex-1 overflow-hidden relative">
             <MessageList
               store={store}
-            />
-            {/* 底部渐变 */}
-            <div
-              className="pointer-events-none absolute left-0 right-0 bottom-0 z-10 h-6"
-              style={{
-                background: 'linear-gradient(to bottom, transparent 0%, hsl(var(--background)) 100%)',
-              }}
             />
           </div>
 

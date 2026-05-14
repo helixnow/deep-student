@@ -4,7 +4,7 @@ import {
   type StreamingMarkdownProfiler,
 } from './streamingProfiler';
 
-export type StreamingSmoothingPreset = 'realtime' | 'balanced' | 'silky';
+export type StreamingSmoothingPreset = 'realtime' | 'balanced' | 'silky' | 'fluid';
 
 export interface StreamingSmoothingConfig {
   frameMs: number;
@@ -55,12 +55,19 @@ const STREAMING_SMOOTHING_CONFIGS: Record<StreamingSmoothingPreset, StreamingSmo
     backlogBoostThreshold: 56,
     tailFlushChars: 4,
   },
+  fluid: {
+    frameMs: 20,
+    minChunkChars: 8,
+    maxChunkChars: 64,
+    backlogBoostThreshold: 120,
+    tailFlushChars: 16,
+  },
 };
 
 export function resolveStreamingSmoothingPreset(
   preset?: StreamingSmoothingPreset | string | null,
 ): StreamingSmoothingPreset {
-  if (preset === 'realtime' || preset === 'balanced' || preset === 'silky') {
+  if (preset === 'realtime' || preset === 'balanced' || preset === 'silky' || preset === 'fluid') {
     return preset;
   }
   return DEFAULT_STREAMING_SMOOTHING_PRESET;
@@ -70,6 +77,52 @@ export function getStreamingSmoothingConfig(
   preset: StreamingSmoothingPreset = DEFAULT_STREAMING_SMOOTHING_PRESET,
 ): StreamingSmoothingConfig {
   return STREAMING_SMOOTHING_CONFIGS[preset] ?? STREAMING_SMOOTHING_CONFIGS[DEFAULT_STREAMING_SMOOTHING_PRESET];
+}
+
+/**
+ * 在给定位置附近寻找词边界（空格、标点、CJK 字符边界），
+ * 避免在单词中间截断，产生更自然的"词组淡入"效果。
+ */
+function snapToWordBoundary(text: string, fromIndex: number, rawEnd: number): number {
+  // 如果 rawEnd 已经在文本末尾或超出，直接返回
+  if (rawEnd >= text.length) return text.length;
+
+  // 向前搜索最近的词边界（最多回退 12 字符）
+  const searchStart = Math.max(fromIndex, rawEnd - 12);
+  for (let i = rawEnd; i > searchStart; i--) {
+    const ch = text[i];
+    // 空格、标点、CJK 字符后都是自然断点
+    if (ch === ' ' || ch === '\n' || ch === '\t' ||
+        ch === ',' || ch === '.' || ch === ';' || ch === ':' ||
+        ch === '、' || ch === '，' || ch === '。' || ch === '；' ||
+        ch === '：' || ch === '！' || ch === '？') {
+      return i + 1; // 包含该分隔符
+    }
+    // CJK 字符本身就是词边界
+    const code = ch.charCodeAt(0);
+    if (code >= 0x3000 && code <= 0x9fff) {
+      return i + 1;
+    }
+  }
+
+  // 向后搜索（最多前进 6 字符）
+  const searchEnd = Math.min(text.length, rawEnd + 6);
+  for (let i = rawEnd; i < searchEnd; i++) {
+    const ch = text[i];
+    if (ch === ' ' || ch === '\n' || ch === '\t' ||
+        ch === ',' || ch === '.' || ch === ';' || ch === ':' ||
+        ch === '、' || ch === '，' || ch === '。' || ch === '；' ||
+        ch === '：' || ch === '！' || ch === '？') {
+      return i + 1;
+    }
+    const code = ch.charCodeAt(0);
+    if (code >= 0x3000 && code <= 0x9fff) {
+      return i + 1;
+    }
+  }
+
+  // 找不到合适的边界，使用原始位置
+  return rawEnd;
 }
 
 export function computeNextSmoothedContent(
@@ -110,8 +163,13 @@ export function computeNextSmoothedContent(
     remaining > config.backlogBoostThreshold
       ? Math.ceil(remaining / 4)
       : config.minChunkChars;
-  const delta = Math.min(config.maxChunkChars, Math.max(config.minChunkChars, boostedChunkSize));
-  const nextContent = current + target.slice(current.length, current.length + delta);
+  const rawDelta = Math.min(config.maxChunkChars, Math.max(config.minChunkChars, boostedChunkSize));
+  const rawEnd = current.length + rawDelta;
+
+  // 对齐到词边界，产生更自然的词组级释放
+  const snappedEnd = snapToWordBoundary(target, current.length, rawEnd);
+  const delta = snappedEnd - current.length;
+  const nextContent = target.slice(0, snappedEnd);
 
   return {
     content: nextContent,

@@ -2,14 +2,14 @@ import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react'
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { 
-  Archive, Check, X, Type, Smile, AlignLeft, Terminal, Zap,
+  Archive, Check, X, TextT, Smiley, TextAlignLeft, Terminal, Lightning,
   Folder, FolderOpen, Star, Heart, BookOpen, GraduationCap,
-  Code, Calculator, FlaskConical, Atom, Globe, Languages,
-  Music, Palette, Camera, Lightbulb, Target, Trophy,
-  Rocket, Brain, Sparkles, MessageSquare, FileText, Bookmark,
-  Paperclip, Plus, Loader2,
-  ClipboardList, PenTool, Image as ImageIcon, File as FileIcon, ListChecks,
-} from 'lucide-react';
+  Code, Calculator, Flask, Atom, Globe, Translate,
+  MusicNote, Palette, Camera, Lightbulb, Target, Trophy,
+  Rocket, Brain, Sparkle, Chat, FileText, BookmarkSimple,
+  Paperclip, Plus, CircleNotch,
+  ClipboardText, PenNib, Image as ImageIcon, File as FileIcon, ListChecks,
+} from '@phosphor-icons/react';
 import type { VfsResourceRef } from '../../context/vfsRefTypes';
 import { getResourceRefsV2 } from '../../context/vfsRefApi';
 import { LearningHubSidebar } from '@/features/learning-hub';
@@ -19,9 +19,9 @@ function getResourceTypeIcon(type: string): React.ElementType {
   switch (type) {
     case 'note': return FileText;
     case 'textbook': return BookOpen;
-    case 'exam': return ClipboardList;
-    case 'translation': return Languages;
-    case 'essay': return PenTool;
+    case 'exam': return ClipboardText;
+    case 'translation': return Translate;
+    case 'essay': return PenNib;
     case 'image': return ImageIcon;
     case 'mindmap': return Brain;
     case 'todo': return ListChecks;
@@ -41,11 +41,11 @@ export const PRESET_ICONS = [
   { name: 'graduation-cap', Icon: GraduationCap },
   { name: 'code', Icon: Code },
   { name: 'calculator', Icon: Calculator },
-  { name: 'flask', Icon: FlaskConical },
+  { name: 'flask', Icon: Flask },
   { name: 'atom', Icon: Atom },
   { name: 'globe', Icon: Globe },
-  { name: 'languages', Icon: Languages },
-  { name: 'music', Icon: Music },
+  { name: 'languages', Icon: Translate },
+  { name: 'music', Icon: MusicNote },
   { name: 'palette', Icon: Palette },
   { name: 'camera', Icon: Camera },
   { name: 'lightbulb', Icon: Lightbulb },
@@ -53,10 +53,10 @@ export const PRESET_ICONS = [
   { name: 'trophy', Icon: Trophy },
   { name: 'rocket', Icon: Rocket },
   { name: 'brain', Icon: Brain },
-  { name: 'sparkles', Icon: Sparkles },
-  { name: 'message-square', Icon: MessageSquare },
+  { name: 'sparkles', Icon: Sparkle },
+  { name: 'message-square', Icon: Chat },
   { name: 'file-text', Icon: FileText },
-  { name: 'bookmark', Icon: Bookmark },
+  { name: 'bookmark', Icon: BookmarkSimple },
 ];
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
@@ -98,7 +98,7 @@ const PropertyRow: React.FC<{
       "flex items-center gap-2 text-sm text-muted-foreground/80",
       mobileStacked ? "mb-2 md:mb-0 min-h-[auto] md:min-h-[36px]" : "min-h-[36px]"
     )}>
-      <Icon className="w-4 h-4" />
+      <Icon size={16} />
       <span>{label}</span>
     </div>
     <div className="flex-1 min-w-0">
@@ -303,7 +303,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                     const presetIcon = PRESET_ICONS.find(p => p.name === icon);
                     if (presetIcon) {
                       const IconComp = presetIcon.Icon;
-                      return <IconComp className="w-10 h-10 text-primary" />;
+                      return <IconComp size={40} className="text-primary" />;
                     }
                     return icon;
                   })()}
@@ -323,7 +323,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
           {/* Properties Section */}
           <div className="space-y-1">
             
-            <PropertyRow icon={Smile} label={t('page.groupIcon')} mobileStacked>
+            <PropertyRow icon={Smiley} label={t('page.groupIcon')} mobileStacked>
               <div className="space-y-3">
                 {/* 图标选择网格 */}
                 <div className="flex flex-wrap gap-1.5">
@@ -339,7 +339,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                       )}
                       title={iconName}
                     >
-                      <IconComponent className="w-5 h-5" />
+                      <IconComponent size={20} />
                     </div>
                   ))}
                   {/* 清除按钮 */}
@@ -349,7 +349,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                       className="w-9 h-9 flex items-center justify-center rounded-md cursor-pointer hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
                       title={t('common:clear')}
                     >
-                      <X className="w-4 h-4" />
+                      <X size={16} />
                     </div>
                   )}
                 </div>
@@ -363,7 +363,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
               </div>
             </PropertyRow>
 
-            <PropertyRow icon={AlignLeft} label={t('page.groupDescription')}>
+            <PropertyRow icon={TextAlignLeft} label={t('page.groupDescription')}>
               <Input
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
@@ -383,7 +383,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
               />
             </PropertyRow>
 
-            <PropertyRow icon={Zap} label={t('page.groupDefaultSkills')} mobileStacked>
+            <PropertyRow icon={Lightning} label={t('page.groupDefaultSkills')} mobileStacked>
                 <div className="flex flex-wrap gap-2 pt-1.5 px-0 md:px-2">
                     {skillList.length === 0 ? (
                         <div className="text-sm text-muted-foreground/50">
@@ -405,7 +405,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                                           : "bg-background border-border hover:bg-[var(--interactive-hover)] text-muted-foreground"
                                     )}
                                 >
-                                    {checked && <Check className="w-3 h-3" />}
+                                    {checked && <Check size={12} />}
                                     <span>{displayName}</span>
                                 </div>
                             )
@@ -419,14 +419,14 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
           {/* Pinned Resources Section */}
           <div className="space-y-3 pt-4 border-t border-border/40">
             <div className="flex items-center gap-2 text-sm font-medium text-foreground/80">
-              <Paperclip className="w-4 h-4" />
+              <Paperclip size={16} />
               <span>{t('page.groupPinnedResources')}</span>
             </div>
 
             {/* Pinned resource list */}
             {pinnedLoading ? (
               <div className="flex items-center gap-2 text-sm text-muted-foreground py-2">
-                <Loader2 className="w-4 h-4 animate-spin" />
+                <CircleNotch size={16} className="animate-spin" />
                 <span>{t('common:loading', '加载中...')}</span>
               </div>
             ) : resolvedPinnedRefs.length > 0 ? (
@@ -439,7 +439,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                       className="flex items-center justify-between gap-2 px-3 py-1.5 rounded-md bg-muted/30 hover:bg-[var(--interactive-hover)] transition-colors group"
                     >
                       <div className="flex items-center gap-2 min-w-0">
-                        <TypeIcon className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                        <TypeIcon size={14} className="text-muted-foreground flex-shrink-0" />
                         <span className="text-sm truncate">{ref.name}</span>
                         <span className="text-xs text-muted-foreground/60 flex-shrink-0">{ref.type}</span>
                       </div>
@@ -452,7 +452,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                         )}
                         aria-label={t('common:remove', '移除')}
                       >
-                        <X className="w-3.5 h-3.5" />
+                        <X size={14} />
                       </button>
                     </div>
                   );
@@ -472,7 +472,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
               }}
               className="w-full flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-border/60 text-sm text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground hover:border-border transition-all cursor-pointer"
             >
-              <Plus className="w-4 h-4" />
+              <Plus size={16} />
               <span>{t('page.groupPinnedBrowse')}</span>
             </button>
 
@@ -490,7 +490,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                 onClick={onArchive}
                 className="h-8 px-3"
               >
-                <Archive className="w-3.5 h-3.5 mr-1.5" />
+                <Archive size={14} className="mr-1.5" />
                 {t('page.archiveGroup')}
               </NotionButton>
             </div>
@@ -517,7 +517,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                   onClick={() => setPickerOpen(false)}
                   className="!h-7 !w-7"
                 >
-                  <X className="w-4 h-4" />
+                  <X size={16} />
                 </NotionButton>
                 <span className="text-sm font-medium">{t('page.groupPinnedBrowse')}</span>
               </div>

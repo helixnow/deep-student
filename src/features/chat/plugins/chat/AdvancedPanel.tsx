@@ -8,7 +8,7 @@ import React, { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
-import { SlidersHorizontal, X, MessageSquare, Thermometer, Layers, Image } from 'lucide-react';
+import { SlidersHorizontal, X, Chat, Thermometer, Stack, Image } from '@phosphor-icons/react';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -313,7 +313,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
         {/* 上下文输入预算 */}
         <div className="p-2">
           <div className="flex items-center gap-1.5">
-            <Layers size={12} className="text-muted-foreground shrink-0" />
+            <Stack size={12} className="text-muted-foreground shrink-0" />
             <Label htmlFor={contextLimitId} className="text-xs font-medium shrink-0">
               {t('chat_host:advanced.context.label')}
             </Label>
@@ -368,7 +368,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
         {/* 最大输出 Token */}
         <div className="p-2">
           <div className="flex items-center gap-1.5">
-            <MessageSquare size={12} className="text-muted-foreground shrink-0" />
+            <Chat size={12} className="text-muted-foreground shrink-0" />
             <Label htmlFor={maxTokensId} className="text-xs font-medium shrink-0">
               {t('chat_host:advanced.max_tokens.label')}
             </Label>
@@ -461,7 +461,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
         {/* 知识库检索配置 */}
         <div className={cn('p-2', !sidebarMode && 'md:col-span-2')}>
           <div className="flex items-center gap-1.5 mb-2">
-            <Layers size={12} className="text-muted-foreground shrink-0" />
+            <Stack size={12} className="text-muted-foreground shrink-0" />
             <Label className="text-xs font-medium shrink-0">
               {t('analysis:input_bar.rag.title')}
             </Label>

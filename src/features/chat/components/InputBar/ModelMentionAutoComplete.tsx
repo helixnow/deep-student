@@ -13,7 +13,7 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { Bot, Sparkles } from 'lucide-react';
+import { Robot, Sparkle } from '@phosphor-icons/react';
 import type { ModelInfo } from '../../utils/parseModelMentions';
 
 // ============================================================================
@@ -119,7 +119,7 @@ const ModelSuggestionItem: React.FC<ModelSuggestionItemProps> = ({
             : 'bg-muted text-muted-foreground'
         )}
       >
-        <Bot className="w-4 h-4" />
+        <Robot size={16} />
       </div>
 
       {/* 模型信息 */}
@@ -146,7 +146,7 @@ const ModelSuggestionItem: React.FC<ModelSuggestionItemProps> = ({
 
       {/* 多变体提示图标 */}
       {isSelected && (
-        <Sparkles className="w-4 h-4 text-primary flex-shrink-0" />
+        <Sparkle size={16} className="text-primary flex-shrink-0" />
       )}
     </div>
   );

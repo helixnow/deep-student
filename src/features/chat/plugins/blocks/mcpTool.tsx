@@ -18,19 +18,19 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
 import {
-  Loader2,
+  CircleNotch,
   CheckCircle,
-  AlertCircle,
-  RotateCcw,
+  WarningCircle,
+  ArrowCounterClockwise,
   Wrench,
-  ChevronDown,
-  ChevronRight,
+  CaretDown,
+  CaretRight,
   Clock,
-  ExternalLink,
+  ArrowSquareOut,
   FileText,
-  FileSpreadsheet,
+  FileXls,
   Eye,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { ToolInputView, ToolOutputView, isTemplateVisualOutput } from './components';
 import { CompletionCard } from '../../components/CompletionCard';
@@ -90,13 +90,13 @@ const ToolHeader: React.FC<ToolHeaderProps> = ({
     pending: null,
     running: null,
     success: null,
-    error: AlertCircle,
+    error: WarningCircle,
   }[status] || null;
 
   const statusColor = {
     pending: 'text-muted-foreground',
     running: 'text-primary',
-    success: 'text-green-500',
+    success: 'text-success',
     error: 'text-destructive',
   }[status] || 'text-muted-foreground';
 
@@ -117,7 +117,7 @@ const ToolHeader: React.FC<ToolHeaderProps> = ({
             'bg-primary/10 dark:bg-primary/20'
           )}
         >
-          <Wrench className="w-4 h-4 text-primary" />
+        <Wrench size={16} className="text-primary" />
         </div>
 
         {/* 工具名称 */}
@@ -187,7 +187,7 @@ const ToolProgress: React.FC<ToolProgressProps> = ({ content }) => {
       {content && (
         <div className="mt-2">
           <NotionButton variant="ghost" size="sm" onClick={() => setIsExpanded(!isExpanded)}>
-            {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+            {isExpanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
             <span>{t('blocks.mcpTool.streamingOutput')}</span>
           </NotionButton>
 
@@ -244,7 +244,7 @@ const ToolArgsPreview: React.FC<ToolArgsPreviewProps> = ({ content }) => {
         </div>
         {charCount > 0 && (
           <NotionButton variant="ghost" size="sm" onClick={() => setIsExpanded(!isExpanded)}>
-            {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+            {isExpanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
           </NotionButton>
         )}
       </div>
@@ -298,7 +298,7 @@ const ToolError: React.FC<ToolErrorProps> = ({ error, onRetry, retryDisabledReas
         )}
       >
         <div className="flex items-start gap-2">
-          <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+          <WarningCircle size={16} className="text-destructive shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
             <div className="text-sm font-medium text-destructive">
               {t('blocks.mcpTool.executionFailed')}
@@ -320,7 +320,7 @@ const ToolError: React.FC<ToolErrorProps> = ({ error, onRetry, retryDisabledReas
             disabled={isRetryDisabled}
             className={cn(isRetryDisabled ? 'bg-muted/40' : 'text-primary hover:bg-primary/10')}
           >
-            <RotateCcw className="w-3.5 h-3.5" />
+            <ArrowCounterClockwise size={14} />
             <span>{t('blocks.mcpTool.retry')}</span>
           </NotionButton>
           {isRetryDisabled && (
@@ -396,8 +396,8 @@ const DOC_READ_TOOLS = [
  */
 function getDocToolFileIcon(toolName: string): typeof FileText {
   const stripped = toolName.replace(/^builtin[-:]/, '').replace(/^mcp_/, '');
-  if (stripped.startsWith('xlsx')) return FileSpreadsheet;
-  // DOCX 和 PPTX 都用 FileText（lucide 无专用 PPTX 图标）
+  if (stripped.startsWith('xlsx')) return FileXls;
+  // DOCX 和 PPTX 都用 FileText
   return FileText;
 }
 
@@ -692,7 +692,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
                 >
                   <DocIcon size={12} />
                   <span className="truncate max-w-[200px]">{fileInfo.fileName}</span>
-                  <ExternalLink size={10} className="text-muted-foreground shrink-0" />
+                  <ArrowSquareOut size={10} className="text-muted-foreground shrink-0" />
                 </NotionButton>
               </div>
             );
@@ -740,7 +740,7 @@ const McpToolBlockComponent: React.FC<BlockComponentProps> = React.memo(({
                 }}
                 className="mt-2 bg-muted/30 hover:bg-[var(--interactive-hover)]"
               >
-                <ExternalLink size={12} />
+                <ArrowSquareOut size={12} />
                 {t('timeline.noteTool.openNote')}
               </NotionButton>
             );

@@ -13,7 +13,7 @@ import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { BookOpen } from 'lucide-react';
+import { BookOpen } from '@phosphor-icons/react';
 
 // ============================================================================
 // 类型定义
@@ -86,7 +86,7 @@ export const QbankCitationBadge: React.FC<QbankCitationBadgeProps> = ({
         title: title || sessionId,
       })}
     >
-      <BookOpen className="w-3 h-3" />
+      <BookOpen size={12} />
       <span className="truncate max-w-[150px]">
         {title || t('qbankCitation.qbank')}
       </span>

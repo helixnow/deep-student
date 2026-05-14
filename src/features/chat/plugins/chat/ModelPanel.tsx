@@ -8,7 +8,7 @@ import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react'
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
-import { X, Star, Pin, ChevronDown, ChevronRight, Sparkles } from 'lucide-react';
+import { X, Star, PushPin, CaretDown, CaretRight, Sparkle } from '@phosphor-icons/react';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -426,7 +426,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
           <div className="flex items-center gap-2 text-sm text-foreground">
-            <Sparkles className="h-4 w-4 shrink-0" />
+            <Sparkle size={16} className="shrink-0" />
             <span>{t('chat_host:model_panel.title')}</span>
           </div>
           <span className="text-xs text-muted-foreground">{subtitle}</span>
@@ -478,9 +478,9 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
                     className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-[var(--interactive-hover)] active:bg-muted/80"
                   >
                     {isCollapsed ? (
-                      <ChevronRight size={14} className="shrink-0 text-muted-foreground" />
+                      <CaretRight size={14} className="shrink-0 text-muted-foreground" />
                     ) : (
-                      <ChevronDown size={14} className="shrink-0 text-muted-foreground" />
+                      <CaretDown size={14} className="shrink-0 text-muted-foreground" />
                     )}
                     <span className="truncate text-xs font-semibold text-muted-foreground">
                       {group.vendorName}
@@ -517,7 +517,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
             onClick={handleSetAsDefault}
             disabled={savingDefault}
           >
-            <Pin size={14} />
+            <PushPin size={14} />
             {savingDefault 
               ? t('common:saving') 
               : t('chat_host:model_panel.set_as_default')}

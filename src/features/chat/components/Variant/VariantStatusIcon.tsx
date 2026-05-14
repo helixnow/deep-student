@@ -13,11 +13,12 @@ import React from 'react';
 import { cn } from '@/utils/cn';
 import {
   Clock,
-  Loader2,
-  CheckCircle2,
+  CircleNotch,
+  CheckCircle,
   XCircle,
-  Ban,
-} from 'lucide-react';
+  Prohibit,
+} from '@phosphor-icons/react';
+import type { Icon } from '@phosphor-icons/react';
 import type { VariantStatus } from '../../core/types/message';
 
 // ============================================================================
@@ -38,15 +39,15 @@ export interface VariantStatusIconProps {
 // ============================================================================
 
 const SIZE_MAP = {
-  sm: 'w-3 h-3',
-  md: 'w-4 h-4',
-  lg: 'w-5 h-5',
+  sm: 12,
+  md: 16,
+  lg: 20,
 } as const;
 
 const STATUS_CONFIG: Record<
   VariantStatus,
   {
-    Icon: React.ComponentType<{ className?: string }>;
+    Icon: Icon;
     colorClass: string;
     animate?: boolean;
   }
@@ -56,12 +57,12 @@ const STATUS_CONFIG: Record<
     colorClass: 'text-muted-foreground',
   },
   streaming: {
-    Icon: Loader2,
+    Icon: CircleNotch,
     colorClass: 'text-primary',
     animate: true,
   },
   success: {
-    Icon: CheckCircle2,
+    Icon: CheckCircle,
     colorClass: 'text-green-500 dark:text-green-400',
   },
   error: {
@@ -69,11 +70,11 @@ const STATUS_CONFIG: Record<
     colorClass: 'text-destructive',
   },
   cancelled: {
-    Icon: Ban,
+    Icon: Prohibit,
     colorClass: 'text-yellow-500 dark:text-yellow-400',
   },
   interrupted: {
-    Icon: Ban,
+    Icon: Prohibit,
     colorClass: 'text-amber-500 dark:text-amber-400',
   },
 };
@@ -92,12 +93,12 @@ export const VariantStatusIcon: React.FC<VariantStatusIconProps> = ({
 }) => {
   const config = STATUS_CONFIG[status];
   const { Icon, colorClass, animate } = config;
-  const sizeClass = SIZE_MAP[size];
+  const iconSize = SIZE_MAP[size];
 
   return (
     <Icon
+      size={iconSize}
       className={cn(
-        sizeClass,
         colorClass,
         animate && 'animate-spin',
         className

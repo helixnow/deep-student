@@ -19,7 +19,7 @@
   --chat-bg-primary: hsl(var(--card));
   --chat-bg-secondary: hsl(var(--muted));
   --chat-border-color: hsl(var(--border));
-  --chat-user-message-text: #ffffff;
+  --chat-user-message-text: hsl(var(--primary-foreground));
 
   /* 间距系统 */
   --chat-spacing-xs: 0.25rem;
@@ -39,6 +39,34 @@
 
   /* 触摸目标最小尺寸 */
   --chat-touch-target: 44px;
+}
+
+/* ============================================================================
+   文本选择 - Text Selection (原生应用风格)
+   ============================================================================ */
+
+/* 自定义选中色：主题色淡化版本，替代浏览器默认蓝色 */
+.chat-v2 .message-selectable-area ::selection {
+  background: hsl(var(--primary) / 0.18);
+  color: inherit;
+}
+.chat-v2 .message-selectable-area ::-moz-selection {
+  background: hsl(var(--primary) / 0.18);
+  color: inherit;
+}
+
+/* 暗色模式下稍微调亮选中色 */
+:root.dark .chat-v2 .message-selectable-area ::selection {
+  background: hsl(var(--primary) / 0.28);
+}
+:root.dark .chat-v2 .message-selectable-area ::-moz-selection {
+  background: hsl(var(--primary) / 0.28);
+}
+
+/* 消息内容区域允许文本选择 */
+.chat-v2 .message-selectable-area {
+  user-select: text;
+  -webkit-user-select: text;
 }
 
 /* ============================================================================
@@ -90,7 +118,7 @@
 :root.dark .chat-v2,
 html.dark .chat-v2,
 .dark .chat-v2 {
-  --chat-user-message-text: #0f172a;
+  --chat-user-message-text: hsl(var(--foreground));
 }
 
 .chat-v2 .chat-container.chat-fullscreen {
@@ -518,14 +546,14 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
   gap: 6px;
   font-size: 0.9rem;
   font-weight: 600;
-  color: var(--text-secondary, #334155);
+  color: var(--text-secondary);
 }
 
 .chat-v2 .notion-collapsible-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-muted, #94a3b8);
+  color: var(--text-muted);
 }
 
 .chat-v2 .notion-collapsible-badge {
@@ -535,7 +563,7 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
 
 .chat-v2 .notion-collapsible-arrow {
   transition: transform 0.2s ease;
-  color: var(--text-muted, #94a3b8);
+  color: var(--text-muted);
 }
 
 .chat-v2 .notion-collapsible-arrow.expanded {
@@ -590,14 +618,14 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
   gap: 8px;
   padding: 6px 12px;
   border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.28);
-  background: var(--surface-elevated, rgba(255, 255, 255, 0.92));
+  border: 1px solid hsl(var(--border) / 0.28);
+  background: var(--surface-elevated);
   box-shadow: none;
   transition: border-color 0.2s ease, transform 0.2s ease;
 }
 
 .chat-v2 .tool-event-bubble:hover {
-  border-color: rgba(59, 130, 246, 0.32);
+  border-color: hsl(var(--primary) / 0.32);
   transform: translateY(-1px);
 }
 
@@ -608,24 +636,24 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
   display: flex;
   align-items: center;
   justify-content: center;
-  background: rgba(148, 163, 184, 0.16);
-  color: rgba(71, 85, 105, 0.88);
+  background: hsl(var(--muted-foreground) / 0.16);
+  color: var(--text-secondary);
   flex-shrink: 0;
 }
 
 .chat-v2 .tool-event-bubble--success .tool-event-bubble__icon {
-  background: rgba(34, 197, 94, 0.15);
-  color: rgba(22, 163, 74, 0.9);
+  background: hsl(var(--success) / 0.15);
+  color: hsl(var(--success));
 }
 
 .chat-v2 .tool-event-bubble--failed .tool-event-bubble__icon {
-  background: rgba(248, 113, 113, 0.18);
-  color: rgba(220, 38, 38, 0.92);
+  background: hsl(var(--destructive) / 0.18);
+  color: hsl(var(--destructive));
 }
 
 .chat-v2 .tool-event-bubble--running .tool-event-bubble__icon {
-  background: rgba(96, 165, 250, 0.2);
-  color: rgba(37, 99, 235, 0.95);
+  background: hsl(var(--info) / 0.2);
+  color: hsl(var(--info));
 }
 
 .chat-v2 .tool-event-bubble__spinner {
@@ -650,7 +678,7 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
 .chat-v2 .tool-event-bubble__title {
   font-size: 0.8rem;
   font-weight: 600;
-  color: var(--text-secondary, #334155);
+  color: var(--text-secondary);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -679,12 +707,12 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
   font-size: 0.7rem;
   padding-left: 6px;
   padding-right: 6px;
-  color: rgba(37, 99, 235, 0.9);
+  color: hsl(var(--info));
 }
 
 .chat-v2 .tool-event-bubble__hint {
   font-size: 0.7rem;
-  color: var(--text-muted, #64748b);
+  color: var(--text-muted);
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -694,9 +722,9 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
 .chat-v2 .tool-event-details {
   margin-top: 4px;
   margin-left: calc(12px + 28px + 8px);
-  border: 1px solid rgba(148, 163, 184, 0.25);
+  border: 1px solid hsl(var(--border) / 0.25);
   border-radius: 12px;
-  background: var(--surface-elevated, rgba(248, 250, 252, 0.92));
+  background: var(--surface-elevated);
   padding: 10px 12px;
   display: flex;
   flex-direction: column;
@@ -722,9 +750,9 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
 .chat-v2 .tool-event-detail-block pre {
   margin: 0;
   padding: 6px 8px;
-  background: rgba(241, 245, 249, 0.85);
+  background: hsl(var(--muted) / 0.85);
   border-radius: 8px;
-  border: 1px solid rgba(148, 163, 184, 0.25);
+  border: 1px solid hsl(var(--border) / 0.25);
   white-space: pre-wrap;
   word-break: break-word;
   overflow-x: auto;
@@ -741,32 +769,32 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
 }
 
 .chat-v2 .tool-event-detail-block.error pre {
-  background: rgba(254, 242, 242, 0.95);
-  border-color: rgba(248, 113, 113, 0.55);
+  background: hsl(var(--destructive) / 0.08);
+  border-color: hsl(var(--destructive) / 0.35);
 }
 
 .chat-v2 .summary-panel .summary-content {
   font-size: 0.85rem;
-  color: var(--text-secondary, #334155);
+  color: var(--text-secondary);
   line-height: 1.7;
   padding: 0;
   border-radius: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.25);
-  background: var(--surface-elevated, #ffffff);
-  box-shadow: 0 8px 18px rgba(15, 23, 42, 0.06);
+  border: 1px solid hsl(var(--border) / 0.25);
+  background: var(--surface-elevated);
+  box-shadow: var(--shadow-content-soft);
   overflow: hidden;
 }
 
 [data-theme="dark"] .chat-v2 .summary-panel .summary-content {
   background: hsl(var(--muted) / 0.3);
   border-color: hsl(var(--border));
-  box-shadow: 0 10px 22px rgba(0, 0, 0, 0.4);
+  box-shadow: var(--shadow-content-elevated);
   color: hsl(var(--muted-foreground));
 }
 
 .chat-v2 .summary-panel .summary-empty {
   font-size: 0.78rem;
-  color: var(--text-muted, #94a3b8);
+  color: var(--text-muted);
   padding: 12px 16px;
 }
 
@@ -862,7 +890,7 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
   font-size: 0.8rem; /* 小于正文两号 */
   color: hsl(var(--foreground));
   padding: 4px 0;
-  border-bottom: 1px dashed #e5e7eb;
+  border-bottom: 1px dashed hsl(var(--border));
 }
 .chat-v2 .memory-summary-item:last-child { border-bottom: none; }
 
@@ -900,7 +928,7 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
 
 .chat-v2 .chat-input input[type="text"]:focus {
   border-color: var(--brand-primary);
-  box-shadow: 0 0 0 3px rgba(0, 123, 255, 0.1);
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.1);
 }
 
 .chat-v2 .chat-input input[type="text"]:disabled {
@@ -912,7 +940,7 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
 .chat-v2 .send-button {
   background: hsl(var(--card));
   color: hsl(var(--foreground));
-  border: 1px solid rgba(0, 0, 0, 0.1);
+  border: 1px solid hsl(var(--border) / 0.5);
   border-radius: var(--chat-radius-sm);
   min-width: var(--chat-touch-target); /* 确保触摸目标足够大 */
   min-height: var(--chat-touch-target);
@@ -924,13 +952,13 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-content-subtle);
 }
 
 .chat-v2 .send-button:hover:not(:disabled) {
   background: hsl(var(--secondary));
   transform: scale(1.05);
-  box-shadow: 0 2px 6px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--shadow-content-soft);
 }
 
 .chat-v2 .send-button:disabled {
@@ -939,7 +967,7 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
   transform: none;
   opacity: 0.6;
   color: hsl(var(--muted-foreground));
-  border-color: rgba(0, 0, 0, 0.05);
+  border-color: hsl(var(--border) / 0.3);
 }
 
 /* 确保发送按钮中的图标颜色 */
@@ -1023,15 +1051,15 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
   position: absolute;
   top: 0;
   right: 0;
-  background: rgba(0, 0, 0, 0.7);
-  color: white;
+  background: hsl(var(--foreground) / 0.7);
+  color: hsl(var(--background));
   padding: 2px;
   border-radius: 0 0 0 4px;
 }
 
 .chat-v2 .remove-image-btn {
-  background: rgba(220, 53, 69, 0.9);
-  color: white;
+  background: hsl(var(--destructive) / 0.9);
+  color: hsl(var(--destructive-foreground));
   border: none;
   border-radius: 50%;
   width: 18px;
@@ -1046,7 +1074,7 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
 }
 
 .chat-v2 .remove-image-btn:hover {
-  background: rgba(220, 53, 69, 1);
+  background: hsl(var(--destructive));
 }
 
 /* ============================================================================
@@ -1072,14 +1100,14 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
   margin: 0 auto;
   border-radius: 8px;
   border: 1px solid hsl(var(--border));
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 4px hsl(var(--foreground) / 0.1);
 }
 
 .chat-v2 .content-unknown {
   padding: 0;
   background: hsl(var(--warning-bg));
   color: hsl(var(--warning));
-  border: 1px solid #ffeaa7;
+  border: 1px solid hsl(var(--warning) / 0.3);
   border-radius: 6px;
   font-style: italic;
 }
@@ -1114,7 +1142,7 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
 
 .chat-v2 .save-button-inline {
   background: hsl(var(--success));
-  color: white;
+  color: hsl(var(--success-foreground));
 }
 
 .chat-v2 .save-button-inline:hover:not(:disabled) {
@@ -1123,7 +1151,7 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
 
 .chat-v2 .save-button-primary {
   background: var(--brand-primary);
-  color: white;
+  color: hsl(var(--primary-foreground));
 }
 
 .chat-v2 .save-button-primary:hover:not(:disabled) {
@@ -1132,7 +1160,7 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
 
 .chat-v2 .save-button-secondary {
   background: hsl(var(--neutral));
-  color: white;
+  color: hsl(var(--background));
 }
 
 .chat-v2 .save-button-secondary:hover:not(:disabled) {
@@ -1264,7 +1292,7 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
 /* 高对比度模式 */
 @media (prefers-contrast: high) {
   :root {
-    --chat-text-secondary: #444444;
+    --chat-text-secondary: hsl(var(--foreground));
     --chat-border-color: hsl(var(--border));
   }
   
@@ -1280,10 +1308,10 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
 /* 暂时禁用暗色模式，保持白色背景
 @media (prefers-color-scheme: dark) {
   :root {
-    --chat-text-primary: #f0f0f0;
-    --chat-text-secondary: #b0b0b0;
-    --chat-bg-primary: #1a1a1a;
-    --chat-bg-secondary: #2d2d2d;
+    --chat-text-primary: hsl(var(--foreground));
+    --chat-text-secondary: var(--text-secondary);
+    --chat-bg-primary: hsl(var(--background));
+    --chat-bg-secondary: hsl(var(--secondary));
     --chat-border-color: hsl(var(--border));
   }
 }
@@ -1315,12 +1343,12 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
 
 /* 修复发送按钮样式 */
 .chat-v2 .chat-container .send-button {
-  background: #007bff;
+  background: hsl(var(--primary));
   color: hsl(var(--primary-foreground));
 }
 
 .chat-v2 .chat-container .send-button:hover:not(:disabled) {
-  background: #0056b3;
+  background: color-mix(in hsl, hsl(var(--primary)) 85%, hsl(var(--foreground)) 15%);
 }
 
 .chat-v2 .chat-container .send-button:disabled {
@@ -1332,7 +1360,7 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
 .chat-v2 .chat-header .chat-fullscreen-toggle {
   background: hsl(var(--muted));
   color: hsl(var(--foreground));
-  border: 1px solid #ddd;
+  border: 1px solid hsl(var(--border));
 }
 
 .chat-v2 .chat-header .chat-fullscreen-toggle:hover {

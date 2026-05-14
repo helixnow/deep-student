@@ -1,11 +1,11 @@
 import React, { memo } from 'react';
 import {
   File,
-  FileCode2,
+  FileCode,
   FileText,
   Image as ImageIcon,
   X,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import type { AttachmentMeta } from '../../core/types/common';
@@ -29,7 +29,7 @@ function getAttachmentIcon(attachment: AttachmentMeta): React.ElementType {
     return ImageIcon;
   }
   if (['html', 'htm', 'css', 'js', 'ts', 'tsx', 'json', 'xml'].includes(extension)) {
-    return FileCode2;
+    return FileCode;
   }
   if (['txt', 'md', 'pdf', 'doc', 'docx'].includes(extension) || attachment.mimeType.startsWith('text/')) {
     return FileText;
@@ -94,7 +94,7 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
                     draggable={false}
                   />
                 ) : (
-                  <Icon className="h-3 w-3" aria-hidden="true" />
+                  <Icon size={12} aria-hidden="true" />
                 )}
               </span>
               <span className="whitespace-nowrap">{attachment.name}</span>
@@ -113,7 +113,7 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
               title={`移除附件 ${attachment.name}`}
               className="pointer-events-none absolute right-1.5 top-1/2 !h-5 !w-5 -translate-y-1/2 rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-[var(--interactive-hover)] hover:text-foreground group-hover/attachment-chip:pointer-events-auto group-hover/attachment-chip:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
             >
-              <X className="h-3 w-3" aria-hidden="true" />
+              <X size={12} aria-hidden="true" />
             </NotionButton>
           </div>
         );

@@ -19,14 +19,14 @@ import './ParallelVariantView.css';
 import {
   Copy,
   Check,
-  RotateCcw,
-  Trash2,
+  ArrowCounterClockwise,
+  Trash,
   Square,
-  MoreHorizontal,
-  ChevronLeft,
-  ChevronRight,
+  DotsThree,
+  CaretLeft,
+  CaretRight,
   GitBranch,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
 import {
   AppMenu,
@@ -422,27 +422,27 @@ const VariantCard: React.FC<VariantCardProps> = ({
         <div className="flex items-center gap-0.5">
           {/* 复制 */}
           <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCopy(); }} aria-label={t('messageItem.actions.copy', '复制')} title={t('messageItem.actions.copy', '复制')}>
-            {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+            {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
           </NotionButton>
 
           {/* 重试（可重试状态） */}
           {canRetry && onRetry && (
             <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleRetry(); }} disabled={isOperating} aria-label={t('variant.retry', '重试')} title={t('variant.retry', '重试')}>
-              <RotateCcw className={cn('w-4 h-4', isOperating && 'animate-spin')} />
+              <ArrowCounterClockwise size={16} className={cn(isOperating && 'animate-spin')} />
             </NotionButton>
           )}
 
           {/* 取消（流式中） */}
           {canCancel && onCancel && (
             <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleCancel(); }} disabled={isOperating} aria-label={t('variant.cancel', '取消')} title={t('variant.cancel', '取消')}>
-              <Square className="w-4 h-4" />
+              <Square size={16} />
             </NotionButton>
           )}
 
           {/* 删除（非最后一个） */}
           {canDelete && onDelete && (
             <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleDelete(); }} disabled={isOperating} className={cn(isOperating ? '' : 'hover:text-destructive')} aria-label={t('variant.delete', '删除')} title={t('variant.delete', '删除')}>
-              <Trash2 className="w-4 h-4" />
+              <Trash size={16} />
             </NotionButton>
           )}
 
@@ -450,18 +450,18 @@ const VariantCard: React.FC<VariantCardProps> = ({
           <AppMenu>
             <AppMenuTrigger asChild>
               <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => e.stopPropagation()} aria-label="more">
-                <MoreHorizontal className="w-4 h-4" />
+                <DotsThree size={16} />
               </NotionButton>
             </AppMenuTrigger>
             <AppMenuContent align="start" width={160}>
-              <AppMenuItem onClick={handleCopy} icon={<Copy className="w-4 h-4" />}>
+              <AppMenuItem onClick={handleCopy} icon={<Copy size={16} />}>
                 {t('messageItem.actions.copy', '复制')}
               </AppMenuItem>
               {canRetry && onRetry && (
                 <AppMenuItem
                   onClick={handleRetry}
                   disabled={isOperating}
-                  icon={<RotateCcw className="w-4 h-4" />}
+                  icon={<ArrowCounterClockwise size={16} />}
                 >
                   {t('variant.retry', '重试')}
                 </AppMenuItem>
@@ -471,7 +471,7 @@ const VariantCard: React.FC<VariantCardProps> = ({
                   onClick={handleDelete}
                   disabled={isOperating}
                   destructive
-                  icon={<Trash2 className="w-4 h-4" />}
+                  icon={<Trash size={16} />}
                 >
                   {t('variant.delete', '删除')}
                 </AppMenuItem>
@@ -585,21 +585,21 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
         {/* 复制按钮 */}
         {onCopy && (
           <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCopy} aria-label={t('messageItem.actions.copy', '复制')} title={t('messageItem.actions.copy', '复制')}>
-            {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+            {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
           </NotionButton>
         )}
 
         {/* 会话分支按钮 */}
         {onBranchSession && (
           <NotionButton variant="ghost" size="icon" iconOnly onClick={handleBranch} disabled={isLocked || isBranching} aria-label={t('messageItem.actions.branch', '从此处分支')} title={t('messageItem.actions.branch', '从此处分支')}>
-            <GitBranch className={cn('w-4 h-4', isBranching && 'animate-pulse')} />
+            <GitBranch size={16} className={cn(isBranching && 'animate-pulse')} />
           </NotionButton>
         )}
 
         {/* 全部重试按钮 */}
         {onRetryAll && (
           <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRetryAll} disabled={!canRetryAll || isRetryingAll} aria-label={t('variant.retryAll', '全部重试')} title={t('variant.retryAll', '全部重试')}>
-            <RotateCcw className={cn('w-4 h-4', isRetryingAll && 'animate-spin')} />
+            <ArrowCounterClockwise size={16} className={cn(isRetryingAll && 'animate-spin')} />
           </NotionButton>
         )}
 
@@ -608,7 +608,7 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
           <AppMenu>
             <AppMenuTrigger asChild>
               <NotionButton variant="ghost" size="icon" iconOnly disabled={!canDelete || isDeleting} className={cn(!canDelete || isDeleting ? '' : 'hover:text-destructive')} aria-label={t('messageItem.actions.delete', '删除')} title={t('messageItem.actions.delete', '删除')}>
-                <Trash2 className={cn('w-4 h-4', isDeleting && 'animate-pulse')} />
+                <Trash size={16} className={cn(isDeleting && 'animate-pulse')} />
               </NotionButton>
             </AppMenuTrigger>
             <AppMenuContent align="start" width={180}>
@@ -616,7 +616,7 @@ const MessageLevelActions: React.FC<MessageLevelActionsProps> = ({
                 onClick={handleDelete}
                 disabled={!canDelete || isDeleting}
                 destructive
-                icon={<Trash2 className="w-4 h-4" />}
+                icon={<Trash size={16} />}
               >
                 {t('variant.deleteMessage', '删除整个消息')}
               </AppMenuItem>
@@ -752,7 +752,7 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
               )}
               aria-label="Previous variant"
             >
-              <ChevronLeft className="w-4 h-4" />
+              <CaretLeft size={16} />
             </button>
 
             {/* 指示器圆点 */}
@@ -800,7 +800,7 @@ export const ParallelVariantView: React.FC<ParallelVariantViewProps> = ({
               )}
               aria-label="Next variant"
             >
-              <ChevronRight className="w-4 h-4" />
+              <CaretRight size={16} />
             </button>
           </div>
         );

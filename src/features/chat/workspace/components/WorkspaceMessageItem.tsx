@@ -3,17 +3,17 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { listen } from '@tauri-apps/api/event';
 import {
-  ChevronDown,
-  ChevronRight,
-  Bot,
-  CheckCircle2,
-  Loader2,
-  AlertCircle,
+  CaretDown,
+  CaretRight,
+  Robot,
+  CheckCircle,
+  CircleNotch,
+  WarningCircle,
   Clock,
-  Maximize2,
-  Minimize2,
-  ExternalLink,
-} from 'lucide-react';
+  ArrowsOut,
+  ArrowsIn,
+  ArrowSquareOut,
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import type { WorkspaceMessage, MessageType } from '../types';
 import { ChatContainer } from '../../components/ChatContainer';
@@ -109,13 +109,13 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
   const subagentStatusIcon = useMemo(() => {
     switch (subagentStatus) {
       case 'running':
-        return <Loader2 className="w-4 h-4 text-blue-500 animate-spin" />;
+        return <CircleNotch size={16} className="text-blue-500 animate-spin" />;
       case 'completed':
-        return <CheckCircle2 className="w-4 h-4 text-green-500" />;
+        return <CheckCircle size={16} className="text-green-500" />;
       case 'failed':
-        return <AlertCircle className="w-4 h-4 text-red-500" />;
+        return <WarningCircle size={16} className="text-red-500" />;
       default:
-        return <Clock className="w-4 h-4 text-muted-foreground" />;
+        return <Clock size={16} className="text-muted-foreground" />;
     }
   }, [subagentStatus]);
 
@@ -183,11 +183,11 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
             className="w-full !justify-start gap-2 !p-2 text-left"
           >
             {isSubagentCollapsed ? (
-              <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+              <CaretRight size={16} className="text-muted-foreground flex-shrink-0" />
             ) : (
-              <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+              <CaretDown size={16} className="text-muted-foreground flex-shrink-0" />
             )}
-            <Bot className="w-4 h-4 text-primary flex-shrink-0" />
+            <Robot size={16} className="text-primary flex-shrink-0" />
             <span className="text-xs font-medium flex-1 truncate">
               {t('subagent.title')}
             </span>
@@ -212,9 +212,9 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
                   title={isSubagentFullHeight ? t('subagent.collapse') : t('subagent.expand')}
                 >
                   {isSubagentFullHeight ? (
-                    <Minimize2 className="w-3.5 h-3.5 text-muted-foreground" />
+                    <ArrowsIn size={14} className="text-muted-foreground" />
                   ) : (
-                    <Maximize2 className="w-3.5 h-3.5 text-muted-foreground" />
+                    <ArrowsOut size={14} className="text-muted-foreground" />
                   )}
                 </NotionButton>
                 {onViewFullSession && (
@@ -230,7 +230,7 @@ export const WorkspaceMessageItem: React.FC<WorkspaceMessageItemProps> = ({
                     aria-label={t('subagent.viewFull')}
                     title={t('subagent.viewFull')}
                   >
-                    <ExternalLink className="w-3.5 h-3.5 text-muted-foreground" />
+                    <ArrowSquareOut size={14} className="text-muted-foreground" />
                   </NotionButton>
                 )}
               </div>

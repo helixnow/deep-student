@@ -13,10 +13,10 @@ import {
   FileText,
   Globe,
   Brain,
-  ImageIcon,
-  ExternalLink,
+  Image as ImageIcon,
+  ArrowSquareOut,
   X,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import type { RetrievalSource, RetrievalSourceType } from './types';
 import { openUrl } from '@/utils/urlOpener';
 
@@ -136,7 +136,7 @@ export const CitationPopover: React.FC<CitationPopoverProps> = ({
               'w-8 h-8 rounded bg-muted/50'
             )}
           >
-            <Icon className="w-4 h-4 text-muted-foreground" />
+            <Icon size={16} className="text-muted-foreground" />
           </div>
 
           {/* 标题 */}
@@ -178,7 +178,7 @@ export const CitationPopover: React.FC<CitationPopoverProps> = ({
         {hasUrl && (
           <div className="p-3 border-t border-border/50">
             <NotionButton variant="primary" size="md" onClick={handleOpenUrl} className="w-full">
-              <ExternalLink className="w-4 h-4" />
+              <ArrowSquareOut size={16} />
               <span>{t('blocks.retrieval.openSource')}</span>
             </NotionButton>
           </div>

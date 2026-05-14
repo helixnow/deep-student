@@ -1,6 +1,6 @@
 import React, { useEffect, useRef, useState } from 'react';
 import clsx from 'clsx';
-import { Hash } from 'lucide-react';
+import { Hash } from '@phosphor-icons/react';
 import { Card, CardContent } from '@/components/ui/shad/Card';
 import { Badge } from '@/components/ui/shad/Badge';
 import { LatexText } from '@/components/LatexText';

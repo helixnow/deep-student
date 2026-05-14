@@ -6,7 +6,7 @@
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Zap, X } from 'lucide-react';
+import { Lightning, X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { skillRegistry, subscribeToSkillRegistry } from '../registry';
@@ -98,7 +98,7 @@ const SingleBadge: React.FC<SingleBadgeProps> = ({
         }
       }}
     >
-      <Zap size={iconSize} className="flex-shrink-0" />
+      <Lightning size={iconSize} className="flex-shrink-0" />
       <span className="font-medium truncate max-w-[120px]">
         {getLocalizedSkillName(skill.id, skill.name, t)}
       </span>
@@ -258,7 +258,7 @@ export const NoActiveSkillButton: React.FC<NoActiveSkillProps> = ({
       )}
       aria-label={t('skills:selectSkill')}
     >
-      <Zap size={iconSize} className="flex-shrink-0" />
+      <Lightning size={iconSize} className="flex-shrink-0" />
       <span className="font-medium">
         {t('skills:selectSkill')}
       </span>

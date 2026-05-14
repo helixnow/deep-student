@@ -24,17 +24,18 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';  // 用于 ContextRefItem 获取 locale
 import {
   FileText,
-  ClipboardList,
+  ClipboardText,
   Image,
   Paperclip,
-  Search,
-  FileSpreadsheet,
+  MagnifyingGlass,
+  FileXls,
   BookOpen,
   File,
-  PenTool,
-  Languages,
-  Maximize2,
-} from 'lucide-react';
+  PenNib,
+  Translate,
+  ArrowsOut,
+  CircleNotch,
+} from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { contextTypeRegistry } from '../context';
@@ -244,7 +245,7 @@ const ImageRefItem: React.FC<ImageRefItemProps> = ({ preview, onClick }) => {
       />
       {/* Hover 遮罩 */}
       <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 group-hover:opacity-100 transition-opacity">
-        <Maximize2 className="w-5 h-5 text-white drop-shadow-md" />
+        <ArrowsOut size={20} className="text-white drop-shadow-md" />
       </div>
     </div>
   );
@@ -441,7 +442,7 @@ export const ContextRefsDisplay: React.FC<ContextRefsDisplayProps> = ({
         {/* Loading 占位符 */}
         {isLoadingImages && (
           <div className="w-16 h-16 rounded-xl border border-border/40 flex items-center justify-center bg-muted/30 shrink-0">
-             <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+             <CircleNotch size={16} className="animate-spin text-muted-foreground" />
           </div>
         )}
         
@@ -493,8 +494,7 @@ export const ContextRefsDisplay: React.FC<ContextRefsDisplayProps> = ({
   );
 };
 
-// 引入 Loader2
-import { Loader2 } from 'lucide-react';
+
 
 // ============================================================================
 // 辅助函数：检查是否有上下文引用

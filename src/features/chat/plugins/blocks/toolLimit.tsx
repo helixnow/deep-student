@@ -7,7 +7,7 @@
  */
 
 import React, { useCallback, useState } from 'react';
-import { AlertTriangle, Play, Loader2 } from 'lucide-react';
+import { Warning, Play, CircleNotch } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -59,7 +59,7 @@ const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
     >
       {/* 标题 */}
       <div className="flex items-center gap-2 mb-3">
-        <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400" />
+        <Warning size={20} className="text-amber-600 dark:text-amber-400" />
         <span className="text-sm font-medium text-amber-800 dark:text-amber-200">
           {t('chatV2:tool_limit.title')}
         </span>
@@ -109,12 +109,12 @@ const ToolLimitBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStr
           >
             {isDisabled ? (
               <>
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                <CircleNotch size={14} className="animate-spin" />
                 {t('chatV2:tool_limit.continuing')}
               </>
             ) : (
               <>
-                <Play className="w-3.5 h-3.5" />
+                <Play size={14} />
                 {t('chatV2:tool_limit.continue')}
               </>
             )}

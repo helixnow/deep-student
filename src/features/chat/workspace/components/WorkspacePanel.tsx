@@ -2,7 +2,7 @@ import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { Plus, Loader2, AlertCircle, RefreshCw, WifiOff } from 'lucide-react';
+import { Plus, CircleNotch, WarningCircle, ArrowClockwise, WifiSlash } from '@phosphor-icons/react';
 import { AgentCard } from './AgentCard';
 import { AgentOutputDrawer } from './AgentOutputDrawer';
 import { WorkspaceTimeline } from './WorkspaceTimeline';
@@ -108,7 +108,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
   if (isLoading) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3">
-        <Loader2 className="w-6 h-6 text-primary animate-spin" />
+        <CircleNotch size={24} className="text-primary animate-spin" />
         <span className="text-sm text-muted-foreground">
           {t('chatV2:workspace.loading', '正在恢复工作区...')}
         </span>
@@ -120,7 +120,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
   if (error) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-3 p-4">
-        <AlertCircle className="w-6 h-6 text-destructive" />
+        <WarningCircle size={24} className="text-destructive" />
         <span className="text-sm text-destructive text-center">
           {t('chatV2:workspace.restoreError', '工作区恢复失败')}
         </span>
@@ -133,7 +133,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
           onClick={() => handleRefresh()}
           className="mt-2"
         >
-          <RefreshCw className="w-3 h-3 mr-1" />
+          <ArrowClockwise size={12} className="mr-1" />
           {t('chatV2:workspace.retry', '重试')}
         </NotionButton>
       </div>
@@ -179,7 +179,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
           <div className="flex items-center gap-2">
             {!isOnline && (
               <span className="inline-flex items-center gap-1 text-xs text-amber-600">
-                <WifiOff className="w-3 h-3" />
+                <WifiSlash size={12} />
                 {t('chatV2:workspace.offlineTag', '离线')}
               </span>
             )}
@@ -191,9 +191,9 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
               disabled={isRefreshing}
             >
               {isRefreshing ? (
-                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                <CircleNotch size={12} className="mr-1 animate-spin" />
               ) : (
-                <RefreshCw className="w-3 h-3 mr-1" />
+                <ArrowClockwise size={12} className="mr-1" />
               )}
               {t('chatV2:workspace.refresh', '同步')}
             </NotionButton>
@@ -234,7 +234,7 @@ export const WorkspacePanel: React.FC<WorkspacePanelProps> = ({
             className="h-6 px-2 text-xs"
             onClick={() => setShowCreateAgent(true)}
           >
-            <Plus className="w-3 h-3 mr-1" />
+            <Plus size={12} className="mr-1" />
             {t('chatV2:workspace.addAgent', '添加')}
           </NotionButton>
         </div>

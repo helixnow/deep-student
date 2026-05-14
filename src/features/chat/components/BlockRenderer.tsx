@@ -9,7 +9,7 @@ import React, { useMemo, Component, memo } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
 import type { StoreApi } from 'zustand';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, RotateCcw } from 'lucide-react';
+import { Warning, ArrowCounterClockwise } from '@phosphor-icons/react';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -119,7 +119,7 @@ const BlockErrorFallbackUI: React.FC<BlockErrorFallbackUIProps> = ({
   return (
     <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
       <div className="flex items-center gap-2 mb-2">
-        <AlertTriangle className="w-4 h-4 text-destructive" />
+        <Warning size={16} className="text-destructive" />
         <span className="text-sm font-medium text-destructive">
           {t('error.blockRenderFailed', '块渲染失败')}
         </span>
@@ -127,7 +127,7 @@ const BlockErrorFallbackUI: React.FC<BlockErrorFallbackUIProps> = ({
           [{block.type}]
         </span>
         <NotionButton variant="ghost" size="sm" onClick={onReset} className="ml-auto text-destructive hover:bg-destructive/10">
-          <RotateCcw className="w-3 h-3" />
+          <ArrowCounterClockwise size={12} />
           {t('error.retry', '重试')}
         </NotionButton>
       </div>

@@ -13,18 +13,18 @@ import React, { useMemo, useState, useCallback } from 'react';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
 import {
-  FileDown,
+  DownloadSimple,
   CheckCircle,
-  AlertCircle,
-  Loader2,
-  Search,
+  WarningCircle,
+  CircleNotch,
+  MagnifyingGlass,
   HardDrive,
   FileText,
   Database,
   Copy,
-  RotateCcw,
-  ChevronDown,
-} from 'lucide-react';
+  ArrowCounterClockwise,
+  CaretDown,
+} from '@phosphor-icons/react';
 import { invoke } from '@tauri-apps/api/core';
 import type { BlockComponentProps } from '../../registry';
 
@@ -60,14 +60,14 @@ interface ProgressSnapshot {
 // ============================================================================
 
 const STAGE_CONFIG: Record<string, { label: string; icon: React.ElementType; weight: number }> = {
-  resolving:     { label: '解析地址',   icon: Search,     weight: 5 },
-  downloading:   { label: '下载中',     icon: FileDown,   weight: 60 },
-  deduplicating: { label: '去重检查',   icon: Copy,       weight: 5 },
-  storing:       { label: '存储中',     icon: HardDrive,  weight: 10 },
-  processing:    { label: '文本提取',   icon: FileText,   weight: 10 },
-  indexing:      { label: '建立索引',   icon: Database,   weight: 10 },
-  done:          { label: '完成',       icon: CheckCircle, weight: 0 },
-  error:         { label: '失败',       icon: AlertCircle, weight: 0 },
+  resolving:     { label: '解析地址',   icon: MagnifyingGlass, weight: 5 },
+  downloading:   { label: '下载中',     icon: DownloadSimple,  weight: 60 },
+  deduplicating: { label: '去重检查',   icon: Copy,            weight: 5 },
+  storing:       { label: '存储中',     icon: HardDrive,       weight: 10 },
+  processing:    { label: '文本提取',   icon: FileText,        weight: 10 },
+  indexing:      { label: '建立索引',   icon: Database,        weight: 10 },
+  done:          { label: '完成',       icon: CheckCircle,     weight: 0 },
+  error:         { label: '失败',       icon: WarningCircle,   weight: 0 },
 };
 
 const STAGE_ORDER = ['resolving', 'downloading', 'deduplicating', 'storing', 'processing', 'indexing', 'done'];
@@ -213,16 +213,16 @@ const PaperRow: React.FC<{ paper: PaperProgressItem }> = ({ paper }) => {
                 {paper.err || '失败'}
               </span>
               {retryState === 'loading' ? (
-                <Loader2 className="w-3 h-3 animate-spin text-primary" />
+                <CircleNotch size={12} className="animate-spin text-primary" />
               ) : (
                 <div className="relative flex items-center gap-0.5">
                   <NotionButton variant="ghost" size="sm" onClick={() => handleRetry()} disabled={sources.length === 0} className="text-primary hover:bg-primary/10" title="重试下载">
-                    <RotateCcw className="w-3 h-3" />
+                    <ArrowCounterClockwise size={12} />
                     <span>重试</span>
                   </NotionButton>
                   {hasMultipleSources && (
                     <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowSources(v => !v)} className="!h-5 !w-5" aria-label="切换下载源" title="切换下载源">
-                      <ChevronDown className={cn('w-3 h-3 transition-transform', showSources && 'rotate-180')} />
+                      <CaretDown className={cn('transition-transform', showSources && 'rotate-180')} size={12} />
                     </NotionButton>
                   )}
                 </div>
@@ -328,7 +328,7 @@ const PaperSaveBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => 
   if (!snapshot && !isComplete && !isError) {
     return (
       <div className="flex items-center gap-2 p-3 text-sm text-muted-foreground">
-        <Loader2 className="w-4 h-4 animate-spin text-primary" />
+        <CircleNotch size={16} className="animate-spin text-primary" />
         <span>准备下载论文…</span>
       </div>
     );
@@ -351,7 +351,7 @@ const PaperSaveBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => 
       <div className="flex items-center justify-between px-3 py-2.5 border-b border-border/30">
         <div className="flex items-center gap-2">
           <div className="p-1.5 rounded-md bg-primary/10 dark:bg-primary/20">
-            <FileDown className="w-4 h-4 text-primary" />
+            <DownloadSimple size={16} className="text-primary" />
           </div>
           <div className="flex flex-col">
             <span className="text-sm font-medium text-foreground">
@@ -373,13 +373,13 @@ const PaperSaveBlock: React.FC<BlockComponentProps> = React.memo(({ block }) => 
             <CheckCircle className="w-4 h-4 text-green-500" />
           )}
           {isComplete && errorCount > 0 && (
-            <AlertCircle className="w-4 h-4 text-amber-500" />
+            <WarningCircle size={16} className="text-amber-500" />
           )}
           {!isComplete && !isError && (
-            <Loader2 className="w-4 h-4 text-primary animate-spin" />
+            <CircleNotch size={16} className="text-primary animate-spin" />
           )}
           {isError && (
-            <AlertCircle className="w-4 h-4 text-destructive" />
+            <WarningCircle size={16} className="text-destructive" />
           )}
         </div>
       </div>

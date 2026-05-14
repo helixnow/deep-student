@@ -8,7 +8,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { HelpCircle, Loader2 } from 'lucide-react';
+import { Question, CircleNotch } from '@phosphor-icons/react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 
 // ============================================================================
@@ -37,7 +37,7 @@ const GenericBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStrea
     >
       {/* 头部 */}
       <div className="flex items-center gap-2 mb-2">
-        <HelpCircle className="w-4 h-4 text-muted-foreground" />
+        <Question size={16} className="text-muted-foreground" />
         <span className="text-xs font-mono text-muted-foreground">
           {t('blocks.generic.type')}: {block.type}
         </span>
@@ -53,7 +53,7 @@ const GenericBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStrea
           {block.status}
         </span>
         {isStreaming && (
-          <Loader2 className="w-3 h-3 animate-spin text-primary ml-auto" />
+          <CircleNotch size={12} className="animate-spin text-primary ml-auto" />
         )}
       </div>
 
