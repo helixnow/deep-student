@@ -266,8 +266,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
           <NotionButton
             variant="ghost"
             size="icon"
-            className="h-8 w-8"
-            onClick={handleRefresh}
+ className="w-8 h-8"             onClick={handleRefresh}
           >
             <ArrowsClockwise size={16} />
           </NotionButton>
@@ -320,7 +319,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
                 stroke="hsl(var(--border))"
                 opacity={0.5}
                 vertical={false}
-              />
+/>
               
               <XAxis
                 dataKey="date"
@@ -329,7 +328,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
                 axisLine={{ stroke: 'hsl(var(--border))' }}
                 tickLine={false}
                 interval="preserveStartEnd"
-              />
+/>
               
               {/* 左侧 Y 轴 - 做题数 */}
               <YAxis
@@ -338,7 +337,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
                 axisLine={false}
                 tickLine={false}
                 width={35}
-              />
+/>
               
               {/* 右侧 Y 轴 - 正确率 */}
               <YAxis
@@ -350,7 +349,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
                 tickLine={false}
                 width={35}
                 tickFormatter={(v) => `${v}%`}
-              />
+/>
               
               <Tooltip content={<CustomTooltip />} />
               
@@ -362,7 +361,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
                 formatter={(value) => (
                   <span className="text-xs text-muted-foreground">{value}</span>
                 )}
-              />
+/>
               
               {/* 做题数 - 柱状图 */}
               <Bar
@@ -372,7 +371,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
                 fill="url(#barGradient)"
                 radius={[4, 4, 0, 0]}
                 maxBarSize={40}
-              />
+/>
               
               {/* 正确率 - 折线图 */}
               <Line
@@ -384,7 +383,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
                 strokeWidth={2}
                 dot={{ fill: 'hsl(var(--success))', strokeWidth: 0, r: 3 }}
                 activeDot={{ r: 5, stroke: 'hsl(var(--success))', strokeWidth: 2 }}
-              />
+/>
             </ComposedChart>
           </ResponsiveContainer>
         </div>

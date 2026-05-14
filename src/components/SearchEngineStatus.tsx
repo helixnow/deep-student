@@ -5,12 +5,12 @@ import { useTranslation } from 'react-i18next';
 import { 
   CheckCircle, 
   XCircle, 
-  AlertTriangle, 
+  Warning, 
   Clock, 
-  RefreshCw,
-  Zap,
+  ArrowClockwise,
+  Lightning,
   Globe
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 
 interface EngineStatus {
   id: string;
@@ -119,9 +119,9 @@ export const SearchEngineStatus: React.FC<SearchEngineStatusProps> = ({
       case 'unavailable':
         return <XCircle className={`${size} text-red-500`} />;
       case 'testing':
-        return <RefreshCw className={`${size} text-blue-500 animate-spin`} />;
+        return <ArrowClockwise className={`${size} text-blue-500 animate-spin`} />;
       default:
-        return <AlertTriangle className={`${size} text-muted-foreground`} />;
+        return <Warning className={`${size} text-muted-foreground`} />;
     }
   };
 
@@ -155,7 +155,7 @@ export const SearchEngineStatus: React.FC<SearchEngineStatusProps> = ({
       {/* 控制面板 */}
       <div className="flex items-center justify-between p-3 bg-gray-50 rounded-lg">
         <div className="flex items-center space-x-2">
-          <Globe className="w-4 h-4 text-muted-foreground" />
+          <Globe size={16} className="text-muted-foreground" />
           <span className="text-sm font-medium text-foreground">{t('searchEngine.title', '搜索引擎状态')}</span>
           {lastCheckTime && (
             <span className="text-xs text-muted-foreground">
@@ -166,9 +166,9 @@ export const SearchEngineStatus: React.FC<SearchEngineStatusProps> = ({
         
         <NotionButton variant="primary" size="sm" onClick={testAllEngines} disabled={testing || engines.filter(e => e.enabled).length === 0} className="!px-3 !py-1 bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-50">
           {testing ? (
-            <RefreshCw className="w-4 h-4 animate-spin" />
+            <ArrowClockwise size={16} className="animate-spin" />
           ) : (
-            <Zap className="w-4 h-4" />
+            <Lightning size={16} />
           )}
           <span>{testing ? t('searchEngine.testing', '检测中...') : t('searchEngine.testAvailability', '检测可用性')}</span>
         </NotionButton>
@@ -201,7 +201,7 @@ export const SearchEngineStatus: React.FC<SearchEngineStatusProps> = ({
             
             {status.last_check && (
               <div className="flex items-center space-x-1 text-xs opacity-75">
-                <Clock className="w-3 h-3" />
+                <Clock size={12} />
                 <span>{formatTime(status.last_check)}</span>
               </div>
             )}
@@ -212,15 +212,15 @@ export const SearchEngineStatus: React.FC<SearchEngineStatusProps> = ({
       {/* 摘要统计 */}
       <div className="flex items-center justify-center space-x-6 p-3 bg-gray-50 rounded-lg text-sm">
         <div className="flex items-center space-x-1">
-          <CheckCircle className="w-4 h-4 text-green-500" />
+          <CheckCircle size={16} className="text-green-500" />
           <span>{t('searchEngine.available', '可用')}: {statuses.filter(s => s.status === 'available').length}</span>
         </div>
         <div className="flex items-center space-x-1">
-          <XCircle className="w-4 h-4 text-red-500" />
+          <XCircle size={16} className="text-red-500" />
           <span>{t('searchEngine.unavailable', '不可用')}: {statuses.filter(s => s.status === 'unavailable').length}</span>
         </div>
         <div className="flex items-center space-x-1">
-          <AlertTriangle className="w-4 h-4 text-muted-foreground" />
+          <Warning size={16} className="text-muted-foreground" />
           <span>{t('searchEngine.untested', '未检测')}: {statuses.filter(s => s.status === 'unknown').length}</span>
         </div>
       </div>

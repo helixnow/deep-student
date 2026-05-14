@@ -7,7 +7,7 @@ import { EnhancedPdfViewer, type Bookmark } from './EnhancedPdfViewer';
 import { usePdfRenderTracker } from '@/utils/pdfDebug';
 import useTheme from '@/hooks/useTheme';
 import { getErrorMessage } from '@/utils/errorUtils';
-import { BookOpen } from 'lucide-react';
+import { BookOpen } from '@phosphor-icons/react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 

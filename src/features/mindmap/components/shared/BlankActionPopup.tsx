@@ -2,7 +2,7 @@ import React, { useEffect, useRef, useCallback } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { EyeOff, Eye } from 'lucide-react';
+import { EyeSlash, Eye } from '@phosphor-icons/react';
 
 interface BlankActionPopupProps {
   x: number;
@@ -57,12 +57,12 @@ export const BlankActionPopup: React.FC<BlankActionPopupProps> = ({
     >
       {isAlreadyBlanked ? (
         <NotionButton variant="ghost" size="sm" className="!px-3 !py-1.5 !h-auto !rounded-full bg-zinc-700/90 text-zinc-200 hover:bg-[var(--interactive-hover)] text-xs font-medium whitespace-nowrap" onClick={(e) => { e.stopPropagation(); onUnblank(); }}>
-          <Eye className="w-3 h-3" />
+          <Eye size={12} />
           {t('recite.unblank')}
         </NotionButton>
       ) : (
         <NotionButton variant="ghost" size="sm" className="!px-3 !py-1.5 !h-auto !rounded-full bg-amber-500/90 text-white hover:bg-amber-500 text-xs font-medium whitespace-nowrap" onClick={(e) => { e.stopPropagation(); onBlank(); }}>
-          <EyeOff className="w-3 h-3" />
+          <EyeSlash size={12} />
           {t('recite.blank')}
         </NotionButton>
       )}

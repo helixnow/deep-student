@@ -1,6 +1,6 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, X, ChevronUp, ChevronDown, Replace, ReplaceAll } from 'lucide-react';
+import { MagnifyingGlass, X, CaretUp, CaretDown, Swap } from '@phosphor-icons/react';
 import { Input } from '@/components/ui/shad/Input';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { cn } from '@/lib/utils';
@@ -64,11 +64,11 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
           onClick={() => setIsReplaceMode(!isReplaceMode)}
           title={isReplaceMode ? "Hide Replace" : "Show Replace"}
         >
-          <ChevronDown className={cn("h-4 w-4 transition-transform", isReplaceMode && "-rotate-90")} />
+          <CaretDown className={cn("h-4 w-4 transition-transform", isReplaceMode && "-rotate-90")} />
         </NotionButton>
         
         <div className="flex-1 relative flex items-center">
-          <Search className="absolute left-2 w-3.5 h-3.5 text-muted-foreground" />
+          <MagnifyingGlass className="absolute left-2 w-3.5 h-3.5 text-muted-foreground" />
           <Input 
             ref={findInputRef}
             className="h-7 text-xs pl-7 pr-12 bg-transparent border-none focus-visible:ring-1"
@@ -86,10 +86,10 @@ export const FindReplacePanel: React.FC<FindReplacePanelProps> = ({
         
         <div className="flex items-center gap-0.5">
           <NotionButton variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={handleFind}>
-            <ChevronUp className="h-4 w-4" />
+            <CaretUp className="h-4 w-4" />
           </NotionButton>
           <NotionButton variant="ghost" size="sm" className="h-6 w-6 p-0" onClick={handleFind}>
-            <ChevronDown className="h-4 w-4" />
+            <CaretDown className="h-4 w-4" />
           </NotionButton>
           <div className="w-[1px] h-4 bg-border/60 mx-0.5" />
           <NotionButton variant="ghost" size="sm" className="h-6 w-6 p-0 text-muted-foreground hover:text-foreground" onClick={onClose}>

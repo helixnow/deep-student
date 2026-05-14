@@ -16,8 +16,8 @@ import {
   CheckCircle,
   XCircle,
   Star,
-  ChevronRight,
-} from 'lucide-react';
+  CaretRight,
+} from '@phosphor-icons/react';
 import type { Question, QuestionStatus, Difficulty } from '@/api/questionBankApi';
 
 interface VirtualQuestionListProps {
@@ -139,10 +139,10 @@ export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
                       {question.questionLabel || `${t('questionBank.content')} ${virtualItem.index + 1}`}
                     </span>
                     {question.isCorrect === true && (
-                      <CheckCircle className="w-3.5 h-3.5 text-green-500 flex-shrink-0" />
+                      <CheckCircle size={14} className="text-green-500 flex-shrink-0" />
                     )}
                     {question.isCorrect === false && (
-                      <XCircle className="w-3.5 h-3.5 text-red-500 flex-shrink-0" />
+                      <XCircle size={14} className="text-red-500 flex-shrink-0" />
                     )}
                     {question.difficulty && (
                       <span className={cn('text-xs', difficultyColors[question.difficulty])}>
@@ -174,11 +174,11 @@ export const VirtualQuestionList: React.FC<VirtualQuestionListProps> = ({
                         'w-3.5 h-3.5',
                         question.isFavorite ? 'fill-yellow-500 text-yellow-500' : 'text-muted-foreground'
                       )}
-                    />
+/>
                   </NotionButton>
                 </div>
 
-                <ChevronRight className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                <CaretRight size={16} className="text-muted-foreground flex-shrink-0" />
               </div>
             </div>
           );

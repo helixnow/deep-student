@@ -345,14 +345,14 @@ export const LlmUsageStatsPage: React.FC<LlmUsageStatsPageProps> = ({ onBack, em
                       borderRadius: '8px',
                     }}
                     formatter={(value: number) => [formatNumber(value), 'Tokens']}
-                  />
+/>
                   <Area
                     type="monotone"
                     dataKey="totalTokens"
                     stroke={DESIGN.colors.primary}
                     fillOpacity={1}
                     fill="url(#colorTokens)"
-                  />
+/>
                 </AreaChart>
               </ResponsiveContainer>
             ) : (

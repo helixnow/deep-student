@@ -8,14 +8,14 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from "react"
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import {
-  Trash2,
+  Trash,
   Folder,
   FolderPlus,
   Star,
   BookOpen,
   Link,
   FileText,
-} from "lucide-react";
+} from "@phosphor-icons/react";
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Z_INDEX } from '@/config/zIndex';
 import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
@@ -660,7 +660,7 @@ const NotesSidebarContent: React.FC = () => {
               </NotionButton>
             ) : (
               <NotionButton variant="ghost" size="sm" className="app-menu-item app-menu-item-destructive" onClick={() => { deleteItems([contextMenu.id]); setContextMenu(null); }}>
-                <span className="app-menu-item-icon"><Trash2 className="h-4 w-4" /></span>
+                <span className="app-menu-item-icon"><Trash size={16} /></span>
                 <span className="app-menu-item-content">{t('notes:tree.context_menu.delete')}</span>
               </NotionButton>
             )}
@@ -716,7 +716,7 @@ export const NotesSidebarV2: React.FC<NotesSidebarV2Props> = ({
             onClick={() => setTrashOpen(true)}
             title={t('notes:sidebar.trash')}
           >
-            <Trash2 className="h-3.5 w-3.5" />
+            <Trash size={14} />
           </NotionButton>
         }
       />

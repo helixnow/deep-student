@@ -208,7 +208,7 @@
 .pdf-page {
   box-shadow: 0 4px 6px -1px hsl(var(--foreground) / 0.1),
               0 2px 4px -1px hsl(var(--foreground) / 0.06);
-  background: white;
+  background: hsl(var(--background));
   margin: 0 auto;
 }
 
@@ -246,8 +246,8 @@
 
 /* 暗色模式适配 */
 .pdf-reader-container.dark-mode .pdf-page {
-  box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.3),
-              0 2px 4px -1px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 4px 6px -1px hsl(var(--shadow-base) / 0.3),
+              0 2px 4px -1px hsl(var(--shadow-base) / 0.2);
 }
 
 /* 响应式设计 */

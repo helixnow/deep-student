@@ -105,7 +105,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBack }) => {
             className: debugMode ? 'active' : ''
           }
         ]}
-      />
+/>
 
       <CustomScrollArea className="flex-1 min-h-0" viewportClassName="p-4 sm:px-8 sm:pb-8">
         <div className="max-w-5xl mx-auto">
@@ -162,7 +162,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBack }) => {
                   value={stats?.totalMistakes || 0}
                   label={t('total_mistakes')}
                   index={0}
-                />
+/>
                 <StatCard
                   icon={MagnifyingGlass}
                   iconColor="hsl(var(--success))"
@@ -170,7 +170,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBack }) => {
                   value={stats?.totalReviews || 0}
                   label={t('total_reviews')}
                   index={1}
-                />
+/>
                 <StatCard
                   icon={BookOpen}
                   iconColor="hsl(var(--warning))"
@@ -178,7 +178,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBack }) => {
                   value={0}
                   label={t('total_subjects')}
                   index={2}
-                />
+/>
                 <StatCard
                   icon={Tag}
                   iconColor="hsl(var(--info))"
@@ -186,7 +186,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBack }) => {
                   value={Object.keys(stats?.tagStats || {}).length}
                   label={t('total_tags')}
                   index={3}
-                />
+/>
               </div>
 
               {/* Detailed Statistics */}
@@ -213,7 +213,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBack }) => {
                                 style={{
                                   width: `${stats.totalMistakes > 0 ? (count / stats.totalMistakes) * 100 : 0}%`
                                 }}
-                              />
+/>
                             </div>
                             <div className="min-w-[40px] text-right text-sm font-semibold text-foreground">
                               {count}

@@ -18,7 +18,7 @@ import { Textarea } from '../ui/shad/Textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/shad/Tabs';
 import TagInput from '../ui/shad/TagInput';
 import { CustomScrollArea } from '../custom-scroll-area';
-import { X } from 'lucide-react';
+import { X } from '@phosphor-icons/react';
 import { Z_INDEX } from '@/config/zIndex';
 import { HorizontalResizable } from '../shared/Resizable';
 import { cn } from '@/lib/utils';
@@ -364,7 +364,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                             'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all h-10',
                             errors.id && 'border-destructive'
                           )}
-                        />
+/>
                         {errors.id && (
                           <p className="text-xs text-destructive">{errors.id}</p>
                         )}
@@ -388,7 +388,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                           'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all h-10',
                           errors.name && 'border-destructive'
                         )}
-                      />
+/>
                       {errors.name && (
                         <p className="text-xs text-destructive">{errors.name}</p>
                       )}
@@ -408,7 +408,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                           'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all resize-none min-h-[80px] overflow-hidden',
                           errors.description && 'border-destructive'
                         )}
-                      />
+/>
                       {errors.description && (
                         <p className="text-xs text-destructive">{errors.description}</p>
                       )}
@@ -428,7 +428,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                           onChange={(e) => updateField('version', (e.target as HTMLInputElement).value)}
                           placeholder="1.0.0"
                           className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all h-10"
-                        />
+/>
                       </div>
                       <div className="space-y-2">
                         <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
@@ -439,7 +439,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                           onChange={(e) => updateField('author', (e.target as HTMLInputElement).value)}
                           placeholder={t('skills:editor.author_placeholder', '可选')}
                           className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all h-10"
-                        />
+/>
                       </div>
                     </div>
 
@@ -461,7 +461,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                             }
                           }}
                           className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all h-10 w-24"
-                        />
+/>
                         <p className="text-[10px] text-muted-foreground/60">
                           {t('skills:editor.priority_hint', '1-10，数字越小优先级越高')}
                         </p>
@@ -503,7 +503,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                         value={formData.dependencies ?? []}
                         onChange={(next) => updateField('dependencies', next)}
                         placeholder={t('skills:editor.skill_list_placeholder', '用逗号分隔，例如 knowledge-retrieval, vfs-memory')}
-                      />
+/>
                       <p className="text-[10px] text-muted-foreground/60">
                         {t('skills:editor.dependencies_hint', '硬依赖：激活此技能时自动加载')}
                       </p>
@@ -517,7 +517,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                         value={formData.relatedSkills ?? []}
                         onChange={(next) => updateField('relatedSkills', next)}
                         placeholder={t('skills:editor.skill_list_placeholder', '用逗号分隔，例如 knowledge-retrieval, vfs-memory')}
-                      />
+/>
                       <p className="text-[10px] text-muted-foreground/60">
                         {t('skills:editor.related_skills_hint', '软关联：仅用于推荐，不会自动加载')}
                       </p>
@@ -531,7 +531,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                         value={formData.allowedTools ?? []}
                         onChange={(next) => updateField('allowedTools', next)}
                         placeholder={t('skills:editor.allowed_tools_placeholder', '用逗号分隔，例如 builtin-web_search, server-a::fetch')}
-                      />
+/>
                       <p className="text-[10px] text-muted-foreground/60">
                         {t('skills:editor.allowed_tools_hint', '权限白名单：支持工具名以及 server::tool 的外部服务器粒度约束')}
                       </p>
@@ -543,7 +543,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                       <EmbeddedToolsEditor
                         tools={formData.embeddedTools || []}
                         onChange={(tools) => updateField('embeddedTools', tools)}
-                      />
+/>
                     </div>
                   </div>
                 </CustomScrollArea>
@@ -603,7 +603,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                           crosshairCursor: false,
                           highlightSelectionMatches: true,
                         }}
-                      />
+/>
                       <CodeMirrorScrollOverlay containerRef={cmContainerRef} />
                     </>
                   ) : (
@@ -617,7 +617,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                 </div>
               </motion.div>
               }
-            />
+/>
           </form>
         </motion.div>
       )}

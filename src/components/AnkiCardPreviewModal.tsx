@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
-import { X, CreditCard, Eye, Edit2, Save } from 'lucide-react';
+import { X, CreditCard, Eye, PencilSimple, FloppyDisk } from '@phosphor-icons/react';
 import { AnkiCard, CustomAnkiTemplate } from '../types';
 import { TemplateRenderService } from '../services/templateRenderService';
 import { IframePreview } from './SharedPreview';
@@ -156,7 +156,7 @@ const AnkiCardPreviewModal: React.FC<AnkiCardPreviewModalProps> = ({
                   key={`${(editedCard as any)._updateKey}-${showFront}`}
                   htmlContent={showFront ? renderedContent.front : renderedContent.back}
                   cssContent={template?.css_style || ''}
-                />
+/>
               </div>
             </div>
           </div>

@@ -10,7 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '../../../lib/utils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { AlertCircle, BookOpen, ExternalLink, FileText } from 'lucide-react';
+import { WarningCircle, BookOpen, ArrowSquareOut, FileText } from '@phosphor-icons/react';
 import { getErrorMessage } from '../../../utils/errorUtils';
 import type { PDFPreviewProps } from './types';
 import { EnhancedPdfViewer } from '@/features/pdf/components/EnhancedPdfViewer';
@@ -162,7 +162,7 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({
           className
         )}
       >
-        <AlertCircle className="h-10 w-10 text-destructive" />
+        <WarningCircle className="h-10 w-10 text-destructive" />
         <p className="text-sm text-muted-foreground">{error}</p>
       </div>
     );
@@ -183,7 +183,7 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({
                 disabled={opening}
                 className="gap-1"
               >
-                <ExternalLink className="h-4 w-4" />
+                <ArrowSquareOut size={16} />
                 {t('notes:previewPanel.pdf.openSystem')}
               </NotionButton>
             )}
@@ -287,7 +287,7 @@ export const PDFPreview: React.FC<PDFPreviewProps> = ({
                 </>
               ) : (
                 <>
-                  <ExternalLink className="h-4 w-4" />
+                  <ArrowSquareOut size={16} />
                   {t('notes:previewPanel.pdf.openSystem')}
                 </>
               )}

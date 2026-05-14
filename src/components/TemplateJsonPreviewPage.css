@@ -2,9 +2,9 @@
   display: flex;
   flex-direction: column;
   height: 100%;
-  background: radial-gradient(circle at 20% 20%, rgba(99, 102, 241, 0.08), transparent 35%),
-    radial-gradient(circle at 80% 0%, rgba(16, 185, 129, 0.08), transparent 30%),
-    var(--background, #f7f9fb);
+  background: radial-gradient(circle at 20% 20%, hsl(var(--primary) / 0.08), transparent 35%),
+    radial-gradient(circle at 80% 0%, hsl(var(--success) / 0.08), transparent 30%),
+    hsl(var(--background));
 }
 
 .template-json-preview-header {
@@ -12,8 +12,8 @@
   align-items: center;
   justify-content: space-between;
   padding: 18px 20px;
-  border-bottom: 1px solid var(--border, #e5e7eb);
-  background: linear-gradient(135deg, rgba(99, 102, 241, 0.08), rgba(16, 185, 129, 0.05));
+  border-bottom: 1px solid hsl(var(--border));
+  background: linear-gradient(135deg, hsl(var(--primary) / 0.08), hsl(var(--success) / 0.05));
 }
 
 .template-json-preview-header .left {
@@ -26,12 +26,12 @@
   margin: 0;
   font-size: 18px;
   font-weight: 700;
-  color: var(--foreground, #0f172a);
+  color: hsl(var(--foreground));
 }
 
 .template-json-preview-header .titles p {
   margin: 2px 0 0;
-  color: var(--muted-foreground, #6b7280);
+  color: hsl(var(--muted-foreground));
   font-size: 13px;
 }
 
@@ -58,11 +58,11 @@
 }
 
 .panel {
-  background: rgba(255, 255, 255, 0.88);
-  border: 1px solid var(--border, #e5e7eb);
+  background: hsl(var(--background) / 0.88);
+  border: 1px solid hsl(var(--border));
   border-radius: 16px;
   padding: 16px;
-  box-shadow: 0 14px 38px rgba(15, 23, 42, 0.06);
+  box-shadow: 0 14px 38px hsl(var(--shadow-base) / 0.06);
   backdrop-filter: blur(4px);
 }
 
@@ -84,21 +84,21 @@
   align-items: center;
   gap: 8px;
   font-weight: 700;
-  color: var(--foreground, #0f172a);
+  color: hsl(var(--foreground));
 }
 
 .panel-desc {
   margin: 4px 0 12px;
-  color: var(--muted-foreground, #6b7280);
+  color: hsl(var(--muted-foreground));
   font-size: 13px;
 }
 
 .json-textarea {
   font-family: 'SFMono-Regular', Consolas, Monaco, monospace;
-  background: #0b1221;
-  color: #e5e7eb;
+  background: hsl(var(--foreground) / 0.95);
+  color: hsl(var(--border));
   border-radius: 12px;
-  border: 1px solid #1f2937;
+  border: 1px solid hsl(var(--foreground) / 0.8);
   min-height: 320px;
 }
 
@@ -115,7 +115,7 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: var(--muted-foreground, #6b7280);
+  color: hsl(var(--muted-foreground));
   font-size: 12px;
 }
 
@@ -132,11 +132,11 @@
 }
 
 .preview-card {
-  border: 1px solid var(--border, #e5e7eb);
+  border: 1px solid hsl(var(--border));
   border-radius: 12px;
   padding: 12px;
-  background: linear-gradient(145deg, #ffffff, rgba(255, 255, 255, 0.92));
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.06);
+  background: linear-gradient(145deg, var(--surface-elevated), hsl(var(--background) / 0.92));
+  box-shadow: 0 10px 30px hsl(var(--shadow-base) / 0.06);
 }
 
 .preview-card-head {
@@ -148,21 +148,21 @@
 
 .preview-card-title {
   font-weight: 700;
-  color: var(--foreground, #0f172a);
+  color: hsl(var(--foreground));
 }
 
 .preview-card-meta {
   display: flex;
   gap: 10px;
   font-size: 12px;
-  color: var(--muted-foreground, #6b7280);
+  color: hsl(var(--muted-foreground));
 }
 
 .preview-card-meta .note-type {
   padding: 2px 8px;
   border-radius: 999px;
-  background: #eef2ff;
-  color: #4338ca;
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
 }
 
 .preview-grid {
@@ -179,10 +179,10 @@
 }
 
 .preview-block {
-  border: 1px solid var(--border, #e5e7eb);
+  border: 1px solid hsl(var(--border));
   border-radius: 10px;
   padding: 10px;
-  background: rgba(248, 250, 252, 0.7);
+  background: hsl(var(--muted) / 0.7);
 }
 
 .preview-block-title {
@@ -190,16 +190,16 @@
   align-items: center;
   gap: 6px;
   font-weight: 600;
-  color: var(--foreground, #111827);
+  color: hsl(var(--foreground));
   margin-bottom: 6px;
 }
 
 .data-block {
   margin-top: 10px;
-  border: 1px dashed var(--border, #e5e7eb);
+  border: 1px dashed hsl(var(--border));
   border-radius: 8px;
   padding: 8px;
-  background: rgba(249, 250, 251, 0.7);
+  background: hsl(var(--muted) / 0.7);
 }
 
 .data-pre {
@@ -207,8 +207,8 @@
   max-height: 240px;
   overflow: auto;
   font-size: 12px;
-  background: #0b1221;
-  color: #e2e8f0;
+  background: hsl(var(--foreground) / 0.95);
+  color: hsl(var(--border));
   border-radius: 6px;
   padding: 8px;
 }
@@ -216,7 +216,7 @@
 .empty {
   padding: 24px;
   text-align: center;
-  color: var(--muted-foreground, #6b7280);
+  color: hsl(var(--muted-foreground));
 }
 
 /* ============================================

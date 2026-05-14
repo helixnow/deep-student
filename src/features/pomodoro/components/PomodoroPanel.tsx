@@ -13,13 +13,13 @@ import {
   Play,
   Pause,
   Square,
-  BrainCircuit,
+  Brain,
   Coffee,
-  Maximize2,
+  ArrowsOut,
   SkipForward,
   Timer,
   Flame,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { usePomodoroStore } from '../stores/usePomodoroStore';
@@ -97,28 +97,28 @@ export const PomodoroPanel: React.FC = () => {
       case 'work':
         return {
           label: '专注中',
-          icon: <BrainCircuit className="h-3.5 w-3.5" />,
+          icon: <Brain size={14} />,
           colorClass: 'text-[color:hsl(var(--warning))]',
           progressClass: 'bg-[color:hsl(var(--warning))]',
         };
       case 'short_break':
         return {
           label: '短休息',
-          icon: <Coffee className="h-3.5 w-3.5" />,
+          icon: <Coffee size={14} />,
           colorClass: 'text-[color:hsl(var(--success))]',
           progressClass: 'bg-[color:hsl(var(--success))]',
         };
       case 'long_break':
         return {
           label: '长休息',
-          icon: <Coffee className="h-3.5 w-3.5" />,
+          icon: <Coffee size={14} />,
           colorClass: 'text-[color:hsl(var(--info))]',
           progressClass: 'bg-[color:hsl(var(--info))]',
         };
       default:
         return {
           label: '番茄钟',
-          icon: <Timer className="h-3.5 w-3.5" />,
+          icon: <Timer size={14} />,
           colorClass: 'text-muted-foreground',
           progressClass: 'bg-[color:var(--shell-workspace-border)]',
         };
@@ -194,7 +194,7 @@ export const PomodoroPanel: React.FC = () => {
               aria-label="stop"
               className="!h-7 !w-7"
             >
-              <Square className="h-3.5 w-3.5" />
+              <Square size={14} />
             </NotionButton>
           )}
 
@@ -206,7 +206,7 @@ export const PomodoroPanel: React.FC = () => {
             aria-label={isRunning ? '暂停' : mode === 'idle' ? '开始专注' : '继续'}
             className="h-7 gap-1.5 !px-3 text-xs"
           >
-            {isRunning ? <Pause className="h-3.5 w-3.5" /> : <Play className="h-3.5 w-3.5" />}
+            {isRunning ? <Pause size={14} /> : <Play size={14} />}
             <span>{isRunning ? '暂停' : mode === 'idle' ? '开始' : '继续'}</span>
           </NotionButton>
 
@@ -220,7 +220,7 @@ export const PomodoroPanel: React.FC = () => {
               aria-label="skip"
               className="!h-7 !w-7"
             >
-              <SkipForward className="h-3.5 w-3.5" />
+              <SkipForward size={14} />
             </NotionButton>
           )}
 
@@ -234,7 +234,7 @@ export const PomodoroPanel: React.FC = () => {
               aria-label="immersive"
               className="!h-7 !w-7"
             >
-              <Maximize2 className="h-3.5 w-3.5" />
+              <ArrowsOut size={14} />
             </NotionButton>
           )}
         </div>
@@ -243,7 +243,7 @@ export const PomodoroPanel: React.FC = () => {
       {/* 今日统计 */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 pb-2.5 sm:px-6">
         <div className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <Flame className="h-3 w-3 text-[color:hsl(var(--warning))]" />
+          <Flame size={12} className="text-[color:hsl(var(--warning))]" />
           <span>
             今日{' '}
             <strong className="font-semibold text-foreground">

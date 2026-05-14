@@ -11,13 +11,13 @@ import {
   Upload,
   Download,
   Plus,
-  RotateCcw,
-  Search,
-  Zap,
+  ArrowCounterClockwise,
+  MagnifyingGlass,
+  Lightning,
   Globe,
   FolderOpen,
   Package,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -674,14 +674,14 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
       : undefined,
     rightActions: !isEditorView ? (
       <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCreate} className="!p-1.5 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground" title={t('skills:management.create', '新建技能')} aria-label="create">
-        <Plus className="w-5 h-5" />
+        <Plus size={20} />
       </NotionButton>
     ) : undefined,
   }, [headerTitle, headerSubtitle, isEditorView, handleCreate, t]);
 
   // ========== 位置筛选标签 ==========
   const locationTabs = useMemo(() => [
-    { id: 'all' as const, label: t('skills:location.all', '全部'), icon: <Zap size={12} /> },
+    { id: 'all' as const, label: t('skills:location.all', '全部'), icon: <Lightning size={12} /> },
     { id: 'global' as const, label: t('skills:location.global', '全局'), icon: <Globe size={12} /> },
     { id: 'project' as const, label: t('skills:location.project', '项目'), icon: <FolderOpen size={12} /> },
     { id: 'builtin' as const, label: t('skills:location.builtin', '内置'), icon: <Package size={12} /> },
@@ -730,7 +730,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               multiple
               onChange={handleImportFile}
               className="hidden"
-            />
+/>
             
             {/* 新建按钮：移动端在应用顶栏，桌面端保留在此 */}
             {!isSmallScreen && (
@@ -774,14 +774,14 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
 
         <div className={cn("flex items-center gap-3", isSmallScreen && "flex-col items-stretch")}>
           <div className={cn("relative flex-1", !isSmallScreen && "max-w-xs")}>
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
+            <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
             <Input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t('skills:selector.searchPlaceholder', '搜索技能...')}
               className="h-8 pl-8 pr-3 text-xs"
-            />
+/>
           </div>
 
           <SegmentedControl<typeof locationFilter>
@@ -819,7 +819,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
                   ),
                 };
               })}
-          />
+/>
         </div>
       </div>
 
@@ -836,7 +836,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           onSelectSkill={(skill) => setSelectedSkillId(skill.id)}
           cardRefsMap={cardRefsMap}
           editingSkillId={editorOpen ? editingSkill?.id : null}
-        />
+/>
       </CustomScrollArea>
     </div>
   );
@@ -859,7 +859,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           location={editorLocation}
           onSave={handleSave}
           embeddedMode={true}
-        />
+/>
       )}
     </div>
   );
@@ -886,7 +886,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           open={deleteConfirmOpen}
           onOpenChange={setDeleteConfirmOpen}
           onConfirm={handleConfirmDelete}
-        />
+/>
 
         <NotionAlertDialog
           open={importOverwriteOpen}
@@ -902,7 +902,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           confirmVariant="warning"
           onConfirm={handleConfirmOverwrite}
           onCancel={handleCancelOverwrite}
-        />
+/>
       </div>
     );
   }
@@ -921,14 +921,14 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           onSave={handleSave}
           originRect={editOriginRect}
           theme={isDarkMode ? 'dark' : 'light'}
-        />
+/>
 
         <SkillDeleteConfirm
           skill={skillToDelete}
           open={deleteConfirmOpen}
           onOpenChange={setDeleteConfirmOpen}
           onConfirm={handleConfirmDelete}
-        />
+/>
 
         <NotionAlertDialog
           open={importOverwriteOpen}
@@ -944,7 +944,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           confirmVariant="warning"
           onConfirm={handleConfirmOverwrite}
           onCancel={handleCancelOverwrite}
-        />
+/>
       </div>
     </LayoutGroup>
   );

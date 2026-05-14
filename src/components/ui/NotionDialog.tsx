@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X } from 'lucide-react';
+import { X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Z_INDEX } from '@/config/zIndex';
 import { NotionButton, type NotionButtonVariant, type NotionButtonSize } from './NotionButton';
@@ -103,7 +103,7 @@ export function NotionDialog({
           className="fixed inset-0 bg-black/30 backdrop-blur-[2px]"
           variants={overlayVariants}
           onClick={() => closeOnOverlay && onOpenChange(false)}
-        />
+/>
         {/* 内容 */}
         <motion.div
           role="dialog"
@@ -130,10 +130,10 @@ export function NotionDialog({
               size="sm"
               iconOnly
               aria-label="Close"
-              className="absolute top-2.5 right-2.5 z-10 h-6 w-6 text-muted-foreground/50 hover:text-foreground"
+ className="w-6 h-6 absolute top-2.5 right-2.5 z-10 text-muted-foreground/50 hover:text-foreground"
               onClick={() => onOpenChange(false)}
             >
-              <X className="h-4 w-4" />
+              <X size={16} />
             </NotionButton>
           )}
           {children}
@@ -321,7 +321,7 @@ export function NotionAlertDialog({
               disabled={disabled || loading}
             >
               {loading && (
-                <svg className="animate-spin h-3.5 w-3.5 mr-1" viewBox="0 0 24 24" fill="none">
+                <svg className="w-3.5 h-3.5 animate-spin mr-1" viewBox="0 0 24 24" fill="none">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>

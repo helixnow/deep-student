@@ -19,7 +19,7 @@
 
 .btn-primary {
   background: hsl(var(--primary));
-  color: white;
+  color: hsl(var(--primary-foreground));
 }
 
 .btn-secondary {
@@ -29,27 +29,27 @@
 }
 
 .btn-success {
-  background: #22c55e;
-  color: white;
+  background: hsl(var(--success));
+  color: hsl(var(--success-foreground));
 }
 
 .btn-test {
-  background: #f59e0b;
-  color: white;
+  background: hsl(var(--warning));
+  color: hsl(var(--warning-foreground));
 }
 
 .btn-edit {
-  background: #6366f1;
-  color: white;
+  background: hsl(var(--info));
+  color: hsl(var(--info-foreground));
 }
 
 .btn-delete {
-  background: #ef4444;
-  color: white;
+  background: hsl(var(--destructive));
+  color: hsl(var(--destructive-foreground));
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #2563eb;
+  background: color-mix(in hsl, hsl(var(--primary)) 85%, hsl(var(--foreground)) 15%);
   transform: translateY(-1px);
 }
 
@@ -58,22 +58,22 @@
 }
 
 .btn-success:hover:not(:disabled) {
-  background: #16a34a;
+  background: color-mix(in hsl, hsl(var(--success)) 85%, hsl(var(--foreground)) 15%);
   transform: translateY(-1px);
 }
 
 .btn-test:hover:not(:disabled) {
-  background: #d97706;
+  background: color-mix(in hsl, hsl(var(--warning)) 85%, hsl(var(--foreground)) 15%);
   transform: translateY(-1px);
 }
 
 .btn-edit:hover:not(:disabled) {
-  background: #4f46e5;
+  background: color-mix(in hsl, hsl(var(--info)) 85%, hsl(var(--foreground)) 15%);
   transform: translateY(-1px);
 }
 
 .btn-delete:hover:not(:disabled) {
-  background: #dc2626;
+  background: color-mix(in hsl, hsl(var(--destructive)) 85%, hsl(var(--foreground)) 15%);
   transform: translateY(-1px);
 }
 

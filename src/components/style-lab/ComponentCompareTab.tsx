@@ -181,7 +181,7 @@ function FormControlsCompareSection() {
                   onChange={e => setInputValue(e.target.value)}
                   placeholder="shad Input"
                   disabled={disabled}
-                />
+/>
               </td>
               <td className="py-3 pr-4 align-top text-[color:var(--text-muted)]">
                 <span className="text-[11px]">（Input 无备用组件路径）</span>
@@ -194,7 +194,7 @@ function FormControlsCompareSection() {
                   placeholder="native <input>"
                   disabled={disabled}
                   className="w-full px-3 py-1.5 rounded border text-sm disabled:opacity-50"
-                />
+/>
               </td>
             </tr>
 
@@ -208,7 +208,7 @@ function FormControlsCompareSection() {
                   onChange={e => setTextareaValue(e.target.value)}
                   placeholder="shad Textarea"
                   disabled={disabled}
-                />
+/>
               </td>
               <td className="py-3 pr-4 align-top text-[color:var(--text-muted)]">
                 <span className="text-[11px]">（Textarea 无备用组件路径）</span>
@@ -221,7 +221,7 @@ function FormControlsCompareSection() {
                   placeholder="native <textarea>"
                   disabled={disabled}
                   className="w-full px-3 py-1.5 rounded border text-sm disabled:opacity-50 resize-y"
-                />
+/>
               </td>
             </tr>
 
@@ -234,13 +234,13 @@ function FormControlsCompareSection() {
                     checked={switchChecked}
                     onCheckedChange={setSwitchChecked}
                     disabled={disabled}
-                  />
+/>
                   <Switch
                     size="sm"
                     checked={switchChecked}
                     onCheckedChange={setSwitchChecked}
                     disabled={disabled}
-                  />
+/>
                   <span className="text-[10px] text-[color:var(--text-muted)] leading-tight">
                     默认 44×24 / sm 28×16
                   </span>
@@ -269,7 +269,7 @@ function FormControlsCompareSection() {
                         'w-[12px] h-[12px] top-[2px]',
                         switchChecked ? 'left-[14px]' : 'left-[2px]',
                       )}
-                    />
+/>
                   </button>
                   <span className="text-[10px] text-[color:var(--text-muted)] leading-tight">
                     legacy mini (已被 sm 变体取代)
@@ -283,8 +283,7 @@ function FormControlsCompareSection() {
                     checked={switchChecked}
                     onChange={e => setSwitchChecked(e.target.checked)}
                     disabled={disabled}
-                    className="w-4 h-4"
-                  />
+                    size={16} />
                   native checkbox (无真正原生 switch)
                 </label>
               </td>
@@ -299,7 +298,7 @@ function FormControlsCompareSection() {
                     checked={checkboxChecked}
                     onCheckedChange={v => setCheckboxChecked(v === true)}
                     disabled={disabled}
-                  />
+/>
                   shad Checkbox
                 </label>
               </td>
@@ -313,8 +312,7 @@ function FormControlsCompareSection() {
                     checked={checkboxChecked}
                     onChange={e => setCheckboxChecked(e.target.checked)}
                     disabled={disabled}
-                    className="w-4 h-4"
-                  />
+                    size={16} />
                   native checkbox
                 </label>
               </td>
@@ -617,7 +615,7 @@ function SegmentedCompareSection() {
             onValueChange={setThemeMode}
             options={themeOptions}
             stretch
-          />
+/>
           <p className="text-[11px] text-[color:var(--text-muted)]">
             胶囊外壳 · 44px 高 · 图标 + 文案。窄屏下配 <code className="font-mono">stretch</code> 占满宽度。
           </p>
@@ -638,7 +636,7 @@ function SegmentedCompareSection() {
               onValueChange={setTriggerMode}
               options={triggerOptions}
               size="compact"
-            />
+/>
           </div>
           <p className="text-[11px] text-[color:var(--text-muted)]">
             28px 高 · <code className="font-mono">muted/40</code> 背景。密集表单或侧栏的二选一场景。

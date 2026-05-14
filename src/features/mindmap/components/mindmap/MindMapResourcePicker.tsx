@@ -9,11 +9,11 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { useTranslation } from 'react-i18next';
 import { createPortal } from 'react-dom';
 import {
-  Search,
+  MagnifyingGlass,
   X,
-  Loader2,
+  CircleNotch,
   Check,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -176,7 +176,7 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
       {/* 搜索框 */}
       <div className="px-3 py-2 border-b border-border">
         <div className="relative">
-          <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <MagnifyingGlass className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
           <Input
             ref={inputRef}
             value={query}
@@ -196,7 +196,7 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
       <CustomScrollArea className="flex-1 min-h-0" viewportClassName="p-1" hideTrackWhenIdle>
         {loading ? (
           <div className="flex items-center justify-center py-8 text-muted-foreground">
-            <Loader2 className="w-5 h-5 animate-spin mr-2" />
+            <CircleNotch className="w-5 h-5 animate-spin mr-2" />
             <span className="text-sm">{t('refs.loading', '加载中...')}</span>
           </div>
         ) : error ? (

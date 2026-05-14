@@ -5,7 +5,7 @@
   border-radius: 12px;
   padding: 16px 20px;
   margin: 12px 0;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 3px hsl(var(--shadow-base) / 0.1);
   border: 1px solid hsl(var(--border));
   transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
   position: relative;
@@ -19,15 +19,15 @@
   right: -50%;
   width: 200%;
   height: 200%;
-  background: radial-gradient(circle, rgba(102, 126, 234, 0.03) 0%, transparent 70%);
+  background: radial-gradient(circle, hsl(var(--primary) / 0.03) 0%, transparent 70%);
   pointer-events: none;
 }
 
 /* 悬停效果已禁用
 .ai-params-container:hover {
   box-shadow: 
-    0 1px 3px rgba(0, 0, 0, 0.06),
-    0 8px 24px -8px rgba(102, 126, 234, 0.12);
+    0 1px 3px hsl(var(--shadow-base) / 0.06),
+    0 8px 24px -8px hsl(var(--primary) / 0.12);
   transform: translateY(-1px);
 } */
 
@@ -69,9 +69,9 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  color: white;
+  color: hsl(var(--primary-foreground));
   font-size: 14px;
-  box-shadow: 0 2px 8px -1px rgba(102, 126, 234, 0.25);
+  box-shadow: 0 2px 8px -1px hsl(var(--primary) / 0.25);
 }
 
 .ai-params-grid {
@@ -132,7 +132,7 @@
   left: 0;
   right: 0;
   height: 2px;
-  background: linear-gradient(90deg, #3b82f6 0%, #1d4ed8 100%);
+  background: linear-gradient(90deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.7) 100%);
   transform: translateX(-100%);
   transition: transform 0.3s ease;
 }
@@ -144,13 +144,13 @@
 
 .ai-param-item:hover {
   border-color: hsl(var(--border));
-  box-shadow: 0 4px 12px -4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px -4px hsl(var(--shadow-base) / 0.1);
   transform: translateY(-1px);
 } */
 
 .ai-param-item:focus-within {
   border-color: hsl(var(--ring));
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1);
 }
 
 .ai-param-item:focus-within::before {
@@ -257,7 +257,7 @@
 
 .ai-param-slider-fill {
   height: 100%;
-  background: linear-gradient(90deg, #3b82f6 0%, #1d4ed8 100%);
+  background: linear-gradient(90deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.7) 100%);
   border-radius: 2px;
   transition: width 0.2s ease;
 }
@@ -272,14 +272,14 @@
   border: 2px solid hsl(var(--primary));
   border-radius: 50%;
   cursor: grab;
-  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 1px 4px hsl(var(--shadow-base) / 0.1);
   transition: all 0.2s ease;
 }
 
 /* 悬停效果已禁用
 .ai-param-slider-thumb:hover {
   transform: translate(-50%, -50%) scale(1.1);
-  box-shadow: 0 2px 8px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 2px 8px hsl(var(--primary) / 0.3);
 } */
 
 .ai-param-slider-value {
@@ -316,14 +316,14 @@
   background: hsl(var(--muted));
   border-color: hsl(var(--border));
   transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 2px 4px hsl(var(--shadow-base) / 0.05);
 } */
 
 .ai-param-quick-option.active {
   background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.9) 100%);
-  color: white;
+  color: hsl(var(--primary-foreground));
   border-color: transparent;
-  box-shadow: 0 4px 12px -2px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 4px 12px -2px hsl(var(--primary) / 0.3);
 }
 
 /* 高级设置折叠区域 */
@@ -352,7 +352,7 @@
 .ai-params-advanced-toggle:hover {
   color: hsl(var(--primary));
   border-color: hsl(var(--ring));
-  background: rgba(102, 126, 234, 0.05);
+  background: hsl(var(--primary) / 0.05);
 } */
 
 .ai-params-advanced-content {
@@ -435,8 +435,8 @@
 .ai-template-type {
   font-size: 10px;
   padding: 1px 4px;
-  background: #e6fffa;
-  color: #047857;
+  background: hsl(var(--success) / 0.1);
+  color: hsl(var(--success));
   border-radius: 3px;
   font-weight: 500;
 }

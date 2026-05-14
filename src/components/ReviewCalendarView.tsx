@@ -15,17 +15,17 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { Card } from '@/components/ui/shad/Card';
 import { Badge } from '@/components/ui/shad/Badge';
 import {
-  ChevronLeft,
-  ChevronRight,
+  CaretLeft,
+  CaretRight,
   Calendar,
   CheckCircle,
   XCircle,
   Clock,
   Target,
-  TrendingUp,
+  TrendUp,
   Flame,
   X,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
 import { useReviewPlanStore, type CalendarHeatmapData, type ReviewHistory } from '@/stores/reviewPlanStore';
@@ -108,8 +108,8 @@ const DayDetail: React.FC<DayDetailProps> = ({
           <h3 className="font-semibold text-foreground">{formattedDate}</h3>
           <p className="text-sm text-muted-foreground">{weekday}</p>
         </div>
-        <NotionButton variant="ghost" iconOnly size="sm" onClick={onClose} className="h-8 w-8">
-          <X className="w-4 h-4" />
+        <NotionButton variant="ghost" iconOnly size="sm" onClick={onClose} className="w-8 h-8" >
+          <X size={16} />
         </NotionButton>
       </div>
 
@@ -118,7 +118,7 @@ const DayDetail: React.FC<DayDetailProps> = ({
         <>
           <div className="grid grid-cols-3 gap-3 mb-4">
             <div className="text-center p-2 rounded-lg bg-sky-500/10">
-              <Target className="w-5 h-5 text-sky-500 mx-auto mb-1" />
+              <Target size={20} className="text-sky-500 mx-auto mb-1" />
               <p className="text-lg font-bold text-sky-600 dark:text-sky-400">
                 {data.count}
               </p>
@@ -127,7 +127,7 @@ const DayDetail: React.FC<DayDetailProps> = ({
               </p>
             </div>
             <div className="text-center p-2 rounded-lg bg-emerald-500/10">
-              <CheckCircle className="w-5 h-5 text-emerald-500 mx-auto mb-1" />
+              <CheckCircle size={20} className="text-emerald-500 mx-auto mb-1" />
               <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
                 {data.passed}
               </p>
@@ -136,7 +136,7 @@ const DayDetail: React.FC<DayDetailProps> = ({
               </p>
             </div>
             <div className="text-center p-2 rounded-lg bg-amber-500/10">
-              <TrendingUp className="w-5 h-5 text-amber-500 mx-auto mb-1" />
+              <TrendUp size={20} className="text-amber-500 mx-auto mb-1" />
               <p className={cn('text-lg font-bold', getAccuracyColor(data.passed, data.count))}>
                 {accuracy}%
               </p>
@@ -163,9 +163,9 @@ const DayDetail: React.FC<DayDetailProps> = ({
                   >
                     <div className="flex items-center gap-2">
                       {h.passed ? (
-                        <CheckCircle className="w-4 h-4 text-emerald-500" />
+                        <CheckCircle size={16} className="text-emerald-500" />
                       ) : (
-                        <XCircle className="w-4 h-4 text-red-500" />
+                        <XCircle size={16} className="text-red-500" />
                       )}
                       <span className="text-muted-foreground">
                         Q{h.quality}
@@ -185,7 +185,7 @@ const DayDetail: React.FC<DayDetailProps> = ({
         </>
       ) : (
         <div className="text-center py-6 text-muted-foreground">
-          <Calendar className="w-10 h-10 mx-auto mb-2 opacity-50" />
+          <Calendar size={40} className="mx-auto mb-2 opacity-50" />
           <p>{t('review:calendar.noData', '当日无复习记录')}</p>
         </div>
       )}
@@ -333,7 +333,7 @@ const StreakStats: React.FC<StreakStatsProps> = ({ calendarData }) => {
   return (
     <div className="grid grid-cols-4 gap-2">
       <div className="text-center p-2 rounded-lg bg-muted/30">
-        <Flame className="w-5 h-5 text-orange-500 mx-auto mb-1" />
+        <Flame size={20} className="text-orange-500 mx-auto mb-1" />
         <p className="text-lg font-bold text-orange-600 dark:text-orange-400">
           {stats.currentStreak}
         </p>
@@ -342,7 +342,7 @@ const StreakStats: React.FC<StreakStatsProps> = ({ calendarData }) => {
         </p>
       </div>
       <div className="text-center p-2 rounded-lg bg-muted/30">
-        <TrendingUp className="w-5 h-5 text-purple-500 mx-auto mb-1" />
+        <TrendUp size={20} className="text-purple-500 mx-auto mb-1" />
         <p className="text-lg font-bold text-purple-600 dark:text-purple-400">
           {stats.longestStreak}
         </p>
@@ -351,7 +351,7 @@ const StreakStats: React.FC<StreakStatsProps> = ({ calendarData }) => {
         </p>
       </div>
       <div className="text-center p-2 rounded-lg bg-muted/30">
-        <Calendar className="w-5 h-5 text-sky-500 mx-auto mb-1" />
+        <Calendar size={20} className="text-sky-500 mx-auto mb-1" />
         <p className="text-lg font-bold text-sky-600 dark:text-sky-400">
           {stats.totalDays}
         </p>
@@ -360,7 +360,7 @@ const StreakStats: React.FC<StreakStatsProps> = ({ calendarData }) => {
         </p>
       </div>
       <div className="text-center p-2 rounded-lg bg-muted/30">
-        <Target className="w-5 h-5 text-emerald-500 mx-auto mb-1" />
+        <Target size={20} className="text-emerald-500 mx-auto mb-1" />
         <p className="text-lg font-bold text-emerald-600 dark:text-emerald-400">
           {stats.totalReviews}
         </p>
@@ -521,7 +521,7 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
         </div>
         {onClose && (
           <NotionButton variant="ghost" iconOnly size="sm" onClick={onClose}>
-            <X className="w-5 h-5" />
+            <X size={20} />
           </NotionButton>
         )}
       </div>
@@ -534,7 +534,7 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
         {/* 月份导航 */}
         <div className="flex items-center justify-between mb-4">
           <NotionButton variant="ghost" iconOnly size="sm" onClick={goToPrevMonth}>
-            <ChevronLeft className="w-5 h-5" />
+            <CaretLeft size={20} />
           </NotionButton>
           <div className="flex items-center gap-2">
             <h3 className="font-semibold text-foreground">{monthName}</h3>
@@ -548,7 +548,7 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
             </NotionButton>
           </div>
           <NotionButton variant="ghost" iconOnly size="sm" onClick={goToNextMonth}>
-            <ChevronRight className="w-5 h-5" />
+            <CaretRight size={20} />
           </NotionButton>
         </div>
 
@@ -586,7 +586,7 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
                 isToday={isToday}
                 isSelected={isSelected}
                 onClick={() => handleSelectDate(day.date)}
-              />
+/>
             );
           })}
         </div>
@@ -604,7 +604,7 @@ export const ReviewCalendarView: React.FC<ReviewCalendarViewProps> = ({
           data={dataMap.get(selectedDate) || null}
           histories={selectedHistories}
           onClose={handleCloseDetail}
-        />
+/>
       )}
     </div>
   );

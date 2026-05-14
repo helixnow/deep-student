@@ -13,7 +13,7 @@ import { useTranslationStream } from '../translation/useTranslationStream';
 import * as TTS from '../utils/tts';
 import { fileManager } from '../utils/fileManager';
 import { MacTopSafeDragZone } from './layout/MacTopSafeDragZone';
-import { AlertCircle, RefreshCw, WifiOff } from 'lucide-react';
+import { WarningCircle, ArrowClockwise, WifiSlash } from '@phosphor-icons/react';
 import { NotionButton } from './ui/NotionButton';
 
 import { debugLog } from '../debug-panel/debugMasterSwitch';
@@ -657,7 +657,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
         {/* 离线状态提示 */}
         {!isOnline && (
           <div className="flex items-center gap-2 px-4 py-2 bg-yellow-500/10 border-b border-yellow-500/20 text-yellow-600 dark:text-yellow-400">
-            <WifiOff className="h-4 w-4 shrink-0" />
+            <WifiSlash size={16} className="shrink-0" />
             <span className="text-sm">{t('translation:errors.offline')}</span>
           </div>
         )}
@@ -666,7 +666,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
         {translationError && !isTranslating && (
           <div className="flex items-center justify-between gap-2 px-4 py-2 bg-red-500/10 border-b border-red-500/20">
             <div className="flex items-center gap-2 text-red-600 dark:text-red-400 min-w-0">
-              <AlertCircle className="h-4 w-4 shrink-0" />
+              <WarningCircle size={16} className="shrink-0" />
               <span className="text-sm truncate">{translationError}</span>
             </div>
             <NotionButton
@@ -676,7 +676,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
               disabled={isRetrying || !isOnline}
               className="shrink-0 text-red-600 dark:text-red-400 hover:bg-red-500/10"
             >
-              <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${isRetrying ? 'animate-spin' : ''}`} />
+              <ArrowClockwise className={`h-3.5 w-3.5 mr-1.5 ${isRetrying ? 'animate-spin' : ''}`} />
               {t('common:retry')}
             </NotionButton>
           </div>
@@ -739,7 +739,7 @@ export const TranslateWorkbench: React.FC<TranslateWorkbenchProps> = ({ onBack, 
               onCopyResult={handleCopyResult}
               onExportTranslation={handleExportTranslation}
               onRateTranslation={handleRateTranslation}
-            />
+/>
         </div>
       </div>
   );

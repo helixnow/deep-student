@@ -2,6 +2,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { Minus, Maximize2 } from 'lucide-react';
 // ★ 图谱模块已废弃 - IrecAutoNotePlugin 已移除
 // import IrecAutoNotePlugin from './plugins/IrecAutoNotePlugin';
 // ★ ExamSheetWorkbench 已废弃（2026-02 清理）- ExamSheetLifecyclePlugin 已移除
@@ -559,6 +560,7 @@ const STORAGE_KEYS = {
 const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, currentStreamId }) => {
   const { t } = useTranslation('common');
   const [portalEl, setPortalEl] = React.useState<HTMLElement | null>(null);
+  const [collapsed, setCollapsed] = React.useState(false);
   const [pos, setPos] = React.useState<{ x: number; y: number }>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEYS.POSITION);
@@ -843,80 +845,124 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
       style={{ 
         left: pos.x, 
         top: pos.y, 
-        width: size.w, 
-        height: size.h,
-        opacity: visible ? 1 : 0,
-        pointerEvents: visible ? 'auto' : 'none',
-        transition: 'opacity 0.2s ease-in-out',
-        // 当不可见时，降低 z-index，避免遮挡悬浮球
-        zIndex: visible ? 2147483647 : 2147483500
+        width: collapsed ? 'auto' : size.w, 
+        height: collapsed ? 'auto' : size.h,
+        display: visible ? 'block' : 'none',
+        zIndex: 2147483647,
+        transition: 'width 0.2s ease, height 0.2s ease',
       }}
     >
-      <div className="dstu-dbg flex flex-col h-full bg-[hsl(var(--card)/0.97)] backdrop-blur-xl border border-[hsl(var(--border))] rounded-xl shadow-2xl shadow-[hsl(var(--foreground)/0.1)]">
+      <div className={`dstu-dbg flex flex-col ${collapsed ? '' : 'h-full'} bg-[hsl(var(--card)/0.97)] backdrop-blur-xl border border-[hsl(var(--border))] rounded-xl shadow-2xl shadow-[hsl(var(--foreground)/0.1)]`}>
         <div
-          className="dbg-header flex items-center justify-between px-3 py-2 border-b border-[hsl(var(--border))] cursor-move bg-[hsl(var(--muted)/0.3)] rounded-t-xl"
+          className={`dbg-header flex items-center justify-between px-3 py-2 ${collapsed ? '' : 'border-b border-[hsl(var(--border))]'} cursor-move bg-[hsl(var(--muted)/0.3)] rounded-t-xl ${collapsed ? 'rounded-b-xl' : ''}`}
           onMouseDown={ev => {
             setDragging(true);
             dragStart.current = { dx: ev.clientX - pos.x, dy: ev.clientY - pos.y };
           }}
           onDoubleClick={() => {
-            setPos({ x: 12, y: 12 });
-            setSize({ w: Math.min(720, Math.floor(window.innerWidth * 0.92)), h: Math.floor(window.innerHeight * 0.5) });
+            if (collapsed) {
+              setCollapsed(false);
+            } else {
+              setPos({ x: 12, y: 12 });
+              setSize({ w: Math.min(720, Math.floor(window.innerWidth * 0.92)), h: Math.floor(window.innerHeight * 0.5) });
+            }
           }}
         >
           <div className="flex items-center gap-2">
             <div className="text-xs font-semibold text-[hsl(var(--foreground))] tracking-tight">Analysis Panel</div>
-            <div className="inline-flex gap-1.5 ml-1 flex-wrap" onMouseDown={ev => ev.stopPropagation()}>
+            {!collapsed && (
+              <div className="inline-flex gap-1.5 ml-1 flex-wrap" onMouseDown={ev => ev.stopPropagation()}>
+                <NotionButton
+                  onClick={() => setActivePluginId(HOME_PLUGIN_ID)}
+                  variant={isHome ? 'primary' : 'ghost'}
+                  size="sm"
+                  className="text-[10px] h-6 px-2"
+                >
+                  {t('debug_panel.home')}
+                </NotionButton>
+                <NotionButton
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { detail: { view: 'llm-playground' } }));
+                  }}
+                  variant="ghost"
+                  size="sm"
+                  className="text-[10px] h-6 px-2"
+                  title="LLM 输出模拟游乐场"
+                >
+                  LLM Playground
+                </NotionButton>
+                <NotionButton
+                  onClick={async () => {
+                    try {
+                      const { WebviewWindow } = await import('@tauri-apps/api/window');
+                      const webview: any = WebviewWindow.getCurrent();
+                      if (await (webview.isDevtoolsOpen?.() ?? Promise.resolve(false))) {
+                        await webview.closeDevtools?.();
+                      } else {
+                        await webview.openDevtools?.();
+                      }
+                    } catch {
+                      try {
+                        const { WebviewWindow } = await import('@tauri-apps/api/window');
+                        const webview: any = WebviewWindow.getCurrent();
+                        await webview.toggleDevtools?.();
+                      } catch { /* not available */ }
+                    }
+                  }}
+                  variant="ghost"
+                  size="sm"
+                  className="text-[10px] h-6 px-2"
+                  title="打开/关闭 WebView DevTools (F12)"
+                >
+                  DevTools
+                </NotionButton>
+              </div>
+            )}
+          </div>
+          <div className="flex items-center gap-1.5" onMouseDown={ev => ev.stopPropagation()}>
+            {!collapsed && (
               <NotionButton
-                onClick={() => setActivePluginId(HOME_PLUGIN_ID)}
-                variant={isHome ? 'primary' : 'ghost'}
+                onClick={handleToggleMasterSwitch}
+                variant={masterSwitchEnabled ? 'success' : 'ghost'}
                 size="sm"
                 className="text-[10px] h-6 px-2"
+                title={masterSwitchEnabled 
+                  ? t('debug_panel.master_switch_on', '日志输出已开启，点击关闭') 
+                  : t('debug_panel.master_switch_off', '日志输出已关闭，点击开启')
+                }
               >
-                {t('debug_panel.home')}
+                {masterSwitchEnabled 
+                  ? t('debug_panel.logs_on', '日志开') 
+                  : t('debug_panel.logs_off', '日志关')
+                }
               </NotionButton>
+            )}
+            {collapsed ? (
               <NotionButton
-                onClick={() => {
-                  window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { detail: { view: 'llm-playground' } }));
-                }}
+                onClick={() => setCollapsed(false)}
                 variant="ghost"
                 size="sm"
                 className="text-[10px] h-6 px-2"
-                title="LLM 输出模拟游乐场"
+                title={t('debug_panel.expand', '展开')}
               >
-                LLM Playground
+                <Maximize2 size={12} />
               </NotionButton>
-            </div>
-          </div>
-          <div className="flex items-center gap-1.5" onMouseDown={ev => ev.stopPropagation()}>
-            {/* 调试日志总开关 */}
-            <NotionButton
-              onClick={handleToggleMasterSwitch}
-              variant={masterSwitchEnabled ? 'success' : 'ghost'}
-              size="sm"
-              className="text-[10px] h-6 px-2"
-              title={masterSwitchEnabled 
-                ? t('debug_panel.master_switch_on', '日志输出已开启，点击关闭') 
-                : t('debug_panel.master_switch_off', '日志输出已关闭，点击开启')
-              }
-            >
-              {masterSwitchEnabled 
-                ? t('debug_panel.logs_on', '日志开') 
-                : t('debug_panel.logs_off', '日志关')
-              }
-            </NotionButton>
-            <NotionButton
-              onClick={onClose}
-              variant="ghost"
-              size="sm"
-              className="text-[10px] h-6 px-2"
-              title={t('debug_panel.minimize', '最小化')}
-            >
-              {t('debug_panel.minimize', '最小化')}
-            </NotionButton>
+            ) : (
+              <NotionButton
+                onClick={() => setCollapsed(true)}
+                variant="ghost"
+                size="sm"
+                className="text-[10px] h-6 px-2"
+                title={t('debug_panel.minimize', '最小化')}
+              >
+                <Minus size={12} />
+              </NotionButton>
+            )}
           </div>
         </div>
-        <div className="flex-1 flex flex-col overflow-auto" onMouseDown={ev => ev.stopPropagation()}>
+        {!collapsed && (
+          <>
+            <div className="flex-1 flex flex-col overflow-auto" onMouseDown={ev => ev.stopPropagation()}>
           {isHome ? (
             <div className="flex-1 flex flex-col p-3 gap-3 bg-[hsl(var(--background))]">
               {!masterSwitchEnabled && (
@@ -1093,6 +1139,8 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
           }}
           title="拖动以调整大小"
         />
+          </>
+        )}
       </div>
     </div>
   );

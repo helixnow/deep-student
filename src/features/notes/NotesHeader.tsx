@@ -1,10 +1,10 @@
 import React, { useMemo } from "react";
 import { useTranslation } from "react-i18next";
 import {
-    Save,
-    MoreVertical,
-    PanelLeft,
-    ChevronRight,
+    FloppyDisk,
+    DotsThreeVertical,
+    SidebarSimple,
+    CaretRight,
     Calendar,
     Tag,
     FileText,
@@ -13,10 +13,10 @@ import {
     Printer,
     Link,
     Copy,
-    Trash2,
+    Trash,
     ArrowRight,
     FolderOpen,
-} from "lucide-react";
+} from "@phosphor-icons/react";
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Separator } from "@/components/ui/shad/Separator";
 import {
@@ -154,7 +154,7 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
                             className="h-7 w-7 shrink-0 text-muted-foreground/70 hover:text-foreground md:hidden"
                             onClick={onMobileMenuClick}
                         >
-                            <PanelLeft className="h-4 w-4" />
+                            <SidebarSimple className="h-4 w-4" />
                         </NotionButton>
                         <Separator className="h-4 w-px mx-1 bg-border/40 md:hidden" />
                     </>
@@ -225,7 +225,7 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
                         <AppMenu>
                             <AppMenuTrigger asChild>
                                 <NotionButton variant="ghost" iconOnly size="sm" className="h-7 w-7 text-muted-foreground">
-                                    <MoreVertical className="h-3.5 w-3.5" />
+                                    <DotsThreeVertical className="h-3.5 w-3.5" />
                                 </NotionButton>
                             </AppMenuTrigger>
                             <AppMenuContent align="end" width={240}>
@@ -255,7 +255,7 @@ export const NotesHeader: React.FC<NotesHeaderProps> = ({
                                         {t('notes:menu.reveal_in_sidebar', '在侧边栏中显示')}
                                     </AppMenuItem>
                                     <AppMenuItem
-                                        icon={<Trash2 className="h-4 w-4" />}
+                                        icon={<Trash className="h-4 w-4" />}
                                         destructive
                                         onClick={() => {
                                             if (active) {

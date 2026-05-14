@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronUp, Check, Search } from 'lucide-react';
+import { CaretDown, CaretUp, Check, MagnifyingGlass } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { ProviderIcon, isGenericProviderIconPath } from '../ProviderIcon';
 import { Input } from './Input';
@@ -75,8 +75,8 @@ export function CollapsibleModelSelector({
         <img
           src={option.icon}
           alt=""
-          className="h-4 w-4 flex-shrink-0 rounded object-contain"
-        />
+ className="w-4 h-4 flex-shrink-0 rounded object-contain"
+/>
       );
     }
 
@@ -106,9 +106,9 @@ export function CollapsibleModelSelector({
           <span className="truncate">{buttonLabel}</span>
         </span>
         {expanded ? (
-          <ChevronUp className="h-4 w-4 opacity-70" />
+          <CaretUp size={16} className="opacity-70" />
         ) : (
-          <ChevronDown className="h-4 w-4 opacity-70" />
+          <CaretDown size={16} className="opacity-70" />
         )}
       </NotionButton>
 
@@ -123,7 +123,7 @@ export function CollapsibleModelSelector({
             <div className="p-3 border-b border-border/60">
               <div className="relative">
                 <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground">
-                  <Search className="h-4 w-4" />
+                  <MagnifyingGlass size={16} />
                 </span>
                 <Input
                   autoFocus={expanded}
@@ -131,7 +131,7 @@ export function CollapsibleModelSelector({
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder={resolvedSearchPlaceholder}
                   className="pl-8"
-                />
+/>
               </div>
               {totalCount !== undefined && (
                 <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
@@ -171,7 +171,7 @@ export function CollapsibleModelSelector({
                               {renderOptionIcon(o)}
                               <span className="truncate">{o.label}</span>
                             </span>
-                            {selected && <Check className="h-4 w-4 text-accent-foreground flex-shrink-0" />}
+                            {selected && <Check size={16} className="text-accent-foreground flex-shrink-0" />}
                           </button>
                         </li>
                       );

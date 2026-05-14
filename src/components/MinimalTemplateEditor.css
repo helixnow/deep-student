@@ -51,7 +51,7 @@
   border-radius: 12px;
   padding: 24px 0;
   flex-shrink: 0;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 3px hsl(var(--shadow-base) / 0.05);
 }
 
 .editor-nav {
@@ -101,7 +101,7 @@
   background: hsl(var(--card));
   border: 1px solid hsl(var(--border));
   border-radius: 12px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 3px hsl(var(--shadow-base) / 0.05);
 }
 
 /* 设置页面风格的内容区块 */
@@ -110,12 +110,12 @@
   border-radius: 16px;
   padding: 24px;
   margin-bottom: 24px;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
+  box-shadow: 0 1px 3px hsl(var(--shadow-base) / 0.05);
   transition: box-shadow 0.3s ease;
 }
 
 .setting-section:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 4px 12px hsl(var(--shadow-base) / 0.08);
 }
 
 .setting-section-header {

@@ -1,5 +1,5 @@
 import React, { useEffect } from 'react';
-import { Pause, Play, Square, Coffee, BrainCircuit, Maximize2 } from 'lucide-react';
+import { Pause, Play, Square, Coffee, Brain, ArrowsOut } from '@phosphor-icons/react';
 import { usePomodoroStore } from '../stores/usePomodoroStore';
 import { useViewStore } from '@/stores/viewStore';
 import { ImmersiveFocusMode } from './ImmersiveFocusMode';
@@ -45,9 +45,9 @@ export const GlobalPomodoroWidget: React.FC = () => {
 
   const getModeIcon = () => {
     switch (mode) {
-      case 'work': return <BrainCircuit className="w-4 h-4 text-orange-500" />;
-      case 'short_break': return <Coffee className="w-4 h-4 text-green-500" />;
-      case 'long_break': return <Coffee className="w-4 h-4 text-blue-500" />;
+      case 'work': return <Brain size={16} className="text-orange-500" />;
+      case 'short_break': return <Coffee size={16} className="text-green-500" />;
+      case 'long_break': return <Coffee size={16} className="text-blue-500" />;
       default: return null;
     }
   };
@@ -77,21 +77,21 @@ export const GlobalPomodoroWidget: React.FC = () => {
           className="p-1.5 rounded-full hover:bg-[var(--interactive-hover)] transition-colors"
           title={status === 'running' ? '暂停' : '继续'}
         >
-          {status === 'running' ? <Pause className="w-3.5 h-3.5" /> : <Play className="w-3.5 h-3.5" />}
+          {status === 'running' ? <Pause size={14} /> : <Play size={14} />}
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); stop(true); }}
           className="p-1.5 rounded-full hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
           title="停止"
         >
-          <Square className="w-3.5 h-3.5" />
+          <Square size={14} />
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); setImmersive(true); }}
           className="p-1.5 rounded-full hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground transition-colors"
           title="沉浸模式"
         >
-          <Maximize2 className="w-3.5 h-3.5" />
+          <ArrowsOut size={14} />
         </button>
       </div>
     </div>

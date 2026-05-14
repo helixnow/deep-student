@@ -2,7 +2,7 @@ import React, { useCallback, useMemo, useLayoutEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Handle, Position, NodeProps, Node } from '@xyflow/react';
 import { cn } from '@/lib/utils';
-import { Plus, Trash2, MoreHorizontal } from 'lucide-react';
+import { Plus, Trash, DotsThree } from '@phosphor-icons/react';
 import { NodeContent } from './NodeContent';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useMindMapStore } from '../../../store';
@@ -342,7 +342,7 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
           aria-label={t('node.openMenu')}
           title={t('node.moreActions')}
         >
-          <MoreHorizontal className="w-3.5 h-3.5" />
+          <DotsThree className="w-3.5 h-3.5" />
         </NotionButton>
         <NotionButton variant="ghost"
           onClick={handleDelete}
@@ -350,7 +350,7 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
           aria-label={t('actions.delete')}
           title={t('node.deleteShortcut')}
         >
-          <Trash2 className="w-3.5 h-3.5" />
+          <Trash className="w-3.5 h-3.5" />
         </NotionButton>
       </div>
       )}

@@ -146,28 +146,28 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
           label={t('exam_sheet:questionBank.stats.total')}
           value={stats.total}
           color="text-blue-500"
-        />
+/>
         <StatCard
           icon={<CheckCircle size={20} />}
           label={t('exam_sheet:questionBank.stats.mastered')}
           value={stats.mastered}
           description={`${progressData.masteredPercent}%`}
           color="text-green-500"
-        />
+/>
         <StatCard
           icon={<Clock size={20} />}
           label={t('exam_sheet:questionBank.stats.inProgress')}
           value={stats.inProgress}
           description={`${progressData.inProgressPercent}%`}
           color="text-amber-500"
-        />
+/>
         <StatCard
           icon={<WarningCircle size={20} />}
           label={t('exam_sheet:questionBank.stats.review')}
           value={stats.review}
           description={`${progressData.reviewPercent}%`}
           color="text-orange-500"
-        />
+/>
       </div>
 
       {/* 学习进度条 */}
@@ -185,21 +185,21 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
           <div
             className="absolute left-0 top-0 h-full bg-emerald-500 transition-all"
             style={{ width: `${progressData.masteredPercent}%` }}
-          />
+/>
           <div
             className="absolute top-0 h-full bg-amber-500 transition-all"
             style={{
               left: `${progressData.masteredPercent}%`,
               width: `${progressData.inProgressPercent}%`,
             }}
-          />
+/>
           <div
             className="absolute top-0 h-full bg-orange-500 transition-all"
             style={{
               left: `${progressData.masteredPercent + progressData.inProgressPercent}%`,
               width: `${progressData.reviewPercent}%`,
             }}
-          />
+/>
         </div>
         
         {/* 图例 */}
@@ -239,7 +239,7 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
                 strokeDasharray={`${Math.min(correctRatePercent, 100) * 1.005} 100.5`}
                 className="text-emerald-500"
                 strokeLinecap="round"
-              />
+/>
             </svg>
             <div className="absolute inset-0 flex items-center justify-center">
               <span className="text-[10px] font-semibold">{correctRatePercent}%</span>
@@ -281,7 +281,7 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
               <LearningTrendChart 
                 examId={examId} 
                 showDateRangeSelector={true}
-              />
+/>
 
               {/* 两列布局：热力图 + 雷达图 */}
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
@@ -292,7 +292,7 @@ export const QuestionBankStatsView: React.FC<QuestionBankStatsViewProps> = ({
                 <KnowledgeRadar 
                   examId={examId} 
                   showDetailList={true}
-                />
+/>
               </div>
             </div>
           )}

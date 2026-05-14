@@ -16,10 +16,10 @@ import {
   Image as ImageIcon,
   File,
   Paperclip,
-  AlertTriangle,
-  ExternalLink,
-  FileSpreadsheet,
-} from 'lucide-react';
+  Warning,
+  ArrowSquareOut,
+  Table,
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import type { SourceDatabase, PreviewType } from './types';
 
@@ -76,7 +76,7 @@ const ICON_CONFIG: Record<
     darkColorClass: 'dark:text-gray-400',
   },
   exam_sessions: {
-    icon: FileSpreadsheet,
+    icon: Table,
     colorClass: 'text-green-500',
     darkColorClass: 'dark:text-green-400',
   },
@@ -170,7 +170,7 @@ export const ReferenceIcon = memo(function ReferenceIcon({
     >
       {/* 主图标 */}
       {isInvalid ? (
-        <AlertTriangle
+        <Warning
           className={cn(sizeConfig.icon, colorClass)}
           aria-hidden="true"
         />
@@ -192,7 +192,7 @@ export const ReferenceIcon = memo(function ReferenceIcon({
             'ring-1 ring-white dark:ring-gray-800'
           )}
         >
-          <ExternalLink
+          <ArrowSquareOut
             className={cn(
               sizeConfig.badge,
               'text-gray-400 dark:text-gray-500'

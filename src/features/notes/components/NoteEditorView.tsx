@@ -7,7 +7,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2 } from 'lucide-react';
+import { CircleNotch } from '@phosphor-icons/react';
 import { CrepeEditor, type CrepeEditorApi } from '@/components/crepe';
 import { NotesEditorToolbar } from './NotesEditorToolbar';
 import { useNotesOptional } from '../NotesContext';
@@ -286,7 +286,7 @@ export const NoteEditorView: React.FC<NoteEditorViewProps> = ({
   if (!isContentLoaded) {
     return (
       <div className={cn("flex items-center justify-center h-full py-8", className)}>
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        <CircleNotch className="w-6 h-6 animate-spin text-muted-foreground" />
       </div>
     );
   }

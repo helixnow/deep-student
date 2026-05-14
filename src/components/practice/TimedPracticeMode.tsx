@@ -21,12 +21,12 @@ import {
   Play,
   Pause,
   StopCircle,
-  AlertCircle,
+  WarningCircle,
   CheckCircle,
   Timer,
   Target,
-  Loader2,
-} from 'lucide-react';
+  CircleNotch,
+} from '@phosphor-icons/react';
 import { useQuestionBankStore, TimedPracticeSession } from '@/stores/questionBankStore';
 import { useTranslation } from 'react-i18next';
 import { useCountdown } from '@/hooks/useCountdown';
@@ -159,7 +159,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
       <Card className={cn('bg-transparent border-transparent shadow-none', className)}>
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <Timer className="w-5 h-5 text-sky-500" />
+            <Timer size={20} className="text-sky-500" />
             {t('timed.title')}
           </CardTitle>
         </CardHeader>
@@ -180,7 +180,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
                 }}
                 onBlur={(e) => setDurationMinutes(normalizeDurationMinutes(Number(e.target.value)))}
                 className="text-center text-lg font-medium"
-              />
+/>
             </div>
             <div className="space-y-2">
               <Label htmlFor="count">{t('timed.questionCount')}</Label>
@@ -197,7 +197,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
                 }}
                 onBlur={(e) => setQuestionCount(normalizeQuestionCount(Number(e.target.value)))}
                 className="text-center text-lg font-medium"
-              />
+/>
             </div>
           </div>
           
@@ -222,12 +222,12 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
           >
             {isLoadingPractice ? (
               <>
-                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                <CircleNotch size={20} className="mr-2 animate-spin" />
                 {t('timed.loading')}
               </>
             ) : (
               <>
-                <Play className="w-5 h-5 mr-2" />
+                <Play size={20} className="mr-2" />
                 {t('timed.start')}
               </>
             )}
@@ -252,12 +252,12 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
           <div className="mt-2 text-sm text-muted-foreground">
             {isPaused ? (
               <Badge variant="secondary" className="gap-1">
-                <Pause className="w-3 h-3" />
+                <Pause size={12} />
                 {t('timed.paused')}
               </Badge>
             ) : (
               <span className="flex items-center gap-1">
-                <Clock className="w-4 h-4" />
+                <Clock size={16} />
                 {t('timed.remaining')}
               </span>
             )}
@@ -279,14 +279,14 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
         {activeSession && (
           <div className="grid grid-cols-2 gap-3">
             <div className="flex items-center gap-2 p-3 rounded-lg bg-emerald-500/10">
-              <CheckCircle className="w-5 h-5 text-emerald-500" />
+              <CheckCircle size={20} className="text-emerald-500" />
               <div>
                 <div className="text-sm text-muted-foreground">{t('timed.correct')}</div>
                 <div className="text-xl font-bold text-emerald-600">{activeSession.correct_count}</div>
               </div>
             </div>
             <div className="flex items-center gap-2 p-3 rounded-lg bg-sky-500/10">
-              <Target className="w-5 h-5 text-sky-500" />
+              <Target size={20} className="text-sky-500" />
               <div>
                 <div className="text-sm text-muted-foreground">{t('timed.rate')}</div>
                 <div className="text-xl font-bold text-sky-600">
@@ -308,12 +308,12 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
           >
             {isPaused ? (
               <>
-                <Play className="w-4 h-4 mr-2" />
+                <Play size={16} className="mr-2" />
                 {t('timed.resume')}
               </>
             ) : (
               <>
-                <Pause className="w-4 h-4 mr-2" />
+                <Pause size={16} className="mr-2" />
                 {t('timed.pause')}
               </>
             )}
@@ -323,7 +323,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
             onClick={handleSubmit}
             className="flex-1"
           >
-            <StopCircle className="w-4 h-4 mr-2" />
+            <StopCircle size={16} className="mr-2" />
             {t('timed.submit')}
           </NotionButton>
         </div>
@@ -331,7 +331,7 @@ export const TimedPracticeMode: React.FC<TimedPracticeModeProps> = ({
         {/* 警告提示 */}
         {remainingSeconds < 60 && remainingSeconds > 0 && (
           <div className="flex items-center gap-2 p-3 rounded-lg bg-rose-500/10 text-rose-600">
-            <AlertCircle className="w-5 h-5" />
+            <WarningCircle size={20} />
             <span className="text-sm font-medium">{t('timed.warning')}</span>
           </div>
         )}

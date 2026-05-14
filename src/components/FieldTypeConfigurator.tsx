@@ -9,13 +9,13 @@ import {
 } from '../types/enhanced-field-types';
 import {
   Plus,
-  Trash2,
-  ChevronDown,
-  ChevronUp,
-  Settings,
-  HelpCircle,
-  AlertCircle
-} from 'lucide-react';
+  Trash,
+  CaretDown,
+  CaretUp,
+  Gear,
+  Question,
+  WarningCircle
+} from '@phosphor-icons/react';
 import './FieldTypeConfigurator.css';
 import { AppSelect } from './ui/app-menu';
 import { Input } from '@/components/ui/shad/Input';
@@ -108,11 +108,11 @@ const FieldTypeConfigurator: React.FC<FieldTypeConfiguratorProps> = ({
     <div className="field-type-configurator">
       <div className="configurator-header">
         <h3>
-          <Settings size={20} />
+          <Gear size={20} />
           {t('field_type_configuration')}
         </h3>
         <p className="help-text">
-          <HelpCircle size={14} />
+          <Question size={14} />
           {t('field_type_configuration_help')}
         </p>
       </div>
@@ -142,7 +142,7 @@ const FieldTypeConfigurator: React.FC<FieldTypeConfiguratorProps> = ({
                   )}
                 </div>
                 <NotionButton variant="ghost" size="icon" iconOnly className="expand-button" aria-label="toggle">
-                  {isExpanded ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
+                  {isExpanded ? <CaretUp size={16} /> : <CaretDown size={16} />}
                 </NotionButton>
               </div>
 
@@ -156,7 +156,7 @@ const FieldTypeConfigurator: React.FC<FieldTypeConfiguratorProps> = ({
                       options={fieldTypeOptions.map(option => ({ value: option.value, label: `${option.icon} ${option.label}` }))}
                       variant="outline"
                       width={240}
-                    />
+/>
                     <small className="field-help">{getFieldTypeHelp(fieldType)}</small>
                   </div>
 
@@ -168,7 +168,7 @@ const FieldTypeConfigurator: React.FC<FieldTypeConfiguratorProps> = ({
                         onCheckedChange={(checked) => updateFieldRule(field, {
                           is_required: checked
                         })}
-                      />
+/>
                       {t('field_required')}
                     </label>
                   </div>
@@ -183,7 +183,7 @@ const FieldTypeConfigurator: React.FC<FieldTypeConfiguratorProps> = ({
                         description: e.target.value
                       })}
                       placeholder={t('field_description_placeholder')}
-                    />
+/>
                   </div>
 
                   {/* 默认值 */}
@@ -197,7 +197,7 @@ const FieldTypeConfigurator: React.FC<FieldTypeConfiguratorProps> = ({
                         ]}
                         variant="outline"
                         width={120}
-                      />
+/>
                     ) : fieldType === EnhancedFieldType.Number ? (
                       <Input
                         type="number"
@@ -205,7 +205,7 @@ const FieldTypeConfigurator: React.FC<FieldTypeConfiguratorProps> = ({
                         onChange={(e) => updateFieldRule(field, {
                           default_value: Number(e.target.value)
                         })}
-                      />
+/>
                     ) : (
                       <Input
                         type="text"
@@ -214,7 +214,7 @@ const FieldTypeConfigurator: React.FC<FieldTypeConfiguratorProps> = ({
                           default_value: e.target.value
                         })}
                         placeholder={t('field_default_placeholder')}
-                      />
+/>
                     )}
                   </div>
 
@@ -228,7 +228,7 @@ const FieldTypeConfigurator: React.FC<FieldTypeConfiguratorProps> = ({
                       })}
                       placeholder={t('field_ai_hint_placeholder')}
                       rows={2}
-                    />
+/>
                   </div>
 
 
@@ -248,7 +248,7 @@ const FieldTypeConfigurator: React.FC<FieldTypeConfiguratorProps> = ({
                                 max_length: e.target.value ? Number(e.target.value) : undefined
                               })}
                               placeholder={t('no_limit', 'No limit')}
-                            />
+/>
                           </div>
                           <div className="config-group">
                             <label>{t('pattern')}</label>
@@ -262,7 +262,7 @@ const FieldTypeConfigurator: React.FC<FieldTypeConfiguratorProps> = ({
                                 }
                               })}
                               placeholder="e.g., ^[A-Za-z]+$"
-                            />
+/>
                           </div>
                         </>
                       )}
@@ -279,7 +279,7 @@ const FieldTypeConfigurator: React.FC<FieldTypeConfiguratorProps> = ({
                                   min: e.target.value ? Number(e.target.value) : undefined
                                 }
                               })}
-                            />
+/>
                           </div>
                           <div className="config-group">
                             <label>{t('max_value')}</label>
@@ -292,7 +292,7 @@ const FieldTypeConfigurator: React.FC<FieldTypeConfiguratorProps> = ({
                                   max: e.target.value ? Number(e.target.value) : undefined
                                 }
                               })}
-                            />
+/>
                           </div>
                         </>
                       )}
@@ -307,7 +307,7 @@ const FieldTypeConfigurator: React.FC<FieldTypeConfiguratorProps> = ({
 
       <div className="configurator-footer">
         <p className="warning-text">
-          <AlertCircle size={14} />
+          <WarningCircle size={14} />
           {t('complex_template_warning')}
         </p>
       </div>

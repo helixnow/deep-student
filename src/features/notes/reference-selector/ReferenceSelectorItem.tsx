@@ -5,7 +5,7 @@
 import React from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Check, Ban } from 'lucide-react';
+import { BookOpen, Check, Prohibit } from '@phosphor-icons/react';
 import { cn } from '../../../lib/utils';
 import type { UnifiedResourceItem } from './types';
 
@@ -100,7 +100,7 @@ export const ReferenceSelectorItem: React.FC<ReferenceSelectorItemProps> = ({
       {/* 状态指示器 */}
       <div className="flex-shrink-0">
         {isReferenced ? (
-          <Ban className="h-4 w-4 text-muted-foreground/50" />
+          <Prohibit className="h-4 w-4 text-muted-foreground/50" />
         ) : isSelected ? (
           <Check className="h-4 w-4 text-primary" />
         ) : null}

@@ -133,7 +133,7 @@ const ToggleBlock: React.FC<ToggleBlockProps> = ({
             isOpen && 'rotate-90'
           )}
           weight="regular"
-        />
+/>
         <span className="flex-1 min-w-0 truncate">{title}</span>
       </NotionButton>
 
@@ -219,7 +219,7 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
           'transition-opacity duration-200',
           mounted ? 'opacity-100' : 'opacity-0',
         )}
-      />
+/>
 
       {/* 面板 */}
       <div
@@ -266,23 +266,23 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
                 <AgreementItem
                   title={t('legal.userAgreement.agreementContent.aiFeatures')}
                   content={t('legal.userAgreement.agreementContent.aiFeaturesDesc')}
-                />
+/>
                 <AgreementItem
                   title={t('legal.userAgreement.agreementContent.dataProcessing')}
                   content={t('legal.userAgreement.agreementContent.dataProcessingDesc')}
-                />
+/>
                 <AgreementItem
                   title={t('legal.userAgreement.agreementContent.userRights')}
                   content={t('legal.userAgreement.agreementContent.userRightsDesc')}
-                />
+/>
                 <AgreementItem
                   title={t('legal.userAgreement.agreementContent.intellectualProperty')}
                   content={t('legal.userAgreement.agreementContent.intellectualPropertyDesc')}
-                />
+/>
                 <AgreementItem
                   title={t('legal.userAgreement.agreementContent.crossBorderData')}
                   content={t('legal.userAgreement.agreementContent.crossBorderDataDesc')}
-                />
+/>
               </div>
             </ToggleBlock>
 
@@ -297,22 +297,22 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
                   color="emerald"
                   title={t('legal.privacyPolicy.sections.localStorage.title')}
                   content={t('legal.privacyPolicy.sections.localStorage.content')}
-                />
+/>
                 <PolicyItem
                   color="blue"
                   title={t('legal.privacyPolicy.sections.llmApi.title')}
                   content={t('legal.privacyPolicy.sections.llmApi.content')}
-                />
+/>
                 <PolicyItem
                   color="orange"
                   title={t('legal.privacyPolicy.sections.errorReporting.title')}
                   content={t('legal.privacyPolicy.sections.errorReporting.content')}
-                />
+/>
                 <PolicyItem
                   color="gray"
                   title={t('legal.privacyPolicy.sections.noTracking.title')}
                   content={t('legal.privacyPolicy.sections.noTracking.content')}
-                />
+/>
               </div>
             </ToggleBlock>
 

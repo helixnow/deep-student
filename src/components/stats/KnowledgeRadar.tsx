@@ -149,7 +149,7 @@ const KnowledgeItem: React.FC<KnowledgeItemProps> = ({ item, index }) => {
           <div
             className="h-full rounded-full bg-primary transition-all duration-500"
             style={{ width: `${item.mastery_rate}%` }}
-          />
+/>
         </div>
       </div>
     </div>
@@ -164,7 +164,7 @@ const RadarSkeleton: React.FC = () => (
   <div className="space-y-4">
     <div className="flex items-center justify-between">
       <Skeleton className="h-5 w-28" />
-      <Skeleton className="h-8 w-8" />
+      <Skeleton className="w-8 h-8" />
     </div>
     <Skeleton className="h-64 w-full rounded-lg" />
     <div className="space-y-2">
@@ -291,8 +291,7 @@ export const KnowledgeRadar: React.FC<KnowledgeRadarProps> = ({
         <NotionButton
           variant="ghost"
           size="icon"
-          className="h-8 w-8"
-          onClick={handleRefresh}
+ className="w-8 h-8"           onClick={handleRefresh}
         >
           <ArrowsClockwise size={16} />
         </NotionButton>
@@ -337,14 +336,14 @@ export const KnowledgeRadar: React.FC<KnowledgeRadarProps> = ({
               <PolarGrid
                 stroke="hsl(var(--border))"
                 strokeDasharray="3 3"
-              />
+/>
               <PolarAngleAxis
                 dataKey="tag"
                 tick={{
                   fill: 'hsl(var(--muted-foreground))',
                   fontSize: 11,
                 }}
-              />
+/>
               <PolarRadiusAxis
                 angle={90}
                 domain={[0, 100]}
@@ -353,7 +352,7 @@ export const KnowledgeRadar: React.FC<KnowledgeRadarProps> = ({
                   fontSize: 10,
                 }}
                 tickCount={5}
-              />
+/>
               
               {/* 掌握度 */}
               <Radar
@@ -363,7 +362,7 @@ export const KnowledgeRadar: React.FC<KnowledgeRadarProps> = ({
                 fill="hsl(var(--primary))"
                 fillOpacity={0.3}
                 strokeWidth={2}
-              />
+/>
               
               {/* 正确率 */}
               <Radar
@@ -374,7 +373,7 @@ export const KnowledgeRadar: React.FC<KnowledgeRadarProps> = ({
                 fillOpacity={0.2}
                 strokeWidth={2}
                 strokeDasharray="5 5"
-              />
+/>
               
               <Legend
                 verticalAlign="bottom"
@@ -384,7 +383,7 @@ export const KnowledgeRadar: React.FC<KnowledgeRadarProps> = ({
                 formatter={(value) => (
                   <span className="text-xs text-muted-foreground">{value}</span>
                 )}
-              />
+/>
               
               <Tooltip content={<CustomTooltip />} />
             </RadarChart>

@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { Shield, Copy, Check } from 'lucide-react';
+import { Shield, Copy, Check } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { ApiKeyField } from '@/features/settings/components/ApiKeyField';
@@ -81,11 +81,11 @@ export const SecurePasswordInput: React.FC<SecurePasswordInputProps> = ({
         autoComplete="new-password"
         inputMode={showPassword ? 'text' : undefined}
         extraActions={copyButton}
-      />
+/>
 
       {isSensitive && (
         <div className="mt-1 flex items-center text-xs text-green-600">
-          <Shield className="w-3 h-3 mr-1" />
+          <Shield size={12} className="mr-1" />
           <span>{t('securePassword.encryptedInSecureArea')}</span>
         </div>
       )}

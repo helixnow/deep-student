@@ -2,7 +2,7 @@ import * as React from "react"
 import { useTranslation } from "react-i18next"
 import * as SheetPrimitive from "@radix-ui/react-dialog"
 import { cva, type VariantProps } from "class-variance-authority"
-import { X } from "lucide-react"
+import { X } from "@phosphor-icons/react"
 
 import { cn } from "../../../lib/utils"
 
@@ -72,7 +72,7 @@ const SheetContent = React.forwardRef<
         {children}
         {!hideCloseButton && (
           <SheetPrimitive.Close className="absolute right-4 top-4 inline-flex h-11 w-11 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-foreground focus:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:pointer-events-none lg:h-8 lg:w-8">
-            <X className="h-4 w-4" />
+            <X size={16} />
             <span className="sr-only">{t('actions.close')}</span>
           </SheetPrimitive.Close>
         )}

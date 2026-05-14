@@ -28,8 +28,8 @@
   white-space: pre-wrap;
   word-wrap: break-word;
   box-shadow: 
-    0 4px 12px rgba(0, 0, 0, 0.08),
-    0 2px 4px rgba(0, 0, 0, 0.04);
+    0 4px 12px hsl(var(--shadow-base) / 0.08),
+    0 2px 4px hsl(var(--shadow-base) / 0.04);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
 }

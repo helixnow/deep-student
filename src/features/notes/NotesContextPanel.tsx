@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef, useCallback } from "react";
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from "react-i18next";
-import { AlignLeft, Calendar, Tag, Clock, X } from "lucide-react";
+import { TextAlignLeft, Calendar, Tag, Clock, X } from "@phosphor-icons/react";
 import { useNotesOptional } from "./NotesContext";
 import { CustomScrollArea } from "@/components/custom-scroll-area";
 import { Separator } from "@/components/ui/shad/Separator";
@@ -377,7 +377,7 @@ export const NotesContextPanel: React.FC<NotesContextPanelProps> = (props) => {
             <div className="flex-1 flex flex-col min-h-0">
                 <div className="p-3 pb-1">
                     <h3 className="text-[10px] font-bold text-muted-foreground/70 uppercase tracking-wider flex items-center gap-1.5">
-                        <AlignLeft className="w-3 h-3" />
+                        <TextAlignLeft className="w-3 h-3" />
                         {t('notes:context.outline', 'OUTLINE')}
                         {headings.length > 0 && (
                             <span className="text-[9px] font-normal text-muted-foreground/50 ml-auto">

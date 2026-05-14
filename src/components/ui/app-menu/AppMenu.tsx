@@ -16,8 +16,7 @@ import { Slot } from '@radix-ui/react-slot';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../../lib/utils';
-import { Check as PhosphorCheck } from '@phosphor-icons/react';
-import { ChevronRight, Search } from 'lucide-react';
+import { Check as PhosphorCheck, CaretRight, MagnifyingGlass } from '@phosphor-icons/react';
 import { CustomScrollArea } from '../../custom-scroll-area';
 import { useOverlayCoordinator } from '../../shared/OverlayCoordinator';
 import './AppMenu.css';
@@ -357,7 +356,7 @@ export function AppMenuContent({
     >
       {showSearch && (
         <div className="app-menu-search" style={{ flexShrink: 0 }}>
-          <Search className="app-menu-search-icon" />
+          <MagnifyingGlass className="app-menu-search-icon" />
           <input
             ref={searchInputRef}
             type="text"
@@ -366,7 +365,7 @@ export function AppMenuContent({
             value={actualSearchValue}
             onChange={(e) => handleSearchChange(e.target.value)}
             onClick={(e) => e.stopPropagation()}
-          />
+/>
         </div>
       )}
       {maxHeight ? (
@@ -441,7 +440,7 @@ export const AppMenuItem = React.forwardRef<HTMLButtonElement, AppMenuItemProps>
         <span className="app-menu-item-content">{children}</span>
         {checked !== undefined && (
           <span className="app-menu-item-check">
-            {checked && <PhosphorCheck className="w-4 h-4" weight="bold" />}
+            {checked && <PhosphorCheck size={16} weight="bold" />}
           </span>
         )}
         {suffix && <span className="app-menu-item-suffix">{suffix}</span>}
@@ -503,7 +502,7 @@ export function AppMenuSubTrigger({ icon, children, disabled, className, ...rest
     >
       {icon && <span className="app-menu-item-icon">{icon}</span>}
       <span className="app-menu-item-content">{children}</span>
-      <ChevronRight className="app-menu-sub-arrow" />
+      <CaretRight className="app-menu-sub-arrow" />
     </div>
   );
 }
@@ -544,7 +543,7 @@ export const AppMenuLabel = React.forwardRef<HTMLDivElement, AppMenuLabelProps>(
       ref={ref}
       className={cn('app-menu-label', className)}
       {...rest}
-    />
+/>
   )
 );
 AppMenuLabel.displayName = 'AppMenuLabel';
@@ -677,7 +676,7 @@ export function AppMenuCheckboxItem({
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
-            />
+/>
           </svg>
         )}
       </span>

@@ -2,7 +2,7 @@ import { createPortal } from 'react-dom';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Bug } from 'lucide-react';
+import { Bug } from '@phosphor-icons/react';
 import clsx from 'clsx';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { getDebugEnabled } from '../../utils/emitDebug';
@@ -23,7 +23,7 @@ const TOGGLE_POS_STORAGE_KEY = 'dstu-debug-toggle-pos';
 const GlobalDebugPanel = () => {
   const debugEnabled = useMemo(() => getDebugEnabled(), []);
   const { t } = useTranslation('common');
-  // visible 控制面板是否展开（true）或最小化为悬浮球（false）
+  // visible 控制面板是否展开（true）或隐藏（false）
   const [visible, setVisible] = useState(false);
   // panelMounted 一旦为 true 就永远不会变回 false，确保面板保活
   const [panelMounted, setPanelMounted] = useState(false);
@@ -70,19 +70,18 @@ const GlobalDebugPanel = () => {
     setHasUnseenEvent(false);
   }, []);
 
-  const minimizePanel = useCallback(() => {
-    // 只是最小化，不卸载面板
+  const hidePanel = useCallback(() => {
     setVisible(false);
     visibleRef.current = false;
   }, []);
 
   const togglePanel = useCallback(() => {
     if (visibleRef.current) {
-      minimizePanel();
+      hidePanel();
     } else {
       openPanel();
     }
-  }, [minimizePanel, openPanel]);
+  }, [hidePanel, openPanel]);
 
   useEffect(() => {
     if (!debugEnabled) return;
@@ -118,22 +117,22 @@ const GlobalDebugPanel = () => {
         if (explicit) {
           openPanel();
         } else {
-          minimizePanel();
+          hidePanel();
         }
       } else {
         togglePanel();
       }
     };
     const handleOpen = () => openPanel();
-    const handleMinimize = () => minimizePanel();
+    const handleHide = () => hidePanel();
 
     const win = window as any;
 
     win.DSTU_OPEN_DEBUGGER = handleOpen;
-    win.DSTU_CLOSE_DEBUGGER = handleMinimize;
+    win.DSTU_CLOSE_DEBUGGER = handleHide;
     win.DSTU_TOGGLE_DEBUGGER = togglePanel;
     win.__DSTU_OPEN_DEBUGGER__ = handleOpen;
-    win.__DSTU_CLOSE_DEBUGGER__ = handleMinimize;
+    win.__DSTU_CLOSE_DEBUGGER__ = handleHide;
     win.__DSTU_TOGGLE_DEBUGGER__ = togglePanel;
 
     win.addEventListener(
@@ -141,17 +140,17 @@ const GlobalDebugPanel = () => {
       handleToggleEvent as EventListener,
     );
     win.addEventListener('DSTU_OPEN_DEBUGGER', handleOpen as EventListener);
-    win.addEventListener('DSTU_CLOSE_DEBUGGER', handleMinimize as EventListener);
+    win.addEventListener('DSTU_CLOSE_DEBUGGER', handleHide as EventListener);
 
     return () => {
       if (win.DSTU_OPEN_DEBUGGER === handleOpen) delete win.DSTU_OPEN_DEBUGGER;
-      if (win.DSTU_CLOSE_DEBUGGER === handleMinimize)
+      if (win.DSTU_CLOSE_DEBUGGER === handleHide)
         delete win.DSTU_CLOSE_DEBUGGER;
       if (win.DSTU_TOGGLE_DEBUGGER === togglePanel)
         delete win.DSTU_TOGGLE_DEBUGGER;
       if (win.__DSTU_OPEN_DEBUGGER__ === handleOpen)
         delete win.__DSTU_OPEN_DEBUGGER__;
-      if (win.__DSTU_CLOSE_DEBUGGER__ === handleMinimize)
+      if (win.__DSTU_CLOSE_DEBUGGER__ === handleHide)
         delete win.__DSTU_CLOSE_DEBUGGER__;
       if (win.__DSTU_TOGGLE_DEBUGGER__ === togglePanel)
         delete win.__DSTU_TOGGLE_DEBUGGER__;
@@ -163,10 +162,10 @@ const GlobalDebugPanel = () => {
       win.removeEventListener('DSTU_OPEN_DEBUGGER', handleOpen as EventListener);
       win.removeEventListener(
         'DSTU_CLOSE_DEBUGGER',
-        handleMinimize as EventListener,
+        handleHide as EventListener,
       );
     };
-  }, [debugEnabled, minimizePanel, openPanel, togglePanel]);
+  }, [debugEnabled, hidePanel, openPanel, togglePanel]);
 
   useEffect(() => {
     if (!debugEnabled) return;
@@ -224,7 +223,6 @@ const GlobalDebugPanel = () => {
 
     const handleUp = () => {
       setIsDraggingToggle(false);
-      // 保存位置
       try {
         localStorage.setItem(TOGGLE_POS_STORAGE_KEY, JSON.stringify(togglePos));
       } catch {}
@@ -271,7 +269,6 @@ const GlobalDebugPanel = () => {
   );
 
   const handleToggleMouseDown = (ev: React.MouseEvent) => {
-    // 只响应左键
     if (ev.button !== 0) return;
     ev.preventDefault();
     toggleDragStart.current = {
@@ -283,7 +280,6 @@ const GlobalDebugPanel = () => {
   };
 
   const handleToggleClick = () => {
-    // 如果拖拽过，不触发 toggle
     if (toggleDragStart.current.moved) {
       toggleDragStart.current.moved = false;
       return;
@@ -291,18 +287,18 @@ const GlobalDebugPanel = () => {
     togglePanel();
   };
 
-  const toggleButton = (
+  // 面板未显示时显示悬浮球
+  const toggleButton = !visible ? (
     <CommonTooltip content={tooltipContent} className="dstu-debug-toggle__tooltip">
       <NotionButton
         ref={toggleBtnRef}
         variant="ghost" size="icon" iconOnly
         className={clsx(
           'dstu-debug-toggle',
-          visible && 'dstu-debug-toggle--open',
-          hasUnseenEvent && !visible && 'dstu-debug-toggle--pulse',
+          hasUnseenEvent && 'dstu-debug-toggle--pulse',
           isDraggingToggle && 'dstu-debug-toggle--dragging',
         )}
-        aria-label={visible ? t('debug_panel.close') : t('debug_panel.open')}
+        aria-label={t('debug_panel.open')}
         aria-pressed={visible}
         onMouseDown={handleToggleMouseDown}
         onClick={handleToggleClick}
@@ -322,25 +318,23 @@ const GlobalDebugPanel = () => {
         <span
           className={clsx(
             'dstu-debug-toggle__status',
-            hasUnseenEvent &&
-              !visible &&
-              'dstu-debug-toggle__status--active',
+            hasUnseenEvent && 'dstu-debug-toggle__status--active',
           )}
-        />
+/>
       </NotionButton>
     </CommonTooltip>
-  );
+  ) : null;
 
   return (
     <>
-      {togglePortalEl && createPortal(toggleButton, togglePortalEl)}
+      {togglePortalEl && toggleButton && createPortal(toggleButton, togglePortalEl)}
 
       {panelMounted && (
         <DebugPanelHost
           visible={visible}
-          onClose={minimizePanel}
+          onClose={hidePanel}
           currentStreamId={currentStreamId}
-        />
+/>
       )}
     </>
   );

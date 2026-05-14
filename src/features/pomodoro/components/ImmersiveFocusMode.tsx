@@ -1,5 +1,5 @@
 import React, { useEffect, useCallback, useState, useRef } from 'react';
-import { Play, Pause, Square, X, Coffee, BrainCircuit, Volume2, VolumeX, SkipForward } from 'lucide-react';
+import { Play, Pause, Square, X, Coffee, Brain, SpeakerHigh, SpeakerSlash, SkipForward } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { usePomodoroStore } from '../stores/usePomodoroStore';
 
@@ -229,13 +229,13 @@ export const ImmersiveFocusMode: React.FC<{
   const getModeInfo = () => {
     switch (mode) {
       case 'work':
-        return { label: '专注中', icon: <BrainCircuit className="w-5 h-5" />, color: 'text-orange-400' };
+        return { label: '专注中', icon: <Brain size={20} />, color: 'text-orange-400' };
       case 'short_break':
-        return { label: '短休息', icon: <Coffee className="w-5 h-5" />, color: 'text-emerald-400' };
+        return { label: '短休息', icon: <Coffee size={20} />, color: 'text-emerald-400' };
       case 'long_break':
-        return { label: '长休息', icon: <Coffee className="w-5 h-5" />, color: 'text-blue-400' };
+        return { label: '长休息', icon: <Coffee size={20} />, color: 'text-blue-400' };
       default:
-        return { label: '准备就绪', icon: <BrainCircuit className="w-5 h-5" />, color: 'text-white/60' };
+        return { label: '准备就绪', icon: <Brain size={20} />, color: 'text-white/60' };
     }
   };
 
@@ -288,7 +288,7 @@ export const ImmersiveFocusMode: React.FC<{
             )}
             title={noiseOn ? '关闭环境音' : '开启环境音'}
           >
-            {noiseOn ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            {noiseOn ? <SpeakerHigh size={16} /> : <SpeakerSlash size={16} />}
           </button>
           {/* 关闭按钮 */}
           <button
@@ -296,7 +296,7 @@ export const ImmersiveFocusMode: React.FC<{
             className="p-2 rounded-lg text-white/30 hover:text-white/60 hover:bg-[var(--overlay-control-hover)] transition-colors"
             title="退出专注模式 (ESC)"
           >
-            <X className="w-5 h-5" />
+            <X size={20} />
           </button>
         </div>
       </div>
@@ -337,7 +337,7 @@ export const ImmersiveFocusMode: React.FC<{
               className="flex items-center justify-center w-12 h-12 rounded-full bg-white/5 text-white/40 hover:text-red-400 hover:bg-red-500/10 transition-all"
               title="停止"
             >
-              <Square className="w-5 h-5" />
+              <Square size={20} />
             </button>
           )}
 
@@ -353,9 +353,9 @@ export const ImmersiveFocusMode: React.FC<{
             title={status === 'running' ? '暂停 (Space)' : '开始 (Space)'}
           >
             {status === 'running' ? (
-              <Pause className="w-6 h-6" />
+              <Pause size={24} />
             ) : (
-              <Play className="w-6 h-6 ml-1" />
+              <Play size={24} className="ml-1" />
             )}
           </button>
 
@@ -368,7 +368,7 @@ export const ImmersiveFocusMode: React.FC<{
               className="flex items-center justify-center w-12 h-12 rounded-full bg-white/5 text-white/40 hover:text-white/70 hover:bg-[var(--overlay-control-hover)] transition-all"
               title="跳过休息"
             >
-              <SkipForward className="w-5 h-5" />
+              <SkipForward size={20} />
             </button>
           )}
         </div>

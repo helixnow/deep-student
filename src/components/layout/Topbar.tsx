@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { createPortal } from 'react-dom';
-import { ChevronsLeft, ChevronsRight, Beaker, Minus, Square, X, Command, ChevronRight, Home } from 'lucide-react';
+import { CaretDoubleLeft, CaretDoubleRight, Flask, Minus, Square, X, Command, CaretRight, House } from '@phosphor-icons/react';
 import { useFinderStore } from '@/features/learning-hub/stores/finderStore';
 import { getQuickAccessTypeFromPath } from '@/features/learning-hub/learningHubContracts';
 import { useCommandPalette } from '@/command-palette';
@@ -38,7 +38,7 @@ function CommandPaletteButton() {
   return (
     <CommonTooltip content={`${t('command_palette:title', '命令面板')} (${isMac ? '⌘' : 'Ctrl'}+K)`} position="bottom">
       <NotionButton variant="ghost" size="sm" onClick={open} className="h-8 px-2 hover:bg-[hsl(var(--accent))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]" aria-label={t('command_palette:title', '命令面板')}>
-        <Command className="h-4 w-4" />
+        <Command size={16} />
         <span className="text-xs font-medium hidden sm:inline">
           {isMac ? '⌘K' : 'Ctrl+K'}
         </span>
@@ -73,7 +73,7 @@ function LearningHubBreadcrumb() {
   if (!currentTitle && breadcrumbs.length === 0) {
     return (
       <div className="flex items-center gap-1 text-sm" data-no-drag>
-        <Home className="h-4 w-4 text-muted-foreground" />
+        <House size={16} className="text-muted-foreground" />
         <span className="font-medium text-foreground">{rootTitle}</span>
       </div>
     );
@@ -84,10 +84,10 @@ function LearningHubBreadcrumb() {
     return (
       <div className="flex items-center gap-1 text-sm" data-no-drag>
         <NotionButton variant="ghost" size="sm" onClick={() => quickAccessNavigate('allFiles')} className="!h-auto !p-0 text-muted-foreground hover:text-foreground">
-          <Home className="h-4 w-4" />
+          <House size={16} />
           <span>{rootTitle}</span>
         </NotionButton>
-        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        <CaretRight size={16} className="text-muted-foreground" />
         <span className="font-medium text-foreground">{currentTitle}</span>
       </div>
     );
@@ -97,14 +97,14 @@ function LearningHubBreadcrumb() {
   return (
     <div className="flex items-center gap-1 text-sm overflow-hidden" data-no-drag>
       <NotionButton variant="ghost" size="sm" onClick={() => quickAccessNavigate('allFiles')} className="!h-auto !p-0 text-muted-foreground hover:text-foreground shrink-0">
-        <Home className="h-4 w-4" />
+        <House size={16} />
         <span className="hidden sm:inline">{rootTitle}</span>
       </NotionButton>
       {breadcrumbs.map((crumb, index) => {
         const isLast = index === breadcrumbs.length - 1;
         return (
           <React.Fragment key={crumb.id || index}>
-            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+            <CaretRight size={16} className="text-muted-foreground shrink-0" />
             {isLast ? (
               <span className="font-medium text-foreground truncate max-w-[150px]">{crumb.name}</span>
             ) : (
@@ -662,9 +662,9 @@ export default function Topbar({ currentView, onNavigate, sidebarCollapsed, onTo
         <CommonTooltip content={sidebarToggleLabel} position="bottom">
           <NotionButton variant="ghost" size="icon" iconOnly onClick={onToggleSidebar} className="hover:bg-[hsl(var(--accent))] text-[hsl(var(--foreground))]" style={{ width: 32, height: 32, minWidth: 32, minHeight: 32, flexShrink: 0 }} aria-label={sidebarToggleLabel}>
             {sidebarCollapsed ? (
-              <ChevronsRight style={{ width: 16, height: 16, minWidth: 16, minHeight: 16 }} />
+              <CaretDoubleRight style={{ width: 16, height: 16, minWidth: 16, minHeight: 16 }} />
             ) : (
-              <ChevronsLeft style={{ width: 16, height: 16, minWidth: 16, minHeight: 16 }} />
+              <CaretDoubleLeft style={{ width: 16, height: 16, minWidth: 16, minHeight: 16 }} />
             )}
           </NotionButton>
         </CommonTooltip>
@@ -689,13 +689,13 @@ export default function Topbar({ currentView, onNavigate, sidebarCollapsed, onTo
         {platform === 'windows' && (
           <div className="flex items-center ml-2">
             <NotionButton variant="ghost" size="icon" iconOnly onClick={handleMinimize} className="!h-8 !w-10 !rounded-none hover:bg-[hsl(var(--accent))] text-[hsl(var(--foreground))]" title={t('common:topbar.minimize')} aria-label={t('common:topbar.minimize')}>
-              <Minus className="h-3.5 w-3.5" />
+              <Minus size={14} />
             </NotionButton>
             <NotionButton variant="ghost" size="icon" iconOnly onClick={handleMaximize} className="!h-8 !w-10 !rounded-none hover:bg-[hsl(var(--accent))] text-[hsl(var(--foreground))]" title={t('common:topbar.maximize_restore')} aria-label={t('common:topbar.maximize_restore')}>
-              <Square className="h-3.5 w-3.5" />
+              <Square size={14} />
             </NotionButton>
             <NotionButton variant="ghost" size="icon" iconOnly onClick={handleClose} className="!h-8 !w-10 !rounded-none hover:bg-red-500 hover:text-white text-[hsl(var(--foreground))]" title={t('common:topbar.close')} aria-label={t('common:topbar.close')}>
-              <X className="h-3.5 w-3.5" />
+              <X size={14} />
             </NotionButton>
           </div>
         )}

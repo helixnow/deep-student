@@ -2,7 +2,7 @@ import React, { useCallback, useState, useMemo, useLayoutEffect, useRef } from '
 import { Handle, Position, NodeProps, Node } from '@xyflow/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { Plus } from 'lucide-react';
+import { Plus } from '@phosphor-icons/react';
 import { NodeContent } from './NodeContent';
 import { useMindMapStore } from '../../../store';
 import { StyleRegistry } from '../../../registry';

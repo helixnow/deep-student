@@ -15,16 +15,16 @@ import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Slider } from '@/components/ui/shad/Slider';
 import {
-  AlertCircle,
-  Music,
+  WarningCircle,
+  MusicNote,
   Play,
   Pause,
-  Volume2,
-  VolumeX,
-  Volume1,
+  SpeakerHigh,
+  SpeakerX,
+  SpeakerLow,
   SkipBack,
   SkipForward,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import type { AudioPreviewProps } from './types';
 import { formatMediaTime as formatTime } from '@/features/learning-hub/apps/views/previewUtils';
 
@@ -216,7 +216,7 @@ export const AudioPreview: React.FC<AudioPreviewProps> = ({
           className
         )}
       >
-        <AlertCircle className="h-10 w-10 text-destructive" />
+        <WarningCircle className="h-10 w-10 text-destructive" />
         <p className="text-sm text-muted-foreground">{error}</p>
       </div>
     );
@@ -231,7 +231,7 @@ export const AudioPreview: React.FC<AudioPreviewProps> = ({
           className
         )}
       >
-        <Music className="h-10 w-10 text-muted-foreground/50" />
+        <MusicNote className="h-10 w-10 text-muted-foreground/50" />
         <p className="text-sm text-muted-foreground">
           {t('notes:previewPanel.audio.noAudio')}
         </p>
@@ -240,7 +240,7 @@ export const AudioPreview: React.FC<AudioPreviewProps> = ({
   }
 
   // 获取音量图标
-  const VolumeIcon = isMuted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
+  const VolumeIcon = isMuted || volume === 0 ? SpeakerX : volume < 0.5 ? SpeakerLow : SpeakerHigh;
 
   return (
     <div
@@ -260,7 +260,7 @@ export const AudioPreview: React.FC<AudioPreviewProps> = ({
       <div className="flex flex-col items-center gap-6 w-full max-w-md">
         {/* 图标/封面 */}
         <div className="flex h-32 w-32 items-center justify-center rounded-full bg-primary/10">
-          <Music className="h-16 w-16 text-primary" />
+          <MusicNote className="h-16 w-16 text-primary" />
         </div>
 
         {/* 标题 */}
@@ -273,7 +273,7 @@ export const AudioPreview: React.FC<AudioPreviewProps> = ({
         {/* 音频加载失败 */}
         {audioError && (
           <div className="flex flex-col items-center gap-2 text-center">
-            <AlertCircle className="h-8 w-8 text-destructive" />
+            <WarningCircle className="h-8 w-8 text-destructive" />
             <p className="text-sm text-muted-foreground">
               {t('notes:previewPanel.audio.loadError')}
             </p>

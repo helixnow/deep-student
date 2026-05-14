@@ -1,6 +1,6 @@
 import React from "react";
 import { useTranslation } from "react-i18next";
-import { Type, Info } from "lucide-react";
+import { TextT, Info } from "@phosphor-icons/react";
 
 /**
  * 笔记排版样式面板
@@ -16,7 +16,7 @@ export const NotesStylePanel: React.FC = () => {
     return (
         <div className="flex flex-col gap-2 p-3">
             <div className="flex items-center gap-1.5">
-                <Type className="w-3 h-3 text-muted-foreground/70" />
+                <TextT className="w-3 h-3 text-muted-foreground/70" />
                 <h3 className="text-[10px] font-bold text-muted-foreground/70 uppercase tracking-wider">
                     {t('notes:context.typography_title', 'Typography')}
                 </h3>

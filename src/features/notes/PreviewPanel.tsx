@@ -41,10 +41,10 @@ import type { PreviewPanelProps, PreviewStatus } from './preview/types';
 import {
   FileText,
   Folder,
-  AlertCircle,
-  MousePointerClick,
-  FileQuestion,
-} from 'lucide-react';
+  WarningCircle,
+  CursorClick,
+  Question,
+} from '@phosphor-icons/react';
 
 // ============================================================================
 // DSTU API 调用
@@ -286,7 +286,7 @@ const EmptyState: React.FC<{ className?: string }> = ({ className }) => {
       )}
     >
       <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-        <MousePointerClick className="h-8 w-8 text-muted-foreground" />
+        <CursorClick className="h-8 w-8 text-muted-foreground" />
       </div>
       <div className="space-y-1">
         <h3 className="text-sm font-medium text-foreground">
@@ -342,7 +342,7 @@ const UnsupportedState: React.FC<{ className?: string }> = ({ className }) => {
       )}
     >
       <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-        <FileQuestion className="h-8 w-8 text-muted-foreground" />
+        <Question className="h-8 w-8 text-muted-foreground" />
       </div>
       <div className="space-y-1">
         <h3 className="text-sm font-medium text-foreground">
@@ -394,7 +394,7 @@ const ErrorState: React.FC<{ error: string; className?: string }> = ({
       )}
     >
       <div className="flex h-16 w-16 items-center justify-center rounded-full bg-destructive/10">
-        <AlertCircle className="h-8 w-8 text-destructive" />
+        <WarningCircle size={32} className="text-destructive" />
       </div>
       <div className="space-y-1">
         <h3 className="text-sm font-medium text-foreground">

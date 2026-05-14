@@ -9,14 +9,14 @@ import {
   UnifiedSidebarContent,
   UnifiedSidebarItem,
 } from '@/components/ui/unified-sidebar';
-import { MessageSquare } from 'lucide-react';
+import { Chat } from '@phosphor-icons/react';
 
 function ChatSidebar() {
   return (
     <UnifiedSidebar width={280} collapsedWidth={48}>
       <UnifiedSidebarHeader
         title="会话列表"
-        icon={MessageSquare}
+        icon={Chat}
         showSearch
         showCreate
         onCreateClick={() => console.log('创建新会话')}
@@ -194,7 +194,7 @@ import {
   UnifiedSidebarItem,
   UnifiedSidebarFooter,
 } from '@/components/ui/unified-sidebar';
-import { MessageSquare, Plus } from 'lucide-react';
+import { Chat, Plus } from '@phosphor-icons/react';
 
 interface Chat {
   id: string;
@@ -226,7 +226,7 @@ function ChatList() {
     <UnifiedSidebar width={280}>
       <UnifiedSidebarHeader
         title="聊天列表"
-        icon={MessageSquare}
+        icon={Chat}
         showSearch
         showRefresh
         showCreate
@@ -239,7 +239,7 @@ function ChatList() {
         isEmpty={chats.length === 0}
         emptyTitle="暂无聊天"
         emptyDescription="点击上方按钮创建新聊天"
-        emptyIcon={MessageSquare}
+        emptyIcon={Chat}
       >
         {chats.map(chat => (
           <UnifiedSidebarItem

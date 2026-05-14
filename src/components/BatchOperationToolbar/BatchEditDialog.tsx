@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { AnkiCard } from '../../types';
 import { useTranslation } from 'react-i18next';
-import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, CaretLeft, CaretRight } from '@phosphor-icons/react';
 import './BatchEditDialog.css';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
@@ -187,7 +187,7 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
                     ...changes,
                     front: { ...changes.front!, enabled: checked }
                   })}
-                />
+/>
                 <span>{t('edit_front_content')}</span>
               </label>
               
@@ -221,7 +221,7 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
                         front: { ...changes.front!, pattern: e.target.value }
                       })}
                       className="pattern-input"
-                    />
+/>
                   )}
                   
                   <Textarea
@@ -233,7 +233,7 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
                     })}
                     rows={3}
                     className="content-textarea"
-                  />
+/>
                 </div>
               )}
             </div>
@@ -247,7 +247,7 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
                     ...changes,
                     back: { ...changes.back!, enabled: checked }
                   })}
-                />
+/>
                 <span>{t('edit_back_content')}</span>
               </label>
               
@@ -281,7 +281,7 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
                         back: { ...changes.back!, pattern: e.target.value }
                       })}
                       className="pattern-input"
-                    />
+/>
                   )}
                   
                   <Textarea
@@ -293,7 +293,7 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
                     })}
                     rows={3}
                     className="content-textarea"
-                  />
+/>
                 </div>
               )}
             </div>
@@ -307,7 +307,7 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
                     ...changes,
                     tags: { ...changes.tags!, enabled: checked }
                   })}
-                />
+/>
                 <span>{t('edit_tags')}</span>
               </label>
               
@@ -343,7 +343,7 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
                         }
                       }}
                       className="tag-input"
-                    />
+/>
                     
                     <div className="selected-tags">
                       {changes.tags!.value.map((tag, index) => (
@@ -369,11 +369,11 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
                 {cards.length > 1 && (
                   <div className="preview-nav">
                     <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setPreviewIndex(Math.max(0, previewIndex - 1))} disabled={previewIndex === 0} className="nav-btn" aria-label="prev">
-                      <ChevronLeft size={16} />
+                      <CaretLeft size={16} />
                     </NotionButton>
                     <span className="nav-info">{previewIndex + 1} / {cards.length}</span>
                     <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setPreviewIndex(Math.min(cards.length - 1, previewIndex + 1))} disabled={previewIndex === cards.length - 1} className="nav-btn" aria-label="next">
-                      <ChevronRight size={16} />
+                      <CaretRight size={16} />
                     </NotionButton>
                   </div>
                 )}

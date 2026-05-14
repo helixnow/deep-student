@@ -6,7 +6,7 @@
 import React, { useMemo, useCallback } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
-import { Check, ChevronDown } from 'lucide-react';
+import { Check, CaretDown } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import {
   AppMenu,
@@ -213,7 +213,7 @@ export function AppSelect({
               {selectedLabel || resolvedPlaceholder}
             </span>
           </span>
-          <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+          <CaretDown size={16} className="shrink-0 opacity-50" />
         </NotionButton>
       </AppMenuTrigger>
 

@@ -7,32 +7,32 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { usePdfSettingsStore } from '../stores/pdfSettingsStore';
 import { dstu } from '@/dstu';
 import {
-  ChevronLeft,
-  ChevronRight,
-  ZoomIn,
-  ZoomOut,
-  ChevronDown,
-  RotateCw,
-  Maximize,
-  Minimize,
+  CaretLeft,
+  CaretRight,
+  MagnifyingGlassPlus,
+  MagnifyingGlassMinus,
+  CaretDown,
+  ArrowClockwise,
+  ArrowsOut,
+  ArrowsIn,
   BookOpen,
   Book,
   List,
-  Search,
+  MagnifyingGlass,
   X,
-  ChevronUp,
-  LayoutGrid,
+  CaretUp,
+  GridFour,
   Highlighter,
-  Home,
-  ChevronsLeft,
-  ChevronsRight,
+  House,
+  CaretDoubleLeft,
+  CaretDoubleRight,
   Bookmark,
-  BookmarkPlus,
-  BookmarkCheck,
+  BookmarkSimple,
+  BookmarkSimple as BookmarkCheck,
   Pencil,
-  Trash2,
-  MoreHorizontal
-} from 'lucide-react';
+  Trash,
+  DotsThree
+} from '@phosphor-icons/react';
 import { Input } from '@/components/ui/shad/Input';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
@@ -1300,7 +1300,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       {/* 搜索栏 */}
       {showSearch && (
         <div className="ds-pdf__search-bar">
-          <Search size={16} className="ds-search-icon" />
+          <MagnifyingGlass size={16} className="ds-search-icon" />
           <Input
             ref={searchInputRef}
             type="text"
@@ -1324,10 +1324,10 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
             </span>
           )}
           <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handlePrevSearchResult} disabled={searchResults.length === 0} title={t('pdf:toolbar.prev_match', '上一个')} aria-label="prev match">
-            <ChevronUp size={16} />
+            <CaretUp size={16} />
           </NotionButton>
           <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleNextSearchResult} disabled={searchResults.length === 0} title={t('pdf:toolbar.next_match', '下一个')} aria-label="next match">
-            <ChevronDown size={16} />
+            <CaretDown size={16} />
           </NotionButton>
           <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn ds-btn-sm" onClick={handleCloseSearch} title={t('pdf:toolbar.close_search', '关闭搜索')} aria-label="close search">
             <X size={16} />
@@ -1495,17 +1495,17 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
             )}
             
             <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${sidebarMode === 'thumbnails' ? 'active' : ''}`} onClick={() => toggleSidebar('thumbnails')} title={t('pdf:toolbar.thumbnails', '缩略图')} aria-label="thumbnails">
-              <LayoutGrid size={16} />
+              <GridFour size={16} />
             </NotionButton>
             
             <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={() => { setShowSearch(true); setTimeout(() => searchInputRef.current?.focus(), 100); }} title={t('pdf:toolbar.search', '搜索')} aria-label="search">
-              <Search size={16} />
+              <MagnifyingGlass size={16} />
             </NotionButton>
             
             <div className="ds-toolbar-divider" />
             
             <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${currentPageBookmark ? 'active' : ''}`} onClick={addBookmark} title={currentPageBookmark ? t('pdf:bookmark.editBookmark', '编辑书签') : t('pdf:bookmark.addBookmark', '添加书签')} aria-label="bookmark">
-              {currentPageBookmark ? <BookmarkCheck size={16} /> : <BookmarkPlus size={16} />}
+              {currentPageBookmark ? <BookmarkCheck size={16} /> : <BookmarkSimple size={16} />}
             </NotionButton>
             
             {bookmarks.length > 0 && (
@@ -1520,13 +1520,13 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         {/* 核心控制：缩放 + 页面导航（始终显示） */}
         <div className="ds-pdf__toolbar-center">
           <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleZoomOut} title={t('pdf:toolbar.zoom_out', '缩小')} aria-label="zoom out">
-            <ZoomOut size={16} />
+            <MagnifyingGlassMinus size={16} />
           </NotionButton>
 
           <div className="ds-zoom-menu" ref={zoomMenuRef}>
             <NotionButton variant="ghost" size="sm" className="ds-btn" onClick={() => setShowZoomMenu(!showZoomMenu)}>
               <span className="ds-zoom-readout">{Math.round(scale * 100)}%</span>
-              <ChevronDown size={12} />
+              <CaretDown size={12} />
             </NotionButton>
             {showZoomMenu && (
               <div className="ds-zoom-dropdown ds-zoom-dropdown--up">
@@ -1540,13 +1540,13 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           </div>
 
           <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleZoomIn} title={t('pdf:toolbar.zoom_in', '放大')} aria-label="zoom in">
-            <ZoomIn size={16} />
+            <MagnifyingGlassPlus size={16} />
           </NotionButton>
 
           <div className="ds-toolbar-divider" />
 
           <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handlePrevPage} disabled={currentPage <= 1} aria-label="prev page">
-            <ChevronLeft size={16} />
+            <CaretLeft size={16} />
           </NotionButton>
 
           <div className="ds-page-input">
@@ -1563,7 +1563,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           </div>
 
           <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleNextPage} disabled={currentPage >= numPages} aria-label="next page">
-            <ChevronRight size={16} />
+            <CaretRight size={16} />
           </NotionButton>
         </div>
 
@@ -1571,7 +1571,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         {!isToolbarCompact && (
           <div className="ds-pdf__toolbar-right">
             <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleRotate} title={t('pdf:toolbar.rotate_cw', '顺时针旋转 90°')} aria-label="rotate">
-              <RotateCw size={16} />
+              <ArrowClockwise size={16} />
             </NotionButton>
 
             <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${viewMode === 'dual' ? 'active' : ''}`} onClick={handleToggleViewMode} title={viewMode === 'single' ? t('pdf:toolbar.dual_page', '双页视图') : t('pdf:toolbar.single_page', '单页视图')} aria-label="view mode">
@@ -1579,7 +1579,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
             </NotionButton>
 
             <NotionButton variant="ghost" size="icon" iconOnly className="ds-btn" onClick={handleToggleFullscreen} title={isFullscreen ? t('pdf:toolbar.exit_fullscreen', '退出全屏') : t('pdf:toolbar.fullscreen', '全屏')} aria-label="fullscreen">
-              {isFullscreen ? <Minimize size={16} /> : <Maximize size={16} />}
+              {isFullscreen ? <ArrowsIn size={16} /> : <ArrowsOut size={16} />}
             </NotionButton>
           </div>
         )}
@@ -1588,7 +1588,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
         {isToolbarCompact && (
           <div className="ds-pdf__toolbar-more" ref={moreMenuRef}>
             <NotionButton variant="ghost" size="icon" iconOnly className={`ds-btn ${showMoreMenu ? 'active' : ''}`} onClick={() => setShowMoreMenu(!showMoreMenu)} title={t('pdf:toolbar.more', '更多')} aria-label="more">
-              <MoreHorizontal size={16} />
+              <DotsThree size={16} />
             </NotionButton>
             {showMoreMenu && (
               <div className="ds-more-dropdown ds-more-dropdown--up">
@@ -1599,18 +1599,18 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                   </NotionButton>
                 )}
                 <NotionButton variant="ghost" size="sm" className={`ds-more-item ${sidebarMode === 'thumbnails' ? 'active' : ''}`} onClick={() => { toggleSidebar('thumbnails'); setShowMoreMenu(false); }}>
-                  <LayoutGrid size={14} />
+                  <GridFour size={14} />
                   <span>{t('pdf:toolbar.thumbnails', '缩略图')}</span>
                 </NotionButton>
                 <NotionButton variant="ghost" size="sm" className="ds-more-item" onClick={() => { setShowSearch(true); setShowMoreMenu(false); setTimeout(() => searchInputRef.current?.focus(), 100); }}>
-                  <Search size={14} />
+                  <MagnifyingGlass size={14} />
                   <span>{t('pdf:toolbar.search', '搜索')}</span>
                 </NotionButton>
 
                 <div className="ds-more-divider" />
 
                 <NotionButton variant="ghost" size="sm" className={`ds-more-item ${currentPageBookmark ? 'active' : ''}`} onClick={() => { addBookmark(); setShowMoreMenu(false); }}>
-                  {currentPageBookmark ? <BookmarkCheck size={14} /> : <BookmarkPlus size={14} />}
+                  {currentPageBookmark ? <BookmarkCheck size={14} /> : <BookmarkSimple size={14} />}
                   <span>{currentPageBookmark
                     ? t('pdf:bookmark.editBookmark', '编辑书签')
                     : t('pdf:bookmark.addBookmark', '添加书签')}</span>
@@ -1625,7 +1625,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                 <div className="ds-more-divider" />
 
                 <NotionButton variant="ghost" size="sm" className="ds-more-item" onClick={() => { handleRotate(); setShowMoreMenu(false); }}>
-                  <RotateCw size={14} />
+                  <ArrowClockwise size={14} />
                   <span>{t('pdf:toolbar.rotate_cw', '顺时针旋转 90°')}</span>
                 </NotionButton>
                 <NotionButton variant="ghost" size="sm" className={`ds-more-item ${viewMode === 'dual' ? 'active' : ''}`} onClick={() => { handleToggleViewMode(); setShowMoreMenu(false); }}>
@@ -1633,7 +1633,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                   <span>{viewMode === 'single' ? t('pdf:toolbar.dual_page', '双页视图') : t('pdf:toolbar.single_page', '单页视图')}</span>
                 </NotionButton>
                 <NotionButton variant="ghost" size="sm" className="ds-more-item" onClick={() => { handleToggleFullscreen(); setShowMoreMenu(false); }}>
-                  {isFullscreen ? <Minimize size={14} /> : <Maximize size={14} />}
+                  {isFullscreen ? <ArrowsIn size={14} /> : <ArrowsOut size={14} />}
                   <span>{isFullscreen ? t('pdf:toolbar.exit_fullscreen', '退出全屏') : t('pdf:toolbar.fullscreen', '全屏')}</span>
                 </NotionButton>
               </div>
@@ -1762,7 +1762,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
                       </NotionButton>
                     )}
                     <NotionButton variant="ghost" size="icon" iconOnly className="ds-bookmark-action-btn ds-bookmark-delete-btn" onClick={(e) => { e.stopPropagation(); removeBookmark(bm.id); }} title={t('pdf:bookmark.deleteBookmark', '删除书签')} aria-label="delete">
-                      <Trash2 size={12} />
+                      <Trash size={12} />
                     </NotionButton>
                   </div>
                 </div>

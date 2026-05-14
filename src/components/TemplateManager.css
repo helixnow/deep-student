@@ -18,7 +18,7 @@
   max-height: 900px;
   background: hsl(var(--card));
   border-radius: 16px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 20px 60px hsl(var(--shadow-base) / 0.2);
   display: flex;
   flex-direction: column;
   overflow: hidden;
@@ -31,7 +31,7 @@
   align-items: center;
   padding: 24px 32px;
   background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.8) 100%);
-  color: white;
+  color: hsl(var(--primary-foreground));
 }
 
 .template-manager-header h2 {
@@ -41,9 +41,9 @@
 }
 
 .close-btn {
-  background: rgba(255, 255, 255, 0.2);
+  background: hsl(var(--primary-foreground) / 0.2);
   border: none;
-  color: white;
+  color: hsl(var(--primary-foreground));
   width: 36px;
   height: 36px;
   border-radius: 8px;
@@ -53,7 +53,7 @@
 }
 
 .close-btn:hover {
-  background: rgba(255, 255, 255, 0.3);
+  background: hsl(var(--primary-foreground) / 0.3);
   transform: scale(1.05);
 }
 
@@ -154,7 +154,7 @@
 .search-input:focus {
   outline: none;
   border-color: hsl(var(--primary));
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1);
 }
 
 .search-icon {
@@ -194,13 +194,13 @@
 
 .template-card:hover {
   border-color: hsl(var(--primary));
-  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 8px 25px hsl(var(--shadow-base) / 0.1);
   transform: translateY(-2px);
 }
 
 .template-card.selected {
   border-color: hsl(var(--primary));
-  box-shadow: 0 0 0 2px rgba(102, 126, 234, 0.2);
+  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.2);
 }
 
 .template-card.inactive {
@@ -341,7 +341,7 @@
 
 .btn-select {
   background: hsl(var(--primary));
-  color: white;
+  color: hsl(var(--primary-foreground));
   border: none;
   padding: 8px 16px;
   border-radius: 6px;
@@ -378,7 +378,7 @@
 
 .btn-action:hover {
   background: hsl(var(--muted));
-  border-color: #d1d5db;
+  border-color: hsl(var(--border));
   color: hsl(var(--foreground));
 }
 
@@ -401,7 +401,7 @@
 .loading-spinner {
   width: 40px;
   height: 40px;
-  border: 3px solid #f3f4f6;
+  border: 3px solid hsl(var(--muted));
   border-top: 3px solid hsl(var(--primary));
   border-radius: 50%;
   animation: spin 1s linear infinite;
@@ -532,7 +532,7 @@
 .form-input:focus, .form-textarea:focus {
   outline: none;
   border-color: hsl(var(--primary));
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1);
 }
 
 .form-textarea {
@@ -580,7 +580,7 @@
 .code-textarea:focus {
   outline: none;
   border-color: hsl(var(--primary));
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1);
   background: hsl(var(--card));
 }
 
@@ -613,7 +613,7 @@
 .css-textarea:focus {
   outline: none;
   border-color: hsl(var(--primary));
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1);
   background: hsl(var(--card));
 }
 
@@ -644,7 +644,7 @@
 .prompt-textarea:focus {
   outline: none;
   border-color: hsl(var(--primary));
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1);
 }
 
 /* 编辑器操作按钮 */
@@ -659,7 +659,7 @@
 
 .btn-primary {
   background: hsl(var(--primary));
-  color: white;
+  color: hsl(var(--primary-foreground));
   border: none;
   padding: 12px 24px;
   border-radius: 8px;
@@ -833,7 +833,7 @@
   border-radius: 12px;
   margin: 16px;
   overflow: hidden;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 4px 12px hsl(var(--shadow-base) / 0.1);
 }
 
 .complexity-analysis-panel .panel-header {
@@ -956,7 +956,7 @@
 
 .suggestions-list li {
   margin-bottom: 8px;
-  color: #555;
+  color: hsl(var(--muted-foreground));
   font-size: 14px;
 }
 
@@ -973,7 +973,7 @@
   gap: 6px;
   padding: 8px 16px;
   background: hsl(var(--primary));
-  color: white;
+  color: hsl(var(--primary-foreground));
   border: none;
   border-radius: 6px;
   font-size: 14px;

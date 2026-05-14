@@ -12,22 +12,22 @@ import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Plus,
-  Search,
-  CheckCircle2,
-  Loader2,
+  MagnifyingGlass,
+  CheckCircle,
+  CircleNotch,
   Calendar,
-  AlertTriangle,
+  Warning,
   ArrowUp,
   ArrowDown,
   ArrowRight,
   Minus,
-  Trash2,
+  Trash,
   X,
   Check,
   Play,
-  BrainCircuit,
-  ListTodo,
-} from 'lucide-react';
+  Brain,
+  ListChecks,
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
@@ -87,7 +87,7 @@ const TodoQuickAdd: React.FC = () => {
   return (
     <div>
       <div className="flex items-center gap-2.5 px-4 py-2.5 sm:px-6">
-        <Plus className="h-4 w-4 flex-shrink-0 text-[color:var(--text-muted)]" />
+        <Plus size={16} className="flex-shrink-0 text-[color:var(--text-muted)]" />
         <Input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
@@ -125,7 +125,7 @@ const TodoQuickAdd: React.FC = () => {
           />
 
           <div className="flex items-center gap-1.5 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--input-shell-surface)] px-2 py-1">
-            <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
+            <Calendar size={14} className="text-muted-foreground" />
             <Input
               type="date"
               value={dueDate}
@@ -153,10 +153,10 @@ const PriorityIcon: React.FC<{ priority: TodoPriority; className?: string }> = (
     ArrowDown,
     ArrowRight,
     ArrowUp,
-    AlertTriangle,
+    AlertTriangle: Warning,
   };
   const Icon = icons[config.icon] || Minus;
-  return <Icon className={cn('w-4 h-4', config.color, className)} />;
+  return <Icon size={16} className={cn(config.color, className)} />;
 };
 
 const TodoItemRow: React.FC<{
@@ -192,10 +192,10 @@ const TodoItemRow: React.FC<{
         aria-label={isCompleted ? '标记为未完成' : '标记为完成'}
       >
         {isCompleted ? (
-          <CheckCircle2 className="h-5 w-5 text-[color:hsl(var(--success))]" />
+          <CheckCircle size={20} className="text-[color:hsl(var(--success))]" />
         ) : (
           <div className="flex h-5 w-5 items-center justify-center rounded-full border-[1.5px] border-[color:var(--border-default)] transition-colors group-hover:border-[color:hsl(var(--primary))]">
-            <Check className="h-3 w-3 text-[color:hsl(var(--primary))] opacity-0 transition-opacity group-hover:opacity-40" />
+            <Check size={12} className="text-[color:hsl(var(--primary))] opacity-0 transition-opacity group-hover:opacity-40" />
           </div>
         )}
       </button>
@@ -222,7 +222,7 @@ const TodoItemRow: React.FC<{
                 className="study-shell-badge study-shell-badge--warning"
                 title={`${item.completedPomodoros || 0} / ${item.estimatedPomodoros} Pomodoros`}
               >
-                <BrainCircuit className="h-3 w-3" />
+                <Brain size={12} />
                 {item.completedPomodoros || 0}/{item.estimatedPomodoros}
               </span>
             ) : null}
@@ -247,7 +247,7 @@ const TodoItemRow: React.FC<{
                     : 'text-muted-foreground',
                 )}
               >
-                <Calendar className="h-3 w-3" />
+                <Calendar size={12} />
                 {item.dueDate}
                 {item.dueTime && ` ${item.dueTime}`}
               </span>
@@ -280,7 +280,7 @@ const TodoItemRow: React.FC<{
           aria-label="start-focus"
           className="flex-shrink-0 opacity-40 transition-opacity duration-100 group-hover:opacity-100 !p-1.5"
         >
-          <Play className="h-4 w-4" />
+          <Play size={16} />
         </NotionButton>
       )}
 
@@ -295,7 +295,7 @@ const TodoItemRow: React.FC<{
         aria-label="delete-todo"
         className="flex-shrink-0 opacity-0 transition-opacity duration-100 group-hover:opacity-100 !p-1.5 hover:!bg-[color:var(--button-danger-surface)] hover:!text-[color:hsl(var(--destructive))]"
       >
-        <Trash2 className="h-4 w-4" />
+        <Trash size={16} />
       </NotionButton>
     </div>
   );
@@ -374,10 +374,10 @@ const TodoItemDetail: React.FC<{
             aria-label={isCompleted ? '标记为未完成' : '标记为完成'}
           >
             {isCompleted ? (
-              <CheckCircle2 className="h-5 w-5 text-[color:hsl(var(--success))]" />
+              <CheckCircle size={20} className="text-[color:hsl(var(--success))]" />
             ) : (
               <div className="flex h-5 w-5 items-center justify-center rounded-full border-[1.5px] border-[color:var(--border-default)] hover:border-[color:hsl(var(--primary))]">
-                <Check className="h-3 w-3 text-[color:hsl(var(--primary))] opacity-0" />
+                <Check size={12} className="text-[color:hsl(var(--primary))] opacity-0" />
               </div>
             )}
           </button>
@@ -393,7 +393,7 @@ const TodoItemDetail: React.FC<{
           aria-label={t('common:actions.close')}
           className="!p-1.5"
         >
-          <X className="h-4 w-4" />
+          <X size={16} />
         </NotionButton>
       </div>
 
@@ -443,7 +443,7 @@ const TodoItemDetail: React.FC<{
 
           <div className="flex items-center gap-3 py-1">
             <span className="flex w-16 flex-shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-              <Calendar className="h-3.5 w-3.5" />
+              <Calendar size={14} />
               {t('todo:fields.dueDate')}
             </span>
             <Input
@@ -472,7 +472,7 @@ const TodoItemDetail: React.FC<{
 
           <div className="flex items-center gap-3 py-1">
             <span className="flex w-16 flex-shrink-0 items-center gap-1.5 text-xs text-muted-foreground">
-              <BrainCircuit className="h-3.5 w-3.5" />
+              <Brain size={14} />
               {t('todo:fields.pomodoros', '番茄')}
             </span>
             <Input
@@ -520,7 +520,7 @@ const TodoItemDetail: React.FC<{
           }}
           className="gap-1.5"
         >
-          <Trash2 className="h-4 w-4" />
+          <Trash size={16} />
           {t('common:actions.delete')}
         </NotionButton>
       </div>
@@ -602,7 +602,7 @@ export const TodoMainPanel: React.FC = () => {
 
           <div className="flex flex-shrink-0 items-center gap-2">
             <div className="relative">
-              <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-muted-foreground/60" />
+              <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60" size={14} />
               <Input
                 type="text"
                 value={filter.search}
@@ -624,7 +624,7 @@ export const TodoMainPanel: React.FC = () => {
                   '!bg-[color:var(--button-primary-surface)] !text-[color:var(--button-primary-foreground)]',
               )}
             >
-              <CheckCircle2 className="h-3.5 w-3.5" />
+              <CheckCircle size={14} />
               <span className="hidden sm:inline">{t('todo:filters.showCompleted')}</span>
             </NotionButton>
           </div>
@@ -642,12 +642,12 @@ export const TodoMainPanel: React.FC = () => {
 
             {isLoadingItems ? (
               <div className="flex items-center justify-center py-20">
-                <Loader2 className="h-6 w-6 animate-spin text-muted-foreground/60" />
+                <CircleNotch size={24} className="animate-spin text-muted-foreground/60" />
               </div>
             ) : filteredItems.length === 0 ? (
               <div className="study-shell-empty-state m-4 sm:m-6 animate-in fade-in duration-300">
                 <div className="study-shell-empty-state__icon">
-                  <ListTodo className="h-6 w-6" />
+                  <ListChecks size={24} />
                 </div>
                 <h3 className="study-shell-empty-state__title">
                   {t('todo:empty.noItems')}

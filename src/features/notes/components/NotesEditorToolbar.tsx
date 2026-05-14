@@ -8,23 +8,23 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import type { CrepeEditorApi } from '@/components/crepe/types';
 import {
-  Bold,
-  Italic,
-  Strikethrough,
+  TextB,
+  TextItalic,
+  TextStrikethrough,
   Code,
-  Heading1,
-  Heading2,
-  Heading3,
+  TextHOne,
+  TextHTwo,
+  TextHThree,
   List,
-  ListOrdered,
+  ListNumbers,
   CheckSquare,
-  Quote,
+  Quotes,
   Minus,
   Link,
   Image,
   Table,
   FileCode,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { useNotesOptional } from '../NotesContext';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 
@@ -168,21 +168,21 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
     <div className="notes-editor-toolbar">
       {/* 文本格式 */}
       <ToolbarButton
-        icon={<Bold className="w-4 h-4" />}
+        icon={<TextB className="w-4 h-4" />}
         label={t('notes:toolbar.bold')}
         shortcut="⌘B"
         onClick={handleBold}
         disabled={isDisabled}
       />
       <ToolbarButton
-        icon={<Italic className="w-4 h-4" />}
+        icon={<TextItalic className="w-4 h-4" />}
         label={t('notes:toolbar.italic')}
         shortcut="⌘I"
         onClick={handleItalic}
         disabled={isDisabled}
       />
       <ToolbarButton
-        icon={<Strikethrough className="w-4 h-4" />}
+        icon={<TextStrikethrough className="w-4 h-4" />}
         label={t('notes:toolbar.strikethrough')}
         onClick={handleStrikethrough}
         disabled={isDisabled}
@@ -199,21 +199,21 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
 
       {/* 标题 */}
       <ToolbarButton
-        icon={<Heading1 className="w-4 h-4" />}
+        icon={<TextHOne className="w-4 h-4" />}
         label={t('notes:toolbar.heading1')}
         shortcut="⌘1"
         onClick={handleHeading1}
         disabled={isDisabled}
       />
       <ToolbarButton
-        icon={<Heading2 className="w-4 h-4" />}
+        icon={<TextHTwo className="w-4 h-4" />}
         label={t('notes:toolbar.heading2')}
         shortcut="⌘2"
         onClick={handleHeading2}
         disabled={isDisabled}
       />
       <ToolbarButton
-        icon={<Heading3 className="w-4 h-4" />}
+        icon={<TextHThree className="w-4 h-4" />}
         label={t('notes:toolbar.heading3')}
         shortcut="⌘3"
         onClick={handleHeading3}
@@ -230,7 +230,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
         disabled={isDisabled}
       />
       <ToolbarButton
-        icon={<ListOrdered className="w-4 h-4" />}
+        icon={<ListNumbers className="w-4 h-4" />}
         label={t('notes:toolbar.orderedList')}
         onClick={handleOrderedList}
         disabled={isDisabled}
@@ -246,7 +246,7 @@ export const NotesEditorToolbar: React.FC<NotesEditorToolbarProps> = ({
 
       {/* 块元素 */}
       <ToolbarButton
-        icon={<Quote className="w-4 h-4" />}
+        icon={<Quotes className="w-4 h-4" />}
         label={t('notes:toolbar.quote')}
         onClick={handleQuote}
         disabled={isDisabled}

@@ -13,22 +13,22 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import {
   FileText,
   GitBranch,
-  Save,
+  FloppyDisk,
   Download,
   Upload,
-  MoreHorizontal,
-  Undo2,
-  Redo2,
-  Search,
+  DotsThree,
+  ArrowCounterClockwise,
+  ArrowClockwise,
+  MagnifyingGlass,
   X,
-  ChevronUp,
-  ChevronDown,
+  CaretUp,
+  CaretDown,
   Keyboard,
-  AlertCircle,
-  RefreshCw,
-  Settings2,
+  WarningCircle,
+  ArrowClockwise as RefreshIcon,
+  Gear,
   BookOpen,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { Input } from '@/components/ui/shad/Input';
 import { useTranslation } from 'react-i18next';
 import {
@@ -425,7 +425,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
               title={t('mindmap:toolbar.undoShortcut')}
               aria-label={t('mindmap:toolbar.undo')}
             >
-              <Undo2 className="w-4 h-4" />
+              <ArrowCounterClockwise size={16} />
             </NotionButton>
             <NotionButton variant="ghost" 
               className="notion-btn" 
@@ -434,7 +434,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
               title={t('mindmap:toolbar.redoShortcut')}
               aria-label={t('mindmap:toolbar.redo')}
             >
-              <Redo2 className="w-4 h-4" />
+              <ArrowClockwise size={16} />
             </NotionButton>
           </div>
         </div>
@@ -448,9 +448,9 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
             onOpenChange={(open) => setActivePanel(open ? 'structure' : null)}
             trigger={
               <NotionButton variant="ghost" className="notion-btn" title={t('mindmap:toolbar.switchStructure')}>
-                <GitBranch className="w-4 h-4" />
+                <GitBranch size={16} />
                 <span className="text-xs">{t('mindmap:toolbar.structure')}</span>
-                <ChevronDown className="w-3 h-3 opacity-50 ml-0.5" />
+                <CaretDown size={12} className="opacity-50 ml-0.5" />
               </NotionButton>
             }
           />
@@ -462,9 +462,9 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
             onOpenChange={(open) => setActivePanel(open ? 'style' : null)}
             trigger={
               <NotionButton variant="ghost" className="notion-btn" title={t('mindmap:toolbar.styleSettings')}>
-                <Settings2 className="w-4 h-4" />
+                <Gear size={16} />
                 <span className="text-xs">{t('mindmap:toolbar.style')}</span>
-                <ChevronDown className="w-3 h-3 opacity-50 ml-0.5" />
+                <CaretDown size={12} className="opacity-50 ml-0.5" />
               </NotionButton>
             }
           />
@@ -477,7 +477,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
             onClick={() => setReciteMode(!reciteMode)}
             title={t('mindmap:recite.enter')}
           >
-            <BookOpen className="w-4 h-4" />
+            <BookOpen size={16} />
             <span className="text-xs">{t('mindmap:recite.title')}</span>
           </NotionButton>
 
@@ -487,7 +487,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
             onClick={() => setShowSearch(!showSearch)}
             title={t('mindmap:toolbar.searchShortcut')}
           >
-            <Search className="w-4 h-4" />
+            <MagnifyingGlass size={16} />
             <span className="text-xs">{t('mindmap:toolbar.search')}</span>
           </NotionButton>
 
@@ -497,7 +497,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
               <NotionButton variant="ghost" className="notion-btn hidden sm:flex">
                 <Download className="w-4 h-4" />
                 <span className="text-xs">{t('mindmap:export.title')}</span>
-                <ChevronDown className="w-3 h-3 opacity-50 ml-0.5" />
+                <CaretDown size={12} className="opacity-50 ml-0.5" />
               </NotionButton>
             </AppMenuTrigger>
             <AppMenuContent align="end" width={180}>
@@ -530,15 +530,15 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
           <AppMenu open={activePanel === 'more'} onOpenChange={(open) => setActivePanel(open ? 'more' : null)}>
             <AppMenuTrigger asChild>
               <NotionButton variant="ghost" className="notion-btn w-7 justify-center px-0 hidden sm:flex" aria-label={t('mindmap:toolbar.moreActions')} title={t('mindmap:toolbar.moreActions')}>
-                <MoreHorizontal className="w-4 h-4" />
+                <DotsThree size={16} />
               </NotionButton>
             </AppMenuTrigger>
             <AppMenuContent align="end" width={180}>
-              <AppMenuItem icon={<Save className="w-4 h-4" />} onClick={handleSave} disabled={!isDirty || isSaving}>
+              <AppMenuItem icon={<FloppyDisk size={16} />} onClick={handleSave} disabled={!isDirty || isSaving}>
                 {isSaving ? t('mindmap:toolbar.saving') : isDirty ? t('mindmap:toolbar.save') : t('mindmap:toolbar.saved')}
               </AppMenuItem>
               <AppMenuSeparator />
-              <AppMenuItem icon={<Keyboard className="w-4 h-4" />} onClick={() => setShowShortcutHelp(true)}>
+              <AppMenuItem icon={<Keyboard size={16} />} onClick={() => setShowShortcutHelp(true)}>
                 {t('mindmap:toolbar.shortcutList')}
               </AppMenuItem>
             </AppMenuContent>
@@ -548,38 +548,38 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
           <AppMenu>
             <AppMenuTrigger asChild>
               <NotionButton variant="ghost" className="notion-btn w-7 justify-center px-0 sm:hidden" aria-label={t('mindmap:toolbar.moreActions')} title={t('mindmap:toolbar.moreActions')}>
-                <MoreHorizontal className="w-4 h-4" />
+                <DotsThree size={16} />
               </NotionButton>
             </AppMenuTrigger>
             <AppMenuContent align="end" width={180}>
-              <AppMenuItem icon={<GitBranch className="w-4 h-4" />} onClick={() => setShowMobileStructure(true)}>
+              <AppMenuItem icon={<GitBranch size={16} />} onClick={() => setShowMobileStructure(true)}>
                 {t('mindmap:toolbar.structure')}
               </AppMenuItem>
-              <AppMenuItem icon={<Settings2 className="w-4 h-4" />} onClick={() => setShowMobileStyle(true)}>
+              <AppMenuItem icon={<Gear size={16} />} onClick={() => setShowMobileStyle(true)}>
                 {t('mindmap:toolbar.style')}
               </AppMenuItem>
               <AppMenuSeparator />
-              <AppMenuItem icon={<Search className="w-4 h-4" />} onClick={() => setShowSearch(!showSearch)}>
+              <AppMenuItem icon={<MagnifyingGlass size={16} />} onClick={() => setShowSearch(!showSearch)}>
                 {t('mindmap:toolbar.search')}
               </AppMenuItem>
               <AppMenuSeparator />
-              <AppMenuItem icon={<Upload className="w-4 h-4" />} onClick={handleImport}>
+              <AppMenuItem icon={<Upload size={16} />} onClick={handleImport}>
                 {t('mindmap:import.title')}
               </AppMenuItem>
-              <AppMenuItem icon={<FileText className="w-4 h-4" />} onClick={() => handleExport('markdown')}>
+              <AppMenuItem icon={<FileText size={16} />} onClick={() => handleExport('markdown')}>
                 {t('mindmap:export.exportMarkdown')}
               </AppMenuItem>
-              <AppMenuItem icon={<FileText className="w-4 h-4" />} onClick={() => handleExport('opml')}>
+              <AppMenuItem icon={<FileText size={16} />} onClick={() => handleExport('opml')}>
                 {t('mindmap:export.exportOpml')}
               </AppMenuItem>
-              <AppMenuItem icon={<Download className="w-4 h-4" />} onClick={() => handleExport('png')}>
+              <AppMenuItem icon={<Download size={16} />} onClick={() => handleExport('png')}>
                 {t('mindmap:export.exportPng')}
               </AppMenuItem>
               <AppMenuSeparator />
-              <AppMenuItem icon={<Keyboard className="w-4 h-4" />} onClick={() => setShowShortcutHelp(true)}>
+              <AppMenuItem icon={<Keyboard size={16} />} onClick={() => setShowShortcutHelp(true)}>
                 {t('mindmap:toolbar.shortcutList')}
               </AppMenuItem>
-              <AppMenuItem icon={<Save className="w-4 h-4" />} onClick={handleSave} disabled={!isDirty || isSaving}>
+              <AppMenuItem icon={<FloppyDisk size={16} />} onClick={handleSave} disabled={!isDirty || isSaving}>
                 {isSaving ? t('mindmap:toolbar.saving') : isDirty ? t('mindmap:toolbar.save') : t('mindmap:toolbar.saved')}
               </AppMenuItem>
             </AppMenuContent>
@@ -589,7 +589,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
 
       {showSearch && (
         <div className="flex items-center gap-2 h-10 px-4 border-b border-[var(--mm-border)] bg-[var(--mm-bg)] animate-in slide-in-from-top-1 duration-200">
-          <Search className="w-4 h-4 text-[var(--mm-text-muted)]" />
+          <MagnifyingGlass size={16} className="text-[var(--mm-text-muted)]" />
           <Input
             className="flex-1 h-full bg-transparent border-none outline-none text-sm placeholder-[var(--mm-text-muted)]"
             placeholder={t('mindmap:toolbar.searchPlaceholder')}
@@ -619,7 +619,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
                   onClick={prevSearchResult}
                   aria-label={t('mindmap:toolbar.prevResult')}
                 >
-                  <ChevronUp className="w-3 h-3" />
+                  <CaretUp size={12} />
                 </NotionButton>
                 <div className="w-px h-4 bg-[var(--mm-border)]" />
                 <NotionButton variant="ghost" 
@@ -627,7 +627,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
                   onClick={nextSearchResult}
                   aria-label={t('mindmap:toolbar.nextResult')}
                 >
-                  <ChevronDown className="w-3 h-3" />
+                  <CaretDown size={12} />
                 </NotionButton>
               </div>
             </div>
@@ -657,14 +657,14 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
         ) : loadError ? (
           <div className="h-full w-full flex items-center justify-center p-6">
             <div className="max-w-md w-full rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] p-5 text-center shadow-sm">
-              <AlertCircle className="w-8 h-8 mx-auto mb-3 text-red-500" />
+              <WarningCircle size={32} className="mx-auto mb-3 text-red-500" />
               <p className="text-sm font-medium text-[var(--mm-text)] mb-2">{t('mindmap:loadFailed')}</p>
               <p className="text-xs text-[var(--mm-text-muted)] break-words">{loadError}</p>
               <NotionButton variant="ghost"
                 className="notion-btn mt-4 mx-auto"
                 onClick={() => void tryLoadMindMap()}
               >
-                <RefreshCw className="w-4 h-4" />
+                <ArrowClockwise size={16} />
                 <span className="text-xs">{t('mindmap:retryLoad')}</span>
               </NotionButton>
             </div>

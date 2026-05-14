@@ -2,10 +2,10 @@ import React, { useState, useEffect } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import {
-  FileText, Code, Database, Settings, Eye, EyeOff,
-  Plus, Trash2, AlertCircle, Check, X, Copy,
-  ChevronDown, ChevronRight, Info, Shield
-} from 'lucide-react';
+  FileText, Code, Database, Gear, Eye, EyeSlash,
+  Plus, Trash, WarningCircle, Check, X, Copy,
+  CaretDown, CaretRight, Info, Shield
+} from '@phosphor-icons/react';
 import { CustomAnkiTemplate, CreateTemplateRequest, FieldExtractionRule, ValidationRule, TransformRule, ObjectSchema } from '../types';
 import { IframePreview, renderCardPreview } from './SharedPreview';
 import { templateService } from '../services/templateService';
@@ -305,11 +305,11 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
             {t('preview_data')}
           </NotionButton>
           <NotionButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'rules' ? 'active' : ''}`} onClick={() => setActiveTab('rules')}>
-            <Settings size={18} />
+            <Gear size={18} />
             {t('extraction_rules', '提取规则')}
           </NotionButton>
           <NotionButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'advanced' ? 'active' : ''}`} onClick={() => setActiveTab('advanced')}>
-            <Settings size={18} />
+            <Gear size={18} />
             {t('advanced_settings', '高级设置')}
           </NotionButton>
         </nav>
@@ -344,7 +344,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
           {/* 错误提示 */}
           {validationErrors.length > 0 && (
             <div className="validation-alert">
-              <AlertCircle size={16} />
+              <WarningCircle size={16} />
               <div className="validation-messages">
                 {validationErrors.map((error, index) => (
                   <div key={index} className="validation-message">
@@ -371,7 +371,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                      onChange={(e) => setFormData({...formData, name: e.target.value})}
                      className="field-input"
                      placeholder={t('form_name_placeholder', '例如：编程代码卡片')}
-                   />
+/>
                   <span className="field-hint">{t('template_name_hint', '给模板一个清晰的名称，方便查找和识别')}</span>
                 </div>
               </div>
@@ -384,7 +384,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                   onChange={(e) => setFormData({...formData, author: e.target.value})}
                   className="form-input"
                   placeholder={t('form_author_placeholder', '您的名字')}
-                />
+/>
               </div>
 
               <div className="form-group">
@@ -396,7 +396,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                     onChange={(e) => setFormData({...formData, version: e.target.value})}
                     className="form-input"
                     placeholder="1.0.0"
-                  />
+/>
                   {mode === 'edit' && (
                     <NotionButton variant="ghost" size="icon" iconOnly onClick={incrementVersion} className="version-increment" title={t('increment_version', '增加版本号')} aria-label="increment">
                       <Plus size={16} />
@@ -432,7 +432,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                   className="form-textarea"
                   rows={3}
                   placeholder={t('form_description_placeholder', '描述此模板的用途和特点')}
-                />
+/>
               </div>
 
               <div className="form-group">
@@ -443,7 +443,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                   onChange={(e) => setFormData({...formData, note_type: e.target.value})}
                   className="form-input"
                   placeholder={t('note_type_placeholder', 'Basic')}
-                />
+/>
               </div>
 
               <div className="form-group">
@@ -454,7 +454,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                   onChange={(e) => setFormData({...formData, preview_front: e.target.value})}
                   className="form-input"
                   placeholder={t('form_preview_front_placeholder', '卡片正面的预览内容')}
-                />
+/>
               </div>
 
               <div className="form-group">
@@ -465,7 +465,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                   onChange={(e) => setFormData({...formData, preview_back: e.target.value})}
                   className="form-input"
                   placeholder={t('form_preview_back_placeholder', '卡片背面的预览内容')}
-                />
+/>
               </div>
 
               {/* 时间戳信息（只读） */}
@@ -502,9 +502,9 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                         value={field}
                         onChange={(e) => updateFieldName(index, e.target.value)}
                         className="field-input"
-                      />
+/>
                       <NotionButton variant="ghost" size="icon" iconOnly onClick={() => removeField(index)} className="btn-remove-field" disabled={formData.fields.length <= 1} aria-label="remove">
-                        <Trash2 size={16} />
+                        <Trash size={16} />
                       </NotionButton>
                     </div>
                   ))}
@@ -528,7 +528,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                     language="html"
                     height="200px"
                     placeholder='<div class="card">{{Front}}</div>'
-                  />
+/>
                   <div className="code-help">
                     {t('use_mustache_hint', '使用 {{placeholder}} 来引用字段值', { placeholder: '{{字段名}}' })}
                   </div>
@@ -546,7 +546,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                     language="html"
                     height="200px"
                     placeholder='<div class="card">{{Front}}<hr>{{Back}}</div>'
-                  />
+/>
                 </div>
               </div>
 
@@ -576,7 +576,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                       previewMode === 'back'
                     )}
                     cssContent={formData.css_style}
-                  />
+/>
                 </div>
               </div>
             </div>
@@ -597,7 +597,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                   language="css"
                   height="400px"
                   placeholder=".card { padding: 20px; }"
-                />
+/>
                 <div className="code-help">
                   {t('css_style_hint', '定义卡片的样式，支持所有CSS特性')}
                 </div>
@@ -640,10 +640,10 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                   height="300px"
                   placeholder='{}'
                   className={!validateJson(previewDataJson) ? 'json-invalid' : ''}
-                />
+/>
                 {!validateJson(previewDataJson) && (
                   <div className="json-error">
-                    <AlertCircle size={14} />
+                    <WarningCircle size={14} />
                     {t('json_invalid')}
                   </div>
                 )}
@@ -680,9 +680,9 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                     >
                       <div className="rule-title">
                         {expandedRules.has(fieldName) ? (
-                          <ChevronDown size={16} />
+                          <CaretDown size={16} />
                         ) : (
-                          <ChevronRight size={16} />
+                          <CaretRight size={16} />
                         )}
                         <span className="field-name">{fieldName}</span>
                         <span className={`field-type ${rule.field_type.toLowerCase()}`}>
@@ -727,7 +727,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                                 onCheckedChange={(checked) => updateFieldRule(fieldName, { 
                                   is_required: checked 
                                 })}
-                              />
+/>
                               {t('field_required', '必填字段')}
                             </label>
                           </div>
@@ -742,7 +742,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                               })}
                               className="form-input"
                               placeholder={rule.field_type === 'Array' ? '[]' : ''}
-                            />
+/>
                           </div>
 
                           <div className="form-row">
@@ -755,7 +755,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                               className="form-textarea"
                               rows={2}
                               placeholder={t('field_purpose_placeholder', '描述此字段的用途')}
-                            />
+/>
                           </div>
                         </div>
                       </div>
@@ -775,7 +775,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                 <div className="section-header">
                   <label className="form-label">{t('core_requirements')}</label>
                   <NotionButton variant="ghost" size="sm" onClick={() => setShowPromptPreview(!showPromptPreview)} className="btn-preview">
-                    {showPromptPreview ? <EyeOff size={16} /> : <Eye size={16} />}
+                    {showPromptPreview ? <EyeSlash size={16} /> : <Eye size={16} />}
                     {showPromptPreview ? t('hide') : t('preview')}{t('full_prompt')}
                   </NotionButton>
                 </div>
@@ -785,7 +785,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                   className="form-textarea"
                   rows={10}
                   placeholder={t('core_requirements_placeholder') as string}
-                />
+/>
                 <div className="form-help">
                   <strong>{t('prompt_hint')}</strong>{t('auto_generate_desc')}
                   <ul style={{ marginTop: '8px', marginBottom: 0, paddingLeft: '20px' }}>

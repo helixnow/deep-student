@@ -1,6 +1,6 @@
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { BookOpen, Eye, EyeOff, X } from 'lucide-react';
+import { BookOpen, Eye, EyeSlash, X } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useMindMapStore } from '../../store';
 import { countBlankProgress } from '../../utils/node/blankRanges';
@@ -46,15 +46,15 @@ export const ReciteStatusBar: React.FC = () => {
 
       <div className="w-px h-4 bg-[var(--mm-border)]" />
       <NotionButton variant="ghost" onClick={revealAllBlanks} className="h-7 px-2 text-xs gap-1" disabled={progress.total === 0}>
-        <Eye className="w-3.5 h-3.5" />
+        <Eye size={14} />
         {t('recite.revealAll')}
       </NotionButton>
       <NotionButton variant="ghost" onClick={resetAllBlanks} className="h-7 px-2 text-xs gap-1" disabled={progress.total === 0}>
-        <EyeOff className="w-3.5 h-3.5" />
+        <EyeSlash size={14} />
         {t('recite.resetAll')}
       </NotionButton>
       <NotionButton variant="ghost" onClick={() => setReciteMode(false)} className="h-7 px-2 text-xs gap-1">
-        <X className="w-3.5 h-3.5" />
+        <X size={14} />
         {t('recite.exit')}
       </NotionButton>
     </div>

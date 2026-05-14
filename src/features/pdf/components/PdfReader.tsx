@@ -3,15 +3,15 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 // 临时保留 react-pdf 实现，后续将迁移到 BasePdfViewer（react-pdf-viewer）
 import { useTranslation } from 'react-i18next';
 import { 
-  FileUp, 
-  ChevronLeft, 
-  ChevronRight, 
-  ZoomIn, 
-  ZoomOut, 
-  RotateCw,
+  UploadSimple, 
+  CaretLeft, 
+  CaretRight, 
+  MagnifyingGlassPlus, 
+  MagnifyingGlassMinus, 
+  ArrowClockwise,
   Download,
   X
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import useTheme from '@/hooks/useTheme';
 import { TauriAPI } from '@/utils/tauriApi';
 import { fileManager } from '@/utils/fileManager';
@@ -310,7 +310,7 @@ export const PdfReader: React.FC<PdfReaderProps> = () => {
 
       {!viewerUrl && !error && loadingStage === 'idle' && (
         <div className="pdf-empty-state">
-          <FileUp className="h-16 w-16 empty-icon" />
+          <UploadSimple size={64} className="empty-icon" />
           <h2>{t('pdf:empty.title')}</h2>
           <p>{t('pdf:empty.description')}</p>
         </div>

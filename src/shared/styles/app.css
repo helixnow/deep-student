@@ -194,45 +194,65 @@ body {
   font-weight: 400 !important;
 }
 
-.desktop-shell-sidebar-session-scroll-shell {
-  --desktop-shell-sidebar-session-fade-size: 28px;
-  --desktop-shell-sidebar-session-fade-surface: var(--shell-navigation-surface);
+/* ─── Scroll-fade: generic edge-fade utility ─── */
+.scroll-fade-shell {
+  --scroll-fade-size: 28px;
+  --scroll-fade-surface: var(--background);
   position: relative;
   isolation: isolate;
 }
 
-.desktop-shell-sidebar-session-fade {
+.scroll-fade {
   position: absolute;
   left: 0;
   right: 0;
   z-index: 45;
-  height: var(--desktop-shell-sidebar-session-fade-size);
+  height: var(--scroll-fade-size, 28px);
   pointer-events: none;
 }
 
-.desktop-shell-sidebar-session-fade--top {
+.scroll-fade--top {
   top: 0;
   background: linear-gradient(
     to bottom,
-    color-mix(in srgb, var(--desktop-shell-sidebar-session-fade-surface) 96%, transparent) 0%,
-    color-mix(in srgb, var(--desktop-shell-sidebar-session-fade-surface) 70%, transparent) 38%,
+    color-mix(in srgb, var(--scroll-fade-surface) 96%, transparent) 0%,
+    color-mix(in srgb, var(--scroll-fade-surface) 70%, transparent) 38%,
     transparent 100%
   );
 }
 
-.desktop-shell-sidebar-session-fade--bottom {
+.scroll-fade--bottom {
   bottom: 0;
   background: linear-gradient(
     to top,
-    color-mix(in srgb, var(--desktop-shell-sidebar-session-fade-surface) 96%, transparent) 0%,
-    color-mix(in srgb, var(--desktop-shell-sidebar-session-fade-surface) 72%, transparent) 38%,
+    color-mix(in srgb, var(--scroll-fade-surface) 96%, transparent) 0%,
+    color-mix(in srgb, var(--scroll-fade-surface) 72%, transparent) 38%,
     transparent 100%
   );
 }
 
+/* ─── Sidebar scroll-fade (mask-image approach) ─── */
+.desktop-shell-sidebar-session-scroll-shell {
+  --desktop-shell-sidebar-session-fade-size: 28px;
+  position: relative;
+  isolation: isolate;
+}
+
 .desktop-shell-sidebar-session-scroll-viewport {
-  mask-image: none;
-  -webkit-mask-image: none;
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black var(--desktop-shell-sidebar-session-fade-size),
+    black calc(100% - var(--desktop-shell-sidebar-session-fade-size)),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black var(--desktop-shell-sidebar-session-fade-size),
+    black calc(100% - var(--desktop-shell-sidebar-session-fade-size)),
+    transparent 100%
+  );
 }
 
 .desktop-shell-header-title {
@@ -261,6 +281,10 @@ body {
   background: var(--shell-navigation-surface);
   border-right: 1px solid var(--shell-seam);
   box-shadow: 14px 0 28px -24px hsl(var(--foreground) / 0.4);
+}
+
+:root.dark .sidebar-shell-surface {
+  box-shadow: none;
 }
 
 .sidebar-shell-header {
@@ -892,7 +916,7 @@ main {
 
 /* 暗色模式下的顶栏边框 */
 .dark .content-header {
-  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+  border-bottom: 1px solid hsl(var(--background) / 0.1);
 }
 
 /* 移除内容层遮罩，统一改由侧边栏提供永久遮罩 */
@@ -905,7 +929,7 @@ main {
   background: hsl(var(--background)); /* 与侧边栏一致 */
   z-index: 10;
   /* 底部细边框 - 亮色模式深灰，暗色模式浅灰，增强对比度 */
-  border-bottom: 1px solid rgba(0, 0, 0, 0.1);
+  border-bottom: 1px solid hsl(var(--border) / 0.5);
 }
 
 /* 虚拟标题栏模式：更紧凑的内边距 */

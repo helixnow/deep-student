@@ -14,7 +14,7 @@
 
 import React, { lazy, Suspense, useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { CircleNotch, WarningCircle, ArrowClockwise } from '@phosphor-icons/react';
 import type { EditorProps, CreateEditorProps } from '../editorTypes';
 import { dstu } from '../index';
 import { cn } from '@/lib/utils';
@@ -100,7 +100,7 @@ export const NoteEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
   if (isLoading) {
     return (
       <div className={cn('flex items-center justify-center h-full py-8', props.className)}>
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        <CircleNotch size={24} className="animate-spin text-muted-foreground" />
         <span className="ml-2 text-muted-foreground">{t('dstu:preview.loading')}</span>
       </div>
     );
@@ -110,7 +110,7 @@ export const NoteEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
   if (error || !node) {
     return (
       <div className={cn('flex flex-col items-center justify-center h-full py-8 gap-4', props.className)}>
-        <AlertCircle className="w-8 h-8 text-destructive" />
+        <WarningCircle size={32} className="text-destructive" />
         <span className="text-destructive text-center max-w-md">
           {error || t('notes:errors.noteNotFound')}
         </span>
@@ -119,7 +119,7 @@ export const NoteEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
             onClick={() => void loadNode()}
           >
-            <RefreshCw className="w-4 h-4" />
+            <ArrowClockwise size={16} />
             {t('common:actions.retry')}
           </button>
           {onClose && (
@@ -139,7 +139,7 @@ export const NoteEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
     <Suspense
       fallback={
         <div className={cn('flex items-center justify-center h-full py-8', props.className)}>
-          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          <CircleNotch size={24} className="animate-spin text-muted-foreground" />
           <span className="ml-2 text-muted-foreground">{t('dstu:preview.loading')}</span>
         </div>
       }

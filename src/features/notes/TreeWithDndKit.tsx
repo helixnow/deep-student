@@ -20,7 +20,7 @@ import {
 } from '@dnd-kit/sortable';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ChevronRight, ChevronDown, Folder, FolderOpen, FileText } from 'lucide-react';
+import { CaretRight, CaretDown, Folder, FolderOpen, FileText } from '@phosphor-icons/react';
 
 // 树节点类型
 interface TreeNode {
@@ -111,9 +111,9 @@ function SortableTreeNode({
         {item.isFolder && (
           <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggle(); }} className="!p-0.5 !h-auto !w-auto hover:bg-[var(--interactive-hover)]" aria-label="toggle">
             {isExpanded ? (
-              <ChevronDown className="w-3 h-3" />
+              <CaretDown size={12} />
             ) : (
-              <ChevronRight className="w-3 h-3" />
+              <CaretRight size={12} />
             )}
           </NotionButton>
         )}
@@ -121,9 +121,9 @@ function SortableTreeNode({
         {/* 图标 */}
         <span className="flex-shrink-0">
           {item.isFolder ? (
-            isExpanded ? <FolderOpen className="w-4 h-4" /> : <Folder className="w-4 h-4" />
+            isExpanded ? <FolderOpen size={16} /> : <Folder size={16} />
           ) : (
-            <FileText className="w-4 h-4" />
+            <FileText size={16} />
           )}
         </span>
         
@@ -311,9 +311,9 @@ export function TreeWithDndKit({
           <div className="opacity-80 bg-accent/80 backdrop-blur px-2 py-1 rounded border border-primary shadow-lg">
             <div className="flex items-center gap-1">
               {items[String(activeId)].isFolder ? (
-                <Folder className="w-4 h-4" />
+                <Folder size={16} />
               ) : (
-                <FileText className="w-4 h-4" />
+                <FileText size={16} />
               )}
               <span className="text-sm">{items[String(activeId)].data?.title || ''}</span>
             </div>

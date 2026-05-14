@@ -4,7 +4,7 @@ import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody, 
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useNotes } from "../NotesContext";
 import { getErrorMessage } from "../../../utils/errorUtils";
-import { Trash2, RotateCcw, X } from "lucide-react";
+import { Trash, ArrowCounterClockwise, X } from "@phosphor-icons/react";
 import { format } from "date-fns";
 import { dstu } from "@/dstu";
 
@@ -107,7 +107,7 @@ export function TrashDialog() {
                     <NotionDialogHeader>
                         <div className="flex items-center justify-between">
                             <NotionDialogTitle className="flex items-center gap-2">
-                                <Trash2 className="h-5 w-5 text-destructive" />
+                                <Trash className="h-5 w-5 text-destructive" />
                                 {t('notes:trash.title')}
                             </NotionDialogTitle>
                             <div className="flex items-center gap-2">
@@ -131,7 +131,7 @@ export function TrashDialog() {
                             </div>
                         ) : items.length === 0 ? (
                             <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-                                <Trash2 className="h-12 w-12 mb-4 opacity-20" />
+                                <Trash className="h-12 w-12 mb-4 opacity-20" />
                                 <p>{t('notes:trash.empty_placeholder', 'Trash is empty')}</p>
                             </div>
                         ) : (
@@ -151,7 +151,7 @@ export function TrashDialog() {
                                                 onClick={() => handleRestore(item.id)}
                                                 title={t('notes:trash.restore', 'Restore')}
                                             >
-                                                <RotateCcw className="h-4 w-4 text-primary" />
+                                                <ArrowCounterClockwise className="h-4 w-4 text-primary" />
                                             </NotionButton>
                                             <NotionButton
                                                 variant="ghost"
@@ -172,7 +172,7 @@ export function TrashDialog() {
             <NotionAlertDialog
                 open={confirmState.open}
                 onOpenChange={(open) => setConfirmState(s => ({ ...s, open }))}
-                icon={<Trash2 className="h-5 w-5 text-red-500" />}
+                icon={<Trash className="h-5 w-5 text-red-500" />}
                 title={confirmState.type === 'empty' ? t('notes:trash.confirm_empty_title', 'Confirm Empty') : t('notes:trash.confirm_delete_title', 'Confirm Deletion')}
                 description={confirmState.type === 'empty' ? t('notes:trash.confirm_empty_desc', 'Are you sure you want to empty the trash?') : t('notes:trash.confirm_delete_desc', 'Are you sure you want to permanently delete this item?')}
                 confirmText={t('common:actions.confirm')}

@@ -24,22 +24,22 @@ import {
   Palette,
   BookOpen,
   Plus,
-  Edit,
-  AlertTriangle,
-  Search,
+  PencilSimple,
+  Warning,
+  MagnifyingGlass,
   FileText,
   User,
   Copy,
-  Trash2,
+  Trash,
   CheckCircle,
   X,
-  Settings,
-  Paintbrush,
+  Gear,
+  PaintBrush,
   Eye,
-  RefreshCw,
+  ArrowClockwise,
   Download,
   Upload,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import {
   UnifiedSidebar,
   UnifiedSidebarHeader,
@@ -350,7 +350,7 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({ onClose, onSelectTemp
               id="templateManagerOverwriteExisting"
               checked={overwriteExisting}
               onCheckedChange={(v) => setOverwriteExisting(Boolean(v))}
-            />
+/>
             <label htmlFor="templateManagerOverwriteExisting" className="text-sm select-none">
               {t('template.overwrite_existing_label')}
             </label>
@@ -361,7 +361,7 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({ onClose, onSelectTemp
               type="file"
               accept="application/json,.json"
               onChange={handleExternalFilesSelected}
-            />
+/>
             {selectedImportFile && (
               <div className="mt-1 text-xs text-muted-foreground dark:text-muted-foreground">
                 {t('template.file_selected_prefix')}
@@ -416,7 +416,7 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({ onClose, onSelectTemp
           onRefreshClick={handleForceRefresh}
           isRefreshing={isLoading}
           showCollapse={false}
-        />
+/>
         
         <UnifiedSidebarContent>
           {/* 导航项 */}
@@ -428,16 +428,16 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({ onClose, onSelectTemp
               icon={BookOpen}
               title={t('template.tab_browse')}
               description={t('template.total_templates', { count: filteredTemplates.length })}
-            />
+/>
             {editingTemplate && (
               <UnifiedSidebarItem
                 id="edit"
                 isSelected={activeTab === 'edit' || activeTab === 'create'}
                 onClick={() => setActiveTab(activeTab === 'create' ? 'create' : 'edit')}
-                icon={Edit}
+                icon={PencilSimple}
                 title={activeTab === 'create' ? t('template.tab_create') : t('template.tab_edit')}
                 description={editingTemplate.name}
-              />
+/>
             )}
           </div>
 
@@ -454,13 +454,13 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({ onClose, onSelectTemp
               onClick={handleImportBuiltinTemplates}
               icon={Download}
               title={t('anki:template_management.import_builtin')}
-            />
+/>
             <UnifiedSidebarItem
               id="import-external"
               onClick={onClickImportExternal}
               icon={Upload}
               title={t('anki:template_management.import_external')}
-            />
+/>
           </div>
 
           {/* 工具操作 */}
@@ -471,9 +471,9 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({ onClose, onSelectTemp
             <UnifiedSidebarItem
               id="check-status"
               onClick={handleCheckStatus}
-              icon={Search}
+              icon={MagnifyingGlass}
               title={t('anki:template_management.check')}
-            />
+/>
           </div>
         </UnifiedSidebarContent>
 
@@ -486,7 +486,7 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({ onClose, onSelectTemp
               onClick={onClose}
               className="w-full justify-start gap-2"
             >
-              <X className="h-4 w-4" />
+              <X size={16} />
               {t('template.close_button')}
             </NotionButton>
           </div>
@@ -501,7 +501,7 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({ onClose, onSelectTemp
         {error && (
           <div className="mx-4 mt-4 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 px-4 py-3 text-sm text-amber-800 dark:text-amber-200 flex items-center justify-between">
             <span className="flex items-center gap-2">
-              <AlertTriangle size={16} />
+              <Warning size={16} />
               {error}
             </span>
             <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setError(null)} className="text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100" aria-label="close">
@@ -530,7 +530,7 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({ onClose, onSelectTemp
                   showComplexityAnalysis={showComplexityAnalysis}
                   onToggleComplexityAnalysis={() => setShowComplexityAnalysis(!showComplexityAnalysis)}
                   isSmallScreen={isSmallScreen}
-                />
+/>
               </div>
             )}
 
@@ -555,7 +555,7 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({ onClose, onSelectTemp
                         setActiveTab('browse');
                         setEditingTemplate(null);
                       }}
-                    />
+/>
                   </ErrorBoundary>
                 ) : (
                   <TemplateEditor
@@ -576,7 +576,7 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({ onClose, onSelectTemp
                       setActiveTab('browse');
                       setEditingTemplate(null);
                     }}
-                  />
+/>
                 )}
               </div>
             )}
@@ -602,7 +602,7 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({ onClose, onSelectTemp
                         setActiveTab('browse');
                         setEditingTemplate(null);
                       }}
-                    />
+/>
                   </ErrorBoundary>
                 ) : (
                   <TemplateEditor
@@ -623,7 +623,7 @@ const TemplateManager: React.FC<TemplateManagerProps> = ({ onClose, onSelectTemp
                       setActiveTab('browse');
                       setEditingTemplate(null);
                     }}
-                  />
+/>
                 )}
               </div>
             )}
@@ -717,9 +717,9 @@ const TemplateBrowser: React.FC<TemplateBrowserProps> = ({
             value={searchTerm}
             onChange={(e) => onSearchChange(e.target.value)}
             className="search-input"
-          />
+/>
           <span className="search-icon">
-            <Search size={16} />
+            <MagnifyingGlass size={16} />
           </span>
         </div>
         <div className="toolbar-actions">
@@ -731,7 +731,7 @@ const TemplateBrowser: React.FC<TemplateBrowserProps> = ({
               onClick={onToggleComplexityAnalysis}
               title={t('template.complexity_analysis')}
             >
-              <Settings size={16} />
+              <Gear size={16} />
               {t('template.analyze_complexity')}
             </NotionButton>
           )}
@@ -747,7 +747,7 @@ const TemplateBrowser: React.FC<TemplateBrowserProps> = ({
           report={complexityReport}
           templateName={selectedTemplate.name}
           onClose={onToggleComplexityAnalysis}
-        />
+/>
       )}
 
       {/* 模板网格 */}
@@ -768,7 +768,7 @@ const TemplateBrowser: React.FC<TemplateBrowserProps> = ({
               onDuplicate={() => onDuplicateTemplate(template)}
               onDelete={() => onDeleteTemplate(template)}
               isSmallScreen={isSmallScreen}
-            />
+/>
           ))}
         </div>
       )}
@@ -880,7 +880,7 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
             <IframePreview
               htmlContent={renderCardPreview(cardTemplate.front_template, cardTemplate, undefined, false)}
               cssContent={cardTemplate.css_style}
-            />
+/>
           </div>
         </div>
         <div className="preview-back">
@@ -889,7 +889,7 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
             <IframePreview
               htmlContent={renderCardPreview(cardTemplate.back_template, cardTemplate, undefined, true)}
               cssContent={cardTemplate.css_style}
-            />
+/>
           </div>
         </div>
       </div>
@@ -931,13 +931,13 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
         </NotionButton>
         <div className="action-menu">
           <NotionButton variant="ghost" size="icon" iconOnly onClick={onEdit} className="btn-action" aria-label="edit">
-            <Edit size={16} />
+            <PencilSimple size={16} />
           </NotionButton>
           <NotionButton variant="ghost" size="icon" iconOnly onClick={onDuplicate} className="btn-action" aria-label="duplicate">
             <Copy size={16} />
           </NotionButton>
           <NotionButton variant="ghost" size="icon" iconOnly onClick={onDelete} className="btn-action danger" aria-label="delete">
-            <Trash2 size={16} />
+            <Trash size={16} />
           </NotionButton>
         </div>
       </div>
@@ -1044,11 +1044,11 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
           {t('template.editor_tab_templates')}
         </NotionButton>
         <NotionButton variant="ghost" size="sm" className={`editor-tab ${activeEditorTab === 'styles' ? 'active' : ''}`} onClick={() => setActiveEditorTab('styles')} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <Paintbrush size={16} />
+          <PaintBrush size={16} />
           {t('template.editor_tab_styles')}
         </NotionButton>
         <NotionButton variant="ghost" size="sm" className={`editor-tab ${activeEditorTab === 'advanced' ? 'active' : ''}`} onClick={() => setActiveEditorTab('advanced')} style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-          <Settings size={16} />
+          <Gear size={16} />
           {t('template.editor_tab_advanced')}
         </NotionButton>
       </div>
@@ -1067,7 +1067,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
                   required
                   className="form-input"
                   placeholder={t('template.form_name_placeholder')}
-                />
+/>
               </div>
 
               <div className="form-group">
@@ -1078,7 +1078,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
                   onChange={(e) => setFormData({...formData, author: e.target.value})}
                   className="form-input"
                   placeholder={t('template.form_author_placeholder')}
-                />
+/>
               </div>
 
               <div className="form-group full-width">
@@ -1089,7 +1089,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
                   className="form-textarea"
                   rows={3}
                   placeholder={t('template.form_description_placeholder')}
-                />
+/>
               </div>
 
               <div className="form-group">
@@ -1100,7 +1100,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
                   onChange={(e) => setFormData({...formData, note_type: e.target.value})}
                   className="form-input"
                   placeholder={t('template.form_note_type_placeholder')}
-                />
+/>
               </div>
 
               <div className="form-group">
@@ -1112,7 +1112,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
                   required
                   className="form-input"
                   placeholder={t('template.form_fields_placeholder')}
-                />
+/>
                 <small className="form-help">{t('template.form_fields_help')}</small>
               </div>
 
@@ -1125,7 +1125,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
                   required
                   className="form-input"
                   placeholder={t('template.form_preview_front_placeholder')}
-                />
+/>
               </div>
 
               <div className="form-group">
@@ -1137,7 +1137,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
                   required
                   className="form-input"
                   placeholder={t('template.form_preview_back_placeholder')}
-                />
+/>
               </div>
             </div>
           </div>
@@ -1156,7 +1156,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
                   className="code-textarea"
                   rows={8}
                   placeholder="<div class=&quot;card&quot;>&#123;&#123;Front&#125;&#125;</div>"
-                />
+/>
                 <small className="form-help">{t('template.form_template_help')}</small>
               </div>
 
@@ -1169,7 +1169,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
                   className="code-textarea"
                   rows={8}
                   placeholder="<div class=&quot;card&quot;>&#123;&#123;Front&#125;&#125;<hr>&#123;&#123;Back&#125;&#125;</div>"
-                />
+/>
               </div>
             </div>
           </div>
@@ -1186,7 +1186,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
                 className="css-textarea"
                 rows={12}
                 placeholder=".card { padding: 20px; background: white; border-radius: 8px; }"
-              />
+/>
               <small className="form-help">{t('template.form_css_help')}</small>
             </div>
           </div>
@@ -1204,7 +1204,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
                 className="prompt-textarea"
                 rows={8}
                 placeholder={t('template.form_generation_prompt_placeholder')}
-              />
+/>
               <small className="form-help">{t('template.form_generation_prompt_help')}</small>
 
               {/* 字段提取规则高级编辑 */}
@@ -1215,7 +1215,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
                     <Switch
                       checked={isAdvancedMode}
                       onCheckedChange={(checked) => setIsAdvancedMode(checked)}
-                    />
+/>
                     {t('template.advanced_mode')}
                   </label>
                 </div>
@@ -1226,7 +1226,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
                       fields={formData.fields.split(',').map(f => f.trim()).filter(f => f)}
                       rules={fieldExtractionRules}
                       onChange={setFieldExtractionRules}
-                    />
+/>
                     
                     {/* 可选的JSON编辑模式 */}
                     <div style={{ marginTop: '16px', textAlign: 'right' }}>
@@ -1267,7 +1267,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
                             "description": "Card front content"
                           }
                         }, null, 2)}
-                      />
+/>
                       <small className="form-help">{t('template.field_extraction_json_help')}</small>
                     </>
                   ) : (
@@ -1364,7 +1364,7 @@ const ComplexityAnalysisPanel: React.FC<ComplexityAnalysisPanelProps> = ({
             </div>
             {report.recommended_downgrade && (
               <div className="downgrade-warning">
-                <AlertTriangle size={16} />
+                <Warning size={16} />
                 {t('template.recommend_simplify')}
               </div>
             )}

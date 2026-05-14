@@ -364,8 +364,7 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
           <NotionButton
             variant="ghost"
             size="icon"
-            className="h-8 w-8"
-            onClick={handleRefresh}
+ className="w-8 h-8"             onClick={handleRefresh}
           >
             <ArrowsClockwise size={16} />
           </NotionButton>
@@ -379,19 +378,19 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
           label={t('heatmapChart.totalQuestions')}
           value={stats.totalCount}
           variant="total"
-        />
+/>
         <StatsCard
           icon={<CalendarBlank size={16} />}
           label={t('heatmapChart.activeDays')}
           value={stats.activeDays}
           variant="active"
-        />
+/>
         <StatsCard
           icon={<Fire size={16} />}
           label={t('heatmapChart.streak')}
           value={t('heatmapChart.streakDays', { count: stats.currentStreak })}
           variant="streak"
-        />
+/>
       </div>
 
       {/* 热力图 — overflow-hidden + direction:rtl 保留最新日期，截断最旧 */}
@@ -436,11 +435,11 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
                     isToday && 'stroke-emerald-500 stroke-2'
                   )}
                   onClick={() => onDateClick?.(dateStr, activityData)}
-                />
+/>
               </CommonTooltip>
             );
           }}
-        />
+/>
         </div>
       </div>
 
@@ -451,9 +450,9 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
           {panelColors.map((color, index) => (
             <div
               key={index}
-              className="w-3 h-3 rounded-sm transition-transform hover:scale-125"
+ className="w-3 h-3 rounded-sm transition-transform hover:scale-125"
               style={{ backgroundColor: color }}
-            />
+/>
           ))}
         </div>
         <span className="text-xs text-muted-foreground">{t('heatmapChart.legendMore')}</span>

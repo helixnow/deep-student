@@ -1,6 +1,6 @@
 import React, { useState, useContext } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ChevronRight } from 'lucide-react';
+import { CaretRight } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { getSidebarStudyRowClassName } from '@/features/chat/pages/sessionSidebarStyles';
 import { UnifiedSidebarContext } from './UnifiedSidebar';
@@ -151,12 +151,12 @@ export const UnifiedSidebarSection: React.FC<UnifiedSidebarSectionProps> = ({
         <div className="flex items-center gap-1">
           {actions}
           {collapsible && (
-            <ChevronRight
+            <CaretRight
               className={cn(
                 'w-3 h-3 text-muted-foreground/50 transition-transform duration-200',
                 isOpen && 'rotate-90'
               )}
-            />
+/>
           )}
         </div>
       </div>

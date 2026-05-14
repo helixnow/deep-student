@@ -16,16 +16,16 @@ import { convertFileSrc } from '@tauri-apps/api/core';
 import { invoke } from '@tauri-apps/api/core';
 import { getErrorMessage } from '../../../utils/errorUtils';
 import {
-  AlertCircle,
-  FileSpreadsheet,
-  ExternalLink,
-  ChevronDown,
-  ChevronRight,
+  WarningCircle,
+  Table,
+  ArrowSquareOut,
+  CaretDown,
+  CaretRight,
   FileText,
   Image as ImageIcon,
   Tag,
   Hash,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import type {
   ExamPreviewProps,
   ExamPreviewData,
@@ -101,9 +101,9 @@ const QuestionCard: React.FC<QuestionCardProps> = ({
       {/* 卡片头部 */}
       <NotionButton variant="ghost" size="sm" onClick={onToggle} className={cn('!w-full !justify-start !px-3 !py-2 !h-auto !text-left', 'hover:bg-[var(--interactive-hover)] !rounded-t-lg', !isExpanded && '!rounded-b-lg')}>
         {isExpanded ? (
-          <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <CaretDown className="h-4 w-4 shrink-0 text-muted-foreground" />
         ) : (
-          <ChevronRight className="h-4 w-4 shrink-0 text-muted-foreground" />
+          <CaretRight className="h-4 w-4 shrink-0 text-muted-foreground" />
         )}
         <Hash className="h-3.5 w-3.5 shrink-0 text-primary" />
         <span className="font-medium text-sm text-foreground">
@@ -437,7 +437,7 @@ export const ExamPreview: React.FC<ExamPreviewProps> = ({
           className
         )}
       >
-        <AlertCircle className="h-10 w-10 text-destructive" />
+        <WarningCircle className="h-10 w-10 text-destructive" />
         <p className="text-sm text-muted-foreground">{error || loadError}</p>
       </div>
     );
@@ -452,7 +452,7 @@ export const ExamPreview: React.FC<ExamPreviewProps> = ({
           className
         )}
       >
-        <FileSpreadsheet className="h-10 w-10 text-muted-foreground/50" />
+        <Table className="h-10 w-10 text-muted-foreground/50" />
         <p className="text-sm text-muted-foreground">
           {t('notes:previewPanel.exam.noData')}
         </p>
@@ -466,7 +466,7 @@ export const ExamPreview: React.FC<ExamPreviewProps> = ({
         {/* 头部信息 */}
         <div className="flex items-start gap-3">
           <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-green-50 dark:bg-green-950/30">
-            <FileSpreadsheet className="h-5 w-5 text-green-500 dark:text-green-400" />
+            <Table className="h-5 w-5 text-green-500 dark:text-green-400" />
           </div>
           <div className="min-w-0 flex-1">
             <h3 className="text-sm font-medium text-foreground line-clamp-2">
@@ -505,7 +505,7 @@ export const ExamPreview: React.FC<ExamPreviewProps> = ({
             onClick={() => onViewDetail(sessionId)}
             className="w-full gap-2"
           >
-            <ExternalLink className="h-4 w-4" />
+            <ArrowSquareOut className="h-4 w-4" />
             {t('notes:previewPanel.exam.viewDetail')}
           </NotionButton>
         )}

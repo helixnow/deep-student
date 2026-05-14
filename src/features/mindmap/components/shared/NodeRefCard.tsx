@@ -7,7 +7,7 @@
 
 import React, { useCallback } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { X } from 'lucide-react';
+import { X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { getResourceIcon, type ResourceIconType } from '@/features/learning-hub/icons';
 import type { MindMapNodeRef } from '../../types';

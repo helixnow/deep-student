@@ -1,6 +1,6 @@
 import React, { useCallback, useRef, useState, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Search, X, Filter, Tag as TagIcon } from "lucide-react";
+import { MagnifyingGlass, X, Funnel, Tag as TagIcon } from "@phosphor-icons/react";
 import { Input } from "@/components/ui/shad/Input";
 import { NotionButton } from '@/components/ui/NotionButton';
 import {
@@ -103,7 +103,7 @@ export const NotesSidebarSearch: React.FC = () => {
         <div className="space-y-2">
             {/* 搜索输入框 */}
             <div className="relative px-0 group">
-                <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50 pointer-events-none" />
+                <MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50 pointer-events-none" />
                 <Input
                     ref={inputRef}
                     className={`h-8 pl-8 pr-8 text-xs bg-background/50 border-transparent hover:bg-background focus:bg-background focus:border-border/50 focus:ring-0 transition-all placeholder:text-muted-foreground/40 shadow-sm ${highlight ? 'ring-2 ring-primary/60 ring-offset-1' : ''}`}
@@ -122,7 +122,7 @@ export const NotesSidebarSearch: React.FC = () => {
                                 className={`h-6 w-6 ${selectedTags.length > 0 ? 'text-primary' : 'text-muted-foreground hover:text-foreground'}`}
                                 title={t('notes:sidebar.search.filter_by_tag', 'Filter by tags')}
                             >
-                                <Filter className="h-3.5 w-3.5" />
+                                <Funnel className="h-3.5 w-3.5" />
                                 {selectedTags.length > 0 && (
                                     <Badge variant="secondary" className="h-4 px-1 text-[10px]">
                                         {selectedTags.length}

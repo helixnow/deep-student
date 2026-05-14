@@ -14,7 +14,7 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { LinkIcon, BookOpen, ChevronDown } from 'lucide-react';
+import { LinkSimple, BookOpen, CaretDown } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import {
     AppMenu,
@@ -99,13 +99,13 @@ export const AddReferenceDropdown: React.FC<AddReferenceDropdownProps> = ({
                     disabled={disabled}
                     title={t('notes:reference.add_reference')}
                 >
-                    <LinkIcon className="h-4 w-4" />
+                    <LinkSimple className="h-4 w-4" />
                     {!compact && (
                         <>
                             <span className="text-xs hidden sm:inline">
                                 {t('notes:reference.add_reference')}
                             </span>
-                            <ChevronDown className="h-3 w-3 opacity-50" />
+                            <CaretDown className="h-3 w-3 opacity-50" />
                         </>
                     )}
                 </NotionButton>

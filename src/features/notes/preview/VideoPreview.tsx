@@ -16,19 +16,19 @@ import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Slider } from '@/components/ui/shad/Slider';
 import {
-  AlertCircle,
-  Video,
+  WarningCircle,
+  VideoCamera,
   Play,
   Pause,
-  Volume2,
-  VolumeX,
-  Volume1,
-  Maximize,
-  Minimize,
+  SpeakerHigh,
+  SpeakerX,
+  SpeakerLow,
+  ArrowsOut,
+  ArrowsIn,
   SkipBack,
   SkipForward,
-  Loader2,
-} from 'lucide-react';
+  CircleNotch,
+} from '@phosphor-icons/react';
 import type { VideoPreviewProps } from './types';
 import { formatMediaTime as formatTime } from '@/features/learning-hub/apps/views/previewUtils';
 
@@ -328,7 +328,7 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
           className
         )}
       >
-        <AlertCircle className="h-10 w-10 text-destructive" />
+        <WarningCircle className="h-10 w-10 text-destructive" />
         <p className="text-sm text-muted-foreground">{error}</p>
       </div>
     );
@@ -343,7 +343,7 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
           className
         )}
       >
-        <Video className="h-10 w-10 text-muted-foreground/50" />
+        <VideoCamera className="h-10 w-10 text-muted-foreground/50" />
         <p className="text-sm text-muted-foreground">
           {t('notes:previewPanel.video.noVideo')}
         </p>
@@ -352,7 +352,7 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
   }
 
   // 获取音量图标
-  const VolumeIcon = isMuted || volume === 0 ? VolumeX : volume < 0.5 ? Volume1 : Volume2;
+  const VolumeIcon = isMuted || volume === 0 ? SpeakerX : volume < 0.5 ? SpeakerLow : SpeakerHigh;
 
   return (
     <div
@@ -387,7 +387,7 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
       {/* 视频加载失败 */}
       {videoError && (
         <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 bg-black/80">
-          <AlertCircle className="h-12 w-12 text-destructive" />
+          <WarningCircle className="h-12 w-12 text-destructive" />
           <p className="text-sm text-white">
             {t('notes:previewPanel.video.loadError')}
           </p>
@@ -397,7 +397,7 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
       {/* 缓冲指示器 */}
       {isBuffering && !videoError && (
         <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-          <Loader2 className="h-12 w-12 animate-spin text-white" />
+          <CircleNotch className="h-12 w-12 animate-spin text-white" />
         </div>
       )}
 
@@ -509,9 +509,9 @@ export const VideoPreview: React.FC<VideoPreviewProps> = ({
                 onClick={toggleFullscreen}
               >
                 {isFullscreen ? (
-                  <Minimize className="h-4 w-4" />
+                  <ArrowsIn size={16} />
                 ) : (
-                  <Maximize className="h-4 w-4" />
+                  <ArrowsOut size={16} />
                 )}
               </NotionButton>
             </div>

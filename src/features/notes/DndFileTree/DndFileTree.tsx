@@ -23,7 +23,7 @@ import {
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
 import { useVirtualizer } from '@tanstack/react-virtual';
-import { Folder, FileText, Star } from 'lucide-react';
+import { Folder, FileText, Star } from '@phosphor-icons/react';
 import { ReferenceIcon } from './ReferenceIcon';
 import { TreeProvider } from './TreeContext';
 import { TreeNode } from './TreeNode';

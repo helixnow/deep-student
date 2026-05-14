@@ -139,7 +139,7 @@ const BackupListItem: React.FC<{
         </div>
         <div className="mt-1.5 flex items-center gap-4 text-xs text-muted-foreground">
           <span className="flex items-center gap-1">
-            <Clock className="h-3 w-3 text-muted-foreground" />
+            <Clock size={12} className="text-muted-foreground" />
             {new Date(backup.created_at).toLocaleString()}
           </span>
           <span>{formatFileSize(backup.size)}</span>
@@ -207,7 +207,7 @@ const StatCard = ({
       {/* 顶部：图标 + 标题 + 趋势 */}
       <div className="flex items-center gap-2 mb-3">
         <div>
-          <Icon className="h-4 w-4 text-muted-foreground" />
+          <Icon size={16} className="text-muted-foreground" />
         </div>
         <span className="text-sm text-muted-foreground flex-1">{title}</span>
         {trend !== undefined && trend !== 0 && (
@@ -1640,7 +1640,7 @@ ${resolvedPath}`);
             onRefresh={loadBackupList}
             isRefreshing={isLoadingBackups}
             refreshingText={t('data:header.refreshing_text')}
-          />
+/>
         )}
         
         <div className="data-management-content">
@@ -1737,7 +1737,7 @@ ${resolvedPath}`);
                     checked={exportBackupTiers.includes(option.id)}
                     onCheckedChange={() => toggleExportTier(option.id)}
                     disabled={isExporting}
-                  />
+/>
                   <div className="min-w-0">
                     <p className="text-sm font-medium">{option.label}</p>
                     <p className="text-xs text-muted-foreground">{option.desc}</p>
@@ -1774,7 +1774,7 @@ ${resolvedPath}`);
                           ? exportJob.progress
                           : 100
                       }
-                    />
+/>
                     {exportJob.message && (
                       <p className="text-xs text-muted-foreground">{exportJob.message}</p>
                     )}
@@ -1821,7 +1821,7 @@ ${resolvedPath}`);
             <CardFooter>
               <NotionButton variant="ghost" size="sm" onClick={handleImportZipBackup} disabled={isExporting}>
                 {isExporting && restoreProgress ? (
-                  <><SpinnerGap className="mr-1.5 h-4 w-4 animate-spin" />{t('data:governance.restore_in_progress')}</>
+                  <><SpinnerGap size={16} className="mr-1.5 animate-spin" />{t('data:governance.restore_in_progress')}</>
                 ) : (
                   t('data:actions.import_button')
                 )}
@@ -1864,7 +1864,7 @@ ${resolvedPath}`);
                   window.dispatchEvent(event);
                 }}
               >
-                <Upload className="mr-1.5 h-4 w-4" />
+                <Upload size={16} className="mr-1.5" />
                 {t('chat_host:actions.import_chat')}
               </NotionButton>
             </CardFooter>
@@ -1891,7 +1891,7 @@ ${resolvedPath}`);
                   window.dispatchEvent(event);
                 }}
               >
-                <Cloud className="mr-1.5 h-4 w-4" />
+                <Cloud size={16} className="mr-1.5" />
                 {t('common:actions.open')}
               </NotionButton>
             </CardFooter>
@@ -1931,7 +1931,7 @@ ${resolvedPath}`);
               {/* 测试结果 */}
               {backupTestResult.status === 'success' && (
                   <Alert className="mb-4 border-success/30 bg-success/10">
-                    <CheckCircle className="h-4 w-4 text-success" />
+                    <CheckCircle size={16} className="text-success" />
                     <AlertDescription className="text-success">
                     {t('data:backup_test.result_passed', { score: backupTestResult.integrityScore?.toFixed(1), duration: ((backupTestResult.duration || 0) / 1000).toFixed(2) })}
                   </AlertDescription>
@@ -1940,7 +1940,7 @@ ${resolvedPath}`);
 
               {backupTestResult.status === 'failed' && (
                 <Alert variant="destructive" className="mb-4">
-                  <XCircle className="h-4 w-4" />
+                  <XCircle size={16} />
                   <AlertDescription>
                     {t('data:backup_test.result_failed_detail', { error: backupTestResult.error })}
                   </AlertDescription>
@@ -1967,7 +1967,7 @@ ${resolvedPath}`);
             <CardFooter className="flex gap-2">
               {backupTestRunning ? (
                 <NotionButton variant="danger" size="sm" onClick={stopBackupTest}>
-                  <Square className="mr-1.5 h-4 w-4" />
+                  <Square size={16} className="mr-1.5" />
                   {t('data:backup_test.stop_button')}
                 </NotionButton>
               ) : (
@@ -1977,12 +1977,12 @@ ${resolvedPath}`);
                       size="sm"
                       onClick={runBackupSystemTest}
                     >
-                    <Play className="mr-1.5 h-4 w-4" />
+                    <Play size={16} className="mr-1.5" />
                     {t('data:backup_test.run_button')}
                   </NotionButton>
                   {backupTestResult.status !== 'idle' && (
                     <NotionButton variant="ghost" size="sm" onClick={resetBackupTest}>
-                      <ArrowCounterClockwise className="mr-1.5 h-4 w-4" />
+                      <ArrowCounterClockwise size={16} className="mr-1.5" />
                       {t('data:backup_test.reset_button')}
                     </NotionButton>
                   )}
@@ -2043,7 +2043,7 @@ ${resolvedPath}`);
                           backup={backup}
                           onRestore={handleImportFromList}
                           onSave={handleSaveBackup}
-                        />
+/>
                       ))
                     )}
                   </CustomScrollArea>
@@ -2217,7 +2217,7 @@ ${resolvedPath}`);
                     value={confirmText}
                     onChange={handleConfirmTextChange}
                     placeholder={t('data:clear_dialog.step2_placeholder')}
-                  />
+/>
                 </NotionDialogBody>
                 <NotionDialogFooter>
                   <NotionButton variant="ghost" size="sm" onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step2_cancel')}</NotionButton>

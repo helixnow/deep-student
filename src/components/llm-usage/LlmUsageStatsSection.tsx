@@ -209,7 +209,7 @@ const CombinedTrend: React.FC<CombinedTrendProps> = ({ tokenData, sessionData })
               axisLine={false}
               tickLine={false}
               dy={10}
-            />
+/>
             {/* 左侧 Y 轴：Token 数 */}
             <YAxis
               yAxisId="tokens"
@@ -217,7 +217,7 @@ const CombinedTrend: React.FC<CombinedTrendProps> = ({ tokenData, sessionData })
               axisLine={false}
               tickLine={false}
               tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}
-            />
+/>
             {/* 右侧 Y 轴：会话数 */}
             <YAxis
               yAxisId="sessions"
@@ -225,7 +225,7 @@ const CombinedTrend: React.FC<CombinedTrendProps> = ({ tokenData, sessionData })
               tick={{ fill: 'hsl(160, 60%, 50%)', fontSize: 10, opacity: 0.8 }}
               axisLine={false}
               tickLine={false}
-            />
+/>
             <Tooltip
               contentStyle={{
                 background: 'hsl(var(--popover))',
@@ -244,7 +244,7 @@ const CombinedTrend: React.FC<CombinedTrendProps> = ({ tokenData, sessionData })
                 return [value, t('trends.title')];
               }}
               cursor={{ stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1, strokeDasharray: '3 3', opacity: 0.3 }}
-            />
+/>
             <Legend
               verticalAlign="top"
               align="right"
@@ -252,7 +252,7 @@ const CombinedTrend: React.FC<CombinedTrendProps> = ({ tokenData, sessionData })
               iconSize={8}
               wrapperStyle={{ fontSize: '11px', paddingBottom: '8px' }}
               formatter={(value) => <span className="text-muted-foreground/80">{value}</span>}
-            />
+/>
             <Area
               yAxisId="tokens"
               type="monotone"
@@ -263,7 +263,7 @@ const CombinedTrend: React.FC<CombinedTrendProps> = ({ tokenData, sessionData })
               fill="url(#tokenTrendGradient)"
               activeDot={{ r: 4, strokeWidth: 0, fill: 'hsl(var(--primary))' }}
               isAnimationActive={false}
-            />
+/>
             <Area
               yAxisId="sessions"
               type="monotone"
@@ -274,7 +274,7 @@ const CombinedTrend: React.FC<CombinedTrendProps> = ({ tokenData, sessionData })
               fill="url(#sessionTrendGradient)"
               activeDot={{ r: 4, strokeWidth: 0, fill: 'hsl(160, 60%, 50%)' }}
               isAnimationActive={false}
-            />
+/>
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -376,7 +376,7 @@ const ModelDistribution: React.FC<ModelDistributionProps> = ({ data }) => {
                   `${value.toLocaleString()} (${pieData.find(d => d.name === name)?.percent ?? '-'}%)`, 
                   name
                 ]}
-              />
+/>
             </PieChart>
           </ResponsiveContainer>
         </div>
@@ -388,7 +388,7 @@ const ModelDistribution: React.FC<ModelDistributionProps> = ({ data }) => {
                 <div
                   className="w-2 h-2 rounded-full shrink-0 opacity-80"
                   style={{ backgroundColor: item.fill }}
-                />
+/>
                 <span className="text-xs font-medium text-foreground/80 truncate" title={item.name}>
                   {item.name}
                 </span>
@@ -478,7 +478,7 @@ const CallerDistribution: React.FC<CallerDistributionProps> = ({ data }) => {
                   `${value.toLocaleString()} (${pieData.find(d => d.name === name)?.percent ?? '-'}%)`, 
                   name
                 ]}
-              />
+/>
             </PieChart>
           </ResponsiveContainer>
         </div>
@@ -490,7 +490,7 @@ const CallerDistribution: React.FC<CallerDistributionProps> = ({ data }) => {
                 <div
                   className="w-2 h-2 rounded-full shrink-0 opacity-80"
                   style={{ backgroundColor: item.fill }}
-                />
+/>
                 <span className="text-xs font-medium text-foreground/80 truncate" title={item.name}>
                   {item.name}
                 </span>

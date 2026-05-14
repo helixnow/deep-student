@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Edit2, Copy, Trash2, Search, FileText, Plus,
-  Edit, AlertTriangle, X, Lightbulb, User,
-  Target, Settings, Palette, Brush, Upload, Download,
-  RefreshCw, Loader2, ArrowLeft, LayoutGrid, List, Eye, BookOpen,
-  Code, Database, ChevronRight
-} from 'lucide-react';
+  PencilSimple, Copy, Trash, MagnifyingGlass, FileText, Plus,
+  PencilSimple as EditIcon, Warning, X, Lightbulb, User,
+  Target, Gear, Palette, PaintBrush, Upload, Download,
+  ArrowClockwise, CircleNotch, ArrowLeft, SquaresFour, List, Eye, BookOpen,
+  Code, Database, CaretRight
+} from '@phosphor-icons/react';
 import { unifiedAlert, unifiedConfirm } from '@/utils/unifiedDialogs';
 import {
   UnifiedSidebar,
@@ -96,7 +96,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
         <NotionButton variant="ghost" size="sm" onClick={() => onBackToAnki?.()} className="hover:text-primary !p-0 !h-auto truncate max-w-[100px]">
           {tAnki('page_title')}
         </NotionButton>
-        <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+        <CaretRight size={16} className="flex-shrink-0 text-muted-foreground" />
         <span className="truncate max-w-[120px]">
           {t('manager_title')}
         </span>
@@ -589,7 +589,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
           onRefreshClick={loadTemplates}
           isRefreshing={isLoading}
           showCollapse={true}
-        />
+/>
         
         <UnifiedSidebarContent>
           {/* 编辑模式下显示返回按钮 */}
@@ -605,7 +605,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                 }}
                 icon={ArrowLeft}
                 title={t('back_to_browse')}
-              />
+/>
             </div>
           )}
 
@@ -619,7 +619,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                 icon={BookOpen}
                 title={t('tab_browse')}
                 description={t('total_templates', { count: filteredTemplates.length })}
-              />
+/>
             </div>
           )}
 
@@ -636,35 +636,35 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                   onClick={() => setEditorTab('basic')}
                   icon={FileText}
                   title={t('basic_info')}
-                />
+/>
                 <UnifiedSidebarItem
                   id="editor-templates"
                   isSelected={editorTab === 'templates' || editorTab === 'styles'}
                   onClick={() => setEditorTab('templates')}
                   icon={Code}
                   title={t('template_code')}
-                />
+/>
                 <UnifiedSidebarItem
                   id="editor-data"
                   isSelected={editorTab === 'data'}
                   onClick={() => setEditorTab('data')}
                   icon={Database}
                   title={t('preview_data')}
-                />
+/>
                 <UnifiedSidebarItem
                   id="editor-rules"
                   isSelected={editorTab === 'rules'}
                   onClick={() => setEditorTab('rules')}
-                  icon={Settings}
+                  icon={Gear}
                   title={t('extraction_rules')}
-                />
+/>
                 <UnifiedSidebarItem
                   id="editor-advanced"
                   isSelected={editorTab === 'advanced'}
                   onClick={() => setEditorTab('advanced')}
-                  icon={Settings}
+                  icon={Gear}
                   title={t('advanced_settings')}
-                />
+/>
               </div>
             </>
           )}
@@ -681,19 +681,19 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                 onClick={handleImportBuiltinTemplates}
                 icon={Download}
                 title={isImporting ? t('importing') : t('import_builtin_templates')}
-              />
+/>
               <UnifiedSidebarItem
                 id="import-external"
                 onClick={handleImportExternalClick}
                 icon={Upload}
                 title={t('import_external_templates')}
-              />
+/>
               <UnifiedSidebarItem
                 id="export"
                 onClick={handleOpenBatchExportDialog}
                 icon={Download}
                 title={t('export_templates_sidebar')}
-              />
+/>
             </div>
           )}
 
@@ -710,7 +710,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                   onClick={() => setViewMode('grid')}
                   className={viewMode === 'grid' ? 'bg-[color:var(--button-utility-surface)] text-foreground' : ''}
                 >
-                  <LayoutGrid className="h-4 w-4" />
+                  <SquaresFour size={16} />
                 </NotionButton>
                 <NotionButton
                   variant="nav"
@@ -718,7 +718,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                   onClick={() => setViewMode('list')}
                   className={viewMode === 'list' ? 'bg-[color:var(--button-utility-surface)] text-foreground' : ''}
                 >
-                  <List className="h-4 w-4" />
+                  <List size={16} />
                 </NotionButton>
               </div>
             </div>
@@ -737,7 +737,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
               }}
               className="w-full justify-start gap-2"
             >
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft size={16} />
               {isSelectingMode ? t('back_button') : t('back_to_anki_button')}
             </NotionButton>
           </div>
@@ -751,7 +751,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
         {error && (
           <div className="study-shell-panel mx-4 mt-4 border-[color:var(--button-danger-border)] bg-[color:var(--button-danger-surface)] px-4 py-3 text-sm text-[color:var(--button-danger-foreground)] flex items-center justify-between">
             <span className="flex items-center gap-2">
-              <AlertTriangle size={16} />
+              <Warning size={16} />
               {error}
             </span>
             <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setError(null)} className="text-[color:var(--button-danger-foreground)] hover:text-[color:var(--button-danger-foreground)]" aria-label="close">
@@ -788,7 +788,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                   setEditingTemplate(null);
                   setEditorTab('basic');
                 }}
-              />
+/>
             )}
             {activeTab === 'edit' && editingTemplate && (
               <MinimalTemplateEditor
@@ -820,7 +820,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                   setEditingTemplate(null);
                   setEditorTab('basic');
                 }}
-              />
+/>
             )}
           </div>
         ) : (
@@ -847,7 +847,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
               onExportTemplate={handleExportTemplate}
               viewMode={viewMode}
               isSmallScreen={isSmallScreen}
-            />
+/>
           </div>
         )}
 
@@ -876,7 +876,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                 setEditingTemplate(null);
                 setEditorTab('basic');
               }}
-            />
+/>
           </div>
         )}
 
@@ -910,7 +910,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                 setEditingTemplate(null);
                 setEditorTab('basic');
               }}
-            />
+/>
           </div>
         )}
         </CustomScrollArea>
@@ -1012,7 +1012,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
     >
       <NotionDialogHeader>
         <NotionDialogTitle>
-          <Download className="h-4 w-4 mr-2 inline" /> {t('export_templates_sidebar')}
+          <Download size={16} className="mr-2 inline" /> {t('export_templates_sidebar')}
         </NotionDialogTitle>
         <NotionDialogDescription>
           {t('export_dialog_desc')}
@@ -1031,7 +1031,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
               checked={batchExportSelection.has(template.id)}
               onCheckedChange={(checked) => handleToggleBatchExportSelection(template.id, checked === true)}
               disabled={isExporting}
-            />
+/>
             <div className="flex flex-col gap-1">
               <span className="text-sm font-semibold text-foreground">{template.name}</span>
               <span className="text-xs text-muted-foreground line-clamp-2">{template.description}</span>
@@ -1139,7 +1139,7 @@ const TemplateBrowser: React.FC<TemplateBrowserProps> = ({
               renderPreview={renderPreview}
               onExportTemplate={() => onExportTemplate(template)}
               viewMode={viewMode}
-            />
+/>
           ))}
         </div>
       ) : (
@@ -1161,7 +1161,7 @@ const TemplateBrowser: React.FC<TemplateBrowserProps> = ({
                 renderPreview={renderPreview}
                 onExportTemplate={() => onExportTemplate(template)}
                 viewMode={viewMode}
-              />
+/>
             ))}
           </div>
           <div className="masonry-column">
@@ -1181,7 +1181,7 @@ const TemplateBrowser: React.FC<TemplateBrowserProps> = ({
                 renderPreview={renderPreview}
                 onExportTemplate={() => onExportTemplate(template)}
                 viewMode={viewMode}
-              />
+/>
             ))}
           </div>
         </div>
@@ -1259,7 +1259,7 @@ const renderActions = () => (
           </NotionButton>
           <div className="template-shell-action-buttons">
             <NotionButton variant="utility" size="icon" iconOnly onClick={onEdit} aria-label={t('edit_tooltip')} title={t('edit_tooltip')}>
-              <Edit2 size={16} />
+              <PencilSimple size={16} />
             </NotionButton>
             <NotionButton variant="utility" size="icon" iconOnly onClick={onDuplicate} aria-label={t('duplicate_tooltip')} title={t('duplicate_tooltip')}>
               <Copy size={16} />
@@ -1268,7 +1268,7 @@ const renderActions = () => (
               <Download size={16} />
             </NotionButton>
             <NotionButton variant="danger" size="icon" iconOnly onClick={onDelete} aria-label={t('delete_tooltip')} title={t('delete_tooltip')}>
-              <Trash2 size={16} />
+              <Trash size={16} />
             </NotionButton>
           </div>
         </>
@@ -1306,7 +1306,7 @@ const renderActions = () => (
             <IframePreview
               htmlContent={renderPreview(template.front_template || template.preview_front || '', template, false)}
               cssContent={template.css_style || ''}
-            />
+/>
           </div>
         </div>
         <div className="template-shell-preview-section">
@@ -1315,7 +1315,7 @@ const renderActions = () => (
             <IframePreview
               htmlContent={renderPreview(template.back_template || template.preview_back || '', template, true)}
               cssContent={template.css_style || ''}
-            />
+/>
           </div>
         </div>
       </div>

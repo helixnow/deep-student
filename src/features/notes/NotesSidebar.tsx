@@ -2,20 +2,20 @@ import React, { useState, useCallback, useMemo, useRef, useEffect } from "react"
 import { createPortal } from "react-dom";
 import { useTranslation } from "react-i18next";
 import {
-    Search,
+    MagnifyingGlass,
     Plus,
-    RefreshCw,
-    Trash2,
-    Settings,
-    MoreHorizontal,
-    ChevronLeft,
-    ChevronRight,
+    ArrowClockwise,
+    Trash,
+    Gear,
+    DotsThree,
+    CaretLeft,
+    CaretRight,
     Folder,
     FolderPlus,
     Star,
     BookOpen,
     Link,
-} from "lucide-react";
+} from "@phosphor-icons/react";
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Z_INDEX } from '@/config/zIndex';
 import { Input } from "@/components/ui/shad/Input";
@@ -353,7 +353,7 @@ export const NotesSidebar: React.FC<NotesSidebarProps> = ({ isCollapsed, onToggl
                     onClick={onToggleCollapse}
                     title={t('notes:sidebar.expand')}
                 >
-                    <ChevronRight className="h-4 w-4 text-muted-foreground" />
+                    <CaretRight className="h-4 w-4 text-muted-foreground" />
                 </NotionButton>
 
                 <div className="flex flex-col gap-2 w-full items-center">
@@ -364,7 +364,7 @@ export const NotesSidebar: React.FC<NotesSidebarProps> = ({ isCollapsed, onToggl
                          <FolderPlus className="h-4 w-4 text-muted-foreground" />
                     </NotionButton>
                      <NotionButton variant="ghost" iconOnly size="sm" className="h-8 w-8 hover:bg-[var(--interactive-hover)]" onClick={() => refreshNotes()} title={t('notes:sidebar.actions.refresh')}>
-                         <RefreshCw className="h-4 w-4 text-muted-foreground" />
+                         <ArrowClockwise className="h-4 w-4 text-muted-foreground" />
                     </NotionButton>
                 </div>
             </div>
@@ -409,7 +409,7 @@ export const NotesSidebar: React.FC<NotesSidebarProps> = ({ isCollapsed, onToggl
                         onClick={() => refreshNotes()}
                         title={t('notes:sidebar.actions.refresh')}
                     >
-                        <RefreshCw className="h-3.5 w-3.5" />
+                        <ArrowClockwise className="h-3.5 w-3.5" />
                     </NotionButton>
                     <NotionButton 
                         variant="ghost" 
@@ -470,7 +470,7 @@ export const NotesSidebar: React.FC<NotesSidebarProps> = ({ isCollapsed, onToggl
                         onClick={onToggleCollapse}
                         title={t('notes:sidebar.collapse')}
                     >
-                        <ChevronLeft className="h-3.5 w-3.5" />
+                        <CaretLeft className="h-3.5 w-3.5" />
                     </NotionButton>
                 </div>
                 
@@ -772,7 +772,7 @@ export const NotesSidebar: React.FC<NotesSidebarProps> = ({ isCollapsed, onToggl
                         ) : (
                             <NotionButton variant="ghost" size="sm" className="app-menu-item app-menu-item-destructive" onClick={() => { deleteItems([contextMenu.id]); setContextMenu(null); }}>
                                 <span className="app-menu-item-icon">
-                                    <Trash2 className="h-4 w-4" />
+                                    <Trash className="h-4 w-4" />
                                 </span>
                                 <span className="app-menu-item-content">
                                     {t('notes:tree.context_menu.delete')}
