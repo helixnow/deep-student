@@ -14,18 +14,18 @@ import { Badge } from '../../components/ui/shad/Badge';
 import { Card, CardContent } from '../../components/ui/shad/Card';
 import { ScrollArea } from '../../components/ui/shad/ScrollArea';
 import {
-  Trash2,
+  Trash,
   Copy,
-  AlertTriangle,
-  CheckCircle2,
+  Warning,
+  CheckCircle,
   XCircle,
   FileImage,
   FileText,
-  RefreshCw,
+  ArrowClockwise,
   Image as ImageIcon,
   Eye,
-  EyeOff,
-} from 'lucide-react';
+  EyeSlash,
+} from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
@@ -214,10 +214,10 @@ const SOURCE_COLORS: Record<string, string> = {
 };
 
 const LEVEL_ICONS: Record<string, React.ReactNode> = {
-  info: <CheckCircle2 className="w-3 h-3 text-blue-500" />,
-  debug: <RefreshCw className="w-3 h-3 text-gray-500" />,
-  warn: <AlertTriangle className="w-3 h-3 text-yellow-500" />,
-  error: <XCircle className="w-3 h-3 text-red-500" />,
+  info: <CheckCircle size={12} className="text-blue-500" />,
+  debug: <ArrowClockwise size={12} className="text-gray-500" />,
+  warn: <Warning size={12} className="text-yellow-500" />,
+  error: <XCircle size={12} className="text-red-500" />,
 };
 
 const LogEntry: React.FC<{
@@ -413,7 +413,7 @@ const PdfMultimodalDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       {/* 标题栏 */}
       <div className="flex items-center justify-between p-3 border-b">
         <div className="flex items-center gap-2">
-          <ImageIcon className="w-5 h-5 text-primary" />
+          <ImageIcon size={20} className="text-primary" />
           <h3 className="font-semibold">PDF 多模态调试</h3>
           <Badge variant="outline">{logs.length} 条日志</Badge>
           {isCapturing ? (
@@ -424,11 +424,11 @@ const PdfMultimodalDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         </div>
         <div className="flex items-center gap-2">
           <Button variant={isCapturing ? 'destructive' : 'default'} size="sm" onClick={toggleCapture}>
-            {isCapturing ? <EyeOff className="w-4 h-4 mr-1" /> : <Eye className="w-4 h-4 mr-1" />}
+            {isCapturing ? <EyeSlash size={16} className="mr-1" /> : <Eye size={16} className="mr-1" />}
             {isCapturing ? '停止' : '开始'}
           </Button>
           <Button variant="outline" size="sm" onClick={loadLogs}>
-            <RefreshCw className="w-4 h-4" />
+            <ArrowClockwise size={16} />
           </Button>
           <Button variant="outline" size="sm" onClick={expandAll}>
             展开
@@ -437,10 +437,10 @@ const PdfMultimodalDebugPlugin: React.FC<DebugPanelPluginProps> = ({
             折叠
           </Button>
           <Button variant="outline" size="sm" onClick={handleCopy} disabled={logs.length === 0}>
-            <Copy className="w-4 h-4" />
+            <Copy size={16} />
           </Button>
           <Button variant="outline" size="sm" onClick={handleClear} disabled={logs.length === 0}>
-            <Trash2 className="w-4 h-4" />
+            <Trash size={16} />
           </Button>
         </div>
       </div>
@@ -450,25 +450,25 @@ const PdfMultimodalDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         <div className="flex items-center gap-4 text-sm">
           <div className="flex items-center gap-1">
             {hasMultimodalBlocks ? (
-              <CheckCircle2 className="w-4 h-4 text-green-500" />
+              <CheckCircle size={16} className="text-green-500" />
             ) : (
-              <XCircle className="w-4 h-4 text-red-500" />
+              <XCircle size={16} className="text-red-500" />
             )}
             <span>multimodalBlocks</span>
           </div>
           <div className="flex items-center gap-1">
             {isMultimodalTrue ? (
-              <CheckCircle2 className="w-4 h-4 text-green-500" />
+              <CheckCircle size={16} className="text-green-500" />
             ) : (
-              <XCircle className="w-4 h-4 text-red-500" />
+              <XCircle size={16} className="text-red-500" />
             )}
             <span>isMultimodal=true</span>
           </div>
           <div className="flex items-center gap-1">
             {includeImageTrue ? (
-              <CheckCircle2 className="w-4 h-4 text-green-500" />
+              <CheckCircle size={16} className="text-green-500" />
             ) : (
-              <XCircle className="w-4 h-4 text-red-500" />
+              <XCircle size={16} className="text-red-500" />
             )}
             <span>includeImage=true</span>
           </div>
@@ -514,7 +514,7 @@ const PdfMultimodalDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       <ScrollArea className="flex-1 p-3" ref={scrollRef}>
         {filteredLogs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
-            <FileText className="w-12 h-12 mb-2 opacity-30" />
+            <FileText size={48} className="mb-2 opacity-30" />
             <p>暂无 PDF 多模态日志</p>
             <p className="text-xs mt-1">上传 PDF 并选择图片模式后将在此显示调试信息</p>
           </div>

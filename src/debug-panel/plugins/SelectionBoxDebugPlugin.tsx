@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
-import { Trash2, Copy, Play, Pause, Square, MousePointer } from 'lucide-react';
+import { Trash, Copy, Play, Pause, Square, Cursor } from '@phosphor-icons/react';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 interface SelectionEvent {
@@ -143,7 +143,7 @@ export default function SelectionBoxDebugPlugin({ isActive, isActivated }: Debug
       {/* Header */}
       <div className="flex items-center justify-between p-3 border-b border-border bg-muted/30">
         <div className="flex items-center gap-2">
-          <Square className="w-5 h-5 text-primary" />
+          <Square size={20} className="text-primary" />
           <span className="font-medium">框选调试</span>
           <span className="text-xs text-muted-foreground">({filteredEvents.length} 事件)</span>
         </div>
@@ -160,21 +160,21 @@ export default function SelectionBoxDebugPlugin({ isActive, isActivated }: Debug
             className={`p-1.5 rounded hover:bg-muted ${isPaused ? 'text-yellow-500' : 'text-muted-foreground'}`}
             title={isPaused ? '继续记录' : '暂停记录'}
           >
-            {isPaused ? <Play className="w-4 h-4" /> : <Pause className="w-4 h-4" />}
+            {isPaused ? <Play size={16} /> : <Pause size={16} />}
           </button>
           <button
             onClick={copyToClipboard}
             className="p-1.5 rounded hover:bg-muted text-muted-foreground"
             title="复制日志"
           >
-            <Copy className="w-4 h-4" />
+            <Copy size={16} />
           </button>
           <button
             onClick={clearEvents}
             className="p-1.5 rounded hover:bg-muted text-muted-foreground"
             title="清除日志"
           >
-            <Trash2 className="w-4 h-4" />
+            <Trash size={16} />
           </button>
         </div>
       </div>
@@ -206,7 +206,7 @@ export default function SelectionBoxDebugPlugin({ isActive, isActivated }: Debug
       <div ref={containerRef} className="flex-1 overflow-auto p-2 space-y-1">
         {filteredEvents.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-            <MousePointer className="w-12 h-12 mb-2 opacity-30" />
+            <Cursor size={48} className="mb-2 opacity-30" />
             <p className="text-sm">等待框选事件...</p>
             <p className="text-xs mt-1">在 Learning Hub 网格视图中拖拽框选</p>
           </div>

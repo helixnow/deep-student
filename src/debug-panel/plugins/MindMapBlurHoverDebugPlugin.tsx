@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
-import { Copy, Pause, Play, Trash2 } from 'lucide-react';
+import { Copy, Pause, Play, Trash } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
@@ -166,17 +166,17 @@ export default function MindMapBlurHoverDebugPlugin({ isActive }: DebugPanelPlug
           onClick={() => setEnabled(prev => !prev)}
           className="h-8 px-3"
         >
-          {enabled ? <Pause className="w-4 h-4 mr-1" /> : <Play className="w-4 h-4 mr-1" />}
+          {enabled ? <Pause size={16} className="mr-1" /> : <Play size={16} className="mr-1" />}
           {enabled
             ? t('debug_panel.mindmap_blur_monitor.pause')
             : t('debug_panel.mindmap_blur_monitor.resume')}
         </NotionButton>
         <NotionButton variant="ghost" onClick={() => setSamples([])} className="h-8 px-3">
-          <Trash2 className="w-4 h-4 mr-1" />
+          <Trash size={16} className="mr-1" />
           {t('debug_panel.mindmap_blur_monitor.clear')}
         </NotionButton>
         <NotionButton variant="primary" onClick={() => void copyLogs()} className="h-8 px-3" disabled={samples.length === 0}>
-          <Copy className="w-4 h-4 mr-1" />
+          <Copy size={16} className="mr-1" />
           {t('debug_panel.mindmap_blur_monitor.copy')}
         </NotionButton>
       </div>

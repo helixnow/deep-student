@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Copy, Check, Trash2, Play, Pause, ChevronDown, ChevronRight, AlertTriangle, CheckCircle } from 'lucide-react';
+import { Copy, Check, Trash, Play, Pause, CaretDown, CaretRight, Warning, CheckCircle } from '@phosphor-icons/react';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 /**
@@ -556,7 +556,7 @@ window.dispatchEvent(new CustomEvent('debug:user-content-pipeline', {
             fontWeight: 500,
           }}
         >
-          <Trash2 size={14} />
+          <Trash size={14} />
           清空
         </button>
       </div>
@@ -632,7 +632,7 @@ window.dispatchEvent(new CustomEvent('debug:user-content-pipeline', {
                     gap: 8,
                   }}
                 >
-                  {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+                  {isExpanded ? <CaretDown size={14} /> : <CaretRight size={14} />}
                   <span style={{ fontSize: 12, fontWeight: 500 }}>
                     {new Date(session.startTime).toLocaleTimeString()}
                   </span>
@@ -648,7 +648,7 @@ window.dispatchEvent(new CustomEvent('debug:user-content-pipeline', {
                       fontSize: 11,
                       fontWeight: 600,
                     }}>
-                      <AlertTriangle size={12} />
+                      <Warning size={12} />
                       检测到文本丢失
                     </span>
                   )}
@@ -679,7 +679,7 @@ window.dispatchEvent(new CustomEvent('debug:user-content-pipeline', {
                               gap: 8,
                             }}
                           >
-                            {isEventExpanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />}
+                            {isEventExpanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
                             <span style={{ 
                               fontWeight: 500, 
                               fontSize: 12,
@@ -688,7 +688,7 @@ window.dispatchEvent(new CustomEvent('debug:user-content-pipeline', {
                               {event.nodeLabel}
                             </span>
                             {event.isTextLost && (
-                              <AlertTriangle size={12} style={{ color: '#ef4444' }} />
+                              <Warning size={12} style={{ color: '#ef4444' }} />
                             )}
                             {event.output?.hasText && (
                               <CheckCircle size={12} style={{ color: '#22c55e' }} />
