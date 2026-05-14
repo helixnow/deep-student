@@ -7,6 +7,7 @@
 import React, { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { motion, useSpring } from 'framer-motion';
+import { Textarea } from '@/components/ui/shad/Textarea';
 import '../styles/settings-textarea-scrollbar.css';
 
 export const settingsQuietHoverClassName = 'hover:bg-[color:var(--sidebar-quiet-hover)]';
@@ -155,18 +156,12 @@ export const ToggleSwitch: React.FC<ToggleSwitchProps> = ({ checked, onChange })
   </button>
 );
 
-// SettingsTextarea 组件
+// SettingsTextarea 组件 — 委托给 shad Textarea
 export const SettingsTextarea = React.forwardRef<HTMLTextAreaElement, React.TextareaHTMLAttributes<HTMLTextAreaElement>>(
   ({ className, ...props }, ref) => (
-    <textarea
+    <Textarea
       ref={ref}
-      className={
-        ['flex w-full rounded-md border border-[hsl(var(--border))] bg-transparent px-3 py-2 text-sm',
-         'placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30',
-         'resize-y settings-textarea-scrollbar',
-         className
-        ].filter(Boolean).join(' ')
-      }
+      className={cn('settings-textarea-scrollbar', className)}
       {...props}
     />
   )

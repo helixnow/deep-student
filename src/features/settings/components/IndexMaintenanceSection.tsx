@@ -8,6 +8,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { Loader2, Zap, MessageSquare, Database, HelpCircle, FolderSearch } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { Input } from '@/components/ui/shad/Input';
 import { Switch } from '@/components/ui/shad/Switch';
 import { TauriAPI } from '@/utils/tauriApi';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -194,13 +195,13 @@ export const LanceOptimizationPanel: React.FC = () => {
             <label className="block text-sm font-medium mb-1.5 text-foreground">
               {t('lance_optimization.older_than_days')}
             </label>
-            <input
+            <Input
               type="number"
               min={1}
               max={365}
               value={olderThanDays}
               onChange={(e) => setOlderThanDays(e.target.value)}
-              className="w-full h-8 rounded-md border border-border/40 bg-background px-3 text-sm text-foreground focus:outline-none focus:ring-1 focus:ring-ring"
+              className="w-full"
             />
             <p className="mt-1.5 text-xs text-muted-foreground">
               {t('lance_optimization.older_than_days_hint')}

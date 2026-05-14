@@ -17,6 +17,7 @@ import { AlertTriangle, CheckCircle2, Edit3, Loader2, RefreshCw, Trash2 } from '
 import * as DataGovernanceApi from '@/api/dataGovernance';
 import type { RecordConflictRow } from '@/api/dataGovernance';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { Textarea } from '@/components/ui/shad/Textarea';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -249,8 +250,8 @@ export const RecordConflictsPanel: React.FC = () => {
                   <div className="text-xs text-muted-foreground">
                     编辑 JSON 后点击"写回"：最终值将作为一次正常的 UPDATE 提交到数据库并在下次同步时推到云端。
                   </div>
-                  <textarea
-                    className="w-full h-32 text-xs font-mono rounded border border-border/50 bg-background p-2 focus:outline-none focus:ring-1 focus:ring-primary"
+                  <Textarea
+                    className="w-full h-32 text-xs font-mono"
                     value={mergeText}
                     onChange={(e) => setMergeText(e.target.value)}
                     spellCheck={false}

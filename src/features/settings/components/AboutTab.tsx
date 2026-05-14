@@ -6,6 +6,8 @@ import { OpenSourceAcknowledgementsSection } from './OpenSourceAcknowledgementsS
 import { SiliconFlowLogo } from '@/components/ui/SiliconFlowLogo';
 import { DeepStudentLogo } from '@/components/ui/DeepStudentLogo';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { Input } from '@/components/ui/shad/Input';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
 import { SettingSection } from './SettingsCommon';
 import { PrivacyPolicyDialog } from '@/components/legal/PrivacyPolicyDialog';
 import VERSION_INFO from '@/version';
@@ -223,23 +225,24 @@ export const AboutTab: React.FC = () => {
                   </NotionButton>
                 ) : (
                   <>
-                    <select
-                      value={frequency}
-                      onChange={(e) => handleFrequencyChange(e.target.value as UpdateFrequency)}
-                      className="h-6 px-1.5 text-xs rounded border border-border/50 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary/30"
-                    >
-                      <option value="every_launch">{t('about.update.freqEveryLaunch', '每次启动')}</option>
-                      <option value="every_n_days">{t('about.update.freqEveryNDays', '每 N 天')}</option>
-                      <option value="never">{t('about.update.freqNever', '永不')}</option>
-                    </select>
+                    <Select value={frequency} onValueChange={(val) => handleFrequencyChange(val as UpdateFrequency)}>
+                      <SelectTrigger className="h-6 px-1.5 text-xs w-auto min-h-0">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="every_launch">{t('about.update.freqEveryLaunch', '每次启动')}</SelectItem>
+                        <SelectItem value="every_n_days">{t('about.update.freqEveryNDays', '每 N 天')}</SelectItem>
+                        <SelectItem value="never">{t('about.update.freqNever', '永不')}</SelectItem>
+                      </SelectContent>
+                    </Select>
                     {frequency === 'every_n_days' && (
-                      <input
+                      <Input
                         type="number"
                         min={1}
                         max={365}
                         value={frequencyDays}
                         onChange={(e) => handleFrequencyDaysChange(Number(e.target.value))}
-                        className="h-6 w-14 px-1.5 text-xs text-center rounded border border-border/50 bg-background text-foreground focus:outline-none focus:ring-1 focus:ring-primary/30"
+                        className="h-6 w-14 px-1.5 text-xs text-center min-h-0"
                       />
                     )}
                   </>

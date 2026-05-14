@@ -4,6 +4,7 @@ import { Key, LinkSimple, NotePencil, Trash } from '@phosphor-icons/react';
 import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Label } from '@/components/ui/shad/Label';
 import { SecurePasswordInput } from '@/components/SecurePasswordInput';
@@ -162,18 +163,18 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
       </div>
       <div>
         <Label htmlFor={providerTypeSelectId}>{t('settings:vendor_modal.provider_label')}</Label>
-        <select
-          id={providerTypeSelectId}
-          value={formData.providerType || 'custom'}
-          onChange={e => setFormData(prev => ({ ...prev, providerType: e.target.value }))}
-          className="mt-2 flex min-h-[var(--touch-target-size)] w-full rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--input-shell-surface)] px-3 py-2 text-sm text-foreground transition-colors hover:bg-[color:var(--surface-panel-strong)] focus-visible:border-[color:var(--input-shell-focus)] focus-visible:bg-[color:var(--surface-panel-strong)] focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--input-shell-focus)] lg:min-h-[var(--button-height)]"
-        >
-          {providerTypeOptions.map(option => (
-            <option key={option.value} value={option.value}>
-              {t(option.labelKey, { defaultValue: option.defaultLabel })}
-            </option>
-          ))}
-        </select>
+        <Select value={formData.providerType || 'custom'} onValueChange={(val) => setFormData(prev => ({ ...prev, providerType: val }))}>
+          <SelectTrigger className="mt-2">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {providerTypeOptions.map(option => (
+              <SelectItem key={option.value} value={option.value}>
+                {t(option.labelKey, { defaultValue: option.defaultLabel })}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
       {isEditing && (
         <>

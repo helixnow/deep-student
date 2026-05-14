@@ -32,6 +32,7 @@ import {
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Switch } from '@/components/ui/shad/Switch';
+import { Input } from '@/components/ui/shad/Input';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 
@@ -327,14 +328,14 @@ export const SystemSettingsSection: React.FC = () => {
                 label={t('settings:features.chat_history_label')} 
                 description={t('settings:features.chat_history_desc')}
               >
-                <input
+                <Input
                   type="number"
                   min="10"
                   max="1000"
                   value={settings.maxChatHistory}
                   onChange={(e) => handleSettingChange('maxChatHistory', parseInt(e.target.value, 10))}
                   disabled={saving}
-                  className="w-20 rounded-lg border border-input bg-muted px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
+                  className="w-20"
                 />
               </SettingItem>
             </div>
@@ -362,7 +363,7 @@ export const SystemSettingsSection: React.FC = () => {
                 description={t('settings:textbook.max_pages_desc')}
               >
                 <div className="flex items-center gap-2">
-                  <input
+                  <Input
                     type="number"
                     min="1"
                     max="50"
@@ -372,7 +373,7 @@ export const SystemSettingsSection: React.FC = () => {
                       setTextbookMaxPages(Number.isFinite(v) ? v : 12);
                     }}
                     onBlur={() => handleSaveTextbookMaxPages(textbookMaxPages)}
-                    className="w-24 rounded-lg border border-input bg-muted px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
+                    className="w-24"
                   />
                   <span className="text-xs text-muted-foreground">{t('settings:textbook.max_pages_hint')}</span>
                 </div>
@@ -488,7 +489,7 @@ const TextbookScaleSetting: React.FC = () => {
   }, [t]);
   return (
     <div className="flex items-center gap-2">
-      <input
+      <Input
         type="number"
         min="1"
         max="3"
@@ -496,7 +497,7 @@ const TextbookScaleSetting: React.FC = () => {
         value={value}
         onChange={(e) => setValue(parseFloat(e.target.value))}
         onBlur={() => handleSave(value)}
-        className="w-24 rounded-lg border border-input bg-muted px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
+        className="w-24"
       />
       <span className="text-xs text-muted-foreground">{t('settings:textbook.render_scale_hint')}</span>
     </div>
@@ -533,14 +534,14 @@ const TextbookConcurrencySetting: React.FC = () => {
   }, [t]);
   return (
     <div className="flex items-center gap-2">
-      <input
+      <Input
         type="number"
         min="1"
         max="4"
         value={value}
         onChange={(e) => setValue(parseInt(e.target.value, 10))}
         onBlur={() => handleSave(value)}
-        className="w-24 rounded-lg border border-input bg-muted px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
+        className="w-24"
       />
       <span className="text-xs text-muted-foreground">{t('settings:textbook.export_concurrency_hint')}</span>
     </div>
