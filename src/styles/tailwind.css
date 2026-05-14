@@ -4,6 +4,8 @@
 
 /* Native-feel whitelist: re-enable text selection on real content surfaces. */
 @import './native-feel/selection.css';
+/* Native-feel: macOS-style overlay scrollbars (hidden until hover). */
+@import './native-feel/scrollbars.css';
 
 @tailwind base;
 @tailwind components;
