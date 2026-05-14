@@ -524,35 +524,13 @@ html, body, #root {
     max-width: 100%;
   }
 }
-/* 全局滚动条样式 - 确保所有滚动条都有浅色背景 */
-*:not([data-overlayscrollbars-viewport])::-webkit-scrollbar {
-  width: 8px;
-  height: 8px;
-}
 
-*:not([data-overlayscrollbars-viewport])::-webkit-scrollbar-track {
-  background: var(--scrollbar-track) !important;
-  border-radius: 4px;
-}
-
-*:not([data-overlayscrollbars-viewport])::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb) !important;
-  border-radius: 4px;
-}
-
-*:not([data-overlayscrollbars-viewport])::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover) !important;
-}
-
-*:not([data-overlayscrollbars-viewport])::-webkit-scrollbar-corner {
-  background: var(--scrollbar-track) !important;
-}
-
-/* Firefox 滚动条样式 */
-*:not([data-overlayscrollbars-viewport]) {
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) var(--scrollbar-track) !important;
-}
+/*
+ * Global scrollbar styling moved to src/styles/native-feel/scrollbars.css
+ * (Phase C of native-feel migration, 2026-05-14). The previous rules here
+ * always-visible chunky 8px web scrollbars across the app; the new file
+ * implements macOS-style overlay scrollbars (hidden until hover/focus).
+ */
 
 html {
   background-color: transparent !important;
