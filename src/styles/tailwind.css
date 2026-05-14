@@ -4,10 +4,13 @@
 
 /* Native-feel whitelist: re-enable text selection on real content surfaces. */
 @import './native-feel/selection.css';
+
 /* Native-feel: cursor strategy (chrome=default, button=pointer, content=text). */
 @import './native-feel/cursors.css';
+
 /* Native-feel: macOS-style overlay scrollbars (hidden until hover). */
 @import './native-feel/scrollbars.css';
+
 /* Native-feel: focus rings, hover scale, and transition cadence. */
 @import './native-feel/interaction.css';
 
