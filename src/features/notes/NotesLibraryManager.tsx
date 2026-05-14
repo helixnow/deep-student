@@ -13,7 +13,7 @@ import { Input } from '@/components/ui/shad/Input';
 import { AppSelect } from '@/components/ui/app-menu';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/shad/Tabs';
 import { Progress } from '@/components/ui/shad/Progress';
-import { Loader2, FileArchive, Package } from 'lucide-react';
+import { CircleNotch, FileArchive, Package } from '@phosphor-icons/react';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 
 export type ImportConflictStrategy = 'skip' | 'overwrite' | 'merge_keep_newer';
@@ -137,7 +137,7 @@ export function NotesLibraryManager({
                 >
                   {exportPathLoading ? (
                     <>
-                      <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                      <CircleNotch className="mr-2 h-4 w-4 animate-spin" />
                       {t('notes:export.destination.choose')}
                     </>
                   ) : (
@@ -283,7 +283,7 @@ export function NotesLibraryManager({
             >
               {exporting ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <CircleNotch className="mr-2 h-4 w-4 animate-spin" />
                   {t('notes:export.actions.exporting')}
                 </>
               ) : (
@@ -297,7 +297,7 @@ export function NotesLibraryManager({
             >
               {importing ? (
                 <>
-                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  <CircleNotch className="mr-2 h-4 w-4 animate-spin" />
                   {t('notes:import.actions.importing')}
                 </>
               ) : (

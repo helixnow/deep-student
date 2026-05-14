@@ -10,32 +10,32 @@ import {
   Calculator,
   Camera,
   Check,
-  ChevronsDown,
-  ChevronsUp,
-  ChevronRight,
+  CaretDoubleDown,
+  CaretDoubleUp,
+  CaretRight,
   Code,
   FileText,
-  FlaskConical,
+  Flask,
   Folder,
   FolderPlus,
   FolderOpen,
   Globe,
   GraduationCap,
   Heart,
-  Languages,
+  Translate,
   Lightbulb,
-  Loader2,
-  MessageSquare,
-  Music,
+  CircleNotch,
+  Chat,
+  MusicNote,
   Palette,
-  Edit2,
-  Pin,
+  PencilSimple,
+  PushPin,
   Rocket,
-  Sparkles,
+  Sparkle,
   Star,
   Target,
   Trophy,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
 import { createNavItems } from '../config/navigation';
 import { cn } from '@/lib/utils';
@@ -114,11 +114,11 @@ const RECENT_GROUP_PRESET_ICONS: Record<string, Icon> = {
   'graduation-cap': GraduationCap,
   code: Code,
   calculator: Calculator,
-  flask: FlaskConical,
+  flask: Flask,
   atom: Atom,
   globe: Globe,
-  languages: Languages,
-  music: Music,
+  languages: Translate,
+  music: MusicNote,
   palette: Palette,
   camera: Camera,
   lightbulb: Lightbulb,
@@ -126,8 +126,8 @@ const RECENT_GROUP_PRESET_ICONS: Record<string, Icon> = {
   trophy: Trophy,
   rocket: Rocket,
   brain: Brain,
-  sparkles: Sparkles,
-  'message-square': MessageSquare,
+  sparkles: Sparkle,
+  'message-square': Chat,
   'file-text': FileText,
   bookmark: Bookmark,
 };
@@ -305,11 +305,11 @@ function SidebarStreamingIndicator() {
   return (
     <span
       data-testid="sidebar-streaming-indicator"
-      className="inline-flex h-3.5 w-3.5 items-center justify-center"
+ className="w-3.5 h-3.5 inline-flex items-center justify-center"
       aria-hidden="true"
     >
       <svg
-        className="h-3.5 w-3.5 animate-[spin_1.1s_linear_infinite] rounded-full"
+ className="w-3.5 h-3.5 animate-[spin_1.1s_linear_infinite] rounded-full"
         viewBox="0 0 16 16"
         fill="none"
       >
@@ -319,7 +319,7 @@ function SidebarStreamingIndicator() {
           r={SIDEBAR_STREAMING_RING_RADIUS}
           stroke={SIDEBAR_STREAMING_RING_TRACK}
           strokeWidth="2.5"
-        />
+/>
         <circle
           cx="8"
           cy="8"
@@ -329,7 +329,7 @@ function SidebarStreamingIndicator() {
           strokeLinecap="round"
           strokeDasharray={`${SIDEBAR_STREAMING_RING_DASH} ${SIDEBAR_STREAMING_RING_GAP}`}
           transform="rotate(-90 8 8)"
-        />
+/>
       </svg>
     </span>
   );
@@ -339,7 +339,7 @@ function SidebarUnreadReplyDot() {
   return (
     <span
       data-testid="sidebar-unread-indicator"
-      className="inline-flex h-4 w-4 items-center justify-center"
+ className="w-4 h-4 inline-flex items-center justify-center"
       aria-hidden="true"
     >
       <span className="h-2 w-2 rounded-full bg-[hsl(var(--ring))]" />
@@ -878,10 +878,10 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                     void handleRecentSessionPinToggle(session);
                   }}
                 >
-                  <Pin data-testid="recent-session-pin-icon" className="h-3.5 w-3.5" />
+                  <PushPin data-testid="recent-session-pin-icon" size={14} />
                 </span>
               ) : pinned ? (
-                <Pin data-testid="recent-session-pin-icon" className="h-3.5 w-3.5 text-[color:var(--shell-navigation-foreground)]" />
+                <PushPin data-testid="recent-session-pin-icon" size={14} className="text-[color:var(--shell-navigation-foreground)]" />
               ) : undefined}
               rightSlot={isSessionStreaming ? (
                 <SidebarStreamingIndicator />
@@ -911,12 +911,12 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                       setConfirmingArchiveSessionId(session.id);
                     }}
                   >
-                    <span className="t-icon-swap h-3.5 w-3.5" data-state={isConfirmingArchive ? 'b' : 'a'}>
-                      <span className="t-icon flex h-3.5 w-3.5 items-center justify-center" data-icon="a">
-                        <Archive className="h-3.5 w-3.5" />
+                    <span className="w-3.5 h-3.5 t-icon-swap" data-state={isConfirmingArchive ? 'b' : 'a'}>
+                      <span className="w-3.5 h-3.5 t-icon flex items-center justify-center" data-icon="a">
+                        <Archive size={14} />
                       </span>
-                      <span className="t-icon flex h-3.5 w-3.5 items-center justify-center" data-icon="b">
-                        <Check className="h-3.5 w-3.5" />
+                      <span className="w-3.5 h-3.5 t-icon flex items-center justify-center" data-icon="b">
+                        <Check size={14} />
                       </span>
                     </span>
                   </span>
@@ -933,7 +933,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
           <AppMenuContent align="end" width={180}>
             <AppMenuGroup>
               <AppMenuItem
-                icon={<Edit2 className="h-4 w-4" />}
+                icon={<PencilSimple size={16} />}
                 onClick={() => {
                   startRecentSessionRename(session);
                 }}
@@ -941,7 +941,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                 重命名会话
               </AppMenuItem>
               <AppMenuItem
-                icon={<Pin className="h-4 w-4" />}
+                icon={<PushPin size={16} />}
                 onClick={() => {
                   setOpenRecentSessionMenuId(null);
                   void handleRecentSessionPinToggle(session);
@@ -950,7 +950,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                 {pinned ? t('chatV2:page.unpinSession', '取消置顶') : t('chatV2:page.pinSession', '置顶线程')}
               </AppMenuItem>
               <AppMenuItem
-                icon={<Archive className="h-4 w-4" />}
+                icon={<Archive size={16} />}
                 onClick={() => {
                   setOpenRecentSessionMenuId(null);
                   void handleRecentSessionArchive(session.id);
@@ -1094,7 +1094,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                     event.stopPropagation();
                     toggleRecentGroupSessions(group.id);
                   }}
-                />
+/>
               ) : null}
             </>
           ) : (
@@ -1232,13 +1232,13 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
           <span className="desktop-shell-nav-section-label min-w-0 truncate">
             {label}
           </span>
-          <ChevronRight
+          <CaretRight
             className={cn(
               'size-3 shrink-0 text-[color:var(--shell-navigation-section-label)] opacity-0 transition-[opacity,transform] duration-150 ease-[cubic-bezier(0.25,0.1,0.25,1)] group-hover/sidebar-top-section:opacity-100 group-focus-within/sidebar-top-section:opacity-100 motion-reduce:transition-none',
               !isCollapsed && 'rotate-90'
             )}
             strokeWidth={2.25}
-          />
+/>
         </button>
         {action}
       </div>
@@ -1337,9 +1337,9 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                         onClick={handleToggleAllTopicGroups}
                       >
                         {areAllTopicGroupsExpanded ? (
-                          <ChevronsUp className="size-3.5" strokeWidth={2} />
+                          <CaretDoubleUp className="size-3.5" strokeWidth={2} />
                         ) : (
-                          <ChevronsDown className="size-3.5" strokeWidth={2} />
+                          <CaretDoubleDown className="size-3.5" strokeWidth={2} />
                         )}
                       </NotionButton>
                     </CommonTooltip>
@@ -1385,7 +1385,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
                         event.stopPropagation();
                         setConversationSessionsExpanded((expanded) => !expanded);
                       }}
-                    />
+/>
                   ) : null}
                 </div>
               </nav>
@@ -1462,7 +1462,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
             autoFocus
             disabled={renamingRecentSessionId !== null}
             className="mt-2 h-9 w-full"
-          />
+/>
           {recentRenameError ? (
             <p className="mt-2 text-xs text-destructive" role="alert">
               {recentRenameError}
@@ -1485,7 +1485,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
             size="sm"
             disabled={renamingRecentSessionId !== null || !editingRecentSessionTitle.trim()}
           >
-            {renamingRecentSessionId !== null ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+            {renamingRecentSessionId !== null ? <CircleNotch size={16} className="animate-spin" /> : null}
             确认
           </NotionButton>
         </NotionDialogFooter>

@@ -18,7 +18,7 @@
 import * as React from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { Copy, Scissors, ClipboardPaste, ListChecks, Search, Code } from 'lucide-react';
+import { Copy, Scissors, ClipboardText, ListChecks } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useOverlayCoordinator } from '@/components/shared/OverlayCoordinator';
 
@@ -160,7 +160,6 @@ function TextContextMenu({ position, onClose }: TextContextMenuProps) {
   const [clipboardEmpty, setClipboardEmpty] = React.useState(true);
   const { dismissTooltips, registerInteractiveOverlay } = useOverlayCoordinator();
 
-  const isDev = (import.meta as any).env?.MODE !== 'production';
   const isMac = typeof navigator !== 'undefined' && /Mac/i.test(navigator.platform);
   const mod = isMac ? '⌘' : 'Ctrl';
 
@@ -259,28 +258,6 @@ function TextContextMenu({ position, onClose }: TextContextMenuProps) {
     onClose();
   };
 
-  const handleFind = () => {
-    // Defer to command palette / app-level find. Emit a synthetic Cmd+F.
-    const event = new KeyboardEvent('keydown', {
-      key: 'f',
-      code: 'KeyF',
-      ctrlKey: !isMac,
-      metaKey: isMac,
-      bubbles: true,
-    });
-    window.dispatchEvent(event);
-    onClose();
-  };
-
-  const handleInspect = () => {
-    // Best-effort: works in dev WebView when DevTools enabled.
-    try {
-      // @ts-ignore
-      window?.__TAURI_INTERNALS__?.invoke?.('plugin:devtools|open');
-    } catch { /* */ }
-    onClose();
-  };
-
   const hasSelection = position.hasSelection || getSelectedText(position.target).length > 0;
   const canEdit = position.isTextField && !position.isReadOnly;
   const canCut = canEdit && hasSelection;
@@ -302,7 +279,7 @@ function TextContextMenu({ position, onClose }: TextContextMenuProps) {
       onContextMenu={(e) => e.preventDefault()}
     >
       <MenuItem
-        icon={<Scissors className="w-4 h-4" />}
+        icon={<Scissors size={16} />}
         disabled={!canCut}
         onClick={handleCut}
         shortcut={`${mod}+X`}
@@ -310,7 +287,7 @@ function TextContextMenu({ position, onClose }: TextContextMenuProps) {
         {t('contextMenu.cut', '剪切')}
       </MenuItem>
       <MenuItem
-        icon={<Copy className="w-4 h-4" />}
+        icon={<Copy size={16} />}
         disabled={!canCopy}
         onClick={handleCopy}
         shortcut={`${mod}+C`}
@@ -318,7 +295,7 @@ function TextContextMenu({ position, onClose }: TextContextMenuProps) {
         {t('contextMenu.copy', '复制')}
       </MenuItem>
       <MenuItem
-        icon={<ClipboardPaste className="w-4 h-4" />}
+        icon={<ClipboardText size={16} />}
         disabled={!canPaste}
         onClick={handlePaste}
         shortcut={`${mod}+V`}
@@ -327,32 +304,12 @@ function TextContextMenu({ position, onClose }: TextContextMenuProps) {
       </MenuItem>
       <Separator />
       <MenuItem
-        icon={<ListChecks className="w-4 h-4" />}
+        icon={<ListChecks size={16} />}
         onClick={handleSelectAll}
         shortcut={`${mod}+A`}
       >
         {t('contextMenu.selectAll', '全选')}
       </MenuItem>
-      {hasSelection && (
-        <MenuItem
-          icon={<Search className="w-4 h-4" />}
-          onClick={handleFind}
-          shortcut={`${mod}+F`}
-        >
-          {t('contextMenu.find', '查找…')}
-        </MenuItem>
-      )}
-      {isDev && (
-        <>
-          <Separator />
-          <MenuItem
-            icon={<Code className="w-4 h-4" />}
-            onClick={handleInspect}
-          >
-            {t('contextMenu.inspect', '检查元素')}
-          </MenuItem>
-        </>
-      )}
     </div>,
     document.body
   );

@@ -23,16 +23,16 @@ import {
   FileText,
   Clock,
   Target,
-  Award,
-  AlertCircle,
+  Trophy as Award,
+  WarningCircle,
   CheckCircle,
   XCircle,
   Trophy,
-  BarChart3,
-  Loader2,
+  ChartBar,
+  CircleNotch,
   Play,
-  Settings2,
-} from 'lucide-react';
+  GearSix,
+} from '@phosphor-icons/react';
 import { useQuestionBankStore, MockExamConfig, MockExamSession, MockExamScoreCard } from '@/stores/questionBankStore';
 import { useTranslation } from 'react-i18next';
 import { useCountdown } from '@/hooks/useCountdown';
@@ -232,7 +232,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
         <CardHeader className="text-center pb-4">
           <div className="flex justify-center mb-4">
             <div className="p-4 rounded-full bg-gradient-to-br from-amber-400 to-orange-500">
-              <Trophy className="w-12 h-12 text-white" />
+              <Trophy size={48} className="text-white" />
             </div>
           </div>
           <CardTitle className="text-2xl">{t('mockExam.scoreCard', '成绩单')}</CardTitle>
@@ -269,7 +269,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
           
           {/* 用时 */}
           <div className="flex items-center justify-center gap-2 p-3 rounded-lg bg-sky-500/10">
-            <Clock className="w-5 h-5 text-sky-600" />
+            <Clock size={20} className="text-sky-600" />
             <span className="text-sky-600 font-medium">
               {t('mockExam.timeSpent', '用时')}：
               {Math.floor(score.time_spent_seconds / 60)} {t('mockExam.minutes', '分')} 
@@ -281,7 +281,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
           {Object.keys(score.type_stats).length > 0 && (
             <div className="space-y-2">
               <div className="text-sm font-medium text-muted-foreground flex items-center gap-1">
-                <BarChart3 className="w-4 h-4" />
+                <ChartBar size={16} />
                 {t('mockExam.typeStats', '题型统计')}
               </div>
               <div className="space-y-2">
@@ -335,7 +335,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
       <Card className={cn('bg-transparent border-transparent shadow-none', className)}>
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <FileText className="w-5 h-5 text-sky-500" />
+            <FileText size={20} className="text-sky-500" />
             {t('mockExam.title', '模拟考试')}
           </CardTitle>
         </CardHeader>
@@ -350,7 +350,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
                 max={180}
                 value={durationMinutes}
                 onChange={(e) => setDurationMinutes(Number(e.target.value))}
-              />
+/>
             </div>
             <div className="space-y-2">
               <Label>{t('mockExam.totalCount', '题目数量')}</Label>
@@ -360,7 +360,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
                 max={100}
                 value={totalCount}
                 onChange={(e) => setTotalCount(Number(e.target.value))}
-              />
+/>
             </div>
           </div>
           
@@ -379,7 +379,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
           {/* 题型配比 */}
           <div className="space-y-3">
             <Label className="flex items-center gap-1">
-              <Settings2 className="w-4 h-4" />
+              <GearSix size={16} />
               {t('mockExam.typeDistribution', '题型配比')}
               <span className="text-muted-foreground text-xs">{t('mockExam.optional', '（选填）')}</span>
             </Label>
@@ -393,7 +393,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
                     max={20}
                     step={1}
                     className="flex-1"
-                  />
+/>
                   <span className="text-sm w-8 text-right">{typeDistribution[key] || 0}</span>
                 </div>
               ))}
@@ -403,7 +403,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
           {/* 难度配比 */}
           <div className="space-y-3">
             <Label className="flex items-center gap-1">
-              <Target className="w-4 h-4" />
+              <Target size={16} />
               {t('mockExam.difficultyDistribution', '难度配比')}
               <span className="text-muted-foreground text-xs">{t('mockExam.optional', '（选填）')}</span>
             </Label>
@@ -417,7 +417,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
                     max={20}
                     step={1}
                     className="flex-1"
-                  />
+/>
                   <span className="text-sm w-8 text-right">{difficultyDistribution[key] || 0}</span>
                 </div>
               ))}
@@ -431,12 +431,12 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
           >
             {isLoadingPractice ? (
               <>
-                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                <CircleNotch size={20} className="mr-2 animate-spin" />
                 {t('mockExam.generating', '生成中...')}
               </>
             ) : (
               <>
-                <Play className="w-5 h-5 mr-2" />
+                <Play size={20} className="mr-2" />
                 {t('mockExam.start', '开始考试')}
               </>
             )}
@@ -464,7 +464,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
               {formatTime(examRemainingSeconds)}
             </div>
             <span className="mt-1 text-xs text-muted-foreground flex items-center gap-1">
-              <Clock className="w-3 h-3" />
+              <Clock size={12} />
               {t('mockExam.remaining', '剩余时间')}
             </span>
           </div>
@@ -472,7 +472,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <Badge variant="secondary" className="gap-1">
-                <FileText className="w-3 h-3" />
+                <FileText size={12} />
                 {t('mockExam.inProgress', '考试中')}
               </Badge>
               <span className="text-sm text-muted-foreground">
@@ -492,7 +492,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
           {/* 时间不足警告 */}
           {examRemainingSeconds > 0 && examRemainingSeconds < 60 && (
             <div className="flex items-center gap-2 p-3 rounded-lg bg-rose-500/10 text-rose-600">
-              <AlertCircle className="w-5 h-5" />
+              <WarningCircle size={20} />
               <span className="text-sm font-medium">{t('mockExam.timeWarning', '考试时间不足 1 分钟！')}</span>
             </div>
           )}
@@ -515,7 +515,7 @@ export const MockExamMode: React.FC<MockExamModeProps> = ({
         cancelText={t('mockExam.cancel', '取消')}
         confirmVariant="primary"
         onConfirm={handleSubmit}
-      />
+/>
     </>
   );
 };

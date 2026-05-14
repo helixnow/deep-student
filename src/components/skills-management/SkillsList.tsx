@@ -7,7 +7,7 @@
 import React, { type MutableRefObject } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
-import { Zap, Pencil, Trash2, Globe, FolderOpen, Package, Check, RotateCcw, Wrench, Download, Star, MoreHorizontal, Copy } from 'lucide-react';
+import { Lightning, Pencil, Trash, Globe, FolderOpen, Package, Check, ArrowCounterClockwise, Wrench, Download, Star, DotsThree, Copy } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import {
   AppMenu,
@@ -72,7 +72,7 @@ const LocationIcon: React.FC<{ location: SkillLocation }> = ({ location }) => {
     case 'builtin':
       return <Package size={12} />;
     default:
-      return <Zap size={12} />;
+      return <Lightning size={12} />;
   }
 };
 
@@ -114,7 +114,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
     return (
       <div className={cn('study-shell-empty-state', className)}>
         <div className="study-shell-empty-state__icon">
-          <Zap size={32} className="text-muted-foreground/50" />
+          <Lightning size={32} className="text-muted-foreground/50" />
         </div>
         <p className="study-shell-empty-state__title">
           {t('skills:selector.empty', '暂无可用技能')}
@@ -260,7 +260,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                 <AppMenu>
                   <AppMenuTrigger asChild>
                     <NotionButton variant="utility" size="icon" iconOnly className="!p-1.5 text-muted-foreground/60 hover:text-foreground" aria-label="more">
-                      <MoreHorizontal size={14} />
+                      <DotsThree size={14} />
                     </NotionButton>
                   </AppMenuTrigger>
                   <AppMenuContent align="end" className="min-w-[160px]">
@@ -286,7 +286,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                       <>
                         <AppMenuSeparator />
                         <AppMenuItem onClick={() => onResetToOriginal(skill)}>
-                          <RotateCcw size={14} className="mr-2" />
+                          <ArrowCounterClockwise size={14} className="mr-2" />
                           {t('skills:management.reset_to_default', '恢复默认')}
                         </AppMenuItem>
                       </>
@@ -295,7 +295,7 @@ export const SkillsList: React.FC<SkillsListProps> = ({
                       <>
                         <AppMenuSeparator />
                         <AppMenuItem className="text-destructive focus:text-destructive" onClick={() => onDelete(skill)}>
-                          <Trash2 size={14} className="mr-2" />
+                          <Trash size={14} className="mr-2" />
                           {t('common:actions.delete', '删除')}
                         </AppMenuItem>
                       </>

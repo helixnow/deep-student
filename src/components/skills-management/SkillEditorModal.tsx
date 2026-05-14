@@ -16,7 +16,7 @@ import { Textarea } from '../ui/shad/Textarea';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '../ui/shad/Tabs';
 import TagInput from '../ui/shad/TagInput';
 import { CustomScrollArea } from '../custom-scroll-area';
-import { FileText, Settings, X, Wrench } from 'lucide-react';
+import { FileText, Gear, X, Wrench } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { unifiedConfirm } from '@/utils/unifiedDialogs';
 import type { SkillDefinition, SkillLocation, SkillType, ToolSchema } from '@/features/chat/skills/types';
@@ -342,7 +342,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
             variant="ghost"
             size="icon"
             onClick={handleCancel}
-            className="h-8 w-8 rounded-full text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
+ className="w-8 h-8 rounded-full text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
           >
             <X size={18} />
           </NotionButton>
@@ -361,7 +361,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
               value="basic"
               className="data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-all font-medium text-muted-foreground text-sm hover:text-foreground/80"
             >
-              <Settings size={14} className="mr-1.5" />
+              <Gear size={14} className="mr-1.5" />
               {t('skills:editor.tab_basic', '基本信息')}
             </TabsTrigger>
             <TabsTrigger
@@ -407,7 +407,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                       'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all h-10',
                       errors.id && 'border-destructive'
                     )}
-                  />
+/>
                   {errors.id && (
                     <p className="text-xs text-destructive">{errors.id}</p>
                   )}
@@ -431,7 +431,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                     'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all h-10',
                     errors.name && 'border-destructive'
                   )}
-                />
+/>
                 {errors.name && (
                   <p className="text-xs text-destructive">{errors.name}</p>
                 )}
@@ -456,7 +456,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                     embeddedMode ? 'overflow-hidden resize-none min-h-[80px]' : 'resize-none',
                     errors.description && 'border-destructive'
                   )}
-                />
+/>
                 {errors.description && (
                   <p className="text-xs text-destructive">{errors.description}</p>
                 )}
@@ -476,7 +476,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                     onChange={(e) => updateField('version', (e.target as HTMLInputElement).value)}
                     placeholder="1.0.0"
                     className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all h-10"
-                  />
+/>
                 </div>
                 <div className="space-y-2">
                   <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider">
@@ -487,7 +487,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                     onChange={(e) => updateField('author', (e.target as HTMLInputElement).value)}
                     placeholder={t('skills:editor.author_placeholder', '可选')}
                     className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all h-10"
-                  />
+/>
                 </div>
               </div>
 
@@ -508,7 +508,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                     }
                   }}
                   className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all h-10 w-24"
-                />
+/>
                 <p className="text-[10px] text-muted-foreground/60">
                   {t('skills:editor.priority_hint', '1-10，数字越小优先级越高')}
                 </p>
@@ -550,7 +550,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                     value={formData.dependencies ?? []}
                     onChange={(next) => updateField('dependencies', next)}
                     placeholder={t('skills:editor.skill_list_placeholder', '用逗号分隔，例如 knowledge-retrieval, vfs-memory')}
-                  />
+/>
                   <p className="text-[10px] text-muted-foreground/60">
                     {t('skills:editor.dependencies_hint', '硬依赖：激活此技能时自动加载')}
                   </p>
@@ -565,7 +565,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                   value={formData.relatedSkills ?? []}
                   onChange={(next) => updateField('relatedSkills', next)}
                   placeholder={t('skills:editor.skill_list_placeholder', '用逗号分隔，例如 knowledge-retrieval, vfs-memory')}
-                />
+/>
                 <p className="text-[10px] text-muted-foreground/60">
                   {t('skills:editor.related_skills_hint', '软关联：仅用于推荐，不会自动加载')}
                 </p>
@@ -579,7 +579,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                   value={formData.allowedTools ?? []}
                   onChange={(next) => updateField('allowedTools', next)}
                   placeholder={t('skills:editor.allowed_tools_placeholder', '用逗号分隔，例如 builtin-web_search, server-a::fetch')}
-                />
+/>
                 <p className="text-[10px] text-muted-foreground/60">
                   {t('skills:editor.allowed_tools_hint', '权限白名单：支持工具名以及 server::tool 的外部服务器粒度约束')}
                 </p>
@@ -598,7 +598,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                 <Switch
                   checked={formData.disableAutoInvoke}
                   onCheckedChange={(checked) => updateField('disableAutoInvoke', checked)}
-                />
+/>
               </div>
             </TabsContent>
 
@@ -620,7 +620,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                     'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all font-mono text-sm',
                     embeddedMode ? 'overflow-hidden resize-none min-h-[200px]' : 'resize-none flex-1 min-h-[300px]'
                   )}
-                />
+/>
                 <p className="text-[10px] text-muted-foreground/60 flex-none">
                   {t('skills:editor.content_hint', '使用 Markdown 格式编写技能指令')}
                 </p>
@@ -632,7 +632,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
               <EmbeddedToolsEditor
                 tools={formData.embeddedTools || []}
                 onChange={(tools) => updateField('embeddedTools', tools)}
-              />
+/>
             </TabsContent>
           </div>
         </CustomScrollArea>

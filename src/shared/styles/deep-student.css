@@ -614,20 +614,20 @@ div[style*="position: absolute"][style*="top: 0"][style*="right: 0"][id*="debug"
   background-size: 1rem !important;
   padding-right: 3rem !important;
   cursor: pointer !important;
-  border: 2px solid #e2e8f0 !important;
+  border: 2px solid hsl(var(--border)) !important;
   border-radius: 10px !important;
   font-weight: 500 !important;
   transition: all 0.2s ease !important;
 }
 
 .form-group select:hover {
-  border-color: #3b82f6 !important;
+  border-color: hsl(var(--primary)) !important;
 }
 
 .form-group select:focus {
   outline: none !important;
-  border-color: #3b82f6 !important;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15) !important;
+  border-color: hsl(var(--primary)) !important;
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.15) !important;
 }
 
 .form-group select::-ms-expand {
@@ -670,53 +670,53 @@ div[style*="position: absolute"][style*="top: 0"][style*="right: 0"][id*="debug"
   background: hsl(var(--muted));
   color: hsl(var(--foreground));
   border-color: hsl(var(--border));
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--shadow-content-subtle);
 }
 
 .btn-primary:hover:not(:disabled) {
   background: hsl(var(--accent));
   border-color: hsl(var(--border));
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-content-soft);
 }
 
 .btn-success {
-  background: #f0fdf4;
-  color: #166534;
-  border-color: #bbf7d0;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  background: hsl(var(--success) / 0.08);
+  color: hsl(var(--success));
+  border-color: hsl(var(--success) / 0.3);
+  box-shadow: var(--shadow-content-subtle);
 }
 
 .btn-success:hover:not(:disabled) {
-  background: #dcfce7;
-  border-color: #86efac;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  background: hsl(var(--success) / 0.14);
+  border-color: hsl(var(--success) / 0.45);
+  box-shadow: var(--shadow-content-soft);
 }
 
 .btn-secondary {
   background: hsl(var(--muted));
   color: hsl(var(--muted-foreground));
   border-color: hsl(var(--border));
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--shadow-content-subtle);
 }
 
 .btn-secondary:hover:not(:disabled) {
   background: hsl(var(--accent));
   border-color: hsl(var(--border));
   color: hsl(var(--foreground));
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-content-soft);
 }
 
 .btn-danger {
-  background: #fef2f2;
-  color: #dc2626;
-  border-color: #fecaca;
-  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.05);
+  background: hsl(var(--destructive) / 0.08);
+  color: hsl(var(--destructive));
+  border-color: hsl(var(--destructive) / 0.3);
+  box-shadow: var(--shadow-content-subtle);
 }
 
 .btn-danger:hover:not(:disabled) {
-  background: #fee2e2;
-  border-color: #fca5a5;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.1);
+  background: hsl(var(--destructive) / 0.14);
+  border-color: hsl(var(--destructive) / 0.45);
+  box-shadow: var(--shadow-content-soft);
 }
 
 /* =================== Utility keyframes =================== */

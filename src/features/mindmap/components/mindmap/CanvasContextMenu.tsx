@@ -5,30 +5,29 @@ import { Z_INDEX } from '@/config/zIndex';
 import {
   Plus,
   Pencil,
-  CheckCircle2,
+  CheckCircle,
   Circle,
-  Bold,
-  Italic,
-  Underline,
-  Strikethrough,
-  Heading1,
-  Heading2,
-  Heading3,
-  Type,
-  Smile,
+  TextB,
+  TextItalic,
+  TextUnderline,
+  TextStrikethrough,
+  TextHOne,
+  TextHTwo,
+  TextHThree,
+  TextT,
+  Smiley,
   Link,
   Palette,
   Highlighter,
-  ChevronRight,
-  ChevronDown,
-  Trash2,
+  CaretRight,
+  CaretDown,
+  Trash,
   Copy,
   Scissors,
-  ClipboardPaste,
-  StickyNote,
+  ClipboardText,
+  Note,
   X,
-  Link2,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useMindMapStore } from '../../store';
@@ -219,7 +218,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
         />
       )}
       <MenuItem
-        icon={<StickyNote className="w-4 h-4" />}
+        icon={<Note className="w-4 h-4" />}
         label={node.note ? t('contextMenu.editNote') : t('contextMenu.addNote')}
         shortcut="⇧Enter"
         onClick={() => exec(() => {
@@ -228,7 +227,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
       />
 
       <MenuItem
-        icon={<Link2 className="w-4 h-4" />}
+        icon={<Link className="w-4 h-4" />}
         label={t('contextMenu.linkResource', '关联资源')}
         onClick={() => exec(() => {
           if (nodeId) onOpenResourcePicker?.(nodeId);
@@ -240,7 +239,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
       <MenuItem
         icon={node.completed
           ? <Circle className="w-4 h-4" />
-          : <CheckCircle2 className="w-4 h-4" />}
+          : <CheckCircle className="w-4 h-4" />}
         label={node.completed ? t('contextMenu.unmarkComplete') : t('contextMenu.markComplete')}
         active={node.completed}
         onClick={() => exec(() => updateNode(nodeId, { completed: !node.completed }))}
@@ -248,10 +247,10 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
       {/* B / I / U / S | H1 / H2 / H3 / T */}
       <div className="flex items-center gap-1 px-2 py-1">
         {[
-          { key: 'bold', icon: Bold, prop: 'fontWeight' as const, val: 'bold', cur: node.style?.fontWeight },
-          { key: 'italic', icon: Italic, prop: 'fontStyle' as const, val: 'italic', cur: node.style?.fontStyle },
-          { key: 'underline', icon: Underline, prop: 'textDecoration' as const, val: 'underline', cur: node.style?.textDecoration },
-          { key: 'strikethrough', icon: Strikethrough, prop: 'textDecoration' as const, val: 'line-through', cur: node.style?.textDecoration },
+          { key: 'bold', icon: TextB, prop: 'fontWeight' as const, val: 'bold', cur: node.style?.fontWeight },
+          { key: 'italic', icon: TextItalic, prop: 'fontStyle' as const, val: 'italic', cur: node.style?.fontStyle },
+          { key: 'underline', icon: TextUnderline, prop: 'textDecoration' as const, val: 'underline', cur: node.style?.textDecoration },
+          { key: 'strikethrough', icon: TextStrikethrough, prop: 'textDecoration' as const, val: 'line-through', cur: node.style?.textDecoration },
         ].map(({ key, icon: Icon, prop, val, cur }) => (
           <NotionButton variant="ghost" key={key}
             className={cn("w-7 h-7 flex items-center justify-center rounded", cur === val && "bg-accent")}
@@ -260,7 +259,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
           ><Icon className="w-4 h-4" /></NotionButton>
         ))}
         <div className="w-px h-4 bg-border mx-0.5" />
-        {([['h1', Heading1], ['h2', Heading2], ['h3', Heading3]] as const).map(([level, Icon]) => (
+        {([['h1', TextHOne], ['h2', TextHTwo], ['h3', TextHThree]] as const).map(([level, Icon]) => (
           <NotionButton variant="ghost" key={level}
             className={cn("w-7 h-7 flex items-center justify-center rounded", node.style?.headingLevel === level && "bg-accent")}
             onClick={() => exec(() => updateNode(nodeId, { style: { ...node.style, headingLevel: node.style?.headingLevel === level ? undefined : level } }))}
@@ -271,7 +270,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
           className={cn("w-7 h-7 flex items-center justify-center rounded", !node.style?.headingLevel && "bg-accent")}
           onClick={() => exec(() => updateNode(nodeId, { style: { ...node.style, headingLevel: undefined } }))}
           title={t('contextMenu.normalText')}
-        ><Type className="w-4 h-4" /></NotionButton>
+        ><TextT className="w-4 h-4" /></NotionButton>
       </div>
       <div className="flex items-center gap-2 px-2 pt-1.5 pb-0.5 text-[13px] text-muted-foreground select-none">
         <Palette className="w-4 h-4 flex-shrink-0" />
@@ -312,7 +311,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
         onClick={() => exec(() => cutNodes([nodeId]))}
       />
       <MenuItem
-        icon={<ClipboardPaste className="w-4 h-4" />}
+        icon={<ClipboardText className="w-4 h-4" />}
         label={t('contextMenu.pasteAsChild')}
         shortcut="⌘V"
         disabled={!clipboard}
@@ -324,8 +323,8 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
       {hasChildren && (
         <MenuItem
           icon={isCollapsed
-            ? <ChevronRight className="w-4 h-4" />
-            : <ChevronDown className="w-4 h-4" />}
+            ? <CaretRight className="w-4 h-4" />
+            : <CaretDown className="w-4 h-4" />}
           label={isCollapsed ? t('actions.expand') : t('actions.collapse')}
           shortcut={isCollapsed ? '⌘]' : '⌘['}
           onClick={() => exec(() => toggleCollapse(nodeId))}
@@ -336,7 +335,7 @@ export const CanvasContextMenu: React.FC<CanvasContextMenuProps> = ({
         <>
           {hasChildren && <MenuSeparator />}
           <MenuItem
-            icon={<Trash2 className="w-4 h-4" />}
+            icon={<Trash className="w-4 h-4" />}
             label={t('actions.delete')}
             shortcut="Del"
             destructive

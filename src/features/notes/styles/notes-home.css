@@ -152,8 +152,8 @@
     overflow: visible !important;
     height: auto !important;
     min-height: auto !important;
-    background: white !important;
-    color: black !important;
+    background: hsl(var(--background)) !important;
+    color: hsl(var(--foreground)) !important;
   }
   
   /* 隐藏笔记侧边栏 */
@@ -222,13 +222,13 @@
     max-width: none !important;
     padding: 0 20px !important;
     margin: 0 !important;
-    background: white !important;
+    background: hsl(var(--background)) !important;
   }
   
   /* 打印时的排版样式 */
   .prose-note {
-    background: white !important;
-    color: black !important;
+    background: hsl(var(--background)) !important;
+    color: hsl(var(--foreground)) !important;
     font-size: 12pt !important;
     line-height: 1.6 !important;
     max-width: none !important;
@@ -240,29 +240,29 @@
   .prose-note h2,
   .prose-note h3,
   .prose-note h4 {
-    color: black !important;
+    color: hsl(var(--foreground)) !important;
     page-break-after: avoid;
   }
   
   .prose-note a {
-    color: black !important;
+    color: hsl(var(--foreground)) !important;
     text-decoration: underline !important;
   }
   
   .prose-note code {
-    background-color: #f5f5f5 !important;
-    color: black !important;
-    border: 1px solid #ddd !important;
+    background-color: hsl(var(--muted)) !important;
+    color: hsl(var(--foreground)) !important;
+    border: 1px solid hsl(var(--border)) !important;
   }
   
   .prose-note pre {
-    background-color: #f5f5f5 !important;
-    border: 1px solid #ddd !important;
+    background-color: hsl(var(--muted)) !important;
+    border: 1px solid hsl(var(--border)) !important;
     page-break-inside: avoid;
   }
   
   .prose-note blockquote {
-    border-left-color: #333 !important;
-    color: #333 !important;
+    border-left-color: var(--text-primary) !important;
+    color: var(--text-primary) !important;
   }
 }

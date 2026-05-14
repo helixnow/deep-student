@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, Check, Search } from 'lucide-react';
+import { CaretDown, Check, MagnifyingGlass } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { ProviderIcon, isGenericProviderIconPath } from '../ProviderIcon';
 import { Input } from './Input';
@@ -70,8 +70,8 @@ export function Combobox({
         <img
           src={option.icon}
           alt=""
-          className="h-4 w-4 flex-shrink-0 rounded object-contain"
-        />
+ className="w-4 h-4 flex-shrink-0 rounded object-contain"
+/>
       );
     }
 
@@ -91,7 +91,7 @@ export function Combobox({
           {selectedOption && renderOptionIcon(selectedOption)}
           <span className="truncate">{buttonLabel}</span>
         </span>
-        <ChevronDown className="h-4 w-4 opacity-70" />
+        <CaretDown size={16} className="opacity-70" />
       </NotionButton>
 
       <NotionDialog open={open} onOpenChange={setOpen} maxWidth="max-w-lg" className="p-0">
@@ -101,7 +101,7 @@ export function Combobox({
         <div className="px-5 pb-2">
             <div className="mt-2 relative">
               <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground">
-                <Search className="h-4 w-4" />
+                <MagnifyingGlass size={16} />
               </span>
               <Input
                 autoFocus
@@ -109,7 +109,7 @@ export function Combobox({
                 onChange={(e) => setQuery(e.target.value)}
                 placeholder={resolvedSearchPlaceholder}
                 className="pl-8"
-              />
+/>
             </div>
         </div>
 
@@ -137,7 +137,7 @@ export function Combobox({
                           {renderOptionIcon(o)}
                           <span className="truncate">{o.label}</span>
                         </span>
-                        {selected && <Check className="h-4 w-4 text-accent-foreground flex-shrink-0" />}
+                        {selected && <Check size={16} className="text-accent-foreground flex-shrink-0" />}
                       </button>
                     </li>
                   );

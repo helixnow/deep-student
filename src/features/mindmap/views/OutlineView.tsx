@@ -29,36 +29,36 @@ import { useMindMapStore } from '../store';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { 
-  ChevronRight, 
-  ChevronDown, 
+  CaretRight, 
+  CaretDown, 
   Plus,
-  MoreHorizontal,
-  Trash2,
-  Bold,
-  Italic,
-  Underline,
-  Strikethrough,
-  Heading1,
-  Heading2,
-  Heading3,
-  Type,
-  Smile,
+  DotsThree,
+  Trash,
+  TextB,
+  TextItalic,
+  TextUnderline,
+  TextStrikethrough,
+  TextHOne,
+  TextHTwo,
+  TextHThree,
+  TextT,
+  Smiley,
   Link,
-  Link2,
+  Link as LinkIcon,
   Pencil,
-  CheckCircle2,
+  CheckCircle,
   Circle,
   Palette,
   Highlighter,
-  Home,
-  GripVertical,
-  ZoomIn,
-  StickyNote,
+  House,
+  DotsSixVertical,
+  MagnifyingGlassPlus,
+  Note,
   Copy,
   Scissors,
-  ClipboardPaste,
+  ClipboardText,
   X,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import {
   AppMenu,
   AppMenuTrigger,
@@ -630,7 +630,7 @@ const SortableOutlineNode: React.FC<{
               }}
               title={t('outline.enterFocusMode')}
             >
-              <ZoomIn className="w-4 h-4" />
+              <MagnifyingGlassPlus size={16} />
             </NotionButton>
             <AppMenu>
               <AppMenuTrigger asChild>
@@ -638,7 +638,7 @@ const SortableOutlineNode: React.FC<{
                   className="action-btn"
                   onClick={(e) => e.stopPropagation()}
                 >
-                  <MoreHorizontal className="w-4 h-4" />
+                  <DotsThree size={16} />
                 </NotionButton>
               </AppMenuTrigger>
               <AppMenuContent align="end" className="min-w-[180px]">
@@ -666,14 +666,14 @@ const SortableOutlineNode: React.FC<{
                   </AppMenuItem>
                 )}
                 <AppMenuItem
-                  icon={<StickyNote className="w-4 h-4" />}
+                  icon={<Note size={16} />}
                   shortcut="⇧Enter"
                   onClick={() => setIsEditingNote(true)}
                 >
                   {node.note ? t('contextMenu.editNote') : t('contextMenu.addNote')}
                 </AppMenuItem>
                 <AppMenuItem
-                  icon={<Link2 className="w-4 h-4" />}
+                  icon={<LinkIcon size={16} />}
                   onClick={() => onOpenResourcePicker?.(node.id)}
                 >
                   {t('contextMenu.linkResource')}
@@ -681,8 +681,8 @@ const SortableOutlineNode: React.FC<{
                 <AppMenuSeparator />
                 <AppMenuItem
                   icon={node.completed
-                    ? <Circle className="w-4 h-4" />
-                    : <CheckCircle2 className="w-4 h-4" />}
+                    ? <Circle size={16} />
+                    : <CheckCircle size={16} />}
                   onClick={() => updateNode(node.id, { completed: !node.completed })}
                 >
                   {node.completed ? t('contextMenu.unmarkComplete') : t('contextMenu.markComplete')}
@@ -693,39 +693,39 @@ const SortableOutlineNode: React.FC<{
                     className={cn("w-7 h-7 flex items-center justify-center rounded", node.style?.fontWeight === 'bold' && "bg-accent")}
                     onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, fontWeight: node.style?.fontWeight === 'bold' ? undefined : 'bold' } }); }}
                     title={t('contextMenu.bold')}
-                  ><Bold className="w-4 h-4" /></NotionButton>
+                  ><TextB size={16} /></NotionButton>
                   <NotionButton variant="ghost"
                     className={cn("w-7 h-7 flex items-center justify-center rounded", node.style?.fontStyle === 'italic' && "bg-accent")}
                     onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, fontStyle: node.style?.fontStyle === 'italic' ? undefined : 'italic' } }); }}
                     title={t('contextMenu.italic')}
-                  ><Italic className="w-4 h-4" /></NotionButton>
+                  ><TextItalic size={16} /></NotionButton>
                   <NotionButton variant="ghost"
                     className={cn("w-7 h-7 flex items-center justify-center rounded", node.style?.textDecoration === 'underline' && "bg-accent")}
                     onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, textDecoration: node.style?.textDecoration === 'underline' ? undefined : 'underline' } }); }}
                     title={t('contextMenu.underline')}
-                  ><Underline className="w-4 h-4" /></NotionButton>
+                  ><TextUnderline size={16} /></NotionButton>
                   <NotionButton variant="ghost"
                     className={cn("w-7 h-7 flex items-center justify-center rounded", node.style?.textDecoration === 'line-through' && "bg-accent")}
                     onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, textDecoration: node.style?.textDecoration === 'line-through' ? undefined : 'line-through' } }); }}
                     title={t('contextMenu.strikethrough')}
-                  ><Strikethrough className="w-4 h-4" /></NotionButton>
+                  ><TextStrikethrough size={16} /></NotionButton>
                   <div className="w-px h-4 bg-border mx-0.5" />
-                  {([['h1', Heading1], ['h2', Heading2], ['h3', Heading3]] as const).map(([level, Icon]) => (
+                  {([['h1', TextHOne], ['h2', TextHTwo], ['h3', TextHThree]] as const).map(([level, Icon]) => (
                     <NotionButton variant="ghost" key={level}
                       className={cn("w-7 h-7 flex items-center justify-center rounded", node.style?.headingLevel === level && "bg-accent")}
                       onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, headingLevel: node.style?.headingLevel === level ? undefined : level } }); }}
                       title={t(`contextMenu.${level === 'h1' ? 'heading1' : level === 'h2' ? 'heading2' : 'heading3'}`)}
-                    ><Icon className="w-4 h-4" /></NotionButton>
+                    ><Icon size={16} /></NotionButton>
                   ))}
                   <NotionButton variant="ghost"
                     className={cn("w-7 h-7 flex items-center justify-center rounded", !node.style?.headingLevel && "bg-accent")}
                     onClick={(e) => { e.stopPropagation(); updateNode(node.id, { style: { ...node.style, headingLevel: undefined } }); }}
                     title={t('contextMenu.normalText')}
-                  ><Type className="w-4 h-4" /></NotionButton>
+                  ><TextT size={16} /></NotionButton>
                 </div>
                 <AppMenuSeparator />
                 <div className="flex items-center gap-2 px-2 pt-1.5 pb-0.5 text-[13px] text-muted-foreground select-none">
-                  <Palette className="w-4 h-4 flex-shrink-0" />
+                  <Palette size={16} className="flex-shrink-0" />
                   <span>{t('contextMenu.textColor')}</span>
                 </div>
                 <div className="flex items-center gap-1 px-2 py-1.5">
@@ -754,7 +754,7 @@ const SortableOutlineNode: React.FC<{
                   </NotionButton>
                 </div>
                 <div className="flex items-center gap-2 px-2 pt-1.5 pb-0.5 text-[13px] text-muted-foreground select-none">
-                  <Highlighter className="w-4 h-4 flex-shrink-0" />
+                  <Highlighter size={16} className="flex-shrink-0" />
                   <span>{t('contextMenu.highlight')}</span>
                 </div>
                 <div className="flex items-center gap-1 px-2 py-1.5">
@@ -799,7 +799,7 @@ const SortableOutlineNode: React.FC<{
                   {t('contextMenu.cut')}
                 </AppMenuItem>
                 <AppMenuItem
-                  icon={<ClipboardPaste className="w-4 h-4" />}
+                  icon={<ClipboardText size={16} />}
                   shortcut="⌘V"
                   disabled={!clipboard}
                   onClick={() => pasteNodes(node.id)}
@@ -811,8 +811,8 @@ const SortableOutlineNode: React.FC<{
                     <AppMenuSeparator />
                     <AppMenuItem
                       icon={isCollapsed
-                        ? <ChevronRight className="w-4 h-4" />
-                        : <ChevronDown className="w-4 h-4" />}
+                        ? <CaretRight size={16} />
+                        : <CaretDown size={16} />}
                       shortcut={isCollapsed ? '⌘]' : '⌘['}
                       onClick={() => toggleCollapse(node.id)}
                     >
@@ -824,7 +824,7 @@ const SortableOutlineNode: React.FC<{
                   <>
                     <AppMenuSeparator />
                     <AppMenuItem
-                      icon={<Trash2 className="w-4 h-4" />}
+                      icon={<Trash size={16} />}
                       shortcut="Del"
                       destructive
                       onClick={() => deleteNode(node.id)}
@@ -931,7 +931,7 @@ const OutlineBreadcrumb: React.FC<{
         onClick={() => onNavigate(null)}
         className="flex items-center gap-1 px-1 py-0.5 rounded hover:bg-[var(--mm-bg-hover)] transition-colors"
       >
-        <Home className="w-3.5 h-3.5" />
+        <House size={14} />
       </NotionButton>
       {path.map((node, index) => (
         <React.Fragment key={node.id}>

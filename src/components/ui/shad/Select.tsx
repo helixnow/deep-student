@@ -1,6 +1,6 @@
 import * as React from 'react';
 import * as SelectPrimitive from '@radix-ui/react-select';
-import { ChevronDown, ChevronUp, Check } from 'lucide-react';
+import { CaretDown, CaretUp, Check } from '@phosphor-icons/react';
 import { cn } from '../../../lib/utils';
 import { Z_INDEX } from '@/config/zIndex';
 import { inputShellClass } from './inputShell';
@@ -46,7 +46,7 @@ const SelectTrigger = React.forwardRef<
   >
     {children}
     <SelectPrimitive.Icon asChild>
-      <ChevronDown className="h-4 w-4 shrink-0 text-muted-foreground/70 transition-transform data-[state=open]:rotate-180" aria-hidden />
+      <CaretDown size={16} className="shrink-0 text-muted-foreground/70 transition-transform data-[state=open]:rotate-180" aria-hidden />
     </SelectPrimitive.Icon>
   </SelectPrimitive.Trigger>
 ));
@@ -61,7 +61,7 @@ const SelectScrollUpButton = React.forwardRef<
     className={cn('flex cursor-default items-center justify-center py-1 text-muted-foreground/70', className)}
     {...props}
   >
-    <ChevronUp className="h-4 w-4" aria-hidden />
+    <CaretUp size={16} aria-hidden />
   </SelectPrimitive.ScrollUpButton>
 ));
 SelectScrollUpButton.displayName = SelectPrimitive.ScrollUpButton.displayName;
@@ -75,7 +75,7 @@ const SelectScrollDownButton = React.forwardRef<
     className={cn('flex cursor-default items-center justify-center py-1 text-muted-foreground/70', className)}
     {...props}
   >
-    <ChevronDown className="h-4 w-4" aria-hidden />
+    <CaretDown size={16} aria-hidden />
   </SelectPrimitive.ScrollDownButton>
 ));
 SelectScrollDownButton.displayName = SelectPrimitive.ScrollDownButton.displayName;
@@ -123,7 +123,7 @@ const SelectLabel = React.forwardRef<
     ref={ref}
     className={cn('px-2 py-1.5 text-xs font-medium text-muted-foreground/70', className)}
     {...props}
-  />
+/>
 ));
 SelectLabel.displayName = SelectPrimitive.Label.displayName;
 
@@ -143,9 +143,9 @@ const SelectItem = React.forwardRef<
     {...props}
   >
     <SelectPrimitive.ItemText>{children}</SelectPrimitive.ItemText>
-    <span className="absolute right-2 flex h-4 w-4 items-center justify-center">
+    <span className="w-4 h-4 absolute right-2 flex items-center justify-center">
       <SelectPrimitive.ItemIndicator>
-        <Check className="h-4 w-4 text-foreground" aria-hidden />
+        <Check size={16} className="text-foreground" aria-hidden />
       </SelectPrimitive.ItemIndicator>
     </span>
   </SelectPrimitive.Item>
@@ -160,7 +160,7 @@ const SelectSeparator = React.forwardRef<
     ref={ref}
     className={cn('-mx-1 my-1 h-px bg-border/40', className)}
     {...props}
-  />
+/>
 ));
 SelectSeparator.displayName = SelectPrimitive.Separator.displayName;
 

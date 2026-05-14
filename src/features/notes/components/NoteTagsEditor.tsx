@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback } from "react";
 import { useTranslation } from "react-i18next";
-import { X, Plus, Tag as TagIcon, Loader2, Edit2, Check, AlertCircle } from "lucide-react";
+import { X, Plus, Tag as TagIcon, CircleNotch, PencilSimple, Check, WarningCircle } from "@phosphor-icons/react";
 import {
     Popover,
     PopoverContent,
@@ -186,7 +186,7 @@ export const NoteTagsEditor: React.FC<NoteTagsEditorProps> = ({
                         <div className="flex items-center gap-2 border-b border-border/50 pb-2">
                             <TagIcon className="h-4 w-4 text-muted-foreground" />
                             <span className="text-sm font-medium">{t('notes:header.tags')}</span>
-                            {isSaving && <Loader2 className="h-3 w-3 animate-spin ml-auto text-muted-foreground" />}
+                            {isSaving && <CircleNotch className="h-3 w-3 animate-spin ml-auto text-muted-foreground" />}
                         </div>
 
                         {/* Current Tags */}
@@ -225,7 +225,7 @@ export const NoteTagsEditor: React.FC<NoteTagsEditorProps> = ({
                                             {!readonly && (
                                                 <>
                                                     <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleStartRename(tag)} className="!h-auto !w-auto !p-0 opacity-0 group-hover:opacity-70 hover:opacity-100 transition-opacity" title={t('notes:header.rename_tag')} aria-label="rename">
-                                                        <Edit2 className="h-3 w-3" />
+                                                        <PencilSimple className="h-3 w-3" />
                                                     </NotionButton>
                                                     <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveTag(tag)} className="!h-auto !w-auto !p-0 opacity-0 group-hover:opacity-100 hover:text-destructive transition-opacity" title={t('notes:header.remove_tag')} aria-label="remove">
                                                         <X className="h-3 w-3" />

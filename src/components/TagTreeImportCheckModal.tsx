@@ -4,7 +4,7 @@ import { useTranslation } from 'react-i18next';
 import './TagTreeImportCheckModal.css';
 import UnifiedModal from './UnifiedModal';
 import { ValidationResult } from '../utils/TagTreeValidator';
-import { AlertTriangle, XCircle } from 'lucide-react';
+import { Warning, XCircle } from '@phosphor-icons/react';
 
 interface Props {
   open: boolean;
@@ -53,7 +53,7 @@ const TagTreeImportCheckModal: React.FC<Props> = ({ open, result, onConfirm, onC
 
         {warnings.length > 0 && (
           <>
-            <h4><AlertTriangle size={16} style={{marginRight:4}} />{t('status.warning')}</h4>
+            <h4><Warning size={16} style={{marginRight:4}} />{t('status.warning')}</h4>
             <ul className="warning-list">
               {warnings.map((w, i) => <li key={i}>{w}</li>)}
             </ul>

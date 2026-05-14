@@ -1,13 +1,13 @@
 import React, { useState } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
-import { X, Plus, Filter as FilterIcon } from 'lucide-react';
+import { X, Plus, Funnel as FilterIcon } from '@phosphor-icons/react';
 import { generateId } from '../../utils/common';
 import './FilterBuilder.css';
 import { Input } from '@/components/ui/shad/Input';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
 
-interface Filter {
+interface Funnel {
   id: string;
   type: string;
   field?: string;
@@ -16,14 +16,14 @@ interface Filter {
 }
 
 interface FilterBuilderProps {
-  filters: Filter[];
-  onApply: (filters: Filter[]) => void;
+  filters: Funnel[];
+  onApply: (filters: Funnel[]) => void;
   onClose: () => void;
 }
 
 const FilterBuilder: React.FC<FilterBuilderProps> = ({ filters, onApply, onClose }) => {
   const { t } = useTranslation('anki');
-  const [localFilters, setLocalFilters] = useState<Filter[]>(filters);
+  const [localFilters, setLocalFilters] = useState<Funnel[]>(filters);
   
   const filterTypes = [
     { value: 'content', label: t('filter_content') },
@@ -51,7 +51,7 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ filters, onApply, onClose
   };
   
   const addFilter = () => {
-    const newFilter: Filter = {
+    const newFilter: Funnel = {
       id: generateId(),
       type: 'content',
       operator: 'contains',
@@ -60,7 +60,7 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ filters, onApply, onClose
     setLocalFilters([...localFilters, newFilter]);
   };
   
-  const updateFilter = (id: string, updates: Partial<Filter>) => {
+  const updateFilter = (id: string, updates: Partial<Funnel>) => {
     setLocalFilters(localFilters.map(filter => 
       filter.id === id ? { ...filter, ...updates } : filter
     ));
@@ -156,7 +156,7 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ filters, onApply, onClose
                             value={filter.value || ''}
                             onChange={(e) => updateFilter(filter.id, { value: e.target.value })}
                             className="filter-value-input"
-                          />
+/>
                         ) : (
                           <Input
                             type="text"
@@ -164,7 +164,7 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ filters, onApply, onClose
                             onChange={(e) => updateFilter(filter.id, { value: e.target.value })}
                             placeholder={t('filter_value_placeholder')}
                             className="filter-value-input"
-                          />
+/>
                         )}
                       </>
                     )}

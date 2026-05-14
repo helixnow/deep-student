@@ -9,15 +9,15 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { cn } from '@/lib/utils';
 import { Card, CardContent } from '@/components/ui/shad/Card';
 import {
-  ListOrdered,
+  ListNumbers,
   Shuffle,
-  RotateCcw,
+  ArrowCounterClockwise,
   Tag,
   Timer,
   FileText,
-  CalendarDays,
-  ClipboardList,
-} from 'lucide-react';
+  CalendarBlank,
+  ClipboardText,
+} from '@phosphor-icons/react';
 import { PracticeMode } from '@/stores/questionBankStore';
 import { useTranslation } from 'react-i18next';
 
@@ -46,7 +46,7 @@ export const PracticeModeSelector: React.FC<PracticeModeSelectorProps> = ({
   const modes: ModeConfig[] = [
     {
       key: 'sequential',
-      icon: ListOrdered,
+      icon: ListNumbers,
       label: t('modes.sequential.label'),
       desc: t('modes.sequential.desc'),
       color: 'text-slate-600',
@@ -62,7 +62,7 @@ export const PracticeModeSelector: React.FC<PracticeModeSelectorProps> = ({
     },
     {
       key: 'review_first',
-      icon: RotateCcw,
+      icon: ArrowCounterClockwise,
       label: t('modes.reviewFirst.label'),
       desc: t('modes.reviewFirst.desc'),
       color: 'text-amber-600',
@@ -70,7 +70,7 @@ export const PracticeModeSelector: React.FC<PracticeModeSelectorProps> = ({
     },
     {
       key: 'review_only',
-      icon: RotateCcw,
+      icon: ArrowCounterClockwise,
       label: t('modes.reviewOnly.label'),
       desc: t('modes.reviewOnly.desc'),
       color: 'text-amber-600',
@@ -102,7 +102,7 @@ export const PracticeModeSelector: React.FC<PracticeModeSelectorProps> = ({
     },
     {
       key: 'daily',
-      icon: CalendarDays,
+      icon: CalendarBlank,
       label: t('modes.daily.label'),
       desc: t('modes.daily.desc'),
       color: 'text-emerald-600',
@@ -110,7 +110,7 @@ export const PracticeModeSelector: React.FC<PracticeModeSelectorProps> = ({
     },
     {
       key: 'paper',
-      icon: ClipboardList,
+      icon: ClipboardText,
       label: t('modes.paper.label'),
       desc: t('modes.paper.desc'),
       color: 'text-orange-600',

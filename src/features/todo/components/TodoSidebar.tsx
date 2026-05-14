@@ -10,17 +10,17 @@
 import React, { useCallback, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Inbox,
+  Tray,
   Star,
   Calendar,
-  AlertTriangle,
+  Warning,
   Clock,
   CheckSquare,
   Plus,
-  Search,
-  Trash2,
+  MagnifyingGlass,
+  Trash,
   X,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/shad/Input';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -35,10 +35,10 @@ interface SmartView {
 }
 
 const SMART_VIEWS: SmartView[] = [
-  { id: 'all', icon: Inbox, labelKey: 'todo:views.inbox' },
+  { id: 'all', icon: Tray, labelKey: 'todo:views.inbox' },
   { id: 'today', icon: Calendar, labelKey: 'todo:views.today' },
   { id: 'upcoming', icon: Clock, labelKey: 'todo:views.upcoming' },
-  { id: 'overdue', icon: AlertTriangle, labelKey: 'todo:views.overdue' },
+  { id: 'overdue', icon: Warning, labelKey: 'todo:views.overdue' },
   { id: 'completed', icon: CheckSquare, labelKey: 'todo:views.completed' },
 ];
 
@@ -198,7 +198,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
       {/* 头部：搜索（可折叠） */}
       <div className="shrink-0 px-2 pb-2 pt-3">
         <div className="relative">
-          <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--shell-navigation-muted)]" />
+          <MagnifyingGlass className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[color:var(--shell-navigation-muted)]" size={14} />
           <Input
             type="text"
             value={searchQuery}
@@ -219,7 +219,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
               className="absolute right-2 top-1/2 flex h-5 w-5 -translate-y-1/2 items-center justify-center rounded-md text-[color:var(--shell-navigation-muted)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--shell-navigation-foreground)]"
               aria-label={t('common:actions.clear')}
             >
-              <X className="h-3 w-3" />
+              <X size={12} />
             </button>
           )}
         </div>
@@ -241,7 +241,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
                 key={id}
                 isActive={isActive}
                 onClick={() => handleSmartViewClick(id)}
-                leftSlot={<Icon className="size-[18px]" strokeWidth={2} />}
+                leftSlot={<Icon size={18} weight="bold" />}
               >
                 {t(labelKey)}
               </NavRow>
@@ -268,7 +268,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
               'group-hover/list-header:opacity-100 focus-visible:opacity-100',
             )}
           >
-            <Plus className="h-3.5 w-3.5" />
+            <Plus size={14} />
           </button>
         </div>
 
@@ -306,21 +306,22 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
                     onClick={() => handleListClick(list)}
                     leftSlot={
                       list.isDefault ? (
-                        <Inbox className="size-[18px]" strokeWidth={2} />
+                        <Tray size={18} weight="bold" />
                       ) : list.color ? (
                         <span
                           className="size-[10px] rounded-full"
                           style={{ backgroundColor: list.color }}
                         />
                       ) : (
-                        <CheckSquare className="size-[18px]" strokeWidth={2} />
+                        <CheckSquare size={18} weight="bold" />
                       )
                     }
                     rightSlot={
                       <>
                         {list.isFavorite && (
                           <Star
-                            className="size-3.5 fill-[color:hsl(var(--warning))] text-[color:hsl(var(--warning))]"
+                            size={14}
+                            className="fill-[color:hsl(var(--warning))] text-[color:hsl(var(--warning))]"
                             aria-hidden
                           />
                         )}
@@ -349,8 +350,8 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
                             className="flex h-5 w-5 items-center justify-center rounded-md text-[color:var(--shell-navigation-muted)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--shell-navigation-foreground)]"
                           >
                             <Star
+                              size={12}
                               className={cn(
-                                'h-3 w-3',
                                 list.isFavorite &&
                                   'fill-[color:hsl(var(--warning))] text-[color:hsl(var(--warning))]',
                               )}
@@ -367,7 +368,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
                               title={t('common:actions.delete')}
                               className="flex h-5 w-5 items-center justify-center rounded-md text-[color:var(--shell-navigation-muted)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:hsl(var(--destructive))]"
                             >
-                              <Trash2 className="h-3 w-3" />
+                              <Trash size={12} />
                             </button>
                           )}
                         </span>

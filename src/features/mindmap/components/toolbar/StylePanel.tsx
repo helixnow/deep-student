@@ -7,18 +7,18 @@ import { StyleRegistry } from '../../registry';
 import { ensureInitialized } from '../../init';
 import { 
   Palette, 
-  ChevronDown, 
+  CaretDown, 
   Check, 
-  Type, 
-  Bold,
-  Italic,
-  Underline,
-  Strikethrough,
-  Heading1,
-  Heading2,
-  Heading3,
+  TextT, 
+  TextB,
+  TextItalic,
+  TextUnderline,
+  TextStrikethrough,
+  TextHOne,
+  TextHTwo,
+  TextHThree,
   PaintBucket 
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 
 // ============================================================================
 // 预设颜色（统一引用共享常量）
@@ -201,7 +201,7 @@ export const StyleSettings: React.FC<{
           
           {/* 字号 */}
           <div className="flex items-center gap-2 bg-muted/50 p-1 rounded-md w-fit">
-            <Type className="w-4 h-4 text-muted-foreground ml-1" />
+            <TextT className="w-4 h-4 text-muted-foreground ml-1" />
             <input
               type="number"
               className="w-12 h-6 text-sm bg-transparent border-none text-center focus:ring-0"
@@ -213,10 +213,10 @@ export const StyleSettings: React.FC<{
           {/* B / I / U / S */}
           <div className="flex items-center gap-1">
             {[
-              { key: 'bold', icon: Bold, prop: 'fontWeight' as const, val: 'bold', cur: focusedNode.style?.fontWeight },
-              { key: 'italic', icon: Italic, prop: 'fontStyle' as const, val: 'italic', cur: focusedNode.style?.fontStyle },
-              { key: 'underline', icon: Underline, prop: 'textDecoration' as const, val: 'underline', cur: focusedNode.style?.textDecoration },
-              { key: 'strikethrough', icon: Strikethrough, prop: 'textDecoration' as const, val: 'line-through', cur: focusedNode.style?.textDecoration },
+              { key: 'bold', icon: TextB, prop: 'fontWeight' as const, val: 'bold', cur: focusedNode.style?.fontWeight },
+              { key: 'italic', icon: TextItalic, prop: 'fontStyle' as const, val: 'italic', cur: focusedNode.style?.fontStyle },
+              { key: 'underline', icon: TextUnderline, prop: 'textDecoration' as const, val: 'underline', cur: focusedNode.style?.textDecoration },
+              { key: 'strikethrough', icon: TextStrikethrough, prop: 'textDecoration' as const, val: 'line-through', cur: focusedNode.style?.textDecoration },
             ].map(({ key, icon: Icon, prop, val, cur }) => (
               <NotionButton variant="ghost" key={key}
                 onClick={() => handleNodeStyleUpdate({ [prop]: cur === val ? undefined : val })}
@@ -235,7 +235,7 @@ export const StyleSettings: React.FC<{
           <div className="space-y-1">
             <div className="text-xs font-medium text-muted-foreground">{t('contextMenu.headingLevel')}</div>
             <div className="flex items-center gap-1">
-              {([['h1', Heading1], ['h2', Heading2], ['h3', Heading3]] as const).map(([level, Icon]) => (
+              {([['h1', TextHOne], ['h2', TextHTwo], ['h3', TextHThree]] as const).map(([level, Icon]) => (
                 <NotionButton variant="ghost" key={level}
                   onClick={() => handleNodeStyleUpdate({ headingLevel: focusedNode.style?.headingLevel === level ? undefined : level })}
                   className={cn(
@@ -256,7 +256,7 @@ export const StyleSettings: React.FC<{
                     : "hover:bg-[var(--interactive-hover)] text-muted-foreground"
                 )}
                 title={t('contextMenu.normalText')}
-              ><Type className="w-4 h-4" /></NotionButton>
+              ><TextT className="w-4 h-4" /></NotionButton>
             </div>
           </div>
 
@@ -313,7 +313,7 @@ export const StyleSettings: React.FC<{
         >
           <Palette className="w-4 h-4 text-muted-foreground" />
           <span>{t('toolbar.style')}</span>
-          <ChevronDown className={cn('w-4 h-4 transition-transform duration-200', isOpen && 'rotate-180')} />
+          <CaretDown className={cn('w-4 h-4 transition-transform duration-200', isOpen && 'rotate-180')} />
         </NotionButton>
       )}
 

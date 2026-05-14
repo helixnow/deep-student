@@ -6,7 +6,7 @@
   padding: 16px;
   background: hsl(var(--card));
   border-bottom: 1px solid hsl(var(--border));
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-content-subtle);
 }
 
 .toolbar-section {
@@ -42,8 +42,8 @@
 
 .search-input:focus {
   outline: none;
-  border-color: var(--brand-primary);
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1);
 }
 
 .clear-search {
@@ -83,8 +83,8 @@
 }
 
 .filter-count {
-  background: var(--brand-primary);
-  color: white;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
   font-size: 12px;
   padding: 2px 6px;
   border-radius: 10px;
@@ -109,13 +109,13 @@
 }
 
 .filter-chip:hover {
-  background: #e5e7eb;
-  border-color: #d1d5db;
+  background: hsl(var(--accent));
+  border-color: hsl(var(--border));
 }
 
 .filter-chip.active {
-  background: #3b82f6;
-  color: white;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
 }
 
 /* 选择信息 */
@@ -128,7 +128,7 @@
 
 .selection-count {
   font-size: 14px;
-  color: #4b5563;
+  color: var(--text-secondary);
   font-weight: 500;
 }
 
@@ -138,7 +138,7 @@
   gap: 6px;
   padding: 6px 12px;
   background: transparent;
-  border: 1px solid #d1d5db;
+  border: 1px solid hsl(var(--border));
   border-radius: 6px;
   font-size: 14px;
   cursor: pointer;
@@ -146,8 +146,8 @@
 }
 
 .select-all-btn:hover {
-  background: #f9fafb;
-  border-color: #9ca3af;
+  background: hsl(var(--muted));
+  border-color: hsl(var(--border));
 }
 
 /* 批量操作按钮 */
@@ -161,20 +161,20 @@
   align-items: center;
   gap: 6px;
   padding: 8px 16px;
-  background: white;
-  border: 1px solid #d1d5db;
+  background: var(--surface-elevated);
+  border: 1px solid hsl(var(--border));
   border-radius: 8px;
   font-size: 14px;
   cursor: pointer;
   transition: all 0.2s;
-  color: #374151;
+  color: var(--text-primary);
 }
 
 .action-btn:hover:not(:disabled) {
-  background: #f9fafb;
-  border-color: #9ca3af;
+  background: hsl(var(--muted));
+  border-color: hsl(var(--border));
   transform: translateY(-1px);
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  box-shadow: var(--shadow-content-subtle);
 }
 
 .action-btn:disabled {
@@ -183,13 +183,13 @@
 }
 
 .action-btn.danger {
-  color: #dc2626;
-  border-color: #fee2e2;
+  color: hsl(var(--destructive));
+  border-color: hsl(var(--destructive) / 0.2);
 }
 
 .action-btn.danger:hover:not(:disabled) {
-  background: #fee2e2;
-  border-color: #fecaca;
+  background: hsl(var(--destructive) / 0.1);
+  border-color: hsl(var(--destructive) / 0.3);
 }
 
 /* 下拉菜单 */
@@ -202,10 +202,10 @@
   top: 100%;
   right: 0;
   margin-top: 4px;
-  background: white;
-  border: 1px solid #e5e7eb;
+  background: var(--surface-elevated);
+  border: 1px solid hsl(var(--border));
   border-radius: 8px;
-  box-shadow: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-content-elevated);
   min-width: 180px;
   z-index: 10;
 }
@@ -223,7 +223,7 @@
 }
 
 .dropdown-menu button:hover {
-  background: #f9fafb;
+  background: hsl(var(--muted));
 }
 
 .dropdown-menu button:first-child {
@@ -238,7 +238,7 @@
 .batch-cards-list {
   flex: 1;
   overflow-y: auto;
-  background: #f9fafb;
+  background: hsl(var(--muted));
   padding: 16px;
   max-height: calc(100vh - 200px);
 }
@@ -249,8 +249,8 @@
   align-items: flex-start;
   gap: 12px;
   padding: 16px;
-  background: white;
-  border: 1px solid #e5e7eb;
+  background: var(--surface-elevated);
+  border: 1px solid hsl(var(--border));
   border-radius: 8px;
   margin-bottom: 8px;
   cursor: pointer;
@@ -258,23 +258,23 @@
 }
 
 .batch-card-item:hover {
-  border-color: #cbd5e1;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
+  border-color: var(--border-strong);
+  box-shadow: var(--shadow-content-subtle);
 }
 
 .batch-card-item.selected {
-  background: #eff6ff;
-  border-color: #3b82f6;
+  background: hsl(var(--primary) / 0.08);
+  border-color: hsl(var(--primary));
 }
 
 .card-checkbox {
   flex-shrink: 0;
   margin-top: 2px;
-  color: #6b7280;
+  color: hsl(var(--muted-foreground));
 }
 
 .batch-card-item.selected .card-checkbox {
-  color: #3b82f6;
+  color: hsl(var(--primary));
 }
 
 .card-content {
@@ -284,7 +284,7 @@
 
 .card-front {
   font-weight: 500;
-  color: #1f2937;
+  color: var(--text-primary);
   margin-bottom: 8px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -295,7 +295,7 @@
 
 .card-back {
   font-size: 14px;
-  color: #6b7280;
+  color: hsl(var(--muted-foreground));
   margin-bottom: 8px;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -313,8 +313,8 @@
 .tag {
   display: inline-block;
   padding: 4px 10px;
-  background: #e0e7ff;
-  color: #4338ca;
+  background: hsl(var(--primary) / 0.15);
+  color: hsl(var(--primary));
   font-size: 12px;
   border-radius: 12px;
   font-weight: 500;
@@ -370,7 +370,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(255, 255, 255, 0.5);
+  background: hsl(var(--background) / 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -382,15 +382,15 @@
 }
 
 .batch-cards-list::-webkit-scrollbar-track {
-  background: #f3f4f6;
+  background: hsl(var(--muted));
   border-radius: 4px;
 }
 
 .batch-cards-list::-webkit-scrollbar-thumb {
-  background: #d1d5db;
+  background: hsl(var(--border));
   border-radius: 4px;
 }
 
 .batch-cards-list::-webkit-scrollbar-thumb:hover {
-  background: #9ca3af;
+  background: hsl(var(--muted-foreground));
 }

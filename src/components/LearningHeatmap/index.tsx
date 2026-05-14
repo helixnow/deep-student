@@ -254,7 +254,7 @@ export function LearningHeatmap({
     <div className={cn("flex flex-col", className)}>
       {/* 标题 */}
       <div className="flex items-center gap-2 mb-4 pl-1">
-        <Pulse className="w-4 h-4 text-muted-foreground/70" />
+        <Pulse size={16} className="text-muted-foreground/70" />
         <h3 className="font-medium text-sm text-foreground/80">{t('heatmap.title')}</h3>
       </div>
 
@@ -266,31 +266,31 @@ export function LearningHeatmap({
             label={t('heatmap.stats.totalActivities', '总活动')}
             value={totalActivities}
             index={0}
-          />
+/>
           <StatsCard
             icon={<Calendar size={16} />}
             label={t('heatmap.stats.activeDays', '活跃天数')}
             value={activeDays}
             index={1}
-          />
+/>
           <StatsCard
             icon={<Lightning size={16} />}
             label={t('heatmap.stats.maxDaily', '单日峰值')}
             value={maxCount}
             index={2}
-          />
+/>
           <StatsCard
             icon={<Calendar size={16} />}
             label={t('heatmap.stats.activeDays', '活跃天数')}
             value={activeDays}
             index={1}
-          />
+/>
           <StatsCard
             icon={<Lightning size={16} />}
             label={t('heatmap.stats.maxDaily', '单日峰值')}
             value={maxCount}
             index={2}
-          />
+/>
         </div>
       )}
 
@@ -333,11 +333,11 @@ export function LearningHeatmap({
                   <rect
                     {...props}
                     className="transition-all duration-200 hover:opacity-80 cursor-pointer"
-                  />
+/>
                 </CommonTooltip>
               );
             }}
-          />
+/>
         </div>
       </div>
 
@@ -351,7 +351,7 @@ export function LearningHeatmap({
                 key={index}
                 className="w-2.5 h-2.5 rounded-[1px]"
                 style={{ backgroundColor: color }}
-              />
+/>
             ))}
           </div>
           <span className="text-[10px] text-muted-foreground/60">{t('heatmap.legend.more', 'More')}</span>

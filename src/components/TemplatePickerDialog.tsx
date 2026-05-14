@@ -4,7 +4,7 @@ import { NotionDialog, NotionDialogBody } from './ui/NotionDialog';
 import { Card, CardContent, CardHeader, CardTitle } from './ui/shad/Card';
 import { Input } from './ui/shad/Input';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { FileText, Eye, X } from 'lucide-react';
+import { FileText, Eye, X } from '@phosphor-icons/react';
 import { templateManager } from '../data/ankiTemplates';
 import { CustomAnkiTemplate } from '../types';
 import { CustomScrollArea } from './custom-scroll-area';
@@ -75,10 +75,10 @@ const TemplatePickerDialog: React.FC<TemplatePickerDialogProps> = ({ open, onClo
                   </div>
                   <div className="mt-3 flex justify-end gap-2">
                     <NotionButton variant="ghost" size="sm" onClick={() => setPreviewingTemplate(template)}>
-                      <Eye className="h-4 w-4 mr-1" /> {t('preview')}
+                      <Eye size={16} className="mr-1" /> {t('preview')}
                     </NotionButton>
                     <NotionButton size="sm" onClick={() => onSelect(template)}>
-                      <FileText className="h-4 w-4 mr-1" /> {t('select')}
+                      <FileText size={16} className="mr-1" /> {t('select')}
                     </NotionButton>
                   </div>
                 </CardContent>
@@ -101,7 +101,7 @@ const TemplatePickerDialog: React.FC<TemplatePickerDialogProps> = ({ open, onClo
                 <p className="text-sm text-muted-foreground mt-1">{previewingTemplate.description}</p>
               </div>
               <NotionButton variant="ghost" size="sm" onClick={() => setPreviewingTemplate(null)}>
-                <X className="h-4 w-4 mr-1" /> {t('close_preview')}
+                <X size={16} className="mr-1" /> {t('close_preview')}
               </NotionButton>
             </div>
             <CustomScrollArea className="flex-1 min-h-0" viewportClassName="p-6">
@@ -118,7 +118,7 @@ const TemplatePickerDialog: React.FC<TemplatePickerDialogProps> = ({ open, onClo
                       )}
                       cssContent={previewingTemplate.css_style}
                       height={400}
-                    />
+/>
                   </div>
                 </div>
                 <div className="space-y-2">
@@ -133,7 +133,7 @@ const TemplatePickerDialog: React.FC<TemplatePickerDialogProps> = ({ open, onClo
                       )}
                       cssContent={previewingTemplate.css_style}
                       height={400}
-                    />
+/>
                   </div>
                 </div>
               </div>

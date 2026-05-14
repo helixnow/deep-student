@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, X, Bot } from 'lucide-react';
+import { Check, X, Robot } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -87,7 +87,7 @@ export function AIDiffPanel({ state, onAccept, onReject, className }: AIDiffPane
       <div className="flex items-center justify-between px-4 py-3 border-b bg-muted/50">
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center w-8 h-8 rounded-full bg-primary/10">
-            <Bot className="w-4 h-4 text-primary" />
+            <Robot size={16} className="text-primary" />
           </div>
           <div>
             <h3 className="text-sm font-medium">{t('aiDiff.title')}</h3>
@@ -109,7 +109,7 @@ export function AIDiffPanel({ state, onAccept, onReject, className }: AIDiffPane
           className="h-8 w-8"
           onClick={onReject}
         >
-          <X className="h-4 w-4" />
+          <X size={16} />
         </NotionButton>
       </div>
 
@@ -143,7 +143,7 @@ export function AIDiffPanel({ state, onAccept, onReject, className }: AIDiffPane
             onClick={onReject}
             className="h-8"
           >
-            <X className="h-3.5 w-3.5 mr-1.5" />
+            <X size={14} className="mr-1.5" />
             {t('aiDiff.reject')}
           </NotionButton>
           <NotionButton
@@ -151,7 +151,7 @@ export function AIDiffPanel({ state, onAccept, onReject, className }: AIDiffPane
             onClick={onAccept}
             className="h-8"
           >
-            <Check className="h-3.5 w-3.5 mr-1.5" />
+            <Check size={14} className="mr-1.5" />
             {t('aiDiff.accept')}
           </NotionButton>
         </div>

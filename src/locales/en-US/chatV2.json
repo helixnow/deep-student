@@ -1435,11 +1435,13 @@
   "askUser": {
     "sourceUserClick": "User choice",
     "sourceCustomInput": "Custom input",
+    "sourceMixed": "Mixed selection",
     "sourceTimeout": "Auto-selected (timeout)",
     "sourceChannelClosed": "Connection lost",
     "preparing": "Preparing question...",
     "selected": "Selected",
     "recommended": "Recommended",
+    "confirmSelection": "Confirm selection",
     "customPlaceholder": "Or enter a custom answer..."
   },
   "pageRef": {

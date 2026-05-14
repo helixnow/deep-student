@@ -16,19 +16,19 @@ import { Badge } from '@/components/ui/shad/Badge';
 import { Input } from '@/components/ui/shad/Input';
 import { Label } from '@/components/ui/shad/Label';
 import {
-  CalendarDays,
+  CalendarBlank,
   Target,
   Flame,
   CheckCircle,
-  AlertCircle,
+  WarningCircle,
   BookOpen,
-  RotateCcw,
+  ArrowCounterClockwise,
   Play,
-  Loader2,
-  ChevronLeft,
-  ChevronRight,
+  CircleNotch,
+  CaretLeft,
+  CaretRight,
   Trophy,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { useQuestionBankStore, DailyPracticeResult, CheckInCalendar } from '@/stores/questionBankStore';
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -163,7 +163,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
       <Card className="bg-transparent border-transparent shadow-none">
         <CardHeader className="pb-4">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <CalendarDays className="w-5 h-5 text-sky-500" />
+            <CalendarBlank size={20} className="text-sky-500" />
             {t('daily.title', '每日一练')}
           </CardTitle>
         </CardHeader>
@@ -171,7 +171,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
           {/* 连续打卡 */}
           {checkInCalendar && checkInCalendar.streak_days > 0 && (
             <div className="flex items-center justify-center gap-3 p-4 rounded-xl bg-gradient-to-r from-orange-500/10 to-amber-500/10">
-              <Flame className="w-8 h-8 text-orange-500" />
+              <Flame size={32} className="text-orange-500" />
               <div>
                 <div className="text-3xl font-bold text-orange-600">{checkInCalendar.streak_days}</div>
                 <div className="text-sm text-muted-foreground">{t('daily.streakDays', '连续打卡天数')}</div>
@@ -188,15 +188,15 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
                 </div>
                 <div className="text-sm text-muted-foreground space-y-1">
                   <div className="flex items-center gap-2">
-                    <RotateCcw className="w-4 h-4 text-amber-500" />
+                    <ArrowCounterClockwise size={16} className="text-amber-500" />
                     <span>{t('daily.recommendMistakes', '优先选择错题，巩固薄弱知识点')}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <BookOpen className="w-4 h-4 text-emerald-500" />
+                    <BookOpen size={16} className="text-emerald-500" />
                     <span>{t('daily.recommendNew', '其次选择新题，拓展知识范围')}</span>
                   </div>
                   <div className="flex items-center gap-2">
-                    <CheckCircle className="w-4 h-4 text-sky-500" />
+                    <CheckCircle size={16} className="text-sky-500" />
                     <span>{t('daily.recommendReview', '最后补充复习题，防止遗忘')}</span>
                   </div>
                 </div>
@@ -222,7 +222,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
                   setDailyTarget(normalizeDailyTarget(Number(e.target.value)));
                 }}
                 className="w-24 text-center text-lg font-medium"
-              />
+/>
               <div className="flex gap-2">
                 {[5, 10, 15, 20].map((n) => (
                   <NotionButton
@@ -241,7 +241,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
           {calendarError && (
             <div className="flex items-center justify-between rounded-lg border border-destructive/30 bg-destructive/5 px-3 py-2 text-sm">
               <div className="flex items-center gap-2 text-destructive">
-                <AlertCircle className="w-4 h-4" />
+                <WarningCircle size={16} />
                 <span>{calendarError}</span>
               </div>
               <NotionButton
@@ -272,10 +272,10 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
               <Progress 
                 value={(dailyPractice.completed_count / dailyPractice.daily_target) * 100} 
                 className="h-2" 
-              />
+/>
               {dailyPractice.is_completed && (
                 <div className="flex items-center gap-2 text-emerald-600">
-                  <Trophy className="w-4 h-4" />
+                  <Trophy size={16} />
                   <span className="text-sm font-medium">{t('daily.completed', '今日目标已完成！')}</span>
                 </div>
               )}
@@ -313,12 +313,12 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
           >
             {isLoadingPractice ? (
               <>
-                <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+                <CircleNotch size={20} className="mr-2 animate-spin" />
                 {t('daily.loading', '准备中...')}
               </>
             ) : (
               <>
-                <Play className="w-5 h-5 mr-2" />
+                <Play size={20} className="mr-2" />
                 {dailyPractice ? t('daily.continue', '继续练习') : t('daily.start', '开始今日练习')}
               </>
             )}
@@ -333,13 +333,13 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
             <CardTitle className="text-base">{t('daily.calendar', '打卡日历')}</CardTitle>
             <div className="flex items-center gap-2">
               <NotionButton variant="ghost" iconOnly size="sm" onClick={handlePrevMonth}>
-                <ChevronLeft className="w-4 h-4" />
+                <CaretLeft size={16} />
               </NotionButton>
               <span className="text-sm font-medium w-24 text-center">
                 {t('daily.yearMonth', '{{year}}年{{month}}月', { year: calendarYear, month: calendarMonth })}
               </span>
               <NotionButton variant="ghost" iconOnly size="sm" onClick={handleNextMonth}>
-                <ChevronRight className="w-4 h-4" />
+                <CaretRight size={16} />
               </NotionButton>
             </div>
           </div>
@@ -389,7 +389,7 @@ export const DailyPracticeMode: React.FC<DailyPracticeModeProps> = ({
                       </span>
                     )}
                     {item.checkIn?.target_achieved && (
-                      <CheckCircle className="absolute top-0.5 right-0.5 w-3 h-3 text-emerald-500" />
+                      <CheckCircle size={12} className="absolute top-0.5 right-0.5 text-emerald-500" />
                     )}
                   </>
                 )}

@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 // 🚀 性能优化：Settings, Dashboard, SOTADashboard 改为懒加载
-import { ChevronLeft, ChevronRight, Terminal, AlertTriangle, X } from 'lucide-react';
+import { CaretLeft, CaretRight, Terminal, Warning, X } from '@phosphor-icons/react';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { cn } from '@/lib/utils';
@@ -289,7 +289,7 @@ function CommandPaletteButton({
         onClick={open}
         className={cn('desktop-shell-toolbar-button', className)}
       >
-        <Terminal className="h-4 w-4" />
+        <Terminal size={16} />
       </NotionButton>
     </CommonTooltip>
   );
@@ -433,7 +433,7 @@ function DesktopHeaderNavControls({
             className="desktop-shell-toolbar-button"
             aria-label={backLabel}
           >
-            <ChevronLeft className="h-4 w-4" />
+            <CaretLeft size={16} />
           </NotionButton>
         </span>
       </CommonTooltip>
@@ -447,7 +447,7 @@ function DesktopHeaderNavControls({
             className="desktop-shell-toolbar-button"
             aria-label={forwardLabel}
           >
-            <ChevronRight className="h-4 w-4" />
+            <CaretRight size={16} />
           </NotionButton>
         </span>
       </CommonTooltip>
@@ -541,7 +541,7 @@ function LearningHubTopbarBreadcrumb({ currentView }: { currentView: string }) {
         >
           {rootTitle}
         </button>
-        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        <CaretRight size={16} className="text-muted-foreground" />
         <span className="font-medium text-foreground">{currentTitle}</span>
       </div>
     );
@@ -560,7 +560,7 @@ function LearningHubTopbarBreadcrumb({ currentView }: { currentView: string }) {
         const isLast = index === breadcrumbs.length - 1;
         return (
           <React.Fragment key={crumb.id || index}>
-            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+            <CaretRight size={16} className="text-muted-foreground shrink-0" />
             {isLast ? (
               <span className="font-medium text-foreground truncate max-w-[150px]">{crumb.name}</span>
             ) : (
@@ -736,6 +736,28 @@ function App() {
         /* non-critical: cleanup */
       }
     };
+  }, []);
+
+  // 侧边栏半透明：启动时从持久化设置恢复 data attribute
+  useEffect(() => {
+    let cancelled = false;
+    const SIDEBAR_TRANSLUCENT_KEY = 'sidebar.translucent';
+
+    (async () => {
+      try {
+        const val = await invoke<string | null>('get_setting', { key: SIDEBAR_TRANSLUCENT_KEY });
+        if (cancelled) return;
+        document.documentElement.setAttribute(
+          'data-sidebar-translucent',
+          String(val ?? '').trim() === 'true' ? 'true' : 'false',
+        );
+      } catch {
+        if (cancelled) return;
+        document.documentElement.setAttribute('data-sidebar-translucent', 'false');
+      }
+    })();
+
+    return () => { cancelled = true; };
   }, []);
   
   // 🎯 命令面板：注册内置命令
@@ -2409,7 +2431,7 @@ function App() {
           {/* 🆕 维护模式全局横幅 */}
           {maintenanceMode && (
             <div className="flex items-center gap-2 px-4 py-2 bg-amber-500/15 border-b border-amber-500/30 text-amber-700 dark:text-amber-400 text-sm">
-              <AlertTriangle className="h-4 w-4 shrink-0" />
+              <Warning size={16} className="shrink-0" />
               <span className="font-medium shrink-0">{t('common:maintenance.banner_title', '维护模式')}</span>
               <span className="flex-1 truncate">
                 {maintenanceReason || t('common:maintenance.banner_description', '系统正在进行维护操作，部分功能暂时受限。')}
@@ -2528,7 +2550,7 @@ function App() {
                     className={settingsMobileSheetCloseButtonClassName}
                     aria-label={t('common:actions.close', '关闭')}
                   >
-                    <X className="h-5 w-5" />
+                    <X size={20} />
                   </button>
                 </SheetClose>
               </div>

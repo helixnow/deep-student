@@ -307,7 +307,7 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
       <div className={cn('sidebar-shell-header flex flex-col', className)}>
         <div className="flex items-center justify-center px-1" style={{ height: '40px' }}>
           <NotionButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(false)} className="!p-1.5" title={expandTitle || t('expand')} aria-label="expand">
-            <CaretRight className="w-4 h-4" weight="regular" />
+            <CaretRight size={16} weight="regular" />
           </NotionButton>
         </div>
       </div>
@@ -324,7 +324,7 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
           </NotionButton>
           {title && (
             <div className="flex items-center gap-2 flex-1 min-w-0">
-              {Icon && <Icon className="w-5 h-5 text-primary shrink-0" />}
+              {Icon && <Icon size={20} className="text-primary shrink-0" />}
               <span className="text-base truncate">{title}</span>
             </div>
           )}
@@ -353,12 +353,12 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
                   'sidebar-shell-search w-full rounded-2xl bg-background/70 border border-transparent placeholder:text-muted-foreground/50 focus:outline-none focus:bg-background focus:border-[color:var(--sidebar-study-border)] transition-all duration-150',
                   styles.search.inputPadding
                 )}
-              />
+/>
             </div>
           ) : !isMobileMode && title ? (
             // 桌面端非移动模式下显示标题（移动端标题在上面的关闭按钮行）
             <div className="flex items-center gap-2 flex-1">
-              {Icon && <Icon className="w-4 h-4 text-primary" />}
+              {Icon && <Icon size={16} className="text-primary" />}
               <span className="text-sm">{title}</span>
             </div>
           ) : (
@@ -386,7 +386,7 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
           {/* 只在 panel 模式下显示折叠按钮，但在移动滑动模式下不显示（使用关闭按钮代替） */}
           {showCollapse && displayMode === 'panel' && !isMobileSlidingMode && (
             <NotionButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(true)} className="!p-1.5" title={collapseTitle || t('collapse')} aria-label="collapse">
-              <CaretLeft className="w-4 h-4" weight="regular" />
+              <CaretLeft size={16} weight="regular" />
             </NotionButton>
           )}
         </div>
@@ -553,7 +553,7 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
         <div
           className={cn('rounded-full flex-shrink-0', dotSize)}
           style={{ backgroundColor: colorDot }}
-        />
+/>
       );
     }
     if (icon) {
@@ -568,7 +568,7 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
             styles.item.iconSize,
             isSelected ? 'text-foreground' : 'text-muted-foreground'
           )}
-        />
+/>
       );
     }
     return null;

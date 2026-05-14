@@ -87,9 +87,9 @@ export const MobileSidebarNavigation: React.FC<MobileSidebarNavigationProps> = (
                   isActive ? 'text-foreground' : 'text-muted-foreground group-hover:text-foreground'
                 )}
                 strokeWidth={isActive ? 2.5 : 2}
-              />
+/>
               <span className="min-w-0 flex-1 truncate">{name}</span>
-              <CaretRight className="h-4 w-4 shrink-0 text-muted-foreground/80" weight="regular" />
+              <CaretRight size={16} className="shrink-0 text-muted-foreground/80" weight="regular" />
             </NotionButton>
           );
         })}

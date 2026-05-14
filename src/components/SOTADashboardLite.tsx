@@ -254,7 +254,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div
-                className="h-8 w-8 rounded-md flex items-center justify-center"
+ className="w-8 h-8 rounded-md flex items-center justify-center"
                 style={{ background: palette.iconBg }}
               >
                 <Icon size={20} color={palette.iconColor} />
@@ -355,13 +355,13 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
             icon={FileText}
             variant="primary"
             trend={enhancedStats?.recent_growth}
-          />
+/>
           {/* ★ 文档31清理：subject_stats 已废弃，科目统计功能即将推出 */}
           <Card className="overflow-hidden opacity-60">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="h-8 w-8 rounded-md flex items-center justify-center" style={{ background: STAT_VARIANTS.secondary.iconBg }}>
+                  <div className="w-8 h-8 rounded-md flex items-center justify-center" style={{ background: STAT_VARIANTS.secondary.iconBg }}>
                     <BookOpen size={20} color={STAT_VARIANTS.secondary.iconColor} />
                   </div>
                   <CardTitle className="text-base">{t('stats_cards.subjects_count')}</CardTitle>
@@ -380,14 +380,14 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
             subtitle={t('stats_cards.tags_count_subtitle')}
             icon={Tag}
             variant="info"
-          />
+/>
           <StatCard
             title={t('stats_cards.recent_additions')}
             value={recentAdditions}
             subtitle={t('stats_cards.recent_additions_subtitle')}
             icon={TrendUp}
             variant="success"
-          />
+/>
 
           <StatCard
             title={t('stats_cards.data_quality')}
@@ -395,7 +395,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
             subtitle={t('stats_cards.data_quality_subtitle')}
             icon={Pulse}
             variant="secondary"
-          />
+/>
 
           <StatCard
             title={t('stats_cards.resource_files')}
@@ -403,14 +403,14 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
             subtitle={imageStorageDisplay ? t('stats_cards.resource_files_subtitle_with_size', { size: imageStorageDisplay }) : t('stats_cards.resource_files_subtitle')}
             icon={Image}
             variant="info"
-          />
+/>
 
           {/* 已移除：统一回顾统计，功能即将推出 */}
           <Card className="overflow-hidden opacity-60">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="h-8 w-8 rounded-md flex items-center justify-center" style={{ background: STAT_VARIANTS.success.iconBg }}>
+                  <div className="w-8 h-8 rounded-md flex items-center justify-center" style={{ background: STAT_VARIANTS.success.iconBg }}>
                     <Crosshair size={20} color={STAT_VARIANTS.success.iconColor} />
                   </div>
                   <CardTitle className="text-base">{t('stats_cards.review_sessions')}</CardTitle>

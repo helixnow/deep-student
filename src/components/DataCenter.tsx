@@ -18,7 +18,7 @@ export const DataCenter: React.FC = () => {
         subtitle={t('data_center_subtitle')}
         showRefreshButton={false}
         showExportButton={false}
-      />
+/>
 
       <main className="flex-1 min-h-0">
         <CustomScrollArea className="h-full" viewportClassName="px-6 pb-6">

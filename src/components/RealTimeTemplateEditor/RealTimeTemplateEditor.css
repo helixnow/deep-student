@@ -1,10 +1,69 @@
+/* Scoped editor theme tokens */
+.realtime-template-editor {
+  /* UI surfaces */
+  --editor-bg: hsl(var(--background));
+  --editor-surface: hsl(var(--card));
+  --editor-border: hsl(var(--border));
+  --editor-text: hsl(var(--foreground));
+  --editor-text-bright: hsl(var(--foreground));
+  --editor-text-muted: hsl(var(--muted-foreground));
+  --editor-selection: hsl(var(--primary) / 0.2);
+  --editor-active-line: hsl(var(--accent));
+  --editor-gutter-bg: hsl(var(--muted));
+  --editor-gutter-border: hsl(var(--border));
+  --editor-input-bg: hsl(var(--muted));
+  --editor-border-hover: hsl(var(--border));
+  --editor-scrollbar: hsl(var(--muted-foreground) / 0.3);
+  --editor-scrollbar-hover: hsl(var(--muted-foreground) / 0.5);
+
+  /* Interactive */
+  --editor-tab-active-border: hsl(var(--primary));
+  --editor-btn-bg: hsl(var(--primary));
+  --editor-btn-hover: color-mix(in hsl, hsl(var(--primary)) 85%, hsl(var(--foreground)) 15%);
+  --editor-btn-text: hsl(var(--primary-foreground));
+  --editor-error: hsl(var(--destructive));
+  --editor-warning: hsl(var(--warning, 38 92% 50%));
+
+  /* Syntax highlighting - domain-specific */
+  --syntax-keyword: #569cd6;
+  --syntax-string: #ce9178;
+  --syntax-function: #4ec9b0;
+  --syntax-variable: #4fc3f7;
+  --syntax-comment: #8b8b8b;
+  --syntax-error: #f48771;
+  --syntax-number: #b5cea8;
+  --syntax-type: #4ec9b0;
+}
+
+:root.dark .realtime-template-editor {
+  --editor-bg: #1e1e1e;
+  --editor-surface: #252526;
+  --editor-border: #3e3e42;
+  --editor-border-hover: #464647;
+  --editor-text: #cccccc;
+  --editor-text-bright: #ffffff;
+  --editor-text-muted: #8b8b8b;
+  --editor-gutter-bg: #2d2d30;
+  --editor-gutter-border: #3e3e42;
+  --editor-active-line: #094771;
+  --editor-input-bg: #3c3c3c;
+  --editor-scrollbar: #424242;
+  --editor-scrollbar-hover: #4f4f4f;
+  --editor-tab-active-border: #007acc;
+  --editor-btn-bg: #007acc;
+  --editor-btn-hover: #005a9e;
+  --editor-btn-text: white;
+  --editor-error: #f44336;
+  --editor-warning: #ff9800;
+}
+
 /* 实时预览编辑器样式 */
 .realtime-template-editor {
   display: flex;
   flex-direction: column;
   height: 100vh;
-  background: #1e1e1e;
-  color: #d4d4d4;
+  background: var(--editor-bg);
+  color: var(--editor-text);
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
 }
 
@@ -14,9 +73,9 @@
   align-items: center;
   justify-content: space-between;
   padding: 12px 20px;
-  background: #2d2d30;
-  border-bottom: 1px solid #3e3e42;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+  background: var(--editor-gutter-bg);
+  border-bottom: 1px solid var(--editor-border);
+  box-shadow: 0 2px 8px hsl(var(--shadow-base) / 0.15);
 }
 
 .toolbar-left {
@@ -29,11 +88,11 @@
   margin: 0;
   font-size: 16px;
   font-weight: 500;
-  color: #ffffff;
+  color: var(--editor-text-bright);
 }
 
 .dirty-indicator {
-  color: #f48771;
+  color: var(--syntax-error);
   font-size: 14px;
   animation: pulse 2s infinite;
 }
@@ -46,17 +105,17 @@
 /* 视图模式选择器 */
 .view-mode-selector {
   display: flex;
-  background: #1e1e1e;
+  background: var(--editor-bg);
   border-radius: 6px;
   padding: 2px;
-  box-shadow: inset 0 1px 3px rgba(0, 0, 0, 0.3);
+  box-shadow: inset 0 1px 3px hsl(var(--shadow-base) / 0.3);
 }
 
 .view-mode-selector button {
   padding: 6px 16px;
   border: none;
   background: transparent;
-  color: #8b8b8b;
+  color: var(--editor-text-muted);
   cursor: pointer;
   border-radius: 4px;
   transition: all 0.2s;
@@ -64,13 +123,13 @@
 }
 
 .view-mode-selector button:hover {
-  color: #cccccc;
+  color: var(--editor-text);
 }
 
 .view-mode-selector button.active {
-  background: #094771;
-  color: #ffffff;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  background: var(--editor-active-line);
+  color: var(--editor-text-bright);
+  box-shadow: 0 1px 3px hsl(var(--shadow-base) / 0.2);
 }
 
 /* 工具栏按钮 */
@@ -93,25 +152,25 @@
 }
 
 .btn-primary {
-  background: #007acc;
-  color: white;
+  background: var(--editor-btn-bg);
+  color: var(--editor-btn-text);
 }
 
 .btn-primary:hover:not(:disabled) {
-  background: #005a9e;
+  background: var(--editor-btn-hover);
   transform: translateY(-1px);
-  box-shadow: 0 2px 8px rgba(0, 122, 204, 0.3);
+  box-shadow: 0 2px 8px hsl(var(--primary) / 0.3);
 }
 
 .btn-secondary {
   background: transparent;
-  color: #cccccc;
-  border: 1px solid #3e3e42;
+  color: var(--editor-text);
+  border: 1px solid var(--editor-border);
 }
 
 .btn-secondary:hover:not(:disabled) {
-  background: #2d2d30;
-  border-color: #464647;
+  background: var(--editor-gutter-bg);
+  border-color: var(--editor-border-hover);
 }
 
 button:disabled {
@@ -130,15 +189,15 @@ button:disabled {
   flex: 1;
   display: flex;
   flex-direction: column;
-  border-right: 1px solid #3e3e42;
+  border-right: 1px solid var(--editor-border);
   min-width: 0;
 }
 
 /* 编辑器标签 */
 .editor-tabs {
   display: flex;
-  background: #252526;
-  border-bottom: 1px solid #3e3e42;
+  background: var(--editor-surface);
+  border-bottom: 1px solid var(--editor-border);
   overflow-x: auto;
 }
 
@@ -149,7 +208,7 @@ button:disabled {
   padding: 10px 20px;
   border: none;
   background: transparent;
-  color: #8b8b8b;
+  color: var(--editor-text-muted);
   cursor: pointer;
   border-bottom: 2px solid transparent;
   transition: all 0.2s;
@@ -159,22 +218,22 @@ button:disabled {
 }
 
 .editor-tabs .tab:hover {
-  color: #cccccc;
-  background: rgba(255, 255, 255, 0.03);
+  color: var(--editor-text);
+  background: hsl(var(--foreground) / 0.03);
 }
 
 .editor-tabs .tab.active {
-  color: #ffffff;
-  border-bottom-color: #007acc;
-  background: rgba(0, 122, 204, 0.1);
+  color: var(--editor-text-bright);
+  border-bottom-color: var(--editor-tab-active-border);
+  background: hsl(var(--primary) / 0.1);
 }
 
 .error-badge {
   position: absolute;
   top: 4px;
   right: 4px;
-  background: #f44336;
-  color: white;
+  background: var(--editor-error);
+  color: var(--editor-btn-text);
   font-size: 10px;
   padding: 2px 6px;
   border-radius: 10px;
@@ -187,7 +246,7 @@ button:disabled {
 .code-editor-container {
   flex: 1;
   overflow: hidden;
-  background: #1e1e1e;
+  background: var(--editor-bg);
 }
 
 /* CodeMirror覆盖样式 */
@@ -204,8 +263,8 @@ button:disabled {
 .error-panel {
   max-height: 200px;
   overflow-y: auto;
-  background: #252526;
-  border-top: 1px solid #3e3e42;
+  background: var(--editor-surface);
+  border-top: 1px solid var(--editor-border);
 }
 
 .error-panel.no-errors {
@@ -214,27 +273,27 @@ button:disabled {
   justify-content: center;
   gap: 8px;
   padding: 16px;
-  color: #4ec9b0;
+  color: var(--syntax-function);
 }
 
 .error-item {
   display: flex;
   gap: 8px;
   padding: 8px 16px;
-  border-bottom: 1px solid #3e3e42;
+  border-bottom: 1px solid var(--editor-border);
   transition: background 0.2s;
 }
 
 .error-item:hover {
-  background: rgba(255, 255, 255, 0.02);
+  background: hsl(var(--foreground) / 0.02);
 }
 
 .error-item.error {
-  background: rgba(244, 67, 54, 0.1);
+  background: hsl(var(--destructive) / 0.1);
 }
 
 .error-item.warning {
-  background: rgba(255, 152, 0, 0.1);
+  background: hsl(var(--warning) / 0.1);
 }
 
 .error-icon {
@@ -243,11 +302,11 @@ button:disabled {
 }
 
 .error-item.error .error-icon {
-  color: #f44336;
+  color: var(--editor-error);
 }
 
 .error-item.warning .error-icon {
-  color: #ff9800;
+  color: var(--editor-warning);
 }
 
 .error-content {
@@ -261,13 +320,13 @@ button:disabled {
 
 .error-location {
   font-size: 12px;
-  color: #8b8b8b;
+  color: var(--editor-text-muted);
   margin-top: 2px;
 }
 
 .error-suggestion {
   font-size: 12px;
-  color: #4fc3f7;
+  color: var(--syntax-variable);
   margin-top: 4px;
 }
 
@@ -276,7 +335,7 @@ button:disabled {
   flex: 1;
   display: flex;
   flex-direction: column;
-  background: #1e1e1e;
+  background: var(--editor-bg);
   min-width: 0;
 }
 
@@ -285,8 +344,8 @@ button:disabled {
   align-items: center;
   justify-content: space-between;
   padding: 12px 20px;
-  border-bottom: 1px solid #3e3e42;
-  background: #252526;
+  border-bottom: 1px solid var(--editor-border);
+  background: var(--editor-surface);
 }
 
 .preview-header h4 {
@@ -296,12 +355,12 @@ button:disabled {
   display: flex;
   align-items: center;
   gap: 8px;
-  color: #cccccc;
+  color: var(--editor-text);
 }
 
 .compiling-indicator {
   font-size: 12px;
-  color: #4fc3f7;
+  color: var(--syntax-variable);
   animation: blink 1.5s infinite;
 }
 
@@ -312,8 +371,8 @@ button:disabled {
 
 /* 预览数据编辑器 */
 .preview-data-editor {
-  background: #252526;
-  border-bottom: 1px solid #3e3e42;
+  background: var(--editor-surface);
+  border-bottom: 1px solid var(--editor-border);
   transition: all 0.3s;
 }
 
@@ -325,16 +384,16 @@ button:disabled {
   justify-content: space-between;
   user-select: none;
   font-size: 13px;
-  color: #cccccc;
+  color: var(--editor-text);
 }
 
 .preview-data-editor .editor-header:hover {
-  background: #2d2d30;
+  background: var(--editor-gutter-bg);
 }
 
 .toggle-icon {
   font-size: 12px;
-  color: #8b8b8b;
+  color: var(--editor-text-muted);
   transition: transform 0.2s;
 }
 
@@ -346,8 +405,8 @@ button:disabled {
   padding: 12px 16px;
   display: grid;
   gap: 12px;
-  background: #1e1e1e;
-  border-top: 1px solid #3e3e42;
+  background: var(--editor-bg);
+  border-top: 1px solid var(--editor-border);
 }
 
 .field-editor {
@@ -359,14 +418,14 @@ button:disabled {
 
 .field-editor label {
   font-size: 13px;
-  color: #cccccc;
+  color: var(--editor-text);
   text-align: right;
 }
 
 .field-editor input {
-  background: #3c3c3c;
-  border: 1px solid #3e3e42;
-  color: #cccccc;
+  background: var(--editor-input-bg);
+  border: 1px solid var(--editor-border);
+  color: var(--editor-text);
   padding: 6px 10px;
   border-radius: 4px;
   font-size: 13px;
@@ -374,15 +433,15 @@ button:disabled {
 }
 
 .field-editor input:hover {
-  background: #464647;
-  border-color: #464647;
+  background: var(--editor-border-hover);
+  border-color: var(--editor-border-hover);
 }
 
 .field-editor input:focus {
   outline: none;
-  border-color: #007acc;
-  background: #3c3c3c;
-  box-shadow: 0 0 0 1px #007acc;
+  border-color: var(--editor-btn-bg);
+  background: var(--editor-input-bg);
+  box-shadow: 0 0 0 1px var(--editor-btn-bg);
 }
 
 /* 卡片预览 */
@@ -396,31 +455,31 @@ button:disabled {
 }
 
 .preview-card {
-  background: #252526;
-  border: 1px solid #3e3e42;
+  background: var(--editor-surface);
+  border: 1px solid var(--editor-border);
   border-radius: 8px;
   overflow: hidden;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px hsl(var(--shadow-base) / 0.1);
   transition: all 0.2s;
 }
 
 .preview-card:hover {
-  border-color: #464647;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  border-color: var(--editor-border-hover);
+  box-shadow: 0 4px 12px hsl(var(--shadow-base) / 0.15);
 }
 
 .preview-card h5 {
   margin: 0;
   padding: 12px 16px;
-  background: #2d2d30;
-  border-bottom: 1px solid #3e3e42;
+  background: var(--editor-gutter-bg);
+  border-bottom: 1px solid var(--editor-border);
   font-size: 13px;
   font-weight: 500;
-  color: #cccccc;
+  color: var(--editor-text);
 }
 
 .preview-card iframe {
-  background: white;
+  background: var(--surface-elevated);
   min-height: 100px;
 }
 
@@ -431,16 +490,16 @@ button:disabled {
 }
 
 ::-webkit-scrollbar-track {
-  background: #1e1e1e;
+  background: var(--editor-bg);
 }
 
 ::-webkit-scrollbar-thumb {
-  background: #424242;
+  background: var(--editor-scrollbar);
   border-radius: 4px;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: #4f4f4f;
+  background: var(--editor-scrollbar-hover);
 }
 
 /* 响应式设计 */
@@ -451,7 +510,7 @@ button:disabled {
   
   .editor-panel {
     border-right: none;
-    border-bottom: 1px solid #3e3e42;
+    border-bottom: 1px solid var(--editor-border);
     max-height: 50vh;
   }
   
@@ -493,12 +552,12 @@ button:disabled {
 
 /* 渲染错误样式 */
 .render-error {
-  color: #f44336;
+  color: var(--editor-error);
   padding: 16px;
   text-align: center;
   font-size: 14px;
-  background: rgba(244, 67, 54, 0.1);
-  border: 1px dashed #f44336;
+  background: hsl(var(--destructive) / 0.1);
+  border: 1px dashed var(--editor-error);
   border-radius: 4px;
   margin: 16px;
 }

@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useRef } from 'react';
-import { Loader2, Mic } from 'lucide-react';
+import { CircleNotch, Microphone } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 
 import { cn } from '@/lib/utils';
@@ -123,9 +123,9 @@ export function VoiceInputControl({
       )}
     >
       {isTranscribing ? (
-        <Loader2 className="h-3.5 w-3.5 animate-spin" />
+        <CircleNotch size={14} className="animate-spin" />
       ) : (
-        <Mic className="h-3.5 w-3.5" />
+        <Microphone size={14} />
       )}
       {(isRecording || isTranscribing) && (
         <span className="inline-flex items-center gap-1">

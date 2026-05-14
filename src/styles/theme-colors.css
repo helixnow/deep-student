@@ -259,12 +259,7 @@
   --shell-titlebar: hsl(var(--background));
   --shell-surface: hsl(var(--background));
   --shell-navigation-row-foreground: var(--shell-navigation-foreground);
-  --shell-navigation-depth-overlay: linear-gradient(
-    90deg,
-    hsl(var(--destructive-foreground) / 0.035) 0%,
-    hsl(var(--destructive-foreground) / 0.025) calc(100% - 48px),
-    hsl(var(--destructive-foreground) / 0) 100%
-  );
+  --shell-navigation-depth-overlay: none;
   --composer-panel-surface: color-mix(in hsl, var(--shell-float) 86%, var(--surface-root) 14%);
   --composer-panel-border: color-mix(in hsl, var(--shell-inspector-border) 85%, transparent 15%);
   --button-prominent-bg: color-mix(in oklab, hsl(var(--primary)) 74%, hsl(var(--background)) 26%);
@@ -293,5 +288,79 @@
 @media (prefers-reduced-transparency: reduce) {
   :where(:root) {
     --overlay: color-mix(in hsl, hsl(var(--background)) 82%, hsl(var(--foreground)) 18%);
+  }
+}
+
+/* ===== Apple-style Sidebar Material =====
+   Modeled after macOS NSVisualEffectView.Material.sidebar:
+   - blur(28px) + saturate(1.8) for rich backdrop blending
+   - "regular" thickness in light, slightly thicker in dark for contrast
+   - Dark mode tint overlay (::before) for legibility
+   - Edge highlight simulating Liquid Glass refraction
+   - Vibrancy-inspired foreground adaptation
+   - Respects prefers-reduced-transparency
+   ========================================= */
+
+/* Light mode: "regular" material thickness */
+:where(:root[data-sidebar-translucent="true"]) {
+  --shell-navigation-surface: hsl(var(--nav-background) / 0.78);
+  --shell-navigation-panel: hsl(var(--nav-background) / 0.78);
+  --sidebar: hsl(var(--nav-background) / 0.78);
+  --sidebar-study-surface: hsl(var(--nav-background) / 0.78);
+}
+
+/* Dark mode: thicker tint for contrast */
+:where(:root.dark[data-sidebar-translucent="true"]) {
+  --shell-navigation-surface: hsl(var(--nav-background) / 0.62);
+  --shell-navigation-panel: hsl(var(--nav-background) / 0.62);
+  --sidebar: hsl(var(--nav-background) / 0.62);
+  --sidebar-study-surface: hsl(var(--nav-background) / 0.62);
+}
+
+/* Backdrop filter: blur + saturation boost */
+:root[data-sidebar-translucent="true"] [data-shell-surface="navigation"] {
+  -webkit-backdrop-filter: blur(28px) saturate(1.8);
+  backdrop-filter: blur(28px) saturate(1.8);
+  /* Edge highlight — simulates Liquid Glass refraction at content boundary */
+  border-right: 1px solid rgba(255, 255, 255, 0.06);
+}
+
+/* Dark mode: additional tint overlay for legibility (::before to sit behind content) */
+:root.dark[data-sidebar-translucent="true"] [data-shell-surface="navigation"]::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: hsl(var(--nav-background) / 0.12);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Ensure content stacks above the dark-mode tint overlay */
+:root.dark[data-sidebar-translucent="true"] [data-shell-surface="navigation"] > * {
+  position: relative;
+  z-index: 1;
+}
+
+/* Vibrancy: foreground elements adapt to translucent background */
+:root[data-sidebar-translucent="true"] [data-shell-surface="navigation"] {
+  --shell-navigation-muted: color-mix(in oklch, var(--shell-navigation-foreground) 68%, transparent);
+  --shell-navigation-border: color-mix(in oklch, hsl(var(--border)) 40%, transparent);
+}
+
+/* Accessibility: respect reduced transparency preference */
+@media (prefers-reduced-transparency: reduce) {
+  :where(:root[data-sidebar-translucent="true"]) {
+    --shell-navigation-surface: hsl(var(--nav-background));
+    --shell-navigation-panel: hsl(var(--nav-background));
+    --sidebar: hsl(var(--nav-background));
+    --sidebar-study-surface: hsl(var(--nav-background));
+  }
+  :root[data-sidebar-translucent="true"] [data-shell-surface="navigation"] {
+    -webkit-backdrop-filter: none;
+    backdrop-filter: none;
+    border-right-color: var(--shell-navigation-border);
+  }
+  :root.dark[data-sidebar-translucent="true"] [data-shell-surface="navigation"]::before {
+    display: none;
   }
 }

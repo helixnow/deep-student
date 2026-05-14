@@ -8,7 +8,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, AlertCircle, PenTool, RefreshCw, ShieldAlert } from 'lucide-react';
+import { CircleNotch, WarningCircle, PenNib, ArrowClockwise, ShieldWarning } from '@phosphor-icons/react';
 import type { EditorProps, CreateEditorProps } from '../editorTypes';
 import { pathUtils } from '../utils/pathUtils';
 import { dstu } from '../api';
@@ -162,7 +162,7 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
   if (isLoading) {
     return (
       <div className={cn('flex items-center justify-center h-full py-8', props.className)}>
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        <CircleNotch size={24} className="animate-spin text-muted-foreground" />
         <span className="ml-2 text-muted-foreground">{t('dstu:preview.loading')}</span>
       </div>
     );
@@ -173,14 +173,14 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
     const onClose = 'onClose' in props ? props.onClose : undefined;
     return (
       <div className={cn('flex flex-col items-center justify-center h-full py-8 gap-4', props.className)}>
-        <AlertCircle className="w-8 h-8 text-destructive" />
+        <WarningCircle size={32} className="text-destructive" />
         <span className="text-destructive text-center max-w-md">{error}</span>
         <div className="flex gap-2">
           <button
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
             onClick={() => void loadEssay()}
           >
-            <RefreshCw className="w-4 h-4" />
+            <ArrowClockwise size={16} />
             {t('common:actions.retry')}
           </button>
           {onClose && (
@@ -207,7 +207,7 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
       {/* 工具栏 */}
       <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 bg-muted/50 border-b">
         <div className="flex items-center gap-2">
-          <PenTool className="w-5 h-5 text-muted-foreground" />
+          <PenNib size={20} className="text-muted-foreground" />
           <span className="text-sm font-medium">{t('dstu:types.essay')}</span>
           {essayData?.score !== undefined && (
             <span className="text-xs px-2 py-0.5 bg-primary/10 text-primary rounded-full">
@@ -236,7 +236,7 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
               disabled={isSaving || isParseError}
               title={isParseError ? t('dstu:errors.essayParseErrorSaveBlocked') : undefined}
             >
-              {isSaving && <Loader2 className="w-3.5 h-3.5 animate-spin" />}
+              {isSaving && <CircleNotch size={14} className="animate-spin" />}
               {isSaving ? t('common:actions.saving') : t('common:actions.save')}
             </button>
           )}
@@ -248,7 +248,7 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
         {/* M-050: 数据解析异常警告横幅 */}
         {isParseError && (
           <div className="flex items-start gap-3 p-3 bg-warning/10 border border-warning/30 rounded-md">
-            <ShieldAlert className="w-5 h-5 text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
+            <ShieldWarning size={20} className="text-yellow-600 dark:text-yellow-400 flex-shrink-0 mt-0.5" />
             <div className="flex-1 space-y-1">
               <p className="text-sm font-medium text-yellow-800 dark:text-yellow-300">
                 {t('dstu:errors.essayParseErrorTitle')}
@@ -260,7 +260,7 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
                 className="inline-flex items-center gap-1.5 mt-1 px-3 py-1 text-xs bg-yellow-600 text-white rounded-md hover:bg-yellow-700"
                 onClick={() => void loadEssay()}
               >
-                <RefreshCw className="w-3 h-3" />
+                <ArrowClockwise size={12} />
                 {t('common:actions.retry')}
               </button>
             </div>

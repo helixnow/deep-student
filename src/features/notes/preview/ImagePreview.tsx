@@ -10,13 +10,13 @@ import { cn } from '../../../lib/utils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { NotionButton } from '@/components/ui/NotionButton';
 import {
-  AlertCircle,
+  WarningCircle,
   Image as ImageIcon,
-  ZoomIn,
-  ZoomOut,
-  Maximize2,
+  MagnifyingGlassPlus,
+  MagnifyingGlassMinus,
+  ArrowsOut,
   X,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import type { ImagePreviewProps } from './types';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 
@@ -110,7 +110,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
           className
         )}
       >
-        <AlertCircle className="h-10 w-10 text-destructive" />
+        <WarningCircle className="h-10 w-10 text-destructive" />
         <p className="text-sm text-muted-foreground">{error}</p>
       </div>
     );
@@ -156,7 +156,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
               disabled={scale <= 0.5}
               title={t('notes:previewPanel.image.zoomOut')}
             >
-              <ZoomOut className="h-4 w-4" />
+              <MagnifyingGlassMinus size={16} />
             </NotionButton>
             <span className="min-w-[3rem] text-center text-xs text-muted-foreground">
               {Math.round(scale * 100)}%
@@ -169,7 +169,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
               disabled={scale >= 3}
               title={t('notes:previewPanel.image.zoomIn')}
             >
-              <ZoomIn className="h-4 w-4" />
+              <MagnifyingGlassPlus size={16} />
             </NotionButton>
             <NotionButton
               variant="ghost"
@@ -178,7 +178,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
               onClick={toggleFullscreen}
               title={t('notes:previewPanel.image.fullscreen')}
             >
-              <Maximize2 className="h-4 w-4" />
+              <ArrowsOut size={16} />
             </NotionButton>
           </div>
         </div>
@@ -195,7 +195,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
           {/* 图片加载失败 */}
           {imgError && (
             <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
-              <AlertCircle className="h-10 w-10 text-destructive" />
+              <WarningCircle className="h-10 w-10 text-destructive" />
               <p className="text-sm text-muted-foreground">
                 {t('notes:previewPanel.image.loadError')}
               </p>
@@ -254,7 +254,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
               }}
               disabled={scale <= 0.5}
             >
-              <ZoomOut className="h-4 w-4" />
+              <MagnifyingGlassMinus size={16} />
             </NotionButton>
             <span className="min-w-[3rem] text-center text-sm text-white">
               {Math.round(scale * 100)}%
@@ -269,7 +269,7 @@ export const ImagePreview: React.FC<ImagePreviewProps> = ({
               }}
               disabled={scale >= 3}
             >
-              <ZoomIn className="h-4 w-4" />
+              <MagnifyingGlassPlus size={16} />
             </NotionButton>
           </div>
 

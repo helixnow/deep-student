@@ -8,7 +8,7 @@
 
 import React, { useState, useMemo, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, ChevronDown, Search, Ban, Star, Box } from 'lucide-react';
+import { Check, CaretDown, MagnifyingGlass, Prohibit, Star, Cube } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/shad/Input';
@@ -224,8 +224,8 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
     return (
       <NotionButton variant="ghost" size="sm" onClick={() => handleSelectModel(EMPTY_VALUE)} disabled={disabled} className={cn('!w-full !justify-between !px-2 !py-1.5 !h-auto !text-left group', isEmptySelected ? 'bg-primary/5 text-primary' : 'text-foreground hover:bg-[var(--interactive-hover)]', disabled && 'opacity-60 cursor-not-allowed')}>
         <div className="flex items-center gap-2">
-           <div className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground group-hover:text-foreground">
-             <Ban className="h-3.5 w-3.5" />
+           <div className="w-5 h-5 flex items-center justify-center rounded text-muted-foreground group-hover:text-foreground">
+             <Prohibit size={14} />
            </div>
            <span className="text-sm">{defaultEmptyLabel}</span>
         </div>
@@ -255,7 +255,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
               size={16}
               showTooltip={false}
               className="opacity-80 group-hover:opacity-100 transition-opacity"
-            />
+/>
           </div>
           
           <div className="flex flex-col min-w-0 flex-1">
@@ -267,7 +267,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
                )}>
                  {option.modelName}
                </span>
-               {option.isFavorite && <Star className="h-3 w-3 text-amber-500 fill-amber-500 flex-shrink-0" />}
+               {option.isFavorite && <Star size={12} className="text-amber-500 fill-amber-500 flex-shrink-0" />}
                {option.isDisabled && (
                  <span className={cn('text-[10px] px-1 rounded flex-shrink-0', disabledToneClass)}>
                    {option.disabledLabel || t('common:disabled', 'Disabled')}
@@ -290,7 +290,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
                      isImageGeneration={option.isImageGeneration}
                      size="xs"
                      className="gap-1"
-                   />
+/>
                  </>
                )}
                
@@ -351,7 +351,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
               triggerDisplayText
             )}
           </span>
-          <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-40" />
+          <CaretDown size={14} className="shrink-0 opacity-40" />
         </NotionButton>
       );
     }
@@ -369,7 +369,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
       >
         {triggerIcon}
         <span className="truncate max-w-[200px]">{triggerDisplayText}</span>
-        <ChevronDown className="h-3.5 w-3.5 shrink-0 opacity-50" />
+        <CaretDown size={14} className="shrink-0 opacity-50" />
       </NotionButton>
     );
   };
@@ -393,14 +393,14 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
         {/* 搜索框 */}
         {showSearch && (
           <div className="relative mb-1.5 px-0.5 pt-0.5">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/60" />
+            <MagnifyingGlass size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
             <Input
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               placeholder={t('chat_host:model_panel.search_placeholder', '搜索...')}
               className="h-7 text-xs pl-8 border-transparent bg-muted/30 focus-visible:bg-transparent focus-visible:border-primary/20"
               disabled={disabled}
-            />
+/>
           </div>
         )}
 
@@ -439,7 +439,7 @@ export const UnifiedModelSelector: React.FC<UnifiedModelSelectorProps> = ({
                ))
              ) : (
                <div className="px-2 py-8 text-xs text-muted-foreground text-center flex flex-col items-center gap-2">
-                 <Box className="h-8 w-8 text-muted-foreground/20" />
+                 <Cube size={32} className="text-muted-foreground/20" />
                  {searchTerm
                    ? t('chat_host:model_panel.no_matches', '无匹配结果')
                    : t('chat_host:model_panel.empty', '暂无可用模型')}

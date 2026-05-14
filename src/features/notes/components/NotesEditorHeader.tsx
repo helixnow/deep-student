@@ -2,7 +2,7 @@ import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useNotesOptional } from '../NotesContext';
 import { getPathToNote } from '../notesUtils';
-import { ChevronRight, Folder, FileText } from 'lucide-react';
+import { CaretRight, Folder, FileText } from '@phosphor-icons/react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { Input } from '@/components/ui/shad/Input';
 
@@ -161,7 +161,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
                     <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground/60 overflow-hidden whitespace-nowrap mask-linear-fade select-none mr-auto">
                         {breadcrumbs.map((item, index) => (
                             <React.Fragment key={item.id}>
-                                {index > 0 && <ChevronRight className="h-3 w-3 opacity-40" />}
+                                {index > 0 && <CaretRight className="h-3 w-3 opacity-40" />}
                                 <div 
                                     className={`flex items-center gap-1 ${
                                     index === breadcrumbs.length - 1 

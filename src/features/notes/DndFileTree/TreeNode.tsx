@@ -2,7 +2,7 @@ import React, { useState, useRef, useEffect, useId, useCallback, forwardRef, use
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { ChevronRight, ChevronDown, Star, Folder, FileText } from 'lucide-react';
+import { CaretRight, CaretDown, Star, Folder, FileText } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { useTree } from './TreeContext';
@@ -512,7 +512,7 @@ export const TreeNode = forwardRef<HTMLDivElement, TreeNodeProps>(function TreeN
           {/* 展开/折叠箭头 - 文件夹显示，引用节点和笔记显示图标 */}
           {node.isFolder ? (
             <NotionButton variant="ghost" size="icon" iconOnly className="rct-tree-item-arrow mr-2" onClick={handleExpandClick} aria-label={isExpanded ? t('notes:tree.aria.collapse') : t('notes:tree.aria.expand')} aria-expanded={isExpanded}>
-              <ChevronRight className="w-3 h-3" />
+              <CaretRight className="w-3 h-3" />
             </NotionButton>
           ) : isReference && sourceDb ? (
             // 引用节点显示对应图标

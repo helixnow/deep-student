@@ -1,7 +1,7 @@
 import React, { useCallback, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Input } from './Input';
-import { X } from 'lucide-react';
+import { X } from '@phosphor-icons/react';
 
 export interface TagInputProps {
   value: string[];
@@ -74,7 +74,7 @@ const TagInput: React.FC<TagInputProps> = ({ value, onChange, placeholder, disab
             disabled={disabled}
             aria-label={`${translate('common:remove')} ${t}`}
             title={translate('common:remove')}
-            className="ml-1 inline-flex h-5 w-5 items-center justify-center rounded hover:bg-[var(--interactive-hover)] disabled:opacity-50"
+ className="w-5 h-5 ml-1 inline-flex items-center justify-center rounded hover:bg-[var(--interactive-hover)] disabled:opacity-50"
           >
             <X size={12} className="text-muted-foreground" />
           </button>
@@ -95,7 +95,7 @@ const TagInput: React.FC<TagInputProps> = ({ value, onChange, placeholder, disab
           placeholder={placeholder}
           disabled={disabled}
           className="border-none focus-visible:ring-0 px-0 py-0 h-6 min-w-[8ch] flex-1"
-        />
+/>
       </div>
     </div>
   );

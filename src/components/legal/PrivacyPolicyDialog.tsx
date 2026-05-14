@@ -55,47 +55,47 @@ export const PrivacyPolicyDialog: React.FC<PrivacyPolicyDialogProps> = ({ open, 
 
   const sections = [
     {
-      icon: <Eye className="h-4 w-4 text-blue-500" weight="regular" />,
+      icon: <Eye size={16} className="text-blue-500" weight="regular" />,
       key: 'overview',
     },
     {
-      icon: <HardDrive className="h-4 w-4 text-emerald-500" weight="regular" />,
+      icon: <HardDrive size={16} className="text-emerald-500" weight="regular" />,
       key: 'localStorage',
     },
     {
-      icon: <PaperPlaneTilt className="h-4 w-4 text-blue-500" weight="regular" />,
+      icon: <PaperPlaneTilt size={16} className="text-blue-500" weight="regular" />,
       key: 'llmApi',
     },
     {
-      icon: <Bug className="h-4 w-4 text-orange-500" weight="regular" />,
+      icon: <Bug size={16} className="text-orange-500" weight="regular" />,
       key: 'errorReporting',
     },
     {
-      icon: <Cloud className="h-4 w-4 text-sky-500" weight="regular" />,
+      icon: <Cloud size={16} className="text-sky-500" weight="regular" />,
       key: 'cloudSync',
     },
     {
-      icon: <UserMinus className="h-4 w-4 text-purple-500" weight="regular" />,
+      icon: <UserMinus size={16} className="text-purple-500" weight="regular" />,
       key: 'noTracking',
     },
     {
-      icon: <ShieldCheck className="h-4 w-4 text-emerald-500" weight="regular" />,
+      icon: <ShieldCheck size={16} className="text-emerald-500" weight="regular" />,
       key: 'dataRights',
     },
     {
-      icon: <ShieldCheck className="h-4 w-4 text-blue-500" weight="regular" />,
+      icon: <ShieldCheck size={16} className="text-blue-500" weight="regular" />,
       key: 'security',
     },
     {
-      icon: <Globe className="h-4 w-4 text-amber-500" weight="regular" />,
+      icon: <Globe size={16} className="text-amber-500" weight="regular" />,
       key: 'crossBorder',
     },
     {
-      icon: <Baby className="h-4 w-4 text-pink-500" weight="regular" />,
+      icon: <Baby size={16} className="text-pink-500" weight="regular" />,
       key: 'children',
     },
     {
-      icon: <ArrowsClockwise className="h-4 w-4 text-muted-foreground" weight="regular" />,
+      icon: <ArrowsClockwise size={16} className="text-muted-foreground" weight="regular" />,
       key: 'changes',
     },
   ];
@@ -117,7 +117,7 @@ export const PrivacyPolicyDialog: React.FC<PrivacyPolicyDialogProps> = ({ open, 
                 icon={section.icon}
                 title={t(`legal.privacyPolicy.sections.${section.key}.title`)}
                 content={t(`legal.privacyPolicy.sections.${section.key}.content`)}
-              />
+/>
             ))}
           </div>
         </NotionDialogBody>

@@ -16,7 +16,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
-import { Search, X, BookOpen, FileSpreadsheet, Loader2, AlertCircle } from 'lucide-react';
+import { MagnifyingGlass, X, BookOpen, Table, CircleNotch, WarningCircle } from '@phosphor-icons/react';
 import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody } from '@/components/ui/NotionDialog';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Input } from '@/components/ui/shad/Input';
@@ -213,7 +213,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
                 <BookOpen className="h-5 w-5 text-purple-500" />
               )}
               {type === 'exam_session' && (
-                <FileSpreadsheet className="h-5 w-5 text-green-500" />
+                <Table className="h-5 w-5 text-green-500" />
               )}
               {dialogTitle}
             </NotionDialogTitle>
@@ -226,7 +226,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
         {/* 搜索框 */}
         <div className="px-4 pb-3">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <MagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <Input
               type="text"
               value={searchQuery}
@@ -251,7 +251,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
             {loading ? (
               // 加载状态
               <div className="flex flex-col items-center justify-center h-full py-12">
-                <Loader2 className="h-8 w-8 text-primary animate-spin" />
+                <CircleNotch className="h-8 w-8 text-primary animate-spin" />
                 <p className="mt-2 text-sm text-muted-foreground">
                   {t('common:loading')}
                 </p>
@@ -259,7 +259,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
             ) : error ? (
               // 错误状态
               <div className="flex flex-col items-center justify-center h-full py-12">
-                <AlertCircle className="h-8 w-8 text-destructive" />
+                <WarningCircle className="h-8 w-8 text-destructive" />
                 <p className="mt-2 text-sm text-destructive">{error}</p>
                 <NotionButton variant="ghost" size="sm" onClick={loadData} className="mt-3 text-sm text-primary hover:underline">
                   {t('common:actions.retry')}
@@ -272,7 +272,7 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
                   <BookOpen className="h-12 w-12 text-muted-foreground/30" />
                 )}
                 {type === 'exam_session' && (
-                  <FileSpreadsheet className="h-12 w-12 text-muted-foreground/30" />
+                  <Table className="h-12 w-12 text-muted-foreground/30" />
                 )}
                 <p className="mt-3 text-sm text-muted-foreground">{emptyText}</p>
               </div>

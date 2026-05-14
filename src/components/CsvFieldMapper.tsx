@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/shad/Table';
 import { AppSelect } from '@/components/ui/app-menu';
 import { Badge } from '@/components/ui/shad/Badge';
-import { AlertCircle, CheckCircle2, Link2, Link2Off } from 'lucide-react';
+import { WarningCircle, CheckCircle, Link, LinkBreak } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
 // 可映射的目标字段 (labels resolved via i18n at render time)
@@ -202,21 +202,21 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
       <div className="flex items-center gap-4 px-3 py-2 rounded-lg bg-muted/30">
         {isMappingValid ? (
           <div className="flex items-center gap-2 text-emerald-600 dark:text-emerald-400">
-            <CheckCircle2 className="w-4 h-4" />
+            <CheckCircle size={16} />
             <span className="text-sm">
               {t('exam_sheet:csv.mapping_valid', '字段映射有效，可以开始导入')}
             </span>
           </div>
         ) : hasDuplicateMappings ? (
           <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-            <AlertCircle className="w-4 h-4" />
+            <WarningCircle size={16} />
             <span className="text-sm">
               {t('exam_sheet:csv.mapping_duplicate', '存在重复映射，请确保每个目标字段只映射一次')}
             </span>
           </div>
         ) : (
           <div className="flex items-center gap-2 text-amber-600 dark:text-amber-400">
-            <AlertCircle className="w-4 h-4" />
+            <WarningCircle size={16} />
             <span className="text-sm">
               {t('exam_sheet:csv.mapping_required', '请至少映射「题干内容」字段')}
             </span>
@@ -260,9 +260,9 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
                   <TableCell>
                     <div className="flex items-center gap-2">
                       {isMapped ? (
-                        <Link2 className="w-4 h-4 text-primary" />
+                        <Link size={16} className="text-primary" />
                       ) : (
-                        <Link2Off className="w-4 h-4 text-muted-foreground/50" />
+                        <LinkBreak size={16} className="text-muted-foreground/50" />
                       )}
                       <span className="font-mono text-sm">{header}</span>
                     </div>
@@ -296,7 +296,7 @@ export const CsvFieldMapper: React.FC<CsvFieldMapperProps> = ({
                         ]}
                         size="sm"
                         variant="outline"
-                      />
+/>
                     )}
                   </TableCell>
                   {showPreview && (

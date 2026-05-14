@@ -4,7 +4,7 @@
  */
 
 import React, { useEffect, useState, useMemo } from 'react';
-import { Sparkles } from 'lucide-react';
+import { Sparkle } from '@phosphor-icons/react';
 import AzureColor from '@lobehub/icons/es/Azure/components/Color';
 import AzureMono from '@lobehub/icons/es/Azure/components/Mono';
 import BaichuanColor from '@lobehub/icons/es/Baichuan/components/Color';
@@ -86,7 +86,7 @@ export const isGenericProviderIconPath = (iconPath?: string | null): boolean =>
   Boolean(iconPath?.includes('/icons/providers/generic.svg'));
 
 const UnknownFallbackGlyph: React.FC<{ size: number }> = ({ size }) => (
-  <Sparkles
+  <Sparkle
     aria-hidden="true"
     size={size}
     strokeWidth={2.1}
@@ -95,7 +95,7 @@ const UnknownFallbackGlyph: React.FC<{ size: number }> = ({ size }) => (
       flexShrink: 0,
       opacity: 0.82,
     }}
-  />
+/>
 );
 
 const COLOR_LOBE_COMPONENTS: Partial<Record<ProviderBrand, React.ComponentType<any>>> = {
@@ -335,7 +335,7 @@ export const ProviderIcon: React.FC<ProviderIconProps> = ({
                 color: avatarLikeStyle.color,
                 ...glyphStyle,
               }}
-            />
+/>
           );
         }
       }
@@ -369,13 +369,13 @@ export const ProviderIcon: React.FC<ProviderIconProps> = ({
                 size={size}
                 aria-hidden="true"
                 style={{ transform: `scale(${avatarLikeStyle.iconMultiple})` }}
-              />
+/>
             ) : (
               <LobeSvgIcon
                 brand={providerInfo.brand}
                 size={size}
                 style={{ transform: `scale(${avatarLikeStyle.iconMultiple})` }}
-              />
+/>
             )}
           </span>
         );
@@ -397,7 +397,7 @@ export const ProviderIcon: React.FC<ProviderIconProps> = ({
             console.warn(`Failed to load provider icon: ${providerInfo.iconPath}`);
             setIconLoadFailed(true);
           }}
-        />
+/>
       );
     }
 

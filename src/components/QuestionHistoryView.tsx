@@ -19,15 +19,15 @@ import {
   SheetDescription,
 } from '@/components/ui/shad/Sheet';
 import {
-  History,
+  ClockCounterClockwise,
   Clock,
   CheckCircle,
   XCircle,
-  Edit3,
-  MessageSquare,
-  Loader2,
-  ChevronRight,
-} from 'lucide-react';
+  PencilSimple,
+  Chat,
+  CircleNotch,
+  CaretRight,
+} from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 
@@ -54,10 +54,10 @@ interface QuestionHistoryViewProps {
 }
 
 const changeTypeIcons: Record<string, React.ReactNode> = {
-  create: <Edit3 className="w-4 h-4 text-green-500" />,
-  update: <Edit3 className="w-4 h-4 text-blue-500" />,
-  answer: <MessageSquare className="w-4 h-4 text-purple-500" />,
-  status_change: <CheckCircle className="w-4 h-4 text-orange-500" />,
+  create: <PencilSimple size={16} className="text-green-500" />,
+  update: <PencilSimple size={16} className="text-blue-500" />,
+  answer: <Chat size={16} className="text-purple-500" />,
+  status_change: <CheckCircle size={16} className="text-orange-500" />,
 };
 
 const changeTypeLabelKeys: Record<string, string> = {
@@ -174,7 +174,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
       <SheetContent side="right" className="w-[400px] sm:w-[540px]">
         <SheetHeader>
           <SheetTitle className="flex items-center gap-2">
-            <History className="w-5 h-5" />
+            <ClockCounterClockwise size={20} />
             {t('exam_sheet:questionBank.history.title', '历史记录')}
           </SheetTitle>
           <SheetDescription>
@@ -185,11 +185,11 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
         <div className="mt-6">
           {isLoading ? (
             <div className="flex items-center justify-center py-12">
-              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+              <CircleNotch size={24} className="animate-spin text-muted-foreground" />
             </div>
           ) : error ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <XCircle className="w-8 h-8 text-destructive mb-2" />
+              <XCircle size={32} className="text-destructive mb-2" />
               <p className="text-sm text-muted-foreground">{error}</p>
               <NotionButton variant="ghost" size="sm" className="mt-4" onClick={loadHistory}>
                 {t('common:retry', '重试')}
@@ -197,7 +197,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
             </div>
           ) : history.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-12 text-center">
-              <History className="w-8 h-8 text-muted-foreground mb-2" />
+              <ClockCounterClockwise size={32} className="text-muted-foreground mb-2" />
               <p className="text-sm text-muted-foreground">
                 {t('exam_sheet:questionBank.history.empty', '暂无历史记录')}
               </p>
@@ -214,7 +214,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
                     )}
                   >
                     {/* 时间线节点 */}
-                    <div className="absolute left-0 top-0 w-4 h-4 rounded-full bg-background border-2 border-primary flex items-center justify-center -translate-x-1/2">
+                    <div className="w-4 h-4 absolute left-0 top-0 rounded-full bg-background border-2 border-primary flex items-center justify-center -translate-x-1/2">
                       {changeTypeIcons[item.change_type]}
                     </div>
 
@@ -230,7 +230,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
                           </span>
                         </div>
                         <div className="flex items-center gap-1 text-xs text-muted-foreground">
-                          <Clock className="w-3 h-3" />
+                          <Clock size={12} />
                           {formatDate(item.created_at)}
                         </div>
                       </div>
@@ -244,7 +244,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
                             </div>
                           </div>
                           <div className="flex items-center justify-center">
-                            <ChevronRight className="w-4 h-4 text-muted-foreground rotate-90" />
+                            <CaretRight size={16} className="text-muted-foreground rotate-90" />
                           </div>
                           <div className="flex items-start gap-2">
                             <span className="text-muted-foreground flex-shrink-0">{t('practice:questionBank.newValue')}</span>
@@ -269,7 +269,7 @@ export const QuestionHistoryView: React.FC<QuestionHistoryViewProps> = ({
                       {item.change_type === 'status_change' && (
                         <div className="flex items-center gap-2 text-sm">
                           {renderValue(item.old_value, 'status')}
-                          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+                          <CaretRight size={16} className="text-muted-foreground" />
                           {renderValue(item.new_value, 'status')}
                         </div>
                       )}

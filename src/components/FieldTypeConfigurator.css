@@ -1,6 +1,6 @@
 .field-type-configurator {
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
   border-radius: 12px;
   padding: 20px;
   margin-top: 20px;
@@ -15,7 +15,7 @@
   align-items: center;
   gap: 8px;
   margin: 0 0 8px 0;
-  color: #111827;
+  color: hsl(var(--foreground));
   font-size: 18px;
 }
 
@@ -24,7 +24,7 @@
   align-items: center;
   gap: 6px;
   margin: 0;
-  color: #6b7280;
+  color: hsl(var(--muted-foreground));
   font-size: 14px;
 }
 
@@ -35,16 +35,16 @@
 }
 
 .field-item {
-  background: white;
-  border: 1px solid #e5e7eb;
+  background: var(--surface-elevated);
+  border: 1px solid hsl(var(--border));
   border-radius: 8px;
   overflow: hidden;
   transition: all 0.2s ease;
 }
 
 .field-item:hover {
-  border-color: #d1d5db;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+  border-color: hsl(var(--border));
+  box-shadow: 0 1px 3px hsl(var(--shadow-base) / 0.1);
 }
 
 .field-header {
@@ -64,7 +64,7 @@
 
 .field-name {
   font-weight: 600;
-  color: #111827;
+  color: hsl(var(--foreground));
   font-size: 15px;
 }
 
@@ -73,8 +73,8 @@
   align-items: center;
   gap: 4px;
   padding: 4px 10px;
-  background: #eff6ff;
-  color: #3730a3;
+  background: hsl(var(--primary) / 0.08);
+  color: hsl(var(--primary));
   border-radius: 12px;
   font-size: 13px;
   font-weight: 500;
@@ -82,8 +82,8 @@
 
 .required-badge {
   padding: 2px 8px;
-  background: #fee2e2;
-  color: #dc2626;
+  background: hsl(var(--destructive) / 0.08);
+  color: hsl(var(--destructive));
   border-radius: 10px;
   font-size: 12px;
   font-weight: 500;
@@ -94,7 +94,7 @@
   border: none;
   padding: 4px;
   cursor: pointer;
-  color: #6b7280;
+  color: hsl(var(--muted-foreground));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -102,13 +102,13 @@
 }
 
 .expand-button:hover {
-  color: #111827;
+  color: hsl(var(--foreground));
 }
 
 .field-config {
   padding: 16px;
-  background: #f9fafb;
-  border-top: 1px solid #e5e7eb;
+  background: hsl(var(--muted));
+  border-top: 1px solid hsl(var(--border));
 }
 
 .config-group {
@@ -122,7 +122,7 @@
 .config-group label {
   display: block;
   margin-bottom: 6px;
-  color: #374151;
+  color: hsl(var(--foreground));
   font-size: 14px;
   font-weight: 500;
 }
@@ -133,7 +133,7 @@
 .config-group textarea {
   width: 100%;
   padding: 8px 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid hsl(var(--border));
   border-radius: 6px;
   font-size: 14px;
   transition: border-color 0.2s ease;
@@ -143,8 +143,8 @@
 .config-group select:focus,
 .config-group textarea:focus {
   outline: none;
-  border-color: #6366f1;
-  box-shadow: 0 0 0 3px rgba(99, 102, 241, 0.1);
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1);
 }
 
 .checkbox-label {
@@ -164,7 +164,7 @@
 .field-help {
   display: block;
   margin-top: 4px;
-  color: #6b7280;
+  color: hsl(var(--muted-foreground));
   font-size: 12px;
   line-height: 1.5;
 }
@@ -172,14 +172,14 @@
 .object-properties {
   margin-top: 16px;
   padding: 16px;
-  background: white;
-  border: 1px solid #e5e7eb;
+  background: var(--surface-elevated);
+  border: 1px solid hsl(var(--border));
   border-radius: 8px;
 }
 
 .object-properties h4 {
   margin: 0 0 12px 0;
-  color: #374151;
+  color: hsl(var(--foreground));
   font-size: 14px;
   font-weight: 600;
 }
@@ -189,14 +189,14 @@
   justify-content: space-between;
   align-items: center;
   padding: 8px 12px;
-  background: #f9fafb;
+  background: hsl(var(--muted));
   border-radius: 6px;
   margin-bottom: 8px;
 }
 
 .property-item span {
   font-size: 14px;
-  color: #111827;
+  color: hsl(var(--foreground));
   font-family: monospace;
 }
 
@@ -205,7 +205,7 @@
   border: none;
   padding: 4px;
   cursor: pointer;
-  color: #ef4444;
+  color: hsl(var(--destructive));
   display: flex;
   align-items: center;
   justify-content: center;
@@ -214,7 +214,7 @@
 }
 
 .remove-button:hover {
-  background: #fee2e2;
+  background: hsl(var(--destructive) / 0.08);
 }
 
 .add-property {
@@ -232,8 +232,8 @@
   align-items: center;
   gap: 4px;
   padding: 8px 16px;
-  background: #6366f1;
-  color: white;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
   border: none;
   border-radius: 6px;
   font-size: 14px;
@@ -243,20 +243,20 @@
 }
 
 .add-property button:hover {
-  background: #4f46e5;
+  background: hsl(var(--primary) / 0.9);
 }
 
 .validation-rules {
   margin-top: 16px;
   padding: 16px;
-  background: #fef3c7;
-  border: 1px solid #fbbf24;
+  background: hsl(var(--warning) / 0.1);
+  border: 1px solid hsl(var(--warning));
   border-radius: 8px;
 }
 
 .validation-rules h4 {
   margin: 0 0 12px 0;
-  color: #78350f;
+  color: hsl(var(--warning));
   font-size: 14px;
   font-weight: 600;
 }
@@ -264,7 +264,7 @@
 .configurator-footer {
   margin-top: 20px;
   padding-top: 16px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid hsl(var(--border));
 }
 
 .warning-text {
@@ -272,9 +272,9 @@
   align-items: center;
   gap: 8px;
   margin: 0;
-  color: #f59e0b;
+  color: hsl(var(--warning));
   font-size: 13px;
-  background: #fffbeb;
+  background: hsl(var(--warning) / 0.08);
   padding: 10px 14px;
   border-radius: 6px;
 }

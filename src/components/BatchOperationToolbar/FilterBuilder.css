@@ -5,7 +5,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: rgba(0, 0, 0, 0.5);
+  background: hsl(var(--background) / 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -20,7 +20,7 @@
   max-height: 80vh;
   display: flex;
   flex-direction: column;
-  box-shadow: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-content-elevated);
   animation: builderEntry 0.2s ease-out;
 }
 
@@ -122,8 +122,8 @@
 
 .filter-connector {
   padding: 4px 12px;
-  background: #e0e7ff;
-  color: #4338ca;
+  background: hsl(var(--primary) / 0.15);
+  color: hsl(var(--primary));
   border-radius: 16px;
   font-size: 12px;
   font-weight: 500;
@@ -134,10 +134,10 @@
 .filter-operator-select,
 .filter-value-input {
   padding: 8px 12px;
-  border: 1px solid #d1d5db;
+  border: 1px solid hsl(var(--border));
   border-radius: 6px;
   font-size: 14px;
-  background: white;
+  background: var(--surface-elevated);
   transition: all 0.2s;
 }
 
@@ -157,31 +157,31 @@
 .filter-type-select:hover,
 .filter-operator-select:hover,
 .filter-value-input:hover {
-  border-color: #9ca3af;
+  border-color: var(--border-strong);
 }
 
 .filter-type-select:focus,
 .filter-operator-select:focus,
 .filter-value-input:focus {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.1);
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1);
 }
 
 .filter-remove-btn {
-  background: #fee2e2;
+  background: hsl(var(--destructive) / 0.1);
   border: none;
   padding: 8px;
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s;
-  color: #dc2626;
+  color: hsl(var(--destructive));
   display: flex;
   align-items: center;
 }
 
 .filter-remove-btn:hover {
-  background: #fecaca;
+  background: hsl(var(--destructive) / 0.2);
   transform: scale(1.05);
 }
 
@@ -193,26 +193,26 @@
   gap: 8px;
   width: 100%;
   padding: 12px;
-  background: #f3f4f6;
-  border: 2px dashed #d1d5db;
+  background: hsl(var(--muted));
+  border: 2px dashed hsl(var(--border));
   border-radius: 8px;
   font-size: 14px;
   font-weight: 500;
-  color: #6b7280;
+  color: hsl(var(--muted-foreground));
   cursor: pointer;
   transition: all 0.2s;
 }
 
 .add-filter-btn:hover {
-  background: #e5e7eb;
-  border-color: #9ca3af;
-  color: #374151;
+  background: hsl(var(--accent));
+  border-color: var(--border-strong);
+  color: var(--text-primary);
 }
 
 /* 底部操作 */
 .filter-builder-footer {
   padding: 20px 24px;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid hsl(var(--border));
   display: flex;
   justify-content: flex-end;
   gap: 12px;
@@ -230,25 +230,26 @@
 }
 
 .btn-primary {
-  background: #3b82f6;
-  color: white;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
 }
 
 .btn-primary:hover {
-  background: #5a67d8;
+  background: hsl(var(--primary));
+  filter: brightness(1.1);
   transform: translateY(-1px);
-  box-shadow: 0 4px 6px rgba(0, 0, 0, 0.1);
+  box-shadow: var(--shadow-content-soft);
 }
 
 .btn-secondary {
-  background: #f3f4f6;
-  color: #374151;
-  border: 1px solid #d1d5db;
+  background: hsl(var(--muted));
+  color: var(--text-primary);
+  border: 1px solid hsl(var(--border));
 }
 
 .btn-secondary:hover {
-  background: #e5e7eb;
-  border-color: #9ca3af;
+  background: hsl(var(--accent));
+  border-color: var(--border-strong);
 }
 
 /* 响应式设计 */
@@ -282,57 +283,57 @@
 /* 暗色模式支持 */
 @media (prefers-color-scheme: dark) {
   .filter-builder {
-    background: #1f2937;
-    color: #f3f4f6;
+    background: hsl(var(--card));
+    color: hsl(var(--foreground));
   }
   
   .filter-builder-header {
-    border-bottom-color: #374151;
+    border-bottom-color: hsl(var(--border));
   }
   
   .filter-builder-footer {
-    border-top-color: #374151;
+    border-top-color: hsl(var(--border));
   }
   
   .filter-item {
-    background: #111827;
-    border-color: #374151;
+    background: hsl(var(--background));
+    border-color: hsl(var(--border));
   }
   
   .filter-type-select,
   .filter-operator-select,
   .filter-value-input {
-    background: #111827;
-    border-color: #374151;
-    color: #f3f4f6;
+    background: hsl(var(--background));
+    border-color: hsl(var(--border));
+    color: hsl(var(--foreground));
   }
   
   .add-filter-btn {
-    background: #111827;
-    border-color: #374151;
-    color: #9ca3af;
+    background: hsl(var(--background));
+    border-color: hsl(var(--border));
+    color: hsl(var(--muted-foreground));
   }
   
   .add-filter-btn:hover {
-    background: #1f2937;
-    border-color: #6b7280;
-    color: #e5e7eb;
+    background: hsl(var(--muted));
+    border-color: hsl(var(--muted-foreground));
+    color: hsl(var(--foreground));
   }
   
   .close-btn:hover {
-    background: #374151;
-    color: #f3f4f6;
+    background: hsl(var(--muted));
+    color: hsl(var(--foreground));
   }
   
   .btn-secondary {
-    background: #374151;
-    color: #f3f4f6;
-    border-color: #4b5563;
+    background: hsl(var(--muted));
+    color: hsl(var(--foreground));
+    border-color: hsl(var(--border));
   }
   
   .btn-secondary:hover {
-    background: #4b5563;
-    border-color: #6b7280;
+    background: hsl(var(--accent));
+    border-color: hsl(var(--muted-foreground));
   }
 }
 
@@ -349,7 +350,7 @@
   left: -100%;
   width: 100%;
   height: 100%;
-  background: linear-gradient(90deg, transparent, rgba(102, 126, 234, 0.1), transparent);
+  background: linear-gradient(90deg, transparent, hsl(var(--primary) / 0.1), transparent);
   transition: left 0.5s;
 }
 
@@ -359,7 +360,7 @@
 
 /* 输入框占位符样式 */
 .filter-value-input::placeholder {
-  color: #9ca3af;
+  color: hsl(var(--muted-foreground));
   font-style: italic;
 }
 
@@ -401,8 +402,8 @@ select {
   left: 50%;
   transform: translateX(-50%);
   padding: 4px 8px;
-  background: #1f2937;
-  color: white;
+  background: hsl(var(--foreground));
+  color: hsl(var(--background));
   font-size: 12px;
   border-radius: 4px;
   white-space: nowrap;

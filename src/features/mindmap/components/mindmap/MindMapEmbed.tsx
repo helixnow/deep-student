@@ -24,7 +24,7 @@ import '../../styles/mindmap.css';
 import { invoke } from '@tauri-apps/api/core';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { Loader2, AlertCircle, Maximize2, ZoomIn, ZoomOut, Locate, GitFork } from 'lucide-react';
+import { CircleNotch, WarningCircle, ArrowsOut, MagnifyingGlassPlus, MagnifyingGlassMinus, Crosshair, GitFork } from '@phosphor-icons/react';
 
 import { DEFAULT_LAYOUT_CONFIG, REACTFLOW_CONFIG, ROOT_NODE_STYLE, calculateBaseNodeHeight } from '../../constants';
 import { LayoutRegistry, StyleRegistry } from '../../registry';
@@ -275,7 +275,7 @@ const MindMapEmbedInner: React.FC<MindMapEmbedInnerProps> = ({ document }) => {
           )}
           title={t('embed.zoomIn')}
         >
-          <ZoomIn className="w-3.5 h-3.5" />
+          <MagnifyingGlassPlus size={14} />
         </NotionButton>
         <NotionButton variant="ghost"
           onClick={handleZoomOut}
@@ -289,7 +289,7 @@ const MindMapEmbedInner: React.FC<MindMapEmbedInnerProps> = ({ document }) => {
           )}
           title={t('embed.zoomOut')}
         >
-          <ZoomOut className="w-3.5 h-3.5" />
+          <MagnifyingGlassMinus size={14} />
         </NotionButton>
         <NotionButton variant="ghost"
           onClick={handleFitView}
@@ -303,7 +303,7 @@ const MindMapEmbedInner: React.FC<MindMapEmbedInnerProps> = ({ document }) => {
           )}
           title={t('embed.fitView')}
         >
-          <Locate className="w-3.5 h-3.5" />
+          <Crosshair className="w-3.5 h-3.5" />
         </NotionButton>
       </div>
     </div>
@@ -495,7 +495,7 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
           </span>
         )}
         <div className="flex items-center gap-2 text-muted-foreground">
-          <Loader2 className="w-5 h-5 animate-spin" />
+          <CircleNotch size={20} className="animate-spin" />
           <span>{t('embed.loading')}</span>
         </div>
       </div>
@@ -514,7 +514,7 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
         style={{ height }}
       >
         <div className="flex items-center gap-2 text-destructive">
-          <AlertCircle className="w-5 h-5" />
+          <WarningCircle size={20} />
           <span>{state.error}</span>
         </div>
       </div>
@@ -568,7 +568,7 @@ export const MindMapEmbed: React.FC<MindMapEmbedProps> = ({
           )}
           title={t('embed.openInNewWindow')}
         >
-          <Maximize2 className="w-4 h-4" />
+          <ArrowsOut size={16} />
         </NotionButton>
       )}
 

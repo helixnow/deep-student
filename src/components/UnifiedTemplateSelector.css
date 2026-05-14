@@ -8,16 +8,16 @@
 }
 
 .current-template-card {
-  background: #f8fafc;
-  border: 1px solid #e2e8f0;
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
   border-radius: 12px;
   padding: 20px;
   transition: all 0.2s ease;
 }
 
 .current-template-card:hover {
-  border-color: #cbd5e0;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+  border-color: hsl(var(--border));
+  box-shadow: 0 4px 12px hsl(var(--shadow-base) / 0.05);
 }
 
 .template-header {
@@ -31,13 +31,13 @@
   margin: 0 0 4px 0;
   font-size: 18px;
   font-weight: 600;
-  color: #1a202c;
+  color: hsl(var(--foreground));
 }
 
 .template-info .template-description {
   margin: 0;
   font-size: 14px;
-  color: #718096;
+  color: hsl(var(--muted-foreground));
   line-height: 1.4;
 }
 
@@ -51,7 +51,7 @@
   display: flex;
   gap: 16px;
   font-size: 13px;
-  color: #4a5568;
+  color: hsl(var(--foreground));
 }
 
 .field-count, .note-type {
@@ -62,30 +62,30 @@
 
 /* 按钮样式增强 */
 .btn.btn-outline {
-  background: white;
-  border: 1px solid #d1d5db;
-  color: #374151;
+  background: var(--surface-elevated);
+  border: 1px solid hsl(var(--border));
+  color: hsl(var(--foreground));
   transition: all 0.2s ease;
 }
 
 .btn.btn-outline:hover {
-  background: #f9fafb;
-  border-color: #9ca3af;
-  color: #1f2937;
+  background: hsl(var(--muted));
+  border-color: hsl(var(--muted-foreground));
+  color: hsl(var(--foreground));
 }
 
 .btn.btn-primary {
-  background: linear-gradient(135deg, #3b82f6 0%, #1d4ed8 100%);
+  background: linear-gradient(135deg, hsl(var(--primary)) 0%, hsl(var(--primary) / 0.85) 100%);
   border: none;
-  color: white;
+  color: hsl(var(--primary-foreground));
   font-weight: 500;
   transition: all 0.2s ease;
 }
 
 .btn.btn-primary:hover {
-  background: linear-gradient(135deg, #5a67d8 0%, #6b46c1 100%);
+  background: linear-gradient(135deg, hsl(var(--primary) / 0.9) 0%, hsl(var(--primary) / 0.8) 100%);
   transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(102, 126, 234, 0.3);
+  box-shadow: 0 4px 12px hsl(var(--primary) / 0.3);
 }
 
 .btn.btn-sm {

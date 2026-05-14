@@ -10,7 +10,7 @@
  */
 
 import React, { memo } from 'react';
-import { AlertTriangle, Trash2, RefreshCw, Loader2 } from 'lucide-react';
+import { Warning, Trash, ArrowClockwise, CircleNotch } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../lib/utils';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
@@ -76,7 +76,7 @@ export const InvalidReferenceOverlay: React.FC<InvalidReferenceOverlayProps> = m
           )}
           title={t('notes:reference.validating')}
         >
-          <Loader2 
+          <CircleNotch 
             className={cn(
               'animate-spin text-muted-foreground',
               compact ? 'w-3 h-3' : 'w-4 h-4'
@@ -99,7 +99,7 @@ export const InvalidReferenceOverlay: React.FC<InvalidReferenceOverlayProps> = m
               className
             )}
           >
-            <AlertTriangle className="w-3 h-3 text-warning" />
+            <Warning size={12} className="text-warning" />
           </span>
         </CommonTooltip>
       );
@@ -118,7 +118,7 @@ export const InvalidReferenceOverlay: React.FC<InvalidReferenceOverlayProps> = m
       >
         {/* 警告图标和文字 */}
         <div className="flex items-center gap-1.5 text-warning">
-          <AlertTriangle className="w-4 h-4 flex-shrink-0" />
+          <Warning size={16} className="flex-shrink-0" />
           <span className="text-xs font-medium">
             {t('notes:reference.invalid')}
           </span>
@@ -143,9 +143,9 @@ export const InvalidReferenceOverlay: React.FC<InvalidReferenceOverlayProps> = m
                 disabled={isRefreshing}
               >
                 {isRefreshing ? (
-                  <Loader2 className="w-3 h-3 animate-spin" />
+                  <CircleNotch size={12} className="animate-spin" />
                 ) : (
-                  <RefreshCw className="w-3 h-3" />
+                  <ArrowClockwise size={12} />
                 )}
               </NotionButton>
             </CommonTooltip>
@@ -166,7 +166,7 @@ export const InvalidReferenceOverlay: React.FC<InvalidReferenceOverlayProps> = m
                   onRemove();
                 }}
               >
-                <Trash2 className="w-3 h-3" />
+                <Trash size={12} />
               </NotionButton>
             </CommonTooltip>
           )}
@@ -208,7 +208,7 @@ export const InvalidReferenceIcon: React.FC<InvalidReferenceIconProps> = memo(
           className={cn('inline-flex items-center ml-1', className)}
           title={t('notes:reference.validating')}
         >
-          <Loader2 className="w-3 h-3 animate-spin text-muted-foreground" />
+          <CircleNotch size={12} className="animate-spin text-muted-foreground" />
         </span>
       );
     }
@@ -225,7 +225,7 @@ export const InvalidReferenceIcon: React.FC<InvalidReferenceIconProps> = memo(
         <span
           className={cn('inline-flex items-center ml-1 cursor-help', className)}
         >
-          <AlertTriangle className="w-3 h-3 text-warning" />
+          <Warning size={12} className="text-warning" />
         </span>
       </CommonTooltip>
     );

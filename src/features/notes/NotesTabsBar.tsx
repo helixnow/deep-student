@@ -17,7 +17,7 @@ import {
   sortableKeyboardCoordinates,
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { X, ChevronLeft, ChevronRight } from "lucide-react";
+import { X, CaretLeft, CaretRight } from "@phosphor-icons/react";
 import { useTranslation } from "react-i18next";
 import "./styles/notes-tabs-bar.css";
 
@@ -110,7 +110,7 @@ const SortableTab: React.FC<SortableTabProps> = ({ tab, active, onClose }) => {
             }
           }}
         >
-          <X className="h-3.5 w-3.5" strokeWidth={2} />
+          <X size={14} weight="bold" />
         </span>
       </TabsTrigger>
     </div>
@@ -283,12 +283,12 @@ const NotesTabsBar: React.FC<NotesTabsBarProps> = ({
       >
         {canLeft && (
           <NotionButton variant="ghost" size="icon" iconOnly aria-label="scroll-left" className="notes-tabs-scroll-btn left-0" onClick={() => scrollByDirection('left')}>
-            <ChevronLeft className="h-4 w-4" />
+            <CaretLeft size={16} />
           </NotionButton>
         )}
         {canRight && (
           <NotionButton variant="ghost" size="icon" iconOnly aria-label="scroll-right" className="notes-tabs-scroll-btn right-0" onClick={() => scrollByDirection('right')}>
-            <ChevronRight className="h-4 w-4" />
+            <CaretRight size={16} />
           </NotionButton>
         )}
         <DndContext sensors={sensors} onDragEnd={handleDragEnd}>

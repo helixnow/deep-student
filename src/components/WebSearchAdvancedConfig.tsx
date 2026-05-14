@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
-import { RefreshCw } from 'lucide-react';
+import { ArrowClockwise } from '@phosphor-icons/react';
 import { cn } from '../lib/utils';
 import { showGlobalNotification } from './UnifiedNotification';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -353,7 +353,7 @@ const WebSearchAdvancedConfigInner: React.FC<WebSearchAdvancedConfigProps> = ({
   if (loading) {
     return (
       <div className="flex items-center justify-center py-8 text-xs text-muted-foreground/70">
-        <RefreshCw className="mr-2 h-3 w-3 animate-spin" />
+        <ArrowClockwise size={12} className="mr-2 animate-spin" />
         {t('common:loading', '加载中…')}
       </div>
     );
@@ -367,7 +367,7 @@ const WebSearchAdvancedConfigInner: React.FC<WebSearchAdvancedConfigProps> = ({
         description={t('settings:advanced_search.reranker.description')}
         checked={rerankerConfig.enabled}
         onCheckedChange={handleRerankerToggle}
-      />
+/>
       {rerankerConfig.enabled && (
         <div className="ml-1 pl-3 border-l-2 border-border/30 space-y-px animate-in slide-in-from-top-2 duration-200">
           <SettingRow
@@ -392,7 +392,7 @@ const WebSearchAdvancedConfigInner: React.FC<WebSearchAdvancedConfigProps> = ({
               onChange={(event) => setTopKInput(event.target.value)}
               onBlur={handleRerankerTopKBlur}
               className="!w-20 h-8 text-xs bg-transparent"
-            />
+/>
           </SettingRow>
         </div>
       )}
@@ -411,7 +411,7 @@ const WebSearchAdvancedConfigInner: React.FC<WebSearchAdvancedConfigProps> = ({
           variant="ghost"
           className="h-8 text-xs bg-transparent hover:bg-[var(--interactive-hover)] transition-colors"
           width={100}
-        />
+/>
       </SettingRow>
 
       {/* 中文可信站点模板 */}
@@ -420,7 +420,7 @@ const WebSearchAdvancedConfigInner: React.FC<WebSearchAdvancedConfigProps> = ({
         description={t('settings:advanced_search.whitelist.description')}
         checked={cnWhitelistConfig.enabled}
         onCheckedChange={handleCnWhitelistToggle}
-      />
+/>
       {cnWhitelistConfig.enabled && (
         <div className="ml-1 pl-3 border-l-2 border-border/30 space-y-2 animate-in slide-in-from-top-2 duration-200">
           {/* 使用默认列表开关 */}
@@ -429,7 +429,7 @@ const WebSearchAdvancedConfigInner: React.FC<WebSearchAdvancedConfigProps> = ({
             description={t('settings:advanced_search.whitelist.use_default_hint', { count: cnDefaultSites.length })}
             checked={cnWhitelistConfig.use_default_list}
             onCheckedChange={handleCnDefaultToggle}
-          />
+/>
 
           {/* 默认站点预览 */}
           {cnWhitelistConfig.use_default_list && cnDefaultSites.length > 0 && (
@@ -464,7 +464,7 @@ const WebSearchAdvancedConfigInner: React.FC<WebSearchAdvancedConfigProps> = ({
               onBlur={handleCustomSitesBlur}
               placeholder={t('settings:advanced_search.whitelist.custom_placeholder')}
               className="text-xs bg-transparent resize-none"
-            />
+/>
           </div>
         </div>
       )}

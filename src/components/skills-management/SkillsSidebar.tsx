@@ -15,7 +15,7 @@ import {
   useUnifiedSidebar,
 } from '@/components/ui/unified-sidebar';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { Zap, Globe, FolderOpen, Package, Pencil, Trash2, Check } from 'lucide-react';
+import { Lightning, Globe, FolderOpen, Package, Pencil, Trash, Check } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import type { SkillDefinition, SkillLocation } from '@/features/chat/skills/types';
 import { getLocalizedSkillDescription, getLocalizedSkillName } from '@/features/chat/skills/utils';
@@ -82,7 +82,7 @@ const LocationIcon: React.FC<{ location: SkillLocation; size?: number }> = ({ lo
     case 'builtin':
       return <Package size={size} />;
     default:
-      return <Zap size={size} />;
+      return <Lightning size={size} />;
   }
 };
 
@@ -189,7 +189,7 @@ const SidebarContentComponent: React.FC<SidebarContentProps> = React.memo(({
       <UnifiedSidebarContent
         isLoading={isLoading}
         isEmpty={filteredSkills.length === 0}
-        emptyIcon={Zap}
+        emptyIcon={Lightning}
         emptyTitle={searchQuery
           ? t('skills:selector.noResults', '未找到匹配的技能')
           : t('skills:selector.empty', '暂无可用技能')
@@ -238,7 +238,7 @@ const SidebarContentComponent: React.FC<SidebarContentProps> = React.memo(({
                 e.stopPropagation();
                 onDeleteSkill(skill);
               }}
-            />
+/>
           );
         })}
       </UnifiedSidebarContent>
@@ -289,7 +289,7 @@ export const SkillsSidebar: React.FC<SkillsSidebarProps> = ({
 
   // 位置过滤标签
   const locationTabs = useMemo(() => [
-    { id: 'all' as LocationFilter, label: t('skills:location.all', '全部'), icon: <Zap size={12} /> },
+    { id: 'all' as LocationFilter, label: t('skills:location.all', '全部'), icon: <Lightning size={12} /> },
     { id: 'global' as LocationFilter, label: t('skills:location.global', '全局'), icon: <Globe size={12} /> },
     { id: 'project' as LocationFilter, label: t('skills:location.project', '项目'), icon: <FolderOpen size={12} /> },
     { id: 'builtin' as LocationFilter, label: t('skills:location.builtin', '内置'), icon: <Package size={12} /> },
@@ -331,7 +331,7 @@ export const SkillsSidebar: React.FC<SkillsSidebarProps> = ({
     >
       <UnifiedSidebarHeader
         title={t('skills:management.title', '技能管理')}
-        icon={Zap}
+        icon={Lightning}
         showSearch
         searchPlaceholder={t('skills:selector.searchPlaceholder', '搜索技能...')}
         showCreate
@@ -341,7 +341,7 @@ export const SkillsSidebar: React.FC<SkillsSidebarProps> = ({
         showRefresh={!!onRefresh}
         onRefreshClick={handleRefresh}
         isRefreshing={isRefreshing}
-      />
+/>
 
       <SidebarContentComponent
         skills={skills}
@@ -357,7 +357,7 @@ export const SkillsSidebar: React.FC<SkillsSidebarProps> = ({
         onDeleteSkill={onDeleteSkill}
         onCreateSkill={onCreateSkill}
         t={t}
-      />
+/>
 
       <UnifiedSidebarFooter>
         <div className="grid grid-cols-3 gap-2 text-[11px]">

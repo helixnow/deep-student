@@ -10,7 +10,7 @@ import { cn } from '../../../lib/utils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { MarkdownRenderer } from '../../../features/chat/components/renderers/MarkdownRenderer';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { AlertCircle, FileText } from 'lucide-react';
+import { WarningCircle, FileText } from '@phosphor-icons/react';
 import type { MarkdownPreviewProps } from './types';
 
 /**
@@ -65,7 +65,7 @@ export const MarkdownPreview: React.FC<MarkdownPreviewProps> = ({
           className
         )}
       >
-        <AlertCircle className="h-10 w-10 text-destructive" />
+        <WarningCircle className="h-10 w-10 text-destructive" />
         <p className="text-sm text-muted-foreground">{error}</p>
       </div>
     );

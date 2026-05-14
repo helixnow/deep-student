@@ -15,13 +15,13 @@ import { ensureInitialized } from '../../init';
 import type { PresetCategory, IPreset } from '../../registry/types';
 import { PresetIcon } from './PresetIcons';
 import {
-  LayoutGrid,
+  SquaresFour,
   GitBranch,
   Users,
-  ChevronDown,
+  CaretDown,
   Check,
   Lock,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 
 // ============================================================================
 // 类型定义
@@ -58,10 +58,10 @@ interface StructureSelectorProps {
 // ============================================================================
 
 const categoryIcons: Record<PresetCategory, React.ReactNode> = {
-  mindmap: <LayoutGrid className="w-4 h-4" />,
+  mindmap: <SquaresFour className="w-4 h-4" />,
   logic: <GitBranch className="w-4 h-4" />,
   orgchart: <Users className="w-4 h-4" />,
-  custom: <LayoutGrid className="w-4 h-4" />,
+  custom: <SquaresFour className="w-4 h-4" />,
 };
 
 const categoryIds: PresetCategory[] = ['mindmap', 'logic', 'orgchart'];
@@ -368,9 +368,9 @@ export const StructureSelector: React.FC<StructureSelectorProps> = ({
           aria-expanded={isOpen}
           aria-haspopup="true"
         >
-          <LayoutGrid className="w-4 h-4 text-gray-500 dark:text-gray-400" />
+          <SquaresFour className="w-4 h-4 text-gray-500 dark:text-gray-400" />
           <span>{t('toolbar.structure')}</span>
-          <ChevronDown
+          <CaretDown
             className={cn(
               'w-4 h-4 text-gray-400 transition-transform duration-200',
               isOpen && 'rotate-180'

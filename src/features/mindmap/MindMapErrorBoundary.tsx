@@ -5,7 +5,7 @@
  */
 
 import React from 'react';
-import { AlertCircle, RefreshCw } from 'lucide-react';
+import { WarningCircle, ArrowClockwise } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import i18next from 'i18next';
 
@@ -52,7 +52,7 @@ export class MindMapErrorBoundary extends React.Component<
     if (this.state.hasError) {
       return (
         <div className="flex flex-col items-center justify-center h-full gap-4 p-8 bg-[var(--mm-bg)]">
-          <AlertCircle className="w-12 h-12 text-destructive" />
+          <WarningCircle size={48} className="text-destructive" />
           <p className="text-destructive font-medium">
             {this.props.fallbackMessage || i18next.t('mindmap:errorBoundary')}
           </p>
@@ -66,7 +66,7 @@ export class MindMapErrorBoundary extends React.Component<
             onClick={this.handleReset}
             className="mt-2"
           >
-            <RefreshCw className="w-4 h-4 mr-2" />
+            <ArrowClockwise size={16} className="mr-2" />
             {i18next.t('mindmap:retryLoad')}
           </NotionButton>
           {import.meta.env.DEV && this.state.errorInfo && (

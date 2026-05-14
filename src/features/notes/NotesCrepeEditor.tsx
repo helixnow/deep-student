@@ -11,7 +11,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, FilePlus, FolderPlus, ImagePlus, ExternalLink, BookOpen, PencilLine } from 'lucide-react';
+import { MagnifyingGlass, FilePlus, FolderPlus, ImageSquare, ArrowSquareOut, BookOpen, PencilLine } from '@phosphor-icons/react';
 import { CrepeEditor, type CrepeEditorApi } from '@/components/crepe';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useNotesOptional } from './NotesContext';
@@ -675,7 +675,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
               variant="default"
             >
               <div className="flex items-center gap-3 text-sm font-medium text-foreground/80">
-                <FilePlus className="w-4 h-4 text-muted-foreground transition-colors" />
+                <FilePlus size={16} className="text-muted-foreground transition-colors" />
                 {t('notes:sidebar.actions.new_note')}
               </div>
               <div className="flex items-center gap-1">
@@ -696,7 +696,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
               variant="default"
             >
               <div className="flex items-center gap-3 text-sm font-medium text-foreground/80">
-                <FolderPlus className="w-4 h-4 text-muted-foreground transition-colors" />
+                <FolderPlus size={16} className="text-muted-foreground transition-colors" />
                 {t('notes:editor.empty_state.actions.new_folder')}
               </div>
             </NotionButton>
@@ -715,7 +715,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
               variant="default"
             >
               <div className="flex items-center gap-3 text-sm font-medium text-foreground/80">
-                <Search className="w-4 h-4 text-muted-foreground transition-colors" />
+                <MagnifyingGlass size={16} className="text-muted-foreground transition-colors" />
                 {t('notes:editor.empty_state.actions.search_note')}
               </div>
             </NotionButton>
@@ -758,7 +758,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
               className="w-16 h-16 rounded-xl flex items-center justify-center"
               style={{ backgroundColor: 'hsl(var(--primary) / 0.12)' }}
             >
-              <ImagePlus className="w-8 h-8" style={{ color: 'hsl(var(--primary))' }} />
+              <ImageSquare size={32} style={{ color: 'hsl(var(--primary))' }} />
             </div>
             <div className="flex flex-col items-center gap-1.5">
               <span 
@@ -791,7 +791,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
       {isPortaledToCanvas ? (
         <div className="flex-1 flex items-center justify-center bg-muted/30">
           <div className="flex flex-col items-center gap-4 text-muted-foreground">
-            <ExternalLink className="w-12 h-12 opacity-50" />
+            <ArrowSquareOut size={48} className="opacity-50" />
             <p className="text-sm">{t('notes:editor.portaled_to_canvas')}</p>
             <p className="text-xs opacity-60">{t('notes:editor.portaled_hint')}</p>
           </div>
@@ -839,7 +839,7 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
                         // readonly 状态由 CrepeEditor 的 readonly prop 自动同步，无需手动调用 setReadonly
                       }}
                     >
-                      {readingMode ? <BookOpen className="h-4 w-4" /> : <PencilLine className="h-4 w-4" />}
+                      {readingMode ? <BookOpen size={16} /> : <PencilLine size={16} />}
                     </NotionButton>
                   </CommonTooltip>
                 )}

@@ -3,8 +3,8 @@
  */
 
 import { 
-  Trash2, Zap, StopCircle, Edit3, Save 
-} from 'lucide-react';
+  Trash, Lightning, StopCircle, PencilSimple, FloppyDisk 
+} from '@phosphor-icons/react';
 import { TestScenarioConfig } from './types';
 
 export const SCENARIO_CONFIGS: TestScenarioConfig[] = [
@@ -12,7 +12,7 @@ export const SCENARIO_CONFIGS: TestScenarioConfig[] = [
     id: 'complete-flow',
     name: 'dev:save_test.scenarios.complete_flow.name',
     description: 'dev:save_test.scenarios.complete_flow.description',
-    icon: Zap,
+    icon: Lightning,
     color: 'hsl(var(--primary))',
     steps: [
       'dev:save_test.steps.send_msg1',
@@ -32,7 +32,7 @@ export const SCENARIO_CONFIGS: TestScenarioConfig[] = [
     id: 'delete',
     name: 'dev:save_test.scenarios.delete.name',
     description: 'dev:save_test.scenarios.delete.description',
-    icon: Trash2,
+    icon: Trash,
     color: 'hsl(var(--danger))',
     steps: [
       'dev:save_test.steps.preflight_check',
@@ -49,7 +49,7 @@ export const SCENARIO_CONFIGS: TestScenarioConfig[] = [
     id: 'stream-complete',
     name: 'dev:save_test.scenarios.stream_complete.name',
     description: 'dev:save_test.scenarios.stream_complete.description',
-    icon: Zap,
+    icon: Lightning,
     color: 'hsl(var(--success))',
     steps: [
       'dev:save_test.steps.preflight_check',
@@ -83,7 +83,7 @@ export const SCENARIO_CONFIGS: TestScenarioConfig[] = [
     id: 'edit-resend',
     name: 'dev:save_test.scenarios.edit_resend.name',
     description: 'dev:save_test.scenarios.edit_resend.description',
-    icon: Edit3,
+    icon: PencilSimple,
     color: 'hsl(var(--info))',
     steps: [
       'dev:save_test.steps.preflight_check',
@@ -101,7 +101,7 @@ export const SCENARIO_CONFIGS: TestScenarioConfig[] = [
     id: 'manual-save',
     name: 'dev:save_test.scenarios.manual_save.name',
     description: 'dev:save_test.scenarios.manual_save.description',
-    icon: Save,
+    icon: FloppyDisk,
     color: 'hsl(var(--primary))',
     steps: [
       'dev:save_test.steps.preflight_check',

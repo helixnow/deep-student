@@ -1435,11 +1435,13 @@
   "askUser": {
     "sourceUserClick": "用户选择",
     "sourceCustomInput": "自定义输入",
+    "sourceMixed": "混合选择",
     "sourceTimeout": "超时自动选择",
     "sourceChannelClosed": "连接中断",
     "preparing": "正在准备提问...",
     "selected": "已选择",
     "recommended": "推荐",
+    "confirmSelection": "确认选择",
     "customPlaceholder": "或输入自定义回答..."
   },
   "pageRef": {
