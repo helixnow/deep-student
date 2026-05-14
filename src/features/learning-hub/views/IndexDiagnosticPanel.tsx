@@ -10,16 +10,16 @@ import { useTranslation } from 'react-i18next';
 import {
   Bug,
   Copy,
-  Trash2,
-  RefreshCw,
+  Trash,
+  ArrowClockwise,
   CheckCircle,
   XCircle,
-  AlertTriangle,
-  ChevronDown,
-  ChevronRight,
+  Warning,
+  CaretDown,
+  CaretRight,
   Play,
-  RotateCcw,
-} from 'lucide-react';
+  ArrowCounterClockwise,
+} from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -219,10 +219,10 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
 
   const getLogIcon = (type: LogEntry['type']) => {
     switch (type) {
-      case 'success': return <CheckCircle className="h-3.5 w-3.5 text-emerald-500" />;
-      case 'error': return <XCircle className="h-3.5 w-3.5 text-red-500" />;
-      case 'warning': return <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />;
-      default: return <RefreshCw className="h-3.5 w-3.5 text-blue-500" />;
+      case 'success': return <CheckCircle size={14} className="text-emerald-500" />;
+      case 'error': return <XCircle size={14} className="text-red-500" />;
+      case 'warning': return <Warning size={14} className="text-amber-500" />;
+      default: return <ArrowClockwise size={14} className="text-blue-500" />;
     }
   };
 
@@ -386,11 +386,11 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
       {/* 标题栏 */}
       <NotionButton variant="ghost" size="sm" onClick={() => setIsExpanded(!isExpanded)} className="w-full !justify-start !px-4 !py-2 hover:bg-[var(--interactive-hover)]">
         {isExpanded ? (
-          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          <CaretDown size={16} className="text-muted-foreground" />
         ) : (
-          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          <CaretRight size={16} className="text-muted-foreground" />
         )}
-        <Bug className="h-4 w-4 text-amber-500" />
+        <Bug size={16} className="text-amber-500" />
         <span className="text-muted-foreground">{t('diagnostic.title')}</span>
         {logs.length > 0 && (
           <span className="ml-auto text-xs text-muted-foreground">
@@ -411,7 +411,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               disabled={isLoading}
               className="h-7 text-xs"
             >
-              <RefreshCw className={cn('h-3.5 w-3.5 mr-1', isLoading && 'animate-spin')} />
+              <ArrowClockwise className={cn('h-3.5 w-3.5 mr-1', isLoading && 'animate-spin')} />
               {t('diagnostic.getDiagnostic')}
             </NotionButton>
             <NotionButton
@@ -421,7 +421,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               disabled={isLoading}
               className="h-7 text-xs"
             >
-              <Play className="h-3.5 w-3.5 mr-1" />
+              <Play size={14} className="mr-1" />
               {t('diagnostic.indexWithDiag')}
             </NotionButton>
             <NotionButton
@@ -431,7 +431,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               disabled={isLoading}
               className="h-7 text-xs text-amber-600"
             >
-              <RotateCcw className="h-3.5 w-3.5 mr-1" />
+              <ArrowCounterClockwise size={14} className="mr-1" />
               {t('diagnostic.resetDisabled')}
             </NotionButton>
             <NotionButton
@@ -441,7 +441,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               disabled={isLoading}
               className="h-7 text-xs text-amber-600"
             >
-              <RotateCcw className="h-3.5 w-3.5 mr-1" />
+              <ArrowCounterClockwise size={14} className="mr-1" />
               {t('diagnostic.resetNoEmbed')}
             </NotionButton>
             <NotionButton
@@ -451,7 +451,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               disabled={isLoading}
               className="h-7 text-xs text-cyan-600"
             >
-              <Bug className="h-3.5 w-3.5 mr-1" />
+              <Bug size={14} className="mr-1" />
               Lance Schema
             </NotionButton>
             <div className="flex-1" />
@@ -462,7 +462,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               disabled={logs.length === 0}
               className="h-7 text-xs"
             >
-              <Copy className="h-3.5 w-3.5 mr-1" />
+              <Copy size={14} className="mr-1" />
               {t('diagnostic.copyLogs')}
             </NotionButton>
             <NotionButton
@@ -472,7 +472,7 @@ export const IndexDiagnosticPanel: React.FC<IndexDiagnosticPanelProps> = ({ onRe
               disabled={logs.length === 0}
               className="h-7 text-xs text-muted-foreground"
             >
-              <Trash2 className="h-3.5 w-3.5 mr-1" />
+              <Trash size={14} className="mr-1" />
               {t('diagnostic.clearLogs')}
             </NotionButton>
           </div>

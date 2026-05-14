@@ -1,12 +1,12 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  ChevronLeft,
-  ChevronRight,
-  Search,
+  CaretLeft,
+  CaretRight,
+  MagnifyingGlass,
   Plus,
   X,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import {
   NoteIcon,
   TextbookIcon,
@@ -229,10 +229,10 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
           {!collapsed ? (
             <>
               <div className="flex-1 relative group">
-                <Search className={cn(
-                  "absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 transition-colors duration-150",
+                <MagnifyingGlass className={cn(
+                  "absolute left-2.5 top-1/2 -translate-y-1/2 transition-colors duration-150",
                   isSearchFocused ? "text-primary" : "text-muted-foreground/50"
-                )} />
+                )} size={16} />
                 <Input
                   type="text"
                   placeholder={t('finder.search.placeholder')}
@@ -251,7 +251,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                 />
                 {searchQuery && (
                   <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onSearchChange?.('')} className="absolute right-2 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0.5 hover:bg-[var(--interactive-hover)]" aria-label="clear">
-                    <X className="h-3.5 w-3.5 text-muted-foreground/60" />
+                    <X size={14} className="text-muted-foreground/60" />
                   </NotionButton>
                 )}
               </div>
@@ -268,7 +268,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
                     title={t('finder.toolbar.new')}
                     disabled={createDisabled}
                   >
-                    <Plus className="h-4 w-4" />
+                    <Plus size={16} />
                   </NotionButton>
                 </AppMenuTrigger>
                 <AppMenuContent align="end" className="min-w-[180px]">
@@ -463,9 +463,9 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
           <div className="shrink-0 h-11 flex items-center px-2 border-t border-border/40">
             <NotionButton variant="ghost" size="sm" onClick={onToggleCollapse} className="w-full justify-center !py-1.5 text-muted-foreground/50 hover:text-muted-foreground hover:bg-[var(--interactive-hover)]" title={collapsed ? t('finder.quickAccess.expand') : t('finder.quickAccess.collapse')}>
               {collapsed ? (
-                <ChevronRight className="h-4 w-4" />
+                <CaretRight size={16} />
               ) : (
-                <ChevronLeft className="h-4 w-4" />
+                <CaretLeft size={16} />
               )}
             </NotionButton>
           </div>

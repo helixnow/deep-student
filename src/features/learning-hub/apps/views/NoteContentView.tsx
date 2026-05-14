@@ -10,7 +10,7 @@
 
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, AlertCircle, RotateCcw } from 'lucide-react';
+import { CircleNotch, WarningCircle, ArrowCounterClockwise } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { NotesCrepeEditor } from '@/features/notes/NotesCrepeEditor';
 import { NotesContextPanel } from '@/features/notes/NotesContextPanel';
@@ -22,7 +22,7 @@ import type { ContentViewProps } from '../UnifiedAppPanel';
 import { PanelGroup, Panel, PanelResizeHandle, type ImperativePanelHandle } from 'react-resizable-panels';
 import { cn } from '@/lib/utils';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
-import { GripVertical, PanelRight } from 'lucide-react';
+import { DotsSixVertical, SidebarSimple } from '@phosphor-icons/react';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { COMMAND_EVENTS, useCommandEvents } from '@/command-palette/hooks/useCommandEvents';
 import type { CrepeEditorApi } from '@/components/crepe';
@@ -219,7 +219,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   if (isLoading && content === null) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        <CircleNotch size={24} className="animate-spin text-muted-foreground" />
         <span className="ml-2 text-muted-foreground">
           {t('common:loading', '加载中...')}
         </span>
@@ -233,7 +233,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
       : error.toUserMessage();
     return (
       <div className="flex flex-col items-center justify-center h-full">
-        <AlertCircle className="w-8 h-8 text-destructive mb-2" />
+        <WarningCircle size={32} className="text-destructive mb-2" />
         <span className="text-destructive">{message}</span>
         <div className="flex gap-2 mt-3">
           <NotionButton variant="primary" onClick={() => loadNoteContent()}>
@@ -273,7 +273,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
               )}
               onClick={toggleRightPanel}
             >
-              <PanelRight className="h-3.5 w-3.5" />
+              <SidebarSimple size={14} />
             </NotionButton>
           </CommonTooltip>
         </div>
@@ -306,7 +306,7 @@ const NoteContentView: React.FC<ContentViewProps> = ({
               "w-1 bg-border/40 hover:bg-primary/20 transition-colors flex items-center justify-center group",
               !rightPanelVisible && "pointer-events-none opacity-0 !w-0"
             )}>
-              <GripVertical className="w-3 h-3 text-muted-foreground/30 group-hover:text-muted-foreground/60 transition-colors" />
+              <DotsSixVertical size={12} className="text-muted-foreground/30 group-hover:text-muted-foreground/60 transition-colors" />
             </PanelResizeHandle>
             <Panel
               ref={rightPanelRef}

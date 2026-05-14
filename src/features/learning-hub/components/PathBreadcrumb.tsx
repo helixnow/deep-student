@@ -11,7 +11,7 @@
 
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronRight, Home, FolderOpen } from 'lucide-react';
+import { CaretRight, House, FolderOpen } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import type { RealPathBreadcrumbItem } from '../hooks/useFolderNavigation';
@@ -102,7 +102,7 @@ export const PathBreadcrumb = React.memo(function PathBreadcrumb({
     >
       {/* 根目录 */}
       <NotionButton variant="ghost" size="sm" onClick={() => onNavigate(-1)} className={cn('!h-auto !px-1.5 !py-0.5', breadcrumbs.length === 0 && 'text-foreground font-medium')} title={rootText}>
-        {showRootIcon && <Home className="h-3.5 w-3.5" />}
+        {showRootIcon && <House size={14} />}
         {breadcrumbs.length === 0 && <span>{rootText}</span>}
       </NotionButton>
 
@@ -122,7 +122,7 @@ export const PathBreadcrumb = React.memo(function PathBreadcrumb({
         return (
           <React.Fragment key={item.fullPath}>
             {/* 分隔符 */}
-            <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50 flex-shrink-0" />
+            <CaretRight size={14} className="text-muted-foreground/50 flex-shrink-0" />
 
             {/* 折叠省略号（在第一个项后） */}
             {visibleItems.hasEllipsis && displayIndex === 1 && (
@@ -131,13 +131,13 @@ export const PathBreadcrumb = React.memo(function PathBreadcrumb({
                   items={visibleItems.ellipsisItems}
                   onNavigate={(idx) => onNavigate(idx + 1)}
                 />
-                <ChevronRight className="h-3.5 w-3.5 text-muted-foreground/50 flex-shrink-0" />
+                <CaretRight size={14} className="text-muted-foreground/50 flex-shrink-0" />
               </>
             )}
 
             {/* 面包屑按钮 */}
             <NotionButton variant="ghost" size="sm" onClick={() => !isLast && onNavigate(actualIndex)} disabled={isLast} className={cn('!h-auto !px-1.5 !py-0.5 truncate max-w-[120px]', isLast ? 'text-foreground font-medium cursor-default' : '')} title={item.name}>
-              {isLast && <FolderOpen className="h-3.5 w-3.5 flex-shrink-0" />}
+              {isLast && <FolderOpen size={14} className="flex-shrink-0" />}
               <span className="truncate">{item.name}</span>
             </NotionButton>
           </React.Fragment>

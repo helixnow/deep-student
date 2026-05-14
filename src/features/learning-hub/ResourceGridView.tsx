@@ -12,7 +12,7 @@
 
 import React, { memo, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle } from 'lucide-react';
+import { Warning } from '@phosphor-icons/react';
 import {
   NoteIcon,
   TextbookIcon,
@@ -251,7 +251,7 @@ const ResourceGridItem = memo(function ResourceGridItem({
               'bg-yellow-100 dark:bg-yellow-900/30'
             )}
           >
-            <AlertTriangle className="w-6 h-6 text-yellow-500" />
+            <Warning size={24} className="text-yellow-500" />
           </div>
         ) : IconComponent ? (
           <IconComponent
@@ -299,7 +299,7 @@ const ResourceGridItem = memo(function ResourceGridItem({
           className="absolute top-2 left-2"
           title={t('notes:reference.invalid')}
         >
-          <AlertTriangle className="w-3 h-3 text-yellow-500" />
+          <Warning size={12} className="text-yellow-500" />
         </div>
       )}
     </div>

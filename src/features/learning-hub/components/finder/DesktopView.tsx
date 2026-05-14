@@ -14,7 +14,7 @@ import React, { useCallback, useState, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { Z_INDEX } from '@/config/zIndex';
 import { useTranslation } from 'react-i18next';
-import { Plus, Trash2, Edit2, Check, X, RefreshCw, ExternalLink, Settings, FolderOpen } from 'lucide-react';
+import { Plus, Trash, PencilSimple, Check, X, ArrowClockwise, ArrowSquareOut, Gear, FolderOpen } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import {
   NoteIcon,
@@ -239,19 +239,19 @@ function DesktopContextMenu({
         // 快捷方式右键菜单
         <>
           <MenuItem
-            icon={<ExternalLink className="w-4 h-4" />}
+            icon={<ArrowSquareOut size={16} />}
             label={t('desktop.open', '打开')}
             onClick={() => onOpenShortcut?.(state.target!)}
           />
           <Separator />
           <MenuItem
-            icon={<Edit2 className="w-4 h-4" />}
+            icon={<PencilSimple size={16} />}
             label={t('desktop.rename', '重命名')}
             onClick={() => onRenameShortcut?.(state.target!)}
           />
           <Separator />
           <MenuItem
-            icon={<Trash2 className="w-4 h-4" />}
+            icon={<Trash size={16} />}
             label={t('desktop.remove', '从桌面移除')}
             onClick={() => onRemoveShortcut?.(state.target!)}
             danger
@@ -261,20 +261,20 @@ function DesktopContextMenu({
         // 空白区域右键菜单
         <>
           <MenuItem
-            icon={<Plus className="w-4 h-4" />}
+            icon={<Plus size={16} />}
             label={t('desktop.addShortcut', '添加快捷方式')}
             onClick={onAddShortcut}
           />
           <Separator />
           <MenuItem
-            icon={<Settings className="w-4 h-4" />}
+            icon={<Gear size={16} />}
             label={t('desktop.setRootFolder', '设置桌面根目录')}
             onClick={() => onSetDesktopRoot?.()}
           />
           {/* 显示当前桌面根目录 */}
           <div className="px-3 py-1.5 text-xs text-muted-foreground">
             <div className="flex items-center gap-1.5">
-              <FolderOpen className="w-3.5 h-3.5" />
+              <FolderOpen size={14} />
               <span className="truncate max-w-[140px]">
                 {desktopRoot.folderName || t('desktop.rootPath', '根目录')}
               </span>
@@ -345,7 +345,7 @@ function ShortcutCard({
         {/* 应用类型标记（仅 app 类型显示） */}
         {shortcut.type === 'app' && shortcut.target.action === 'create' && (
           <div className="absolute -bottom-1 -right-1 w-5 h-5 rounded-full bg-primary flex items-center justify-center">
-            <Plus className="w-3 h-3 text-primary-foreground" />
+            <Plus size={12} className="text-primary-foreground" />
           </div>
         )}
       </div>
@@ -361,10 +361,10 @@ function ShortcutCard({
             autoFocus
           />
           <NotionButton variant="ghost" size="icon" iconOnly className="!h-5 !w-5 !p-0.5" onClick={() => { if (editName.trim() && editName !== shortcut.name) { onEditConfirm(editName.trim()); } else { onEditCancel(); } }} aria-label="confirm">
-            <Check className="w-3.5 h-3.5 text-success" />
+            <Check size={14} className="text-success" />
           </NotionButton>
           <NotionButton variant="ghost" size="icon" iconOnly className="!h-5 !w-5 !p-0.5" onClick={onEditCancel} aria-label="cancel">
-            <X className="w-3.5 h-3.5 text-red-500" />
+            <X size={14} className="text-red-500" />
           </NotionButton>
         </div>
       ) : (
@@ -612,7 +612,7 @@ export function DesktopView({
           {shortcuts.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
               <div className="w-24 h-24 rounded-full bg-accent/50 flex items-center justify-center mb-4">
-                <Plus className="w-10 h-10" />
+                <Plus size={40} />
               </div>
               <p className="text-sm mb-4">{t('desktop.empty', '桌面为空')}</p>
               <p className="text-xs text-muted-foreground/60 mb-4">

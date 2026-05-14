@@ -27,7 +27,7 @@ import { getMemoryConfig } from '@/api/memoryApi';
 import { LearningHubSidebar } from './LearningHubSidebar';
 import type { ResourceListItem, ResourceType } from './types';
 import { cn } from '@/lib/utils';
-import { GripVertical, LayoutGrid, Settings } from 'lucide-react';
+import { DotsSixVertical, SquaresFour, Gear } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useUIStore } from '@/stores/uiStore';
 import { useMobileHeader } from '@/components/layout';
@@ -513,7 +513,7 @@ export const LearningHubPage: React.FC = () => {
         }}
         className="h-9 w-9"
       >
-        <Settings className="h-5 w-5" />
+        <Gear size={20} />
       </NotionButton>
     ) : undefined,
   }, [screenPosition, activeTab, t, isInSubfolder, finderBreadcrumbs, finderGoUp, rootTitle, handleBreadcrumbNavigate]);
@@ -979,7 +979,7 @@ export const LearningHubPage: React.FC = () => {
             ) : (
               <div className="h-full flex items-center justify-center text-muted-foreground">
                 <div className="text-center p-8">
-                  <LayoutGrid className="w-12 h-12 mx-auto mb-4 opacity-50" />
+                  <SquaresFour size={48} className="mx-auto mb-4 opacity-50" />
                   <p className="text-sm">{t('learningHub:selectResource')}</p>
                 </div>
               </div>
@@ -1025,7 +1025,7 @@ export const LearningHubPage: React.FC = () => {
         {/* 分隔条：仅在右侧面板可见时渲染，避免隐藏态仍占宽度 */}
         {hasOpenApp && (
           <PanelResizeHandle className="w-1.5 transition-colors flex items-center justify-center group bg-border hover:bg-primary/30 active:bg-primary/50">
-            <GripVertical className="w-3 h-3 text-muted-foreground/50 group-hover:text-muted-foreground transition-colors" />
+            <DotsSixVertical size={12} className="text-muted-foreground/50 group-hover:text-muted-foreground transition-colors" />
           </PanelResizeHandle>
         )}
 

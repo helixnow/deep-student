@@ -13,27 +13,27 @@ import { useTranslation } from 'react-i18next';
 import {
   FolderPlus,
   FileText,
-  ClipboardList,
+  ClipboardText,
   BookOpen,
-  Languages,
-  PenTool,
-  RefreshCw,
+  Translate,
+  PenNib,
+  ArrowClockwise,
   Pencil,
-  Trash2,
-  ExternalLink,
-  MessageSquare,
+  Trash,
+  ArrowSquareOut,
+  Chat,
   FolderOpen,
   Copy,
-  RotateCcw,
-  AlertTriangle,
-  Workflow,
+  ArrowCounterClockwise,
+  Warning,
+  FlowArrow,
   Star,
-  StarOff,
+  StarHalf,
   Monitor,
   CheckCircle,
   Download,
   ListChecks,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { Z_INDEX } from '@/config/zIndex';
 import { cn } from '@/lib/utils';
 import {
@@ -225,7 +225,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
       {/* 清空回收站 */}
       {onEmptyTrash && (
         <AppMenuItem
-          icon={<AlertTriangle className="w-4 h-4" />}
+          icon={<Warning size={16} />}
           onClick={() => {
             closeMenu();
             setTimeout(() => {
@@ -241,7 +241,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
       
       {/* 刷新 */}
       <AppMenuItem
-        icon={<RefreshCw className="w-4 h-4" />}
+        icon={<ArrowClockwise size={16} />}
         onClick={() => {
           onRefresh?.();
           closeMenu();
@@ -258,7 +258,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
       {/* 恢复 */}
       {onRestoreItem && (
         <AppMenuItem
-          icon={<RotateCcw className="w-4 h-4" />}
+          icon={<ArrowCounterClockwise size={16} />}
           onClick={() => {
             closeMenu();
             setTimeout(() => {
@@ -275,7 +275,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         <>
           <AppMenuSeparator />
           <AppMenuItem
-            icon={<Trash2 className="w-4 h-4" />}
+            icon={<Trash size={16} />}
             onClick={() => {
               closeMenu();
               setTimeout(() => {
@@ -298,7 +298,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
       {dataView === 'folder' && (
         <>
           <AppMenuItem
-            icon={<FolderPlus className="w-4 h-4" />}
+            icon={<FolderPlus size={16} />}
             onClick={() => {
               onCreateFolder?.(currentFolderId ?? null);
               closeMenu();
@@ -312,7 +312,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
       
       {/* 新建内容 */}
       <AppMenuItem
-        icon={<FileText className="w-4 h-4" />}
+        icon={<FileText size={16} />}
         onClick={() => {
           onCreateItem?.('note', currentFolderId ?? null);
           closeMenu();
@@ -321,7 +321,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {t('contextMenu.newNote')}
       </AppMenuItem>
       <AppMenuItem
-        icon={<Download className="w-4 h-4" />}
+        icon={<Download size={16} />}
         onClick={() => {
           onImportMarkdownNote?.(currentFolderId ?? null);
           closeMenu();
@@ -330,7 +330,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {t('contextMenu.importMarkdown', '导入 Markdown')}
       </AppMenuItem>
       <AppMenuItem
-        icon={<ClipboardList className="w-4 h-4" />}
+        icon={<ClipboardText size={16} />}
         onClick={() => {
           onCreateItem?.('exam', currentFolderId ?? null);
           closeMenu();
@@ -339,7 +339,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {t('contextMenu.newExam')}
       </AppMenuItem>
       <AppMenuItem
-        icon={<BookOpen className="w-4 h-4" />}
+        icon={<BookOpen size={16} />}
         onClick={() => {
           onCreateItem?.('textbook', currentFolderId ?? null);
           closeMenu();
@@ -348,7 +348,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {t('contextMenu.newTextbook')}
       </AppMenuItem>
       <AppMenuItem
-        icon={<Languages className="w-4 h-4" />}
+        icon={<Translate size={16} />}
         onClick={() => {
           onCreateItem?.('translation', currentFolderId ?? null);
           closeMenu();
@@ -357,7 +357,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {t('contextMenu.newTranslation')}
       </AppMenuItem>
       <AppMenuItem
-        icon={<PenTool className="w-4 h-4" />}
+        icon={<PenNib size={16} />}
         onClick={() => {
           onCreateItem?.('essay', currentFolderId ?? null);
           closeMenu();
@@ -366,7 +366,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {t('contextMenu.newEssay')}
       </AppMenuItem>
       <AppMenuItem
-        icon={<Workflow className="w-4 h-4" />}
+        icon={<FlowArrow size={16} />}
         onClick={() => {
           onCreateItem?.('mindmap', currentFolderId ?? null);
           closeMenu();
@@ -378,7 +378,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
       
       {/* 刷新 */}
       <AppMenuItem
-        icon={<RefreshCw className="w-4 h-4" />}
+        icon={<ArrowClockwise size={16} />}
         onClick={() => {
           onRefresh?.();
           closeMenu();
@@ -394,7 +394,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
     <>
       {/* 打开 */}
       <AppMenuItem
-        icon={<FolderOpen className="w-4 h-4" />}
+        icon={<FolderOpen size={16} />}
         onClick={() => {
           onOpenFolder?.(folder.folder.id);
           closeMenu();
@@ -406,7 +406,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
       
         {/* 在此文件夹新建 */}
       <AppMenuItem
-        icon={<FolderPlus className="w-4 h-4" />}
+        icon={<FolderPlus size={16} />}
         onClick={() => {
           onCreateFolder?.(folder.folder.id);
           closeMenu();
@@ -415,7 +415,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {t('contextMenu.newSubfolder')}
       </AppMenuItem>
       <AppMenuItem
-        icon={<FileText className="w-4 h-4" />}
+        icon={<FileText size={16} />}
         onClick={() => {
           onCreateItem?.('note', folder.folder.id);
           closeMenu();
@@ -424,7 +424,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {t('contextMenu.newNoteHere')}
       </AppMenuItem>
       <AppMenuItem
-        icon={<Download className="w-4 h-4" />}
+        icon={<Download size={16} />}
         onClick={() => {
           onImportMarkdownNote?.(folder.folder.id);
           closeMenu();
@@ -436,7 +436,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
       
       {/* 重命名 */}
       <AppMenuItem
-        icon={<Pencil className="w-4 h-4" />}
+        icon={<Pencil size={16} />}
         onClick={() => {
           onRenameFolder?.(folder.folder.id);
           closeMenu();
@@ -447,7 +447,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
       
         {/* 删除 */}
       <AppMenuItem
-        icon={<Trash2 className="w-4 h-4" />}
+        icon={<Trash size={16} />}
         onClick={() => {
           onDeleteFolder?.(folder.folder.id);
           closeMenu();
@@ -474,7 +474,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
       <>
         {/* 打开 */}
         <AppMenuItem
-          icon={<ExternalLink className="w-4 h-4" />}
+          icon={<ArrowSquareOut size={16} />}
           onClick={() => {
             onOpenResource?.(resource);
             closeMenu();
@@ -487,7 +487,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {/* 引用到对话 */}
         {onReferenceToChat && (
           <AppMenuItem
-            icon={<MessageSquare className="w-4 h-4" />}
+            icon={<Chat size={16} />}
             onClick={() => {
               onReferenceToChat(target);
               closeMenu();
@@ -500,7 +500,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {/* 复制 */}
         {onCopy && (
           <AppMenuItem
-            icon={<Copy className="w-4 h-4" />}
+            icon={<Copy size={16} />}
             onClick={() => {
               onCopy(target);
               closeMenu();
@@ -515,7 +515,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
           <>
             <AppMenuSeparator />
             <AppMenuItem
-              icon={<Pencil className="w-4 h-4" />}
+              icon={<Pencil size={16} />}
               onClick={() => {
                 onRenameResource(resourceItem);
                 closeMenu();
@@ -532,8 +532,8 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
             <AppMenuSeparator />
             <AppMenuItem
               icon={resourceItem.isFavorite 
-                ? <StarOff className="w-4 h-4" /> 
-                : <Star className="w-4 h-4" />
+                ? <StarHalf size={16} /> 
+                : <Star size={16} />
               }
               onClick={() => {
                 onToggleFavorite(resourceItem);
@@ -552,8 +552,8 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
         {resourceItem && (
           <AppMenuItem
             icon={isAddedToDesktop 
-              ? <CheckCircle className="w-4 h-4 text-green-500" /> 
-              : <Monitor className="w-4 h-4" />
+              ? <CheckCircle size={16} className="text-green-500" /> 
+              : <Monitor size={16} />
             }
             onClick={() => {
               if (!isAddedToDesktop) {
@@ -584,7 +584,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
           <>
             <AppMenuSeparator />
             <AppMenuItem
-              icon={<Download className="w-4 h-4" />}
+              icon={<Download size={16} />}
               onClick={() => {
                 closeMenu();
                 setTimeout(() => {
@@ -602,7 +602,7 @@ export const LearningHubContextMenu: React.FC<LearningHubContextMenuProps> = ({
           <>
             <AppMenuSeparator />
             <AppMenuItem
-              icon={<Trash2 className="w-4 h-4" />}
+              icon={<Trash size={16} />}
               onClick={() => {
                 // ★ 先关闭菜单，再执行删除（避免菜单状态影响确认框）
                 closeMenu();

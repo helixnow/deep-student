@@ -11,7 +11,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody } from '@/components/ui/NotionDialog';
 import { Progress } from '@/components/ui/shad/Progress';
-import { Loader2, CheckCircle, XCircle, FileText } from 'lucide-react';
+import { CircleNotch, CheckCircle, XCircle, FileText } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
 /** 导入进度阶段 */
@@ -50,7 +50,7 @@ const StageIcon: React.FC<{ stage: ImportStage; className?: string }> = ({ stage
     case 'error':
       return <XCircle className={cn('text-destructive', className)} />;
     default:
-      return <Loader2 className={cn('animate-spin text-primary', className)} />;
+      return <CircleNotch className={cn('animate-spin text-primary', className)} />;
   }
 };
 
@@ -105,7 +105,7 @@ export const ImportProgressModal: React.FC<ImportProgressModalProps> = ({
     >
         <NotionDialogHeader>
           <NotionDialogTitle className="flex items-center gap-2">
-            <FileText className="h-5 w-5" />
+            <FileText size={20} />
             {t('import.title')}
           </NotionDialogTitle>
         </NotionDialogHeader>
@@ -114,7 +114,7 @@ export const ImportProgressModal: React.FC<ImportProgressModalProps> = ({
         <div className="space-y-4 py-4">
           {/* 文件名 */}
           <div className="flex items-center gap-3">
-            <StageIcon stage={stage} className="h-5 w-5 flex-shrink-0" />
+            <StageIcon stage={stage} className="flex-shrink-0" />
             <div className="min-w-0 flex-1">
               <p className="text-sm font-medium truncate" title={fileName}>
                 {fileName}

@@ -1,7 +1,7 @@
 import React, { useRef, useCallback, useMemo, useState, useEffect, useLayoutEffect } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { Loader2, FolderOpen, Plus, FileText, RefreshCw } from 'lucide-react';
+import { CircleNotch, FolderOpen, Plus, FileText, ArrowClockwise } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import {
@@ -398,7 +398,7 @@ export function FinderFileList({
         <div className="relative">
           {/* 优雅的加载动画 */}
           <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center animate-pulse">
-            <Loader2 className="h-6 w-6 text-primary animate-spin" />
+            <CircleNotch size={24} className="text-primary animate-spin" />
           </div>
         </div>
         <p className="mt-4 text-sm text-muted-foreground/70 animate-fade-in">
@@ -423,7 +423,7 @@ export function FinderFileList({
             size="sm"
             onClick={onRetry}
           >
-            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+            <ArrowClockwise size={14} className="mr-1.5" />
             {t('finder.error.retry', '重新加载')}
           </NotionButton>
         )}
@@ -441,7 +441,7 @@ export function FinderFileList({
       >
         {/* 空状态图标 */}
         <div className="mb-5">
-          <FolderOpen className="w-10 h-10 text-muted-foreground/40" strokeWidth={1.2} />
+          <FolderOpen size={40} className="text-muted-foreground/40" strokeWidth={1.2} />
         </div>
         
         <p className="text-[15px] font-medium text-foreground/80 mb-1">

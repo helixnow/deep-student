@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { AlertCircle, RefreshCw } from 'lucide-react';
+import { WarningCircle, ArrowClockwise } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 
 import { ErrorBoundary } from '@/components/ErrorBoundary';
@@ -40,7 +40,7 @@ export const AppContentErrorBoundary: React.FC<AppContentErrorBoundaryProps> = (
       onError={handleError}
       fallback={
         <div className="flex flex-col items-center justify-center h-full gap-3 px-4 text-center">
-          <AlertCircle className="w-10 h-10 text-destructive" />
+          <WarningCircle size={40} className="text-destructive" />
           <p className="text-sm text-muted-foreground max-w-md">
             {t('learningHub:error.appContentCrashed', '{{resource}} 应用加载失败，请重试', { resource: resourceLabel })}
           </p>
@@ -50,7 +50,7 @@ export const AppContentErrorBoundary: React.FC<AppContentErrorBoundaryProps> = (
             </p>
           )}
           <NotionButton variant="ghost" size="sm" onClick={handleRetry} className="gap-1.5">
-            <RefreshCw className="w-3.5 h-3.5" />
+            <ArrowClockwise size={14} />
             {t('common:actions.retry', '重试')}
           </NotionButton>
         </div>

@@ -15,13 +15,13 @@ import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   X,
-  Trash2,
-  FolderInput,
+  Trash,
+  FolderOpen,
   CheckSquare,
   Square,
-  RotateCcw,
-  Loader2,
-} from 'lucide-react';
+  ArrowCounterClockwise,
+  CircleNotch,
+} from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { cn } from '@/lib/utils';
 
@@ -119,9 +119,9 @@ export const MultiSelectActionBar = React.memo(function MultiSelectActionBar({
           className="h-7 px-2"
         >
           {isAllSelected ? (
-            <CheckSquare className="w-4 h-4 mr-1" />
+            <CheckSquare size={16} className="mr-1" />
           ) : (
-            <Square className="w-4 h-4 mr-1" />
+            <Square size={16} className="mr-1" />
           )}
           <span className="text-xs">
             {isAllSelected
@@ -147,9 +147,9 @@ export const MultiSelectActionBar = React.memo(function MultiSelectActionBar({
             className="h-7 px-2 text-green-600 hover:text-green-700 hover:bg-green-100 dark:text-green-400 dark:hover:bg-green-900/30"
           >
             {isRestoring ? (
-              <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+              <CircleNotch size={16} className="mr-1 animate-spin" />
             ) : (
-              <RotateCcw className="w-4 h-4 mr-1" />
+              <ArrowCounterClockwise size={16} className="mr-1" />
             )}
             <span className="text-xs">{t('learningHub:multiSelect.restore')}</span>
           </NotionButton>
@@ -164,7 +164,7 @@ export const MultiSelectActionBar = React.memo(function MultiSelectActionBar({
             disabled={!hasSelection}
             className="h-7 px-2"
           >
-            <FolderInput className="w-4 h-4 mr-1" />
+            <FolderOpen size={16} className="mr-1" />
             <span className="text-xs">{t('learningHub:multiSelect.move')}</span>
           </NotionButton>
         )}
@@ -178,9 +178,9 @@ export const MultiSelectActionBar = React.memo(function MultiSelectActionBar({
           className="h-7 px-2 text-destructive hover:text-destructive hover:bg-destructive/10"
         >
           {isDeleting ? (
-            <Loader2 className="w-4 h-4 mr-1 animate-spin" />
+            <CircleNotch size={16} className="mr-1 animate-spin" />
           ) : (
-            <Trash2 className="w-4 h-4 mr-1" />
+            <Trash size={16} className="mr-1" />
           )}
           <span className="text-xs">
             {showRestore
@@ -199,7 +199,7 @@ export const MultiSelectActionBar = React.memo(function MultiSelectActionBar({
           onClick={onExit}
           className="h-7 px-2"
         >
-          <X className="w-4 h-4 mr-1" />
+          <X size={16} className="mr-1" />
           <span className="text-xs">{t('learningHub:multiSelect.exit')}</span>
         </NotionButton>
       </div>

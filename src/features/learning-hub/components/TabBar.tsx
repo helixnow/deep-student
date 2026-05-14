@@ -8,7 +8,7 @@
  */
 
 import React, { useCallback, useRef, useState, useEffect } from 'react';
-import { ChevronLeft, ChevronRight, PanelRight, PanelLeftClose, X } from 'lucide-react';
+import { CaretLeft, CaretRight, SidebarSimple, X } from '@phosphor-icons/react';
 import {
   DndContext,
   closestCenter,
@@ -175,7 +175,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
         
         {/* 右侧分屏指示图标 */}
         {isSplitRight && (
-          <PanelRight className="w-[13px] h-[13px] ml-0.5 opacity-60 shrink-0" />
+          <SidebarSimple size={13} className="ml-0.5 opacity-60 shrink-0" />
         )}
         
         {/* 关闭按钮 */}
@@ -189,7 +189,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
             'hover:bg-[var(--foreground)]/10 active:bg-[var(--foreground)]/15',
           )}
         >
-          <X className="w-3 h-3" />
+          <X size={12} />
         </span>
       </div>
 
@@ -204,7 +204,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
               className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-[var(--interactive-hover)] text-left"
               onClick={() => { onCloseSplitView?.(); setCtxMenu(null); }}
             >
-              <PanelLeftClose className="w-3.5 h-3.5" />
+              <SidebarSimple size={14} />
               {t('learningHub:splitView.close', '关闭分屏')}
             </button>
           ) : (
@@ -212,7 +212,7 @@ const TabItem: React.FC<TabItemProps> = React.memo(({
               className="flex items-center gap-2 w-full px-3 py-1.5 text-xs hover:bg-[var(--interactive-hover)] text-left"
               onClick={() => { onSplitView?.(); setCtxMenu(null); }}
             >
-              <PanelRight className="w-3.5 h-3.5" />
+              <SidebarSimple size={14} />
               {t('learningHub:splitView.openRight', '在右侧打开')}
             </button>
           )}
@@ -338,7 +338,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           className="sticky left-0 z-10 flex items-center justify-center w-8 shrink-0 bg-[var(--background)] hover:bg-[var(--foreground)]/[0.04] transition-colors"
           style={{ borderRight: '1px solid color-mix(in srgb, var(--foreground) 6%, transparent)' }}
         >
-          <ChevronLeft className="w-4 h-4 opacity-45" />
+          <CaretLeft size={16} className="opacity-45" />
         </button>
       )}
 
@@ -387,7 +387,7 @@ export const TabBar: React.FC<TabBarProps> = ({
           className="sticky right-0 z-10 flex items-center justify-center w-8 shrink-0 bg-[var(--background)] hover:bg-[var(--foreground)]/[0.04] transition-colors"
           style={{ borderLeft: '1px solid color-mix(in srgb, var(--foreground) 6%, transparent)' }}
         >
-          <ChevronRight className="w-4 h-4 opacity-45" />
+          <CaretRight size={16} className="opacity-45" />
         </button>
       )}
     </div>

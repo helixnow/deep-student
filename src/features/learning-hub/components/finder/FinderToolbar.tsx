@@ -1,19 +1,19 @@
 import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Search,
+  MagnifyingGlass,
   List,
-  Grid,
-  RefreshCw,
+  GridFour,
+  ArrowClockwise,
   Plus,
   FolderPlus,
   FileText,
-  ClipboardList,
+  ClipboardText,
   BookOpen,
-  Languages,
-  PenTool,
-  Workflow,
-} from 'lucide-react';
+  Translate,
+  PenNib,
+  FlowArrow,
+} from '@phosphor-icons/react';
 import {
   Breadcrumb,
   BreadcrumbItem,

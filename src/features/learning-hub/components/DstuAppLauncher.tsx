@@ -1,19 +1,19 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Search,
+  MagnifyingGlass,
   Plus,
   X,
-  ChevronRight,
+  CaretRight,
   FolderPlus,
   FileText,
-  ClipboardList,
+  ClipboardText,
   BookOpen,
-  Languages,
-  PenTool,
-  Workflow,
+  Translate,
+  PenNib,
+  FlowArrow,
   ListChecks,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/shad/Input';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -198,10 +198,10 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
       <div className="px-3 py-3 flex items-center gap-2 shrink-0">
         {/* 搜索框 */}
         <div className="flex-1 relative group">
-          <Search className={cn(
-            "absolute left-2.5 top-1/2 -translate-y-1/2 h-[18px] w-[18px] transition-colors duration-150",
+          <MagnifyingGlass className={cn(
+            "absolute left-2.5 top-1/2 -translate-y-1/2 transition-colors duration-150",
             isSearchFocused ? "text-primary" : "text-muted-foreground/50"
-          )} />
+          )} size={18} />
           <Input
             type="text"
             placeholder={t('learningHub:finder.search.placeholder')}
@@ -214,7 +214,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
           />
           {searchQuery && (
             <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onSearchChange?.('')} className="absolute right-2 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0 hover:bg-[var(--interactive-hover)]" aria-label="clear">
-              <X className="h-3.5 w-3.5 text-muted-foreground/60" />
+              <X size={14} className="text-muted-foreground/60" />
             </NotionButton>
           )}
         </div>
@@ -231,7 +231,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
             aria-label="new"
             disabled={createDisabled}
           >
-            <Plus className="h-5 w-5" />
+            <Plus size={20} />
           </NotionButton>
 
           {/* 自定义下拉菜单 */}
@@ -242,34 +242,34 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
               </div>
               
               <NotionButton variant="ghost" size="sm" onClick={() => handleCreate('folder')} className="w-full !justify-start !px-3 !py-2 text-foreground/80 hover:text-foreground">
-                <FolderPlus className="w-4 h-4 text-blue-500" />
+                <FolderPlus size={16} className="text-blue-500" />
                 {t('learningHub:finder.toolbar.newFolder')}
               </NotionButton>
               
               <div className="h-px bg-border/50 my-1 mx-2" />
               
               <NotionButton variant="ghost" size="sm" onClick={() => handleCreate('note')} className="w-full !justify-start !px-3 !py-2 text-foreground/80 hover:text-foreground">
-                <FileText className="w-4 h-4 text-emerald-500" />
+                <FileText size={16} className="text-emerald-500" />
                 {t('learningHub:finder.toolbar.newNote')}
               </NotionButton>
               
               <NotionButton variant="ghost" size="sm" onClick={() => handleCreate('exam')} className="w-full !justify-start !px-3 !py-2 text-foreground/80 hover:text-foreground">
-                <ClipboardList className="w-4 h-4 text-purple-500" />
+                <ClipboardText size={16} className="text-purple-500" />
                 {t('learningHub:finder.toolbar.newExam')}
               </NotionButton>
               
               <NotionButton variant="ghost" size="sm" onClick={() => handleCreate('essay')} className="w-full !justify-start !px-3 !py-2 text-foreground/80 hover:text-foreground">
-                <PenTool className="w-4 h-4 text-pink-500" />
+                <PenNib size={16} className="text-pink-500" />
                 {t('learningHub:finder.toolbar.newEssay')}
               </NotionButton>
               
               <NotionButton variant="ghost" size="sm" onClick={() => handleCreate('translation')} className="w-full !justify-start !px-3 !py-2 text-foreground/80 hover:text-foreground">
-                <Languages className="w-4 h-4 text-indigo-500" />
+                <Translate size={16} className="text-indigo-500" />
                 {t('learningHub:finder.toolbar.newTranslation')}
               </NotionButton>
 
               <NotionButton variant="ghost" size="sm" onClick={() => handleCreate('mindmap')} className="w-full !justify-start !px-3 !py-2 text-foreground/80 hover:text-foreground">
-                <Workflow className="w-4 h-4 text-teal-500" />
+                <FlowArrow size={16} className="text-teal-500" />
                 {t('learningHub:finder.toolbar.newMindMap')}
               </NotionButton>
 

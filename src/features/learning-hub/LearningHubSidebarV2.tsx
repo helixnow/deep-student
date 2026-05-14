@@ -20,7 +20,7 @@ import { getMemoryConfig } from '@/api/memoryApi';
 import { useLearningHubNavigationSafe } from './LearningHubNavigationContext';
 import type { LearningHubSidebarProps } from './types';
 import { usePageMount } from '@/debug-panel/hooks/usePageLifecycle';
-import { FolderOpen } from 'lucide-react';
+import { FolderOpen } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { getQuickAccessTypeFromPath } from './learningHubContracts';
 import {
