@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import { Maximize2, Copy, Check } from 'lucide-react';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { Switch } from '@/components/ui/shad/Switch';
 
 interface CSSRuleInfo {
   selector: string;
@@ -338,12 +339,7 @@ export default function LayoutDebugPlugin() {
         </div>
         <div className="flex items-center gap-2">
           <label className="flex items-center gap-1 text-xs">
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
-              className="w-3 h-3"
-            />
+            <Switch size="sm" checked={autoRefresh} onCheckedChange={setAutoRefresh} />
             自动刷新
           </label>
           <button

@@ -9,6 +9,7 @@ import { Button } from '../../components/ui/shad/Button';
 import { Badge } from '../../components/ui/shad/Badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/shad/Card';
 import { ScrollArea } from '../../components/ui/shad/ScrollArea';
+import { Checkbox } from '@/components/ui/shad/Checkbox';
 import {
   Play,
   Square,
@@ -237,12 +238,10 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
                   className="flex items-center gap-2 text-xs cursor-pointer hover:bg-muted/30 rounded px-1.5 py-1"
                   title={SCENARIO_DESCRIPTIONS[s]}
                 >
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={!skipScenarios.has(s)}
-                    onChange={() => toggleScenario(s)}
+                    onCheckedChange={() => toggleScenario(s)}
                     disabled={status === 'running'}
-                    className="rounded"
                   />
                   <span className={skipScenarios.has(s) ? 'text-muted-foreground line-through' : ''}>
                     {SCENARIO_LABELS[s]}

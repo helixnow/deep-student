@@ -12,6 +12,7 @@ import { Button } from '../../components/ui/shad/Button';
 import { Badge } from '../../components/ui/shad/Badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/shad/Card';
 import { ScrollArea } from '../../components/ui/shad/ScrollArea';
+import { Switch } from '@/components/ui/shad/Switch';
 import {
   Play,
   Square,
@@ -413,7 +414,7 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
           {/* 选项 + 控制 */}
           <div className="flex items-center justify-between">
             <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={skipSend} onChange={e => { setSkipSend(e.target.checked); saveConfig({ skipSend: e.target.checked }); }}
+              <Switch size="sm" checked={skipSend} onCheckedChange={(checked) => { setSkipSend(checked); saveConfig({ skipSend: checked }); }}
                 disabled={status === 'running'} />
               仅上传（跳过发送）
             </label>

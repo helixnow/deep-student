@@ -16,6 +16,7 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { Copy, Trash2, Download, ChevronDown, ChevronRight, Search, X } from 'lucide-react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { Switch } from '@/components/ui/shad/Switch';
 
 // ============================================================================
 // 类型
@@ -549,7 +550,7 @@ const ChatAnkiWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
 
         <div className="ml-auto flex items-center gap-1">
           <label className="inline-flex items-center gap-1 text-[10px] text-slate-400">
-            <input type="checkbox" checked={autoScroll} onChange={e => setAutoScroll(e.target.checked)} />
+            <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
             自动滚动
           </label>
 

@@ -30,6 +30,7 @@ import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react'
 import { Copy, Trash2, Download, Search, ChevronDown, ChevronRight, AlertTriangle, CheckCircle, XCircle, Clock, Zap, Activity, FileText } from 'lucide-react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { Switch } from '@/components/ui/shad/Switch';
 
 // ============================================================================
 // 常量
@@ -580,7 +581,7 @@ const QuestionImportDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         {stats.anomalies > 0 && <span style={{ color: '#f97316', fontWeight: 600 }}>🔀 {stats.anomalies} 异常</span>}
         <div style={{ flex: 1 }} />
         <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', color: '#6b7280' }}>
-          <input type="checkbox" checked={autoScroll} onChange={(e) => setAutoScroll(e.target.checked)} />
+          <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
           自动滚动
         </label>
         <button onClick={handleCopy} title="复制日志" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: copyFeedback ? '#10b981' : '#6b7280' }}>

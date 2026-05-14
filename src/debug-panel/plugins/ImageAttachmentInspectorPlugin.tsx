@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import './ImageAttachmentInspectorPlugin.css';
 import { unifiedAlert, unifiedConfirm } from '@/utils/unifiedDialogs';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { Switch } from '@/components/ui/shad/Switch';
 
 interface ImageSourceInfo {
   messageIndex: number;
@@ -413,11 +414,7 @@ const ImageAttachmentInspectorPlugin: React.FC = () => {
             🔍 立即检查
           </button>
           <label className="auto-refresh-toggle">
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
-            />
+            <Switch size="sm" checked={autoRefresh} onCheckedChange={setAutoRefresh} />
             <span>自动刷新 (2s)</span>
           </label>
         </div>
@@ -431,11 +428,7 @@ const ImageAttachmentInspectorPlugin: React.FC = () => {
               ▶️ 模拟渲染
             </button>
             <label className="capture-toggle">
-              <input
-                type="checkbox"
-                checked={captureRenderLogs}
-                onChange={(e) => setCaptureRenderLogs(e.target.checked)}
-              />
+              <Switch size="sm" checked={captureRenderLogs} onCheckedChange={setCaptureRenderLogs} />
               <span>实时捕获</span>
             </label>
             <button onClick={copyRenderLogs} disabled={renderLogs.length === 0} className="btn-copy-logs">

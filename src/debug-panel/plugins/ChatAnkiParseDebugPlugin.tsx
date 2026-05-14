@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { Copy, Trash2, Download, ChevronDown, ChevronRight, AlertCircle, CheckCircle, Clock, Filter } from 'lucide-react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { Switch } from '@/components/ui/shad/Switch';
 
 // ============ 类型定义 ============
 interface DebugEvent {
@@ -422,12 +423,7 @@ const ChatAnkiParseDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         </div>
         <div className="flex items-center gap-1">
           <label className="flex items-center gap-1 text-xs text-gray-400 mr-2">
-            <input
-              type="checkbox"
-              checked={autoScroll}
-              onChange={(e) => setAutoScroll(e.target.checked)}
-              className="rounded"
-            />
+            <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
             自动滚动
           </label>
           <button

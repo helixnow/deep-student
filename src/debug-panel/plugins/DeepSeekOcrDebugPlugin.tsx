@@ -5,6 +5,7 @@ import { useTauriEventListener } from '../../hooks/useTauriEventListener';
 import { Copy, Search, Filter, AlertCircle, CheckCircle, Clock, FileText } from 'lucide-react';
 import { unifiedAlert, unifiedConfirm } from '@/utils/unifiedDialogs';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { Switch } from '@/components/ui/shad/Switch';
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -187,12 +188,7 @@ const DeepSeekOcrDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
 
         {/* 操作按钮 */}
         <label className="flex items-center gap-1 text-sm cursor-pointer">
-          <input
-            type="checkbox"
-            checked={autoScroll}
-            onChange={(e) => setAutoScroll(e.target.checked)}
-            className="rounded"
-          />
+          <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
           自动滚动
         </label>
 

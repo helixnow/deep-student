@@ -4,6 +4,7 @@ import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { Copy, Save, Search, Filter, Globe, Database } from 'lucide-react';
 import { useDialogControl } from '../../contexts/DialogControlContext';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { Switch } from '@/components/ui/shad/Switch';
 
 type LogKind = 'status' | 'event' | 'invoke' | 'injection' | 'source' | 'request' | 'tool';
 
@@ -552,12 +553,12 @@ const WebSearchDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isActi
         </div>
         
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#e2e8f0' }}>
-          <input type="checkbox" checked={onlyActive} onChange={e => setOnlyActive(e.target.checked)} style={{ width: 12, height: 12 }} /> 
+          <Switch size="sm" checked={onlyActive} onCheckedChange={setOnlyActive} /> 
           当前流
         </label>
         
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#e2e8f0' }}>
-          <input type="checkbox" checked={errorsOnly} onChange={e => setErrorsOnly(e.target.checked)} style={{ width: 12, height: 12 }} /> 
+          <Switch size="sm" checked={errorsOnly} onCheckedChange={setErrorsOnly} /> 
           仅错误
         </label>
         

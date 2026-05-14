@@ -7,6 +7,7 @@ import { Copy, RefreshCw, ChevronDown, ChevronRight, Eye, AlertCircle, CheckCirc
 import { Button } from '../../components/ui/shad/Button';
 import { ScrollArea } from '../../components/ui/shad/ScrollArea';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { Switch } from '@/components/ui/shad/Switch';
 
 interface CSSRuleInfo {
   selector: string;
@@ -615,11 +616,7 @@ const FloatingPanelDebugPlugin: React.FC = () => {
         </div>
         <div className="flex items-center gap-2">
           <label className="flex items-center gap-1 text-xs">
-            <input
-              type="checkbox"
-              checked={autoCapture}
-              onChange={(e) => setAutoCapture(e.target.checked)}
-            />
+            <Switch size="sm" checked={autoCapture} onCheckedChange={setAutoCapture} />
             自动捕获
           </label>
           <Button

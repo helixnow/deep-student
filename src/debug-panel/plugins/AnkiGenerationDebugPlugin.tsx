@@ -1,6 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
+import { Switch } from '@/components/ui/shad/Switch';
 import {
   AnkiDebugEntry,
   getAnkiDebugSnapshot,
@@ -95,11 +96,7 @@ const AnkiGenerationDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           {t('debug_panel.plugin_anki_generation', 'Anki 制卡日志')}
         </span>
         <label className="inline-flex items-center gap-1 text-[10px] text-slate-300">
-          <input
-            type="checkbox"
-            checked={autoScroll}
-            onChange={(ev) => setAutoScroll(ev.target.checked)}
-          />
+          <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
           {t('debug_panel.auto_scroll', '自动滚动')}
         </label>
         <div className="ml-auto flex items-center gap-1">
