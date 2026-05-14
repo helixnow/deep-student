@@ -53,6 +53,9 @@ import {
   ListPlus,
 } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { Input } from '@/components/ui/shad/Input';
+import { Textarea } from '@/components/ui/shad/Textarea';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
 import { MemoryIcon } from '../icons/ResourceIcons';
 import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -827,11 +830,11 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             </NotionDialogTitle>
           </NotionDialogHeader>
           <NotionDialogBody nativeScroll>
-            <input
+            <Input
               placeholder={t('memory.folder_name_placeholder', '输入文件夹名称')}
               value={newRootFolderTitle}
               onChange={(e) => setNewRootFolderTitle(e.target.value)}
-              className="w-full h-9 px-3 text-sm bg-muted/30 border-transparent rounded-md focus:border-border focus:bg-background focus:outline-none transition-colors"
+              className="w-full h-9 bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background"
             />
           </NotionDialogBody>
           <NotionDialogFooter>
@@ -856,12 +859,12 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         {/* 搜索框 */}
         <div className="flex-1 relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
-          <input
+          <Input
             placeholder={t('memory.search_placeholder', '搜索记忆...')}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-            className="w-full h-9 pl-9 pr-8 text-sm bg-muted/30 border-transparent rounded-md focus:border-border focus:bg-background focus:outline-none transition-colors"
+            className="w-full h-9 pl-9 pr-8 bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background"
           />
           {searchQuery && (
             <NotionButton variant="ghost" size="icon" iconOnly onClick={handleClearSearch} className="absolute right-3 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0 text-muted-foreground/60 hover:text-foreground" aria-label="clear">
@@ -1061,27 +1064,29 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                 <span className="text-xs font-medium text-muted-foreground">{t('memory.audit_log', '操作日志')}</span>
                 <div className="ml-auto flex items-center gap-1.5">
                   {/* 来源筛选 */}
-                  <select
-                    value={auditSourceFilter}
-                    onChange={(e) => setAuditSourceFilter(e.target.value)}
-                    className="h-6 px-1.5 text-[10px] bg-muted/40 border-none rounded focus:outline-none"
-                  >
-                    <option value="">{t('memory.audit_all_sources', '全部来源')}</option>
-                    <option value="tool_call">{t('memory.audit_source_tool', '工具调用')}</option>
-                    <option value="auto_extract">{t('memory.audit_source_auto', '自动提取')}</option>
-                    <option value="handler">{t('memory.audit_source_handler', '前端操作')}</option>
-                    <option value="evolution">{t('memory.audit_source_evolution', '自进化')}</option>
-                  </select>
+                  <Select value={auditSourceFilter} onValueChange={setAuditSourceFilter}>
+                    <SelectTrigger className="h-6 px-1.5 text-[10px] bg-muted/40 border-none rounded w-auto min-h-0">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">{t('memory.audit_all_sources', '全部来源')}</SelectItem>
+                      <SelectItem value="tool_call">{t('memory.audit_source_tool', '工具调用')}</SelectItem>
+                      <SelectItem value="auto_extract">{t('memory.audit_source_auto', '自动提取')}</SelectItem>
+                      <SelectItem value="handler">{t('memory.audit_source_handler', '前端操作')}</SelectItem>
+                      <SelectItem value="evolution">{t('memory.audit_source_evolution', '自进化')}</SelectItem>
+                    </SelectContent>
+                  </Select>
                   {/* 成功/失败筛选 */}
-                  <select
-                    value={auditSuccessFilter}
-                    onChange={(e) => setAuditSuccessFilter(e.target.value)}
-                    className="h-6 px-1.5 text-[10px] bg-muted/40 border-none rounded focus:outline-none"
-                  >
-                    <option value="">{t('memory.audit_all_status', '全部状态')}</option>
-                    <option value="true">{t('memory.audit_success', '成功')}</option>
-                    <option value="false">{t('memory.audit_failed', '失败')}</option>
-                  </select>
+                  <Select value={auditSuccessFilter} onValueChange={setAuditSuccessFilter}>
+                    <SelectTrigger className="h-6 px-1.5 text-[10px] bg-muted/40 border-none rounded w-auto min-h-0">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">{t('memory.audit_all_status', '全部状态')}</SelectItem>
+                      <SelectItem value="true">{t('memory.audit_success', '成功')}</SelectItem>
+                      <SelectItem value="false">{t('memory.audit_failed', '失败')}</SelectItem>
+                    </SelectContent>
+                  </Select>
                   <NotionButton variant="ghost" size="icon" iconOnly onClick={() => loadAuditLogs(true)} disabled={isLoadingAuditLog} className="!h-5 !w-5 !p-0" aria-label="refresh logs">
                     <RefreshCw className={cn('w-3 h-3', isLoadingAuditLog && 'animate-spin')} />
                   </NotionButton>
@@ -1141,12 +1146,12 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                 {t('memory.batch_import_hint', '每行一条，支持“标题<Tab>内容”、“标题 | 内容”或“标题：内容”。没有分隔符时将整行同时作为标题和内容。')}
               </div>
 
-              <textarea
+              <Textarea
                 placeholder={t('memory.batch_import_placeholder', '例如：\nsubmerge\t/səbˈmɜːrdʒ/ v. 淹没；潜入水中\nrecipe | n. 方法；诀窍\n遗传易错点：显隐性判断要先看题干条件')}
                 value={batchImportText}
                 onChange={(e) => setBatchImportText(e.target.value)}
                 rows={8}
-                className="w-full px-3 py-2 text-sm bg-muted/30 border-transparent rounded-md resize-y focus:border-border focus:bg-background focus:outline-none transition-colors"
+                className="w-full bg-muted/30 border-transparent rounded-md resize-y focus-visible:border-border focus-visible:bg-background"
               />
 
               <div className="flex items-center gap-1 flex-wrap">
@@ -1224,14 +1229,14 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                 </NotionButton>
               </div>
 
-              <input
+              <Input
                 placeholder={t('memory.title_placeholder', '记忆标题')}
                 value={newMemoryTitle}
                 onChange={(e) => setNewMemoryTitle(e.target.value)}
                 autoFocus
-                className="w-full h-9 px-3 text-sm bg-muted/30 border-transparent rounded-md focus:border-border focus:bg-background focus:outline-none transition-colors"
+                className="w-full h-9 bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background"
               />
-              <textarea
+              <Textarea
                 placeholder={
                   newMemoryType === 'fact'
                     ? t('memory.content_placeholder_fact', '用户事实，例如：数学是弱项 / 偏好表格总结')
@@ -1242,7 +1247,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                 value={newMemoryContent}
                 onChange={(e) => setNewMemoryContent(e.target.value)}
                 rows={5}
-                className="w-full px-3 py-2 text-sm bg-muted/30 border-transparent rounded-md resize-none focus:border-border focus:bg-background focus:outline-none transition-colors"
+                className="w-full bg-muted/30 border-transparent rounded-md resize-none focus-visible:border-border focus-visible:bg-background"
               />
 
               <div className="flex items-center gap-1 flex-wrap">

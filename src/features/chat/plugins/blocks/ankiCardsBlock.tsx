@@ -12,6 +12,8 @@
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { Input } from '@/components/ui/shad/Input';
+import { Textarea } from '@/components/ui/shad/Textarea';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import {
@@ -441,12 +443,12 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               <label className="text-xs font-medium text-muted-foreground mb-1 block">
                 {resolveFieldLabel(field)}
               </label>
-              <textarea
+              <Textarea
                 ref={idx === 0 ? firstFieldRef : undefined}
                 value={editFieldValues[field] ?? ''}
                 onChange={(e) => handleFieldChange(field, e.target.value)}
                 onKeyDown={handleKeyDown}
-                className="w-full min-h-[60px] p-2 text-sm rounded-md border bg-background resize-y focus:outline-none focus:ring-1 focus:ring-ring"
+                className="w-full min-h-[60px] resize-y"
                 placeholder={resolveFieldLabel(field)}
               />
             </div>
@@ -455,12 +457,12 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
             <label className="text-xs font-medium text-muted-foreground mb-1 block">
               {t('chatV2.tags')}
             </label>
-            <input
+            <Input
               type="text"
               value={editTags}
               onChange={(e) => setEditTags(e.target.value)}
               onKeyDown={handleKeyDown}
-              className="w-full p-2 text-sm rounded-md border bg-background focus:outline-none focus:ring-1 focus:ring-ring"
+              className="w-full"
               placeholder={t('enter_tags_comma_separated')}
             />
           </div>

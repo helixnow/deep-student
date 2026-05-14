@@ -19,6 +19,8 @@ import {
   List,
 } from 'lucide-react';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { Input } from '@/components/ui/shad/Input';
+import { Textarea } from '@/components/ui/shad/Textarea';
 import { MemoryIcon } from '../icons/ResourceIcons';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
@@ -356,12 +358,12 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
             <span className="text-[11px] font-medium text-muted-foreground">{t('memory.batch_import', '批量导入')}</span>
             <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowBatchImport(false)} className="!h-5 !w-5"><X className="w-3 h-3" /></NotionButton>
           </div>
-          <textarea
+          <Textarea
             placeholder={t('memory.batch_import_placeholder', '每行一条，格式：标题\\t内容 或 标题：内容')}
             value={batchImportText}
             onChange={(e) => setBatchImportText(e.target.value)}
             rows={4}
-            className="w-full px-2 py-1.5 text-[11px] bg-muted/30 border-transparent rounded-md resize-none focus:border-border focus:bg-background focus:outline-none transition-colors"
+            className="w-full px-2 py-1.5 text-[11px] bg-muted/30 border-transparent rounded-md resize-none focus-visible:border-border focus-visible:bg-background min-h-0"
           />
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-muted-foreground">{t('memory.type', '类型')}:</span>
@@ -388,19 +390,19 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
             <span className="text-[11px] font-medium text-muted-foreground">{t('memory.create_title', '创建新记忆')}</span>
             <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowNewMemory(false)} className="!h-5 !w-5"><X className="w-3 h-3" /></NotionButton>
           </div>
-          <input
+          <Input
             placeholder={t('memory.title_placeholder', '记忆标题')}
             value={newTitle}
             onChange={(e) => setNewTitle(e.target.value)}
             autoFocus
-            className="w-full h-7 px-2 text-[11px] bg-muted/30 border-transparent rounded-md focus:border-border focus:bg-background focus:outline-none transition-colors"
+            className="w-full h-7 px-2 text-[11px] bg-muted/30 border-transparent rounded-md focus-visible:border-border focus-visible:bg-background"
           />
-          <textarea
+          <Textarea
             placeholder={t('memory.content_placeholder_study', '学习内容...')}
             value={newContent}
             onChange={(e) => setNewContent(e.target.value)}
             rows={3}
-            className="w-full px-2 py-1.5 text-[11px] bg-muted/30 border-transparent rounded-md resize-none focus:border-border focus:bg-background focus:outline-none transition-colors"
+            className="w-full px-2 py-1.5 text-[11px] bg-muted/30 border-transparent rounded-md resize-none focus-visible:border-border focus-visible:bg-background min-h-0"
           />
           <div className="flex items-center gap-2">
             <span className="text-[10px] text-muted-foreground">{t('memory.type', '类型')}:</span>

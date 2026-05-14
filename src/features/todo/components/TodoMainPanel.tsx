@@ -32,6 +32,7 @@ import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { Input } from '@/components/ui/shad/Input';
+import { Textarea } from '@/components/ui/shad/Textarea';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useTodoStore } from '../stores/useTodoStore';
@@ -87,13 +88,13 @@ const TodoQuickAdd: React.FC = () => {
     <div>
       <div className="flex items-center gap-2.5 px-4 py-2.5 sm:px-6">
         <Plus className="h-4 w-4 flex-shrink-0 text-[color:var(--text-muted)]" />
-        <input
+        <Input
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onKeyDown={handleKeyDown}
           onFocus={() => setIsExpanded(true)}
           placeholder={t('todo:actions.quickAddPlaceholder')}
-          className="min-w-0 flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/50"
+          className="min-w-0 flex-1 bg-transparent border-0 focus-visible:ring-0 placeholder:text-muted-foreground/50"
         />
         {title.trim() && (
           <NotionButton variant="shell" size="sm" onClick={handleSubmit} className="h-7 text-xs">
@@ -125,11 +126,11 @@ const TodoQuickAdd: React.FC = () => {
 
           <div className="flex items-center gap-1.5 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--input-shell-surface)] px-2 py-1">
             <Calendar className="h-3.5 w-3.5 text-muted-foreground" />
-            <input
+            <Input
               type="date"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
-              className="cursor-pointer bg-transparent text-xs text-foreground outline-none"
+              className="cursor-pointer bg-transparent border-0 focus-visible:ring-0 text-xs h-auto min-h-0 p-0 w-auto"
             />
           </div>
         </div>
@@ -397,12 +398,12 @@ const TodoItemDetail: React.FC<{
       </div>
 
       <CustomScrollArea className="flex-1 min-h-0" viewportClassName="px-5 py-5 space-y-5">
-        <textarea
+        <Textarea
           value={title}
           onChange={(e) => setTitle(e.target.value)}
           onBlur={handleBlur}
           className={cn(
-            'w-full resize-none overflow-hidden bg-transparent text-lg font-semibold tracking-tight leading-tight text-foreground outline-none placeholder:text-muted-foreground/50 transition-colors',
+            'w-full resize-none overflow-hidden bg-transparent border-0 focus-visible:ring-0 text-lg font-semibold tracking-tight leading-tight placeholder:text-muted-foreground/50 transition-colors min-h-0',
             isCompleted && 'text-muted-foreground line-through',
           )}
           rows={2}
@@ -445,12 +446,12 @@ const TodoItemDetail: React.FC<{
               <Calendar className="h-3.5 w-3.5" />
               {t('todo:fields.dueDate')}
             </span>
-            <input
+            <Input
               type="date"
               value={dueDate}
               onChange={(e) => setDueDate(e.target.value)}
               onBlur={handleBlur}
-              className="flex-1 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--input-shell-surface)] px-2.5 py-1.5 text-sm text-foreground outline-none transition-colors focus:border-[color:var(--input-shell-focus)] focus:ring-1 focus:ring-[color:var(--input-shell-focus)]"
+              className="flex-1"
             />
           </div>
 
@@ -459,12 +460,12 @@ const TodoItemDetail: React.FC<{
               <span className="w-16 flex-shrink-0 text-xs text-muted-foreground">
                 {t('todo:fields.dueTime')}
               </span>
-              <input
+              <Input
                 type="time"
                 value={dueTime}
                 onChange={(e) => setDueTime(e.target.value)}
                 onBlur={handleBlur}
-                className="flex-1 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--input-shell-surface)] px-2.5 py-1.5 text-sm text-foreground outline-none transition-colors focus:border-[color:var(--input-shell-focus)] focus:ring-1 focus:ring-[color:var(--input-shell-focus)]"
+                className="flex-1"
               />
             </div>
           )}
@@ -474,7 +475,7 @@ const TodoItemDetail: React.FC<{
               <BrainCircuit className="h-3.5 w-3.5" />
               {t('todo:fields.pomodoros', '番茄')}
             </span>
-            <input
+            <Input
               type="number"
               min={0}
               max={20}
@@ -482,7 +483,7 @@ const TodoItemDetail: React.FC<{
               onChange={(e) => setEstimatedPomodoros(Number(e.target.value) || 0)}
               onBlur={handleBlur}
               placeholder="0"
-              className="w-20 rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--input-shell-surface)] px-2.5 py-1.5 text-sm text-foreground outline-none transition-colors focus:border-[color:var(--input-shell-focus)] focus:ring-1 focus:ring-[color:var(--input-shell-focus)]"
+              className="w-20"
             />
           </div>
         </div>
@@ -491,13 +492,13 @@ const TodoItemDetail: React.FC<{
           <span className="block text-xs font-semibold uppercase tracking-wide text-muted-foreground">
             {t('todo:fields.description')}
           </span>
-          <textarea
+          <Textarea
             value={description}
             onChange={(e) => setDescription(e.target.value)}
             onBlur={handleBlur}
             placeholder={t('todo:placeholders.description')}
             rows={8}
-            className="w-full resize-none rounded-[var(--radius-shell-control)] border border-[color:var(--input-shell-border)] bg-[color:var(--input-shell-surface)] px-3 py-2.5 text-sm leading-relaxed text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:border-[color:var(--input-shell-focus)] focus:ring-1 focus:ring-[color:var(--input-shell-focus)]"
+            className="w-full resize-none leading-relaxed"
           />
         </div>
       </CustomScrollArea>
