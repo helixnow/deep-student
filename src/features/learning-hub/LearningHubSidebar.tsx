@@ -1,7 +1,7 @@
 import React, { useEffect, useState, useCallback, useRef, lazy, Suspense } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { Search, Plus, FolderPlus, X, Trash2, Loader2, Workflow, CheckSquare, ListChecks, ChevronLeft, ChevronRight, Home } from 'lucide-react';
+import { MagnifyingGlass, Plus, FolderPlus, X, Trash, CircleNotch, FlowArrow, CheckSquare, ListChecks, CaretLeft, CaretRight, House } from '@phosphor-icons/react';
 import { open as dialogOpen } from '@tauri-apps/plugin-dialog';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { textbookDstuAdapter } from '@/dstu/adapters/textbookDstuAdapter';
@@ -2259,7 +2259,7 @@ export function LearningHubSidebar({
                   title={t('finder.search.title', '搜索')}
                   disabled={!canSearchInCurrentView}
                 >
-                  <Search className="w-4 h-4" />
+                  <MagnifyingGlass className="w-4 h-4" />
                 </NotionButton>
                 <AppMenu>
                   <AppMenuTrigger asChild>
@@ -2335,7 +2335,7 @@ export function LearningHubSidebar({
                     onClick={handleEmptyTrash}
                     title={t('finder.actions.emptyTrash', '清空回收站')}
                   >
-                    <Trash2 className="w-4 h-4" />
+                    <Trash className="w-4 h-4" />
                   </NotionButton>
                 )}
                 <div className="flex-1" />
@@ -2360,7 +2360,7 @@ export function LearningHubSidebar({
               disabled={historyIndex <= 0}
               title={t('finder.toolbar.back', '返回')}
             >
-              <ChevronLeft className="w-3.5 h-3.5" />
+              <CaretLeft className="w-3.5 h-3.5" />
             </NotionButton>
             <NotionButton
               variant="ghost"
@@ -2370,12 +2370,12 @@ export function LearningHubSidebar({
               disabled={historyIndex >= history.length - 1}
               title={t('finder.toolbar.forward', '前进')}
             >
-              <ChevronRight className="w-3.5 h-3.5" />
+              <CaretRight className="w-3.5 h-3.5" />
             </NotionButton>
             {/* 面包屑路径 */}
             <div className="flex items-center gap-0.5 min-w-0 overflow-hidden text-xs">
               <NotionButton variant="ghost" size="icon" iconOnly onClick={() => jumpToBreadcrumb(-1)} className="shrink-0 !h-4 !w-4 !p-0" title={t('learningHub:title', '资源库')} aria-label="home">
-                <Home className="w-3 h-3" />
+                <House className="w-3 h-3" />
               </NotionButton>
               {currentPath.breadcrumbs.map((crumb, index) => (
                 <React.Fragment key={crumb.id}>
@@ -2482,7 +2482,7 @@ export function LearningHubSidebar({
         {currentPath.viewKind === 'indexStatus' ? (
           <Suspense fallback={
             <div className="flex-1 flex items-center justify-center">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <CircleNotch className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           }>
             <IndexStatusView />
@@ -2490,7 +2490,7 @@ export function LearningHubSidebar({
         ) : currentPath.viewKind === 'memory' ? (
           <Suspense fallback={
             <div className="flex-1 flex items-center justify-center">
-              <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+              <CircleNotch className="h-8 w-8 animate-spin text-muted-foreground" />
             </div>
           }>
             <MemoryView onOpenApp={onOpenApp} />
@@ -2744,7 +2744,7 @@ export function LearningHubSidebar({
             {t('common:cancel')}
           </NotionButton>
           <NotionButton variant="primary" size="sm" onClick={handleCreate} disabled={!createDialogName.trim() || isCreating}>
-            {isCreating && <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin inline" />}
+            {isCreating && <CircleNotch className="w-3.5 h-3.5 mr-1.5 animate-spin inline" />}
             {isCreating ? t('common:actions.creating') : t('common:actions.create')}
           </NotionButton>
         </NotionDialogFooter>

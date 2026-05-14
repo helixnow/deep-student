@@ -10,7 +10,7 @@
 
 import React, { lazy, Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, AlertTriangle } from 'lucide-react';
+import { CircleNotch, Warning } from '@phosphor-icons/react';
 import type { ContentViewProps } from '../UnifiedAppPanel';
 import {
   translationDstuAdapter,
@@ -116,7 +116,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full bg-background">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        <CircleNotch size={24} className="animate-spin text-muted-foreground" />
         <span className="ml-2 text-muted-foreground">
           {t('common:loading', '加载中...')}
         </span>
@@ -128,7 +128,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
   if (loadError) {
     return (
       <div className="flex flex-col items-center justify-center h-full bg-background gap-4 p-8">
-        <AlertTriangle className="w-10 h-10 text-destructive" />
+        <Warning size={40} className="text-destructive" />
         <p className="text-sm text-destructive text-center max-w-md">
           {t('translation:errors.load_failed', { error: loadError })}
         </p>
@@ -151,7 +151,7 @@ const TranslationContentView: React.FC<ContentViewProps> = ({
       <Suspense
         fallback={
           <div className="flex items-center justify-center h-full">
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            <CircleNotch size={24} className="animate-spin text-muted-foreground" />
             <span className="ml-2 text-muted-foreground">
               {t('common:loading', '加载中...')}
             </span>

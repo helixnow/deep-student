@@ -11,7 +11,7 @@
 
 import React, { lazy, Suspense, useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2 } from 'lucide-react';
+import { CircleNotch } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import type { ContentViewProps } from '../UnifiedAppPanel';
 import {
@@ -124,7 +124,7 @@ const EssayContentView: React.FC<ContentViewProps> = ({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        <CircleNotch size={24} className="animate-spin text-muted-foreground" />
         <span className="ml-2 text-muted-foreground">
           {t('common:loading', '加载中...')}
         </span>
@@ -155,7 +155,7 @@ const EssayContentView: React.FC<ContentViewProps> = ({
   if (!session) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        <CircleNotch size={24} className="animate-spin text-muted-foreground" />
         <span className="ml-2 text-muted-foreground">
           {t('common:loading', '加载中...')}
         </span>
@@ -168,7 +168,7 @@ const EssayContentView: React.FC<ContentViewProps> = ({
       <Suspense
         fallback={
           <div className="flex items-center justify-center h-full">
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            <CircleNotch size={24} className="animate-spin text-muted-foreground" />
             <span className="ml-2 text-muted-foreground">
               {t('common:loading', '加载中...')}
             </span>

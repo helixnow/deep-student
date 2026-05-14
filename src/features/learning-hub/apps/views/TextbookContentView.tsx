@@ -16,7 +16,7 @@
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertCircle, FileText, Loader2, RefreshCw } from 'lucide-react';
+import { WarningCircle, FileText, CircleNotch, ArrowClockwise } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { TextbookPdfViewer, type ReadingProgress, type Bookmark } from '@/features/pdf/components/TextbookPdfViewer';
 import type { ContentViewProps } from '../UnifiedAppPanel';
@@ -464,7 +464,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     if (pdfLoading) {
       return (
         <div className="flex flex-col items-center justify-center h-full gap-4">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <CircleNotch className="h-8 w-8 animate-spin text-primary" />
           {isPdfLargeFile && (
             <p className="text-sm text-muted-foreground">
               {t('textbook:loading.largeFile', '正在加载大文件，请稍候...')}
@@ -476,14 +476,14 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     if (pdfError) {
       return (
         <div className="flex flex-col items-center justify-center h-full gap-4">
-          <AlertCircle className="w-12 h-12 text-destructive" />
+          <WarningCircle className="w-12 h-12 text-destructive" />
           <p className="text-destructive text-center">{pdfError}</p>
           <NotionButton
             variant="default"
             size="sm"
             onClick={retryPdfLoad}
           >
-            <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+            <ArrowClockwise className="h-3.5 w-3.5 mr-1.5" />
             {t('common:retry', '重试')}
           </NotionButton>
         </div>
@@ -492,7 +492,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     // 初始状态，等待加载（超时后显示提示 + 重试按钮）
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <CircleNotch className="h-8 w-8 animate-spin text-primary" />
         {pdfInitTimedOut && (
           <>
             <p className="text-sm text-muted-foreground text-center">
@@ -503,7 +503,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
               size="sm"
               onClick={retryPdfLoad}
             >
-              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+              <ArrowClockwise className="h-3.5 w-3.5 mr-1.5" />
               {t('common:retry', '重试')}
             </NotionButton>
           </>
@@ -515,7 +515,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
   // 加载中状态
   const LoadingSpinner = () => (
     <div className="flex items-center justify-center h-full">
-      <Loader2 className="h-8 w-8 animate-spin text-primary" />
+      <CircleNotch className="h-8 w-8 animate-spin text-primary" />
     </div>
   );
   
@@ -523,14 +523,14 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
   if (contentError) {
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
-        <AlertCircle className="w-12 h-12 text-destructive" />
+        <WarningCircle className="w-12 h-12 text-destructive" />
         <p className="text-destructive text-center">{contentError}</p>
         <NotionButton
           variant="default"
           size="sm"
           onClick={retryContentLoad}
         >
-          <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+          <ArrowClockwise className="h-3.5 w-3.5 mr-1.5" />
           {t('common:retry', '重试')}
         </NotionButton>
       </div>

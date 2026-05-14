@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Folder, ChevronRight, Home, Loader2, FolderInput } from 'lucide-react';
+import { Folder, CaretRight, House, CircleNotch, FolderOpen as FolderInputIcon } from '@phosphor-icons/react';
 import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -74,18 +74,19 @@ function FolderNode({
       >
         {hasChildren ? (
           <NotionButton variant="ghost" size="icon" iconOnly className="!h-5 !w-5 !p-0.5" onClick={(e) => { e.stopPropagation(); onToggleExpand(node.folder.id); }} aria-label="toggle">
-            <ChevronRight 
+            <CaretRight 
               className={cn(
-                'w-3.5 h-3.5 transition-transform duration-200 ease-out',
+                'transition-transform duration-200 ease-out',
                 isExpanded && 'rotate-90'
-              )} 
+              )}
+              size={14}
             />
           </NotionButton>
         ) : (
           <span className="w-4" />
         )}
-        <Folder className={cn(
-          'w-4 h-4 shrink-0 transition-colors duration-150',
+        <Folder size={16} className={cn(
+          'shrink-0 transition-colors duration-150',
           isSelected ? 'text-primary' : 'text-amber-500'
         )} />
         <span className="text-sm truncate flex-1">{node.folder.title}</span>
@@ -178,7 +179,7 @@ export function FolderPickerDialog({
     <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-md">
         <NotionDialogHeader>
           <NotionDialogTitle className="flex items-center gap-2">
-            <FolderInput className="w-4 h-4 text-muted-foreground" />
+            <FolderInputIcon size={16} className="text-muted-foreground" />
             {title || t('finder.folderPicker.title')}
           </NotionDialogTitle>
         </NotionDialogHeader>
@@ -188,7 +189,7 @@ export function FolderPickerDialog({
           <CustomScrollArea className="h-full" fullHeight>
             {isLoading ? (
               <div className="flex items-center justify-center h-32 px-5">
-                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                <CircleNotch size={20} className="animate-spin text-muted-foreground" />
               </div>
             ) : error ? (
               <div className="flex items-center justify-center h-32 px-5 text-sm text-destructive">
@@ -206,8 +207,8 @@ export function FolderPickerDialog({
                   )}
                   onClick={() => setSelectedId(null)}
                 >
-                  <Home className={cn(
-                    'w-4 h-4 transition-colors duration-150',
+                  <House size={16} className={cn(
+                    'transition-colors duration-150',
                     selectedId === null ? 'text-primary' : 'text-muted-foreground'
                   )} />
                   <span className="text-sm font-medium">

@@ -27,23 +27,23 @@ import {
 } from '@hello-pangea/dnd';
 import {
   FolderPlus,
-  AlertCircle,
+  WarningCircle,
   Folder,
   FolderOpen,
-  RefreshCw,
+  ArrowClockwise,
   FileText,
-  ClipboardList,
+  ClipboardText,
   BookOpen,
   FileCode,
-  Languages,
-  PenTool,
+  Translate,
+  PenNib,
   ArrowUp,
   ArrowDown,
-  ChevronRight,
+  CaretRight,
   Image,
   File,
   ListChecks,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '@/components/ui/shad/Input';
@@ -550,7 +550,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
   if (error) {
     return (
       <div className={cn('p-4 flex flex-col items-center gap-2 text-muted-foreground', className)}>
-        <AlertCircle className="w-8 h-8 text-destructive" />
+        <WarningCircle size={32} className="text-destructive" />
         <p className="text-sm text-center">{error}</p>
       </div>
     );
@@ -563,7 +563,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
         className={cn('p-4 flex flex-col items-center gap-3 h-full', className)}
         onContextMenu={handleContextMenu}
       >
-        <FolderOpen className="w-12 h-12 text-muted-foreground/50" />
+        <FolderOpen size={48} className="text-muted-foreground/50" />
         <p className="text-sm text-muted-foreground text-center">
           {t('folderView.emptyFolder')}
         </p>
@@ -573,7 +573,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
           onClick={() => handleStartCreate(null)}
           disabled={disabled}
         >
-          <FolderPlus className="w-4 h-4 mr-2" />
+          <FolderPlus size={16} className="mr-2" />
           {t('folder.newFolder')}
         </NotionButton>
 
@@ -586,7 +586,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
           >
             {/* 新建文件夹 */}
             <AppMenuItem 
-              icon={<FolderPlus className="w-4 h-4" />} 
+              icon={<FolderPlus size={16} />} 
               onClick={() => handleStartCreate(null)}
             >
               {t('folder.newFolder')}
@@ -594,7 +594,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
             <AppMenuSeparator />
             {/* 新建各种内容 */}
             <AppMenuItem 
-              icon={<FileText className="w-4 h-4" />} 
+              icon={<FileText size={16} />} 
               onClick={() => {
                 onCreateItem?.('note', null);
                 setContextMenuOpen(false);
@@ -603,7 +603,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
               {t('contextMenu.newNote', '新建笔记')}
             </AppMenuItem>
             <AppMenuItem 
-              icon={<ClipboardList className="w-4 h-4" />} 
+              icon={<ClipboardText size={16} />} 
               onClick={() => {
                 onCreateItem?.('exam', null);
                 setContextMenuOpen(false);
@@ -612,7 +612,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
               {t('contextMenu.newExam', '新建题目集识别')}
             </AppMenuItem>
             <AppMenuItem 
-              icon={<BookOpen className="w-4 h-4" />} 
+              icon={<BookOpen size={16} />} 
               onClick={() => {
                 onCreateItem?.('textbook', null);
                 setContextMenuOpen(false);
@@ -621,7 +621,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
               {t('contextMenu.newTextbook', '导入教材')}
             </AppMenuItem>
             <AppMenuItem 
-              icon={<Languages className="w-4 h-4" />} 
+              icon={<Translate size={16} />} 
               onClick={() => {
                 onCreateItem?.('translation', null);
                 setContextMenuOpen(false);
@@ -630,7 +630,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
               {t('contextMenu.newTranslation', '新建翻译')}
             </AppMenuItem>
             <AppMenuItem 
-              icon={<PenTool className="w-4 h-4" />} 
+              icon={<PenNib size={16} />} 
               onClick={() => {
                 onCreateItem?.('essay', null);
                 setContextMenuOpen(false);
@@ -641,7 +641,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
             <AppMenuSeparator />
             {/* 刷新 */}
             <AppMenuItem 
-              icon={<RefreshCw className="w-4 h-4" />} 
+              icon={<ArrowClockwise size={16} />} 
               onClick={() => {
                 onRefresh?.();
                 setContextMenuOpen(false);
@@ -675,7 +675,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
               {/* Grid 模式新建文件夹输入框 */}
               {isCreating && createParentId === null && (
                 <div className="flex items-center gap-1 px-3 py-1 m-2 bg-muted/30 rounded-md border border-border/40">
-                  <FolderPlus className="w-4 h-4 text-amber-500" />
+                  <FolderPlus size={16} className="text-amber-500" />
                   <Input
                     autoFocus
                     value={newFolderTitle}
@@ -716,7 +716,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
                       {/* 图标 */}
                       <div className="relative w-8 h-8 shrink-0 flex items-center justify-center transition-transform duration-200 group-hover:scale-105">
                         <div className="w-7 h-7 flex items-center justify-center text-amber-500 dark:text-amber-400">
-                          <Folder className="w-6 h-6 stroke-[1.5] fill-amber-500/20" />
+                          <Folder size={24} className="stroke-[1.5] fill-amber-500/20" />
                         </div>
                       </div>
                       {/* 标题 - 固定高度，最多2行 */}
@@ -750,9 +750,9 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
                 switch (item.itemType) {
                   case 'note': Icon = FileText; colorClass = "text-blue-500"; break;
                   case 'textbook': Icon = BookOpen; colorClass = "text-emerald-500"; break;
-                  case 'exam': Icon = ClipboardList; colorClass = "text-purple-500"; break;
-                  case 'translation': Icon = Languages; colorClass = "text-indigo-500"; break;
-                  case 'essay': Icon = PenTool; colorClass = "text-orange-500"; break;
+                  case 'exam': Icon = ClipboardText; colorClass = "text-purple-500"; break;
+                  case 'translation': Icon = Translate; colorClass = "text-indigo-500"; break;
+                  case 'essay': Icon = PenNib; colorClass = "text-orange-500"; break;
                   case 'image': Icon = Image; colorClass = "text-pink-500"; break;
                   case 'file': Icon = File; colorClass = "text-gray-500"; break;
                 }
@@ -780,7 +780,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
                       {/* 图标 */}
                       <div className="relative w-8 h-8 shrink-0 flex items-center justify-center transition-transform duration-200 group-hover:scale-105">
                         <div className={cn("w-7 h-7 flex items-center justify-center", colorClass)}>
-                          <Icon className="w-6 h-6 stroke-[1.5]" />
+                          <Icon size={24} className="stroke-[1.5]" />
                         </div>
                       </div>
                       {/* 标题 - 固定高度，最多2行 */}
@@ -831,7 +831,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
               {/* List 模式新建文件夹输入框 - 显示为列表中的第一行 */}
               {isCreating && createParentId === null && (
                 <div className="flex items-center px-4 h-[34px] bg-primary/5 border-b border-primary/20">
-                  <ChevronRight className="w-3 h-3 mr-1 text-muted-foreground invisible" />
+                  <CaretRight className="w-3 h-3 mr-1 text-muted-foreground invisible" />
                   <div className="flex-1 min-w-[200px] flex items-center gap-2">
                     <FolderPlus className="w-4 h-4 text-amber-500 shrink-0" />
                     <Input
@@ -908,7 +908,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
                                   )}
                                 >
                                   {/* 展开箭头 */}
-                                  <ChevronRight 
+                                  <CaretRight 
                                     className={cn(
                                       "w-3 h-3 mr-1 text-muted-foreground transition-transform",
                                       isExpanded && "rotate-90",
@@ -921,18 +921,18 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
                                     {isBuiltin ? (
                                       // 内置文件夹使用对应的图标
                                       node.folder.builtinType === 'exam' ? (
-                                        <ClipboardList className="w-4 h-4 shrink-0 text-blue-500" />
+                                        <ClipboardText size={16} className="shrink-0 text-blue-500" />
                                       ) : node.folder.builtinType === 'translation' ? (
-                                        <Languages className="w-4 h-4 shrink-0 text-blue-500" />
+                                        <Translate size={16} className="shrink-0 text-blue-500" />
                                       ) : node.folder.builtinType === 'essay' ? (
-                                        <PenTool className="w-4 h-4 shrink-0 text-blue-500" />
+                                        <PenNib size={16} className="shrink-0 text-blue-500" />
                                       ) : (
-                                        <Folder className="w-4 h-4 shrink-0 text-blue-500" />
+                                        <Folder size={16} className="shrink-0 text-blue-500" />
                                       )
                                     ) : isExpanded ? (
-                                      <FolderOpen className="w-4 h-4 shrink-0 text-amber-500" />
+                                      <FolderOpen size={16} className="shrink-0 text-amber-500" />
                                     ) : (
-                                      <Folder className="w-4 h-4 shrink-0 text-amber-500" />
+                                      <Folder size={16} className="shrink-0 text-amber-500" />
                                     )}
                                     <span className={cn(
                                       "text-sm truncate",
@@ -971,9 +971,9 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
                             switch (item.itemType) {
                               case 'note': ItemIcon = FileText; iconColorClass = "text-blue-500"; typeLabel = t('resourceType.note', '笔记'); break;
                               case 'textbook': ItemIcon = BookOpen; iconColorClass = "text-emerald-500"; typeLabel = t('resourceType.textbook', '教材'); break;
-                              case 'exam': ItemIcon = ClipboardList; iconColorClass = "text-purple-500"; typeLabel = t('resourceType.exam', '题目集'); break;
-                              case 'translation': ItemIcon = Languages; iconColorClass = "text-indigo-500"; typeLabel = t('resourceType.translation', '翻译'); break;
-                              case 'essay': ItemIcon = PenTool; iconColorClass = "text-orange-500"; typeLabel = t('resourceType.essay', '作文'); break;
+                              case 'exam': ItemIcon = ClipboardText; iconColorClass = "text-purple-500"; typeLabel = t('resourceType.exam', '题目集'); break;
+                              case 'translation': ItemIcon = Translate; iconColorClass = "text-indigo-500"; typeLabel = t('resourceType.translation', '翻译'); break;
+                              case 'essay': ItemIcon = PenNib; iconColorClass = "text-orange-500"; typeLabel = t('resourceType.essay', '作文'); break;
                             }
                             
                             return (
@@ -1040,7 +1040,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
         >
         {/* 新建文件夹 */}
         <AppMenuItem 
-          icon={<FolderPlus className="w-4 h-4" />} 
+          icon={<FolderPlus size={16} />} 
           onClick={() => handleStartCreate(currentFolderId)}
         >
           {t('folder.newFolder')}
@@ -1048,7 +1048,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
         <AppMenuSeparator />
         {/* 新建各种内容 - 始终显示 */}
         <AppMenuItem 
-          icon={<FileText className="w-4 h-4" />} 
+          icon={<FileText size={16} />} 
           onClick={() => {
             onCreateItem?.('note', currentFolderId);
             setContextMenuOpen(false);
@@ -1057,7 +1057,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
           {t('contextMenu.newNote', '新建笔记')}
         </AppMenuItem>
         <AppMenuItem 
-          icon={<ClipboardList className="w-4 h-4" />} 
+          icon={<ClipboardText size={16} />} 
           onClick={() => {
             onCreateItem?.('exam', currentFolderId);
             setContextMenuOpen(false);
@@ -1066,7 +1066,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
           {t('contextMenu.newExam', '新建题目集识别')}
         </AppMenuItem>
         <AppMenuItem 
-          icon={<BookOpen className="w-4 h-4" />} 
+          icon={<BookOpen size={16} />} 
           onClick={() => {
             onCreateItem?.('textbook', currentFolderId);
             setContextMenuOpen(false);
@@ -1075,7 +1075,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
           {t('contextMenu.newTextbook', '导入教材')}
         </AppMenuItem>
         <AppMenuItem 
-          icon={<Languages className="w-4 h-4" />} 
+          icon={<Translate size={16} />} 
           onClick={() => {
             onCreateItem?.('translation', currentFolderId);
             setContextMenuOpen(false);
@@ -1084,7 +1084,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
           {t('contextMenu.newTranslation', '新建翻译')}
         </AppMenuItem>
         <AppMenuItem 
-          icon={<PenTool className="w-4 h-4" />} 
+          icon={<PenNib size={16} />} 
           onClick={() => {
             onCreateItem?.('essay', currentFolderId);
             setContextMenuOpen(false);
@@ -1095,7 +1095,7 @@ export const FolderTreeView: React.FC<FolderTreeViewProps> = ({
         <AppMenuSeparator />
         {/* 刷新 */}
         <AppMenuItem 
-          icon={<RefreshCw className="w-4 h-4" />} 
+          icon={<ArrowClockwise size={16} />} 
           onClick={() => {
             onRefresh?.();
             setContextMenuOpen(false);

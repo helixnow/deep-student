@@ -10,7 +10,7 @@
 import React from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
-import { ZoomIn, ZoomOut, RefreshCw, Minus, Plus, Type, ChevronLeft, ChevronRight } from 'lucide-react';
+import { MagnifyingGlassPlus, MagnifyingGlassMinus, ArrowClockwise, Minus, Plus, TextT, CaretLeft, CaretRight } from '@phosphor-icons/react';
 import {
   ZOOM_MIN,
   ZOOM_MAX,
@@ -145,7 +145,7 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
     >
       {/* 缩放控制区域 */}
       <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={handleZoomOut} disabled={zoomScale <= ZOOM_MIN} title={t('learningHub:previewToolbar.zoomOut')} aria-label={t('learningHub:previewToolbar.zoomOut')}>
-        <ZoomOut size={16} />
+        <MagnifyingGlassMinus size={16} />
       </NotionButton>
 
       <span
@@ -156,11 +156,11 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
       </span>
 
       <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={handleZoomIn} disabled={zoomScale >= ZOOM_MAX} title={t('learningHub:previewToolbar.zoomIn')} aria-label={t('learningHub:previewToolbar.zoomIn')}>
-        <ZoomIn size={16} />
+        <MagnifyingGlassPlus size={16} />
       </NotionButton>
 
       <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={onZoomReset} title={t('learningHub:previewToolbar.resetZoom')} aria-label={t('learningHub:previewToolbar.resetZoom')}>
-        <RefreshCw size={14} />
+        <ArrowClockwise size={14} />
       </NotionButton>
 
       {/* 幻灯片页码控制区域（仅 pptx） */}
@@ -169,7 +169,7 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
           <div className="modern-viewer-divider" />
 
           <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={() => slideNav.navigateTo(Math.max(0, slideNav.current - 1))} disabled={slideNav.current === 0} title={t('learningHub:previewToolbar.prevSlide', '上一页')} aria-label={t('learningHub:previewToolbar.prevSlide', '上一页')}>
-            <ChevronLeft size={16} />
+            <CaretLeft size={16} />
           </NotionButton>
 
           <span className="modern-viewer-zoom-readout">
@@ -177,7 +177,7 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
           </span>
 
           <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={() => slideNav.navigateTo(Math.min(slideNav.total - 1, slideNav.current + 1))} disabled={slideNav.current === slideNav.total - 1} title={t('learningHub:previewToolbar.nextSlide', '下一页')} aria-label={t('learningHub:previewToolbar.nextSlide', '下一页')}>
-            <ChevronRight size={16} />
+            <CaretRight size={16} />
           </NotionButton>
         </>
       )}
@@ -187,7 +187,7 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
         <>
           <div className="modern-viewer-divider" />
 
-          <Type size={14} className="text-muted-foreground" />
+          <TextT size={14} className="text-muted-foreground" />
 
           <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={handleFontDecrease} disabled={fontScale <= FONT_MIN} title={t('learningHub:previewToolbar.fontDecrease')} aria-label={t('learningHub:previewToolbar.fontDecrease')}>
             <Minus size={14} />
@@ -206,7 +206,7 @@ export const UnifiedPreviewToolbar: React.FC<UnifiedPreviewToolbarProps> = React
 
           {onFontReset && (
             <NotionButton variant="ghost" size="icon" iconOnly className="modern-viewer-icon-button" onClick={onFontReset} title={t('learningHub:previewToolbar.resetFont')} aria-label={t('learningHub:previewToolbar.resetFont')}>
-              <RefreshCw size={14} />
+              <ArrowClockwise size={14} />
             </NotionButton>
           )}
         </>

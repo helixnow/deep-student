@@ -14,30 +14,30 @@
 import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Search,
+  MagnifyingGlass,
   List,
-  Grid,
-  Grid3X3,
+  GridFour,
+  GridNine,
   Folder,
   Database,
-  RefreshCw,
+  ArrowClockwise,
   X,
-  Filter,
-  ArrowUpDown,
+  Funnel,
+  ArrowsDownUp,
   ArrowUp,
   ArrowDown,
   Upload,
-  Loader2,
-  ChevronRight,
-  Settings,
-  MoreHorizontal,
-  LayoutGrid,
+  CircleNotch,
+  CaretRight,
+  Gear,
+  DotsThree,
+  SquaresFour,
   Plus,
   FolderPlus,
-  Home,
+  House,
   CheckSquare,
-  Trash2,
-} from 'lucide-react';
+  Trash,
+} from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '@/components/ui/shad/Input';
 import {
@@ -141,13 +141,13 @@ export const LearningHubToolbar: React.FC<LearningHubToolbarProps> = React.memo(
               onClick={() => onNavigateToFolder?.(null)}
               title={t('folder.root')}
             >
-              <Home className="w-3.5 h-3.5" />
+              <House size={14} />
             </NotionButton>
 
             {/* 面包屑路径 */}
             {breadcrumbPath.map((folder, index) => (
               <React.Fragment key={folder.id}>
-                <ChevronRight className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                <CaretRight size={12} className="text-muted-foreground flex-shrink-0" />
                 <NotionButton
                   variant="ghost"
                   size="sm"
@@ -190,7 +190,7 @@ export const LearningHubToolbar: React.FC<LearningHubToolbarProps> = React.memo(
               onClick={() => onDataViewChange('folder')}
               title={t('dataView.folder')}
             >
-              <Folder className="h-4 w-4" />
+              <Folder size={16} />
             </NotionButton>
             <NotionButton
               variant="ghost"
@@ -204,7 +204,7 @@ export const LearningHubToolbar: React.FC<LearningHubToolbarProps> = React.memo(
               onClick={() => onDataViewChange('resource')}
               title={t('dataView.resource')}
             >
-              <Database className="h-4 w-4" />
+              <Database size={16} />
             </NotionButton>
           </div>
         )}
@@ -226,7 +226,7 @@ export const LearningHubToolbar: React.FC<LearningHubToolbarProps> = React.memo(
             onClick={() => onViewModeChange('grid')}
             title={t('viewMode.grid')}
           >
-            <Grid className="h-4 w-4" />
+            <GridFour size={16} />
           </NotionButton>
           <NotionButton
             variant="ghost"
@@ -240,7 +240,7 @@ export const LearningHubToolbar: React.FC<LearningHubToolbarProps> = React.memo(
             onClick={() => onViewModeChange('list')}
             title={t('viewMode.list')}
           >
-            <List className="h-4 w-4" />
+            <List size={16} />
           </NotionButton>
         </div>
 
@@ -257,7 +257,7 @@ export const LearningHubToolbar: React.FC<LearningHubToolbarProps> = React.memo(
                 className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
                 title={t('sort.title')}
               >
-                <ArrowUpDown className="h-4 w-4" />
+                <ArrowsDownUp size={16} />
               </NotionButton>
             </AppMenuTrigger>
             <AppMenuContent align="end" className="w-44 p-1">
@@ -266,21 +266,21 @@ export const LearningHubToolbar: React.FC<LearningHubToolbarProps> = React.memo(
                 className="justify-between"
               >
                 <span>{t('sort.byTime')}</span>
-                {sortField === 'updatedAt' && (sortOrder === 'desc' ? <ArrowDown className="h-3 w-3" /> : <ArrowUp className="h-3 w-3" />)}
+                {sortField === 'updatedAt' && (sortOrder === 'desc' ? <ArrowDown size={12} /> : <ArrowUp size={12} />)}
               </AppMenuItem>
               <AppMenuItem
                 onClick={() => onSortChange('title', sortField === 'title' && sortOrder === 'asc' ? 'desc' : 'asc')}
                 className="justify-between"
               >
                 <span>{t('sort.byName')}</span>
-                {sortField === 'title' && (sortOrder === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
+                {sortField === 'title' && (sortOrder === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
               </AppMenuItem>
               <AppMenuItem
                 onClick={() => onSortChange('type', sortField === 'type' && sortOrder === 'asc' ? 'desc' : 'asc')}
                 className="justify-between"
               >
                 <span>{t('sort.byType')}</span>
-                {sortField === 'type' && (sortOrder === 'asc' ? <ArrowUp className="h-3 w-3" /> : <ArrowDown className="h-3 w-3" />)}
+                {sortField === 'type' && (sortOrder === 'asc' ? <ArrowUp size={12} /> : <ArrowDown size={12} />)}
               </AppMenuItem>
             </AppMenuContent>
           </AppMenu>
@@ -295,7 +295,7 @@ export const LearningHubToolbar: React.FC<LearningHubToolbarProps> = React.memo(
               className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]"
               title={t('toolbar.actions')}
             >
-              <MoreHorizontal className="h-4 w-4" />
+              <DotsThree size={16} />
             </NotionButton>
           </AppMenuTrigger>
           <AppMenuContent align="end" className="w-52 p-1">
@@ -324,12 +324,12 @@ export const LearningHubToolbar: React.FC<LearningHubToolbarProps> = React.memo(
             {/* 导入/新建 */}
             {onImportTextbook && (
               <AppMenuItem onClick={onImportTextbook} disabled={isImporting}>
-                <Upload className="h-4 w-4 mr-2" />
+                <Upload size={16} className="mr-2" />
                 {t('textbook.import')}
               </AppMenuItem>
             )}
             <AppMenuItem disabled>
-              <FolderPlus className="h-4 w-4 mr-2" />
+              <FolderPlus size={16} className="mr-2" />
               {t('folder.new')}
             </AppMenuItem>
           </AppMenuContent>
@@ -349,7 +349,7 @@ export const LearningHubToolbar: React.FC<LearningHubToolbarProps> = React.memo(
             onClick={onToggleMultiSelect}
             title={t('multiSelect.enable')}
           >
-            <CheckSquare className="h-4 w-4" />
+            <CheckSquare size={16} />
           </NotionButton>
         )}
 
@@ -367,7 +367,7 @@ export const LearningHubToolbar: React.FC<LearningHubToolbarProps> = React.memo(
             onClick={onToggleTrash}
             title={t('trash.title')}
           >
-            <Trash2 className="h-4 w-4" />
+            <Trash size={16} />
           </NotionButton>
         )}
 
@@ -381,7 +381,7 @@ export const LearningHubToolbar: React.FC<LearningHubToolbarProps> = React.memo(
             disabled={isLoading}
             title={t('toolbar.refresh')}
           >
-            <RefreshCw className={cn('h-4 w-4', isLoading && 'animate-spin')} />
+            <ArrowClockwise className={cn('h-4 w-4', isLoading && 'animate-spin')} />
           </NotionButton>
         )}
 
@@ -397,11 +397,11 @@ export const LearningHubToolbar: React.FC<LearningHubToolbarProps> = React.memo(
               className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground"
               onClick={() => setIsSearchExpanded(true)}
             >
-              <Search className="h-4 w-4" />
+              <MagnifyingGlass size={16} />
             </NotionButton>
           ) : (
             <div className="relative w-full">
-              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground/50" />
+              <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
               <Input
                 autoFocus
                 type="text"
@@ -421,7 +421,7 @@ export const LearningHubToolbar: React.FC<LearningHubToolbarProps> = React.memo(
                   className="absolute right-0.5 top-1/2 -translate-y-1/2 h-6 w-6 hover:bg-transparent text-muted-foreground hover:text-foreground"
                   onClick={handleClearSearch}
                 >
-                  <X className="h-3 w-3" />
+                  <X size={12} />
                 </NotionButton>
               )}
             </div>
@@ -436,7 +436,7 @@ export const LearningHubToolbar: React.FC<LearningHubToolbarProps> = React.memo(
             className="h-8 w-8 rounded-lg ml-1 text-muted-foreground hover:text-destructive hover:bg-destructive/10"
             onClick={onClose}
           >
-            <X className="h-4 w-4" />
+            <X size={16} />
           </NotionButton>
         )}
       </div>

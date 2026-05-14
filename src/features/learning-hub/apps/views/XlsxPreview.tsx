@@ -10,7 +10,7 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import ExcelJS from 'exceljs';
 import DOMPurify from 'dompurify';
-import { Loader2, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CircleNotch, CaretLeft, CaretRight } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
@@ -197,7 +197,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
   if (isLoading) {
     return (
       <div className={`flex items-center justify-center p-8 ${className}`}>
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <CircleNotch size={32} className="animate-spin text-primary" />
       </div>
     );
   }
@@ -216,7 +216,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
             onClick={handlePrevSheet}
             disabled={currentSheetIndex === 0}
           >
-            <ChevronLeft className="h-4 w-4" />
+            <CaretLeft size={16} />
           </NotionButton>
           <div className="flex items-center gap-2">
             <span className="text-sm font-medium">{currentSheet?.name}</span>
@@ -231,7 +231,7 @@ export const XlsxPreview: React.FC<XlsxPreviewProps> = ({
             onClick={handleNextSheet}
             disabled={currentSheetIndex === sheets.length - 1}
           >
-            <ChevronRight className="h-4 w-4" />
+            <CaretRight size={16} />
           </NotionButton>
         </div>
       )}

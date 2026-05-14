@@ -14,7 +14,7 @@
 
 import React, { lazy, Suspense, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { CircleNotch, WarningCircle } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { dstu } from '@/dstu';
 import { reportError } from '@/shared/result';
@@ -138,7 +138,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   if (isLoading) {
     return (
       <div className={cn('flex items-center justify-center h-full', className)}>
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        <CircleNotch size={24} className="animate-spin text-muted-foreground" />
         <span className="ml-2 text-muted-foreground">
           {t('common:loading', '加载中...')}
         </span>
@@ -150,7 +150,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
   if (error || !node) {
     return (
       <div className={cn('flex flex-col items-center justify-center h-full gap-4', className)}>
-        <AlertCircle className="w-12 h-12 text-destructive" />
+        <WarningCircle size={48} className="text-destructive" />
         <p className="text-destructive text-center">{error || t('error.resourceNotFound')}</p>
         {onClose && (
           <NotionButton variant="ghost" size="sm" onClick={onClose}>
@@ -213,7 +213,7 @@ export const UnifiedAppPanel: React.FC<UnifiedAppPanelProps> = ({
       <Suspense
         fallback={
           <div className="flex items-center justify-center h-full">
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            <CircleNotch size={24} className="animate-spin text-muted-foreground" />
             <span className="ml-2 text-muted-foreground">
               {t('common:loading', '加载中...')}
             </span>

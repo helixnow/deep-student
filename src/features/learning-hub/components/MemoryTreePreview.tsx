@@ -12,11 +12,11 @@ import { cn } from '@/lib/utils';
 import {
   Folder,
   FileText,
-  ChevronRight,
-  Loader2,
-  RefreshCw,
+  CaretRight,
+  CircleNotch,
+  ArrowClockwise,
   GitBranch,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { getMemoryTree, type FolderTreeNode } from '@/api/memoryApi';
@@ -68,16 +68,16 @@ const TreeNode: React.FC<{
       >
         {/* Expand/collapse */}
         {visibleChildren.length > 0 ? (
-          <ChevronRight className={cn(
-            'w-3 h-3 text-muted-foreground/60 transition-transform duration-150 shrink-0',
+          <CaretRight className={cn(
+            'text-muted-foreground/60 transition-transform duration-150 shrink-0',
             expanded && 'rotate-90',
-          )} />
+          )} size={12} />
         ) : (
           <div className="w-3 shrink-0" />
         )}
 
         {/* Icon */}
-        <Folder className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+        <Folder size={14} className="text-amber-500 shrink-0" />
 
         {/* Title */}
         <span className="text-[12px] truncate flex-1">{node.folder.title}</span>
@@ -86,7 +86,7 @@ const TreeNode: React.FC<{
         <div className="flex items-center gap-1.5 shrink-0">
           {directCount > 0 && (
             <div className="flex items-center gap-0.5">
-              <FileText className="w-2.5 h-2.5 text-muted-foreground/40" />
+              <FileText size={10} className="text-muted-foreground/40" />
               <span className="text-[10px] tabular-nums text-muted-foreground/60">{directCount}</span>
             </div>
           )}
@@ -101,7 +101,7 @@ const TreeNode: React.FC<{
             onClick={(e) => { e.stopPropagation(); onNavigate?.(node.folder.id); }}
             title="打开文件夹"
           >
-            <ChevronRight className="w-3 h-3" />
+            <CaretRight size={12} />
           </NotionButton>
         </div>
       </div>
@@ -157,7 +157,7 @@ export const MemoryTreePreview: React.FC<MemoryTreePreviewProps> = React.memo(({
   if (isLoading) {
     return (
       <div className={cn('flex items-center justify-center py-12', className)}>
-        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+        <CircleNotch size={20} className="animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -167,7 +167,7 @@ export const MemoryTreePreview: React.FC<MemoryTreePreviewProps> = React.memo(({
       <div className={cn('flex flex-col items-center justify-center py-12 gap-2', className)}>
         <span className="text-sm text-muted-foreground">{error}</span>
         <NotionButton variant="ghost" size="sm" onClick={loadTree}>
-          <RefreshCw className="w-3.5 h-3.5" />
+          <ArrowClockwise size={14} />
           {t('common:retry', '重试')}
         </NotionButton>
       </div>
@@ -177,7 +177,7 @@ export const MemoryTreePreview: React.FC<MemoryTreePreviewProps> = React.memo(({
   if (!treeData) {
     return (
       <div className={cn('flex flex-col items-center justify-center py-12 text-muted-foreground', className)}>
-        <GitBranch className="w-8 h-8 mb-2 opacity-40" />
+        <GitBranch size={32} className="mb-2 opacity-40" />
         <span className="text-sm">{t('memory.tree_empty', '暂无记忆树数据')}</span>
       </div>
     );
@@ -189,7 +189,7 @@ export const MemoryTreePreview: React.FC<MemoryTreePreviewProps> = React.memo(({
     <div className={cn('flex flex-col h-full', className)}>
       {/* Header */}
       <div className="flex items-center gap-2 px-3 py-2 border-b border-border/30">
-        <GitBranch className="w-3.5 h-3.5 text-muted-foreground" />
+        <GitBranch size={14} className="text-muted-foreground" />
         <span className="text-[11px] font-medium text-muted-foreground">
           {t('memory.tree_title', '记忆树')}
         </span>
@@ -198,7 +198,7 @@ export const MemoryTreePreview: React.FC<MemoryTreePreviewProps> = React.memo(({
         </span>
         <div className="flex-1" />
         <NotionButton variant="ghost" size="icon" iconOnly onClick={loadTree} className="!h-5 !w-5">
-          <RefreshCw className="w-3 h-3" />
+          <ArrowClockwise size={12} />
         </NotionButton>
       </div>
 

@@ -11,7 +11,7 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { MessageSquarePlus, Eye, FileQuestion } from 'lucide-react';
+import { ChatDots, Eye, MagnifyingGlass } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { cn } from '@/lib/utils';
 import type { LearningHubActionBarProps } from './types';
@@ -65,7 +65,7 @@ export const LearningHubActionBar: React.FC<LearningHubActionBarProps> = ({
           </div>
         ) : !itemCount ? (
           <div className="flex items-center gap-2 text-muted-foreground/70">
-            <FileQuestion className="h-4 w-4 shrink-0" />
+            <MagnifyingGlass size={16} className="shrink-0" />
             <span className="text-sm">{t('actionBar.noSelection')}</span>
           </div>
         ) : null}
@@ -81,7 +81,7 @@ export const LearningHubActionBar: React.FC<LearningHubActionBarProps> = ({
             disabled={isLoading}
             className="shrink-0 h-8 text-xs"
           >
-            <Eye className="h-3.5 w-3.5 mr-1.5" />
+            <Eye size={14} className="mr-1.5" />
             {t('actionBar.preview')}
           </NotionButton>
         )}
@@ -94,7 +94,7 @@ export const LearningHubActionBar: React.FC<LearningHubActionBarProps> = ({
           disabled={!canReferenceToChat || isLoading || !hasSelection}
           className="shrink-0 h-8 text-xs shadow-sm"
         >
-          <MessageSquarePlus className="h-3.5 w-3.5 mr-1.5" />
+          <ChatDots size={14} className="mr-1.5" />
           {t('actionBar.referenceToChat')}
         </NotionButton>
       </div>

@@ -9,15 +9,15 @@ import React, { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import {
-  History,
+  ClockCounterClockwise,
   Download,
   ListPlus,
-  Loader2,
+  CircleNotch,
   Plus,
   X,
   GitBranch,
   List,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
@@ -268,14 +268,14 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
           className={cn('!h-6 !w-6', showAuditLog && 'text-primary bg-primary/10')}
           title={t('memory.audit_log', '操作日志')}
         >
-          <History className="w-3.5 h-3.5" />
+          <ClockCounterClockwise size={14} />
         </NotionButton>
         <NotionButton variant="ghost" size="icon" iconOnly
           onClick={handleExport}
           className="!h-6 !w-6"
           title={t('memory.export', '导出记忆')}
         >
-          <Download className="w-3.5 h-3.5" />
+          <Download size={14} />
         </NotionButton>
 
         <NotionButton variant="ghost" size="icon" iconOnly
@@ -283,7 +283,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
           className={cn('!h-6 !w-6', isTreeView && 'text-primary bg-primary/10')}
           title={isTreeView ? '列表视图' : '树状图预览'}
         >
-          {isTreeView ? <List className="w-3.5 h-3.5" /> : <GitBranch className="w-3.5 h-3.5" />}
+          {isTreeView ? <List size={14} /> : <GitBranch size={14} />}
         </NotionButton>
 
         <div className="w-px h-4 bg-border/50" />
@@ -292,14 +292,14 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
           onClick={() => { setShowBatchImport(!showBatchImport); setShowNewMemory(false); }}
           className={cn('!h-6 !px-1.5 text-[11px]', showBatchImport && 'text-primary bg-primary/10')}
         >
-          <ListPlus className="w-3.5 h-3.5" />
+          <ListPlus size={14} />
           {t('memory.batch_import', '批量导入')}
         </NotionButton>
         <NotionButton variant="ghost" size="sm"
           onClick={() => { setShowNewMemory(!showNewMemory); setShowBatchImport(false); }}
           className={cn('!h-6 !px-1.5 text-[11px] text-primary', showNewMemory && 'bg-primary/10')}
         >
-          <Plus className="w-3.5 h-3.5" />
+          <Plus size={14} />
           {t('memory.new', '新建')}
         </NotionButton>
       </div>
@@ -309,7 +309,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
         <div className="border-t border-border/30 px-3 py-2 bg-muted/10">
           <div className="text-[11px] font-medium text-muted-foreground mb-1.5">{t('memory.profile_title', '系统对我的了解')}</div>
           {isLoadingProfile ? (
-            <div className="flex items-center justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
+            <div className="flex items-center justify-center py-4"><CircleNotch size={16} className="animate-spin text-muted-foreground" /></div>
           ) : profileSections.length === 0 ? (
             <div className="text-[11px] text-muted-foreground/60 py-2">{t('memory.no_profile', '暂无画像数据，系统会在积累足够记忆后生成。')}</div>
           ) : (
@@ -332,7 +332,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
         <div className="border-t border-border/30 px-3 py-2 bg-muted/10">
           <div className="text-[11px] font-medium text-muted-foreground mb-1.5">{t('memory.audit_log', '操作日志')}</div>
           {isLoadingAuditLog ? (
-            <div className="flex items-center justify-center py-4"><Loader2 className="w-4 h-4 animate-spin text-muted-foreground" /></div>
+            <div className="flex items-center justify-center py-4"><CircleNotch size={16} className="animate-spin text-muted-foreground" /></div>
           ) : auditLogs.length === 0 ? (
             <div className="text-[11px] text-muted-foreground/60 py-2">{t('memory.audit_empty', '暂无操作日志')}</div>
           ) : (
@@ -356,7 +356,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
         <div className="border-t border-border/30 px-3 py-2 bg-muted/10 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium text-muted-foreground">{t('memory.batch_import', '批量导入')}</span>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowBatchImport(false)} className="!h-5 !w-5"><X className="w-3 h-3" /></NotionButton>
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowBatchImport(false)} className="!h-5 !w-5"><X size={12} /></NotionButton>
           </div>
           <Textarea
             placeholder={t('memory.batch_import_placeholder', '每行一条，格式：标题\\t内容 或 标题：内容')}
@@ -376,7 +376,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
             ))}
             <div className="flex-1" />
             <NotionButton variant="primary" size="sm" onClick={handleBatchImport} disabled={isImporting || !batchImportText.trim()} className="!h-6 !px-2 text-[11px]">
-              {isImporting && <Loader2 className="w-3 h-3 animate-spin" />}
+              {isImporting && <CircleNotch size={12} className="animate-spin" />}
               {t('memory.batch_import_confirm', '开始导入')}
             </NotionButton>
           </div>
@@ -388,7 +388,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
         <div className="border-t border-border/30 px-3 py-2 bg-muted/10 space-y-2">
           <div className="flex items-center justify-between">
             <span className="text-[11px] font-medium text-muted-foreground">{t('memory.create_title', '创建新记忆')}</span>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowNewMemory(false)} className="!h-5 !w-5"><X className="w-3 h-3" /></NotionButton>
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setShowNewMemory(false)} className="!h-5 !w-5"><X size={12} /></NotionButton>
           </div>
           <Input
             placeholder={t('memory.title_placeholder', '记忆标题')}
@@ -415,7 +415,7 @@ export const MemoryFolderBanner: React.FC<MemoryFolderBannerProps> = React.memo(
             ))}
             <div className="flex-1" />
             <NotionButton variant="primary" size="sm" onClick={handleCreateMemory} disabled={isCreating || !newTitle.trim() || !newContent.trim()} className="!h-6 !px-2 text-[11px]">
-              {isCreating && <Loader2 className="w-3 h-3 animate-spin" />}
+              {isCreating && <CircleNotch size={12} className="animate-spin" />}
               {t('common:create', '创建')}
             </NotionButton>
           </div>

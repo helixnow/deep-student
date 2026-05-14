@@ -19,39 +19,39 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
-  Search,
+  MagnifyingGlass,
   Plus,
-  Trash2,
-  ExternalLink,
+  Trash,
+  ArrowSquareOut,
   FolderOpen,
-  RefreshCw,
-  Settings,
+  ArrowClockwise,
+  Gear,
   FileText,
-  Loader2,
-  AlertCircle,
-  ChevronRight,
+  CircleNotch,
+  WarningCircle,
+  CaretRight,
   Download,
   CheckSquare,
   Square,
-  Edit3,
-  Save,
+  PencilSimple,
+  FloppyDisk,
   X,
   Star,
   Clock,
-  History,
-  Filter,
-  ChevronDown,
-  CheckCircle2,
+  ClockCounterClockwise,
+  Funnel,
+  CaretDown,
+  CheckCircle,
   XCircle,
-  Zap,
-  Bot,
+  Lightning,
+  Robot,
   User,
   BookOpen,
   List,
   GitBranch,
   Folder,
   ListPlus,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
@@ -751,7 +751,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
   if (loadError && !config) {
     return (
       <div className={cn('flex flex-col items-center justify-center h-full p-8', className)}>
-        <AlertCircle size={48} className="text-destructive/60 mb-4" />
+        <WarningCircle size={48} className="text-destructive/60 mb-4" />
         <h2 className="text-lg font-medium mb-1.5">
           {t('memory.load_error_title', '加载失败')}
         </h2>
@@ -764,7 +764,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           onClick={loadConfig}
           disabled={isLoading}
         >
-          <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin')} />
+          <ArrowClockwise className={cn('w-4 h-4', isLoading && 'animate-spin')} />
           {t('common:retry', '重试')}
         </NotionButton>
       </div>
@@ -796,7 +796,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                     className="w-full !justify-start !px-3 !py-2"
                     onClick={() => handleSelectRootFolder(folder.id)}
                   >
-                    <FolderOpen className="w-3.5 h-3.5 text-muted-foreground" />
+                    <FolderOpen size={14} className="text-muted-foreground" />
                     <span className="truncate">{folder.title}</span>
                   </NotionButton>
                 ))}
@@ -806,9 +806,9 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         ) : (
           <NotionButton variant="ghost" size="sm" onClick={loadFolders} disabled={loadingFolders} className="mb-4">
             {loadingFolders ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <CircleNotch size={16} className="animate-spin" />
             ) : (
-              <FolderOpen className="w-4 h-4" />
+              <FolderOpen size={16} />
             )}
             {t('memory.select_folder', '选择现有文件夹')}
           </NotionButton>
@@ -817,7 +817,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         <div className="text-xs text-muted-foreground/60 mb-3">{t('common:or', '或')}</div>
         
         <NotionButton variant="ghost" size="sm" onClick={() => setShowCreateRootDialog(true)} className="text-primary hover:bg-primary/10">
-          <Plus className="w-4 h-4" />
+          <Plus size={16} />
           {t('memory.create_folder', '创建新文件夹')}
         </NotionButton>
 
@@ -825,7 +825,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
         <NotionDialog open={showCreateRootDialog} onOpenChange={setShowCreateRootDialog} maxWidth="max-w-sm">
           <NotionDialogHeader>
             <NotionDialogTitle className="flex items-center gap-2">
-              <FolderOpen className="w-4 h-4 text-muted-foreground" />
+              <FolderOpen size={16} className="text-muted-foreground" />
               {t('memory.create_root_title', '创建记忆文件夹')}
             </NotionDialogTitle>
           </NotionDialogHeader>
@@ -842,7 +842,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               {t('common:cancel', '取消')}
             </NotionButton>
             <NotionButton variant="primary" size="sm" onClick={handleCreateRootFolder} disabled={isLoading || !newRootFolderTitle.trim()}>
-              {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+              {isLoading && <CircleNotch size={16} className="animate-spin" />}
               {t('common:create', '创建')}
             </NotionButton>
           </NotionDialogFooter>
@@ -858,7 +858,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       <div className="flex items-center gap-2 px-4 py-3 border-b border-border/40">
         {/* 搜索框 */}
         <div className="flex-1 relative">
-          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
+          <MagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" size={16} />
           <Input
             placeholder={t('memory.search_placeholder', '搜索记忆...')}
             value={searchQuery}
@@ -875,7 +875,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
 
         {/* 视图切换 */}
         <NotionButton variant="ghost" size="icon" iconOnly onClick={loadMemories} disabled={isLoading} aria-label="refresh">
-          <RefreshCw className={cn('w-4 h-4', isLoading && 'animate-spin')} />
+          <ArrowClockwise className={cn('w-4 h-4', isLoading && 'animate-spin')} />
         </NotionButton>
         <NotionButton
           variant="ghost" size="icon" iconOnly
@@ -884,7 +884,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           aria-label="tree view"
           title={viewMode === 'tree' ? '列表视图' : '树状视图'}
         >
-          {viewMode === 'tree' ? <List className="w-4 h-4" /> : <GitBranch className="w-4 h-4" />}
+          {viewMode === 'tree' ? <List size={16} /> : <GitBranch size={16} />}
         </NotionButton>
 
         <div className="w-px h-5 bg-border/50" />
@@ -896,10 +896,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           className={cn(batchMode && 'text-primary bg-primary/10')}
           aria-label="batch"
         >
-          <CheckSquare className="w-4 h-4" />
+          <CheckSquare size={16} />
         </NotionButton>
         <NotionButton variant="ghost" size="icon" iconOnly onClick={handleExportMemories} disabled={isLoading} aria-label="export">
-          <Download className="w-4 h-4" />
+          <Download size={16} />
         </NotionButton>
 
         <div className="w-px h-5 bg-border/50" />
@@ -920,16 +920,16 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           aria-label="audit log"
           title={t('memory.audit_log', '操作日志')}
         >
-          <History className="w-4 h-4" />
+          <ClockCounterClockwise size={16} />
         </NotionButton>
         {!isCreatingInline && !batchMode && (
           <>
             <NotionButton variant="ghost" size="sm" onClick={() => setIsBatchImporting(true)} className="text-emerald-600 hover:bg-emerald-500/10">
-              <ListPlus className="w-4 h-4" />
+              <ListPlus size={16} />
               {t('memory.batch_import', '批量导入')}
             </NotionButton>
             <NotionButton variant="ghost" size="sm" onClick={() => setIsCreatingInline(true)} className="text-primary hover:bg-primary/10">
-              <Plus className="w-4 h-4" />
+              <Plus size={16} />
               {t('memory.new', '新建')}
             </NotionButton>
           </>
@@ -951,7 +951,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             </NotionButton>
             {selectedIds.size > 0 && (
               <NotionButton variant="ghost" size="sm" onClick={handleBatchDelete} disabled={isLoading} className="text-rose-500 hover:bg-rose-500/10">
-                <Trash2 className="w-4 h-4" />
+                <Trash size={16} />
                 {t('memory.batch_delete', `删除(${selectedIds.size})`)}
               </NotionButton>
             )}
@@ -962,20 +962,20 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       {/* 当前根文件夹 + 提取频率设置 */}
       <div className="px-4 py-2 text-xs text-muted-foreground space-y-1.5 border-b border-border/30">
         <div className="flex items-center gap-2">
-          <FolderOpen className="w-3.5 h-3.5" />
+          <FolderOpen size={14} />
           <span>{t('memory.root_folder', '根文件夹')}:</span>
           <span className="font-medium text-foreground">{config.memoryRootFolderTitle || t('memory.defaultRootTitle', '记忆')}</span>
           <NotionButton variant="ghost" size="sm" onClick={loadFolders} disabled={loadingFolders} className="ml-auto !h-auto !px-1.5 !py-0.5">
             {loadingFolders ? (
-              <Loader2 className="w-3 h-3 animate-spin" />
+              <CircleNotch size={12} className="animate-spin" />
             ) : (
-              <Settings className="w-3 h-3" />
+              <Gear size={12} />
             )}
             {t('memory.change', '更改')}
           </NotionButton>
         </div>
         <div className="flex items-center gap-2">
-          <Zap className="w-3.5 h-3.5" />
+          <Lightning size={14} />
           <span>{t('memory.auto_extract', '自动提取')}:</span>
           <div className="flex items-center gap-0.5 ml-1">
             {([
@@ -1018,7 +1018,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           })()}
           {memories.filter(m => m.isImportant).length > 0 && (
             <span className="flex items-center gap-0.5">
-              <Star className="w-2.5 h-2.5 text-amber-500" fill="currentColor" />
+              <Star size={10} className="text-amber-500" weight="fill" />
               {memories.filter(m => m.isImportant).length}
             </span>
           )}
@@ -1037,7 +1037,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               </div>
               {isLoadingProfile ? (
                 <div className="flex items-center justify-center py-6">
-                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                  <CircleNotch size={16} className="animate-spin text-muted-foreground" />
                 </div>
               ) : profileSections.length === 0 ? (
                 <div className="px-4 py-4 text-xs text-muted-foreground/60 text-center">
@@ -1060,7 +1060,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           {showAuditLog && (
             <div className="rounded-lg border border-border/60 bg-card/50 overflow-hidden">
               <div className="flex items-center gap-2 px-4 py-2.5 border-b border-border/30 bg-muted/20">
-                <History size={14} className="text-muted-foreground" />
+                <ClockCounterClockwise size={14} className="text-muted-foreground" />
                 <span className="text-xs font-medium text-muted-foreground">{t('memory.audit_log', '操作日志')}</span>
                 <div className="ml-auto flex items-center gap-1.5">
                   {/* 来源筛选 */}
@@ -1088,13 +1088,13 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                     </SelectContent>
                   </Select>
                   <NotionButton variant="ghost" size="icon" iconOnly onClick={() => loadAuditLogs(true)} disabled={isLoadingAuditLog} className="!h-5 !w-5 !p-0" aria-label="refresh logs">
-                    <RefreshCw className={cn('w-3 h-3', isLoadingAuditLog && 'animate-spin')} />
+                    <ArrowClockwise className={cn('w-3 h-3', isLoadingAuditLog && 'animate-spin')} />
                   </NotionButton>
                 </div>
               </div>
               {isLoadingAuditLog && auditLogs.length === 0 ? (
                 <div className="flex items-center justify-center py-6">
-                  <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                  <CircleNotch size={16} className="animate-spin text-muted-foreground" />
                 </div>
               ) : auditLoadError ? (
                 <div className="px-4 py-4 text-xs text-red-500 text-center space-y-2">
@@ -1119,7 +1119,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   {auditLogs.length >= auditLogOffset + AUDIT_LOG_PAGE_SIZE && (
                     <div className="flex justify-center py-2 border-t border-border/20">
                       <NotionButton variant="ghost" size="sm" onClick={handleLoadMoreLogs} disabled={isLoadingAuditLog} className="text-xs text-muted-foreground">
-                        {isLoadingAuditLog ? <Loader2 className="w-3 h-3 animate-spin" /> : null}
+                        {isLoadingAuditLog ? <CircleNotch size={12} className="animate-spin" /> : null}
                         {t('memory.audit_load_more', '加载更多')}
                       </NotionButton>
                     </div>
@@ -1138,7 +1138,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   <span className="text-sm font-medium">{t('memory.batch_import', '批量导入')}</span>
                 </div>
                 <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCancelBatchImport} disabled={isLoading} aria-label="cancel batch import">
-                  <Plus className="w-4 h-4 rotate-45" />
+                  <Plus size={16} className="rotate-45" />
                 </NotionButton>
               </div>
 
@@ -1209,7 +1209,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   {t('common:cancel', '取消')}
                 </NotionButton>
                 <NotionButton variant="primary" size="sm" onClick={handleBatchImport} disabled={isLoading || parseBatchImportItems(batchImportText).length === 0} className="flex-1 !h-9">
-                  {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {isLoading && <CircleNotch size={16} className="animate-spin" />}
                   {t('memory.batch_import_confirm', '开始导入')}
                 </NotionButton>
               </div>
@@ -1225,7 +1225,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   <span className="text-sm font-medium">{t('memory.create_title', '创建新记忆')}</span>
                 </div>
                 <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCancelCreate} disabled={isLoading} aria-label="cancel">
-                  <Plus className="w-4 h-4 rotate-45" />
+                  <Plus size={16} className="rotate-45" />
                 </NotionButton>
               </div>
 
@@ -1302,7 +1302,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   {t('common:cancel', '取消')}
                 </NotionButton>
                 <NotionButton variant="primary" size="sm" onClick={handleCreateMemory} disabled={isLoading || !newMemoryTitle.trim() || !newMemoryContent.trim()} className="flex-1 !h-9">
-                  {isLoading && <Loader2 className="w-4 h-4 animate-spin" />}
+                  {isLoading && <CircleNotch size={16} className="animate-spin" />}
                   {t('common:create', '创建')}
                 </NotionButton>
               </div>
@@ -1313,7 +1313,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           {viewMode === 'tree' && !isSearchMode && (
             isLoadingTree ? (
               <div className="flex items-center justify-center h-32">
-                <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+                <CircleNotch size={20} className="animate-spin text-muted-foreground" />
               </div>
             ) : treeData ? (
               <div className="space-y-0.5">
@@ -1347,7 +1347,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               </div>
             ) : (
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                <GitBranch className="w-8 h-8 mb-2 opacity-40" />
+                <GitBranch size={32} className="mb-2 opacity-40" />
                 <span className="text-sm">{t('memory.tree_empty', '暂无记忆树数据')}</span>
               </div>
             )
@@ -1356,11 +1356,11 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
           {/* 列表内容 - Notion 风格 */}
           {viewMode === 'list' && isLoading && memories.length === 0 && !loadError ? (
             <div className="flex items-center justify-center h-32">
-              <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+              <CircleNotch size={20} className="animate-spin text-muted-foreground" />
             </div>
           ) : viewMode === 'list' && loadError && !isSearchMode ? (
             <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-              <AlertCircle className="w-8 h-8 mb-2 text-destructive/60" />
+              <WarningCircle size={32} className="mb-2 text-destructive/60" />
               <span className="text-sm mb-1 text-foreground font-medium">
                 {t('memory.load_error_title', '加载失败')}
               </span>
@@ -1371,7 +1371,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                 onClick={loadMemories}
                 disabled={isLoading}
               >
-                <RefreshCw className={cn('w-3.5 h-3.5', isLoading && 'animate-spin')} />
+                <ArrowClockwise className={cn('w-3.5 h-3.5', isLoading && 'animate-spin')} />
                 {t('common:retry', '重试')}
               </NotionButton>
             </div>
@@ -1379,7 +1379,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
             // 搜索结果
             searchResults.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-12 text-muted-foreground">
-                <Search className="w-8 h-8 mb-2 opacity-40" />
+                <MagnifyingGlass size={32} className="mb-2 opacity-40" />
                 <span className="text-sm">{t('memory.no_results', '没有找到相关记忆')}</span>
               </div>
             ) : (
@@ -1396,11 +1396,11 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         onClick={() => handleToggleExpand(result.noteId)}
                       >
                         <div className="flex items-center gap-2 mb-0.5">
-                          <ChevronRight className={cn(
+                          <CaretRight className={cn(
                             'w-3.5 h-3.5 text-muted-foreground transition-transform duration-200',
                             isExpanded && 'rotate-90'
                           )} />
-                          <FileText className="w-3.5 h-3.5 text-muted-foreground" />
+                          <FileText size={14} className="text-muted-foreground" />
                           <span className="text-sm font-medium truncate">{result.noteTitle}</span>
                           <span className="text-[10px] text-muted-foreground/60 ml-auto">
                             {(result.score * 100).toFixed(0)}%
@@ -1464,10 +1464,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                     >
                       {batchMode ? (
                         <span className="flex-shrink-0">
-                          {isSelected ? <CheckSquare className="w-4 h-4 text-primary" /> : <Square className="w-4 h-4 text-muted-foreground" />}
+                          {isSelected ? <CheckSquare size={16} className="text-primary" /> : <Square size={16} className="text-muted-foreground" />}
                         </span>
                       ) : (
-                        <ChevronRight className={cn(
+                        <CaretRight className={cn(
                           'w-3.5 h-3.5 text-muted-foreground flex-shrink-0 transition-transform duration-200',
                           isExpanded && 'rotate-90'
                         )} />
@@ -1477,13 +1477,13 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                           <span className="text-sm font-medium truncate">{memory.title}</span>
                           {memory.memoryType === 'note' && (
                             <span className="flex items-center gap-0.5 px-1.5 py-0 rounded bg-blue-500/10 text-blue-600 text-[9px] font-medium flex-shrink-0">
-                              <BookOpen className="w-2.5 h-2.5" />
+                              <BookOpen size={10} />
                               笔记
                             </span>
                           )}
                           {memory.memoryType === 'study' && (
                             <span className="flex items-center gap-0.5 px-1.5 py-0 rounded bg-emerald-500/10 text-emerald-600 text-[9px] font-medium flex-shrink-0">
-                              <FileText className="w-2.5 h-2.5" />
+                              <FileText size={10} />
                               学习
                             </span>
                           )}
@@ -1496,10 +1496,10 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                             </span>
                           )}
                           {memory.isImportant && (
-                            <Star className="w-3 h-3 text-amber-500 flex-shrink-0" fill="currentColor" />
+                            <Star size={12} className="text-amber-500 flex-shrink-0" weight="fill" />
                           )}
                           {memory.isStale && (
-                            <Clock className="w-3 h-3 text-muted-foreground/40 flex-shrink-0" />
+                            <Clock size={12} className="text-muted-foreground/40 flex-shrink-0" />
                           )}
                         </div>
                         <div className="flex items-center gap-2 text-xs text-muted-foreground">
@@ -1514,7 +1514,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                       </div>
                       {!batchMode && (
                         <NotionButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/0 group-hover:text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10" onClick={(event) => { event.stopPropagation(); handleDeleteMemory(memory.id); }} aria-label="delete">
-                          <Trash2 className="w-3.5 h-3.5" />
+                          <Trash size={14} />
                         </NotionButton>
                       )}
                     </div>
@@ -1548,7 +1548,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
       <NotionDialog open={isPickerOpen} onOpenChange={setIsPickerOpen} maxWidth="max-w-md">
         <NotionDialogHeader>
           <NotionDialogTitle className="flex items-center gap-2">
-            <FolderOpen className="w-4 h-4 text-muted-foreground" />
+            <FolderOpen size={16} className="text-muted-foreground" />
             {t('memory.select_root_folder', '选择记忆根文件夹')}
           </NotionDialogTitle>
         </NotionDialogHeader>
@@ -1564,7 +1564,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                   setIsPickerOpen(false);
                 }}
               >
-                <FolderOpen className="w-4 h-4 text-amber-500 shrink-0" />
+                <FolderOpen size={16} className="text-amber-500 shrink-0" />
                 <span className="truncate">{folder.title}</span>
               </NotionButton>
             ))}
@@ -1636,11 +1636,11 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
           style={{ paddingLeft: `${paddingLeft + 12}px` }}
           onClick={() => onToggleFolder(node.folder.id)}
         >
-          <ChevronRight className={cn(
+          <CaretRight className={cn(
             'w-3.5 h-3.5 text-muted-foreground transition-transform duration-200 flex-shrink-0',
             isFolderExpanded && 'rotate-90'
           )} />
-          <Folder className="w-3.5 h-3.5 text-amber-500 flex-shrink-0" />
+          <Folder size={14} className="text-amber-500 flex-shrink-0" />
           <span className="text-sm font-medium truncate">{node.folder.title}</span>
           {hasChildren && (
             <span className="text-[10px] text-muted-foreground/50 ml-auto">
@@ -1695,11 +1695,11 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
                     style={{ paddingLeft: `${childPadding + 28}px` }}
                     onClick={() => onClickNote(noteId)}
                   >
-                    <ChevronRight className={cn(
+                    <CaretRight className={cn(
                       'w-3 h-3 text-muted-foreground flex-shrink-0 transition-transform duration-200',
                       isNoteExpanded && 'rotate-90'
                     )} />
-                    <FileText className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                    <FileText size={14} className="text-muted-foreground flex-shrink-0" />
                     <span className="text-sm truncate flex-1">{noteTitle}</span>
                     {meta?.memoryPurpose && meta.memoryPurpose !== 'memorized' && (
                       <span className={cn(
@@ -1710,7 +1710,7 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
                       </span>
                     )}
                     {meta?.isImportant && (
-                      <Star className="w-3 h-3 text-amber-500 flex-shrink-0" fill="currentColor" />
+                      <Star size={12} className="text-amber-500 flex-shrink-0" weight="fill" />
                     )}
                     <NotionButton
                       variant="ghost" size="icon" iconOnly
@@ -1718,7 +1718,7 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
                       onClick={(e) => { e.stopPropagation(); onDeleteNote(noteId); }}
                       aria-label="delete"
                     >
-                      <Trash2 className="w-3 h-3" />
+                      <Trash size={12} />
                     </NotionButton>
                   </div>
 
@@ -1782,7 +1782,7 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
     <div className={cn('rounded-md border border-border/40 bg-card/50 overflow-hidden', className)}>
       {isLoadingContent ? (
         <div className="flex items-center justify-center py-6">
-          <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+          <CircleNotch size={16} className="animate-spin text-muted-foreground" />
         </div>
       ) : expandedContent ? (
         <>
@@ -1807,10 +1807,10 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
               />
               <div className="flex gap-2">
                 <NotionButton variant="ghost" size="sm" onClick={onCancelEdit} className="!h-auto !px-2 !py-1 text-xs">
-                  <X className="w-3 h-3" />取消
+                  <X size={12} />取消
                 </NotionButton>
                 <NotionButton variant="primary" size="sm" onClick={onSaveEdit} disabled={isLoading} className="!h-auto !px-2 !py-1 text-xs">
-                  <Save className="w-3 h-3" />保存
+                  <FloppyDisk size={12} />保存
                 </NotionButton>
               </div>
             </div>
@@ -1822,16 +1822,16 @@ const MemoryExpandPanel: React.FC<MemoryExpandPanelProps> = React.memo(({
           <div className="flex items-center justify-between px-3 py-1.5 border-t border-border/30 bg-muted/20">
             <div className="flex items-center gap-1.5">
               <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onDeleteNote(noteId); }} className="text-rose-500 hover:bg-rose-500/10 !h-auto !px-2 !py-1 text-xs">
-                <Trash2 className="w-3 h-3" />删除
+                <Trash size={12} />删除
               </NotionButton>
               {!isEditing && (
                 <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onStartEdit(noteId, expandedContent.content || ''); }} className="text-muted-foreground hover:bg-[var(--interactive-hover)] !h-auto !px-2 !py-1 text-xs">
-                  <Edit3 className="w-3 h-3" />编辑
+                  <PencilSimple size={12} />编辑
                 </NotionButton>
               )}
             </div>
             <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); onOpenInEditor(noteId, noteTitle); }} className="text-primary bg-primary/10 hover:bg-primary/15 !h-auto !px-2 !py-1 text-xs font-medium">
-              <ExternalLink className="w-3 h-3" />编辑器
+              <ArrowSquareOut size={12} />编辑器
             </NotionButton>
           </div>
         </>
@@ -1858,10 +1858,10 @@ const PURPOSE_BADGE_STYLES: Record<string, string> = {
 };
 
 const SOURCE_LABELS: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
-  tool_call: { label: '工具调用', icon: <Bot className="w-3 h-3" />, color: 'text-blue-500' },
-  auto_extract: { label: '自动提取', icon: <Zap className="w-3 h-3" />, color: 'text-amber-500' },
-  handler: { label: '前端操作', icon: <User className="w-3 h-3" />, color: 'text-emerald-500' },
-  evolution: { label: '自进化', icon: <RefreshCw className="w-3 h-3" />, color: 'text-purple-500' },
+  tool_call: { label: '工具调用', icon: <Robot size={12} />, color: 'text-blue-500' },
+  auto_extract: { label: '自动提取', icon: <Lightning className="w-3 h-3" />, color: 'text-amber-500' },
+  handler: { label: '前端操作', icon: <User size={12} />, color: 'text-emerald-500' },
+  evolution: { label: '自进化', icon: <ArrowClockwise className="w-3 h-3" />, color: 'text-purple-500' },
 };
 
 const OPERATION_LABELS: Record<string, string> = {
@@ -1901,16 +1901,16 @@ const AuditLogRow: React.FC<{ log: MemoryAuditLogItem }> = ({ log }) => {
         className="flex items-center gap-2 px-4 py-2 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
-        <ChevronRight className={cn(
+        <CaretRight className={cn(
           'w-3 h-3 text-muted-foreground/50 transition-transform duration-150 flex-shrink-0',
           expanded && 'rotate-90'
         )} />
 
         {/* 成功/失败图标 */}
         {log.success ? (
-          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 flex-shrink-0" />
+          <CheckCircle size={14} className="text-emerald-500 flex-shrink-0" />
         ) : (
-          <XCircle className="w-3.5 h-3.5 text-rose-500 flex-shrink-0" />
+          <XCircle size={14} className="text-rose-500 flex-shrink-0" />
         )}
 
         {/* 来源 */}

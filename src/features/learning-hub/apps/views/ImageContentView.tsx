@@ -12,7 +12,7 @@
 
 import React, { useState, useCallback, useMemo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ZoomIn, ZoomOut, RotateCw, Maximize2, AlertTriangle } from 'lucide-react';
+import { MagnifyingGlassPlus, MagnifyingGlassMinus, ArrowClockwise, ArrowsOut, Warning } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { getErrorMessage } from '@/utils/errorUtils';
 import type { ContentViewProps } from '../UnifiedAppPanel';
@@ -192,7 +192,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4 p-6">
         <div className="flex items-center gap-2 text-amber-500">
-          <AlertTriangle className="h-8 w-8" />
+          <Warning size={32} />
         </div>
         <div className="text-center space-y-2">
           <h3 className="text-lg font-medium">
@@ -279,7 +279,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             disabled={zoom <= 25}
             title={t('learningHub:image.zoomOut', '缩小')}
           >
-            <ZoomOut className="h-4 w-4" />
+            <MagnifyingGlassMinus size={16} />
           </NotionButton>
           <span className="text-sm text-muted-foreground min-w-[4rem] text-center">
             {zoom}%
@@ -291,7 +291,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             disabled={zoom >= 400}
             title={t('learningHub:image.zoomIn', '放大')}
           >
-            <ZoomIn className="h-4 w-4" />
+            <MagnifyingGlassPlus size={16} />
           </NotionButton>
           <NotionButton
             variant="ghost"
@@ -299,7 +299,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             onClick={handleRotate}
             title={t('learningHub:image.rotate', '旋转')}
           >
-            <RotateCw className="h-4 w-4" />
+            <ArrowClockwise size={16} />
           </NotionButton>
           <NotionButton
             variant="ghost"
@@ -307,7 +307,7 @@ const ImageContentView: React.FC<ContentViewProps> = ({
             onClick={handleReset}
             title={t('learningHub:image.reset', '重置')}
           >
-            <Maximize2 className="h-4 w-4" />
+            <ArrowsOut size={16} />
           </NotionButton>
         </div>
         <div className="flex items-center gap-2 text-sm text-muted-foreground">

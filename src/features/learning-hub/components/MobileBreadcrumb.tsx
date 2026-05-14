@@ -11,7 +11,7 @@
 import React, { useRef, useState, useLayoutEffect, useCallback } from 'react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { ChevronRight } from 'lucide-react';
+import { CaretRight } from '@phosphor-icons/react';
 import type { BreadcrumbItem } from '../stores/finderStore';
 
 export interface MobileBreadcrumbProps {
@@ -117,7 +117,7 @@ export const MobileBreadcrumb: React.FC<MobileBreadcrumbProps> = React.memo(({
         {/* 面包屑路径 */}
         {breadcrumbs.map((item, index) => (
           <React.Fragment key={item.id}>
-            <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+            <CaretRight size={16} className="flex-shrink-0 text-muted-foreground" />
             {index === breadcrumbs.length - 1 ? (
               // 当前文件夹（不可点击）
               <span className="truncate max-w-[120px]">{item.name}</span>
@@ -144,9 +144,9 @@ export const MobileBreadcrumb: React.FC<MobileBreadcrumbProps> = React.memo(({
           <NotionButton variant="ghost" size="sm" onClick={() => onNavigate?.(-1)} className="!h-auto !p-0 hover:text-primary truncate max-w-[80px]">
             {rootTitle}
           </NotionButton>
-          <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+          <CaretRight size={16} className="flex-shrink-0 text-muted-foreground" />
           <span className="text-muted-foreground">…</span>
-          <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+          <CaretRight size={16} className="flex-shrink-0 text-muted-foreground" />
           <span className="truncate max-w-[140px]">{currentFolder.name}</span>
         </div>
       )}

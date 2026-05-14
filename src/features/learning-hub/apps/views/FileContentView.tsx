@@ -17,7 +17,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { File as FileIcon, FileText, FileArchive, FileSpreadsheet, Loader2, RefreshCw, Download } from 'lucide-react';
+import { File as FileIcon, FileText, FileZip, FileXls, CircleNotch, ArrowClockwise, Download } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import type { ContentViewProps } from '../UnifiedAppPanel';
 import { invoke } from '@tauri-apps/api/core';
@@ -40,8 +40,8 @@ import { RichDocumentPreview } from './RichDocumentPreview';
  */
 const getFileIconComponent = (mimeType: string) => {
   if (mimeType.includes('pdf')) return FileText;
-  if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) return FileSpreadsheet;
-  if (mimeType.includes('zip') || mimeType.includes('archive')) return FileArchive;
+  if (mimeType.includes('spreadsheet') || mimeType.includes('excel')) return FileXls;
+  if (mimeType.includes('zip') || mimeType.includes('archive')) return FileZip;
   return FileIcon;
 };
 
@@ -406,7 +406,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       onFontChange={setFontScale}
       onZoomReset={resetZoom}
       onFontReset={resetFont}
-      fallback={<div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>}
+      fallback={<div className="flex items-center justify-center h-full"><CircleNotch className="h-8 w-8 animate-spin text-primary" /></div>}
     />
   );
 
@@ -420,12 +420,12 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
           <div className="flex items-center gap-2">
             {isPreviewTooLarge && (
               <NotionButton variant="primary" size="sm" onClick={handleSaveFile} disabled={isSaving} className="gap-1.5">
-                {isSaving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
+                {isSaving ? <CircleNotch className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" />}
                 {t('learningHub:file.saveToDevice', '保存到本地打开')}
               </NotionButton>
             )}
             <NotionButton variant="ghost" size="sm" onClick={handleRetry} className="gap-1.5">
-              <RefreshCw className="h-3.5 w-3.5" />
+              <ArrowClockwise className="h-3.5 w-3.5" />
               {t('common:retry', '重试')}
             </NotionButton>
           </div>
@@ -433,7 +433,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       );
     }
     if (isLoading) {
-      return <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+      return <div className="flex items-center justify-center h-full"><CircleNotch className="h-8 w-8 animate-spin text-primary" /></div>;
     }
 
     // PDF 预览
@@ -441,7 +441,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       if (pdfLoading) {
         return (
           <div className="flex flex-col items-center justify-center h-full gap-4">
-            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <CircleNotch className="h-8 w-8 animate-spin text-primary" />
             {isPdfLargeFile && (
               <p className="text-sm text-muted-foreground">
                 {t('learningHub:file.loadingLargeFile', '正在加载大文件，请稍候...')}
@@ -475,7 +475,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
         );
       }
       // 正在等待加载
-      return <div className="flex items-center justify-center h-full"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+      return <div className="flex items-center justify-center h-full"><CircleNotch className="h-8 w-8 animate-spin text-primary" /></div>;
     }
 
     // DOCX / Excel / PPTX 富文档预览
@@ -546,7 +546,7 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
           {t('learningHub:file.downloadHint', '您可以下载文件后使用其他应用程序打开')}
         </p>
         <NotionButton variant="ghost" size="sm" onClick={handleRetry} className="gap-1.5">
-          <RefreshCw className="h-3.5 w-3.5" />
+          <ArrowClockwise className="h-3.5 w-3.5" />
           {t('common:retry', '重试')}
         </NotionButton>
       </div>

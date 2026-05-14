@@ -2,7 +2,7 @@ import React, { useCallback } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { format, formatDistanceToNow } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
-import { Star, MoreHorizontal, Check } from 'lucide-react';
+import { Star, DotsThree, Check } from '@phosphor-icons/react';
 import {
   NoteIcon,
   TextbookIcon,
@@ -211,7 +211,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
         {/* 已关联标记 */}
         {isHighlighted && (
           <div className="shrink-0 flex items-center justify-center w-4 h-4 rounded-full bg-primary text-primary-foreground">
-            <Check className="w-2.5 h-2.5" strokeWidth={3} />
+            <Check size={10} strokeWidth={3} />
           </div>
         )}
 
@@ -227,7 +227,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
             inputClassName="h-6 text-[13px]"
           />
           {isFavorite && (
-            <Star className="h-3 w-3 text-yellow-500 fill-yellow-500 shrink-0" />
+            <Star size={12} className="text-yellow-500 shrink-0" />
           )}
           {/* ★ 记忆 badge */}
           {memoryMeta && (
@@ -241,7 +241,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
                 </span>
               )}
               {memoryMeta.isImportant && (
-                <Star className="h-2.5 w-2.5 text-amber-500 fill-amber-500 shrink-0" />
+                <Star size={10} className="text-amber-500 shrink-0" />
               )}
             </>
           )}
@@ -268,7 +268,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
             </span>
             {/* 更多操作按钮 - 悬停时显示 */}
             <NotionButton variant="ghost" size="icon" iconOnly className="!h-6 !w-6 !p-1 hover:bg-[var(--interactive-hover)] opacity-0 group-hover:opacity-100 transition-opacity duration-150" onClick={(e) => { e.stopPropagation(); onContextMenu(e); }} aria-label="more">
-              <MoreHorizontal className="h-4 w-4 text-muted-foreground/60" />
+              <DotsThree size={16} className="text-muted-foreground/60" />
             </NotionButton>
           </div>
         )}
@@ -304,12 +304,12 @@ export const FinderFileItem = React.memo(function FinderFileItem({
       {/* 已关联标记 */}
       {isHighlighted && (
         <div className="absolute top-1 left-1 flex items-center justify-center w-4 h-4 rounded-full bg-primary text-primary-foreground z-10">
-          <Check className="w-2.5 h-2.5" strokeWidth={3} />
+          <Check size={10} strokeWidth={3} />
         </div>
       )}
       {/* 收藏星标 */}
       {isFavorite && (
-        <Star className="absolute top-1.5 right-1.5 h-3 w-3 text-yellow-500 fill-yellow-500" />
+        <Star size={12} className="absolute top-1.5 right-1.5 text-yellow-500 fill-yellow-500" />
       )}
       
       {/* 自定义 SVG 图标 */}

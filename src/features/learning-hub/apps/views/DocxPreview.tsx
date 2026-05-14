@@ -8,7 +8,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { renderAsync } from 'docx-preview';
-import { Loader2 } from 'lucide-react';
+import { CircleNotch } from '@phosphor-icons/react';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
   normalizeBase64,
@@ -217,7 +217,7 @@ export const DocxPreview: React.FC<DocxPreviewProps> = ({
     <div className={`relative ${className}`} aria-busy={isLoading}>
       {isLoading && (
         <div className="absolute inset-0 flex items-center justify-center bg-background/80 z-10">
-          <Loader2 className="h-8 w-8 animate-spin text-primary" />
+          <CircleNotch size={32} className="animate-spin text-primary" />
         </div>
       )}
       <CustomScrollArea

@@ -17,20 +17,20 @@ import { createPortal } from 'react-dom';
 import { Z_INDEX } from '@/config/zIndex';
 import { useTranslation } from 'react-i18next';
 import {
-  ChevronRight,
-  ChevronDown,
+  CaretRight,
+  CaretDown,
   Folder,
   FolderOpen,
-  MoreHorizontal,
+  DotsThree,
   Pencil,
-  Trash2,
-  FolderUp,
-  MessageSquare,
-  ClipboardList,
-  Languages,
-  PenTool,
+  Trash,
+  FolderOpen as FolderUp,
+  Chat,
+  ClipboardText,
+  Translate,
+  PenNib,
   Lock,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '@/components/ui/shad/Input';
@@ -227,13 +227,13 @@ export const FolderTreeItem: React.FC<FolderTreeItemProps> = React.memo(({
   const getBuiltinIcon = () => {
     switch (builtinType) {
       case 'exam':
-        return <ClipboardList className="w-4 h-4" />;
+        return <ClipboardText size={16} />;
       case 'translation':
-        return <Languages className="w-4 h-4" />;
+        return <Translate size={16} />;
       case 'essay':
-        return <PenTool className="w-4 h-4" />;
+        return <PenNib size={16} />;
       default:
-        return isExpanded ? <FolderOpen className="w-4 h-4" /> : <Folder className="w-4 h-4" />;
+        return isExpanded ? <FolderOpen size={16} /> : <Folder size={16} />;
     }
   };
 
@@ -399,9 +399,9 @@ export const FolderTreeItem: React.FC<FolderTreeItemProps> = React.memo(({
           aria-label="toggle"
         >
           {isExpanded ? (
-            <ChevronDown className="w-3.5 h-3.5" />
+            <CaretDown size={14} />
           ) : (
-            <ChevronRight className="w-3.5 h-3.5" />
+            <CaretRight size={14} />
           )}
         </NotionButton>
 
@@ -413,7 +413,7 @@ export const FolderTreeItem: React.FC<FolderTreeItemProps> = React.memo(({
             : "text-amber-500 dark:text-amber-400"
         )}>
           {isBuiltin ? getBuiltinIcon() : (
-            isExpanded ? <FolderOpen className="w-4 h-4" /> : <Folder className="w-4 h-4" />
+            isExpanded ? <FolderOpen size={16} /> : <Folder size={16} />
           )}
         </span>
 
@@ -449,16 +449,16 @@ export const FolderTreeItem: React.FC<FolderTreeItemProps> = React.memo(({
                 onClick={(e) => e.stopPropagation()}
               >
                 {isBuiltin ? (
-                  <Lock className="w-3.5 h-3.5 text-muted-foreground" />
+                  <Lock size={14} className="text-muted-foreground" />
                 ) : (
-                  <MoreHorizontal className="w-3.5 h-3.5" />
+                  <DotsThree size={14} />
                 )}
               </NotionButton>
             </AppMenuTrigger>
             <AppMenuContent align="end" className="w-48">
               {onReferenceToChat && (
                 <>
-                  <AppMenuItem icon={<MessageSquare className="w-4 h-4" />} onClick={handleReferenceToChat}>
+                  <AppMenuItem icon={<Chat size={16} />} onClick={handleReferenceToChat}>
                     {t('contextMenu.referenceToChat')}
                   </AppMenuItem>
                   <AppMenuSeparator />
@@ -466,12 +466,12 @@ export const FolderTreeItem: React.FC<FolderTreeItemProps> = React.memo(({
               )}
               {/* 内置文件夹不可重命名 */}
               {!isBuiltin && (
-                <AppMenuItem icon={<Pencil className="w-4 h-4" />} onClick={handleStartEdit}>
+                <AppMenuItem icon={<Pencil size={16} />} onClick={handleStartEdit}>
                   {t('folder.rename')}
                 </AppMenuItem>
               )}
               {folder.parentId && onMove && !isBuiltin && (
-                <AppMenuItem icon={<FolderUp className="w-4 h-4" />} onClick={handleMoveToRoot}>
+                <AppMenuItem icon={<FolderUp size={16} />} onClick={handleMoveToRoot}>
                   {t('folder.moveToRoot')}
                 </AppMenuItem>
               )}
@@ -480,7 +480,7 @@ export const FolderTreeItem: React.FC<FolderTreeItemProps> = React.memo(({
                 <>
                   <AppMenuSeparator />
                   <AppMenuItem
-                    icon={<Trash2 className="w-4 h-4" />}
+                    icon={<Trash size={16} />}
                     onClick={handleDelete}
                     destructive
                   >
@@ -490,7 +490,7 @@ export const FolderTreeItem: React.FC<FolderTreeItemProps> = React.memo(({
               ) : (
                 <>
                   <AppMenuSeparator />
-                  <AppMenuItem icon={<Lock className="w-4 h-4" />} disabled>
+                  <AppMenuItem icon={<Lock size={16} />} disabled>
                     {t('folder.builtinCannotDelete')}
                   </AppMenuItem>
                 </>
@@ -509,7 +509,7 @@ export const FolderTreeItem: React.FC<FolderTreeItemProps> = React.memo(({
         >
           {onReferenceToChat && (
             <>
-              <AppMenuItem icon={<MessageSquare className="w-4 h-4" />} onClick={handleReferenceToChat}>
+              <AppMenuItem icon={<Chat size={16} />} onClick={handleReferenceToChat}>
                 {t('contextMenu.referenceToChat')}
               </AppMenuItem>
               <AppMenuSeparator />
@@ -517,12 +517,12 @@ export const FolderTreeItem: React.FC<FolderTreeItemProps> = React.memo(({
           )}
           {/* 内置文件夹不可重命名 */}
           {!isBuiltin && (
-            <AppMenuItem icon={<Pencil className="w-4 h-4" />} onClick={handleStartEdit}>
+            <AppMenuItem icon={<Pencil size={16} />} onClick={handleStartEdit}>
               {t('folder.rename')}
             </AppMenuItem>
           )}
           {folder.parentId && onMove && !isBuiltin && (
-            <AppMenuItem icon={<FolderUp className="w-4 h-4" />} onClick={handleMoveToRoot}>
+            <AppMenuItem icon={<FolderUp size={16} />} onClick={handleMoveToRoot}>
               {t('folder.moveToRoot')}
             </AppMenuItem>
           )}
@@ -531,7 +531,7 @@ export const FolderTreeItem: React.FC<FolderTreeItemProps> = React.memo(({
             <>
               <AppMenuSeparator />
               <AppMenuItem
-                icon={<Trash2 className="w-4 h-4" />}
+                icon={<Trash size={16} />}
                 onClick={handleDelete}
                 destructive
               >
@@ -541,7 +541,7 @@ export const FolderTreeItem: React.FC<FolderTreeItemProps> = React.memo(({
           ) : (
             <>
               <AppMenuSeparator />
-              <AppMenuItem icon={<Lock className="w-4 h-4" />} disabled>
+              <AppMenuItem icon={<Lock size={16} />} disabled>
                 {t('folder.builtinCannotDelete')}
               </AppMenuItem>
             </>

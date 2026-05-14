@@ -1,6 +1,6 @@
 import React, { lazy, Suspense, useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, AlertCircle, RefreshCw, ScanLine, RotateCcw, ListOrdered, Shuffle, Tag, Clock, CalendarDays, FileText, Timer, BookOpen, Play, Pause, RotateCw, Settings2, BarChart3, Star, Download } from 'lucide-react';
+import { CircleNotch, WarningCircle, ArrowClockwise, Scan, ArrowCounterClockwise, ListNumbers, Shuffle, Tag, Clock, CalendarBlank, FileText, Timer, BookOpen, Play, Pause, ArrowClockwise as RotateCw, GearSix, ChartBar, Star, Download } from '@phosphor-icons/react';
 import { TauriAPI, type ExamSheetSessionDetail } from '@/utils/tauriApi';
 import { NotionButton } from '@/components/ui/NotionButton';
 import type { ContentViewProps } from '../UnifiedAppPanel';
@@ -48,12 +48,12 @@ interface ManageFilters {
 }
 
 const MODE_CONFIG: Record<PracticeMode, { labelKey: string; icon: React.ElementType; descKey: string }> = {
-  sequential: { labelKey: 'learningHub:exam.mode.sequential', icon: ListOrdered, descKey: 'learningHub:exam.mode.sequentialDesc' },
+  sequential: { labelKey: 'learningHub:exam.mode.sequential', icon: ListNumbers, descKey: 'learningHub:exam.mode.sequentialDesc' },
   random: { labelKey: 'learningHub:exam.mode.random', icon: Shuffle, descKey: 'learningHub:exam.mode.randomDesc' },
-  review_first: { labelKey: 'learningHub:exam.mode.reviewFirst', icon: RotateCcw, descKey: 'learningHub:exam.mode.reviewFirstDesc' },
-  review_only: { labelKey: 'learningHub:exam.mode.reviewOnly', icon: RotateCcw, descKey: 'learningHub:exam.mode.reviewOnlyDesc' },
+  review_first: { labelKey: 'learningHub:exam.mode.reviewFirst', icon: ArrowCounterClockwise, descKey: 'learningHub:exam.mode.reviewFirstDesc' },
+  review_only: { labelKey: 'learningHub:exam.mode.reviewOnly', icon: ArrowCounterClockwise, descKey: 'learningHub:exam.mode.reviewOnlyDesc' },
   by_tag: { labelKey: 'learningHub:exam.mode.byTag', icon: Tag, descKey: 'learningHub:exam.mode.byTagDesc' },
-  daily: { labelKey: 'learningHub:exam.mode.daily', icon: CalendarDays, descKey: 'learningHub:exam.mode.dailyDesc' },
+  daily: { labelKey: 'learningHub:exam.mode.daily', icon: CalendarBlank, descKey: 'learningHub:exam.mode.dailyDesc' },
   paper: { labelKey: 'learningHub:exam.mode.paper', icon: FileText, descKey: 'learningHub:exam.mode.paperDesc' },
   timed: { labelKey: 'learningHub:exam.mode.timed', icon: Timer, descKey: 'learningHub:exam.mode.timedDesc' },
   mock_exam: { labelKey: 'learningHub:exam.mode.mockExam', icon: BookOpen, descKey: 'learningHub:exam.mode.mockExamDesc' },
@@ -728,7 +728,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   if (!sessionId) {
     return (
       <div className="flex flex-col items-center justify-center h-full">
-        <AlertCircle className="w-8 h-8 text-muted-foreground mb-2" />
+        <WarningCircle size={32} className="text-muted-foreground mb-2" />
         <span className="text-muted-foreground">
           {t('exam_sheet:errors.noSession', '未指定整卷会话')}
         </span>
@@ -739,7 +739,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   if (isLoading) {
     return (
       <div className="flex items-center justify-center h-full">
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        <CircleNotch size={24} className="animate-spin text-muted-foreground" />
         <span className="ml-2 text-muted-foreground">
           {t('common:loading', '加载中...')}
         </span>
@@ -751,12 +751,12 @@ const ExamContentView: React.FC<ContentViewProps> = ({
     const loadErrorMessage = sessionDetailError || error;
     return (
       <div className="flex flex-col items-center justify-center h-full gap-4">
-        <AlertCircle className="w-8 h-8 text-destructive" />
+        <WarningCircle size={32} className="text-destructive" />
         <span className="text-muted-foreground text-center max-w-md">
           {t('exam_sheet:errors.loadFailed', '加载整卷会话失败')}: {loadErrorMessage}
         </span>
         <NotionButton variant="ghost" size="sm" onClick={loadSessionDetail} className="gap-2">
-          <RefreshCw className="w-4 h-4" />
+          <ArrowClockwise size={16} />
           {t('common:actions.retry', '重试')}
         </NotionButton>
       </div>
@@ -766,7 +766,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
   if (!sessionDetail) {
     return (
       <div className="flex flex-col items-center justify-center h-full">
-        <AlertCircle className="w-8 h-8 text-muted-foreground mb-2" />
+        <WarningCircle size={32} className="text-muted-foreground mb-2" />
         <span className="text-muted-foreground">
           {t('exam_sheet:errors.sessionNotFound', '未找到整卷会话')}
         </span>
@@ -781,7 +781,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         <div className="flex-shrink-0 px-3 sm:px-4 py-2.5 bg-amber-50 dark:bg-amber-950/30 border-b border-amber-200 dark:border-amber-800/40">
           <div className="flex items-center justify-between gap-3">
             <div className="flex items-center gap-2 min-w-0">
-              <AlertCircle className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0" />
+              <WarningCircle size={16} className="text-amber-600 dark:text-amber-400 flex-shrink-0" />
               <span className="text-sm text-amber-800 dark:text-amber-200 truncate">
                 {t('exam_sheet:uploader.import_interrupted', { count: questions.length })}
               </span>
@@ -800,9 +800,9 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 className="gap-1.5 text-amber-700 dark:text-amber-300 hover:bg-amber-100 dark:hover:bg-amber-900/40"
               >
                 {isResuming ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <CircleNotch size={14} className="animate-spin" />
                 ) : (
-                  <RotateCw className="w-3.5 h-3.5" />
+                  <RotateCw size={14} />
                 )}
                 {isResuming
                   ? t('exam_sheet:uploader.resuming', '恢复中...')
@@ -821,7 +821,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               {t('exam_sheet:errors.loadQuestionsFailed', '题目加载失败')}: {error}
             </span>
             <NotionButton variant="ghost" size="sm" onClick={refreshQuestionsAndStats} className="gap-1.5">
-              <RefreshCw className="w-3.5 h-3.5" />
+              <ArrowClockwise size={14} />
               {t('common:actions.retry', '重试')}
             </NotionButton>
           </div>
@@ -896,7 +896,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                     : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
                 )}
               >
-                <Settings2 className="w-3.5 h-3.5 mr-1.5" />
+                <GearSix size={14} className="mr-1.5" />
                 {t('learningHub:exam.tab.manage', '管理')}
               </NotionButton>
             )}
@@ -912,7 +912,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                     : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
                 )}
               >
-                <BarChart3 className="w-3.5 h-3.5 mr-1.5" />
+                <ChartBar size={14} className="mr-1.5" />
                 {t('learningHub:exam.tab.stats', '统计')}
               </NotionButton>
             )}
@@ -928,7 +928,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                     : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
                 )}
               >
-                <Star className="w-3.5 h-3.5 mr-1.5" />
+                <Star size={14} className="mr-1.5" />
                 {t('learningHub:exam.tab.favorites', '收藏')}
               </NotionButton>
             )}
@@ -979,11 +979,11 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                   }
                 >
                   {isAdvancedRuntimeTimer ? (
-                    <Clock className="w-3.5 h-3.5" />
+                    <Clock size={14} />
                   ) : isTimerRunning ? (
-                    <Pause className="w-3.5 h-3.5" />
+                    <Pause size={14} />
                   ) : (
-                    <Play className="w-3.5 h-3.5" />
+                    <Play size={14} />
                   )}
                   <span className={cn('font-mono tabular-nums text-xs', !isAdvancedRuntimeTimer && !isTimerRunning && 'animate-pulse')}>
                     {formatTime(advancedTimerRemaining ?? elapsedTime)}
@@ -1002,7 +1002,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 onClick={() => setShowExportDialog(true)}
                 className="h-7 sm:h-8 px-2.5 sm:px-3 gap-1.5"
               >
-                <Download className="w-3.5 h-3.5" />
+                <Download size={14} />
                 <span className="hidden sm:inline">{t('learningHub:exam.tab.export', '导出')}</span>
               </NotionButton>
             )}
@@ -1013,7 +1013,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 onClick={() => setViewMode('upload')}
                 className="h-7 sm:h-8 px-2.5 sm:px-3 gap-1.5"
               >
-                <ScanLine className="w-3.5 h-3.5" />
+                <Scan size={14} />
                 <span className="hidden sm:inline">{t('learningHub:exam.tab.add')}</span>
               </NotionButton>
             )}
@@ -1024,7 +1024,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 onClick={() => setShowCsvImportDialog(true)}
                 className="h-7 sm:h-8 px-2.5 sm:px-3 gap-1.5"
               >
-                <ScanLine className="w-3.5 h-3.5" />
+                <Scan size={14} />
                 <span className="hidden sm:inline">{t('learningHub:exam.tab.importCsv', '导入 CSV')}</span>
               </NotionButton>
             )}
@@ -1037,7 +1037,7 @@ const ExamContentView: React.FC<ContentViewProps> = ({
         <Suspense
           fallback={
             <div className="flex items-center justify-center h-full">
-              <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+              <CircleNotch size={24} className="animate-spin text-muted-foreground" />
               <span className="ml-2 text-muted-foreground">
                 {t('common:loading', '加载中...')}
               </span>

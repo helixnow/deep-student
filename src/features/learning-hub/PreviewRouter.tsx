@@ -29,7 +29,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { FileQuestion } from 'lucide-react';
+import { MagnifyingGlass } from '@phosphor-icons/react';
 
 // 预览组件导入
 import { MarkdownPreview } from '@/features/notes/preview/MarkdownPreview';
@@ -130,7 +130,7 @@ const UnsupportedState: React.FC<{ className?: string }> = ({ className }) => {
       )}
     >
       <div className="flex h-16 w-16 items-center justify-center rounded-full bg-muted">
-        <FileQuestion className="h-8 w-8 text-muted-foreground" />
+        <MagnifyingGlass size={32} className="text-muted-foreground" />
       </div>
       <div className="space-y-1">
         <h3 className="text-sm font-medium text-foreground">
@@ -171,7 +171,7 @@ const DocumentHintState: React.FC<{
       )}
     >
       <div className="flex h-16 w-16 items-center justify-center rounded-full bg-primary/10">
-        <FileQuestion className="h-8 w-8 text-primary" />
+        <MagnifyingGlass size={32} className="text-primary" />
       </div>
       <div className="space-y-2">
         <h3 className="text-sm font-medium text-foreground">

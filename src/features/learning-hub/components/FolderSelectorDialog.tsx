@@ -6,7 +6,7 @@
 
 import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Folder, FolderOpen, ChevronRight, ChevronDown, Loader2 } from 'lucide-react';
+import { Folder, FolderOpen, CaretRight, CaretDown, CircleNotch } from '@phosphor-icons/react';
 import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -86,9 +86,9 @@ const FolderTreeItem: React.FC<FolderTreeItemProps> = ({
             aria-label="toggle"
           >
             {isExpanded ? (
-              <ChevronDown className="w-3.5 h-3.5" />
+              <CaretDown size={14} />
             ) : (
-              <ChevronRight className="w-3.5 h-3.5" />
+              <CaretRight size={14} />
             )}
           </NotionButton>
         ) : (
@@ -97,9 +97,9 @@ const FolderTreeItem: React.FC<FolderTreeItemProps> = ({
 
         {/* 文件夹图标 */}
         {isExpanded ? (
-          <FolderOpen className="w-4 h-4 mr-2 shrink-0 text-amber-500" />
+          <FolderOpen size={16} className="mr-2 shrink-0 text-amber-500" />
         ) : (
-          <Folder className="w-4 h-4 mr-2 shrink-0 text-amber-500" />
+          <Folder size={16} className="mr-2 shrink-0 text-amber-500" />
         )}
 
         {/* 标题 */}
@@ -185,12 +185,12 @@ export function FolderSelectorDialog({
             <div className="p-2">
               {isLoading ? (
                 <div className="flex items-center justify-center py-8 text-muted-foreground">
-                  <Loader2 className="w-5 h-5 animate-spin mr-2" />
+                  <CircleNotch size={20} className="animate-spin mr-2" />
                   <span className="text-sm">{t('loading.resources')}</span>
                 </div>
               ) : userFolders.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-8 text-muted-foreground">
-                  <Folder className="w-8 h-8 mb-2 opacity-50" />
+                  <Folder size={32} className="mb-2 opacity-50" />
                   <span className="text-sm">{t('folder.noFolders')}</span>
                   <span className="text-xs mt-1 opacity-70">
                     {t('folder.createFirst')}
@@ -201,7 +201,7 @@ export function FolderSelectorDialog({
                   {/* 根目录选项 */}
                   <NotionButton variant="ghost" size="sm" className={cn('w-full !justify-start !px-2 !py-1.5 mb-1', selectedId === null ? 'bg-primary text-primary-foreground' : 'hover:bg-[var(--interactive-hover)] text-foreground')} onClick={() => setSelectedId(null)}>
                     <span className="w-5 shrink-0" />
-                    <Folder className="w-4 h-4 mr-2 shrink-0 text-muted-foreground" />
+                    <Folder size={16} className="mr-2 shrink-0 text-muted-foreground" />
                     <span className="truncate">{t('folder.root')}</span>
                   </NotionButton>
 
@@ -238,7 +238,7 @@ export function FolderSelectorDialog({
           >
             {isMoving ? (
               <>
-                <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                <CircleNotch size={16} className="mr-2 animate-spin" />
                 {t('multiSelect.moving')}
               </>
             ) : (
