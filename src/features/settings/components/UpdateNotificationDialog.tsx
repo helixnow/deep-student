@@ -6,7 +6,7 @@
  */
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Download, Github, ArrowUpCircle } from 'lucide-react';
+import { Download, GithubLogo, ArrowCircleUp } from '@phosphor-icons/react';
 import ReactMarkdown from 'react-markdown';
 import {
   NotionDialog,
@@ -90,7 +90,7 @@ export const UpdateNotificationDialog: React.FC<UpdateNotificationDialogProps> =
     >
       <NotionDialogHeader>
         <div className="flex items-center gap-2.5">
-          <ArrowUpCircle className="h-5 w-5 text-primary flex-shrink-0" />
+          <ArrowCircleUp size={20} className="text-primary flex-shrink-0" />
           <NotionDialogTitle>
             {t('about.update.dialog.title', '有可用新版本')}
           </NotionDialogTitle>
@@ -167,7 +167,7 @@ export const UpdateNotificationDialog: React.FC<UpdateNotificationDialogProps> =
                   rel="noopener noreferrer"
                   className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
                 >
-                  <Download className="h-3.5 w-3.5" />
+                  <Download size={14} />
                   {t('about.update.mirrorDownload', '镜像下载')}
                 </a>
               )}
@@ -177,7 +177,7 @@ export const UpdateNotificationDialog: React.FC<UpdateNotificationDialogProps> =
                 rel="noopener noreferrer"
                 className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary hover:underline"
               >
-                <Github className="h-3.5 w-3.5" />
+                <GithubLogo size={14} />
                 {t('about.update.githubDownload', 'GitHub 下载')}
               </a>
             </div>
@@ -188,7 +188,7 @@ export const UpdateNotificationDialog: React.FC<UpdateNotificationDialogProps> =
               onClick={onUpdate}
               disabled={downloading}
             >
-              <Download className={`h-3.5 w-3.5 mr-1 ${downloading ? 'animate-bounce' : ''}`} />
+              <Download size={14} className={`mr-1 ${downloading ? 'animate-bounce' : ''}`} />
               {downloading
                 ? t('about.update.downloading', '下载中...')
                 : t('about.update.dialog.update', '更新')}

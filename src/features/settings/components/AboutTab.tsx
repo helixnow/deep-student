@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Shield as PhosphorShield } from '@phosphor-icons/react';
-import { Globe, Github, Bug, ExternalLink, RefreshCw, Download } from 'lucide-react';
+import { Globe, GithubLogo, Bug, ArrowSquareOut, ArrowClockwise, Download } from '@phosphor-icons/react';
 import { OpenSourceAcknowledgementsSection } from './OpenSourceAcknowledgementsSection';
 import { SiliconFlowLogo } from '@/components/ui/SiliconFlowLogo';
 import { DeepStudentLogo } from '@/components/ui/DeepStudentLogo';
@@ -177,7 +177,7 @@ export const AboutTab: React.FC = () => {
                   disabled={updater.checking}
                   className="h-6 px-2 text-xs flex-shrink-0 whitespace-nowrap"
                 >
-                  <RefreshCw className={`h-3 w-3 mr-1 ${updater.checking ? 'animate-spin' : ''}`} />
+                  <ArrowClockwise size={12} className={`mr-1 ${updater.checking ? 'animate-spin' : ''}`} />
                   {updater.checking
                     ? t('about.update.checking', '检查中...')
                     : t('about.update.check', '检查更新')}
@@ -298,7 +298,7 @@ export const AboutTab: React.FC = () => {
                           rel="noopener noreferrer"
                           className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
                         >
-                          <Download className="h-3.5 w-3.5" />
+                          <Download size={14} />
                           {t('about.update.mirrorDownload', '镜像下载')}
                         </a>
                       )}
@@ -308,7 +308,7 @@ export const AboutTab: React.FC = () => {
                         rel="noopener noreferrer"
                         className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary hover:underline"
                       >
-                        <Github className="h-3.5 w-3.5" />
+                        <GithubLogo size={14} />
                         {t('about.update.githubDownload', 'GitHub 下载')}
                       </a>
                     </div>
@@ -319,7 +319,7 @@ export const AboutTab: React.FC = () => {
                       disabled={updater.downloading}
                       className="ml-3 flex-shrink-0"
                     >
-                      <Download className={`h-3.5 w-3.5 mr-1 ${updater.downloading ? 'animate-bounce' : ''}`} />
+                      <Download size={14} className={`mr-1 ${updater.downloading ? 'animate-bounce' : ''}`} />
                       {updater.downloading
                         ? t('about.update.downloading', '下载中...')
                         : t('about.update.install', '下载更新')}
@@ -370,7 +370,7 @@ export const AboutTab: React.FC = () => {
           <div className="space-y-px">
             {[
               { icon: Globe, label: t('acknowledgements.links.website', '访问官网'), href: 'https://www.deepstudent.cn' },
-              { icon: Github, label: t('acknowledgements.links.github', 'GitHub'), href: 'https://github.com/helixnow/deep-student' },
+              { icon: GithubLogo, label: t('acknowledgements.links.github', 'GitHub'), href: 'https://github.com/helixnow/deep-student' },
               { icon: Bug, label: t('acknowledgements.links.issues', 'Issue 反馈'), href: 'https://github.com/helixnow/deep-student/issues' },
             ].map((item) => (
               <AboutActionRow
@@ -378,7 +378,7 @@ export const AboutTab: React.FC = () => {
                 icon={item.icon}
                 label={item.label}
                 href={item.href}
-                trailingIcon={ExternalLink}
+                trailingIcon={ArrowSquareOut}
               />
             ))}
             <AboutActionRow

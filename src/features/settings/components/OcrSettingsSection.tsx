@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { RotateCcw, Loader2 } from 'lucide-react';
+import { ArrowCounterClockwise, CircleNotch } from '@phosphor-icons/react';
 import { Switch } from '@/components/ui/shad/Switch';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -249,7 +249,7 @@ export const OcrSettingsSection: React.FC = () => {
       <div>
         <GroupTitle title={t('settings:ocr.title', 'OCR 识别设置')} />
         <div className="flex items-center justify-center py-6">
-          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+          <CircleNotch size={20} className="animate-spin text-muted-foreground" />
         </div>
       </div>
     );
@@ -267,7 +267,7 @@ export const OcrSettingsSection: React.FC = () => {
             disabled={saving}
             className="gap-1"
           >
-            <RotateCcw size={12} />
+            <ArrowCounterClockwise size={12} />
             {t('common:actions.reset', '重置')}
           </NotionButton>
         }

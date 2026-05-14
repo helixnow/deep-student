@@ -9,15 +9,15 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  AlertCircle,
-  AlertTriangle,
-  Loader2,
+  WarningCircle,
+  Warning,
+  CircleNotch,
   Plus,
   X,
   Check,
-  ChevronDown,
-  ChevronUp,
-} from 'lucide-react';
+  CaretDown,
+  CaretUp,
+} from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
@@ -351,7 +351,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
             onClick={isAddingNew ? () => setIsAddingNew(false) : handleOpenCreateDialog}
             className="flex-1 sm:flex-none h-7 text-[11px] px-2 py-0"
           >
-            {isAddingNew ? <X className="w-3 h-3 mr-1" /> : <Plus className="w-3 h-3 mr-1" />}
+            {isAddingNew ? <X size={12} className="mr-1" /> : <Plus size={12} className="mr-1" />}
             <span>{isAddingNew ? t('common:cancel') : t('settings:dimension_management.create_dimension')}</span>
           </NotionButton>
           <NotionButton
@@ -374,7 +374,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
               {t('settings:dimension_management.create_dimension_title')}
             </h4>
             <NotionButton variant="ghost" size="sm" onClick={() => setIsAddingNew(false)} className="h-6 w-6 p-0">
-              <X className="w-3.5 h-3.5" />
+               <X size={14} />
             </NotionButton>
           </div>
           
@@ -451,7 +451,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
               disabled={creating || !newDimension}
               className="h-7 text-xs flex-1 md:flex-none"
             >
-              {creating ? <Loader2 className="w-3 h-3 mr-1.5 animate-spin" /> : <Check className="w-3 h-3 mr-1.5" />}
+              {creating ? <CircleNotch size={12} className="mr-1.5 animate-spin" /> : <Check size={12} className="mr-1.5" />}
               {t('common:create')}
             </NotionButton>
           </div>
@@ -483,7 +483,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
 
         {loading ? (
           <div className="flex items-center justify-center py-12">
-            <Loader2 className="w-5 h-5 text-muted-foreground/40 animate-spin" />
+            <CircleNotch size={20} className="text-muted-foreground/40 animate-spin" />
           </div>
         ) : dimensions.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-12 text-center border border-dashed rounded-lg bg-muted/5">
@@ -599,7 +599,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                       isExpanded ? "bg-primary/10 text-primary hover:bg-primary/20" : "text-muted-foreground hover:text-foreground"
                                     )}
                                   >
-                                    {isExpanded ? <ChevronUp className="w-3 h-3 mr-1" /> : <ChevronDown className="w-3 h-3 mr-1" />}
+                                    {isExpanded ? <CaretUp size={12} className="mr-1" /> : <CaretDown size={12} className="mr-1" />}
                                     {t('settings:dimension_management.assign_model').split(' ')[0]}
                                   </NotionButton>
                                 </CommonTooltip>
@@ -650,7 +650,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                                         disabled={updating || !selectedModelId}
                                         className="h-7 text-xs"
                                       >
-                                        {updating ? <Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> : <Check className="h-3 w-3 mr-1.5" />}
+                                        {updating ? <CircleNotch size={12} className="mr-1.5 animate-spin" /> : <Check size={12} className="mr-1.5" />}
                                         {t('common:confirm')}
                                       </NotionButton>
                                     </div>
@@ -658,7 +658,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
 
                                   {embeddingModels.length === 0 ? (
                                     <div className="p-2.5 bg-muted/50 rounded border border-border/40 flex items-start gap-2">
-                                      <AlertCircle className="h-3.5 w-3.5 text-muted-foreground mt-0.5" />
+                                      <WarningCircle size={14} className="text-muted-foreground mt-0.5" />
                                       <p className="text-[11px] text-muted-foreground leading-relaxed">
                                         {t('settings:dimension_management.no_embedding_models')}
                                       </p>
@@ -686,7 +686,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
 
                                       {selectedModelId && dim.modelConfigId !== selectedModelId && (
                                         <div className="p-2.5 bg-yellow-500/5 border border-yellow-500/10 rounded flex items-start gap-2">
-                                          <AlertTriangle className="h-3.5 w-3.5 text-yellow-600/80 mt-0.5" />
+                                          <Warning size={14} className="text-yellow-600/80 mt-0.5" />
                                           <p className="text-[10px] text-yellow-700/80 dark:text-yellow-400/80 leading-relaxed">
                                             {t('settings:dimension_management.change_model_warning')}
                                           </p>
@@ -768,7 +768,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                             isExpanded && "bg-primary/10 text-primary"
                           )}
                         >
-                          {isExpanded ? <ChevronUp className="w-3 h-3 mr-1" /> : <ChevronDown className="w-3 h-3 mr-1" />}
+                          {isExpanded ? <CaretUp size={12} className="mr-1" /> : <CaretDown size={12} className="mr-1" />}
                           {t('settings:dimension_management.assign_model')}
                         </NotionButton>
                         <div className="flex-1" />
@@ -794,7 +794,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                           
                           {embeddingModels.length === 0 ? (
                             <div className="p-2.5 bg-muted/50 rounded border border-border/40 flex items-start gap-2">
-                              <AlertCircle className="h-3.5 w-3.5 text-muted-foreground mt-0.5 shrink-0" />
+                              <WarningCircle size={14} className="text-muted-foreground mt-0.5 shrink-0" />
                               <p className="text-[11px] text-muted-foreground leading-relaxed">
                                 {t('settings:dimension_management.no_embedding_models')}
                               </p>
@@ -810,7 +810,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                               
                               {selectedModelId && dim.modelConfigId !== selectedModelId && (
                                 <div className="p-2 bg-yellow-500/5 border border-yellow-500/10 rounded flex items-start gap-2">
-                                  <AlertTriangle className="h-3 w-3 text-yellow-600/80 mt-0.5 shrink-0" />
+                                  <Warning size={12} className="text-yellow-600/80 mt-0.5 shrink-0" />
                                   <p className="text-[10px] text-yellow-700/80 dark:text-yellow-400/80 leading-relaxed">
                                     {t('settings:dimension_management.change_model_warning')}
                                   </p>
@@ -836,7 +836,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                               disabled={updating || !selectedModelId}
                               className="h-7 text-xs flex-1"
                             >
-                              {updating ? <Loader2 className="h-3 w-3 mr-1.5 animate-spin" /> : <Check className="h-3 w-3 mr-1.5" />}
+                              {updating ? <CircleNotch size={12} className="mr-1.5 animate-spin" /> : <Check size={12} className="mr-1.5" />}
                               {t('common:confirm')}
                             </NotionButton>
                           </div>
@@ -872,7 +872,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
           {dimensionToDelete && dimensionToDelete.recordCount > 0 && (
             <div className="p-3 bg-destructive/5 border border-destructive/10 rounded-md">
                 <div className="flex items-start gap-2">
-                  <AlertTriangle className="h-4 w-4 text-destructive flex-shrink-0 mt-0.5" />
+                  <Warning size={16} className="text-destructive flex-shrink-0 mt-0.5" />
                   <p className="text-xs text-destructive/80 leading-relaxed">
                     {t('settings:dimension_management.delete_warning', {
                       count: dimensionToDelete.recordCount,

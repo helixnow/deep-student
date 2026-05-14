@@ -13,20 +13,20 @@ import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/shad/T
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/shad/Card';
 import { ApiKeyField } from './ApiKeyField';
 import { 
-  Sparkles, 
+  Sparkle, 
   Info, 
-  Bot, 
+  Robot, 
   Atom, 
   Image as ImageIcon, 
   Database, 
-  Search, 
+  MagnifyingGlass, 
   Wrench,
-  Settings2,
-  Zap,
+  GearSix,
+  Lightning,
   Cpu,
-  Sliders,
-  LayoutGrid
-} from 'lucide-react';
+  SlidersHorizontal,
+  SquaresFour
+} from '@phosphor-icons/react';
 import type { ApiConfig as BaseApiConfig } from '@/types';
 import { inferApiCapabilities } from '@/utils/apiCapabilityEngine';
 import { getModelDefaultParameters } from '@/utils/modelCapabilities';
@@ -521,7 +521,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
         key: 'isReranker',
         title: t('settings:api.modal.capabilities.reranker.title'),
         description: t('settings:api.modal.capabilities.reranker.description'),
-        icon: <Search className="h-5 w-5" />,
+        icon: <MagnifyingGlass className="h-5 w-5" />,
       },
       {
         key: 'isImageGeneration',
@@ -729,7 +729,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           placeholder={t('common:api_config_modal.model_name_placeholder')}
                           className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-all h-10 pr-8"
                         />
-                        <Sparkles className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-amber-400/60 pointer-events-none" />
+                        <Sparkle className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-amber-400/60 pointer-events-none" />
                       </div>
                       <p className="text-[10px] text-muted-foreground/60 flex items-center gap-1 ml-1">
                         {t('settings:api.modal.model_name_hint')}
@@ -1498,7 +1498,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       <Card className="border-border/40 bg-transparent shadow-none">
                         <CardHeader className="pb-3">
                           <CardTitle className="text-sm flex items-center gap-2">
-                            <Zap className="h-4 w-4 text-primary" />
+                            <Lightning className="h-4 w-4 text-primary" />
                             {t('settings:api.modal.grok.title')}
                           </CardTitle>
                           <CardDescription className="text-xs">

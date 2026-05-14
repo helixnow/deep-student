@@ -5,7 +5,7 @@
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus, Check, Loader2 } from 'lucide-react';
+import { Plus, Check, CircleNotch } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { AppSelect } from '@/components/ui/app-menu';
 import { Input } from '@/components/ui/shad/Input';
@@ -201,7 +201,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
       <div>
         <GroupTitle title={t('settings:memory.title')} />
         <div className="flex items-center justify-center py-6">
-          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+          <CircleNotch size={20} className="animate-spin text-muted-foreground" />
         </div>
       </div>
     );
@@ -259,7 +259,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
               onClick={() => setShowCreateInput(!showCreateInput)}
               disabled={saving}
             >
-              <Plus className="w-3.5 h-3.5 mr-1" />
+              <Plus size={14} className="mr-1" />
               {t('settings:memory.createFolder')}
             </NotionButton>
           </div>
@@ -287,9 +287,9 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
                 disabled={saving || !newFolderName.trim()}
               >
                 {saving ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <CircleNotch size={14} className="animate-spin" />
                 ) : (
-                  <Check className="w-3.5 h-3.5" />
+                  <Check size={14} />
                 )}
               </NotionButton>
             </div>

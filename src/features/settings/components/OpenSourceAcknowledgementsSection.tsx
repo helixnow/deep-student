@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { motion } from 'framer-motion';
-import { ListChecks } from 'lucide-react';
+import { ListChecks } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import {
   NotionDialog,
@@ -111,7 +111,7 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
             className="mr-1 h-7 gap-1.5 text-xs text-muted-foreground"
           >
             <span>{t('acknowledgements.openSource.openDialog')}</span>
-            <ListChecks className="h-3.5 w-3.5" />
+            <ListChecks size={14} />
           </NotionButton>
         </div>
         <p className="text-[12.5px] text-muted-foreground/70 leading-relaxed px-1 mt-2 mb-5">

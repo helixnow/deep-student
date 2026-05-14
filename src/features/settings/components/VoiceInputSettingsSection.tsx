@@ -13,16 +13,16 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
-  AlertTriangle,
-  BarChart3,
-  ChevronDown,
+  Warning,
+  ChartBar,
+  CaretDown,
   Copy,
-  Loader2,
-  RefreshCcw,
-  Settings2,
-  Trash2,
+  CircleNotch,
+  ArrowCounterClockwise,
+  GearSix,
+  Trash,
   Wrench,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 
 import { cn } from '@/lib/utils';
@@ -223,7 +223,7 @@ function StatusBar({
         onClick={onRequestAccess}
         disabled={requestingAccess}
       >
-        {requestingAccess ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : null}
+        {requestingAccess ?           <CircleNotch size={14} className="animate-spin" /> : null}
         {t('settings:voice_input.request_access', { defaultValue: 'Request microphone access' })}
       </NotionButton>
     </div>
@@ -263,7 +263,7 @@ function ModelStatusHint({
   return (
     <div className="mx-1 my-1 rounded-md border border-amber-500/20 bg-amber-500/5 px-3 py-2 text-[11px] leading-relaxed text-amber-700 dark:text-amber-300">
       <div className="flex items-start gap-2">
-        <AlertTriangle className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
+        <Warning className="mt-0.5 h-3.5 w-3.5 flex-shrink-0" />
         <span>{map[assignedModel.status]}</span>
       </div>
     </div>
@@ -343,7 +343,7 @@ function HistoryEntryCard({
             : ''}
         </div>
         <NotionButton type="button" variant="ghost" size="sm" onClick={() => onCopy(entry)}>
-          <Copy className="h-3.5 w-3.5" />
+          <Copy size={14} />
           {copyLabel}
         </NotionButton>
       </div>
@@ -552,7 +552,7 @@ export function VoiceInputSettingsSection({ assignedModel }: VoiceInputSettingsS
           title={t('settings:voice_input.title', { defaultValue: 'Dictation' })}
         />
         <div className="flex items-center gap-2 py-3 px-1 text-sm text-muted-foreground">
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <CircleNotch size={16} className="animate-spin" />
           <span>
             {t('settings:voice_input.loading', {
               defaultValue: 'Loading voice input settings…',
@@ -586,7 +586,7 @@ export function VoiceInputSettingsSection({ assignedModel }: VoiceInputSettingsS
               size="sm"
               onClick={() => openSettingsTab('models')}
             >
-              <Settings2 className="h-3.5 w-3.5" />
+              <GearSix size={14} />
               {t('settings:voice_input.open_model_settings', { defaultValue: 'Open Model Assignments' })}
             </NotionButton>
             <NotionButton
@@ -595,7 +595,7 @@ export function VoiceInputSettingsSection({ assignedModel }: VoiceInputSettingsS
               size="sm"
               onClick={() => openSettingsTab('apis')}
             >
-              <Wrench className="h-3.5 w-3.5" />
+              <Wrench size={14} />
               {t('settings:voice_input.open_api_settings', { defaultValue: 'Open API Settings' })}
             </NotionButton>
             <NotionButton
@@ -604,7 +604,7 @@ export function VoiceInputSettingsSection({ assignedModel }: VoiceInputSettingsS
               size="sm"
               onClick={() => openSettingsTab('statistics')}
             >
-              <BarChart3 className="h-3.5 w-3.5" />
+              <ChartBar size={14} />
               {t('settings:voice_input.open_usage_statistics', { defaultValue: 'Open Usage Statistics' })}
             </NotionButton>
           </>
@@ -731,7 +731,7 @@ export function VoiceInputSettingsSection({ assignedModel }: VoiceInputSettingsS
                 size="sm"
                 onClick={() => void handleClearHistory()}
               >
-                <Trash2 className="h-3.5 w-3.5" />
+                <Trash size={14} />
                 {t('settings:voice_input.history_clear', { defaultValue: 'Clear' })}
               </NotionButton>
             ) : null
@@ -760,7 +760,7 @@ export function VoiceInputSettingsSection({ assignedModel }: VoiceInputSettingsS
             aria-expanded={diagnosticsOpen}
             className="!h-auto !px-0 !py-2 text-xs text-muted-foreground hover:text-foreground"
           >
-            <ChevronDown
+            <CaretDown
               className={cn(
                 'h-3.5 w-3.5 transition-transform',
                 diagnosticsOpen ? 'rotate-0' : '-rotate-90'
@@ -834,7 +834,7 @@ export function VoiceInputSettingsSection({ assignedModel }: VoiceInputSettingsS
                   }}
                   disabled={saving || requestingAccess}
                 >
-                  <RefreshCcw className="h-3.5 w-3.5" />
+                  <ArrowCounterClockwise size={14} />
                   {t('settings:voice_input.refresh_support', { defaultValue: 'Refresh Support' })}
                 </NotionButton>
               </div>

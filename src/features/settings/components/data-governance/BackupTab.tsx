@@ -8,13 +8,13 @@
 import React, { useState, useMemo, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  RefreshCw,
+  ArrowClockwise,
   Shield,
-  Loader2,
+  CircleNotch,
   Play,
-  Trash2,
+  Trash,
   XCircle,
-  AlertTriangle,
+  Warning,
   Archive,
   Upload,
   Image,
@@ -23,11 +23,11 @@ import {
   Folder,
   FileAudio,
   FileVideo,
-  CheckCircle2,
-  RotateCcw,
-  Settings,
-  FileOutput,
-} from 'lucide-react';
+  CheckCircle,
+  ArrowCounterClockwise,
+  Gear,
+  FileArrowDown,
+} from '@phosphor-icons/react';
 
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Badge } from '@/components/ui/shad/Badge';
@@ -149,9 +149,9 @@ const RestorePhaseIndicator: React.FC<RestorePhaseIndicatorProps> = ({ phase, pr
       {phaseLabels.map((label, idx) => (
         <div key={idx} className="flex items-center gap-2">
           {idx < currentPhaseIndex ? (
-            <CheckCircle2 className="h-3 w-3 text-green-500 shrink-0" />
+            <CheckCircle size={12} className="text-green-500 shrink-0" />
           ) : idx === currentPhaseIndex ? (
-            <Loader2 className="h-3 w-3 text-primary animate-spin shrink-0" />
+            <CircleNotch size={12} className="text-primary animate-spin shrink-0" />
           ) : (
             <div className="h-3 w-3 rounded-full border border-muted-foreground/30 shrink-0" />
           )}
@@ -387,7 +387,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
       {resumableJobs && resumableJobs.length > 0 && !isBackupRunning && (
         <div className="rounded-lg border border-warning/30 bg-warning/5 p-4 space-y-2">
           <div className="flex items-center gap-2 font-medium text-warning">
-            <AlertTriangle className="h-4 w-4" />
+            <Warning size={16} />
             {t('data:governance.resumable_jobs_title')}
           </div>
           {resumableJobs.map(job => (
@@ -409,7 +409,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
         <div className="rounded-lg border border-primary/30 bg-primary/5 p-4 space-y-3">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
-              <Loader2 className="h-4 w-4 animate-spin text-primary" />
+              <CircleNotch size={16} className="animate-spin text-primary" />
               <span className="font-medium text-sm">
                 {currentJobOperation === 'zip_export'
                   ? t('data:governance.export_in_progress')
@@ -604,7 +604,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             className="h-9"
           >
             {isBackupRunning ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              <CircleNotch size={16} className="mr-2 animate-spin" />
             ) : (
               <Archive className="h-4 w-4 mr-2" />
             )}
@@ -621,7 +621,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             {t('data:governance.import_button')}
           </NotionButton>
           <NotionButton variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="h-9">
-            <RefreshCw className={`h-4 w-4 mr-2 ${loading ? 'animate-spin' : ''}`} />
+            <ArrowClockwise size={16} className={`mr-2 ${loading ? 'animate-spin' : ''}`} />
             {t('common:actions.refresh')}
           </NotionButton>
         </div>
@@ -632,13 +632,13 @@ export const BackupTab: React.FC<BackupTabProps> = ({
       {/* 备份设置 */}
       <div className="space-y-4">
         <div className="flex items-center gap-2 text-base font-medium text-foreground">
-          <Settings className="h-4 w-4" />
+          <Gear size={16} />
           {t('data:governance.backup_settings')}
         </div>
 
         {configLoading ? (
           <div className="flex items-center justify-center gap-2 py-4 text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <CircleNotch size={16} className="animate-spin" />
             {t('common:status.loading')}
           </div>
         ) : backupConfig ? (
@@ -748,7 +748,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             {/* 保存指示器 */}
             {configSaving && (
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                <Loader2 className="h-3 w-3 animate-spin" />
+                <CircleNotch size={12} className="animate-spin" />
                 {t('common:status.saving')}
               </div>
             )}
@@ -807,7 +807,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                       if (status === 'verified') {
                         return (
                           <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 text-xs whitespace-nowrap">
-                            <CheckCircle2 className="h-3 w-3 shrink-0" />
+                            <CheckCircle size={12} className="shrink-0" />
                             {t('data:governance.verification_verified')}
                           </div>
                         );
@@ -815,7 +815,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                       if (status === 'failed') {
                         return (
                           <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400 text-xs whitespace-nowrap">
-                            <AlertTriangle className="h-3 w-3 shrink-0" />
+                            <Warning size={12} className="shrink-0" />
                             {t('data:governance.verification_failed')}
                           </div>
                         );
@@ -823,7 +823,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                       if (status === 'verifying') {
                         return (
                           <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400 text-xs whitespace-nowrap">
-                            <Loader2 className="h-3 w-3 shrink-0 animate-spin" />
+                            <CircleNotch size={12} className="shrink-0 animate-spin" />
                             {t('data:governance.verification_verifying')}
                           </div>
                         );
@@ -861,7 +861,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                         title={t('data:governance.export_zip')}
                         aria-label={t('data:governance.export_zip')}
                       >
-                        <FileOutput className="h-3.5 w-3.5" />
+                        <FileArrowDown size={14} />
                       </NotionButton>
                       <NotionButton
                         variant="ghost"
@@ -882,7 +882,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                         title={t('data:governance.restore')}
                         aria-label={t('data:governance.restore')}
                       >
-                        <RotateCcw className="h-3.5 w-3.5" />
+                        <ArrowCounterClockwise size={14} />
                       </NotionButton>
                       <NotionButton
                         variant="ghost"
@@ -896,7 +896,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                         title={t('common:actions.delete')}
                         aria-label={t('common:actions.delete')}
                       >
-                        <Trash2 className="h-3.5 w-3.5" />
+                        <Trash size={14} />
                       </NotionButton>
                     </div>
                   </TableCell>
@@ -907,7 +907,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                   <TableCell colSpan={6} className="text-center text-muted-foreground py-8">
                     {loading ? (
                       <div className="flex items-center justify-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <CircleNotch size={16} className="animate-spin" />
                         {t('common:status.loading')}
                       </div>
                     ) : (
@@ -960,7 +960,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
       <NotionDialog open={showRestartDialog} onOpenChange={(open) => { if (!open) onRestartLater?.(); }}>
         <NotionDialogHeader>
           <NotionDialogTitle className="flex items-center gap-2">
-            <CheckCircle2 className="h-5 w-5 text-green-500" />
+            <CheckCircle size={20} className="text-green-500" />
             {t('data:governance.restore_complete_title')}
           </NotionDialogTitle>
           <NotionDialogDescription>
@@ -973,7 +973,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             {t('data:governance.restart_later')}
           </NotionButton>
           <NotionButton variant="primary" size="sm" onClick={onRestartNow}>
-            <RotateCcw className="h-4 w-4 mr-2" />
+            <ArrowCounterClockwise size={16} className="mr-2" />
             {t('data:governance.restart_now')}
           </NotionButton>
         </NotionDialogFooter>
@@ -996,7 +996,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
             {t('data:governance.restore_later', '稍后恢复')}
           </NotionButton>
           <NotionButton variant="primary" size="sm" onClick={onRestoreNow}>
-            <RotateCcw className="h-4 w-4 mr-2" />
+            <ArrowCounterClockwise size={16} className="mr-2" />
             {t('data:governance.restore_now', '立即恢复')}
           </NotionButton>
         </NotionDialogFooter>
@@ -1026,7 +1026,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                   : 'bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400'
               }`}>
                 {verifyResult.is_valid ? (
-                  <CheckCircle2 className="h-4 w-4" />
+                  <CheckCircle size={16} />
                 ) : (
                   <XCircle className="h-4 w-4" />
                 )}
@@ -1053,7 +1053,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
                           <div className="flex items-center gap-1.5">
                             {db.is_valid ? (
                               <>
-                                <CheckCircle2 className="h-3.5 w-3.5 text-green-500" />
+                                <CheckCircle size={14} className="text-green-500" />
                                 <span className="text-xs text-green-600 dark:text-green-400">
                                   {t('data:governance.verify_db_pass')}
                                 </span>

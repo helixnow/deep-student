@@ -16,7 +16,7 @@
 
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Plus } from 'lucide-react';
+import { Plus } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import {
@@ -115,7 +115,7 @@ export const AccentPicker: React.FC<AccentPickerProps> = ({
             style={{ backgroundColor: customColor }}
           />
         ) : (
-          <Plus className="h-3.5 w-3.5" strokeWidth={2} aria-hidden="true" />
+          <Plus size={14} aria-hidden="true" />
         )}
       </NotionButton>
 

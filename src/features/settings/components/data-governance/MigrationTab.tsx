@@ -6,7 +6,7 @@
 
 import React, { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, CheckCircle2, Copy, RefreshCw, ShieldAlert } from 'lucide-react';
+import { Warning, CheckCircle, Copy, ArrowClockwise, ShieldWarning } from '@phosphor-icons/react';
 
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/shad/Table';
@@ -59,7 +59,7 @@ export const MigrationTab: React.FC<MigrationTabProps> = ({
           </p>
         </div>
         <NotionButton variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="h-8">
-          <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
+          <ArrowClockwise size={14} className={`mr-1.5 ${loading ? 'animate-spin' : ''}`} />
           {t('common:actions.refresh')}
         </NotionButton>
       </div>
@@ -88,14 +88,14 @@ export const MigrationTab: React.FC<MigrationTabProps> = ({
           <div className="flex items-center gap-2 text-sm font-medium">
             {allHealthy ? (
               <>
-                <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                <CheckCircle size={16} className="text-emerald-500" />
                 <span className="text-emerald-600 dark:text-emerald-400">
                   {t('data:governance.healthy')}
                 </span>
               </>
             ) : (
               <>
-                <AlertTriangle className="h-4 w-4 text-amber-500" />
+                <Warning size={16} className="text-amber-500" />
                 <span className="text-amber-600 dark:text-amber-400">
                   {t('data:governance.needs_attention')}
                 </span>
@@ -108,7 +108,7 @@ export const MigrationTab: React.FC<MigrationTabProps> = ({
       {migrationStatus?.last_error && (
         <div className="rounded-lg border border-red-500/30 bg-red-500/5 p-4 space-y-2">
           <div className="flex items-center gap-2 text-red-600 dark:text-red-400 font-medium">
-            <ShieldAlert className="h-4 w-4" />
+            <ShieldWarning size={16} />
             {t('data:governance.migration_last_error_title')}
           </div>
           <p className="text-sm font-mono text-red-600/80 dark:text-red-400/80 break-all">
@@ -123,7 +123,7 @@ export const MigrationTab: React.FC<MigrationTabProps> = ({
             className="h-7 px-2.5 text-xs"
             onClick={handleCopyDiagnostic}
           >
-            <Copy className="h-3 w-3 mr-1" />
+            <Copy size={12} className="mr-1" />
             {diagCopied
               ? t('data:governance.copied', '已复制')
               : diagCopyFailed

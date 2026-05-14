@@ -4,7 +4,7 @@ import { Card, CardHeader, CardTitle, CardDescription, CardContent, CardFooter }
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
-import { BadgeCheck, AlertCircle, RefreshCw, Plus, Save as SaveIcon, Trash2, ListChecks, Globe } from 'lucide-react';
+import { SealCheck, WarningCircle, ArrowClockwise, Plus, FloppyDisk as SaveIcon, Trash, ListChecks, Globe } from '@phosphor-icons/react';
 import { TauriAPI } from '@/utils/tauriApi';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -133,17 +133,17 @@ export const McpToolsManager: React.FC = () => {
                   : 'bg-muted text-muted-foreground ring-border/60 dark:bg-muted/60'
             }`}
           >
-            {status?.enabled ? <BadgeCheck className="h-4 w-4" /> : <AlertCircle className="h-4 w-4" />}
+            {status?.enabled ? <SealCheck size={16} /> : <WarningCircle size={16} />}
             MCP {enabledLabel}
           </div>
           <NotionButton size="sm" onClick={refreshTools} disabled={busy}>
-            <RefreshCw className="h-4 w-4 mr-1" /> {t('common:mcp_tools.refresh_list')}
+            <ArrowClockwise size={16} className="mr-1" /> {t('common:mcp_tools.refresh_list')}
           </NotionButton>
           <NotionButton size="sm" variant="default" onClick={reloadClient} disabled={busy}>
-            <RefreshCw className="h-4 w-4 mr-1" /> {t('common:mcp_tools.reload_client')}
+            <ArrowClockwise size={16} className="mr-1" /> {t('common:mcp_tools.reload_client')}
           </NotionButton>
           <NotionButton size="sm" variant="ghost" onClick={testAllEngines} disabled={testing} title={t('common:mcp_tools.health_check_title')}>
-            <ListChecks className="h-4 w-4 mr-1" /> {t('common:mcp_tools.health_check')}
+            <ListChecks size={16} className="mr-1" /> {t('common:mcp_tools.health_check')}
           </NotionButton>
         </CardContent>
       </Card>
@@ -171,7 +171,7 @@ export const McpToolsManager: React.FC = () => {
                   <div className="md:col-span-2 flex items-center justify-between">
                     <div className="text-xs text-muted-foreground">{t('common:mcp_tools.tool_id_label')}: {tool.id}</div>
                     <NotionButton size="sm" variant="danger" onClick={()=>removeTool(tool.id)}>
-                      <Trash2 className="h-4 w-4 mr-1" /> {t('common:mcp_tools.delete_tool')}
+                      <Trash size={16} className="mr-1" /> {t('common:mcp_tools.delete_tool')}
                     </NotionButton>
                   </div>
                 </div>
@@ -181,10 +181,10 @@ export const McpToolsManager: React.FC = () => {
         </CardContent>
         <CardFooter className="flex flex-wrap gap-2">
           <NotionButton size="sm" onClick={addTool}>
-            <Plus className="h-4 w-4 mr-1" /> {t('common:mcp_tools.add_tool')}
+            <Plus size={16} className="mr-1" /> {t('common:mcp_tools.add_tool')}
           </NotionButton>
           <NotionButton size="sm" variant="default" onClick={saveStaticTools} disabled={saving}>
-            <SaveIcon className="h-4 w-4 mr-1" /> {t('common:mcp_tools.save_list')}
+            <SaveIcon size={16} className="mr-1" /> {t('common:mcp_tools.save_list')}
           </NotionButton>
         </CardFooter>
       </Card>

@@ -5,7 +5,7 @@
 
 import React, { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { RotateCcw } from 'lucide-react';
+import { ArrowCounterClockwise } from '@phosphor-icons/react';
 import { Switch } from '@/components/ui/shad/Switch';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -130,7 +130,7 @@ export const PdfSettingsSection: React.FC = () => {
             onClick={handleReset}
             className="gap-1"
           >
-            <RotateCcw size={12} />
+            <ArrowCounterClockwise size={12} />
             {t('common:actions.reset')}
           </NotionButton>
         }

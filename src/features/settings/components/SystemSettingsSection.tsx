@@ -12,14 +12,14 @@ import useAttachmentSettings from '@/hooks/useAttachmentSettings'; // P2增强�
 import { 
   CheckCircle, 
   XCircle, 
-  Save, 
+  FloppyDisk, 
   Globe, 
   Palette, 
   Database,
   Bell,
-  MessageSquare,
+  Chat,
   Bug,
-  RotateCcw,
+  ArrowCounterClockwise,
   Check,
   Sun,
   Moon,
@@ -27,8 +27,8 @@ import {
   Paperclip,
   Image,
   FileText,
-  HelpCircle
-} from 'lucide-react';
+  Question
+} from '@phosphor-icons/react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Switch } from '@/components/ui/shad/Switch';
@@ -431,7 +431,7 @@ export const SystemSettingsSection: React.FC = () => {
         {/* 保存提示 */}
         {isAutoSaveEnabled && (
           <div className="mt-8 flex items-center justify-center text-sm text-muted-foreground">
-            <Check className="w-4 h-4 mr-1" />
+            <Check size={16} className="mr-1" />
             <span>{t('settings:auto_saved')}</span>
           </div>
         )}
@@ -440,7 +440,7 @@ export const SystemSettingsSection: React.FC = () => {
         {!isAutoSaveEnabled && (
           <div className="mt-8 flex gap-4 justify-center">
             <NotionButton onClick={handleSaveAll} disabled={saving} variant="primary">
-              <Save className="w-3.5 h-3.5" />
+              <FloppyDisk size={14} />
               {saving ? t('common:status.saving') : t('settings:developer.save_all_settings')}
             </NotionButton>
             
@@ -449,7 +449,7 @@ export const SystemSettingsSection: React.FC = () => {
               onClick={handleReset}
               disabled={saving}
             >
-              <RotateCcw className="w-3.5 h-3.5" />
+              <ArrowCounterClockwise size={14} />
               {t('common:actions.reset_default')}
             </NotionButton>
           </div>

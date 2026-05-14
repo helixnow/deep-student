@@ -17,16 +17,16 @@ import {
 } from '@/api/dataGovernance';
 import { useTranslation } from 'react-i18next';
 import {
-  Trash2,
-  RefreshCw,
+  Trash,
+  ArrowClockwise,
   HardDrive,
   Image,
   FileText,
   Database,
-  AlertTriangle,
-  CheckCircle2,
-  Loader2,
-} from 'lucide-react';
+  Warning,
+  CheckCircle,
+  CircleNotch,
+} from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { Label } from '@/components/ui/shad/Label';
@@ -122,12 +122,12 @@ export const MediaCacheSection: React.FC = () => {
       <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <Image className="h-4 w-4" />
+            <Image size={16} />
             {t('data:governance.cache.stats.pdf_preview')}
           </div>
           <div className="flex items-baseline gap-2">
             <div className="text-2xl font-semibold text-foreground">
-              {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : (stats?.pdfPreviewCount ?? 0)}
+              {loading ?               <CircleNotch size={20} className="animate-spin" /> : (stats?.pdfPreviewCount ?? 0)}
             </div>
             {!loading && (
               <span className="text-xs text-muted-foreground">
@@ -139,12 +139,12 @@ export const MediaCacheSection: React.FC = () => {
 
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <Image className="h-4 w-4" />
+            <Image size={16} />
             {t('data:governance.cache.stats.compressed_images')}
           </div>
           <div className="flex items-baseline gap-2">
             <div className="text-2xl font-semibold text-foreground">
-              {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : (stats?.compressedImageCount ?? 0)}
+              {loading ?               <CircleNotch size={20} className="animate-spin" /> : (stats?.compressedImageCount ?? 0)}
             </div>
             {!loading && (
               <span className="text-xs text-muted-foreground">
@@ -156,22 +156,22 @@ export const MediaCacheSection: React.FC = () => {
 
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <FileText className="h-4 w-4" />
+            <FileText size={16} />
             {t('data:governance.cache.stats.ocr_text')}
           </div>
           <div className="text-2xl font-semibold text-foreground">
-            {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : (stats?.ocrTextCount ?? 0)}
+            {loading ?               <CircleNotch size={20} className="animate-spin" /> : (stats?.ocrTextCount ?? 0)}
           </div>
         </div>
 
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <Database className="h-4 w-4" />
+            <Database size={16} />
             {t('data:governance.cache.stats.vector_index')}
           </div>
           <div className="flex items-baseline gap-2">
             <div className="text-2xl font-semibold text-foreground">
-              {loading ? <Loader2 className="h-5 w-5 animate-spin" /> : (stats?.vectorIndexCount ?? 0)}
+              {loading ?               <CircleNotch size={20} className="animate-spin" /> : (stats?.vectorIndexCount ?? 0)}
             </div>
             {!loading && (
               <span className="text-xs text-muted-foreground">
@@ -186,7 +186,7 @@ export const MediaCacheSection: React.FC = () => {
       <div className="rounded-lg border border-border/40 p-4">
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <HardDrive className="h-4 w-4 text-muted-foreground" />
+            <HardDrive size={16} className="text-muted-foreground" />
             <div>
               <div className="text-sm font-medium text-foreground">
                 {t('data:governance.cache.total_size')}
@@ -199,7 +199,7 @@ export const MediaCacheSection: React.FC = () => {
           <div className="flex items-center gap-3">
             <div className="text-lg font-semibold text-foreground">
               {loading ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <CircleNotch size={16} className="animate-spin" />
               ) : (
                 formatBytes(stats?.totalSize ?? 0)
               )}
@@ -211,7 +211,7 @@ export const MediaCacheSection: React.FC = () => {
               disabled={loading}
               className="h-7 w-7 p-0"
             >
-              <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+              <ArrowClockwise size={14} className={`${loading ? 'animate-spin' : ''}`} />
             </NotionButton>
           </div>
         </div>
@@ -224,7 +224,7 @@ export const MediaCacheSection: React.FC = () => {
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="space-y-1">
             <div className="flex items-center gap-2 text-base font-medium text-foreground">
-              <Trash2 className="h-4 w-4" />
+              <Trash size={16} />
               {t('data:governance.cache.pick_types')}
             </div>
           </div>
@@ -249,12 +249,12 @@ export const MediaCacheSection: React.FC = () => {
             >
               {clearing ? (
                 <>
-                  <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                  <CircleNotch size={14} className="mr-1.5 animate-spin" />
                   {t('data:governance.cache.clearing')}
                 </>
               ) : (
                 <>
-                  <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+                  <Trash size={14} className="mr-1.5" />
                   {t('data:governance.cache.clear_cache')}
                 </>
               )}
@@ -309,7 +309,7 @@ export const MediaCacheSection: React.FC = () => {
       <NotionAlertDialog
         open={showConfirm}
         onOpenChange={setShowConfirm}
-        icon={<Trash2 className="h-5 w-5 text-red-500" />}
+        icon={<Trash size={20} className="text-red-500" />}
         title={t('data:governance.cache.confirm_title')}
         description={t('data:governance.cache.confirm_desc')}
         confirmText={t('data:governance.cache.confirm_clear')}
@@ -346,7 +346,7 @@ export const MediaCacheSection: React.FC = () => {
           </ul>
           {clearOptions.clearVectorIndex && (
             <div className="flex items-start gap-2 p-3 mt-3 rounded-md bg-destructive/10 text-destructive">
-              <AlertTriangle className="h-5 w-5 flex-shrink-0 mt-0.5" />
+              <Warning size={20} className="flex-shrink-0 mt-0.5" />
               <div className="text-sm">
                 {t('data:governance.cache.vector_index_warning')}
               </div>
@@ -401,7 +401,7 @@ const ClearOption: React.FC<ClearOptionProps> = ({
     </div>
     <div className="flex items-center gap-2 shrink-0">
       {warning && (
-        <AlertTriangle className="h-3.5 w-3.5 text-amber-500" />
+        <Warning size={14} className="text-amber-500" />
       )}
       {size !== undefined && size > 0 && (
         <span className="text-xs font-mono text-muted-foreground">

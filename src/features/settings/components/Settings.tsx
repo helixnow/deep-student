@@ -107,14 +107,14 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
 
 import {
   Plus,
-  Trash2,
+  Trash,
   X,
   Check,
-  RefreshCcw,
+  ArrowCounterClockwise,
   Info as InfoIcon,
-  Layers,
-  ChevronRight,
-} from 'lucide-react';
+  Stack,
+  CaretRight,
+} from '@phosphor-icons/react';
 import { type McpStatusInfo } from '@/mcp/mcpService';
 import { testMcpSseFrontend, testMcpHttpFrontend, testMcpWebsocketFrontend } from '@/mcp/mcpFrontendTester';
 import { getBuiltinServer, BUILTIN_SERVER_ID } from '@/mcp/builtinMcpServer';
@@ -221,7 +221,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
         <span className="truncate max-w-[80px]">
           {t('settings:title')}
         </span>
-        <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+        <CaretRight size={16} className="flex-shrink-0 text-muted-foreground" />
         <span className="truncate max-w-[120px]">
           {getActiveTabLabel()}
         </span>
@@ -235,7 +235,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
     if (screenPosition === 'right' && rightPanelType === 'vendorConfig') {
       return (
         <NotionButton variant="ghost" size="icon" iconOnly onClick={() => vendorConfigModalRef.current?.save()} title={t('common:actions.save')} aria-label="save" className="text-primary">
-          <Check className="w-5 h-5" />
+          <Check size={20} />
         </NotionButton>
       );
     }
@@ -1528,7 +1528,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
         <NotionDialog open={showAppMenuDemo} onOpenChange={setShowAppMenuDemo} maxWidth="max-w-4xl">
           <NotionDialogHeader>
             <NotionDialogTitle className="flex items-center gap-2">
-              <Layers className="h-5 w-5" />
+              <Stack size={20} />
               {t('acknowledgements.ui_components.app_menu')}
             </NotionDialogTitle>
             <NotionDialogDescription>
@@ -1611,7 +1611,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
         <NotionDialog open={showAppMenuDemo} onOpenChange={setShowAppMenuDemo} maxWidth="max-w-4xl">
           <NotionDialogHeader>
             <NotionDialogTitle className="flex items-center gap-2">
-              <Layers className="h-5 w-5" />
+              <Stack size={20} />
               {t('acknowledgements.ui_components.app_menu')}
             </NotionDialogTitle>
             <NotionDialogDescription>
@@ -1695,7 +1695,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
       <NotionDialog open={showAppMenuDemo} onOpenChange={setShowAppMenuDemo} maxWidth="max-w-4xl">
         <NotionDialogHeader>
           <NotionDialogTitle className="flex items-center gap-2">
-            <Layers className="h-5 w-5" />
+            <Stack size={20} />
             {t('acknowledgements.ui_components.app_menu')}
           </NotionDialogTitle>
           <NotionDialogDescription>

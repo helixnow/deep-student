@@ -12,21 +12,21 @@ import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
   Cloud,
-  CloudOff,
-  RefreshCw,
-  AlertTriangle,
-  CheckCircle2,
+  CloudSlash,
+  ArrowClockwise,
+  Warning,
+  CheckCircle,
   Database,
-  Loader2,
-  ArrowUpCircle,
-  ArrowDownCircle,
-  History,
-  Settings2,
-  Zap,
+  CircleNotch,
+  ArrowCircleUp,
+  ArrowCircleDown,
+  ClockCounterClockwise,
+  GearSix,
+  Lightning,
   Upload,
   Download,
-  ArrowLeftRight,
-} from 'lucide-react';
+  ArrowsLeftRight,
+} from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/shad/Card';
@@ -291,7 +291,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               {syncSummary.status === 'synced' ? (
                 <Cloud className="h-5 w-5 text-success" />
               ) : syncSummary.status === 'pending' ? (
-                <CloudOff className="h-5 w-5 text-warning" />
+                <CloudSlash className="h-5 w-5 text-warning" />
               ) : (
                 <Cloud className="h-5 w-5 text-muted-foreground" />
               )}
@@ -306,9 +306,9 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               disabled={isRefreshing}
             >
               {isRefreshing ? (
-                <Loader2 className="h-4 w-4 animate-spin" />
+                <CircleNotch className="h-4 w-4 animate-spin" />
               ) : (
-                <RefreshCw className="h-4 w-4" />
+                <ArrowClockwise className="h-4 w-4" />
               )}
             </NotionButton>
           </div>
@@ -319,14 +319,14 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
             <div className="flex items-center gap-2">
               {syncSummary.status === 'synced' ? (
                 <>
-                  <CheckCircle2 className="h-4 w-4 text-success" />
+                  <CheckCircle className="h-4 w-4 text-success" />
                   <span className="text-sm text-success">
                     {t('data:sync_settings.all_synced')}
                   </span>
                 </>
               ) : syncSummary.status === 'pending' ? (
                 <>
-                  <AlertTriangle className="h-4 w-4 text-warning" />
+                  <Warning className="h-4 w-4 text-warning" />
                   <span className="text-sm text-warning">
                     {t('data:sync_settings.pending_changes', {
                       count: syncSummary.pendingChanges,
@@ -372,11 +372,11 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
                     {db.has_change_log ? (
                       db.pending_changes > 0 ? (
                         <Badge variant="secondary" className="text-xs bg-warning/10 text-warning">
-                          <ArrowUpCircle className="h-3 w-3 mr-1" />
+                        <ArrowCircleUp className="h-3 w-3 mr-1" />
                           {db.pending_changes}
                         </Badge>
                       ) : (
-                        <CheckCircle2 className="h-4 w-4 text-success" />
+                        <CheckCircle className="h-4 w-4 text-success" />
                       )
                     ) : (
                       <span className="text-muted-foreground">-</span>
@@ -390,7 +390,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
           {/* 最后同步时间 */}
           {syncStatus?.last_sync_at && (
             <div className="flex items-center gap-2 text-xs text-muted-foreground">
-              <History className="h-3 w-3" />
+              <ClockCounterClockwise className="h-3 w-3" />
               <span>
                 {t('data:sync_settings.last_sync')}: {syncStatus.last_sync_at}
               </span>
@@ -403,7 +403,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
-            <RefreshCw className="h-5 w-5 text-muted-foreground" />
+            <ArrowClockwise className="h-5 w-5 text-muted-foreground" />
             <CardTitle className="text-base">
               {t('data:sync_settings.sync_actions')}
             </CardTitle>
@@ -438,7 +438,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
               disabled={isSyncing}
               className="flex-1"
             >
-              <ArrowLeftRight className="h-4 w-4 mr-2" />
+              <ArrowsLeftRight className="h-4 w-4 mr-2" />
               {t('data:sync_settings.bidirectional')}
             </NotionButton>
           </div>
@@ -451,11 +451,11 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
                   {/* 阶段指示器 */}
                   <div className="flex items-center gap-2">
                     {syncProgress.phase === 'completed' ? (
-                      <CheckCircle2 className="h-4 w-4 text-green-500" />
+                      <CheckCircle className="h-4 w-4 text-green-500" />
                     ) : syncProgress.phase === 'failed' ? (
-                      <AlertTriangle className="h-4 w-4 text-red-500" />
+                      <Warning className="h-4 w-4 text-red-500" />
                     ) : (
-                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                      <CircleNotch className="h-4 w-4 animate-spin text-primary" />
                     )}
                     <span className="font-medium">
                       {localizedPhaseNames[syncProgress.phase]}
@@ -497,7 +497,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
                   {/* 错误信息 */}
                   {syncProgress.error && (
                     <Alert variant="destructive" className="py-2">
-                      <AlertTriangle className="h-4 w-4" />
+                      <Warning className="h-4 w-4" />
                       <AlertDescription className="text-xs">
                         {syncProgress.error}
                       </AlertDescription>
@@ -514,7 +514,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
       <Card>
         <CardHeader className="pb-3">
           <div className="flex items-center gap-2">
-            <Settings2 className="h-5 w-5 text-muted-foreground" />
+            <GearSix className="h-5 w-5 text-muted-foreground" />
             <CardTitle className="text-base">
               {t('data:sync_settings.conflict_management')}
             </CardTitle>
@@ -527,7 +527,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
           {/* 冲突状态 */}
           {conflicts?.has_conflicts ? (
             <Alert variant="warning">
-              <AlertTriangle className="h-4 w-4" />
+              <Warning className="h-4 w-4" />
               <AlertDescription className="flex items-center justify-between">
                 <span>
                   {t('data:sync_settings.conflicts_found', {
@@ -546,7 +546,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
             </Alert>
           ) : lastResult?.success ? (
             <Alert>
-              <CheckCircle2 className="h-4 w-4" />
+              <CheckCircle className="h-4 w-4" />
               <AlertDescription>
                 {t('data:sync_settings.no_conflicts')}
               </AlertDescription>
@@ -556,7 +556,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
           {/* 错误提示 */}
           {error && (
             <Alert variant="destructive">
-              <AlertTriangle className="h-4 w-4" />
+              <Warning className="h-4 w-4" />
               <AlertDescription className="flex items-center justify-between">
                 <span>{error}</span>
                 <NotionButton variant="ghost" size="sm" onClick={clearError}>
@@ -576,12 +576,12 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
             >
               {isDetecting ? (
                 <>
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                  <CircleNotch className="h-4 w-4 animate-spin mr-2" />
                   {t('data:sync_settings.detecting')}
                 </>
               ) : (
                 <>
-                  <RefreshCw className="h-4 w-4 mr-2" />
+                  <ArrowClockwise className="h-4 w-4 mr-2" />
                   {t('data:sync_settings.detect_conflicts')}
                 </>
               )}
@@ -592,7 +592,7 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
                 disabled={isResolving}
                 className="flex-1"
               >
-                <Zap className="h-4 w-4 mr-2" />
+                <Lightning className="h-4 w-4 mr-2" />
                 {t('data:sync_settings.resolve_conflicts')}
               </NotionButton>
             )}
