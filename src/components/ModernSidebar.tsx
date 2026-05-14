@@ -35,8 +35,8 @@ import {
   Star,
   Target,
   Trophy,
-  type LucideIcon,
 } from 'lucide-react';
+import type { Icon } from '@phosphor-icons/react';
 import { createNavItems } from '../config/navigation';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -105,7 +105,7 @@ interface RecentSessionGroup {
   sessions: ChatSession[];
 }
 
-const RECENT_GROUP_PRESET_ICONS: Record<string, LucideIcon> = {
+const RECENT_GROUP_PRESET_ICONS: Record<string, Icon> = {
   folder: Folder,
   'folder-open': FolderOpen,
   star: Star,
@@ -1296,8 +1296,6 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       </div>
 
       <div className="desktop-shell-sidebar-session-scroll-shell min-h-0 flex-1 w-full">
-        <div aria-hidden="true" className="desktop-shell-sidebar-session-fade desktop-shell-sidebar-session-fade--top" />
-        <div aria-hidden="true" className="desktop-shell-sidebar-session-fade desktop-shell-sidebar-session-fade--bottom" />
         <CustomScrollArea
           className="desktop-shell-sidebar-session-scroll min-h-0 flex-1 w-full"
           viewportClassName="desktop-shell-sidebar-session-scroll-viewport h-full w-full"

@@ -3,7 +3,7 @@
  * 支持完整的命令分类和增强的依赖注入
  */
 
-import type { LucideIcon } from 'lucide-react';
+import type { Icon } from '@phosphor-icons/react';
 import type { CurrentView } from '@/types/navigation';
 import type { TFunction } from 'i18next';
 
@@ -79,7 +79,7 @@ export interface Command {
   /** 快捷键，如 `mod+k`、`mod+shift+p`（mod = Cmd/Ctrl） */
   shortcut?: string;
   /** 图标组件 */
-  icon?: LucideIcon;
+  icon?: Icon;
   /** 执行函数 */
   execute: (deps: DependencyResolver) => void | Promise<void> | CommandExecutionResult | Promise<CommandExecutionResult>;
   /** 动态判断是否可用 */
@@ -201,7 +201,7 @@ export interface CategoryConfig {
   /** i18n 标签键 */
   labelKey: string;
   /** 默认图标 */
-  defaultIcon?: LucideIcon;
+  defaultIcon?: Icon;
   /** 分类颜色（CSS 类名或颜色值） */
   color?: string;
 }
