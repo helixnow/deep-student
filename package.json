@@ -108,7 +108,6 @@
     "i18next-browser-languagedetector": "^8.2.0",
     "immer": "^10.1.1",
     "katex": "^0.16.0",
-    "lucide-react": "^0.514.0",
     "mermaid": "^11.10.0",
     "mustache": "^4.2.0",
     "nanoid": "^5.0.7",
