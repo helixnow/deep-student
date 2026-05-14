@@ -92,6 +92,10 @@ pub mod workflow_error_handler; // SM-2 间隔重复算法 // 题目集同步冲
 #[cfg(feature = "data_governance")]
 pub mod data_governance;
 
+// macOS 原生菜单栏（Phase D2 of native-feel migration, 2026-05-14）
+#[cfg(target_os = "macos")]
+pub mod menu;
+
 // Add required imports for AppState initialization
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -784,6 +788,11 @@ pub fn run() {
             // macOS 窗口圆角设置
             #[cfg(target_os = "macos")]
             {
+                // 安装 macOS 原生菜单栏（Phase D2 of native-feel migration, 2026-05-14）
+                if let Err(e) = crate::menu::install_menu(&app_handle) {
+                    error!("[setup] 安装 macOS 菜单栏失败: {}", e);
+                }
+
                 use tauri::Manager;
                 if let Some(window) = app.get_webview_window("main") {
                     // 设置 macOS 特定的窗口属性
