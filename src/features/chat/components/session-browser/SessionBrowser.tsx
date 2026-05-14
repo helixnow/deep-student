@@ -31,6 +31,7 @@ import { useContentSearch } from '../../hooks/useContentSearch';
 import { useSessionTags } from '../../hooks/useSessionTags';
 import { SearchResultList } from './SearchResultList';
 import { TagFilterPanel, SessionTagBadges, AddTagInput } from './TagFilter';
+import { Input } from '@/components/ui/shad/Input';
 
 // ============================================================================
 // 类型定义
@@ -253,7 +254,7 @@ const SessionCard: React.FC<SessionCardProps> = ({
       <div className="flex-1 min-h-0">
         {isEditing ? (
           <div className="flex items-center gap-1.5 h-full" onClick={(e) => e.stopPropagation()}>
-            <input
+            <Input
               type="text"
               value={editingTitle}
               onChange={(e) => onEditTitleChange(e.target.value)}
@@ -266,7 +267,7 @@ const SessionCard: React.FC<SessionCardProps> = ({
                 }
               }}
               autoFocus
-              className="flex-1 h-8 px-2 text-sm bg-muted/30 border-transparent rounded-md focus:border-border focus:bg-background focus:outline-none transition-colors"
+              className="flex-1 h-8"
               placeholder={t('page.sessionNamePlaceholder')}
             />
             <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onSaveEdit(); }} className="text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10" aria-label={t('page.saveSessionName')} title={t('page.saveSessionName')}>
@@ -605,12 +606,12 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
               </div>
               <div className="relative w-48 md:w-56">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
-                <input
+                <Input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder={searchMode === 'content' ? t('search.contentPlaceholder') : t('page.searchPlaceholder')}
-                  className="w-full h-9 pl-9 pr-3 text-sm bg-muted/30 border-transparent rounded-md focus:border-border focus:bg-background focus:outline-none transition-colors"
+                  className="w-full h-9 pl-9 pr-3"
                 />
               </div>
             </div>
@@ -627,12 +628,12 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
-                <input
+                <Input
                   type="text"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
                   placeholder={searchMode === 'content' ? t('search.contentPlaceholder') : t('page.searchPlaceholder')}
-                  className="w-full h-9 pl-9 pr-3 text-sm bg-muted/30 border-transparent rounded-md focus:border-border focus:bg-background focus:outline-none transition-colors"
+                  className="w-full h-9 pl-9 pr-3"
                 />
               </div>
               <button
@@ -655,12 +656,12 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
-              <input
+              <Input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={searchMode === 'content' ? t('search.contentPlaceholder') : t('page.searchPlaceholder')}
-                className="w-full h-9 pl-9 pr-3 text-sm bg-muted/30 border-transparent rounded-md focus:border-border focus:bg-background focus:outline-none transition-colors"
+                className="w-full h-9 pl-9 pr-3"
               />
             </div>
             {groups.length > 0 && (

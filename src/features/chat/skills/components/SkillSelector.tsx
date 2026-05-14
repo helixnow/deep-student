@@ -8,6 +8,7 @@ import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Search, Zap, RefreshCw, X, Check, User, Wrench, Star, ChevronLeft } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Input } from '@/components/ui/shad/Input';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
@@ -214,12 +215,12 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
           size={12}
           className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
         />
-        <input
+        <Input
           type="text"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           placeholder={t('skills:selector.searchPlaceholder')}
-          className="w-full rounded-md border border-border bg-background py-1.5 pl-7 pr-2 text-xs placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+          className="w-full pl-7 pr-2 text-xs"
         />
         {searchTerm && (
           <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setSearchTerm('')} aria-label="clear" className="absolute right-2 top-1/2 -translate-y-1/2 !h-5 !w-5">

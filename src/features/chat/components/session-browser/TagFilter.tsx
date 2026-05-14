@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { Tag, X, Plus, ChevronDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/shad/Badge';
+import { Input } from '@/components/ui/shad/Input';
 import { NotionButton } from '@/components/ui/NotionButton';
 
 interface TagInfo {
@@ -160,7 +161,7 @@ export const AddTagInput: React.FC<{
   }
 
   return (
-    <input
+    <Input
       type="text"
       value={value}
       onChange={(e) => setValue(e.target.value)}
@@ -171,7 +172,7 @@ export const AddTagInput: React.FC<{
       onBlur={handleSubmit}
       autoFocus
       placeholder={t('tags.addPlaceholder')}
-      className="h-5 w-20 px-1.5 text-[10px] bg-muted/30 border-0 rounded focus:outline-none focus:ring-1 focus:ring-primary/30"
+      className="h-5 w-20 text-[10px]"
     />
   );
 };

@@ -15,6 +15,7 @@ import {
   ListChecks,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Input } from '@/components/ui/shad/Input';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import {
@@ -201,7 +202,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
             "absolute left-2.5 top-1/2 -translate-y-1/2 h-[18px] w-[18px] transition-colors duration-150",
             isSearchFocused ? "text-primary" : "text-muted-foreground/50"
           )} />
-          <input
+          <Input
             type="text"
             placeholder={t('learningHub:finder.search.placeholder')}
             value={searchQuery}
@@ -209,11 +210,7 @@ export const DstuAppLauncher: React.FC<DstuAppLauncherProps> = React.memo(({
             onFocus={() => setIsSearchFocused(true)}
             onBlur={() => setIsSearchFocused(false)}
             disabled={searchDisabled}
-            className={cn(
-              "w-full h-[41px] pl-9 pr-9 text-[16px] rounded-lg outline-none transition-all duration-150",
-              "bg-muted/40 placeholder:text-muted-foreground/40",
-              "focus:bg-background focus:ring-1 focus:ring-primary/20 focus:shadow-sm"
-            )}
+            className="w-full h-[41px] pl-9 pr-9 text-[16px]"
           />
           {searchQuery && (
             <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onSearchChange?.('')} className="absolute right-2 top-1/2 -translate-y-1/2 !h-5 !w-5 !p-0 hover:bg-[var(--interactive-hover)]" aria-label="clear">

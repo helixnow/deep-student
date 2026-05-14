@@ -49,6 +49,7 @@ import {
   NotionDialogTitle,
 } from '@/components/ui/NotionDialog';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { Input } from '@/components/ui/shad/Input';
 import { sessionManager } from '@/features/chat/core/session/sessionManager';
 import type { ChatSession } from '@/features/chat/types/session';
 import type { SessionGroup } from '@/features/chat/types/group';
@@ -1451,7 +1452,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
           <label className="block text-sm font-medium text-foreground" htmlFor="modern-sidebar-rename-session-input">
             对话名称
           </label>
-          <input
+          <Input
             id="modern-sidebar-rename-session-input"
             type="text"
             placeholder={t('chatV2:page.untitled', '未命名对话')}
@@ -1462,7 +1463,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
             }}
             autoFocus
             disabled={renamingRecentSessionId !== null}
-            className="mt-2 h-9 w-full rounded-md border border-transparent bg-muted/30 px-3 text-sm text-foreground outline-none transition-colors focus:border-border focus:bg-background disabled:opacity-60"
+            className="mt-2 h-9 w-full"
           />
           {recentRenameError ? (
             <p className="mt-2 text-xs text-destructive" role="alert">
