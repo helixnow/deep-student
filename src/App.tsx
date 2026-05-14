@@ -82,6 +82,7 @@ import { autoSaveScrollPosition, autoRestoreScrollPosition } from './utils/viewS
 import { usePreventScroll } from './hooks/usePreventScroll';
 import { CommandPaletteProvider, CommandPalette, registerBuiltinCommands, useCommandPalette } from './command-palette';
 import { TextContextMenuProvider } from './components/context-menu/TextContextMenu';
+import { useMenuEventBridge } from './menu/menuEventBridge';
 import { useCommandEvents, COMMAND_EVENTS } from './command-palette/hooks/useCommandEvents';
 import { useEventRegistry } from './hooks/useEventRegistry';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
@@ -582,6 +583,9 @@ function App() {
   const USE_STABLE_STREAM_ENGINE = true;
   // 🚀 应用初始化
   useAppInitialization();
+
+  // 🍎 macOS 原生菜单栏 → 命令系统桥接（其他平台为 no-op）
+  useMenuEventBridge();
   
   // 🆕 监听数据治理迁移状态（启动时显示警告/错误通知）
   useMigrationStatusListener();
