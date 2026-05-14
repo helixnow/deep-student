@@ -1,0 +1,52 @@
+/* Streaming rendering styles — extracted from App.css */
+/* Used by: StreamingMarkdownRenderer.tsx, EnhancedMarkdownRenderer.tsx */
+
+.streaming-markdown {
+  position: relative;
+}
+
+.streaming-cursor {
+  color: #007bff;
+  font-weight: bold;
+  opacity: 1;
+  animation: blink 1s infinite;
+  margin-left: 2px;
+}
+
+.streaming-cursor[data-active="false"] {
+  visibility: hidden;
+  opacity: 0;
+}
+
+.streaming-cursor.visible {
+  opacity: 1;
+}
+
+.partial-math-indicator {
+  color: #ffc107;
+  margin-left: 0.25rem;
+  animation: pulse 1s infinite;
+  font-size: 0.9em;
+}
+
+@keyframes blink {
+  0%, 50% { opacity: 1; }
+  51%, 100% { opacity: 0; }
+}
+
+@keyframes pulse {
+  0% { opacity: 0.6; }
+  50% { opacity: 1; }
+  100% { opacity: 0.6; }
+}
+
+/* 流式消息特殊样式 */
+/* 统一修复：流式期间不改变背景/边框/动画，与静态完全一致 */
+.message.streaming .message-content {
+  border-left: none !important;
+  background: inherit !important;
+  animation: none !important;
+}
+
+/* 保留占位的空动画，避免外部引用报错 */
+@keyframes streamingPulse { from { opacity: 1; } to { opacity: 1; } }

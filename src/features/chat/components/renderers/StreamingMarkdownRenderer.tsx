@@ -7,6 +7,7 @@ import {
   useSmoothedStreamingContent,
   type StreamingSmoothingPreset,
 } from './streamingSmoothing';
+import './streaming.css';
 
 interface StreamingMarkdownRendererProps {
   content: string;

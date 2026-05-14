@@ -2,6 +2,7 @@ import React, { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { shallowEqualSpans, makeUncertaintyHighlightPlugin } from './rendererUtils';
+import './streaming.css';
 
 interface BaseStreamingProps {
   content: string;
