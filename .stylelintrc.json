@@ -19,6 +19,17 @@
       "rules": {
         "declaration-no-important": null
       }
+    },
+    {
+      "files": ["src/styles/native-feel/**/*.css"],
+      "rules": {
+        "declaration-no-important": null,
+        "property-no-vendor-prefix": null,
+        "selector-no-vendor-prefix": null,
+        "selector-class-pattern": null,
+        "alpha-value-notation": null,
+        "comment-empty-line-before": null
+      }
     }
   ]
 }
