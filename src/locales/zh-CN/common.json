@@ -5,6 +5,14 @@
     "description": "AI驱动的智能学习管理系统",
     "version": "版本"
   },
+  "contextMenu": {
+    "cut": "剪切",
+    "copy": "复制",
+    "paste": "粘贴",
+    "selectAll": "全选",
+    "find": "查找…",
+    "inspect": "检查元素"
+  },
   "model_name_required": "请先设置模型名称",
   "none": "无",
   "noSubject": "未指定科目",

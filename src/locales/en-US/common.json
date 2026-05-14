@@ -5,6 +5,14 @@
     "description": "Intelligent Mistake Analysis and Learning Management System",
     "version": "Version"
   },
+  "contextMenu": {
+    "cut": "Cut",
+    "copy": "Copy",
+    "paste": "Paste",
+    "selectAll": "Select All",
+    "find": "Find…",
+    "inspect": "Inspect Element"
+  },
   "retry": "Retry",
   "create": "Create",
   "clear": "Clear",

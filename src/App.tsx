@@ -81,6 +81,7 @@ import type { CurrentView as NavigationCurrentView } from './types/navigation';
 import { autoSaveScrollPosition, autoRestoreScrollPosition } from './utils/viewStateManager';
 import { usePreventScroll } from './hooks/usePreventScroll';
 import { CommandPaletteProvider, CommandPalette, registerBuiltinCommands, useCommandPalette } from './command-palette';
+import { TextContextMenuProvider } from './components/context-menu/TextContextMenu';
 import { useCommandEvents, COMMAND_EVENTS } from './command-palette/hooks/useCommandEvents';
 import { useEventRegistry } from './hooks/useEventRegistry';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
@@ -2243,6 +2244,7 @@ function App() {
         isDarkMode={isDarkMode}
         switchLanguage={switchLanguage}
       >
+      <TextContextMenuProvider>
       <MobileLayoutProvider>
       <MobileHeaderProvider>
       {/* ★ 移动端顶栏活跃视图同步 - 必须在 MobileHeaderProvider 内部 */}
@@ -2594,6 +2596,7 @@ function App() {
       </LearningHubNavigationProvider>
       </MobileHeaderProvider>
       </MobileLayoutProvider>
+      </TextContextMenuProvider>
       </CommandPaletteProvider>
   );
 }
