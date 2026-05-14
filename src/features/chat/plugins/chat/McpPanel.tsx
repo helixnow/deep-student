@@ -11,6 +11,7 @@ import { Wrench, X, Search, Loader2, Server, Check, AlertCircle, Lock, Settings 
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { Input } from '@/components/ui/shad/Input';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useDialogControl } from '@/contexts/DialogControlContext';
 import { isBuiltinServer, BUILTIN_NAMESPACE } from '@/mcp/builtinMcpServer';
@@ -293,12 +294,12 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
           size={12}
           className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
         />
-        <input
+        <Input
           type="text"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           placeholder={t('analysis:input_bar.mcp.search_placeholder')}
-          className="w-full rounded-md border border-border bg-background py-1.5 pl-7 pr-2 text-xs placeholder:text-muted-foreground focus:border-primary focus:outline-none"
+          className="w-full pl-7 pr-2 text-xs"
         />
       </div>
 

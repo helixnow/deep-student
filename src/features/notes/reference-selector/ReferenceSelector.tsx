@@ -19,6 +19,7 @@ import { useTranslation } from 'react-i18next';
 import { Search, X, BookOpen, FileSpreadsheet, Loader2, AlertCircle } from 'lucide-react';
 import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody } from '@/components/ui/NotionDialog';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { Input } from '@/components/ui/shad/Input';
 import { cn } from '../../../lib/utils';
 import { getErrorMessage } from '../../../utils/errorUtils';
 import { listTextbooks, listExamSessions } from './api';
@@ -226,18 +227,12 @@ export const ReferenceSelector: React.FC<ReferenceSelectorProps> = ({
         <div className="px-4 pb-3">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-            <input
+            <Input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t('notes:reference.searchPlaceholder')}
-              className={cn(
-                'w-full h-10 pl-9 pr-4 rounded-lg',
-                'bg-muted/50 border border-border',
-                'text-sm text-foreground placeholder:text-muted-foreground',
-                'focus:outline-none focus:ring-2 focus:ring-primary/50 focus:border-transparent',
-                'transition-colors'
-              )}
+              className="w-full h-10 pl-9 pr-4"
             />
             {searchQuery && (
               <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setSearchQuery('')} className="absolute right-3 top-1/2 -translate-y-1/2 !p-0.5 !rounded-full hover:bg-[var(--interactive-hover)]" aria-label="clear">

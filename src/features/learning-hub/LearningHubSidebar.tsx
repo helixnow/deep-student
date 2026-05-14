@@ -2725,7 +2725,7 @@ export function LearningHubSidebar({
           </NotionDialogTitle>
         </NotionDialogHeader>
         <NotionDialogBody nativeScroll>
-          <input
+          <Input
             type="text"
             placeholder={t('finder.create.folderPlaceholder')}
             value={createDialogName}
@@ -2736,7 +2736,7 @@ export function LearningHubSidebar({
               }
             }}
             autoFocus
-            className="w-full h-9 px-3 text-sm bg-muted/30 border-transparent rounded-md focus:border-border focus:bg-background focus:outline-none transition-colors"
+            className="w-full h-9"
           />
         </NotionDialogBody>
         <NotionDialogFooter>

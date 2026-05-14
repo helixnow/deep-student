@@ -25,6 +25,7 @@ import {
   FolderPlus,
 } from 'lucide-react';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
+import { Input } from '@/components/ui/shad/Input';
 import { cn } from '@/utils/cn';
 import { Z_INDEX } from '@/config/zIndex';
 import { folderApi } from '@/dstu/api/folderApi';
@@ -362,18 +363,13 @@ export const FolderSelector: React.FC<FolderSelectorProps> = ({
         <div className="px-4 py-3 border-b border-border/40">
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-            <input
+            <Input
               ref={searchInputRef}
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t('context.searchFolder', '搜索文件夹...')}
-              className={cn(
-                'w-full pl-9 pr-4 py-2 text-sm rounded-lg',
-                'bg-muted/50 border border-border/40',
-                'focus:outline-none focus:ring-2 focus:ring-primary/50',
-                'placeholder:text-muted-foreground'
-              )}
+              className="w-full pl-9 pr-4"
             />
           </div>
         </div>
