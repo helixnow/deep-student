@@ -243,11 +243,9 @@ export const ChatParamsPanel: React.FC<ChatParamsPanelProps> = ({
         {/* 快捷开关 */}
         <div className="flex items-center gap-4 text-sm">
           <label className="flex items-center gap-2 cursor-pointer">
-            <input
-              type="checkbox"
+            <Switch
               checked={chatParams.enableThinking}
-              onChange={(e) => updateParam('enableThinking', e.target.checked)}
-              className="rounded border-border"
+              onCheckedChange={(checked) => updateParam('enableThinking', checked)}
               disabled={!selectedModelConfig?.supportsThinking}
             />
             <span className="text-muted-foreground">

@@ -7,6 +7,7 @@ import './BatchEditDialog.css';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
+import { Switch } from '@/components/ui/shad/Switch';
 
 interface BatchEditDialogProps {
   cards: AnkiCard[];
@@ -180,12 +181,11 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
             {/* 正面编辑 */}
             <div className="edit-section">
               <label className="section-header">
-                <input
-                  type="checkbox"
+                <Switch
                   checked={changes.front!.enabled}
-                  onChange={(e) => setChanges({
+                  onCheckedChange={(checked) => setChanges({
                     ...changes,
-                    front: { ...changes.front!, enabled: e.target.checked }
+                    front: { ...changes.front!, enabled: checked }
                   })}
                 />
                 <span>{t('edit_front_content')}</span>
@@ -241,12 +241,11 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
             {/* 背面编辑 */}
             <div className="edit-section">
               <label className="section-header">
-                <input
-                  type="checkbox"
+                <Switch
                   checked={changes.back!.enabled}
-                  onChange={(e) => setChanges({
+                  onCheckedChange={(checked) => setChanges({
                     ...changes,
-                    back: { ...changes.back!, enabled: e.target.checked }
+                    back: { ...changes.back!, enabled: checked }
                   })}
                 />
                 <span>{t('edit_back_content')}</span>
@@ -302,12 +301,11 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
             {/* 标签编辑 */}
             <div className="edit-section">
               <label className="section-header">
-                <input
-                  type="checkbox"
+                <Switch
                   checked={changes.tags!.enabled}
-                  onChange={(e) => setChanges({
+                  onCheckedChange={(checked) => setChanges({
                     ...changes,
-                    tags: { ...changes.tags!, enabled: e.target.checked }
+                    tags: { ...changes.tags!, enabled: checked }
                   })}
                 />
                 <span>{t('edit_tags')}</span>

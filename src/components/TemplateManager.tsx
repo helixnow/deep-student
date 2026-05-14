@@ -9,6 +9,7 @@ import RealTimeTemplateEditor from './RealTimeTemplateEditor';
 import { NotionButton } from './ui/NotionButton';
 import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from './ui/NotionDialog';
 import { Checkbox } from './ui/shad/Checkbox';
+import { Switch } from './ui/shad/Switch';
 import { Input } from './ui/shad/Input';
 import { Textarea } from './ui/shad/Textarea';
 import { ErrorBoundary } from './ErrorBoundary';
@@ -1210,12 +1211,10 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
               <div className="field-extraction-rules-section" style={{ marginTop: '20px' }}>
                 <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: '10px' }}>
                   <label>{t('template.field_extraction_rules')}</label>
-                  <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-                    <input
-                      type="checkbox"
+                  <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer', gap: '8px' }}>
+                    <Switch
                       checked={isAdvancedMode}
-                      onChange={(e) => setIsAdvancedMode(e.target.checked)}
-                      style={{ marginRight: '5px' }}
+                      onCheckedChange={(checked) => setIsAdvancedMode(checked)}
                     />
                     {t('template.advanced_mode')}
                   </label>

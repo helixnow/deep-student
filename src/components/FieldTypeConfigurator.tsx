@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { Switch } from '@/components/ui/shad/Switch';
 import { useTranslation } from 'react-i18next';
 import {
   EnhancedFieldType,
@@ -162,11 +163,10 @@ const FieldTypeConfigurator: React.FC<FieldTypeConfiguratorProps> = ({
                   {/* 必填设置 */}
                   <div className="config-group">
                     <label className="checkbox-label">
-                      <input
-                        type="checkbox"
+                      <Switch
                         checked={rule?.is_required || false}
-                        onChange={(e) => updateFieldRule(field, {
-                          is_required: e.target.checked
+                        onCheckedChange={(checked) => updateFieldRule(field, {
+                          is_required: checked
                         })}
                       />
                       {t('field_required')}

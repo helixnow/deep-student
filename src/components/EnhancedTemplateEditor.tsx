@@ -15,6 +15,7 @@ import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
+import { Switch } from '@/components/ui/shad/Switch';
 
 interface EnhancedTemplateEditorProps {
   template: CustomAnkiTemplate | null;
@@ -721,11 +722,10 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
 
                           <div className="form-row">
                             <label>
-                              <input
-                                type="checkbox"
+                              <Switch
                                 checked={rule.is_required}
-                                onChange={(e) => updateFieldRule(fieldName, { 
-                                  is_required: e.target.checked 
+                                onCheckedChange={(checked) => updateFieldRule(fieldName, { 
+                                  is_required: checked 
                                 })}
                               />
                               {t('field_required', '必填字段')}
