@@ -2930,56 +2930,6 @@ body {
   margin: 1rem 0;
   text-align: center;
 }
-/* 流式渲染样式 */
-.streaming-markdown {
-  position: relative;
-}
-
-.streaming-cursor {
-  color: #007bff;
-  font-weight: bold;
-  opacity: 1;
-  animation: blink 1s infinite;
-  margin-left: 2px;
-}
-
-.streaming-cursor[data-active="false"] {
-  visibility: hidden;
-  opacity: 0;
-}
-
-.partial-math-indicator {
-  color: #ffc107;
-  margin-left: 0.25rem;
-  animation: pulse 1s infinite;
-  font-size: 0.9em;
-}
-
-@keyframes blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
-}
-
-@keyframes pulse {
-  0% { opacity: 0.6; }
-  50% { opacity: 1; }
-  100% { opacity: 0.6; }
-}
-
-.streaming-cursor.visible {
-  opacity: 1;
-}
-
-/* 流式消息特殊样式 */
-/* 统一修复：流式期间不改变背景/边框/动画，与静态完全一致 */
-.message.streaming .message-content {
-  border-left: none !important;
-  background: inherit !important;
-  animation: none !important;
-}
-
-/* 保留占位的空动画，避免外部引用报错 */
-@keyframes streamingPulse { from { opacity: 1; } to { opacity: 1; } }
 
 /* 聊天容器样式重构 */
 .chat-container {
@@ -6461,56 +6411,6 @@ body {
   text-align: center;
 }
 
-/* 流式渲染样式 */
-.streaming-markdown {
-  position: relative;
-}
-
-.streaming-cursor {
-  color: #007bff;
-  font-weight: bold;
-  opacity: 1;
-  animation: blink 1s infinite;
-  margin-left: 2px;
-}
-
-.partial-math-indicator {
-  color: #ffc107;
-  margin-left: 0.25rem;
-  animation: pulse 1s infinite;
-  font-size: 0.9em;
-}
-
-@keyframes blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
-}
-
-@keyframes pulse {
-  0% { opacity: 0.6; }
-  50% { opacity: 1; }
-  100% { opacity: 0.6; }
-}
-
-.streaming-cursor.visible {
-  opacity: 1;
-}
-
-/* 流式消息特殊样式 */
-.message.streaming .message-content {
-  border-left: 3px solid #007bff;
-  background: linear-gradient(90deg, #f8f9fa 0%, #e3f2fd 100%);
-  animation: streamingPulse 2s ease-in-out infinite;
-}
-
-@keyframes streamingPulse {
-  0%, 100% { 
-    background: linear-gradient(90deg, #f8f9fa 0%, #e3f2fd 100%);
-  }
-  50% { 
-    background: linear-gradient(90deg, #e3f2fd 0%, #f8f9fa 100%);
-  }
-}
 
 /* 聊天容器样式重构 */
 .chat-container {
