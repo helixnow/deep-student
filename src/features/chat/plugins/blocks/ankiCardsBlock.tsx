@@ -17,16 +17,16 @@ import { Textarea } from '@/components/ui/shad/Textarea';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import {
-  Loader2,
-  Save,
-  Download,
-  Send,
-  Edit3,
+  CircleNotch,
+  FloppyDisk,
+  DownloadSimple,
+  PaperPlaneRight,
+  Pencil,
   Check,
   X,
-  ChevronUp,
-  Trash2,
-} from 'lucide-react';
+  CaretUp,
+  Trash,
+} from '@phosphor-icons/react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 
 // ============================================================================
@@ -432,7 +432,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               onClick={() => onDelete(index)}
               className="text-destructive hover:text-destructive h-7 px-2"
             >
-              <Trash2 className="w-3.5 h-3.5" />
+              <Trash size={14} />
             </NotionButton>
           </div>
         </div>
@@ -485,7 +485,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
               variant="primary"
               onClick={handleSave}
             >
-              <Check className="w-3.5 h-3.5" />
+              <Check size={14} />
               {t('chatV2.saveEdit')}
             </NotionButton>
           </div>
@@ -515,7 +515,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
         {/* 编辑按钮 */}
         {!disabled && (
           <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleEdit(index); }} className="absolute top-2 right-2 z-10 !w-6 !h-6 bg-background/80 backdrop-blur opacity-0 group-hover:opacity-100 focus-visible:opacity-100 border hover:bg-[var(--interactive-hover)]" aria-label="edit">
-            <Edit3 className="w-3 h-3 text-muted-foreground" />
+            <Pencil size={12} className="text-muted-foreground" />
           </NotionButton>
         )}
         {/* 模板渲染预览 */}
@@ -583,7 +583,7 @@ const InlineCardItem: React.FC<InlineCardItemProps> = ({
         </div>
         {/* 编辑提示 */}
         {!disabled && (
-          <Edit3 className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 mt-1" />
+          <Pencil size={14} className="text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0 mt-1" />
         )}
       </div>
     </div>
@@ -760,16 +760,16 @@ const ActionButtons: React.FC<{
       )
     : undefined;
 
-  const renderIcon = (status: ActionStatus, DefaultIcon: React.ComponentType<{ className?: string }>) => {
+  const renderIcon = (status: ActionStatus, DefaultIcon: React.ComponentType<{ className?: string; size?: string | number }>) => {
     switch (status) {
       case 'loading':
-        return <Loader2 className="w-4 h-4 animate-spin" />;
+        return <CircleNotch size={16} className="animate-spin" />;
       case 'success':
-        return <Check className="w-4 h-4 text-emerald-500" />;
+        return <Check size={16} className="text-emerald-500" />;
       case 'error':
-        return <X className="w-4 h-4 text-destructive" />;
+        return <X size={16} className="text-destructive" />;
       default:
-        return <DefaultIcon className="w-4 h-4" />;
+        return <DefaultIcon size={16} />;
     }
   };
 
@@ -783,7 +783,7 @@ const ActionButtons: React.FC<{
         variant={isExpanded ? 'default' : 'primary'}
         className="text-xs sm:text-sm"
       >
-        {isExpanded ? <ChevronUp className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Edit3 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+        {isExpanded ? <CaretUp size={14} /> : <Pencil size={14} />}
         {isExpanded ? t('blocks.ankiCards.collapse') : t('blocks.ankiCards.edit')}
       </NotionButton>
 
@@ -795,7 +795,7 @@ const ActionButtons: React.FC<{
         variant={saveStatus === 'success' ? 'success' : saveStatus === 'error' ? 'danger' : 'default'}
         className="text-xs sm:text-sm"
       >
-        {renderIcon(saveStatus, Save)}
+        {renderIcon(saveStatus, FloppyDisk)}
         {t('blocks.ankiCards.save')}
       </NotionButton>
 
@@ -807,7 +807,7 @@ const ActionButtons: React.FC<{
         variant={exportStatus === 'success' ? 'success' : exportStatus === 'error' ? 'danger' : 'default'}
         className="text-xs sm:text-sm"
       >
-        {renderIcon(exportStatus, Download)}
+        {renderIcon(exportStatus, DownloadSimple)}
         {t('blocks.ankiCards.export')}
       </NotionButton>
 
@@ -820,7 +820,7 @@ const ActionButtons: React.FC<{
         variant={syncStatus === 'success' ? 'success' : syncStatus === 'error' ? 'danger' : 'default'}
         className="text-xs sm:text-sm"
       >
-        {renderIcon(syncStatus, Send)}
+        {renderIcon(syncStatus, PaperPlaneRight)}
         {t('blocks.ankiCards.sync')}
       </NotionButton>
     </div>
@@ -1218,7 +1218,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
               onClick={handleToggleExpand}
               className="h-7 px-2"
             >
-              <ChevronUp className="w-3.5 h-3.5" />
+              <CaretUp size={14} />
               {t('blocks.ankiCards.collapse')}
             </NotionButton>
           </div>

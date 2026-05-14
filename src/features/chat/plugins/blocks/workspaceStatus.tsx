@@ -15,19 +15,19 @@ import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  Building2,
+  Buildings,
   User,
-  Bot,
-  ChevronDown,
-  ChevronUp,
-  MessageSquare,
-  CheckCircle2,
+  Robot,
+  CaretDown,
+  CaretUp,
+  Chat,
+  CheckCircle,
   Circle,
-  Loader2,
+  CircleNotch,
   XCircle,
   Clock,
-  AlertTriangle,
-} from 'lucide-react';
+  Warning,
+} from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { useWorkspaceStore } from '../../workspace/workspaceStore';
@@ -88,9 +88,9 @@ interface AgentStatusIconProps {
 const AgentStatusIcon: React.FC<AgentStatusIconProps> = ({ status }) => {
   switch (status) {
     case 'running':
-      return <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin" />;
+      return <CircleNotch size={14} className="text-blue-500 animate-spin" />;
     case 'completed':
-      return <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />;
+      return <CheckCircle size={14} className="text-green-500" />;
     case 'failed':
       return <XCircle className="w-3.5 h-3.5 text-red-500" />;
     default: // idle
@@ -151,7 +151,7 @@ const AgentItem: React.FC<AgentItemProps> = ({ agent, isCurrentUser }) => {
       {agent.role === 'coordinator' ? (
         <User className="w-4 h-4 text-primary" />
       ) : (
-        <Bot className="w-4 h-4 text-muted-foreground" />
+        <Robot size={16} className="text-muted-foreground" />
       )}
       <div className="flex-1 min-w-0">
         <div className="flex items-center gap-1.5">
@@ -320,7 +320,7 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
   if (!workspaceId && status !== 'running') {
     return (
       <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/30 border border-border/50">
-        <Building2 className="w-4 h-4 text-muted-foreground" />
+        <Buildings size={16} className="text-muted-foreground" />
         <span className="text-sm text-muted-foreground">
           {t('workspace.status.noWorkspace')}
         </span>
@@ -333,14 +333,14 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
     return (
       <div className="rounded-lg border border-border/50 bg-card overflow-hidden">
         <div className="flex items-center gap-2 p-3 bg-blue-50 dark:bg-blue-900/20 border-b border-blue-200 dark:border-blue-800">
-          <Clock className="w-4 h-4 text-blue-600 dark:text-blue-400" />
+          <Clock size={16} className="text-blue-600 dark:text-blue-400" />
           <span className="text-sm text-blue-700 dark:text-blue-300">
             {t('workspace.status.historicalWorkspace')}
           </span>
         </div>
         <div className="p-3">
           <div className="flex items-center gap-2 mb-2">
-            <Building2 className="w-4 h-4 text-primary" />
+            <Buildings size={16} className="text-primary" />
             <span className="text-sm font-medium">{workspaceName}</span>
           </div>
           {/* Agent 列表 */}
@@ -362,7 +362,7 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
           )}
           {snapshotCreatedAt && (
             <div className="flex items-center gap-1 mt-2 text-[10px] text-muted-foreground">
-              <Clock className="w-3 h-3" />
+              <Clock size={12} />
               <span>
                 {t('workspace.status.createdAt')}: {new Date(snapshotCreatedAt).toLocaleString()}
               </span>
@@ -381,14 +381,14 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
     return (
       <div className="rounded-lg border border-border/50 bg-card overflow-hidden">
         <div className="flex items-center gap-2 p-3 bg-amber-50 dark:bg-amber-900/20 border-b border-amber-200 dark:border-amber-800">
-          <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+          <Warning size={16} className="text-amber-600 dark:text-amber-400" />
           <span className="text-sm text-amber-700 dark:text-amber-300">
             {t('workspace.status.workspaceSwitched')}
           </span>
         </div>
         <div className="p-3">
           <div className="flex items-center gap-2 mb-2">
-            <Building2 className="w-4 h-4 text-muted-foreground" />
+            <Buildings size={16} className="text-muted-foreground" />
             <span className="text-sm font-medium text-muted-foreground">{workspaceName}</span>
           </div>
           <p className="text-xs text-muted-foreground">
@@ -410,10 +410,10 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
         onClick={() => setIsExpanded(!isExpanded)}
       >
         <div className="flex items-center gap-2">
-          <Building2 className="w-4 h-4 text-primary" />
+          <Buildings size={16} className="text-primary" />
           <span className="text-sm font-medium">{workspaceName}</span>
           {status === 'running' && (
-            <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin" />
+            <CircleNotch size={14} className="text-blue-500 animate-spin" />
           )}
         </div>
         <div className="flex items-center gap-2">
@@ -424,9 +424,9 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
             </span>
           )}
           {isExpanded ? (
-            <ChevronUp className="w-4 h-4 text-muted-foreground" />
+            <CaretUp size={16} className="text-muted-foreground" />
           ) : (
-            <ChevronDown className="w-4 h-4 text-muted-foreground" />
+            <CaretDown size={16} className="text-muted-foreground" />
           )}
         </div>
       </div>
@@ -487,15 +487,15 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
                   }}
                 >
                   <div className="flex items-center gap-1.5">
-                    <MessageSquare className="w-3.5 h-3.5 text-muted-foreground" />
+                    <Chat size={14} className="text-muted-foreground" />
                     <span className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider">
                       {t('workspace.status.recentMessages')} ({recentMessages.length})
                     </span>
                   </div>
                   {showMessages ? (
-                    <ChevronUp className="w-3.5 h-3.5 text-muted-foreground" />
+                    <CaretUp size={14} className="text-muted-foreground" />
                   ) : (
-                    <ChevronDown className="w-3.5 h-3.5 text-muted-foreground" />
+                    <CaretDown size={14} className="text-muted-foreground" />
                   )}
                 </div>
 
@@ -520,7 +520,7 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
             {/* 时间戳 */}
             {workspace?.createdAt && (
               <div className="flex items-center gap-1 px-3 py-1.5 border-t border-border/50 text-[10px] text-muted-foreground">
-                <Clock className="w-3 h-3" />
+                <Clock size={12} />
                 <span>
                   {t('workspace.status.createdAt')}: {new Date(workspace.createdAt).toLocaleString()}
                 </span>

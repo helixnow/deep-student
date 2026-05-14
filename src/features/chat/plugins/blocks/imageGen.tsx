@@ -18,13 +18,13 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
 import {
-  Loader2,
-  AlertCircle,
-  RotateCcw,
-  ImageIcon,
-  Sparkles,
-  MessageSquarePlus,
-} from 'lucide-react';
+  CircleNotch,
+  WarningCircle,
+  ArrowCounterClockwise,
+  Image as ImageIcon,
+  Sparkle,
+  ChatDots,
+} from '@phosphor-icons/react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { ImagePreview } from './components';
 
@@ -96,7 +96,7 @@ const ImageGenProgress: React.FC<ImageGenProgressProps> = ({ prompt }) => {
             'flex items-center justify-center'
           )}
         >
-          <Sparkles className="w-8 h-8 text-primary animate-pulse" />
+          <Sparkle size={32} className="text-primary animate-pulse" />
         </div>
       </div>
 
@@ -154,7 +154,7 @@ const ImageInfo: React.FC<ImageInfoProps> = ({ width, height, model }) => {
       {/* 尺寸 */}
       {width && height && (
         <div className="flex items-center gap-1">
-          <ImageIcon className="w-3 h-3" />
+          <ImageIcon size={12} />
           <span>
             {width} × {height}
           </span>
@@ -164,7 +164,7 @@ const ImageInfo: React.FC<ImageInfoProps> = ({ width, height, model }) => {
       {/* 模型 */}
       {model && (
         <div className="flex items-center gap-1">
-          <Sparkles className="w-3 h-3" />
+            <Sparkle size={12} />
           <span>{model}</span>
         </div>
       )}
@@ -207,7 +207,7 @@ const ImageGenError: React.FC<ImageGenErrorProps> = ({
         )}
       >
         <div className="flex items-start gap-2">
-          <AlertCircle className="w-4 h-4 text-destructive shrink-0 mt-0.5" />
+          <WarningCircle size={16} className="text-destructive shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
             <div className="text-sm font-medium text-destructive">
               {t('blocks.imageGen.generationFailed')}
@@ -222,7 +222,7 @@ const ImageGenError: React.FC<ImageGenErrorProps> = ({
       {/* 重试按钮 */}
       {onRetry && (
         <NotionButton variant="ghost" size="sm" onClick={onRetry} className="mt-3 text-primary hover:bg-primary/10">
-          <RotateCcw className="w-3.5 h-3.5" />
+          <ArrowCounterClockwise size={14} />
           <span>{t('blocks.imageGen.retry')}</span>
         </NotionButton>
       )}
@@ -339,7 +339,7 @@ const ImageGenBlockComponent: React.FC<BlockComponentProps> = React.memo(({
       {prompt && (
         <div className="px-3 py-2 border-b border-border/30">
           <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Sparkles className="w-3 h-3" />
+          <Sparkle size={12} />
             <span className="font-medium">{t('blocks.imageGen.prompt')}:</span>
           </div>
           <div className="mt-1 text-sm text-foreground line-clamp-2">
@@ -371,7 +371,7 @@ const ImageGenBlockComponent: React.FC<BlockComponentProps> = React.memo(({
       {resourceId && resourceHash && (
         <div className="flex items-center justify-end gap-2 border-t border-border/30 px-3 py-2">
           <NotionButton variant="ghost" size="sm" onClick={handleUseForFollowup} className="text-primary hover:bg-primary/10">
-            <MessageSquarePlus className="w-3.5 h-3.5" />
+            <ChatDots size={14} />
             <span>{t('blocks.imageGen.useForFollowup', '用于追问')}</span>
           </NotionButton>
         </div>

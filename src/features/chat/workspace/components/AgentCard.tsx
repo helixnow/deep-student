@@ -1,7 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { ExternalLink } from 'lucide-react';
+import { ArrowSquareOut } from '@phosphor-icons/react';
 import type { AgentStatus, AgentRole } from '../types';
 import { getLocalizedSkillName } from '../utils';
 
@@ -85,7 +85,7 @@ export const AgentCard: React.FC<AgentCardProps> = ({
         </div>
       </div>
       {showViewButton && onClick && (
-        <ExternalLink className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+        <ArrowSquareOut size={14} className="text-muted-foreground flex-shrink-0" />
       )}
     </div>
   );

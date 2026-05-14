@@ -9,7 +9,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { ChevronDown, ChevronRight, Layers } from 'lucide-react';
+import { CaretDown, CaretRight, Stack } from '@phosphor-icons/react';
 import { SourceCard } from './SourceCard';
 import type { RetrievalSource } from './types';
 
@@ -83,7 +83,7 @@ export const SourceList: React.FC<SourceListProps> = ({
       {/* 标题栏 */}
       {title && (
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Layers className="w-4 h-4" />
+          <Stack size={16} />
           <span className="font-medium">{title}</span>
           <span className="text-xs">
             ({sources.length} {t('blocks.retrieval.sourcesCount')})
@@ -109,12 +109,12 @@ export const SourceList: React.FC<SourceListProps> = ({
         <NotionButton variant="ghost" size="sm" onClick={toggleExpanded} className="w-full !justify-center">
           {isExpanded ? (
             <>
-              <ChevronDown className="w-4 h-4" />
+              <CaretDown size={16} />
               <span>{t('blocks.retrieval.showLess')}</span>
             </>
           ) : (
             <>
-              <ChevronRight className="w-4 h-4" />
+              <CaretRight size={16} />
               <span>
                 {t('blocks.retrieval.showMore', { count: hiddenCount })}
               </span>

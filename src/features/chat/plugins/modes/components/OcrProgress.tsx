@@ -9,7 +9,7 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
-import { Loader2, ScanText } from 'lucide-react';
+import { CircleNotch, Scan } from '@phosphor-icons/react';
 import type { ChatStore } from '../../../core/types';
 import type { AnalysisModeState } from '../analysis';
 
@@ -76,9 +76,9 @@ export const OcrProgress: React.FC<OcrProgressProps> = ({ store }) => {
           )}
         >
           {ocrStatus === 'running' ? (
-            <Loader2 className="w-4 h-4 animate-spin" />
+            <CircleNotch size={16} className="animate-spin" />
           ) : (
-            <ScanText className="w-4 h-4" />
+            <Scan size={16} />
           )}
         </div>
 

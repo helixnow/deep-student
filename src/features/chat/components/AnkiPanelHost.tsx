@@ -18,7 +18,7 @@ import {
 } from '@/components/ui/shad/Sheet';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { Download, Send, Trash2, X, Loader2, Check, AlertCircle } from 'lucide-react';
+import { Download, PaperPlaneRight, Trash, X, CircleNotch, Check, WarningCircle } from '@phosphor-icons/react';
 import { useAnkiPanelV2Bridge } from '../hooks/useAnkiPanelV2Bridge';
 import { ChatV2AnkiAdapter } from '@/components/anki/cardforge/adapters/chatV2Adapter';
 import { cn } from '@/utils/cn';
@@ -51,7 +51,7 @@ const CardItem: React.FC<CardItemProps> = ({ card, index, onRemove }) => {
     <div className="group relative p-4 border rounded-lg bg-card hover:bg-[var(--interactive-hover)] transition-colors">
       {/* 删除按钮 */}
       <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onRemove(card, index)} className="absolute top-2 right-2 opacity-0 group-hover:opacity-100 focus-visible:opacity-100 hover:bg-destructive/10" aria-label={t('chatV2.removeCard')} title={t('chatV2.removeCard')}>
-        <X className="w-4 h-4 text-muted-foreground hover:text-destructive" />
+        <X size={16} className="w-4 h-4 text-muted-foreground hover:text-destructive" />
       </NotionButton>
 
       {/* 序号 */}
@@ -266,13 +266,13 @@ export const AnkiPanelHost: React.FC = () => {
   const getButtonIcon = (status: ActionStatus, DefaultIcon: React.ElementType) => {
     switch (status) {
       case 'loading':
-        return <Loader2 className="w-4 h-4 animate-spin" />;
+        return <CircleNotch size={16} className="animate-spin" />;
       case 'success':
-        return <Check className="w-4 h-4 text-green-500" />;
+        return <Check size={16} className="text-green-500" />;
       case 'error':
-        return <AlertCircle className="w-4 h-4 text-destructive" />;
+        return <WarningCircle size={16} className="text-destructive" />;
       default:
-        return <DefaultIcon className="w-4 h-4" />;
+        return <DefaultIcon size={16} />;
     }
   };
 
@@ -304,7 +304,7 @@ export const AnkiPanelHost: React.FC = () => {
             "mt-4 p-3 bg-destructive/10 text-destructive text-sm rounded-md flex items-center gap-2",
             isSmallScreen ? "mx-4" : "mx-6"
           )}>
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <WarningCircle size={16} className="flex-shrink-0" />
             {errorMessage}
           </div>
         )}
@@ -347,7 +347,7 @@ export const AnkiPanelHost: React.FC = () => {
               syncStatus === 'error' && 'border-destructive'
             )}
           >
-            {getButtonIcon(syncStatus, Send)}
+            {getButtonIcon(syncStatus, PaperPlaneRight)}
             <span className="ml-2">{t('chatV2.syncToAnki')}</span>
           </NotionButton>
         </div>
@@ -356,7 +356,7 @@ export const AnkiPanelHost: React.FC = () => {
         <CustomScrollArea className={cn("flex-1 py-4", isSmallScreen ? "px-4" : "px-6")}>
           {cards.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
-              <Trash2 className="w-8 h-8 mb-2 opacity-50" />
+              <Trash size={32} className="mb-2 opacity-50" />
               <p>{t('chatV2.noCards')}</p>
             </div>
           ) : (

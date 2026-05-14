@@ -6,7 +6,7 @@ import { Textarea } from '@/components/ui/shad/Textarea';
 import { Label } from '@/components/ui/shad/Label';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { cn } from '@/lib/utils';
-import { Check } from 'lucide-react';
+import { Check } from '@phosphor-icons/react';
 import { createAgent, listAgents } from '../api';
 import { useWorkspaceStore } from '../workspaceStore';
 import type { WorkspaceAgent } from '../types';
@@ -150,7 +150,7 @@ export const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
                         <span className="text-sm font-medium">{getLocalizedSkillName(skill.id, skill.name, t)}</span>
                         <span className="text-xs text-muted-foreground">v{skill.version}</span>
                         {selectedSkillId === skill.id && (
-                          <Check className="w-4 h-4 text-primary ml-auto" />
+                          <Check size={16} className="text-primary ml-auto" />
                         )}
                       </div>
                       <p className="text-xs text-muted-foreground line-clamp-2 mt-0.5">

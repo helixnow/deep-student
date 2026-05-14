@@ -2,8 +2,9 @@
  * Chat V2 - 用户提问块组件
  *
  * 在工具调用时间线中渲染一个交互式提问卡片，支持：
- * - 3 个固定选项（其中一个标记为推荐）
- * - 自定义输入框
+ * - 单选模式：按钮点击即提交
+ * - 多选模式：复选框 + 确认按钮
+ * - 可配置的自定义输入框
  * - 30 秒倒计时，超时自动选择推荐选项
  * - 已回答状态的只读视图
  *
@@ -17,17 +18,18 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import {
-  MessageCircleQuestion,
+  ChatCircleDots,
   Check,
   Clock,
   Star,
-  Send,
-} from 'lucide-react';
+  PaperPlaneRight,
+} from '@phosphor-icons/react';
 
 import type { BlockComponentProps } from '../../registry/blockRegistry';
 import { blockRegistry } from '../../registry/blockRegistry';
 import { cn } from '@/utils/cn';
 import { Input } from '@/components/ui/shad/Input';
+import { Checkbox } from '@/components/ui/shad/Checkbox';
 
 // ============================================================================
 // 类型定义
@@ -36,19 +38,22 @@ import { Input } from '@/components/ui/shad/Input';
 /** 提问块输入数据（LLM 工具调用参数） */
 interface AskUserBlockInput {
   question: string;
-  options: string[];
-  recommended: number;
+  options: string[]; // 2-6 items, index 0 is recommended
+  multiple?: boolean; // default false
+  allowCustom?: boolean; // default true
+  timeoutSeconds?: number; // optional, no timeout if not set
   context?: string;
 }
 
 /** 提问块输出数据（用户回答结果） */
 interface AskUserBlockOutput {
   question: string;
-  selected: string;
-  selected_index: number;
-  source: string; // "user_click" | "custom_input" | "timeout" | "channel_closed"
+  selected: string[]; // array (even for single-select, length 1)
+  selected_indices: number[];
+  custom_text: string | null;
+  source: string; // "user_click" | "custom_input" | "mixed" | "timeout" | "channel_closed"
   options: string[];
-  recommended: number;
+  multiple: boolean;
 }
 
 /** 从 toolOutput 中解包 result（后端发送 { result: actualOutput, durationMs }） */
@@ -60,7 +65,6 @@ function unwrapOutput(toolOutput: unknown): AskUserBlockOutput | undefined {
     return obj.result as AskUserBlockOutput;
   }
   // DB 恢复格式: 直接是 { question, selected, ... }
-  // 使用 'in' 检查属性存在性，避免 selected 为空字符串时 falsy 导致匹配失败
   if ('question' in obj && 'selected' in obj) {
     return obj as unknown as AskUserBlockOutput;
   }
@@ -68,23 +72,20 @@ function unwrapOutput(toolOutput: unknown): AskUserBlockOutput | undefined {
 }
 
 // ============================================================================
-// 超时时间常量
-// ============================================================================
-
-const TIMEOUT_SECONDS = 30;
-
-// ============================================================================
 // 组件实现
 // ============================================================================
 
 const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block }) => {
   const { t } = useTranslation('chatV2');
-  const [remainingSeconds, setRemainingSeconds] = useState(TIMEOUT_SECONDS);
+  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [hasResponded, setHasResponded] = useState(false);
   const [isResponding, setIsResponding] = useState(false);
   const [customInput, setCustomInput] = useState('');
-  const [localSelectedIndex, setLocalSelectedIndex] = useState<number | null>(null);
-  const [localSelectedText, setLocalSelectedText] = useState<string | null>(null);
+  const [checkedIndices, setCheckedIndices] = useState<Set<number>>(new Set());
+
+  // Local state for optimistic UI before backend confirms
+  const [localSelectedTexts, setLocalSelectedTexts] = useState<string[] | null>(null);
+  const [localCustomText, setLocalCustomText] = useState<string | null>(null);
   const [localSource, setLocalSource] = useState<string | null>(null);
 
   // 解析块数据
@@ -94,32 +95,49 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
   const question = askInput?.question || '';
   const rawOptions = askInput?.options;
   const options: string[] = Array.isArray(rawOptions) ? rawOptions : (typeof rawOptions === 'string' ? [rawOptions] : []);
-  const recommended = askInput?.recommended ?? 0;
+  const multiple = askInput?.multiple ?? false;
+  const allowCustom = askInput?.allowCustom ?? true;
+  const timeoutSeconds = askInput?.timeoutSeconds ?? null;
   const context = askInput?.context;
+
+  // Initialize checked indices for multi-select (pre-check recommended = index 0)
+  // Use block.toolCallId as dep to uniquely identify each ask_user invocation
+  useEffect(() => {
+    if (multiple && options.length > 0) {
+      setCheckedIndices(new Set([0]));
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [block.toolCallId]);
 
   // 是否已经有结果（从持久化数据恢复，或工具已完成）
   const isResolved = Boolean(askOutput) || block.status === 'success' || block.status === 'error';
 
-  // 最终显示的选择结果（优先 DB 恢复数据，降级到本地状态）
-  const resolvedText = (askOutput?.selected !== undefined ? askOutput.selected : null) ?? localSelectedText;
+  // 最终显示的选择结果
+  const resolvedTexts: string[] | null = askOutput?.selected ?? localSelectedTexts;
+  const resolvedCustomText: string | null = askOutput?.custom_text ?? localCustomText;
   const resolvedSource = askOutput?.source ?? localSource;
-  const resolvedIndex = askOutput?.selected_index ?? localSelectedIndex;
 
-  // 发送回答到后端
-  const handleSelect = useCallback(
-    async (index: number, text: string, source: string) => {
+  // 发送回答到后端 (unified for both modes)
+  const handleSubmit = useCallback(
+    async (
+      selectedTexts: string[],
+      selectedIndices: number[],
+      customText: string | null,
+      source: string
+    ) => {
       if (hasResponded || isResponding || isResolved) return;
 
       setIsResponding(true);
-      setLocalSelectedIndex(index);
-      setLocalSelectedText(text);
+      setLocalSelectedTexts(selectedTexts);
+      setLocalCustomText(customText);
       setLocalSource(source);
 
       try {
         await invoke('chat_v2_ask_user_respond', {
           toolCallId: block.toolCallId,
-          selectedText: text,
-          selectedIndex: index,
+          selectedTexts,
+          selectedIndices,
+          customText: customText || null,
           source,
         });
         setHasResponded(true);
@@ -134,24 +152,65 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
     [block.toolCallId, hasResponded, isResponding, isResolved]
   );
 
-  // 处理自定义输入提交
+  // Single-select: click option → immediately submit
+  const handleSingleSelect = useCallback(
+    (index: number, text: string) => {
+      handleSubmit([text], [index], null, 'user_click');
+    },
+    [handleSubmit]
+  );
+
+  // Multi-select: toggle checkbox
+  const handleToggleCheck = useCallback(
+    (index: number) => {
+      setCheckedIndices((prev) => {
+        const next = new Set(prev);
+        if (next.has(index)) {
+          next.delete(index);
+        } else {
+          next.add(index);
+        }
+        return next;
+      });
+    },
+    []
+  );
+
+  // Multi-select: confirm button
+  const handleMultiConfirm = useCallback(() => {
+    const indices = Array.from(checkedIndices).sort((a, b) => a - b);
+    const texts = indices.map((i) => options[i]).filter(Boolean);
+    const trimmedCustom = customInput.trim();
+
+    let source: string;
+    if (texts.length > 0 && trimmedCustom) {
+      source = 'mixed';
+    } else if (trimmedCustom) {
+      source = 'custom_input';
+    } else {
+      source = 'user_click';
+    }
+
+    handleSubmit(texts, indices, trimmedCustom || null, source);
+  }, [checkedIndices, options, customInput, handleSubmit]);
+
+  // 处理自定义输入提交 (single-select mode only)
   const handleCustomSubmit = useCallback(() => {
     const trimmed = customInput.trim();
     if (!trimmed) return;
-    handleSelect(-1, trimmed, 'custom_input');
-  }, [customInput, handleSelect]);
+    handleSubmit([], [], trimmed, 'custom_input');
+  }, [customInput, handleSubmit]);
 
-  // 倒计时逻辑（参考 ToolApprovalCard）
+  // 倒计时逻辑（纯视觉倒计时，超时提交由后端统一处理）
+  // 仅在设置了 timeoutSeconds 时启用
+  // 后端超时后会发射 tool_call_end 事件，更新 block.toolOutput 触发 resolved 视图
   useEffect(() => {
-    if (hasResponded || isResolved || remainingSeconds <= 0) return;
+    if (!timeoutSeconds || hasResponded || isResolved || remainingSeconds === null || remainingSeconds <= 0) return;
 
     const timer = setInterval(() => {
       setRemainingSeconds((prev) => {
-        if (prev <= 1) {
+        if (prev === null || prev <= 1) {
           clearInterval(timer);
-          // 超时：自动选择推荐选项
-          const recommendedText = options[recommended] || '';
-          handleSelect(recommended, recommendedText, 'timeout');
           return 0;
         }
         return prev - 1;
@@ -159,20 +218,21 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
     }, 1000);
 
     return () => clearInterval(timer);
-  }, [hasResponded, isResolved, remainingSeconds, options, recommended, handleSelect]);
+  }, [timeoutSeconds, hasResponded, isResolved, remainingSeconds]);
 
   // 新的提问到达时重置状态
   useEffect(() => {
     if (block.status === 'running') {
-      setRemainingSeconds(TIMEOUT_SECONDS);
+      setRemainingSeconds(timeoutSeconds);
       setHasResponded(false);
       setIsResponding(false);
       setCustomInput('');
-      setLocalSelectedIndex(null);
-      setLocalSelectedText(null);
+      setCheckedIndices(new Set());
+      setLocalSelectedTexts(null);
+      setLocalCustomText(null);
       setLocalSource(null);
     }
-  }, [block.toolCallId, block.status]);
+  }, [block.toolCallId, block.status, timeoutSeconds]);
 
   // 来源文案映射
   const sourceLabel = useMemo(() => {
@@ -181,6 +241,8 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
         return t('askUser.sourceUserClick');
       case 'custom_input':
         return t('askUser.sourceCustomInput');
+      case 'mixed':
+        return t('askUser.sourceMixed', { defaultValue: '混合选择' });
       case 'timeout':
         return t('askUser.sourceTimeout');
       case 'channel_closed':
@@ -195,7 +257,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
     return (
       <div className="rounded-lg border border-border/50 bg-card px-3 py-2">
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <MessageCircleQuestion className="w-4 h-4" />
+          <ChatCircleDots size={16} />
           <span>{t('askUser.preparing')}</span>
         </div>
       </div>
@@ -204,11 +266,21 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
 
   // ========== 已回答状态：只读视图 ==========
   if (isResolved || hasResponded) {
+    // Build display text from resolved data
+    const displayParts: string[] = [];
+    if (resolvedTexts && resolvedTexts.length > 0) {
+      displayParts.push(resolvedTexts.join(', '));
+    }
+    if (resolvedCustomText) {
+      displayParts.push(resolvedCustomText);
+    }
+    const displayText = displayParts.join(' + ') || t('askUser.autoSelected', { defaultValue: '（自动选择）' });
+
     return (
       <div className="rounded-lg border border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-900/10 overflow-hidden">
         {/* 头部 */}
         <div className="flex items-center gap-2 px-3 py-2 bg-green-100/50 dark:bg-green-900/20">
-          <Check className="w-4 h-4 text-green-600 dark:text-green-400" />
+          <Check size={16} className="text-green-600 dark:text-green-400" />
           <span className="text-sm font-medium text-green-700 dark:text-green-300">
             {question}
           </span>
@@ -219,7 +291,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
             {t('askUser.selected')}:
           </span>
           <span className="font-medium">
-            {resolvedText || t('askUser.autoSelected', { defaultValue: '（自动选择）' })}
+            {displayText}
           </span>
           {resolvedSource && (
             <span className="text-xs text-muted-foreground">
@@ -236,14 +308,16 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
     <div className="rounded-lg border-2 border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/20 overflow-hidden">
       {/* 头部：问题 + 倒计时 */}
       <div className="flex items-center gap-2 px-3 py-2 bg-blue-100/50 dark:bg-blue-900/20">
-        <MessageCircleQuestion className="w-4 h-4 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+          <ChatCircleDots size={16} className="text-blue-600 dark:text-blue-400 flex-shrink-0" />
         <span className="text-sm font-medium text-blue-800 dark:text-blue-200 flex-1">
           {question}
         </span>
-        <div className="flex items-center gap-1 text-xs text-muted-foreground flex-shrink-0">
-          <Clock className="w-3.5 h-3.5" />
-          <span>{remainingSeconds}s</span>
-        </div>
+        {remainingSeconds !== null && remainingSeconds > 0 && (
+          <div className="flex items-center gap-1 text-xs text-muted-foreground flex-shrink-0">
+            <Clock size={14} />
+            <span>{remainingSeconds}s</span>
+          </div>
+        )}
       </div>
 
       {/* 上下文说明 */}
@@ -255,69 +329,129 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
 
       {/* 选项列表 */}
       <div className="px-3 py-2 space-y-1.5">
-        {options.map((option, index) => {
-          const isRecommended = index === recommended;
-          return (
-            <NotionButton
-              key={index}
-              variant="ghost"
-              size="sm"
-              onClick={() => handleSelect(index, option, 'user_click')}
-              disabled={isResponding}
-              className={cn(
-                'w-full !justify-start gap-2 !px-3 !py-2 text-left',
-                'border',
-                isRecommended
-                  ? 'border-blue-300 dark:border-blue-600 bg-blue-100/60 dark:bg-blue-900/30 hover:bg-blue-200/60 dark:hover:bg-blue-800/40'
-                  : 'border-border/50 bg-card hover:bg-[var(--interactive-hover)]',
-                isResponding && 'opacity-50'
-              )}
-            >
-              <span className="flex-1">{option}</span>
-              {isRecommended && (
-                <span className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">
-                  <Star className="w-3 h-3 fill-current" />
-                  {t('askUser.recommended')}
-                </span>
-              )}
-            </NotionButton>
-          );
-        })}
+        {multiple ? (
+          // ===== Multi-select: checkboxes =====
+          <>
+            {options.map((option, index) => {
+              const isRecommended = index === 0;
+              const isChecked = checkedIndices.has(index);
+              return (
+                <label
+                  key={index}
+                  className={cn(
+                    'flex items-center gap-2.5 px-3 py-2 rounded-md border cursor-pointer transition-colors',
+                    isRecommended
+                      ? 'border-blue-300 dark:border-blue-600 bg-blue-100/60 dark:bg-blue-900/30 hover:bg-blue-200/60 dark:hover:bg-blue-800/40'
+                      : 'border-border/50 bg-card hover:bg-[var(--interactive-hover)]',
+                    isResponding && 'opacity-50 pointer-events-none'
+                  )}
+                >
+                  <Checkbox
+                    checked={isChecked}
+                    onCheckedChange={() => handleToggleCheck(index)}
+                    disabled={isResponding}
+                  />
+                  <span className="flex-1 text-sm">{option}</span>
+                  {isRecommended && (
+                    <span className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">
+                      <Star size={12} className="fill-current" />
+                      {t('askUser.recommended')}
+                    </span>
+                  )}
+                </label>
+              );
+            })}
+          </>
+        ) : (
+          // ===== Single-select: buttons =====
+          options.map((option, index) => {
+            const isRecommended = index === 0;
+            return (
+              <NotionButton
+                key={index}
+                variant={isRecommended ? 'primary' : 'ghost'}
+                size="sm"
+                onClick={() => handleSingleSelect(index, option)}
+                disabled={isResponding}
+                className={cn(
+                  'w-full !justify-start gap-2 !px-3 !py-2 text-left',
+                  'border',
+                  isRecommended
+                    ? 'border-blue-300 dark:border-blue-600 bg-blue-600 dark:bg-blue-700 text-white hover:bg-blue-700 dark:hover:bg-blue-600'
+                    : 'border-border/50 bg-card hover:bg-[var(--interactive-hover)]',
+                  isResponding && 'opacity-50'
+                )}
+              >
+                <span className="flex-1">{option}</span>
+                {isRecommended && (
+                  <span className="flex items-center gap-1 text-xs flex-shrink-0 opacity-90">
+                    <Star className="w-3 h-3 fill-current" />
+                    {t('askUser.recommended')}
+                  </span>
+                )}
+              </NotionButton>
+            );
+          })
+        )}
       </div>
 
-      {/* 自定义输入 */}
-      <div className="px-3 pb-2 flex gap-2">
-        <Input
-          type="text"
-          value={customInput}
-          onChange={(e) => setCustomInput(e.target.value)}
-          onKeyDown={(e) => {
-            if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-              e.preventDefault();
-              handleCustomSubmit();
-            }
-          }}
-          placeholder={t('askUser.customPlaceholder')}
-          disabled={isResponding}
-          className={cn(
-            'flex-1 px-3 py-1.5 text-sm rounded-md border border-border/50',
-            'bg-background placeholder:text-muted-foreground/50',
-            'focus:outline-none focus:ring-1 focus:ring-blue-400',
-            isResponding && 'opacity-50 cursor-not-allowed'
+      {/* Multi-select confirm button */}
+      {multiple && (
+        <div className="px-3 pb-2">
+          <NotionButton
+            variant="primary"
+            size="sm"
+            onClick={handleMultiConfirm}
+            disabled={isResponding || (checkedIndices.size === 0 && !customInput.trim())}
+            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+          >
+            <Check size={14} className="mr-1.5" />
+            {t('askUser.confirmSelection', { defaultValue: '确认选择' })}
+          </NotionButton>
+        </div>
+      )}
+
+      {/* 自定义输入 (only when allowCustom is true) */}
+      {allowCustom && (
+        <div className="px-3 pb-2 flex gap-2">
+          <Input
+            type="text"
+            value={customInput}
+            onChange={(e) => setCustomInput(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                e.preventDefault();
+                if (multiple) {
+                  handleMultiConfirm();
+                } else {
+                  handleCustomSubmit();
+                }
+              }
+            }}
+            placeholder={t('askUser.customPlaceholder')}
+            disabled={isResponding}
+            className={cn(
+              'flex-1 px-3 py-1.5 text-sm rounded-md border border-border/50',
+              'bg-background placeholder:text-muted-foreground/50',
+              'focus:outline-none focus:ring-1 focus:ring-blue-400',
+              isResponding && 'opacity-50 cursor-not-allowed'
+            )}
+          />
+          {!multiple && (
+            <NotionButton
+              variant="primary"
+              size="sm"
+              onClick={handleCustomSubmit}
+              disabled={isResponding || !customInput.trim()}
+              iconOnly
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+              aria-label="send"
+            >
+              <PaperPlaneRight size={14} />
+            </NotionButton>
           )}
-        />
-        <NotionButton
-          variant="primary"
-          size="sm"
-          onClick={handleCustomSubmit}
-          disabled={isResponding || !customInput.trim()}
-          iconOnly
-          className="bg-blue-600 hover:bg-blue-700 text-white"
-          aria-label="send"
-        >
-          <Send className="w-3.5 h-3.5" />
-        </NotionButton>
-      </div>
+        </div>
+      )}
     </div>
   );
 });

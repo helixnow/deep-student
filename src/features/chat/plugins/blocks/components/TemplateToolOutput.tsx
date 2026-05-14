@@ -14,14 +14,14 @@ import { renderCardPreview } from '@/components/SharedPreview';
 import type { AnkiCardTemplate } from '@/types';
 import {
   Eye,
-  FileJson,
-  Layers,
+  FileJs,
+  Stack,
   CheckCircle,
   XCircle,
   GitFork,
   Plus,
   Pencil,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { emitTemplateDesignerLifecycle } from '@/features/chat/debug/templateDesignerDebug';
 
 // ============================================================================
@@ -343,7 +343,7 @@ export const TemplateToolOutput: React.FC<TemplateToolOutputProps> = ({
       {/* 头部 */}
       <div className="flex items-center justify-between mb-2">
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <HeaderIcon className="w-3 h-3" />
+          <HeaderIcon size={12} />
           <span>{headerTitle}</span>
           {output.name && (
             <span className="text-foreground font-medium ml-1">{output.name}</span>
@@ -352,7 +352,7 @@ export const TemplateToolOutput: React.FC<TemplateToolOutputProps> = ({
 
         {/* 切换原始 JSON */}
         <NotionButton variant="ghost" size="sm" onClick={() => setShowRawJson(!showRawJson)}>
-          <FileJson className="w-3 h-3" />
+          <FileJs size={12} />
           {showRawJson
             ? t('templateTool.hideJson')
             : t('templateTool.showJson')}
@@ -371,7 +371,7 @@ export const TemplateToolOutput: React.FC<TemplateToolOutputProps> = ({
         >
           {output.name && (
             <div className="flex items-center gap-1">
-              <Layers className="w-3 h-3 text-muted-foreground" />
+              <Stack size={12} className="text-muted-foreground" />
               <span className="font-medium text-foreground">{output.name}</span>
             </div>
           )}
@@ -396,9 +396,9 @@ export const TemplateToolOutput: React.FC<TemplateToolOutputProps> = ({
           {output.isActive !== undefined && (
             <div className="flex items-center gap-0.5">
               {output.isActive ? (
-                <CheckCircle className="w-3 h-3 text-green-500" />
+                <CheckCircle size={12} className="text-green-500" />
               ) : (
-                <XCircle className="w-3 h-3 text-muted-foreground" />
+                <XCircle size={12} className="text-muted-foreground" />
               )}
               <span className={output.isActive ? 'text-green-600 dark:text-green-400' : 'text-muted-foreground'}>
                 {output.isActive

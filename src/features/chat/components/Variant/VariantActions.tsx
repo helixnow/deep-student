@@ -14,11 +14,11 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import {
-  MoreHorizontal,
+  DotsThree,
   Square,
-  RotateCcw,
-  Trash2,
-} from 'lucide-react';
+  ArrowCounterClockwise,
+  Trash,
+} from '@phosphor-icons/react';
 import {
   AppMenu,
   AppMenuTrigger,
@@ -147,7 +147,7 @@ export const VariantActions: React.FC<VariantActionsProps> = ({
     <AppMenu>
       <AppMenuTrigger asChild>
         <NotionButton variant="ghost" size="icon" iconOnly disabled={isLoading} className={cn(isLoading && 'opacity-50', className)} aria-label={t('variant.actions')}>
-          <MoreHorizontal className="w-4 h-4" />
+          <DotsThree size={16} />
         </NotionButton>
       </AppMenuTrigger>
       <AppMenuContent align="end" width={160}>
@@ -156,7 +156,7 @@ export const VariantActions: React.FC<VariantActionsProps> = ({
           <AppMenuItem
             onClick={handleCancel}
             disabled={isLoading}
-            icon={<Square className="w-4 h-4" />}
+            icon={<Square size={16} />}
           >
             {t('variant.cancel')}
           </AppMenuItem>
@@ -167,7 +167,7 @@ export const VariantActions: React.FC<VariantActionsProps> = ({
           <AppMenuItem
             onClick={handleRetry}
             disabled={isLoading}
-            icon={<RotateCcw className="w-4 h-4" />}
+            icon={<ArrowCounterClockwise size={16} />}
           >
             {t('variant.retry')}
           </AppMenuItem>
@@ -182,7 +182,7 @@ export const VariantActions: React.FC<VariantActionsProps> = ({
             onClick={handleDelete}
             disabled={isLoading}
             destructive
-            icon={<Trash2 className="w-4 h-4" />}
+            icon={<Trash size={16} />}
           >
             {t('variant.delete')}
           </AppMenuItem>

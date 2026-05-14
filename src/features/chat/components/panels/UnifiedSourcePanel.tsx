@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useState, useId, useRef, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
-import { Search, BookOpen, Brain, Hammer, ChevronRight, ChevronLeft, ExternalLink, Image, Maximize2, Minimize2 } from 'lucide-react';
+import { MagnifyingGlass, BookOpen, Brain, Hammer, CaretRight, CaretLeft, ArrowSquareOut, Image, ArrowsOut, ArrowsIn } from '@phosphor-icons/react';
 import type { UnifiedSourceBundle, UnifiedSourceGroup, UnifiedSourceItem } from './sourceTypes';
 import { cn } from '@/utils/cn';
 import { Z_INDEX } from '@/config/zIndex';
@@ -49,7 +49,7 @@ function groupIcon(group: CategoryKey) {
     case 'memory':
       return <Brain size={16} />;
     case 'web_search':
-      return <Search size={16} />;
+      return <MagnifyingGlass size={16} />;
     case 'tool':
       return <Hammer size={16} />;
     case 'multimodal':
@@ -537,22 +537,22 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
           <span className="text-xs text-muted-foreground uppercase tracking-wider opacity-70">{entry.item.origin}</span>
           {entry.item.origin === 'graph' ? (
             <NotionButton variant="ghost" size="sm" onClick={() => handleLocateGraph(entry.item)} className="text-primary">
-              <ExternalLink size={14} />
+              <ArrowSquareOut size={14} />
               {t('common:chat.sources.locateGraph')}
             </NotionButton>
           ) : entry.item.origin === 'memory' && getMemoryLocateId(entry.item) ? (
             <NotionButton variant="ghost" size="sm" onClick={() => handleLocateMemory(entry.item)} className="text-primary">
-              <ExternalLink size={14} />
+              <ArrowSquareOut size={14} />
               {t('common:chat.sources.locateMemory')}
             </NotionButton>
           ) : entry.item.origin === 'rag' && canLocateResource(getItemResourceLocator(entry.item)) ? (
             <NotionButton variant="ghost" size="sm" onClick={() => handleLocateRagDocument(entry.item)} className="text-primary">
-              <ExternalLink size={14} />
+              <ArrowSquareOut size={14} />
               {t('common:chat.sources.locateKb')}
             </NotionButton>
           ) : entry.item.link && isHttpUrl(entry.item.link) ? (
             <NotionButton variant="ghost" size="sm" onClick={() => handleOpenLink(entry.item)} className="text-primary">
-              <ExternalLink size={14} />
+              <ArrowSquareOut size={14} />
               {t('common:actions.open')}
             </NotionButton>
           ) : null}
@@ -579,9 +579,9 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
             onClick={() => setOpen(prev => !prev)}
             aria-expanded={open}
           >
-            <Search size={16} className="panel-header-icon" />
+            <MagnifyingGlass size={16} className="panel-header-icon" />
             <span className="usp-header-title">{totalLabel}</span>
-            <ChevronRight size={16} className={cn('usp-header-arrow', open && 'expanded')} />
+            <CaretRight size={16} className={cn('usp-header-arrow', open && 'expanded')} />
           </NotionButton>
         </div>
 
@@ -625,7 +625,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                       onClick={() => setIsExpanded(true)}
                       title={t('common:actions.expandAll')}
                     >
-                      <Maximize2 size={14} />
+                      <ArrowsOut size={14} />
                       <span>{t('common:actions.expandAll')}</span>
                     </NotionButton>
                   )}
@@ -643,7 +643,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                       onClick={() => scrollByAmount('left')}
                       aria-label="scroll left"
                     >
-                      <ChevronLeft size={16} />
+                      <CaretLeft size={16} />
                     </NotionButton>
                   )}
 
@@ -657,7 +657,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                       onClick={() => scrollByAmount('right')}
                       aria-label="scroll right"
                     >
-                      <ChevronRight size={16} />
+                      <CaretRight size={16} />
                     </NotionButton>
                   )}
 
@@ -725,7 +725,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
             {/* 抽屉头部 */}
             <SheetHeader className="px-4 pb-3 border-b">
               <SheetTitle className="flex items-center gap-2 text-base">
-                <Search size={18} />
+                <MagnifyingGlass size={18} />
                 {totalLabel}
               </SheetTitle>
             </SheetHeader>
@@ -799,9 +799,9 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
           aria-expanded={open}
           aria-controls={bodyId}
         >
-          <Search size={16} className="panel-header-icon" />
+          <MagnifyingGlass size={16} className="panel-header-icon" />
           <span className="usp-header-title">{totalLabel}</span>
-          <ChevronRight size={16} className={cn('usp-header-arrow', open && 'expanded')} />
+          <CaretRight size={16} className={cn('usp-header-arrow', open && 'expanded')} />
         </NotionButton>
         {data.stage && (
           <span className="usp-header-stage">{data.stage}</span>
@@ -853,7 +853,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                     onClick={() => setIsExpanded(prev => !prev)}
                     title={isExpanded ? t('common:actions.collapse') : t('common:actions.expand')}
                   >
-                    {isExpanded ? <Minimize2 size={14} /> : <Maximize2 size={14} />}
+                    {isExpanded ? <ArrowsIn size={14} /> : <ArrowsOut size={14} />}
                     <span>{isExpanded ? t('common:actions.collapse') : t('common:actions.expandAll')}</span>
                   </NotionButton>
                 )}
@@ -871,7 +871,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                     onClick={() => scrollByAmount('left')}
                     aria-label={t('common:actions.scrollLeft')}
                   >
-                    <ChevronLeft size={18} />
+                    <CaretLeft size={18} />
                   </NotionButton>
                 )}
 
@@ -885,7 +885,7 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                     onClick={() => scrollByAmount('right')}
                     aria-label={t('common:actions.scrollRight')}
                   >
-                    <ChevronRight size={18} />
+                    <CaretRight size={18} />
                   </NotionButton>
                 )}
 
@@ -953,23 +953,23 @@ const UnifiedSourcePanel: React.FC<UnifiedSourcePanelProps> = ({
                         <span className="text-[10px] text-muted-foreground uppercase tracking-wider opacity-70">{entry.item.origin}</span>
                         {entry.item.origin === 'graph' ? (
                           <NotionButton variant="ghost" size="sm" onClick={() => handleLocateGraph(entry.item)} className="text-primary !h-6 text-xs">
-                            <ExternalLink size={12} />
+                            <ArrowSquareOut size={12} />
                             {t('common:chat.sources.locateGraph')}
                           </NotionButton>
                         ) : entry.item.origin === 'memory' && getMemoryLocateId(entry.item) ? (
                           <NotionButton variant="ghost" size="sm" onClick={() => handleLocateMemory(entry.item)} className="text-primary !h-6 text-xs">
-                            <ExternalLink size={12} />
+                            <ArrowSquareOut size={12} />
                             {t('common:chat.sources.locateMemory')}
                           </NotionButton>
                         ) : entry.item.origin === 'rag' && canLocateResource(getItemResourceLocator(entry.item)) ? (
                           /* 🔧 P1-34: RAG 来源添加“在知识库中打开”按钮 */
                           <NotionButton variant="ghost" size="sm" onClick={() => handleLocateRagDocument(entry.item)} className="text-primary !h-6 text-xs">
-                            <ExternalLink size={12} />
+                            <ArrowSquareOut size={12} />
                             {t('common:chat.sources.locateKb')}
                           </NotionButton>
                         ) : entry.item.link && isHttpUrl(entry.item.link) ? (
                           <NotionButton variant="ghost" size="sm" onClick={() => handleOpenLink(entry.item)} className="text-primary !h-6 text-xs">
-                            <ExternalLink size={12} />
+                            <ArrowSquareOut size={12} />
                             {t('common:actions.open')}
                           </NotionButton>
                         ) : null}

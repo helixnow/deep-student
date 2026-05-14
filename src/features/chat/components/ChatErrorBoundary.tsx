@@ -1,6 +1,6 @@
 import React, { Component, type ErrorInfo, type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, RefreshCw } from 'lucide-react';
+import { Warning, ArrowClockwise } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 
@@ -31,7 +31,7 @@ const ErrorFallback: React.FC<ErrorFallbackProps> = ({ error, onRetry, className
       'flex flex-col items-center justify-center h-full min-h-[200px] p-6 text-center',
       className
     )}>
-      <AlertTriangle className="w-12 h-12 text-destructive mb-4" />
+      <Warning size={48} className="text-destructive mb-4" />
       <h3 className="text-lg font-semibold text-foreground mb-2">
         {t('errorBoundary.chatComponentError')}
       </h3>
@@ -40,7 +40,7 @@ const ErrorFallback: React.FC<ErrorFallbackProps> = ({ error, onRetry, className
       </p>
       {onRetry && (
         <NotionButton variant="primary" size="sm" onClick={onRetry} className="bg-primary text-primary-foreground hover:bg-primary/90">
-          <RefreshCw className="w-4 h-4" />
+          <ArrowClockwise size={16} />
           {t('errorBoundary.retry')}
         </NotionButton>
       )}

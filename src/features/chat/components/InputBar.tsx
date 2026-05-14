@@ -9,7 +9,7 @@ import { useTranslation } from 'react-i18next';
 import type { StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { Send, Square, Loader2, Paperclip } from 'lucide-react';
+import { PaperPlaneRight, Square, CircleNotch, Paperclip } from '@phosphor-icons/react';
 import { useSessionStatus, useInputValue, useCanSend, useAttachments } from '../hooks/useChatStore';
 import type { ChatStore } from '../core/types';
 import { ATTACHMENT_MAX_COUNT } from '../core/constants';
@@ -187,7 +187,7 @@ export const InputBar: React.FC<InputBarProps> = ({
               aria-label={t('inputBar.addAttachment')}
               title={t('inputBar.addAttachment')}
             >
-              <Paperclip className="w-5 h-5" />
+              <Paperclip size={20} />
             </NotionButton>
           </AttachmentUploader>
         )}
@@ -234,11 +234,11 @@ export const InputBar: React.FC<InputBarProps> = ({
           title={isStreaming ? t('inputBar.stop') : t('inputBar.send')}
         >
           {isAborting ? (
-            <Loader2 className="w-5 h-5 animate-spin" />
+            <CircleNotch size={20} className="animate-spin" />
           ) : isStreaming ? (
-            <Square className="w-5 h-5 fill-current" />
+            <Square size={20} className="fill-current" />
           ) : (
-            <Send className="w-5 h-5 ml-0.5" />
+            <PaperPlaneRight size={20} className="ml-0.5" />
           )}
         </NotionButton>
       </div>

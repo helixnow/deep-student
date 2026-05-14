@@ -15,7 +15,7 @@ import '../init';
 import React, { useMemo, useCallback, useState, useEffect, useRef } from 'react';
 import { useStore } from 'zustand';
 import { useTranslation } from 'react-i18next';
-import { Loader2 } from 'lucide-react';
+import { CircleNotch, Info } from '@phosphor-icons/react';
 import { AnimatePresence, motion } from 'framer-motion';
 import { cn } from '@/utils/cn';
 import { MessageList } from './MessageList';
@@ -40,7 +40,6 @@ import { groupCache } from '../core/store/groupCache';
 // import { GraphSelectDialog } from '@/components/graph-manager/GraphSelectDialog';
 // 🆕 工具审批卡片（文档 29 P1-3）- 已移至 InputBarV2 内部渲染
 // 🆕 AI 内容免责提示（合规）
-import { Info } from 'lucide-react';
 
 // ============================================================================
 // Props 定义
@@ -273,14 +272,11 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
         emptyStateGroupName={resolvedEmptyStateGroupName}
         forceEmptyPreview={forceEmptyPreview}
       />
-      {showBottomFade ? (
-        <div
-          className="pointer-events-none absolute left-0 right-0 bottom-0 z-10 h-6"
-          style={{
-            background: 'linear-gradient(to bottom, transparent 0%, hsl(var(--background)) 100%)',
-          }}
-        />
-      ) : null}
+      <div
+        aria-hidden="true"
+        className="scroll-fade scroll-fade--bottom"
+        style={{ '--scroll-fade-surface': 'var(--shell-workspace-panel)' } as React.CSSProperties}
+      />
     </div>
   );
 
@@ -293,7 +289,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   const renderDisclaimer = (className?: string) => showInputBar ? (
     <div className={cn('text-center px-4 py-1', className)}>
       <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/50 select-none">
-        <Info className="h-3 w-3" />
+        <Info size={12} className="h-3 w-3" />
         {t('common:aiDisclaimer.chatHint')}
       </span>
     </div>

@@ -6,7 +6,7 @@
  */
 
 import React from 'react';
-import { Folder } from 'lucide-react';
+import { Folder } from '@phosphor-icons/react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
 import { Droppable, Draggable } from '@hello-pangea/dnd';

@@ -163,6 +163,10 @@ const INPUT_BAR_CONFIG = {
     placeholder: MOBILE_LAYOUT.inputBar.placeholderHeight,
     /** ResizeObserver 高度变化阈值（小于此值不更新状态） */
     changeThreshold: MOBILE_LAYOUT.inputBar.heightChangeThreshold,
+    /** textarea 最小高度 */
+    textareaMin: 40,
+    /** textarea 最大高度（超出后才允许内部滚动） */
+    textareaMax: 160,
   },
   /** 响应式断点 */
   breakpoints: {
@@ -1399,8 +1403,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const adjustTextareaHeight = useCallback(() => {
     const textarea = textareaRef.current;
     const ghost = ghostRef.current;
-    const maxHeight = 160;
-    const minHeight = 40;
+    const maxHeight = INPUT_BAR_CONFIG.heights.textareaMax;
+    const minHeight = INPUT_BAR_CONFIG.heights.textareaMin;
     if (textarea && ghost) {
       const styles = window.getComputedStyle(textarea);
       ghost.style.width = styles.width;
@@ -2192,10 +2196,12 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       className={cn(
         // 🎨 布局分离：作为 flex 子项，relative 用于面板定位
         // 🔧 P0修复：移除 ring 样式，避免拖拽时显示难看的实心边框
-        'relative z-[100] w-full flex-shrink-0 bg-gradient-to-b from-[color:var(--shell-inspector-panel)] to-[hsl(var(--background))] bg-[length:100%_200%] bg-bottom px-4 pt-2.5 transition-all duration-500 ease-out unified-input-docked md:px-8 md:pb-4',
+        'relative z-[100] w-full flex-shrink-0 px-4 pt-2.5 transition-all duration-500 ease-out unified-input-docked md:px-8 md:pb-4',
         className
       )}
       style={{
+        // 🎨 和侧边栏 scroll-fade 共用 color-mix 三段式曲线（覆盖在消息列表上方生效，此处仅保留纯色）
+        background: `var(--shell-workspace-panel)`,
         // 🎨 移动端底部安全区 + 导航栏间距（使用 bottomGapValue 同时包含安全区域和导航栏高度）
         paddingBottom: isMobile && !mobileLayout?.isFullscreenContent ? bottomGapValue : '8px',
         ['--unified-input-docked-height' as any]: dockedHeightVarValue,
@@ -2295,12 +2301,14 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             disabled={isStreaming}
           />
 
-          <CustomScrollArea
-            fullHeight={false}
-            className="relative w-full"
-            viewportRef={textareaScrollViewportRef}
-            viewportClassName={textareaViewportHeight <= 40 ? '!overflow-hidden' : undefined}
-            data-hide-scrollbar={textareaViewportHeight <= 40 ? 'true' : undefined}
+          <div
+            ref={textareaScrollViewportRef}
+            className={cn(
+              'relative w-full',
+              textareaViewportHeight >= INPUT_BAR_CONFIG.heights.textareaMax
+                ? 'overflow-y-auto'
+                : 'overflow-y-hidden',
+            )}
             style={{ height: `${textareaViewportHeight}px` }}
           >
             <textarea
@@ -2421,7 +2429,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 background: 'transparent',
               }}
             />
-          </CustomScrollArea>
+          </div>
           {/* Ghost element for height calculation */}
           <div
             ref={ghostRef}

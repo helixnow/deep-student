@@ -7,7 +7,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { RotateCcw } from 'lucide-react';
+import { ArrowCounterClockwise } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -83,7 +83,7 @@ export const ModelRetryDialog: React.FC<ModelRetryDialogProps> = ({
     <NotionDialog open={open} onOpenChange={(isOpen) => !isOpen && handleClose()} maxWidth="max-w-md">
         <NotionDialogHeader>
           <NotionDialogTitle className="flex items-center gap-2">
-            <RotateCcw className="h-5 w-5 text-primary" />
+            <ArrowCounterClockwise size={20} className="text-primary" />
             {t('chatV2:messageItem.modelRetry.dialogTitle')}
           </NotionDialogTitle>
         </NotionDialogHeader>
@@ -108,7 +108,7 @@ export const ModelRetryDialog: React.FC<ModelRetryDialogProps> = ({
             disabled={selectedModels.length === 0 || disabled}
             className="gap-2"
           >
-            <RotateCcw className="h-4 w-4" />
+            <ArrowCounterClockwise size={16} />
             {selectedModels.length > 1
               ? t('chatV2:messageItem.modelRetry.retryParallel', { count: selectedModels.length })
               : t('chatV2:messageItem.modelRetry.retry')}

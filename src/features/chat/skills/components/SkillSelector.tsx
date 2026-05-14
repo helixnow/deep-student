@@ -6,7 +6,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, Zap, RefreshCw, X, Check, User, Wrench, Star, ChevronLeft } from 'lucide-react';
+import { MagnifyingGlass, Lightning, ArrowClockwise, X, Check, User, Wrench, Star, CaretLeft } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/shad/Input';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -182,7 +182,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
       {!isMobile && (
       <div className="flex items-center justify-between mb-3 flex-shrink-0">
         <div className="flex items-center gap-2">
-          <Zap size={18} className="text-primary" />
+          <Lightning size={18} className="text-primary" />
           <span className="font-medium text-foreground">
             {t('skills:selector.title')}
           </span>
@@ -195,7 +195,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
           {/* 刷新按钮 */}
           {onRefresh && (
             <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRefresh} disabled={isRefreshing} aria-label={t('skills:selector.refresh')} title={t('skills:selector.refresh')} className={cn(isRefreshing && 'animate-spin')}>
-              <RefreshCw size={16} />
+              <ArrowClockwise size={16} />
             </NotionButton>
           )}
 
@@ -211,7 +211,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
 
       {/* 搜索框 */}
       <div className="relative mb-3 flex-shrink-0">
-        <Search
+        <MagnifyingGlass
           size={12}
           className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
         />
@@ -245,7 +245,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
         >
           {filteredSkills.length === 0 ? (
             <div className="flex flex-col items-center justify-center h-full text-center py-8">
-              <Zap size={24} className="text-muted-foreground/50 mb-2" />
+              <Lightning size={24} className="text-muted-foreground/50 mb-2" />
               <p className="text-xs text-muted-foreground">
                 {searchTerm
                   ? t('skills:selector.noResults')
@@ -282,8 +282,8 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                           className="flex-shrink-0 text-amber-500" 
                           title={t('skills:status.toolLoaded')}
                         >
-                          <Zap size={14} />
-                        </span>
+                      <Lightning size={14} />
+                    </span>
                       ) : (
                         // 手动激活的技能：显示 checkbox
                         <NotionButton
@@ -391,7 +391,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
               {/* 📱 移动端：返回按钮 */}
               {isMobile && (
                 <NotionButton variant="ghost" size="sm" onClick={() => setSelectedSkillId(null)} className="mb-2 flex-shrink-0">
-                  <ChevronLeft size={14} />
+                  <CaretLeft size={14} />
                   <span>{t('common:actions.back')}</span>
                 </NotionButton>
               )}
@@ -492,7 +492,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                 {/* 工具加载的技能：显示状态提示，禁止手动操作 */}
                 {isSkillLoaded(selectedSkill.id) ? (
                   <div className="w-full flex items-center justify-center gap-2 px-4 py-2.5 rounded-lg text-sm font-medium bg-amber-500/10 text-amber-600 dark:text-amber-400 border border-amber-500/30">
-                    <Zap size={16} />
+                    <Lightning size={16} />
                     <span>{t('skills:card.loadedByTool')}</span>
                   </div>
                 ) : (
@@ -510,7 +510,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                       </>
                     ) : (
                       <>
-                        <Zap size={16} />
+                        <Lightning size={16} />
                         <span>{t('skills:card.activateSkill')}</span>
                       </>
                     )}
@@ -521,7 +521,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
           ) : (
             // 📱 移动端不会显示这个状态（因为没选中时会显示列表）
             <div className="flex flex-col items-center justify-center h-full text-center py-8">
-              <Zap size={24} className="text-muted-foreground/30 mb-2" />
+              <Lightning size={24} className="text-muted-foreground/30 mb-2" />
               <p className="text-xs text-muted-foreground">
                 {t('skills:card.selectSkillToViewDetails')}
               </p>

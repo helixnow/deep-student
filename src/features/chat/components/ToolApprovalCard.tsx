@@ -9,7 +9,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { Check, X, Clock, AlertTriangle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Check, X, Clock, Warning, CaretDown, CaretUp } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Card, CardContent, CardFooter, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { Badge } from '@/components/ui/shad/Badge';
@@ -71,12 +71,12 @@ const ArgumentsPreview: React.FC<{
         <NotionButton variant="ghost" size="sm" onClick={onToggle} className="mt-1 text-primary hover:underline">
           {isExpanded ? (
             <>
-              <ChevronUp className="h-3 w-3" />
+              <CaretUp size={12} />
               {t('approval.collapseArgs')}
             </>
           ) : (
             <>
-              <ChevronDown className="h-3 w-3" />
+              <CaretDown size={12} />
               {t('approval.expandArgs')}
             </>
           )}
@@ -203,13 +203,13 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
     if (resolvedStatus === 'expired') {
       return {
         label: t('approval.resolution.expired'),
-        icon: AlertTriangle,
+        icon: Warning,
         className: 'text-orange-700 dark:text-orange-400',
       };
     }
     return {
       label: t('approval.resolution.error'),
-      icon: AlertTriangle,
+      icon: Warning,
       className: 'text-red-700 dark:text-red-400',
     };
   }, [resolvedStatus, t]);
@@ -238,8 +238,8 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
               {t(`approval.sensitivity.${request.sensitivity}`, request.sensitivity)}
             </Badge>
             <div className="flex items-center gap-1 text-sm text-muted-foreground">
-              <Clock className="h-4 w-4" />
-              <span>{remainingSeconds}s</span>
+            <Clock size={16} />
+            <span>{remainingSeconds}s</span>
             </div>
           </div>
         </div>
@@ -281,12 +281,12 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
       <CardFooter className="flex justify-end gap-2 pt-2">
         {resolution ? (
           <div className={cn('flex items-center gap-2 text-sm font-medium', resolution.className)}>
-            <resolution.icon className="h-4 w-4" />
+            <resolution.icon size={16} />
             <span>{resolution.label}</span>
           </div>
         ) : hasResponded ? (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <Clock className="h-4 w-4" />
+            <Clock size={16} />
             <span>{t('approval.resolution.pending')}</span>
           </div>
         ) : (
@@ -321,7 +321,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
               disabled={isResponding}
               className="text-red-600 hover:text-red-700 dark:text-red-400"
             >
-              <X className="mr-1 h-4 w-4" />
+              <X size={16} className="mr-1" />
               {t('approval.reject')}
             </NotionButton>
 
@@ -333,7 +333,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
               autoFocus
               className="bg-success text-success-foreground"
             >
-              <Check className="mr-1 h-4 w-4" />
+              <Check size={16} className="mr-1" />
               {t('approval.approve')}
             </NotionButton>
           </>

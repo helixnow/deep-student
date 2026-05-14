@@ -263,7 +263,7 @@
   border-radius: 12px;
   background: transparent; /* 透明背景 */
   overflow: hidden; /* 让内部头部与pre无缝衔接 */
-  box-shadow: var(--shadow-content-elevated); /* 保留外层阴影 */
+  box-shadow: none;
 }
 
 /* Mermaid 预览容器：设置最小高度与拖拽态样式 */
@@ -402,12 +402,13 @@
 
 .chat-v2 .inline-code {
   display: inline !important; /* 确保内联显示 */
-  background: hsl(var(--muted));
-  color: hsl(var(--danger));
-  padding: 0.15em 0.4em;
-  border-radius: 3px;
-  font-weight: 500;
-  border: 1px solid hsl(var(--border));
+  background: hsl(var(--muted) / 0.6);
+  color: hsl(var(--foreground));
+  padding: 0.2em 0.4em;
+  border-radius: 6px;
+  font-weight: 400;
+  border: none;
+  font-size: 0.875em;
   white-space: pre-wrap; /* 允许在容器内换行 */
   word-break: break-word;
   overflow-wrap: anywhere;
@@ -516,7 +517,8 @@
   overflow-x: auto;
   margin: 1em 0;
   border-radius: 8px;
-  box-shadow: var(--shadow-content-soft);
+  border: 1px solid hsl(var(--border));
+  box-shadow: none;
 }
 
 .chat-v2 .markdown-table {
@@ -695,7 +697,7 @@
   background: hsl(var(--card));
   border-radius: 6px;
   border: 1px solid hsl(var(--border));
-  box-shadow: var(--shadow-content-subtle);
+  box-shadow: none;
 }
 
 .chat-v2 .rag-source-item:last-child {
@@ -1162,7 +1164,7 @@
   object-fit: contain;
   border: 1px solid hsl(var(--border));
   background: hsl(var(--muted) / 0.2);
-  box-shadow: var(--shadow-content-soft);
+  box-shadow: none;
 }
 
 /* 图片加载中占位符 */

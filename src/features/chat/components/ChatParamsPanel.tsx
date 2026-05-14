@@ -20,15 +20,15 @@ import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Switch } from '@/components/ui/shad/Switch';
 import {
-  Bot,
+  Robot,
   Thermometer,
   FileText,
   Brain,
   Wrench,
-  ChevronDown,
-  RotateCcw,
-  ShieldOff,
-} from 'lucide-react';
+  CaretDown,
+  ArrowCounterClockwise,
+  ShieldSlash,
+} from '@phosphor-icons/react';
 import { UnifiedModelSelector } from '@/components/shared/UnifiedModelSelector';
 import type { ChatStore, ChatParams } from '../core/types';
 import { useChatParams } from '../hooks/useChatStore';
@@ -237,7 +237,7 @@ export const ChatParamsPanel: React.FC<ChatParamsPanelProps> = ({
           onChange={(id) => updateParam('modelId', id)}
           variant="compact"
           showSearch={false}
-          triggerIcon={<Bot className="w-4 h-4" />}
+          triggerIcon={<Robot size={16} />}
         />
 
         {/* 快捷开关 */}
@@ -276,17 +276,18 @@ export const ChatParamsPanel: React.FC<ChatParamsPanelProps> = ({
         onClick={() => onExpandedChange?.(!expanded)}
       >
         <div className="flex items-center gap-2">
-          <Bot className="w-5 h-5 text-primary" />
+          <Robot size={20} className="text-primary" />
           <span className="font-medium">{t('chatParams.title')}</span>
         </div>
         <div className="flex items-center gap-2">
           <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleReset(); }} aria-label={t('chatParams.reset')} title={t('chatParams.reset')}>
-            <RotateCcw className="w-4 h-4 text-muted-foreground" />
+            <ArrowCounterClockwise size={16} className="text-muted-foreground" />
           </NotionButton>
           {onExpandedChange && (
-            <ChevronDown
+            <CaretDown
+              size={16}
               className={cn(
-                'w-4 h-4 text-muted-foreground transition-transform',
+                'text-muted-foreground transition-transform',
                 expanded && 'rotate-180'
               )}
             />
@@ -300,7 +301,7 @@ export const ChatParamsPanel: React.FC<ChatParamsPanelProps> = ({
           {/* 模型选择 */}
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Bot className="w-4 h-4" />
+              <Robot size={16} />
               <span>{t('chatParams.model')}</span>
             </div>
             <UnifiedModelSelector
@@ -314,7 +315,7 @@ export const ChatParamsPanel: React.FC<ChatParamsPanelProps> = ({
           {/* 温度 */}
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <Thermometer className="w-4 h-4" />
+              <Thermometer size={16} />
               <span>{t('chatParams.temperature')}</span>
             </div>
             <SliderControl
@@ -335,7 +336,7 @@ export const ChatParamsPanel: React.FC<ChatParamsPanelProps> = ({
           {/* 最大输出 */}
           <div className="space-y-2">
             <div className="flex items-center gap-2 text-sm text-muted-foreground">
-              <FileText className="w-4 h-4" />
+              <FileText size={16} />
               <span>{t('chatParams.maxTokens')}</span>
             </div>
             <SliderControl
@@ -359,7 +360,7 @@ export const ChatParamsPanel: React.FC<ChatParamsPanelProps> = ({
               checked={chatParams.enableThinking}
               onChange={(v) => updateParam('enableThinking', v)}
               disabled={!selectedModelConfig?.supportsThinking}
-              icon={<Brain className="w-4 h-4" />}
+              icon={<Brain size={16} />}
             />
 
             {/* 禁用工具 */}
@@ -369,7 +370,7 @@ export const ChatParamsPanel: React.FC<ChatParamsPanelProps> = ({
               checked={chatParams.disableTools}
               onChange={(v) => updateParam('disableTools', v)}
               disabled={!selectedModelConfig?.supportsTools}
-              icon={<Wrench className="w-4 h-4" />}
+              icon={<Wrench size={16} />}
             />
 
             {/* 关闭工具白名单检查 */}
@@ -378,7 +379,7 @@ export const ChatParamsPanel: React.FC<ChatParamsPanelProps> = ({
               description={t('chatParams.disableToolWhitelistDesc')}
               checked={chatParams.disableToolWhitelist ?? false}
               onChange={(v) => updateParam('disableToolWhitelist', v)}
-              icon={<ShieldOff className="w-4 h-4" />}
+              icon={<ShieldSlash size={16} />}
             />
           </div>
 
@@ -386,7 +387,7 @@ export const ChatParamsPanel: React.FC<ChatParamsPanelProps> = ({
           {!chatParams.disableTools && selectedModelConfig?.supportsTools && (
             <div className="space-y-2 pt-2 border-t border-border/50">
               <div className="flex items-center gap-2 text-sm text-muted-foreground">
-                <RotateCcw className="w-4 h-4" />
+                <ArrowCounterClockwise size={16} />
                 <span>{t('chatParams.maxToolRecursion')}</span>
               </div>
               <SliderControl

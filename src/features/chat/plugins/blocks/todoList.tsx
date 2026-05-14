@@ -14,7 +14,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
-import { Check, Circle, Loader2, X, SkipForward, ChevronDown } from 'lucide-react';
+import { Check, Circle, CircleNotch, X, SkipForward, CaretDown } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 
@@ -79,25 +79,25 @@ const StatusIcon: React.FC<StatusIconProps> = ({ status, index }) => {
     case 'completed':
       return (
         <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-500/20 flex-shrink-0">
-          <Check className="w-3 h-3 text-green-500" strokeWidth={3} />
+          <Check size={12} className="text-green-500" strokeWidth={3} />
         </span>
       );
     case 'failed':
       return (
         <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500/20 flex-shrink-0">
-          <X className="w-3 h-3 text-red-500" strokeWidth={3} />
+          <X size={12} className="text-red-500" strokeWidth={3} />
         </span>
       );
     case 'skipped':
       return (
         <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted flex-shrink-0">
-          <SkipForward className="w-2.5 h-2.5 text-muted-foreground" />
+          <SkipForward size={10} className="text-muted-foreground" />
         </span>
       );
     default: // pending
       return (
         <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-muted-foreground/30 flex-shrink-0">
-          <Circle className="w-1.5 h-1.5 text-muted-foreground/30" fill="currentColor" />
+          <Circle size={6} className="text-muted-foreground/30" fill="currentColor" />
         </span>
       );
   }
@@ -201,11 +201,12 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
         onClick={toggleExpanded}
         className="w-full !justify-start gap-1.5 !py-0.5 text-left text-muted-foreground hover:text-foreground"
       >
-        <ChevronDown
+        <CaretDown
           className={cn(
-            'w-3.5 h-3.5 transition-transform duration-200 flex-shrink-0',
+            'transition-transform duration-200 flex-shrink-0',
             !isExpanded && '-rotate-90'
           )}
+          size={14}
         />
         <span className={cn(
           'truncate',
@@ -265,7 +266,7 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
                     </div>
                     {/* 执行中的加载动画 */}
                     {step.status === 'running' && (
-                      <Loader2 className="w-3 h-3 animate-spin text-blue-500 flex-shrink-0 mt-0.5" />
+                      <CircleNotch size={12} className="animate-spin text-blue-500 flex-shrink-0 mt-0.5" />
                     )}
                   </li>
                 ))}

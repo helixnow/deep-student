@@ -12,19 +12,19 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
 import {
-  FileEdit,
+  NotePencil,
   FilePlus,
-  FileSearch,
-  Replace,
-  ExternalLink,
-  ChevronDown,
-  ChevronRight,
+  MagnifyingGlass,
+  Swap,
+  ArrowSquareOut,
+  CaretDown,
+  CaretRight,
   CheckCircle,
-  AlertCircle,
-  Loader2,
+  WarningCircle,
+  CircleNotch,
   Eye,
-  Diff,
-} from 'lucide-react';
+  ArrowsLeftRight,
+} from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { StreamingMarkdownRenderer } from '../renderers';
 import { humanizeToolName } from '@/features/chat/utils/toolDisplayName';
@@ -122,14 +122,14 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
   // 获取工具图标
   const ToolIcon = useMemo(() => {
     switch (toolType) {
-      case 'note_read': return FileSearch;
+      case 'note_read': return MagnifyingGlass;
       case 'note_append': return FilePlus;
-      case 'note_replace': return Replace;
-      case 'note_set': return FileEdit;
+      case 'note_replace': return Swap;
+      case 'note_set': return NotePencil;
       case 'note_create': return FilePlus;
-      case 'note_list': return FileSearch;
-      case 'note_search': return FileSearch;
-      default: return FileEdit;
+      case 'note_list': return MagnifyingGlass;
+      case 'note_search': return MagnifyingGlass;
+      default: return NotePencil;
     }
   }, [toolType]);
 
@@ -151,7 +151,7 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
   const statusInfo = useMemo(() => {
     if (isRunning) {
       return {
-        icon: Loader2,
+        icon: CircleNotch,
         text: t('timeline.noteTool.running', '执行中...'),
         color: 'text-primary',
         spin: true,
@@ -159,7 +159,7 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
     }
     if (isError) {
       return {
-        icon: AlertCircle,
+        icon: WarningCircle,
         text: t('timeline.noteTool.failed', '执行失败'),
         color: 'text-destructive',
         spin: false,
@@ -170,7 +170,7 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
       return {
         icon: null,
         text: t('timeline.noteTool.completed', { ms }),
-        color: 'text-green-500 dark:text-green-400',
+        color: 'text-success',
         spin: false,
       };
     }
@@ -366,11 +366,11 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
               className="p-1.5 rounded hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer relative z-10"
               title={t('timeline.noteTool.openNote', '在学习资源中打开')}
             >
-              <ExternalLink size={14} className="text-muted-foreground hover:text-foreground" />
+              <ArrowSquareOut size={14} className="text-muted-foreground hover:text-foreground" />
             </span>
           )}
           {hasPreview && (
-            isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />
+            isExpanded ? <CaretDown size={14} /> : <CaretRight size={14} />
           )}
         </div>
       </NotionButton>
@@ -389,7 +389,7 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
               {/* 错误信息 */}
               {isError && error && (
                 <div className="flex items-start gap-2 p-2 rounded-md bg-destructive/10 border border-destructive/20">
-                  <AlertCircle size={14} className="text-destructive flex-shrink-0 mt-0.5" />
+                  <WarningCircle size={14} className="text-destructive flex-shrink-0 mt-0.5" />
                   <span className="text-xs text-destructive">{error}</span>
                 </div>
               )}
@@ -403,7 +403,7 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
                     onClick={() => setViewMode('diff')}
                     className={cn(viewMode === 'diff' && 'shadow-sm')}
                   >
-                    <Diff size={12} />
+                    <ArrowsLeftRight size={12} />
                     {t('timeline.noteTool.diffView', '对比')}
                   </NotionButton>
                   <NotionButton

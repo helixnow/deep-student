@@ -1,0 +1,272 @@
+/* streamingBlocks.css — Block-level incremental streaming styles */
+/* Used by: StreamingBlockRenderer.tsx */
+
+.streaming-block-renderer {
+  position: relative;
+}
+
+.streaming-blocks {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Block base ─────────────────────────────────────────────────────────── */
+
+.stream-block {
+  position: relative;
+  opacity: 1;
+}
+
+/* 新块淡入：blur dissolve + translateY，比纯 opacity 更有流动感 */
+.stream-block[data-new="true"] {
+  animation: stream-block-appear 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+
+@keyframes stream-block-appear {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+    filter: blur(2px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+    filter: blur(0);
+  }
+}
+
+/* ─── Active block: trailing fade mask ───────────────────────────────────── */
+/* 活跃块的内容末尾使用渐变遮罩，让新出现的文字有"浮现"效果 */
+
+.stream-block[data-active="true"] .markdown-content {
+  mask-image: linear-gradient(
+    to right,
+    black 0%,
+    black calc(100% - 3em),
+    rgba(0, 0, 0, 0.7) calc(100% - 1.5em),
+    rgba(0, 0, 0, 0.4) 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to right,
+    black 0%,
+    black calc(100% - 3em),
+    rgba(0, 0, 0, 0.7) calc(100% - 1.5em),
+    rgba(0, 0, 0, 0.4) 100%
+  );
+  animation: stream-mask-reveal 180ms ease-out forwards;
+}
+
+@keyframes stream-mask-reveal {
+  from {
+    mask-image: linear-gradient(
+      to right,
+      black 0%,
+      black calc(100% - 4em),
+      rgba(0, 0, 0, 0.3) calc(100% - 2em),
+      rgba(0, 0, 0, 0.0) 100%
+    );
+    -webkit-mask-image: linear-gradient(
+      to right,
+      black 0%,
+      black calc(100% - 4em),
+      rgba(0, 0, 0, 0.3) calc(100% - 2em),
+      rgba(0, 0, 0, 0.0) 100%
+    );
+  }
+  to {
+    mask-image: linear-gradient(
+      to right,
+      black 0%,
+      black calc(100% - 3em),
+      rgba(0, 0, 0, 0.7) calc(100% - 1.5em),
+      rgba(0, 0, 0, 0.4) 100%
+    );
+    -webkit-mask-image: linear-gradient(
+      to right,
+      black 0%,
+      black calc(100% - 3em),
+      rgba(0, 0, 0, 0.7) calc(100% - 1.5em),
+      rgba(0, 0, 0, 0.4) 100%
+    );
+  }
+}
+
+/* 完成后移除遮罩 */
+.stream-block[data-complete="true"] .markdown-content,
+.stream-block[data-active="false"] .markdown-content {
+  mask-image: none;
+  -webkit-mask-image: none;
+}
+
+/* ─── Active block cursor: soft glow ─────────────────────────────────────── */
+
+/* 活跃块（正在接收 token）的光晕光标 — 替代纯闪烁，更柔和 */
+.stream-block[data-active="true"][data-block-type="paragraph"]::after,
+.stream-block[data-active="true"][data-block-type="heading"]::after,
+.stream-block[data-active="true"][data-block-type="list"]::after,
+.stream-block[data-active="true"][data-block-type="blockquote"]::after {
+  content: '';
+  display: inline-block;
+  width: 6px;
+  height: 1.1em;
+  margin-left: 2px;
+  vertical-align: text-bottom;
+  border-radius: 3px;
+  background: hsl(var(--primary) / 0.8);
+  box-shadow: 0 0 8px hsl(var(--primary) / 0.35);
+  animation: stream-glow-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes stream-glow-pulse {
+  0%, 100% {
+    opacity: 0.35;
+    box-shadow: 0 0 4px hsl(var(--primary) / 0.15);
+    transform: scaleY(0.9);
+  }
+  50% {
+    opacity: 1;
+    box-shadow: 0 0 12px hsl(var(--primary) / 0.45);
+    transform: scaleY(1);
+  }
+}
+
+/* ─── Code block: deferred highlighting ──────────────────────────────────── */
+
+/* 流式期间代码块使用单色，避免每帧重新高亮的抖动 */
+.stream-block[data-active="true"][data-block-type="code"] .code-block code {
+  color: hsl(var(--foreground)) !important;
+}
+
+.stream-block[data-active="true"][data-block-type="code"] .code-block code .token,
+.stream-block[data-active="true"][data-block-type="code"] .code-block code span[style] {
+  color: inherit !important;
+}
+
+/* 代码块完成后触发高亮过渡 */
+.stream-block[data-complete="true"][data-block-type="code"] .code-block code {
+  transition: color 200ms ease-out;
+}
+
+/* 代码块展开：高度过渡 */
+.stream-block[data-active="true"][data-block-type="code"] .code-block {
+  transition: max-height 300ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* ─── Math block pending indicator ───────────────────────────────────────── */
+
+.stream-block[data-active="true"][data-block-type="math"]::after {
+  content: '∑';
+  display: inline-flex;
+  align-items: center;
+  color: hsl(var(--muted-foreground));
+  font-size: 0.85em;
+  font-style: italic;
+  margin-left: 4px;
+  animation: stream-math-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes stream-math-pulse {
+  0%, 100% { opacity: 0.4; }
+  50% { opacity: 1; }
+}
+
+/* ─── Table block: hide incomplete tables ────────────────────────────────── */
+
+.stream-block[data-active="true"][data-block-type="table"] .table-wrapper {
+  opacity: 0.7;
+  transition: opacity 150ms ease-out;
+}
+
+.stream-block[data-complete="true"][data-block-type="table"] .table-wrapper {
+  opacity: 1;
+}
+
+/* ─── List items: staggered fade-in ──────────────────────────────────────── */
+
+.stream-block[data-new="true"][data-block-type="list"] li {
+  animation: stream-list-item-in 180ms ease-out both;
+}
+
+.stream-block[data-new="true"][data-block-type="list"] li:nth-child(2) {
+  animation-delay: 40ms;
+}
+
+.stream-block[data-new="true"][data-block-type="list"] li:nth-child(3) {
+  animation-delay: 80ms;
+}
+
+.stream-block[data-new="true"][data-block-type="list"] li:nth-child(n+4) {
+  animation-delay: 120ms;
+}
+
+@keyframes stream-list-item-in {
+  from {
+    opacity: 0.4;
+    transform: translateX(-4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0);
+  }
+}
+
+/* ─── Streaming state: no extra visual noise ─────────────────────────────── */
+
+/* 与静态完全一致，不添加额外边框/背景/动画 */
+.streaming-block-renderer[data-streaming="true"] {
+  border-left: none;
+  background: inherit;
+}
+
+/* ─── Chain of thought (inherited from streaming.css) ────────────────────── */
+
+.streaming-block-renderer .chain-of-thought {
+  margin-bottom: 0.75rem;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  background: hsl(var(--muted) / 0.3);
+  border: 1px solid hsl(var(--border));
+}
+
+.streaming-block-renderer .chain-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.85em;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+}
+
+.streaming-block-renderer .thinking-content {
+  font-size: 0.9em;
+  color: hsl(var(--muted-foreground));
+}
+
+/* ─── Reduced motion ─────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .stream-block[data-new="true"] {
+    animation: none;
+    opacity: 1;
+  }
+
+  .stream-block[data-active="true"] .markdown-content {
+    mask-image: none;
+    -webkit-mask-image: none;
+    animation: none;
+  }
+
+  .stream-block[data-active="true"][data-block-type="paragraph"]::after,
+  .stream-block[data-active="true"][data-block-type="heading"]::after,
+  .stream-block[data-active="true"][data-block-type="list"]::after,
+  .stream-block[data-active="true"][data-block-type="blockquote"]::after {
+    animation: none;
+    opacity: 0.6;
+  }
+
+  .stream-block[data-new="true"][data-block-type="list"] li {
+    animation: none;
+    opacity: 1;
+  }
+}

@@ -4,7 +4,7 @@
 
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Tag, X, Plus, ChevronDown } from 'lucide-react';
+import { Tag, X, Plus, CaretDown } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Input } from '@/components/ui/shad/Input';
@@ -48,7 +48,7 @@ export const TagFilterPanel: React.FC<TagFilterProps> = ({
     <div className={cn('space-y-2', className)}>
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5 text-xs text-muted-foreground">
-          <Tag className="w-3.5 h-3.5" />
+          <Tag size={14} />
           <span>{t('tags.filterTitle')}</span>
         </div>
         {selectedTags.size > 0 && (
@@ -82,7 +82,7 @@ export const TagFilterPanel: React.FC<TagFilterProps> = ({
           onClick={() => setExpanded(!expanded)}
           className="flex items-center gap-1 text-[10px] text-muted-foreground/60 hover:text-muted-foreground"
         >
-          <ChevronDown className={cn('w-3 h-3 transition-transform', expanded && 'rotate-180')} />
+          <CaretDown size={12} className={cn('transition-transform', expanded && 'rotate-180')} />
           {expanded ? t('tags.showLess') : t('tags.showMore', { count: allTags.length - 12 })}
         </button>
       )}
@@ -118,7 +118,7 @@ export const SessionTagBadges: React.FC<{
               }}
               className="ml-0.5 opacity-0 group-hover:opacity-60 hover:opacity-100 transition-opacity"
             >
-              <X className="w-2.5 h-2.5" />
+              <X size={10} />
             </button>
           )}
         </Badge>
@@ -155,7 +155,7 @@ export const AddTagInput: React.FC<{
         onClick={() => setShowInput(true)}
         className="inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded text-[10px] text-muted-foreground/50 hover:text-muted-foreground hover:bg-[var(--interactive-hover)] transition-colors"
       >
-        <Plus className="w-3 h-3" />
+        <Plus size={12} />
       </button>
     );
   }

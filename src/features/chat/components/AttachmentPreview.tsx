@@ -19,10 +19,10 @@ import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
 import {
   X,
-  Loader2,
-  AlertCircle,
-  Maximize2,
-} from 'lucide-react';
+  CircleNotch,
+  WarningCircle,
+  ArrowsOut,
+} from '@phosphor-icons/react';
 import type { ChatStore, AttachmentMeta } from '../core/types';
 import { useAttachments } from '../hooks/useChatStore';
 import { 
@@ -236,14 +236,14 @@ const AttachmentItem: React.FC<AttachmentItemProps> = ({
       {/* 状态遮罩 */}
       {(isPending || isUploading) && (
         <div className="absolute inset-0 flex items-center justify-center bg-background/80 backdrop-blur-[1px] z-10">
-          <Loader2 className={cn('w-6 h-6 animate-spin text-primary')} />
+          <CircleNotch size={24} className="animate-spin text-primary" />
         </div>
       )}
 
       {/* 错误状态 */}
       {isError && (
         <div className="absolute inset-0 flex items-center justify-center bg-destructive/10 z-10">
-          <AlertCircle className={cn('w-6 h-6 text-destructive')} />
+          <WarningCircle size={24} className="text-destructive" />
         </div>
       )}
 
@@ -257,7 +257,7 @@ const AttachmentItem: React.FC<AttachmentItemProps> = ({
           )}
           onClick={onPreviewClick}
         >
-          <Maximize2 className="w-6 h-6 text-white drop-shadow-md" />
+          <ArrowsOut size={24} className="text-white drop-shadow-md" />
         </div>
       )}
 

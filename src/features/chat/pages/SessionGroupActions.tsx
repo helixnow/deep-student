@@ -1,5 +1,5 @@
 import React, { useCallback, useState } from 'react';
-import { Archive, Edit2, MoreHorizontal, Pin, Settings } from 'lucide-react';
+import { Archive, PencilSimple, DotsThree, PushPin, Gear } from '@phosphor-icons/react';
 import {
   AppMenu,
   AppMenuContent,
@@ -78,14 +78,14 @@ export function SessionGroupActions({
               title={labels.groupActions}
               className="!h-6 !w-6"
             >
-              <MoreHorizontal className="w-3.5 h-3.5" />
+              <DotsThree size={14} />
             </NotionButton>
           </AppMenuTrigger>
           <AppMenuContent align="end" width={180}>
             <AppMenuGroup>
               {onTogglePinGroup ? (
                 <AppMenuItem
-                  icon={<Pin className="w-4 h-4" />}
+                  icon={<PushPin size={16} />}
                   onClick={() => onTogglePinGroup(group, !isPinned)}
                 >
                   {isPinned
@@ -94,20 +94,20 @@ export function SessionGroupActions({
                 </AppMenuItem>
               ) : null}
               <AppMenuItem
-                icon={<Edit2 className="w-4 h-4" />}
+                icon={<PencilSimple size={16} />}
                 onClick={() => onRenameGroup(group)}
               >
                 {labels.renameGroup}
               </AppMenuItem>
               <AppMenuItem
-                icon={<Settings className="w-4 h-4" />}
+                icon={<Gear size={16} />}
                 onClick={() => onEditGroup(group)}
               >
                 {labels.editGroup}
               </AppMenuItem>
               <AppMenuSeparator />
               <AppMenuItem
-                icon={<Archive className="w-4 h-4" />}
+                icon={<Archive size={16} />}
                 onClick={() => onArchiveGroup(group)}
               >
                 {labels.archiveGroup}

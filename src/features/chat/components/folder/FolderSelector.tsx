@@ -18,12 +18,12 @@ import { useTranslation } from 'react-i18next';
 import {
   Folder,
   FolderOpen,
-  ChevronRight,
-  ChevronDown,
-  Search,
+  CaretRight,
+  CaretDown,
+  MagnifyingGlass,
   X,
   FolderPlus,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { Input } from '@/components/ui/shad/Input';
 import { cn } from '@/utils/cn';
@@ -141,7 +141,7 @@ const FolderTreeItem: React.FC<FolderTreeItemProps> = ({
         {/* 展开/收起按钮 */}
         {hasChildren ? (
           <NotionButton variant="ghost" size="icon" iconOnly className="!h-5 !w-5" onClick={(e) => { e.stopPropagation(); onToggleExpand(folder.id); }} aria-label="toggle">
-            {isExpanded ? <ChevronDown className="w-4 h-4 text-muted-foreground" /> : <ChevronRight className="w-4 h-4 text-muted-foreground" />}
+            {isExpanded ? <CaretDown size={16} className="text-muted-foreground" /> : <CaretRight size={16} className="text-muted-foreground" />}
           </NotionButton>
         ) : (
           <span className="w-5" />
@@ -151,16 +151,18 @@ const FolderTreeItem: React.FC<FolderTreeItemProps> = ({
         {isExpanded ? (
           <FolderOpen
             className={cn(
-              'w-4 h-4 flex-shrink-0',
+              'flex-shrink-0',
               folder.color ? `text-${folder.color}-500` : 'text-amber-500'
             )}
+            size={16}
           />
         ) : (
           <Folder
             className={cn(
-              'w-4 h-4 flex-shrink-0',
+              'flex-shrink-0',
               folder.color ? `text-${folder.color}-500` : 'text-amber-500'
             )}
+            size={16}
           />
         )}
 
@@ -355,14 +357,14 @@ export const FolderSelector: React.FC<FolderSelectorProps> = ({
             {t('context.selectFolder', '选择文件夹')}
           </h3>
           <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.close')}>
-            <X className="w-5 h-5 text-muted-foreground" />
+            <X size={20} className="text-muted-foreground" />
           </NotionButton>
         </div>
 
         {/* 搜索框 */}
         <div className="px-4 py-3 border-b border-border/40">
           <div className="relative">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
               ref={searchInputRef}
               type="text"
@@ -402,7 +404,7 @@ export const FolderSelector: React.FC<FolderSelectorProps> = ({
           ) : filteredTree.length === 0 ? (
             // 空状态
             <div className="flex flex-col items-center justify-center py-8 gap-2">
-              <FolderPlus className="w-10 h-10 text-muted-foreground/50" />
+              <FolderPlus size={40} className="text-muted-foreground/50" />
               <span className="text-sm text-muted-foreground">
                 {searchQuery
                   ? t('context.noFoldersMatch', '未找到匹配的文件夹')

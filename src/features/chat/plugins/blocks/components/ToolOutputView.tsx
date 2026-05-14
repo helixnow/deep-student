@@ -8,7 +8,7 @@
 import React, { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { CheckCircle, FileJson, FileText, Table2, Image as ImageIcon } from 'lucide-react';
+import { CheckCircle, FileJs, FileText, Table, Image as ImageIcon } from '@phosphor-icons/react';
 
 // ============================================================================
 // 类型定义
@@ -213,11 +213,11 @@ export const ToolOutputView: React.FC<ToolOutputViewProps> = ({
   const TypeIcon = useMemo(() => {
     switch (outputType) {
       case 'json':
-        return FileJson;
+        return FileJs;
       case 'text':
         return FileText;
       case 'table':
-        return Table2;
+        return Table;
       case 'image':
         return ImageIcon;
       default:
@@ -237,7 +237,7 @@ export const ToolOutputView: React.FC<ToolOutputViewProps> = ({
     <div className={cn('tool-output-view', className)}>
       {/* 头部 */}
       <div className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2">
-        <TypeIcon className="w-3 h-3" />
+        <TypeIcon size={12} />
         <span>{t('blocks.mcpTool.output')}</span>
       </div>
 

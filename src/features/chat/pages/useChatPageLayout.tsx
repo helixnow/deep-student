@@ -1,7 +1,8 @@
 import React, { useEffect, useMemo, useCallback } from 'react';
-import { Plus, SlidersHorizontal } from 'lucide-react';
+import { Plus, SlidersHorizontal } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useMobileHeader } from '@/components/layout';
+import { useDocumentTitle } from '@/hooks/useDocumentTitle';
 import { MobileBreadcrumb } from '@/features/learning-hub/components/MobileBreadcrumb';
 import type { TFunction } from 'i18next';
 import type { ChatSession } from '../types/session';
@@ -52,6 +53,9 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
     return currentSession?.title || t('page.newChat');
   }, [viewMode, currentSession?.title, t, sessionCount]);
 
+  // 同步窗口标题栏
+  useDocumentTitle(currentSession?.title);
+
   const headerRightActions = useMemo(() => {
     if (viewMode === 'browser') {
       return (
@@ -67,7 +71,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
           aria-label={t('page.newSession')}
           title={t('page.newSession')}
         >
-          <Plus className="w-5 h-5" />
+          <Plus size={20} />
         </NotionButton>
       );
     }
@@ -85,7 +89,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
           aria-label={t('common:chat_controls')}
           title={t('common:chat_controls')}
         >
-          <SlidersHorizontal className="w-5 h-5" />
+          <SlidersHorizontal size={20} />
         </NotionButton>
         <NotionButton
           variant="ghost"
@@ -96,7 +100,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
           aria-label={t('page.newSession')}
           title={t('page.newSession')}
         >
-          <Plus className="w-5 h-5" />
+          <Plus size={20} />
         </NotionButton>
       </>
     );

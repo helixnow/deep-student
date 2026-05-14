@@ -8,7 +8,7 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { RefreshCw, AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { ArrowClockwise, Warning, CheckCircle } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 
@@ -73,13 +73,13 @@ const SubagentRetryBlockComponent: React.FC<BlockComponentProps> = React.memo(({
           )}
         >
           {isFailed ? (
-            <AlertTriangle className="w-4 h-4" />
+            <Warning size={16} />
           ) : isResolved ? (
-            <CheckCircle2 className="w-4 h-4" />
+            <CheckCircle size={16} />
           ) : isRunning ? (
-            <RefreshCw className="w-4 h-4 animate-spin" />
+            <ArrowClockwise size={16} className="animate-spin" />
           ) : (
-            <AlertTriangle className="w-4 h-4" />
+            <Warning size={16} />
           )}
         </div>
 

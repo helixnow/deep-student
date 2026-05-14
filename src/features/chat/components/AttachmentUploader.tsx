@@ -23,7 +23,7 @@ import { useTranslation } from 'react-i18next';
 import type { StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { Upload, AlertCircle, X } from 'lucide-react';
+import { Upload, WarningCircle, X } from '@phosphor-icons/react';
 import type { ChatStore, AttachmentMeta } from '../core/types';
 import { useAttachments } from '../hooks/useChatStore';
 import { resourceStoreApi, type ContextRef } from '../resources';
@@ -427,8 +427,8 @@ export const AttachmentUploader: React.FC<AttachmentUploaderProps> = ({
           {/* 图标 */}
           <div className="flex items-center gap-2">
             <Upload
+              size={32}
               className={cn(
-                'w-8 h-8',
                 isDragging ? 'text-primary' : 'text-muted-foreground/50'
               )}
             />
@@ -478,10 +478,10 @@ export const AttachmentUploader: React.FC<AttachmentUploaderProps> = ({
       {/* 错误提示 */}
       {uploadError && (
         <div className="mt-2 flex items-center gap-2 p-2 rounded-md bg-destructive/10 text-destructive text-sm">
-          <AlertCircle className="w-4 h-4 flex-shrink-0" />
+          <WarningCircle size={16} className="flex-shrink-0" />
           <span className="flex-1">{uploadError}</span>
           <NotionButton variant="ghost" size="icon" iconOnly onClick={clearError} className="!h-5 !w-5 !p-0 hover:bg-destructive/20" aria-label="close">
-            <X className="w-4 h-4" />
+            <X size={16} />
           </NotionButton>
         </div>
       )}

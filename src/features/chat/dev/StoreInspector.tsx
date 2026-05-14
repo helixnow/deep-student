@@ -8,7 +8,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import type { StoreApi } from 'zustand';
 import { useStore } from 'zustand';
 import { cn } from '@/utils/cn';
-import { ChevronDown, ChevronRight, Copy, Check, RefreshCw } from 'lucide-react';
+import { CaretDown, CaretRight, Copy, Check, ArrowClockwise } from '@phosphor-icons/react';
 import type { ChatStore } from '../core/types';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
@@ -126,9 +126,9 @@ const JsonViewer: React.FC<JsonViewerProps> = ({ data, name, depth = 0 }) => {
       >
         {isExpandable ? (
           expanded ? (
-            <ChevronDown className="w-3 h-3 text-muted-foreground" />
+            <CaretDown size={12} className="text-muted-foreground" />
           ) : (
-            <ChevronRight className="w-3 h-3 text-muted-foreground" />
+            <CaretRight size={12} className="text-muted-foreground" />
           )
         ) : (
           <span className="w-3" />
@@ -233,9 +233,9 @@ export const StoreInspector: React.FC<StoreInspectorProps> = ({
       >
         <div className="flex items-center gap-2">
           {expanded ? (
-            <ChevronDown className="w-4 h-4" />
+            <CaretDown size={16} />
           ) : (
-            <ChevronRight className="w-4 h-4" />
+            <CaretRight size={16} />
           )}
           <span className="font-medium text-sm">Store Inspector</span>
           <span className="text-xs text-muted-foreground">
@@ -274,7 +274,7 @@ export const StoreInspector: React.FC<StoreInspectorProps> = ({
             className="p-1 hover:bg-[var(--interactive-hover)] rounded"
             title="Refresh"
           >
-            <RefreshCw className="w-3.5 h-3.5" />
+            <ArrowClockwise size={14} />
           </button>
           <button
             onClick={(e) => {
@@ -285,9 +285,9 @@ export const StoreInspector: React.FC<StoreInspectorProps> = ({
             title="Copy JSON"
           >
             {copied ? (
-              <Check className="w-3.5 h-3.5 text-green-500" />
+              <Check size={14} className="text-green-500" />
             ) : (
-              <Copy className="w-3.5 h-3.5" />
+              <Copy size={14} />
             )}
           </button>
         </div>

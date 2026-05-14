@@ -5,7 +5,7 @@
  */
 
 import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react';
-import { Copy, Check, RotateCcw, Trash2, GitBranch } from 'lucide-react';
+import { Copy, Check, ArrowCounterClockwise, Trash, GitBranch } from '@phosphor-icons/react';
 import { useStore } from 'zustand';
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -20,7 +20,7 @@ import { useVariantUI } from '../hooks/useVariantUI';
 import { useImagePreviewsFromRefs } from '../hooks/useImagePreviewsFromRefs';
 import { useFilePreviewsFromRefs } from '../hooks/useFilePreviewsFromRefs';
 import { ParallelVariantView } from './Variant';
-import { MessageActions, MessageInlineEdit } from './message';
+import { MessageActions, MessageInlineEdit, UserMessageBubble } from './message';
 import { resolveSingleVariantDisplayMeta } from './message/variantMetaResolver';
 import { TokenUsageDisplay } from './TokenUsageDisplay';
 // 🔧 移除 ModelRetryDialog，改用底部面板模型选择重试
@@ -41,10 +41,13 @@ import { useDevShowRawRequest, useCopyFilterConfig, type CopyFilterConfig } from
 // 🆕 AI 内容标识（合规）
 import { AiContentLabel } from '@/components/shared/AiContentLabel';
 import { PulseDot } from '@/components/ui/PulseDot';
+import { StreamingSkeleton } from './StreamingSkeleton';
 import { dispatchContextRefPreview } from '../utils/contextRefPreview';
 import { notesDstuAdapter } from '@/dstu/adapters/notesDstuAdapter';
 import { fileManager } from '@/utils/fileManager';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { useTextSelection } from '../hooks/useTextSelection';
+import { SelectionToolbar } from './SelectionToolbar';
 
 // ============================================================================
 // 辅助函数
@@ -592,6 +595,31 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
 
   // 📱 移动端多变体：需要使用不同布局（头像和内容分行显示）
   const isMobileMultiVariant = isSmallScreen && isMultiVariant && !isUser;
+
+  // 🆕 文本选择浮动工具栏
+  const messageContentRef = useRef<HTMLDivElement>(null);
+  const textSelection = useTextSelection(messageContentRef);
+
+  // 选中文本后的操作回调：发送消息（AI 解释 / 翻译）
+  const handleSelectionSendMessage = useCallback((content: string) => {
+    store.getState().sendMessage(content);
+  }, [store]);
+
+  // 选中文本后的操作回调：制卡
+  const handleSelectionMakeCard = useCallback((text: string) => {
+    // 派发 open-anki-panel 事件，传入选中文本作为卡片内容
+    const event = new CustomEvent('open-anki-panel', {
+      detail: { cards: [{ front: text, back: '' }], messageId },
+    });
+    window.dispatchEvent(event);
+  }, [messageId]);
+
+  // 选中文本后的操作回调：添加到聊天输入框
+  const handleSelectionAddToChat = useCallback((text: string) => {
+    window.dispatchEvent(new CustomEvent('CHAT_V2_SET_INPUT', {
+      detail: { content: text, autoSend: false },
+    }));
+  }, []);
   
   // 🧮 Token 汇总：多变体判断不依赖并行视图开关
   const hasMultipleVariants = variants.length > 1;
@@ -1026,9 +1054,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     <div
       className={cn(
         'group px-4 py-4',
-        isUser
-          ? 'bg-muted/20'
-          : 'bg-background',
+        !isUser && 'bg-background',
         // 第一条消息添加顶部间距
         isFirst && 'pt-6',
         className
@@ -1064,7 +1090,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
           )}
         >
           {/* 消息内容 */}
-          <div className="min-w-0">
+          <div className="min-w-0 message-selectable-area" ref={messageContentRef}>
             {/* 内联编辑模式 */}
             {isUser && isInlineEditing ? (
               <MessageInlineEdit
@@ -1106,14 +1132,18 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                   {/* 🚀 P1 性能优化：分组渲染使用 BlockRendererWithStore 独立订阅 */}
                   {(() => {
                     if (isUser) {
-                      // 🚀 用户消息：每个块独立订阅，使用 BlockRendererWithStore
-                      return displayBlockIds.map((blockId) => (
-                        <BlockRendererWithStore
-                          key={blockId}
-                          store={store}
-                          blockId={blockId}
-                        />
-                      ));
+                      // 🚀 用户消息：气泡容器 + 截断
+                      return (
+                        <UserMessageBubble>
+                          {displayBlockIds.map((blockId) => (
+                            <BlockRendererWithStore
+                              key={blockId}
+                              store={store}
+                              blockId={blockId}
+                            />
+                          ))}
+                        </UserMessageBubble>
+                      );
                     }
 
                     // 助手消息：需要分组渲染（时间线块 vs 普通块）
@@ -1123,7 +1153,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                     // 🆕 等待首次响应：displayBlockIds 为空且正在流式生成
                     if (blocks.length === 0 && sessionStatus === 'streaming') {
                       return (
-                        <PulseDot className="w-1.5 h-1.5" />
+                        <StreamingSkeleton />
                       );
                     }
 
@@ -1392,7 +1422,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           aria-label={t('variant.retryAll')}
                           title={t('variant.retryAll')}
                         >
-                          <RotateCcw className={cn('w-4 h-4', isRetryingAllVariants && 'animate-spin')} />
+                          <ArrowCounterClockwise className={cn('w-4 h-4', isRetryingAllVariants && 'animate-spin')} />
                         </NotionButton>
                         <NotionButton
                           variant="ghost"
@@ -1404,7 +1434,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                           aria-label={t('messageItem.actions.delete')}
                           title={t('messageItem.actions.delete')}
                         >
-                          <Trash2 className={cn('w-4 h-4', isDeletingMultiMessage && 'animate-pulse')} />
+                          <Trash className={cn('w-4 h-4', isDeletingMultiMessage && 'animate-pulse')} />
                         </NotionButton>
                       </div>
                     )}
@@ -1519,6 +1549,17 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       )}
 
       {/* 🔧 移除模态框，改用底部面板 */}
+
+      {/* 🆕 文本选中浮动工具栏 */}
+      <SelectionToolbar
+        selectedText={textSelection.selectedText}
+        selectionRect={textSelection.selectionRect}
+        isVisible={textSelection.isVisible}
+        onClear={textSelection.clear}
+        onSendMessage={handleSelectionSendMessage}
+        onAddToChat={handleSelectionAddToChat}
+        onMakeCard={handleSelectionMakeCard}
+      />
     </div>
   );
 };

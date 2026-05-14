@@ -1,6 +1,6 @@
 import React, { useEffect, useState, useRef, Component } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
-import { Copy, Check, Plus, Minus, RotateCcw, AlertTriangle } from 'lucide-react';
+import { Copy, Check, Plus, Minus, ArrowCounterClockwise, Warning } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
@@ -160,7 +160,7 @@ const MermaidErrorFallbackUI: React.FC<MermaidErrorFallbackUIProps> = ({
   return (
     <div className="mermaid-error-boundary">
       <div className="mermaid-error-header">
-        <AlertTriangle size={16} className="mermaid-error-icon" />
+        <Warning size={16} className="mermaid-error-icon" />
         <span className="mermaid-error-title">
           {t('codeBlock.renderFailed', '渲染失败')}
         </span>
@@ -691,7 +691,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
                 <span style={{ fontSize: 12 }}>⤢</span>
               </NotionButton>
               <NotionButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleResetView} aria-label={t('codeBlock.resetView', '重置视图')} title={t('codeBlock.resetView', '重置视图')}>
-                <RotateCcw size={14} />
+                <ArrowCounterClockwise size={14} />
               </NotionButton>
             </>
           )}

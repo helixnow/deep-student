@@ -20,14 +20,14 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import {
   FileText,
-  ChevronDown,
+  CaretDown,
   Plus,
-  Trash2,
+  Trash,
   Copy,
   Check,
-  Variable,
-  RotateCcw,
-} from 'lucide-react';
+  Textbox,
+  ArrowCounterClockwise,
+} from '@phosphor-icons/react';
 
 // ============================================================================
 // Props 定义
@@ -151,11 +151,12 @@ const TemplateSelector: React.FC<TemplateSelectorProps> = ({
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
       >
-        <FileText className="w-4 h-4" />
+        <FileText size={16} />
         <span>{t('systemPrompt.templates')}</span>
-        <ChevronDown
+        <CaretDown
+          size={16}
           className={cn(
-            'w-4 h-4 transition-transform',
+            'transition-transform',
             isOpen && 'rotate-180'
           )}
         />
@@ -203,7 +204,7 @@ const TemplateSelector: React.FC<TemplateSelectorProps> = ({
                 </div>
                 {!template.builtin && onDelete && (
                   <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onDelete(template.id); }} className="!h-6 !w-6 hover:text-destructive hover:bg-destructive/10" aria-label={t('common:delete')} title={t('common:delete')}>
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Trash size={14} />
                   </NotionButton>
                 )}
               </div>
@@ -241,11 +242,12 @@ const VariableInserter: React.FC<VariableInserterProps> = ({
         onClick={() => !disabled && setIsOpen(!isOpen)}
         disabled={disabled}
       >
-        <Variable className="w-4 h-4" />
+        <Textbox className="w-4 h-4" />
         <span>{t('systemPrompt.insertVariable')}</span>
-        <ChevronDown
+        <CaretDown
+          size={16}
           className={cn(
-            'w-4 h-4 transition-transform',
+            'transition-transform',
             isOpen && 'rotate-180'
           )}
         />
@@ -431,12 +433,12 @@ export const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
         <div className="flex items-center gap-1">
           {/* 复制按钮 */}
           <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCopy} disabled={!value || disabled} aria-label={t('systemPrompt.copy')} title={t('systemPrompt.copy')}>
-            {copied ? <Check className="w-4 h-4 text-green-500" /> : <Copy className="w-4 h-4" />}
+            {copied ? <Check size={16} className="text-green-500" /> : <Copy size={16} />}
           </NotionButton>
 
           {/* 清空按钮 */}
           <NotionButton variant="ghost" size="icon" iconOnly onClick={handleClear} disabled={!value || disabled} aria-label={t('systemPrompt.clear')} title={t('systemPrompt.clear')}>
-            <RotateCcw className="w-4 h-4" />
+            <ArrowCounterClockwise size={16} />
           </NotionButton>
         </div>
       </div>

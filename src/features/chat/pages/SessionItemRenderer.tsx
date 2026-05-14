@@ -1,7 +1,6 @@
 import React, { useCallback, useMemo } from 'react';
 import { invoke } from '@tauri-apps/api/core';
-import { Edit2, Check, X, Loader2, Pin, Archive } from 'lucide-react';
-import { PushPinSimple } from '@phosphor-icons/react';
+import { PencilSimple, Check, X, CircleNotch, PushPin, Archive } from '@phosphor-icons/react';
 import { type DraggableProvided, type DraggableStateSnapshot } from '@hello-pangea/dnd';
 import {
   AppMenu,
@@ -146,7 +145,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
                 disabled={renamingSessionId === session.id}
                 title={t('page.cancelEdit')}
               >
-                <X className="w-3.5 h-3.5" />
+                <X size={14} />
                 <span>{t('page.cancelEdit')}</span>
               </NotionButton>
               <NotionButton
@@ -161,12 +160,12 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
               >
                 {renamingSessionId === session.id ? (
                   <>
-                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <CircleNotch size={14} className="animate-spin" />
                     <span>{t('page.renameSaving')}</span>
                   </>
                 ) : (
                   <>
-                    <Check className="w-3.5 h-3.5" />
+                    <Check size={14} />
                     <span>{t('page.saveSessionName')}</span>
                   </>
                 )}
@@ -187,7 +186,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
           pinned ? (
             <div className="min-w-0 flex-1 space-y-0.5">
               <div className="flex min-w-0 items-center gap-2 text-[16px] font-normal leading-5 text-foreground/90">
-                <PushPinSimple size={12} weight="fill" className="h-3 w-3 shrink-0 text-[color:var(--sidebar-muted)]" />
+                <PushPin size={12} weight="fill" className="h-3 w-3 shrink-0 text-[color:var(--sidebar-muted)]" />
                 <span className="min-w-0 flex-1 truncate">{sessionTitle}</span>
               </div>
               <div className="flex min-w-0 items-center gap-1.5 text-[13px] font-normal leading-4 text-muted-foreground">
@@ -220,19 +219,19 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
         <AppMenuContent align="end" width={180}>
           <AppMenuGroup>
             <AppMenuItem
-              icon={<Edit2 className="w-4 h-4" />}
+              icon={<PencilSimple size={16} />}
               onClick={() => startEditSession(session, { stopPropagation() {} } as React.MouseEvent)}
             >
               {t('page.renameSession')}
             </AppMenuItem>
             <AppMenuItem
-              icon={<Pin className="w-4 h-4" />}
+              icon={<PushPin size={16} />}
               onClick={() => togglePinSession(session.id, !pinned, session.metadata)}
             >
               {pinned ? t('page.unpinSession') : t('page.pinSession')}
             </AppMenuItem>
             <AppMenuItem
-              icon={<Archive className="w-4 h-4" />}
+              icon={<Archive size={16} />}
               onClick={() => archiveSession(session.id)}
             >
               {t('page.archiveSession')}

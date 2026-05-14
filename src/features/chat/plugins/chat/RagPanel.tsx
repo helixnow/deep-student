@@ -10,7 +10,7 @@ import React, { useState, useEffect, useCallback, useId } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
-import { Layers, X, Image } from 'lucide-react';
+import { Stack, X, Image } from '@phosphor-icons/react';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -109,7 +109,7 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
       {!isMobile && (
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <Layers size={16} className="text-foreground shrink-0" />
+            <Stack size={16} className="text-foreground shrink-0" />
             <span className="text-sm text-foreground shrink-0">{t('analysis:input_bar.rag.title')}</span>
             <span className="text-xs text-muted-foreground">
               {t('chat_host:rag.panel.vfs_subtitle')}

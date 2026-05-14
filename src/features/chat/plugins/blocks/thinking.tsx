@@ -9,7 +9,7 @@ import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { ChevronDown, ChevronRight } from 'lucide-react';
+import { CaretDown, CaretRight } from '@phosphor-icons/react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { StreamingMarkdownRenderer } from '../../components/renderers';
 
@@ -57,7 +57,7 @@ const ThinkingBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStre
         onClick={toggleExpanded}
         className="w-full !justify-start gap-2 !px-3 !py-2 !rounded-lg text-muted-foreground"
       >
-        {isExpanded ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+        {isExpanded ? <CaretDown size={16} /> : <CaretRight size={16} />}
         <span className="font-medium">{t('blocks.thinking.title')}</span>
         {isStreaming && (
           <span className="flex items-center gap-1 ml-auto">

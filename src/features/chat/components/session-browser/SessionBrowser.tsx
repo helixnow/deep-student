@@ -8,21 +8,21 @@ import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react'
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import {
-  MessageSquare,
-  Search,
+  Chat,
+  MagnifyingGlass,
   Plus,
-  Trash2,
-  Edit2,
+  Trash,
+  PencilSimple,
   Check,
   X,
   Clock,
-  Layers,
-  CalendarDays,
+  Stack,
+  CalendarBlank,
   Folder,
-  ChevronDown,
+  CaretDown,
   Tag,
   FileText,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
@@ -242,10 +242,10 @@ const SessionCard: React.FC<SessionCardProps> = ({
       {!isEditing && (
         <div className="absolute top-2 right-2 flex gap-0.5 opacity-0 group-hover:opacity-100 focus-within:opacity-100 transition-opacity z-10">
           <NotionButton variant="ghost" size="icon" iconOnly onClick={handleEditClick} aria-label={t('page.renameSession')} title={t('page.renameSession')} className="!h-7 !w-7">
-            <Edit2 className="w-3.5 h-3.5" />
+            <PencilSimple size={14} />
           </NotionButton>
           <NotionButton variant="ghost" size="icon" iconOnly onClick={handleDeleteClick} className={cn('!h-7 !w-7', confirmingDelete ? 'text-rose-500 bg-rose-500/10' : 'hover:text-rose-500 hover:bg-rose-500/10')} aria-label={confirmingDelete ? t('common:confirm_delete') : t('page.deleteSession')} title={confirmingDelete ? t('common:confirm_delete') : t('page.deleteSession')}>
-            {confirmingDelete ? <Trash2 className="w-3.5 h-3.5" /> : <X className="w-3.5 h-3.5" />}
+            {confirmingDelete ? <Trash size={14} /> : <X size={14} />}
           </NotionButton>
         </div>
       )}
@@ -271,10 +271,10 @@ const SessionCard: React.FC<SessionCardProps> = ({
               placeholder={t('page.sessionNamePlaceholder')}
             />
             <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onSaveEdit(); }} className="text-emerald-600 dark:text-emerald-400 hover:bg-emerald-500/10" aria-label={t('page.saveSessionName')} title={t('page.saveSessionName')}>
-              <Check className="w-4 h-4" />
+              <Check size={16} />
             </NotionButton>
             <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onCancelEdit(); }} aria-label={t('page.cancelEdit')} title={t('page.cancelEdit')}>
-              <X className="w-4 h-4" />
+              <X size={16} />
             </NotionButton>
           </div>
         ) : (
@@ -313,7 +313,7 @@ const SessionCard: React.FC<SessionCardProps> = ({
       {/* 底部属性：时间 */}
       <div className="mt-auto pt-2">
         <div className="flex items-center text-xs text-muted-foreground/60">
-          <Clock className="w-3 h-3 mr-1" />
+          <Clock size={12} className="mr-1" />
           {formatTime(session.updatedAt)}
         </div>
       </div>
@@ -544,7 +544,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                   )}
                   title={t('browser.groupByTime')}
                 >
-                  <CalendarDays className="w-3.5 h-3.5" />
+                  <CalendarBlank size={14} />
                   <span className="hidden sm:inline">{t('browser.groupByTime')}</span>
                 </button>
                 <button
@@ -555,7 +555,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                   )}
                   title={t('browser.groupByGroup')}
                 >
-                  <Layers className="w-3.5 h-3.5" />
+                  <Stack size={14} />
                   <span className="hidden sm:inline">{t('browser.groupByGroup')}</span>
                 </button>
               </div>
@@ -571,7 +571,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                 onClick={() => setShowTagFilter(!showTagFilter)}
                 className={cn('shrink-0', sessionTags.selectedFilterTags.size > 0 && 'text-primary')}
               >
-                <Tag className="w-3.5 h-3.5" />
+                <Tag size={14} />
                 {sessionTags.selectedFilterTags.size > 0 && (
                   <span className="text-[10px] px-1 rounded-full bg-primary/10">{sessionTags.selectedFilterTags.size}</span>
                 )}
@@ -589,7 +589,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                   )}
                   title={t('search.titleMode')}
                 >
-                  <Search className="w-3 h-3" />
+                  <MagnifyingGlass size={12} />
                   <span>{t('search.titleMode')}</span>
                 </button>
                 <button
@@ -600,12 +600,12 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                   )}
                   title={t('search.contentMode')}
                 >
-                  <FileText className="w-3 h-3" />
+                  <FileText size={12} />
                   <span>{t('search.contentMode')}</span>
                 </button>
               </div>
               <div className="relative w-48 md:w-56">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
+                <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
                 <Input
                   type="text"
                   value={searchQuery}
@@ -618,7 +618,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
 
             {/* 新建按钮 */}
             <NotionButton variant="ghost" size="sm" onClick={onCreateSession} className="text-primary hover:bg-primary/10 shrink-0">
-              <Plus className="w-4 h-4" />
+              <Plus size={16} />
               <span className="hidden xs:inline">{t('page.newSession')}</span>
             </NotionButton>
           </div>
@@ -627,7 +627,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
           <div className="sm:hidden pb-2.5 space-y-2">
             <div className="flex items-center gap-2">
               <div className="relative flex-1">
-                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
+                <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
                 <Input
                   type="text"
                   value={searchQuery}
@@ -643,7 +643,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                   searchMode === 'content' ? 'bg-primary/10 text-primary' : 'bg-muted/30 text-muted-foreground'
                 )}
               >
-                {searchMode === 'content' ? <FileText className="w-4 h-4" /> : <Search className="w-4 h-4" />}
+                {searchMode === 'content' ? <FileText size={16} /> : <MagnifyingGlass size={16} />}
               </button>
             </div>
           </div>
@@ -655,7 +655,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
         <div className="flex-shrink-0 px-3 pt-3 pb-2 space-y-2">
           <div className="flex items-center gap-2">
             <div className="relative flex-1">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
+              <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
               <Input
                 type="text"
                 value={searchQuery}
@@ -681,7 +681,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                   )}
                   title={t('browser.groupByTime')}
                 >
-                  <CalendarDays className="w-3.5 h-3.5" />
+                  <CalendarBlank size={14} />
                 </button>
                 <button
                   onClick={() => setGroupMode('group')}
@@ -691,7 +691,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                   )}
                   title={t('browser.groupByGroup')}
                 >
-                  <Layers className="w-3.5 h-3.5" />
+                  <Stack size={14} />
                 </button>
               </div>
             )}
@@ -731,7 +731,7 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
         ) : filteredCount === 0 ? (
           // 空状态 - Notion 风格简洁设计
           <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-            <MessageSquare className="w-10 h-10 mb-3 opacity-40" />
+            <Chat size={40} className="mb-3 opacity-40" />
             <span className="text-sm mb-2">
               {searchQuery
                 ? t('browser.noResults')
@@ -812,14 +812,14 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                     className="mb-4 flex items-center gap-2 group/header cursor-pointer select-none"
                     onClick={() => toggleGroupCollapse(sessionGroup.id)}
                   >
-                    <ChevronDown className={cn(
-                      'w-3.5 h-3.5 text-muted-foreground/60 transition-transform duration-200',
+                    <CaretDown size={14} className={cn(
+                      'text-muted-foreground/60 transition-transform duration-200',
                       isCollapsed && '-rotate-90'
                     )} />
                     {isEmoji ? (
                       <span className="text-sm">{displayIcon}</span>
                     ) : (
-                      <Folder className="w-4 h-4 text-muted-foreground/60 group-hover/header:text-foreground transition-colors" />
+                      <Folder size={16} className="text-muted-foreground/60 group-hover/header:text-foreground transition-colors" />
                     )}
                     <span className="text-sm font-medium text-muted-foreground/80 group-hover/header:text-foreground transition-colors">
                       {sessionGroup.name}
@@ -864,11 +864,11 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
                     className="mb-4 flex items-center gap-2 group/header cursor-pointer select-none"
                     onClick={() => toggleGroupCollapse('__ungrouped__')}
                   >
-                    <ChevronDown className={cn(
+                    <CaretDown className={cn(
                       'w-3.5 h-3.5 text-muted-foreground/60 transition-transform duration-200',
                       isUngroupedCollapsed && '-rotate-90'
                     )} />
-                    <Folder className="w-4 h-4 text-muted-foreground/60 group-hover/header:text-foreground transition-colors" />
+                    <Folder size={16} className="text-muted-foreground/60 group-hover/header:text-foreground transition-colors" />
                     <span className="text-sm font-medium text-muted-foreground/80 group-hover/header:text-foreground transition-colors">
                       {t('browser.ungrouped')}
                     </span>

@@ -6,7 +6,7 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Zap, Check, MapPin, User, Wrench } from 'lucide-react';
+import { Lightning, Check, MapPin, User, Wrench } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import type { SkillMetadata, SkillLocation } from '../types';
 import { getLocalizedSkillDescription, getLocalizedSkillName, getLocationLabel, getLocationStyle } from '../utils';
@@ -187,7 +187,7 @@ export const SkillCard: React.FC<SkillCardProps> = ({
               </>
             ) : (
               <>
-                <Zap size={12} />
+                <Lightning size={12} />
                 {t('skills:card.activate')}
               </>
             )}

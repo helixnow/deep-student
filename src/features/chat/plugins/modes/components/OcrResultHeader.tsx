@@ -11,13 +11,13 @@ import { useStore, type StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
 import {
-  ChevronDown,
-  ChevronRight,
-  CheckCircle2,
-  AlertCircle,
-  ScanText,
-  RefreshCw,
-} from 'lucide-react';
+  CaretDown,
+  CaretRight,
+  CheckCircle,
+  WarningCircle,
+  Scan,
+  ArrowClockwise,
+} from '@phosphor-icons/react';
 import type { ChatStore } from '../../../core/types';
 import type { AnalysisModeState, OcrMeta } from '../analysis';
 import { retryOcr } from '../analysis';
@@ -100,13 +100,13 @@ export const OcrResultHeader: React.FC<OcrResultHeaderProps> = ({ store }) => {
       >
         {/* 展开/折叠图标 */}
         {isExpanded ? (
-          <ChevronDown className="w-4 h-4 text-muted-foreground" />
+          <CaretDown size={16} className="text-muted-foreground" />
         ) : (
-          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+          <CaretRight size={16} className="text-muted-foreground" />
         )}
 
         {/* OCR 图标 */}
-        <ScanText
+        <Scan
           className={cn(
             'w-4 h-4',
             ocrStatus === 'success' ? 'text-success' : 'text-destructive'
@@ -120,12 +120,12 @@ export const OcrResultHeader: React.FC<OcrResultHeaderProps> = ({ store }) => {
 
         {/* 状态图标 */}
         {ocrStatus === 'success' ? (
-          <CheckCircle2 className="w-4 h-4 text-success ml-auto" />
+          <CheckCircle size={16} className="text-success ml-auto" />
         ) : (
           <div className="flex items-center gap-2 ml-auto">
-            <AlertCircle className="w-4 h-4 text-destructive" />
+            <WarningCircle size={16} className="text-destructive" />
             <NotionButton variant="ghost" size="sm" onClick={(e) => { e.stopPropagation(); handleRetry(); }} className="text-primary hover:bg-primary/10">
-              <RefreshCw className="w-3 h-3" />
+              <ArrowClockwise size={12} />
               {t('analysis.ocrResult.retry')}
             </NotionButton>
           </div>

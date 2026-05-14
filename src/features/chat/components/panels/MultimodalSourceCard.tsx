@@ -19,10 +19,10 @@ import {
   BookOpen,
   Paperclip,
   Image as ImageIcon,
-  ExternalLink,
-  Loader2,
-  ZoomIn,
-} from 'lucide-react';
+  ArrowSquareOut,
+  CircleNotch,
+  MagnifyingGlass,
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import type { UnifiedSourceItem, MultimodalSourceType } from './sourceTypes';
 
@@ -51,13 +51,13 @@ export interface MultimodalSourceCardProps {
 function getSourceTypeIcon(sourceType: MultimodalSourceType) {
   switch (sourceType) {
     case 'exam':
-      return <FileText className="h-4 w-4" />;
+      return <FileText size={16} />;
     case 'textbook':
-      return <BookOpen className="h-4 w-4" />;
+      return <BookOpen size={16} />;
     case 'attachment':
-      return <Paperclip className="h-4 w-4" />;
+      return <Paperclip size={16} />;
     default:
-      return <ImageIcon className="h-4 w-4" />;
+      return <ImageIcon size={16} />;
   }
 }
 
@@ -148,7 +148,7 @@ export const MultimodalSourceCard: React.FC<MultimodalSourceCardProps> = ({
         <div className="relative w-full h-24 rounded-md overflow-hidden bg-muted mb-2">
           {imageLoading && (
             <div className="absolute inset-0 flex items-center justify-center">
-              <Loader2 className="h-5 w-5 animate-spin text-muted-foreground" />
+              <CircleNotch size={20} className="animate-spin text-muted-foreground" />
             </div>
           )}
           <img
@@ -164,7 +164,7 @@ export const MultimodalSourceCard: React.FC<MultimodalSourceCardProps> = ({
           {/* 查看原图按钮 */}
           {multimodal?.blobHash && (
             <NotionButton variant="ghost" size="icon" iconOnly onClick={handleViewOriginal} className="absolute inset-0 !w-full !h-full !rounded-none bg-black/50 opacity-0 group-hover:opacity-100 text-white" aria-label={t('common:chat.sources.multimodal.viewOriginal')} title={t('common:chat.sources.multimodal.viewOriginal')}>
-              <ZoomIn className="h-5 w-5" />
+              <MagnifyingGlass size={20} />
             </NotionButton>
           )}
         </div>
@@ -174,7 +174,7 @@ export const MultimodalSourceCard: React.FC<MultimodalSourceCardProps> = ({
       <div className="flex items-center justify-between mb-1.5">
         <div className="flex items-center gap-2 overflow-hidden">
           <span className="text-muted-foreground shrink-0">
-            {multimodal?.sourceType ? getSourceTypeIcon(multimodal.sourceType) : <ImageIcon className="h-4 w-4" />}
+            {multimodal?.sourceType ? getSourceTypeIcon(multimodal.sourceType) : <ImageIcon size={16} />}
           </span>
           <span className="text-sm font-medium truncate" title={item.title}>{item.title}</span>
         </div>
@@ -212,7 +212,7 @@ export const MultimodalSourceCard: React.FC<MultimodalSourceCardProps> = ({
         </span>
         {multimodal?.blobHash && (
           <NotionButton variant="ghost" size="sm" onClick={handleViewOriginal} className="text-primary hover:underline">
-            <ExternalLink size={12} />
+            <ArrowSquareOut size={12} />
             {t('common:chat.sources.multimodal.viewOriginal')}
           </NotionButton>
         )}

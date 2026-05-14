@@ -7,7 +7,7 @@
 import React, { useState, useMemo, useCallback, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
-import { Wrench, X, Search, Loader2, Server, Check, AlertCircle, Lock, Settings } from 'lucide-react';
+import { Wrench, X, MagnifyingGlass, CircleNotch, HardDrives, Check, WarningCircle, Lock, Gear } from '@phosphor-icons/react';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -222,7 +222,7 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
         {/* 服务器信息 */}
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5">
-            <Server size={12} className="shrink-0 text-muted-foreground" />
+            <HardDrives size={12} className="shrink-0 text-muted-foreground" />
             <span className="font-medium text-xs truncate">{displayName}</span>
             {isBuiltin && (
               <span className="shrink-0 text-[9px] px-1 py-0.5 rounded bg-primary/10 text-primary flex items-center gap-0.5">
@@ -231,7 +231,7 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
               </span>
             )}
             {!isConnected && !isBuiltin && (
-              <AlertCircle size={12} className="shrink-0 text-destructive" />
+              <WarningCircle size={12} className="shrink-0 text-destructive" />
             )}
           </div>
           {/* 工具列表 - 单行显示 */}
@@ -254,7 +254,7 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
           {/* 内置服务器提示：只能在设置页面关闭 */}
           {isBuiltin && (
             <div className="text-[9px] text-muted-foreground/70 mt-0.5 flex items-center gap-0.5">
-              <Settings size={8} />
+              <Gear size={8} />
               {t('analysis:input_bar.mcp.builtin_hint')}
             </div>
           )}
@@ -279,7 +279,7 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
           </div>
           <div className="flex items-center gap-1">
             <NotionButton variant="ghost" size="icon" iconOnly onClick={handleRefresh} disabled={loading} aria-label="refresh">
-              {loading ? <Loader2 size={16} className="animate-spin" /> : <Wrench size={16} />}
+              {loading ? <CircleNotch size={16} className="animate-spin" /> : <Wrench size={16} />}
             </NotionButton>
             <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')}>
               <X size={16} />
@@ -290,7 +290,7 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
 
       {/* 搜索框 */}
       <div className="relative">
-        <Search
+        <MagnifyingGlass
           size={12}
           className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground"
         />
@@ -308,7 +308,7 @@ export const McpPanel: React.FC<McpPanelProps> = ({ store, onClose }) => {
         <div className="space-y-1.5">
         {!ready ? (
           <div className="flex items-center justify-center py-8">
-            <Loader2 size={20} className="animate-spin text-muted-foreground" />
+            <CircleNotch size={20} className="animate-spin text-muted-foreground" />
           </div>
         ) : availableMcpServers.length === 0 ? (
           <div className="rounded-lg border border-dashed border-border px-3 py-6 text-center text-xs text-muted-foreground">

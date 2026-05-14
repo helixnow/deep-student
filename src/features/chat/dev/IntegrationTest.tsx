@@ -11,7 +11,7 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { Loader2, Check, X, AlertTriangle, Info } from 'lucide-react';
+import { CircleNotch, Check, X, Warning, Info } from '@phosphor-icons/react';
 
 // Chat V2 组件
 import { ChatContainer } from '../components/ChatContainer';
@@ -323,17 +323,17 @@ export const IntegrationTest: React.FC = () => {
                 <span className="text-muted-foreground">{t('dev.integrationTest.backendConnection', 'Backend Connection')}:</span>
                 {isReady ? (
                   <span className="flex items-center gap-1 text-green-600 dark:text-green-400">
-                    <Check className="w-4 h-4" />
+                    <Check size={16} />
                     {t('dev.integrationTest.connected', 'Connected')}
                   </span>
                 ) : adapterError ? (
                   <span className="flex items-center gap-1 text-destructive">
-                    <X className="w-4 h-4" />
+                    <X size={16} />
                     {t('dev.integrationTest.connectionFailed', 'Connection Failed')}
                   </span>
                 ) : (
                   <span className="flex items-center gap-1 text-muted-foreground">
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <CircleNotch size={16} className="animate-spin" />
                     {t('dev.integrationTest.connecting', 'Connecting...')}
                   </span>
                 )}
@@ -402,7 +402,7 @@ export const IntegrationTest: React.FC = () => {
                     )}
                   >
                     {isRunningTests ? (
-                      <Loader2 className="w-3 h-3 animate-spin" />
+                      <CircleNotch size={12} className="animate-spin" />
                     ) : (
                       '运行测试'
                     )}
@@ -426,16 +426,16 @@ export const IntegrationTest: React.FC = () => {
                         <div className="w-4 h-4 rounded-full border-2 border-muted" />
                       )}
                       {result.status === 'running' && (
-                        <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                        <CircleNotch size={16} className="animate-spin text-primary" />
                       )}
                       {result.status === 'pass' && (
-                        <Check className="w-4 h-4 text-green-500" />
+                        <Check size={16} className="text-green-500" />
                       )}
                       {result.status === 'fail' && (
-                        <X className="w-4 h-4 text-destructive" />
+                        <X size={16} className="text-destructive" />
                       )}
                       {result.status === 'skip' && (
-                        <AlertTriangle className="w-4 h-4 text-yellow-500" />
+                        <Warning size={16} className="text-yellow-500" />
                       )}
                       <span className="text-xs truncate">{result.name}</span>
                     </div>
@@ -469,7 +469,7 @@ export const IntegrationTest: React.FC = () => {
             <div className="bg-card border border-border rounded-lg overflow-hidden">
               <div className="px-3 py-2 bg-muted/50 border-b border-border">
                 <span className="font-medium text-sm flex items-center gap-2">
-                  <Info className="w-4 h-4" />
+                  <Info size={16} />
                   验收清单
                 </span>
               </div>
@@ -513,7 +513,7 @@ const CheckItem: React.FC<CheckItemProps> = ({ label, checked }) => {
             : 'border-muted-foreground/30'
         )}
       >
-        {checked && <Check className="w-3 h-3" />}
+        {checked && <Check size={12} />}
       </div>
       <span className={cn(checked && 'text-muted-foreground')}>{label}</span>
     </div>
