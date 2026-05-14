@@ -7,6 +7,7 @@
 import React, { useState, useEffect } from 'react';
 import { cn } from '@/lib/utils';
 import { motion, useSpring } from 'framer-motion';
+import '../styles/settings-textarea-scrollbar.css';
 
 export const settingsQuietHoverClassName = 'hover:bg-[color:var(--sidebar-quiet-hover)]';
 
