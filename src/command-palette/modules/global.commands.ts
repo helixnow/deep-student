@@ -6,14 +6,14 @@
 import i18next from 'i18next';
 import {
   Command as CommandIcon,
-  Search,
-  RefreshCw,
-  Maximize,
-  ZoomIn,
-  ZoomOut,
-  RotateCcw,
+  MagnifyingGlass,
+  ArrowClockwise,
+  ArrowsOut,
+  MagnifyingGlassPlus,
+  MagnifyingGlassMinus,
+  ArrowCounterClockwise,
   Keyboard,
-  HelpCircle,
+  Question,
   Info,
   Bug,
   Download,
@@ -21,21 +21,21 @@ import {
   Copy,
   Clipboard,
   Bell,
-  BellOff,
+  BellSlash,
   Moon,
   Sun,
   Monitor,
-  Volume2,
-  VolumeX,
-  Wifi,
-  WifiOff,
+  SpeakerHigh,
+  SpeakerSlash,
+  WifiHigh,
+  WifiSlash,
   Lock,
-  Unlock,
-  AlertTriangle,
+  LockOpen,
+  Warning,
   CheckCircle,
   XCircle,
-  Loader,
-} from 'lucide-react';
+  CircleNotch,
+} from '@phosphor-icons/react';
 import type { Command } from '../registry/types';
 import { isGlobalCommandEnabled } from '../registry/capabilityRegistry';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
@@ -73,7 +73,7 @@ function createRawGlobalCommands(): Command[] {
       description: i18next.t('command_palette:descriptions.global.quick-search', 'Search notes, conversations, documents'),
       category: 'global',
       shortcut: 'mod+p',
-      icon: Search,
+      icon: MagnifyingGlass,
       keywords: kw('global.quick-search'),
       priority: 99,
       execute: () => {
@@ -100,7 +100,7 @@ function createRawGlobalCommands(): Command[] {
       description: i18next.t('command_palette:descriptions.global.reload', 'Reload application page'),
       category: 'global',
       shortcut: 'mod+alt+r',
-      icon: RefreshCw,
+      icon: ArrowClockwise,
       keywords: kw('global.reload'),
       priority: 50,
       execute: () => {
@@ -113,7 +113,7 @@ function createRawGlobalCommands(): Command[] {
       description: i18next.t('command_palette:descriptions.global.toggle-fullscreen', 'Toggle fullscreen display mode'),
       category: 'global',
       shortcut: 'f11',
-      icon: Maximize,
+      icon: ArrowsOut,
       keywords: kw('global.toggle-fullscreen'),
       priority: 49,
       execute: async () => {
@@ -141,7 +141,7 @@ function createRawGlobalCommands(): Command[] {
       description: i18next.t('command_palette:descriptions.global.zoom-in', 'Increase interface zoom level'),
       category: 'global',
       shortcut: 'mod+=',
-      icon: ZoomIn,
+      icon: MagnifyingGlassPlus,
       keywords: kw('global.zoom-in'),
       priority: 48,
       execute: () => {
@@ -155,7 +155,7 @@ function createRawGlobalCommands(): Command[] {
       description: i18next.t('command_palette:descriptions.global.zoom-out', 'Decrease interface zoom level'),
       category: 'global',
       shortcut: 'mod+-',
-      icon: ZoomOut,
+      icon: MagnifyingGlassMinus,
       keywords: kw('global.zoom-out'),
       priority: 47,
       execute: () => {
@@ -169,7 +169,7 @@ function createRawGlobalCommands(): Command[] {
       description: i18next.t('command_palette:descriptions.global.zoom-reset', 'Restore default zoom level'),
       category: 'global',
       shortcut: 'mod+0',
-      icon: RotateCcw,
+      icon: ArrowCounterClockwise,
       keywords: kw('global.zoom-reset'),
       priority: 46,
       execute: () => {
@@ -252,7 +252,7 @@ function createRawGlobalCommands(): Command[] {
       name: i18next.t('command_palette:commands.global.mute-sounds', 'Mute Sounds'),
       description: i18next.t('command_palette:descriptions.global.mute-sounds', 'Mute all sound alerts'),
       category: 'global',
-      icon: VolumeX,
+      icon: SpeakerSlash,
       keywords: kw('global.mute-sounds'),
       priority: 59,
       execute: () => {
@@ -266,7 +266,7 @@ function createRawGlobalCommands(): Command[] {
       name: i18next.t('command_palette:commands.global.check-connection', 'Check Connection'),
       description: i18next.t('command_palette:descriptions.global.check-connection', 'Check API connection status'),
       category: 'global',
-      icon: Wifi,
+      icon: WifiHigh,
       keywords: kw('global.check-connection'),
       priority: 55,
       execute: () => {
@@ -278,7 +278,7 @@ function createRawGlobalCommands(): Command[] {
       name: i18next.t('command_palette:commands.global.sync-now', 'Sync Now'),
       description: i18next.t('command_palette:descriptions.global.sync-now', 'Manually trigger data sync'),
       category: 'global',
-      icon: RefreshCw,
+      icon: ArrowClockwise,
       keywords: kw('global.sync-now'),
       priority: 54,
       execute: () => {
@@ -324,7 +324,7 @@ function createRawGlobalCommands(): Command[] {
       description: i18next.t('command_palette:descriptions.global.show-help', 'Open help documentation'),
       category: 'global',
       shortcut: 'f1',
-      icon: HelpCircle,
+      icon: Question,
       keywords: kw('global.show-help'),
       priority: 30,
       execute: () => {
@@ -415,7 +415,7 @@ function createRawGlobalCommands(): Command[] {
       name: i18next.t('command_palette:commands.global.show-loading', 'Show Loading Status'),
       description: i18next.t('command_palette:descriptions.global.show-loading', 'Tasks currently being processed'),
       category: 'global',
-      icon: Loader,
+      icon: CircleNotch,
       keywords: kw('global.show-loading'),
       priority: 10,
       execute: () => {

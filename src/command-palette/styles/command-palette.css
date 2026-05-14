@@ -13,7 +13,7 @@
   align-items: flex-start;
   justify-content: center;
   padding-top: 15vh;
-  background-color: rgba(0, 0, 0, 0.5);
+  background-color: hsl(var(--shadow-base) / 0.5);
   backdrop-filter: blur(4px);
   animation: command-palette-fade-in 150ms ease-out;
 }
@@ -37,8 +37,8 @@
   border: 1px solid hsl(var(--border));
   border-radius: 12px;
   box-shadow: 
-    0 25px 50px -12px rgba(0, 0, 0, 0.25),
-    0 0 0 1px rgba(0, 0, 0, 0.05);
+    0 25px 50px -12px hsl(var(--shadow-base) / 0.25),
+    0 0 0 1px hsl(var(--shadow-base) / 0.05);
   overflow: hidden;
   animation: command-palette-slide-down 150ms ease-out;
 }
@@ -343,13 +343,13 @@
 /* ==================== 暗色模式增强 ==================== */
 
 .dark .command-palette-backdrop {
-  background-color: rgba(0, 0, 0, 0.7);
+  background-color: hsl(var(--shadow-base) / 0.7);
 }
 
 .dark .command-palette-container {
   box-shadow: 
-    0 25px 50px -12px rgba(0, 0, 0, 0.5),
-    0 0 0 1px rgba(255, 255, 255, 0.05);
+    0 25px 50px -12px hsl(var(--shadow-base) / 0.5),
+    0 0 0 1px hsl(var(--background) / 0.05);
 }
 
 .dark .command-palette-item-shortcut {
