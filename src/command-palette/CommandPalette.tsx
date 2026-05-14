@@ -11,7 +11,7 @@ import React, {
   useMemo,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Search, X, CornerDownLeft, Star, Clock, StarOff } from 'lucide-react';
+import { MagnifyingGlass, X, ArrowElbowDownLeft, Star, Clock, StarHalf } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useCommandPalette } from './CommandPaletteProvider';
@@ -264,7 +264,7 @@ export function CommandPalette() {
       >
         {/* 搜索栏 */}
         <div className="command-palette-search">
-          <Search className="command-palette-search-icon" size={18} />
+          <MagnifyingGlass className="command-palette-search-icon" size={18} />
           <input
             ref={inputRef}
             type="text"
@@ -405,7 +405,7 @@ export function CommandPalette() {
                           {commandFavorites.isFavorite(command.id) ? (
                             <Star size={14} className="fill-current" />
                           ) : (
-                            <StarOff size={14} />
+                            <StarHalf size={14} />
                           )}
                         </button>
                         {/* 显示有效快捷键（优先使用自定义快捷键） */}
@@ -434,7 +434,7 @@ export function CommandPalette() {
           </div>
           <div className="command-palette-hint">
             <span className="command-palette-hint-key">
-              <CornerDownLeft size={12} />
+              <ArrowElbowDownLeft size={12} />
             </span>
             <span>{t('command_palette:hint_execute', '执行')}</span>
           </div>
