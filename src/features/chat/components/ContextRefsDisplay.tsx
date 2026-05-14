@@ -33,9 +33,9 @@ import {
   File,
   PenTool,
   Languages,
-  type LucideIcon,
   Maximize2,
 } from 'lucide-react';
+import type { Icon } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { contextTypeRegistry } from '../context';
 import type { ContextRef, ContextSnapshot } from '../context/types';

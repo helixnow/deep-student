@@ -6,7 +6,8 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import type { StreamingMarker } from '@/essay-grading/streamingMarkerParser';
-import { AlertTriangle, ArrowRight, Trash2, PenLine, Sparkles, Copy, Check, type LucideIcon } from 'lucide-react';
+import { AlertTriangle, ArrowRight, Trash2, PenLine, Sparkles, Copy, Check } from 'lucide-react';
+import type { Icon } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { useState } from 'react';
@@ -35,7 +36,7 @@ const ERROR_BADGE_STYLES: Record<string, string> = {
 const DEFAULT_BADGE_STYLE = 'bg-muted/30 text-muted-foreground border-border/40';
 
 /** 非 err 标记类型 → badge 配置 */
-const MARKER_BADGE_CONFIG: Partial<Record<StreamingMarker['type'], { icon: LucideIcon; i18nKey: string; style: string }>> = {
+const MARKER_BADGE_CONFIG: Partial<Record<StreamingMarker['type'], { icon: Icon; i18nKey: string; style: string }>> = {
   del: { icon: Trash2, i18nKey: 'essay_grading:markers.delete', style: 'bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800' },
   replace: { icon: PenLine, i18nKey: 'essay_grading:markers.replace', style: 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800' },
   ins: { icon: Sparkles, i18nKey: 'essay_grading:markers.insert', style: 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800' },
