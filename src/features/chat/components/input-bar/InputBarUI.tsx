@@ -49,6 +49,7 @@ import {
 import { AppSelect } from '@/components/ui/app-menu/AppSelect';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { Textarea } from '@/components/ui/shad/Textarea';
 import { useTauriDragAndDrop } from '@/hooks/useTauriDragAndDrop';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
@@ -3248,11 +3249,11 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                   </div>
                 )}
 
-                <textarea
+                <Textarea
                   value={imageGenPrompt}
                   onChange={(event) => setImageGenPrompt(event.target.value)}
                   placeholder={t('chatV2:inputBar.imageGen.placeholder', '例如：光合作用概念图，清晰标注阳光、水、二氧化碳、叶绿体和葡萄糖')}
-                  className="min-h-[88px] resize-none rounded-xl border border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-control-surface)] px-3 py-2 text-sm text-[color:var(--composer-panel-foreground)] outline-none transition-colors placeholder:text-[color:var(--composer-panel-placeholder)] focus:border-[color:var(--composer-panel-focus-border)]"
+                  className="min-h-[88px] resize-none rounded-xl border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-control-surface)] text-[color:var(--composer-panel-foreground)] placeholder:text-[color:var(--composer-panel-placeholder)] focus-visible:border-[color:var(--composer-panel-focus-border)]"
                 />
 
                 <div className="flex flex-wrap gap-2">

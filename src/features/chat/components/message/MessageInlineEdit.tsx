@@ -4,6 +4,7 @@
 import React, { useRef, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { Textarea } from '@/components/ui/shad/Textarea';
 
 export interface MessageInlineEditProps {
   value: string;
@@ -42,15 +43,11 @@ export const MessageInlineEdit: React.FC<MessageInlineEditProps> = ({
 
   return (
     <div className="flex flex-col items-end gap-2">
-      <textarea
+      <Textarea
         ref={textareaRef}
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full min-h-[80px] rounded-lg px-3 py-2 text-sm
-                   bg-background text-foreground text-left
-                   border-2 border-primary
-                   focus:outline-none focus:ring-2 focus:ring-primary/50
-                   resize-y"
+        className="w-full border-2 border-primary focus-visible:ring-primary/50 resize-y"
         placeholder={t('chatV2:messageItem.actions.editPlaceholder', '输入新内容...')}
         onKeyDown={handleKeyDown}
         disabled={isSubmitting}

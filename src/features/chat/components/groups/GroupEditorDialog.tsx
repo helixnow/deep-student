@@ -309,14 +309,14 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                   })()}
                 </div>
              )}
-             <input
+             <Input
                ref={nameInputRef}
                type="text"
                value={name}
                onChange={(e) => setName(e.target.value)}
                placeholder={t('page.groupNamePlaceholder')}
                autoFocus={autoFocusField === 'name'}
-               className="w-full text-2xl md:text-3xl font-semibold border-0 border-b-2 border-border/50 bg-transparent placeholder:text-muted-foreground/40 py-3 pr-24 md:pr-0 outline-none focus:border-primary transition-colors"
+               className="w-full text-2xl md:text-3xl font-semibold border-0 border-b-2 border-border/50 bg-transparent placeholder:text-muted-foreground/40 py-3 pr-24 md:pr-0 rounded-none focus-visible:ring-0 focus-visible:border-primary transition-colors"
              />
           </div>
 

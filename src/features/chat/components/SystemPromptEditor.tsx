@@ -15,6 +15,7 @@ import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 import React, { useCallback, useState, useMemo, useRef } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { Textarea } from '@/components/ui/shad/Textarea';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import {
@@ -442,20 +443,19 @@ export const SystemPromptEditor: React.FC<SystemPromptEditorProps> = ({
 
       {/* 编辑区域 */}
       <div className="relative">
-        <textarea
+        <Textarea
           ref={textareaRef}
           value={value}
           onChange={handleChange}
           placeholder={placeholder || t('systemPrompt.placeholder')}
           disabled={disabled}
           className={cn(
-            'w-full px-4 py-3',
-            'bg-transparent',
+            'w-full',
+            'bg-transparent border-0',
             'resize-none',
-            'focus:outline-none',
-            'placeholder:text-muted-foreground',
+            'focus-visible:ring-0',
             'disabled:opacity-50 disabled:cursor-not-allowed',
-            'text-sm leading-relaxed',
+            'leading-relaxed',
             isOverLimit && 'text-destructive'
           )}
           style={{
