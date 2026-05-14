@@ -1,0 +1,31 @@
+/* 页面保活机制样式 - 确保隐藏的组件不影响布局 */
+.page-container {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  /* 彻底禁用page-container的滚动条 */
+  overflow: hidden !important;
+  /* 🔧 移除 position: relative，让 inline style 的 absolute 正常生效 */
+  /* position: relative; */
+  flex: 1;
+}
+
+/* 暗色：提高页面背景与卡片的分层对比，使圆角更明显 */
+.dark .page-container {
+  background: transparent;
+}
+
+.page-container[style*="display: none"],
+.page-container[style*="display:none"] {
+  position: absolute;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+/* 可滚动页面容器：用于需要自身滚动的页面（如：深度研究） */
+.page-container.scrollable {
+  overflow: auto !important;
+  -webkit-overflow-scrolling: touch;
+}
