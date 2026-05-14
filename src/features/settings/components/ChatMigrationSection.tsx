@@ -17,18 +17,18 @@ import {
 import {
   Database,
   Play,
-  RotateCcw,
-  RefreshCw,
+  ArrowCounterClockwise,
+  ArrowClockwise,
   CheckCircle,
   XCircle,
-  AlertTriangle,
-  Loader2,
+  Warning,
+  CircleNotch,
   Clock,
-  MessageSquare,
+  Chat,
   FolderOpen,
-  Blocks,
+  SquaresFour,
   Paperclip,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Progress } from '@/components/ui/shad/Progress';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -274,15 +274,15 @@ export const ChatMigrationSection: React.FC = () => {
   const getStatusIcon = (status: MigrationStatus) => {
     switch (status) {
       case 'completed':
-        return <CheckCircle className="h-5 w-5 text-green-500" />;
+        return <CheckCircle size={20} className="text-green-500" />;
       case 'failed':
-        return <XCircle className="h-5 w-5 text-red-500" />;
+        return <XCircle size={20} className="text-red-500" />;
       case 'in_progress':
-        return <Loader2 className="h-5 w-5 text-blue-500 animate-spin" />;
+        return <CircleNotch size={20} className="text-blue-500 animate-spin" />;
       case 'rolled_back':
-        return <RotateCcw className="h-5 w-5 text-yellow-500" />;
+        return <ArrowCounterClockwise size={20} className="text-yellow-500" />;
       default:
-        return <Database className="h-5 w-5 text-muted-foreground" />;
+        return <Database size={20} className="text-muted-foreground" />;
     }
   };
 
@@ -306,9 +306,9 @@ export const ChatMigrationSection: React.FC = () => {
             className="h-8"
           >
             {isChecking ? (
-              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+              <CircleNotch size={14} className="mr-1.5 animate-spin" />
             ) : (
-              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+              <ArrowClockwise size={14} className="mr-1.5" />
             )}
             {t('actions.checkStatus')}
           </NotionButton>
@@ -316,7 +316,7 @@ export const ChatMigrationSection: React.FC = () => {
 
         {isChecking && (
           <div className="flex items-center gap-2 text-muted-foreground">
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <CircleNotch size={16} className="animate-spin" />
             <span>{t('check.loading')}</span>
           </div>
         )}
@@ -331,9 +331,9 @@ export const ChatMigrationSection: React.FC = () => {
             }`}>
               <div className="flex items-center gap-2">
                 {checkResult.needsMigration ? (
-                  <AlertTriangle className="h-5 w-5 text-yellow-500" />
+                  <Warning size={20} className="text-yellow-500" />
                 ) : (
-                  <CheckCircle className="h-5 w-5 text-green-500" />
+                  <CheckCircle size={20} className="text-green-500" />
                 )}
                 <span className="font-medium">
                   {checkResult.needsMigration 
@@ -347,7 +347,7 @@ export const ChatMigrationSection: React.FC = () => {
             {/* 统计信息 */}
             <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
               <StatItem
-                icon={MessageSquare}
+                icon={Chat}
                 label={t('check.pendingMessages')}
                 value={checkResult.pendingMessages}
                 variant={checkResult.pendingMessages > 0 ? 'warning' : 'default'}
@@ -381,9 +381,9 @@ export const ChatMigrationSection: React.FC = () => {
                 disabled={!checkResult.needsMigration || isMigrating || isRollingBack}
               >
                 {isMigrating ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  <CircleNotch size={16} className="mr-2 animate-spin" />
                 ) : (
-                  <Play className="h-4 w-4 mr-2" />
+                  <Play size={16} className="mr-2" />
                 )}
                 {t('actions.startMigration')}
               </NotionButton>
@@ -394,9 +394,9 @@ export const ChatMigrationSection: React.FC = () => {
                 disabled={!checkResult.canRollback || isMigrating || isRollingBack}
               >
                 {isRollingBack ? (
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  <CircleNotch size={16} className="mr-2 animate-spin" />
                 ) : (
-                  <RotateCcw className="h-4 w-4 mr-2" />
+                  <ArrowCounterClockwise size={16} className="mr-2" />
                 )}
                 {t('actions.rollback')}
               </NotionButton>
@@ -466,13 +466,13 @@ export const ChatMigrationSection: React.FC = () => {
               variant="success"
             />
             <StatItem
-              icon={MessageSquare}
+              icon={Chat}
               label={t('report.messagesMigrated')}
               value={report.messagesMigrated}
               variant="success"
             />
             <StatItem
-              icon={Blocks}
+              icon={SquaresFour}
               label={t('report.blocksCreated')}
               value={report.blocksCreated}
               variant="success"
@@ -489,7 +489,7 @@ export const ChatMigrationSection: React.FC = () => {
             />
             {report.messagesSkipped > 0 && (
               <StatItem
-                icon={AlertTriangle}
+                icon={Warning}
                 label={t('report.messagesSkipped')}
                 value={report.messagesSkipped}
                 variant="warning"
@@ -506,7 +506,7 @@ export const ChatMigrationSection: React.FC = () => {
               <ul className="text-xs text-muted-foreground bg-red-50 dark:bg-red-950/30 p-3 rounded space-y-1 max-h-32 overflow-y-auto">
                 {report.errors.map((error, index) => (
                   <li key={index} className="flex items-start gap-2">
-                    <XCircle className="h-3 w-3 text-red-500 mt-0.5 flex-shrink-0" />
+                    <XCircle size={12} className="text-red-500 mt-0.5 flex-shrink-0" />
                     <span>{error}</span>
                   </li>
                 ))}

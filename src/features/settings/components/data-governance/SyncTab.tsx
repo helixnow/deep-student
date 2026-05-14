@@ -10,17 +10,17 @@ import { useTranslation } from 'react-i18next';
 import {
   Cloud,
   HardDrive,
-  RefreshCw,
-  CheckCircle2,
+  ArrowClockwise,
+  CheckCircle,
   XCircle,
-  AlertTriangle,
-  Loader2,
+  Warning,
+  CircleNotch,
   Download,
-  Search,
+  MagnifyingGlass,
   Upload,
-  ArrowRightLeft,
+  ArrowsLeftRight,
   FileText,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Badge } from '@/components/ui/shad/Badge';
@@ -97,7 +97,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
       <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <Cloud className="h-4 w-4" />
+            <Cloud size={16} />
             {t('data:governance.pending_changes')}
           </div>
           <div className="text-2xl font-semibold text-foreground">
@@ -107,7 +107,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
 
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <CheckCircle2 className="h-4 w-4" />
+            <CheckCircle size={16} />
             {t('data:governance.synced_changes')}
           </div>
           <div className="text-2xl font-semibold text-foreground">
@@ -117,7 +117,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
 
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-            <HardDrive className="h-4 w-4" />
+            <HardDrive size={16} />
             {t('data:governance.device_id')}
           </div>
           <div className="text-sm font-mono truncate" title={syncStatus?.device_id}>
@@ -144,11 +144,11 @@ export const SyncTab: React.FC<SyncTabProps> = ({
           </div>
           <div className="flex gap-2">
             <NotionButton variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="h-8">
-              <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
+              <ArrowClockwise size={14} className={`mr-1.5 ${loading ? 'animate-spin' : ''}`} />
               {t('common:actions.refresh')}
             </NotionButton>
             <NotionButton variant="default" size="sm" onClick={onDetectConflicts} disabled={loading} className="h-8">
-              <Search className="h-3.5 w-3.5 mr-1.5" />
+                <MagnifyingGlass size={14} className="mr-1.5" />
               {t('data:governance.detect_conflicts')}
             </NotionButton>
           </div>
@@ -172,9 +172,9 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                   </TableCell>
                   <TableCell className="py-3">
                     {db.has_change_log ? (
-                      <CheckCircle2 className="h-4 w-4 text-emerald-500/70" />
+                      <CheckCircle size={16} className="text-emerald-500/70" />
                     ) : (
-                      <XCircle className="h-4 w-4 text-muted-foreground/50" />
+                      <XCircle size={16} className="text-muted-foreground/50" />
                     )}
                   </TableCell>
                   <TableCell className="py-3">
@@ -194,7 +194,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                   <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
                     {loading ? (
                       <div className="flex items-center justify-center gap-2">
-                        <Loader2 className="h-4 w-4 animate-spin" />
+                        <CircleNotch size={16} className="animate-spin" />
                         {t('common:status.loading')}
                       </div>
                     ) : (
@@ -227,7 +227,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             onClick={onToggleCloudSettingsEditor}
             className="h-8"
           >
-            <Cloud className="h-3.5 w-3.5 mr-1.5" />
+            <Cloud size={14} className="mr-1.5" />
             {t('data:governance.open_cloud_settings')}
           </NotionButton>
         </div>
@@ -235,7 +235,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
         {!cloudSyncConfigured ? (
           <div className="rounded-lg border border-border/40 bg-muted/20 p-4 space-y-2">
             <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-              <AlertTriangle className="h-4 w-4 text-amber-500" />
+              <Warning size={16} className="text-amber-500" />
               {t('data:governance.cloud_sync_not_configured')}
             </div>
             <p className="text-sm text-muted-foreground pl-6">
@@ -298,7 +298,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 disabled={loading || syncRunning}
                 className="h-8"
               >
-                <ArrowRightLeft className="h-3.5 w-3.5 mr-1.5" />
+                <ArrowsLeftRight size={14} className="mr-1.5" />
                 {t('data:governance.sync_bidirectional')}
               </NotionButton>
               <NotionButton
@@ -308,7 +308,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 disabled={loading || syncRunning}
                 className="h-8 bg-background hover:bg-[var(--interactive-hover)]"
               >
-                <Upload className="h-3.5 w-3.5 mr-1.5" />
+                <Upload size={14} className="mr-1.5" />
                 {t('data:governance.sync_upload')}
               </NotionButton>
               <NotionButton
@@ -318,7 +318,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 disabled={loading || syncRunning}
                 className="h-8 bg-background hover:bg-[var(--interactive-hover)]"
               >
-                <Download className="h-3.5 w-3.5 mr-1.5" />
+                <Download size={14} className="mr-1.5" />
                 {t('data:governance.sync_download')}
               </NotionButton>
             </div>
@@ -329,9 +329,9 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     {syncRunning ? (
-                      <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                      <CircleNotch size={16} className="animate-spin text-primary" />
                     ) : (
-                      <XCircle className="h-4 w-4 text-destructive" />
+                      <XCircle size={16} className="text-destructive" />
                     )}
                     <span className={`text-sm font-medium ${syncRunning ? 'text-primary' : 'text-destructive'}`}>
                       {syncRunning ? t('data:governance.sync_in_progress') : t('data:governance.sync_failed')}
@@ -371,7 +371,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                   {syncProgress.error && (
                     <div className="rounded-md border border-destructive/30 bg-destructive/5 p-2 space-y-2">
                       <div className="flex items-center gap-1.5 text-xs text-destructive">
-                        <XCircle className="h-3 w-3 shrink-0" />
+                        <XCircle size={12} className="shrink-0" />
                         <span>{syncProgress.error}</span>
                       </div>
                       <div className="flex items-center gap-2 pl-[18px]">
@@ -383,7 +383,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                             disabled={syncRunning}
                             className="h-6 text-xs px-2"
                           >
-                            <RefreshCw className="h-3 w-3 mr-1" />
+                            <ArrowClockwise size={12} className="mr-1" />
                             {t('common:actions.retry')}
                           </NotionButton>
                         )}
@@ -394,7 +394,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                             onClick={onViewAuditLog}
                             className="h-6 text-xs px-2"
                           >
-                            <FileText className="h-3 w-3 mr-1" />
+                            <FileText size={12} className="mr-1" />
                             {t('data:governance.view_audit_log')}
                           </NotionButton>
                         )}
@@ -421,7 +421,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
       {conflicts && conflicts.has_conflicts && (
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-4">
           <div className="flex items-center gap-2 text-amber-600 font-medium">
-            <AlertTriangle className="h-4 w-4" />
+            <Warning size={16} />
             {t('data:governance.conflicts_detected')}
           </div>
           

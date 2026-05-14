@@ -2,15 +2,15 @@ import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import {
-  AlertTriangle,
+  Warning,
   Archive,
-  Clock3,
-  Loader2,
-  MessageSquare,
-  RefreshCw,
-  RotateCcw,
-  Trash2,
-} from 'lucide-react';
+  Clock,
+  CircleNotch,
+  Chat,
+  ArrowClockwise,
+  ArrowCounterClockwise,
+  Trash,
+} from '@phosphor-icons/react';
 
 import { NotionButton } from '@/components/ui/NotionButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -99,7 +99,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-            <Archive className="h-4 w-4 text-muted-foreground" />
+            <Archive size={16} className="text-muted-foreground" />
             {t('data:governance.archive_title')}
           </div>
           <p className="max-w-2xl text-sm text-muted-foreground">
@@ -117,9 +117,9 @@ export const ChatSessionArchiveTab: React.FC = () => {
           disabled={loading || actionSessionId !== null}
         >
           {loading ? (
-            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+            <CircleNotch size={14} className="animate-spin" />
           ) : (
-            <RefreshCw className="h-3.5 w-3.5" />
+            <ArrowClockwise size={14} />
           )}
           <span>{t('common:actions.refresh')}</span>
         </NotionButton>
@@ -128,7 +128,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
       {loadError ? (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4">
           <div className="flex items-start gap-2 text-sm text-destructive">
-            <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0" />
+            <Warning className="mt-0.5 h-4 w-4 shrink-0" />
             <div className="space-y-1">
               <p className="font-medium">{t('data:governance.archive_load_failed')}</p>
               <p className="text-destructive/80">{loadError}</p>
@@ -139,12 +139,12 @@ export const ChatSessionArchiveTab: React.FC = () => {
 
       {loading && !hasArchivedSessions ? (
         <div className="flex min-h-40 items-center justify-center rounded-lg border border-border/40 bg-muted/10 text-sm text-muted-foreground">
-          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+          <CircleNotch size={16} className="mr-2 animate-spin" />
           {t('data:governance.archive_loading')}
         </div>
       ) : !hasArchivedSessions ? (
         <div className="flex min-h-40 flex-col items-center justify-center rounded-lg border border-dashed border-border/60 bg-muted/10 px-4 text-center">
-          <Archive className="mb-3 h-8 w-8 text-muted-foreground/60" />
+          <Archive size={32} className="mb-3 text-muted-foreground/60" />
           <p className="text-sm font-medium text-foreground">{t('data:governance.archive_empty_state')}</p>
           <p className="mt-1 max-w-md text-sm text-muted-foreground">
             {t('data:governance.archive_empty_state_desc')}
@@ -159,7 +159,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
               <div key={session.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
                 <div className="min-w-0 space-y-1">
                   <div className="flex min-w-0 items-center gap-2">
-                    <MessageSquare className="h-4 w-4 shrink-0 text-muted-foreground" />
+                    <Chat size={16} className="shrink-0 text-muted-foreground" />
                     <p className="truncate text-sm font-medium text-foreground">
                       {session.title || t('data:governance.archive_untitled')}
                     </p>
@@ -172,7 +172,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
                   <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-xs text-muted-foreground">
                     <span>{session.mode}</span>
                     <span className="inline-flex items-center gap-1">
-                      <Clock3 className="h-3 w-3" />
+                      <Clock size={12} />
                       {formatSessionTime(session.updatedAt)}
                     </span>
                   </div>
@@ -187,9 +187,9 @@ export const ChatSessionArchiveTab: React.FC = () => {
                     aria-label={t('data:governance.archive_restore')}
                   >
                     {busy ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <CircleNotch size={14} className="animate-spin" />
                     ) : (
-                      <RotateCcw className="h-3.5 w-3.5" />
+                      <ArrowCounterClockwise size={14} />
                     )}
                     <span>{t('data:governance.archive_restore')}</span>
                   </NotionButton>
@@ -203,9 +203,9 @@ export const ChatSessionArchiveTab: React.FC = () => {
                       : t('data:governance.archive_delete')}
                   >
                     {busy ? (
-                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      <CircleNotch size={14} className="animate-spin" />
                     ) : (
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash size={14} />
                     )}
                     <span>
                       {confirmingDelete

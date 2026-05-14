@@ -5,12 +5,8 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Save, Trash2, CheckCircle, Settings as SettingsIcon, Zap } from 'lucide-react';
+import { FloppyDisk, Trash, CheckCircle, Gear as SettingsIcon, Lightning } from '@phosphor-icons/react';
 import { ModelAssignments } from '@/types';
-import {
-  MODEL_ASSIGNMENT_BUTTON_ICON_CLASS,
-  MODEL_ASSIGNMENT_ICON_CLASS,
-} from '@/utils/modelAssignmentIconTheme';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/shad/Card';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -332,11 +328,11 @@ export const ModelAssignmentPresets: React.FC<ModelAssignmentPresetsProps> = ({
     <Card className="border-border/40 bg-transparent shadow-none p-4 text-left" data-tour-id="settings-model-presets">
       <CardHeader className="p-0 mb-3 w-full text-left">
         <div className="flex items-center gap-2">
-          <SettingsIcon className={MODEL_ASSIGNMENT_ICON_CLASS} />
+          <SettingsIcon size={20} className="text-muted-foreground shrink-0" />
           <CardTitle className="text-base text-left" style={{ textAlign: 'left' }}>{t('settings:model_presets.title')}</CardTitle>
         </div>
         <NotionButton size="sm" variant="primary" className="ml-auto" onClick={() => setShowCreateDialog(true)} data-tour-id="settings-model-presets-save">
-          <Save className={MODEL_ASSIGNMENT_BUTTON_ICON_CLASS} /> {t('settings:model_presets.save_current')}
+          <FloppyDisk size={14} className="shrink-0" /> {t('settings:model_presets.save_current')}
         </NotionButton>
       </CardHeader>
       <CardContent className="p-0 space-y-3">
@@ -356,11 +352,11 @@ export const ModelAssignmentPresets: React.FC<ModelAssignmentPresetsProps> = ({
                       <div className="text-sm font-medium text-foreground">{preset.name}</div>
                       {preset.isBuiltin ? (
                         <Badge className="inline-flex items-center gap-1" variant="outline">
-                          <CheckCircle className={MODEL_ASSIGNMENT_BUTTON_ICON_CLASS} /> {t('settings:model_presets.builtin')}
+                          <CheckCircle size={14} className="shrink-0" /> {t('settings:model_presets.builtin')}
                         </Badge>
                       ) : preset.isDefault ? (
                         <Badge className="inline-flex items-center gap-1" variant="secondary">
-                          <CheckCircle className={MODEL_ASSIGNMENT_BUTTON_ICON_CLASS} /> {t('settings:model_presets.default')}
+                          <CheckCircle size={14} className="shrink-0" /> {t('settings:model_presets.default')}
                         </Badge>
                       ) : null}
                     </div>
@@ -373,19 +369,19 @@ export const ModelAssignmentPresets: React.FC<ModelAssignmentPresetsProps> = ({
 
                 <div className="mt-3 flex items-center gap-2 justify-end">
                   <NotionButton size="sm" onClick={() => handleApplyPreset(preset)} title={t('settings:model_presets.apply')}>
-                    <Zap className={MODEL_ASSIGNMENT_BUTTON_ICON_CLASS} /> {t('settings:model_presets.apply')}
+                    <Lightning size={14} className="shrink-0" /> {t('settings:model_presets.apply')}
                   </NotionButton>
                     <NotionButton size="sm" variant="default" onClick={() => { void handleUpdatePreset(preset.id); }} title={t('settings:model_presets.update')} disabled={preset.isBuiltin}>
-                    <Save className={MODEL_ASSIGNMENT_BUTTON_ICON_CLASS} /> {t('settings:model_presets.update')}
+                    <FloppyDisk size={14} className="shrink-0" /> {t('settings:model_presets.update')}
                   </NotionButton>
                   {!preset.isBuiltin && (
                     <NotionButton size="sm" variant="ghost" onClick={() => { void handleSetDefault(preset.id); }} title={t('settings:model_presets.default')}>
-                      <CheckCircle className={MODEL_ASSIGNMENT_BUTTON_ICON_CLASS} /> {t('settings:model_presets.default')}
+                      <CheckCircle size={14} className="shrink-0" /> {t('settings:model_presets.default')}
                     </NotionButton>
                   )}
                   {!preset.isBuiltin && (
                     <NotionButton size="sm" variant="danger" onClick={() => { void handleDeletePreset(preset.id); }} title={t('settings:model_presets.delete')}>
-                      <Trash2 className={MODEL_ASSIGNMENT_BUTTON_ICON_CLASS} /> {t('settings:model_presets.delete')}
+                      <Trash size={14} className="shrink-0" /> {t('settings:model_presets.delete')}
                     </NotionButton>
                   )}
                 </div>

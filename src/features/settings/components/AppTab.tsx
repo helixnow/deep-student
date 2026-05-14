@@ -6,10 +6,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2 } from 'lucide-react';
 // Phosphor icons for the theme-mode SegmentedControl — rounded weight sits
 // more comfortably inside the control's 36px thumb than lucide's SunMedium.
-import { Monitor, Moon, Sun } from '@phosphor-icons/react';
+import { Monitor, Moon, Sun, CircleNotch } from '@phosphor-icons/react';
 import { debugMasterSwitch } from '@/debug-panel/debugMasterSwitch';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { SegmentedControl } from '@/components/ui/SegmentedControl';
@@ -180,6 +179,26 @@ export const AppTab: React.FC<AppTabProps> = ({
   const [showAgreementPreview, setShowAgreementPreview] = useState(false);
   const [macosNativeFontSmoothingEnabled, setMacosNativeFontSmoothingEnabled] = useState(true);
 
+  // 侧边栏半透明开关
+  const SIDEBAR_TRANSLUCENT_KEY = 'sidebar.translucent';
+  const [sidebarTranslucent, setSidebarTranslucent] = useState(false);
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const val = await tauriInvoke<string | null>('get_setting', { key: SIDEBAR_TRANSLUCENT_KEY }).catch(() => null);
+        if (cancelled) return;
+        const enabled = String(val ?? '').trim() === 'true';
+        setSidebarTranslucent(enabled);
+        document.documentElement.setAttribute('data-sidebar-translucent', String(enabled));
+      } catch {
+        if (cancelled) return;
+        setSidebarTranslucent(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
   // 调试日志持久化 + 过滤配置
   const [debugPersistLogs, setDebugPersistLogs] = useState(false);
   const [filterConfig, setFilterConfig] = useState<CopyFilterConfig>(getDefaultConfig);
@@ -330,6 +349,25 @@ export const AppTab: React.FC<AppTabProps> = ({
     }
   }, [invoke, macosNativeFontSmoothingEnabled]);
 
+  const handleSidebarTranslucentChange = React.useCallback(async (checked: boolean) => {
+    const previousValue = sidebarTranslucent;
+    setSidebarTranslucent(checked);
+    document.documentElement.setAttribute('data-sidebar-translucent', String(checked));
+
+    if (!invoke) return;
+
+    try {
+      await (invoke as typeof tauriInvoke)('save_setting', {
+        key: SIDEBAR_TRANSLUCENT_KEY,
+        value: String(checked),
+      });
+    } catch (error: unknown) {
+      setSidebarTranslucent(previousValue);
+      document.documentElement.setAttribute('data-sidebar-translucent', String(previousValue));
+      showGlobalNotification('error', getErrorMessage(error));
+    }
+  }, [invoke, sidebarTranslucent]);
+
   // Phase 3.1: customPalettePreviewSwatch 已被 AccentPicker 取代（它直接使用 customColor）
 
   return (
@@ -386,6 +424,19 @@ export const AppTab: React.FC<AppTabProps> = ({
               />
             )}
 
+            {/* 侧边栏半透明 */}
+            <SwitchRow
+              title={t('settings:theme.sidebar_translucent_title', '侧边栏半透明')}
+              description={t(
+                'settings:theme.sidebar_translucent_description',
+                '开启后侧边栏背景变为半透明毛玻璃效果，可透视桌面内容。',
+              )}
+              checked={sidebarTranslucent}
+              onCheckedChange={(checked) => {
+                void handleSidebarTranslucentChange(checked);
+              }}
+            />
+
             {/* 语言切换 */}
             <SettingRow
               title={t('settings:language.title')}
@@ -431,7 +482,7 @@ export const AppTab: React.FC<AppTabProps> = ({
                     disabled={zoomSaving || Math.abs(uiZoom - DEFAULT_UI_ZOOM) < 0.0001} 
                     onClick={handleZoomReset}
                   >
-                    {zoomSaving && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+                    {zoomSaving && <CircleNotch size={12} className="animate-spin mr-1" />}
                     {t('settings:zoom.reset')}
                   </NotionButton>
                 </div>
@@ -455,7 +506,7 @@ export const AppTab: React.FC<AppTabProps> = ({
                   disabled={fontSaving || uiFont === DEFAULT_UI_FONT} 
                   onClick={handleFontReset}
                 >
-                  {fontSaving && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+                  {fontSaving && <CircleNotch size={12} className="animate-spin mr-1" />}
                   {t('settings:font.reset')}
                 </NotionButton>
                 <AppSelect
@@ -495,7 +546,7 @@ export const AppTab: React.FC<AppTabProps> = ({
                   disabled={fontSizeSaving || Math.abs(uiFontSize - DEFAULT_UI_FONT_SIZE) < 0.0001}
                   onClick={handleFontSizeReset}
                 >
-                  {fontSizeSaving && <Loader2 className="h-3 w-3 animate-spin mr-1" />}
+                  {fontSizeSaving && <CircleNotch size={12} className="animate-spin mr-1" />}
                   {t('settings:font.size_reset')}
                 </NotionButton>
               </div>
@@ -581,29 +632,24 @@ export const AppTab: React.FC<AppTabProps> = ({
             />
 
             {/* 打开调试面板 */}
-            <SettingRow
-              title={t('common:debug_panel.open_unified', t('common:debug_panel.open'))}
-              description={t('settings:debug.description', '用于调试全局流式会话与事件')}
+            <NotionButton 
+              variant="default" 
+              size="sm" 
+              onClick={() => { 
+                try { 
+                  const win: any = window; 
+                  if (typeof win.DSTU_OPEN_DEBUGGER === 'function') {
+                    win.DSTU_OPEN_DEBUGGER(); 
+                  } else { 
+                    window.dispatchEvent(new Event('DSTU_OPEN_DEBUGGER')); 
+                  } 
+                } catch {
+                  // noop: opening the unified debugger is best-effort
+                }
+              }}
             >
-              <NotionButton 
-                variant="default" 
-                size="sm" 
-                onClick={() => { 
-                  try { 
-                    const win: any = window; 
-                    if (typeof win.DSTU_OPEN_DEBUGGER === 'function') {
-                      win.DSTU_OPEN_DEBUGGER(); 
-                    } else { 
-                      window.dispatchEvent(new Event('DSTU_OPEN_DEBUGGER')); 
-                    } 
-                  } catch {
-                    // noop: opening the unified debugger is best-effort
-                  }
-                }}
-              >
-                {t('common:debug_panel.open_unified', t('common:debug_panel.open'))}
-              </NotionButton>
-            </SettingRow>
+              {t('common:debug_panel.open_unified', t('common:debug_panel.open'))}
+            </NotionButton>
 
             {/* 日志文件夹 */}
             <SettingRow
@@ -836,7 +882,7 @@ export const AppTab: React.FC<AppTabProps> = ({
                       }
                     }}
                   >
-                    {debugLogsClearing ? <Loader2 className="h-3 w-3 animate-spin" /> : t('settings:developer.debug_logs.clear_all')}
+                    {debugLogsClearing ? <CircleNotch size={12} className="animate-spin" /> : t('settings:developer.debug_logs.clear_all')}
                   </NotionButton>
                 </div>
               </SettingRow>

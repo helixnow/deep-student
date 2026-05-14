@@ -13,7 +13,7 @@
 
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, CheckCircle2, Edit3, Loader2, RefreshCw, Trash2 } from 'lucide-react';
+import { Warning, CheckCircle, PencilSimple, CircleNotch, ArrowClockwise, Trash } from '@phosphor-icons/react';
 import * as DataGovernanceApi from '@/api/dataGovernance';
 import type { RecordConflictRow } from '@/api/dataGovernance';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -135,7 +135,7 @@ export const RecordConflictsPanel: React.FC = () => {
       <CardHeader className="flex flex-row items-start justify-between gap-2">
         <div>
           <CardTitle className="flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-amber-500" />
+            <Warning size={16} className="text-amber-500" />
             记录级冲突（{pairs.length}）
           </CardTitle>
           <CardDescription>
@@ -151,9 +151,9 @@ export const RecordConflictsPanel: React.FC = () => {
             className="h-8"
           >
             {loading ? (
-              <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+              <CircleNotch size={14} className="mr-1.5 animate-spin" />
             ) : (
-              <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+              <ArrowClockwise size={14} className="mr-1.5" />
             )}
             {t('common:actions.refresh')}
           </NotionButton>
@@ -165,7 +165,7 @@ export const RecordConflictsPanel: React.FC = () => {
             className="h-8"
             title="删除 30 天前已解决的冲突记录"
           >
-            <Trash2 className="h-3.5 w-3.5 mr-1.5" />
+            <Trash size={14} className="mr-1.5" />
             清理历史
           </NotionButton>
         </div>
@@ -173,7 +173,7 @@ export const RecordConflictsPanel: React.FC = () => {
       <CardContent className="space-y-3">
         {pairs.length === 0 && !loading && (
           <div className="text-sm text-muted-foreground flex items-center gap-2 py-4">
-            <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+            <CheckCircle size={16} className="text-emerald-500" />
             当前没有未解决的冲突
           </div>
         )}
@@ -220,7 +220,7 @@ export const RecordConflictsPanel: React.FC = () => {
                     disabled={isResolving || isEditing}
                     className="h-7 text-xs"
                   >
-                    <Edit3 className="h-3 w-3 mr-1" />
+                     <PencilSimple size={12} className="mr-1" />
                     手动合并
                   </NotionButton>
                 </div>

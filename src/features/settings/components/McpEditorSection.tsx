@@ -19,7 +19,7 @@ import { isTauriStdioSupported } from '@/mcp/tauriStdioTransport';
 import { type McpStatusInfo } from '@/mcp/mcpService';
 import { testMcpSseFrontend, testMcpHttpFrontend, testMcpWebsocketFrontend } from '@/mcp/mcpFrontendTester';
 import { DEFAULT_STDIO_ARGS, DEFAULT_STDIO_ARGS_PLACEHOLDER, CHAT_STREAM_SETTINGS_EVENT } from './constants';
-import { Info as InfoIcon, Plus, Trash2, X, Check, RefreshCcw } from 'lucide-react';
+import { Info as InfoIcon, Plus, Trash, X, Check, ArrowCounterClockwise } from '@phosphor-icons/react';
 import { listen as tauriListen } from '@tauri-apps/api/event';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 import { useUnifiedErrorHandler } from '@/components/UnifiedErrorHandler';
@@ -171,7 +171,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
         <Popover>
           <PopoverTrigger asChild>
             <NotionButton type="button" variant="ghost" iconOnly size="sm" className="h-6 w-6 text-muted-foreground">
-              <InfoIcon className="h-4 w-4" />
+              <InfoIcon size={16} />
             </NotionButton>
           </PopoverTrigger>
           <PopoverContent align="start" className="max-w-sm text-xs leading-relaxed">
@@ -1024,7 +1024,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
                       placeholder={t('settings:placeholders.env_value')}
                     />
                     <NotionButton variant="ghost" iconOnly size="sm" className="h-8 w-8" onClick={() => removeEnvRow(key)}>
-                      <Trash2 className="h-4 w-4" />
+                      <Trash size={16} />
                     </NotionButton>
                   </div>
                 ))}
@@ -1612,7 +1612,7 @@ export function useMcpEditorSection(deps: UseMcpEditorSectionDeps) {
             {
               type: 'retry',
               label: t('settings:mcp_descriptions.retry_connect'),
-              icon: <RefreshCcw size={12} />,
+              icon: <ArrowCounterClockwise size={12} />,
               variant: 'primary',
               action: async () => {
                 try {

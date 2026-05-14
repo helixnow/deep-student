@@ -15,27 +15,27 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import {
   Plus,
-  RefreshCw,
-  Trash2,
-  Edit3,
+  ArrowClockwise,
+  Trash,
+  PencilSimple,
   Eye,
-  FlaskConical,
+  Flask,
   Plug,
-  WifiOff,
-  Ellipsis,
-  Sparkles,
+  WifiSlash,
+  DotsThree,
+  Sparkle,
   Key,
-  ChevronDown,
-  ChevronUp,
-  Code2,
+  CaretDown,
+  CaretUp,
+  CodeBlock,
   FileCode,
   Lock,
   Package,
-  ExternalLink,
+  ArrowSquareOut,
   Check,
   Shield,
   ShieldCheck,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { UnifiedCodeEditor } from '@/components/shared/UnifiedCodeEditor';
 import { isBuiltinServer, BUILTIN_SERVER_ID } from '@/mcp/builtinMcpServer';
@@ -317,7 +317,7 @@ function ServerListItem({
             {/* 错误信息 */}
             {status?.error && (
               <div className="pt-1 flex items-center gap-1.5 text-[10px] text-red-500">
-                <WifiOff className="w-3 h-3" />
+                <WifiSlash className="w-3 h-3" />
                 <span className="truncate">{status.error}</span>
               </div>
             )}
@@ -343,9 +343,9 @@ function ServerListItem({
               {!isBuiltin && (
                 <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onTest(); }} disabled={disableTest || isTesting} className="!h-7 !w-7" title={t('settings:mcp_descriptions.action_test')} aria-label="test">
                   {isTesting ? (
-                    <RefreshCw className="w-3.5 h-3.5 animate-spin" />
+                    <ArrowClockwise className="w-3.5 h-3.5 animate-spin" />
                   ) : (
-                    <FlaskConical className="w-3.5 h-3.5" />
+                    <Flask className="w-3.5 h-3.5" />
                   )}
                 </NotionButton>
               )}
@@ -357,10 +357,10 @@ function ServerListItem({
               {!isBuiltin && (
                 <>
                   <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onToggleExpand(expandedPanel === 'edit' ? null : 'edit'); }} className={cn('!h-7 !w-7', expandedPanel === 'edit' && 'text-primary bg-primary/10')} title={t('settings:mcp_descriptions.action_edit')} aria-label="edit">
-                    <Edit3 className="w-3.5 h-3.5" />
+                    <PencilSimple className="w-3.5 h-3.5" />
                   </NotionButton>
                   <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); setConfirmingDelete(true); }} className="!h-7 !w-7 hover:text-destructive" title={t('settings:mcp_descriptions.action_delete')} aria-label="delete">
-                    <Trash2 className="w-3.5 h-3.5" />
+                    <Trash className="w-3.5 h-3.5" />
                   </NotionButton>
                 </>
               )}
@@ -687,7 +687,7 @@ function ServerEditPanel({
           {t('settings:mcp_server_edit.form_mode')}
         </NotionButton>
         <NotionButton variant="ghost" size="sm" onClick={() => handleModeSwitch('json')} className={cn(editMode === 'json' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
-          <Code2 className="w-3.5 h-3.5" />
+          <CodeBlock className="w-3.5 h-3.5" />
           {t('settings:mcp_server_edit.json_config')}
         </NotionButton>
       </div>
@@ -789,7 +789,7 @@ function ServerEditPanel({
             <div className="border border-border/40 rounded-lg overflow-hidden">
               <NotionButton variant="ghost" size="sm" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full !justify-between !px-4 !py-3 !rounded-none">
                 <span>{t('settings:mcp_server_edit.advanced_config')}</span>
-                {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                {showAdvanced ? <CaretUp className="w-4 h-4" /> : <CaretDown className="w-4 h-4" />}
               </NotionButton>
 
               {showAdvanced && (
@@ -842,7 +842,7 @@ function ServerEditPanel({
                               placeholder="value"
                             />
                             <NotionButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 hover:text-destructive" aria-label="remove">
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Trash className="w-3.5 h-3.5" />
                             </NotionButton>
                           </div>
                         ))}
@@ -1143,7 +1143,7 @@ function NewServerEditItem({
             {t('settings:mcp_server_edit.form_mode')}
           </NotionButton>
           <NotionButton variant="ghost" size="sm" onClick={() => handleModeSwitch('json')} className={cn(editMode === 'json' ? 'bg-background text-foreground shadow-sm' : 'text-muted-foreground hover:text-foreground')}>
-            <Code2 className="w-3.5 h-3.5" />
+            <CodeBlock className="w-3.5 h-3.5" />
             JSON
           </NotionButton>
         </div>
@@ -1245,7 +1245,7 @@ function NewServerEditItem({
               <div className="border border-border/40 rounded-lg overflow-hidden">
                 <NotionButton variant="ghost" size="sm" onClick={() => setShowAdvanced(!showAdvanced)} className="w-full !justify-between !px-4 !py-3 !rounded-none">
                   <span>{t('settings:mcp_server_edit.advanced_config')}</span>
-                  {showAdvanced ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
+                  {showAdvanced ? <CaretUp className="w-4 h-4" /> : <CaretDown className="w-4 h-4" />}
                 </NotionButton>
 
                 {showAdvanced && (
@@ -1311,7 +1311,7 @@ function NewServerEditItem({
                                 placeholder="value"
                               />
                               <NotionButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 hover:text-destructive" aria-label="remove">
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <Trash className="w-3.5 h-3.5" />
                               </NotionButton>
                             </div>
                           ))}
@@ -1427,7 +1427,7 @@ function ActionMenu({
   return (
     <div className="relative">
       <NotionButton variant="ghost" size="sm" onClick={() => setIsOpen(!isOpen)} className="bg-muted/50 hover:bg-[var(--interactive-hover)]">
-        <Ellipsis className="w-4 h-4" />
+        <DotsThree className="w-4 h-4" />
         {t('settings:mcp_descriptions.quick_actions')}
       </NotionButton>
 
@@ -1439,19 +1439,19 @@ function ActionMenu({
           />
           <div className="absolute top-full right-0 mt-1 z-50 min-w-[180px] p-1.5 bg-popover border border-border rounded-lg shadow-lg animate-in fade-in zoom-in-95 duration-100">
             <NotionButton variant="ghost" size="sm" onClick={() => { onReconnect(); setIsOpen(false); }} className="w-full !justify-start">
-              <RefreshCw className="w-3.5 h-3.5 text-muted-foreground" />
+              <ArrowClockwise className="w-3.5 h-3.5 text-muted-foreground" />
               {t('settings:mcp.reconnect')}
             </NotionButton>
             <NotionButton variant="ghost" size="sm" onClick={() => { onRefresh(); setIsOpen(false); }} className="w-full !justify-start">
-              <Sparkles className="w-3.5 h-3.5 text-muted-foreground" />
+              <Sparkle className="w-3.5 h-3.5 text-muted-foreground" />
               {t('settings:mcp.refresh_list')}
             </NotionButton>
             <NotionButton variant="ghost" size="sm" onClick={() => { onHealthCheck(); setIsOpen(false); }} className="w-full !justify-start">
-              <FlaskConical className="w-3.5 h-3.5 text-muted-foreground" />
+              <Flask className="w-3.5 h-3.5 text-muted-foreground" />
               {t('settings:mcp.health_check')}
             </NotionButton>
             <NotionButton variant="ghost" size="sm" onClick={() => { onClearCache(); setIsOpen(false); }} className="w-full !justify-start">
-              <Sparkles className="w-3.5 h-3.5 text-muted-foreground rotate-45" />
+              <Sparkle className="w-3.5 h-3.5 text-muted-foreground rotate-45" />
               {t('settings:mcp.clear_cache')}
             </NotionButton>
             <div className="my-1 border-t border-border/50" />
@@ -1578,7 +1578,7 @@ function PresetServerSelector({
                               onClick={(e) => e.stopPropagation()}
                               className="inline-flex items-center gap-1 text-[10px] text-primary hover:underline mt-1"
                             >
-                              <ExternalLink className="w-2.5 h-2.5" />
+                              <ArrowSquareOut className="w-2.5 h-2.5" />
                               {new URL(preset.homepage).hostname}
                             </a>
                           )}
@@ -1874,7 +1874,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                 disabled={isLoading}
                 className="text-xs"
               >
-                <RefreshCw className={cn('h-3 w-3 mr-1', isLoading && 'animate-spin')} />
+                <ArrowClockwise className={cn('h-3 w-3 mr-1', isLoading && 'animate-spin')} />
                 {t('settings:tool_permissions.refresh')}
               </NotionButton>
             </div>
@@ -1945,7 +1945,7 @@ function ToolPermissionsSection({ toolsByServer }: {
                 onClick={handleClearHistory}
                 className="text-xs text-red-500 hover:text-red-600"
               >
-                <Trash2 className="h-3 w-3 mr-1" />
+                <Trash className="h-3 w-3 mr-1" />
                 {t('settings:tool_permissions.clear_history')}
               </NotionButton>
             </div>
@@ -2099,7 +2099,7 @@ export function McpToolsSection({
         {lastError && (
           <div className="p-3 bg-red-500/10 border border-red-500/20 rounded-lg">
             <div className="flex items-center gap-2 text-sm text-red-500">
-              <WifiOff className="w-4 h-4 flex-shrink-0" />
+              <WifiSlash className="w-4 h-4 flex-shrink-0" />
               <span className="truncate">{lastError}</span>
             </div>
           </div>

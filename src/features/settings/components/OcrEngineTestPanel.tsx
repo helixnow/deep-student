@@ -8,16 +8,16 @@ import React, { useState, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
   Play, 
-  Loader2, 
+  CircleNotch, 
   Clock, 
-  CheckCircle2, 
+  CheckCircle, 
   XCircle, 
   Image as ImageIcon,
   FileText,
   MapPin,
   X,
   Upload,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { invoke } from '@tauri-apps/api/core';
@@ -212,7 +212,7 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
             >
               {testing ? (
                 <>
-                  <Loader2 size={14} className="animate-spin" />
+                  <CircleNotch size={14} className="animate-spin" />
                   {t('settings:ocr.testing')}
                 </>
               ) : (
@@ -265,7 +265,7 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
                 <div className="flex items-center justify-between mb-2">
                   <div className="flex items-center gap-2">
                     {result.success ? (
-                      <CheckCircle2 size={16} className="text-green-500" />
+                      <CheckCircle size={16} className="text-green-500" />
                     ) : (
                       <XCircle size={16} className="text-red-500" />
                     )}

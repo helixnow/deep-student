@@ -7,7 +7,7 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { Cloud, CheckCircle2, XCircle, Loader2, History, Upload, Download, Trash2, AlertCircle } from 'lucide-react';
+import { Cloud, CheckCircle, XCircle, CircleNotch, ClockCounterClockwise, Upload, Download, Trash, WarningCircle } from '@phosphor-icons/react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '@/components/ui/shad/Input';
@@ -613,7 +613,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         >
           {provider === 'webdav' && (
             <div className="absolute right-2 top-2">
-              <CheckCircle2 className="h-4 w-4 text-primary" />
+              <CheckCircle size={16} className="text-primary" />
             </div>
           )}
           <span className="font-medium">{t('cloudStorage:provider.webdav')}</span>
@@ -636,7 +636,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         >
           {provider === 's3' && s3Enabled !== false && (
             <div className="absolute right-2 top-2">
-              <CheckCircle2 className="h-4 w-4 text-primary" />
+              <CheckCircle size={16} className="text-primary" />
             </div>
           )}
           <span className={`font-medium ${s3Enabled === false ? 'line-through' : ''}`}>
@@ -782,7 +782,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         {/* 端到端加密配置（可选） */}
         <div className="space-y-2 rounded-lg border border-amber-500/30 bg-amber-500/5 p-3">
           <div className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400 shrink-0" />
+            <WarningCircle size={16} className="text-amber-600 dark:text-amber-400 shrink-0" />
             <Label htmlFor="cloud-encryption-password" className="font-medium">
               端到端加密密码（可选，强烈推荐）
             </Label>
@@ -815,13 +815,13 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           >
             {testing ? (
               <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                <CircleNotch size={16} className="mr-2 animate-spin" />
                 {t('cloudStorage:actions.testing')}
               </>
             ) : (
               <>
-                {connectionStatus === 'connected' && <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" />}
-                {connectionStatus === 'failed' && <XCircle className="mr-2 h-4 w-4 text-red-500" />}
+                {connectionStatus === 'connected' && <CheckCircle size={16} className="mr-2 text-green-500" />}
+                {connectionStatus === 'failed' && <XCircle size={16} className="mr-2 text-red-500" />}
                 {t('cloudStorage:actions.testConnection')}
               </>
             )}
@@ -839,9 +839,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           <div className="border rounded-lg p-4 space-y-3">
             <h4 className="font-medium flex items-center gap-2">
               {syncStatus.connected ? (
-                <CheckCircle2 className="h-4 w-4 text-green-500" />
+                <CheckCircle size={16} className="text-green-500" />
               ) : (
-                <XCircle className="h-4 w-4 text-red-500" />
+                <XCircle size={16} className="text-red-500" />
               )}
               {t('cloudStorage:status.title')}
             </h4>
@@ -878,9 +878,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 <div className="flex items-center justify-between gap-2">
                   <div className="flex items-center gap-2 min-w-0">
                     {opProgress.error ? (
-                      <AlertCircle className="h-4 w-4 shrink-0 text-destructive" />
+                      <WarningCircle size={16} className="shrink-0 text-destructive" />
                     ) : (
-                      <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
+                      <CircleNotch size={16} className="shrink-0 animate-spin text-primary" />
                     )}
                     <span className={`font-medium truncate ${
                       opProgress.error ? 'text-destructive' : ''
@@ -944,12 +944,12 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               >
                 {uploading ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <CircleNotch size={16} className="mr-2 animate-spin" />
                     {t('cloudStorage:actions.uploading')}
                   </>
                 ) : (
                   <>
-                    <Upload className="mr-2 h-4 w-4" />
+                    <Upload size={16} className="mr-2" />
                     {t('cloudStorage:actions.uploadNow')}
                   </>
                 )}
@@ -959,7 +959,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                 variant="outline"
                 onClick={() => setShowHistory(!showHistory)}
               >
-                <History className="mr-2 h-4 w-4" />
+                <ClockCounterClockwise size={16} className="mr-2" />
                 {t('cloudStorage:actions.viewHistory')}
               </NotionButton>
             </div>
@@ -995,9 +995,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                         onClick={() => openRestoreConfirm(version.id)}
                       >
                         {downloading && restoreVersionId === version.id ? (
-                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <CircleNotch size={16} className="animate-spin" />
                         ) : (
-                          <Download className="h-4 w-4" />
+                          <Download size={16} />
                         )}
                       </NotionButton>
                       <NotionButton
@@ -1006,7 +1006,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                         title={t('cloudStorage:history.delete')}
                         onClick={() => openDeleteConfirm(version.id)}
                       >
-                        <Trash2 className="h-4 w-4 text-destructive" />
+                        <Trash size={16} className="text-destructive" />
                       </NotionButton>
                     </div>
                   </div>
@@ -1055,7 +1055,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         <div className="space-y-3">
           <div>
             <h3 className="flex items-center gap-2 font-semibold text-lg">
-              <Cloud className="h-5 w-5" />
+              <Cloud size={20} />
               {t('cloudStorage:title')}
             </h3>
             <p className="text-sm text-muted-foreground">{t('cloudStorage:description')}</p>

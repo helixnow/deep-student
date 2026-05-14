@@ -13,7 +13,7 @@
  */
 
 import React, { useEffect, useState } from 'react';
-import { AlertTriangle, CheckCircle2 } from 'lucide-react';
+import { Warning, CheckCircle } from '@phosphor-icons/react';
 import * as DataGovernanceApi from '@/api/dataGovernance';
 
 const POLL_INTERVAL_MS = 30_000;
@@ -54,7 +54,7 @@ export const SyncIndicator: React.FC<{ compact?: boolean }> = ({ compact = false
     if (compact) return null;
     return (
       <span className="inline-flex items-center gap-1 text-xs text-emerald-600 dark:text-emerald-400">
-        <CheckCircle2 className="h-3 w-3" />
+        <CheckCircle size={12} />
         无冲突
       </span>
     );
@@ -70,7 +70,7 @@ export const SyncIndicator: React.FC<{ compact?: boolean }> = ({ compact = false
       className="inline-flex items-center gap-1 rounded-full bg-amber-500/15 px-2 py-0.5 text-xs font-medium text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-500/30"
       title={`未解决冲突：${perDb}`}
     >
-      <AlertTriangle className="h-3 w-3" />
+      <Warning size={12} />
       {total} 条冲突
     </span>
   );

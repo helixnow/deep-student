@@ -8,14 +8,14 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  RefreshCw,
-  CheckCircle2,
+  ArrowClockwise,
+  CheckCircle,
   XCircle,
-  AlertTriangle,
-  Loader2,
+  Warning,
+  CircleNotch,
   Play,
-  ChevronsDown,
-} from 'lucide-react';
+  CaretDoubleDown,
+} from '@phosphor-icons/react';
 
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Badge } from '@/components/ui/shad/Badge';
@@ -71,28 +71,28 @@ export const AuditTab: React.FC<AuditTabProps> = ({
       case 'Completed':
         return (
           <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 dark:bg-emerald-500/10 dark:text-emerald-400 text-xs whitespace-nowrap">
-            <CheckCircle2 className="h-3 w-3 shrink-0" />
+            <CheckCircle size={12} className="shrink-0" />
             {t('data:governance.status_completed')}
           </div>
         );
       case 'Failed':
         return (
           <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-red-50 text-red-700 dark:bg-red-500/10 dark:text-red-400 text-xs whitespace-nowrap">
-            <XCircle className="h-3 w-3 shrink-0" />
+            <XCircle size={12} className="shrink-0" />
             {t('data:governance.status_failed')}
           </div>
         );
       case 'Started':
         return (
           <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 text-blue-700 dark:bg-blue-500/10 dark:text-blue-400 text-xs whitespace-nowrap">
-            <Play className="h-3 w-3 shrink-0" />
+            <Play size={12} className="shrink-0" />
             {t('data:governance.status_started')}
           </div>
         );
       case 'Partial':
         return (
           <div className="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-amber-50 text-amber-700 dark:bg-amber-500/10 dark:text-amber-400 text-xs whitespace-nowrap">
-            <AlertTriangle className="h-3 w-3 shrink-0" />
+            <Warning size={12} className="shrink-0" />
             {t('data:governance.status_partial')}
           </div>
         );
@@ -124,7 +124,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({
       {loadError && (
         <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-4 space-y-2">
           <div className="flex items-center gap-2 text-destructive font-medium">
-            <AlertTriangle className="h-4 w-4" />
+            <Warning size={16} />
             {t('data:governance.audit_load_failed')}
           </div>
           <p className="text-sm text-destructive/80 pl-6">{loadError}</p>
@@ -136,7 +136,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({
               disabled={loading}
               className="bg-background hover:bg-[var(--interactive-hover)]"
             >
-              <RefreshCw className={`h-3.5 w-3.5 mr-1.5 ${loading ? 'animate-spin' : ''}`} />
+              <ArrowClockwise size={14} className={`mr-1.5 ${loading ? 'animate-spin' : ''}`} />
               {t('common:actions.retry')}
             </NotionButton>
           </div>
@@ -177,7 +177,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({
         />
 
         <NotionButton variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="h-8 w-8 p-0 shrink-0" aria-label={t('common:actions.refresh')}>
-          <RefreshCw className={`h-3.5 w-3.5 ${loading ? 'animate-spin' : ''}`} />
+          <ArrowClockwise size={14} className={`${loading ? 'animate-spin' : ''}`} />
         </NotionButton>
       </div>
 
@@ -218,7 +218,7 @@ export const AuditTab: React.FC<AuditTabProps> = ({
                 <TableCell colSpan={5} className="text-center text-muted-foreground py-8">
                   {loading ? (
                     <div className="flex items-center justify-center gap-2">
-                      <Loader2 className="h-4 w-4 animate-spin" />
+                      <CircleNotch size={16} className="animate-spin" />
                       {t('common:status.loading')}
                     </div>
                   ) : (
@@ -252,9 +252,9 @@ export const AuditTab: React.FC<AuditTabProps> = ({
               className="h-8"
             >
               {loading ? (
-                <Loader2 className="h-3.5 w-3.5 mr-1.5 animate-spin" />
+                <CircleNotch size={14} className="mr-1.5 animate-spin" />
               ) : (
-                <ChevronsDown className="h-3.5 w-3.5 mr-1.5" />
+                <CaretDoubleDown size={14} className="mr-1.5" />
               )}
               {t('data:governance.audit_load_more')}
             </NotionButton>

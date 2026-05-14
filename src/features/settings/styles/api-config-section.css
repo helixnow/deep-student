@@ -19,9 +19,9 @@
   --border-radius: 12px;
   --border-radius-sm: 8px;
   --transition: 0.2s ease;
-  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
-  --shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
-  --shadow-hover: 0 8px 16px rgba(0, 0, 0, 0.12);
+  --shadow-sm: 0 1px 3px hsl(var(--shadow-base) / 0.1);
+  --shadow-md: 0 4px 6px hsl(var(--shadow-base) / 0.1);
+  --shadow-hover: 0 8px 16px hsl(var(--shadow-base) / 0.12);
   width: 100%;
   padding: 1.5rem;
   background: var(--section-bg);
@@ -60,7 +60,7 @@
   gap: 0.5rem;
   padding: 0.625rem 1.25rem;
   background: var(--primary-color);
-  color: white;
+  color: hsl(var(--primary-foreground));
   border: none;
   border-radius: var(--border-radius-sm);
   font-size: 0.875rem;
@@ -224,7 +224,7 @@
 
 .api-config-section .btn-test:hover:not(:disabled) {
   background: var(--primary-color);
-  color: white;
+  color: hsl(var(--primary-foreground));
   transform: translateX(2px);
 }
 
@@ -236,7 +236,7 @@
 
 .api-config-section .btn-edit:hover {
   background: var(--success-color);
-  color: white;
+  color: hsl(var(--primary-foreground));
   transform: translateX(2px);
 }
 
@@ -248,7 +248,7 @@
 
 .api-config-section .btn-delete:hover:not(:disabled) {
   background: var(--error-color);
-  color: white;
+  color: hsl(var(--primary-foreground));
   transform: translateX(2px);
 }
 
@@ -334,7 +334,7 @@
 .api-config-section .assignment-item select:focus {
   outline: none;
   border-color: var(--primary-color);
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.1);
 }
 
 .api-config-section .assignment-item select:disabled {

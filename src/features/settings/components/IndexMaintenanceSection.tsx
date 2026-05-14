@@ -6,7 +6,7 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, Zap, MessageSquare, Database, HelpCircle, FolderSearch } from 'lucide-react';
+import { CircleNotch, Lightning, Chat, Database, Question, FolderOpen } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Switch } from '@/components/ui/shad/Switch';
@@ -62,7 +62,7 @@ export const GlobalIndexMaintenance: React.FC = () => {
       <NotionButton variant="default" disabled={running} onClick={handleMaintain} className="w-full md:w-auto">
         {running ? (
           <>
-            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+            <CircleNotch size={16} className="mr-2 animate-spin" />
             {t('settings:global_index.maintaining')}
           </>
         ) : (
@@ -162,7 +162,7 @@ export const LanceOptimizationPanel: React.FC = () => {
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
         <div className="space-y-1">
           <div className="flex items-center gap-2">
-            <Database className="h-4 w-4 text-muted-foreground" />
+            <Database size={16} className="text-muted-foreground" />
             <h3 className="text-base font-medium text-foreground">{t('lance_optimization.title')}</h3>
           </div>
           <p className="text-sm text-muted-foreground">
@@ -175,7 +175,7 @@ export const LanceOptimizationPanel: React.FC = () => {
           onClick={() => setShowInfo(!showInfo)}
           className="h-8"
         >
-          <HelpCircle className="h-3.5 w-3.5" />
+          <Question size={14} />
         </NotionButton>
       </div>
 
@@ -234,9 +234,9 @@ export const LanceOptimizationPanel: React.FC = () => {
           className="flex flex-col items-center gap-1 h-auto py-3 rounded-lg border border-border/40 hover:bg-[var(--interactive-hover)]"
         >
           {optimizing.chat ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <CircleNotch size={16} className="animate-spin" />
           ) : (
-            <MessageSquare className="h-4 w-4" />
+            <Chat size={16} />
           )}
           <span className="text-xs">{t('lance_optimization.chat_table')}</span>
         </NotionButton>
@@ -248,9 +248,9 @@ export const LanceOptimizationPanel: React.FC = () => {
           className="flex flex-col items-center gap-1 h-auto py-3 rounded-lg border border-border/40 hover:bg-[var(--interactive-hover)]"
         >
           {optimizing.vfs ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
+            <CircleNotch size={16} className="animate-spin" />
           ) : (
-            <FolderSearch className="h-4 w-4" />
+            <FolderOpen size={16} />
           )}
           <span className="text-xs">{t('lance_optimization.vfs_table')}</span>
         </NotionButton>
@@ -265,12 +265,12 @@ export const LanceOptimizationPanel: React.FC = () => {
       >
         {Object.values(optimizing).some(v => v) ? (
           <>
-            <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+            <CircleNotch size={16} className="mr-2 animate-spin" />
             {t('lance_optimization.optimizing')}
           </>
         ) : (
           <>
-            <Zap className="h-4 w-4 mr-2" />
+            <Lightning size={16} className="mr-2" />
             {t('lance_optimization.optimize_all')}
           </>
         )}

@@ -13,7 +13,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/shad/T
 import { AppSelect } from '@/components/ui/app-menu';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { AlertCircle, Plus, Trash2, X } from 'lucide-react';
+import { WarningCircle, Plus, Trash, X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import type { McpToolModalState, McpToolDraft } from '../hooks/useMcpSettings';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -263,7 +263,7 @@ export const McpToolEditorModal: React.FC<McpToolEditorModalProps> = ({
                 <div className="flex items-center justify-between">
                   <Label>{t('settings:mcp_descriptions.env_vars', '环境变量')}</Label>
                   <NotionButton type="button" variant="ghost" size="sm" onClick={handleEnvAdd}>
-                    <Plus className="h-4 w-4 mr-1" />
+                    <Plus size={16} className="mr-1" />
                     {t('common:add')}
                   </NotionButton>
                 </div>
@@ -282,7 +282,7 @@ export const McpToolEditorModal: React.FC<McpToolEditorModalProps> = ({
                       placeholder="value"
                     />
                     <NotionButton type="button" variant="ghost" iconOnly size="sm" onClick={() => handleEnvRemove(key)}>
-                      <Trash2 className="h-4 w-4" />
+                      <Trash size={16} />
                     </NotionButton>
                   </div>
                 ))}
@@ -302,7 +302,7 @@ export const McpToolEditorModal: React.FC<McpToolEditorModalProps> = ({
 
         {mcpToolModal.error && (
           <div className="flex items-center gap-2 text-destructive text-sm px-3">
-            <AlertCircle className="h-4 w-4" />
+            <WarningCircle size={16} />
             {mcpToolModal.error}
           </div>
         )}
