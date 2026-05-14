@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { Copy, Trash2, Play, Pause, Camera, AlertCircle, CheckCircle, XCircle } from 'lucide-react';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { Switch } from '@/components/ui/shad/Switch';
 
 /**
  * 图片预览调试插件
@@ -479,12 +480,7 @@ const ImagePreviewDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         ))}
         <div className="flex-1" />
         <label className="flex items-center gap-1 text-[10px] text-slate-400">
-          <input
-            type="checkbox"
-            checked={autoScroll}
-            onChange={e => setAutoScroll(e.target.checked)}
-            className="w-3 h-3"
-          />
+          <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
           自动滚动
         </label>
       </div>

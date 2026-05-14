@@ -2,6 +2,8 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { fileManager } from '../../utils/fileManager';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { Switch } from '@/components/ui/shad/Switch';
+import { Checkbox } from '@/components/ui/shad/Checkbox';
 
 type StreamEvent = {
   channel: string;
@@ -465,7 +467,7 @@ const StreamingDebuggerPlugin: React.FC<StreamingDebuggerPluginProps> = ({
       <div className="dbg-toolbar" style={{ padding: '4px 6px', borderBottom: '1px solid #1e293b', display: 'flex', gap: 4, flexWrap: 'wrap', alignItems: 'center' }}>
         {Object.keys(channelFilter).map(ch => (
           <label key={ch} style={{ display: 'inline-flex', alignItems: 'center', gap: 3, fontSize: 10, color: '#cbd5e1', whiteSpace: 'nowrap' }}>
-            <input type="checkbox" checked={!!channelFilter[ch]} onChange={() => setChannelFilter(state => ({ ...state, [ch]: !state[ch] }))} style={{ width: 12, height: 12 }} /> {ch}
+            <Checkbox checked={!!channelFilter[ch]} onCheckedChange={() => setChannelFilter(state => ({ ...state, [ch]: !state[ch] }))} /> {ch}
           </label>
         ))}
         <div style={{ display: 'flex', gap: 3, marginLeft: 4 }}>
@@ -481,10 +483,10 @@ const StreamingDebuggerPlugin: React.FC<StreamingDebuggerPluginProps> = ({
           </select>
         </div>
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#cbd5e1', whiteSpace: 'nowrap' }}>
-          <input type="checkbox" checked={onlyCurrent} onChange={() => setOnlyCurrent(v => !v)} style={{ width: 12, height: 12 }} /> 只看当前流
+          <Switch size="sm" checked={onlyCurrent} onCheckedChange={setOnlyCurrent} /> 只看当前流
         </label>
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#cbd5e1', whiteSpace: 'nowrap' }}>
-          <input type="checkbox" checked={errorsOnly} onChange={() => setErrorsOnly(v => !v)} style={{ width: 12, height: 12 }} /> 仅错误
+          <Switch size="sm" checked={errorsOnly} onCheckedChange={setErrorsOnly} /> 仅错误
         </label>
         <label style={{ display: 'inline-flex', alignItems: 'center', gap: 4, fontSize: 10, color: '#cbd5e1', whiteSpace: 'nowrap' }}>
           <span>采样</span>

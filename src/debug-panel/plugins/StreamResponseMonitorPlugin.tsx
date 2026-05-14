@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
+import { Switch } from '@/components/ui/shad/Switch';
 
 export interface StreamResponseMonitorPluginProps {
   visible: boolean;
@@ -216,12 +217,7 @@ const StreamResponseMonitorPlugin: React.FC<StreamResponseMonitorPluginProps> = 
             color: '#cbd5e1',
           }}
         >
-          <input
-            type="checkbox"
-            checked={autoScroll}
-            onChange={(e) => setAutoScroll(e.target.checked)}
-            style={{ width: 14, height: 14 }}
-          />
+          <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
           自动滚动
         </label>
         <div style={{ flexGrow: 1 }} />

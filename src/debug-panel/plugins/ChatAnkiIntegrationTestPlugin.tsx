@@ -10,6 +10,7 @@ import { Button } from '../../components/ui/shad/Button';
 import { Badge } from '../../components/ui/shad/Badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/shad/Card';
 import { ScrollArea } from '../../components/ui/shad/ScrollArea';
+import { Checkbox } from '@/components/ui/shad/Checkbox';
 import {
   Play, Square, Download, Copy, Trash2, Loader2,
   CheckCircle2, XCircle, RefreshCw,
@@ -187,18 +188,18 @@ const ChatAnkiIntegrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
                 <div key={label}>
                   <label className="flex items-center gap-2 text-xs font-medium cursor-pointer hover:bg-muted/30 rounded px-1 py-0.5"
                     onClick={(e) => { e.preventDefault(); toggleGroup(scenarios); }}>
-                    <input type="checkbox" readOnly
-                      checked={scenarios.some(s => !skipScenarios.has(s))}
-                      ref={el => { if (el) el.indeterminate = scenarios.some(s => skipScenarios.has(s)) && scenarios.some(s => !skipScenarios.has(s)); }}
-                      className="rounded" />
+                    <Checkbox
+                      checked={scenarios.every(s => skipScenarios.has(s)) ? false : scenarios.every(s => !skipScenarios.has(s)) ? true : 'indeterminate'}
+                      onCheckedChange={() => toggleGroup(scenarios)}
+                    />
                     <span>{label}</span>
                   </label>
                   <div className="grid grid-cols-1 gap-0.5 ml-5">
                     {scenarios.map(s => (
                       <label key={s} className="flex items-center gap-1.5 text-xs cursor-pointer hover:bg-muted/30 rounded px-1 py-0.5"
                         title={SCENARIO_DESCRIPTIONS[s]}>
-                        <input type="checkbox" checked={!skipScenarios.has(s)}
-                          onChange={() => toggleScenario(s)} disabled={status === 'running'} className="rounded" />
+                        <Checkbox checked={!skipScenarios.has(s)}
+                          onCheckedChange={() => toggleScenario(s)} disabled={status === 'running'} />
                         <span className={skipScenarios.has(s) ? 'text-muted-foreground line-through' : ''}>{SCENARIO_LABELS[s]}</span>
                         <span className="text-muted-foreground opacity-60 text-[10px] truncate">{SCENARIO_DESCRIPTIONS[s]}</span>
                       </label>

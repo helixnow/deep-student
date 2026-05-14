@@ -2,6 +2,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { Copy, Trash2, Play, Pause, Camera, AlertCircle, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { Switch } from '@/components/ui/shad/Switch';
 
 /**
  * Chat V2 图片预览调试插件
@@ -281,12 +282,7 @@ const ChatV2ImagePreviewDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       {/* 自动滚动开关 */}
       <div className="flex items-center justify-end px-3 py-1 border-b border-slate-700 bg-slate-800/20">
         <label className="flex items-center gap-1 text-[10px] text-slate-400">
-          <input
-            type="checkbox"
-            checked={autoScroll}
-            onChange={e => setAutoScroll(e.target.checked)}
-            className="w-3 h-3"
-          />
+          <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
           自动滚动
         </label>
       </div>

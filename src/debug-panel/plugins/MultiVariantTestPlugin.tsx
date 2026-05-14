@@ -12,6 +12,7 @@ import { Button } from '../../components/ui/shad/Button';
 import { Badge } from '../../components/ui/shad/Badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/shad/Card';
 import { ScrollArea } from '../../components/ui/shad/ScrollArea';
+import { Checkbox } from '@/components/ui/shad/Checkbox';
 import {
   Play, Square, Download, RefreshCw, CheckCircle2, XCircle,
   Loader2, Copy, Trash2, ChevronDown, ChevronRight, Zap, Eye, EyeOff,
@@ -261,18 +262,18 @@ const MultiVariantTestPlugin: React.FC<DebugPanelPluginProps> = ({
                 <div key={label}>
                   <label className="flex items-center gap-2 text-xs font-medium cursor-pointer hover:bg-muted/30 rounded px-1 py-0.5"
                     onClick={(e) => { e.preventDefault(); toggleGroup(steps); }}>
-                    <input type="checkbox" readOnly
-                      checked={steps.some(s => !skipSteps.has(s))}
-                      ref={el => { if (el) el.indeterminate = steps.some(s => skipSteps.has(s)) && steps.some(s => !skipSteps.has(s)); }}
-                      className="rounded" />
+                    <Checkbox
+                      checked={steps.every(s => skipSteps.has(s)) ? false : steps.every(s => !skipSteps.has(s)) ? true : 'indeterminate'}
+                      onCheckedChange={() => toggleGroup(steps)}
+                    />
                     <span>{label}</span>
                   </label>
                   <div className="grid grid-cols-2 gap-0.5 ml-5">
                     {steps.map(step => (
                       <label key={step} className="flex items-center gap-1.5 text-xs cursor-pointer hover:bg-muted/30 rounded px-1 py-0.5"
                         title={STEP_DESCRIPTIONS[step]}>
-                        <input type="checkbox" checked={!skipSteps.has(step)}
-                          onChange={() => toggleSkipStep(step)} disabled={status === 'running'} className="rounded" />
+                        <Checkbox checked={!skipSteps.has(step)}
+                          onCheckedChange={() => toggleSkipStep(step)} disabled={status === 'running'} />
                         <span className={skipSteps.has(step) ? 'text-muted-foreground line-through' : ''}>{STEP_LABELS[step]}</span>
                       </label>
                     ))}

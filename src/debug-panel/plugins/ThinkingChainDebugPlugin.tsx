@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { Switch } from '@/components/ui/shad/Switch';
 
 export interface ThinkingChainDebugPluginProps {
   visible: boolean;
@@ -306,12 +307,7 @@ const ThinkingChainDebugPlugin: React.FC<ThinkingChainDebugPluginProps> = ({
             color: '#cbd5e1',
           }}
         >
-          <input
-            type="checkbox"
-            checked={autoScroll}
-            onChange={(e) => setAutoScroll(e.target.checked)}
-            style={{ width: 14, height: 14 }}
-          />
+          <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
           自动滚动
         </label>
         <div style={{ flexGrow: 1 }} />

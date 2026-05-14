@@ -12,6 +12,7 @@ import { Button } from '../../components/ui/shad/Button';
 import { Badge } from '../../components/ui/shad/Badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/shad/Card';
 import { ScrollArea } from '../../components/ui/shad/ScrollArea';
+import { Checkbox } from '@/components/ui/shad/Checkbox';
 import {
   Play,
   Square,
@@ -346,11 +347,11 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
               {ALL_STEPS.map(step => (
                 <label key={step} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-muted/30 rounded px-1.5 py-1"
                   title={STEP_DESCRIPTIONS[step]}>
-                  <input type="checkbox"
+                  <Checkbox
                     checked={!skipSteps.has(step)}
-                    onChange={() => toggleSkipStep(step)}
+                    onCheckedChange={() => toggleSkipStep(step)}
                     disabled={status === 'running'}
-                    className="rounded" />
+                  />
                   <span className={skipSteps.has(step) ? 'text-muted-foreground line-through' : ''}>
                     {STEP_LABELS[step]}
                   </span>
