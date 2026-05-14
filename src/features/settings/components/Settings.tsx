@@ -19,6 +19,7 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/shad/Alert'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/shad/Popover';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/shad/Tabs';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
+import { Switch } from '@/components/ui/shad/Switch';
 import { cn } from '@/lib/utils';
 import { UnifiedCodeEditor } from '@/components/shared/UnifiedCodeEditor';
 
@@ -1261,13 +1262,12 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
                 </NotionButton>
               </div>
               <div style={{ display: 'grid', gap: 12 }}>
-                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                  <input
-                    type="checkbox"
+                <label className="inline-flex items-center gap-2 cursor-pointer">
+                  <Switch
                     checked={mcpPolicyModal.advertiseAll}
-                    onChange={(e) => setMcpPolicyModal(prev => ({ ...prev, advertiseAll: e.target.checked }))}
+                    onCheckedChange={(checked) => setMcpPolicyModal(prev => ({ ...prev, advertiseAll: !!checked }))}
                   />
-                  {t('settings:mcp_policy.advertise_all')}
+                  <span className="text-sm">{t('settings:mcp_policy.advertise_all')}</span>
                 </label>
                 <div style={{ fontSize: 12, color: 'hsl(var(--muted-foreground))' }}>
                   {t('settings:mcp_policy.whitelist_mode_hint')}
@@ -1275,55 +1275,49 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
 
                 {!mcpPolicyModal.advertiseAll && (
                   <>
-                    <label style={{ fontSize: 12, color: 'hsl(var(--foreground))' }}>{t('settings:mcp_policy.whitelist_label')}</label>
-                    <input
+                    <label className="text-xs text-foreground">{t('settings:mcp_policy.whitelist_label')}</label>
+                    <Input
                       type="text"
                       value={mcpPolicyModal.whitelist}
                       onChange={(e) => setMcpPolicyModal(prev => ({ ...prev, whitelist: e.target.value }))}
                       placeholder="read_file, write_file, list_directory"
-                      className="bg-background text-foreground placeholder:text-muted-foreground"
-                      style={{ padding: '8px 12px', border: '1px solid hsl(var(--border))', borderRadius: 6 }}
                     />
                   </>
                 )}
 
-                <label style={{ fontSize: 12, color: 'hsl(var(--foreground))' }}>{t('settings:mcp_policy.blacklist_label')}</label>
-                <input
+                <label className="text-xs text-foreground">{t('settings:mcp_policy.blacklist_label')}</label>
+                <Input
                   type="text"
                   value={mcpPolicyModal.blacklist}
                   onChange={(e) => setMcpPolicyModal(prev => ({ ...prev, blacklist: e.target.value }))}
                   placeholder="delete_file, execute_command, rm, sudo"
-                  className="bg-background text-foreground placeholder:text-muted-foreground"
-                  style={{ padding: '8px 12px', border: '1px solid hsl(var(--border))', borderRadius: 6 }}
                 />
                 <div style={{ fontSize: 12, color: 'hsl(var(--muted-foreground))' }}>{t('settings:mcp_policy.danger_hint')}</div>
 
                 <div className="two-col-grid">
                   <div>
-                    <label style={{ fontSize: 12, color: 'hsl(var(--foreground))' }}>{t('settings:mcp_policy.timeout_label')}</label>
-                    <input
+                    <label className="text-xs text-foreground">{t('settings:mcp_policy.timeout_label')}</label>
+                    <Input
                       type="number"
                       min={1000}
                       value={mcpPolicyModal.timeoutMs}
                       onChange={(e) => setMcpPolicyModal(prev => ({ ...prev, timeoutMs: parseInt(e.target.value || '0', 10) || 15000 }))}
-                      className="bg-background text-foreground placeholder:text-muted-foreground"
-                      style={{ width: '100%', padding: '8px 12px', border: '1px solid hsl(var(--border))', borderRadius: 6 }}
+                      className="w-full"
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: 12, color: 'hsl(var(--foreground))' }}>{t('settings:mcp_policy.rate_limit_label')}</label>
-                    <input
+                    <label className="text-xs text-foreground">{t('settings:mcp_policy.rate_limit_label')}</label>
+                    <Input
                       type="number"
                       min={1}
                       value={mcpPolicyModal.rateLimit}
                       onChange={(e) => setMcpPolicyModal(prev => ({ ...prev, rateLimit: parseInt(e.target.value || '0', 10) || 10 }))}
-                      className="bg-background text-foreground placeholder:text-muted-foreground"
-                      style={{ width: '100%', padding: '8px 12px', border: '1px solid hsl(var(--border))', borderRadius: 6 }}
+                      className="w-full"
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: 12, color: 'hsl(var(--foreground))' }}>{t('settings:mcp_policy.cache_max_label')}</label>
-                    <input
+                    <label className="text-xs text-foreground">{t('settings:mcp_policy.cache_max_label')}</label>
+                    <Input
                       type="number"
                       min={0}
                       value={mcpPolicyModal.cacheMax}
@@ -1334,13 +1328,12 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
                           cacheMax: Number.isFinite(parsed) ? Math.max(0, parsed) : 100,
                         }));
                       }}
-                      className="bg-background text-foreground placeholder:text-muted-foreground"
-                      style={{ width: '100%', padding: '8px 12px', border: '1px solid hsl(var(--border))', borderRadius: 6 }}
+                      className="w-full"
                     />
                   </div>
                   <div>
-                    <label style={{ fontSize: 12, color: 'hsl(var(--foreground))' }}>{t('settings:mcp_policy.cache_ttl_label')}</label>
-                    <input
+                    <label className="text-xs text-foreground">{t('settings:mcp_policy.cache_ttl_label')}</label>
+                    <Input
                       type="number"
                       min={0}
                       value={mcpPolicyModal.cacheTtlMs}
@@ -1351,8 +1344,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
                           cacheTtlMs: Number.isFinite(parsed) ? Math.max(0, parsed) : 300000,
                         }));
                       }}
-                      className="bg-background text-foreground placeholder:text-muted-foreground"
-                      style={{ width: '100%', padding: '8px 12px', border: '1px solid hsl(var(--border))', borderRadius: 6 }}
+                      className="w-full"
                     />
                   </div>
                 </div>

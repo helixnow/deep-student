@@ -42,6 +42,8 @@ import { isBuiltinServer, BUILTIN_SERVER_ID } from '@/mcp/builtinMcpServer';
 import { SettingSection } from './SettingsCommon';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Switch } from '@/components/ui/shad/Switch';
+import { Input } from '@/components/ui/shad/Input';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
 import { ApiKeyField } from './ApiKeyField';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -700,11 +702,9 @@ function ServerEditPanel({
                 <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
                   {t('settings:mcp_server_edit.server_name')} *
                 </label>
-                <input
-                  type="text"
+                <Input
                   value={formData.name}
                   onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                  className="w-full px-3 py-2 bg-background border border-border/60 rounded-md text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                   placeholder={t('settings:mcp_server_edit.server_name_placeholder')}
                   required
                 />
@@ -715,11 +715,10 @@ function ServerEditPanel({
                 <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
                   {t('settings:mcp_server_edit.namespace')}
                 </label>
-                <input
-                  type="text"
+                <Input
                   value={formData.namespace}
                   onChange={(e) => setFormData({ ...formData, namespace: e.target.value })}
-                  className="w-full px-3 py-2 bg-background border border-border/60 rounded-md text-sm text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                  className="font-mono"
                   placeholder={t('settings:mcp_server_edit.namespace_placeholder')}
                 />
               </div>
@@ -730,16 +729,17 @@ function ServerEditPanel({
               <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
                 {t('settings:mcp_server_edit.transport_type')}
               </label>
-              <select
-                value={formData.transportType}
-                onChange={(e) => setFormData({ ...formData, transportType: e.target.value as McpServer['transportType'] })}
-                className="w-full px-3 py-2 bg-background border border-border/60 rounded-md text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
-              >
-                <option value="sse">{t('settings:mcp_transport.sse_server_events')}</option>
-                <option value="websocket">{t('settings:mcp_transport.websocket')}</option>
-                <option value="streamable_http">{t('settings:mcp_transport.http_streamable')}</option>
-                <option value="stdio">{t('settings:mcp_transport.stdio_local_process')}</option>
-              </select>
+              <Select value={formData.transportType} onValueChange={(val) => setFormData({ ...formData, transportType: val as McpServer['transportType'] })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sse">{t('settings:mcp_transport.sse_server_events')}</SelectItem>
+                  <SelectItem value="websocket">{t('settings:mcp_transport.websocket')}</SelectItem>
+                  <SelectItem value="streamable_http">{t('settings:mcp_transport.http_streamable')}</SelectItem>
+                  <SelectItem value="stdio">{t('settings:mcp_transport.stdio_local_process')}</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             {/* URL / Command */}
@@ -749,11 +749,10 @@ function ServerEditPanel({
                   <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
                     {t('settings:mcp_server_edit.command')} *
                   </label>
-                  <input
-                    type="text"
+                  <Input
                     value={formData.command}
                     onChange={(e) => setFormData({ ...formData, command: e.target.value })}
-                    className="w-full px-3 py-2 bg-background border border-border/60 rounded-md text-sm text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                    className="font-mono"
                     placeholder="npx, node, python..."
                     required
                   />
@@ -762,11 +761,10 @@ function ServerEditPanel({
                   <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
                     {t('settings:mcp_server_edit.args')}
                   </label>
-                  <input
-                    type="text"
+                  <Input
                     value={formData.args}
                     onChange={(e) => setFormData({ ...formData, args: e.target.value })}
-                    className="w-full px-3 py-2 bg-background border border-border/60 rounded-md text-sm text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                    className="font-mono"
                     placeholder="-y, @anthropic/mcp-server"
                   />
                 </div>
@@ -776,11 +774,11 @@ function ServerEditPanel({
                 <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
                   {t('settings:mcp_server_edit.server_url')} *
                 </label>
-                <input
+                <Input
                   type="url"
                   value={formData.url}
                   onChange={(e) => setFormData({ ...formData, url: e.target.value })}
-                  className="w-full px-3 py-2 bg-background border border-border/60 rounded-md text-sm text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                  className="font-mono"
                   placeholder="http://localhost:3000/sse"
                   required
                 />
@@ -830,19 +828,17 @@ function ServerEditPanel({
                       <div className="space-y-2">
                         {envEntries.map(([key, value], envIdx) => (
                           <div key={`env-${envIdx}`} className="flex items-center gap-2">
-                            <input
-                              type="text"
+                            <Input
                               value={key}
                               onChange={(e) => updateEnvKey(key, e.target.value)}
-                              className="flex-1 px-2 py-1.5 bg-background border border-border/60 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary/30"
+                              className="flex-1 text-xs font-mono"
                               placeholder={t('settings:placeholders.env_key')}
                             />
                             <span className="text-muted-foreground">=</span>
-                            <input
-                              type="text"
+                            <Input
                               value={value}
                               onChange={(e) => updateEnvValue(key, e.target.value)}
-                              className="flex-1 px-2 py-1.5 bg-background border border-border/60 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary/30"
+                              className="flex-1 text-xs font-mono"
                               placeholder="value"
                             />
                             <NotionButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 hover:text-destructive" aria-label="remove">
@@ -1162,11 +1158,9 @@ function NewServerEditItem({
                   <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
                     {t('settings:mcp_server_edit.server_name')} *
                   </label>
-                  <input
-                    type="text"
+                  <Input
                     value={formData.name}
                     onChange={(e) => setFormData({ ...formData, name: e.target.value })}
-                    className="w-full px-3 py-2 bg-background border border-border/60 rounded-md text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
                     placeholder={t('settings:mcp_server_edit.server_name_placeholder')}
                     required
                     autoFocus
@@ -1178,11 +1172,10 @@ function NewServerEditItem({
                   <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
                     ID
                   </label>
-                  <input
-                    type="text"
+                  <Input
                     value={newServerId}
                     disabled
-                    className="w-full px-3 py-2 bg-muted/50 border border-border/60 rounded-md text-sm text-muted-foreground font-mono"
+                    className="font-mono bg-muted/50 text-muted-foreground"
                   />
                 </div>
               </div>
@@ -1192,16 +1185,17 @@ function NewServerEditItem({
                 <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
                   {t('settings:mcp_server_edit.transport_type')}
                 </label>
-                <select
-                  value={formData.transportType}
-                  onChange={(e) => setFormData({ ...formData, transportType: e.target.value as McpServer['transportType'] })}
-                  className="w-full px-3 py-2 bg-background border border-border/60 rounded-md text-sm text-foreground focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
-                >
-                  <option value="sse">{t('settings:mcp_transport.sse_server_events')}</option>
-                  <option value="websocket">{t('settings:mcp_transport.websocket')}</option>
-                  <option value="streamable_http">{t('settings:mcp_transport.http_streamable')}</option>
-                  <option value="stdio">{t('settings:mcp_transport.stdio_local_process')}</option>
-                </select>
+                <Select value={formData.transportType} onValueChange={(val) => setFormData({ ...formData, transportType: val as McpServer['transportType'] })}>
+                <SelectTrigger>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="sse">{t('settings:mcp_transport.sse_server_events')}</SelectItem>
+                  <SelectItem value="websocket">{t('settings:mcp_transport.websocket')}</SelectItem>
+                  <SelectItem value="streamable_http">{t('settings:mcp_transport.http_streamable')}</SelectItem>
+                  <SelectItem value="stdio">{t('settings:mcp_transport.stdio_local_process')}</SelectItem>
+                </SelectContent>
+              </Select>
               </div>
 
               {/* URL / Command */}
@@ -1211,26 +1205,24 @@ function NewServerEditItem({
                     <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
                       {t('settings:mcp_server_edit.command')} *
                     </label>
-                    <input
-                      type="text"
-                      value={formData.command}
-                      onChange={(e) => setFormData({ ...formData, command: e.target.value })}
-                      className="w-full px-3 py-2 bg-background border border-border/60 rounded-md text-sm text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
-                      placeholder="npx, node, python..."
-                      required
-                    />
-                  </div>
-                  <div>
-                    <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
-                      {t('settings:mcp_server_edit.args')}
-                    </label>
-                    <input
-                      type="text"
-                      value={formData.args}
-                      onChange={(e) => setFormData({ ...formData, args: e.target.value })}
-                      className="w-full px-3 py-2 bg-background border border-border/60 rounded-md text-sm text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
-                      placeholder="-y, @anthropic/mcp-server"
-                    />
+                  <Input
+                    value={formData.command}
+                    onChange={(e) => setFormData({ ...formData, command: e.target.value })}
+                    className="font-mono"
+                    placeholder="npx, node, python..."
+                    required
+                  />
+                </div>
+                <div>
+                  <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
+                    {t('settings:mcp_server_edit.args')}
+                  </label>
+                  <Input
+                    value={formData.args}
+                    onChange={(e) => setFormData({ ...formData, args: e.target.value })}
+                    className="font-mono"
+                    placeholder="-y, @anthropic/mcp-server"
+                  />
                   </div>
                 </div>
               ) : (
@@ -1238,14 +1230,14 @@ function NewServerEditItem({
                   <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
                     {t('settings:mcp_server_edit.server_url')} *
                   </label>
-                  <input
-                    type="url"
-                    value={formData.url}
-                    onChange={(e) => setFormData({ ...formData, url: e.target.value })}
-                    className="w-full px-3 py-2 bg-background border border-border/60 rounded-md text-sm text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
-                    placeholder="https://api.example.com/mcp"
-                    required
-                  />
+                  <Input
+                  type="url"
+                  value={formData.url}
+                  onChange={(e) => setFormData({ ...formData, url: e.target.value })}
+                  className="font-mono"
+                  placeholder="https://api.example.com/mcp"
+                  required
+                />
                 </div>
               )}
 
@@ -1263,11 +1255,10 @@ function NewServerEditItem({
                       <label className="text-[10px] text-muted-foreground uppercase tracking-wider mb-1.5 block">
                         {t('settings:mcp_server_edit.namespace')}
                       </label>
-                      <input
-                        type="text"
+                      <Input
                         value={formData.namespace}
                         onChange={(e) => setFormData({ ...formData, namespace: e.target.value })}
-                        className="w-full px-3 py-2 bg-background border border-border/60 rounded-md text-sm text-foreground font-mono focus:outline-none focus:ring-2 focus:ring-primary/20 transition-all"
+                        className="font-mono"
                         placeholder={t('settings:mcp_server_edit.namespace_placeholder')}
                       />
                     </div>
@@ -1306,19 +1297,17 @@ function NewServerEditItem({
                         <div className="space-y-2">
                           {envEntries.map(([key, value], envIdx) => (
                             <div key={`new-env-${envIdx}`} className="flex items-center gap-2">
-                              <input
-                                type="text"
+                              <Input
                                 value={key}
                                 onChange={(e) => updateEnvKey(key, e.target.value)}
-                                className="flex-1 px-2 py-1.5 bg-background border border-border/60 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary/30"
+                                className="flex-1 text-xs font-mono"
                                 placeholder={t('settings:placeholders.env_key')}
                               />
                               <span className="text-muted-foreground">=</span>
-                              <input
-                                type="text"
+                              <Input
                                 value={value}
                                 onChange={(e) => updateEnvValue(key, e.target.value)}
-                                className="flex-1 px-2 py-1.5 bg-background border border-border/60 rounded text-xs font-mono focus:outline-none focus:ring-1 focus:ring-primary/30"
+                                className="flex-1 text-xs font-mono"
                                 placeholder="value"
                               />
                               <NotionButton variant="ghost" size="icon" iconOnly onClick={() => removeEnvRow(key)} className="!h-6 !w-6 hover:text-destructive" aria-label="remove">
