@@ -22,6 +22,7 @@ import {
   X,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { Input } from '@/components/ui/shad/Input';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useTodoStore } from '../stores/useTodoStore';
@@ -198,7 +199,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
       <div className="shrink-0 px-2 pb-2 pt-3">
         <div className="relative">
           <Search className="pointer-events-none absolute left-2.5 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-[color:var(--shell-navigation-muted)]" />
-          <input
+          <Input
             type="text"
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
@@ -275,7 +276,7 @@ export const TodoSidebar: React.FC<TodoSidebarProps> = ({ onItemSelect }) => {
           {/* 新建列表输入 */}
           {isCreating && (
             <div className="px-0.5 pb-1">
-              <input
+              <Input
                 autoFocus
                 value={newListTitle}
                 onChange={(e) => setNewListTitle(e.target.value)}

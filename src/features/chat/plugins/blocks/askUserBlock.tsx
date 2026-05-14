@@ -27,6 +27,7 @@ import {
 import type { BlockComponentProps } from '../../registry/blockRegistry';
 import { blockRegistry } from '../../registry/blockRegistry';
 import { cn } from '@/utils/cn';
+import { Input } from '@/components/ui/shad/Input';
 
 // ============================================================================
 // 类型定义
@@ -286,7 +287,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
 
       {/* 自定义输入 */}
       <div className="px-3 pb-2 flex gap-2">
-        <input
+        <Input
           type="text"
           value={customInput}
           onChange={(e) => setCustomInput(e.target.value)}

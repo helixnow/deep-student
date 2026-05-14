@@ -17,6 +17,7 @@ import {
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { Input } from '@/components/ui/shad/Input';
 import { Z_INDEX } from '@/config/zIndex';
 import { getResourceIcon, type ResourceIconType } from '@/features/learning-hub/icons';
 import * as dstuApi from '@/dstu/api';
@@ -176,7 +177,7 @@ export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
       <div className="px-3 py-2 border-b border-border">
         <div className="relative">
           <Search className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
-          <input
+          <Input
             ref={inputRef}
             value={query}
             onChange={(e) => setQuery(e.target.value)}

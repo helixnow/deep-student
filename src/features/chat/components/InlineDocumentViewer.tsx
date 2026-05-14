@@ -24,6 +24,7 @@ import {
 } from 'lucide-react';
 import { fileManager } from '@/utils/fileManager';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { Input } from '@/components/ui/shad/Input';
 
 // ============================================================================
 // 类型定义
@@ -268,7 +269,7 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
           <div className="w-px h-4 bg-border mx-1" />
           <div className="flex items-center gap-1 px-2 py-1 rounded-md border border-border bg-background">
             <Search size={14} className="text-muted-foreground" />
-            <input
+            <Input
               placeholder={t('chatV2:documentViewer.search')}
               value={query}
               onChange={(e) => setQuery(e.target.value)}

@@ -1,6 +1,7 @@
 import { unifiedAlert, unifiedConfirm } from '@/utils/unifiedDialogs';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { pLimit } from '@/utils/concurrency';
+import { Input } from '@/components/ui/shad/Input';
 /**
  * 向量化状态视图
  *
@@ -1843,7 +1844,7 @@ export const IndexStatusView: React.FC = () => {
           <div className="flex gap-2 max-w-3xl">
             <div className="relative flex-1">
               <MagnifyingGlass className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-              <input
+              <Input
                 type="text"
                 value={testQuery}
                 onChange={(e) => setTestQuery(e.target.value)}

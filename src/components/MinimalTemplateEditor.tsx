@@ -13,6 +13,7 @@ import { Input } from './ui/shad/Input';
 import { Textarea } from './ui/shad/Textarea';
 import { Label } from './ui/shad/Label';
 import { Switch } from './ui/shad/Switch';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/shad/Select';
 import { UnifiedCodeEditor } from './shared/UnifiedCodeEditor';
 import CodeMirror from '@uiw/react-codemirror';
 import { html } from '@codemirror/lang-html';
@@ -837,23 +838,27 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                         <div className="grid grid-cols-3 gap-4">
                           <div className="form-field col-span-1">
                             <Label className="field-label">{t('field_type_label', '字段类型')}</Label>
-                            <select
+                            <Select
                               value={rule.field_type}
-                              onChange={(e) => {
+                              onValueChange={(value) => {
                                 setFieldExtractionRules({
                                   ...fieldExtractionRules,
-                                  [fieldName]: { ...rule, field_type: e.target.value as any }
+                                  [fieldName]: { ...rule, field_type: value as any }
                                 });
                               }}
-                              className="flex h-9 w-full rounded-md border border-transparent bg-transparent hover:bg-[var(--interactive-hover)] focus-within:bg-background focus-within:border-border/60 focus-within:ring-1 focus-within:ring-border/50 px-3 py-2 text-sm text-foreground focus:outline-none transition-colors"
                             >
-                              <option value="Text">{t('field_type.text', '文本')}</option>
-                              <option value="Integer">{t('field_type_option.integer', '整数')}</option>
-                              <option value="Float">{t('field_type_option.float', '浮点数')}</option>
-                              <option value="Boolean">{t('field_type.boolean', '布尔值')}</option>
-                              <option value="Date">{t('field_type.date', '日期')}</option>
-                              <option value="Array">{t('field_type.array', '数组')}</option>
-                            </select>
+                              <SelectTrigger className="flex h-9 w-full rounded-md border border-transparent bg-transparent hover:bg-[var(--interactive-hover)] focus-within:bg-background focus-within:border-border/60 focus-within:ring-1 focus-within:ring-border/50 px-3 py-2 text-sm text-foreground focus:outline-none transition-colors">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Text">{t('field_type.text', '文本')}</SelectItem>
+                                <SelectItem value="Integer">{t('field_type_option.integer', '整数')}</SelectItem>
+                                <SelectItem value="Float">{t('field_type_option.float', '浮点数')}</SelectItem>
+                                <SelectItem value="Boolean">{t('field_type.boolean', '布尔值')}</SelectItem>
+                                <SelectItem value="Date">{t('field_type.date', '日期')}</SelectItem>
+                                <SelectItem value="Array">{t('field_type.array', '数组')}</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </div>
                           
                           <div className="form-field col-span-2">

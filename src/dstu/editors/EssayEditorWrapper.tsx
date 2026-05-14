@@ -16,6 +16,8 @@ import { cn } from '@/lib/utils';
 import { VfsError, VfsErrorCode, reportError } from '@/shared/result';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { Input } from '@/components/ui/shad/Input';
+import { Textarea } from '@/components/ui/shad/Textarea';
 
 interface EssayData {
   title: string;
@@ -270,7 +272,7 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
           <label className="text-sm font-medium text-muted-foreground">
             {t('essay_grading:fields.title')}
           </label>
-          <input
+          <Input
             className={cn(
               "w-full px-3 py-2 border rounded-md bg-background",
               isParseError && "opacity-60"
@@ -287,7 +289,7 @@ export const EssayEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pr
           <label className="text-sm font-medium text-muted-foreground">
             {t('essay_grading:fields.content')}
           </label>
-          <textarea
+          <Textarea
             className={cn(
               "w-full min-h-[200px] px-3 py-2 border rounded-md bg-background resize-none",
               isParseError && "opacity-60"

@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { fileManager } from '@/utils/fileManager';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { Input } from '@/components/ui/shad/Input';
 
 interface DocumentViewerProps {
   isOpen: boolean;
@@ -243,7 +244,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
               </NotionButton>
               <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-transparent">
                 <Search size={14} className="text-muted-foreground" />
-                <input
+                <Input
                   placeholder={t('document_viewer.search_placeholder')}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}

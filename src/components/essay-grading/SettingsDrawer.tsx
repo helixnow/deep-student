@@ -504,7 +504,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
                   placeholder={t('settings:gradingMode.placeholderModeName')}
                   className="text-sm font-medium px-2 h-8 border-border/30 bg-transparent focus-visible:ring-1 focus-visible:ring-primary/30"
                 />
-                <textarea
+                <Textarea
                   value={formData.description}
                   onChange={e => setFormData(prev => ({ ...prev, description: e.target.value }))}
                   placeholder={t('settings:gradingMode.placeholderDescription')}
@@ -538,7 +538,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
                       />
                       <div className="flex items-center gap-1 flex-shrink-0">
                         <span className="text-[10px] text-muted-foreground/50">{t('settings:gradingMode.labelScore')}</span>
-                        <input
+                        <Input
                           type="number"
                           value={dim.max_score}
                           onChange={e => handleUpdateDimension(index, 'max_score', Number(e.target.value))}
@@ -572,7 +572,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
                     <div className="text-[10px] text-muted-foreground truncate">{t('settings:gradingMode.maxScoreLimitDesc')}</div>
                   </div>
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    <input
+                    <Input
                       type="number"
                       value={formData.total_max_score}
                       onChange={e => setFormData(prev => ({

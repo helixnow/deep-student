@@ -12,6 +12,9 @@ import { templateService } from '../services/templateService';
 import { UnifiedCodeEditor } from './shared/UnifiedCodeEditor';
 import './MinimalTemplateEditor.css';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { Input } from '@/components/ui/shad/Input';
+import { Textarea } from '@/components/ui/shad/Textarea';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
 
 interface EnhancedTemplateEditorProps {
   template: CustomAnkiTemplate | null;
@@ -361,20 +364,20 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
               <div className="form-grid">
                 <div className="form-field">
                   <label className="field-label required">{t('template_name_label', '模板名称')}</label>
-                  <input
-                    type="text"
-                    value={formData.name}
-                    onChange={(e) => setFormData({...formData, name: e.target.value})}
-                    className="field-input"
-                    placeholder={t('form_name_placeholder', '例如：编程代码卡片')}
-                  />
+                   <Input
+                     type="text"
+                     value={formData.name}
+                     onChange={(e) => setFormData({...formData, name: e.target.value})}
+                     className="field-input"
+                     placeholder={t('form_name_placeholder', '例如：编程代码卡片')}
+                   />
                   <span className="field-hint">{t('template_name_hint', '给模板一个清晰的名称，方便查找和识别')}</span>
                 </div>
               </div>
 
               <div className="form-group">
                 <label className="form-label">{t('author', '作者')}</label>
-                <input
+                <Input
                   type="text"
                   value={formData.author}
                   onChange={(e) => setFormData({...formData, author: e.target.value})}
@@ -386,7 +389,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
               <div className="form-group">
                 <label className="form-label">{t('version', '版本号')}</label>
                 <div className="version-input">
-                  <input
+                  <Input
                     type="text"
                     value={formData.version}
                     onChange={(e) => setFormData({...formData, version: e.target.value})}
@@ -422,7 +425,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
 
               <div className="form-group full-width">
                 <label className="form-label required">{t('form_description', '模板描述')}</label>
-                <textarea
+                <Textarea
                   value={formData.description}
                   onChange={(e) => setFormData({...formData, description: e.target.value})}
                   className="form-textarea"
@@ -433,7 +436,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
 
               <div className="form-group">
                 <label className="form-label">{t('form_note_type', '笔记类型')}</label>
-                <input
+                <Input
                   type="text"
                   value={formData.note_type}
                   onChange={(e) => setFormData({...formData, note_type: e.target.value})}
@@ -444,7 +447,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
 
               <div className="form-group">
                 <label className="form-label required">{t('form_preview_front_required', '正面预览文本')}</label>
-                <input
+                <Input
                   type="text"
                   value={formData.preview_front}
                   onChange={(e) => setFormData({...formData, preview_front: e.target.value})}
@@ -455,7 +458,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
 
               <div className="form-group">
                 <label className="form-label required">{t('form_preview_back_required', '背面预览文本')}</label>
-                <input
+                <Input
                   type="text"
                   value={formData.preview_back}
                   onChange={(e) => setFormData({...formData, preview_back: e.target.value})}
@@ -493,7 +496,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                 <div className="fields-list">
                   {formData.fields.map((field, index) => (
                     <div key={index} className="field-item">
-                      <input
+                      <Input
                         type="text"
                         value={field}
                         onChange={(e) => updateFieldName(index, e.target.value)}
@@ -695,21 +698,25 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                         <div className="rule-form">
                           <div className="form-row">
                             <label>{t('field_type_label', '字段类型')}</label>
-                            <select
+                            <Select
                               value={rule.field_type}
-                              onChange={(e) => updateFieldRule(fieldName, { 
-                                field_type: e.target.value as 'Text' | 'Number' | 'Array' | 'Boolean' | 'Date' | 'RichText' | 'Formula'
+                              onValueChange={(value) => updateFieldRule(fieldName, { 
+                                field_type: value as 'Text' | 'Number' | 'Array' | 'Boolean' | 'Date' | 'RichText' | 'Formula'
                               })}
-                              className="form-select"
                             >
-                              <option value="Text">{t('field_type.text', '文本')}</option>
-                              <option value="Number">{t('field_type.number', '数字')}</option>
-                              <option value="Array">{t('field_type.array', '数组')}</option>
-                              <option value="Boolean">{t('field_type.boolean', '布尔值')}</option>
-                              <option value="Date">{t('field_type.date', '日期时间')}</option>
-                              <option value="RichText">{t('field_type.rich_text', '富文本')}</option>
-                              <option value="Formula">{t('field_type.formula', '公式')}</option>
-                            </select>
+                              <SelectTrigger className="form-select">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Text">{t('field_type.text', '文本')}</SelectItem>
+                                <SelectItem value="Number">{t('field_type.number', '数字')}</SelectItem>
+                                <SelectItem value="Array">{t('field_type.array', '数组')}</SelectItem>
+                                <SelectItem value="Boolean">{t('field_type.boolean', '布尔值')}</SelectItem>
+                                <SelectItem value="Date">{t('field_type.date', '日期时间')}</SelectItem>
+                                <SelectItem value="RichText">{t('field_type.rich_text', '富文本')}</SelectItem>
+                                <SelectItem value="Formula">{t('field_type.formula', '公式')}</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </div>
 
                           <div className="form-row">
@@ -727,7 +734,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
 
                           <div className="form-row">
                             <label>{t('field_default_value', '默认值')}</label>
-                            <input
+                            <Input
                               type="text"
                               value={rule.default_value}
                               onChange={(e) => updateFieldRule(fieldName, { 
@@ -740,7 +747,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
 
                           <div className="form-row">
                             <label>{t('field_description_label', '字段描述')}</label>
-                            <textarea
+                            <Textarea
                               value={rule.description}
                               onChange={(e) => updateFieldRule(fieldName, { 
                                 description: e.target.value 
@@ -772,7 +779,7 @@ const EnhancedTemplateEditor: React.FC<EnhancedTemplateEditorProps> = ({
                     {showPromptPreview ? t('hide') : t('preview')}{t('full_prompt')}
                   </NotionButton>
                 </div>
-                <textarea
+                <Textarea
                   value={formData.generation_prompt}
                   onChange={(e) => setFormData({...formData, generation_prompt: e.target.value})}
                   className="form-textarea"

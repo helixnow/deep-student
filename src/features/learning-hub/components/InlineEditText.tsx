@@ -1,5 +1,6 @@
 import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { cn } from '@/lib/utils';
+import { Input } from '@/components/ui/shad/Input';
 
 export interface InlineEditTextProps {
   /** 当前值 */
@@ -159,7 +160,7 @@ export const InlineEditText = React.memo(function InlineEditText({
   }
 
   return (
-    <input
+    <Input
       ref={inputRef}
       type="text"
       value={editValue}

@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { Input } from '@/components/ui/shad/Input';
 import {
   ChevronLeft,
   ChevronRight,
@@ -212,7 +213,7 @@ export const PageNavigator: React.FC<PageNavigatorProps> = ({ store }) => {
 
           {/* 页码显示/输入 */}
           <div className="flex items-center gap-1 px-2">
-            <input
+            <Input
               type="text"
               value={inputPage}
               onChange={handlePageInput}
