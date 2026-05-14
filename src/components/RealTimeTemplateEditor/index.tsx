@@ -10,6 +10,7 @@ import { ValidationError } from './template.worker';
 import { CheckCircle, AlertTriangle, X, Save, Eye, Code, Palette } from 'lucide-react';
 import './RealTimeTemplateEditor.css';
 import { unifiedAlert, unifiedConfirm } from '@/utils/unifiedDialogs';
+import { Input } from '@/components/ui/shad/Input';
 
 // 创建Worker实例
 let templateWorker: Worker | null = null;
@@ -399,7 +400,7 @@ const PreviewDataEditor: React.FC<PreviewDataEditorProps> = ({ data, onChange, f
             <div key={field} className="field-editor">
               <label>{field}:</label>
               {Array.isArray(data[field]) ? (
-                <input
+                <Input
                   type="text"
                   value={data[field].join(', ')}
                   onChange={(e) => onChange({
@@ -409,7 +410,7 @@ const PreviewDataEditor: React.FC<PreviewDataEditorProps> = ({ data, onChange, f
                   placeholder={t('enter_values')}
                 />
               ) : (
-                <input
+                <Input
                   type="text"
                   value={data[field] || ''}
                   onChange={(e) => onChange({

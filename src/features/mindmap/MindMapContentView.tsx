@@ -29,6 +29,7 @@ import {
   Settings2,
   BookOpen,
 } from 'lucide-react';
+import { Input } from '@/components/ui/shad/Input';
 import { useTranslation } from 'react-i18next';
 import {
   AppMenu,
@@ -589,7 +590,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
       {showSearch && (
         <div className="flex items-center gap-2 h-10 px-4 border-b border-[var(--mm-border)] bg-[var(--mm-bg)] animate-in slide-in-from-top-1 duration-200">
           <Search className="w-4 h-4 text-[var(--mm-text-muted)]" />
-          <input
+          <Input
             className="flex-1 h-full bg-transparent border-none outline-none text-sm placeholder-[var(--mm-text-muted)]"
             placeholder={t('mindmap:toolbar.searchPlaceholder')}
             value={searchInput}

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Textarea } from '../ui/shad/Textarea';
+import { Input } from '../ui/shad/Input';
 import { AppSelect } from '../ui/app-menu';
 import { Switch } from '../ui/shad/Switch';
 import { Label } from '../ui/shad/Label';
@@ -86,7 +87,7 @@ const GlossaryEditor: React.FC<{
 
       {/* 新增行 */}
       <div className="flex items-center gap-2 min-w-0">
-        <input
+        <Input
           value={newSrc}
           onChange={(e) => setNewSrc(e.target.value)}
           onKeyDown={handleKeyDown}
@@ -94,7 +95,7 @@ const GlossaryEditor: React.FC<{
           className="flex-1 min-w-0 h-8 px-2.5 text-sm bg-muted/30 border border-transparent rounded-md focus:border-primary/50 focus:bg-background focus:outline-none transition-colors placeholder:text-muted-foreground/40"
         />
         <span className="text-muted-foreground/40 text-xs shrink-0">→</span>
-        <input
+        <Input
           value={newTgt}
           onChange={(e) => setNewTgt(e.target.value)}
           onKeyDown={handleKeyDown}

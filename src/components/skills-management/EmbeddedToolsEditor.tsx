@@ -11,6 +11,7 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '../ui/shad/Input';
 import { Label } from '../ui/shad/Label';
 import { Textarea } from '../ui/shad/Textarea';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/shad/Select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/shad/Collapsible';
 import { Plus, Trash2, ChevronDown, ChevronRight, Wrench, AlertCircle } from 'lucide-react';
 import { cn } from '@/lib/utils';
@@ -352,19 +353,23 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                                     className="h-7 text-xs bg-background/50"
                                   />
                                 </div>
-                                <select
+                                <Select
                                   value={prop.type || 'string'}
-                                  onChange={(e) => updateProperty(toolIndex, propName, propName, { type: e.target.value as JsonSchemaProperty['type'] })}
+                                  onValueChange={(value) => updateProperty(toolIndex, propName, propName, { type: value as JsonSchemaProperty['type'] })}
                                   disabled={disabled}
-                                  className="h-7 text-xs bg-background/50 border border-border/40 rounded-md px-2"
                                 >
-                                  <option value="string">string</option>
-                                  <option value="number">number</option>
-                                  <option value="integer">integer</option>
-                                  <option value="boolean">boolean</option>
-                                  <option value="array">array</option>
-                                  <option value="object">object</option>
-                                </select>
+                                  <SelectTrigger className="h-7 text-xs bg-background/50 border border-border/40 rounded-md px-2">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="string">string</SelectItem>
+                                    <SelectItem value="number">number</SelectItem>
+                                    <SelectItem value="integer">integer</SelectItem>
+                                    <SelectItem value="boolean">boolean</SelectItem>
+                                    <SelectItem value="array">array</SelectItem>
+                                    <SelectItem value="object">object</SelectItem>
+                                  </SelectContent>
+                                </Select>
                                 <NotionButton
                                   type="button"
                                   variant={isRequired ? 'default' : 'outline'}

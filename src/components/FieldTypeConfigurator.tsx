@@ -17,6 +17,8 @@ import {
 } from 'lucide-react';
 import './FieldTypeConfigurator.css';
 import { AppSelect } from './ui/app-menu';
+import { Input } from '@/components/ui/shad/Input';
+import { Textarea } from '@/components/ui/shad/Textarea';
 
 interface FieldTypeConfiguratorProps {
   fields: string[];
@@ -174,7 +176,7 @@ const FieldTypeConfigurator: React.FC<FieldTypeConfiguratorProps> = ({
                   {/* 描述 */}
                   <div className="config-group">
                     <label>{t('field_description_label')}</label>
-                    <input
+                    <Input
                       type="text"
                       value={rule?.description || ''}
                       onChange={(e) => updateFieldRule(field, {
@@ -197,7 +199,7 @@ const FieldTypeConfigurator: React.FC<FieldTypeConfiguratorProps> = ({
                         width={120}
                       />
                     ) : fieldType === EnhancedFieldType.Number ? (
-                      <input
+                      <Input
                         type="number"
                         value={rule?.default_value || 0}
                         onChange={(e) => updateFieldRule(field, {
@@ -205,7 +207,7 @@ const FieldTypeConfigurator: React.FC<FieldTypeConfiguratorProps> = ({
                         })}
                       />
                     ) : (
-                      <input
+                      <Input
                         type="text"
                         value={rule?.default_value || ''}
                         onChange={(e) => updateFieldRule(field, {
@@ -219,7 +221,7 @@ const FieldTypeConfigurator: React.FC<FieldTypeConfiguratorProps> = ({
                   {/* AI提示 */}
                   <div className="config-group">
                     <label>{t('field_ai_hint')}</label>
-                    <textarea
+                    <Textarea
                       value={rule?.ai_hint || ''}
                       onChange={(e) => updateFieldRule(field, {
                         ai_hint: e.target.value
@@ -239,7 +241,7 @@ const FieldTypeConfigurator: React.FC<FieldTypeConfiguratorProps> = ({
                         <>
                           <div className="config-group">
                             <label>{t('max_length')}</label>
-                            <input
+                            <Input
                               type="number"
                               value={rule?.max_length || ''}
                               onChange={(e) => updateFieldRule(field, {
@@ -250,7 +252,7 @@ const FieldTypeConfigurator: React.FC<FieldTypeConfiguratorProps> = ({
                           </div>
                           <div className="config-group">
                             <label>{t('pattern')}</label>
-                            <input
+                            <Input
                               type="text"
                               value={rule?.validation?.pattern || ''}
                               onChange={(e) => updateFieldRule(field, {
@@ -268,7 +270,7 @@ const FieldTypeConfigurator: React.FC<FieldTypeConfiguratorProps> = ({
                         <>
                           <div className="config-group">
                             <label>{t('min_value')}</label>
-                            <input
+                            <Input
                               type="number"
                               value={rule?.validation?.min || ''}
                               onChange={(e) => updateFieldRule(field, {
@@ -281,7 +283,7 @@ const FieldTypeConfigurator: React.FC<FieldTypeConfiguratorProps> = ({
                           </div>
                           <div className="config-group">
                             <label>{t('max_value')}</label>
-                            <input
+                            <Input
                               type="number"
                               value={rule?.validation?.max || ''}
                               onChange={(e) => updateFieldRule(field, {

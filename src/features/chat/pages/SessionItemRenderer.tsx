@@ -13,6 +13,7 @@ import {
 import { cn } from '@/lib/utils';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { Input } from '@/components/ui/shad/Input';
 import { getSidebarStudyRowClassName } from './sessionSidebarStyles';
 import { getSessionTitleText } from '../utils/sessionTitle';
 import type { SessionGroup } from '../types/group';
@@ -116,7 +117,7 @@ export function useSessionItemRenderer(deps: UseSessionItemRendererDeps) {
       <div className="flex-1 min-w-0 overflow-hidden">
         {editingSessionId === session.id ? (
           <div className="flex flex-col gap-1.5 w-full">
-            <input
+            <Input
               type="text"
               value={editingTitle}
               onChange={(e) => setEditingTitle(e.target.value)}

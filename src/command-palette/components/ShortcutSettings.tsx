@@ -13,6 +13,7 @@ import { unifiedAlert, unifiedConfirm } from '@/utils/unifiedDialogs';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '@/components/ui/shad/Input';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
 import { commandRegistry } from '../registry/commandRegistry';
 import { shortcutManager, type ShortcutConflict } from '../registry/shortcutManager';
 import { formatShortcut, buildShortcutString } from '../registry/shortcutUtils';
@@ -239,17 +240,21 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
               />
             </div>
 
-            <select
-              className="h-8 px-2.5 py-1 bg-transparent border border-border/50 rounded-md text-xs text-foreground/80 focus:outline-none focus:ring-1 focus:ring-primary/30 hover:bg-[var(--interactive-hover)] transition-colors"
+            <Select
               value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value as CommandCategory | 'all')}
+              onValueChange={(value) => setSelectedCategory(value as CommandCategory | 'all')}
             >
-              {categories.map((cat) => (
-                <option key={cat.value} value={cat.value}>
-                  {cat.label}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="h-8 px-2.5 py-1 bg-transparent border border-border/50 rounded-md text-xs text-foreground/80 focus:outline-none focus:ring-1 focus:ring-primary/30 hover:bg-[var(--interactive-hover)] transition-colors">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {categories.map((cat) => (
+                  <SelectItem key={cat.value} value={cat.value}>
+                    {cat.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
             <div className="flex gap-1 ml-auto">
               <NotionButton variant="ghost" size="sm" onClick={exportConfig} className="gap-1.5">

@@ -4,6 +4,8 @@ import { useTranslation } from 'react-i18next';
 import { X, Plus, Filter as FilterIcon } from 'lucide-react';
 import { generateId } from '../../utils/common';
 import './FilterBuilder.css';
+import { Input } from '@/components/ui/shad/Input';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
 
 interface Filter {
   id: string;
@@ -106,50 +108,57 @@ const FilterBuilder: React.FC<FilterBuilderProps> = ({ filters, onApply, onClose
                       <div className="filter-connector">{t('and')}</div>
                     )}
                     
-                    <select
+                    <Select
                       value={filter.type}
-                      onChange={(e) => {
-                        const newType = e.target.value;
+                      onValueChange={(value) => {
                         updateFilter(filter.id, {
-                          type: newType,
-                          operator: operators[newType]?.[0]?.value || undefined,
+                          type: value,
+                          operator: operators[value]?.[0]?.value || undefined,
                           value: ''
                         });
                       }}
-                      className="filter-type-select"
                     >
-                      {filterTypes.map(type => (
-                        <option key={type.value} value={type.value}>
-                          {type.label}
-                        </option>
-                      ))}
-                    </select>
+                      <SelectTrigger className="filter-type-select">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {filterTypes.map(type => (
+                          <SelectItem key={type.value} value={type.value}>
+                            {type.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
                     
                     {operators[filter.type] && (
-                      <select
+                      <Select
                         value={filter.operator}
-                        onChange={(e) => updateFilter(filter.id, { operator: e.target.value })}
-                        className="filter-operator-select"
+                        onValueChange={(value) => updateFilter(filter.id, { operator: value })}
                       >
-                        {operators[filter.type].map(op => (
-                          <option key={op.value} value={op.value}>
-                            {op.label}
-                          </option>
-                        ))}
-                      </select>
+                        <SelectTrigger className="filter-operator-select">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {operators[filter.type].map(op => (
+                            <SelectItem key={op.value} value={op.value}>
+                              {op.label}
+                            </SelectItem>
+                          ))}
+                        </SelectContent>
+                      </Select>
                     )}
                     
                     {filter.type !== 'has_image' && filter.type !== 'no_tags' && (
                       <>
                         {filter.type === 'date' ? (
-                          <input
+                          <Input
                             type="date"
                             value={filter.value || ''}
                             onChange={(e) => updateFilter(filter.id, { value: e.target.value })}
                             className="filter-value-input"
                           />
                         ) : (
-                          <input
+                          <Input
                             type="text"
                             value={filter.value || ''}
                             onChange={(e) => updateFilter(filter.id, { value: e.target.value })}

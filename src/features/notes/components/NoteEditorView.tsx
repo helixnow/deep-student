@@ -13,6 +13,7 @@ import { NotesEditorToolbar } from './NotesEditorToolbar';
 import { useNotesOptional } from '../NotesContext';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { Input } from '@/components/ui/shad/Input';
 
 const AUTO_SAVE_DEBOUNCE_MS = 1500;
 
@@ -297,7 +298,7 @@ export const NoteEditorView: React.FC<NoteEditorViewProps> = ({
         "flex-shrink-0 pl-20 pr-4",
         compact ? "pt-2 pb-1" : "pt-4 pb-2"
       )}>
-        <input
+        <Input
           className={cn(
             "w-full bg-transparent border-none outline-none placeholder:text-muted-foreground/40 focus-visible:ring-0",
             compact 

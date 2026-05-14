@@ -33,6 +33,7 @@ import {
   Trash2,
   MoreHorizontal
 } from 'lucide-react';
+import { Input } from '@/components/ui/shad/Input';
 import 'react-pdf/dist/Page/AnnotationLayer.css';
 import 'react-pdf/dist/Page/TextLayer.css';
 import '../styles/enhanced-pdf.css';
@@ -1300,7 +1301,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
       {showSearch && (
         <div className="ds-pdf__search-bar">
           <Search size={16} className="ds-search-icon" />
-          <input
+          <Input
             ref={searchInputRef}
             type="text"
             className="ds-search-input"
@@ -1549,7 +1550,7 @@ const EnhancedPdfViewerImpl: React.FC<EnhancedPdfViewerProps> = ({
           </NotionButton>
 
           <div className="ds-page-input">
-            <input
+            <Input
               type="text"
               className="ds-input"
               value={pageInputValue || currentPage}

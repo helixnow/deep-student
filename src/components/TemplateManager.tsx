@@ -9,6 +9,8 @@ import RealTimeTemplateEditor from './RealTimeTemplateEditor';
 import { NotionButton } from './ui/NotionButton';
 import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from './ui/NotionDialog';
 import { Checkbox } from './ui/shad/Checkbox';
+import { Input } from './ui/shad/Input';
+import { Textarea } from './ui/shad/Textarea';
 import { ErrorBoundary } from './ErrorBoundary';
 import { ComplexityReport, ComplexityLevel, EnhancedFieldExtractionRule } from '../types/enhanced-field-types';
 import { checkComplexTemplatesStatus } from '../utils/forceImportTemplates';
@@ -708,7 +710,7 @@ const TemplateBrowser: React.FC<TemplateBrowserProps> = ({
       {/* 搜索和工具栏 */}
       <div className="browser-toolbar">
         <div className="search-box">
-          <input
+          <Input
             type="text"
             placeholder={t('template.search_placeholder')}
             value={searchTerm}
@@ -1057,7 +1059,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
             <div className="form-grid">
               <div className="form-group">
                 <label>{t('template.form_name_required')}</label>
-                <input
+                <Input
                   type="text"
                   value={formData.name}
                   onChange={(e) => setFormData({...formData, name: e.target.value})}
@@ -1069,7 +1071,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
 
               <div className="form-group">
                 <label>{t('template.form_author')}</label>
-                <input
+                <Input
                   type="text"
                   value={formData.author}
                   onChange={(e) => setFormData({...formData, author: e.target.value})}
@@ -1080,7 +1082,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
 
               <div className="form-group full-width">
                 <label>{t('template.form_description')}</label>
-                <textarea
+                <Textarea
                   value={formData.description}
                   onChange={(e) => setFormData({...formData, description: e.target.value})}
                   className="form-textarea"
@@ -1091,7 +1093,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
 
               <div className="form-group">
                 <label>{t('template.form_note_type')}</label>
-                <input
+                <Input
                   type="text"
                   value={formData.note_type}
                   onChange={(e) => setFormData({...formData, note_type: e.target.value})}
@@ -1102,7 +1104,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
 
               <div className="form-group">
                 <label>{t('template.form_fields_required')}</label>
-                <input
+                <Input
                   type="text"
                   value={formData.fields}
                   onChange={(e) => setFormData({...formData, fields: e.target.value})}
@@ -1115,7 +1117,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
 
               <div className="form-group">
                 <label>{t('template.form_preview_front_required')}</label>
-                <input
+                <Input
                   type="text"
                   value={formData.preview_front}
                   onChange={(e) => setFormData({...formData, preview_front: e.target.value})}
@@ -1127,7 +1129,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
 
               <div className="form-group">
                 <label>{t('template.form_preview_back_required')}</label>
-                <input
+                <Input
                   type="text"
                   value={formData.preview_back}
                   onChange={(e) => setFormData({...formData, preview_back: e.target.value})}
@@ -1146,7 +1148,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
             <div className="template-code-editor">
               <div className="code-group">
                 <label>{t('template.form_front_template_required')}</label>
-                <textarea
+                <Textarea
                   value={formData.front_template}
                   onChange={(e) => setFormData({...formData, front_template: e.target.value})}
                   required
@@ -1159,7 +1161,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
 
               <div className="code-group">
                 <label>{t('template.form_back_template_required')}</label>
-                <textarea
+                <Textarea
                   value={formData.back_template}
                   onChange={(e) => setFormData({...formData, back_template: e.target.value})}
                   required
@@ -1177,7 +1179,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
           <div className="editor-section">
             <div className="styles-editor">
               <label>{t('template.form_css_style')}</label>
-              <textarea
+              <Textarea
                 value={formData.css_style}
                 onChange={(e) => setFormData({...formData, css_style: e.target.value})}
                 className="css-textarea"
@@ -1194,7 +1196,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
           <div className="editor-section">
             <div className="advanced-settings">
               <label>{t('template.form_generation_prompt_required')}</label>
-              <textarea
+              <Textarea
                 value={formData.generation_prompt}
                 onChange={(e) => setFormData({...formData, generation_prompt: e.target.value})}
                 required
@@ -1236,7 +1238,7 @@ const TemplateEditor: React.FC<TemplateEditorProps> = ({
                     
                     {showJsonEditor ? (
                       <>
-                        <textarea
+                        <Textarea
                           value={JSON.stringify(fieldExtractionRules, null, 2)}
                           onChange={(e) => {
                             try {

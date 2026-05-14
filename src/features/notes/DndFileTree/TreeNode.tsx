@@ -8,6 +8,7 @@ import { cn } from '@/lib/utils';
 import { useTree } from './TreeContext';
 import { TreeNode as TreeNodeType } from './types';
 import { ReferenceIcon } from './ReferenceIcon';
+import { Input } from '@/components/ui/shad/Input';
 import { isReferenceId } from '../types/reference';
 import { InvalidReferenceIcon } from '../InvalidReferenceOverlay';
 
@@ -537,7 +538,7 @@ export const TreeNode = forwardRef<HTMLDivElement, TreeNodeProps>(function TreeN
             data-highlight={hasHighlight}
           >
             {isEditing ? (
-              <input
+              <Input
                 ref={inputRef}
                 type="text"
                 className="rct-tree-item-rename-input"

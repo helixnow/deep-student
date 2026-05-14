@@ -4,6 +4,7 @@ import { useNotesOptional } from '../NotesContext';
 import { getPathToNote } from '../notesUtils';
 import { ChevronRight, Folder, FileText } from 'lucide-react';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
+import { Input } from '@/components/ui/shad/Input';
 
 interface NotesEditorHeaderProps {
     lastSaved: Date | null;
@@ -143,7 +144,7 @@ export const NotesEditorHeader: React.FC<NotesEditorHeaderProps> = ({
 
     return (
         <div className="mt-5 mb-0 group relative">
-            <input
+            <Input
                 className="text-3xl font-bold text-foreground/90 bg-transparent border-none outline-none placeholder:text-muted-foreground/30 w-full p-0 focus-visible:ring-0"
                 value={titleInput}
                 onChange={readOnly ? undefined : handleTitleChange}

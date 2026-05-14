@@ -478,7 +478,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               {editData.options.map((opt, index) => (
                 <div key={index} className="group flex items-center gap-1 rounded-md border border-border/40 bg-muted/10 px-2 h-7">
                   <span className="text-xs font-medium text-muted-foreground w-4 flex-shrink-0">{opt.key}</span>
-                  <input
+                  <Input
                     value={opt.content}
                     onChange={(e) => handleOptionChange(index, 'content', e.target.value)}
                     className="flex-1 min-w-0 bg-transparent text-xs outline-none placeholder:text-muted-foreground/50"
