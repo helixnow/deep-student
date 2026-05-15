@@ -492,7 +492,7 @@ export const VendorDetailPanel: React.FC = () => {
                                 </NotionButton>
 
                                 {/* 删除：Popover 确认 */}
-                                {!isReadOnly && (
+                                {!isReadOnly ? (
                                   <Popover>
                                     <PopoverTrigger asChild>
                                       <NotionButton
@@ -520,6 +520,9 @@ export const VendorDetailPanel: React.FC = () => {
                                       </div>
                                     </PopoverContent>
                                   </Popover>
+                                ) : (
+                                  /* 占位：保持对齐 */
+                                  <div className="h-7 w-7 shrink-0" />
                                 )}
                               </div>
                             </div>
