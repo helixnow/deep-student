@@ -6,6 +6,7 @@
  */
 
 import type { ChatStoreState } from './types';
+import { QUEUE_HARD_CAP } from '../types/queue';
 
 // ============================================================================
 // 守卫函数类型
@@ -27,6 +28,15 @@ export interface Guards {
 
   /** 是否可以中断流式 */
   canAbort: () => boolean;
+
+  /** 是否可以入队消息（队列未达上限且功能启用） */
+  canEnqueue: (queueEnabled: boolean) => boolean;
+
+  /** 是否可以执行队列等量交换（草稿与队尾互换，允许在上限处净零变更） */
+  canEnqueueSwap: (queueEnabled: boolean) => boolean;
+
+  /** 是否可以从队列出队（idle、非空、未在出队、无阻塞交互、无失败项） */
+  canDequeue: () => boolean;
 
   /** 指定块是否被锁定 */
   isBlockLocked: (blockId: string) => boolean;
@@ -114,11 +124,54 @@ export function createGuards(getState: () => ChatStoreState): Guards {
     return state.sessionStatus === 'streaming';
   };
 
+  /**
+   * 检查是否可以入队消息
+   * - 队列功能必须启用
+   * - 队列长度未达硬上限
+   */
+  const canEnqueue = (queueEnabled: boolean): boolean => {
+    if (!queueEnabled) return false;
+    const state = getState();
+    return state.queuedMessages.length < QUEUE_HARD_CAP;
+  };
+
+  /**
+   * 检查是否可以执行队列等量交换（recall + draft 入队尾的净零变更）
+   * - 队列功能必须启用
+   * - 在上限处仍允许（length === HARD_CAP），但不能超过
+   */
+  const canEnqueueSwap = (queueEnabled: boolean): boolean => {
+    if (!queueEnabled) return false;
+    const state = getState();
+    return state.queuedMessages.length <= QUEUE_HARD_CAP;
+  };
+
+  /**
+   * 检查是否可以从队列出队
+   * - sessionStatus 必须为 idle
+   * - 队列非空
+   * - 未在出队中
+   * - 无待处理的阻塞交互
+   * - 队列中无失败项（halt-on-failure）
+   */
+  const canDequeue = (): boolean => {
+    const state = getState();
+    if (state.sessionStatus !== 'idle') return false;
+    if (state.queuedMessages.length === 0) return false;
+    if (state.dequeuing) return false;
+    if (state.pendingBlockingInteraction !== null) return false;
+    if (state.queuedMessages.some((m) => m.status === 'failed')) return false;
+    return true;
+  };
+
   return {
     canSend,
     canEdit,
     canDelete,
     canAbort,
+    canEnqueue,
+    canEnqueueSwap,
+    canDequeue,
     isBlockLocked,
     isMessageLocked,
   };
