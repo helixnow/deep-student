@@ -135,16 +135,12 @@ export const VendorSidebar: React.FC = () => {
     const providerLabel = getProviderDisplayName(vendor.providerType, t);
     const vendorDisplayName = getVendorDisplayName(vendor, providerLabel);
 
-    // 修复 CustomScrollArea 内拖拽偏移问题
-    const style = provided.draggableProps.style;
-    const draggingStyle = snapshot.isDragging ? { ...style, left: 'auto', top: 'auto' } : style;
-
     return (
       <div
         ref={provided.innerRef}
         {...provided.draggableProps}
         {...provided.dragHandleProps}
-        style={draggingStyle}
+        style={provided.draggableProps.style}
         onClick={() => setSelectedVendorId(vendor.id)}
         className={cn(
           'px-3 py-2 text-left w-full flex items-center gap-2 cursor-grab active:cursor-grabbing group',
