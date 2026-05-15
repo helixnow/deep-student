@@ -1,130 +1,24 @@
 /**
  * API配置管理 Tab 组件
- * 从 Settings.tsx 拆分，包含完整的 Vendor 和模型配置管理功能
+ * 
+ * 重构后的薄壳组件：接收 props 并通过 VendorSettingsContext 提供给子组件。
+ * 实际渲染逻辑拆分到 VendorSidebar 和 VendorDetailPanel。
  */
 
-import React, { useCallback, useEffect, useState } from 'react';
+import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
-import { ArrowSquareOut, CaretUp, Key, LinkSimple, NotePencil, PencilSimple, Plus, Pulse, Spinner, Star, Trash } from '@phosphor-icons/react';
-import { NotionButton } from '@/components/ui/NotionButton';
-import { Input } from '@/components/ui/shad/Input';
-import { Textarea } from '@/components/ui/shad/Textarea';
-import { Label } from '@/components/ui/shad/Label';
-import { Badge } from '@/components/ui/shad/Badge';
-import { Switch } from '@/components/ui/shad/Switch';
-import {
-  SettingSection,
-  settingsQuietActiveSurfaceClassName,
-  settingsQuietIdleRowClassName,
-  settingsQuietInteractiveRowClassName,
-  settingsQuietRowBaseClassName,
-  settingsQuietSelectedRowClassName,
-} from './SettingsCommon';
-import { SiliconFlowSection } from './SiliconFlowSection';
-import { VendorApiKeySection } from './VendorApiKeySection';
-import { VendorModelFetcher, supportsModelFetching } from './VendorModelFetcher';
-import { ShadApiEditModal } from './ShadApiEditModal';
-import { cn } from '@/lib/utils';
-import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { ProviderIcon, getProviderBadgeChromeStyle } from '@/components/ui/ProviderIcon';
-import { openUrl } from '@/utils/urlOpener';
-import { SiliconFlowLogo } from '@/components/ui/SiliconFlowLogo';
-import { ModelCapabilityIcons } from '@/components/shared/ModelCapabilityIcons';
+import { Spinner } from '@phosphor-icons/react';
+import { SettingSection } from './SettingsCommon';
+import { VendorSettingsProvider, type VendorSettingsContextValue } from './VendorSettingsContext';
+import { VendorSidebar } from './VendorSidebar';
+import { VendorDetailPanel } from './VendorDetailPanel';
 import type { VendorConfig, ModelProfile, ApiConfig } from '@/types';
 
-// 内联编辑状态类型
+// 内联编辑状态类型（保持向后兼容）
 interface InlineEditState {
   profileId: string;
   api: ApiConfig;
 }
-
-const normalizeBaseUrl = (url: string) => url.trim().replace(/\/+$/, '');
-
-type TranslateFn = (key: string, options?: { defaultValue?: string }) => string;
-
-const getProviderDisplayName = (providerType?: string | null, t?: TranslateFn) => {
-  if (!providerType) return 'OpenAI';
-  const normalizedProviderType = providerType.toLowerCase();
-  const map: Record<string, string> = {
-    openai: 'OpenAI',
-    anthropic: 'Anthropic',
-    google: 'Google',
-    siliconflow: 'SiliconFlow',
-    deepseek: 'DeepSeek',
-    ollama: 'Ollama',
-    nvidia: 'NVIDIA',
-    mimo: 'Xiaomi MiMo',
-  };
-  const fallback = map[normalizedProviderType] || providerType;
-  return t?.(`settings:vendor_modal.providers.${normalizedProviderType}`, { defaultValue: fallback }) ?? fallback;
-};
-
-const getVendorDisplayName = (vendor: VendorConfig, providerLabel: string) => {
-  if ((vendor.providerType ?? '').toLowerCase() === 'siliconflow') {
-    return providerLabel;
-  }
-  return vendor.name || providerLabel;
-};
-
-/** 根据供应商类型获取官网链接（用于内置供应商的 fallback） */
-const getProviderWebsiteUrl = (providerType?: string | null): string | null => {
-  if (!providerType) return null;
-  const map: Record<string, string> = {
-    siliconflow: 'https://cloud.siliconflow.cn/i/deadXN1B',
-    deepseek: 'https://deepseek.com',
-    qwen: 'https://bailian.console.aliyun.com',
-    zhipu: 'https://open.bigmodel.cn',
-    doubao: 'https://www.volcengine.com/product/doubao',
-    minimax: 'https://platform.minimaxi.com',
-    moonshot: 'https://platform.moonshot.cn',
-    openai: 'https://platform.openai.com',
-    gemini: 'https://aistudio.google.com',
-    anthropic: 'https://console.anthropic.com',
-    google: 'https://aistudio.google.com',
-    nvidia: 'https://build.nvidia.com/nim',
-    mimo: 'https://platform.xiaomimimo.com',
-  };
-  return map[providerType.toLowerCase()] || null;
-};
-
-const hasConfiguredApiKey = (apiKey?: string | null): boolean => {
-  const trimmed = apiKey?.trim() ?? '';
-  return Boolean(trimmed);
-};
-
-const getVendorIconStyle = (vendor: VendorConfig): React.CSSProperties => {
-  if (hasConfiguredApiKey(vendor.apiKey)) {
-    return {};
-  }
-
-  return {
-    filter: 'grayscale(1)',
-    opacity: 0.46,
-  };
-};
-
-const getVendorIconTone = (vendor: VendorConfig): 'color' | 'muted' => (
-  hasConfiguredApiKey(vendor.apiKey) ? 'color' : 'muted'
-);
-
-const getVendorIconBadgeStyle = (vendor: VendorConfig): React.CSSProperties => {
-  const modelId = vendor.providerType || vendor.name || '';
-
-  return {
-    ...getProviderBadgeChromeStyle(modelId),
-    ...getVendorIconStyle(vendor),
-    alignItems: 'center',
-    borderRadius: 9999,
-    boxSizing: 'border-box',
-    display: 'inline-flex',
-    flexShrink: 0,
-    height: 20,
-    justifyContent: 'center',
-    padding: 2,
-    width: 20,
-  };
-};
 
 interface ApisTabProps {
   vendors: VendorConfig[];
@@ -150,11 +44,9 @@ interface ApisTabProps {
   handleSaveVendorApiKey: (vendorId: string, apiKey: string) => void;
   handleClearVendorApiKey: (vendorId: string) => void;
   handleOpenModelEditor: (vendor: VendorConfig, profile?: ModelProfile) => void;
-  // 内联编辑相关
   inlineEditState: InlineEditState | null;
   setInlineEditState: (state: InlineEditState | null) => void;
   handleSaveInlineEdit: (api: ApiConfig) => Promise<void>;
-  // 内联新增模型相关
   isAddingNewModel: boolean;
   handleAddModelInline: (vendor: VendorConfig) => void;
   handleCancelAddModel: () => void;
@@ -168,81 +60,54 @@ interface ApisTabProps {
   handleBatchConfigsCreated: (mapping: { [key: string]: string }) => void;
   onReorderVendors: (reorderedVendors: VendorConfig[]) => void;
   onAddVendorModels?: (vendor: VendorConfig, models: Array<{ modelId: string; label: string }>) => Promise<void>;
-  // 移动端标识：移动端使用右侧滑动面板，桌面端使用内联编辑
   isSmallScreen?: boolean;
 }
 
-export const ApisTab: React.FC<ApisTabProps> = ({
-  sortedVendors,
-  selectedVendor,
-  setSelectedVendorId,
-  selectedVendorModels,
-  selectedVendorIsSiliconflow,
-  profileCountByVendor,
-  vendorBusy,
-  vendorSaving,
-  isEditingVendor,
-  vendorFormData,
-  setVendorFormData,
-  testingApi,
-  handleOpenVendorModal,
-  handleStartEditVendor,
-  handleCancelEditVendor,
-  handleSaveEditVendor,
-  handleDeleteVendor,
-  handleSaveVendorBaseUrl,
-  handleSaveVendorApiKey,
-  handleClearVendorApiKey,
-  handleOpenModelEditor,
-  inlineEditState,
-  setInlineEditState,
-  handleSaveInlineEdit,
-  isAddingNewModel,
-  handleAddModelInline,
-  handleCancelAddModel,
-  convertProfileToApiConfig,
-  handleToggleModelProfile,
-  handleDeleteModelProfile,
-  handleToggleFavorite,
-  testApiConnection,
-  handleSiliconFlowConfig,
-  handleBatchCreateConfigs,
-  handleBatchConfigsCreated,
-  onAddVendorModels,
-  isSmallScreen = false,
-  onReorderVendors,
-}) => {
+export const ApisTab: React.FC<ApisTabProps> = (props) => {
   const { t } = useTranslation(['settings', 'common']);
-  const [baseUrlDraft, setBaseUrlDraft] = useState('');
 
-  useEffect(() => {
-    setBaseUrlDraft(selectedVendor?.baseUrl || '');
-  }, [selectedVendor?.id, selectedVendor?.baseUrl]);
-
-  // 拖拽结束处理
-  const handleDragEnd = useCallback((result: DropResult) => {
-    if (!result.destination) return;
-    const sourceIndex = result.source.index;
-    const destIndex = result.destination.index;
-    if (sourceIndex === destIndex) return;
-
-    // 分离 SiliconFlow 和其他供应商
-    const siliconVendors = sortedVendors.filter(v => (v.providerType ?? '').toLowerCase() === 'siliconflow');
-    const otherVendors = sortedVendors.filter(v => (v.providerType ?? '').toLowerCase() !== 'siliconflow');
-
-    // 只对非 SiliconFlow 供应商进行重排序
-    const reordered = [...otherVendors];
-    const [removed] = reordered.splice(sourceIndex, 1);
-    reordered.splice(destIndex, 0, removed);
-
-    // 合并 SiliconFlow 和重排序后的供应商
-    const finalOrder = [...siliconVendors, ...reordered];
-    onReorderVendors(finalOrder);
-  }, [sortedVendors, onReorderVendors]);
-
-  // 分离 SiliconFlow 和可拖拽的供应商
-  const siliconVendors = sortedVendors.filter(v => (v.providerType ?? '').toLowerCase() === 'siliconflow');
-  const draggableVendors = sortedVendors.filter(v => (v.providerType ?? '').toLowerCase() !== 'siliconflow');
+  // 将 props 映射为 Context value
+  const contextValue: VendorSettingsContextValue = {
+    vendors: props.vendors,
+    sortedVendors: props.sortedVendors,
+    selectedVendor: props.selectedVendor,
+    selectedVendorId: props.selectedVendorId,
+    setSelectedVendorId: props.setSelectedVendorId,
+    selectedVendorModels: props.selectedVendorModels,
+    selectedVendorIsSiliconflow: props.selectedVendorIsSiliconflow,
+    profileCountByVendor: props.profileCountByVendor,
+    vendorBusy: props.vendorBusy,
+    vendorSaving: props.vendorSaving,
+    isEditingVendor: props.isEditingVendor,
+    vendorFormData: props.vendorFormData,
+    setVendorFormData: props.setVendorFormData,
+    testingApi: props.testingApi,
+    inlineEditState: props.inlineEditState,
+    setInlineEditState: props.setInlineEditState,
+    isAddingNewModel: props.isAddingNewModel,
+    isSmallScreen: props.isSmallScreen ?? false,
+    handleOpenVendorModal: props.handleOpenVendorModal,
+    handleStartEditVendor: props.handleStartEditVendor,
+    handleCancelEditVendor: props.handleCancelEditVendor,
+    handleSaveEditVendor: props.handleSaveEditVendor,
+    handleDeleteVendor: props.handleDeleteVendor,
+    handleSaveVendorBaseUrl: props.handleSaveVendorBaseUrl,
+    handleSaveVendorApiKey: props.handleSaveVendorApiKey,
+    handleClearVendorApiKey: props.handleClearVendorApiKey,
+    handleOpenModelEditor: props.handleOpenModelEditor,
+    handleSaveInlineEdit: props.handleSaveInlineEdit,
+    handleAddModelInline: props.handleAddModelInline,
+    handleCancelAddModel: props.handleCancelAddModel,
+    handleToggleModelProfile: props.handleToggleModelProfile,
+    handleDeleteModelProfile: props.handleDeleteModelProfile,
+    handleToggleFavorite: props.handleToggleFavorite,
+    testApiConnection: props.testApiConnection,
+    handleSiliconFlowConfig: props.handleSiliconFlowConfig,
+    handleBatchCreateConfigs: props.handleBatchCreateConfigs,
+    handleBatchConfigsCreated: props.handleBatchConfigsCreated,
+    onReorderVendors: props.onReorderVendors,
+    onAddVendorModels: props.onAddVendorModels,
+  };
 
   return (
     <div className="space-y-4">
@@ -254,479 +119,21 @@ export const ApisTab: React.FC<ApisTabProps> = ({
         className="py-0"
         contentClassName="space-y-4"
       >
-        {vendorBusy && (
+        {props.vendorBusy && (
           <div className="mb-4 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
             <Spinner className="h-3.5 w-3.5 animate-spin" />
             <span>{t('settings:saving')}</span>
           </div>
         )}
 
-        <div className="flex flex-col gap-6 md:grid md:grid-cols-[minmax(180px,200px)_1fr]">
-          <div className="space-y-3 w-full min-w-0 pr-0 md:border-r md:border-border/40 md:pr-6 md:sticky md:top-4 md:self-start">
-            <div className="w-full">
-              <div className="mb-3 flex items-center justify-between gap-2">
-                <div className="text-sm font-medium text-foreground">
-                  {t('settings:vendor_panel.list_title')}
-                </div>
-                <NotionButton
-                  variant="ghost"
-                  size="sm"
-                  iconOnly
-                  onClick={() => handleOpenVendorModal(null)}
-                  title={t('settings:vendor_panel.add_vendor_button')}
-                  aria-label={t('settings:vendor_panel.add_vendor_button')}
-                >
-                  <Plus className="h-3.5 w-3.5" />
-                </NotionButton>
-              </div>
-              {sortedVendors.length === 0 ? (
-                <div className="rounded-lg border border-dashed border-border/60 p-4 text-center text-sm text-muted-foreground bg-muted/10">
-                  <div>{t('settings:vendor_panel.empty_vendors')}</div>
-                  <div className="mt-1 text-xs">{t('settings:vendor_panel.empty_vendors_desc')}</div>
-                </div>
-              ) : (
-                <div className="flex flex-col gap-1">
-                  {/* SiliconFlow 置顶，不可拖拽 */}
-                  {siliconVendors.map(vendor => {
-                    const isActive = selectedVendor?.id === vendor.id;
-                    const modelCount = profileCountByVendor.get(vendor.id) ?? 0;
-                    const providerLabel = getProviderDisplayName(vendor.providerType, t);
-                    const vendorDisplayName = getVendorDisplayName(vendor, providerLabel);
-                    return (
-                      <div
-                        key={vendor.id}
-                        role="button"
-                        tabIndex={0}
-                        aria-pressed={isActive}
-                        onClick={() => setSelectedVendorId(vendor.id)}
-                        onKeyDown={(event) => {
-                          if (event.key === 'Enter' || event.key === ' ') {
-                            event.preventDefault();
-                            setSelectedVendorId(vendor.id);
-                          }
-                        }}
-                        className={cn(
-                          'px-3 py-2 text-left w-full flex items-center gap-2 cursor-pointer group',
-                          isActive
-                            ? settingsQuietSelectedRowClassName
-                            : cn(settingsQuietInteractiveRowClassName, settingsQuietIdleRowClassName)
-                        )}
-                      >
-                        <div className="flex items-center gap-2 w-full">
-                          <span
-                            data-testid={`vendor-icon-${vendor.id}`}
-                            data-icon-tone={getVendorIconTone(vendor)}
-                            data-icon-chrome="badge"
-                            className="inline-flex shrink-0 items-center justify-center transition-[filter,opacity,color,background-color,border-color] duration-150"
-                            style={getVendorIconBadgeStyle(vendor)}
-                          >
-                            <ProviderIcon
-                              modelId={vendor.providerType || vendor.name || 'siliconflow'}
-                              size={14}
-                              showTooltip={false}
-                              variant="color"
-                              renderMode="glyph"
-                            />
-                          </span>
-                          <div className="flex-1 min-w-0 text-left">
-                            <div className="flex flex-wrap items-center justify-between gap-1.5">
-                              <div className="flex min-w-0 flex-1 items-center gap-1.5">
-                                <div className="flex flex-col min-w-0 flex-1">
-                                  <span className="truncate">{vendorDisplayName}</span>
-                                </div>
-                                <Badge variant="default" className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1 py-0 leading-tight shrink-0">{t('settings:api.modal.capabilities.recommended')}</Badge>
-                              </div>
-                              {modelCount > 0 && <span className="text-[10px] text-muted-foreground/60 bg-muted/50 px-1.5 py-0.5 rounded-full">{modelCount}</span>}
-                            </div>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                  {/* 其他供应商可拖拽排序 */}
-                  <DragDropContext onDragEnd={handleDragEnd}>
-                    <Droppable droppableId="vendor-list">
-                      {(provided) => (
-                        <div ref={provided.innerRef} {...provided.droppableProps} className="flex flex-col gap-1">
-                          {draggableVendors.map((vendor, index) => {
-                            const isActive = selectedVendor?.id === vendor.id;
-                            const modelCount = profileCountByVendor.get(vendor.id) ?? 0;
-                            const providerLabel = getProviderDisplayName(vendor.providerType, t);
-                            return (
-                              <Draggable key={vendor.id} draggableId={vendor.id} index={index}>
-                                {(provided, snapshot) => {
-                                  // 修复 CustomScrollArea 内拖拽偏移问题
-                                  const style = provided.draggableProps.style;
-                                  const draggingStyle = snapshot.isDragging ? {
-                                    ...style,
-                                    left: 'auto',
-                                    top: 'auto',
-                                  } : style;
-                                  return (
-                                  <div
-                                    ref={provided.innerRef}
-                                    {...provided.draggableProps}
-                                    {...provided.dragHandleProps}
-                                    style={draggingStyle}
-                                    onClick={() => setSelectedVendorId(vendor.id)}
-                                    className={cn(
-                                      'px-3 py-2 text-left w-full flex items-center gap-2 cursor-grab active:cursor-grabbing group',
-                                      isActive
-                                        ? settingsQuietSelectedRowClassName
-                                        : cn(settingsQuietInteractiveRowClassName, settingsQuietIdleRowClassName),
-                                      snapshot.isDragging && 'shadow-lg ring-1 ring-border bg-card z-50'
-                                    )}
-                                   >
-                                     <span
-                                       data-testid={`vendor-icon-${vendor.id}`}
-                                       data-icon-tone={getVendorIconTone(vendor)}
-                                       data-icon-chrome="badge"
-                                       className="inline-flex shrink-0 items-center justify-center transition-[filter,opacity,color,background-color,border-color] duration-150"
-                                       style={getVendorIconBadgeStyle(vendor)}
-                                     >
-                                       <ProviderIcon
-                                         modelId={vendor.providerType || vendor.name || ''}
-                                         size={14}
-                                         showTooltip={false}
-                                         variant="color"
-                                         renderMode="glyph"
-                                       />
-                                     </span>
-                                     <div className="flex-1 min-w-0 text-left">
-                                      <div className="flex flex-wrap items-center justify-between gap-1.5">
-                                        <div className="flex flex-col min-w-0 flex-1">
-                                          <span className="truncate">{vendor.name || providerLabel}</span>
-                                        </div>
-                                        {modelCount > 0 && <span className="text-[10px] text-muted-foreground/60 bg-muted/50 px-1.5 py-0.5 rounded-full">{modelCount}</span>}
-                                      </div>
-                                    </div>
-                                  </div>
-                                  );
-                                }}
-                              </Draggable>
-                            );
-                          })}
-                          {provided.placeholder}
-                        </div>
-                      )}
-                    </Droppable>
-                  </DragDropContext>
-                </div>
-              )}
+        <VendorSettingsProvider value={contextValue}>
+          <div className="flex flex-col gap-6 md:grid md:grid-cols-[minmax(180px,200px)_1fr]">
+            <VendorSidebar />
+            <div className="space-y-6 w-full min-w-0">
+              <VendorDetailPanel />
             </div>
           </div>
-
-          <div className="space-y-6 w-full min-w-0">
-            {selectedVendor ? (
-              <>
-                <div className="w-full">
-                  <div className="mb-5 flex flex-col gap-2">
-                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-                      <div className="flex items-center gap-2 min-w-0">
-                        {selectedVendorIsSiliconflow && <SiliconFlowLogo className="h-5" />}
-                        <h3 className="text-lg font-medium text-foreground truncate">
-                          {getVendorDisplayName(selectedVendor, getProviderDisplayName(selectedVendor.providerType, t))}
-                        </h3>
-                        {selectedVendorIsSiliconflow && <Badge variant="default" className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1.5 py-0 shrink-0">{t('settings:api.modal.capabilities.recommended')}</Badge>}
-                        {(() => {
-                          const websiteUrl = selectedVendor.websiteUrl || getProviderWebsiteUrl(selectedVendor.providerType);
-                          return websiteUrl ? (
-                            <NotionButton
-                              size="sm"
-                              variant="ghost"
-                              iconOnly
-                              className="opacity-60 hover:opacity-100"
-                              onClick={() => void openUrl(websiteUrl)}
-                              title={t('settings:vendor_panel.open_website')}
-                            >
-                              <ArrowSquareOut className="h-3.5 w-3.5" />
-                            </NotionButton>
-                          ) : null;
-                        })()}
-                      </div>
-                      <div className="flex flex-wrap gap-2">
-                        {isEditingVendor ? (
-                          <>
-                            <NotionButton size="sm" variant="ghost" onClick={handleCancelEditVendor}>{t('common:actions.cancel')}</NotionButton>
-                            <NotionButton size="sm" variant="primary" onClick={handleSaveEditVendor} disabled={vendorSaving}>{t('common:actions.save')}</NotionButton>
-                          </>
-                        ) : (
-                          <>
-                            <NotionButton size="sm" variant="ghost" onClick={() => handleStartEditVendor(selectedVendor)}>{t('common:actions.edit')}</NotionButton>
-                            {!selectedVendorIsSiliconflow && !selectedVendor.isBuiltin && !selectedVendor.isReadOnly && (
-                              <NotionButton size="sm" variant="danger" onClick={() => handleDeleteVendor(selectedVendor)}>{t('common:actions.delete')}</NotionButton>
-                            )}
-                          </>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-6 text-sm md:grid md:grid-cols-2">
-                    {isEditingVendor ? (
-                      <>
-                        <div className="md:col-span-2 space-y-2">
-                          <Label className="text-xs font-medium text-muted-foreground">{t('settings:vendor_modal.name_label')}</Label>
-                          <Input value={vendorFormData.name || ''} onChange={e => setVendorFormData(prev => ({ ...prev, name: e.target.value }))} placeholder={t('settings:vendor_modal.name_placeholder')} />
-                        </div>
-                        <div className="md:col-span-2 space-y-2">
-                          <Label className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                            <LinkSimple className="h-3.5 w-3.5" aria-hidden="true" />
-                            <span>{t('settings:vendor_modal.base_url_label')}</span>
-                          </Label>
-                          <Input value={vendorFormData.baseUrl || ''} onChange={e => setVendorFormData(prev => ({ ...prev, baseUrl: e.target.value }))} placeholder="https://api.openai.com/v1" className="font-mono" />
-                        </div>
-                        <div className="md:col-span-2 space-y-2">
-                          <Label className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
-                            <NotePencil className="h-3.5 w-3.5" aria-hidden="true" />
-                            <span>{t('settings:vendor_modal.notes_label')}</span>
-                          </Label>
-                          <Textarea value={vendorFormData.notes || ''} onChange={e => setVendorFormData(prev => ({ ...prev, notes: e.target.value }))} placeholder={t('settings:vendor_modal.notes_placeholder')} rows={3} />
-                        </div>
-                      </>
-                    ) : (
-                      <>
-                        <div className="md:col-span-2 space-y-2">
-                          <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                            <LinkSimple className="h-3.5 w-3.5" aria-hidden="true" />
-                            <span>{t('settings:vendor_panel.base_url')}</span>
-                          </div>
-                          <Input
-                            value={baseUrlDraft}
-                            onChange={(e) => setBaseUrlDraft(e.target.value)}
-                            onKeyDown={(e) => {
-                              if (e.key === 'Enter') {
-                                // 让 onBlur 统一处理保存逻辑（避免重复代码与乱序）
-                                (e.currentTarget as HTMLInputElement).blur();
-                              }
-                            }}
-                            onBlur={() => {
-                              if (!selectedVendor) return;
-                              const normalized = normalizeBaseUrl(baseUrlDraft);
-                              if (!normalized) {
-                                showGlobalNotification('error', t('settings:vendor_modal.validation_base_url'));
-                                setBaseUrlDraft(selectedVendor.baseUrl || '');
-                                return;
-                              }
-                              if (normalizeBaseUrl(selectedVendor.baseUrl || '') === normalized) {
-                                return;
-                              }
-                              handleSaveVendorBaseUrl(selectedVendor.id, normalized);
-                            }}
-                            placeholder="https://api.openai.com/v1"
-                            className="font-mono bg-muted/30 border-transparent focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
-                            disabled={vendorBusy}
-                          />
-                        </div>
-                        <div className="md:col-span-2 space-y-2">
-                          <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                            <Key className="h-3.5 w-3.5" aria-hidden="true" />
-                            <span>{t('settings:vendor_panel.api_key')}</span>
-                          </div>
-                          <div className="mt-1">
-                            {selectedVendorIsSiliconflow ? (
-                              <SiliconFlowSection variant="inline" onCreateConfig={handleSiliconFlowConfig} onBatchCreateConfigs={handleBatchCreateConfigs} onBatchConfigsCreated={handleBatchConfigsCreated} showMessage={showGlobalNotification} />
-                            ) : (
-                              <VendorApiKeySection key={selectedVendor.id} vendor={selectedVendor} onSave={(apiKey) => handleSaveVendorApiKey(selectedVendor.id, apiKey)} onClear={() => handleClearVendorApiKey(selectedVendor.id)} showMessage={showGlobalNotification} />
-                            )}
-                          </div>
-                        </div>
-                        {selectedVendor.notes && (
-                          <div className="md:col-span-2 space-y-2">
-                            <div className="inline-flex items-center gap-1.5 text-xs font-medium text-muted-foreground uppercase tracking-wider">
-                              <NotePencil className="h-3.5 w-3.5" aria-hidden="true" />
-                              <span>{t('settings:vendor_panel.notes')}</span>
-                            </div>
-                            <div className="text-sm text-foreground leading-relaxed">{selectedVendor.notes}</div>
-                          </div>
-                        )}
-                      </>
-                    )}
-                  </div>
-                </div>
-
-                <div className="w-full border-t border-border/40 pt-6">
-                  <div className="space-y-6">
-                    {!selectedVendorIsSiliconflow && (
-                      <div className="flex flex-wrap items-center justify-between gap-2">
-                        <div className="min-w-0 flex-1 space-y-1">
-                          <h3 className="text-lg font-medium text-foreground">{t('settings:vendor_panel.model_list_title')}</h3>
-                          <p className="text-sm text-muted-foreground">{t('settings:vendor_panel.model_list_desc', { count: selectedVendorModels.length })}</p>
-                        </div>
-                        <NotionButton size="sm" variant="primary" className="flex-shrink-0" onClick={() => {
-                          if (isSmallScreen) {
-                            handleOpenModelEditor(selectedVendor);
-                          } else {
-                            handleAddModelInline(selectedVendor);
-                          }
-                        }}>
-                          <Plus className="h-3.5 w-3.5" />{t('settings:vendor_panel.add_model_button')}
-                        </NotionButton>
-                      </div>
-                    )}
-                    
-                    <div>
-                      {selectedVendorIsSiliconflow && (
-                        <div className="mb-6">
-                          <SiliconFlowSection variant="models" onCreateConfig={handleSiliconFlowConfig} onBatchCreateConfigs={handleBatchCreateConfigs} onBatchConfigsCreated={handleBatchConfigsCreated} showMessage={showGlobalNotification} />
-                        </div>
-                      )}
-                      {!selectedVendorIsSiliconflow && onAddVendorModels && supportsModelFetching(selectedVendor.providerType) && (
-                        <div className="mb-6">
-                          <VendorModelFetcher
-                            key={selectedVendor.id}
-                            vendor={selectedVendor}
-                            existingModelIds={selectedVendorModels.map(({ profile }) => profile.model)}
-                            onAddModels={onAddVendorModels}
-                          />
-                        </div>
-                      )}
-                      <div className="space-y-3">
-                      {/* 内联新增模型区域：桌面端，在列表顶部显示 */}
-                      {!isSmallScreen && isAddingNewModel && inlineEditState && (
-                        <div className="group relative rounded-lg border border-primary/30 bg-muted/30 transition-all duration-200">
-                          <div className="pt-3 px-3 pb-3">
-                            <ShadApiEditModal
-                              api={inlineEditState.api}
-                              onSave={async (editedApi) => {
-                                await handleSaveInlineEdit(editedApi);
-                              }}
-                              onCancel={handleCancelAddModel}
-                              hideConnectionFields
-                              lockedVendorInfo={{
-                                name: selectedVendor.name,
-                                baseUrl: selectedVendor.baseUrl,
-                                providerType: selectedVendor.providerType,
-                              }}
-                              embeddedMode={true}
-                            />
-                          </div>
-                        </div>
-                      )}
-                      {selectedVendorModels.length === 0 && !isAddingNewModel ? (
-                        <div className="rounded-lg border border-dashed border-border/60 p-8 text-center text-sm text-muted-foreground bg-muted/10">{t('settings:vendor_panel.model_empty')}</div>
-                      ) : (
-                        <>
-                        {selectedVendorModels.map(({ profile, api }) => {
-                          const isEditing = inlineEditState?.profileId === profile.id;
-                          // 为动画保持内容：即使收起也保留 api 数据用于动画
-                          const editApiForAnimation = isEditing ? inlineEditState.api : convertProfileToApiConfig(profile, selectedVendor);
-                          
-                          // 点击编辑按钮：移动端使用右侧滑动面板，桌面端使用内联编辑
-                          const handleEditClick = () => {
-                            if (isSmallScreen) {
-                              // 移动端：使用原有的右侧滑动面板
-                              handleOpenModelEditor(selectedVendor, profile);
-                            } else {
-                              // 桌面端：使用内联编辑
-                              if (isEditing) {
-                                setInlineEditState(null);
-                              } else {
-                                // 切换到编辑已有模型时，取消新增模式
-                                if (isAddingNewModel) handleCancelAddModel();
-                                const editApi = convertProfileToApiConfig(profile, selectedVendor);
-                                setInlineEditState({ profileId: profile.id, api: editApi });
-                              }
-                            }
-                          };
-                          
-                          return (
-                            <div key={profile.id} className={cn(
-                              "group relative border border-transparent",
-                              isEditing
-                                ? cn(settingsQuietRowBaseClassName, settingsQuietActiveSurfaceClassName)
-                                : settingsQuietInteractiveRowClassName
-                            )}>
-                               {/* 卡片头部：始终显示 */}
-                               <div className="p-3 space-y-2">
-                                 <div className="flex items-start gap-3">
-                                   <ProviderIcon modelId={api.model} size={20} showTooltip={false} />
-                                   <div className="flex-1 min-w-0 space-y-1">
-                                    <div className="flex items-center gap-2">
-                                      <span className="text-sm font-medium text-foreground truncate">{profile.label || api.name}</span>
-                                      {!profile.enabled && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground whitespace-nowrap shrink-0">{t('settings:status.disabled')}</span>}
-                                      {api.isBuiltin && api.isReadOnly && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-600 dark:bg-blue-900/20 dark:text-blue-400 whitespace-nowrap shrink-0">{t('settings:api_config.badge_builtin_free')}</span>}
-                                    </div>
-                                    <div className="font-mono text-xs text-muted-foreground truncate">{api.model}</div>
-                                    
-                                    <ModelCapabilityIcons
-                                      className="pt-1"
-                                      isMultimodal={profile.isMultimodal}
-                                      isReasoning={profile.isReasoning}
-                                      isEmbedding={profile.isEmbedding}
-                                      isReranker={profile.isReranker}
-                                      supportsTools={profile.supportsTools}
-                                      size="sm"
-                                    />
-                                    
-                                    {/* 操作按钮区域 - 改为上下布局，始终显示 */}
-                                    <div className="flex items-center gap-1 pt-2">
-                                      <Switch checked={profile.enabled} onCheckedChange={value => handleToggleModelProfile(profile, value)} disabled={(api.isBuiltin && api.isReadOnly) || vendorBusy} className="mr-2" />
-                                      <NotionButton size="sm" variant="ghost" iconOnly className={cn(profile.isFavorite && "text-yellow-500")} onClick={() => handleToggleFavorite(profile)} disabled={vendorBusy} title={t('settings:api_config.toggle_favorite')}>
-                                        <Star className="h-3.5 w-3.5" weight={profile.isFavorite ? 'fill' : 'regular'} />
-                                      </NotionButton>
-                                      <NotionButton 
-                                        size="sm" 
-                                        variant={!isSmallScreen && isEditing ? "default" : "ghost"} 
-                                        iconOnly
-                                        onClick={handleEditClick} 
-                                        disabled={vendorBusy} 
-                                        title={!isSmallScreen && isEditing ? t('common:actions.close') : t('common:actions.edit')}
-                                      >
-                                        {!isSmallScreen && isEditing ? <CaretUp className="h-3.5 w-3.5" /> : <PencilSimple className="h-3.5 w-3.5" />}
-                                      </NotionButton>
-                                      <NotionButton size="sm" variant="ghost" iconOnly onClick={() => void testApiConnection(api)} disabled={testingApi === api.id || vendorBusy} title={t('settings:api_config.test_button')}>
-                                        {testingApi === api.id ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <Pulse className="h-3.5 w-3.5" />}
-                                      </NotionButton>
-                                      <NotionButton size="sm" variant="ghost" iconOnly onClick={() => handleDeleteModelProfile(profile)} disabled={(api.isBuiltin && api.isReadOnly) || vendorBusy} title={t('common:actions.delete')} className="text-muted-foreground hover:text-destructive"><Trash className="h-3.5 w-3.5" /></NotionButton>
-                                    </div>
-                                  </div>
-                                </div>
-                              </div>
-                              
-                              {/* 内联编辑区域：仅桌面端显示，带动画 */}
-                              {!isSmallScreen && (
-                                <div 
-                                  className={cn(
-                                    "grid transition-all duration-300 ease-in-out",
-                                    isEditing ? "grid-rows-[1fr] opacity-100" : "grid-rows-[0fr] opacity-0"
-                                  )}
-                                >
-                                  <div className="overflow-hidden">
-                                    <div className="pt-3 px-3 pb-3">
-                                      <ShadApiEditModal
-                                        api={editApiForAnimation}
-                                        onSave={async (editedApi) => {
-                                          await handleSaveInlineEdit(editedApi);
-                                          setInlineEditState(null);
-                                        }}
-                                        onCancel={() => setInlineEditState(null)}
-                                        hideConnectionFields
-                                        lockedVendorInfo={{
-                                          name: selectedVendor.name,
-                                          baseUrl: selectedVendor.baseUrl,
-                                          providerType: selectedVendor.providerType,
-                                        }}
-                                        embeddedMode={true}
-                                      />
-                                    </div>
-                                  </div>
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </>
-                    )}
-                      </div>
-                    </div>
-                  </div>
-                </div>
-              </>
-            ) : (
-              <div className="rounded-2xl border border-dashed border-border/60 p-10 text-center text-muted-foreground">{t('settings:vendor_panel.create_vendor_cta')}</div>
-            )}
-          </div>
-        </div>
+        </VendorSettingsProvider>
       </SettingSection>
     </div>
   );
