@@ -92,7 +92,7 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
       setError(t('settings:vendor_modal.validation_name'));
       return;
     }
-    if (isEditing && !formData.baseUrl.trim()) {
+    if (!formData.baseUrl.trim()) {
       setError(t('settings:vendor_modal.validation_base_url'));
       return;
     }
@@ -176,21 +176,21 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
           </SelectContent>
         </Select>
       </div>
+      <div>
+        <Label htmlFor={baseUrlInputId} className="inline-flex items-center gap-1.5">
+          <LinkSimple className="h-3.5 w-3.5" aria-hidden="true" />
+          <span>{t('settings:vendor_modal.base_url_label')}</span>
+        </Label>
+        <Input
+          id={baseUrlInputId}
+          value={formData.baseUrl}
+          onChange={e => setFormData(prev => ({ ...prev, baseUrl: e.target.value }))}
+          placeholder="https://api.openai.com/v1"
+          className="mt-2 font-mono"
+        />
+      </div>
       {isEditing && (
         <>
-          <div>
-            <Label htmlFor={baseUrlInputId} className="inline-flex items-center gap-1.5">
-              <LinkSimple className="h-3.5 w-3.5" aria-hidden="true" />
-              <span>{t('settings:vendor_modal.base_url_label')}</span>
-            </Label>
-            <Input
-              id={baseUrlInputId}
-              value={formData.baseUrl}
-              onChange={e => setFormData(prev => ({ ...prev, baseUrl: e.target.value }))}
-              placeholder="https://api.openai.com/v1"
-              className="mt-2 font-mono"
-            />
-          </div>
           <div>
             <Label className="inline-flex items-center gap-1.5">
               <Key className="h-3.5 w-3.5" aria-hidden="true" />
