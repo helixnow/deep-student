@@ -143,24 +143,17 @@ export const VendorSidebar: React.FC = () => {
       <div
         ref={provided.innerRef}
         {...provided.draggableProps}
+        {...provided.dragHandleProps}
         style={draggingStyle}
         onClick={() => setSelectedVendorId(vendor.id)}
         className={cn(
-          'px-3 py-2 text-left w-full flex items-center gap-2 cursor-pointer group',
+          'px-3 py-2 text-left w-full flex items-center gap-2 cursor-grab active:cursor-grabbing group',
           isActive
             ? settingsQuietSelectedRowClassName
             : cn(settingsQuietInteractiveRowClassName, settingsQuietIdleRowClassName),
           snapshot.isDragging && 'shadow-lg ring-1 ring-border bg-card z-50'
         )}
       >
-        {/* 独立拖拽 handle */}
-        <span
-          {...provided.dragHandleProps}
-          className="shrink-0 cursor-grab active:cursor-grabbing text-muted-foreground/30 hover:text-muted-foreground/60 transition-colors"
-          onClick={(e) => e.stopPropagation()}
-        >
-          <DotsSixVertical size={12} />
-        </span>
         <span
           data-testid={`vendor-icon-${vendor.id}`}
           data-icon-tone={getVendorIconTone(vendor)}
@@ -190,6 +183,10 @@ export const VendorSidebar: React.FC = () => {
             </div>
           </div>
         </div>
+        {/* 拖拽指示：hover 时显示，放最右边 */}
+        <span className="shrink-0 text-muted-foreground/30 opacity-0 group-hover:opacity-100 transition-opacity duration-150">
+          <DotsSixVertical size={12} />
+        </span>
       </div>
     );
   };
