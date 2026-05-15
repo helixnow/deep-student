@@ -5,14 +5,13 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowSquareOut, CaretDown, CaretUp, Check, DotsThree, Key, LinkSimple, NotePencil, PencilSimple, Plus, Pulse, Spinner, Star, Trash, Warning } from '@phosphor-icons/react';
+import { ArrowSquareOut, CaretDown, CaretUp, Check, DotsThree, Key, LinkSimple, NotePencil, PencilSimple, Plus, Pulse, Spinner, Star, Trash } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
 import { Label } from '@/components/ui/shad/Label';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Switch } from '@/components/ui/shad/Switch';
-import { Popover, PopoverTrigger, PopoverContent } from '@/components/ui/shad/Popover';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/shad/Sheet';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { cn } from '@/lib/utils';
@@ -368,7 +367,7 @@ export const VendorDetailPanel: React.FC = () => {
       </div>
 
       {/* 模型管理区 */}
-      <div className="w-full border-t border-border/40 pt-6">
+      <div className="w-full pt-4">
         <div className="space-y-6">
           {!selectedVendorIsSiliconflow && (
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -437,36 +436,21 @@ export const VendorDetailPanel: React.FC = () => {
                                 {!profile.enabled && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground whitespace-nowrap shrink-0">{t('settings:status.disabled')}</span>}
                                 {isReadOnly && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary whitespace-nowrap shrink-0">{t('settings:api_config.badge_builtin_free')}</span>}
                               </div>
-                              <div className="font-mono text-xs text-muted-foreground truncate">{api.model}</div>
+                              <div className="flex items-center gap-1.5">
+                                <span className="font-mono text-xs text-muted-foreground truncate">{api.model}</span>
+                                <ModelCapabilityIcons
+                                  isMultimodal={profile.isMultimodal}
+                                  isReasoning={profile.isReasoning}
+                                  isEmbedding={profile.isEmbedding}
+                                  isReranker={profile.isReranker}
+                                  supportsTools={profile.supportsTools}
+                                  size="xs"
+                                />
+                              </div>
                             </div>
 
-                            {/* 操作区域：capability icons + 主操作 + 次要操作 */}
+                            {/* 操作区域：次要操作 + 编辑 + 开关（开关在最右） */}
                             <div className="flex items-center gap-1.5 shrink-0">
-                              <ModelCapabilityIcons
-                                isMultimodal={profile.isMultimodal}
-                                isReasoning={profile.isReasoning}
-                                isEmbedding={profile.isEmbedding}
-                                isReranker={profile.isReranker}
-                                supportsTools={profile.supportsTools}
-                                size="xs"
-                              />
-                              {/* 主操作：始终可见 */}
-                              <Switch
-                                checked={profile.enabled}
-                                onCheckedChange={value => handleToggleModelProfile(profile, value)}
-                                disabled={isReadOnly || vendorBusy}
-                              />
-                              <NotionButton
-                                size="sm"
-                                variant={isEditing ? "default" : "ghost"}
-                                iconOnly
-                                onClick={handleEditClick}
-                                disabled={vendorBusy}
-                                title={t('common:actions.edit')}
-                              >
-                                <PencilSimple className="h-3.5 w-3.5" />
-                              </NotionButton>
-
                               {/* 次要操作：hover 时显示 */}
                               <div className="flex items-center gap-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity duration-150">
                                 <NotionButton
@@ -491,40 +475,41 @@ export const VendorDetailPanel: React.FC = () => {
                                   {testingApi === api.id ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <Pulse className="h-3.5 w-3.5" />}
                                 </NotionButton>
 
-                                {/* 删除：Popover 确认 */}
+                                {/* 删除：触发全局确认对话框 */}
                                 {!isReadOnly ? (
-                                  <Popover>
-                                    <PopoverTrigger asChild>
-                                      <NotionButton
-                                        size="sm"
-                                        variant="ghost"
-                                        iconOnly
-                                        disabled={vendorBusy}
-                                        title={t('common:actions.delete')}
-                                        className="text-muted-foreground hover:text-destructive"
-                                      >
-                                        <Trash className="h-3.5 w-3.5" />
-                                      </NotionButton>
-                                    </PopoverTrigger>
-                                    <PopoverContent side="top" align="end" className="w-auto p-3">
-                                      <div className="flex flex-col gap-2">
-                                        <div className="flex items-center gap-2 text-sm text-foreground">
-                                          <Warning className="h-4 w-4 text-destructive shrink-0" />
-                                          <span>{t('settings:vendor_panel.delete_model_confirm', { defaultValue: '\u786e\u8ba4\u5220\u9664\u6b64\u6a21\u578b\uff1f' })}</span>
-                                        </div>
-                                        <div className="flex justify-end gap-2">
-                                          <NotionButton size="sm" variant="danger" onClick={() => handleDeleteModelProfile(profile)}>
-                                            {t('common:actions.delete')}
-                                          </NotionButton>
-                                        </div>
-                                      </div>
-                                    </PopoverContent>
-                                  </Popover>
+                                  <NotionButton
+                                    size="sm"
+                                    variant="ghost"
+                                    iconOnly
+                                    disabled={vendorBusy}
+                                    title={t('common:actions.delete')}
+                                    className="text-muted-foreground hover:text-destructive"
+                                    onClick={() => handleDeleteModelProfile(profile)}
+                                  >
+                                    <Trash className="h-3.5 w-3.5" />
+                                  </NotionButton>
                                 ) : (
                                   /* 占位：保持对齐 */
                                   <div className="h-7 w-7 shrink-0" />
                                 )}
                               </div>
+                              {/* 编辑按钮 */}
+                              <NotionButton
+                                size="sm"
+                                variant={isEditing ? "default" : "ghost"}
+                                iconOnly
+                                onClick={handleEditClick}
+                                disabled={vendorBusy}
+                                title={t('common:actions.edit')}
+                              >
+                                <PencilSimple className="h-3.5 w-3.5" />
+                              </NotionButton>
+                              {/* 开关：最右 */}
+                              <Switch
+                                checked={profile.enabled}
+                                onCheckedChange={value => handleToggleModelProfile(profile, value)}
+                                disabled={isReadOnly || vendorBusy}
+                              />
                             </div>
                           </div>
                         </div>
@@ -548,7 +533,7 @@ export const VendorDetailPanel: React.FC = () => {
           }
         }}
       >
-        <SheetContent side="right" className="w-[min(92vw,32rem)] p-0 flex flex-col">
+        <SheetContent side="right" className="w-[min(92vw,32rem)] p-0 flex flex-col" overlayClassName="backdrop-blur-sm !z-[10000]" style={{ zIndex: 10000 }}>
           <SheetHeader className="px-6 pt-6 pb-4 border-b border-border/40 shrink-0">
             <SheetTitle>
               {isAddingNewModel
