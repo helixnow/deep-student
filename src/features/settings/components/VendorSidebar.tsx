@@ -216,7 +216,13 @@ export const VendorSidebar: React.FC = () => {
           </div>
         ) : (
           <DragDropContext onDragEnd={handleDragEnd}>
-            <Droppable droppableId="vendor-list">
+            <Droppable
+              droppableId="vendor-list"
+              renderClone={(provided, snapshot, rubric) => {
+                const vendor = sortedVendors[rubric.source.index];
+                return renderVendorRow(vendor, provided, snapshot);
+              }}
+            >
               {(provided) => (
                 <div ref={provided.innerRef} {...provided.droppableProps} className="flex flex-col gap-0.5">
                   {sortedVendors.map((vendor, index) => (
