@@ -7,7 +7,7 @@
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { CaretDown, CaretUp, Check, Clock, DownloadSimple, MagnifyingGlass, Plus, Spinner, Stack } from '@phosphor-icons/react';
+import { Check, Clock, DownloadSimple, MagnifyingGlass, Plus, Spinner, Stack } from '@phosphor-icons/react';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
@@ -61,13 +61,12 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
 }) => {
   const { t } = useTranslation(['settings', 'common']);
   const [loading, setLoading] = useState(false);
-  const [adding, setAdding] = useState(false);
+  const [addingId, setAddingId] = useState<string | null>(null);
+  const [addingAll, setAddingAll] = useState(false);
   const [models, setModels] = useState<FetchedModel[]>([]);
-  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [lastFetchTime, setLastFetchTime] = useState<number | null>(null);
   const [isFromCache, setIsFromCache] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
-  const [expanded, setExpanded] = useState(false);
 
   const cacheKey = `vendor_models.${vendor.id}`;
   const cacheTimeKey = `vendor_models_time.${vendor.id}`;
@@ -172,9 +171,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
 
   // 供应商切换时重置所有状态（防御性：配合 key prop 双重保障）
   useEffect(() => {
-    setSelectedIds(new Set());
     setSearchQuery('');
-    setExpanded(false);
     setModels([]);
     setLastFetchTime(null);
     setIsFromCache(false);
@@ -277,7 +274,6 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
     setLoading(true);
     setModels([]);
     setIsFromCache(false);
-    setSelectedIds(new Set());
 
     try {
       const fetcher = isGemini ? fetchGemini : fetchOpenAICompatible;
@@ -293,7 +289,6 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
       }
 
       setModels(result);
-      setExpanded(true); // 获取后自动展开
       await saveCache(result);
       showGlobalNotification('success', t('settings:vendor_model_fetcher.fetch_success', { count: result.length }));
     } catch (err: unknown) {
@@ -319,34 +314,30 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
   const newModels = useMemo(() => filteredModels.filter(m => !existingSet.has(m.id.toLowerCase())), [filteredModels, existingSet]);
   const existingModelsInList = useMemo(() => filteredModels.filter(m => existingSet.has(m.id.toLowerCase())), [filteredModels, existingSet]);
 
-  const toggleSelect = (id: string) => {
-    setSelectedIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
-    });
-  };
-
-  const selectAllNew = () => {
-    setSelectedIds(new Set(newModels.map(m => m.id)));
-  };
-
-  const clearSelection = () => {
-    setSelectedIds(new Set());
-  };
-
-  const handleAddSelected = async () => {
-    const toAdd = models.filter(m => selectedIds.has(m.id));
-    if (toAdd.length === 0) return;
-    setAdding(true);
+  // 单条添加
+  const handleAddSingle = async (model: FetchedModel) => {
+    setAddingId(model.id);
     try {
-      await onAddModels(vendor, toAdd.map(m => ({ modelId: m.id, label: m.label })));
-      showGlobalNotification('success', t('settings:vendor_model_fetcher.add_success', { count: toAdd.length }));
-      setSelectedIds(new Set());
+      await onAddModels(vendor, [{ modelId: model.id, label: model.label }]);
+      showGlobalNotification('success', t('settings:vendor_model_fetcher.add_success', { count: 1 }));
     } catch (err: unknown) {
       showGlobalNotification('error', t('settings:vendor_model_fetcher.add_failed', { error: err instanceof Error ? err.message : 'Unknown error' }));
     } finally {
-      setAdding(false);
+      setAddingId(null);
+    }
+  };
+
+  // 全部添加（未添加的）
+  const handleAddAll = async () => {
+    if (newModels.length === 0) return;
+    setAddingAll(true);
+    try {
+      await onAddModels(vendor, newModels.map(m => ({ modelId: m.id, label: m.label })));
+      showGlobalNotification('success', t('settings:vendor_model_fetcher.add_success', { count: newModels.length }));
+    } catch (err: unknown) {
+      showGlobalNotification('error', t('settings:vendor_model_fetcher.add_failed', { error: err instanceof Error ? err.message : 'Unknown error' }));
+    } finally {
+      setAddingAll(false);
     }
   };
 
@@ -360,182 +351,141 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
   };
 
   return (
-    <div className="rounded-lg border border-dashed border-border/50 bg-muted/20 p-4 space-y-3">
-      {/* 头部：获取按钮 + 搜索框 + 计数 */}
-      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
-        <div className="flex items-center gap-2">
-          <NotionButton
-            variant="default"
-            size="sm"
-            onClick={() => fetchModels(true)}
-            disabled={loading || !hasApiKey || !hasBaseUrl}
-          >
-            {loading ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <DownloadSimple className="h-3.5 w-3.5" />}
-            {loading ? t('settings:vendor_model_fetcher.fetching') : t('settings:vendor_model_fetcher.fetch_button')}
-          </NotionButton>
-          {lastFetchTime && (
-            <div className="flex items-center gap-1 text-xs text-muted-foreground">
-              <Clock className="h-3 w-3" />
-              <span>{formatTime(lastFetchTime)}</span>
-              {isFromCache && (
-                <Badge variant="outline" className="text-[10px] px-1 py-0">
-                  {t('settings:vendor_model_fetcher.cached')}
-                </Badge>
-              )}
-            </div>
-          )}
+    <div className="rounded-lg border border-border/50 bg-muted/10 overflow-hidden">
+      {/* 头部：搜索框 + 获取按钮 */}
+      <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border/30">
+        <div className="relative flex-1 min-w-0">
+          <MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+          <Input
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder={models.length > 0
+              ? t('settings:vendor_model_fetcher.search_placeholder')
+              : t('settings:vendor_model_fetcher.search_placeholder_empty', { defaultValue: '\u83b7\u53d6\u6a21\u578b\u5217\u8868\u540e\u53ef\u641c\u7d22...' })
+            }
+            className="pl-8 h-7 text-xs border-0 bg-transparent focus-visible:ring-0 focus-visible:ring-offset-0"
+            disabled={models.length === 0}
+          />
         </div>
-        {models.length > 0 && (
-          <span className="inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Stack className="h-3.5 w-3.5" aria-hidden="true" />
-            {t('settings:vendor_model_fetcher.model_count', { count: models.length })}
-          </span>
-        )}
+        <NotionButton
+          variant="ghost"
+          size="sm"
+          onClick={() => fetchModels(true)}
+          disabled={loading || !hasApiKey || !hasBaseUrl}
+          className="shrink-0 h-7 text-xs"
+        >
+          {loading ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <DownloadSimple className="h-3.5 w-3.5" />}
+          {loading ? t('settings:vendor_model_fetcher.fetching') : t('settings:vendor_model_fetcher.fetch_button')}
+        </NotionButton>
       </div>
 
-      {/* 模型列表区域 */}
-      {models.length > 0 && (
+      {/* 模型列表 */}
+      {models.length > 0 ? (
         <>
-          {/* 搜索框：始终可见 */}
-          <div className="relative">
-            <MagnifyingGlass className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-            <Input
-              value={searchQuery}
-              onChange={e => setSearchQuery(e.target.value)}
-              placeholder={t('settings:vendor_model_fetcher.search_placeholder')}
-              className="pl-8 h-8 text-xs"
-            />
-          </div>
-
-          {/* 展开/收起 + 批量操作 */}
-          <div className="flex items-center justify-between gap-2">
+          {/* 工具栏：计数 + 全部添加 */}
+          <div className="flex items-center justify-between px-3 py-1.5 border-b border-border/20 bg-muted/20">
             <div className="flex items-center gap-2">
+              <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                <Stack className="h-3 w-3" aria-hidden="true" />
+                {t('settings:vendor_model_fetcher.model_count', { count: models.length })}
+              </span>
+              {lastFetchTime && (
+                <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+                  <Clock className="h-3 w-3" />
+                  {formatTime(lastFetchTime)}
+                  {isFromCache && (
+                    <Badge variant="outline" className="text-[9px] px-1 py-0 leading-tight">
+                      {t('settings:vendor_model_fetcher.cached')}
+                    </Badge>
+                  )}
+                </span>
+              )}
+            </div>
+            {newModels.length > 0 && (
               <NotionButton
                 variant="ghost"
                 size="sm"
-                className="text-xs h-6 px-2"
-                onClick={() => setExpanded(v => !v)}
+                onClick={handleAddAll}
+                disabled={addingAll}
+                className="text-[11px] h-6 px-2"
               >
-                {expanded ? <CaretUp className="h-3 w-3 mr-1" /> : <CaretDown className="h-3 w-3 mr-1" />}
-                {expanded
-                  ? t('settings:vendor_model_fetcher.collapse', { defaultValue: '\u6536\u8d77\u5217\u8868' })
-                  : t('settings:vendor_model_fetcher.select_models')}
-              </NotionButton>
-              {expanded && (
-                <>
-                  <NotionButton variant="ghost" size="sm" onClick={selectAllNew} className="text-xs h-6 px-2">
-                    {t('settings:vendor_model_fetcher.select_all_new')}
-                  </NotionButton>
-                  {selectedIds.size > 0 && (
-                    <NotionButton variant="ghost" size="sm" onClick={clearSelection} className="text-xs h-6 px-2">
-                      {t('settings:vendor_model_fetcher.clear_selection')}
-                    </NotionButton>
-                  )}
-                </>
-              )}
-            </div>
-            {selectedIds.size > 0 && (
-              <NotionButton
-                variant="primary"
-                size="sm"
-                onClick={handleAddSelected}
-                disabled={adding}
-                className="text-xs h-6"
-              >
-                <Plus className="h-3 w-3" />
-                {adding
-                  ? t('settings:vendor_model_fetcher.adding')
-                  : t('settings:vendor_model_fetcher.add_selected', { count: selectedIds.size })}
+                {addingAll ? <Spinner className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                {t('settings:vendor_model_fetcher.add_all_new', { defaultValue: '\u5168\u90e8\u6dfb\u52a0 ({{count}})', count: newModels.length })}
               </NotionButton>
             )}
           </div>
 
-          {/* 模型列表 */}
-          {expanded && (
-            <CustomScrollArea className="max-h-64">
-              <div className="space-y-0.5">
-                {newModels.map(m => {
-                  const isSelected = selectedIds.has(m.id);
-                  return (
+          {/* 列表 */}
+          <CustomScrollArea className="max-h-60">
+            <div className="py-1">
+              {/* 可添加的模型 */}
+              {newModels.map(m => (
+                <button
+                  key={m.id}
+                  type="button"
+                  onClick={() => handleAddSingle(m)}
+                  disabled={addingId === m.id}
+                  className={cn(
+                    "flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left transition-colors",
+                    "hover:bg-[var(--interactive-hover)] text-foreground",
+                    addingId === m.id && "opacity-50 pointer-events-none"
+                  )}
+                >
+                  <ProviderIcon modelId={m.id} size={16} showTooltip={false} variant="color" style={{ opacity: 0.7 }} />
+                  <span className="truncate font-mono flex-1 min-w-0">{m.label}</span>
+                  <span className="shrink-0 text-muted-foreground/50 group-hover:text-primary">
+                    {addingId === m.id
+                      ? <Spinner className="h-3.5 w-3.5 animate-spin" />
+                      : <Plus className="h-3.5 w-3.5" />
+                    }
+                  </span>
+                </button>
+              ))}
+
+              {/* 已添加的模型 */}
+              {existingModelsInList.length > 0 && (
+                <>
+                  {newModels.length > 0 && <div className="my-1 border-t border-border/20" />}
+                  <div className="px-3 py-1 text-[10px] text-muted-foreground/50 uppercase tracking-wider">
+                    {t('settings:vendor_model_fetcher.already_added')}
+                  </div>
+                  {existingModelsInList.map(m => (
                     <div
                       key={m.id}
-                      className={cn(
-                        "flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-xs transition-colors",
-                        isSelected ? "bg-primary/10 text-primary" : "hover:bg-[var(--interactive-hover)] text-foreground"
-                      )}
+                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-muted-foreground/40"
                     >
-                      <button
-                        type="button"
-                        onClick={() => toggleSelect(m.id)}
-                        className="flex items-center gap-2 flex-1 min-w-0 text-left"
-                      >
-                        <div className={cn(
-                          "flex items-center justify-center h-4 w-4 rounded border shrink-0",
-                          isSelected ? "bg-primary border-primary text-primary-foreground" : "border-border"
-                        )}>
-                          {isSelected && <Check className="h-3 w-3" />}
-                        </div>
-                        <ProviderIcon modelId={m.id} size={16} showTooltip={false} variant="color" style={{ opacity: 0.7 }} />
-                        <span className="truncate font-mono">{m.label}</span>
-                      </button>
-                      {/* 单条快捷添加按钮 */}
-                      <NotionButton
-                        variant="ghost"
-                        size="sm"
-                        iconOnly
-                        className="h-5 w-5 shrink-0 opacity-0 group-hover:opacity-100 hover:!opacity-100 text-muted-foreground hover:text-primary"
-                        onClick={async () => {
-                          try {
-                            await onAddModels(vendor, [{ modelId: m.id, label: m.label }]);
-                            showGlobalNotification('success', t('settings:vendor_model_fetcher.add_success', { count: 1 }));
-                          } catch (err: unknown) {
-                            showGlobalNotification('error', t('settings:vendor_model_fetcher.add_failed', { error: err instanceof Error ? err.message : 'Unknown error' }));
-                          }
-                        }}
-                        title={t('settings:vendor_model_fetcher.add_single', { defaultValue: '\u6dfb\u52a0' })}
-                      >
-                        <Plus className="h-3 w-3" />
-                      </NotionButton>
+                      <ProviderIcon
+                        modelId={m.id}
+                        size={16}
+                        showTooltip={false}
+                        variant="color"
+                        style={{ filter: 'grayscale(1)', opacity: 0.3 }}
+                      />
+                      <span className="truncate font-mono flex-1 min-w-0">{m.label}</span>
+                      <Check className="h-3.5 w-3.5 text-green-500/40 shrink-0" />
                     </div>
-                  );
-                })}
+                  ))}
+                </>
+              )}
 
-                {/* 已添加的模型（灰色显示） */}
-                {existingModelsInList.length > 0 && (
-                  <>
-                    <div className="text-[10px] text-muted-foreground/60 uppercase tracking-wider px-2 pt-2 pb-1">
-                      {t('settings:vendor_model_fetcher.already_added')}
-                    </div>
-                    {existingModelsInList.map(m => (
-                      <div
-                        key={m.id}
-                        className="flex items-center gap-2 w-full rounded-md px-2 py-1.5 text-xs text-muted-foreground/50"
-                      >
-                        <div className="h-4 w-4 shrink-0" />
-                        <ProviderIcon
-                          modelId={m.id}
-                          size={16}
-                          showTooltip={false}
-                          variant="color"
-                          style={{ filter: 'grayscale(1)', opacity: 0.3 }}
-                        />
-                        <span className="truncate font-mono line-through">{m.label}</span>
-                        <Check className="h-3 w-3 ml-auto text-green-500/50" />
-                      </div>
-                    ))}
-                  </>
-                )}
-
-                {filteredModels.length === 0 && (
-                  <div className="text-center text-xs text-muted-foreground py-4">
-                    {t('settings:vendor_model_fetcher.no_match')}
-                  </div>
-                )}
-              </div>
-            </CustomScrollArea>
-          )}
+              {/* 无匹配 */}
+              {filteredModels.length === 0 && (
+                <div className="text-center text-xs text-muted-foreground py-6">
+                  {t('settings:vendor_model_fetcher.no_match')}
+                </div>
+              )}
+            </div>
+          </CustomScrollArea>
         </>
-      )}
+      ) : !loading ? (
+        /* 空状态：未获取 */
+        <div className="px-3 py-6 text-center text-xs text-muted-foreground">
+          {hasApiKey && hasBaseUrl
+            ? t('settings:vendor_model_fetcher.click_fetch', { defaultValue: '\u70b9\u51fb\u4e0a\u65b9\u6309\u94ae\u83b7\u53d6\u53ef\u7528\u6a21\u578b\u5217\u8868' })
+            : t('settings:vendor_model_fetcher.need_config', { defaultValue: '\u8bf7\u5148\u914d\u7f6e\u63a5\u53e3\u5730\u5740\u548c API Key' })
+          }
+        </div>
+      ) : null}
     </div>
   );
 };
