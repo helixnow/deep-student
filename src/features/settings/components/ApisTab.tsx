@@ -7,7 +7,6 @@
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { Spinner } from '@phosphor-icons/react';
 import { SettingSection } from './SettingsCommon';
 import { VendorSettingsProvider, type VendorSettingsContextValue } from './VendorSettingsContext';
 import { VendorSidebar } from './VendorSidebar';
@@ -119,13 +118,6 @@ export const ApisTab: React.FC<ApisTabProps> = (props) => {
         className="py-0"
         contentClassName="space-y-4"
       >
-        {props.vendorBusy && (
-          <div className="mb-4 inline-flex items-center gap-1.5 text-xs text-muted-foreground">
-            <Spinner className="h-3.5 w-3.5 animate-spin" />
-            <span>{t('settings:saving')}</span>
-          </div>
-        )}
-
         <VendorSettingsProvider value={contextValue}>
           <div className="flex flex-col gap-6 md:grid md:grid-cols-[minmax(180px,200px)_1fr]">
             <VendorSidebar />
