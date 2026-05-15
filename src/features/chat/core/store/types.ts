@@ -15,6 +15,7 @@ import type {
 import { createDefaultChatParams, createDefaultPanelStates } from '../types/common';
 import type { ContextRef } from '../../context/types';
 import type { EditMessageResult, RetryMessageResult } from '../../adapters/types';
+import type { QueuedMessage } from '../types/queue';
 
 // ============================================================================
 // 重新导出常用类型
@@ -213,6 +214,10 @@ export interface ChatStoreState extends StoreCallbacks {
     resolvedReason?: string;
   } | null;
 
+  // Pending message queue (in-memory, per-session, not persisted)
+  queuedMessages: QueuedMessage[];
+  dequeuing: boolean;
+
   // ========== 🆕 Skills 系统（✔️ 运行时状态） ==========
 
   /** 当前激活的 Skill ID 列表（支持多选） */
@@ -292,6 +297,8 @@ export function createInitialState(sessionId: string, title?: string, descriptio
     pendingContextRefs: [], // 🆕 上下文引用初始为空数组
     pendingContextRefsDirty: false,
     pendingApprovalRequest: null, // 🆕 工具审批请求初始为 null（文档 29 P1-3）
+    queuedMessages: [],
+    dequeuing: false,
     activeSkillIds: [], // 🆕 Skills 系统：当前激活的 Skill ID 列表（支持多选）
     skillStateJson: null,
     chatParams: createDefaultChatParams(),
