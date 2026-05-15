@@ -14,7 +14,6 @@ import { useTranslation } from 'react-i18next';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import { DotsSixVertical, Plus } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { Badge } from '@/components/ui/shad/Badge';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { cn } from '@/lib/utils';
 import { ProviderIcon, getProviderBadgeChromeStyle } from '@/components/ui/ProviderIcon';
@@ -135,7 +134,6 @@ export const VendorSidebar: React.FC = () => {
     const modelCount = profileCountByVendor.get(vendor.id) ?? 0;
     const providerLabel = getProviderDisplayName(vendor.providerType, t);
     const vendorDisplayName = getVendorDisplayName(vendor, providerLabel);
-    const isSiliconflow = (vendor.providerType ?? '').toLowerCase() === 'siliconflow';
 
     // 修复 CustomScrollArea 内拖拽偏移问题
     const style = provided.draggableProps.style;
@@ -182,11 +180,6 @@ export const VendorSidebar: React.FC = () => {
           <div className="flex flex-wrap items-center justify-between gap-1.5">
             <div className="flex min-w-0 flex-1 items-center gap-1.5">
               <span className="truncate">{vendorDisplayName}</span>
-              {isSiliconflow && (
-                <Badge variant="default" className="bg-primary/10 text-primary border-primary/20 text-[10px] px-1 py-0 leading-tight shrink-0">
-                  {t('settings:api.modal.capabilities.recommended')}
-                </Badge>
-              )}
             </div>
             <div className="flex items-center gap-1.5">
               {modelCount > 0 && (
