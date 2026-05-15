@@ -9,7 +9,7 @@
  * - 推荐/自定义分组分隔线
  */
 
-import React, { useCallback } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { DragDropContext, Droppable, Draggable, type DropResult } from '@hello-pangea/dnd';
 import { DotsSixVertical, Plus } from '@phosphor-icons/react';
@@ -116,17 +116,30 @@ export const VendorSidebar: React.FC = () => {
     onReorderVendors,
   } = useVendorSettings();
 
+  // 乐观更新：本地维护拖拽顺序，避免等待持久化导致闪烁
+  const [localOrder, setLocalOrder] = useState<VendorConfig[] | null>(null);
+  const displayVendors = localOrder ?? sortedVendors;
+
+  // 当外部 sortedVendors 变化时（非拖拽触发），同步清除本地覆盖
+  useEffect(() => {
+    setLocalOrder(null);
+  }, [sortedVendors]);
+
   const handleDragEnd = useCallback((result: DropResult) => {
     if (!result.destination) return;
     const sourceIndex = result.source.index;
     const destIndex = result.destination.index;
     if (sourceIndex === destIndex) return;
 
-    const reordered = [...sortedVendors];
+    const reordered = [...displayVendors];
     const [removed] = reordered.splice(sourceIndex, 1);
     reordered.splice(destIndex, 0, removed);
+
+    // 立即更新本地顺序（乐观）
+    setLocalOrder(reordered);
+    // 后台持久化
     onReorderVendors(reordered);
-  }, [sortedVendors, onReorderVendors]);
+  }, [displayVendors, onReorderVendors]);
 
   // 渲染可拖拽供应商行（统一处理所有供应商）
   const renderVendorRow = (vendor: VendorConfig, provided: any, snapshot: any) => {
@@ -219,13 +232,13 @@ export const VendorSidebar: React.FC = () => {
             <Droppable
               droppableId="vendor-list"
               renderClone={(provided, snapshot, rubric) => {
-                const vendor = sortedVendors[rubric.source.index];
+                const vendor = displayVendors[rubric.source.index];
                 return renderVendorRow(vendor, provided, snapshot);
               }}
             >
               {(provided) => (
                 <div ref={provided.innerRef} {...provided.droppableProps} className="flex flex-col gap-0.5">
-                  {sortedVendors.map((vendor, index) => (
+                  {displayVendors.map((vendor, index) => (
                     <Draggable key={vendor.id} draggableId={vendor.id} index={index}>
                       {(provided, snapshot) => renderVendorRow(vendor, provided, snapshot)}
                     </Draggable>
