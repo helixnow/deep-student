@@ -429,34 +429,32 @@ export const VendorDetailPanel: React.FC = () => {
                       )}>
                         {/* 卡片头部 */}
                         <div className="p-3">
-                          <div className="flex items-start gap-3">
+                          <div className="flex items-center gap-3">
                             <ProviderIcon modelId={api.model} size={20} showTooltip={false} />
-                            <div className="flex-1 min-w-0 space-y-1">
-                              <div className="flex items-center gap-2 flex-wrap">
+                            <div className="flex-1 min-w-0 space-y-0.5">
+                              <div className="flex items-center gap-2">
                                 <span className="text-sm font-medium text-foreground truncate">{profile.label || api.name}</span>
                                 {!profile.enabled && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground whitespace-nowrap shrink-0">{t('settings:status.disabled')}</span>}
                                 {isReadOnly && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary whitespace-nowrap shrink-0">{t('settings:api_config.badge_builtin_free')}</span>}
-                                <ModelCapabilityIcons
-                                  className="ml-auto"
-                                  isMultimodal={profile.isMultimodal}
-                                  isReasoning={profile.isReasoning}
-                                  isEmbedding={profile.isEmbedding}
-                                  isReranker={profile.isReranker}
-                                  supportsTools={profile.supportsTools}
-                                  size="xs"
-                                />
                               </div>
                               <div className="font-mono text-xs text-muted-foreground truncate">{api.model}</div>
                             </div>
 
-                            {/* 操作区域：主操作始终可见 + 次要操作 hover 显示 */}
-                            <div className="flex items-center gap-1 shrink-0">
+                            {/* 操作区域：capability icons + 主操作 + 次要操作 */}
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <ModelCapabilityIcons
+                                isMultimodal={profile.isMultimodal}
+                                isReasoning={profile.isReasoning}
+                                isEmbedding={profile.isEmbedding}
+                                isReranker={profile.isReranker}
+                                supportsTools={profile.supportsTools}
+                                size="xs"
+                              />
                               {/* 主操作：始终可见 */}
                               <Switch
                                 checked={profile.enabled}
                                 onCheckedChange={value => handleToggleModelProfile(profile, value)}
                                 disabled={isReadOnly || vendorBusy}
-                                className="mr-1"
                               />
                               <NotionButton
                                 size="sm"
