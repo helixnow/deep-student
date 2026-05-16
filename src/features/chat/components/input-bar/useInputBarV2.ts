@@ -10,7 +10,6 @@ import { useStore, type StoreApi } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import type { ChatStore } from '../../core/types/store';
 import { COMPOSER_PANEL_KEYS, type AttachmentMeta, type PanelStates, type PdfProcessingStatus } from '../../core/types/common';
-import type { UseInputBarV2Return } from './types';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import i18n from 'i18next';
@@ -40,6 +39,8 @@ export interface UseInputBarV2Options {
   buildPdfRefTags?: () => string;
   /** ★ 清除 PDF 页码选择（发送成功后调用） */
   clearPdfPageRefs?: () => void;
+  /** 队列是否启用（来自设置开关）。默认 false（关闭则保持原冻结行为）。 */
+  queueEnabled?: boolean;
 }
 
 /**
@@ -54,7 +55,7 @@ export interface UseInputBarV2Options {
 export function useInputBarV2(
   store: StoreApi<ChatStore>,
   options?: UseInputBarV2Options
-): UseInputBarV2Return {
+) {
   // 使用 ref 保持回调的最新引用，避免闭包陈旧问题
   const optionsRef = useRef(options);
   optionsRef.current = options;
@@ -64,6 +65,7 @@ export function useInputBarV2(
     attachments,
     panelStates,
     sessionStatus,
+    queueLength,
   } = useStore(
     store,
     useShallow((s) => ({
@@ -71,6 +73,7 @@ export function useInputBarV2(
       attachments: s.attachments,
       panelStates: s.panelStates,
       sessionStatus: s.sessionStatus,
+      queueLength: s.queuedMessages.length,
     }))
   );
 
@@ -84,6 +87,13 @@ export function useInputBarV2(
 
   // 是否可以中断：streaming 状态下可中断
   const canAbort = sessionStatus === 'streaming';
+
+  // 队列设置（来自外部）
+  const queueEnabled = options?.queueEnabled ?? false;
+
+  // 是否可提交（idle 直发 OR streaming 且队列未满）
+  const canSubmit = sessionStatus === 'idle'
+    || (queueEnabled && queueLength < 5);
 
   // ========== 封装 Actions ==========
 
@@ -106,7 +116,15 @@ export function useInputBarV2(
     const state = store.getState();
 
     // 守卫检查
-    if (!state.canSend()) {
+    // 队列模式：sessionStatus 为 streaming 时也允许（会走 enqueue 分支）
+    const willEnqueue = state.sessionStatus !== 'idle';
+    if (willEnqueue) {
+      // 队列守卫：必须启用且未满
+      if (!queueEnabled || state.queuedMessages.length >= 5) {
+        console.warn('[useInputBarV2] Cannot enqueue: queue disabled or full');
+        return;
+      }
+    } else if (!state.canSend()) {
       console.warn('[useInputBarV2] Cannot send: guard check failed');
       return;
     }
@@ -358,10 +376,20 @@ export function useInputBarV2(
     }
 
     try {
-      // 调用 Store Action 发送消息
-      // 注意：sendMessage 内部已经会清空 inputValue 和 attachments
-      await state.sendMessage(finalContent, allAttachments);
-      
+      // 路由：streaming 时入队，idle 时直发
+      if (willEnqueue) {
+        // 入队：将当前 pending contextRefs（非 sticky）随消息一起快照入队，
+        // 但保留 pendingContextRefs 不清除 —— 用户还在为后续消息组合上下文。
+        const nonStickyRefs = state.pendingContextRefs.filter((r) => r.isSticky !== true);
+        state.enqueueMessage(finalContent, allAttachments, nonStickyRefs);
+        // 清空输入框和附件（与直发路径行为一致），但保留 pendingContextRefs
+        state.setInputValue('');
+        state.clearAttachments();
+      } else {
+        // 直发：sendMessage 内部已清空 inputValue/attachments/contextRefs（保留 sticky）
+        await state.sendMessage(finalContent, allAttachments);
+      }
+
       // ★ 发送成功后清除 PDF 页码选择
       if (pdfRefTags && opts?.clearPdfPageRefs) {
         console.log('[useInputBarV2] 📄 PDF page refs consumed, clearing selection');
@@ -377,7 +405,7 @@ export function useInputBarV2(
       console.error('[useInputBarV2] Send message failed:', error);
       throw error;
     }
-  }, [store]);
+  }, [store, queueEnabled]);
 
   // 中断流式
   const abortStream = useCallback(async () => {
@@ -478,8 +506,10 @@ export function useInputBarV2(
       // 状态
       inputValue,
       canSend,
+      canSubmit,
       canAbort,
       isStreaming,
+      queueLength,
       attachments,
       panelStates,
 
@@ -497,8 +527,10 @@ export function useInputBarV2(
     [
       inputValue,
       canSend,
+      canSubmit,
       canAbort,
       isStreaming,
+      queueLength,
       attachments,
       panelStates,
       setInputValue,
