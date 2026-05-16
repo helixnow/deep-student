@@ -1,18 +1,18 @@
 {
-  "generatedAt": "2026-05-14T08:52:27.893Z",
-  "scanDurationMs": 336,
+  "generatedAt": "2026-05-14T23:53:36.542Z",
+  "scanDurationMs": 359,
   "summary": {
-    "totalFiles": 1283,
-    "tsxFiles": 519,
-    "cssFiles": 72
+    "totalFiles": 1293,
+    "tsxFiles": 521,
+    "cssFiles": 75
   },
   "components": {
     "NotionButton": {
       "id": "NotionButton",
       "label": "NotionButton",
       "target": true,
-      "refs": 3769,
-      "files": 309,
+      "refs": 3772,
+      "files": 310,
       "topFiles": [
         "src/App.tsx",
         "src/command-palette/components/ShortcutSettings.tsx",
@@ -35,7 +35,7 @@
         "src/components/FieldTypeConfigurator.tsx",
         "src/components/HeaderTemplate.tsx"
       ],
-      "totalFileCount": 309
+      "totalFileCount": 310
     },
     "ShadButton": {
       "id": "ShadButton",
@@ -172,8 +172,8 @@
       "id": "ShadCheckbox",
       "label": "shad Checkbox",
       "target": true,
-      "refs": 12,
-      "files": 12,
+      "refs": 13,
+      "files": 13,
       "topFiles": [
         "src/components/QuestionBankExportDialog.tsx",
         "src/components/QuestionBankManageView.tsx",
@@ -182,13 +182,14 @@
         "src/components/practice/PaperGenerator.tsx",
         "src/components/style-lab/ComponentCompareTab.tsx",
         "src/features/chat/components/groups/GroupEditorDialog.tsx",
+        "src/features/chat/plugins/blocks/askUserBlock.tsx",
         "src/features/settings/components/McpEditorSection.tsx",
         "src/features/settings/components/MediaCacheSection.tsx",
         "src/features/settings/components/Settings.tsx",
         "src/features/settings/components/ShadApiEditModal.tsx",
         "src/features/settings/components/data-governance/BackupTab.tsx"
       ],
-      "totalFileCount": 12
+      "totalFileCount": 13
     },
     "AppSelect": {
       "id": "AppSelect",
@@ -420,7 +421,7 @@
       "id": "CustomScrollArea",
       "label": "CustomScrollArea",
       "target": true,
-      "refs": 404,
+      "refs": 402,
       "files": 120,
       "topFiles": [
         "src/App.tsx",
@@ -491,7 +492,7 @@
       "id": "UnifiedNotification",
       "label": "UnifiedNotification",
       "target": true,
-      "refs": 1365,
+      "refs": 1366,
       "files": 156,
       "topFiles": [
         "src/App.tsx",
@@ -521,8 +522,17 @@
       "id": "LucideIcons",
       "label": "lucide-react",
       "target": false,
-      "refs": 345,
-      "files": 340,
+      "refs": 0,
+      "files": 0,
+      "topFiles": [],
+      "totalFileCount": 0
+    },
+    "PhosphorIcons": {
+      "id": "PhosphorIcons",
+      "label": "Phosphor",
+      "target": true,
+      "refs": 398,
+      "files": 392,
       "topFiles": [
         "src/App.tsx",
         "src/command-palette/CommandPalette.tsx",
@@ -540,42 +550,12 @@
         "src/components/BatchOperationToolbar/BatchEditDialog.tsx",
         "src/components/BatchOperationToolbar/FilterBuilder.tsx",
         "src/components/BatchOperationToolbar/index.tsx",
+        "src/components/ChatV2StatsSection.tsx",
         "src/components/ConflictResolutionDialog.tsx",
         "src/components/CroppedExamCardImage.tsx",
-        "src/components/CsvFieldMapper.tsx",
-        "src/components/CsvImportDialog.tsx"
+        "src/components/CsvFieldMapper.tsx"
       ],
-      "totalFileCount": 340
-    },
-    "PhosphorIcons": {
-      "id": "PhosphorIcons",
-      "label": "Phosphor",
-      "target": true,
-      "refs": 55,
-      "files": 55,
-      "topFiles": [
-        "src/components/ChatV2StatsSection.tsx",
-        "src/components/Dashboard.tsx",
-        "src/components/DataCenter.tsx",
-        "src/components/DataImportExport.tsx",
-        "src/components/HeaderTemplate.tsx",
-        "src/components/LearningHeatmap/index.tsx",
-        "src/components/QuestionBankStatsView.tsx",
-        "src/components/ReviewPlanView.tsx",
-        "src/components/ReviewQuestionsView.tsx",
-        "src/components/SOTADashboardLite.tsx",
-        "src/components/UnifiedNotification.tsx",
-        "src/components/anki/TaskDashboardPage.tsx",
-        "src/components/layout/MobileHeader.tsx",
-        "src/components/layout/MobileSidebarNavigation.tsx",
-        "src/components/layout/UnifiedMobileHeader.tsx",
-        "src/components/legal/PrivacyPolicyDialog.tsx",
-        "src/components/legal/UserAgreementDialog.tsx",
-        "src/components/llm-usage/LlmUsageStatsPage.tsx",
-        "src/components/llm-usage/LlmUsageStatsSection.tsx",
-        "src/components/shared/AiContentLabel.tsx"
-      ],
-      "totalFileCount": 55
+      "totalFileCount": 392
     },
     "UnifiedSidebar": {
       "id": "UnifiedSidebar",
@@ -605,8 +585,8 @@
     "important": {
       "id": "important",
       "label": "CSS !important",
-      "count": 1059,
-      "files": 50,
+      "count": 1061,
+      "files": 51,
       "topFiles": [
         "src/command-palette/styles/shortcut-settings.css",
         "src/components/AnkiCardPreviewModal.css",
@@ -629,13 +609,13 @@
         "src/components/ui/shad/Switch.css",
         "src/features/chat/components/ActivityTimeline/ActivityTimeline.css"
       ],
-      "totalFileCount": 50
+      "totalFileCount": 51
     },
     "hardcodedColor": {
       "id": "hardcodedColor",
       "label": "硬编码颜色值",
-      "count": 162,
-      "files": 32,
+      "count": 174,
+      "files": 33,
       "topFiles": [
         "src/components/DataImportExport.tsx",
         "src/components/MinimalTemplateEditor.css",
@@ -651,19 +631,19 @@
         "src/components/ui/app-menu/AppMenu.css",
         "src/components/ui/shad/Switch.css",
         "src/features/chat/components/renderers/CodeBlock.tsx",
+        "src/features/chat/components/renderers/streamingBlocks.css",
         "src/features/chat/debug/sessionSwitchPerf.ts",
         "src/features/chat/skills/builtin-tools/session-manager.ts",
         "src/features/chat/utils/citationRemarkPlugin.ts",
         "src/features/learning-hub/apps/views/DocxPreview.tsx",
-        "src/features/learning-hub/apps/views/PptxPreview.tsx",
-        "src/features/learning-hub/components/TabBar.tsx"
+        "src/features/learning-hub/apps/views/PptxPreview.tsx"
       ],
-      "totalFileCount": 32
+      "totalFileCount": 33
     },
     "inlineStyle": {
       "id": "inlineStyle",
       "label": "inline style=",
-      "count": 531,
+      "count": 533,
       "files": 182,
       "topFiles": [
         "src/App.tsx",
@@ -694,9 +674,9 @@
     {
       "id": "button",
       "label": "Button",
-      "targetRefs": 3769,
+      "targetRefs": 3772,
       "legacyRefs": 200,
-      "total": 3969,
+      "total": 3972,
       "percentage": 95,
       "targetIds": [
         "NotionButton"
@@ -709,10 +689,10 @@
     {
       "id": "formControls",
       "label": "Form Controls",
-      "targetRefs": 147,
+      "targetRefs": 148,
       "legacyRefs": 48,
-      "total": 195,
-      "percentage": 75,
+      "total": 196,
+      "percentage": 76,
       "targetIds": [
         "ShadInput",
         "ShadTextarea",
@@ -757,9 +737,9 @@
     {
       "id": "scroll",
       "label": "Scroll",
-      "targetRefs": 404,
+      "targetRefs": 402,
       "legacyRefs": 0,
-      "total": 404,
+      "total": 402,
       "percentage": 100,
       "targetIds": [
         "CustomScrollArea"
@@ -769,10 +749,10 @@
     {
       "id": "icons",
       "label": "Icons",
-      "targetRefs": 55,
-      "legacyRefs": 345,
-      "total": 400,
-      "percentage": 14,
+      "targetRefs": 398,
+      "legacyRefs": 0,
+      "total": 398,
+      "percentage": 100,
       "targetIds": [
         "PhosphorIcons"
       ],

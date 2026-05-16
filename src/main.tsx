@@ -106,9 +106,13 @@ import { dstuDebugLog } from './debug-panel/plugins/DstuDebugPlugin';
 import { debugMasterSwitch, debugLog } from './debug-panel/debugMasterSwitch';
 // ★ 平台检测初始化（为 Android WebView 兼容性添加 CSS 类）
 import { initPlatformClasses } from './utils/platform';
+import { OverlayScrollbars, ClickScrollPlugin } from 'overlayscrollbars';
 
 // 尽早初始化平台检测类，确保 CSS 规则在渲染前生效
 initPlatformClasses();
+
+// 注册 OverlayScrollbars ClickScrollPlugin — 点击轨道时平滑滚动到目标位置
+OverlayScrollbars.plugin(ClickScrollPlugin);
 
 const maybeInstallReactGrab = () => {
   try {

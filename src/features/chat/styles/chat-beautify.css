@@ -242,7 +242,7 @@
 }
 
 .chat-v2 .message.assistant .message-content .markdown-content p {
-  margin: 0.35em 0; /* 减小段落间距，避免行距过大 */
+  margin: 0.75em 0;
 }
 
 .chat-v2 .message.assistant .message-content .markdown-content h2 {
