@@ -73,7 +73,7 @@ export function useInputBarV2(
       attachments: s.attachments,
       panelStates: s.panelStates,
       sessionStatus: s.sessionStatus,
-      queueLength: s.queuedMessages.length,
+      queueLength: s.queuedMessages?.length ?? 0,
     }))
   );
 
@@ -120,7 +120,7 @@ export function useInputBarV2(
     const willEnqueue = state.sessionStatus !== 'idle';
     if (willEnqueue) {
       // 队列守卫：必须启用且未满
-      if (!queueEnabled || state.queuedMessages.length >= 5) {
+      if (!queueEnabled || (state.queuedMessages?.length ?? 0) >= 5) {
         console.warn('[useInputBarV2] Cannot enqueue: queue disabled or full');
         return;
       }

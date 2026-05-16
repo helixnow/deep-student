@@ -5,6 +5,13 @@ import type { StoreApi } from 'zustand';
 import type { ChatStore } from '../../core/types/store';
 import { QueuedMessageBubble } from './QueuedMessageBubble';
 import { QueueErrorBar } from './QueueErrorBar';
+import type { QueuedMessage } from '../../core/types/queue';
+
+// Stable empty-array reference. We need this so that older mock stores in
+// existing tests (which don't declare `queuedMessages`) don't get a fresh
+// `[]` literal on every selector run, which would break `useShallow` equality
+// and infinite-loop renders.
+const EMPTY_QUEUE: readonly QueuedMessage[] = [];
 
 interface Props {
   store: StoreApi<ChatStore>;
@@ -33,7 +40,7 @@ export const QueuedMessageStack: React.FC<Props> = React.memo(({ store, allowSte
   } = useStore(
     store,
     useShallow((s) => ({
-      queuedMessages: s.queuedMessages,
+      queuedMessages: s.queuedMessages ?? EMPTY_QUEUE,
       inputValue: s.inputValue,
       attachments: s.attachments,
       sessionStatus: s.sessionStatus,
