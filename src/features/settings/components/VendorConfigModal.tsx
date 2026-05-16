@@ -281,7 +281,7 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
         <NotionDialogBody nativeScroll>
           {formContent}
         </NotionDialogBody>
-        <NotionDialogFooter>
+        <NotionDialogFooter className="!border-t-0">
           <NotionButton variant="ghost" size="sm" onClick={onClose}>
             {t('common:actions.cancel')}
           </NotionButton>

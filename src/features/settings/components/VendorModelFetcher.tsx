@@ -13,7 +13,6 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Input } from '@/components/ui/shad/Input';
-import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { TauriAPI } from '@/utils/tauriApi';
 import { cn } from '@/lib/utils';
@@ -272,7 +271,8 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
     }
 
     setLoading(true);
-    setModels([]);
+    // 注意：刷新期间保留旧列表（如有），让 React 通过稳定的 m.id key 做增量 diff，
+    // 避免出现「整列表先全部消失再重新出现」的闪烁。
     setIsFromCache(false);
 
     try {
@@ -288,6 +288,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
         }
       }
 
+      // 原子替换：仅在拿到新数据后整体替换，保持已添加项的视觉连续性
       setModels(result);
       await saveCache(result);
       showGlobalNotification('success', t('settings:vendor_model_fetcher.fetch_success', { count: result.length }));
@@ -415,8 +416,8 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
             )}
           </div>
 
-          {/* 列表 */}
-          <CustomScrollArea className="max-h-60">
+          {/* 列表：使用原生 overflow，避免 OverlayScrollbars 在 max-height（无固定 height）父级下高度解析失败导致不滚动。 */}
+          <div className="max-h-60 overflow-y-auto overscroll-contain">
             <div className="py-1">
               {/* 可添加的模型 */}
               {newModels.map(m => (
@@ -475,7 +476,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
                 </div>
               )}
             </div>
-          </CustomScrollArea>
+          </div>
         </>
       ) : !loading ? (
         /* 空状态：未获取 */

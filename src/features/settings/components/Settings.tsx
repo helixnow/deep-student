@@ -843,14 +843,14 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
       return (
         <div
           data-slot="mobile-settings-sheet-real-content"
-          className="flex min-h-0 flex-1 flex-col bg-[#FFFFFF] text-[#111111]"
+          className="flex min-h-0 flex-1 flex-col bg-background text-foreground [--background:0_0%_100%] [--border:220_13%_90%] [--card:0_0%_100%] [--foreground:0_0%_7%] [--muted:220_14%_96%] [--muted-foreground:220_6%_44%] [--popover:0_0%_100%]"
         >
-          <div className="flex gap-2 overflow-hidden border-b border-[#ECEEF3] px-5 py-3">
+          <div className="flex gap-2 overflow-hidden border-b border-border px-5 py-3">
             {[1, 2, 3].map((i) => (
-              <div key={i} className="h-11 w-24 shrink-0 rounded-[14px] bg-[#EEF0F4] animate-pulse" />
+              <div key={i} className="h-11 w-24 shrink-0 rounded-[14px] bg-muted animate-pulse" />
             ))}
           </div>
-          <div className="flex flex-1 items-center justify-center text-sm text-[#6E737D]">
+          <div className="flex flex-1 items-center justify-center text-sm text-muted-foreground">
             {t('settings:loading')}
           </div>
         </div>
@@ -903,7 +903,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
   );
 
   const renderSettingsSheetTabRail = () => (
-    <div className="shrink-0 border-b border-[#ECEEF3] bg-[#FFFFFF] py-2">
+    <div className="shrink-0 border-b border-border bg-background py-2">
       <div className="flex snap-x gap-2 overflow-x-auto px-5 py-1 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden">
         {sidebarNavItems.map((item) => {
           const Icon = item.icon;
@@ -921,8 +921,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
               className={cn(
                 "inline-flex min-h-11 shrink-0 snap-start items-center gap-2 rounded-[14px] px-3.5 text-sm font-medium transition-colors",
                 isActive
-                  ? "bg-[#EEF0F4] text-[#111111]"
-                  : "text-[#5F636D] hover:bg-[#F6F7FA] hover:text-[#111111]"
+                  ? "bg-primary/10 text-primary"
+                  : "text-muted-foreground hover:bg-accent hover:text-foreground"
               )}
               aria-current={isActive ? 'page' : undefined}
             >
@@ -941,7 +941,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
       id="settings-main-content"
       className={cn(
         'flex-1 min-w-0 h-full flex flex-col overflow-hidden max-w-full relative bg-[color:var(--shell-workspace-panel)]',
-        sheetMode && "bg-[#FFFFFF] text-[#111111]"
+        sheetMode && "bg-background text-foreground"
       )}
       data-slot={sheetMode ? 'mobile-settings-sheet-content' : undefined}
     >
@@ -1462,7 +1462,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
     return (
       <div
         data-slot="mobile-settings-sheet-real-content"
-        className="flex min-h-0 flex-1 flex-col overflow-hidden bg-[#FFFFFF] text-[#111111] [--background:0_0%_100%] [--border:220_13%_90%] [--card:0_0%_100%] [--foreground:0_0%_7%] [--muted:220_14%_96%] [--popover:0_0%_100%]"
+        className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background text-foreground [--background:0_0%_100%] [--border:220_13%_90%] [--card:0_0%_100%] [--foreground:0_0%_7%] [--muted:220_14%_96%] [--muted-foreground:220_6%_44%] [--popover:0_0%_100%]"
       >
         <UnifiedErrorHandler errors={mcpErrors} onDismiss={dismissMcpError} onClearAll={clearMcpErrors} />
         {renderSettingsSheetTabRail()}

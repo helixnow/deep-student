@@ -403,7 +403,7 @@ export const VendorDetailPanel: React.FC = () => {
               {selectedVendorModels.length === 0 && !isAddingNewModel ? (
                 <div className="rounded-lg border border-dashed border-border/60 p-8 text-center text-sm text-muted-foreground bg-muted/10">{t('settings:vendor_panel.model_empty')}</div>
               ) : (
-                <>
+                <div className="max-h-[min(60vh,560px)] overflow-y-auto overscroll-contain space-y-3 pr-1 -mr-1">
                   {selectedVendorModels.map(({ profile, api }) => {
                     const isEditing = inlineEditState?.profileId === profile.id;
 
@@ -516,7 +516,7 @@ export const VendorDetailPanel: React.FC = () => {
                       </div>
                     );
                   })}
-                </>
+                </div>
               )}
             </div>
           </div>

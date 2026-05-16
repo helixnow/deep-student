@@ -339,11 +339,11 @@ export const OcrEngineTestPanel: React.FC<OcrEngineTestPanelProps> = ({
 
           {/* 对比总结 */}
           {results.length >= 2 && results.every(r => r.success) && (
-            <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-lg p-3">
-              <h5 className="text-sm font-medium text-blue-700 dark:text-blue-400 mb-2">
+            <div className="bg-primary/10 dark:bg-primary/15 border border-primary/30 dark:border-primary/40 rounded-lg p-3">
+              <h5 className="text-sm font-medium text-primary mb-2">
                 {t('settings:ocr.comparison_summary')}
               </h5>
-              <div className="text-xs text-blue-600 dark:text-blue-300 space-y-1">
+              <div className="text-xs text-primary/85 dark:text-primary/80 space-y-1">
                 <p>
                   ⏱ {t('settings:ocr.fastest_engine')}: {results.reduce((a, b) => a.elapsedMs < b.elapsedMs ? a : b).engineName} 
                   ({Math.min(...results.map(r => r.elapsedMs))} ms)
