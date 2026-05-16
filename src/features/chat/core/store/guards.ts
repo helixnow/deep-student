@@ -6,7 +6,7 @@
  */
 
 import type { ChatStoreState } from './types';
-import { QUEUE_HARD_CAP } from '../types/queue';
+import { QUEUE_HARD_CAP, readBlockingInteraction } from '../types/queue';
 
 // ============================================================================
 // 守卫函数类型
@@ -159,7 +159,7 @@ export function createGuards(getState: () => ChatStoreState): Guards {
     if (state.sessionStatus !== 'idle') return false;
     if (state.queuedMessages.length === 0) return false;
     if (state.dequeuing) return false;
-    if (state.pendingBlockingInteraction !== null) return false;
+    if (readBlockingInteraction(state) !== null) return false;
     if (state.queuedMessages.some((m) => m.status === 'failed')) return false;
     return true;
   };

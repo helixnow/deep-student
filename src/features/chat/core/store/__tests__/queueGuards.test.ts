@@ -107,3 +107,19 @@ describe('canDequeue', () => {
     expect(guards.canDequeue()).toBe(true);
   });
 });
+
+describe('canDequeue: blocking-interaction tolerance (regression)', () => {
+  it('blocks when only legacy pendingApprovalRequest is set', () => {
+    const state = {
+      sessionStatus: 'idle' as const,
+      queuedMessages: [{ id: 'q1', content: '', attachments: [], contextRefs: [], createdAt: 0, status: 'pending' as const }],
+      dequeuing: false,
+      pendingBlockingInteraction: null,
+      activeBlockIds: new Set<string>(),
+      messageMap: new Map(),
+      pendingApprovalRequest: { toolCallId: 't', toolName: 'x', arguments: {}, sensitivity: 'low', description: '', timeoutSeconds: 30 },
+    } as unknown as ChatStoreState;
+    const guards = createGuards(() => state);
+    expect(guards.canDequeue()).toBe(false);
+  });
+});
