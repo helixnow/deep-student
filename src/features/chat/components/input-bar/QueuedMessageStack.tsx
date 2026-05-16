@@ -10,8 +10,9 @@ import type { QueuedMessage } from '../../core/types/queue';
 // Stable empty-array reference. We need this so that older mock stores in
 // existing tests (which don't declare `queuedMessages`) don't get a fresh
 // `[]` literal on every selector run, which would break `useShallow` equality
-// and infinite-loop renders.
-const EMPTY_QUEUE: readonly QueuedMessage[] = [];
+// and infinite-loop renders. `Object.freeze` makes accidental mutation throw
+// in dev (sloppy mode it's silent, but tests run in strict mode).
+const EMPTY_QUEUE: readonly QueuedMessage[] = Object.freeze([]);
 
 interface Props {
   store: StoreApi<ChatStore>;
@@ -37,6 +38,7 @@ export const QueuedMessageStack: React.FC<Props> = React.memo(({ store, allowSte
     retryFailed,
     clearQueue,
     abortStream,
+    maybeDequeue,
   } = useStore(
     store,
     useShallow((s) => ({
@@ -51,6 +53,7 @@ export const QueuedMessageStack: React.FC<Props> = React.memo(({ store, allowSte
       retryFailed: s.retryFailed,
       clearQueue: s.clearQueue,
       abortStream: s.abortStream,
+      maybeDequeue: s.maybeDequeue,
     })),
   );
 
@@ -65,12 +68,15 @@ export const QueuedMessageStack: React.FC<Props> = React.memo(({ store, allowSte
     if (sessionStatus === 'streaming') {
       try {
         await abortStream();
+        // Idle-transition subscription will fire maybeDequeue.
       } catch (err) {
         console.error('[QueuedMessageStack] abort during steer failed:', err);
       }
+    } else {
+      // Already idle: no transition will fire, so trigger dequeue explicitly.
+      void maybeDequeue?.();
     }
-    // The store's idle-transition subscription will fire maybeDequeue automatically.
-  }, [promoteQueued, abortStream, sessionStatus]);
+  }, [promoteQueued, abortStream, sessionStatus, maybeDequeue]);
 
   if (queuedMessages.length === 0) return null;
 
