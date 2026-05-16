@@ -69,6 +69,7 @@ import { createSessionActions } from './sessionActions';
 import { createRestoreActions } from './restoreActions';
 import { createVariantStoreActions } from './variantStoreActions';
 import { createQueueActions } from './queueActions';
+import { readBlockingInteraction } from '../types/queue';
 import type { ContextRef } from '../../resources/types';
 import type { EditMessageResult, RetryMessageResult } from '../../adapters/types';
 import { SKILL_INSTRUCTION_TYPE_ID } from '../../skills/types';
@@ -360,24 +361,14 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
   // subscribe. The prev-state diff prevents re-firing on unrelated changes
   // and avoids infinite loops.
   //
-  // Note: the blocking interaction field is named `pendingBlockingInteraction`
-  // in the in-progress BlockingInteraction migration but `pendingApprovalRequest`
-  // at HEAD. We read both via a tolerant cast so this code compiles against
-  // either shape; whichever is present at runtime drives the dequeue heartbeat.
-  type BlockingShape = {
-    pendingBlockingInteraction?: unknown;
-    pendingApprovalRequest?: unknown;
-  };
-  const readBlocking = (s: ChatStore): unknown => {
-    const x = s as unknown as BlockingShape;
-    return x.pendingBlockingInteraction ?? x.pendingApprovalRequest ?? null;
-  };
-
+  // Blocking-interaction reads use the shared `readBlockingInteraction` helper
+  // so this works regardless of whether the codebase exposes the field as
+  // `pendingApprovalRequest` (HEAD) or `pendingBlockingInteraction` (refactor).
   let prevStatus = store.getState().sessionStatus;
-  let prevBlocking = readBlocking(store.getState());
+  let prevBlocking = readBlockingInteraction(store.getState());
   store.subscribe((state) => {
     const justBecameIdle = prevStatus !== 'idle' && state.sessionStatus === 'idle';
-    const nextBlocking = readBlocking(state);
+    const nextBlocking = readBlockingInteraction(state);
     const blockingCleared = prevBlocking !== null && nextBlocking === null;
     prevStatus = state.sessionStatus;
     prevBlocking = nextBlocking;

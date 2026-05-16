@@ -7,7 +7,7 @@
 
 import type { GetState, SetState, ChatStoreState } from './types';
 import type { QueuedMessage } from '../types/queue';
-import { QUEUE_HARD_CAP, QUEUE_DEQUEUE_BREATHER_MS } from '../types/queue';
+import { QUEUE_HARD_CAP, QUEUE_DEQUEUE_BREATHER_MS, readBlockingInteraction } from '../types/queue';
 import type { AttachmentMeta } from '../types/common';
 import type { ContextRef } from '../../context/types';
 
@@ -173,18 +173,30 @@ export function createQueueActions(set: SetState, getState: GetState): QueueActi
       if (s0.sessionStatus !== 'idle') return;
       if (s0.queuedMessages.length === 0) return;
       if (s0.dequeuing) return;
-      if (s0.pendingBlockingInteraction !== null) return;
+      if (readBlockingInteraction(s0) !== null) return;
       if (s0.queuedMessages.some((q) => q.status === 'failed')) return;
+
+      // Defensive: if sendMessage is not wired yet (mid-init / teardown), bail
+      // BEFORE removing the head item — otherwise we'd silently drop messages.
+      if (typeof s0.sendMessage !== 'function') return;
 
       const [head, ...rest] = s0.queuedMessages;
       set({ queuedMessages: rest, dequeuing: true });
 
-      // 300ms breather: clears dequeuing flag for race-prevention + visual gap
+      // 300ms breather: clears dequeuing flag for race-prevention + visual gap.
+      // After clearing, re-trigger maybeDequeue — covers the case where the
+      // stream finished within the breather (idle transition fired but our
+      // own `dequeuing=true` blocked the subscription's nudge).
       setTimeout(() => {
         set({ dequeuing: false });
+        // Fire-and-forget; the guard will short-circuit if no longer applicable.
+        const cur = getState() as ChatStoreState & {
+          maybeDequeue?: () => Promise<void>;
+        };
+        if (typeof cur.maybeDequeue === 'function') {
+          void cur.maybeDequeue();
+        }
       }, QUEUE_DEQUEUE_BREATHER_MS);
-
-      if (typeof s0.sendMessage !== 'function') return;
 
       try {
         await s0.sendMessage(head.content, head.attachments);

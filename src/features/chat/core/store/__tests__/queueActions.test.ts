@@ -319,4 +319,96 @@ describe('maybeDequeue', () => {
     await actions.maybeDequeue();
     expect(getState().queuedMessages.map((q) => q.id)).toEqual(['b']);
   });
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // Regression tests for critical fixes from final review
+  // ─────────────────────────────────────────────────────────────────────────
+
+  describe('blocking-interaction tolerance', () => {
+    it('blocks when only the legacy pendingApprovalRequest field is set', async () => {
+      const item = makeItem({ id: 'a' });
+      const { actions, getState } = harness({
+        sessionStatus: 'idle',
+        queuedMessages: [item],
+        pendingBlockingInteraction: null,
+      });
+      // Inject the legacy field shape that does not exist on ChatStoreState type
+      // but does at HEAD's runtime.
+      (getState() as unknown as { pendingApprovalRequest: unknown }).pendingApprovalRequest = {
+        toolCallId: 't',
+        toolName: 'x',
+        arguments: {},
+        sensitivity: 'low',
+        description: 'd',
+        timeoutSeconds: 30,
+      };
+      await actions.maybeDequeue();
+      expect(getState().queuedMessages).toHaveLength(1);
+    });
+
+    it('blocks when only the new pendingBlockingInteraction field is set', async () => {
+      const item = makeItem({ id: 'a' });
+      const { actions, getState } = harness({
+        sessionStatus: 'idle',
+        queuedMessages: [item],
+        pendingBlockingInteraction: { kind: 'tool_limit', blockId: 'b', content: '', onContinue: null } as unknown as ChatStoreState['pendingBlockingInteraction'],
+      });
+      await actions.maybeDequeue();
+      expect(getState().queuedMessages).toHaveLength(1);
+    });
+  });
+
+  describe('breather-completion retry (fast-stream stall regression)', () => {
+    beforeEach(() => { vi.useFakeTimers(); });
+    afterEach(() => { vi.useRealTimers(); });
+
+    it('continues to next item after breather even if stream finished within breather window', async () => {
+      const a = makeItem({ id: 'a', content: 'first' });
+      const b = makeItem({ id: 'b', content: 'second' });
+      const sentContents: string[] = [];
+      const { actions, getState } = harness({
+        sessionStatus: 'idle',
+        queuedMessages: [a, b],
+      });
+
+      // sendMessage resolves "fast" (synchronously) — within the breather.
+      (getState() as unknown as { sendMessage: (c: string) => Promise<void> }).sendMessage = async (c) => {
+        sentContents.push(c);
+      };
+      // Wire maybeDequeue back onto the harness state so the breather's
+      // self-retry can find it (production: it's on the store via factory wiring).
+      (getState() as unknown as { maybeDequeue: () => Promise<void> }).maybeDequeue = actions.maybeDequeue;
+
+      // First dequeue: fires sendMessage(a), sets dequeuing=true.
+      await actions.maybeDequeue();
+      expect(sentContents).toEqual(['first']);
+      expect(getState().queuedMessages.map((q) => q.id)).toEqual(['b']);
+      expect(getState().dequeuing).toBe(true);
+
+      // Manual idle transition (in production: subscription fires on stream end,
+      // but blocked because dequeuing=true).
+      // Here we just advance the breather timer — it should clear the flag AND
+      // re-trigger maybeDequeue, which now finds b at head.
+      await vi.advanceTimersByTimeAsync(300);
+
+      expect(sentContents).toEqual(['first', 'second']);
+      expect(getState().queuedMessages).toEqual([]);
+    });
+  });
+
+  describe('order-of-operations: bail before mutation when sendMessage missing', () => {
+    it('does not drop head item when sendMessage is not wired', async () => {
+      const item = makeItem({ id: 'a', content: 'preserved' });
+      const { actions, getState } = harness({
+        sessionStatus: 'idle',
+        queuedMessages: [item],
+      });
+      // Deliberately do NOT inject sendMessage.
+      await actions.maybeDequeue();
+      // Head item must remain — silent drop would be a critical bug.
+      expect(getState().queuedMessages).toHaveLength(1);
+      expect(getState().queuedMessages[0].id).toBe('a');
+      expect(getState().dequeuing).toBe(false);
+    });
+  });
 });
