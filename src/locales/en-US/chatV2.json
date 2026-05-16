@@ -278,6 +278,26 @@
     },
     "processingTimeout": "Processing timed out, please retry"
   },
+  "queue": {
+    "settings": {
+      "enableTitle": "Queue follow-up messages while streaming",
+      "enableDescription": "Messages typed during a reply are queued and submitted in order once the current reply ends.",
+      "allowSteerTitle": "Allow steer (interrupt and prioritize)",
+      "allowSteerDescription": "Adds a Steer button to each queued bubble. Steer cancels the current reply and runs that message next."
+    },
+    "bubble": {
+      "steer": "Steer",
+      "delete": "Delete",
+      "iconLabel": "Queued message"
+    },
+    "error": {
+      "retry": "Retry",
+      "skip": "Skip",
+      "clearAll": "Clear all",
+      "tooltipPrefix": "Failed: "
+    },
+    "fullTooltip": "Queue is full, please wait"
+  },
   "input": {
     "attachmentUploadFailed": "Attachment upload failed, please retry"
   },
