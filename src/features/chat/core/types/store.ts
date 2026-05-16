@@ -18,6 +18,7 @@ import type {
 } from './common';
 import type { ContextRef } from '../../context/types';
 import type { EditMessageResult, RetryMessageResult } from '../../adapters/types';
+import type { QueuedMessage } from './queue';
 
 // 重新导出共享类型
 export type { ChatParams, PanelStates, SessionStatus } from './common';
@@ -279,6 +280,14 @@ export interface ChatStore {
     resolvedStatus?: 'approved' | 'rejected' | 'timeout' | 'expired' | 'error';
     resolvedReason?: string;
   } | null;
+
+  // ========== 🆕 队列状态（❌ 不持久化，per-session 内存态） ==========
+
+  /** 流式中提交后续消息的待发送队列（FIFO，硬上限 5） */
+  queuedMessages: QueuedMessage[];
+
+  /** 出队过渡守卫（~300ms），防止 abort 完成与手动提交竞态 */
+  dequeuing: boolean;
 
   // ========== 🆕 Skills 系统（❌ 不持久化） ==========
 

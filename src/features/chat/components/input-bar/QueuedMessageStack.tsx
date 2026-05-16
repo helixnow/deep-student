@@ -3,12 +3,11 @@ import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import type { StoreApi } from 'zustand';
 import type { ChatStore } from '../../core/types/store';
-import type { ChatStoreState } from '../../core/store/types';
 import { QueuedMessageBubble } from './QueuedMessageBubble';
 import { QueueErrorBar } from './QueueErrorBar';
 
 interface Props {
-  store: StoreApi<ChatStore & ChatStoreState>;
+  store: StoreApi<ChatStore>;
   allowSteer: boolean;
 }
 
