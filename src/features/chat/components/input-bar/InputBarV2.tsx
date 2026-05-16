@@ -12,6 +12,8 @@ import { useStore } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import { InputBarUI } from './InputBarUI';
 import { useInputBarV2 } from './useInputBarV2';
+import { useQueueSettings } from '../../queue/useQueueSettings';
+import { QueuedMessageStack } from './QueuedMessageStack';
 import { modeRegistry } from '../../registry';
 import { MultiSelectModelPanel } from '../../plugins/chat/MultiSelectModelPanel';
 import { RuntimeModelMenu } from './RuntimeModelMenu';
@@ -238,6 +240,9 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         pendingApprovalRequest: s.pendingApprovalRequest,
       }))
     );
+
+    // 🆕 队列模式设置（来自本地存储）
+    const queueSettings = useQueueSettings();
 
     // 🔧 从 DialogControlContext 获取 MCP 选中状态和清除方法
     const { selectedMcpServers, setSelectedMcpServers } = useDialogControl();
@@ -572,8 +577,10 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       // ★ PDF 页码引用
       opts.buildPdfRefTags = buildPdfRefTags;
       opts.clearPdfPageRefs = clearPdfPageRefs;
+      // 🆕 队列模式启用开关（控制 useInputBarV2 内部 submit 路由）
+      opts.queueEnabled = queueSettings.queueEnabled;
       return opts;
-    }, [availableModels, clearSelectedModels, buildPdfRefTags, clearPdfPageRefs]);
+    }, [availableModels, clearSelectedModels, buildPdfRefTags, clearPdfPageRefs, queueSettings.queueEnabled]);
 
     // 从 Store 订阅状态和 Actions
     const {
@@ -777,7 +784,9 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     }, [activeSkillIds, handleToggleSkill, setPanelState, handleRefreshSkills, isStreaming, sessionId]);
 
     return (
-      <InputBarUI
+      <>
+        <QueuedMessageStack store={store} allowSteer={queueSettings.allowSteer} />
+        <InputBarUI
         // 状态
         inputValue={inputValue}
         canSend={canSend}
@@ -858,7 +867,8 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         pdfPageRefs={pdfPageRefs}
         onRemovePdfPageRef={removePdfPageRef}
         onClearPdfPageRefs={clearPdfPageRefs}
-      />
+        />
+      </>
     );
   }
 );
