@@ -7,7 +7,7 @@
 
 import type { GetState, SetState, ChatStoreState } from './types';
 import type { QueuedMessage } from '../types/queue';
-import { QUEUE_HARD_CAP } from '../types/queue';
+import { QUEUE_HARD_CAP, QUEUE_DEQUEUE_BREATHER_MS } from '../types/queue';
 import type { AttachmentMeta } from '../types/common';
 import type { ContextRef } from '../../context/types';
 
@@ -44,6 +44,13 @@ export interface QueueActions {
    * - 否则：移除目标项 → 将当前草稿作为新 pending 追加到队尾 → 草稿填入目标项内容
    */
   swapQueueWithDraft: (id: string) => void;
+
+  /**
+   * 自动出队下一项：当 sessionStatus 为 idle、队列非空、未在出队、无阻塞交互、
+   * 且无 failed 项时，将队首项移除并通过 store.sendMessage 发送。
+   * 失败时将该项以 status='failed' + error 消息重新插回队首。
+   */
+  maybeDequeue: () => Promise<void>;
 }
 
 // ============================================================================
@@ -155,6 +162,41 @@ export function createQueueActions(set: SetState, getState: GetState): QueueActi
           pendingContextRefs: item.contextRefs,
         };
       });
+    },
+
+    maybeDequeue: async () => {
+      // Read state at entry; sendMessage is wired onto the store by createChatStore.
+      const s0 = getState() as ChatStoreState & {
+        sendMessage?: (content: string, attachments: AttachmentMeta[]) => Promise<void>;
+      };
+
+      if (s0.sessionStatus !== 'idle') return;
+      if (s0.queuedMessages.length === 0) return;
+      if (s0.dequeuing) return;
+      if (s0.pendingBlockingInteraction !== null) return;
+      if (s0.queuedMessages.some((q) => q.status === 'failed')) return;
+
+      const [head, ...rest] = s0.queuedMessages;
+      set({ queuedMessages: rest, dequeuing: true });
+
+      // 300ms breather: clears dequeuing flag for race-prevention + visual gap
+      setTimeout(() => {
+        set({ dequeuing: false });
+      }, QUEUE_DEQUEUE_BREATHER_MS);
+
+      if (typeof s0.sendMessage !== 'function') return;
+
+      try {
+        await s0.sendMessage(head.content, head.attachments);
+      } catch (err) {
+        const errorMsg = err instanceof Error ? err.message : String(err);
+        set((cur) => ({
+          queuedMessages: [
+            { ...head, status: 'failed' as const, error: errorMsg },
+            ...(cur as ChatStoreState).queuedMessages,
+          ],
+        }));
+      }
     },
   };
 }

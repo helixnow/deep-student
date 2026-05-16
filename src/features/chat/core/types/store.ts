@@ -364,6 +364,32 @@ export interface ChatStore {
    */
   forceResetToIdle(): void;
 
+  // ========== 队列 Actions ==========
+
+  /** 入队（流式中提交后续消息） */
+  enqueueMessage(content: string, attachments: AttachmentMeta[], contextRefs: ContextRef[]): void;
+
+  /** 移除指定队列项 */
+  removeQueued(id: string): void;
+
+  /** 清空队列（含失败项） */
+  clearQueue(): void;
+
+  /** 将指定项提到队首（"引导"功能） */
+  promoteQueued(id: string): void;
+
+  /** 将失败项重置为 pending（点击 Retry） */
+  retryFailed(id: string): void;
+
+  /** 召回为草稿（点击气泡，草稿为空时） */
+  recallToDraft(id: string): void;
+
+  /** 草稿与队列项交换（点击气泡，草稿非空时） */
+  swapQueueWithDraft(id: string): void;
+
+  /** 自动出队下一项（满足 canDequeue 时执行） */
+  maybeDequeue(): Promise<void>;
+
   // ========== 块 Actions ==========
 
   /** 创建块，返回 blockId */
