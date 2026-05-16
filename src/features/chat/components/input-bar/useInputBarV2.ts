@@ -10,6 +10,7 @@ import { useStore, type StoreApi } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
 import type { ChatStore } from '../../core/types/store';
 import { COMPOSER_PANEL_KEYS, type AttachmentMeta, type PanelStates, type PdfProcessingStatus } from '../../core/types/common';
+import { QUEUE_HARD_CAP } from '../../core/types/queue';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import i18n from 'i18next';
@@ -93,7 +94,7 @@ export function useInputBarV2(
 
   // 是否可提交（idle 直发 OR streaming 且队列未满）
   const canSubmit = sessionStatus === 'idle'
-    || (queueEnabled && queueLength < 5);
+    || (queueEnabled && queueLength < QUEUE_HARD_CAP);
 
   // ========== 封装 Actions ==========
 
@@ -120,7 +121,7 @@ export function useInputBarV2(
     const willEnqueue = state.sessionStatus !== 'idle';
     if (willEnqueue) {
       // 队列守卫：必须启用且未满
-      if (!queueEnabled || (state.queuedMessages?.length ?? 0) >= 5) {
+      if (!queueEnabled || (state.queuedMessages?.length ?? 0) >= QUEUE_HARD_CAP) {
         console.warn('[useInputBarV2] Cannot enqueue: queue disabled or full');
         return;
       }

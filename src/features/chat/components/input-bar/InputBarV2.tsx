@@ -22,6 +22,7 @@ import { reloadSkills } from '../../skills/loader';
 import { useLoadedSkills } from '../../skills/hooks/useLoadedSkills';
 import type { InputBarV2Props, ModelMentionState, ModelMentionActions } from './types';
 import { COMPOSER_PANEL_KEYS } from '../../core/types/common';
+import { QUEUE_HARD_CAP } from '../../core/types/queue';
 import { usePdfPageRefs } from './usePdfPageRefs';
 import { useDialogControl } from '@/contexts/DialogControlContext';
 import { isBuiltinServer } from '@/mcp/builtinMcpServer';
@@ -796,7 +797,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         isStreaming={isStreaming}
         // 🆕 队列模式：允许流式时入队，并在队列满时禁用发送
         queueEnabled={queueSettings.queueEnabled}
-        queueFull={queueLength >= 5}
+        queueFull={queueLength >= QUEUE_HARD_CAP}
         canSubmit={canSubmit}
         contextWindowUsage={contextWindowUsage}
         attachments={attachments}
