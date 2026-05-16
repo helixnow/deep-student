@@ -68,6 +68,7 @@ import { createStreamActions } from './streamActions';
 import { createSessionActions } from './sessionActions';
 import { createRestoreActions } from './restoreActions';
 import { createVariantStoreActions } from './variantStoreActions';
+import { createQueueActions } from './queueActions';
 import type { ContextRef } from '../../resources/types';
 import type { EditMessageResult, RetryMessageResult } from '../../adapters/types';
 import { SKILL_INSTRUCTION_TYPE_ID } from '../../skills/types';
@@ -265,7 +266,7 @@ export function createBlockInternal(
  * @returns Zustand Store API
  */
 export function createChatStore(sessionId: string): StoreApi<ChatStore> {
-  return createStore<ChatStore>()(
+  const store = createStore<ChatStore>()(
     subscribeWithSelector((set, get) => {
       // 获取状态的类型安全包装
       const getState = () => get() as ChatStoreState & ChatStore;
@@ -295,6 +296,12 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
         getState
       );
 
+      // 创建队列 Actions
+      const queueActions = createQueueActions(
+        set as Parameters<typeof createQueueActions>[0],
+        getState
+      );
+
       return {
         // ========== 初始状态 ==========
         ...createInitialState(sessionId),
@@ -315,6 +322,10 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
         ...createStreamActions(set as SetState, getState),
         ...createSessionActions(set as SetState, getState, scheduleAutoSaveIfReady),
         ...createRestoreActions(set as SetState, getState),
+
+        // ========== 队列 Actions ==========
+        ...queueActions,
+
         // ========== 辅助方法 ==========
 
         getMessage: (messageId: string) => {
@@ -343,6 +354,24 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
       };
     })
   );
+
+  // Auto-progress queue when status returns to idle OR when a blocking
+  // interaction clears. This is the dequeue heartbeat — fired by zustand's
+  // subscribe. The prev-state diff prevents re-firing on unrelated changes
+  // and avoids infinite loops.
+  let prevStatus = store.getState().sessionStatus;
+  let prevBlocking = store.getState().pendingBlockingInteraction;
+  store.subscribe((state) => {
+    const justBecameIdle = prevStatus !== 'idle' && state.sessionStatus === 'idle';
+    const blockingCleared = prevBlocking !== null && state.pendingBlockingInteraction === null;
+    prevStatus = state.sessionStatus;
+    prevBlocking = state.pendingBlockingInteraction;
+    if (justBecameIdle || blockingCleared) {
+      void state.maybeDequeue();
+    }
+  });
+
+  return store;
 }
 
 /**

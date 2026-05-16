@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { createQueueActions } from '../queueActions';
 import type { ChatStoreState, GetState, SetState } from '../types';
 import { QUEUE_HARD_CAP } from '../../types/queue';
@@ -210,5 +210,113 @@ describe('swapQueueWithDraft', () => {
     expect(s.queuedMessages).toHaveLength(QUEUE_HARD_CAP);
     expect(s.inputValue).toBe('c0');
     expect(s.queuedMessages[s.queuedMessages.length - 1].content).toBe('incoming draft');
+  });
+});
+
+describe('maybeDequeue', () => {
+  beforeEach(() => { vi.useFakeTimers(); });
+  afterEach(() => { vi.useRealTimers(); });
+
+  it('shifts head item, calls sendMessage with content+attachments, sets dequeuing flag', async () => {
+    const sentCalls: Array<{ content: string; attachments: unknown[] }> = [];
+    const item = makeItem({ id: 'a', content: 'first' });
+    const { actions, getState } = harness({
+      sessionStatus: 'idle',
+      queuedMessages: [item],
+    });
+
+    // Inject a fake sendMessage onto the harness state
+    (getState() as unknown as { sendMessage: (c: string, a: unknown[]) => Promise<void> })
+      .sendMessage = async (content, attachments) => {
+        sentCalls.push({ content, attachments });
+      };
+
+    await actions.maybeDequeue();
+
+    expect(sentCalls).toEqual([{ content: 'first', attachments: [] }]);
+    expect(getState().queuedMessages).toEqual([]);
+    expect(getState().dequeuing).toBe(true);
+
+    // After breather, dequeuing flips back
+    vi.advanceTimersByTime(300);
+    expect(getState().dequeuing).toBe(false);
+  });
+
+  it('is a no-op when sessionStatus !== idle', async () => {
+    const item = makeItem({ id: 'a', content: 'first' });
+    const { actions, getState } = harness({
+      sessionStatus: 'streaming',
+      queuedMessages: [item],
+    });
+    await actions.maybeDequeue();
+    expect(getState().queuedMessages).toHaveLength(1);
+    expect(getState().dequeuing).toBe(false);
+  });
+
+  it('is a no-op when queue is empty', async () => {
+    const { actions, getState } = harness({ sessionStatus: 'idle' });
+    await actions.maybeDequeue();
+    expect(getState().dequeuing).toBe(false);
+  });
+
+  it('is a no-op when already dequeuing', async () => {
+    const item = makeItem({ id: 'a' });
+    const { actions, getState } = harness({
+      sessionStatus: 'idle',
+      queuedMessages: [item],
+      dequeuing: true,
+    });
+    await actions.maybeDequeue();
+    expect(getState().queuedMessages).toHaveLength(1);
+  });
+
+  it('is a no-op when blocking interaction is present', async () => {
+    const item = makeItem({ id: 'a' });
+    const { actions, getState } = harness({
+      sessionStatus: 'idle',
+      queuedMessages: [item],
+      pendingBlockingInteraction: { kind: 'tool_limit', blockId: 'b', content: '', onContinue: null } as unknown as ChatStoreState['pendingBlockingInteraction'],
+    });
+    await actions.maybeDequeue();
+    expect(getState().queuedMessages).toHaveLength(1);
+  });
+
+  it('is a no-op when any item is already failed (halt)', async () => {
+    const item = makeItem({ id: 'a', status: 'failed', error: 'x' });
+    const { actions, getState } = harness({
+      sessionStatus: 'idle',
+      queuedMessages: [item],
+    });
+    await actions.maybeDequeue();
+    expect(getState().queuedMessages).toHaveLength(1);
+  });
+
+  it('on sendMessage failure: re-inserts item at head with status=failed and error message', async () => {
+    const item = makeItem({ id: 'a', content: 'will-fail' });
+    const { actions, getState } = harness({
+      sessionStatus: 'idle',
+      queuedMessages: [item],
+    });
+    (getState() as unknown as { sendMessage: (c: string) => Promise<void> }).sendMessage = async () => {
+      throw new Error('boom');
+    };
+
+    await actions.maybeDequeue();
+
+    const queue = getState().queuedMessages;
+    expect(queue).toHaveLength(1);
+    expect(queue[0]).toMatchObject({ content: 'will-fail', status: 'failed', error: 'boom' });
+  });
+
+  it('on success: queue order preserved for remaining items', async () => {
+    const a = makeItem({ id: 'a', content: 'first' });
+    const b = makeItem({ id: 'b', content: 'second' });
+    const { actions, getState } = harness({
+      sessionStatus: 'idle',
+      queuedMessages: [a, b],
+    });
+    (getState() as unknown as { sendMessage: (c: string) => Promise<void> }).sendMessage = async () => {};
+    await actions.maybeDequeue();
+    expect(getState().queuedMessages.map((q) => q.id)).toEqual(['b']);
   });
 });
