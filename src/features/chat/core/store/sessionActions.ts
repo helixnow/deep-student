@@ -2,7 +2,7 @@ import i18n from 'i18next';
 import type { AttachmentMeta } from '../types/message';
 import type { ContextRef } from '../../resources/types';
 import type { EditMessageResult, RetryMessageResult } from '../../adapters/types';
-import type { ChatStore } from '../types';
+import type { ChatStore, BlockingInteraction } from '../types';
 import { COMPOSER_PANEL_KEYS, type ChatParams, type PanelStates } from '../types/common';
 import type { ChatStoreState, SetState, GetState } from './types';
 import { createDefaultChatParams, createDefaultPanelStates } from './types';
@@ -260,8 +260,21 @@ export function createSessionActions(
           });
         },
 
-        // ========== 🆕 工具审批 Actions（文档 29 P1-3） ==========
+        // ========== 阻塞交互 Actions ==========
 
+        setBlockingInteraction: (interaction: BlockingInteraction | null): void => {
+          set({ pendingBlockingInteraction: interaction });
+          if (interaction) {
+            console.log('[ChatStore] setBlockingInteraction:', interaction.kind, 'toolCallId' in interaction ? interaction.toolCallId : interaction.blockId);
+          }
+        },
+
+        clearBlockingInteraction: (): void => {
+          set({ pendingBlockingInteraction: null });
+          console.log('[ChatStore] clearBlockingInteraction');
+        },
+
+        // Backward-compat aliases
         setPendingApproval: (request: {
           toolCallId: string;
           toolName: string;
@@ -272,15 +285,15 @@ export function createSessionActions(
           resolvedStatus?: 'approved' | 'rejected' | 'timeout' | 'expired' | 'error';
           resolvedReason?: string;
         } | null): void => {
-          set({ pendingApprovalRequest: request });
-          if (request) {
-            console.log('[ChatStore] setPendingApproval:', request.toolName, request.toolCallId);
+          if (!request) {
+            set({ pendingBlockingInteraction: null });
+            return;
           }
+          set({ pendingBlockingInteraction: { kind: 'tool_approval', ...request } });
         },
 
         clearPendingApproval: (): void => {
-          set({ pendingApprovalRequest: null });
-          console.log('[ChatStore] clearPendingApproval');
+          set({ pendingBlockingInteraction: null });
         },
 
         // ========== 会话 Actions ==========

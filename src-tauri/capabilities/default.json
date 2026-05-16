@@ -18,6 +18,7 @@
     "clipboard-manager:allow-read-text",
     "core:webview:allow-print",
     "core:webview:allow-set-webview-zoom",
+    "core:webview:allow-internal-toggle-devtools",
     "dialog:default",
     "dialog:allow-open",
     "dialog:allow-save",

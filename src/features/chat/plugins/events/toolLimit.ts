@@ -42,10 +42,23 @@ const toolLimitEventHandler: EventHandler = {
     backendBlockId?: string
   ): string => {
     // 如果后端传了 blockId，使用它；否则由前端生成
-    if (backendBlockId) {
-      return store.createBlockWithId(messageId, 'tool_limit', backendBlockId);
-    }
-    return store.createBlock(messageId, 'tool_limit');
+    const blockId = backendBlockId
+      ? store.createBlockWithId(messageId, 'tool_limit', backendBlockId)
+      : store.createBlock(messageId, 'tool_limit');
+
+    // 🆕 设置阻塞交互状态
+    // onContinue 清除阻塞并调用 continueMessage 继续生成
+    store.setBlockingInteraction({
+      kind: 'tool_limit',
+      blockId,
+      content: '', // Will be updated in onEnd when content arrives
+      onContinue: async () => {
+        store.clearBlockingInteraction();
+        await store.continueMessage(messageId);
+      },
+    });
+
+    return blockId;
   },
 
   /**
@@ -65,6 +78,15 @@ const toolLimitEventHandler: EventHandler = {
     }
     // 标记为成功状态
     store.updateBlockStatus(blockId, 'success');
+
+    // 🆕 更新阻塞交互内容（保持阻塞状态，等用户点击"继续"）
+    const currentBlocking = store.pendingBlockingInteraction;
+    if (currentBlocking && currentBlocking.kind === 'tool_limit' && currentBlocking.blockId === blockId) {
+      store.setBlockingInteraction({
+        ...currentBlocking,
+        content: data?.content || '',
+      });
+    }
   },
 
   /**
@@ -77,6 +99,12 @@ const toolLimitEventHandler: EventHandler = {
    */
   onError: (store: ChatStore, blockId: string, error: string): void => {
     store.setBlockError(blockId, error);
+
+    // 🆕 错误时清除阻塞交互状态
+    const currentBlocking = store.pendingBlockingInteraction;
+    if (currentBlocking && currentBlocking.kind === 'tool_limit' && currentBlocking.blockId === blockId) {
+      store.clearBlockingInteraction();
+    }
   },
 };
 

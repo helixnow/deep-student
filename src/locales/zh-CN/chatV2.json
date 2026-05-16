@@ -867,6 +867,7 @@
     "thinking": {
       "inProgress": "思考中...",
       "completed": "已思考（用时 {{seconds}} 秒）",
+      "stopped": "已停止思考",
       "detail": {
         "inProgress": "正在深度思考中...",
         "completed": "思考完成，用时 {{seconds}} 秒"
