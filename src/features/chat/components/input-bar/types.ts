@@ -132,6 +132,15 @@ export interface InputBarUIProps {
   /** 会话状态：是否可以发送 */
   canSend: boolean;
 
+  /** 🆕 队列模式启用（流式中可入队） */
+  queueEnabled?: boolean;
+
+  /** 🆕 队列已满（达到上限） */
+  queueFull?: boolean;
+
+  /** 🆕 是否可提交（idle 或 队列模式且未满）；默认与 canSend 一致 */
+  canSubmit?: boolean;
+
   /** 会话状态：是否可以中断 */
   canAbort: boolean;
 
