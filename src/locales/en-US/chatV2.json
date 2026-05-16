@@ -281,15 +281,14 @@
   "queue": {
     "settings": {
       "enableTitle": "Queue follow-up messages while streaming",
-      "enableDescription": "Messages typed during a reply are queued and submitted in order once the current reply ends.",
-      "allowSteerTitle": "Allow steer (interrupt and prioritize)",
-      "allowSteerDescription": "Adds a Steer button to each queued bubble. Steer cancels the current reply and runs that message next."
+      "enableDescription": "Messages typed during a reply are queued and submitted in order once the current reply ends. While on, each queued bubble shows a Steer button that cancels the current reply and runs that message next."
     },
     "bubble": {
       "steer": "Steer",
       "delete": "Delete",
       "iconLabel": "Queued message"
     },
+    "steeredBadge": "Steered turn",
     "error": {
       "retry": "Retry",
       "skip": "Skip",

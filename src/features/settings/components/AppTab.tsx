@@ -181,7 +181,7 @@ export const AppTab: React.FC<AppTabProps> = ({
   const [macosNativeFontSmoothingEnabled, setMacosNativeFontSmoothingEnabled] = useState(true);
 
   // 输入队列设置（B2 hook，持久化到 Tauri save_setting/get_setting）
-  const { queueEnabled, allowSteer, setQueueEnabled, setAllowSteer } = useQueueSettings();
+  const { queueEnabled, setQueueEnabled } = useQueueSettings();
 
   // 侧边栏半透明开关
   const SIDEBAR_TRANSLUCENT_KEY = 'sidebar.translucent';
@@ -434,14 +434,6 @@ export const AppTab: React.FC<AppTabProps> = ({
               checked={queueEnabled}
               onCheckedChange={(checked) => { void setQueueEnabled(checked); }}
             />
-            <div style={{ opacity: queueEnabled ? 1 : 0.4, pointerEvents: queueEnabled ? 'auto' : 'none' }}>
-              <SwitchRow
-                title={t('chatV2:queue.settings.allowSteerTitle')}
-                description={t('chatV2:queue.settings.allowSteerDescription')}
-                checked={allowSteer}
-                onCheckedChange={(checked) => { void setAllowSteer(checked); }}
-              />
-            </div>
 
             {/* 侧边栏半透明 */}
             <SwitchRow

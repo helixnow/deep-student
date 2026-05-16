@@ -281,15 +281,14 @@
   "queue": {
     "settings": {
       "enableTitle": "流式输出时排队后续消息",
-      "enableDescription": "AI 回复时输入新消息会自动排队，按发送后自动依次提交。",
-      "allowSteerTitle": "允许引导（立即打断当前回复）",
-      "allowSteerDescription": "为某条排队消息开启「引导」按钮，点击会立即停止当前回复并优先发送该条。"
+      "enableDescription": "AI 回复时输入新消息会自动排队，按发送后自动依次提交。开启时每条排队气泡支持「引导」立即打断当前回复并优先发送。"
     },
     "bubble": {
       "steer": "引导",
       "delete": "删除",
       "iconLabel": "排队消息"
     },
+    "steeredBadge": "已引导对话",
     "error": {
       "retry": "重试",
       "skip": "跳过",
