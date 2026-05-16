@@ -46,9 +46,17 @@ export interface QueueActions {
   swapQueueWithDraft: (id: string) => void;
 
   /**
+   * 将队列项标记为「已引导」。出队成功后该标志会传播到对应 user message 的
+   * `_meta.steered`，从而在聊天页渲染「已引导对话」徽章。
+   * 找不到则 no-op；已是 steered 也 no-op（幂等）。
+   */
+  markSteered: (id: string) => void;
+
+  /**
    * 自动出队下一项：当 sessionStatus 为 idle、队列非空、未在出队、无阻塞交互、
    * 且无 failed 项时，将队首项移除并通过 store.sendMessage 发送。
    * 失败时将该项以 status='failed' + error 消息重新插回队首。
+   * 若该项 steered=true，发送成功后会更新 user message 的 _meta.steered。
    */
   maybeDequeue: () => Promise<void>;
 }
@@ -164,10 +172,19 @@ export function createQueueActions(set: SetState, getState: GetState): QueueActi
       });
     },
 
+    markSteered: (id) => {
+      set((s) => ({
+        queuedMessages: (s as ChatStoreState).queuedMessages.map((q) =>
+          q.id === id && !q.steered ? { ...q, steered: true } : q,
+        ),
+      }));
+    },
+
     maybeDequeue: async () => {
       // Read state at entry; sendMessage is wired onto the store by createChatStore.
       const s0 = getState() as ChatStoreState & {
         sendMessage?: (content: string, attachments: AttachmentMeta[]) => Promise<void>;
+        updateMessageMeta?: (messageId: string, meta: { steered?: boolean }) => void;
       };
 
       if (s0.sessionStatus !== 'idle') return;
@@ -200,6 +217,21 @@ export function createQueueActions(set: SetState, getState: GetState): QueueActi
 
       try {
         await s0.sendMessage(head.content, head.attachments);
+        // Propagate the steered flag to the freshly-created user message so the
+        // chat UI can render the「已引导对话」badge above it.
+        // We locate the user message by scanning the message order tail —
+        // sendMessage just appended it, and `dequeuing=true` blocks further
+        // enqueue/dequeue, so the latest user message is unambiguous.
+        if (head.steered && typeof s0.updateMessageMeta === 'function') {
+          const after = getState() as ChatStoreState;
+          for (let i = after.messageOrder.length - 1; i >= 0; i -= 1) {
+            const msg = after.messageMap.get(after.messageOrder[i]);
+            if (msg?.role === 'user') {
+              s0.updateMessageMeta(msg.id, { steered: true });
+              break;
+            }
+          }
+        }
       } catch (err) {
         const errorMsg = err instanceof Error ? err.message : String(err);
         set((cur) => ({

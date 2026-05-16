@@ -5,7 +5,7 @@
  */
 
 import React, { useMemo, useCallback, useState, useRef, useEffect } from 'react';
-import { Copy, Check, ArrowCounterClockwise, Trash, GitBranch } from '@phosphor-icons/react';
+import { Copy, Check, ArrowCounterClockwise, Trash, GitBranch, ArrowBendDownRight } from '@phosphor-icons/react';
 import { useStore } from 'zustand';
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -1133,16 +1133,28 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                   {(() => {
                     if (isUser) {
                       // 🚀 用户消息：气泡容器 + 截断
+                      const isSteered = message?._meta?.steered === true;
                       return (
-                        <UserMessageBubble>
-                          {displayBlockIds.map((blockId) => (
-                            <BlockRendererWithStore
-                              key={blockId}
-                              store={store}
-                              blockId={blockId}
-                            />
-                          ))}
-                        </UserMessageBubble>
+                        <>
+                          {isSteered && (
+                            <div
+                              className="flex items-center justify-end gap-1 mb-1.5 text-xs text-muted-foreground/70 select-none"
+                              aria-label={t('queue.steeredBadge', '已引导对话')}
+                            >
+                              <ArrowBendDownRight size={12} weight="regular" aria-hidden="true" />
+                              <span>{t('queue.steeredBadge', '已引导对话')}</span>
+                            </div>
+                          )}
+                          <UserMessageBubble>
+                            {displayBlockIds.map((blockId) => (
+                              <BlockRendererWithStore
+                                key={blockId}
+                                store={store}
+                                blockId={blockId}
+                              />
+                            ))}
+                          </UserMessageBubble>
+                        </>
                       );
                     }
 
