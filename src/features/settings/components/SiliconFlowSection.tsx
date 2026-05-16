@@ -366,8 +366,8 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     }
 
     setLoading(true);
-    setModels([]);
-    setAvailableModels([]);
+    // 注意：刷新期间保留旧列表（如有），让 React 通过稳定 id 做增量 diff，
+    // 避免出现「整列表先全部消失再重新出现」的闪烁。
     setError(null);
     setIsFromCache(false);
 
@@ -458,8 +458,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     } catch (error: unknown) {
       console.error(t('common:siliconflow.fetch_models_error'), error);
       showGlobalNotification('error', t('common:siliconflow.fetch_models_failed_message', { error: error instanceof Error ? error.message : 'Unknown error' }));
-      setModels([]);
-      setAvailableModels([]);
+      // 失败时保留已有数据（来自缓存或上次成功获取），避免一次失败导致用户看到空列表。
     } finally {
       setLoading(false);
     }
@@ -904,7 +903,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
       />
       <div className="flex items-center justify-between pt-2">
         {/* Notion 风格按钮 - 一键分配 */}
-        <NotionButton variant="ghost" size="sm" onClick={handleOneClickAssign} disabled={loading || !apiKey.trim()} className="text-blue-600 dark:text-blue-400 bg-blue-500/10 hover:bg-blue-500/20">
+        <NotionButton variant="ghost" size="sm" onClick={handleOneClickAssign} disabled={loading || !apiKey.trim()} className="text-primary bg-primary/10 hover:bg-primary/20">
           <Lightning className="h-3.5 w-3.5" />
           {t('common:siliconflow.one_click_assign')}
         </NotionButton>

@@ -704,9 +704,9 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
               <div className="p-2 sm:p-4">
                 {/* General Tab */}
                 <TabsContent value="general" className="mt-0 space-y-3 focus-visible:outline-none">
-                  <div className="grid gap-3 md:grid-cols-2">
+                  <div className="grid gap-3">
                     <div className="space-y-2">
-                      <Label htmlFor={fieldIds.name} className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
+                      <Label htmlFor={fieldIds.name} className="text-xs font-medium text-muted-foreground/80 ml-1">
                         {t('common:api_config_modal.config_name')}
                       </Label>
                       <Input
@@ -718,7 +718,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label htmlFor={fieldIds.model} className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
+                      <Label htmlFor={fieldIds.model} className="text-xs font-medium text-muted-foreground/80 ml-1">
                         {t('common:api_config_modal.model_name')}
                       </Label>
                       <div className="relative">
@@ -736,12 +736,12 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       </p>
                     </div>
                     
-                    <div className="space-y-2 md:col-span-2">
-                      <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
+                    <div className="space-y-2">
+                      <Label className="text-xs font-medium text-muted-foreground/80 ml-1">
                         {t('settings:api.modal.adapter.field_label')}
                       </Label>
                       {/* 模型适配器 - 展开式列表 */}
-                      <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 gap-2">
+                      <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
                         {modelAdapterOptions.map(option => {
                           const isSelected = formData.modelAdapter === option.value;
                           return (
@@ -770,7 +770,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                   : 'border-border/40 bg-muted/20 text-muted-foreground hover:border-border hover:bg-[var(--interactive-hover)] hover:text-foreground'
                               )}
                             >
-                              <span className={cn('text-sm', isSelected && 'font-medium')}>{option.label}</span>
+                              <span className={cn('text-xs leading-tight', isSelected && 'font-medium')}>{option.label}</span>
                             </NotionButton>
                           );
                         })}
@@ -830,7 +830,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
 
                 {/* Capabilities Tab */}
                 <TabsContent value="capabilities" className="mt-0 focus-visible:outline-none animate-in fade-in-50 slide-in-from-bottom-2 duration-300">
-                  <div className="grid gap-3 sm:grid-cols-2">
+                  <div className="grid gap-2">
                     {capabilityOptions.map(option => {
                       const checked = !!(formData as any)[option.key];
                       return (
@@ -859,33 +859,30 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                             });
                           }}
                           className={cn(
-                            'relative flex cursor-pointer items-start gap-4 rounded-xl border p-4 transition-all duration-200 select-none group',
+                            'relative flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition-all duration-200 select-none group',
                             checked
-                              ? 'border-primary/50 bg-primary/5 shadow-sm'
-                              : 'border-border/40 bg-card hover:border-primary/20 hover:bg-[var(--interactive-hover)]',
-                            option.key === 'supportsTools' && 'sm:col-span-2'
+                              ? 'border-primary/50 bg-primary/5'
+                              : 'border-border/40 bg-card hover:border-primary/20 hover:bg-[var(--interactive-hover)]'
                           )}
                         >
-                          <div className={cn("p-2.5 rounded-lg shrink-0 transition-all duration-200", checked ? "bg-primary text-primary-foreground shadow-sm scale-110" : "bg-muted/50 text-muted-foreground group-hover:text-foreground")}>
+                          <div className={cn("p-2 rounded-md shrink-0 transition-all duration-200", checked ? "bg-primary text-primary-foreground" : "bg-muted/50 text-muted-foreground group-hover:text-foreground")}>
                             {option.icon}
                           </div>
-                          <div className="flex-1 space-y-1.5 pt-0.5">
-                            <div className="flex items-center justify-between gap-2">
-                              <span className="font-medium text-sm flex items-center gap-2">
-                                {option.title}
-                                {option.highlight && (
-                                  <Badge variant="secondary" className="text-[10px] h-4 px-1.5 font-normal bg-primary/10 text-primary border-none">
-                                    {t('settings:api.modal.capabilities.recommended')}
-                                  </Badge>
-                                )}
-                              </span>
-                              <div className={cn("w-4 h-4 rounded-full border transition-all flex items-center justify-center", checked ? "bg-primary border-primary" : "border-muted-foreground/30")}>
-                                {checked && <div className="w-1.5 h-1.5 bg-background rounded-full" />}
-                              </div>
-                            </div>
-                            <p className="text-xs text-muted-foreground leading-relaxed pr-4">
+                          <div className="flex-1 min-w-0">
+                            <span className="font-medium text-sm flex items-center gap-2">
+                              {option.title}
+                              {option.highlight && (
+                                <Badge variant="secondary" className="text-[10px] h-4 px-1.5 font-normal bg-primary/10 text-primary border-none">
+                                  {t('settings:api.modal.capabilities.recommended')}
+                                </Badge>
+                              )}
+                            </span>
+                            <p className="text-xs text-muted-foreground leading-snug mt-0.5 line-clamp-1">
                               {option.description}
                             </p>
+                          </div>
+                          <div className={cn("w-4 h-4 rounded-full border transition-all flex items-center justify-center shrink-0", checked ? "bg-primary border-primary" : "border-muted-foreground/30")}>
+                            {checked && <div className="w-1.5 h-1.5 bg-background rounded-full" />}
                           </div>
                         </div>
                       );

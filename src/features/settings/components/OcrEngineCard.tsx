@@ -302,7 +302,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
                     )}
 
                     {index === firstEnabledIndex && engine.enabled && (
-                      <span className="text-[10px] text-amber-600/80 dark:text-amber-400/80 shrink-0">
+                      <span className="text-[10px] text-primary/85 shrink-0">
                         {t('settings:ocr.primary')}
                       </span>
                     )}
