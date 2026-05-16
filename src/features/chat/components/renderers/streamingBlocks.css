@@ -35,72 +35,16 @@
   }
 }
 
-/* ─── Active block: trailing fade mask ───────────────────────────────────── */
-/* 活跃块的内容末尾使用渐变遮罩，让新出现的文字有"浮现"效果 */
+/* ─── Active block: overflow containment ──────────────────────────────────── */
+/* Per-word fade-in (streamingWordFade.css) 替代了旧的 trailing mask 方案 */
 
 .stream-block[data-active="true"] .markdown-content {
-  mask-image: linear-gradient(
-    to right,
-    black 0%,
-    black calc(100% - 3em),
-    rgba(0, 0, 0, 0.7) calc(100% - 1.5em),
-    rgba(0, 0, 0, 0.4) 100%
-  );
-  -webkit-mask-image: linear-gradient(
-    to right,
-    black 0%,
-    black calc(100% - 3em),
-    rgba(0, 0, 0, 0.7) calc(100% - 1.5em),
-    rgba(0, 0, 0, 0.4) 100%
-  );
-  animation: stream-mask-reveal 180ms ease-out forwards;
+  overflow: hidden;
 }
 
-@keyframes stream-mask-reveal {
-  from {
-    mask-image: linear-gradient(
-      to right,
-      black 0%,
-      black calc(100% - 4em),
-      rgba(0, 0, 0, 0.3) calc(100% - 2em),
-      rgba(0, 0, 0, 0.0) 100%
-    );
-    -webkit-mask-image: linear-gradient(
-      to right,
-      black 0%,
-      black calc(100% - 4em),
-      rgba(0, 0, 0, 0.3) calc(100% - 2em),
-      rgba(0, 0, 0, 0.0) 100%
-    );
-  }
-  to {
-    mask-image: linear-gradient(
-      to right,
-      black 0%,
-      black calc(100% - 3em),
-      rgba(0, 0, 0, 0.7) calc(100% - 1.5em),
-      rgba(0, 0, 0, 0.4) 100%
-    );
-    -webkit-mask-image: linear-gradient(
-      to right,
-      black 0%,
-      black calc(100% - 3em),
-      rgba(0, 0, 0, 0.7) calc(100% - 1.5em),
-      rgba(0, 0, 0, 0.4) 100%
-    );
-  }
-}
+/* ─── Active block indicator: solid dot ───────────────────────────────────── */
 
-/* 完成后移除遮罩 */
-.stream-block[data-complete="true"] .markdown-content,
-.stream-block[data-active="false"] .markdown-content {
-  mask-image: none;
-  -webkit-mask-image: none;
-}
-
-/* ─── Active block cursor: soft glow ─────────────────────────────────────── */
-
-/* 活跃块（正在接收 token）的光晕光标 — 替代纯闪烁，更柔和 */
+/* 活跃块（正在接收 token）的实心圆点 — 简洁地标示生成位置 */
 .stream-block[data-active="true"][data-block-type="paragraph"]::after,
 .stream-block[data-active="true"][data-block-type="heading"]::after,
 .stream-block[data-active="true"][data-block-type="list"]::after,
@@ -108,27 +52,13 @@
   content: '';
   display: inline-block;
   width: 6px;
-  height: 1.1em;
-  margin-left: 2px;
-  vertical-align: text-bottom;
-  border-radius: 3px;
-  background: hsl(var(--primary) / 0.8);
-  box-shadow: 0 0 8px hsl(var(--primary) / 0.35);
-  animation: stream-glow-pulse 1.2s ease-in-out infinite;
+  height: 6px;
+  margin-left: 4px;
+  vertical-align: middle;
+  border-radius: 50%;
+  background: hsl(var(--primary));
 }
 
-@keyframes stream-glow-pulse {
-  0%, 100% {
-    opacity: 0.35;
-    box-shadow: 0 0 4px hsl(var(--primary) / 0.15);
-    transform: scaleY(0.9);
-  }
-  50% {
-    opacity: 1;
-    box-shadow: 0 0 12px hsl(var(--primary) / 0.45);
-    transform: scaleY(1);
-  }
-}
 
 /* ─── Code block: deferred highlighting ──────────────────────────────────── */
 
@@ -236,6 +166,9 @@
   font-size: 0.85em;
   font-weight: 500;
   color: hsl(var(--muted-foreground));
+  /* 装饰性头部，不进入文本选区 */
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .streaming-block-renderer .thinking-content {
@@ -249,20 +182,6 @@
   .stream-block[data-new="true"] {
     animation: none;
     opacity: 1;
-  }
-
-  .stream-block[data-active="true"] .markdown-content {
-    mask-image: none;
-    -webkit-mask-image: none;
-    animation: none;
-  }
-
-  .stream-block[data-active="true"][data-block-type="paragraph"]::after,
-  .stream-block[data-active="true"][data-block-type="heading"]::after,
-  .stream-block[data-active="true"][data-block-type="list"]::after,
-  .stream-block[data-active="true"][data-block-type="blockquote"]::after {
-    animation: none;
-    opacity: 0.6;
   }
 
   .stream-block[data-new="true"][data-block-type="list"] li {

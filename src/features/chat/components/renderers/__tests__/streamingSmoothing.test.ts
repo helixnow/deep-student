@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import {
   computeNextSmoothedContent,
+  computeNextSmoothedContentByTime,
   getStreamingSmoothingConfig,
   resolveStreamingSmoothingPreset,
 } from '../streamingSmoothing';
@@ -11,6 +12,20 @@ describe('streaming smoothing presets', () => {
     expect(resolveStreamingSmoothingPreset('silky')).toBe('silky');
     expect(resolveStreamingSmoothingPreset('experimental')).toBe('balanced');
     expect(resolveStreamingSmoothingPreset(undefined)).toBe('balanced');
+  });
+
+  it('recognises the natural preset', () => {
+    expect(resolveStreamingSmoothingPreset('natural')).toBe('natural');
+  });
+
+  it('exposes commit gate fields per preset', () => {
+    const balanced = getStreamingSmoothingConfig('balanced');
+    expect(balanced.commitIntervalMs).toBeGreaterThan(0);
+    expect(balanced.commitOnWordBoundary).toBe(true);
+
+    const natural = getStreamingSmoothingConfig('natural');
+    expect(natural.commitIntervalMs).toBe(0);
+    expect(natural.commitOnWordBoundary).toBe(false);
   });
 
   it('reveals long incoming content incrementally instead of snapping to the full target', () => {
@@ -41,6 +56,29 @@ describe('streaming smoothing presets', () => {
 
     expect(result.delta).toBeGreaterThan(config.minChunkChars);
     expect(result.delta).toBeLessThanOrEqual(config.maxChunkChars);
+  });
+});
+
+describe('computeNextSmoothedContentByTime', () => {
+  it('advances proportionally to dt and preset cps', () => {
+    const config = getStreamingSmoothingConfig('balanced');
+    const target = 'a'.repeat(500);
+
+    const slow = computeNextSmoothedContentByTime('', target, config, 16);
+    const fast = computeNextSmoothedContentByTime('', target, config, 64);
+
+    // Faster dt => bigger advance, but capped by maxChunkChars.
+    expect(fast.delta).toBeGreaterThanOrEqual(slow.delta);
+    expect(fast.delta).toBeLessThanOrEqual(config.maxChunkChars);
+  });
+
+  it('flushes the entire tail when remaining is below tailFlushChars', () => {
+    const config = getStreamingSmoothingConfig('silky');
+    const tail = config.tailFlushChars;
+    const target = 'x'.repeat(tail);
+    const result = computeNextSmoothedContentByTime('', target, config, 16);
+    expect(result.content).toBe(target);
+    expect(result.reason).toBe('complete');
   });
 });
 

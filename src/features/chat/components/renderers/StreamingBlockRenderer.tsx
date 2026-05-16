@@ -9,6 +9,7 @@ import {
 } from './streamingSmoothing';
 import { splitMarkdownBlocks, type MarkdownBlock } from './splitMarkdownBlocks';
 import './streamingBlocks.css';
+import './streamingWordFade.css';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 

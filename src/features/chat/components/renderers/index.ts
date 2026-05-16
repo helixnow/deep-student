@@ -10,7 +10,9 @@
 // ============================================================================
 
 export { StreamingMarkdownRenderer } from './StreamingMarkdownRenderer';
+export type { StreamRenderingMode } from './StreamingMarkdownRenderer';
 export { StreamingBlockRenderer } from './StreamingBlockRenderer';
+export { BlockedMarkdownRenderer } from './BlockedMarkdownRenderer';
 export { MarkdownRenderer, renderMarkdownStatic } from './MarkdownRenderer';
 export {
   EnhancedMarkdownRenderer,

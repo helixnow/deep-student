@@ -5,39 +5,16 @@
   position: relative;
 }
 
-.streaming-cursor {
-  color: hsl(var(--primary));
-  font-weight: bold;
-  opacity: 1;
-  animation: blink 1s infinite;
-  margin-left: 2px;
-}
-
-.streaming-cursor[data-active="false"] {
-  visibility: hidden;
-  opacity: 0;
-}
-
-.streaming-cursor.visible {
-  opacity: 1;
-}
-
 .partial-math-indicator {
   color: hsl(var(--warning));
   margin-left: 0.25rem;
-  animation: pulse 1s infinite;
+  animation: stream-partial-math-pulse 1.2s ease-in-out infinite;
   font-size: 0.9em;
 }
 
-@keyframes blink {
-  0%, 50% { opacity: 1; }
-  51%, 100% { opacity: 0; }
-}
-
-@keyframes pulse {
-  0% { opacity: 0.6; }
+@keyframes stream-partial-math-pulse {
+  0%, 100% { opacity: 0.4; }
   50% { opacity: 1; }
-  100% { opacity: 0.6; }
 }
 
 /* 流式消息特殊样式 */
@@ -54,13 +31,9 @@
 /* ─── Reduced motion ─────────────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
-  .streaming-cursor {
-    animation: none;
-    opacity: 0.7;
-  }
-
   .partial-math-indicator {
     animation: none;
     opacity: 0.8;
   }
 }
+
