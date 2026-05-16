@@ -359,13 +359,28 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
   // interaction clears. This is the dequeue heartbeat — fired by zustand's
   // subscribe. The prev-state diff prevents re-firing on unrelated changes
   // and avoids infinite loops.
+  //
+  // Note: the blocking interaction field is named `pendingBlockingInteraction`
+  // in the in-progress BlockingInteraction migration but `pendingApprovalRequest`
+  // at HEAD. We read both via a tolerant cast so this code compiles against
+  // either shape; whichever is present at runtime drives the dequeue heartbeat.
+  type BlockingShape = {
+    pendingBlockingInteraction?: unknown;
+    pendingApprovalRequest?: unknown;
+  };
+  const readBlocking = (s: ChatStore): unknown => {
+    const x = s as unknown as BlockingShape;
+    return x.pendingBlockingInteraction ?? x.pendingApprovalRequest ?? null;
+  };
+
   let prevStatus = store.getState().sessionStatus;
-  let prevBlocking = store.getState().pendingBlockingInteraction;
+  let prevBlocking = readBlocking(store.getState());
   store.subscribe((state) => {
     const justBecameIdle = prevStatus !== 'idle' && state.sessionStatus === 'idle';
-    const blockingCleared = prevBlocking !== null && state.pendingBlockingInteraction === null;
+    const nextBlocking = readBlocking(state);
+    const blockingCleared = prevBlocking !== null && nextBlocking === null;
     prevStatus = state.sessionStatus;
-    prevBlocking = state.pendingBlockingInteraction;
+    prevBlocking = nextBlocking;
     if (justBecameIdle || blockingCleared) {
       void state.maybeDequeue();
     }
