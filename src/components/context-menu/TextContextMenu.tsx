@@ -21,6 +21,7 @@ import { useTranslation } from 'react-i18next';
 import { Copy, Scissors, ClipboardText, ListChecks } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useOverlayCoordinator } from '@/components/shared/OverlayCoordinator';
+import { copyTextToClipboard, readTextFromClipboard } from '@/utils/clipboardUtils';
 
 // ───────────────────────────────────────────────────────────────────
 // Types
@@ -59,28 +60,13 @@ function isReadOnlyTarget(el: HTMLElement): boolean {
 }
 
 async function readClipboardText(): Promise<string | null> {
-  try {
-    if (typeof navigator !== 'undefined' && navigator.clipboard?.readText) {
-      return await navigator.clipboard.readText();
-    }
-  } catch {
-    /* clipboard permission denied or unsupported */
-  }
-  return null;
+  return readTextFromClipboard();
 }
 
 async function writeClipboardText(text: string): Promise<boolean> {
   try {
-    if (typeof navigator !== 'undefined' && navigator.clipboard?.writeText) {
-      await navigator.clipboard.writeText(text);
-      return true;
-    }
-  } catch {
-    /* fallthrough */
-  }
-  // Legacy fallback
-  try {
-    return document.execCommand('copy');
+    await copyTextToClipboard(text);
+    return true;
   } catch {
     return false;
   }

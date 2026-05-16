@@ -30,8 +30,12 @@ export interface SelectionToolbarProps {
   isVisible: boolean;
   /** 清除选择状态 */
   onClear: () => void;
-  /** 发送消息回调（用于 AI 解释和翻译） */
+  /** 发送消息回调 */
   onSendMessage?: (content: string) => void;
+  /** 解释回调（触发解释 popover） */
+  onExplain?: (text: string) => void;
+  /** 翻译回调（触发翻译 popover） */
+  onTranslate?: (text: string) => void;
   /** 添加到聊天输入框回调 */
   onAddToChat?: (text: string) => void;
   /** 制卡回调 */
@@ -59,6 +63,8 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
   isVisible,
   onClear,
   onSendMessage,
+  onExplain,
+  onTranslate,
   onAddToChat,
   onMakeCard,
 }) => {
@@ -110,27 +116,21 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
   const handleExplain = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (onSendMessage) {
-      const quotedText = selectedText.length > 200
-        ? selectedText.slice(0, 200) + '...'
-        : selectedText;
-      onSendMessage(`> ${quotedText}\n\n请解释这段内容`);
+    if (onExplain) {
+      onExplain(selectedText);
     }
     onClear();
-  }, [selectedText, onSendMessage, onClear]);
+  }, [selectedText, onExplain, onClear]);
 
   // 翻译
   const handleTranslate = useCallback((e: React.MouseEvent) => {
     e.preventDefault();
     e.stopPropagation();
-    if (onSendMessage) {
-      const quotedText = selectedText.length > 500
-        ? selectedText.slice(0, 500) + '...'
-        : selectedText;
-      onSendMessage(`> ${quotedText}\n\n请翻译以上内容`);
+    if (onTranslate) {
+      onTranslate(selectedText);
     }
     onClear();
-  }, [selectedText, onSendMessage, onClear]);
+  }, [selectedText, onTranslate, onClear]);
 
   // 添加到聊天输入框
   const handleAddToChat = useCallback((e: React.MouseEvent) => {
@@ -200,7 +200,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
             onClick={handleExplain}
             icon={<Sparkle size={14} />}
             label={t('selectionToolbar.explain', '解释')}
-            disabled={!onSendMessage}
+            disabled={!onExplain}
           />
 
           <Divider />
@@ -210,7 +210,7 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
             onClick={handleTranslate}
             icon={<Translate size={14} />}
             label={t('selectionToolbar.translate', '翻译')}
-            disabled={!onSendMessage}
+            disabled={!onTranslate}
           />
 
           <Divider />
