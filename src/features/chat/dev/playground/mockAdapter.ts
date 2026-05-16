@@ -3,6 +3,9 @@
  *
  * 创建一个不连接后端的独立 ChatStore，
  * 通过直接操作 store 状态来模拟 LLM 输出。
+ *
+ * 节奏策略：通过 setMockRhythm() 注入 RhythmStrategy，
+ * 影响 simulateStreaming 的喂数节奏（fixed/poisson/burst）。
  */
 
 import { createChatStore, generateId } from '../../core/store/createChatStore';
@@ -11,6 +14,8 @@ import type { ChatStore } from '../../core/types';
 import type { BlockType, BlockStatus } from '../../core/types/block';
 import type { AutoReplyScenario } from './mockData';
 import { AUTO_REPLY_SCENARIOS, BLOCK_TEMPLATES, MOCK_MARKDOWN_CONTENT } from './mockData';
+import { planChunks, DEFAULT_RHYTHM } from './eval/rhythm';
+import type { RhythmStrategy } from './eval/types';
 
 // ============================================================================
 // Mock Store 创建
@@ -80,6 +85,23 @@ export function createPlaygroundStore(): StoreApi<ChatStore> {
 
 /** 当前正在执行的场景的 abort controller */
 let currentAbortController: AbortController | null = null;
+
+/** 当前的 rhythm 策略（影响 simulateStreaming 喂数节奏） */
+let currentRhythm: RhythmStrategy = DEFAULT_RHYTHM;
+
+/**
+ * 设置 mock rhythm 策略
+ */
+export function setMockRhythm(rhythm: RhythmStrategy): void {
+  currentRhythm = rhythm;
+}
+
+/**
+ * 获取当前 mock rhythm 策略
+ */
+export function getMockRhythm(): RhythmStrategy {
+  return currentRhythm;
+}
 
 /**
  * 中断当前正在执行的场景
@@ -159,44 +181,69 @@ export async function executeScenario(
 }
 
 /**
- * 模拟流式输出（逐字符/逐 chunk 追加内容）
+ * 模拟流式输出（按 RhythmStrategy 喂数）。
+ * 默认使用 fixed(8, 20)。可通过 setMockRhythm() 全局切换节奏。
  */
 async function simulateStreaming(
   store: StoreApi<ChatStore>,
   blockId: string,
   fullContent: string,
-  signal: AbortSignal
+  signal: AbortSignal,
 ): Promise<void> {
-  const CHUNK_SIZE = 8; // 每次追加的字符数
-  const CHUNK_DELAY = 20; // 每个 chunk 的延迟（ms）
+  const plan = planChunks(currentRhythm, fullContent.length);
+  let pos = 0;
 
-  let currentContent = '';
-
-  for (let i = 0; i < fullContent.length; i += CHUNK_SIZE) {
+  for (const step of plan) {
     if (signal.aborted) break;
 
-    currentContent += fullContent.slice(i, i + CHUNK_SIZE);
+    if (step.chunkChars > 0) {
+      pos = Math.min(fullContent.length, pos + step.chunkChars);
+      const currentContent = fullContent.slice(0, pos);
 
+      store.setState((s) => {
+        const newBlocks = new Map(s.blocks);
+        const block = newBlocks.get(blockId);
+        if (block) {
+          newBlocks.set(blockId, {
+            ...block,
+            content: currentContent,
+            status: 'running',
+            firstChunkAt: block.firstChunkAt ?? Date.now(),
+          });
+        }
+        return { blocks: newBlocks };
+      });
+    }
+
+    if (step.sleepMs > 0) {
+      await new Promise<void>((resolve, reject) => {
+        const timer = setTimeout(resolve, step.sleepMs);
+        signal.addEventListener(
+          'abort',
+          () => {
+            clearTimeout(timer);
+            reject(new DOMException('Aborted', 'AbortError'));
+          },
+          { once: true },
+        );
+      });
+    }
+  }
+
+  // 兜底：若 plan 因策略原因未能写到末尾，强制 flush
+  if (!signal.aborted && pos < fullContent.length) {
     store.setState((s) => {
       const newBlocks = new Map(s.blocks);
       const block = newBlocks.get(blockId);
       if (block) {
         newBlocks.set(blockId, {
           ...block,
-          content: currentContent,
+          content: fullContent,
           status: 'running',
           firstChunkAt: block.firstChunkAt ?? Date.now(),
         });
       }
       return { blocks: newBlocks };
-    });
-
-    await new Promise((resolve, reject) => {
-      const timer = setTimeout(resolve, CHUNK_DELAY);
-      signal.addEventListener('abort', () => {
-        clearTimeout(timer);
-        reject(new DOMException('Aborted', 'AbortError'));
-      }, { once: true });
     });
   }
 }
