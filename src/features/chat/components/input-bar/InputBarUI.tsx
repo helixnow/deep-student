@@ -70,11 +70,13 @@ import { ContextRefChips } from './ContextRefChips';
 import { PageRefChips } from './PageRefChips';
 import { AttachmentPreviewChips } from './AttachmentPreviewChips';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
-import { ToolApprovalCard } from '../ToolApprovalCard';
+import { BlockingInteractionBar } from './BlockingInteractionBar';
 import { MobileBottomSheet } from './MobileBottomSheet';
 import { MobileSheetHeader } from './MobileSheetHeader';
 import { AttachmentInjectModeSelector } from './AttachmentInjectModeSelector';
 import { ComposerPanelOverlay } from './ComposerPanelOverlay';
+import { ComposerPanel } from './ComposerPanel';
+import { ComposerToolButton } from './ComposerToolButton';
 import type { AttachmentInjectModes } from '../../core/types/common';
 import {
   type MediaInjectMode,
@@ -2245,6 +2247,13 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
           </div>
         )}
 
+        {pendingApprovalRequest ? (
+          <BlockingInteractionBar
+            interaction={pendingApprovalRequest}
+            sessionId={sessionId || ''}
+          />
+        ) : (
+          <>
         {/* 输入区域 */}
         <div className="mb-2 relative">
           {/* 模型 @mention 自动完成弹窗 */}
@@ -2426,8 +2435,19 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 // 🔧 辅助链路：粘贴附件处理延迟到 isReady 后
                 if (isReady) {
                   handlePasteAsAttachment(e);
-                } else {
-                  // 未就绪时提示用户，避免静默丢弃粘贴事件
+                  return;
+                }
+                // 未就绪：仅当剪贴板包含文件或超长文本（会被转成附件）时才警告并阻断；
+                // 普通短文本直接走浏览器默认粘贴，避免每次会话切换都弹"正在初始化"
+                const cd = e.clipboardData;
+                if (!cd) return;
+                const hasFiles =
+                  (cd.files && cd.files.length > 0) ||
+                  (cd.items && Array.from(cd.items).some((it) => it.kind === 'file'));
+                const longText = (cd.getData('text/plain') ?? '').length > 800;
+                if (hasFiles || longText) {
+                  e.preventDefault();
+                  e.stopPropagation();
                   showGlobalNotification('warning', t('chatV2:inputBar.pasteNotReady'));
                 }
               }}
@@ -2522,160 +2542,80 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             {/* ★ 加号菜单已移除，统一桌面端和移动端样式 */}
 
             {/* 模型选择按钮 */}
-            <CommonTooltip content={t('chat_host:model_panel.title')} position={tooltipPosition} disabled={tooltipDisabled}>
-              <NotionButton
-                data-testid="btn-toggle-model"
-                variant="ghost"
-                size="icon"
-                iconOnly
-                onClick={handleOpenModelPanel}
-                    className={cn(
-                      iconButtonClass,
-                      'transition-colors',
-                      panelStates.model
-                        ? 'text-[color:var(--button-primary-foreground)] hover:text-[color:var(--button-primary-foreground)]'
-                        : 'text-[color:var(--button-utility-foreground)] hover:text-[color:var(--text-primary)]'
-                    )}
-                aria-label={t('chatV2:inputBar.toggleModelPanel')}
-              >
-                <span className="relative inline-flex items-center justify-center">
-                  <Sparkle size={18} weight="bold" />
-                </span>
-              </NotionButton>
-            </CommonTooltip>
+            <ComposerToolButton
+              data-testid="btn-toggle-model"
+              icon={Sparkle}
+              label={t('chatV2:inputBar.toggleModelPanel')}
+              tooltipContent={t('chat_host:model_panel.title')}
+              active={panelStates.model}
+              onClick={handleOpenModelPanel}
+              tooltipDisabled={tooltipDisabled}
+            />
 
-            <CommonTooltip
-              content={t('chatV2:inputBar.imageGen.title', '生成图片')}
-              position={tooltipPosition}
-              disabled={tooltipDisabled}
-            >
-              <NotionButton
-                data-testid="btn-toggle-image-gen"
-                variant="ghost"
-                size="icon"
-                iconOnly
-                onClick={() => togglePanel('imageGen')}
-                className={cn(
-                  iconButtonClass,
-                  'transition-colors',
-                  panelStates.imageGen
-                    ? 'text-[color:var(--button-primary-foreground)] hover:text-[color:var(--button-primary-foreground)]'
-                    : 'text-[color:var(--button-utility-foreground)] hover:text-[color:var(--text-primary)]'
-                )}
-                aria-label={t('chatV2:inputBar.imageGen.title', '生成图片')}
-                aria-pressed={panelStates.imageGen}
-              >
-                <span className="relative inline-flex items-center justify-center">
-                  <ImageSquare size={18} weight="bold" />
-                </span>
-              </NotionButton>
-            </CommonTooltip>
+            <ComposerToolButton
+              data-testid="btn-toggle-image-gen"
+              icon={ImageSquare}
+              label={t('chatV2:inputBar.imageGen.title', '生成图片')}
+              active={panelStates.imageGen}
+              onClick={() => togglePanel('imageGen')}
+              tooltipDisabled={tooltipDisabled}
+            />
 
             {/* 🔧 P0: 技能选择独立按钮 */}
             {renderSkillPanel && (
-              <CommonTooltip
-                content={
+              <ComposerToolButton
+                data-testid="btn-toggle-skill"
+                icon={Lightning}
+                label={t('skills:title')}
+                tooltipContent={
                   activeSkillIds && activeSkillIds.length > 0
                     ? t('skills:active')
                     : hasLoadedSkills
                       ? t('skills:toolLoaded')
                       : t('skills:title')
                 }
-                position={tooltipPosition}
-                disabled={tooltipDisabled}
-              >
-                <NotionButton
-                  data-testid="btn-toggle-skill"
-                  variant="ghost"
-                  size="icon"
-                  iconOnly
-                  onClick={() => togglePanel('skill')}
-                    className={cn(
-                      iconButtonClass,
-                      'relative transition-colors',
-                      (panelStates.skill || (activeSkillIds && activeSkillIds.length > 0))
-                        ? 'text-[color:var(--button-primary-foreground)] hover:text-[color:var(--button-primary-foreground)]'
-                      : hasLoadedSkills
-                          ? 'text-[color:var(--text-secondary)] hover:text-[color:var(--text-primary)]'
-                          : 'text-[color:var(--button-utility-foreground)] hover:text-[color:var(--text-primary)]'
-                    )}
-                  aria-label={t('skills:title')}
-                  aria-pressed={panelStates.skill || (activeSkillIds && activeSkillIds.length > 0) || !!hasLoadedSkills}
-                >
-                  <span className="relative inline-flex items-center justify-center">
-                    <Lightning size={18} weight="bold" />
-                    {activeSkillIds && activeSkillIds.length > 0 ? (
-                      <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-[color:var(--button-primary-foreground)] animate-pulse" />
-                    ) : hasLoadedSkills ? (
-                      <span className="absolute -right-0.5 -top-0.5 h-2 w-2 rounded-full bg-[color:var(--text-secondary)]" />
-                    ) : null}
-                  </span>
-                </NotionButton>
-              </CommonTooltip>
+                active={panelStates.skill || !!(activeSkillIds && activeSkillIds.length > 0)}
+                ariaPressed={panelStates.skill || !!(activeSkillIds && activeSkillIds.length > 0) || !!hasLoadedSkills}
+                onClick={() => togglePanel('skill')}
+                tooltipDisabled={tooltipDisabled}
+                indicator={
+                  activeSkillIds && activeSkillIds.length > 0
+                    ? 'active'
+                    : hasLoadedSkills
+                      ? 'loaded'
+                      : null
+                }
+              />
             )}
 
             {/* 🔧 P0: MCP 工具独立按钮 */}
             {renderMcpPanel && (
-              <CommonTooltip
-                content={
+              <ComposerToolButton
+                data-testid="btn-toggle-mcp"
+                icon={Wrench}
+                label={t('analysis:input_bar.mcp.title')}
+                tooltipContent={
                   <span className="flex items-center gap-2">
                     <span>{t('analysis:input_bar.mcp.title')}</span>
                     <kbd className="px-1 py-0.5 text-[10px] font-mono bg-muted/50 rounded border border-border/50">⌘⇧M</kbd>
                   </span>
                 }
-                position={tooltipPosition}
-                disabled={tooltipDisabled}
-              >
-                <NotionButton
-                  data-testid="btn-toggle-mcp"
-                  variant="ghost"
-                  size="icon"
-                  iconOnly
-                  onClick={() => togglePanel('mcp')}
-                    className={cn(
-                      iconButtonClass,
-                      'relative transition-colors',
-                      (panelStates.mcp || mcpEnabled)
-                        ? 'text-[color:var(--button-primary-foreground)] hover:text-[color:var(--button-primary-foreground)]'
-                        : 'text-[color:var(--button-utility-foreground)] hover:text-[color:var(--text-primary)]'
-                    )}
-                  aria-label={t('analysis:input_bar.mcp.title')}
-                  aria-pressed={panelStates.mcp || mcpEnabled}
-                >
-                  <span className="relative inline-flex items-center justify-center">
-                    <Wrench size={18} weight="bold" />
-                    {selectedMcpServerCount > 0 && (
-                      <span className="absolute -right-2 -top-1.5 flex h-4 min-w-[16px] items-center justify-center rounded-full border border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] px-1 text-[10px] font-semibold text-[color:var(--button-primary-foreground)] shadow-sm">
-                        {selectedMcpServerCount > 9 ? '9+' : selectedMcpServerCount}
-                      </span>
-                    )}
-                  </span>
-                </NotionButton>
-              </CommonTooltip>
+                active={panelStates.mcp || mcpEnabled}
+                onClick={() => togglePanel('mcp')}
+                tooltipDisabled={tooltipDisabled}
+                badge={selectedMcpServerCount}
+              />
             )}
 
             {/* 对话控制按钮 */}
             {renderAdvancedPanel && (
-              <CommonTooltip content={t('common:chat_controls')} position={tooltipPosition} disabled={tooltipDisabled}>
-                <NotionButton
-                  variant="ghost"
-                  size="icon"
-                  iconOnly
-                  onClick={() => togglePanel('advanced')}
-                  className={cn(
-                    iconButtonClass,
-                    'transition-colors',
-                    panelStates.advanced
-                      ? 'text-[color:var(--button-primary-foreground)] hover:text-[color:var(--button-primary-foreground)]'
-                      : 'text-[color:var(--button-utility-foreground)] hover:text-[color:var(--text-primary)]'
-                  )}
-                  aria-label={t('common:chat_controls')}
-                >
-                  <span className="relative inline-flex items-center justify-center">
-                    <SlidersHorizontal className="w-[18px] h-[18px]" weight="bold" />
-                  </span>
-                </NotionButton>
-              </CommonTooltip>
+              <ComposerToolButton
+                icon={SlidersHorizontal}
+                label={t('common:chat_controls')}
+                active={panelStates.advanced}
+                onClick={() => togglePanel('advanced')}
+                tooltipDisabled={tooltipDisabled}
+              />
             )}
 
           </div>
@@ -2879,6 +2819,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             )}
           </div>
         </div>
+          </>
+        )}
       </div>
       </div>
 
@@ -3166,7 +3108,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
         {/* ★ RAG 知识库面板已移至对话控制面板 */}
 
-        {/* 模型选择面板 - ★ 统一桌面端和移动端样式 */}
+        {/* 模型选择面板 - 贴齐输入栏宽度，紧贴上方 */}
         {renderModelPanel && (
           activeComposerPanel === 'model' && modelPanelMotion.shouldRender && (
             <ComposerPanelOverlay
@@ -3174,8 +3116,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               anchorRef={inputContainerRef}
               overlayRef={composerPanelOverlayRef}
               motionState={modelPanelMotion.motionState}
-              maxHeight={560}
-              widthMode="wide"
+              maxHeight={380}
+              widthMode="anchor"
             >
               {renderModelPanel()}
             </ComposerPanelOverlay>
@@ -3188,38 +3130,34 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             anchorRef={inputContainerRef}
             overlayRef={composerPanelOverlayRef}
             motionState={imageGenPanelMotion.motionState}
-            maxHeight={640}
-            widthMode="wide"
-            preferredWidth={880}
+            maxHeight={620}
+            widthMode="anchor"
             heightMode="available"
           >
-              <div className="flex h-full min-h-0 flex-col gap-3">
-                <div className="flex items-start justify-between gap-3">
-                  <div className="min-w-0">
-                    <div className="flex items-center gap-2 text-sm font-semibold text-[color:var(--composer-panel-foreground)]">
-                      <ImageSquare size={17} weight="bold" />
-                      <span>{t('chatV2:inputBar.imageGen.title', '生成图片')}</span>
-                    </div>
-                    <p className="mt-1 text-xs text-[color:var(--composer-panel-muted-foreground)]">
-                      {t('chatV2:inputBar.imageGen.subtitle', '通过内置工具生成图片，结果会保存到 VFS。')}
-                    </p>
-                  </div>
-                  <NotionButton
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={handleOpenImageGenerationSettings}
-                    className="shrink-0 text-xs"
-                  >
-                    {t('chatV2:inputBar.imageGen.configureModel', '设置模型')}
-                  </NotionButton>
-                </div>
+              <ComposerPanel.Root fillHeight>
+                <ComposerPanel.Header
+                  icon={ImageSquare}
+                  title={t('chatV2:inputBar.imageGen.title', '生成图片')}
+                  subtitle={t('chatV2:inputBar.imageGen.subtitle', '通过内置工具生成图片，结果会保存到 VFS。')}
+                  actions={
+                    <NotionButton
+                      type="button"
+                      variant="ghost"
+                      size="sm"
+                      onClick={handleOpenImageGenerationSettings}
+                      className="text-xs"
+                    >
+                      {t('chatV2:inputBar.imageGen.configureModel', '设置模型')}
+                    </NotionButton>
+                  }
+                  onClose={() => onSetPanelState('imageGen', false)}
+                  closeAriaLabel={t('common:actions.cancel')}
+                />
 
                 {imageGenModelsLoading ? (
-                  <div className="flex items-center gap-2 rounded-xl border border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-muted-surface)] px-3 py-2 text-xs text-[color:var(--composer-panel-muted-foreground)]">
-                    <CircleNotch size={14} className="animate-spin" />
-                    <span>{t('chatV2:inputBar.imageGen.loadingModels', '正在加载生图模型...')}</span>
-                  </div>
+                  <ComposerPanel.Loading
+                    label={t('chatV2:inputBar.imageGen.loadingModels', '正在加载生图模型...')}
+                  />
                 ) : hasImageGenModels ? (
                   <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
                     <div className="min-w-0">
@@ -3248,23 +3186,22 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                     </div>
                   </div>
                 ) : (
-                  <div className="rounded-xl border border-dashed border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-muted-surface)] px-3 py-3">
-                    <div className="text-sm font-semibold text-[color:var(--composer-panel-foreground)]">
-                      {t('chatV2:inputBar.imageGen.noModelTitle', '未配置生图模型')}
-                    </div>
-                    <p className="mt-1 text-xs leading-5 text-[color:var(--composer-panel-muted-foreground)]">
-                      {t('chatV2:inputBar.imageGen.noModelDescription', '请先在模型设置中标记并选择一个支持 /images/generations 的模型。')}
-                    </p>
-                    <NotionButton
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleOpenImageGenerationSettings}
-                      className="mt-2 text-xs"
-                    >
-                      {t('chatV2:inputBar.imageGen.configureModel', '设置模型')}
-                    </NotionButton>
-                  </div>
+                  <ComposerPanel.Empty
+                    icon={ImageSquare}
+                    title={t('chatV2:inputBar.imageGen.noModelTitle', '未配置生图模型')}
+                    description={t('chatV2:inputBar.imageGen.noModelDescription', '请先在模型设置中标记并选择一个支持 /images/generations 的模型。')}
+                    action={
+                      <NotionButton
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        onClick={handleOpenImageGenerationSettings}
+                        className="text-xs"
+                      >
+                        {t('chatV2:inputBar.imageGen.configureModel', '设置模型')}
+                      </NotionButton>
+                    }
+                  />
                 )}
 
                 <Textarea
@@ -3280,8 +3217,10 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                       key={purpose.value}
                       type="button"
                       onClick={() => setImageGenPurpose(purpose.value)}
+                      aria-pressed={imageGenPurpose === purpose.value}
                       className={cn(
                         'rounded-full border px-3 py-1.5 text-xs transition-colors',
+                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--composer-panel-focus-border)]',
                         imageGenPurpose === purpose.value
                           ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]'
                           : 'border-[color:var(--composer-panel-control-border)] text-[color:var(--composer-panel-muted-foreground)] hover:bg-[color:var(--composer-panel-control-hover)]'
@@ -3303,8 +3242,10 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                           key={ratio}
                           type="button"
                           onClick={() => setImageGenAspectRatio(ratio)}
+                          aria-pressed={imageGenAspectRatio === ratio}
                           className={cn(
                             'h-8 rounded-lg border text-xs transition-colors',
+                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--composer-panel-focus-border)]',
                             imageGenAspectRatio === ratio
                               ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]'
                               : 'border-[color:var(--composer-panel-control-border)] text-[color:var(--composer-panel-muted-foreground)] hover:bg-[color:var(--composer-panel-control-hover)]'
@@ -3325,8 +3266,10 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                           key={quality}
                           type="button"
                           onClick={() => setImageGenQuality(quality)}
+                          aria-pressed={imageGenQuality === quality}
                           className={cn(
                             'h-8 rounded-lg border text-xs capitalize transition-colors',
+                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--composer-panel-focus-border)]',
                             imageGenQuality === quality
                               ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]'
                               : 'border-[color:var(--composer-panel-control-border)] text-[color:var(--composer-panel-muted-foreground)] hover:bg-[color:var(--composer-panel-control-hover)]'
@@ -3339,7 +3282,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                   </div>
                 </div>
 
-                <div className="mt-auto flex items-center justify-end gap-2">
+                <ComposerPanel.Footer className="mt-auto">
                   <NotionButton
                     type="button"
                     variant="ghost"
@@ -3353,17 +3296,17 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                     size="sm"
                     onClick={handleImageGenerate}
                     disabled={!hasImageGenModels || imageGenModelsLoading || imageGenModelSaving || isStreaming}
-                    className="bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)] hover:bg-[color:var(--button-primary-hover)]"
+                    className="border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)] hover:bg-[color:var(--button-primary-hover)]"
                   >
                     <Sparkle size={14} weight="bold" />
                     <span>{t('chatV2:inputBar.imageGen.generate', '生成')}</span>
                   </NotionButton>
-                </div>
-              </div>
+                </ComposerPanel.Footer>
+              </ComposerPanel.Root>
             </ComposerPanelOverlay>
         )}
 
-        {/* MCP 工具面板 - ★ 统一桌面端和移动端样式 - content-adaptive */}
+        {/* MCP 工具面板 - 贴齐输入栏宽度 */}
         {renderMcpPanel && (
           activeComposerPanel === 'mcp' && mcpPanelMotion.shouldRender && (
             <ComposerPanelOverlay
@@ -3371,8 +3314,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               anchorRef={inputContainerRef}
               overlayRef={composerPanelOverlayRef}
               motionState={mcpPanelMotion.motionState}
-              maxHeight={560}
-              widthMode="wide"
+              maxHeight={520}
+              widthMode="anchor"
               heightMode="available"
             >
               {renderMcpPanel()}
@@ -3391,15 +3334,15 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               anchorRef={inputContainerRef}
               overlayRef={composerPanelOverlayRef}
               motionState={advancedPanelMotion.motionState}
-              maxHeight={560}
-              widthMode="wide"
+              maxHeight={520}
+              widthMode="anchor"
             >
               {renderAdvancedPanel()}
             </ComposerPanelOverlay>
           )
         )}
 
-        {/* 技能选择面板 - ★ 统一桌面端和移动端样式 */}
+        {/* 技能选择面板 - 贴齐输入栏宽度 */}
         {renderSkillPanel && (
           activeComposerPanel === 'skill' && skillPanelMotion.shouldRender && (
             <ComposerPanelOverlay
@@ -3407,8 +3350,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               anchorRef={inputContainerRef}
               overlayRef={composerPanelOverlayRef}
               motionState={skillPanelMotion.motionState}
-              maxHeight={620}
-              widthMode="wide"
+              maxHeight={580}
+              widthMode="anchor"
               heightMode="available"
             >
               {renderSkillPanel()}
@@ -3416,29 +3359,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
           )
         )}
 
-        {/* 🆕 工具审批卡片面板 - 始终显示在输入栏上方，不与其他面板互斥 */}
-        {pendingApprovalRequest && sessionId && (
-          <div
-            className={cn(
-              'absolute left-0 right-0 pointer-events-none z-[110]',
-              'bottom-full -mb-3 pb-4'
-            )}
-          >
-            <div
-              className={cn(
-                'absolute left-2 right-2 pointer-events-auto',
-                'bottom-4 origin-bottom',
-                'animate-in slide-in-from-bottom-4 duration-200'
-              )}
-            >
-              <ToolApprovalCard
-                request={pendingApprovalRequest}
-                sessionId={sessionId}
-                className="shadow-lg"
-              />
-            </div>
-          </div>
-        )}
       </div>{/* 🔧 panelContainerRef 结束 */}
     </div>
   );

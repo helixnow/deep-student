@@ -10,6 +10,7 @@ import type { AttachmentMeta, PanelStates } from '../../core/types/common';
 import type { ModelInfo } from '../../utils/parseModelMentions';
 import type { ContextRef } from '../../resources/types';
 import type { ApprovalRequestData } from '../ToolApprovalCard';
+import type { BlockingInteraction } from '../../core/types/store';
 import type { PdfPageRefsState } from './usePdfPageRefs';
 import type { DeepSeekReasoningOption, DeepSeekReasoningOptionValue } from '@/utils/deepseekReasoningControls';
 import type { ContextWindowUsage } from './contextWindowUsage';
@@ -301,10 +302,10 @@ export interface InputBarUIProps {
   /** 附件上传创建 ContextRef 后回调（避免跨模块全局事件） */
   onContextRefCreated?: (payload: { contextRef: ContextRef; attachmentId: string }) => void;
 
-  // ========== 🆕 工具审批请求 ==========
+  // ========== 🆕 阻塞交互请求 ==========
 
-  /** 待处理的工具审批请求 */
-  pendingApprovalRequest?: ApprovalRequestData | null;
+  /** 待处理的阻塞交互（工具审批/用户提问/工具限制） */
+  pendingApprovalRequest?: BlockingInteraction | null;
   /** 会话 ID（用于审批响应） */
   sessionId?: string;
 
