@@ -35,6 +35,7 @@ export const QueuedMessageStack: React.FC<Props> = React.memo(({ store, allowSte
     swapQueueWithDraft,
     recallToDraft,
     promoteQueued,
+    markSteered,
     retryFailed,
     clearQueue,
     abortStream,
@@ -50,6 +51,7 @@ export const QueuedMessageStack: React.FC<Props> = React.memo(({ store, allowSte
       swapQueueWithDraft: s.swapQueueWithDraft,
       recallToDraft: s.recallToDraft,
       promoteQueued: s.promoteQueued,
+      markSteered: s.markSteered,
       retryFailed: s.retryFailed,
       clearQueue: s.clearQueue,
       abortStream: s.abortStream,
@@ -64,6 +66,9 @@ export const QueuedMessageStack: React.FC<Props> = React.memo(({ store, allowSte
   }, [inputValue, attachments, recallToDraft, swapQueueWithDraft]);
 
   const handleSteer = useCallback(async (id: string) => {
+    // Mark as steered first so the flag survives the promote → dequeue chain
+    // and propagates to the resulting user message's _meta.steered.
+    markSteered?.(id);
     promoteQueued(id);
     if (sessionStatus === 'streaming') {
       try {
@@ -76,7 +81,7 @@ export const QueuedMessageStack: React.FC<Props> = React.memo(({ store, allowSte
       // Already idle: no transition will fire, so trigger dequeue explicitly.
       void maybeDequeue?.();
     }
-  }, [promoteQueued, abortStream, sessionStatus, maybeDequeue]);
+  }, [markSteered, promoteQueued, abortStream, sessionStatus, maybeDequeue]);
 
   if (queuedMessages.length === 0) return null;
 

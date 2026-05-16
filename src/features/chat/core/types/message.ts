@@ -222,6 +222,12 @@ export interface MessageMeta {
     toolCallId: string;
     toolName: string;
   };
+
+  /**
+   * 该消息源自队列「引导」操作（用户在流式中按引导按钮强行打断并优先发送此条）。
+   * 用于在 UI 上标注「已引导对话」徽章。
+   */
+  steered?: boolean;
 }
 
 /**

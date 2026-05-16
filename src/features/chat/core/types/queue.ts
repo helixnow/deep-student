@@ -12,6 +12,11 @@ export interface QueuedMessage {
   status: QueuedMessageStatus;
   /** Human-readable error surfaced via tooltip on the failed bubble. */
   error?: string;
+  /**
+   * 该项是通过「引导」操作进入发送的（用户硬打断当前回复并优先此条）。
+   * 出队成功后会传播到 user message 的 `_meta.steered`，用于聊天页徽章。
+   */
+  steered?: boolean;
 }
 
 export const QUEUE_HARD_CAP = 5;

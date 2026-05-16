@@ -396,6 +396,9 @@ export interface ChatStore {
   /** 草稿与队列项交换（点击气泡，草稿非空时） */
   swapQueueWithDraft(id: string): void;
 
+  /** 将队列项标记为「已引导」，出队后传播到 user message 的 `_meta.steered` */
+  markSteered(id: string): void;
+
   /** 自动出队下一项（满足 canDequeue 时执行） */
   maybeDequeue(): Promise<void>;
 
