@@ -65,6 +65,8 @@ const markdownSanitizeSchema = {
       'dataPdfRef',
       'dataPdfSource',
       'dataPdfPage',
+      // Per-word fade-in animation
+      'dataSdAnimate',
     ],
     code: [
       ...(defaultSchema.attributes?.code || []),

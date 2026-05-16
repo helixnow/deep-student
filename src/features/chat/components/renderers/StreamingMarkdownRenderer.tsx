@@ -1,13 +1,22 @@
 import React, { useMemo, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { BlockedMarkdownRenderer } from './BlockedMarkdownRenderer';
 import { shallowEqualSpans, makeUncertaintyHighlightPlugin } from './rendererUtils';
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
 import {
   useSmoothedStreamingContent,
   type StreamingSmoothingPreset,
 } from './streamingSmoothing';
+import { useStreamPreferences } from './StreamPreferencesContext';
 import './streaming.css';
+
+/**
+ * 流式渲染模式：
+ * - legacy: 整段一次性丢给 MarkdownRenderer（旧行为，默认值）
+ * - blocked: 切分为 markdown 块，每块独立 memo，仅最后一块流式
+ */
+export type StreamRenderingMode = 'legacy' | 'blocked';
 
 interface StreamingMarkdownRendererProps {
   content: string;
@@ -27,6 +36,8 @@ interface StreamingMarkdownRendererProps {
   resolveCitationImage?: (type: RetrievalSourceType, index: number) => { url: string; title?: string } | null | undefined;
   // 流式平滑预设：参考 Lobe 的 realtime / balanced / silky 模型，默认 balanced
   streamSmoothingPreset?: StreamingSmoothingPreset | string | null;
+  // 流式渲染模式：legacy（整段，默认）或 blocked（按 markdown 块独立 memo）
+  streamRenderingMode?: StreamRenderingMode;
   // 调试/Profiler 关联信息
   blockId?: string;
   messageId?: string;
@@ -196,15 +207,26 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
   extraRemarkPlugins,
   onCitationClick,
   resolveCitationImage,
-  streamSmoothingPreset = 'balanced',
+  streamSmoothingPreset,
+  streamRenderingMode,
   blockId,
   messageId,
 }) => {
+  // 业务侧未指定时回退到 context（Playground/DevTool 全局覆盖），最后再回退到默认值
+  // 默认 'legacy' 整段渲染：保持与现有 markdown.css 中
+  // `.markdown-content > *:first-child` / `p + p` 等假设的兼容性。
+  // 'blocked' 模式（按 markdown 块切分独立 memo）作为实验性优化，
+  // 当前仍需要对应 CSS 适配，故仅在 Playground 内或显式开启时使用。
+  const prefs = useStreamPreferences();
+  const effectivePreset: StreamingSmoothingPreset | string | null =
+    streamSmoothingPreset ?? prefs.preset ?? 'balanced';
+  const effectiveMode: 'legacy' | 'blocked' =
+    streamRenderingMode ?? prefs.mode ?? 'legacy';
   const { t } = useTranslation('chatV2');
   // 流式期间用 preset-based smoothing 代替固定 100ms throttle，
   // 保留 MarkdownRenderer 的业务渲染能力，只改变进入渲染器前的可见文本节奏。
   const smoothedContent = useSmoothedStreamingContent(content, isStreaming, {
-    preset: streamSmoothingPreset,
+    preset: effectivePreset,
     blockId,
     messageId,
   });
@@ -253,6 +275,20 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
       ? [makeUncertaintyHighlightPlugin(displayContent, stableHighlightSpans, t('renderer.uncertain'))]
       : [];
     const allPlugins = [...(extraRemarkPlugins || []), ...highlightPlugins];
+
+    if (effectiveMode === 'blocked') {
+      return (
+        <BlockedMarkdownRenderer
+          content={displayContent}
+          isStreaming={isStreaming}
+          onLinkClick={onLinkClick}
+          extraRemarkPlugins={allPlugins}
+          onCitationClick={onCitationClick}
+          resolveCitationImage={resolveCitationImage}
+        />
+      );
+    }
+
     return (
       <MarkdownRenderer
         content={displayContent}
@@ -272,6 +308,7 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
     t,
     onCitationClick,
     resolveCitationImage,
+    effectiveMode,
   ]);
 
   return (
@@ -279,7 +316,8 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
       className="streaming-markdown"
       data-streaming={isStreaming ? 'true' : 'false'}
       data-has-visible-content={hasVisibleContent ? 'true' : 'false'}
-      data-stream-preset={streamSmoothingPreset || 'balanced'}
+      data-stream-preset={String(effectivePreset || 'balanced')}
+      data-stream-mode={effectiveMode}
     >
       {parsedContent ? (
         <>
@@ -344,6 +382,7 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
     shallowEqualSpans(prevProps.highlightSpans, nextProps.highlightSpans) &&
     prevProps.extraRemarkPlugins === nextProps.extraRemarkPlugins &&
     prevProps.streamSmoothingPreset === nextProps.streamSmoothingPreset &&
+    prevProps.streamRenderingMode === nextProps.streamRenderingMode &&
     prevProps.blockId === nextProps.blockId &&
     prevProps.messageId === nextProps.messageId
   );
