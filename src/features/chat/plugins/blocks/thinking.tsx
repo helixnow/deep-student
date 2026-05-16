@@ -61,7 +61,7 @@ const ThinkingBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStre
         <span className="font-medium">{t('blocks.thinking.title')}</span>
         {isStreaming && (
           <span className="flex items-center gap-1 ml-auto">
-            <span className="w-1.5 h-1.5 bg-primary rounded-full animate-pulse" />
+            <span className="w-1.5 h-1.5 bg-primary rounded-full" />
             <span className="text-xs">{t('blocks.thinking.streaming')}</span>
           </span>
         )}

@@ -130,8 +130,8 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     }
   }, [isActuallyLoading]);
 
-  // 🆕 工具审批请求（文档 29 P1-3）
-  const pendingApprovalRequest = useStore(store, (s) => s.pendingApprovalRequest);
+  // 🆕 阻塞交互请求
+  const pendingApprovalRequest = useStore(store, (s) => s.pendingBlockingInteraction);
 
   // 🔧 P1修复：使用响应式订阅获取模式，而非直接调用 getState()
   const mode = useStore(store, (s) => s.mode);
