@@ -1057,6 +1057,7 @@ export function createMessageActions(
                   ...block,
                   status: shouldKeepContent ? 'success' : 'error',
                   error: shouldKeepContent ? undefined : 'aborted',
+                  aborted: shouldKeepContent ? true : undefined,
                   endedAt: Date.now(),
                 });
               }
@@ -1088,10 +1089,13 @@ export function createMessageActions(
             s.activeBlockIds.forEach((blockId) => {
               const block = newBlocks.get(blockId);
               if (block && block.status !== 'success' && block.status !== 'error') {
+                const plugin = blockRegistry.get(block.type);
+                const shouldKeepContent = plugin?.onAbort === 'keep-content';
                 newBlocks.set(blockId, {
                   ...block,
-                  status: 'error',
-                  error: 'force_reset',
+                  status: shouldKeepContent ? 'success' : 'error',
+                  error: shouldKeepContent ? undefined : 'force_reset',
+                  aborted: shouldKeepContent ? true : undefined,
                   endedAt: Date.now(),
                 });
               }
@@ -1104,7 +1108,7 @@ export function createMessageActions(
               blocks: newBlocks,
               streamingVariantIds: new Set(),
               messageOperationLock: null,
-              pendingApprovalRequest: null,
+              pendingBlockingInteraction: null,
               pendingParallelModelIds: null,
               modelRetryTarget: null,
             };

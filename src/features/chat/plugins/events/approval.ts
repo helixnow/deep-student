@@ -59,9 +59,9 @@ function resolvePendingApproval(
   status: ApprovalResolutionStatus,
   reason?: string
 ) {
-  if (!store.pendingApprovalRequest) return;
+  if (!store.pendingBlockingInteraction) return;
   store.setPendingApproval({
-    ...store.pendingApprovalRequest,
+    ...store.pendingBlockingInteraction as Extract<typeof store.pendingBlockingInteraction, { kind: 'tool_approval' }>,
     resolvedStatus: status,
     resolvedReason: reason,
   });
@@ -76,8 +76,9 @@ function extractToolCallId(blockId?: string): string | null {
 }
 
 function shouldResolveApproval(store: ChatStore, toolCallId?: string | null) {
-  const pending = store.pendingApprovalRequest;
+  const pending = store.pendingBlockingInteraction;
   if (!pending) return false;
+  if (pending.kind !== 'tool_approval') return false;
   if (pending.resolvedStatus) return false;
   if (toolCallId && pending.toolCallId !== toolCallId) return false;
   return true;
@@ -167,7 +168,7 @@ export const approvalEventHandler: EventHandler = {
     const normalized = toStoreApproval(request);
 
     // 已有待审批请求时进入队列，避免覆盖
-    if (store.pendingApprovalRequest) {
+    if (store.pendingBlockingInteraction) {
       approvalQueue.push(request);
       console.log('[ApprovalEventHandler] Queued approval request:', request.toolCallId, 'queueSize=', approvalQueue.length);
     } else {

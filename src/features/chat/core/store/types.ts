@@ -11,6 +11,7 @@ import type {
   ChatParams,
   PanelStates,
   ChatStore,
+  BlockingInteraction,
 } from '../types/store';
 import { createDefaultChatParams, createDefaultPanelStates } from '../types/common';
 import type { ContextRef } from '../../context/types';
@@ -119,6 +120,9 @@ export interface StoreCallbacks {
   _continueMessageCallback?: ((messageId: string, variantId?: string) => Promise<void>) | null;
 }
 
+// Re-export BlockingInteraction from public types
+export type { BlockingInteraction } from '../types/store';
+
 // ============================================================================
 // Store 状态类型（不含 Actions）
 // ============================================================================
@@ -200,19 +204,10 @@ export interface ChatStoreState extends StoreCallbacks {
   /** pendingContextRefs 是否被用户在当前轮编辑中显式修改过（用于 editAndResend 三态语义） */
   pendingContextRefsDirty: boolean;
 
-  // ========== 🆕 工具审批请求（✔️ 运行时状态，文档 29 P1-3） ==========
+  // ========== 🆕 阻塞交互状态（✔️ 运行时状态） ==========
 
-  /** 待处理的工具审批请求 */
-  pendingApprovalRequest: {
-    toolCallId: string;
-    toolName: string;
-    arguments: Record<string, unknown>;
-    sensitivity: 'low' | 'medium' | 'high';
-    description: string;
-    timeoutSeconds: number;
-    resolvedStatus?: 'approved' | 'rejected' | 'timeout' | 'expired' | 'error';
-    resolvedReason?: string;
-  } | null;
+  /** 待处理的阻塞交互（工具审批/用户提问/工具限制） */
+  pendingBlockingInteraction: BlockingInteraction | null;
 
   // Pending message queue (in-memory, per-session, not persisted)
   queuedMessages: QueuedMessage[];
@@ -296,7 +291,7 @@ export function createInitialState(sessionId: string, title?: string, descriptio
     messageOperationLock: null, // 🆕 消息操作锁初始为 null
     pendingContextRefs: [], // 🆕 上下文引用初始为空数组
     pendingContextRefsDirty: false,
-    pendingApprovalRequest: null, // 🆕 工具审批请求初始为 null（文档 29 P1-3）
+    pendingBlockingInteraction: null, // 🆕 阻塞交互初始为 null
     queuedMessages: [],
     dequeuing: false,
     activeSkillIds: [], // 🆕 Skills 系统：当前激活的 Skill ID 列表（支持多选）

@@ -867,6 +867,7 @@
     "thinking": {
       "inProgress": "Thinking...",
       "completed": "Thought for {{seconds}}s",
+      "stopped": "Stopped thinking",
       "detail": {
         "inProgress": "Deep thinking in progress...",
         "completed": "Thinking completed in {{seconds}} seconds"

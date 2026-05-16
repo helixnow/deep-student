@@ -63,6 +63,9 @@ export interface Block {
   /** 错误描述 */
   error?: string;
 
+  /** 用户主动中断标记（keep-content 块在 abort 时设置） */
+  aborted?: boolean;
+
   // ========== 时间戳 ==========
 
   /** 块创建/开始时间 */

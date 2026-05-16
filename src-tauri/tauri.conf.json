@@ -26,7 +26,7 @@
         "fullscreen": false,
         "center": true,
         "decorations": false,
-        "transparent": false,
+        "transparent": true,
         "skipTaskbar": false,
         "alwaysOnTop": false,
         "visible": true,
@@ -88,7 +88,7 @@
       }
     },
     "android": {
-      "versionCode": 13731
+      "versionCode": 13760
     }
   },
   "plugins": {

@@ -199,6 +199,51 @@ const toolCallEventHandler: EventHandler = {
     // 🔧 修复：立即将状态更新为 running
     store.updateBlockStatus(blockId, 'running');
 
+    // 🆕 ask_user 阻塞交互：设置输入栏接管状态
+    if (isAskUserTool && toolInput) {
+      const askInput = toolInput as {
+        question?: string;
+        // LLM 实际可能返回 string[] 或 { label, value }[]，需做归一化
+        options?: unknown;
+        multiple?: boolean;
+        allowCustom?: boolean;
+        timeoutSeconds?: number;
+        context?: string;
+      };
+      // 归一化 options：兼容 LLM 误把 options 输出为 { label, value } 对象数组的情况
+      // 否则 React 渲染 <span>{option}</span> 时会抛 "Objects are not valid as a React child"
+      const normalizedOptions: string[] = Array.isArray(askInput.options)
+        ? askInput.options
+            .map((opt) => {
+              if (typeof opt === 'string') return opt;
+              if (opt && typeof opt === 'object') {
+                const o = opt as { label?: unknown; value?: unknown; text?: unknown };
+                if (typeof o.label === 'string') return o.label;
+                if (typeof o.value === 'string') return o.value;
+                if (typeof o.text === 'string') return o.text;
+                try {
+                  return JSON.stringify(opt);
+                } catch {
+                  return String(opt);
+                }
+              }
+              return String(opt ?? '');
+            })
+            .filter((s) => s.length > 0)
+        : [];
+      store.setBlockingInteraction({
+        kind: 'ask_user',
+        blockId,
+        toolCallId: toolCallId || '',
+        question: typeof askInput.question === 'string' ? askInput.question : '',
+        options: normalizedOptions,
+        multiple: askInput.multiple ?? false,
+        allowCustom: askInput.allowCustom ?? true,
+        timeoutSeconds: askInput.timeoutSeconds ?? null,
+        context: typeof askInput.context === 'string' ? askInput.context : undefined,
+      });
+    }
+
     // 清除消息级别的 preparingToolCall 状态
     store.clearPreparingToolCall?.(messageId);
 
@@ -231,6 +276,11 @@ const toolCallEventHandler: EventHandler = {
 
     // 设置结果（会自动更新状态为 success）
     store.setBlockResult(blockId, result);
+
+    // 🆕 ask_user 阻塞交互：清除输入栏接管状态
+    if (endBlock?.type === 'ask_user') {
+      store.clearBlockingInteraction();
+    }
 
     // 🔧 解包 result：后端发送 { result: actualOutput, durationMs }
     // 注意：store.blocks.get(blockId) 返回的是旧快照，toolOutput 可能还是 undefined
@@ -656,6 +706,11 @@ const toolCallEventHandler: EventHandler = {
     if (errBlock?.toolCallId) trackEnd(errBlock.toolCallId, false);
 
     store.setBlockError(blockId, error);
+
+    // 🆕 ask_user 阻塞交互：清除输入栏接管状态
+    if (errBlock?.type === 'ask_user') {
+      store.clearBlockingInteraction();
+    }
   },
 };
 

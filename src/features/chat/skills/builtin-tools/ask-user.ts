@@ -54,7 +54,7 @@ export const askUserSkill: SkillDefinition = {
     {
       name: 'builtin-ask_user',
       description:
-        '向用户提出一个轻量级问题，提供 2-6 个选项。支持单选/多选模式，可配置是否允许自由输入。推荐选项放在数组首位并标注 (Recommended)。默认无超时，无限等待用户回答。',
+        '向用户提出一个轻量级问题，提供 2-6 个选项。支持单选/多选模式，可配置是否允许自由输入。推荐选项放在数组首位并标注 (Recommended)。永久等待用户回答，不会超时。',
       inputSchema: {
         type: 'object',
         properties: {
@@ -80,12 +80,7 @@ export const askUserSkill: SkillDefinition = {
             default: true,
             description: '是否允许用户自由输入（默认 true）',
           },
-          timeoutSeconds: {
-            type: 'integer',
-            minimum: 5,
-            maximum: 300,
-            description: '可选超时秒数（5-300）。不设置则无限等待用户回答。仅在非关键性问题上使用。',
-          },
+
           context: {
             type: 'string',
             description: '为什么要问这个问题的简要上下文（可选）',
