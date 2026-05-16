@@ -15,7 +15,7 @@ import { useInputBarV2 } from './useInputBarV2';
 import { useQueueSettings } from '../../queue/useQueueSettings';
 import { QueuedMessageStack } from './QueuedMessageStack';
 import { modeRegistry } from '../../registry';
-import { MultiSelectModelPanel } from '../../plugins/chat/MultiSelectModelPanel';
+import { ModelPicker, type ModelPickerMode } from './ModelPicker';
 import { RuntimeModelMenu } from './RuntimeModelMenu';
 import { SkillSelector } from '../../skills/components/SkillSelector';
 import { reloadSkills } from '../../skills/loader';
@@ -237,8 +237,8 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         pendingContextRefs: s.pendingContextRefs,
         removeContextRef: s.removeContextRef,
         clearContextRefs: s.clearContextRefs,
-        // 🆕 工具审批请求
-        pendingApprovalRequest: s.pendingApprovalRequest,
+        // 🆕 阻塞交互请求
+        pendingApprovalRequest: s.pendingBlockingInteraction,
       }))
     );
 
@@ -488,6 +488,8 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
 
     // 🔧 多选模型状态（使用外部面板，不再使用 @mention 弹窗）
     const [selectedModels, setSelectedModels] = useState<ModelInfo[]>([]);
+    // 🆕 ModelPicker 模式：single 替换会话模型；compare 多选并行
+    const [compareMode, setCompareMode] = useState(false);
     const modelPanelIntentRef = useRef<'parallel' | 'runtime'>('parallel');
 
     // 使用 ref 存储 selectedModels，让回调能访问最新值
@@ -535,6 +537,39 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       setSelectedModels([]);
     }, []);
 
+    // 🆕 对比模式 toggle：开启时维持 selectedModels；关闭时清空
+    const handleCompareModeChange = useCallback((nextMode: ModelPickerMode) => {
+      setCompareMode(nextMode === 'compare');
+      if (nextMode === 'single') {
+        setSelectedModels([]);
+      }
+    }, []);
+
+    // 🆕 单选模式：选中即替换会话模型并关闭面板
+    const handlePickSingleModel = useCallback((model: ModelInfo) => {
+      setChatParams({
+        model2OverrideId: model.id,
+        modelDisplayName: model.model || model.name || model.id,
+      });
+      setSelectedModels([]);
+      setCompareMode(false);
+      store.getState().setPanelState('model', false);
+    }, [setChatParams, store]);
+
+    // 🆕 对比/重试模式行点击：切换选中
+    const handleToggleCompareModel = useCallback((model: ModelInfo) => {
+      setSelectedModels(prev => {
+        const existing = prev.findIndex(m => m.id === model.id);
+        if (existing >= 0) {
+          return prev.filter((_, i) => i !== existing);
+        }
+        if (!multiModelSelectEnabled) {
+          return [model];
+        }
+        return [...prev, model];
+      });
+    }, [multiModelSelectEnabled]);
+
     // 🔧 重试模式：使用选中的模型重试指定消息
     const handleRetryWithModels = useCallback(async (modelIds: string[]) => {
       const retryMessageId = store.getState().modelRetryTarget;
@@ -565,6 +600,10 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       // 如果是重试模式，清空选中的模型
       if (wasRetryMode) {
         clearSelectedModels();
+      }
+      // 关闭后重置对比模式（若未在 compare 中保留选择）
+      if (selectedModelsRef.current.length === 0) {
+        setCompareMode(false);
       }
     }, [store, clearSelectedModels]);
 
@@ -707,7 +746,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       return () => <RagPanel store={store} onClose={() => setPanelState('rag', false)} />;
     }, [modePlugin?.renderRagPanel, store, setPanelState]);
 
-    // 🔧 模型选择面板渲染函数（支持普通多选和重试模式）
+    // 🔧 模型选择面板渲染函数（统一 ModelPicker：单选/对比/重试）
     // hideHeader 参数用于移动端底部抽屉模式
     const renderModelPanel = useMemo(() => {
       const RuntimeModelPanel = modePlugin?.renderModelPanel;
@@ -721,25 +760,46 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         }
 
         if (availableModels && availableModels.length > 0) {
+          // 推导面板模式：retry 强制 compare；显式 compareMode 或已有 selectedModels 时进入 compare
+          const pickerMode: ModelPickerMode =
+            compareMode || selectedModels.length > 0 ? 'compare' : 'single';
           return (
-          <MultiSelectModelPanel
-            selectedModels={selectedModels}
-            onSelectModel={handleSelectModel}
-            onDeselectModel={handleDeselectModel}
-            onClose={handleCloseModelPanel}
-            disabled={isStreaming}
-            // 🔧 重试模式支持
-            retryMessageId={modelRetryTarget}
-            onRetry={handleRetryWithModels}
-            hideHeader={hideHeader}
-          />
+            <ModelPicker
+              mode={pickerMode}
+              onModeChange={handleCompareModeChange}
+              allowCompareToggle={multiModelSelectEnabled}
+              singleSelectedId={model2OverrideId}
+              compareSelected={selectedModels}
+              onSelectSingle={handlePickSingleModel}
+              onToggleCompare={handleToggleCompareModel}
+              onClose={handleCloseModelPanel}
+              disabled={isStreaming}
+              hideHeader={hideHeader}
+              retryMessageId={modelRetryTarget}
+              onRetry={handleRetryWithModels}
+            />
           );
         }
 
         if (!RuntimeModelPanel) return null;
         return <RuntimeModelPanel store={store} onClose={handleCloseModelPanel} />;
       };
-    }, [availableModels, selectedModels, handleSelectModel, handleDeselectModel, isStreaming, modePlugin?.renderModelPanel, store, handleCloseModelPanel, modelRetryTarget, handleRetryWithModels]);
+    }, [
+      availableModels,
+      compareMode,
+      selectedModels,
+      multiModelSelectEnabled,
+      model2OverrideId,
+      handleCompareModeChange,
+      handlePickSingleModel,
+      handleToggleCompareModel,
+      handleCloseModelPanel,
+      handleRetryWithModels,
+      isStreaming,
+      modelRetryTarget,
+      modePlugin?.renderModelPanel,
+      store,
+    ]);
 
     // 高级设置面板渲染函数
     const renderAdvancedPanel = useMemo(() => {
