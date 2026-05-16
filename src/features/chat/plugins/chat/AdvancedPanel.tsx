@@ -8,7 +8,7 @@ import React, { useCallback, useEffect, useId, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
 import { useShallow } from 'zustand/react/shallow';
-import { SlidersHorizontal, X, Chat, Thermometer, Stack, Image } from '@phosphor-icons/react';
+import { SlidersHorizontal, Chat, Thermometer, Stack, Image } from '@phosphor-icons/react';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -16,6 +16,7 @@ import { SnappySlider } from '@/components/ui/SnappySlider';
 import { Switch } from '@/components/ui/shad/Switch';
 import { Label } from '@/components/ui/shad/Label';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { ComposerPanel } from '@/features/chat/components/input-bar/ComposerPanel';
 import type { ChatStore } from '../../core/types';
 import { ensureModelsCacheLoaded, getModelInfoByConfigId } from '../../hooks/useAvailableModels';
 import { deriveInputContextBudget, inferModelContextWindow } from '@/utils/modelCapabilities';
@@ -217,18 +218,14 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
     <div className={cn('flex flex-col', isMobile ? 'h-full' : sidebarMode ? 'h-full' : undefined)}>
       {/* 面板头部 - 移动端/侧栏模式隐藏 */}
       {!isMobile && !sidebarMode && (
-        <div className="flex items-center justify-between mb-3 shrink-0">
-          <div className="flex items-center gap-2">
-            <SlidersHorizontal size={16} className="text-foreground shrink-0" />
-            <span className="text-sm text-foreground shrink-0">{t('common:chat_controls')}</span>
-            <span className="text-xs text-muted-foreground">
-              {t('chat_host:advanced.notice')}
-            </span>
-          </div>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')}>
-            <X size={16} />
-          </NotionButton>
-        </div>
+        <ComposerPanel.Header
+          icon={SlidersHorizontal}
+          title={t('common:chat_controls')}
+          subtitle={t('chat_host:advanced.notice')}
+          onClose={onClose}
+          closeAriaLabel={t('common:actions.cancel')}
+          className="mb-3"
+        />
       )}
 
       {/* 设置区域 - 可滚动 */}

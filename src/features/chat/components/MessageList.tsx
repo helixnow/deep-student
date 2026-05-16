@@ -24,6 +24,7 @@ import type { ChatStore } from '../core/types';
 import type { ModelInfo } from '../utils/parseModelMentions';
 import { sessionSwitchPerf } from '../debug/sessionSwitchPerf';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import { ArrowDown } from '@phosphor-icons/react';
 
 // ============================================================================
 // 常量定义
@@ -202,7 +203,7 @@ function formatModelSwitchNotice(from: ResolvedModelReference, to: ResolvedModel
 const ModelSwitchNotice: React.FC<{ text: string }> = ({ text }) => (
   <div
     data-testid="model-switch-notice"
-    className="px-4 py-2 text-center text-xs text-muted-foreground md:px-8"
+    className="px-4 py-3 text-center text-xs text-muted-foreground md:px-8"
   >
     {text}
   </div>
@@ -452,7 +453,9 @@ const MessageListInner: React.FC<MessageListProps> = ({
       deduped.push(entry);
     });
 
-    return deduped;
+    // 只保留最后一次模型切换通知，避免多次切换堆叠
+    if (deduped.length === 0) return deduped;
+    return [deduped[deduped.length - 1]];
   }, [assistantModelSwitchNotice, persistedAssistantModelSwitchNotices, runtimeModelSwitchNotices]);
 
   const renderRows = useMemo<MessageListRenderRow[]>(() => {
@@ -549,6 +552,13 @@ const MessageListInner: React.FC<MessageListProps> = ({
     }
   }, [viewportElement]);
 
+  /** 点击"回到底部"按钮 */
+  const handleScrollToBottomClick = useCallback(() => {
+    scrollToBottom();
+    userHasScrolledRef.current = false;
+    setShowScrollToBottom(false);
+  }, [scrollToBottom]);
+
   // 🔧 优化：使用 ref 追踪上一次消息数量和滚动状态
   const prevMessageCountRef = useRef(messageOrder.length);
   const isAutoScrollingRef = useRef(false);
@@ -557,6 +567,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
   // 🔧 用户滚动意图检测：通过 wheel/touch 事件判断用户是否主动滚动
   // 避免仅靠距离阈值判断导致的"拔河"问题
   const userHasScrolledRef = useRef(false);
+  const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
   /** 检查当前是否在底部附近（阈值 150px） */
   const isNearBottom = useCallback(() => {
@@ -573,6 +584,11 @@ const MessageListInner: React.FC<MessageListProps> = ({
       // 用户主动滚动且不在底部附近 → 标记为用户已接管滚动
       if (!isNearBottom()) {
         userHasScrolledRef.current = true;
+        setShowScrollToBottom(true);
+      } else {
+        // 用户滚回底部 → 恢复跟随
+        userHasScrolledRef.current = false;
+        setShowScrollToBottom(false);
       }
     };
 
@@ -597,6 +613,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
       // 流式结束后重置用户滚动标志，下次流式重新开始跟随
       if (!isStreaming) {
         userHasScrolledRef.current = false;
+        setShowScrollToBottom(false);
       }
       return;
     }
@@ -736,7 +753,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
   }
 
   return (
-    <>
+    <div className="relative h-full">
     {/* WCAG 4.1.3: 屏幕阅读器通知区域（虚拟化模式下不能在容器上用 aria-live） */}
     <div
       role="status"
@@ -837,7 +854,25 @@ const MessageListInner: React.FC<MessageListProps> = ({
         </div>
       )}
     </CustomScrollArea>
-    </>
+    {/* 回到底部浮动按钮 */}
+    {showScrollToBottom && isStreaming && (
+      <button
+        onClick={handleScrollToBottomClick}
+        className={cn(
+          'absolute bottom-4 left-1/2 -translate-x-1/2 z-20',
+          'flex items-center gap-1.5 px-3 py-1.5 rounded-full',
+          'bg-background/90 border border-border shadow-md backdrop-blur-sm',
+          'text-xs text-muted-foreground hover:text-foreground',
+          'transition-all duration-200 hover:shadow-lg',
+          'cursor-pointer'
+        )}
+        aria-label="Scroll to bottom"
+      >
+        <ArrowDown size={14} weight="bold" />
+        <span>新内容</span>
+      </button>
+    )}
+    </div>
   );
 };
 

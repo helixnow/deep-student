@@ -298,10 +298,10 @@ const ToolError: React.FC<ToolErrorProps> = ({ error, onRetry, retryDisabledReas
         )}
       >
         <div className="flex items-start gap-2">
-          <WarningCircle size={16} className="text-destructive shrink-0 mt-0.5" />
           <div className="flex-1 min-w-0">
-            <div className="text-sm font-medium text-destructive">
-              {t('blocks.mcpTool.executionFailed')}
+            <div className="flex items-center gap-1.5 text-sm font-medium text-destructive">
+              <WarningCircle size={14} className="shrink-0" />
+              <span>{t('blocks.mcpTool.executionFailed')}</span>
             </div>
             <div className="mt-1 text-xs text-destructive/80 break-words">
               {localizedError}

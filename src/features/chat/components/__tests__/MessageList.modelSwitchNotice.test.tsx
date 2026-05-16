@@ -310,14 +310,14 @@ describe('MessageList model switch notice', () => {
     expect(children.map((child) => child.getAttribute('data-testid'))).toEqual([
       'message-msg-user',
       'message-msg-assistant',
-      'model-switch-notice',
       'message-msg-user-second',
       'message-msg-assistant-second',
       'model-switch-notice',
     ]);
 
+    // 只保留最后一次模型切换通知
     const notices = screen.getAllByTestId('model-switch-notice');
-    expect(notices[0]).toHaveTextContent('模型已从 deepseek-ai/DeepSeek-V3.2 更改为qwen-max');
-    expect(notices[1]).toHaveTextContent('模型已从 qwen-max 更改为claude-sonnet-4.5');
+    expect(notices).toHaveLength(1);
+    expect(notices[0]).toHaveTextContent('模型已从 qwen-max 更改为claude-sonnet-4.5');
   });
 });

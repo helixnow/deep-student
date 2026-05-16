@@ -48,6 +48,8 @@ import { fileManager } from '@/utils/fileManager';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { useTextSelection } from '../hooks/useTextSelection';
 import { SelectionToolbar } from './SelectionToolbar';
+import { TranslationPopover } from './TranslationPopover';
+import { ExplainPopover } from './ExplainPopover';
 
 // ============================================================================
 // 辅助函数
@@ -123,13 +125,13 @@ async function applyCopyFilter(
       body = JSON.parse(fullContent) as Record<string, unknown>;
     } catch {
       notify('warning', t('messageItem.rawRequest.logReadFailed'));
-      body = (isBackendLlm && raw.body ? raw.body : raw) as Record<string, unknown>;
+      body = (raw.body ? raw.body : raw) as Record<string, unknown>;
     }
   } else if (needsFullSource && !raw.logFilePath) {
     notify('warning', t('messageItem.rawRequest.persistentLogRequired'));
-    body = (isBackendLlm && raw.body ? raw.body : raw) as Record<string, unknown>;
+    body = (raw.body ? raw.body : raw) as Record<string, unknown>;
   } else {
-    body = (isBackendLlm && raw.body ? raw.body : raw) as Record<string, unknown>;
+    body = (raw.body ? raw.body : raw) as Record<string, unknown>;
   }
 
   const result: Record<string, unknown> = {};
@@ -600,10 +602,52 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   const messageContentRef = useRef<HTMLDivElement>(null);
   const textSelection = useTextSelection(messageContentRef);
 
-  // 选中文本后的操作回调：发送消息（AI 解释 / 翻译）
+  // 🆕 翻译 Popover 状态
+  const [translationPopoverState, setTranslationPopoverState] = useState<{
+    isVisible: boolean;
+    sourceText: string;
+    rect: typeof textSelection.selectionRect;
+  }>({ isVisible: false, sourceText: '', rect: null });
+
+  // 🆕 解释 Popover 状态
+  const [explainPopoverState, setExplainPopoverState] = useState<{
+    isVisible: boolean;
+    sourceText: string;
+    rect: typeof textSelection.selectionRect;
+  }>({ isVisible: false, sourceText: '', rect: null });
+
+  // 选中文本后的操作回调：发送消息
   const handleSelectionSendMessage = useCallback((content: string) => {
     store.getState().sendMessage(content);
   }, [store]);
+
+  // 选中文本后的操作回调：解释（打开 popover）
+  const handleSelectionExplain = useCallback((text: string) => {
+    setExplainPopoverState({
+      isVisible: true,
+      sourceText: text,
+      rect: textSelection.selectionRect,
+    });
+  }, [textSelection.selectionRect]);
+
+  // 关闭解释 popover
+  const handleExplainPopoverClose = useCallback(() => {
+    setExplainPopoverState({ isVisible: false, sourceText: '', rect: null });
+  }, []);
+
+  // 选中文本后的操作回调：翻译（打开 popover）
+  const handleSelectionTranslate = useCallback((text: string) => {
+    setTranslationPopoverState({
+      isVisible: true,
+      sourceText: text,
+      rect: textSelection.selectionRect,
+    });
+  }, [textSelection.selectionRect]);
+
+  // 关闭翻译 popover
+  const handleTranslationPopoverClose = useCallback(() => {
+    setTranslationPopoverState({ isVisible: false, sourceText: '', rect: null });
+  }, []);
 
   // 选中文本后的操作回调：制卡
   const handleSelectionMakeCard = useCallback((text: string) => {
@@ -1566,11 +1610,31 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       <SelectionToolbar
         selectedText={textSelection.selectedText}
         selectionRect={textSelection.selectionRect}
-        isVisible={textSelection.isVisible}
+        isVisible={textSelection.isVisible && !translationPopoverState.isVisible && !explainPopoverState.isVisible}
         onClear={textSelection.clear}
         onSendMessage={handleSelectionSendMessage}
+        onExplain={handleSelectionExplain}
+        onTranslate={handleSelectionTranslate}
         onAddToChat={handleSelectionAddToChat}
         onMakeCard={handleSelectionMakeCard}
+      />
+
+      {/* 🆕 翻译 Popover */}
+      <TranslationPopover
+        sourceText={translationPopoverState.sourceText}
+        selectionRect={translationPopoverState.rect}
+        isVisible={translationPopoverState.isVisible}
+        onClose={handleTranslationPopoverClose}
+        onAddToInput={handleSelectionAddToChat}
+      />
+
+      {/* 🆕 解释 Popover */}
+      <ExplainPopover
+        sourceText={explainPopoverState.sourceText}
+        selectionRect={explainPopoverState.rect}
+        isVisible={explainPopoverState.isVisible}
+        onClose={handleExplainPopoverClose}
+        onAddToInput={handleSelectionAddToChat}
       />
     </div>
   );

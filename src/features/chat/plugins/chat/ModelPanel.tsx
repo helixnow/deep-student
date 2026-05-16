@@ -1,24 +1,25 @@
 /**
  * Chat V2 - 模型选择面板
  *
- * 复用原实现的 UI/UX，适配 V2 Store 架构
+ * 复用原实现的 UI/UX，适配 V2 Store 架构。
+ * 视觉骨架统一走 ComposerPanel.* primitives，行选中态使用 --button-primary-* 强调色。
  */
 
 import React, { useState, useEffect, useMemo, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useStore, type StoreApi } from 'zustand';
 import { invoke } from '@tauri-apps/api/core';
-import { X, Star, PushPin, CaretDown, CaretRight, Sparkle } from '@phosphor-icons/react';
+import { Star, PushPin, Sparkle } from '@phosphor-icons/react';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { Input } from '@/components/ui/shad/Input';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { Badge } from '@/components/ui/shad/Badge';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { ModelCapabilityIcons } from '@/components/shared/ModelCapabilityIcons';
+import { ComposerPanel } from '@/features/chat/components/input-bar/ComposerPanel';
 import type { ChatStore } from '../../core/types';
 import type { ModelAssignments } from '@/types';
 
@@ -30,9 +31,7 @@ interface ModelConfig {
   id: string;
   name: string;
   model: string;
-  /** 所属供应商 ID */
   vendorId?: string;
-  /** 所属供应商名称 */
   vendorName?: string;
   isMultimodal?: boolean;
   isReasoning?: boolean;
@@ -59,6 +58,8 @@ interface ModelPanelProps {
   closeOnSelect?: boolean;
 }
 
+type NormalizedModel = ModelConfig & { searchable: string; isFavorite: boolean };
+
 // ============================================================================
 // 组件
 // ============================================================================
@@ -68,11 +69,9 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
   const mobileLayout = useMobileLayoutSafe();
   const isMobile = mobileLayout?.isMobile ?? false;
 
-  // 从 Store 获取状态
   // 🚀 P0-2 性能优化：仅订阅实际使用的字段，避免其他 chatParams 字段变化时重渲染
   const selectedModelId = useStore(store, (s) => s.chatParams.model2OverrideId);
 
-  // 本地状态
   const [models, setModels] = useState<ModelConfig[]>([]);
   const [vendorOrderMap, setVendorOrderMap] = useState<Map<string, number>>(new Map());
   const [vendorNameMap, setVendorNameMap] = useState<Map<string, string>>(new Map());
@@ -82,18 +81,14 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
   const [savingDefault, setSavingDefault] = useState(false);
   const [collapsedVendors, setCollapsedVendors] = useState<Set<string>>(new Set());
 
-  // 加载模型列表
   const isInitialLoad = useRef(true);
   const loadModels = useCallback(async () => {
     try {
-      // 仅首次加载时显示 loading 状态，事件触发的刷新静默更新
       if (isInitialLoad.current) {
         setLoading(true);
         isInitialLoad.current = false;
       }
-      // 尝试加载模型配置
       const configs = await invoke<ModelConfig[]>('get_api_configurations');
-      // 过滤掉嵌入模型、重排序模型和未启用的模型（供应商没有 API Key 的模型 enabled=false）
       const chatModels = (configs || []).filter((c) => {
         const isEmbedding = c.isEmbedding === true || c.is_embedding === true;
         const isReranker = c.isReranker === true || c.is_reranker === true;
@@ -102,12 +97,10 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
       });
       setModels(chatModels);
 
-      // 加载供应商配置以获取排序信息
       try {
         const vendorConfigs = await invoke<VendorConfigSlim[]>('get_vendor_configs');
         const orderMap = new Map<string, number>();
         const nameMap = new Map<string, string>();
-        // 与设置页面排序逻辑一致：SiliconFlow 置顶 → sortOrder → name
         const sorted = [...(vendorConfigs || [])].sort((a, b) => {
           const aSilicon = (a.providerType ?? '').toLowerCase() === 'siliconflow';
           const bSilicon = (b.providerType ?? '').toLowerCase() === 'siliconflow';
@@ -128,8 +121,6 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
         setVendorNameMap(new Map());
       }
 
-      // 尝试获取默认模型
-      // 🔧 修复：使用正确的字段名 model2_config_id 而非 analysis
       try {
         const assignments = await invoke<Record<string, string | null>>('get_model_assignments');
         setDefaultModelId(assignments?.['model2_config_id'] || null);
@@ -144,12 +135,10 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
     }
   }, []);
 
-  // 初次加载
   useEffect(() => {
     loadModels();
   }, [loadModels]);
 
-  // 监听配置变更，及时刷新模型列表
   useEffect(() => {
     const reload = () => { void loadModels(); };
     try {
@@ -168,8 +157,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
     };
   }, [loadModels]);
 
-  // 搜索过滤
-  const normalizedModels = useMemo(
+  const normalizedModels = useMemo<NormalizedModel[]>(
     () =>
       models.map((m) => ({
         ...m,
@@ -186,18 +174,15 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
       ? normalizedModels.filter((m) => m.searchable.includes(keyword))
       : normalizedModels;
     return [...filtered].sort((a, b) => {
-      // 按供应商顺序排序（与设置页面一致）
       const aVendorOrder = a.vendorId ? (vendorOrderMap.get(a.vendorId) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER;
       const bVendorOrder = b.vendorId ? (vendorOrderMap.get(b.vendorId) ?? Number.MAX_SAFE_INTEGER) : Number.MAX_SAFE_INTEGER;
       if (aVendorOrder !== bVendorOrder) return aVendorOrder - bVendorOrder;
-      // 同一供应商内，收藏优先
       if (a.isFavorite && !b.isFavorite) return -1;
       if (!a.isFavorite && b.isFavorite) return 1;
       return 0;
     });
   }, [normalizedModels, searchTerm, vendorOrderMap]);
 
-  type NormalizedModel = ModelConfig & { searchable: string; isFavorite: boolean };
   const vendorGroups = useMemo(() => {
     const groups: { vendorId: string; vendorName: string; models: NormalizedModel[] }[] = [];
     const groupMap = new Map<string, NormalizedModel[]>();
@@ -212,40 +197,31 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
       }
       groupMap.get(vendorId)!.push(model);
     }
-
     for (const { vendorId, vendorName } of orderList) {
       groups.push({ vendorId, vendorName, models: groupMap.get(vendorId)! });
     }
-
     return groups;
   }, [sortedAndFilteredModels, t]);
 
   useEffect(() => {
-    if (searchTerm.trim()) {
-      setCollapsedVendors(new Set());
-    }
+    if (searchTerm.trim()) setCollapsedVendors(new Set());
   }, [searchTerm]);
 
   const toggleVendorCollapse = useCallback((vendorId: string) => {
     setCollapsedVendors((previous) => {
       const next = new Set(previous);
-      if (next.has(vendorId)) {
-        next.delete(vendorId);
-      } else {
-        next.add(vendorId);
-      }
+      if (next.has(vendorId)) next.delete(vendorId);
+      else next.add(vendorId);
       return next;
     });
   }, []);
 
-  // 默认模型名称
   const defaultModelName = useMemo(() => {
     if (!defaultModelId) return null;
     const target = models.find((m) => m.id === defaultModelId);
     return target?.name ?? null;
   }, [defaultModelId, models]);
 
-  // 选择模型
   const handleSelectModel = useCallback(
     (model: ModelConfig | null) => {
       const state = store.getState();
@@ -258,7 +234,6 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
         if (closeOnSelect) onClose();
         return;
       }
-
       store.getState().setChatParams({
         model2OverrideId: model.id,
         modelDisplayName: model.model || model.name || model.id,
@@ -268,25 +243,16 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
     [closeOnSelect, models, onClose, store]
   );
 
-  // 设为默认模型
   const handleSetAsDefault = useCallback(async () => {
     if (!selectedModelId || selectedModelId === defaultModelId) return;
-    
     setSavingDefault(true);
     try {
-      // 获取当前的模型分配
       const currentAssignments = await invoke<ModelAssignments>('get_model_assignments');
-      
-      // 更新对话模型配置
       const newAssignments: ModelAssignments = {
         ...currentAssignments,
         model2_config_id: selectedModelId,
       };
-      
-      // 保存模型分配
       await invoke<void>('save_model_assignments', { assignments: newAssignments });
-
-      // 广播：模型分配已变更（用于刷新其他依赖组件）
       try {
         if (typeof window !== 'undefined' && typeof window.dispatchEvent === 'function') {
           window.dispatchEvent(new CustomEvent('model_assignments_changed'));
@@ -294,25 +260,16 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
       } catch (error: unknown) {
         void error;
       }
-      
-      // 更新本地状态
       setDefaultModelId(selectedModelId);
-      
-      // 清除临时覆盖（因为已经设为默认了）
       store.getState().setChatParams({ model2OverrideId: null });
-      
-      // 显示成功通知
-      const modelName = models.find(m => m.id === selectedModelId)?.name || selectedModelId;
+      const modelName = models.find((m) => m.id === selectedModelId)?.name || selectedModelId;
       showGlobalNotification(
         'success',
         t('chat_host:model_panel.set_default_success', { model: modelName })
       );
     } catch (error: unknown) {
       console.error('[ModelPanel] Failed to set default model:', error);
-      showGlobalNotification(
-        'error',
-        t('chat_host:model_panel.set_default_error')
-      );
+      showGlobalNotification('error', t('chat_host:model_panel.set_default_error'));
     } finally {
       setSavingDefault(false);
     }
@@ -326,6 +283,7 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
     model: defaultModelName ?? t('chat_host:model_panel.unassigned_label'),
   });
   const subtitle = t('chat_host:model_panel.subtitle');
+
   const openModelSettings = useCallback(() => {
     window.dispatchEvent(new CustomEvent('navigate-to-tab', { detail: { tabName: 'settings' } }));
     window.setTimeout(() => {
@@ -337,111 +295,91 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
   const systemBadge = t('chat_host:model_panel.badges.system_default');
   const systemBadgeTooltip = t('chat_host:model_panel.badges.system_default_tooltip');
 
-  // 渲染默认选项
+  // 渲染默认选项（跟随系统默认）
   const renderDefaultOption = () => {
     const isSelected = selectedValue === 'system-default';
-    const indicatorClass = cn(
-      'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold transition',
-      isSelected ? 'border-primary bg-primary text-primary-foreground shadow-sm' : 'border text-muted-foreground'
-    );
     return (
-      <NotionButton
-        key="system-default"
-        variant="ghost"
-        size="sm"
+      <ComposerPanel.Row
+        selected={isSelected}
         onClick={() => handleSelectModel(null)}
-        className={cn(
-          'w-full !justify-start gap-3 !rounded-xl border !px-3 !py-2 text-left',
-          isSelected
-            ? 'border-primary/80 bg-primary/5 shadow-sm'
-            : 'border-transparent bg-card/80 hover:border hover:bg-[var(--interactive-hover)]'
-        )}
+        leading={<ComposerPanel.SelectionIndicator variant="single" selected={isSelected} />}
+        aria-label={followSystemLabel}
       >
-        <span className={indicatorClass}>{isSelected ? '✓' : ''}</span>
-        <div className="min-w-0 flex-1 flex items-center justify-between gap-3">
-          <span className="text-sm font-medium text-foreground">{followSystemLabel}</span>
-          <span className="text-xs text-muted-foreground shrink-0">{followSystemHint}</span>
-        </div>
-      </NotionButton>
+        <span className="flex w-full items-center justify-between gap-3">
+          <span className="truncate text-sm font-medium">{followSystemLabel}</span>
+          <span className="shrink-0 text-xs text-[color:var(--composer-panel-muted-foreground)]">
+            {followSystemHint}
+          </span>
+        </span>
+      </ComposerPanel.Row>
     );
   };
 
   // 渲染模型选项
   const renderModelOption = (option: NormalizedModel) => {
     const isSelected = selectedValue === option.id;
-    const indicatorClass = cn(
-      'flex h-5 w-5 shrink-0 items-center justify-center rounded-full border text-[11px] font-semibold transition',
-      isSelected ? 'border-primary bg-primary text-primary-foreground shadow-sm' : 'border text-muted-foreground'
-    );
     return (
-      <NotionButton
+      <ComposerPanel.Row
         key={option.id}
-        variant="ghost"
-        size="sm"
+        selected={isSelected}
         onClick={() => handleSelectModel(option)}
-        className={cn(
-          'w-full !justify-start gap-3 !rounded-xl border !px-3 !py-2 text-left',
-          isSelected
-            ? 'border-primary/80 bg-primary/5 shadow-sm'
-            : 'border-transparent bg-card/80 hover:border hover:bg-[var(--interactive-hover)]'
-        )}
+        leading={<ComposerPanel.SelectionIndicator variant="single" selected={isSelected} />}
+        aria-label={option.name}
       >
-        <span className={indicatorClass}>{isSelected ? '✓' : ''}</span>
-        <ProviderIcon modelId={option.model || option.name} size={20} showTooltip={false} />
-        {option.isFavorite && (
-          <Star size={14} className="text-warning fill-warning shrink-0" />
-        )}
-        <div className="min-w-0 flex-1 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-            <span>{option.name}</span>
-            {option.id === defaultModelId && (
-              <CommonTooltip content={systemBadgeTooltip} position="top">
-                <Badge 
-                  variant="outline" 
-                  className="h-5 px-1.5 py-0 text-[10px] font-normal shrink-0 border-primary/50 bg-primary/10 text-primary cursor-help"
-                >
-                  {systemBadge}
-                </Badge>
-              </CommonTooltip>
-            )}
-          </div>
-          <div className="flex items-center gap-2 text-xs text-muted-foreground shrink-0">
-            <span className="max-w-[200px] truncate">{option.model}</span>
-            <ModelCapabilityIcons
-              isMultimodal={option.isMultimodal}
-              isReasoning={option.isReasoning}
-              supportsTools={option.supportsTools}
-              showTextOnly
-              size="xs"
-            />
-          </div>
-        </div>
-      </NotionButton>
+        <span className="flex w-full min-w-0 items-center gap-2">
+          <ProviderIcon
+            modelId={option.model || option.name}
+            size={16}
+            showTooltip={false}
+          />
+          {option.isFavorite ? (
+            <Star size={12} weight="fill" className="shrink-0 text-amber-500" aria-hidden="true" />
+          ) : null}
+          <span className="min-w-0 flex-1">
+            <span className="flex items-center gap-1.5">
+              <span className="truncate text-sm font-medium">{option.name}</span>
+              {option.id === defaultModelId ? (
+                <CommonTooltip content={systemBadgeTooltip} position="top">
+                  <Badge
+                    variant="outline"
+                    className="hidden h-4 px-1 py-0 text-[10px] font-medium shrink-0 cursor-help border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)] sm:inline-flex"
+                  >
+                    {systemBadge}
+                  </Badge>
+                </CommonTooltip>
+              ) : null}
+            </span>
+            <span className="mt-0.5 flex items-center gap-1.5 text-[12px] leading-4 text-[color:var(--composer-panel-muted-foreground)]">
+              <span className="max-w-[220px] truncate">{option.model}</span>
+              <ModelCapabilityIcons
+                isMultimodal={option.isMultimodal}
+                isReasoning={option.isReasoning}
+                supportsTools={option.supportsTools}
+                showTextOnly
+                size="xs"
+              />
+            </span>
+          </span>
+        </span>
+      </ComposerPanel.Row>
     );
   };
 
   return (
-    <div className="space-y-3">
-      {/* 面板头部 */}
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="flex items-center gap-2 text-sm text-foreground">
-            <Sparkle size={16} className="shrink-0" />
-            <span>{t('chat_host:model_panel.title')}</span>
-          </div>
-          <span className="text-xs text-muted-foreground">{subtitle}</span>
-        </div>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} aria-label={t('common:actions.cancel')}>
-          <X size={16} />
-        </NotionButton>
-      </div>
+    <ComposerPanel.Root>
+      <ComposerPanel.Header
+        icon={Sparkle}
+        title={t('chat_host:model_panel.title')}
+        subtitle={subtitle}
+        onClose={onClose}
+        closeAriaLabel={t('common:actions.cancel')}
+      />
 
-      {/* 搜索框 */}
-      <Input
+      <ComposerPanel.Search
         value={searchTerm}
-        onChange={(e) => setSearchTerm(e.target.value)}
+        onChange={setSearchTerm}
         placeholder={t('chat_host:model_panel.search_placeholder')}
-        className="h-8 text-sm"
+        ariaLabel={t('chat_host:model_panel.search_placeholder')}
       />
 
       {!defaultModelId && !loading && (
@@ -458,58 +396,46 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
         </div>
       )}
 
-      {/* 模型列表 */}
-      <CustomScrollArea viewportClassName={cn('pr-2', isMobile ? 'h-full' : undefined)} className={isMobile ? 'flex-1 min-h-0' : undefined}>
-        <div className="space-y-2 pb-2">
+      <CustomScrollArea
+        viewportClassName={cn('pr-2', isMobile ? 'h-full' : undefined)}
+        className={isMobile ? 'flex-1 min-h-0' : undefined}
+      >
+        <div className="space-y-1 pb-2">
           {renderDefaultOption()}
-          <div className="h-px bg-border/70" />
+          <div className="my-1 h-px bg-[color:var(--composer-panel-control-border)]" />
           {loading ? (
-            <div className="px-3 py-2 text-sm text-muted-foreground">
-              {t('common:loading')}
-            </div>
+            <ComposerPanel.Loading label={t('common:loading')} />
           ) : hasModels ? (
             vendorGroups.map((group) => {
               const isCollapsed = collapsedVendors.has(group.vendorId);
               return (
-                <div key={group.vendorId} className="space-y-1.5">
-                  <button
-                    type="button"
-                    onClick={() => toggleVendorCollapse(group.vendorId)}
-                    className="flex w-full items-center gap-2 rounded-lg px-2 py-1.5 text-left transition-colors hover:bg-[var(--interactive-hover)] active:bg-muted/80"
-                  >
-                    {isCollapsed ? (
-                      <CaretRight size={14} className="shrink-0 text-muted-foreground" />
-                    ) : (
-                      <CaretDown size={14} className="shrink-0 text-muted-foreground" />
-                    )}
-                    <span className="truncate text-xs font-semibold text-muted-foreground">
-                      {group.vendorName}
-                    </span>
-                    <span className="text-[11px] text-muted-foreground/60 tabular-nums">
-                      {group.models.length}
-                    </span>
-                  </button>
-                  {!isCollapsed && (
-                    <div className="space-y-2 pl-2">
-                      {group.models.map(renderModelOption)}
-                    </div>
-                  )}
-                </div>
+                <ComposerPanel.Section
+                  key={group.vendorId}
+                  label={group.vendorName}
+                  count={group.models.length}
+                  collapsible
+                  collapsed={isCollapsed}
+                  onToggleCollapsed={() => toggleVendorCollapse(group.vendorId)}
+                >
+                  {group.models.map(renderModelOption)}
+                </ComposerPanel.Section>
               );
             })
           ) : (
-            <div className="px-3 py-2 text-sm text-muted-foreground">
-              {searchTerm
-                ? t('chat_host:model_panel.no_matches')
-                : t('chat_host:model_panel.empty')}
-            </div>
+            <ComposerPanel.Empty
+              icon={Sparkle}
+              description={
+                searchTerm
+                  ? t('chat_host:model_panel.no_matches')
+                  : t('chat_host:model_panel.empty')
+              }
+            />
           )}
         </div>
       </CustomScrollArea>
 
-      {/* 设为默认按钮 - 仅当选择了非默认模型时显示 */}
       {selectedModelId && selectedModelId !== defaultModelId && (
-        <div className="pt-2 border-t border-border/50">
+        <ComposerPanel.Footer divided>
           <NotionButton
             variant="ghost"
             size="sm"
@@ -518,13 +444,13 @@ export const ModelPanel: React.FC<ModelPanelProps> = ({ store, onClose, closeOnS
             disabled={savingDefault}
           >
             <PushPin size={14} />
-            {savingDefault 
-              ? t('common:saving') 
+            {savingDefault
+              ? t('common:saving')
               : t('chat_host:model_panel.set_as_default')}
           </NotionButton>
-        </div>
+        </ComposerPanel.Footer>
       )}
-    </div>
+    </ComposerPanel.Root>
   );
 };
 

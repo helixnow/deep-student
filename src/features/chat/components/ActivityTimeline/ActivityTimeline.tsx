@@ -103,6 +103,7 @@ interface TimelineNodeData {
   content?: string;
   durationSeconds?: number;
   isThinking?: boolean;
+  isAborted?: boolean;
   // tool 特有
   toolName?: string;
   toolStatus?: string;
@@ -210,6 +211,7 @@ function blocksToTimelineNodes(
         content: block.content || '',
         durationSeconds,
         isThinking,
+        isAborted: block.aborted === true,
       });
     } else if (block.type === 'mcp_tool') {
       // 🆕 检测是否为 TODO 工具
@@ -276,13 +278,17 @@ function blocksToTimelineNodes(
         toolOutput: block.toolOutput,
       });
     } else if (block.type === 'ask_user') {
-      // 🆕 用户提问块：直接作为 askUser 节点渲染完整卡片
+      // 🆕 活跃的 ask_user 在输入栏渲染，时间线中跳过
+      if (block.status === 'running') continue;
+      // 已完成的 ask_user 作为 askUser 节点渲染完整卡片
       nodes.push({
         id: block.id,
         type: 'askUser',
         block,
       });
     } else if (block.type === 'tool_limit') {
+      // 🆕 活跃的 tool_limit 在输入栏渲染，时间线中跳过
+      if (block.status === 'running') continue;
       // 🔧 P2修复：工具递归限制块
       nodes.push({
         id: block.id,
@@ -339,13 +345,12 @@ const TimelineNode: React.FC<TimelineNodeProps> = ({
             iconOnly
             onClick={onToggle}
             className={cn(
-              'timeline-node-dot !rounded-full flex-shrink-0 z-10 !p-0',
-              'hover:scale-125',
+              'timeline-node-dot !rounded-full flex-shrink-0 z-10 !p-0 hover:!bg-transparent',
               isActive
                 ? 'bg-primary ring-2 ring-primary/30'
                 : isExpanded
                   ? 'bg-primary/70 ring-2 ring-primary/20'
-                  : 'bg-muted-foreground/50 hover:bg-[var(--interactive-hover)]-foreground/70'
+                  : 'bg-muted-foreground/50'
             )}
             aria-label={isExpanded ? t('activityTimeline.collapse') : t('activityTimeline.expand')}
             title={isExpanded ? t('activityTimeline.collapse') : t('activityTimeline.expand')}
@@ -432,7 +437,7 @@ const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst
         onClick={hasContent ? toggleExpanded : undefined}
         disabled={!hasContent}
         className={cn(
-          '!justify-start !px-0',
+          '!justify-start !px-0 hover:!bg-transparent',
           'text-muted-foreground',
           hasContent && 'hover:text-foreground cursor-pointer',
           'disabled:cursor-default'
@@ -446,6 +451,10 @@ const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst
           >
             {t('timeline.thinking.inProgress')}
           </TextShimmer>
+        ) : node.isAborted ? (
+          <span className="text-muted-foreground/80">
+            {t('timeline.thinking.stopped')}
+          </span>
         ) : (
           <span>
             {t('timeline.thinking.completed', { seconds: node.durationSeconds })}
@@ -646,18 +655,11 @@ const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast
           onClick={toggleExpanded}
           disabled={!hasDetails}
           className={cn(
-            '!justify-start !px-0 -mt-0.5 w-fit',
+            '!justify-start !px-0 -mt-0.5 w-fit hover:!bg-transparent',
             'text-muted-foreground hover:text-foreground',
             'disabled:cursor-default disabled:hover:text-muted-foreground'
           )}
         >
-          {StatusIcon && (
-            <StatusIcon
-              size={14}
-              className={cn('flex-shrink-0', statusColor)}
-            />
-          )}
-
           <span className="font-medium text-foreground">
             {displayToolName}
           </span>
@@ -671,9 +673,17 @@ const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast
               {statusText}
             </TextShimmer>
           ) : (
-            <span className={cn('text-xs', statusColor)}>
-              {statusText}
-            </span>
+            <>
+              {StatusIcon && (
+                <StatusIcon
+                  size={14}
+                  className={cn('flex-shrink-0', statusColor)}
+                />
+              )}
+              <span className={cn('text-xs', statusColor)}>
+                {statusText}
+              </span>
+            </>
           )}
         </NotionButton>
 

@@ -119,7 +119,7 @@ const BlockErrorFallbackUI: React.FC<BlockErrorFallbackUIProps> = ({
   return (
     <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3">
       <div className="flex items-center gap-2 mb-2">
-        <Warning size={16} className="text-destructive" />
+        <Warning size={14} className="text-destructive" />
         <span className="text-sm font-medium text-destructive">
           {t('error.blockRenderFailed', '块渲染失败')}
         </span>
