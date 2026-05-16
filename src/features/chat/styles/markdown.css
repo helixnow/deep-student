@@ -18,6 +18,9 @@
   word-wrap: break-word;
   width: 100%;
   max-width: 100%;
+  font-feature-settings: "kern" 1, "liga" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
 }
 
 .chat-v2 .markdown-content > *:first-child {
@@ -41,8 +44,8 @@
   color: hsl(var(--foreground));
 }
 
-.chat-v2 .markdown-content h1 { font-size: 1.5em; border-bottom: 2px solid var(--brand-primary); padding-bottom: 0.3em; }
-.chat-v2 .markdown-content h2 { font-size: 1.3em; border-bottom: 1px solid hsl(var(--border)); padding-bottom: 0.2em; }
+.chat-v2 .markdown-content h1 { font-size: 1.5em; }
+.chat-v2 .markdown-content h2 { font-size: 1.3em; }
 .chat-v2 .markdown-content h3 { font-size: 1.15em; }
 .chat-v2 .markdown-content h4 { font-size: 1.05em; }
 .chat-v2 .markdown-content h5 { font-size: 1em; }
@@ -50,8 +53,7 @@
 
 /* 段落和文本 */
 .chat-v2 .markdown-content p {
-  margin: 0.35em 0; /* 减小段落间距，避免行距过大 */
-  text-align: justify;
+  margin: 0.75em 0;
   word-wrap: break-word;
   overflow-wrap: break-word;
 }
@@ -116,7 +118,7 @@
 
 /* 全局减少段落间距 */
 .chat-v2 .markdown-content p + p {
-  margin-top: 0.3em !important; /* 减小连续段落间距 */
+  margin-top: 0.5em;
 }
 
 .chat-v2 .markdown-content strong {
@@ -151,7 +153,7 @@
 .chat-v2 .markdown-content ul,
 .chat-v2 .markdown-content ol {
   margin: 0.8em 0;
-  padding-left: 2em;
+  padding-left: 1.5em;
 }
 
 .chat-v2 .markdown-content li {
@@ -402,7 +404,7 @@
 
 .chat-v2 .inline-code {
   display: inline !important; /* 确保内联显示 */
-  background: hsl(var(--muted) / 0.6);
+  background: hsl(var(--muted));
   color: hsl(var(--foreground));
   padding: 0.2em 0.4em;
   border-radius: 6px;
@@ -575,45 +577,13 @@
     transform var(--stream-reveal-duration) var(--stream-reveal-ease);
 }
 
-.chat-v2 .streaming-markdown[data-streaming="true"][data-has-visible-content="true"] .normal-content::after,
-.chat-v2 .streaming-markdown[data-streaming="true"][data-has-visible-content="true"] .main-content::after {
-  content: "";
-  display: inline-block;
-  width: 28px;
-  height: 8px;
-  margin-left: 7px;
-  border-radius: 999px;
-  vertical-align: baseline;
-  background:
-    radial-gradient(circle at 20% 50%, hsl(var(--primary) / 0.46), transparent 35%),
-    linear-gradient(90deg, hsl(var(--primary) / 0.28), hsl(var(--primary) / 0));
-  box-shadow: 0 0 18px hsl(var(--primary) / 0.18);
-  transform-origin: left center;
-  animation: streamingMarkdownTail var(--stream-tail-duration) var(--stream-reveal-ease) infinite;
-}
-
-@keyframes streamingMarkdownTail {
-  0%, 100% {
-    opacity: 0.34;
-    transform: translateY(1px) scaleX(0.76);
-  }
-  48% {
-    opacity: 0.72;
-    transform: translateY(0) scaleX(1);
-  }
-}
+/* 流式末尾光标统一在 streaming.css 中定义为单一强调色圆点，
+ * 此处不再追加额外的 ::after，避免与之叠加形成『双光标』。 */
 
 @media (prefers-reduced-motion: reduce) {
   .chat-v2 .streaming-markdown[data-streaming="true"] .normal-content,
   .chat-v2 .streaming-markdown[data-streaming="true"] .main-content {
     transition: none;
-  }
-
-  .chat-v2 .streaming-markdown[data-streaming="true"][data-has-visible-content="true"] .normal-content::after,
-  .chat-v2 .streaming-markdown[data-streaming="true"][data-has-visible-content="true"] .main-content::after {
-    animation: none;
-    opacity: 0.42;
-    transform: none;
   }
 }
 

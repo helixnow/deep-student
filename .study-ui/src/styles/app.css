@@ -385,6 +385,12 @@
 }
 
 @layer base {
+  /* Suppress all transitions until the app is ready to prevent
+     visible color flashes while native vibrancy initializes. */
+  html:not([data-ready]) * {
+    transition-duration: 0s !important;
+  }
+
   * {
     box-sizing: border-box;
     border-color: var(--border);

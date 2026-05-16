@@ -191,6 +191,8 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
               autoHide: scrollHideDelay > 0 ? "leave" : "never",
               autoHideDelay: scrollHideDelay,
               autoHideSuspend: true,
+              dragScroll: true,
+              clickScroll: true,
             },
             overflow: { x: overflowX, y: overflowY },
           }}

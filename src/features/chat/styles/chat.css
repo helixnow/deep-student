@@ -43,30 +43,100 @@
 
 /* ============================================================================
    文本选择 - Text Selection (原生应用风格)
+   ----------------------------------------------------------------------------
+   设计原则（对齐 Codex / ChatGPT / Claude / Notion 桌面版）：
+
+   ❶ 选区色 alpha 控制低（亮 0.12 / 暗 0.22），低饱和不抢眼
+   ❷ 文本块用 width: fit-content，让块盒紧贴文字宽度 ——
+      跨段拖选时，浏览器原生的 line-fill 行为最远只延伸到文字末尾，
+      而不是延伸到 840px 容器右边。这是消除"一滑动一大片"的关键。
+   ❸ 装饰元素（骨架/思考头/徽标）一律 user-select: none，
+      防止跨段拖选时它们被一起涂色
    ============================================================================ */
 
 /* 自定义选中色：主题色淡化版本，替代浏览器默认蓝色 */
 .chat-v2 .message-selectable-area ::selection {
-  background: hsl(var(--primary) / 0.18);
+  background: hsl(var(--primary) / 0.14);
   color: inherit;
 }
 .chat-v2 .message-selectable-area ::-moz-selection {
-  background: hsl(var(--primary) / 0.18);
+  background: hsl(var(--primary) / 0.14);
   color: inherit;
 }
 
 /* 暗色模式下稍微调亮选中色 */
 :root.dark .chat-v2 .message-selectable-area ::selection {
-  background: hsl(var(--primary) / 0.28);
+  background: hsl(var(--primary) / 0.24);
 }
 :root.dark .chat-v2 .message-selectable-area ::-moz-selection {
-  background: hsl(var(--primary) / 0.28);
+  background: hsl(var(--primary) / 0.24);
 }
 
 /* 消息内容区域允许文本选择 */
 .chat-v2 .message-selectable-area {
   user-select: text;
   -webkit-user-select: text;
+}
+
+/* 🎯 关键：文本块改为"贴合文字宽度"
+   作用：跨段拖选时浏览器原生的 line-fill 不再延伸到容器右边，
+   而是只延伸到该块文字的最长行末尾，视觉上紧贴文本，不会"一大片"。
+
+   策略：在多层应用 width: fit-content
+   ❶ markdown 根容器（.markdown-content / .streaming-markdown）
+   ❷ 流式块的每个段落块（.stream-block）
+   ❸ 段落级文本元素（p / h1-h6 / li / blockquote / dt / dd）
+
+   ⚠️ 排除：pre（代码块需要全宽滚动）、table（表格需要对齐）、
+        figure / img / video / hr（块级媒体）、代码块所在的 stream-block */
+.chat-v2 .message-selectable-area .markdown-content,
+.chat-v2 .message-selectable-area .streaming-markdown,
+.chat-v2 .message-selectable-area .streaming-blocks > .stream-block,
+.chat-v2 .message-selectable-area .markdown-content > p,
+.chat-v2 .message-selectable-area .markdown-content > h1,
+.chat-v2 .message-selectable-area .markdown-content > h2,
+.chat-v2 .message-selectable-area .markdown-content > h3,
+.chat-v2 .message-selectable-area .markdown-content > h4,
+.chat-v2 .message-selectable-area .markdown-content > h5,
+.chat-v2 .message-selectable-area .markdown-content > h6,
+.chat-v2 .message-selectable-area .markdown-content > ul,
+.chat-v2 .message-selectable-area .markdown-content > ol,
+.chat-v2 .message-selectable-area .markdown-content li,
+.chat-v2 .message-selectable-area .markdown-content blockquote,
+.chat-v2 .message-selectable-area .markdown-content dl,
+.chat-v2 .message-selectable-area .markdown-content dt,
+.chat-v2 .message-selectable-area .markdown-content dd {
+  width: fit-content;
+  max-width: 100%;
+}
+
+/* 例外：以下元素必须保持全宽，不能 fit-content */
+.chat-v2 .message-selectable-area .markdown-content pre,
+.chat-v2 .message-selectable-area .markdown-content table,
+.chat-v2 .message-selectable-area .markdown-content figure,
+.chat-v2 .message-selectable-area .markdown-content hr,
+.chat-v2 .message-selectable-area .markdown-content img,
+.chat-v2 .message-selectable-area .markdown-content video,
+.chat-v2 .message-selectable-area .markdown-content .markdown-table-wrapper,
+.chat-v2 .message-selectable-area .stream-block:has(pre),
+.chat-v2 .message-selectable-area .stream-block:has(table) {
+  width: auto;
+  max-width: 100%;
+}
+
+/* 装饰性元素禁止选中 —— 让用户拖选时它们不被一起涂色 */
+.chat-v2 .message-selectable-area .chain-header,
+.chat-v2 .message-selectable-area .thinking-trace__header,
+.chat-v2 .message-selectable-area .tool-trace__header,
+.chat-v2 .message-selectable-area .stream-skeleton,
+.chat-v2 .message-selectable-area [data-decoration="true"],
+.chat-v2 .message-selectable-area .qbank-citation-badge,
+.chat-v2 .message-selectable-area .mindmap-citation-card,
+.chat-v2 .message-selectable-area .copy-button,
+.chat-v2 .message-selectable-area .code-toolbar,
+.chat-v2 .message-selectable-area .timeline-node-dot {
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 /* ============================================================================

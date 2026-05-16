@@ -123,6 +123,7 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   const [windowBackgroundPreference, setWindowBackgroundPreference] =
     useState<WindowBackgroundPreference>(() => getInitialWindowBackgroundPreference());
   const lastSyncedNativeWindowBackgroundPreference = useRef<WindowBackgroundPreference | null>(null);
+  const isFirstMount = useRef(true);
   const systemTheme = useSyncExternalStore<ResolvedTheme>(
     subscribeToSystemTheme,
     getSystemThemeSnapshot,
@@ -144,6 +145,19 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
     applyTheme(preference, systemTheme, windowBackgroundPreference, reducedTransparency);
     setStoredThemePreference(window.localStorage, preference);
     setStoredWindowBackgroundPreference(window.localStorage, windowBackgroundPreference);
+
+    // Skip native window appearance on first mount — Rust already applied it
+    // during window creation. Re-applying triggers a visible macOS vibrancy transition.
+    if (isFirstMount.current) {
+      isFirstMount.current = false;
+      // Mark the app as ready after a frame so native vibrancy has time to
+      // initialize before CSS transitions are enabled.
+      requestAnimationFrame(() => {
+        document.documentElement.dataset.ready = "";
+      });
+      return;
+    }
+
     void applyNativeWindowAppearance({
       resolvedTheme: resolved,
       reducedTransparency,
