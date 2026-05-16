@@ -32,6 +32,7 @@ import { DEFAULT_UI_FONT, DEFAULT_UI_FONT_SIZE, UI_FONT_PRESET_GROUPS, UI_FONT_S
 import { AppSelect, type AppSelectGroup } from '@/components/ui/app-menu';
 import { UserAgreementDialog } from '@/components/legal/UserAgreementDialog';
 import { getDefaultConfig, configFromPreset, type CopyFilterConfig } from '@/features/chat/hooks/useDevShowRawRequest';
+import { useQueueSettings } from '@/features/chat/queue/useQueueSettings';
 import type { VoiceInputAssignedModel } from '@/voice-input/types';
 
 const DEFAULT_UI_ZOOM = 1.0;
@@ -178,6 +179,9 @@ export const AppTab: React.FC<AppTabProps> = ({
   // 隐私协议预览弹窗状态
   const [showAgreementPreview, setShowAgreementPreview] = useState(false);
   const [macosNativeFontSmoothingEnabled, setMacosNativeFontSmoothingEnabled] = useState(true);
+
+  // 输入队列设置（B2 hook，持久化到 Tauri save_setting/get_setting）
+  const { queueEnabled, allowSteer, setQueueEnabled, setAllowSteer } = useQueueSettings();
 
   // 侧边栏半透明开关
   const SIDEBAR_TRANSLUCENT_KEY = 'sidebar.translucent';
@@ -423,6 +427,21 @@ export const AppTab: React.FC<AppTabProps> = ({
                 }}
               />
             )}
+
+            <SwitchRow
+              title={t('chatV2:queue.settings.enableTitle')}
+              description={t('chatV2:queue.settings.enableDescription')}
+              checked={queueEnabled}
+              onCheckedChange={(checked) => { void setQueueEnabled(checked); }}
+            />
+            <div style={{ opacity: queueEnabled ? 1 : 0.4, pointerEvents: queueEnabled ? 'auto' : 'none' }}>
+              <SwitchRow
+                title={t('chatV2:queue.settings.allowSteerTitle')}
+                description={t('chatV2:queue.settings.allowSteerDescription')}
+                checked={allowSteer}
+                onCheckedChange={(checked) => { void setAllowSteer(checked); }}
+              />
+            </div>
 
             {/* 侧边栏半透明 */}
             <SwitchRow
