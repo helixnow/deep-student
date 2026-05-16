@@ -481,6 +481,9 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   // 状态
   inputValue,
   canSend,
+  queueEnabled = false,
+  queueFull = false,
+  canSubmit,
   canAbort,
   isStreaming,
   contextWindowUsage,
@@ -1359,6 +1362,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   }, [attachments, pdfStatusMap]);
 
   const sendBlockedReason = useMemo(() => {
+    if (queueFull) return t('chatV2:queue.fullTooltip');
     if (disabledReason) return disabledReason;
     if (hasUploadingAttachments) {
       return t('chatV2:inputBar.attachmentsUploading');
@@ -1375,7 +1379,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         });
     }
     return undefined;
-  }, [disabledReason, hasUploadingAttachments, firstBlockingAttachment, formatModeList, t]);
+  }, [queueFull, disabledReason, hasUploadingAttachments, firstBlockingAttachment, formatModeList, t]);
 
   const processingIndicatorLabel = useMemo(() => {
     if (!firstBlockingAttachment) return undefined;
@@ -1392,10 +1396,16 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const dockedHeightVarValue = `${dockedHeightWithGap}px`;
 
   // ========== 发送/停止按钮状态 ==========
-  const showStop = isStreaming;
+  // 🆕 队列模式启用时，流式中不切换为 Stop —— 改为允许继续发送（入队）
+  const showStop = isStreaming && !queueEnabled;
+  // 🆕 canSubmit 允许在 idle 或 队列模式下放行，未提供时退化到 canSend
+  const effectiveCanSubmit = canSubmit ?? canSend;
   // 🔧 P1修复：附件上传中时禁用发送
   // 🆕 增加媒体处理中检查：选中的注入模式未就绪时也禁用发送
-  const disabledSend = showStop ? false : !!disabledReason || !canSendWithAttachments || !canSend || hasUploadingAttachments || hasProcessingMedia;
+  // 🆕 队列模式：队列已满时禁用发送
+  const disabledSend = showStop
+    ? false
+    : !!disabledReason || !canSendWithAttachments || !effectiveCanSubmit || hasUploadingAttachments || hasProcessingMedia || queueFull;
 
   // ========== 回调函数 ==========
 
@@ -2421,7 +2431,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                   showGlobalNotification('warning', t('chatV2:inputBar.pasteNotReady'));
                 }
               }}
-              readOnly={isStreaming}
+              readOnly={isStreaming && !queueEnabled}
               rows={1}
               className="w-full resize-none border-0 bg-transparent py-1 text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground/70 focus:ring-0 overflow-hidden"
               style={{

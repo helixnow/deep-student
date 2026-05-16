@@ -586,6 +586,8 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     const {
       // 状态
       canSend,
+      canSubmit,
+      queueLength,
       canAbort,
       isStreaming,
       attachments,
@@ -792,6 +794,10 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         canSend={canSend}
         canAbort={canAbort}
         isStreaming={isStreaming}
+        // 🆕 队列模式：允许流式时入队，并在队列满时禁用发送
+        queueEnabled={queueSettings.queueEnabled}
+        queueFull={queueLength >= 5}
+        canSubmit={canSubmit}
         contextWindowUsage={contextWindowUsage}
         attachments={attachments}
         panelStates={panelStates}
