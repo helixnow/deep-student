@@ -61,7 +61,10 @@
   --font-size-xl: calc(18px * var(--font-size-scale));
   --font-size-2xl: calc(20px * var(--font-size-scale));
   --font-size-3xl: calc(24px * var(--font-size-scale));
-  
+
+  /* 思维链字号（用户可缩放） */
+  --chat-thinking-font-size: var(--font-size-sm);
+
   /* 字重 */
   --font-weight-normal: 400;
   --font-weight-medium: 500;
