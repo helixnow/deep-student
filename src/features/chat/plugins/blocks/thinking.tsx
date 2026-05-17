@@ -5,7 +5,7 @@
  * 自执行注册：import 即注册
  */
 
-import React, { useState, useCallback } from 'react';
+import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -13,30 +13,25 @@ import { CaretDown, CaretRight } from '@phosphor-icons/react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { StreamingMarkdownRenderer } from '../../components/renderers';
 
-// ============================================================================
-// 思维链块组件
-// ============================================================================
-
-/**
- * ThinkingBlock - 思维链块渲染组件
- *
- * 功能：
- * 1. 可折叠/展开的思维链内容
- * 2. 流式渲染支持
- * 3. 暗色/亮色主题支持
- */
 const ThinkingBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStreaming }) => {
   const { t } = useTranslation('chatV2');
-  const [isExpanded, setIsExpanded] = useState(false);
+  const contentId = useId();
+  const [isExpanded, setIsExpanded] = useState(isStreaming ?? false);
+  const isManuallyControlled = useRef(false);
+
+  useEffect(() => {
+    if (isManuallyControlled.current) return;
+    setIsExpanded(!!isStreaming);
+  }, [isStreaming]);
 
   const toggleExpanded = useCallback(() => {
+    isManuallyControlled.current = true;
     setIsExpanded((prev) => !prev);
   }, []);
 
   const content = block.content || '';
   const hasContent = content.trim().length > 0;
 
-  // 无内容时不渲染
   if (!hasContent && !isStreaming) {
     return null;
   }
@@ -50,11 +45,12 @@ const ThinkingBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStre
         'transition-colors'
       )}
     >
-      {/* 折叠头部 */}
       <NotionButton
         variant="ghost"
         size="sm"
         onClick={toggleExpanded}
+        aria-expanded={isExpanded}
+        aria-controls={contentId}
         className="w-full !justify-start gap-2 !px-3 !py-2 !rounded-lg text-muted-foreground"
       >
         {isExpanded ? <CaretDown size={16} /> : <CaretRight size={16} />}
@@ -67,9 +63,11 @@ const ThinkingBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStre
         )}
       </NotionButton>
 
-      {/* 内容区域 */}
       {isExpanded && (
         <div
+          id={contentId}
+          role="region"
+          aria-label={t('blocks.thinking.title')}
           className={cn(
             'px-3 pb-3',
             'border-t border-border/30',
@@ -91,15 +89,10 @@ const ThinkingBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStre
   );
 });
 
-// ============================================================================
-// 自动注册
-// ============================================================================
-
 blockRegistry.register('thinking', {
   type: 'thinking',
   component: ThinkingBlock,
-  onAbort: 'keep-content', // 中断时保留已生成内容
+  onAbort: 'keep-content',
 });
 
-// 导出组件（可选，用于测试）
 export { ThinkingBlock };
