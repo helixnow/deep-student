@@ -251,7 +251,6 @@ export type SessionEventType =
   | 'stream_cancelled'
   | 'save_complete'
   | 'save_error'
-  | 'title_updated'
   | 'summary_updated'
   | 'variant_deleted';
 
@@ -293,7 +292,7 @@ export interface SessionEventPayload {
    */
   usage?: TokenUsage;
 
-  /** 标题（title_updated/summary_updated 事件携带） */
+  /** 标题（summary_updated 事件携带） */
   title?: string;
 
   /** 简介（summary_updated 事件携带） */

@@ -1711,16 +1711,6 @@ export class ChatV2TauriAdapter {
           console.error(LOG_PREFIX, 'Session save failed:', payload.error);
           break;
 
-        case 'title_updated':
-          // 标题自动生成完成 - 更新 Store 中的标题（向后兼容）
-          console.log(LOG_PREFIX, 'Session title updated:', payload.title);
-          if (payload.title) {
-            this.store.setTitle(payload.title);
-            // 通知侧边栏等组件刷新会话列表
-            window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
-          }
-          break;
-
         case 'summary_updated':
           // 摘要自动生成完成 - 同时更新标题和简介
           console.log(LOG_PREFIX, 'Session summary updated:', {

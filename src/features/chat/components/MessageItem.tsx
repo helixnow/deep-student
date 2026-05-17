@@ -41,7 +41,7 @@ import { useDevShowRawRequest, useCopyFilterConfig, type CopyFilterConfig } from
 // 🆕 AI 内容标识（合规）
 import { AiContentLabel } from '@/components/shared/AiContentLabel';
 import { PulseDot } from '@/components/ui/PulseDot';
-import { StreamingSkeleton } from './StreamingSkeleton';
+import { ThinkingIndicator } from './ThinkingIndicator';
 import { dispatchContextRefPreview } from '../utils/contextRefPreview';
 import { notesDstuAdapter } from '@/dstu/adapters/notesDstuAdapter';
 import { fileManager } from '@/utils/fileManager';
@@ -607,7 +607,9 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     isVisible: boolean;
     sourceText: string;
     rect: typeof textSelection.selectionRect;
-  }>({ isVisible: false, sourceText: '', rect: null });
+    contextBefore: string;
+    contextAfter: string;
+  }>({ isVisible: false, sourceText: '', rect: null, contextBefore: '', contextAfter: '' });
 
   // 🆕 解释 Popover 状态
   const [explainPopoverState, setExplainPopoverState] = useState<{
@@ -641,12 +643,14 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
       isVisible: true,
       sourceText: text,
       rect: textSelection.selectionRect,
+      contextBefore: textSelection.contextBefore,
+      contextAfter: textSelection.contextAfter,
     });
-  }, [textSelection.selectionRect]);
+  }, [textSelection.selectionRect, textSelection.contextBefore, textSelection.contextAfter]);
 
   // 关闭翻译 popover
   const handleTranslationPopoverClose = useCallback(() => {
-    setTranslationPopoverState({ isVisible: false, sourceText: '', rect: null });
+    setTranslationPopoverState({ isVisible: false, sourceText: '', rect: null, contextBefore: '', contextAfter: '' });
   }, []);
 
   // 选中文本后的操作回调：制卡
@@ -1097,7 +1101,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   return (
     <div
       className={cn(
-        'group px-4 py-4',
+        // 与 InputBar/MessageList 空态/scroll 按钮共享 px-4 md:px-8，避免左右不对齐
+        'group px-4 py-4 md:px-8',
         !isUser && 'bg-background',
         // 第一条消息添加顶部间距
         isFirst && 'pt-6',
@@ -1106,7 +1111,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     >
       {/* 📱 移动端多变体：使用垂直布局，不显示外层头像（卡片内已有） */}
       {isMobileMultiVariant ? (
-        <div className="max-w-3xl mx-auto group">
+        <div className="max-w-thread mx-auto group">
           {/* 多变体内容：居中显示，使用全宽 */}
           <ParallelVariantView
             store={store}
@@ -1130,7 +1135,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
         <div
           className={cn(
             'mx-auto',
-            isMultiVariant ? 'max-w-full' : 'max-w-3xl',
+            // 与输入栏 (InputBarUI: max-w-thread) 严格对齐
+            isMultiVariant ? 'max-w-full' : 'max-w-thread',
           )}
         >
           {/* 消息内容 */}
@@ -1209,7 +1215,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                     // 🆕 等待首次响应：displayBlockIds 为空且正在流式生成
                     if (blocks.length === 0 && sessionStatus === 'streaming') {
                       return (
-                        <StreamingSkeleton />
+                        <ThinkingIndicator />
                       );
                     }
 
@@ -1383,7 +1389,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
           {showActions && !isInlineEditing && !isWaitingForContent && (
             <div className={cn(
               'mt-3 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity',
-              isMultiVariant && 'max-w-3xl mx-auto',
+              isMultiVariant && 'max-w-thread mx-auto',
             )}>
               {/* 第一行：移动端 = Token用量(左) + 操作按钮+时间(右)；桌面端 = 模型名+操作按钮+时间(左) + AI标识+Token(右) */}
               <div
@@ -1624,6 +1630,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
         sourceText={translationPopoverState.sourceText}
         selectionRect={translationPopoverState.rect}
         isVisible={translationPopoverState.isVisible}
+        contextBefore={translationPopoverState.contextBefore}
+        contextAfter={translationPopoverState.contextAfter}
         onClose={handleTranslationPopoverClose}
         onAddToInput={handleSelectionAddToChat}
       />
