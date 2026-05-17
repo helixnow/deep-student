@@ -863,7 +863,7 @@ export function ConflictResolutionDialog({
               : t('no_conflicts', '没有检测到数据冲突。')}
           </NotionDialogDescription>
         </NotionDialogHeader>
-        <NotionDialogBody nativeScroll>
+        <NotionDialogBody>
 
         {hasConflicts ? (
           <div className="flex-1 min-h-0 flex flex-col gap-4">

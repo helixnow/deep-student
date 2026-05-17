@@ -11,6 +11,7 @@ import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { TextSwap } from '@/components/ui/TextSwap';
 import { Sheet, SheetClose, SheetContent, SheetDescription, SheetTitle } from '@/components/ui/shad/Sheet';
 import { useUIStore } from '@/stores/uiStore';
 
@@ -125,7 +126,6 @@ import {
 // ★ debugLog 别名：将本文件中的 console 调用路由到调试面板，受 debugMasterSwitch 控制
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 const LazyGlobalDebugPanel = React.lazy(() => import('./components/dev/GlobalDebugPanel'));
-const DESKTOP_CHAT_TITLE_TYPEWRITER_INTERVAL_MS = 26;
 const MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY = 'macos.native_font_smoothing';
 
 function applyMacOSFontSmoothingPreference(enabled: boolean) {
@@ -2087,34 +2087,6 @@ function App() {
 
     return labels[currentView] ?? t('common:app.default_header', '新对话');
   }, [currentChatHeaderTitle, currentView, t]);
-  const [animatedDesktopShellViewLabel, setAnimatedDesktopShellViewLabel] = useState(desktopShellViewLabel);
-  const previousDesktopShellViewLabelRef = useRef(desktopShellViewLabel);
-
-  useEffect(() => {
-    const previousLabel = previousDesktopShellViewLabelRef.current;
-    previousDesktopShellViewLabelRef.current = desktopShellViewLabel;
-
-    if (currentView !== 'chat-v2' || !desktopShellViewLabel || desktopShellViewLabel === previousLabel) {
-      setAnimatedDesktopShellViewLabel(desktopShellViewLabel);
-      return;
-    }
-
-    let nextLength = 0;
-    setAnimatedDesktopShellViewLabel('');
-
-    const timer = window.setInterval(() => {
-      nextLength += 1;
-      setAnimatedDesktopShellViewLabel(desktopShellViewLabel.slice(0, nextLength));
-
-      if (nextLength >= desktopShellViewLabel.length) {
-        window.clearInterval(timer);
-      }
-    }, DESKTOP_CHAT_TITLE_TYPEWRITER_INTERVAL_MS);
-
-    return () => {
-      window.clearInterval(timer);
-    };
-  }, [currentView, desktopShellViewLabel]);
 
   // 🚀 性能优化：memoize 各视图内容，防止切换视图时所有已缓存视图子树被重新协调
   // 当 App 因 currentView 变化而重渲染时，useMemo 返回相同的 React 元素引用，
@@ -2391,7 +2363,10 @@ function App() {
                   {currentView === 'learning-hub' ? (
                     <LearningHubTopbarBreadcrumb currentView={currentView} />
                   ) : (
-                    <span className="block truncate">{animatedDesktopShellViewLabel}</span>
+                    <TextSwap
+                      text={desktopShellViewLabel}
+                      className="block max-w-full truncate"
+                    />
                   )}
                 </div>
               </div>
@@ -2596,7 +2571,7 @@ function App() {
       
       {/* 云存储配置弹窗 - 移到全局位置避免被 renderViewLayer 的 visibility 影响 */}
       <NotionDialog open={showCloudStorageSettings} onOpenChange={setShowCloudStorageSettings} maxWidth="max-w-[560px]">
-        <NotionDialogBody nativeScroll>
+        <NotionDialogBody>
           <CloudStorageSection isDialog />
         </NotionDialogBody>
       </NotionDialog>

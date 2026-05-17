@@ -850,7 +850,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
             {t('exam_sheet:csv.import_description', '从 CSV 文件批量导入题目到题目集')}
           </NotionDialogDescription>
         </NotionDialogHeader>
-        <NotionDialogBody nativeScroll>
+        <NotionDialogBody>
 
         {/* 步骤指示器 */}
         {renderStepIndicator()}

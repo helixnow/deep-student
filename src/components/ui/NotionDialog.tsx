@@ -170,22 +170,44 @@ export function NotionDialogDescription({ className, children, ...props }: React
 }
 
 export interface NotionDialogBodyProps extends React.HTMLAttributes<HTMLDivElement> {
-  /** 禁用自研滚动条，使用原生滚动，默认 false */
-  nativeScroll?: boolean;
+  /**
+   * 启用 OverlayScrollbars（自研滚动条）。默认 false — 使用原生滚动。
+   *
+   * **最佳实践**：弹窗内一律使用原生滚动。原因：
+   *  1. NotionDialog 入场动画是 scale + translateY，OverlayScrollbars 的
+   *     `defer` 初始化在动画期间会读到错误的几何尺寸，可能导致 scrollbar
+   *     不激活、内容被裁掉而无法滚动（见 PrivacyPolicyDialog 历史问题）。
+   *  2. Modal 是 portal + overflow-hidden 容器，再嵌一层拦截 wheel 的滚动
+   *     库容易出现事件吞掉、滚动锁失效等边界问题。
+   *  3. 原生滚动在 trackpad 惯性、PgDn / 箭头键、辅助技术上更可靠。
+   *
+   * 仅在弹窗内嵌入超长虚拟列表、需要 click-track 跳转等极少数场景下才考虑
+   * 开启此选项。
+   */
+  overlayScroll?: boolean;
 }
 
-export function NotionDialogBody({ className, children, nativeScroll = false, ...props }: NotionDialogBodyProps) {
-  if (nativeScroll) {
+export function NotionDialogBody({ className, children, overlayScroll = false, ...props }: NotionDialogBodyProps) {
+  if (overlayScroll) {
     return (
-      <div className={cn('flex-1 min-h-0 overflow-y-auto px-5', className)} {...props}>
+      <CustomScrollArea className={cn('flex-1 min-h-0', className)} viewportClassName="px-5" {...props}>
         {children}
-      </div>
+      </CustomScrollArea>
     );
   }
   return (
-    <CustomScrollArea className={cn('flex-1 min-h-0', className)} viewportClassName="px-5" {...props}>
+    <div
+      className={cn(
+        // 关键：min-h-0 让 flex 子元素能正确收缩，否则会撑爆父容器导致无法滚动
+        'flex-1 min-h-0 overflow-y-auto overscroll-contain px-5',
+        // macOS 风格细滚动条，与 OverlayScrollbars 视觉接近，零运行时成本
+        'scroll-area--native',
+        className,
+      )}
+      {...props}
+    >
       {children}
-    </CustomScrollArea>
+    </div>
   );
 }
 

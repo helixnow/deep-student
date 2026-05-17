@@ -113,7 +113,7 @@ export function Combobox({
             </div>
         </div>
 
-        <NotionDialogBody nativeScroll>
+        <NotionDialogBody>
           <CustomScrollArea className="h-[min(320px,50vh)]" viewportClassName="px-2 pb-2">
             {filtered.length === 0 ? (
               <div className="px-2 py-6 text-sm text-muted-foreground text-center">{resolvedEmptyText}</div>

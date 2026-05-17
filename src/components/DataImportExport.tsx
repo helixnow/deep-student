@@ -2208,7 +2208,7 @@ ${resolvedPath}`);
                   </NotionDialogTitle>
                   <NotionDialogDescription>{t('data:clear_dialog.step2_description')}</NotionDialogDescription>
                 </NotionDialogHeader>
-                <NotionDialogBody nativeScroll>
+                <NotionDialogBody>
                   <p className="text-base font-semibold text-foreground bg-muted p-3 rounded-md text-center mb-4">
                     {t('data:clear_dialog.step2_confirm_text')}
                   </p>

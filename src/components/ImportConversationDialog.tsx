@@ -117,7 +117,7 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
             {t('import.format_hint')}
           </NotionDialogDescription>
         </NotionDialogHeader>
-        <NotionDialogBody nativeScroll>
+        <NotionDialogBody>
         <div className="space-y-4">
           {/* 文件选择 */}
           <div className="space-y-2">
