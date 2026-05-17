@@ -63,10 +63,10 @@ impl ChatV2Repo {
         conn.execute(
             r#"
             INSERT INTO chat_v2_sessions (
-                id, mode, title, description, summary_hash, persist_status,
+                id, mode, title, description, summary_hash, title_locked, persist_status,
                 created_at, updated_at, metadata_json, group_id
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
             "#,
             params![
                 session.id,
@@ -74,6 +74,7 @@ impl ChatV2Repo {
                 session.title,
                 session.description,
                 session.summary_hash,
+                session.title_locked as i64,
                 persist_status,
                 session.created_at.to_rfc3339(),
                 session.updated_at.to_rfc3339(),
@@ -99,7 +100,7 @@ impl ChatV2Repo {
     ) -> ChatV2Result<Option<ChatSession>> {
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash
+            SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash, title_locked
             FROM chat_v2_sessions
             WHERE id = ?1
             "#,
@@ -125,6 +126,8 @@ impl ChatV2Repo {
         let metadata_json: Option<String> = row.get(8)?;
         let group_id: Option<String> = row.get(9)?;
         let tags_hash: Option<String> = row.get::<_, Option<String>>(10).unwrap_or(None);
+        // title_locked 在 V20260516 之后存在；旧库 / 缺列回退到 false
+        let title_locked: bool = row.get::<_, i64>(11).map(|v| v != 0).unwrap_or(false);
 
         let persist_status = match persist_status_str.as_str() {
             "active" => PersistStatus::Active,
@@ -167,6 +170,7 @@ impl ChatV2Repo {
             title,
             description,
             summary_hash,
+            title_locked,
             persist_status,
             created_at,
             updated_at,
@@ -203,7 +207,7 @@ impl ChatV2Repo {
             r#"
             UPDATE chat_v2_sessions
             SET mode = ?2, title = ?3, description = ?4, summary_hash = ?5, persist_status = ?6,
-                updated_at = ?7, metadata_json = ?8, group_id = ?9, tags_hash = ?10
+                updated_at = ?7, metadata_json = ?8, group_id = ?9, tags_hash = ?10, title_locked = ?11
             WHERE id = ?1
             "#,
             params![
@@ -217,6 +221,7 @@ impl ChatV2Repo {
                 metadata_json,
                 session.group_id,
                 session.tags_hash,
+                session.title_locked as i64,
             ],
         )?;
 
@@ -286,7 +291,7 @@ impl ChatV2Repo {
         // 🔧 2026-01-20: 过滤掉 mode='agent' 的 Worker 会话，它们应该在工作区面板中单独显示
         let mut sql = String::from(
             r#"
-                SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash
+                SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash, title_locked
                 FROM chat_v2_sessions
                 WHERE mode != 'agent'
             "#,
@@ -643,7 +648,7 @@ impl ChatV2Repo {
         let (sql, params_vec): (String, Vec<Box<dyn rusqlite::ToSql>>) = match workspace_id {
             Some(wid) => (
                 r#"
-                    SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash
+                    SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash, title_locked
                     FROM chat_v2_sessions
                     WHERE mode = 'agent'
                       AND persist_status = 'active'
@@ -655,7 +660,7 @@ impl ChatV2Repo {
             ),
             None => (
                 r#"
-                    SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash
+                    SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash, title_locked
                     FROM chat_v2_sessions
                     WHERE mode = 'agent' AND persist_status = 'active'
                     ORDER BY updated_at DESC
@@ -2727,6 +2732,21 @@ impl ChatV2Repo {
         )?;
         Ok(())
     }
+
+    /// 锁定会话标题（用户手动改名后调用）
+    ///
+    /// 锁定后自动摘要 LLM 不再覆盖标题，行为对齐 ChatGPT/Claude。
+    pub fn set_title_locked(
+        conn: &Connection,
+        session_id: &str,
+        locked: bool,
+    ) -> ChatV2Result<()> {
+        conn.execute(
+            "UPDATE chat_v2_sessions SET title_locked = ?2 WHERE id = ?1",
+            params![session_id, locked as i64],
+        )?;
+        Ok(())
+    }
 }
 
 // ============================================================================
@@ -2744,9 +2764,26 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
 
-        // 初始化 schema（使用完整的初始化迁移，包含所有表结构）
-        let init_sql = include_str!("../../migrations/chat_v2/V20260130__init.sql");
-        conn.execute_batch(init_sql).unwrap();
+        // 初始化 schema：依次应用所有迁移，与生产环境保持一致
+        // （单独应用 V20260130 会缺少后续迁移加的列，导致测试 schema 与运行时不一致）
+        let migrations: &[&str] = &[
+            include_str!("../../migrations/chat_v2/V20260130__init.sql"),
+            include_str!("../../migrations/chat_v2/V20260131__add_change_log.sql"),
+            include_str!("../../migrations/chat_v2/V20260201__add_sync_fields.sql"),
+            include_str!("../../migrations/chat_v2/V20260202__schema_repair.sql"),
+            include_str!("../../migrations/chat_v2/V20260203__ensure_subagent_task.sql"),
+            include_str!("../../migrations/chat_v2/V20260204__session_groups.sql"),
+            include_str!("../../migrations/chat_v2/V20260207__add_active_skill_ids_json.sql"),
+            include_str!("../../migrations/chat_v2/V20260221__group_pinned_resources.sql"),
+            include_str!("../../migrations/chat_v2/V20260301__content_search_and_tags.sql"),
+            include_str!("../../migrations/chat_v2/V20260302__subagent_task_schema_align.sql"),
+            include_str!("../../migrations/chat_v2/V20260306__add_skill_state_json.sql"),
+            include_str!("../../migrations/chat_v2/V20260502__archive_legacy_deleted_sessions.sql"),
+            include_str!("../../migrations/chat_v2/V20260516__add_title_locked.sql"),
+        ];
+        for sql in migrations {
+            conn.execute_batch(sql).unwrap();
+        }
 
         conn
     }
@@ -2791,6 +2828,75 @@ mod tests {
 
         let deleted = ChatV2Repo::get_session_with_conn(&conn, "sess_test_123").unwrap();
         assert!(deleted.is_none());
+    }
+
+    #[test]
+    fn test_session_title_locked_default_false() {
+        let conn = setup_test_db();
+
+        let session = ChatSession::new("sess_lock_default".to_string(), "general_chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        let loaded = ChatV2Repo::get_session_with_conn(&conn, "sess_lock_default")
+            .unwrap()
+            .expect("Session should exist");
+        assert!(
+            !loaded.title_locked,
+            "新会话默认 title_locked = false，允许 LLM 自动生成标题"
+        );
+    }
+
+    #[test]
+    fn test_session_title_locked_persists_through_update() {
+        let conn = setup_test_db();
+
+        let mut session = ChatSession::new("sess_lock_persist".to_string(), "chat".to_string());
+        session.title_locked = true;
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        let loaded = ChatV2Repo::get_session_with_conn(&conn, "sess_lock_persist")
+            .unwrap()
+            .unwrap();
+        assert!(loaded.title_locked);
+
+        // 经过 update_session 后仍保留锁定状态
+        let mut updated = loaded.clone();
+        updated.description = Some("changed".to_string());
+        ChatV2Repo::update_session_with_conn(&conn, &updated).unwrap();
+
+        let reloaded = ChatV2Repo::get_session_with_conn(&conn, "sess_lock_persist")
+            .unwrap()
+            .unwrap();
+        assert!(reloaded.title_locked, "update_session 不应清除锁定标志");
+        assert_eq!(reloaded.description.as_deref(), Some("changed"));
+    }
+
+    #[test]
+    fn test_set_title_locked_helper() {
+        let conn = setup_test_db();
+
+        let session = ChatSession::new("sess_lock_helper".to_string(), "chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        // 初始未锁定
+        let loaded = ChatV2Repo::get_session_with_conn(&conn, "sess_lock_helper")
+            .unwrap()
+            .unwrap();
+        assert!(!loaded.title_locked);
+
+        // 通过 helper 锁定
+        ChatV2Repo::set_title_locked(&conn, "sess_lock_helper", true).unwrap();
+        let after_lock = ChatV2Repo::get_session_with_conn(&conn, "sess_lock_helper")
+            .unwrap()
+            .unwrap();
+        assert!(after_lock.title_locked);
+
+        // 通过 helper 解锁
+        ChatV2Repo::set_title_locked(&conn, "sess_lock_helper", false).unwrap();
+        let after_unlock = ChatV2Repo::get_session_with_conn(&conn, "sess_lock_helper")
+            .unwrap()
+            .unwrap();
+        assert!(!after_unlock.title_locked);
     }
 
     #[test]

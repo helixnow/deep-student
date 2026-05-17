@@ -110,9 +110,10 @@ pub mod session_event_type {
     pub const SAVE_ERROR: &str = "save_error";
     /// 变体删除
     pub const VARIANT_DELETED: &str = "variant_deleted";
-    /// 标题更新（自动生成标题后通知前端）
-    pub const TITLE_UPDATED: &str = "title_updated";
     /// 摘要更新（包含标题和简介）
+    ///
+    /// 注：原 `title_updated` 事件已废弃 —— 自动生成路径从未发射，
+    /// 所有标题/简介更新统一走 `summary_updated`。
     pub const SUMMARY_UPDATED: &str = "summary_updated";
 }
 
@@ -472,7 +473,7 @@ pub struct SessionEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<TokenUsage>,
 
-    /// 标题（title_updated/summary_updated 事件时提供）
+    /// 标题（summary_updated 事件时提供）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
 
@@ -655,26 +656,6 @@ impl SessionEvent {
             timestamp: chrono::Utc::now().timestamp_millis(),
             usage: None,
             title: None,
-            description: None,
-        }
-    }
-
-    /// 创建标题更新事件（仅标题，向后兼容）
-    pub fn title_updated(session_id: &str, title: &str) -> Self {
-        Self {
-            session_id: session_id.to_string(),
-            event_type: session_event_type::TITLE_UPDATED.to_string(),
-            message_id: None,
-            skill_state_version: None,
-            replay_mode: None,
-            model_id: None,
-            retry_attempt: None,
-            retry_max: None,
-            error: None,
-            duration_ms: None,
-            timestamp: chrono::Utc::now().timestamp_millis(),
-            usage: None,
-            title: Some(title.to_string()),
             description: None,
         }
     }
@@ -1316,15 +1297,6 @@ impl ChatV2EventEmitter {
     /// 发射保存错误事件
     pub fn emit_save_error(&self, error: &str) {
         let event = SessionEvent::save_error(&self.session_id, error);
-        self.emit_session(event);
-    }
-
-    /// 发射标题更新事件
-    ///
-    /// ## 参数
-    /// - `title`: 新的会话标题
-    pub fn emit_title_updated(&self, title: &str) {
-        let event = SessionEvent::title_updated(&self.session_id, title);
         self.emit_session(event);
     }
 

@@ -785,12 +785,16 @@ fn create_session_in_db(
 ) -> Result<ChatSession, ChatV2Error> {
     let now = chrono::Utc::now();
 
+    // 业界最佳实践：用户在创建时显式传入 title 即视为意图锁定
+    let title_locked = title.is_some();
+
     let session = ChatSession {
         id: ChatSession::generate_id(),
         mode: mode.to_string(),
         title,
         description: None,
         summary_hash: None,
+        title_locked,
         persist_status: PersistStatus::Active,
         created_at: now,
         updated_at: now,
@@ -818,13 +822,23 @@ fn update_session_settings_in_db(
 
     let now = chrono::Utc::now();
 
+    // 业界最佳实践：用户显式传入 title 时锁定标题，自动摘要永不再覆盖
+    let user_renamed = settings.title.is_some();
+    let resolved_title = settings.title.clone().or(existing.title);
+    let title_locked = if user_renamed {
+        true
+    } else {
+        existing.title_locked
+    };
+
     // 构建更新后的会话（只更新设置字段，保留其他字段）
     let updated_session = ChatSession {
         id: existing.id,
         mode: existing.mode,
-        title: settings.title.clone().or(existing.title),
+        title: resolved_title,
         description: existing.description,
         summary_hash: existing.summary_hash,
+        title_locked,
         persist_status: existing.persist_status,
         created_at: existing.created_at,
         updated_at: now,
@@ -866,6 +880,7 @@ fn archive_session_in_db(session_id: &str, db: &ChatV2Database) -> Result<(), Ch
         title: existing.title,
         description: existing.description,
         summary_hash: existing.summary_hash,
+        title_locked: existing.title_locked,
         persist_status: PersistStatus::Archived,
         created_at: existing.created_at,
         updated_at: now,
@@ -896,6 +911,7 @@ fn soft_delete_session_in_db(session_id: &str, db: &ChatV2Database) -> Result<()
         title: existing.title,
         description: existing.description,
         summary_hash: existing.summary_hash,
+        title_locked: existing.title_locked,
         persist_status: PersistStatus::Deleted,
         created_at: existing.created_at,
         updated_at: now,
@@ -929,6 +945,7 @@ fn restore_session_in_db(
         title: existing.title,
         description: existing.description,
         summary_hash: existing.summary_hash,
+        title_locked: existing.title_locked,
         persist_status: PersistStatus::Active,
         created_at: existing.created_at,
         updated_at: now,
@@ -1112,6 +1129,8 @@ fn branch_session_in_db(
         title: source_session.title.map(|t| format!("{} (branch)", t)),
         description: source_session.description.clone(),
         summary_hash: None,
+        // 分支标题来自源会话 + (branch) 后缀，视为系统赋予的语义化标题，锁定避免被自动摘要覆盖
+        title_locked: true,
         persist_status: PersistStatus::Active,
         created_at: now,
         updated_at: now,

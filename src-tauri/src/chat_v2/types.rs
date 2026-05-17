@@ -357,6 +357,13 @@ pub struct ChatSession {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary_hash: Option<String>,
 
+    /// 标题锁定标志
+    ///
+    /// 业界最佳实践：用户手动改名后置 true，自动摘要永不覆盖。
+    /// 默认 false，允许 LLM 在首轮对话后自动生成标题。
+    #[serde(default)]
+    pub title_locked: bool,
+
     /// 持久化状态
     pub persist_status: PersistStatus,
 
@@ -416,6 +423,7 @@ impl ChatSession {
             title: None,
             description: None,
             summary_hash: None,
+            title_locked: false,
             persist_status: PersistStatus::Active,
             created_at: now,
             updated_at: now,
