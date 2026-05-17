@@ -82,15 +82,18 @@
    作用：跨段拖选时浏览器原生的 line-fill 不再延伸到容器右边，
    而是只延伸到该块文字的最长行末尾，视觉上紧贴文本，不会"一大片"。
 
-   策略：在多层应用 width: fit-content
-   ❶ markdown 根容器（.markdown-content / .streaming-markdown）
-   ❷ 流式块的每个段落块（.stream-block）
-   ❸ 段落级文本元素（p / h1-h6 / li / blockquote / dt / dd）
+   策略：仅对**段落级**文本元素应用 fit-content（p / h1-h6 / li / blockquote 等）
+   以及流式渲染的每个段落块。
+
+   ⚠️ 重要：**不要**对 .markdown-content / .streaming-markdown 这种**根容器**应用
+   fit-content —— 否则它会被收缩到子元素 max-content 宽度（`width: 100%` 的子元素
+   对父级 max-content 计算贡献为 0），导致代码块/表格等块卡片与聊天容器
+   （max-w-thread）右边不对齐。
+   这是 ChatGPT/Claude/Cursor 等主流 chat UI 的做法 —— 段落级 fit-content
+   已足够提供 line-fill UX，根容器必须保持全宽。
 
    ⚠️ 排除：pre（代码块需要全宽滚动）、table（表格需要对齐）、
         figure / img / video / hr（块级媒体）、代码块所在的 stream-block */
-.chat-v2 .message-selectable-area .markdown-content,
-.chat-v2 .message-selectable-area .streaming-markdown,
 .chat-v2 .message-selectable-area .streaming-blocks > .stream-block,
 .chat-v2 .message-selectable-area .markdown-content > p,
 .chat-v2 .message-selectable-area .markdown-content > h1,
@@ -110,14 +113,32 @@
   max-width: 100%;
 }
 
-/* 例外：以下元素必须保持全宽，不能 fit-content */
+/* Markdown 根容器必须保持全宽 —— 让块卡片（代码、表格、思考链等）的右边
+ * 与聊天容器（max-w-thread）严格对齐。fit-content 仅作用于上面的段落级元素。 */
+.chat-v2 .message-selectable-area .markdown-content,
+.chat-v2 .message-selectable-area .streaming-markdown {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* 例外：以下原生 HTML 块级元素必须保持全宽（width: auto = 填满父容器，
+ * 同时 max-width: 100% 防止溢出）。这些元素曾因 .markdown-content 的
+ * `width: fit-content` 而被收缩，现在 fit-content 已只作用于段落级元素，
+ * 但保留此例外仍有意义 —— 避免任何外层 fit-content 规则误伤这些块。
+ *
+ * 注意：LLM 输出"块卡片"包装器（.code-block-wrapper / .table-wrapper /
+ * .chain-of-thought / .rag-sources-container / .mermaid-preview）**不**列
+ * 在此处。它们由 markdown.css 的"LLM 输出块对齐契约"统一管理为
+ * `width: 100%`。把它们放进这里会引入特异性冲突，反而让短表格收缩。
+ */
 .chat-v2 .message-selectable-area .markdown-content pre,
 .chat-v2 .message-selectable-area .markdown-content table,
 .chat-v2 .message-selectable-area .markdown-content figure,
 .chat-v2 .message-selectable-area .markdown-content hr,
 .chat-v2 .message-selectable-area .markdown-content img,
 .chat-v2 .message-selectable-area .markdown-content video,
-.chat-v2 .message-selectable-area .markdown-content .markdown-table-wrapper,
 .chat-v2 .message-selectable-area .stream-block:has(pre),
 .chat-v2 .message-selectable-area .stream-block:has(table) {
   width: auto;
@@ -918,16 +939,10 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
 }
 
 .chat-v2 .partial-math-indicator {
-  display: inline-block;
-  width: 0.48rem;
-  height: 0.48rem;
-  margin-left: 0.4rem;
-  border-radius: 999px;
-  background: hsl(var(--primary) / 0.66);
-  box-shadow: 0 0 12px hsl(var(--primary) / 0.24);
-  opacity: 0.76;
-  vertical-align: 0.05em;
-  animation: pulse 1.2s ease-in-out infinite;
+  /* Deprecated: 行业最优解（2026）下未闭合数学不再裁剪也不再加 indicator。
+     remark-math 自然降级为原文，KaTeX 在闭合时无缝接管。
+     保留此选择器以避免外部样式引用报错；display:none 让任何遗留挂载点不可见。 */
+  display: none;
 }
 
 @keyframes pulse {

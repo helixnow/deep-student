@@ -163,7 +163,7 @@
 
 .chat-v2 .chat-empty-composer-layout__stack {
   grid-row: 2;
-  width: min(100%, 44rem);
+  width: min(100%, var(--chat-thread-max-w));
   margin: 0 auto;
   padding: 0 1rem;
 }
@@ -242,22 +242,23 @@
 }
 
 .chat-v2 .message.assistant .message-content .markdown-content p {
-  margin: 0.75em 0;
+  margin: 1em 0;
 }
 
 .chat-v2 .message.assistant .message-content .markdown-content h2 {
   font-size: 1.35rem;
-  margin: 1.6em 0 0.8em;
+  margin: 1.75em 0 0.75em;
 }
 
 .chat-v2 .message.assistant .message-content .markdown-content h3 {
   font-size: 1.15rem;
-  margin: 1.4em 0 0.7em;
+  margin: 1.75em 0 0.75em;
 }
 
+/* Blockquote 在 assistant 消息中保持 markdown.css 的中性边框 + 圆角设计，
+ * 不再用品牌色（info）覆盖。这里只调整背景色稍深以适配 assistant 上下文。 */
 .chat-v2 .message.assistant .message-content .markdown-content blockquote {
-  background: hsl(var(--muted));
-  border-left-color: hsl(var(--info));
+  background: hsl(var(--muted) / 0.6);
 }
 
 .chat-v2 .message.assistant .message-content .markdown-content code:not(pre code) {
