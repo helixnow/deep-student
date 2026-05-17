@@ -4,7 +4,6 @@ mod exam_engine;
 mod model2_pipeline;
 pub(crate) mod parser;
 mod rag_extension;
-pub(crate) mod util;
 
 use crate::crypto::{CryptoService, EncryptedData};
 use crate::database::Database;
