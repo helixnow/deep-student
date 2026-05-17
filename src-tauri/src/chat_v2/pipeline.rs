@@ -589,12 +589,13 @@ impl ChatV2Pipeline {
                     ctx.elapsed_ms()
                 );
 
-                // 🔧 自动生成会话摘要（每轮对话后）
-                // 通过内容哈希防止重复生成
+                // 🔧 自动生成会话元数据（首轮唯一）
+                // 业界最佳实践：只在首轮对话后生成一次 title + description + tags，
+                // 用户改名后 title_locked 会阻止覆盖。
                 let user_content_for_summary = ctx.user_content.clone();
                 let assistant_content_for_summary = ctx.final_content.clone();
                 if self
-                    .should_generate_summary(
+                    .should_generate_session_metadata(
                         &session_id,
                         &user_content_for_summary,
                         &assistant_content_for_summary,
@@ -605,11 +606,10 @@ impl ChatV2Pipeline {
                     let sid = session_id.clone();
                     let emitter_clone = emitter.clone();
 
-                    // 🆕 P1修复：使用 TaskTracker 追踪异步任务，确保优雅关闭
-                    // 异步执行摘要生成，不阻塞返回
+                    // 异步执行元数据生成，不阻塞返回
                     let summary_future = async move {
                         pipeline
-                            .generate_summary(
+                            .generate_session_metadata(
                                 &sid,
                                 &user_content_for_summary,
                                 &assistant_content_for_summary,
@@ -618,11 +618,11 @@ impl ChatV2Pipeline {
                             .await;
                     };
 
-                    // 🔧 P1修复：优先使用 spawn_tracked 追踪摘要任务
+                    // 优先使用 spawn_tracked 追踪元数据任务
                     if let Some(ref state) = chat_v2_state {
                         state.spawn_tracked(summary_future);
                     } else {
-                        log::warn!("[ChatV2::pipeline] spawn_tracked unavailable, using untracked tokio::spawn for summary task");
+                        log::warn!("[ChatV2::pipeline] spawn_tracked unavailable, using untracked tokio::spawn for metadata task");
                         tokio::spawn(summary_future);
                     }
                 }

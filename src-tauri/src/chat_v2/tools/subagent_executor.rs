@@ -124,6 +124,8 @@ impl SubagentExecutor {
                 &workspace_id[..8.min(workspace_id.len())]
             )),
             summary_hash: None,
+            // Subagent 标题是系统语义化命名，锁定避免被自动摘要覆盖
+            title_locked: true,
             persist_status: PersistStatus::Active,
             created_at: now,
             updated_at: now,

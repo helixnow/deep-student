@@ -675,8 +675,8 @@ impl ChatV2Pipeline {
             }
         }
 
-        // 🔧 自动生成会话摘要（多变体模式）
-        // 使用 active_variant 的内容来生成摘要
+        // 🔧 自动生成会话元数据（多变体模式，首轮唯一）
+        // 使用 active_variant 的内容来生成元数据
         if let Some(active_id) = &active_variant_id {
             if let Some((active_ctx, _)) = variant_contexts
                 .iter()
@@ -684,7 +684,11 @@ impl ChatV2Pipeline {
             {
                 let assistant_content = active_ctx.get_accumulated_content();
                 if self
-                    .should_generate_summary(&session_id, &user_content, &assistant_content)
+                    .should_generate_session_metadata(
+                        &session_id,
+                        &user_content,
+                        &assistant_content,
+                    )
                     .await
                 {
                     let pipeline = self.clone();
@@ -692,10 +696,9 @@ impl ChatV2Pipeline {
                     let emitter_clone = emitter.clone();
                     let user_content_clone = user_content.clone();
 
-                    // 🆕 P1修复：使用 TaskTracker 追踪异步任务
                     let summary_future = async move {
                         pipeline
-                            .generate_summary(
+                            .generate_session_metadata(
                                 &sid,
                                 &user_content_clone,
                                 &assistant_content,
@@ -704,11 +707,10 @@ impl ChatV2Pipeline {
                             .await;
                     };
 
-                    // 🔧 P1修复：优先使用 spawn_tracked 追踪摘要任务
                     if let Some(ref state) = chat_v2_state {
                         state.spawn_tracked(summary_future);
                     } else {
-                        log::warn!("[ChatV2::pipeline] spawn_tracked unavailable, using untracked tokio::spawn for summary task (multi-variant)");
+                        log::warn!("[ChatV2::pipeline] spawn_tracked unavailable, using untracked tokio::spawn for metadata task (multi-variant)");
                         tokio::spawn(summary_future);
                     }
                 }
