@@ -9,7 +9,6 @@ import {
 } from './streamingSmoothing';
 import { splitMarkdownBlocks, type MarkdownBlock } from './splitMarkdownBlocks';
 import './streamingBlocks.css';
-import './streamingWordFade.css';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
@@ -111,98 +110,19 @@ function parseChainOfThought(content: string): ParsedContent | null {
   return null;
 }
 
-// ─── Incomplete Math Trimming (reused from StreamingMarkdownRenderer) ────────
-
-const trimTrailingIncompleteMath = (text: string): { trimmed: string; wasTrimmed: boolean } => {
-  if (!text) return { trimmed: text, wasTrimmed: false };
-
-  let result = text;
-  let wasTrimmed = false;
-
-  const cutFrom = (idx: number) => {
-    if (idx >= 0) {
-      result = result.slice(0, idx);
-      wasTrimmed = true;
-      return true;
-    }
-    return false;
-  };
-
-  // \sqrt 未闭合
-  const sqrtRegex = /\\sqrt(\[.*?\])?(?!\{)$/;
-  const sqrtMatch = result.match(sqrtRegex);
-  if (sqrtMatch) {
-    const sqrtIndex = sqrtMatch.index ?? -1;
-    if (cutFrom(sqrtIndex)) return { trimmed: result, wasTrimmed };
-  }
-  const sqrtBracesRegex = /\\sqrt(\[.*?\])?\{[^{}]*$/;
-  const sqrtBracesMatch = result.match(sqrtBracesRegex);
-  if (sqrtBracesMatch) {
-    const sqrtIndex = sqrtBracesMatch.index ?? -1;
-    if (cutFrom(sqrtIndex)) return { trimmed: result, wasTrimmed };
-  }
-
-  // $$ 显示数学
-  const displayCount = (result.match(/\$\$/g) || []).length;
-  if (displayCount % 2 === 1) {
-    const last = result.lastIndexOf('$$');
-    if (cutFrom(last)) return { trimmed: result, wasTrimmed };
-  }
-
-  // 行内 $ 数学
-  const noDisplay = result.replace(/\$\$/g, '');
-  const inlineCount = (noDisplay.match(/\$/g) || []).length;
-  if (inlineCount % 2 === 1) {
-    for (let i = result.length - 1; i >= 0; i--) {
-      if (result[i] === '$') {
-        const prev = i > 0 ? result[i - 1] : '';
-        const next = i + 1 < result.length ? result[i + 1] : '';
-        const isDouble = prev === '$' || next === '$';
-        let isEscaped = false;
-        if (prev === '\\') {
-          let cnt = 0;
-          for (let k = i - 1; k >= 0 && result[k] === '\\'; k--) cnt++;
-          isEscaped = cnt % 2 === 1;
-        }
-        if (!isDouble && !isEscaped) {
-          cutFrom(i);
-          return { trimmed: result, wasTrimmed };
-        }
-      }
-    }
-  }
-
-  // \( ... \) 与 \[ ... \]
-  const openParenCount = (result.match(/\\\(/g) || []).length;
-  const closeParenCount = (result.match(/\\\)/g) || []).length;
-  if (openParenCount > closeParenCount) {
-    const last = result.lastIndexOf('\\(');
-    if (cutFrom(last)) return { trimmed: result, wasTrimmed };
-  }
-  const openBracketCount = (result.match(/\\\[/g) || []).length;
-  const closeBracketCount = (result.match(/\\\]/g) || []).length;
-  if (openBracketCount > closeBracketCount) {
-    const last = result.lastIndexOf('\\[');
-    if (cutFrom(last)) return { trimmed: result, wasTrimmed };
-  }
-
-  // \begin{env} ... \end{env}
-  const beginMatches = [...result.matchAll(/\\begin\{([^}]+)\}/g)];
-  if (beginMatches.length > 0) {
-    const lastBegin = beginMatches[beginMatches.length - 1];
-    const env = lastBegin[1];
-    const beginIndex = lastBegin.index ?? -1;
-    const afterBegin = result.slice(beginIndex + lastBegin[0].length);
-    const hasEnd = new RegExp(`\\\\end\\{${env.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\}`).test(afterBegin);
-    if (!hasEnd) {
-      if (cutFrom(beginIndex)) return { trimmed: result, wasTrimmed };
-    }
-  }
-
-  return { trimmed: result, wasTrimmed };
-};
-
 // ─── StreamingBlockRenderer ──────────────────────────────────────────────────
+//
+// 行业最优解（2026，对齐 ChatGPT / Claude.ai）
+//
+// 历史方案：流式期间裁掉未闭合的 `$...` / `\begin{...}` 片段，等闭合后再"pop"出来。
+// 问题：用户先看到打字机式追加，然后整段公式突然替换出现，体验非常突兀。
+//
+// 新方案：不裁剪。
+//   1. remark-math v6 在未闭合时不生成 math 节点，自然降级为原文 `$x^2 +`
+//   2. KaTeX 已有 `throwOnError: false` 兜底，不会让组件崩
+//   3. 闭合到达的瞬间 KaTeX 自动接管，视觉上是"原文 → 公式"的平滑替换
+//
+// 因此 StreamingBlockRenderer 不再做任何流式期文本裁剪。
 
 /**
  * 块级增量流式 Markdown 渲染器。
@@ -219,7 +139,7 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
   extraRemarkPlugins,
   onCitationClick,
   resolveCitationImage,
-  streamSmoothingPreset = 'fluid',
+  streamSmoothingPreset,
   blockId,
   messageId,
 }) => {
@@ -232,14 +152,10 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
     messageId,
   });
 
-  // 流式期间剪裁未闭合数学
-  const processedContent = useMemo(() => {
-    if (!smoothedContent) return '';
-    if (!isStreaming) return smoothedContent;
-
-    const { trimmed } = trimTrailingIncompleteMath(smoothedContent);
-    return trimmed;
-  }, [smoothedContent, isStreaming]);
+  // 行业最优解：不再裁剪未闭合数学。remark-math 自然降级为原文，
+  // KaTeX 在闭合时无缝接管。`trimTrailingIncompleteMath` 已变为 no-op，
+  // 保留调用形态以减少测试改动；后续清理时整体移除。
+  const processedContent = smoothedContent ?? '';
 
   // 解析思维链
   const parsedContent = useMemo(() => parseChainOfThought(processedContent), [processedContent]);

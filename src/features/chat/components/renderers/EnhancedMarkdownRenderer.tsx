@@ -329,7 +329,8 @@ export const EnhancedStreamingMarkdownRenderer: React.FC<BaseStreamingProps> = m
   // 🔧 P1修复：使用 useMemo 替代 useEffect+setState，避免额外渲染周期
   const prepared = useMemo(() => preprocessStreaming(content, isStreaming), [content, isStreaming]);
   const displayContent = prepared.content;
-  const isPartialMath = prepared.meta.hasPartialMath;
+  // 行业最优解：未闭合数学不再裁剪，由 remark-math 自然降级为原文，KaTeX 在闭合时接管。
+  // 因此不再需要 partial-math-indicator。
   const hasVisibleContent = displayContent.trim().length > 0;
 
   // 🔧 P1修复：使用稳定引用比较替代 JSON.stringify
@@ -380,17 +381,11 @@ export const EnhancedStreamingMarkdownRenderer: React.FC<BaseStreamingProps> = m
             ) : (
               renderedContent
             )}
-            {isPartialMath && isStreaming && (
-              <span className="partial-math-indicator" title={t('renderer.incompleteMathFormula')} aria-label={t('renderer.incompleteMathFormula')} />
-            )}
           </div>
         </>
       ) : (
         <div className="normal-content">
           {renderedContent}
-          {isPartialMath && isStreaming && (
-            <span className="partial-math-indicator" title={t('renderer.incompleteMathFormula')} aria-label={t('renderer.incompleteMathFormula')} />
-          )}
         </div>
       )}
     </div>

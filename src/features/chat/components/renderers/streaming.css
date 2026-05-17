@@ -5,18 +5,6 @@
   position: relative;
 }
 
-.partial-math-indicator {
-  color: hsl(var(--warning));
-  margin-left: 0.25rem;
-  animation: stream-partial-math-pulse 1.2s ease-in-out infinite;
-  font-size: 0.9em;
-}
-
-@keyframes stream-partial-math-pulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 1; }
-}
-
 /* 流式消息特殊样式 */
 /* 统一修复：流式期间不改变背景/边框/动画，与静态完全一致 */
 .message.streaming .message-content {
@@ -27,13 +15,3 @@
 
 /* 保留占位的空动画，避免外部引用报错 */
 @keyframes streamingPulse { from { opacity: 1; } to { opacity: 1; } }
-
-/* ─── Reduced motion ─────────────────────────────────────────────────────── */
-
-@media (prefers-reduced-motion: reduce) {
-  .partial-math-indicator {
-    animation: none;
-    opacity: 0.8;
-  }
-}
-
