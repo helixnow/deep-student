@@ -15,6 +15,7 @@ import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useDisclosureMotion } from '../../hooks/useDisclosureMotion';
+import { useLiveDurationSeconds } from '../../hooks/useLiveDurationSeconds';
 import {
   CaretDown,
   CaretRight,
@@ -402,6 +403,14 @@ const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst
   const { t } = useTranslation('chatV2');
   const disclosureMotion = useDisclosureMotion();
   const contentId = useId();
+  const liveDurationSeconds = useLiveDurationSeconds(
+    node.block.startedAt,
+    node.block.endedAt,
+    !!node.isThinking,
+  );
+  const displayDurationSeconds = node.isThinking
+    ? liveDurationSeconds
+    : (node.durationSeconds ?? liveDurationSeconds);
   // 🔧 流式优化：正在思考时默认展开，完成后默认折叠
   const [isExpanded, setIsExpanded] = useState(node.isThinking ?? false);
   // 记录是否被用户手动操作过
@@ -460,7 +469,7 @@ const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst
             duration={1.5}
             spread={3}
           >
-            {t('timeline.thinking.inProgress')}
+            {t('timeline.thinking.inProgress', { seconds: liveDurationSeconds })}
           </TextShimmer>
         ) : node.isAborted ? (
           <span className="text-muted-foreground/80">
@@ -468,7 +477,7 @@ const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst
           </span>
         ) : (
           <span>
-            {t('timeline.thinking.completed', { seconds: node.durationSeconds })}
+            {t('timeline.thinking.completed', { seconds: displayDurationSeconds })}
           </span>
         )}
       </NotionButton>
