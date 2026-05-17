@@ -1446,7 +1446,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
         <NotionDialogHeader>
           <NotionDialogTitle>重命名对话</NotionDialogTitle>
         </NotionDialogHeader>
-        <NotionDialogBody nativeScroll className="py-4">
+        <NotionDialogBody className="py-4">
           <label className="block text-sm font-medium text-foreground" htmlFor="modern-sidebar-rename-session-input">
             对话名称
           </label>

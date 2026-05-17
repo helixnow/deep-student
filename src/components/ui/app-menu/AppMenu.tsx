@@ -19,6 +19,7 @@ import { cn } from '../../../lib/utils';
 import { Check as PhosphorCheck, CaretRight, MagnifyingGlass } from '@phosphor-icons/react';
 import { CustomScrollArea } from '../../custom-scroll-area';
 import { useOverlayCoordinator } from '../../shared/OverlayCoordinator';
+import { useNestedOverlayZ } from '../../shared/OverlayLayer';
 import './AppMenu.css';
 
 // ============ Context ============
@@ -200,6 +201,9 @@ export function AppMenuContent({
 }: AppMenuContentProps) {
   const ctx = React.useContext(AppMenuContext);
   const { t } = useTranslation('app_menu');
+  // 嵌套层级感知：从最近的 <OverlayLayerProvider> 读取基准 z-index 并抬升一档；
+  // 没有 Provider 时退化为默认 popover 档（行为与未引入 Provider 前一致）。
+  const nestedZ = useNestedOverlayZ();
   const [position, setPosition] = React.useState<{ top: number; left: number; origin: 'top' | 'bottom' }>({ top: 0, left: 0, origin: 'top' });
   const [internalSearchValue, setInternalSearchValue] = React.useState('');
   const fallbackContentRef = React.useRef<HTMLDivElement | null>(null);
@@ -349,6 +353,10 @@ export function AppMenuContent({
         top: position.top,
         left: position.left,
         width: width,
+        // 嵌套层级感知：仅当外层包裹了 <OverlayLayerProvider> 时才覆盖 z-index；
+        // 否则保持 CSS（.app-menu-content 默认 110）行为不变，避免污染既有调用点。
+        // 调用方传入的 style.zIndex 优先级最高（兼容显式覆盖）。
+        ...(nestedZ !== null ? { zIndex: nestedZ } : {}),
         ...(maxHeight ? { maxHeight, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' } : {}),
         ...style,
       }}

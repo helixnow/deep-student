@@ -57,6 +57,10 @@ export interface AppSelectProps {
   triggerIcon?: React.ReactNode;
   /** 下拉菜单展开/收起回调 */
   onOpenChange?: (open: boolean) => void;
+  /** 下拉面板的额外内联样式（如在高 z-index popover 中需要覆盖 z-index） */
+  popoverStyle?: React.CSSProperties;
+  /** 下拉面板的额外类名 */
+  popoverClassName?: string;
 }
 
 /**
@@ -110,6 +114,8 @@ export function AppSelect({
   size = 'default',
   triggerIcon,
   onOpenChange,
+  popoverStyle,
+  popoverClassName,
 }: AppSelectProps) {
   const { t } = useTranslation('app_menu');
 
@@ -217,7 +223,7 @@ export function AppSelect({
         </NotionButton>
       </AppMenuTrigger>
 
-      <AppMenuContent align={align} width={width} maxHeight={360}>
+      <AppMenuContent align={align} width={width} maxHeight={360} className={popoverClassName} style={popoverStyle}>
         {/* 分组模式 */}
         {groups ? (
           groups.map((group, groupIndex) => (

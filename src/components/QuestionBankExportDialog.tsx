@@ -442,7 +442,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
             })}
           </NotionDialogDescription>
         </NotionDialogHeader>
-        <NotionDialogBody nativeScroll>
+        <NotionDialogBody>
 
         <div className="space-y-6 py-4">
           {/* 格式选择 */}

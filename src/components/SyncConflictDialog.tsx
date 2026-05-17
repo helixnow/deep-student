@@ -446,7 +446,7 @@ export function SyncConflictDialog({
             {t('conflictDescription', '以下题目在本地和远程存在冲突，请选择解决策略。')}
           </NotionDialogDescription>
         </NotionDialogHeader>
-        <NotionDialogBody nativeScroll>
+        <NotionDialogBody>
 
         {pendingConflicts.length === 0 ? (
           <Alert>

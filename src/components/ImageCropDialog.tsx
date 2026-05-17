@@ -224,7 +224,7 @@ export function ImageCropDialog({
         </NotionDialogDescription>
       </NotionDialogHeader>
 
-      <NotionDialogBody nativeScroll>
+      <NotionDialogBody>
         {loading ? (
           <div className="flex items-center justify-center py-20">
             <CircleNotch size={24} className="animate-spin text-muted-foreground" />
