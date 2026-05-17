@@ -127,6 +127,11 @@ module.exports = {
 				pressed: 'var(--shadow-shell-pressed)',
 				soft: 'var(--shadow-shell-soft)',
 			},
+			// 聊天线程内容区最大宽度（消息列、输入栏、空态、滚动按钮共享）
+			// Token 定义见 src/styles/shadcn-variables.css `--chat-thread-max-w`
+			maxWidth: {
+				thread: 'var(--chat-thread-max-w)',
+			},
 			keyframes: {
 				sweep: {
 					'0%': { transform: 'translateX(-30%)' },

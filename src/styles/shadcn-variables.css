@@ -8,6 +8,18 @@
   --radius-shell-window-control: 10px;
   --radius-shell-dialog: 22px;
 
+  /* ──────────────────────────────────────────────────────────────────────
+   * Chat thread layout
+   *
+   * --chat-thread-max-w 是聊天线程内容区（消息列、输入栏、空态、
+   * 滚动按钮、LLM 输出块）共享的最大宽度契约 —— 单一来源 (single
+   * source of truth)，避免在多个组件里复制粘贴 `max-w-[44rem]`。
+   *
+   * 所有消费方应使用 Tailwind utility `max-w-thread` 或直接读取
+   * `var(--chat-thread-max-w)`，不要硬编码具体值。
+   * ────────────────────────────────────────────────────────────────────── */
+  --chat-thread-max-w: 44rem;
+
   --size-shell-control: 32px;
   --size-shell-window-control: 34px;
   --size-shell-touch-target: 36px;

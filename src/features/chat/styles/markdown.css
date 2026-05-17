@@ -38,9 +38,11 @@
 .chat-v2 .markdown-content h4,
 .chat-v2 .markdown-content h5,
 .chat-v2 .markdown-content h6 {
-  margin: 1.2em 0 0.6em 0;
+  /* Vertical rhythm 参考 Tailwind Typography (prose) 略收：标题前需要更
+   * 多呼吸空间标记小节，标题后比段落间距略大但比标题前小。 */
+  margin: 1.75em 0 0.75em 0;
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 1.4;
   color: hsl(var(--foreground));
 }
 
@@ -53,7 +55,7 @@
 
 /* 段落和文本 */
 .chat-v2 .markdown-content p {
-  margin: 0.75em 0;
+  margin: 1em 0;
   word-wrap: break-word;
   overflow-wrap: break-word;
 }
@@ -118,7 +120,7 @@
 
 /* 全局减少段落间距 */
 .chat-v2 .markdown-content p + p {
-  margin-top: 0.5em;
+  margin-top: 0.75em;
 }
 
 .chat-v2 .markdown-content strong {
@@ -152,13 +154,13 @@
 /* 列表样式 */
 .chat-v2 .markdown-content ul,
 .chat-v2 .markdown-content ol {
-  margin: 0.8em 0;
-  padding-left: 1.5em;
+  margin: 1em 0;
+  padding-left: 1.625em;
 }
 
 .chat-v2 .markdown-content li {
-  margin: 0.3em 0;
-  line-height: 1.5;
+  margin: 0.5em 0;
+  line-height: 1.6;
 }
 
 /* 空列表项优化 */
@@ -206,19 +208,25 @@
   list-style-type: square;
 }
 
-/* 引用块样式 */
+/* 引用块样式 - 严谨 / 学术风
+ *
+ * 设计原则：
+ * - 直角 (border-radius: 0) — 引用是严肃的内容标记，不是 UI 卡片
+ * - 浅背景 + 左边框 — 与正文区隔但不喧宾夺主
+ * - 无 italic — 中文伪斜体效果差，是 CJK 反模式
+ * - 正文颜色 — 引用是用户主动加亮的"重点"，淡化与意图矛盾
+ */
 .chat-v2 .markdown-content blockquote {
-  margin: 1em 0;
-  padding: 0.8em 1.2em;
-  border-left: 4px solid var(--brand-primary);
-  background: hsl(var(--muted));
-  border-radius: 0 6px 6px 0;
-  color: hsl(var(--muted-foreground));
-  font-style: italic;
+  margin: 1.5em 0;
+  padding: 0.875em 1.125em;
+  border-left: 3px solid hsl(var(--border));
+  background: hsl(var(--muted) / 0.5);
+  border-radius: 0;
+  color: hsl(var(--foreground));
 }
 
 .chat-v2 .markdown-content blockquote p {
-  margin: 0.4em 0;
+  margin: 0.5em 0;
 }
 
 .chat-v2 .markdown-content blockquote p:first-child {
@@ -232,9 +240,9 @@
 /* 水平分割线 */
 .chat-v2 .markdown-content hr {
   border: none;
-  height: 2px;
-  background: linear-gradient(to right, transparent, hsl(var(--border)), transparent);
-  margin: 0.6em 0; /* 减小分割线上下间距，避免占用过多空间 */
+  height: 1px;
+  background: hsl(var(--border));
+  margin: 2em 0; /* HR 是大节分隔，需要充足呼吸空间 */
 }
 
 /* ============================================================================
@@ -512,12 +520,44 @@
 }
 
 /* ============================================================================
+   LLM 输出块对齐契约 - LLM Output Block Alignment Contract
+   ============================================================================
+
+   背景：.markdown-content 在 chat.css:92 被设为 `width: fit-content`，是为了
+   让跨段落拖选时浏览器原生的 line-fill 紧贴文本而不延伸到容器右边。代价是
+   它的子块默认会被收缩到自身 max-content 宽度。
+
+   契约：所有"LLM 输出块"（代码块、表格、思考链、RAG 来源、Mermaid 预览
+   等带卡片外观的块包装器）必须满足以下两条：
+
+     1. 显式 `width: 100%; max-width: 100%; min-width: 0` —— 不依赖
+        fit-content 的隐式计算
+     2. `margin-inline: 0` —— 与聊天容器（max-w-thread）严格贴边对齐
+
+   新增块包装器时：
+     a. 在 chat.css 的 fit-content 例外列表中加入该类名（line 113 区段）
+     b. 在此处加入下面的统一选择器列表
+     c. 不要单独硬编码不同的 border-radius / margin —— 复用现有 token
+
+   ============================================================================ */
+.chat-v2 .markdown-content .code-block-wrapper,
+.chat-v2 .markdown-content .table-wrapper,
+.chat-v2 .markdown-content .chain-of-thought,
+.chat-v2 .markdown-content .rag-sources-container {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin-inline: 0;
+}
+
+/* ============================================================================
    表格样式 - Table Styles
    ============================================================================ */
 
 .chat-v2 .table-wrapper {
   overflow-x: auto;
-  margin: 1em 0;
+  margin: 1.25em 0;
   border-radius: 8px;
   border: 1px solid hsl(var(--border));
   box-shadow: none;
@@ -533,9 +573,10 @@
 
 .chat-v2 .markdown-table th,
 .chat-v2 .markdown-table td {
-  padding: 0.8em 1em;
+  padding: 0.875em 1.125em;
   text-align: left;
   border-bottom: 1px solid hsl(var(--border));
+  line-height: 1.6;
 }
 
 .chat-v2 .markdown-table th {
