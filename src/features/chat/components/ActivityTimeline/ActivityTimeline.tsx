@@ -10,7 +10,7 @@
  * - 支持多轮工具调用场景（按块顺序分组渲染）
  */
 
-import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -314,6 +314,8 @@ interface TimelineNodeProps {
   isClickable?: boolean;
   isExpanded?: boolean;
   onToggle?: () => void;
+  /** Disclosure pattern: id of the panel this dot/trigger controls. */
+  contentId?: string;
   children: React.ReactNode;
 }
 
@@ -324,6 +326,7 @@ const TimelineNode: React.FC<TimelineNodeProps> = ({
   isClickable = false,
   isExpanded = false,
   onToggle,
+  contentId,
   children,
 }) => {
   const { t } = useTranslation('chatV2');
@@ -354,6 +357,8 @@ const TimelineNode: React.FC<TimelineNodeProps> = ({
                   : 'bg-muted-foreground/50'
             )}
             aria-label={isExpanded ? t('activityTimeline.collapse') : t('activityTimeline.expand')}
+            aria-expanded={isExpanded}
+            aria-controls={contentId}
             title={isExpanded ? t('activityTimeline.collapse') : t('activityTimeline.expand')}
           />
         ) : (
@@ -396,6 +401,7 @@ interface ThinkingNodeContentProps {
 const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst, isLast }) => {
   const { t } = useTranslation('chatV2');
   const disclosureMotion = useDisclosureMotion();
+  const contentId = useId();
   // 🔧 流式优化：正在思考时默认展开，完成后默认折叠
   const [isExpanded, setIsExpanded] = useState(node.isThinking ?? false);
   // 记录是否被用户手动操作过
@@ -431,6 +437,7 @@ const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst
       isClickable={hasContent}
       isExpanded={isExpanded}
       onToggle={toggleExpanded}
+      contentId={contentId}
     >
       {/* 🔧 统一交互：文字区域也可以点击展开 */}
       <NotionButton
@@ -438,6 +445,8 @@ const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst
         size="sm"
         onClick={hasContent ? toggleExpanded : undefined}
         disabled={!hasContent}
+        aria-expanded={hasContent ? isExpanded : undefined}
+        aria-controls={hasContent ? contentId : undefined}
         className={cn(
           '!justify-start !px-0 hover:!bg-transparent',
           'text-muted-foreground',
@@ -468,6 +477,9 @@ const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst
         {isExpanded && node.content && (
           <motion.div
             {...disclosureMotion}
+            id={contentId}
+            role="region"
+            aria-label={t('timeline.thinking.contentLabel')}
             className="overflow-hidden"
           >
             <div className="py-1.5 text-gray-500 dark:text-gray-400 text-xs leading-snug">
@@ -569,6 +581,7 @@ interface ToolNodeContentProps {
 const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast, isStreaming = false }) => {
   const { t } = useTranslation(['chatV2', 'common']);
   const disclosureMotion = useDisclosureMotion();
+  const contentId = useId();
   const [isExpanded, setIsExpanded] = useState(false);
 
   const toggleExpanded = useCallback(() => {
@@ -646,6 +659,7 @@ const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast
       isClickable={hasDetails}
       isExpanded={isExpanded}
       onToggle={toggleExpanded}
+      contentId={contentId}
     >
       <div className="flex flex-col gap-1">
         {/* 工具头部 - 🔧 统一交互：文字区域也可以点击展开 */}
@@ -654,6 +668,8 @@ const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast
           size="sm"
           onClick={toggleExpanded}
           disabled={!hasDetails}
+          aria-expanded={hasDetails ? isExpanded : undefined}
+          aria-controls={hasDetails ? contentId : undefined}
           className={cn(
             '!justify-start !px-0 -mt-0.5 w-fit hover:!bg-transparent',
             'text-muted-foreground hover:text-foreground',
@@ -692,6 +708,9 @@ const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast
           {isExpanded && hasDetails && (
             <motion.div
               {...disclosureMotion}
+              id={contentId}
+              role="region"
+              aria-label={t('timeline.tool.contentLabel', { ns: 'chatV2' })}
               className="overflow-hidden"
             >
               <div className="pl-5 space-y-2 text-xs">
