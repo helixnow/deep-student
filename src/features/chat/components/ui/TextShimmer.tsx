@@ -1,7 +1,7 @@
 "use client";
 
 import React, { useMemo } from "react";
-import { motion } from "framer-motion";
+import { motion, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 export type TextShimmerProps = {
@@ -26,6 +26,12 @@ function TextShimmerComponent({
   const dynamicSpread = useMemo(() => {
     return children.length * spread;
   }, [children, spread]);
+
+  const prefersReduced = useReducedMotion();
+
+  if (prefersReduced) {
+    return <span className={className} style={style}>{children}</span>;
+  }
 
   return (
     <motion.span

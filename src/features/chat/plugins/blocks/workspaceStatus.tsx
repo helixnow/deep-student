@@ -13,7 +13,7 @@
 import React, { useState, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useShallow } from 'zustand/react/shallow';
-import { motion, AnimatePresence } from 'framer-motion';
+import { motion, AnimatePresence, useReducedMotion } from 'framer-motion';
 import {
   Buildings,
   User,
@@ -30,6 +30,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
+import { useDisclosureMotion } from '../../hooks/useDisclosureMotion';
 import { useWorkspaceStore } from '../../workspace/workspaceStore';
 import { WorkspaceLogInline } from '../../workspace/components/WorkspaceLogInline';
 import type {
@@ -225,6 +226,8 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
   const { t } = useTranslation('chatV2');
   const [isExpanded, setIsExpanded] = useState(true);
   const [showMessages, setShowMessages] = useState(false);
+  const disclosureMotion = useDisclosureMotion();
+  const prefersReduced = useReducedMotion();
 
   // 从 Store 获取工作区数据
   const { workspace, agents: storeAgents, messages, currentWorkspaceId } = useWorkspaceStore(
@@ -439,7 +442,7 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
               className="h-full bg-primary rounded-full"
               initial={{ width: 0 }}
               animate={{ width: `${progress.percent}%` }}
-              transition={{ duration: 0.3 }}
+              transition={{ duration: prefersReduced ? 0 : 0.3 }}
             />
           </div>
         </div>
@@ -448,12 +451,7 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
       {/* 展开内容 */}
       <AnimatePresence>
         {isExpanded && (
-          <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
-          >
+          <motion.div {...disclosureMotion}>
             {/* Agent 列表 */}
             <div className="px-3 pb-2">
               <div className="text-[10px] font-medium text-muted-foreground uppercase tracking-wider mb-1">
@@ -502,10 +500,7 @@ const WorkspaceStatusBlockComponent: React.FC<BlockComponentProps> = React.memo(
                 <AnimatePresence>
                   {showMessages && (
                     <motion.div
-                      initial={{ height: 0, opacity: 0 }}
-                      animate={{ height: 'auto', opacity: 1 }}
-                      exit={{ height: 0, opacity: 0 }}
-                      transition={{ duration: 0.15 }}
+                      {...disclosureMotion}
                       className="px-3 pb-2"
                     >
                       {recentMessages.map((msg) => (

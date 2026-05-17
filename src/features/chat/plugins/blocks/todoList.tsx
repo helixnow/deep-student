@@ -14,6 +14,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useDisclosureMotion } from '../../hooks/useDisclosureMotion';
 import { Check, Circle, CircleNotch, X, SkipForward, CaretDown } from '@phosphor-icons/react';
 import { cn } from '@/utils/cn';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
@@ -152,6 +153,7 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
 }) => {
   const { t } = useTranslation('chatV2');
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
+  const disclosureMotion = useDisclosureMotion();
 
   // 计算完成数量
   const completedCount = propCompletedCount ?? steps.filter(
@@ -222,10 +224,7 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
       <AnimatePresence initial={false}>
         {isExpanded && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2, ease: 'easeInOut' }}
+            {...disclosureMotion}
             className="overflow-hidden"
           >
             <div className={cn(
