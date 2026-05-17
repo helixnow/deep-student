@@ -245,13 +245,23 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     // 🆕 队列模式设置（来自本地存储）
     const queueSettings = useQueueSettings();
 
-    // 🔧 从 DialogControlContext 获取 MCP 选中状态和清除方法
-    const { selectedMcpServers, setSelectedMcpServers } = useDialogControl();
-    
+    // 🔧 从 DialogControlContext 获取 MCP 选中状态、可用服务器列表和清除方法
+    const { availableMcpServers, selectedMcpServers, setSelectedMcpServers } = useDialogControl();
+
     // 🔧 计算非内置服务器的数量（只有内置服务器时不显示气泡数字）
     const nonBuiltinMcpServerCount = useMemo(() => {
       return selectedMcpServers.filter(id => !isBuiltinServer(id)).length;
     }, [selectedMcpServers]);
+
+    // 🔧 是否存在任何非内置 MCP 服务器（可用列表或已选列表里有都算）
+    // 用途：用户从未在设置里配置任何非内置 MCP 服务器时，隐藏 chat 栏的扳手按钮，
+    // 减少新用户首屏的工具栏噪音；built-in server 一直自动启用，无 UI 也不影响行为。
+    const hasAnyNonBuiltinMcp = useMemo(() => {
+      return (
+        availableMcpServers.some(s => !isBuiltinServer(s.id)) ||
+        selectedMcpServers.some(id => !isBuiltinServer(id))
+      );
+    }, [availableMcpServers, selectedMcpServers]);
     
     // 🔧 清除所有选中的 MCP 服务器
     const handleClearMcpServers = useCallback(() => {
@@ -809,11 +819,15 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     }, [modePlugin?.renderAdvancedPanel, store, setPanelState]);
 
     // MCP 工具面板渲染函数
+    // 🔧 当用户没有配置任何非内置 MCP 服务器时，整体禁用面板（按钮 / ⌘⇧M 快捷键 /
+    // 面板渲染都会因 renderMcpPanel === undefined 而自动跳过）。built-in server
+    // 一直自动启用，没有 UI 也不影响调用行为。
     const renderMcpPanel = useMemo(() => {
       if (!modePlugin?.renderMcpPanel) return undefined;
+      if (!hasAnyNonBuiltinMcp) return undefined;
       const McpPanel = modePlugin.renderMcpPanel;
       return () => <McpPanel store={store} onClose={() => setPanelState('mcp', false)} />;
-    }, [modePlugin?.renderMcpPanel, store, setPanelState]);
+    }, [modePlugin?.renderMcpPanel, hasAnyNonBuiltinMcp, store, setPanelState]);
 
     // ★ Skills 技能选择面板渲染函数（多选模式）
     const handleToggleSkill = useCallback(async (skillId: string) => {
@@ -848,7 +862,14 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
 
     return (
       <>
-        <QueuedMessageStack store={store} allowSteer={queueSettings.allowSteer} />
+        {/* 🆕 排队气泡的横向布局与 InputBarUI 内部容器保持一致：
+            外层 px-4 / md:px-8 + 内层 mx-auto max-w-thread，
+            使「引导」气泡和下方 chat 输入栏左右边对齐。 */}
+        <div className="w-full px-4 md:px-8">
+          <div className="mx-auto w-full max-w-thread">
+            <QueuedMessageStack store={store} allowSteer={queueSettings.allowSteer} />
+          </div>
+        </div>
         <InputBarUI
         // 状态
         inputValue={inputValue}

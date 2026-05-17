@@ -7,7 +7,6 @@
 
 import React, { memo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Lightning } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import type { TokenUsage } from '../core/types';
@@ -46,19 +45,26 @@ function formatTokenCount(count: number): string {
 
 /**
  * 获取来源标识的样式
+ *
+ * 语义映射：
+ * - api      → success（最权威：来自 API 实际值）
+ * - tiktoken → info（计算值）
+ * - heuristic→ warning（估算值，需注意）
+ * - mixed    → primary（混合来源，使用强调色）
+ * - default  → muted
  */
 function getSourceBadgeClass(source: TokenUsage['source']): string {
   switch (source) {
     case 'api':
-      return 'bg-emerald-100 text-emerald-700 dark:bg-emerald-500/20 dark:text-emerald-300';
+      return 'bg-success/10 text-success';
     case 'tiktoken':
-      return 'bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-300';
+      return 'bg-info/10 text-info';
     case 'heuristic':
-      return 'bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-300';
+      return 'bg-warning/10 text-warning';
     case 'mixed':
-      return 'bg-violet-100 text-violet-700 dark:bg-violet-500/20 dark:text-violet-300';
+      return 'bg-primary/10 text-primary';
     default:
-      return 'bg-gray-100 text-gray-600 dark:bg-gray-600 dark:text-gray-300';
+      return 'bg-muted text-muted-foreground';
   }
 }
 
@@ -85,8 +91,8 @@ export const TokenUsageDisplay: React.FC<TokenUsageDisplayProps> = memo(
     const tooltipContent = (
       <div className="w-52 p-1">
         {/* 头部：标题 + 来源 */}
-        <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-gray-200 dark:border-gray-600">
-          <div className="font-semibold text-sm text-gray-900 dark:text-white">{t('tokenUsage.title')}</div>
+        <div className="flex items-center justify-between mb-2.5 pb-2 border-b border-border">
+          <div className="font-semibold text-sm text-foreground">{t('tokenUsage.title')}</div>
           <span className={cn('px-2 py-0.5 rounded-full text-[10px] font-medium leading-none', sourceBadgeClass)}>
             {sourceLabel}
           </span>
@@ -96,62 +102,61 @@ export const TokenUsageDisplay: React.FC<TokenUsageDisplayProps> = memo(
         <div className="space-y-2 text-xs">
           {/* 输入 */}
           <div className="flex items-center justify-between">
-            <span className="text-gray-500 dark:text-gray-400 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+            <span className="text-muted-foreground flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-success"></span>
               {t('tokenUsage.prompt')}
             </span>
-            <span className="font-mono tabular-nums text-gray-800 dark:text-gray-200">{usage.promptTokens.toLocaleString()}</span>
+            <span className="font-mono tabular-nums text-foreground">{usage.promptTokens.toLocaleString()}</span>
           </div>
 
           {/* 输出 */}
           <div className="flex items-center justify-between">
-            <span className="text-gray-500 dark:text-gray-400 flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-blue-500"></span>
+            <span className="text-muted-foreground flex items-center gap-2">
+              <span className="w-2 h-2 rounded-full bg-info"></span>
               {t('tokenUsage.completion')}
             </span>
-            <span className="font-mono tabular-nums text-gray-800 dark:text-gray-200">{usage.completionTokens.toLocaleString()}</span>
+            <span className="font-mono tabular-nums text-foreground">{usage.completionTokens.toLocaleString()}</span>
           </div>
 
           {/* 推理 (Optional) */}
           {usage.reasoningTokens !== undefined && (
              <div className="flex items-center justify-between">
-              <span className="text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-violet-500"></span>
+              <span className="text-muted-foreground flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-violet-500 dark:bg-violet-400"></span>
                 {t('tokenUsage.reasoning')}
               </span>
-              <span className="font-mono tabular-nums text-gray-800 dark:text-gray-200">{usage.reasoningTokens.toLocaleString()}</span>
+              <span className="font-mono tabular-nums text-foreground">{usage.reasoningTokens.toLocaleString()}</span>
             </div>
           )}
 
           {/* 缓存 (Optional) */}
           {usage.cachedTokens !== undefined && (
              <div className="flex items-center justify-between">
-              <span className="text-gray-500 dark:text-gray-400 flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-amber-500"></span>
+              <span className="text-muted-foreground flex items-center gap-2">
+                <span className="w-2 h-2 rounded-full bg-warning"></span>
                 {t('tokenUsage.cached')}
               </span>
-              <span className="font-mono tabular-nums text-gray-800 dark:text-gray-200">{usage.cachedTokens.toLocaleString()}</span>
+              <span className="font-mono tabular-nums text-foreground">{usage.cachedTokens.toLocaleString()}</span>
             </div>
           )}
 
           {/* 分隔线 */}
-          <div className="my-2 border-t border-gray-200 dark:border-gray-600" />
+          <div className="my-2 border-t border-border" />
 
           {/* 总计 */}
           <div className="flex items-center justify-between">
-             <span className="text-gray-900 dark:text-white font-medium flex items-center gap-2">
-               <Lightning size={13} className="text-amber-500" />
+             <span className="text-foreground font-medium">
                {t('tokenUsage.total')}
              </span>
-             <span className="font-mono tabular-nums font-bold text-gray-900 dark:text-white">{usage.totalTokens.toLocaleString()}</span>
+             <span className="font-mono tabular-nums font-bold text-foreground">{usage.totalTokens.toLocaleString()}</span>
           </div>
         </div>
 
-        {/* 上下文窗口 (如果存在) */}
+        {/* 上下文窗口 (如果存在) — 使用强调色语义 */}
         {usage.lastRoundPromptTokens !== undefined && (
-          <div className="mt-2.5 pt-2 border-t border-gray-200 dark:border-gray-600 flex items-center justify-between text-xs">
-             <span className="text-gray-500 dark:text-gray-400">{t('tokenUsage.contextWindow')}</span>
-             <span className="font-mono tabular-nums font-semibold text-orange-600 dark:text-orange-400 bg-orange-100 dark:bg-orange-500/20 px-2 py-0.5 rounded">
+          <div className="mt-2.5 pt-2 border-t border-border flex items-center justify-between text-xs">
+             <span className="text-muted-foreground">{t('tokenUsage.contextWindow')}</span>
+             <span className="font-mono tabular-nums font-semibold text-primary bg-primary/10 px-2 py-0.5 rounded">
                {usage.lastRoundPromptTokens.toLocaleString()}
              </span>
           </div>
@@ -159,48 +164,43 @@ export const TokenUsageDisplay: React.FC<TokenUsageDisplayProps> = memo(
       </div>
     );
 
-    // 紧凑模式 - 新格式: ⚡ 863 ↑568 ↓120
+    // 紧凑模式 - 格式: 7.3K ↑7.0K ↓304
     if (compact) {
       return (
         <CommonTooltip content={tooltipContent} position="top">
           <span
             className={cn(
               'inline-flex items-center gap-1.5 text-xs font-mono',
-              'text-gray-500 dark:text-gray-400 hover:text-gray-700 dark:hover:text-gray-200',
+              'text-muted-foreground hover:text-foreground',
               'transition-colors cursor-default',
               className
             )}
           >
-            <Lightning size={12} className="text-amber-500 dark:text-amber-400" />
-            <span className="font-medium text-gray-700 dark:text-gray-200">{formatTokenCount(usage.totalTokens)}</span>
-            <span className="text-emerald-600 dark:text-emerald-400">↑{formatTokenCount(usage.promptTokens)}</span>
-            <span className="text-blue-600 dark:text-blue-400">↓{formatTokenCount(usage.completionTokens)}</span>
+            <span className="font-medium text-foreground/80">{formatTokenCount(usage.totalTokens)}</span>
+            <span className="text-success">↑{formatTokenCount(usage.promptTokens)}</span>
+            <span className="text-info">↓{formatTokenCount(usage.completionTokens)}</span>
           </span>
         </CommonTooltip>
       );
     }
 
-    // 完整模式 - 新格式: ⚡ 863 ↑568 ↓120
+    // 完整模式 - 格式: 7.3K ↑7.0K ↓304
     return (
       <CommonTooltip content={tooltipContent} position="top">
         <div
           className={cn(
             'inline-flex items-center gap-2 px-2.5 py-1 rounded-full',
-            // 亮色模式：浅灰背景，深色文字
-            'bg-gray-100/80 hover:bg-[var(--interactive-hover)] border border-gray-200/50 hover:border-gray-300/60',
-            // 暗色模式：半透明深色背景，浅色文字
-            'dark:bg-white/5 dark:hover:bg-[var(--interactive-hover)] dark:border-white/10 dark:hover:border-white/20',
-            'text-[11px] font-medium tabular-nums',
+            'bg-muted/60 hover:bg-[var(--interactive-hover)] border border-border/50 hover:border-border',
+            'text-[11px] font-medium tabular-nums text-foreground',
             'transition-all duration-200 cursor-default select-none',
             className
           )}
         >
-          <Lightning size={11} className="text-amber-500 dark:text-amber-400" />
-          <span className="font-semibold text-gray-700 dark:text-gray-100">{formatTokenCount(usage.totalTokens)}</span>
-          <span className="flex items-center gap-0.5 text-emerald-600 dark:text-emerald-400">
+          <span className="font-semibold text-foreground">{formatTokenCount(usage.totalTokens)}</span>
+          <span className="flex items-center gap-0.5 text-success">
             <span className="text-[9px] opacity-70">↑</span>{formatTokenCount(usage.promptTokens)}
           </span>
-          <span className="flex items-center gap-0.5 text-blue-600 dark:text-blue-400">
+          <span className="flex items-center gap-0.5 text-info">
             <span className="text-[9px] opacity-70">↓</span>{formatTokenCount(usage.completionTokens)}
           </span>
         </div>

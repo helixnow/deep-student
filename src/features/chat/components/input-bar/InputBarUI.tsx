@@ -1297,6 +1297,9 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   // 🔧 面板容器 ref，用于检测点击是否在面板内
   const panelContainerRef = useRef<HTMLDivElement>(null);
   const composerPanelOverlayRef = useRef<HTMLDivElement | null>(null);
+  // 模型面板 popover 的当前 placement（top: popover 在输入栏上方；bottom: 在下方）
+  // 用于让输入栏在与 popover 接缝的那条边变方角，形成"长出来"效果
+  const [modelPanelPlacement, setModelPanelPlacement] = useState<'top' | 'bottom'>('top');
   // 🔧 P1修复：检查是否有附件正在上传
   const hasUploadingAttachments = attachments.some(a => a.status === 'uploading' || a.status === 'pending');
   // 允许 ready 或 processing 但选中模式已就绪的附件发送
@@ -2222,12 +2225,20 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       }}
       {...dropZoneProps}
     >
-      <div className="mx-auto w-full max-w-[44rem]">
+      <div className="mx-auto w-full max-w-thread">
         {/* study-ui 对齐：输入区回到安静的居中 composer，而不是漂浮玻璃卡片。 */}
         <div
           ref={inputContainerRef}
           data-composer-panel-anchor
-          className="relative z-[200] overflow-hidden rounded-[var(--radius-shell-toolbar)] border border-[color:var(--input-shell-border)] bg-[color:var(--unified-input-shell-surface,var(--shell-inspector-panel))] p-3 pl-4 shadow-[var(--shadow-shell-soft)] transition-shadow duration-150 ease-out focus-within:shadow-[var(--shadow-shell-panel)]"
+          className={cn(
+            'relative z-[200] overflow-hidden rounded-[var(--radius-shell-toolbar)] border border-[color:var(--input-shell-border)] bg-[color:var(--unified-input-shell-surface,var(--shell-inspector-panel))] p-3 pl-4 shadow-[var(--shadow-shell-soft)] transition-shadow duration-150 ease-out focus-within:shadow-[var(--shadow-shell-panel)]',
+            // 模型面板"展开/正在收起"期间，与 popover 接缝的那条边变方角
+            // 用 shouldRender 而不是 activeComposerPanel，确保关闭动画期间不闪烁
+            // placement=top: popover 在上方 → 输入栏顶角变方
+            // placement=bottom: popover 在下方（视口顶部场景）→ 输入栏底角变方
+            modelPanelMotion.shouldRender && modelPanelPlacement === 'top' && 'rounded-t-none',
+            modelPanelMotion.shouldRender && modelPanelPlacement === 'bottom' && 'rounded-b-none'
+          )}
         >
         {/* 🔧 P0修复：拖拽遮罩层移到输入容器内部，确保与输入框完全重合 */}
         {isReady && isDragging && (
@@ -3108,7 +3119,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
         {/* ★ RAG 知识库面板已移至对话控制面板 */}
 
-        {/* 模型选择面板 - 贴齐输入栏宽度，紧贴上方 */}
+        {/* 模型选择面板 - 贴齐输入栏宽度，无缝粘连，占满可用高度 */}
         {renderModelPanel && (
           activeComposerPanel === 'model' && modelPanelMotion.shouldRender && (
             <ComposerPanelOverlay
@@ -3116,8 +3127,19 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               anchorRef={inputContainerRef}
               overlayRef={composerPanelOverlayRef}
               motionState={modelPanelMotion.motionState}
-              maxHeight={380}
+              maxHeight={500}
               widthMode="anchor"
+              gap={0}
+              heightMode="available"
+              onPlacementChange={setModelPanelPlacement}
+              // 视觉：让模型面板与输入栏共享一条接缝——同 surface/border/shadow
+              // 接缝边（朝向输入栏的那条）去圆角去 border；远端边保留 toolbar 圆角
+              // 通过 data-composer-panel-placement 自适应：popover 在上方时去下边圆角，在下方时去上边圆角
+              className={cn(
+                '!border-[color:var(--input-shell-border)] !bg-[color:var(--unified-input-shell-surface,var(--shell-inspector-panel))] !shadow-[var(--shadow-shell-panel)]',
+                'data-[composer-panel-placement=top]:!rounded-b-none data-[composer-panel-placement=top]:!border-b-0 data-[composer-panel-placement=top]:!rounded-t-[var(--radius-shell-toolbar)]',
+                'data-[composer-panel-placement=bottom]:!rounded-t-none data-[composer-panel-placement=bottom]:!border-t-0 data-[composer-panel-placement=bottom]:!rounded-b-[var(--radius-shell-toolbar)]'
+              )}
             >
               {renderModelPanel()}
             </ComposerPanelOverlay>

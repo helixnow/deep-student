@@ -25,17 +25,26 @@ export function getLocationLabel(location: SkillLocation, t: (key: string) => st
 
 /**
  * 获取位置样式
+ *
+ * 走语义 token，避免硬编码 Tailwind 调色板：
+ *   - builtin → 主强调色（--button-primary-*），随主题切换自动变化
+ *   - global  → --info（信息蓝）
+ *   - project → --success（成功绿）
+ *   - 其他    → 中性 utility token
+ *
+ * 这样多主题（紫/蓝/绿/橙/粉/青/灰/茶）切换时，"内置" 徽章会跟随
+ * --primary，而不是永远卡在固定紫色。
  */
 export function getLocationStyle(location: SkillLocation): string {
   switch (location) {
     case 'global':
-      return 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400';
+      return 'bg-[color:hsl(var(--info)/0.12)] text-[color:hsl(var(--info))]';
     case 'project':
-      return 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400';
+      return 'bg-[color:hsl(var(--success)/0.12)] text-[color:hsl(var(--success))]';
     case 'builtin':
-      return 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-400';
+      return 'bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]';
     default:
-      return 'bg-gray-100 text-gray-700 dark:bg-gray-800 dark:text-gray-400';
+      return 'bg-[color:var(--button-utility-surface)] text-[color:var(--text-secondary)]';
   }
 }
 

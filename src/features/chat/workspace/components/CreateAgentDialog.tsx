@@ -125,7 +125,7 @@ export const CreateAgentDialog: React.FC<CreateAgentDialogProps> = ({
             {t('chatV2:workspace.createAgent.description')}
           </NotionDialogDescription>
         </NotionDialogHeader>
-        <NotionDialogBody nativeScroll>
+        <NotionDialogBody>
 
         <div className="grid gap-4 py-4">
           <div className="space-y-2">

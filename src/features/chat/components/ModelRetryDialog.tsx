@@ -87,7 +87,7 @@ export const ModelRetryDialog: React.FC<ModelRetryDialogProps> = ({
             {t('chatV2:messageItem.modelRetry.dialogTitle')}
           </NotionDialogTitle>
         </NotionDialogHeader>
-        <NotionDialogBody nativeScroll>
+        <NotionDialogBody>
 
         {/* 复用现有的多选模型面板 */}
         <MultiSelectModelPanel

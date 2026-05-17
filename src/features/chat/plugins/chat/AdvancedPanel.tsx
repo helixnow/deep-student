@@ -507,8 +507,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
               </p>
             </div>
 
-            {/* ★ 多模态检索开关 - 多模态索引已禁用，暂时隐藏。恢复 MULTIMODAL_INDEX_ENABLED = true 后取消注释即可 */}
-            {/* <div className="p-2">
+            <div className="p-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-1">
                   <Image size={11} className="text-muted-foreground" />
@@ -527,7 +526,7 @@ export const AdvancedPanel: React.FC<AdvancedPanelProps> = ({ store, onClose, si
               <p className="mt-1 text-[10px] leading-3 text-muted-foreground">
                 {t('chat_host:rag.panel.multimodal_helper')}
               </p>
-            </div> */}
+            </div>
           </div>
         </div>
       </div>

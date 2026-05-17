@@ -458,7 +458,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
   };
 
   return (
-    <div className="space-y-2">
+    <div className="flex h-full min-h-0 flex-col gap-2">
       {/* 头部 */}
       {!shouldHideHeader && (
         <div className="flex items-center gap-2">
@@ -521,8 +521,8 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
         </div>
       )}
 
-      {/* 搜索 */}
-      <div className="relative shrink-0">
+      {/* 搜索：嵌入式（ghost）— 不再以独立 control 控件呈现，融入 popover 表面 */}
+      <div className="relative shrink-0 -mx-1 border-b border-[color:var(--input-shell-border)] pb-2">
         <MagnifyingGlass
           size={12}
           className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[color:var(--composer-panel-muted-foreground)]"
@@ -532,13 +532,21 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           placeholder={t('chatV2:modelPicker.searchPlaceholder', '搜索名称或模型 ID...')}
-          className="w-full border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-control-surface)] pl-7 pr-2 text-xs"
+          className="h-8 w-full pl-7 pr-2 text-xs !rounded-none !border-0 !bg-transparent hover:!bg-transparent focus-visible:!bg-transparent focus-visible:!ring-0 focus-visible:!border-transparent"
           disabled={disabled}
         />
       </div>
 
-      {/* 列表 */}
-      <div className={cn('min-h-0', isMobile ? 'h-[260px]' : 'h-[240px]')}>
+      {/* 列表：flex-1 占满 popover 剩余高度（由 popover heightMode='available' 决定总高）
+          + 底部 24px 软渐隐 mask，空间受限时（如空状态输入栏居中）平滑提示"下方有更多内容"
+          mask 仅影响视觉绘制，不改变 layout，与 flex-1 不冲突 */}
+      <div
+        className="min-h-0 flex-1"
+        style={{
+          maskImage: 'linear-gradient(to bottom, black calc(100% - 24px), transparent)',
+          WebkitMaskImage: 'linear-gradient(to bottom, black calc(100% - 24px), transparent)',
+        }}
+      >
         <CustomScrollArea
           className="h-full"
           viewportClassName="space-y-1 pr-1"

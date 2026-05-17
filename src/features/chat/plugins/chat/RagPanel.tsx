@@ -181,8 +181,7 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
           </p>
         </div>
 
-        {/* ★ 多模态检索开关 - 多模态索引已禁用，暂时隐藏。恢复 MULTIMODAL_INDEX_ENABLED = true 后取消注释即可 */}
-        {/* <div className="rounded-md border border-border bg-card p-2">
+        <div className="rounded-md border border-border bg-card p-2">
           <label className="flex items-center justify-between">
             <div className="flex items-center gap-1.5">
               <Image size={13} className="text-muted-foreground" />
@@ -201,7 +200,7 @@ export const RagPanel: React.FC<RagPanelProps> = ({ store, onClose }) => {
           <p className="mt-1 text-[11px] leading-4 text-muted-foreground">
             {t('chat_host:rag.panel.multimodal_helper')}
           </p>
-        </div> */}
+        </div>
       </div>
     </div>
   );

@@ -302,7 +302,7 @@ export const AgentOutputDrawer: React.FC<AgentOutputDrawerProps> = ({
             {t('chatV2:workspace.dispatch.desc')}
           </NotionDialogDescription>
         </NotionDialogHeader>
-        <NotionDialogBody nativeScroll>
+        <NotionDialogBody>
           <div className="grid gap-3 py-2">
             <div className="text-sm text-muted-foreground">
               {t('chatV2:workspace.dispatch.target')}:

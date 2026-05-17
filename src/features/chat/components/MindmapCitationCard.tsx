@@ -51,7 +51,7 @@ export const MindmapCitationCard: React.FC<MindmapCitationCardProps> = ({
   embedHeight = 280,
 }) => {
   return (
-    <div className={cn('my-3 w-full max-w-[600px]', className)}>
+    <div className={cn('my-3 w-full', className)}>
       <MindMapEmbed
         mindmapId={mindmapId}
         versionId={versionId}
