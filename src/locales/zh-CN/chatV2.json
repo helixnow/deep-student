@@ -72,8 +72,7 @@
       "suggestion4": "我正在进行大学物理期末备考，请根据资源库中的相关资料，制作一套题目集。",
       "suggestion5": "根据我上传的高中英语资料，生成一套复习用的Anki闪卡。"
     },
-    "waiting": "正在思考...",
-    "modelSwitchNotice": "模型已从 {{from}} 更改为{{to}}"
+    "waiting": "正在思考..."
   },
   "messageItem": {
     "actions": {

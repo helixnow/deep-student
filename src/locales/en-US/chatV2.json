@@ -72,8 +72,7 @@
       "suggestion4": "Explain the difference between 'entropy' in information theory and thermodynamics with simple examples.",
       "suggestion5": "Generate a set of Anki flashcards from my uploaded class notes for review."
     },
-    "waiting": "Thinking...",
-    "modelSwitchNotice": "Model changed from {{from}} to {{to}}"
+    "waiting": "Thinking..."
   },
   "messageItem": {
     "actions": {

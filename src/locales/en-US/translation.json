@@ -84,6 +84,14 @@
     "characters": "Characters",
     "words": "Words"
   },
+  "popover": {
+    "translating": "Translating...",
+    "unknown_error": "Translation failed",
+    "model_hint": "Current translation model (change in Settings → Models): {{name}}",
+    "copy_source": "Copy source",
+    "copy_translation": "Copy translation",
+    "copied": "Copied"
+  },
   "shortcuts": {
     "translate": "Ctrl/Cmd + Enter",
     "clear": "Ctrl/Cmd + K",
