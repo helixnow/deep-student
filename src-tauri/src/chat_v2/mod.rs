@@ -16,6 +16,7 @@
 pub mod adapters;
 pub mod approval_manager; // 🆕 工具审批管理器（文档 29 P1-3）
 pub mod approval_scope; // 🆕 工具审批作用域键提取器（P2 / M-081 修复）
+pub mod cleanup; // 🆕 孤儿数据清理（dry-run + 阈值守门）
 pub(crate) mod context; // PipelineContext 拆分
 pub mod database;
 pub mod error;

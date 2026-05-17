@@ -664,7 +664,7 @@ pub async fn dstu_empty_trash(
     // ★ P1 修复：purge 成功后异步清理所有向量索引
     if !resource_ids_to_cleanup.is_empty() {
         let lance_for_cleanup = Arc::clone(lance_store.inner());
-        tokio::spawn(async move {
+        crate::background_tasks::BACKGROUND_TASKS.spawn(async move {
             for rid in &resource_ids_to_cleanup {
                 let _ = lance_for_cleanup.delete_by_resource("text", rid).await;
                 let _ = lance_for_cleanup
@@ -768,7 +768,7 @@ pub async fn dstu_permanently_delete(
             // ★ P1 修复：essay_session 的子 essays 向量清理
             if !session_essay_resource_ids.is_empty() {
                 let lance_for_cleanup = Arc::clone(lance_store.inner());
-                tokio::spawn(async move {
+                crate::background_tasks::BACKGROUND_TASKS.spawn(async move {
                     for rid in &session_essay_resource_ids {
                         let _ = lance_for_cleanup.delete_by_resource("text", rid).await;
                         let _ = lance_for_cleanup

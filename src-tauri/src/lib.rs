@@ -22,7 +22,9 @@ pub mod debug_logger;
 pub mod anr_watchdog; // ANR 看门狗（Android 主线程卡顿检测）
 pub mod backup_common;
 pub mod backup_config;
+pub mod background_tasks; // 全局后台任务追踪器（Audit 2 R-2.6：统一管理 fire-and-forget 任务并支持优雅关闭）
 pub mod chat_v2; // Chat V2 - 新版聊天后端模块（基于 Block 架构）
+pub mod chunking; // 🆕 共享文档分块工具（Audit P3：4 处重复 max_tokens=6000 合并）
 pub mod cloud_storage;
 pub mod cross_page_merger;
 pub mod data_space;
@@ -1698,8 +1700,13 @@ pub fn run() {
                 }
             }
         })
-        .run(tauri::generate_context!())
-        .expect("Failed to run Tauri application");
+        .build(tauri::generate_context!())
+        .expect("Failed to build Tauri application")
+        .run(|_app_handle, event| {
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                tauri::async_runtime::block_on(crate::background_tasks::shutdown());
+            }
+        });
 }
 
 // Helper to build the global application state

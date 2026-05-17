@@ -241,6 +241,19 @@ export default defineConfig(({ command, mode }) => ({
           if (id.includes('i18next') || id.includes('react-i18next')) {
             return 'vendor-i18n';
           }
+          // 重型可视化依赖（按需加载视图独立分包）
+          if (id.includes('@xyflow/') || id.includes('reactflow')) {
+            return 'vendor-xyflow';
+          }
+          if (id.includes('recharts') || id.includes('d3-')) {
+            return 'vendor-charts';
+          }
+          if (id.includes('pdfjs-dist')) {
+            return 'vendor-pdfjs';
+          }
+          if (id.includes('mermaid')) {
+            return 'vendor-mermaid';
+          }
         },
       }
     }
