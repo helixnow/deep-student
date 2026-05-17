@@ -8,14 +8,19 @@
  * - 使用 call_llm_for_boundary 调用对话模型（非流式）
  * - 显示解释结果
  * - 提供：复制、添加到聊天输入框 操作
- * - 点击外部或 Escape 关闭
+ * - 点击外部、滚动或 Escape 关闭
+ *
+ * 定位策略：
+ * - useLayoutEffect 测量真实尺寸后再定位（不再用估算高度）
+ * - ResizeObserver 在内容变化（loading→result→error）时重新计算
+ * - 上下空间均不足时，贴向较大一侧的视口边缘
  *
  * 复用项目样式：
  * - 毛玻璃卡片：ModelMentionPopover 风格
  * - Z-index：Z_INDEX.popover
  */
 
-import React, { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
 import { Copy, Check, ChatDots, X, ArrowsClockwise } from '@phosphor-icons/react';
@@ -47,6 +52,7 @@ export interface ExplainPopoverProps {
 // 常量
 // ============================================================================
 
+const POPOVER_WIDTH = 380;
 const POPOVER_GAP = 8;
 const VIEWPORT_PADDING = 12;
 
@@ -92,16 +98,90 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
   const [isLoading, setIsLoading] = useState(false);
   const [explanation, setExplanation] = useState('');
   const [error, setError] = useState<string | null>(null);
-  const abortRef = useRef(false);
 
-  // 固定位置：打开时计算一次，之后不再变动
-  const [fixedPosition, setFixedPosition] = useState<{ top: number; left: number } | null>(null);
+  // 用 requestId 防止"关闭→重开"或重试时的旧响应竞态
+  const requestIdRef = useRef(0);
 
-  // 自动触发解释
+  // 动态位置：根据真实测量尺寸计算
+  const [position, setPosition] = useState<{ top: number; left: number } | null>(null);
+
+  // ===== 定位 =====
+
+  const computePosition = useCallback(() => {
+    if (!selectionRect || !popoverRef.current) return;
+
+    const el = popoverRef.current;
+    // 使用真实测量值，避免估算误差
+    const height = el.offsetHeight || el.getBoundingClientRect().height || 0;
+    const width = el.offsetWidth || POPOVER_WIDTH;
+
+    if (height === 0) return; // 还未渲染完成，等下一帧
+
+    const viewportH = window.innerHeight;
+    const viewportW = window.innerWidth;
+
+    const spaceAbove = selectionRect.top - VIEWPORT_PADDING;
+    const spaceBelow = viewportH - selectionRect.bottom - VIEWPORT_PADDING;
+    const needed = height + POPOVER_GAP;
+
+    let top: number;
+    if (needed <= spaceAbove) {
+      // 上方放得下：贴近选区上方
+      top = selectionRect.top - height - POPOVER_GAP;
+    } else if (needed <= spaceBelow) {
+      // 下方放得下：贴近选区下方
+      top = selectionRect.bottom + POPOVER_GAP;
+    } else {
+      // 上下都放不下：选较大一侧贴边
+      top =
+        spaceAbove >= spaceBelow
+          ? VIEWPORT_PADDING
+          : Math.max(VIEWPORT_PADDING, viewportH - height - VIEWPORT_PADDING);
+    }
+
+    let left = selectionRect.left + selectionRect.width / 2 - width / 2;
+    const maxLeft = viewportW - width - VIEWPORT_PADDING;
+    left = Math.max(VIEWPORT_PADDING, Math.min(left, maxLeft));
+
+    setPosition((prev) => {
+      // 避免无意义的状态写入引起额外渲染
+      if (prev && prev.top === top && prev.left === left) return prev;
+      return { top, left };
+    });
+  }, [selectionRect]);
+
+  // 渲染后立即测量并定位（同步避开闪烁）
+  useLayoutEffect(() => {
+    if (!isVisible) return;
+    computePosition();
+  }, [isVisible, isLoading, explanation, error, computePosition]);
+
+  // ResizeObserver 监听内容尺寸变化（如 loading → 长文本 → 错误条）
   useEffect(() => {
-    if (!isVisible || !sourceText || explanation || isLoading) return;
+    if (!isVisible) return;
+    const el = popoverRef.current;
+    if (!el) return;
 
-    abortRef.current = false;
+    const ro = new ResizeObserver(() => computePosition());
+    ro.observe(el);
+    // 视口尺寸变化也重算
+    const onResize = () => computePosition();
+    window.addEventListener('resize', onResize);
+
+    return () => {
+      ro.disconnect();
+      window.removeEventListener('resize', onResize);
+    };
+  }, [isVisible, computePosition]);
+
+  // ===== 解释请求（带 requestId 防竞态） =====
+
+  useEffect(() => {
+    if (!isVisible || !sourceText) return;
+    // 已有结果 / 正在加载 / 已出错（等待重试）时不重复发起
+    if (explanation || isLoading || error) return;
+
+    const reqId = ++requestIdRef.current;
     setIsLoading(true);
     setError(null);
 
@@ -112,67 +192,70 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
       { prompt }
     )
       .then((result) => {
-        if (abortRef.current) return;
+        if (requestIdRef.current !== reqId) return; // 旧请求被新一轮替代，丢弃
         setExplanation(result.assistant_message);
       })
       .catch((err) => {
-        if (abortRef.current) return;
+        if (requestIdRef.current !== reqId) return;
         setError(String(err));
       })
       .finally(() => {
-        if (!abortRef.current) setIsLoading(false);
+        if (requestIdRef.current === reqId) setIsLoading(false);
       });
-  }, [isVisible, sourceText, explanation, isLoading]);
+  }, [isVisible, sourceText, explanation, isLoading, error]);
 
-  // 关闭时重置
+  // 关闭时重置（同时让所有 in-flight 失效）
   useEffect(() => {
     if (!isVisible) {
-      abortRef.current = true;
+      requestIdRef.current++;
       setExplanation('');
       setError(null);
       setIsLoading(false);
       setCopied(false);
-      setFixedPosition(null);
+      setPosition(null);
     }
   }, [isVisible]);
 
-  // 打开时固定位置（只计算一次）
-  useEffect(() => {
-    if (isVisible && selectionRect && !fixedPosition) {
-      const popoverWidth = 380;
-      const popoverHeight = 140;
-
-      // 默认在选区上方（不遮挡下方未读内容）
-      let top = selectionRect.top - popoverHeight - POPOVER_GAP;
-
-      // 上方空间不足时翻转到下方
-      if (top < VIEWPORT_PADDING) {
-        top = selectionRect.bottom + POPOVER_GAP;
-      }
-
-      let left = selectionRect.left + selectionRect.width / 2 - popoverWidth / 2;
-      const maxLeft = window.innerWidth - popoverWidth - VIEWPORT_PADDING;
-      left = Math.max(VIEWPORT_PADDING, Math.min(left, maxLeft));
-
-      setFixedPosition({ top, left });
-    }
-  }, [isVisible, selectionRect, fixedPosition]);
+  // ===== 关闭事件 =====
 
   // Escape 关闭
   useEffect(() => {
     if (!isVisible) return;
-
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose();
     };
-
     document.addEventListener('keydown', handleKeyDown);
-    return () => {
-      document.removeEventListener('keydown', handleKeyDown);
-    };
+    return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isVisible, onClose]);
 
-  // 复制
+  // 外部点击关闭
+  useEffect(() => {
+    if (!isVisible) return;
+    const handleMouseDown = (e: MouseEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (popoverRef.current?.contains(target)) return;
+      onClose();
+    };
+    document.addEventListener('mousedown', handleMouseDown);
+    return () => document.removeEventListener('mousedown', handleMouseDown);
+  }, [isVisible, onClose]);
+
+  // 滚动关闭（忽略 popover 内部滚动）
+  useEffect(() => {
+    if (!isVisible) return;
+    const handleScroll = (e: Event) => {
+      const target = e.target as Node | null;
+      // 内容区域自身可滚动（max-h-[240px] overflow-y-auto），不应触发关闭
+      if (target && popoverRef.current?.contains(target)) return;
+      onClose();
+    };
+    window.addEventListener('scroll', handleScroll, { capture: true, passive: true });
+    return () => window.removeEventListener('scroll', handleScroll, { capture: true });
+  }, [isVisible, onClose]);
+
+  // ===== 用户操作 =====
+
   const handleCopy = useCallback(async () => {
     if (!explanation) return;
     await copyTextToClipboard(explanation);
@@ -180,16 +263,15 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
     setTimeout(() => setCopied(false), 1500);
   }, [explanation]);
 
-  // 添加到聊天输入框
   const handleAddToInput = useCallback(() => {
     if (!explanation || !onAddToInput) return;
     onAddToInput(explanation);
     onClose();
   }, [explanation, onAddToInput, onClose]);
 
-  // 重试
   const handleRetry = useCallback(() => {
-    abortRef.current = false;
+    // 让在途请求作废，并重置状态触发自动重发
+    requestIdRef.current++;
     setExplanation('');
     setError(null);
     setIsLoading(false);
@@ -217,8 +299,14 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
             'shadow-lg ring-1 ring-border/40',
             'overflow-hidden',
           )}
-          style={{ top: fixedPosition?.top ?? 0, left: fixedPosition?.left ?? 0, zIndex: Z_INDEX.popover }}
-          onMouseDown={(e) => e.preventDefault()}
+          style={{
+            // 测量未完成前用大负偏移避免视觉闪烁；visibility 隐藏交互
+            top: position?.top ?? -9999,
+            left: position?.left ?? -9999,
+            visibility: position ? 'visible' : 'hidden',
+            zIndex: Z_INDEX.popover,
+          }}
+          onMouseDown={(e) => e.stopPropagation()}
         >
           {/* 头部：原文摘要 + 关闭按钮 */}
           <div className="flex items-start gap-2 px-3 pt-2.5 pb-1.5 border-b border-border/30">
