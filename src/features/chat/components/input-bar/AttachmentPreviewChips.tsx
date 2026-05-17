@@ -77,43 +77,46 @@ export const AttachmentPreviewChips: React.FC<AttachmentPreviewChipsProps> = mem
               size="sm"
               onClick={onOpenPanel}
               className={cn(
-                'attachment-preview-chip h-8 w-max justify-start gap-2 rounded-full border border-[color:var(--input-shell-border)] bg-[color:var(--surface-panel-strong)] py-0 pl-1.5 pr-7 text-[13px] font-semibold text-foreground shadow-sm transition-[background-color,border-color,box-shadow] duration-150 hover:border-[color:var(--button-plain-border)] hover:bg-[color:var(--button-plain-hover-bg)]',
+                'attachment-preview-chip h-8 w-max justify-start gap-2 rounded-full border border-[color:var(--input-shell-border)] bg-[color:var(--surface-panel-strong)] py-0 pl-1.5 pr-3 text-[13px] font-semibold text-foreground shadow-sm transition-[background-color,border-color,box-shadow] duration-150 hover:border-[color:var(--button-plain-border)] hover:bg-[color:var(--button-plain-hover-bg)]',
                 disabled && 'pointer-events-none opacity-60'
               )}
               title={attachment.name}
             >
+              {/* 图标区域：hover 时变为 X 删除按钮 */}
               <span
                 data-testid={`attachment-chip-icon-${attachment.id}`}
                 className="relative inline-flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full border border-white/10 bg-[color:var(--surface-elevated)] text-muted-foreground"
               >
-                {showImagePreview ? (
-                  <img
-                    src={attachment.previewUrl}
-                    alt=""
-                    className="h-full w-full object-cover"
-                    draggable={false}
-                  />
-                ) : (
-                  <Icon size={12} aria-hidden="true" />
+                {/* 默认：文件图标 / 图片预览 */}
+                <span className="absolute inset-0 flex items-center justify-center transition-opacity duration-150 group-hover/attachment-chip:opacity-0">
+                  {showImagePreview ? (
+                    <img
+                      src={attachment.previewUrl}
+                      alt=""
+                      className="h-full w-full object-cover"
+                      draggable={false}
+                    />
+                  ) : (
+                    <Icon size={12} aria-hidden="true" />
+                  )}
+                </span>
+                {/* Hover：X 图标覆盖 */}
+                {!disabled && (
+                  <button
+                    type="button"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      onRemove(attachment.id);
+                    }}
+                    aria-label={`移除附件 ${attachment.name}`}
+                    title={`移除附件 ${attachment.name}`}
+                    className="absolute inset-0 flex items-center justify-center rounded-full bg-black/60 text-white opacity-0 transition-opacity duration-150 group-hover/attachment-chip:opacity-100 focus-visible:opacity-100"
+                  >
+                    <X size={10} weight="bold" aria-hidden="true" />
+                  </button>
                 )}
               </span>
               <span className="whitespace-nowrap">{attachment.name}</span>
-            </NotionButton>
-            <NotionButton
-              type="button"
-              variant="ghost"
-              size="icon"
-              iconOnly
-              disabled={disabled}
-              onClick={(event) => {
-                event.stopPropagation();
-                onRemove(attachment.id);
-              }}
-              aria-label={`移除附件 ${attachment.name}`}
-              title={`移除附件 ${attachment.name}`}
-              className="pointer-events-none absolute right-1.5 top-1/2 !h-5 !w-5 -translate-y-1/2 rounded-full text-muted-foreground opacity-0 transition-opacity hover:bg-[var(--interactive-hover)] hover:text-foreground group-hover/attachment-chip:pointer-events-auto group-hover/attachment-chip:opacity-100 focus-visible:pointer-events-auto focus-visible:opacity-100"
-            >
-              <X size={12} aria-hidden="true" />
             </NotionButton>
           </div>
         );

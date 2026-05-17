@@ -32,6 +32,10 @@ export interface TextSelectionState {
   selectionRect: SelectionRect | null;
   /** 工具栏是否应该显示 */
   isVisible: boolean;
+  /** 选中文本前的上下文（容器内最多 200 字符），用于翻译消歧 */
+  contextBefore: string;
+  /** 选中文本后的上下文（容器内最多 200 字符），用于翻译消歧 */
+  contextAfter: string;
   /** 手动清除选择状态 */
   clear: () => void;
 }
@@ -39,12 +43,53 @@ export interface TextSelectionState {
 /** 最小触发字符数 */
 const MIN_SELECTION_LENGTH = 2;
 
+/** 上下文窗口字符数（每侧） */
+const CONTEXT_WINDOW = 200;
+
+/**
+ * 在容器的可见 textContent 中寻找选中文本的位置，并切出前后上下文。
+ *
+ * 失败时返回空字符串（不阻断主流程）。
+ */
+function extractContext(
+  container: HTMLElement,
+  range: Range,
+  selectedText: string
+): { before: string; after: string } {
+  try {
+    const fullText = container.textContent ?? '';
+    if (!fullText || !selectedText) return { before: '', after: '' };
+
+    // 优先：先用 selectionStart/cloneContents 计算更精确的偏移
+    let startOffset: number;
+    try {
+      const preRange = range.cloneRange();
+      preRange.selectNodeContents(container);
+      preRange.setEnd(range.startContainer, range.startOffset);
+      startOffset = preRange.toString().length;
+    } catch {
+      // 回退：直接 indexOf（多次出现时取第一次，可能不准但不会崩）
+      startOffset = fullText.indexOf(selectedText);
+      if (startOffset < 0) return { before: '', after: '' };
+    }
+
+    const endOffset = startOffset + selectedText.length;
+    const before = fullText.slice(Math.max(0, startOffset - CONTEXT_WINDOW), startOffset);
+    const after = fullText.slice(endOffset, endOffset + CONTEXT_WINDOW);
+    return { before, after };
+  } catch {
+    return { before: '', after: '' };
+  }
+}
+
 export function useTextSelection(
   containerRef: React.RefObject<HTMLElement | null>
 ): TextSelectionState {
   const [selectedText, setSelectedText] = useState('');
   const [selectionRect, setSelectionRect] = useState<SelectionRect | null>(null);
   const [isVisible, setIsVisible] = useState(false);
+  const [contextBefore, setContextBefore] = useState('');
+  const [contextAfter, setContextAfter] = useState('');
   // 防止 mousedown 在工具栏上时清除选择
   const isToolbarInteraction = useRef(false);
 
@@ -52,6 +97,8 @@ export function useTextSelection(
     setSelectedText('');
     setSelectionRect(null);
     setIsVisible(false);
+    setContextBefore('');
+    setContextAfter('');
   }, []);
 
   // 检测选中文本
@@ -100,6 +147,7 @@ export function useTextSelection(
 
       // 计算选区位置
       const rect = range.getBoundingClientRect();
+      const ctx = extractContext(container, range, text);
       setSelectedText(text);
       setSelectionRect({
         top: rect.top,
@@ -108,6 +156,8 @@ export function useTextSelection(
         height: rect.height,
         bottom: rect.bottom,
       });
+      setContextBefore(ctx.before);
+      setContextAfter(ctx.after);
       setIsVisible(true);
     });
   }, [containerRef, clear]);
@@ -170,5 +220,5 @@ export function useTextSelection(
     };
   }, [containerRef, handleMouseUp, handleMouseDown, handleScroll, handleKeyDown, handleContextMenu]);
 
-  return { selectedText, selectionRect, isVisible, clear };
+  return { selectedText, selectionRect, isVisible, contextBefore, contextAfter, clear };
 }

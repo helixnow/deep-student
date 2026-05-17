@@ -5,7 +5,7 @@ import { cn } from '@/lib/utils';
 import { useOverlayCoordinator } from '@/components/shared/OverlayCoordinator';
 
 const VIEWPORT_PADDING_PX = 8;
-const PANEL_GAP_PX = 8;
+const DEFAULT_PANEL_GAP_PX = 8;
 const MIN_PANEL_HEIGHT_PX = 160;
 
 export type ComposerPanelMotion = 'closed' | 'opening' | 'open' | 'closing';
@@ -19,6 +19,10 @@ export interface ComposerPanelOverlayProps {
   widthMode?: 'anchor' | 'wide';
   preferredWidth?: number;
   heightMode?: 'content' | 'available';
+  /** 与锚点（输入栏）的间距，默认 8px。设为 0 可让面板贴齐锚点形成"长出来"效果 */
+  gap?: number;
+  /** Placement 变化时回调（用于让锚点根据 placement 调整自身样式，例如方角接缝） */
+  onPlacementChange?: (placement: 'top' | 'bottom') => void;
   className?: string;
   children: React.ReactNode;
 }
@@ -49,6 +53,8 @@ export function ComposerPanelOverlay({
   widthMode = 'anchor',
   preferredWidth = 860,
   heightMode = 'content',
+  gap = DEFAULT_PANEL_GAP_PX,
+  onPlacementChange,
   className,
   children,
 }: ComposerPanelOverlayProps) {
@@ -80,9 +86,14 @@ export function ComposerPanelOverlay({
       Math.max(desiredLeft, VIEWPORT_PADDING_PX),
       Math.max(VIEWPORT_PADDING_PX, viewportWidth - VIEWPORT_PADDING_PX - width)
     );
-    const availableAbove = Math.max(0, anchorRect.top - PANEL_GAP_PX - VIEWPORT_PADDING_PX);
-    const availableBelow = Math.max(0, viewportHeight - anchorRect.bottom - PANEL_GAP_PX - VIEWPORT_PADDING_PX);
-    const shouldPlaceBelow = availableAbove < MIN_PANEL_HEIGHT_PX && availableBelow > availableAbove;
+    const availableAbove = Math.max(0, anchorRect.top - gap - VIEWPORT_PADDING_PX);
+    const availableBelow = Math.max(0, viewportHeight - anchorRect.bottom - gap - VIEWPORT_PADDING_PX);
+    // Placement 偏好上方（popover 看起来"从输入栏长出"），但在两种情况下翻转到下方：
+    //   1. 上方不够 MIN_PANEL_HEIGHT（如移动端键盘弹起把输入栏推到顶部）
+    //   2. 上方放不下 maxHeight 完整高度，但下方比上方更宽裕（空状态：输入栏居中，下方反而更大）
+    const shouldPlaceBelow =
+      availableAbove < MIN_PANEL_HEIGHT_PX
+      || (availableAbove < maxHeight && availableBelow > availableAbove);
     const availableSpace = shouldPlaceBelow ? availableBelow : availableAbove;
     const resolvedMaxHeight = Math.min(maxHeight, availableSpace, Math.max(0, viewportHeight - VIEWPORT_PADDING_PX * 2));
     const measuredHeight = panelRef.current?.getBoundingClientRect().height;
@@ -93,22 +104,35 @@ export function ComposerPanelOverlay({
       resolvedMaxHeight
     );
     const top = shouldPlaceBelow
-      ? Math.min(viewportHeight - VIEWPORT_PADDING_PX - panelHeight, anchorRect.bottom + PANEL_GAP_PX)
-      : Math.max(VIEWPORT_PADDING_PX, anchorRect.top - PANEL_GAP_PX - panelHeight);
+      ? Math.min(viewportHeight - VIEWPORT_PADDING_PX - panelHeight, anchorRect.bottom + gap)
+      : Math.max(VIEWPORT_PADDING_PX, anchorRect.top - gap - panelHeight);
 
-    setPosition({
-      left,
-      top,
-      width,
-      maxHeight: resolvedMaxHeight,
-      placement: shouldPlaceBelow ? 'bottom' : 'top',
+    const nextPlacement: 'top' | 'bottom' = shouldPlaceBelow ? 'bottom' : 'top';
+    setPosition((prev) => {
+      if (
+        prev
+        && prev.left === left
+        && prev.top === top
+        && prev.width === width
+        && prev.maxHeight === resolvedMaxHeight
+        && prev.placement === nextPlacement
+      ) {
+        return prev;
+      }
+      return { left, top, width, maxHeight: resolvedMaxHeight, placement: nextPlacement };
     });
-  }, [anchorRef, heightMode, maxHeight, preferredWidth, widthMode]);
+  }, [anchorRef, heightMode, maxHeight, preferredWidth, widthMode, gap]);
 
   React.useEffect(() => {
     dismissTooltips();
     return registerInteractiveOverlay();
   }, [dismissTooltips, registerInteractiveOverlay]);
+
+  React.useEffect(() => {
+    if (position?.placement) {
+      onPlacementChange?.(position.placement);
+    }
+  }, [position?.placement, onPlacementChange]);
 
   React.useLayoutEffect(() => {
     if (typeof window === 'undefined') return;
