@@ -11,6 +11,7 @@ import React, { useState, useMemo } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useDisclosureMotion } from '../../hooks/useDisclosureMotion';
 import {
   CaretDown,
   CaretUp,
@@ -193,6 +194,7 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
   const [isExpanded, setIsExpanded] = useState(defaultExpanded);
   const [copied, setCopied] = useState(false);
   const [debugCopied, setDebugCopied] = useState(false);
+  const disclosureMotion = useDisclosureMotion();
 
   // 从 Store 获取工作区数据
   const { workspace, agents, messages } = useWorkspaceStore(
@@ -316,10 +318,7 @@ export const WorkspaceLogInline: React.FC<WorkspaceLogInlineProps> = ({
       <AnimatePresence>
         {isExpanded && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2 }}
+            {...disclosureMotion}
             className="border-t border-border/30"
           >
             <div className="max-h-80 overflow-y-auto px-3">

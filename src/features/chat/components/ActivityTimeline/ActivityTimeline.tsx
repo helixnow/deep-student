@@ -14,6 +14,7 @@ import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { motion, AnimatePresence } from 'framer-motion';
+import { useDisclosureMotion } from '../../hooks/useDisclosureMotion';
 import {
   CaretDown,
   CaretRight,
@@ -394,6 +395,7 @@ interface ThinkingNodeContentProps {
 
 const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst, isLast }) => {
   const { t } = useTranslation('chatV2');
+  const disclosureMotion = useDisclosureMotion();
   // 🔧 流式优化：正在思考时默认展开，完成后默认折叠
   const [isExpanded, setIsExpanded] = useState(node.isThinking ?? false);
   // 记录是否被用户手动操作过
@@ -465,10 +467,7 @@ const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst
       <AnimatePresence initial={false}>
         {isExpanded && node.content && (
           <motion.div
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ duration: 0.2, ease: 'easeInOut' }}
+            {...disclosureMotion}
             className="overflow-hidden"
           >
             <div className="py-1.5 text-gray-500 dark:text-gray-400 text-xs leading-snug">
@@ -569,6 +568,7 @@ interface ToolNodeContentProps {
 
 const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast, isStreaming = false }) => {
   const { t } = useTranslation(['chatV2', 'common']);
+  const disclosureMotion = useDisclosureMotion();
   const [isExpanded, setIsExpanded] = useState(false);
 
   const toggleExpanded = useCallback(() => {
@@ -691,10 +691,7 @@ const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast
         <AnimatePresence initial={false}>
           {isExpanded && hasDetails && (
             <motion.div
-              initial={{ height: 0, opacity: 0 }}
-              animate={{ height: 'auto', opacity: 1 }}
-              exit={{ height: 0, opacity: 0 }}
-              transition={{ duration: 0.2, ease: 'easeInOut' }}
+              {...disclosureMotion}
               className="overflow-hidden"
             >
               <div className="pl-5 space-y-2 text-xs">
