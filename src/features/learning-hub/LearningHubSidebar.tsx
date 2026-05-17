@@ -2724,7 +2724,7 @@ export function LearningHubSidebar({
             {t('finder.create.folderTitle')}
           </NotionDialogTitle>
         </NotionDialogHeader>
-        <NotionDialogBody nativeScroll>
+        <NotionDialogBody>
           <Input
             type="text"
             placeholder={t('finder.create.folderPlaceholder')}

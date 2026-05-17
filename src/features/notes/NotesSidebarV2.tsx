@@ -558,7 +558,7 @@ const NotesSidebarContent: React.FC = () => {
         <NotionDialogHeader>
           <NotionDialogTitle>{referenceDialogTitle}</NotionDialogTitle>
         </NotionDialogHeader>
-        <NotionDialogBody nativeScroll>
+        <NotionDialogBody>
           <div className="space-y-2">
             <Input
               value={referenceValue}

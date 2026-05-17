@@ -81,7 +81,7 @@ export function NotesLibraryManager({
             {t('notes:library_manager.description')}
           </NotionDialogDescription>
         </NotionDialogHeader>
-        <NotionDialogBody nativeScroll>
+        <NotionDialogBody>
 
         <Tabs value={activeTab} onValueChange={(v) => onTabChange(v as 'export' | 'import')} className="flex-1 flex flex-col min-h-0">
           <TabsList className="mx-6 grid w-auto grid-cols-2">
