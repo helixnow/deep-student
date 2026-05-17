@@ -51,8 +51,8 @@ pub struct SSETransport {
     config: SSEConfig,
     client: Client,
     session_id: Arc<RwLock<Option<String>>>,
-    send_tx: mpsc::UnboundedSender<String>,
-    recv_rx: Arc<Mutex<mpsc::UnboundedReceiver<String>>>,
+    send_tx: mpsc::Sender<String>,
+    recv_rx: Arc<Mutex<mpsc::Receiver<String>>>,
     connected: Arc<AtomicBool>,
     buffer: Arc<Mutex<SseLineBuffer>>,
     /// 最后接收的事件ID，用于断线续传
@@ -81,8 +81,8 @@ impl SSETransport {
             .map_err(|e| McpError::TransportError(e.to_string()))?;
 
         // 创建消息通道
-        let (send_tx, send_rx) = mpsc::unbounded_channel();
-        let (recv_tx, recv_rx) = mpsc::unbounded_channel();
+        let (send_tx, send_rx) = mpsc::channel(128);
+        let (recv_tx, recv_rx) = mpsc::channel(128);
 
         let transport = Self {
             config,
@@ -105,7 +105,7 @@ impl SSETransport {
     }
 
     /// 启动发送任务
-    fn start_send_task(&self, mut send_rx: mpsc::UnboundedReceiver<String>) {
+    fn start_send_task(&self, mut send_rx: mpsc::Receiver<String>) {
         let client = self.client.clone();
         let endpoint = self.config.endpoint.clone();
         let session_id = self.session_id.clone();
@@ -155,7 +155,7 @@ impl SSETransport {
     }
 
     /// 启动SSE接收任务
-    async fn start_receive_task(&self, recv_tx: mpsc::UnboundedSender<String>) -> McpResult<()> {
+    async fn start_receive_task(&self, recv_tx: mpsc::Sender<String>) -> McpResult<()> {
         let endpoint = self.config.endpoint.clone();
         let connected = self.connected.clone();
         let buffer = self.buffer.clone();
@@ -229,9 +229,18 @@ impl SSETransport {
                                     }
                                 }
 
-                                if recv_tx.send(data.to_string()).is_err() {
-                                    warn!("SSE receiver dropped");
-                                    break;
+                                if let Err(e) = recv_tx.try_send(data.to_string()) {
+                                    match e {
+                                        mpsc::error::TrySendError::Full(_) => {
+                                            tracing::warn!(
+                                                "SSE recv channel full, dropping message"
+                                            );
+                                        }
+                                        mpsc::error::TrySendError::Closed(_) => {
+                                            warn!("SSE receiver dropped");
+                                            break;
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -330,6 +339,7 @@ impl Transport for SSETransport {
 
         self.send_tx
             .send(message.to_string())
+            .await
             .map_err(|e| McpError::TransportError(format!("Send failed: {}", e)))?;
 
         Ok(())

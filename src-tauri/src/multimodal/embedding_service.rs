@@ -161,7 +161,7 @@ impl MultimodalEmbeddingService {
     pub async fn embed_batch_with_progress(
         &self,
         inputs: &[MultimodalInput],
-        progress_tx: Option<mpsc::UnboundedSender<EmbeddingProgress>>,
+        progress_tx: Option<mpsc::Sender<EmbeddingProgress>>,
     ) -> Result<Vec<Vec<f32>>> {
         if inputs.is_empty() {
             return Ok(Vec::new());
@@ -178,7 +178,7 @@ impl MultimodalEmbeddingService {
         let mut completed = 0usize;
 
         if let Some(ref tx) = progress_tx {
-            let _ = tx.send(EmbeddingProgress {
+            let _ = tx.try_send(EmbeddingProgress {
                 phase: "embedding".to_string(),
                 completed,
                 total,
@@ -229,7 +229,7 @@ impl MultimodalEmbeddingService {
                     completed = all_embeddings.len().min(total);
 
                     if let Some(ref tx) = progress_tx {
-                        let _ = tx.send(EmbeddingProgress {
+                        let _ = tx.try_send(EmbeddingProgress {
                             phase: "embedding".to_string(),
                             completed,
                             total,
@@ -246,7 +246,7 @@ impl MultimodalEmbeddingService {
         }
 
         if let Some(ref tx) = progress_tx {
-            let _ = tx.send(EmbeddingProgress {
+            let _ = tx.try_send(EmbeddingProgress {
                 phase: "embedding".to_string(),
                 completed: total,
                 total,
@@ -422,7 +422,7 @@ impl MultimodalEmbeddingService {
     pub async fn generate_summaries_batch_with_progress(
         &self,
         pages: &[(String, String, Option<String>)],
-        progress_tx: Option<mpsc::UnboundedSender<EmbeddingProgress>>,
+        progress_tx: Option<mpsc::Sender<EmbeddingProgress>>,
     ) -> Result<Vec<String>> {
         let concurrency = self.config.summary_concurrency;
         let total = pages.len();
@@ -465,7 +465,7 @@ impl MultimodalEmbeddingService {
                             // 更新完成计数并发送进度
                             let completed = completed_count.fetch_add(1, Ordering::SeqCst) + 1;
                             if let Some(ref tx) = progress_tx {
-                                let _ = tx.send(EmbeddingProgress {
+                                let _ = tx.try_send(EmbeddingProgress {
                                     phase: "summarizing".to_string(),
                                     completed,
                                     total,
@@ -517,7 +517,7 @@ impl MultimodalEmbeddingService {
                     // 更新完成计数并发送进度
                     let completed = completed_count.fetch_add(1, Ordering::SeqCst) + 1;
                     if let Some(ref tx) = progress_tx {
-                        let _ = tx.send(EmbeddingProgress {
+                        let _ = tx.try_send(EmbeddingProgress {
                             phase: "summarizing".to_string(),
                             completed,
                             total,
@@ -563,7 +563,7 @@ impl MultimodalEmbeddingService {
     pub async fn embed_texts_with_progress(
         &self,
         texts: &[String],
-        progress_tx: Option<mpsc::UnboundedSender<EmbeddingProgress>>,
+        progress_tx: Option<mpsc::Sender<EmbeddingProgress>>,
     ) -> Result<Vec<Vec<f32>>> {
         if texts.is_empty() {
             return Ok(Vec::new());
@@ -574,7 +574,7 @@ impl MultimodalEmbeddingService {
 
         // 发送开始进度
         if let Some(ref tx) = progress_tx {
-            let _ = tx.send(EmbeddingProgress {
+            let _ = tx.try_send(EmbeddingProgress {
                 phase: "embedding".to_string(),
                 completed: 0,
                 total,
@@ -652,7 +652,7 @@ impl MultimodalEmbeddingService {
 
         // 发送完成进度
         if let Some(ref tx) = progress_tx {
-            let _ = tx.send(EmbeddingProgress {
+            let _ = tx.try_send(EmbeddingProgress {
                 phase: "embedding".to_string(),
                 completed: total,
                 total,
@@ -864,7 +864,7 @@ impl MultimodalEmbeddingService {
         pages: &[(String, String, Option<String>)],
         mode: MultimodalIndexingMode,
         instruction: Option<&str>,
-        progress_tx: Option<mpsc::UnboundedSender<EmbeddingProgress>>,
+        progress_tx: Option<mpsc::Sender<EmbeddingProgress>>,
     ) -> Result<(Vec<Vec<f32>>, Vec<Option<String>>)> {
         if pages.is_empty() {
             return Ok((Vec::new(), Vec::new()));

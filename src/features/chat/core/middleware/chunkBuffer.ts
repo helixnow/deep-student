@@ -60,37 +60,24 @@ class ChunkBufferImpl {
   /** 🔧 P1修复：按会话 ID 分组的缓冲 */
   private sessions = new Map<string, SessionBuffer>();
 
-  /** 记录最近设置的会话 ID，用于 push 时查找 */
-  private lastSetSessionId: string | null = null;
-
   constructor(config: Partial<ChunkBufferConfig> = {}) {
     this.config = { ...DEFAULT_CONFIG, ...config };
   }
 
   /**
-   * 获取当前活跃的会话 ID
-   */
-  private getCurrentSessionId(): string | null {
-    return this.lastSetSessionId;
-  }
-
-  /**
    * 设置 Store 引用
-   * 🔧 P1修复：为指定会话创建或更新缓冲区，同时记录当前会话 ID
+   * 🔧 P1修复：为指定会话创建或更新缓冲区
    */
   setStore(store: ChatStore): void {
     const sessionId = store.sessionId;
-    this.lastSetSessionId = sessionId;
     
     if (!this.sessions.has(sessionId)) {
-      // 创建新的会话缓冲
       this.sessions.set(sessionId, {
         store,
         buffers: new Map(),
         flushTimerId: null,
       });
     } else {
-      // 更新现有会话的 store 引用
       const session = this.sessions.get(sessionId)!;
       session.store = store;
     }
@@ -98,33 +85,25 @@ class ChunkBufferImpl {
 
   /**
    * 添加 chunk 到缓冲区
-   * 🔧 P1修复：使用当前设置的会话进行缓冲
-   * 🔧 P2修复：支持显式传入 sessionId，避免多会话并发时依赖全局变量导致 chunk 串流
+   * 🔧 P1修复：使用指定会话进行缓冲
+   * 🔧 P2修复：sessionId 为必传参数，避免多会话并发时 chunk 串流
    *
    * @param blockId 块 ID
    * @param chunk 内容块
-   * @param sessionId 可选，显式指定目标会话 ID；未传则回退到 lastSetSessionId
+   * @param sessionId 目标会话 ID（必传）
    */
-  push(blockId: string, chunk: string, sessionId?: string): void {
-    const resolvedSessionId = sessionId ?? this.getCurrentSessionId();
-    if (!resolvedSessionId) {
-      console.warn('[ChunkBuffer] No active session, dropping chunk');
-      return;
-    }
-
-    const session = this.sessions.get(resolvedSessionId);
+  push(blockId: string, chunk: string, sessionId: string): void {
+    const session = this.sessions.get(sessionId);
     if (!session) {
-      console.warn('[ChunkBuffer] Session not found:', resolvedSessionId);
+      console.warn('[ChunkBuffer] Session not found:', sessionId);
       return;
     }
 
     const existing = session.buffers.get(blockId);
 
     if (existing) {
-      // 追加到现有缓冲
       existing.content += chunk;
     } else {
-      // 创建新缓冲
       session.buffers.set(blockId, {
         content: chunk,
         timestamp: Date.now(),
@@ -134,9 +113,9 @@ class ChunkBufferImpl {
     // 检查是否需要立即刷新（超过最大缓冲大小）
     const buffer = session.buffers.get(blockId)!;
     if (buffer.content.length >= this.config.maxBufferSize) {
-      this.flushSessionBlock(resolvedSessionId, blockId);
+      this.flushSessionBlock(sessionId, blockId);
     } else {
-      this.scheduleSessionFlush(resolvedSessionId);
+      this.scheduleSessionFlush(sessionId);
     }
   }
 
@@ -253,7 +232,6 @@ class ChunkBufferImpl {
       }
     }
     this.sessions.clear();
-    this.lastSetSessionId = null;
   }
 
   /**

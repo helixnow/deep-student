@@ -21,6 +21,11 @@ use super::types::{
     SessionGroup, SessionSkillState, SessionState, SharedContext, Variant,
 };
 
+/// 变体 JSON 尺寸告警阈值（64KB）：超过即记录 warn 日志，但不截断。
+const VARIANTS_JSON_WARN_BYTES: usize = 64 * 1024;
+/// 变体 JSON 尺寸硬上限（256KB）：超过则从最旧的变体开始截断，避免单条 SQLite 行膨胀。
+const VARIANTS_JSON_LIMIT_BYTES: usize = 256 * 1024;
+
 /// Chat V2 数据存取层
 ///
 /// 所有方法均为静态方法，支持事务操作。
@@ -31,6 +36,80 @@ impl ChatV2Repo {
         sql.push_str(" AND COALESCE(json_extract(metadata_json, '$.chatV2Draft.hidden'), 0) != 1");
     }
 
+    /// 检查 variants_json 大小：达到 LIMIT 即从最旧变体起截断；达到 WARN 仅日志。
+    /// 入参 `json` 是 `serde_json::to_string(variants)` 的结果；命中 LIMIT 时会原地修改 `variants` 并重新序列化。
+    /// 单变体即超 LIMIT 的极端情况下记录 error 但不强行截断（避免丢失正在写入的回复）。
+    fn enforce_variants_json_size_limit(
+        json: String,
+        variants: &mut Vec<Variant>,
+        message_id: &str,
+    ) -> String {
+        let size = json.len();
+        if size < VARIANTS_JSON_WARN_BYTES {
+            return json;
+        }
+
+        if size < VARIANTS_JSON_LIMIT_BYTES {
+            log::warn!(
+                "[ChatV2::Repo] variants_json size {} bytes approaching limit (warn={}, limit={}, count={}, message_id={})",
+                size,
+                VARIANTS_JSON_WARN_BYTES,
+                VARIANTS_JSON_LIMIT_BYTES,
+                variants.len(),
+                message_id
+            );
+            return json;
+        }
+
+        log::error!(
+            "[ChatV2::Repo] variants_json size {} bytes exceeded hard limit {} (count={}, message_id={}); truncating oldest variants",
+            size,
+            VARIANTS_JSON_LIMIT_BYTES,
+            variants.len(),
+            message_id
+        );
+
+        if variants.len() <= 1 {
+            log::error!(
+                "[ChatV2::Repo] cannot truncate: single variant already exceeds limit (size={}, message_id={})",
+                size,
+                message_id
+            );
+            return json;
+        }
+
+        let mut current = json;
+        while current.len() >= VARIANTS_JSON_LIMIT_BYTES && variants.len() > 1 {
+            let removed = variants.remove(0);
+            log::warn!(
+                "[ChatV2::Repo] truncated oldest variant {} (model={}, message_id={})",
+                removed.id,
+                removed.model_id,
+                message_id
+            );
+            current = match serde_json::to_string(&*variants) {
+                Ok(s) => s,
+                Err(e) => {
+                    log::error!(
+                        "[ChatV2::Repo] re-serialize after truncation failed (message_id={}): {}",
+                        message_id,
+                        e
+                    );
+                    return current;
+                }
+            };
+        }
+
+        if current.len() >= VARIANTS_JSON_LIMIT_BYTES {
+            log::error!(
+                "[ChatV2::Repo] variants_json still {} bytes after truncation (message_id={})",
+                current.len(),
+                message_id
+            );
+        }
+
+        current
+    }
     // ========================================================================
     // 会话 CRUD
     // ========================================================================
@@ -720,17 +799,18 @@ impl ChatV2Repo {
             .as_ref()
             .map(|v| serde_json::to_string(v))
             .transpose()?;
-        let variants_json = message
-            .variants
-            .as_ref()
-            .map(|v| {
-                let sanitized: Vec<Variant> = v
-                    .iter()
-                    .map(Variant::without_skill_runtime_contents)
-                    .collect();
-                serde_json::to_string(&sanitized)
-            })
-            .transpose()?;
+        let variants_json = match message.variants.as_ref() {
+            Some(v) => {
+                let raw = serde_json::to_string(v)?;
+                let mut cloned = v.clone();
+                Some(Self::enforce_variants_json_size_limit(
+                    raw,
+                    &mut cloned,
+                    &message.id,
+                ))
+            }
+            None => None,
+        };
         let shared_context_json = message
             .shared_context
             .as_ref()
@@ -861,17 +941,18 @@ impl ChatV2Repo {
             .as_ref()
             .map(|v| serde_json::to_string(v))
             .transpose()?;
-        let variants_json = message
-            .variants
-            .as_ref()
-            .map(|v| {
-                let sanitized: Vec<Variant> = v
-                    .iter()
-                    .map(Variant::without_skill_runtime_contents)
-                    .collect();
-                serde_json::to_string(&sanitized)
-            })
-            .transpose()?;
+        let variants_json = match message.variants.as_ref() {
+            Some(v) => {
+                let raw = serde_json::to_string(v)?;
+                let mut cloned = v.clone();
+                Some(Self::enforce_variants_json_size_limit(
+                    raw,
+                    &mut cloned,
+                    &message.id,
+                ))
+            }
+            None => None,
+        };
         let shared_context_json = message
             .shared_context
             .as_ref()
@@ -1982,7 +2063,10 @@ impl ChatV2Repo {
             variants.len()
         );
 
-        let variants_json = serde_json::to_string(variants)?;
+        let raw_json = serde_json::to_string(variants)?;
+        let mut variants_owned = variants.to_vec();
+        let variants_json =
+            Self::enforce_variants_json_size_limit(raw_json, &mut variants_owned, message_id);
 
         let rows_affected = conn.execute(
             "UPDATE chat_v2_messages SET variants_json = ?2, active_variant_id = ?3 WHERE id = ?1",
@@ -2041,7 +2125,9 @@ impl ChatV2Repo {
         variant.error = error.map(|s| s.to_string());
 
         // 保存更新后的变体列表
-        let variants_json = serde_json::to_string(&variants)?;
+        let raw_json = serde_json::to_string(&variants)?;
+        let variants_json =
+            Self::enforce_variants_json_size_limit(raw_json, &mut variants, message_id);
         conn.execute(
             "UPDATE chat_v2_messages SET variants_json = ?2 WHERE id = ?1",
             params![message_id, variants_json],
@@ -2151,7 +2237,9 @@ impl ChatV2Repo {
         };
 
         // 更新消息
-        let variants_json = serde_json::to_string(&variants)?;
+        let raw_json = serde_json::to_string(&variants)?;
+        let variants_json =
+            Self::enforce_variants_json_size_limit(raw_json, &mut variants, message_id);
         let update_result = conn.execute(
             "UPDATE chat_v2_messages SET variants_json = ?2, active_variant_id = ?3 WHERE id = ?1",
             params![message_id, variants_json, &new_active_id],
@@ -2245,7 +2333,9 @@ impl ChatV2Repo {
         }
 
         // 保存更新后的变体列表
-        let variants_json = serde_json::to_string(&variants)?;
+        let raw_json = serde_json::to_string(&variants)?;
+        let variants_json =
+            Self::enforce_variants_json_size_limit(raw_json, &mut variants, message_id);
         conn.execute(
             "UPDATE chat_v2_messages SET variants_json = ?2 WHERE id = ?1",
             params![message_id, variants_json],
@@ -2359,7 +2449,9 @@ impl ChatV2Repo {
         };
 
         // 保存更新
-        let variants_json = serde_json::to_string(&variants)?;
+        let raw_json = serde_json::to_string(&variants)?;
+        let variants_json =
+            Self::enforce_variants_json_size_limit(raw_json, &mut variants, message_id);
         conn.execute(
             "UPDATE chat_v2_messages SET variants_json = ?2, active_variant_id = ?3 WHERE id = ?1",
             params![message_id, variants_json, &new_active_id],
@@ -3935,6 +4027,73 @@ mod tests {
 
         // active_variant_id 应该更新为第一个 success 变体
         assert_eq!(loaded.active_variant_id, Some(var3_id));
+    }
+
+    /// FIX B: variants_json 命中 WARN 阈值（>=64KB 但 <256KB）应仅记录日志、不改动数据。
+    #[test]
+    fn test_enforce_variants_json_size_limit_warn_path_does_not_truncate() {
+        let mut variants = vec![Variant::new("model_warn".to_string())];
+        variants[0].error = Some("x".repeat(VARIANTS_JSON_WARN_BYTES + 1024));
+        let raw = serde_json::to_string(&variants).unwrap();
+        let original_len = variants.len();
+
+        assert!(raw.len() >= VARIANTS_JSON_WARN_BYTES);
+        assert!(raw.len() < VARIANTS_JSON_LIMIT_BYTES);
+
+        let out = ChatV2Repo::enforce_variants_json_size_limit(
+            raw.clone(),
+            &mut variants,
+            "msg_warn_test",
+        );
+
+        assert_eq!(out, raw, "warn-path must not rewrite the JSON");
+        assert_eq!(variants.len(), original_len, "warn-path must not truncate");
+    }
+
+    /// FIX B: variants_json 超过硬上限时必须从最旧变体开始截断，直到 JSON 字节数低于 LIMIT。
+    #[test]
+    fn test_enforce_variants_json_size_limit_hard_truncates_oldest() {
+        let payload = "y".repeat(VARIANTS_JSON_LIMIT_BYTES / 4);
+        let mut variants: Vec<Variant> = (0..6)
+            .map(|i| {
+                let mut v = Variant::new(format!("model_{}", i));
+                v.error = Some(payload.clone());
+                v
+            })
+            .collect();
+
+        let oldest_id = variants[0].id.clone();
+        let newest_id = variants.last().unwrap().id.clone();
+        let raw = serde_json::to_string(&variants).unwrap();
+        assert!(
+            raw.len() >= VARIANTS_JSON_LIMIT_BYTES,
+            "test fixture must exceed limit; got {}",
+            raw.len()
+        );
+
+        let out = ChatV2Repo::enforce_variants_json_size_limit(
+            raw,
+            &mut variants,
+            "msg_truncate_test",
+        );
+
+        assert!(
+            out.len() < VARIANTS_JSON_LIMIT_BYTES,
+            "post-truncation JSON must be under limit; got {}",
+            out.len()
+        );
+        assert!(
+            variants.iter().all(|v| v.id != oldest_id),
+            "oldest variant must be removed"
+        );
+        assert!(
+            variants.iter().any(|v| v.id == newest_id),
+            "newest variant must be preserved"
+        );
+        assert!(
+            !variants.is_empty(),
+            "at least one variant must remain after truncation"
+        );
     }
 }
 

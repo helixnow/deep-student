@@ -492,7 +492,6 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     variants,
     activeVariant,
     isMultiVariant,
-    showParallelView,
     displayBlockIds,
     getVariantBlocks,
     switchVariant,

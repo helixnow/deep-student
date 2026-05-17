@@ -114,7 +114,7 @@ fn trigger_immediate_index(
     lance_store: Arc<VfsLanceStore>,
     resource_id: String,
 ) {
-    tokio::spawn(async move {
+    crate::background_tasks::BACKGROUND_TASKS.spawn(async move {
         let db_ref = vfs_db.clone();
         let indexing_service = match VfsFullIndexingService::new(vfs_db, llm_manager, lance_store) {
             Ok(svc) => svc,

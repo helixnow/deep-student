@@ -772,7 +772,7 @@ impl LLMManager {
 
             let client = self.client.clone();
             let tx_clone = tx.clone();
-            tokio::spawn(async move {
+            crate::background_tasks::BACKGROUND_TASKS.spawn(async move {
                 let result = run_single_ocr_request(client, req, ENGINE_TIMEOUT_SECS).await;
                 let _ = tx_clone.send((engine_idx, result));
             });

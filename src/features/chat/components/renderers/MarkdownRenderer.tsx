@@ -19,7 +19,12 @@ import { getPdfPageImageDataUrl } from '@/api/vfsRagApi';
 
 // 🔧 P18 优化：PDF 页面图片缓存（避免重复请求）
 const pdfPageImageCache = new Map<string, string>();
-const PDF_PAGE_CACHE_MAX_SIZE = 50; // 最多缓存 50 个页面
+const PDF_PAGE_CACHE_MAX_SIZE = 12; // 最多缓存 12 个页面（~12MB heap）
+
+/** 清空 PDF 页面图片缓存（用于会话切换时释放内存） */
+export function clearPdfPageCache(): void {
+  pdfPageImageCache.clear();
+}
 
 const POSIX_LOCAL_FILE_PREFIXES = [
   '/Users/',
