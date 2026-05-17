@@ -868,6 +868,7 @@
       "inProgress": "思考中...",
       "completed": "已思考（用时 {{seconds}} 秒）",
       "stopped": "已停止思考",
+      "contentLabel": "推理详情",
       "detail": {
         "inProgress": "正在深度思考中...",
         "completed": "思考完成，用时 {{seconds}} 秒"
@@ -895,6 +896,7 @@
       "input": "输入参数",
       "output": "输出结果",
       "noOutput": "无输出",
+      "contentLabel": "工具详情",
       "moreParams": "还有 {{count}} 个参数...",
       "arrayResult": "数组（{{count}} 项）",
       "objectResult": "对象结果",

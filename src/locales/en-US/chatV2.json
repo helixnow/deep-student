@@ -868,6 +868,7 @@
       "inProgress": "Thinking...",
       "completed": "Thought for {{seconds}}s",
       "stopped": "Stopped thinking",
+      "contentLabel": "Reasoning details",
       "detail": {
         "inProgress": "Deep thinking in progress...",
         "completed": "Thinking completed in {{seconds}} seconds"
@@ -895,6 +896,7 @@
       "input": "Input",
       "output": "Output",
       "noOutput": "No output",
+      "contentLabel": "Tool details",
       "moreParams": "{{count}} more params...",
       "arrayResult": "Array ({{count}} items)",
       "objectResult": "Object result",
