@@ -84,6 +84,14 @@
     "characters": "字符数",
     "words": "单词数"
   },
+  "popover": {
+    "translating": "翻译中...",
+    "unknown_error": "翻译失败",
+    "model_hint": "当前翻译模型（在系统设置 → 模型 中修改）：{{name}}",
+    "copy_source": "复制原文",
+    "copy_translation": "复制译文",
+    "copied": "已复制"
+  },
   "shortcuts": {
     "translate": "Ctrl/Cmd + Enter",
     "clear": "Ctrl/Cmd + K",
