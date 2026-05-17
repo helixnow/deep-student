@@ -982,6 +982,8 @@ pub fn run() {
             crate::commands::parse_document_from_base64,
             // Translation Commands
             crate::translation::translate_text_stream,
+            crate::translation::chat_popover::stream_chat_translation_aligned,
+            crate::translation::chat_popover::stream_chat_translation_plain,
             crate::commands::ocr_extract_text,
             // Essay Grading Commands
             crate::essay_grading::essay_grading_stream,

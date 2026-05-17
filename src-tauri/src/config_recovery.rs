@@ -118,6 +118,7 @@ pub fn create_default_model_assignments() -> ModelAssignments {
         memory_decision_model_config_id: None,
         voice_input_asr_model_config_id: None,
         image_generation_model_config_id: None,
+        translation_display_mode: None,
     }
 }
 

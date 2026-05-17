@@ -22,7 +22,7 @@ pub struct TranslationDeps {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum StreamStatus {
+pub(crate) enum StreamStatus {
     Completed,
     Cancelled,
 }
@@ -102,7 +102,7 @@ pub async fn run_translation(
 }
 
 /// 语言 code → 全名映射，确保 LLM 精确理解目标语言
-fn lang_full_name(code: &str) -> &str {
+pub(crate) fn lang_full_name(code: &str) -> &str {
     match code {
         "zh-CN" | "zh" => "Simplified Chinese (简体中文)",
         "zh-TW" => "Traditional Chinese (繁體中文)",
@@ -233,7 +233,7 @@ pub fn build_translation_prompts(
 }
 
 /// 流式翻译（核心逻辑）
-async fn stream_translate<F>(
+pub(crate) async fn stream_translate<F>(
     config: &ApiConfig,
     api_key: &str,
     system_prompt: &str,
