@@ -801,11 +801,12 @@ impl ChatV2Repo {
             .transpose()?;
         let variants_json = match message.variants.as_ref() {
             Some(v) => {
-                let raw = serde_json::to_string(v)?;
-                let mut cloned = v.clone();
+                let mut sanitized: Vec<Variant> =
+                    v.iter().map(Variant::without_skill_runtime_contents).collect();
+                let raw = serde_json::to_string(&sanitized)?;
                 Some(Self::enforce_variants_json_size_limit(
                     raw,
-                    &mut cloned,
+                    &mut sanitized,
                     &message.id,
                 ))
             }
@@ -943,11 +944,12 @@ impl ChatV2Repo {
             .transpose()?;
         let variants_json = match message.variants.as_ref() {
             Some(v) => {
-                let raw = serde_json::to_string(v)?;
-                let mut cloned = v.clone();
+                let mut sanitized: Vec<Variant> =
+                    v.iter().map(Variant::without_skill_runtime_contents).collect();
+                let raw = serde_json::to_string(&sanitized)?;
                 Some(Self::enforce_variants_json_size_limit(
                     raw,
-                    &mut cloned,
+                    &mut sanitized,
                     &message.id,
                 ))
             }
