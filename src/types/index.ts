@@ -396,6 +396,8 @@ export interface ModelAssignments {
   memory_decision_model_config_id: string | null; // 记忆决策模型（smart write 去重判断）
   voice_input_asr_model_config_id: string | null; // 语音输入 ASR 模型
   image_generation_model_config_id: string | null; // 生图模型
+  /** 聊天内翻译弹窗显示模式：'aligned' = 短语对照（默认），'streaming' = 流式纯译文 */
+  translation_display_mode: 'aligned' | 'streaming' | null;
 }
 
 // 子适配器类型（与后端 ADAPTER_REGISTRY 保持一致）
