@@ -333,6 +333,29 @@ const preprocessContent = (content: string): string => {
 // 🔧 性能优化：模块级常量，避免每次渲染创建新数组引用（会击穿 React.memo）
 const EMPTY_REMARK_PLUGINS: any[] = [];
 
+// 🔧 性能优化：KaTeX 渲染结果缓存（模块级 LRU）
+//
+// 流式渲染场景下，同一段公式会被多次重渲染（active block 每次 token 到达都重跑），
+// `katex.renderToString` 单次调用 ~1-3ms，长公式更慢。模块级缓存让命中后 0 成本。
+//
+// Key: `${displayMode ? 'b' : 'i'}|${latex}` —— display/inline 渲染产物不同，需分开。
+// 容量上限 200，超出时丢弃最旧的一半（简化版 LRU，避免 O(n) 维护成本）。
+const KATEX_CACHE_MAX_SIZE = 200;
+const katexHtmlCache = new Map<string, string>();
+
+function getCachedKatex(latex: string, displayMode: boolean): string | undefined {
+  return katexHtmlCache.get(`${displayMode ? 'b' : 'i'}|${latex}`);
+}
+
+function setCachedKatex(latex: string, displayMode: boolean, html: string): void {
+  if (katexHtmlCache.size >= KATEX_CACHE_MAX_SIZE) {
+    const half = KATEX_CACHE_MAX_SIZE / 2;
+    const keysToDelete = Array.from(katexHtmlCache.keys()).slice(0, half);
+    for (const k of keysToDelete) katexHtmlCache.delete(k);
+  }
+  katexHtmlCache.set(`${displayMode ? 'b' : 'i'}|${latex}`, html);
+}
+
 const disableIndentedCodePlugin = function disableIndentedCodePlugin(this: any) {
   const Parser = this?.Parser;
   if (!Parser || !Parser.prototype) return;
@@ -538,8 +561,16 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
   const renderMath = (value: string, displayMode: boolean) => {
     const latex = value?.trim() ?? '';
     if (!latex) return null;
+
+    // 🔧 性能优化：先查模块级缓存，命中则跳过 KaTeX 解析（流式重渲染场景常见）
+    const cached = getCachedKatex(latex, displayMode);
+    if (cached !== undefined) {
+      return <span dangerouslySetInnerHTML={{ __html: cached }} />;
+    }
+
     try {
       const html = katex.renderToString(latex, { ...katexOptions, displayMode });
+      setCachedKatex(latex, displayMode, html);
       return (
         <span dangerouslySetInnerHTML={{ __html: html }} />
       );

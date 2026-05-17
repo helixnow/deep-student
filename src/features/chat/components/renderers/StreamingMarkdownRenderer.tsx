@@ -48,154 +48,23 @@ type ParsedContent = {
   mainContent: string;
 }
 
-/**
- * 在流式输出中，剪裁结尾处不完整的数学片段，避免 KaTeX 在未闭合的情况下报错。
- * - 处理未闭合的 $$...$$（显示数学）
- * - 处理未闭合的 $...$（行内数学，忽略已成对的 $$）
- * - 处理未闭合的 \( ... \) 与 \[ ... \]
- * - 简单处理未闭合的 \begin{env} ... \end{env}
- * - 处理未闭合的 \sqrt 命令
- */
-const trimTrailingIncompleteMath = (text: string): { trimmed: string; wasTrimmed: boolean } => {
-  if (!text) return { trimmed: text, wasTrimmed: false };
-
-  let result = text;
-  let wasTrimmed = false;
-
-  // 帮助函数：移除从 lastIndex 起到末尾的内容
-  const cutFrom = (idx: number) => {
-    if (idx >= 0) {
-      result = result.slice(0, idx);
-      wasTrimmed = true;
-      return true;
-    }
-    return false;
-  };
-
-  // 处理未闭合的 \sqrt 命令
-  const sqrtRegex = /\\sqrt(\[.*?\])?(?!\{)$/;
-  const sqrtMatch = result.match(sqrtRegex);
-  if (sqrtMatch) {
-    const sqrtIndex = sqrtMatch.index ?? -1;
-    if (cutFrom(sqrtIndex)) return { trimmed: result, wasTrimmed };
-  }
-  
-  // 处理未闭合的 \sqrt{...} 命令
-  const sqrtBracesRegex = /\\sqrt(\[.*?\])?\{[^{}]*$/;
-  const sqrtBracesMatch = result.match(sqrtBracesRegex);
-  if (sqrtBracesMatch) {
-    const sqrtIndex = sqrtBracesMatch.index ?? -1;
-    if (cutFrom(sqrtIndex)) return { trimmed: result, wasTrimmed };
-  }
-
-  // 1) $$ 显示数学：若数量为奇数，则从最后一个 $$ 起剪裁
-  const displayCount = (result.match(/\$\$/g) || []).length;
-  if (displayCount % 2 === 1) {
-    const last = result.lastIndexOf('$$');
-    if (cutFrom(last)) return { trimmed: result, wasTrimmed };
-  }
-
-  // 2) 行内 $ 数学：忽略 $$ 后检查剩余 $ 数量是否为奇数
-  const noDisplay = result.replace(/\$\$/g, '');
-  const inlineCount = (noDisplay.match(/\$/g) || []).length;
-  if (inlineCount % 2 === 1) {
-    // 自右向左寻找不属于 $$ 的最后一个单独 $
-    for (let i = result.length - 1; i >= 0; i--) {
-      if (result[i] === '$') {
-        const prev = i > 0 ? result[i - 1] : '';
-        const next = i + 1 < result.length ? result[i + 1] : '';
-        const isDouble = prev === '$' || next === '$';
-        // 处理转义：忽略 \$
-        let isEscaped = false;
-        if (prev === '\\') {
-          // 计算连续反斜杠数量，奇数表示被转义
-          let cnt = 0;
-          for (let k = i - 1; k >= 0 && result[k] === '\\'; k--) cnt++;
-          isEscaped = cnt % 2 === 1;
-        }
-        if (!isDouble && !isEscaped) {
-          cutFrom(i);
-          return { trimmed: result, wasTrimmed };
-        }
-      }
-    }
-  }
-
-  // 3) \( ... \) 与 \[ ... \]
-  // 注意：以下代码仅用于清理流式输出中的不完整片段，不用于实际渲染
-  // 当前渲染器（remark-math + KaTeX）不支持 \(...\) 和 \[...\] 格式，只支持 $...$ 和 $$...$$
-  // 保留此代码是为了防止流式输出时显示不完整的转义序列，避免视觉干扰
-  const openParenCount = (result.match(/\\\(/g) || []).length;
-  const closeParenCount = (result.match(/\\\)/g) || []).length;
-  if (openParenCount > closeParenCount) {
-    const last = result.lastIndexOf('\\(');
-    if (cutFrom(last)) return { trimmed: result, wasTrimmed };
-  }
-  const openBracketCount = (result.match(/\\\[/g) || []).length;
-  const closeBracketCount = (result.match(/\\\]/g) || []).length;
-  if (openBracketCount > closeBracketCount) {
-    const last = result.lastIndexOf('\\[');
-    if (cutFrom(last)) return { trimmed: result, wasTrimmed };
-  }
-
-  // 4) \begin{env} ... \end{env}
-  // 简化策略：若最后一个 \begin{xxx} 之后不存在匹配的 \end{xxx}，从该 \begin 起剪裁
-  const beginMatches = [...result.matchAll(/\\begin\{([^}]+)\}/g)];
-  if (beginMatches.length > 0) {
-    const lastBegin = beginMatches[beginMatches.length - 1];
-    const env = lastBegin[1];
-    const beginIndex = lastBegin.index ?? -1;
-    const afterBegin = result.slice(beginIndex + lastBegin[0].length);
-    const hasEnd = new RegExp(`\\\\end\\{${env.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\}`).test(afterBegin);
-    if (!hasEnd) {
-      if (cutFrom(beginIndex)) return { trimmed: result, wasTrimmed };
-    }
-  }
-
-  return { trimmed: result, wasTrimmed };
-};
-
 // 流式内容预处理函数
-const preprocessStreamingContent = (content: string, isStreaming: boolean) => {
+//
+// 行业最优解（2026，对齐 ChatGPT / Claude.ai）
+//
+// 历史方案：流式期间裁剪未闭合的数学片段（`$x^2 +` / `\begin{...}`），
+// 等闭合后整段"pop"出来。视觉上是"打字 → 等待 → 公式爆出"，体验突兀。
+//
+// 新方案：不裁剪。
+// - remark-math v6 解析未闭合 `$` 时不会生成 math 节点，会作为普通文本流入，
+//   用户看到的是原文 `$x^2 +`，自然过渡
+// - 当闭合 `$` 到达时，remark-math 才创建 math 节点，KaTeX 接管渲染
+// - 在 natural preset 下文本以 API 原生速度流出，partial text 仅短暂可见
+//
+// KaTeX 已有 `throwOnError: false` 兜底，单点解析失败不会让组件崩。
+const preprocessStreamingContent = (content: string, _isStreaming: boolean) => {
   if (!content) return { content: '', hasPartialMath: false };
-  
-  let processed = content;
-  let hasPartialMath = false;
-  
-  // 检测不完整的数学公式
-  const incompletePatterns = [
-    /\$[^$]*$/,  // 以$结尾但没有关闭$
-    /\$\$[^$]*$/,  // 以$$结尾但没有关闭$$
-    /\\begin\{[^}]*\}[^\\]*$/,  // 不完整的环境
-    /\\[a-zA-Z]+\{[^}]*$/,  // 不完整的命令
-  ];
-  
-  if (isStreaming) {
-    // 更精确地检测不完整的数学公式
-    hasPartialMath = incompletePatterns.some(pattern => pattern.test(processed));
-    
-    // 不要隐藏不完整的公式，而是保持原样并添加指示符
-    // 让用户看到正在输入的数学内容，即使还不完整
-    if (hasPartialMath) {
-      // 检查是否是真正的不完整公式（而不是正常的LaTeX语法）
-      const hasOpenMath = (processed.match(/\$/g) || []).length % 2 !== 0;
-      const hasOpenDisplayMath = (processed.match(/\$\$/g) || []).length % 2 !== 0;
-      
-      // 只有当确实存在未闭合的数学公式时才标记为不完整
-      if (hasOpenMath || hasOpenDisplayMath) {
-        // 剪裁末尾未闭合的数学片段，避免 KaTeX 报错，同时保留『正在输入』指示
-        const { trimmed, wasTrimmed } = trimTrailingIncompleteMath(processed);
-        if (wasTrimmed) {
-          processed = trimmed;
-        }
-        hasPartialMath = true;
-      } else {
-        hasPartialMath = false;
-      }
-    }
-  }
-  
-  return { content: processed, hasPartialMath };
+  return { content, hasPartialMath: false };
 };
 
 // P1修复：StreamingMarkdownRenderer memo化，减少不必要重渲染
@@ -218,8 +87,10 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
   // 'blocked' 模式（按 markdown 块切分独立 memo）作为实验性优化，
   // 当前仍需要对应 CSS 适配，故仅在 Playground 内或显式开启时使用。
   const prefs = useStreamPreferences();
+  // 行业最优解：默认 'natural'（零节流，token 即来即显）。
+  // Playground 仍可通过 prefs/props 覆盖为 balanced/silky/fluid 做对比。
   const effectivePreset: StreamingSmoothingPreset | string | null =
-    streamSmoothingPreset ?? prefs.preset ?? 'balanced';
+    streamSmoothingPreset ?? prefs.preset ?? 'natural';
   const effectiveMode: 'legacy' | 'blocked' =
     streamRenderingMode ?? prefs.mode ?? 'legacy';
   const { t } = useTranslation('chatV2');
@@ -235,7 +106,6 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
     [smoothedContent, isStreaming]
   );
   const displayContent = processedContent.content;
-  const isPartialMath = processedContent.hasPartialMath;
   const hasVisibleContent = displayContent.trim().length > 0;
 
   // 🔧 P1修复：使用稳定引用比较替代 JSON.stringify
@@ -316,7 +186,7 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
       className="streaming-markdown"
       data-streaming={isStreaming ? 'true' : 'false'}
       data-has-visible-content={hasVisibleContent ? 'true' : 'false'}
-      data-stream-preset={String(effectivePreset || 'balanced')}
+      data-stream-preset={String(effectivePreset || 'natural')}
       data-stream-mode={effectiveMode}
     >
       {parsedContent ? (
@@ -359,17 +229,11 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
             ) : (
               renderedContent
             )}
-            {isPartialMath && isStreaming && (
-              <span className="partial-math-indicator" title={t('renderer.incompleteMathFormula')} aria-label={t('renderer.incompleteMathFormula')} />
-            )}
           </div>
         </>
       ) : (
         <div className="normal-content">
           {renderedContent}
-          {isPartialMath && isStreaming && (
-            <span className="partial-math-indicator" title={t('renderer.incompleteMathFormula')} aria-label={t('renderer.incompleteMathFormula')} />
-          )}
         </div>
       )}
     </div>

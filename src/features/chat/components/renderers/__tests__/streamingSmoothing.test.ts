@@ -8,10 +8,12 @@ import {
 import { createStreamingMarkdownProfiler } from '../streamingProfiler';
 
 describe('streaming smoothing presets', () => {
-  it('falls back to balanced when the preset is unknown', () => {
+  it('falls back to the natural preset when the input is unknown or undefined', () => {
+    // 行业最优解（2026）：默认 preset 改为 'natural'，对齐 ChatGPT / Claude.ai。
+    // 任何未知值或 undefined 都回退到 natural（零节流）。
     expect(resolveStreamingSmoothingPreset('silky')).toBe('silky');
-    expect(resolveStreamingSmoothingPreset('experimental')).toBe('balanced');
-    expect(resolveStreamingSmoothingPreset(undefined)).toBe('balanced');
+    expect(resolveStreamingSmoothingPreset('experimental')).toBe('natural');
+    expect(resolveStreamingSmoothingPreset(undefined)).toBe('natural');
   });
 
   it('recognises the natural preset', () => {

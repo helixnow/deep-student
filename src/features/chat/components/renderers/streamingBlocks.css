@@ -1,6 +1,18 @@
 /* streamingBlocks.css — Block-level incremental streaming styles */
 /* Used by: StreamingBlockRenderer.tsx */
 
+/*
+ * 行业最优解（2026，对齐 ChatGPT / Claude.ai）
+ *
+ * 设计原则：
+ * 1. 文本节奏由 API 决定（preset = natural），不做字符级节流
+ * 2. 块出现就是出现，不做 blur / translate / stagger 入场动画
+ *    → 减少 GPU 合成成本；避免长文中"波浪式入场"撕裂阅读节奏
+ * 3. 仅保留极轻的 opacity 入场（120ms），让"新块"和"已渲染块"在视觉上有微弱区分
+ * 4. 不在活跃块尾部加 dot/caret —— 用户已通过滚动锚定 + 顶层"生成中"状态感知流式
+ * 5. 数学/代码：流式期间保持原文渲染，闭合时由 KaTeX/Prism 自然接管
+ */
+
 .streaming-block-renderer {
   position: relative;
 }
@@ -17,52 +29,22 @@
   opacity: 1;
 }
 
-/* 新块淡入：blur dissolve + translateY，比纯 opacity 更有流动感 */
+/* 新块极轻 opacity 入场（无位移、无模糊） */
 .stream-block[data-new="true"] {
-  animation: stream-block-appear 220ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  animation: stream-block-fade-in 120ms ease-out both;
 }
 
-@keyframes stream-block-appear {
-  from {
-    opacity: 0;
-    transform: translateY(6px);
-    filter: blur(2px);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0);
-    filter: blur(0);
-  }
+@keyframes stream-block-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
 }
 
-/* ─── Active block: overflow containment ──────────────────────────────────── */
-/* Per-word fade-in (streamingWordFade.css) 替代了旧的 trailing mask 方案 */
+/* ─── Active block: deferred code highlighting ──────────────────────────── */
+/*
+ * 流式期间代码块用单色，避免每帧 Prism 重高亮的抖动；
+ * 完成后 200ms 过渡到正式高亮。这是 ChatGPT/Claude 的通用做法。
+ */
 
-.stream-block[data-active="true"] .markdown-content {
-  overflow: hidden;
-}
-
-/* ─── Active block indicator: solid dot ───────────────────────────────────── */
-
-/* 活跃块（正在接收 token）的实心圆点 — 简洁地标示生成位置 */
-.stream-block[data-active="true"][data-block-type="paragraph"]::after,
-.stream-block[data-active="true"][data-block-type="heading"]::after,
-.stream-block[data-active="true"][data-block-type="list"]::after,
-.stream-block[data-active="true"][data-block-type="blockquote"]::after {
-  content: '';
-  display: inline-block;
-  width: 6px;
-  height: 6px;
-  margin-left: 4px;
-  vertical-align: middle;
-  border-radius: 50%;
-  background: hsl(var(--primary));
-}
-
-
-/* ─── Code block: deferred highlighting ──────────────────────────────────── */
-
-/* 流式期间代码块使用单色，避免每帧重新高亮的抖动 */
 .stream-block[data-active="true"][data-block-type="code"] .code-block code {
   color: hsl(var(--foreground)) !important;
 }
@@ -72,83 +54,18 @@
   color: inherit !important;
 }
 
-/* 代码块完成后触发高亮过渡 */
 .stream-block[data-complete="true"][data-block-type="code"] .code-block code {
   transition: color 200ms ease-out;
 }
 
-/* 代码块展开：高度过渡 */
-.stream-block[data-active="true"][data-block-type="code"] .code-block {
-  transition: max-height 300ms cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-/* ─── Math block pending indicator ───────────────────────────────────────── */
-
-.stream-block[data-active="true"][data-block-type="math"]::after {
-  content: '∑';
-  display: inline-flex;
-  align-items: center;
-  color: hsl(var(--muted-foreground));
-  font-size: 0.85em;
-  font-style: italic;
-  margin-left: 4px;
-  animation: stream-math-pulse 1.2s ease-in-out infinite;
-}
-
-@keyframes stream-math-pulse {
-  0%, 100% { opacity: 0.4; }
-  50% { opacity: 1; }
-}
-
-/* ─── Table block: hide incomplete tables ────────────────────────────────── */
-
-.stream-block[data-active="true"][data-block-type="table"] .table-wrapper {
-  opacity: 0.7;
-  transition: opacity 150ms ease-out;
-}
-
-.stream-block[data-complete="true"][data-block-type="table"] .table-wrapper {
-  opacity: 1;
-}
-
-/* ─── List items: staggered fade-in ──────────────────────────────────────── */
-
-.stream-block[data-new="true"][data-block-type="list"] li {
-  animation: stream-list-item-in 180ms ease-out both;
-}
-
-.stream-block[data-new="true"][data-block-type="list"] li:nth-child(2) {
-  animation-delay: 40ms;
-}
-
-.stream-block[data-new="true"][data-block-type="list"] li:nth-child(3) {
-  animation-delay: 80ms;
-}
-
-.stream-block[data-new="true"][data-block-type="list"] li:nth-child(n+4) {
-  animation-delay: 120ms;
-}
-
-@keyframes stream-list-item-in {
-  from {
-    opacity: 0.4;
-    transform: translateX(-4px);
-  }
-  to {
-    opacity: 1;
-    transform: translateX(0);
-  }
-}
-
 /* ─── Streaming state: no extra visual noise ─────────────────────────────── */
 
-/* 与静态完全一致，不添加额外边框/背景/动画 */
 .streaming-block-renderer[data-streaming="true"] {
   border-left: none;
   background: inherit;
 }
 
-/* ─── Chain of thought (inherited from streaming.css) ────────────────────── */
+/* ─── Chain of thought ───────────────────────────────────────────────────── */
 
 .streaming-block-renderer .chain-of-thought {
   margin-bottom: 0.75rem;
@@ -180,11 +97,6 @@
 
 @media (prefers-reduced-motion: reduce) {
   .stream-block[data-new="true"] {
-    animation: none;
-    opacity: 1;
-  }
-
-  .stream-block[data-new="true"][data-block-type="list"] li {
     animation: none;
     opacity: 1;
   }

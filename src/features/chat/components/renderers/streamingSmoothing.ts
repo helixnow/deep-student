@@ -44,7 +44,10 @@ export interface UseSmoothedStreamingContentOptions {
   messageId?: string;
 }
 
-const DEFAULT_STREAMING_SMOOTHING_PRESET: StreamingSmoothingPreset = 'balanced';
+// 行业最优解（2026）：与 ChatGPT / Claude.ai 对齐，默认零节流，让 token 即来即显。
+// 任何强制 smoothing 都会让快速读者本能停顿等待文字"画完"，反而拖慢阅读。
+// Playground 仍可切到 balanced/silky/fluid 做对比。
+const DEFAULT_STREAMING_SMOOTHING_PRESET: StreamingSmoothingPreset = 'natural';
 
 /**
  * Preset 设计说明（rAF + 时间预算 + commit gate）
