@@ -1188,6 +1188,8 @@ pub struct ModelAssignments {
     pub memory_decision_model_config_id: Option<String>, // 记忆决策模型（smart write 去重判断）
     pub voice_input_asr_model_config_id: Option<String>, // 语音输入 ASR 模型
     pub image_generation_model_config_id: Option<String>, // 生图模型
+    /// 聊天内翻译弹窗的显示模式："aligned"（短语对照，默认）| "streaming"（流式纯译文）
+    pub translation_display_mode: Option<String>,
 }
 
 #[derive(Debug, Deserialize)]

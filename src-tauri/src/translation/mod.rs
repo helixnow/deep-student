@@ -8,6 +8,7 @@
 /// 与 unified_chat 的关系：
 /// - 完全独立的管线，不依赖 unified_chat 的类型或逻辑
 /// - 仅复用 LLMManager 的底层能力
+pub mod chat_popover;
 pub mod events;
 pub mod pipeline;
 pub mod types;
