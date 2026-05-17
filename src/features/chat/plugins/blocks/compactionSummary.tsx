@@ -69,11 +69,10 @@ const CompactionSummaryBlock: React.FC<BlockComponentProps> = React.memo(({ bloc
         <div
           id={contentId}
           className={cn(
-            'px-3 pb-3',
+            'px-3 pb-3 thinking-content',
             'border-t border-amber-200/50 dark:border-amber-800/30',
             'text-foreground/90'
           )}
-          style={{ fontSize: '0.85rem' }}
         >
           <div className="pt-2">
             <StreamingMarkdownRenderer

@@ -76,7 +76,6 @@ const ThinkingBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStre
             'text-muted-foreground',
             'thinking-content'
           )}
-          style={{ fontSize: '0.8rem' }}
         >
           <div className="pt-2">
             <StreamingMarkdownRenderer

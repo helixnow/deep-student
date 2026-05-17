@@ -110,15 +110,15 @@
   scrollbar-color: var(--scrollbar-thumb) transparent !important;
 }
 
-/* 思维链内容块字号 - 比正文小，确保优先级 */
+/* 思维链内容块字号 - Tier S-1：使用全局 token，去 !important，回归用户可缩放 */
 .chat-v2 .thinking-content,
 .chat-v2 .thinking-content .markdown-content,
 .chat-v2 .thinking-content .markdown-content p,
 .chat-v2 .thinking-content .markdown-content li,
 .chat-v2 .thinking-content .markdown-content ul,
 .chat-v2 .thinking-content .markdown-content ol {
-  font-size: 0.65rem !important;
-  line-height: 1.2 !important;
+  font-size: var(--chat-thinking-font-size, var(--font-size-sm));
+  line-height: 1.45;
 }
 
 .chat-v2 .thinking-trace__text::-webkit-scrollbar {
@@ -398,9 +398,9 @@
 .thinking-chain-content .markdown-content li,
 .thinking-chain-content .markdown-content ul,
 .thinking-chain-content .markdown-content ol {
-  font-size: 0.75rem !important;
-  line-height: 1.35 !important;
-  color: var(--text-muted) !important;
+  font-size: var(--chat-thinking-font-size, var(--font-size-sm));
+  line-height: 1.45;
+  color: hsl(var(--muted-foreground));
 }
 
 [data-theme="dark"] .thinking-chain-content,
