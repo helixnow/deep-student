@@ -290,6 +290,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
     memory_decision_model_config_id: '', // 记忆决策模型
     voice_input_asr_model_config_id: '', // 语音输入 ASR 模型
     image_generation_model_config_id: '', // 生图模型
+    translation_display_mode: 'aligned', // 聊天翻译显示模式：'aligned' 短语对照（默认）/ 'streaming' 流式纯译文
 
     // MCP 工具协议设置（默认保持可配置；启用与否由消息级选择决定）
     mcpCommand: 'npx',
@@ -394,6 +395,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
       memory_decision_model_config_id: modelAssignments.memory_decision_model_config_id || '',
       voice_input_asr_model_config_id: modelAssignments.voice_input_asr_model_config_id || '',
       image_generation_model_config_id: modelAssignments.image_generation_model_config_id || '',
+      translation_display_mode: (modelAssignments.translation_display_mode === 'streaming' ? 'streaming' : 'aligned'),
     }));
   }, [modelAssignments]);
 
@@ -792,6 +794,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
           memory_decision_model_config_id: string | null;
           voice_input_asr_model_config_id: string | null;
           image_generation_model_config_id: string | null;
+          translation_display_mode: string | null;
         }>('get_model_assignments');
         setConfig(prev => ({
           ...prev,
@@ -806,6 +809,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
           memory_decision_model_config_id: modelAssignments?.memory_decision_model_config_id || '',
           voice_input_asr_model_config_id: modelAssignments?.voice_input_asr_model_config_id || '',
           image_generation_model_config_id: modelAssignments?.image_generation_model_config_id || '',
+          translation_display_mode: (modelAssignments?.translation_display_mode === 'streaming' ? 'streaming' : 'aligned'),
         }));
       } catch {
         // Ignore malformed cached assignments and keep current settings state.
@@ -1015,7 +1019,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
               <div className="mt-1 text-xs text-muted-foreground break-all">{t('settings:mcp.preview.id_label')}：{mcpPreview.serverId}</div>
             )}
           </NotionDialogHeader>
-          <NotionDialogBody nativeScroll>
+          <NotionDialogBody>
             <CustomScrollArea
               className="flex-1 min-h-0 px-6 py-6"
               viewportClassName="px-6 py-6"
@@ -1535,7 +1539,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
               {t('acknowledgements.ui_components.app_menu_desc')}
             </NotionDialogDescription>
           </NotionDialogHeader>
-          <NotionDialogBody nativeScroll>
+          <NotionDialogBody>
             <AppMenuDemo />
           </NotionDialogBody>
         </NotionDialog>
@@ -1618,7 +1622,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
               {t('acknowledgements.ui_components.app_menu_desc')}
             </NotionDialogDescription>
           </NotionDialogHeader>
-          <NotionDialogBody nativeScroll>
+          <NotionDialogBody>
             <AppMenuDemo />
           </NotionDialogBody>
         </NotionDialog>
@@ -1702,7 +1706,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
             {t('acknowledgements.ui_components.app_menu_desc')}
           </NotionDialogDescription>
         </NotionDialogHeader>
-        <NotionDialogBody nativeScroll>
+        <NotionDialogBody>
           <AppMenuDemo />
         </NotionDialogBody>
       </NotionDialog>

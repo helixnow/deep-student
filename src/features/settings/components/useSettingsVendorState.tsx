@@ -871,7 +871,9 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       (Object.keys(assignments) as Array<keyof ModelAssignments>).forEach(key => {
         const value = assignments[key];
         if (value !== null && value !== undefined && value !== '') {
-          merged[key] = value;
+          // 各字段类型不一（多数为 string|null，translation_display_mode 为 'aligned'|'streaming'|null），
+          // 此处统一以源对象的同字段值赋值，类型已由调用方保证。
+          (merged as unknown as Record<string, unknown>)[key as string] = value;
         }
       });
       await persistAssignments(merged);
@@ -901,6 +903,8 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       memory_decision_model_config_id: mapping[t('settings:mapping_keys.memory_decision_configured')] || null,
       voice_input_asr_model_config_id: mapping[t('settings:mapping_keys.voice_input_asr_configured')] || null,
       image_generation_model_config_id: mapping[t('settings:mapping_keys.image_generation_configured')] || null,
+      // 显示模式不属于供应商映射，保持现状不变（持久化层 #[serde(default)] 兜底为 null）
+      translation_display_mode: null,
     };
     handleApplyPreset(assignments);
   };

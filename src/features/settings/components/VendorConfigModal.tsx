@@ -278,7 +278,7 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
           </NotionDialogTitle>
           <NotionDialogDescription>{t('settings:vendor_modal.subtitle')}</NotionDialogDescription>
         </NotionDialogHeader>
-        <NotionDialogBody nativeScroll>
+        <NotionDialogBody>
           {formContent}
         </NotionDialogBody>
         <NotionDialogFooter className="!border-t-0">
