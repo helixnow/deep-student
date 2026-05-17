@@ -438,6 +438,14 @@ const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst
 
   const hasContent = !!(node.content || node.isThinking);
 
+  const paragraphs = useMemo(
+    () => (node.content ?? '')
+      .split('\n\n')
+      .map(p => p.trim())
+      .filter(Boolean),
+    [node.content],
+  );
+
   return (
     <TimelineNode
       isFirst={isFirst}
@@ -491,12 +499,15 @@ const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst
             aria-label={t('timeline.thinking.contentLabel')}
             className="overflow-hidden"
           >
-            <div className="py-1.5 text-gray-500 dark:text-gray-400 text-xs leading-snug">
+            <div
+              className="py-1.5 text-gray-500 dark:text-gray-400 text-xs leading-snug overflow-y-auto"
+              style={{ maxHeight: 'min(60vh, 320px)' }}
+            >
               <div className="space-y-1.5">
-                {node.content.split('\n\n').filter(Boolean).map((paragraph, idx, arr) => (
+                {paragraphs.map((paragraph, idx, arr) => (
                   <div key={idx} className="thinking-chain-content text-gray-500 dark:text-gray-400">
                     <StreamingMarkdownRenderer
-                      content={paragraph.trim()}
+                      content={paragraph}
                       isStreaming={!!node.isThinking && idx === arr.length - 1}
                     />
                   </div>
