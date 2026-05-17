@@ -650,7 +650,7 @@ export const NotesSidebar: React.FC<NotesSidebarProps> = ({ isCollapsed, onToggl
                 <NotionDialogHeader>
                     <NotionDialogTitle>{referenceDialogTitle}</NotionDialogTitle>
                 </NotionDialogHeader>
-                <NotionDialogBody nativeScroll>
+                <NotionDialogBody>
                     <div className="space-y-2">
                         <Input
                             value={referenceValue}

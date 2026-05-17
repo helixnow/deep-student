@@ -177,7 +177,7 @@ export function FolderSelectorDialog({
             {description || t('multiSelect.moveDialogDesc')}
           </NotionDialogDescription>
         </NotionDialogHeader>
-        <NotionDialogBody nativeScroll>
+        <NotionDialogBody>
 
         {/* 文件夹列表 */}
         <div className="min-h-[200px] max-h-[300px] border rounded-md">

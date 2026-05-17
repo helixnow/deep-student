@@ -418,7 +418,7 @@ function AddShortcutDialog({
             {t('desktop.addShortcutDesc', '选择要添加到桌面的快捷方式')}
           </NotionDialogDescription>
         </NotionDialogHeader>
-        <NotionDialogBody nativeScroll>
+        <NotionDialogBody>
 
         <div className="grid grid-cols-3 gap-3 py-4">
           {getPresetAppShortcuts().map((preset, index) => {

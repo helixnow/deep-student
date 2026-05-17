@@ -109,7 +109,7 @@ export const ImportProgressModal: React.FC<ImportProgressModalProps> = ({
             {t('import.title')}
           </NotionDialogTitle>
         </NotionDialogHeader>
-        <NotionDialogBody nativeScroll>
+        <NotionDialogBody>
 
         <div className="space-y-4 py-4">
           {/* 文件名 */}

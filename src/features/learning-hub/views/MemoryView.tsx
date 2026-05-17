@@ -829,7 +829,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
               {t('memory.create_root_title', '创建记忆文件夹')}
             </NotionDialogTitle>
           </NotionDialogHeader>
-          <NotionDialogBody nativeScroll>
+          <NotionDialogBody>
             <Input
               placeholder={t('memory.folder_name_placeholder', '输入文件夹名称')}
               value={newRootFolderTitle}
