@@ -49,6 +49,7 @@ const BUILTIN_PRESET_CONFIG: ModelAssignments = {
   memory_decision_model_config_id: null, // 记忆决策模型
   voice_input_asr_model_config_id: null, // 语音输入 ASR 模型
   image_generation_model_config_id: null, // 生图模型
+  translation_display_mode: null, // 聊天翻译显示模式（aligned 默认 / streaming）
 }; 
 
 const hasLocalStorage = () => typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
@@ -395,7 +396,7 @@ export const ModelAssignmentPresets: React.FC<ModelAssignmentPresetsProps> = ({
             <NotionDialogTitle>{t('settings:model_presets.create_dialog_title')}</NotionDialogTitle>
             <NotionDialogDescription>{t('settings:model_presets.create_dialog_description')}</NotionDialogDescription>
           </NotionDialogHeader>
-          <NotionDialogBody nativeScroll>
+          <NotionDialogBody>
             <Input
               value={newPresetName}
               onChange={(e) => setNewPresetName(e.target.value)}

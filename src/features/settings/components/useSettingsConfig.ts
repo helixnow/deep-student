@@ -50,6 +50,7 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
             memory_decision_model_config_id: null,
             voice_input_asr_model_config_id: null,
             image_generation_model_config_id: null,
+            translation_display_mode: null,
           })) as Promise<{
             model2_config_id: string | null,
             anki_card_model_config_id: string | null,
@@ -63,6 +64,7 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
             memory_decision_model_config_id: string | null,
             voice_input_asr_model_config_id: string | null,
             image_generation_model_config_id: string | null,
+            translation_display_mode: string | null,
           }>,
           invoke('get_setting', { key: 'auto_save' }).catch(() => 'true') as Promise<string>,
           invoke('get_setting', { key: 'theme' }).catch(() => 'light') as Promise<string>,
@@ -234,6 +236,7 @@ const normalizeThemePalette = (value: unknown): ThemePalette => {
           memory_decision_model_config_id: modelAssignments?.memory_decision_model_config_id || '',
           voice_input_asr_model_config_id: modelAssignments?.voice_input_asr_model_config_id || '',
           image_generation_model_config_id: modelAssignments?.image_generation_model_config_id || '',
+          translation_display_mode: (modelAssignments?.translation_display_mode === 'streaming' ? 'streaming' : 'aligned') as 'aligned' | 'streaming',
           autoSave: (autoSave || 'true') === 'true',
           theme: normalizeThemeMode(theme),
           themePalette: normalizeThemePalette(themePaletteSetting),

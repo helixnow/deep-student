@@ -182,7 +182,7 @@ export const McpToolEditorModal: React.FC<McpToolEditorModalProps> = ({
           <NotionDialogTitle>{isEditing ? t('settings:mcp_descriptions.edit_tool_title', '编辑 MCP 工具') : t('settings:mcp_descriptions.add_tool_title', '新增 MCP 工具')}</NotionDialogTitle>
           <NotionDialogDescription>{t('settings:mcp_descriptions.tool_modal_hint', '配置 MCP 服务器连接信息，可在输入栏灵活启用。')}</NotionDialogDescription>
         </NotionDialogHeader>
-        <NotionDialogBody nativeScroll>
+        <NotionDialogBody>
         <Tabs value={mcpToolModal.mode} onValueChange={handleModeChange} className="mt-1.5 flex flex-1 flex-col justify-start px-3 pb-0 min-h-0">
           <TabsList className="grid w-full grid-cols-2 rounded-lg bg-muted p-1 flex-shrink-0">
             <TabsTrigger value="form" className="data-[state=active]:bg-background data-[state=active]:shadow-sm">{t('settings:mcp_descriptions.form_mode', '图形表单')}</TabsTrigger>

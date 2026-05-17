@@ -397,8 +397,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                 <AppSelect value={newModality} onValueChange={setNewModality}
                   options={[
                     { value: 'text', label: t('settings:dimension_management.type_text') },
-                    // ★ 多模态索引已禁用，暂时隐藏多模态选项。恢复 MULTIMODAL_INDEX_ENABLED = true 后取消注释即可
-                    // { value: 'multimodal', label: t('settings:dimension_management.type_multimodal') },
+                    { value: 'multimodal', label: t('settings:dimension_management.type_multimodal') },
                   ]}
                   size="sm"
                   variant="outline"
@@ -473,11 +472,10 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
               <span className="text-muted-foreground/60 uppercase tracking-wider font-semibold">{t('settings:dimension_management.type_text')}</span>
               <span className="font-medium text-sm text-blue-500/80">{stats.textDimensions}</span>
             </div>
-            {/* ★ 多模态索引已禁用，暂时隐藏多模态维度统计。恢复 MULTIMODAL_INDEX_ENABLED = true 后取消注释即可 */}
-            {/* <div className="flex flex-col gap-0.5 py-1.5 px-2.5 rounded bg-muted/20 border border-muted-foreground/5">
+            <div className="flex flex-col gap-0.5 py-1.5 px-2.5 rounded bg-muted/20 border border-muted-foreground/5">
               <span className="text-muted-foreground/60 uppercase tracking-wider font-semibold">{t('settings:dimension_management.type_multimodal')}</span>
               <span className="font-medium text-sm text-purple-500/80">{stats.multimodalDimensions}</span>
-            </div> */}
+            </div>
           </div>
         )}
 

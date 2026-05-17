@@ -1015,7 +1015,7 @@ export const BackupTab: React.FC<BackupTabProps> = ({
               : t('data:governance.verify_result_failed')}
           </NotionDialogDescription>
         </NotionDialogHeader>
-        <NotionDialogBody nativeScroll>
+        <NotionDialogBody>
 
           {verifyResult && (
             <div className="space-y-3">

@@ -989,7 +989,6 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     <div className={variant === 'models' ? 'rounded-lg border border-dashed border-border/50 bg-muted/20 p-4 space-y-3' : 'space-y-3'}>
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-2">
-          <SiliconFlowLogo className="h-4" />
           <NotionButton
             variant="default"
             onClick={() => fetchSiliconFlowModels(true)}

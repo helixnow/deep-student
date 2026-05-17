@@ -9,11 +9,14 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { SettingSection } from './SettingsCommon';
 import { UnifiedModelSelector } from '@/components/shared/UnifiedModelSelector';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
 import { DimensionManagement } from './DimensionManagement';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { OcrEngineCard } from './OcrEngineCard';
 import { cn } from '@/lib/utils';
 import type { ApiConfig } from '@/types';
+
+type TranslationDisplayMode = 'aligned' | 'streaming';
 
 interface UnifiedModelInfo {
   id: string;
@@ -36,6 +39,7 @@ interface ModelsTabProps {
     chat_title_model_config_id: string;
     exam_sheet_ocr_model_config_id: string;
     translation_model_config_id: string;
+    translation_display_mode: TranslationDisplayMode;
     memory_decision_model_config_id: string;
     voice_input_asr_model_config_id: string;
     image_generation_model_config_id: string;
@@ -115,6 +119,54 @@ const ModelAssignmentRow = ({
 const GroupTitle = ({ title }: { title: string }) => (
   <div className="px-1 mb-3 mt-8 first:mt-0">
     <h3 className="text-base font-semibold text-foreground">{title}</h3>
+  </div>
+);
+
+// 内部组件：翻译显示模式行 — 复用 ModelAssignmentRow 的 padding/字号节奏
+const TranslationDisplayModeRow = ({
+  title,
+  description,
+  value,
+  alignedLabel,
+  streamingLabel,
+  onSave,
+  setConfig,
+}: {
+  title: string;
+  description: string;
+  value: TranslationDisplayMode;
+  alignedLabel: string;
+  streamingLabel: string;
+  onSave: (field: string, value: string | null) => Promise<any>;
+  setConfig: React.Dispatch<React.SetStateAction<any>>;
+}) => (
+  <div className="group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
+    <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
+      <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
+      <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+        {description}
+      </p>
+    </div>
+    <div className="w-full sm:w-[280px] flex-shrink-0 flex items-center justify-end sm:justify-start">
+      <SegmentedControl<TranslationDisplayMode>
+        ariaLabel={title}
+        value={value}
+        size="compact"
+        options={[
+          { value: 'aligned', label: alignedLabel },
+          { value: 'streaming', label: streamingLabel },
+        ]}
+        onValueChange={async (next) => {
+          try {
+            const merged = await onSave('translation_display_mode', next);
+            const persisted = (merged?.translation_display_mode === 'streaming' ? 'streaming' : 'aligned') as TranslationDisplayMode;
+            setConfig((prev: any) => ({ ...prev, translation_display_mode: persisted }));
+          } catch {
+            // 错误已由 saveSingleAssignmentField 通知用户，这里保持当前 UI 不变
+          }
+        }}
+      />
+    </div>
   </div>
 );
 
@@ -231,6 +283,15 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               onSave={handleSave}
               setConfig={setConfig}
             />
+            <TranslationDisplayModeRow
+              title={t('settings:cards.translation_display_mode_title')}
+              description={t('settings:descriptions.translation_display_mode_desc')}
+              value={config.translation_display_mode}
+              alignedLabel={t('settings:cards.translation_display_mode_aligned')}
+              streamingLabel={t('settings:cards.translation_display_mode_streaming')}
+              onSave={handleSave}
+              setConfig={setConfig}
+            />
             <ModelAssignmentRow
               title={t('settings:api_config.memory_decision_model_label')}
               description={t('settings:api_config.memory_decision_model_hint')}
@@ -297,18 +358,18 @@ export const ModelsTab: React.FC<ModelsTabProps> = ({
               onSave={handleSave}
               setConfig={setConfig}
             />
-            {/* ★ VL Reranker 模型配置 - 多模态索引已禁用，暂时隐藏。恢复 MULTIMODAL_INDEX_ENABLED = true 后取消注释即可 */}
-            {/* <ModelAssignmentRow
+            <ModelAssignmentRow
               title={t('settings:cards.vl_reranker_title')}
               description={t('settings:descriptions.vl_reranker_desc')}
               value={config.vl_reranker_model_config_id}
               field="vl_reranker_model_config_id"
+              configKey="vl_reranker_model_config_id"
               models={toUnifiedModelInfo(getRerankerApis(config.vl_reranker_model_config_id))}
               placeholder={t('settings:placeholders.select_vl_reranker')}
               notificationKey={notify('vl_reranker_saved')}
               onSave={handleSave}
               setConfig={setConfig}
-            /> */}
+            />
           </div>
           
           <div className="mt-8">
