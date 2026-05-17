@@ -865,7 +865,7 @@
   },
   "timeline": {
     "thinking": {
-      "inProgress": "Thinking...",
+      "inProgress": "Thinking for {{seconds}}s…",
       "completed": "Thought for {{seconds}}s",
       "stopped": "Stopped thinking",
       "contentLabel": "Reasoning details",

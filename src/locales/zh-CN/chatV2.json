@@ -865,7 +865,7 @@
   },
   "timeline": {
     "thinking": {
-      "inProgress": "思考中...",
+      "inProgress": "已思考 {{seconds}} 秒…",
       "completed": "已思考（用时 {{seconds}} 秒）",
       "stopped": "已停止思考",
       "contentLabel": "推理详情",
