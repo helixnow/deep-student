@@ -38,8 +38,7 @@ export interface UseVariantUIResult {
   isMultiVariant: boolean;
   /** 正在流式生成的变体数量 */
   streamingCount: number;
-  /** 是否显示并行流式预览 */
-  showParallelView: boolean;
+
   /** 获取当前应该显示的 blockIds */
   displayBlockIds: string[];
   /** 共享上下文（多变体检索结果） */
@@ -155,29 +154,6 @@ export function useVariantUI({
     () => variants.filter((v) => v.status === 'streaming').length,
     [variants]
   );
-
-  // ============================================================================
-  // 🔧 并行流式预览中间态 UI 控制
-  // ============================================================================
-  //
-  // 【当前状态】禁用，保持 streaming 和 completed 状态的 UI 一致性
-  //
-  // 【设计意图】
-  // - showParallelView 原本用于区分"并行流式预览"和"完成后对比"两种场景
-  // - 当 streamingCount >= 2 时，可能需要特殊的预览 UI（如简化视图、进度条等）
-  //
-  // 【当前实现】
-  // - MessageItem.tsx 实际使用 isMultiVariant 而非 showParallelView 来决定是否渲染 ParallelVariantView
-  // - ParallelVariantView 已完善流式支持（BlockRendererWithStore 独立订阅、状态图标、动画指示器）
-  // - 因此禁用 showParallelView 不影响当前功能，流式多变体能正确显示
-  //
-  // 【原逻辑】const showParallelView = streamingCount >= 2;
-  //
-  // TODO: 后续优化方向
-  // 1. 如果需要区分"并行流式预览"和"完成后对比"的 UI 差异，可在 MessageItem 中使用 showParallelView
-  // 2. 可考虑为流式预览添加：简化卡片视图、实时进度指示、自动聚焦最新内容等功能
-  // 3. 如无差异化需求，可移除 showParallelView 字段，统一使用 isMultiVariant
-  const showParallelView = false;
 
   // 🔧 P2优化：稳定 displayBlockIds 引用，避免不必要的重渲染
   // 🔧 P3修复：使用 Store 的 getDisplayBlockIds，它会按 firstChunkAt 排序
@@ -320,7 +296,6 @@ export function useVariantUI({
     activeVariantId,
     isMultiVariant,
     streamingCount,
-    showParallelView,
     displayBlockIds,
     sharedContext,
     getVariantBlocks,

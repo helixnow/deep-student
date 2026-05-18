@@ -115,6 +115,13 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
   const [copied, setCopied] = useState(false);
   const [query, setQuery] = useState('');
   const contentRef = useRef<HTMLPreElement>(null);
+  const previewUrlsRef = useRef<Set<string>>(new Set());
+
+  // Cleanup all created blob URLs on unmount
+  useEffect(() => () => {
+    previewUrlsRef.current.forEach(u => URL.revokeObjectURL(u));
+    previewUrlsRef.current.clear();
+  }, []);
 
   // 键盘事件处理
   useEffect(() => {
@@ -176,13 +183,13 @@ export const InlineDocumentViewer: React.FC<InlineDocumentViewerProps> = ({
     try {
       const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
       const previewUrl = URL.createObjectURL(blob);
+      previewUrlsRef.current.add(previewUrl);
       const win = window.open(previewUrl, '_blank', 'noopener,noreferrer');
       if (win) {
-        const revoke = () => URL.revokeObjectURL(previewUrl);
-        win.addEventListener('beforeunload', revoke);
-        setTimeout(revoke, 120000);
-      } else {
-        setTimeout(() => URL.revokeObjectURL(previewUrl), 120000);
+        win.addEventListener('beforeunload', () => {
+          URL.revokeObjectURL(previewUrl);
+          previewUrlsRef.current.delete(previewUrl);
+        });
       }
     } catch (e: unknown) {
       console.error('Preview failed:', e);

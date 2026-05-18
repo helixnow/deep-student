@@ -430,7 +430,7 @@ impl MemoryService {
     /// 获取记忆文件夹 ID 列表（带缓存）
     fn get_memory_folder_ids(&self, root_id: &str) -> VfsResult<Vec<String>> {
         {
-            let cache = self.folder_cache.read().unwrap();
+            let cache = self.folder_cache.read().unwrap_or_else(|p| p.into_inner());
             if let Some(ref c) = *cache {
                 if c.root_id == root_id {
                     return Ok(c.folder_ids.clone());
@@ -439,7 +439,7 @@ impl MemoryService {
         }
         let folder_ids = VfsFolderRepo::get_folder_ids_recursive(&self.vfs_db, root_id)?;
         {
-            let mut cache = self.folder_cache.write().unwrap();
+            let mut cache = self.folder_cache.write().unwrap_or_else(|p| p.into_inner());
             *cache = Some(FolderIdCache {
                 root_id: root_id.to_string(),
                 folder_ids: folder_ids.clone(),
@@ -454,7 +454,7 @@ impl MemoryService {
 
     /// 使文件夹缓存失效（在文件夹结构变更后调用）
     fn invalidate_folder_cache(&self) {
-        let mut cache = self.folder_cache.write().unwrap();
+        let mut cache = self.folder_cache.write().unwrap_or_else(|p| p.into_inner());
         *cache = None;
     }
 
@@ -576,7 +576,7 @@ impl MemoryService {
         let vfs_db = self.vfs_db.clone();
         let llm_manager = self.llm_manager.clone();
 
-        tokio::spawn(async move {
+        crate::background_tasks::BACKGROUND_TASKS.spawn(async move {
             let svc_for_profile = svc.clone();
             match tokio::task::spawn_blocking(move || svc_for_profile.refresh_profile_summary())
                 .await

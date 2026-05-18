@@ -28,6 +28,9 @@ mod moonshot;
 mod qwen;
 pub mod zhipu;
 
+#[cfg(test)]
+mod streaming_harness;
+
 pub use anthropic::AnthropicAdapter;
 pub use deepseek::DeepSeekAdapter;
 pub use doubao::DoubaoAdapter;
