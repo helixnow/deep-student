@@ -374,7 +374,9 @@ impl ToolExecutor for ChatAnkiToolExecutor {
         match strip_tool_namespace(tool_name) {
             // ★ 2026-02-09: chatanki_export/chatanki_sync 降为 Low
             // 理由：制卡是创建性操作（生成新卡片），非破坏性，不应打断制卡体验流
-            "chatanki_export" | "chatanki_sync" => ToolSensitivity::Low,
+            // 2026-05-16 (Audit C-02): chatanki_export/sync 提升为 Medium
+            // 理由：export/sync 会将完整用户答题数据发送到外部(Anki)，存在数据泄露风险
+            "chatanki_export" | "chatanki_sync" => ToolSensitivity::Medium,
             _ => ToolSensitivity::Low,
         }
     }

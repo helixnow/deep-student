@@ -33,7 +33,7 @@
 
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
-use tokio::sync::mpsc::{self, UnboundedReceiver, UnboundedSender};
+use tokio::sync::mpsc::{self, Receiver, Sender};
 use tracing::{debug, error, info, warn};
 
 use super::database::LlmUsageDatabase;
@@ -75,10 +75,10 @@ enum CollectorMessage {
 ///
 /// # 线程安全
 /// - `UsageCollector` 可安全地在多线程间共享（`Arc<UsageCollector>`）
-/// - 内部使用 `UnboundedSender` 实现无锁发送
+/// - 内部使用有界 `Sender`（容量 1000），通过 try_send 在背压下丢弃并记录警告
 pub struct UsageCollector {
     /// 消息发送端
-    sender: UnboundedSender<CollectorMessage>,
+    sender: Sender<CollectorMessage>,
     /// 是否已关闭
     is_shutdown: AtomicBool,
 }
@@ -102,8 +102,8 @@ impl UsageCollector {
     pub fn new(db: Arc<LlmUsageDatabase>) -> Self {
         info!("[UsageCollector] Initializing usage collector...");
 
-        // 创建 unbounded channel（无界队列，避免阻塞发送方）
-        let (sender, receiver) = mpsc::unbounded_channel::<CollectorMessage>();
+        // 创建有界 channel（容量 1000，避免无界增长导致内存膨胀）
+        let (sender, receiver) = mpsc::channel::<CollectorMessage>(1000);
 
         // 启动后台处理任务
         let collector = Self {
@@ -130,7 +130,7 @@ impl UsageCollector {
     /// * `receiver` - 消息接收端
     async fn background_processor(
         db: Arc<LlmUsageDatabase>,
-        mut receiver: UnboundedReceiver<CollectorMessage>,
+        mut receiver: Receiver<CollectorMessage>,
     ) {
         info!("[UsageCollector::Background] Background processor started");
 
@@ -361,8 +361,17 @@ impl UsageCollector {
             return;
         }
 
-        if let Err(e) = self.sender.send(CollectorMessage::Record(record)) {
-            error!("[UsageCollector] Failed to send record: {}", e);
+        if let Err(e) = self.sender.try_send(CollectorMessage::Record(record)) {
+            match e {
+                mpsc::error::TrySendError::Full(_) => {
+                    tracing::warn!(
+                        "[UsageCollector] Channel full (capacity 1000), dropping usage record"
+                    );
+                }
+                mpsc::error::TrySendError::Closed(_) => {
+                    error!("[UsageCollector] Failed to send record: channel closed");
+                }
+            }
         }
     }
 
@@ -385,8 +394,20 @@ impl UsageCollector {
             return;
         }
 
-        if let Err(e) = self.sender.send(CollectorMessage::BatchRecord(records)) {
-            error!("[UsageCollector] Failed to send batch records: {}", e);
+        if let Err(e) = self.sender.try_send(CollectorMessage::BatchRecord(records)) {
+            match e {
+                mpsc::error::TrySendError::Full(records) => {
+                    if let CollectorMessage::BatchRecord(records) = records {
+                        tracing::warn!(
+                            "[UsageCollector] Channel full (capacity 1000), dropping {} batch records",
+                            records.len()
+                        );
+                    }
+                }
+                mpsc::error::TrySendError::Closed(_) => {
+                    error!("[UsageCollector] Failed to send batch records: channel closed");
+                }
+            }
         }
     }
 
@@ -552,7 +573,7 @@ impl UsageCollector {
         info!("[UsageCollector] Initiating shutdown...");
 
         // 发送关闭信号
-        if let Err(e) = self.sender.send(CollectorMessage::Shutdown) {
+        if let Err(e) = self.sender.send(CollectorMessage::Shutdown).await {
             error!("[UsageCollector] Failed to send shutdown signal: {}", e);
         }
 

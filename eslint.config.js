@@ -96,7 +96,11 @@ export default tseslint.config(
 
       // 禁用与 TypeScript 不兼容的规则（TypeScript 已处理）
       'no-undef': 'off',
-      'no-unused-vars': 'off'
+      'no-unused-vars': 'off',
+
+      // 7. 生产代码禁止 console.log（warn/error 允许，用于日志诊断）
+      // 设为 warn 以便逐步清理 1142 处历史 console.log
+      'no-console': ['warn', { allow: ['warn', 'error'] }]
     }
   },
 

@@ -1118,6 +1118,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         }
       };
       reader.onerror = () => {
+        // 🔧 释放 Blob URL，文件读取失败时不再需要预览
+        URL.revokeObjectURL(blobPreviewUrl);
         console.error('[InputBarUI] Failed to read file:', file.name);
         logAttachment('ui', 'file_read_error', {
           fileName: file.name,

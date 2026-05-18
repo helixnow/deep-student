@@ -130,8 +130,27 @@ export interface LoadedSkillInfo {
  *
  * 内存释放策略：
  * - 会话被销毁/淘汰时由 SessionManager 调用 clearSessionSkills() 清理
+ * - LRU 上限：超过 MAX_TRACKED_SESSIONS 时淘汰最早的会话
  */
 const loadedSkillsMap = new Map<string, Map<string, LoadedSkillInfo>>();
+
+/** LRU 上限，防止长期运行时内存无限增长 */
+const MAX_TRACKED_SESSIONS = 20;
+
+/**
+ * LRU 方式设置会话 Skills 缓存
+ * - 已存在的 key 先删除再重新插入（移到末尾，保持 LRU 顺序）
+ * - 超过上限时淘汰最早的会话
+ */
+function setLoadedSkillsForSession(sessionId: string, skills: Map<string, LoadedSkillInfo>): void {
+  if (loadedSkillsMap.has(sessionId)) {
+    loadedSkillsMap.delete(sessionId);
+  } else if (loadedSkillsMap.size >= MAX_TRACKED_SESSIONS) {
+    const oldest = loadedSkillsMap.keys().next().value;
+    if (oldest !== undefined) loadedSkillsMap.delete(oldest);
+  }
+  loadedSkillsMap.set(sessionId, skills);
+}
 
 // ============================================================================
 // 订阅机制 - 用于 UI 实时响应技能加载状态变化
@@ -218,9 +237,9 @@ export function loadSkillsToSession(
   alreadyLoaded: string[];
   notFound: string[];
 } {
-  // 确保会话状态存在
+  // 确保会话状态存在（通过 LRU helper 管理）
   if (!loadedSkillsMap.has(sessionId)) {
-    loadedSkillsMap.set(sessionId, new Map());
+    setLoadedSkillsForSession(sessionId, new Map());
   }
   const sessionSkills = loadedSkillsMap.get(sessionId)!;
 
