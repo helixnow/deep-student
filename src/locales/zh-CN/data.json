@@ -713,6 +713,8 @@
     "archive_load_failed": "加载归档会话失败",
     "archive_empty_state": "暂无归档会话",
     "archive_empty_state_desc": "从侧边栏归档的会话会出现在这里，直到恢复或永久删除。",
+    "archive_ungrouped_title": "未分组",
+    "archive_empty_group_hint": "该分组下暂无归档会话",
     "archive_untitled": "未命名会话",
     "archive_restore": "恢复",
     "archive_restore_success": "会话已恢复到主列表",

@@ -16,46 +16,46 @@
     "voice_input": "语音输入"
   },
   "voice_input": {
-  "title": "听写",
-  "description": "这里负责听写快捷键、词典、历史记录与运行时诊断。ASR 模型分配在“设置 > 模型”，提供方密钥在“设置 > 模型服务 / APIs”，使用统计在“统计”页查看。",
-  "description_short": "快捷键、词典与听写记录",
-  "loading": "加载中…",
-  "load_failed": "听写设置加载失败。",
-  "save_failed": "听写设置保存失败。",
-  "not_configured": "未配置",
-  "shortcut_title": "听写快捷键",
-  "shortcut_description": "选择 DeepStudent 内全局快捷键的行为方式。听写内容仍然只会插入到当前已支持的输入框，并且不会自动发送。",
-  "trigger_mode_title": "触发方式",
-  "trigger_mode_description": "按住快捷键讲话，或按一次切换。听写结果只插入到光标处，不会自动发送。",
-  "diagnostics_title": "诊断",
-  "hotkey": "快捷键",
-  "max_duration_ms": "最长录音（毫秒）",
-  "hold_mode_title": "按住听写快捷键",
-  "hold_mode_description": "在 DeepStudent 内任意已支持输入区域按住快捷键开始听写，松开后停止。",
-  "hold_mode_short": "按住",
-  "toggle_mode_title": "按一次开始，再按一次停止",
-  "toggle_mode_description": "使用同一个快捷键切换听写状态，适合更长的免按住听写。",
-  "toggle_mode_short": "切换",
-  "mode_active": "当前启用",
-  "mode_select": "使用此模式",
-  "quick_actions_title": "设置与恢复",
-  "quick_actions_description": "当听写没有按预期工作时，可以直接跳到模型分配、API 凭据和使用统计。",
-  "dictionary_title": "自定义词典",
-  "dictionary_description": "希望优先识别的词或短语，每行一个。",
-  "dictionary_placeholder": "Photosynthesis\nAnkylosing spondylitis\nDeepStudent",
-  "dictionary_count": "{{count}} 条",
-  "dictionary_hint": "提供方支持时自动并入 ASR 提示词。",
-  "history_title": "最近听写",
-  "history_description": "最近的转写结果保留在这里，便于找回误投的文本。",
-  "history_empty": "这里会显示最近的听写内容。",
-  "history_copy": "复制",
-  "history_clear": "清空",
-  "history_copy_success": "已复制。",
-  "history_copy_failed": "无法复制这条记录。",
-  "history_clear_success": "已清空最近听写记录。",
-  "history_clear_failed": "清空失败。",
-  "request_access": "申请麦克风权限",
-  "permission_request_success": "麦克风已可用。",
+    "title": "听写",
+    "description": "这里负责听写快捷键、词典、历史记录与运行时诊断。ASR 模型分配在“设置 > 模型”，提供方密钥在“设置 > 模型服务 / APIs”，使用统计在“统计”页查看。",
+    "description_short": "快捷键、词典与听写记录",
+    "loading": "加载中…",
+    "load_failed": "听写设置加载失败。",
+    "save_failed": "听写设置保存失败。",
+    "not_configured": "未配置",
+    "shortcut_title": "听写快捷键",
+    "shortcut_description": "选择 DeepStudent 内全局快捷键的行为方式。听写内容仍然只会插入到当前已支持的输入框，并且不会自动发送。",
+    "trigger_mode_title": "触发方式",
+    "trigger_mode_description": "按住快捷键讲话，或按一次切换。听写结果只插入到光标处，不会自动发送。",
+    "diagnostics_title": "诊断",
+    "hotkey": "快捷键",
+    "max_duration_ms": "最长录音（毫秒）",
+    "hold_mode_title": "按住听写快捷键",
+    "hold_mode_description": "在 DeepStudent 内任意已支持输入区域按住快捷键开始听写，松开后停止。",
+    "hold_mode_short": "按住",
+    "toggle_mode_title": "按一次开始，再按一次停止",
+    "toggle_mode_description": "使用同一个快捷键切换听写状态，适合更长的免按住听写。",
+    "toggle_mode_short": "切换",
+    "mode_active": "当前启用",
+    "mode_select": "使用此模式",
+    "quick_actions_title": "设置与恢复",
+    "quick_actions_description": "当听写没有按预期工作时，可以直接跳到模型分配、API 凭据和使用统计。",
+    "dictionary_title": "自定义词典",
+    "dictionary_description": "希望优先识别的词或短语，每行一个。",
+    "dictionary_placeholder": "Photosynthesis\nAnkylosing spondylitis\nDeepStudent",
+    "dictionary_count": "{{count}} 条",
+    "dictionary_hint": "提供方支持时自动并入 ASR 提示词。",
+    "history_title": "最近听写",
+    "history_description": "最近的转写结果保留在这里，便于找回误投的文本。",
+    "history_empty": "这里会显示最近的听写内容。",
+    "history_copy": "复制",
+    "history_clear": "清空",
+    "history_copy_success": "已复制。",
+    "history_copy_failed": "无法复制这条记录。",
+    "history_clear_success": "已清空最近听写记录。",
+    "history_clear_failed": "清空失败。",
+    "request_access": "申请麦克风权限",
+    "permission_request_success": "麦克风已可用。",
     "permission_request_denied": "麦克风权限被拒绝，请在系统设置里允许后重试。",
     "permission_request_missing_runtime": "当前运行时未暴露 getUserMedia，无法启动采集。",
     "permission_request_missing_backend": "权限已允许，但缺少可用的录音后端。",
@@ -153,6 +153,26 @@
         "reasoning": "推理"
       },
       "subtitle": "配置您的AI模型接口连接与基础信息",
+      "protocol_label": "OpenAI 协议",
+      "protocol_hint": "这里明确选择 OpenAI Chat 还是 OpenAI Responses；供应商仅提供默认值。",
+      "protocols": {
+        "openai_chat_completions": {
+          "label": "OpenAI Chat",
+          "description": "使用 /chat/completions，请求体基于 messages。适合大多数 OpenAI 兼容供应商。"
+        },
+        "openai_responses": {
+          "label": "OpenAI Responses",
+          "description": "使用 /responses，适合 OpenAI 新接口与原生 Responses 语义。"
+        },
+        "google_generate_content": {
+          "label": "Google GenerateContent",
+          "description": "Gemini 原生接口。"
+        },
+        "anthropic_messages": {
+          "label": "Anthropic Messages",
+          "description": "Claude 原生 Messages 接口。"
+        }
+      },
       "model_name_hint": "请输入准确的模型名称，这将用于API调用",
       "reasoning": {
         "title": "推理 / 思维链设置",
@@ -165,8 +185,13 @@
           "low": "low（低）",
           "medium": "medium（中）",
           "high": "high（高）",
-          "xhigh": "xhigh（超高）",
-          "max": "max（最大）"
+          "xhigh": "xhigh（极高）",
+          "max": "max（最高）"
+        },
+        "verbosity": {
+          "low": "低",
+          "medium": "中",
+          "high": "高"
         },
         "enable_thinking": "Enable Thinking 模式",
         "enable_thinking_hint": "向 API 发送 enable_thinking 标志，部分模型支持。",
@@ -226,8 +251,8 @@
           "low": "低",
           "medium": "中",
           "high": "高",
-          "xhigh": "超高",
-          "max": "最大"
+          "xhigh": "极高",
+          "max": "最高"
         }
       },
       "qwen": {
@@ -328,10 +353,14 @@
     "base_url": "接口地址",
     "api_key": "API 密钥",
     "api_key_saved": "已保存",
-    "api_key_placeholder": "输入 API 密钥（自动保存）",
+    "api_key_saving": "正在保存…",
+    "api_key_placeholder": "输入 API 密钥",
+    "api_key_manual_save_hint": "粘贴或输入后，点击保存",
     "api_key_save_failed": "保存 API 密钥失败",
     "api_key_cleared": "API 密钥已清除",
     "api_key_clear_failed": "清除 API 密钥失败",
+    "api_key_securely_stored": "已安全保存，下次无需重新输入",
+    "api_key_unsaved": "有未保存的更改",
     "clear_api_key": "清除",
     "clear_api_key_confirm": "确认清除",
     "clear_api_key_title": "清除 API 密钥",
@@ -394,6 +423,13 @@
     "name_label": "供应商名称",
     "name_placeholder": "请输入供应商名称",
     "provider_label": "供应商类型",
+    "protocol_label": "API 协议",
+    "protocols": {
+      "openai_chat_completions": "OpenAI Chat Completions",
+      "openai_responses": "OpenAI Responses",
+      "google_generate_content": "Google GenerateContent",
+      "anthropic_messages": "Anthropic Messages"
+    },
     "providers": {
       "openai": "OpenAI",
       "anthropic": "Anthropic",
@@ -558,6 +594,8 @@
     "statistics": "数据统计",
     "data_manage": "数据管理",
     "data_governance": "数据治理",
+    "general": "常规",
+    "appearance": "外观",
     "app": "应用设置",
     "theme": "主题设置",
     "params": "参数调整",
@@ -937,6 +975,10 @@
       "auto": "自动",
       "light": "亮色",
       "dark": "暗色"
+    },
+    "study_ui_descriptions": {
+      "general": "管理语言、交互习惯、输入方式和个人偏好。",
+      "appearance": "自定义主题、字体、缩放和界面视觉风格。"
     }
   },
   "api_config": {
@@ -1890,21 +1932,22 @@
     "label": "MCP 服务器 JSON 配置"
   },
   "memory": {
-    "title": "记忆系统",
-    "description": "配置 AI 记忆存储位置。记忆文件将作为普通笔记存储在指定文件夹中。",
-    "selectFolder": "选择记忆文件夹...",
+    "title": "记忆",
+    "description": "管理 AI 记忆功能与存储位置。记忆以笔记形式存储，支持自动分类。",
+    "selectFolder": "选择存储文件夹...",
     "createFolder": "新建文件夹",
     "defaultFolderName": "我的记忆",
-    "configured": "✓ 记忆系统已配置",
-    "notConfigured": "⚠ 请选择或创建记忆文件夹",
-    "rootFolder": "记忆根文件夹",
+    "configured": "✓ 已配置",
+    "notConfigured": "⚠ 尚未选择存储文件夹",
+    "disabled": "已停用",
+    "rootFolder": "存储位置",
     "noFolders": "暂无文件夹",
     "createSuccess": "记忆文件夹创建成功",
     "setSuccess": "记忆根文件夹设置成功",
-    "privacyMode": "隐私模式",
-    "privacyModeDesc": "开启后，记忆写入与检索会跳过外部 LLM 的改写/重排，以降低敏感信息外发风险。",
-    "privacyModeEnabled": "记忆隐私模式已开启",
-    "privacyModeDisabled": "记忆隐私模式已关闭"
+    "memoryEnabled": "启用",
+    "memoryEnabledDesc": "开启后 AI 会自动提取并调用关于你的信息来个性化对话体验。关闭后不再提取、检索或注入用户记忆。",
+    "memoryEnabledToast": "记忆功能已开启",
+    "memoryDisabledToast": "记忆功能已关闭"
   },
   "data_governance": {
     "backup_tiers": {

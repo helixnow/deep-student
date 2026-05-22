@@ -33,6 +33,7 @@
     "copySuccess": "Code copied to clipboard",
     "copySuccessTitle": "Copy successful",
     "render": "Render",
+    "run": "Run",
     "source": "Source",
     "running": "Running",
     "mermaidHint": "Content generating, wait for code block to close before running",
@@ -72,6 +73,7 @@
       "suggestion4": "Explain the difference between 'entropy' in information theory and thermodynamics with simple examples.",
       "suggestion5": "Generate a set of Anki flashcards from my uploaded class notes for review."
     },
+    "scrollToBottom": "Scroll to bottom",
     "waiting": "Thinking..."
   },
   "messageItem": {
@@ -279,8 +281,11 @@
   },
   "queue": {
     "settings": {
-      "enableTitle": "Queue follow-up messages while streaming",
-      "enableDescription": "Messages typed during a reply are queued and submitted in order once the current reply ends. While on, each queued bubble shows a Steer button that cancels the current reply and runs that message next."
+      "modeTitle": "Queue mode",
+      "modeLabel": "Select queue mode",
+      "modeDescription": "Messages typed during a reply are queued and submitted in order. Guide mode adds a Steer button on each bubble to cancel the current reply and send that message next.",
+      "modeQueue": "Queue",
+      "modeGuide": "Guide"
     },
     "bubble": {
       "steer": "Steer",
@@ -890,7 +895,7 @@
       "pending": "Pending",
       "running": "Running...",
       "success": "Completed",
-      "completed": "Done ({{ms}}ms)",
+      "completed": "Completed",
       "failed": "Failed",
       "input": "Input",
       "output": "Output",
@@ -910,7 +915,7 @@
       "set": "Set Content",
       "running": "Running...",
       "failed": "Failed",
-      "completed": "Done ({{ms}}ms)",
+      "completed": "Completed",
       "pending": "Pending",
       "readContent": "Read Content",
       "addedContent": "Added Content",
