@@ -19,7 +19,8 @@ export {
 export { DataGovernanceDashboard, DebugTab } from './components/DataGovernanceDashboard';
 export type { DataGovernanceTabTarget } from './components/DataGovernanceDashboard';
 export { AboutTab } from './components/AboutTab';
-export { AppTab } from './components/AppTab';
+export { AppearanceTab } from './components/AppearanceTab';
+export { GeneralTab } from './components/GeneralTab';
 export { OpenSourceAcknowledgementsSection } from './components/OpenSourceAcknowledgementsSection';
 export { VendorApiKeySection } from './components/VendorApiKeySection';
 export { OverviewTab } from './components/data-governance/OverviewTab';

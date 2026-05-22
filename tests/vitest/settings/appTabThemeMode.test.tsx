@@ -10,15 +10,15 @@ vi.mock('@tauri-apps/api/core', () => ({
   invoke: invokeMock,
 }));
 
-import { AppTab } from '@/features/settings';
+import { AppearanceTab } from '@/features/settings';
 import type { ThemeMode, ThemePalette } from '@/hooks/useTheme';
 
-describe('AppTab theme mode settings', () => {
+describe('AppearanceTab theme mode settings', () => {
   beforeEach(() => {
     invokeMock.mockClear();
   });
 
-  const renderAppTab = (overrides?: {
+  const renderAppearanceTab = (overrides?: {
     themeMode?: ThemeMode;
     isSystemDark?: boolean;
     setThemeMode?: (mode: ThemeMode) => void;
@@ -28,7 +28,7 @@ describe('AppTab theme mode settings', () => {
     const setThemePalette = overrides?.setThemePalette ?? vi.fn();
 
     const result = render(
-      <AppTab
+      <AppearanceTab
         uiZoom={1}
         zoomLoading={false}
         zoomSaving={false}
@@ -56,11 +56,8 @@ describe('AppTab theme mode settings', () => {
         setTopbarTopMargin={vi.fn()}
         logTypeForOpen="backend"
         setLogTypeForOpen={vi.fn()}
-        showRawRequest={false}
-        setShowRawRequest={vi.fn()}
         isTauriEnvironment={true}
         invoke={invokeMock as never}
-        voiceInputAssignedModel={{ status: 'model-assignment-required' }}
       />
     );
 
@@ -68,7 +65,7 @@ describe('AppTab theme mode settings', () => {
   };
 
   it('renders the theme controls, persists mode changes, and shows a single-row accent picker', () => {
-    const { container, setThemeMode, setThemePalette } = renderAppTab({ themeMode: 'light', isSystemDark: true });
+    const { container, setThemeMode, setThemePalette } = renderAppearanceTab({ themeMode: 'light', isSystemDark: true });
 
     expect(screen.getByText('外观 / 主题')).toBeInTheDocument();
     expect(screen.getByText('使用浅色、深色，或匹配系统设置')).toBeInTheDocument();
@@ -93,19 +90,6 @@ describe('AppTab theme mode settings', () => {
     expect(selectedButton).toHaveAttribute('aria-checked', 'true');
     expect(unselectedButton).toHaveAttribute('data-selected', 'false');
     expect(unselectedButton).toHaveAttribute('aria-checked', 'false');
-
-    const zhButton = screen.getByRole('radio', { name: '中文' });
-    const enButton = screen.getByRole('radio', { name: 'English' });
-
-    expect(zhButton.className).toContain('study-shell-segmented-button');
-    expect(enButton.className).toContain('study-shell-segmented-button');
-    expect(enButton).toHaveAttribute('data-selected', 'true');
-    expect(enButton).toHaveAttribute('aria-checked', 'true');
-    expect(zhButton).toHaveAttribute('data-selected', 'false');
-
-    const languageRow = screen.getByText('settings:language.title').closest('div.group');
-    expect(languageRow).not.toBeNull();
-    expect(languageRow?.className).not.toContain('hover:bg-[color:var(--button-utility-hover)]');
 
     fireEvent.click(screen.getByRole('radio', { name: '深色' }));
 

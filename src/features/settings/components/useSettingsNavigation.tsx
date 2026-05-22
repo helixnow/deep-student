@@ -10,6 +10,7 @@ import {
   Plug,
   Robot,
   Shield,
+  SlidersHorizontal,
   Wrench,
 } from '@phosphor-icons/react';
 
@@ -35,7 +36,8 @@ export function useSettingsNavigation() {
       { value: 'models', icon: Flask, label: t('settings:tabs.model_assignment'), tourId: 'settings-tab-models' },
     ],
     [
-      { value: 'app', icon: Palette, label: t('settings:tabs.app') },
+      { value: 'general', icon: SlidersHorizontal, label: t('settings:tabs.general') },
+      { value: 'appearance', icon: Palette, label: t('settings:tabs.appearance') },
     ],
     [
       { value: 'mcp', icon: Plug, label: t('settings:tabs.mcp_tools') },
@@ -55,31 +57,31 @@ export function useSettingsNavigation() {
   const sidebarNavItems = useMemo(() => sidebarNavGroups.flat(), [sidebarNavGroups]);
 
   const settingsSearchIndex = useMemo<SettingsSearchIndexItem[]>(() => [
-    { tab: 'app', label: t('settings:appearance.theme.title'), keywords: ['theme', 'dark', 'light', 'appearance'] },
-    { tab: 'app', label: t('settings:appearance.font.title'), keywords: ['font', 'typeface'] },
-    { tab: 'app', label: t('settings:appearance.font.size_label'), keywords: ['font size'] },
-    { tab: 'app', label: t('settings:appearance.font.heading_label'), keywords: ['heading font'] },
-    { tab: 'app', label: t('settings:appearance.font.body_label'), keywords: ['body font'] },
-    { tab: 'app', label: t('settings:language.title'), keywords: ['language'] },
-    { tab: 'app', label: t('settings:appearance.sidebar.title'), keywords: ['sidebar', 'navigation'] },
-    { tab: 'app', label: t('settings:appearance.sidebar.position'), keywords: ['sidebar position'] },
+    { tab: 'appearance', label: t('settings:appearance.theme.title'), keywords: ['theme', 'dark', 'light', 'appearance'] },
+    { tab: 'appearance', label: t('settings:appearance.font.title'), keywords: ['font', 'typeface'] },
+    { tab: 'appearance', label: t('settings:appearance.font.size_label'), keywords: ['font size'] },
+    { tab: 'appearance', label: t('settings:appearance.font.heading_label'), keywords: ['heading font'] },
+    { tab: 'appearance', label: t('settings:appearance.font.body_label'), keywords: ['body font'] },
+    { tab: 'appearance', label: t('settings:appearance.sidebar.title'), keywords: ['sidebar', 'navigation'] },
+    { tab: 'appearance', label: t('settings:appearance.sidebar.position'), keywords: ['sidebar position'] },
+    { tab: 'general', label: t('settings:language.title'), keywords: ['language'] },
     {
-      tab: 'app',
+      tab: 'general',
       label: t('settings:voice_input.title'),
       keywords: ['voice input', 'dictation', 'asr', 'microphone', 'speech to text', '听写', '语音输入'],
     },
     {
-      tab: 'app',
+      tab: 'general',
       label: t('settings:voice_input.shortcut_title'),
       keywords: ['hotkey', 'shortcut', 'keyboard', 'press to talk', 'toggle dictation', '快捷键'],
     },
     {
-      tab: 'app',
+      tab: 'general',
       label: t('settings:voice_input.dictionary_title'),
       keywords: ['dictionary', 'vocabulary', 'pronunciation hints', '词典', '短语'],
     },
     {
-      tab: 'app',
+      tab: 'general',
       label: t('settings:voice_input.history_title'),
       keywords: ['history', 'recent dictation', 'transcript recovery', '历史记录', '转写记录'],
     },
