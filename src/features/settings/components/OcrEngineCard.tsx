@@ -254,7 +254,7 @@ export const OcrEngineCard: React.FC<OcrEngineCardProps> = ({ className, apiConf
               <div
                 key={engine.configId}
                 className={cn(
-                  "group flex items-center gap-2 py-1.5 px-1.5 rounded transition-all duration-200",
+                  "group flex items-center gap-2 py-1.5 px-1.5 rounded transition-colors duration-200",
                   engine.enabled ? "" : "opacity-50"
                 )}
               >

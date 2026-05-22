@@ -37,7 +37,7 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 
 const SettingSection = ({ title, description, children }: { title: string; description?: string; children: React.ReactNode }) => (
-  <div className="rounded-2xl border border-transparent ring-1 ring-border/40 bg-card/90 p-6 shadow-sm transition-shadow duration-300 hover:shadow-md">
+  <div className="rounded-2xl border border-transparent ring-1 ring-border/40 bg-card/90 p-6 shadow-sm">
     <div className="flex flex-col gap-3 mb-6 sm:flex-row sm:items-center sm:justify-between">
       <div className="space-y-1">
         <h2 className="m-0 text-2xl font-semibold text-[hsl(var(--card-foreground, 222.2 47.4% 11.2%))] dark:text-[hsl(var(--card-foreground, 210 40% 98%))]">{title}</h2>
@@ -95,7 +95,7 @@ const SelectDropdown = ({ value, onChange, options }: {
   <select
     value={value}
     onChange={(e) => onChange(e.target.value)}
-    className="rounded-lg border border-input bg-muted px-4 py-2 text-sm text-foreground transition-all duration-200 focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
+    className="rounded-lg border border-input bg-muted px-4 py-2 text-sm text-foreground transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-ring focus:border-transparent"
   >
     {options.map(option => (
       <option key={option.value} value={option.value}>

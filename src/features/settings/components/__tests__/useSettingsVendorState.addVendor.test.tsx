@@ -2,7 +2,7 @@ import { act, renderHook } from '@testing-library/react';
 import { describe, expect, it, vi } from 'vitest';
 
 import { useSettingsVendorState } from '../useSettingsVendorState';
-import type { ModelAssignments, VendorConfig } from '@/types';
+import type { ApiConfig, ModelAssignments, VendorConfig } from '@/types';
 
 const defaultAssignments: ModelAssignments = {
   model2_config_id: null,
@@ -61,5 +61,26 @@ describe('useSettingsVendorState add vendor flow', () => {
     expect(deps.upsertVendor).not.toHaveBeenCalled();
     expect(result.current.vendorModalOpen).toBe(true);
     expect(result.current.editingVendor).toBeNull();
+  });
+
+  it('builds new model drafts with the vendor api protocol inherited into runtime config', () => {
+    const vendor: VendorConfig = {
+      id: 'vendor-openai',
+      name: 'OpenAI Responses Vendor',
+      providerType: 'openai',
+      apiProtocol: 'openai_responses',
+      supportsOpenAIResponses: true,
+      baseUrl: 'https://api.openai.com/v1',
+      apiKey: '***',
+    };
+    const deps = createDeps({ vendors: [vendor], modelProfiles: [] });
+    const { result } = renderHook(() => useSettingsVendorState(deps));
+
+    act(() => {
+      result.current.handleOpenModelEditor(vendor);
+    });
+
+    expect((result.current.modelEditor?.api as ApiConfig | undefined)?.apiProtocol).toBe('openai_responses');
+    expect((result.current.modelEditor?.api as ApiConfig | undefined)?.supportsOpenAIResponses).toBe(true);
   });
 });

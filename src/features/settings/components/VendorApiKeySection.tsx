@@ -3,11 +3,10 @@
  * 通用供应商API密钥管理组件
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Trash } from '@phosphor-icons/react';
+import { Check, FloppyDisk, Spinner, Trash, WarningCircle } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { useDebounce } from '@/hooks/useDebounce';
 import type { VendorConfig } from '@/types';
 import { ApiKeyField } from './ApiKeyField';
 
@@ -17,6 +16,8 @@ interface VendorApiKeySectionProps {
   onClear: () => Promise<void> | void;
   showMessage?: (type: 'success' | 'error' | 'info', message: string) => void;
 }
+
+type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
 
 export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
   vendor,
@@ -30,12 +31,27 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
   const [saving, setSaving] = useState(false);
   const [maskedConfigured, setMaskedConfigured] = useState(false);
   const [confirmingClear, setConfirmingClear] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
 
-  // 防抖保存：用户停止输入 800ms 后才触发保存
-  const debouncedApiKey = useDebounce(apiKey, 800);
-  // 用于跳过初始化时的保存
-  const isInitializedRef = useRef(false);
   const lastSavedKeyRef = useRef('');
+  const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const lastVendorIdRef = useRef(vendor.id);
+
+  const clearStatusTimer = () => {
+    if (statusTimerRef.current) {
+      clearTimeout(statusTimerRef.current);
+      statusTimerRef.current = null;
+    }
+  };
+
+  const scheduleStatusReset = (nextStatus: 'saved' | 'error', timeoutMs = 2200) => {
+    clearStatusTimer();
+    setSaveStatus(nextStatus);
+    statusTimerRef.current = setTimeout(() => {
+      setSaveStatus('idle');
+      statusTimerRef.current = null;
+    }, timeoutMs);
+  };
 
   const isMaskedKey = (value: string | undefined | null) => {
     if (!value) return false;
@@ -45,72 +61,89 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
     return trimmed.split('').every(c => c === '*');
   };
 
-  // 初始化：如果 vendor 有密钥则回填；若为掩码（***）则显示“已配置”但不回填明文
   useEffect(() => {
+    const vendorChanged = lastVendorIdRef.current !== vendor.id;
+    lastVendorIdRef.current = vendor.id;
+
     const masked = isMaskedKey(vendor.apiKey);
+    const nextApiKey = masked ? '' : vendor.apiKey?.trim() ?? '';
+    const currentDraft = apiKey.trim();
+    const shouldPreserveDraft = !vendorChanged && (
+      saveStatus === 'dirty' ||
+      (masked && currentDraft.length > 0 && currentDraft === lastSavedKeyRef.current)
+    );
+
     setMaskedConfigured(masked);
-    if (vendor.apiKey && !masked) {
-      setApiKey(vendor.apiKey);
-      lastSavedKeyRef.current = vendor.apiKey;
-    } else {
-      // 掩码或空：不展示明文
-      setApiKey('');
-      lastSavedKeyRef.current = '';
-    }
     setConfirmingClear(false);
+
+    if (shouldPreserveDraft) {
+      return;
+    }
+
+    if (nextApiKey) {
+      setApiKey(nextApiKey);
+      lastSavedKeyRef.current = nextApiKey;
+      setMaskedConfigured(false);
+    } else {
+      setApiKey('');
+      if (vendorChanged || !masked) {
+        lastSavedKeyRef.current = '';
+      }
+    }
+
     setShowApiKey(false);
-    // 重置初始化标记，并在下一个 tick 允许自动保存。
-    // 不能延迟过久（例如 900ms），否则用户首次输入后若刚好在防抖窗口内结束，
-    // 会被误判为“初始化阶段”而跳过保存，导致配置未持久化。
-    isInitializedRef.current = false;
-    const timer = setTimeout(() => {
-      isInitializedRef.current = true;
-    }, 0);
-    return () => clearTimeout(timer);
+    setSaveStatus('idle');
+    clearStatusTimer();
   }, [vendor.apiKey, vendor.id]);
 
-  // 防抖后自动保存
   useEffect(() => {
-    // 跳过初始化阶段
-    if (!isInitializedRef.current) {
-      return;
-    }
-    // 防止旧的防抖值在用户已继续编辑或刚执行清除后被回写
-    if (debouncedApiKey !== apiKey) {
-      return;
-    }
-    // 如果值为空或与上次保存的值相同，跳过
-    if (!debouncedApiKey.trim() || debouncedApiKey === lastSavedKeyRef.current) {
-      return;
-    }
-
-    const saveApiKey = async () => {
-      try {
-        setSaving(true);
-        await onSave(debouncedApiKey.trim());
-        lastSavedKeyRef.current = debouncedApiKey.trim();
-      } catch (error: unknown) {
-        console.error('保存API密钥失败:', error);
-        if (showMessage) {
-          showMessage('error', t('settings:vendor_panel.api_key_save_failed'));
-        }
-      } finally {
-        setSaving(false);
-      }
+    return () => {
+      clearStatusTimer();
     };
+  }, []);
 
-    saveApiKey();
-  }, [apiKey, debouncedApiKey, onSave, showMessage, t]);
+  const handleSaveApiKey = async () => {
+    const trimmed = apiKey.trim();
+    if (!trimmed || trimmed === lastSavedKeyRef.current) {
+      return;
+    }
+
+    try {
+      setSaving(true);
+      clearStatusTimer();
+      setSaveStatus('saving');
+      await onSave(trimmed);
+      lastSavedKeyRef.current = trimmed;
+      setMaskedConfigured(false);
+      scheduleStatusReset('saved');
+      if (showMessage) {
+        showMessage('success', t('settings:vendor_panel.api_key_saved'));
+      }
+    } catch (error: unknown) {
+      console.error('保存API密钥失败:', error);
+      scheduleStatusReset('error', 3200);
+      if (showMessage) {
+        showMessage('error', t('settings:vendor_panel.api_key_save_failed'));
+      }
+    } finally {
+      setSaving(false);
+    }
+  };
 
   const handleApiKeyChange = (value: string) => {
+    const trimmed = value.trim();
     setApiKey(value);
     setConfirmingClear(false);
-    if (!value.trim()) {
+    clearStatusTimer();
+
+    if (!trimmed) {
       setShowApiKey(false);
     }
     if (maskedConfigured) {
       setMaskedConfigured(false);
     }
+
+    setSaveStatus(trimmed && trimmed !== lastSavedKeyRef.current ? 'dirty' : 'idle');
   };
 
   const handleClearApiKey = async () => {
@@ -123,10 +156,12 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
       setSaving(true);
       await onClear();
       setApiKey('');
-      lastSavedKeyRef.current = ''; // 重置保存记录
+      lastSavedKeyRef.current = '';
       setMaskedConfigured(false);
       setConfirmingClear(false);
       setShowApiKey(false);
+      clearStatusTimer();
+      setSaveStatus('idle');
       if (showMessage) {
         showMessage('success', t('settings:vendor_panel.api_key_cleared'));
       }
@@ -141,31 +176,79 @@ export const VendorApiKeySection: React.FC<VendorApiKeySectionProps> = ({
   };
 
   const canRevealApiKey = apiKey.trim().length > 0;
+  const canSave = apiKey.trim().length > 0 && apiKey.trim() !== lastSavedKeyRef.current && !saving;
+  const canClearStoredKey = saving || maskedConfigured || lastSavedKeyRef.current.length > 0;
+  const statusText =
+    saveStatus === 'saving'
+      ? t('settings:vendor_panel.api_key_saving', { defaultValue: '正在保存…' })
+      : saveStatus === 'saved'
+        ? t('settings:vendor_panel.api_key_saved')
+        : saveStatus === 'error'
+          ? t('settings:vendor_panel.api_key_save_failed')
+          : saveStatus === 'dirty'
+            ? t('settings:vendor_panel.api_key_unsaved', { defaultValue: '有未保存的更改' })
+            : maskedConfigured && !apiKey.trim()
+              ? t('settings:vendor_panel.api_key_securely_stored', { defaultValue: '已安全保存，下次无需重新输入' })
+              : t('settings:vendor_panel.api_key_manual_save_hint', { defaultValue: '粘贴或输入后，点击保存' });
+  const statusToneClassName =
+    saveStatus === 'error'
+      ? 'text-destructive'
+      : saveStatus === 'saved'
+        ? 'text-green-600 dark:text-green-400'
+        : saveStatus === 'dirty'
+          ? 'text-amber-600 dark:text-amber-400'
+          : 'text-muted-foreground';
 
   return (
     <div className="space-y-3">
       <ApiKeyField
         value={apiKey}
         onChange={e => handleApiKeyChange(e.target.value)}
+        onKeyDown={e => {
+          if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+            e.preventDefault();
+            void handleSaveApiKey();
+          }
+        }}
         placeholder={
           maskedConfigured
             ? t('settings:vendor_panel.api_key_configured')
             : t('settings:vendor_panel.api_key_placeholder')
         }
         inputClassName="font-mono"
-        disabled={saving}
         revealed={showApiKey}
         canReveal={canRevealApiKey}
         onToggle={() => setShowApiKey(v => !v)}
         showLabel={t('settings:vendor_panel.show_api_key')}
         hideLabel={t('settings:vendor_panel.hide_api_key')}
       />
+      <div
+        className={['flex items-center gap-2 text-xs transition-colors', statusToneClassName].join(' ')}
+        aria-live="polite"
+      >
+        {saveStatus === 'saving' && <Spinner className="h-3.5 w-3.5 animate-spin" />}
+        {saveStatus === 'saved' && <Check className="h-3.5 w-3.5" />}
+        {saveStatus === 'error' && <WarningCircle className="h-3.5 w-3.5" />}
+        <span>{statusText}</span>
+      </div>
       <div className="flex flex-wrap gap-2 pt-1">
+        <NotionButton
+          variant="primary"
+          size="sm"
+          onClick={() => {
+            void handleSaveApiKey();
+          }}
+          disabled={!canSave}
+          title={t('common:actions.save')}
+        >
+          {saveStatus === 'saving' ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <FloppyDisk className="h-3.5 w-3.5" />}
+          {t('common:actions.save')}
+        </NotionButton>
         <NotionButton
           variant="danger"
           size="sm"
           onClick={handleClearApiKey}
-          disabled={saving || (!apiKey && !maskedConfigured)}
+          disabled={!canClearStoredKey}
           title={t('settings:vendor_panel.clear_api_key_title')}
         >
           <Trash className="h-3.5 w-3.5" />

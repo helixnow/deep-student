@@ -9,8 +9,13 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { Label } from '@/components/ui/shad/Label';
 import { SecurePasswordInput } from '@/components/SecurePasswordInput';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
-import type { VendorConfig } from '@/types';
-import { inferProviderTypeFromBaseUrl } from './modelConverters';
+import type { ApiProtocol, VendorConfig } from '@/types';
+import {
+  defaultApiProtocolForProvider,
+  getAllowedApiProtocolsForProviderType,
+  inferProviderTypeFromBaseUrl,
+  normalizeApiProtocolForProviderType,
+} from './modelConverters';
 
 interface VendorConfigModalProps {
   open: boolean;
@@ -30,6 +35,8 @@ const defaultVendor: VendorConfig = {
   id: '',
   name: '',
   providerType: 'custom',
+  apiProtocol: 'openai_chat_completions',
+  supportsOpenAIResponses: false,
   baseUrl: '',
   apiKey: '',
   headers: {},
@@ -58,6 +65,7 @@ const providerTypeOptions = [
   { value: 'ollama', labelKey: 'settings:vendor_modal.providers.ollama', defaultLabel: 'Ollama' },
 ];
 
+
 export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigModalProps>(({ open, vendor, onClose, onSave, embeddedMode = false }, ref) => {
   const { t } = useTranslation(['settings', 'common']);
   const [formData, setFormData] = useState<VendorConfig>(vendor ?? defaultVendor);
@@ -66,12 +74,24 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
   const [forceClearApiKey, setForceClearApiKey] = useState(false);
   const isEditing = Boolean(vendor && vendor.id);
 
+  const effectiveProviderType =
+    ((!formData.providerType || formData.providerType === 'custom') && formData.baseUrl.trim()
+      ? inferProviderTypeFromBaseUrl(formData.baseUrl)
+      : formData.providerType) ?? formData.providerType;
+  const protocolOptions = getAllowedApiProtocolsForProviderType(effectiveProviderType).map(protocol => ({
+    value: protocol,
+    label: t(`settings:vendor_modal.protocols.${protocol}`, { defaultValue: protocol }),
+  }));
+
   useEffect(() => {
     if (vendor) {
       // 如果是掩码的API密钥，清空它以便用户重新输入真实密钥
       const isMaskedKey = vendor.apiKey === '***' || /^\*+$/.test(vendor.apiKey);
       setFormData({
         ...vendor,
+        apiProtocol: normalizeApiProtocolForProviderType(vendor.apiProtocol, vendor.providerType, {
+          baseUrl: vendor.baseUrl,
+        }),
         apiKey: isMaskedKey ? '' : vendor.apiKey,
       });
       setHeadersInput(
@@ -80,7 +100,12 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
           : ''
       );
     } else {
-      setFormData(defaultVendor);
+      setFormData({
+        ...defaultVendor,
+        apiProtocol: defaultApiProtocolForProvider(defaultVendor.providerType, {
+          baseUrl: defaultVendor.baseUrl,
+        }),
+      });
       setHeadersInput('');
     }
     setError(null);
@@ -125,6 +150,10 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
     const payload: VendorConfig = {
       ...formData,
       providerType,
+      apiProtocol: normalizeApiProtocolForProviderType(formData.apiProtocol, providerType, {
+        baseUrl: formData.baseUrl,
+        supportsOpenAIResponses: formData.supportsOpenAIResponses,
+      }),
       apiKey: finalApiKey,
       headers: parsedHeaders,
       id: formData.id || '',
@@ -141,7 +170,25 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
 
   const nameInputId = 'vendor-config-name';
   const providerTypeSelectId = 'vendor-config-provider-type';
+  const protocolSelectId = 'vendor-config-protocol';
   const baseUrlInputId = 'vendor-config-base-url';
+
+  useEffect(() => {
+    setFormData(prev => {
+      const nextProviderType =
+        ((!prev.providerType || prev.providerType === 'custom') && prev.baseUrl.trim()
+          ? inferProviderTypeFromBaseUrl(prev.baseUrl)
+          : prev.providerType) ?? prev.providerType;
+      const nextProtocol = normalizeApiProtocolForProviderType(prev.apiProtocol, nextProviderType, {
+        baseUrl: prev.baseUrl,
+        supportsOpenAIResponses: prev.supportsOpenAIResponses,
+      });
+      if (nextProtocol === prev.apiProtocol) {
+        return prev;
+      }
+      return { ...prev, apiProtocol: nextProtocol };
+    });
+  }, [formData.providerType, formData.baseUrl]);
 
   // 表单内容
   const formContent = (
@@ -176,6 +223,52 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
           </SelectContent>
         </Select>
       </div>
+      <div>
+        <Label htmlFor={protocolSelectId}>{t('settings:vendor_modal.protocol_label')}</Label>
+        <Select
+          value={formData.apiProtocol ?? defaultApiProtocolForProvider(effectiveProviderType, { baseUrl: formData.baseUrl, supportsOpenAIResponses: formData.supportsOpenAIResponses })}
+          onValueChange={(val) =>
+            setFormData(prev => ({
+              ...prev,
+              apiProtocol: normalizeApiProtocolForProviderType(val as ApiProtocol, effectiveProviderType, {
+                baseUrl: prev.baseUrl,
+                supportsOpenAIResponses: prev.supportsOpenAIResponses,
+              }),
+            }))
+          }
+        >
+          <SelectTrigger className="mt-2">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {protocolOptions.map(option => (
+              <SelectItem key={option.value} value={option.value}>
+                {option.label}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      {effectiveProviderType !== 'anthropic' && effectiveProviderType !== 'google' && effectiveProviderType !== 'gemini' && (
+        <label className="mt-1 flex items-start gap-3 rounded-md border border-border/60 px-3 py-2 text-sm">
+          <input
+            type="checkbox"
+            aria-label="Supports OpenAI Responses"
+            checked={!!formData.supportsOpenAIResponses}
+            onChange={e =>
+              setFormData(prev => ({
+                ...prev,
+                supportsOpenAIResponses: e.target.checked,
+                apiProtocol: defaultApiProtocolForProvider(effectiveProviderType, {
+                  baseUrl: prev.baseUrl,
+                  supportsOpenAIResponses: e.target.checked,
+                }),
+              }))
+            }
+          />
+          <span className="leading-5 text-muted-foreground">Supports OpenAI Responses</span>
+        </label>
+      )}
       <div>
         <Label htmlFor={baseUrlInputId} className="inline-flex items-center gap-1.5">
           <LinkSimple className="h-3.5 w-3.5" aria-hidden="true" />

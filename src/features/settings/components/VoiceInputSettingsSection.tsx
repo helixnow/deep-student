@@ -358,9 +358,10 @@ function HistoryEntryCard({
 
 interface VoiceInputSettingsSectionProps {
   assignedModel: VoiceInputAssignedModel;
+  embedded?: boolean;
 }
 
-export function VoiceInputSettingsSection({ assignedModel }: VoiceInputSettingsSectionProps) {
+export function VoiceInputSettingsSection({ assignedModel, embedded = false }: VoiceInputSettingsSectionProps) {
   const { t } = useTranslation(['settings', 'common']);
   const [config, setConfig] = useState<VoiceInputConfig>(DEFAULT_VOICE_INPUT_CONFIG);
   const [loading, setLoading] = useState(true);
@@ -547,7 +548,7 @@ export function VoiceInputSettingsSection({ assignedModel }: VoiceInputSettingsS
 
   if (loading) {
     return (
-      <section className="mt-8">
+      <section className={embedded ? undefined : 'mt-8'}>
         <GroupTitle
           title={t('settings:voice_input.title', { defaultValue: 'Dictation' })}
         />
@@ -572,7 +573,7 @@ export function VoiceInputSettingsSection({ assignedModel }: VoiceInputSettingsS
   const assignedProvider = assignedModel.providerLabel ?? null;
 
   return (
-    <section className="mt-8">
+    <section className={embedded ? undefined : 'mt-8'}>
       <GroupTitle
         title={t('settings:voice_input.title', { defaultValue: 'Dictation' })}
         description={t('settings:voice_input.description_short', {

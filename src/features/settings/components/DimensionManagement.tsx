@@ -429,7 +429,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                   <Badge
                     key={preset}
                     variant={isSelected ? 'default' : 'outline'}
-                    className={`cursor-pointer text-[10px] px-1.5 py-0.5 h-5 transition-all ${exists ? 'opacity-30 line-through cursor-not-allowed' : 'hover:bg-primary/10 active:scale-95'}`}
+                    className={`cursor-pointer text-[10px] px-1.5 py-0.5 h-5 transition-colors ${exists ? 'opacity-30 line-through cursor-not-allowed' : 'hover:bg-primary/10 active:scale-95'}`}
                     onClick={() => !exists && setNewDimension(String(preset))}
                   >
                     {preset}
@@ -530,7 +530,7 @@ export const DimensionManagement: React.FC<DimensionManagementProps> = ({
                       
                       return (
                         <React.Fragment key={rowId}>
-                          <TableRow className={cn("group h-12 transition-colors", isExpanded && "bg-muted/40 hover:bg-[var(--interactive-hover)]")}>
+                          <TableRow className={cn("group h-12 transition-colors hover:bg-[var(--interactive-hover)]", isExpanded && "bg-muted/40")}>
                             <TableCell className="font-mono py-1">
                               <div className="flex items-center gap-1.5">
                                 <span className="text-sm font-medium">{dim.dimension}</span>

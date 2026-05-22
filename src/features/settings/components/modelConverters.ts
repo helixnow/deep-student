@@ -3,7 +3,119 @@
  * 从 Settings.tsx 提取
  */
 
-import { ModelProfile, VendorConfig, ApiConfig } from '@/types';
+import { ModelProfile, VendorConfig, ApiConfig, type ApiProtocol, type ModelAdapter } from '@/types';
+import {
+  getAllowedProtocolsForProviderType,
+  resolvePreferredProtocol,
+} from '@/utils/providerProtocolRegistry';
+
+const OPENAI_COMPATIBLE_PROTOCOLS: ApiProtocol[] = ['openai_chat_completions', 'openai_responses'];
+
+export const defaultOpenAiCompatibleProtocol = (args: {
+  providerType?: string | null;
+  adapter?: string | null;
+  model?: string | null;
+  baseUrl?: string | null;
+  supportsOpenAIResponses?: boolean | null;
+}): ApiProtocol =>
+  resolvePreferredProtocol({
+    providerType: args.providerType,
+    adapter: args.adapter,
+    baseUrl: args.baseUrl,
+    supportsOpenAIResponses: args.supportsOpenAIResponses,
+  });
+
+export const getAllowedApiProtocolsForProviderType = (providerType?: string | null): ApiProtocol[] =>
+  getAllowedProtocolsForProviderType(providerType);
+
+export const defaultApiProtocolForProvider = (
+  providerType?: string | null,
+  options?: { model?: string | null; baseUrl?: string | null; adapter?: string | null; supportsOpenAIResponses?: boolean | null }
+): ApiProtocol => {
+  const allowed = getAllowedApiProtocolsForProviderType(providerType);
+  const preferred = defaultOpenAiCompatibleProtocol({
+    providerType,
+    baseUrl: options?.baseUrl,
+    model: options?.model,
+    adapter: options?.adapter,
+    supportsOpenAIResponses: options?.supportsOpenAIResponses,
+  });
+  if (allowed.includes(preferred)) {
+    return preferred;
+  }
+  return allowed[0] ?? 'openai_chat_completions';
+};
+
+export const normalizeApiProtocolForProviderType = (
+  explicitProtocol?: ApiProtocol | null,
+  providerType?: string | null,
+  options?: { model?: string | null; baseUrl?: string | null; adapter?: string | null; supportsOpenAIResponses?: boolean | null }
+): ApiProtocol => {
+  const allowed = getAllowedApiProtocolsForProviderType(providerType);
+  if (explicitProtocol && allowed.includes(explicitProtocol)) {
+    return explicitProtocol;
+  }
+  return defaultApiProtocolForProvider(providerType, options);
+};
+
+export const getAllowedApiProtocolsForModelAdapter = (adapter?: string | null): ApiProtocol[] => {
+  const normalized = (adapter ?? '').toLowerCase() as ModelAdapter | '';
+  if (normalized === 'anthropic') return ['anthropic_messages'];
+  if (normalized === 'google') return ['google_generate_content'];
+  return OPENAI_COMPATIBLE_PROTOCOLS;
+};
+
+export const defaultApiProtocolForModelAdapter = (
+  adapter?: string | null,
+  options?: { providerType?: string | null; model?: string | null; baseUrl?: string | null; supportsOpenAIResponses?: boolean | null }
+): ApiProtocol => {
+  const allowed = getAllowedApiProtocolsForModelAdapter(adapter);
+  const preferred = defaultOpenAiCompatibleProtocol({
+    adapter,
+    providerType: options?.providerType,
+    model: options?.model,
+    baseUrl: options?.baseUrl,
+    supportsOpenAIResponses: options?.supportsOpenAIResponses,
+  });
+  if (allowed.includes(preferred)) {
+    return preferred;
+  }
+  return allowed[0] ?? 'openai_chat_completions';
+};
+
+export const normalizeApiProtocolForModelAdapter = (
+  explicitProtocol?: ApiProtocol | null,
+  adapter?: string | null,
+  providerType?: string | null,
+  options?: { model?: string | null; baseUrl?: string | null; supportsOpenAIResponses?: boolean | null }
+): ApiProtocol => {
+  const allowed = getAllowedApiProtocolsForModelAdapter(adapter);
+  if (explicitProtocol && allowed.includes(explicitProtocol)) {
+    return explicitProtocol;
+  }
+  const providerDefault = normalizeApiProtocolForProviderType(explicitProtocol, providerType, {
+    model: options?.model,
+    baseUrl: options?.baseUrl,
+    adapter,
+    supportsOpenAIResponses: options?.supportsOpenAIResponses,
+  });
+  if (allowed.includes(providerDefault)) {
+    return providerDefault;
+  }
+  return defaultApiProtocolForModelAdapter(adapter, {
+    providerType,
+    model: options?.model,
+    baseUrl: options?.baseUrl,
+    supportsOpenAIResponses: options?.supportsOpenAIResponses,
+  });
+};
+
+const resolveApiProtocol = (
+  explicitProtocol?: ApiProtocol | null,
+  providerType?: string | null,
+  adapter?: string | null,
+  options?: { model?: string | null; baseUrl?: string | null; supportsOpenAIResponses?: boolean | null }
+): ApiProtocol => normalizeApiProtocolForModelAdapter(explicitProtocol, adapter, providerType, options);
 
 const isLegacyOpenAiAdapter = (adapter?: string | null) => {
   const normalized = (adapter ?? '').toLowerCase();
@@ -52,6 +164,12 @@ export const convertProfileToApiConfig = (profile: ModelProfile, vendor: VendorC
     vendorName: vendor.name,
     providerType: vendor.providerType,
     providerScope,
+    apiProtocol: resolveApiProtocol(profile.apiProtocol ?? vendor.apiProtocol, vendor.providerType, modelAdapter, {
+      model: profile.model,
+      baseUrl: vendor.baseUrl,
+      supportsOpenAIResponses: vendor.supportsOpenAIResponses,
+    }),
+    supportsOpenAIResponses: vendor.supportsOpenAIResponses,
     apiKey: vendor.apiKey ?? '',
     baseUrl: vendor.baseUrl,
     model: profile.model,
@@ -100,7 +218,13 @@ export const convertApiConfigToProfile = (api: ApiConfig, vendorId: string): Mod
     label: api.name,
     model: api.model,
     providerScope,
+    apiProtocol: resolveApiProtocol(api.apiProtocol, api.providerType, modelAdapter, {
+      model: api.model,
+      baseUrl: api.baseUrl,
+      supportsOpenAIResponses: api.supportsOpenAIResponses,
+    }),
     modelAdapter,
+    supportsOpenAIResponses: api.supportsOpenAIResponses,
     isMultimodal: api.isMultimodal,
     isReasoning: api.isReasoning,
     isEmbedding: api.isEmbedding,

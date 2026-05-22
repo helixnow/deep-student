@@ -41,6 +41,7 @@ describe('settings modelConverters DeepSeek adapter normalization', () => {
     const api = convertProfileToApiConfig(baseProfile, baseVendor);
 
     expect(api.modelAdapter).toBe('deepseek');
+    expect(api.apiProtocol).toBe('openai_chat_completions');
     expect(api.providerScope).toBe('deepseek');
     expect(api.reasoningEffort).toBe('high');
     expect(api.supportsReasoning).toBe(true);
@@ -75,14 +76,126 @@ describe('settings modelConverters DeepSeek adapter normalization', () => {
     const api: ApiConfig = {
       ...convertProfileToApiConfig(baseProfile, baseVendor),
       modelAdapter: 'openai',
+      apiProtocol: 'openai_responses',
     };
 
     const profile = convertApiConfigToProfile(api, baseVendor.id);
 
     expect(profile.modelAdapter).toBe('deepseek');
+    expect(profile.apiProtocol).toBe('openai_responses');
     expect(profile.providerScope).toBe('deepseek');
     expect(profile.reasoningEffort).toBe('high');
     expect(profile.supportsReasoning).toBe(true);
+  });
+
+  it('inherits explicit vendor api protocol into runtime api config', () => {
+    const responsesVendor: VendorConfig = {
+      ...baseVendor,
+      providerType: 'openai',
+      apiProtocol: 'openai_responses',
+      baseUrl: 'https://api.openai.com/v1',
+    };
+    const profile: ModelProfile = {
+      ...baseProfile,
+      vendorId: responsesVendor.id,
+      model: 'gpt-5.2',
+      modelAdapter: 'general',
+      providerScope: 'openai',
+      apiProtocol: undefined,
+    };
+
+    const api = convertProfileToApiConfig(profile, responsesVendor);
+
+    expect(api.apiProtocol).toBe('openai_responses');
+  });
+
+  it('defaults official OpenAI vendors to responses when protocol is absent', () => {
+    const openAiVendor: VendorConfig = {
+      ...baseVendor,
+      providerType: 'openai',
+      apiProtocol: undefined,
+      baseUrl: 'https://api.openai.com/v1',
+    };
+    const profile: ModelProfile = {
+      ...baseProfile,
+      vendorId: openAiVendor.id,
+      model: 'gpt-4o-mini',
+      modelAdapter: 'general',
+      providerScope: 'openai',
+      apiProtocol: undefined,
+    };
+
+    const api = convertProfileToApiConfig(profile, openAiVendor);
+
+    expect(api.apiProtocol).toBe('openai_responses');
+  });
+
+  it('defaults third-party vendors with declared responses support to responses when protocol is absent', () => {
+    const proxyVendor: VendorConfig = {
+      ...baseVendor,
+      id: 'vendor-proxy',
+      name: 'ProxyAI',
+      providerType: 'custom',
+      apiProtocol: undefined,
+      supportsOpenAIResponses: true,
+      baseUrl: 'https://proxy.example.com/v1',
+    };
+    const profile: ModelProfile = {
+      ...baseProfile,
+      vendorId: proxyVendor.id,
+      model: 'gpt-4o-mini',
+      modelAdapter: 'general',
+      providerScope: 'custom',
+      apiProtocol: undefined,
+    };
+
+    const api = convertProfileToApiConfig(profile, proxyVendor);
+
+    expect(api.apiProtocol).toBe('openai_responses');
+  });
+
+  it('defaults official openai-compatible configs to responses when protocol is absent', () => {
+    const openAiVendor: VendorConfig = {
+      ...baseVendor,
+      providerType: 'openai',
+      apiProtocol: undefined,
+      baseUrl: 'https://api.openai.com/v1',
+    };
+    const profile: ModelProfile = {
+      ...baseProfile,
+      vendorId: openAiVendor.id,
+      model: 'gpt-4o-mini',
+      modelAdapter: 'general',
+      providerScope: 'openai',
+      apiProtocol: undefined,
+    };
+
+    const api = convertProfileToApiConfig(profile, openAiVendor);
+
+    expect(api.apiProtocol).toBe('openai_responses');
+  });
+
+  it('keeps generic third-party openai-compatible vendors on chat completions by default without responses support', () => {
+    const proxyVendor: VendorConfig = {
+      ...baseVendor,
+      id: 'vendor-generic-proxy',
+      name: 'Generic Proxy',
+      providerType: 'custom',
+      apiProtocol: undefined,
+      baseUrl: 'https://proxy.example.com/v1',
+    };
+    const profile: ModelProfile = {
+      ...baseProfile,
+      vendorId: proxyVendor.id,
+      model: 'gpt-4o-mini',
+      modelAdapter: 'general',
+      providerScope: 'custom',
+      apiProtocol: undefined,
+    };
+
+    const api = convertProfileToApiConfig(profile, proxyVendor);
+
+    expect(api.apiProtocol).toBe('openai_chat_completions');
   });
 
   it('round-trips DeepSeek context window metadata through model profile conversion', () => {

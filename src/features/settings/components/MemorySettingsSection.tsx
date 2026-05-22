@@ -9,10 +9,10 @@ import { Plus, Check, CircleNotch } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { AppSelect } from '@/components/ui/app-menu';
 import { Input } from '@/components/ui/shad/Input';
-import { Switch } from '@/components/ui/shad/Switch';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { cn } from '@/lib/utils';
+import { SettingRow as SRow, SwitchRow } from './settingsTabPrimitives';
 import {
   getMemoryConfig,
   setMemoryRootFolder,
@@ -32,30 +32,8 @@ const GroupTitle = ({ title }: { title: string }) => (
   </div>
 );
 
-// 设置行
-const SettingRow = ({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description?: string;
-  children: React.ReactNode;
-}) => (
-  <div className="group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
-    <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
-      <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
-      {description && (
-        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
-          {description}
-        </p>
-      )}
-    </div>
-    <div className="flex-shrink-0">
-      {children}
-    </div>
-  </div>
-);
+// 设置行（使用共享 primitives）
+const SettingRow = SRow;
 
 interface MemorySettingsSectionProps {
   embedded?: boolean;
@@ -177,19 +155,19 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
     }
   }, [t]);
 
-  const handleTogglePrivacyMode = useCallback(async (enabled: boolean) => {
+  const handleToggleMemory = useCallback(async (enabled: boolean) => {
     try {
       setSaving(true);
-      await setMemoryPrivacyMode(enabled);
-      setConfig((prev) => (prev ? { ...prev, privacyMode: enabled } : prev));
+      await setMemoryPrivacyMode(!enabled);
+      setConfig((prev) => (prev ? { ...prev, privacyMode: !enabled } : prev));
       showGlobalNotification(
         'success',
         enabled
-          ? t('settings:memory.privacyModeEnabled')
-          : t('settings:memory.privacyModeDisabled')
+          ? t('settings:memory.memoryEnabledToast')
+          : t('settings:memory.memoryDisabledToast')
       );
     } catch (error: unknown) {
-      console.error('更新记忆隐私模式失败:', error);
+      console.error('切换记忆功能失败:', error);
       showGlobalNotification('error', getErrorMessage(error));
     } finally {
       setSaving(false);
@@ -199,7 +177,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
   if (loading) {
     return (
       <div>
-        <GroupTitle title={t('settings:memory.title')} />
+      {!embedded && <GroupTitle title={t('settings:memory.title')} />}
         <div className="flex items-center justify-center py-6">
           <CircleNotch size={20} className="animate-spin text-muted-foreground" />
         </div>
@@ -208,29 +186,39 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
   }
 
   const isConfigured = !!config?.memoryRootFolderId;
+  const isMemoryOn = !config?.privacyMode;
 
   return (
     <div>
-      <GroupTitle title={t('settings:memory.title')} />
+      {!embedded && <GroupTitle title={t('settings:memory.title')} />}
       <div className="space-y-px">
         {/* 配置状态 */}
         <div className="group py-2.5 px-1 rounded">
           <div className="flex items-center gap-2">
             <span className={cn(
               "w-1.5 h-1.5 rounded-full flex-shrink-0",
-              isConfigured ? "bg-emerald-500" : "bg-amber-500/70"
+              !isMemoryOn ? "bg-muted-foreground/40" : isConfigured ? "bg-emerald-500" : "bg-amber-500/70"
             )} />
             <span className={cn(
               "text-sm",
-              isConfigured ? "text-foreground/80" : "text-muted-foreground/60"
+              !isMemoryOn ? "text-muted-foreground/50" : isConfigured ? "text-foreground/80" : "text-muted-foreground/60"
             )}>
-              {isConfigured ? t('settings:memory.configured') : t('settings:memory.notConfigured')}
+              {!isMemoryOn ? t('settings:memory.disabled') : isConfigured ? t('settings:memory.configured') : t('settings:memory.notConfigured')}
             </span>
           </div>
           <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-1 ml-3.5">
             {t('settings:memory.description')}
           </p>
         </div>
+
+        {/* 记忆功能开关 */}
+        <SwitchRow
+          title={t('settings:memory.memoryEnabled')}
+          description={t('settings:memory.memoryEnabledDesc')}
+          checked={!config?.privacyMode}
+          onCheckedChange={(enabled) => handleToggleMemory(enabled)}
+          disabled={saving}
+        />
 
         {/* 根文件夹选择 */}
         <SettingRow
@@ -292,20 +280,17 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
                   <Check size={14} />
                 )}
               </NotionButton>
-            </div>
+      </div>
           </div>
         )}
 
-        <SettingRow
+        <SwitchRow
           title={t('settings:memory.autoSubfolders', '自动创建子文件夹')}
           description={t('settings:memory.autoSubfoldersDesc', '写入记忆时，自动按分类路径创建子文件夹')}
-        >
-          <Switch
-            checked={!!config?.autoCreateSubfolders}
-            onCheckedChange={handleToggleAutoSubfolders}
-            disabled={saving}
-          />
-        </SettingRow>
+          checked={!!config?.autoCreateSubfolders}
+          onCheckedChange={handleToggleAutoSubfolders}
+          disabled={saving}
+        />
 
         <SettingRow
           title={t('settings:memory.defaultCategory', '默认分类')}
@@ -327,17 +312,7 @@ export const MemorySettingsSection: React.FC<MemorySettingsSectionProps> = ({
           />
         </SettingRow>
 
-        <SettingRow
-          title={t('settings:memory.privacyMode')}
-          description={t('settings:memory.privacyModeDesc')}
-        >
-          <Switch
-            checked={!!config?.privacyMode}
-            onCheckedChange={handleTogglePrivacyMode}
-            disabled={saving}
-          />
-        </SettingRow>
-      </div>
+       </div>
     </div>
   );
 };
