@@ -28,6 +28,27 @@ describe('apiCapabilityEngine vision inference', () => {
     expect(caps.supportsThinkingTokens).toBe(true);
   });
 
+  it('treats Gemini 3.5 Flash as reasoning-capable with thinking tokens', () => {
+    const caps = inferApiCapabilities({ id: 'gemini-3.5-flash' });
+    expect(caps.vision).toBe(true);
+    expect(caps.functionCalling).toBe(true);
+    expect(caps.supportsThinkingTokens).toBe(true);
+  });
+
+  it('treats Gemini 3.1 Pro Preview as reasoning-capable with thinking tokens', () => {
+    const caps = inferApiCapabilities({ id: 'gemini-3.1-pro-preview' });
+    expect(caps.vision).toBe(true);
+    expect(caps.functionCalling).toBe(true);
+    expect(caps.supportsThinkingTokens).toBe(true);
+  });
+
+  it('keeps Gemini 3.5 Flash present in the registry lookup', () => {
+    const record = findModelRecordById('gemini-3.5-flash', { providerScope: 'gemini' });
+    expect(record?.model_id).toBe('gemini-3.5-flash');
+    expect(record?.capabilities.reasoning).toBe(true);
+    expect(record?.capabilities.function_calling).toBe(true);
+  });
+
   it('prefers SiliconFlow scoped Qwen3.5 records for provider model ids', () => {
     const record = findModelRecordById('Qwen/Qwen3.5-32B', { providerScope: 'siliconflow' });
     expect(record?.provider_scope).toBe('siliconflow');

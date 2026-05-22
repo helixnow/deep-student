@@ -162,9 +162,7 @@ fn migrate_schema(conn: &Connection) -> Result<(), String> {
                 "UPDATE subagent_task SET initial_task = task_content WHERE initial_task IS NULL",
                 [],
             )
-            .map_err(|e| {
-                format!("Migration V2 failed while backfilling initial_task: {}", e)
-            })?;
+            .map_err(|e| format!("Migration V2 failed while backfilling initial_task: {}", e))?;
         }
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_subagent_task_workspace ON subagent_task(workspace_id, status)",

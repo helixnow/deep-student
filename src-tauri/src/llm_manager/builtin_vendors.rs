@@ -114,7 +114,7 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         name: "OpenAI",
         provider_type: "openai",
         base_url: "https://api.openai.com/v1",
-        notes: "OpenAI 官方 API。可用模型: gpt-5.2/5.2-pro/5.1/5/mini/nano, o3-pro/o3/o4-mini, codex系列",
+        notes: "OpenAI 官方 API。根据 OpenAI 官方模型文档，当前 GPT-5.x 家族可用模型包括: gpt-5.5, gpt-5.5-pro, gpt-5.4, gpt-5.4-pro, gpt-5.4-mini, gpt-5.4-nano；全部模型页仍列出 gpt-5.2, gpt-5.2-pro, gpt-5.1, gpt-5, gpt-5-pro, gpt-5-mini, gpt-5-nano，以及 o3-pro/o3/o4-mini。默认协议建议使用 Responses。",
         max_tokens_limit: None,
         website_url: "https://platform.openai.com",
     },
@@ -124,7 +124,7 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         name: "Google Gemini",
         provider_type: "gemini",
         base_url: "https://generativelanguage.googleapis.com",
-        notes: "Google Gemini API (原生模式)。可用模型: gemini-3-pro/flash, gemini-2.5-pro/flash/flash-lite",
+        notes: "Google Gemini API (原生模式)。推荐模型: gemini-3.5-flash, gemini-3.1-pro-preview, gemini-3.1-flash-lite, gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite。启用 thinking / systemInstruction / thoughtSignature 相关能力时建议走 v1beta。",
         max_tokens_limit: None,
         website_url: "https://aistudio.google.com",
     },
@@ -472,12 +472,80 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         max_output_tokens: 8192,
         temperature: 0.7,
     },
-    // ===== OpenAI 模型 (GPT-5+ 和 o 系列) =====
-    // --- GPT-5.2 系列 (最新) ---
+    // ===== OpenAI 模型 (GPT-5.x 和 o 系列) =====
+    // --- GPT-5.5 系列 (当前旗舰) ---
+    BuiltinModel {
+        id: "builtin-gpt-5.5",
+        vendor_id: "builtin-openai",
+        label: "GPT-5.5 (当前旗舰)",
+        model: "gpt-5.5",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 128000,
+        temperature: 1.0,
+    },
+    BuiltinModel {
+        id: "builtin-gpt-5.5-pro",
+        vendor_id: "builtin-openai",
+        label: "GPT-5.5 Pro (高精度)",
+        model: "gpt-5.5-pro",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 128000,
+        temperature: 1.0,
+    },
+    // --- GPT-5.4 系列 (当前均衡主力) ---
+    BuiltinModel {
+        id: "builtin-gpt-5.4",
+        vendor_id: "builtin-openai",
+        label: "GPT-5.4 (均衡主力)",
+        model: "gpt-5.4",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 128000,
+        temperature: 1.0,
+    },
+    BuiltinModel {
+        id: "builtin-gpt-5.4-pro",
+        vendor_id: "builtin-openai",
+        label: "GPT-5.4 Pro (高计算)",
+        model: "gpt-5.4-pro",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 128000,
+        temperature: 1.0,
+    },
+    BuiltinModel {
+        id: "builtin-gpt-5.4-mini",
+        vendor_id: "builtin-openai",
+        label: "GPT-5.4 Mini (高性价比)",
+        model: "gpt-5.4-mini",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 128000,
+        temperature: 1.0,
+    },
+    BuiltinModel {
+        id: "builtin-gpt-5.4-nano",
+        vendor_id: "builtin-openai",
+        label: "GPT-5.4 Nano (超低成本)",
+        model: "gpt-5.4-nano",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 128000,
+        temperature: 1.0,
+    },
+    // --- GPT-5.2 / 5.1 / 5.0 系列 (官方全部模型页仍列出) ---
     BuiltinModel {
         id: "builtin-gpt-5.2",
         vendor_id: "builtin-openai",
-        label: "GPT-5.2 (最新旗舰)",
+        label: "GPT-5.2 (上一代旗舰)",
         model: "gpt-5.2",
         is_multimodal: true,
         is_reasoning: true,
@@ -488,7 +556,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-gpt-5.2-pro",
         vendor_id: "builtin-openai",
-        label: "GPT-5.2 Pro (深度推理)",
+        label: "GPT-5.2 Pro (上一代高精度)",
         model: "gpt-5.2-pro",
         is_multimodal: true,
         is_reasoning: true,
@@ -500,7 +568,7 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-gpt-5.1",
         vendor_id: "builtin-openai",
-        label: "GPT-5.1 (Codex优化)",
+        label: "GPT-5.1 (上一代 Coding/Agent)",
         model: "gpt-5.1",
         is_multimodal: true,
         is_reasoning: true,
@@ -512,8 +580,19 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-gpt-5",
         vendor_id: "builtin-openai",
-        label: "GPT-5 (标准)",
+        label: "GPT-5 (基础代)",
         model: "gpt-5",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 128000,
+        temperature: 1.0,
+    },
+    BuiltinModel {
+        id: "builtin-gpt-5-pro",
+        vendor_id: "builtin-openai",
+        label: "GPT-5 Pro (高精度)",
+        model: "gpt-5-pro",
         is_multimodal: true,
         is_reasoning: true,
         supports_tools: true,
@@ -588,12 +667,12 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         temperature: 1.0,
     },
     // ===== Google Gemini 模型 (2.5+) =====
-    // --- Gemini 3 系列 (最新，Preview) ---
+    // --- Gemini 3.x 系列（截至 2026-05 官方文档主推） ---
     BuiltinModel {
         id: "builtin-gemini-3-pro",
         vendor_id: "builtin-gemini",
-        label: "Gemini 3 Pro (最新旗舰)",
-        model: "gemini-3-pro-preview",
+        label: "Gemini 3.1 Pro Preview (旗舰)",
+        model: "gemini-3.1-pro-preview",
         is_multimodal: true,
         is_reasoning: true,
         supports_tools: true,
@@ -603,8 +682,19 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
     BuiltinModel {
         id: "builtin-gemini-3-flash",
         vendor_id: "builtin-gemini",
-        label: "Gemini 3 Flash (均衡)",
-        model: "gemini-3-flash-preview",
+        label: "Gemini 3.5 Flash (最新稳定)",
+        model: "gemini-3.5-flash",
+        is_multimodal: true,
+        is_reasoning: true,
+        supports_tools: true,
+        max_output_tokens: 65536,
+        temperature: 0.7,
+    },
+    BuiltinModel {
+        id: "builtin-gemini-3.1-flash-lite",
+        vendor_id: "builtin-gemini",
+        label: "Gemini 3.1 Flash-Lite (轻量)",
+        model: "gemini-3.1-flash-lite",
         is_multimodal: true,
         is_reasoning: true,
         supports_tools: true,
@@ -744,6 +834,17 @@ impl BuiltinVendor {
             id: self.id.to_string(),
             name: self.name.to_string(),
             provider_type: self.provider_type.to_string(),
+            api_protocol: Some(super::resolve_preferred_protocol_for_provider(
+                Some(self.provider_type),
+                Some(self.provider_type),
+                self.base_url,
+                None,
+            )),
+            supports_openai_responses: Some(super::provider_supports_openai_responses(
+                Some(self.provider_type),
+                self.base_url,
+                None,
+            )),
             base_url: self.base_url.to_string(),
             api_key: String::new(),
             headers: HashMap::new(),
@@ -796,10 +897,36 @@ impl BuiltinModel {
         } else if self.vendor_id == "builtin-mimo" {
             ("mimo".to_string(), None)
         } else {
-            ("openai".to_string(), None)
+            ("general".to_string(), None)
         };
         let reasoning_effort = if self.vendor_id == "builtin-deepseek" && self.is_reasoning {
             Some("high".to_string())
+        } else if self.vendor_id == "builtin-openai" && self.is_reasoning {
+            Some(
+                if matches!(
+                    self.model,
+                    "gpt-5.5-pro" | "gpt-5.4-pro" | "gpt-5.2-pro" | "gpt-5-pro" | "o3-pro"
+                ) {
+                    "high"
+                } else if self.model == "gpt-5.4-nano" {
+                    "low"
+                } else {
+                    "medium"
+                }
+                .to_string(),
+            )
+        } else {
+            None
+        };
+        let verbosity = if self.vendor_id == "builtin-openai" && self.is_reasoning {
+            Some(
+                if self.model == "gpt-5.4-nano" {
+                    "low"
+                } else {
+                    "medium"
+                }
+                .to_string(),
+            )
         } else {
             None
         };
@@ -814,6 +941,7 @@ impl BuiltinModel {
             label: self.label.to_string(),
             model: self.model.to_string(),
             provider_scope: Some(provider_scope),
+            api_protocol: None,
             model_adapter,
             is_multimodal: self.is_multimodal,
             is_reasoning: self.is_reasoning,
@@ -841,7 +969,7 @@ impl BuiltinModel {
             repetition_penalty: None,
             reasoning_split: None,
             effort: None,
-            verbosity: None,
+            verbosity,
         }
     }
 }
@@ -1051,5 +1179,57 @@ mod tests {
         assert_eq!(flash.model, "mimo-v2-flash");
         assert_eq!(flash.max_output_tokens, 65_536);
         assert_eq!(flash.context_window, Some(256_000));
+    }
+
+    #[test]
+    fn openai_builtin_profiles_include_reasoning_effort_and_verbosity_defaults() {
+        let flagship = builtin_model("builtin-gpt-5.5").to_model_profile();
+        let pro = builtin_model("builtin-gpt-5.5-pro").to_model_profile();
+        let nano = builtin_model("builtin-gpt-5.4-nano").to_model_profile();
+
+        assert_eq!(flagship.model_adapter, "general");
+        assert_eq!(flagship.reasoning_effort.as_deref(), Some("medium"));
+        assert_eq!(flagship.verbosity.as_deref(), Some("medium"));
+        assert!(flagship.thinking_enabled);
+        assert!(flagship.include_thoughts);
+
+        assert_eq!(pro.reasoning_effort.as_deref(), Some("high"));
+        assert_eq!(pro.verbosity.as_deref(), Some("medium"));
+
+        assert_eq!(nano.reasoning_effort.as_deref(), Some("low"));
+        assert_eq!(nano.verbosity.as_deref(), Some("low"));
+    }
+
+    #[test]
+    fn gemini_builtin_vendor_notes_track_current_google_models() {
+        let vendor = BUILTIN_VENDORS
+            .iter()
+            .find(|vendor| vendor.id == "builtin-gemini")
+            .expect("builtin Gemini vendor should exist");
+
+        assert!(vendor.notes.contains("gemini-3.5-flash"));
+        assert!(vendor.notes.contains("gemini-3.1-pro-preview"));
+        assert!(vendor.notes.contains("gemini-3.1-flash-lite"));
+        assert!(vendor.notes.contains("v1beta"));
+    }
+
+    #[test]
+    fn gemini_builtin_profiles_promote_current_3x_models() {
+        let flash = builtin_model("builtin-gemini-3-flash").to_model_profile();
+        let pro = builtin_model("builtin-gemini-3-pro").to_model_profile();
+        let flash_lite = builtin_model("builtin-gemini-3.1-flash-lite").to_model_profile();
+
+        assert_eq!(flash.model, "gemini-3.5-flash");
+        assert_eq!(pro.model, "gemini-3.1-pro-preview");
+        assert_eq!(flash_lite.model, "gemini-3.1-flash-lite");
+
+        for profile in [&flash, &pro, &flash_lite] {
+            assert_eq!(profile.provider_scope.as_deref(), Some("gemini"));
+            assert_eq!(profile.model_adapter, "google");
+            assert!(profile.is_reasoning);
+            assert!(profile.supports_tools);
+            assert!(profile.include_thoughts);
+            assert!(profile.thinking_enabled);
+        }
     }
 }

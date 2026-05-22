@@ -168,8 +168,14 @@ fn assert_streaming_tool_call<A: RequestAdapter>(
     );
 
     // arguments 可能被分成多片增量（OpenAI 风格）或完整 JSON（Anthropic/Gemini）
-    let parsed_args: serde_json::Value = serde_json::from_str(args_buffer.trim())
-        .unwrap_or_else(|_| panic!("[{}] arguments not valid JSON: {:?}", adapter.id(), args_buffer));
+    let parsed_args: serde_json::Value =
+        serde_json::from_str(args_buffer.trim()).unwrap_or_else(|_| {
+            panic!(
+                "[{}] arguments not valid JSON: {:?}",
+                adapter.id(),
+                args_buffer
+            )
+        });
 
     assert_eq!(
         parsed_args,
@@ -651,8 +657,16 @@ fn openai_compatible_emits_usage_and_done() {
 
     let has_usage = events.iter().any(|e| matches!(e, StreamEvent::Usage(_)));
     let has_done = events.iter().any(|e| matches!(e, StreamEvent::Done));
-    assert!(has_usage, "expected usage event in OpenAI fixture, events = {:#?}", events);
-    assert!(has_done, "expected [DONE] event in OpenAI fixture, events = {:#?}", events);
+    assert!(
+        has_usage,
+        "expected usage event in OpenAI fixture, events = {:#?}",
+        events
+    );
+    assert!(
+        has_done,
+        "expected [DONE] event in OpenAI fixture, events = {:#?}",
+        events
+    );
 }
 
 /// Anthropic 流：必须收到 message_stop -> Done & message_delta -> Usage
@@ -663,8 +677,16 @@ fn anthropic_emits_usage_and_done() {
 
     let has_usage = events.iter().any(|e| matches!(e, StreamEvent::Usage(_)));
     let has_done = events.iter().any(|e| matches!(e, StreamEvent::Done));
-    assert!(has_usage, "expected usage event in Anthropic fixture, events = {:#?}", events);
-    assert!(has_done, "expected message_stop -> Done in Anthropic fixture, events = {:#?}", events);
+    assert!(
+        has_usage,
+        "expected usage event in Anthropic fixture, events = {:#?}",
+        events
+    );
+    assert!(
+        has_done,
+        "expected message_stop -> Done in Anthropic fixture, events = {:#?}",
+        events
+    );
 }
 
 /// Gemini 流：必须从 usageMetadata 解析出 Usage 事件
@@ -674,7 +696,11 @@ fn gemini_emits_usage() {
     let events = drive_parser(&parser, GEMINI_TEXT_FIXTURE);
 
     let has_usage = events.iter().any(|e| matches!(e, StreamEvent::Usage(_)));
-    assert!(has_usage, "expected usage event in Gemini fixture, events = {:#?}", events);
+    assert!(
+        has_usage,
+        "expected usage event in Gemini fixture, events = {:#?}",
+        events
+    );
 }
 
 /// 错误鲁棒性：非 `data:` 行 / 空数据行 / 损坏 JSON 都应被静默忽略，不能 panic
@@ -691,7 +717,10 @@ data: {\"choices\":[{\"delta\":{\"content\":\"survived\"}}]}
     let openai = OpenAIAdapter;
     let events = drive_parser(&openai, garbage);
     let combined = collect_content(&events);
-    assert_eq!(combined, "survived", "OpenAI parser should recover after garbage");
+    assert_eq!(
+        combined, "survived",
+        "OpenAI parser should recover after garbage"
+    );
 
     // Anthropic parser - garbage should not panic
     let anthropic = AnthropicParser::new();

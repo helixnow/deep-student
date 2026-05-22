@@ -61,6 +61,23 @@ struct RegistryDocument {
     records: Vec<RegistrySeriesRecord>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct ProviderProtocolRegistryRecord {
+    provider_type: String,
+    #[serde(default)]
+    allowed_protocols: Vec<String>,
+    default_protocol: String,
+    #[serde(default)]
+    official: bool,
+    #[serde(default)]
+    supports_openai_responses: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ProviderProtocolRegistryDocument {
+    providers: Vec<ProviderProtocolRegistryRecord>,
+}
+
 #[derive(Debug, Clone, Default)]
 struct CapabilityOverrides {
     is_multimodal: bool,
@@ -87,6 +104,22 @@ static MODEL_CAPABILITY_REGISTRY: LazyLock<Vec<RegistryModelRecord>> = LazyLock:
         Vec::new()
     })
 });
+
+static PROVIDER_PROTOCOL_REGISTRY: LazyLock<Vec<ProviderProtocolRegistryRecord>> = LazyLock::new(
+    || {
+        serde_json::from_str::<ProviderProtocolRegistryDocument>(include_str!(
+            "../../../scripts/provider-protocol-registry.json"
+        ))
+        .map(|doc| doc.providers)
+        .unwrap_or_else(|err| {
+            eprintln!(
+                "[LLMManager] failed to parse provider protocol registry, falling back to empty: {}",
+                err
+            );
+            Vec::new()
+        })
+    },
+);
 
 /// 增量 JSON 数组解析器 - 用于流式解析 LLM 输出的 JSON 数组
 /// 当检测到完整的 JSON 对象时立即返回，无需等待整个数组完成
@@ -158,6 +191,17 @@ mod tests {
             id: "builtin-openai".to_string(),
             name: "OpenAI".to_string(),
             provider_type: "openai".to_string(),
+            api_protocol: Some(resolve_preferred_protocol_for_provider(
+                Some("openai"),
+                Some("openai"),
+                "https://api.openai.com/v1",
+                None,
+            )),
+            supports_openai_responses: Some(provider_supports_openai_responses(
+                Some("openai"),
+                "https://api.openai.com/v1",
+                None,
+            )),
             base_url: "https://api.openai.com/v1".to_string(),
             api_key: api_key.to_string(),
             headers: HashMap::new(),
@@ -198,6 +242,91 @@ mod tests {
             persistent_stable_id: None,
             metadata: None,
         }
+    }
+
+    #[test]
+    fn vendor_config_default_uses_registry_backed_openai_defaults() {
+        let vendor = VendorConfig::default();
+
+        assert_eq!(vendor.provider_type, "openai");
+        assert_eq!(vendor.api_protocol.as_deref(), Some("openai_responses"));
+        assert_eq!(vendor.supports_openai_responses, Some(true));
+    }
+
+    #[test]
+    fn resolve_preferred_protocol_for_provider_uses_registry_defaults_for_native_vendors() {
+        assert_eq!(
+            resolve_preferred_protocol_for_provider(
+                Some("anthropic"),
+                Some("anthropic"),
+                "https://api.anthropic.com/v1",
+                None,
+            ),
+            "anthropic_messages"
+        );
+        assert_eq!(
+            resolve_preferred_protocol_for_provider(
+                Some("gemini"),
+                Some("google"),
+                "https://generativelanguage.googleapis.com",
+                None,
+            ),
+            "google_generate_content"
+        );
+        assert_eq!(
+            resolve_preferred_protocol_for_provider(
+                Some("siliconflow"),
+                Some("general"),
+                "https://api.siliconflow.cn/v1",
+                None,
+            ),
+            "openai_chat_completions"
+        );
+    }
+
+    #[test]
+    fn provider_protocol_registry_contract_is_well_formed() {
+        let raw = include_str!("../../../scripts/provider-protocol-registry.json");
+        let registry: ProviderProtocolRegistryDocument =
+            serde_json::from_str(raw).expect("provider protocol registry should parse");
+
+        assert!(!registry.providers.is_empty());
+
+        for provider in registry.providers {
+            assert!(!provider.provider_type.is_empty());
+            assert!(!provider.allowed_protocols.is_empty());
+            assert!(!provider.default_protocol.is_empty());
+            assert!(provider
+                .allowed_protocols
+                .iter()
+                .any(|protocol| protocol == &provider.default_protocol));
+        }
+    }
+
+    #[test]
+    fn provider_protocol_registry_contract_preserves_shared_routing_expectations() {
+        let openai = get_provider_protocol_record(Some("openai")).expect("openai provider");
+        assert_eq!(openai.default_protocol, "openai_responses");
+        assert!(openai.supports_openai_responses);
+        assert!(openai
+            .allowed_protocols
+            .iter()
+            .any(|protocol| protocol == "openai_responses"));
+
+        let anthropic =
+            get_provider_protocol_record(Some("anthropic")).expect("anthropic provider");
+        assert_eq!(anthropic.allowed_protocols, vec!["anthropic_messages"]);
+
+        let gemini = get_provider_protocol_record(Some("gemini")).expect("gemini provider");
+        assert_eq!(gemini.allowed_protocols, vec!["google_generate_content"]);
+
+        let custom = get_provider_protocol_record(Some("custom")).expect("custom provider");
+        assert_eq!(custom.default_protocol, "openai_chat_completions");
+        assert!(!provider_supports_openai_responses(
+            Some("custom"),
+            "https://proxy.example.com/v1",
+            None,
+        ));
     }
 
     #[test]
@@ -516,6 +645,89 @@ mod tests {
         assert!(merged.is_builtin);
     }
 
+    #[tokio::test]
+    async fn get_model_profiles_drops_hidden_flag_for_new_builtin_model_without_history() {
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+
+        manager
+            .db
+            .save_setting("vendor_configs", "[]")
+            .expect("seed vendor configs");
+        manager
+            .db
+            .save_setting("model_profiles", "[]")
+            .expect("seed model profiles");
+        manager
+            .db
+            .save_setting(
+                HIDDEN_BUILTIN_MODEL_PROFILES_KEY,
+                r#"["builtin-gemini-3-flash"]"#,
+            )
+            .expect("seed hidden builtin ids");
+        manager
+            .db
+            .save_setting(BUILTIN_MODEL_PROFILES_SNAPSHOT_KEY, "[]")
+            .expect("seed builtin snapshot");
+        manager
+            .db
+            .save_setting("builtin_caps_migration_v2", "done")
+            .expect("skip caps migration");
+
+        let profiles = manager
+            .get_model_profiles()
+            .await
+            .expect("load model profiles");
+
+        assert!(profiles.iter().any(|profile| {
+            profile.id == "builtin-gemini-3-flash" && profile.model == "gemini-3.5-flash"
+        }));
+
+        let hidden_ids = manager.read_hidden_builtin_model_profile_ids();
+        assert!(
+            !hidden_ids.contains("builtin-gemini-3-flash"),
+            "new builtin model should not stay hidden without prior snapshot/user history"
+        );
+    }
+
+    #[tokio::test]
+    async fn save_model_profiles_does_not_hide_new_builtin_models() {
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+
+        manager
+            .db
+            .save_setting("vendor_configs", "[]")
+            .expect("seed vendor configs");
+        manager
+            .db
+            .save_setting("model_profiles", "[]")
+            .expect("seed model profiles");
+
+        let known_builtin = profile(
+            "builtin-gemini-3-pro",
+            "Gemini 3.1 Pro Preview (旗舰)",
+            "gemini-3.1-pro-preview",
+            true,
+            true,
+        );
+
+        manager
+            .save_builtin_profile_snapshot(&[known_builtin.clone()])
+            .expect("seed builtin snapshot");
+
+        manager
+            .save_model_profiles(&[known_builtin])
+            .await
+            .expect("save user-visible builtin profiles");
+
+        let hidden_ids = manager.read_hidden_builtin_model_profile_ids();
+        assert!(
+            !hidden_ids.contains("builtin-gemini-3-flash"),
+            "new builtin model should not be inferred as hidden when absent from older saved profile sets"
+        );
+    }
+
     #[test]
     fn convert_openai_tool_call_treats_empty_string_arguments_as_empty_object() {
         let tool_call = json!({
@@ -586,7 +798,7 @@ mod tests {
             ("doubao-seed-2-0-pro-260215", Some("doubao")),
             ("gpt-5-mini", Some("openai")),
             ("o3-mini", Some("openai")),
-            ("gemini-3-pro-preview", Some("gemini")),
+            ("gemini-3.5-flash", Some("gemini")),
         ] {
             let inferred = LLMManager::resolve_capability_overrides(model, scope);
             assert!(
@@ -881,6 +1093,10 @@ pub struct ApiConfig {
     pub provider_type: Option<String>,
     #[serde(default)]
     pub provider_scope: Option<String>,
+    #[serde(default)]
+    pub api_protocol: Option<String>,
+    #[serde(default)]
+    pub supports_openai_responses: Option<bool>,
     pub api_key: String,
     pub base_url: String,
     pub model: String,
@@ -968,6 +1184,8 @@ impl Default for ApiConfig {
             vendor_name: None,
             provider_type: None,
             provider_scope: None,
+            api_protocol: None,
+            supports_openai_responses: None,
             api_key: String::new(),
             base_url: String::new(),
             model: String::new(),
@@ -1013,6 +1231,10 @@ pub struct VendorConfig {
     pub id: String,
     pub name: String,
     pub provider_type: String,
+    #[serde(default)]
+    pub api_protocol: Option<String>,
+    #[serde(default)]
+    pub supports_openai_responses: Option<bool>,
     pub base_url: String,
     pub api_key: String,
     #[serde(default)]
@@ -1043,6 +1265,17 @@ impl Default for VendorConfig {
             id: Uuid::new_v4().to_string(),
             name: "New Vendor".to_string(),
             provider_type: "openai".to_string(),
+            api_protocol: Some(resolve_preferred_protocol_for_provider(
+                Some("openai"),
+                Some("openai"),
+                "",
+                None,
+            )),
+            supports_openai_responses: Some(provider_supports_openai_responses(
+                Some("openai"),
+                "",
+                None,
+            )),
             base_url: String::new(),
             api_key: String::new(),
             headers: HashMap::new(),
@@ -1067,6 +1300,8 @@ pub struct ModelProfile {
     pub model: String,
     #[serde(default)]
     pub provider_scope: Option<String>,
+    #[serde(default)]
+    pub api_protocol: Option<String>,
     #[serde(default = "default_model_adapter")]
     pub model_adapter: String,
     #[serde(default)]
@@ -1138,6 +1373,7 @@ impl Default for ModelProfile {
             label: "New Model".to_string(),
             model: String::new(),
             provider_scope: None,
+            api_protocol: None,
             model_adapter: default_model_adapter(),
             is_multimodal: false,
             is_reasoning: false,
@@ -1209,12 +1445,191 @@ fn looks_like_image_generation_model_id(model: &str) -> bool {
         .any(|needle| model.contains(needle))
 }
 
+fn normalize_provider_protocol_registry_value(value: Option<&str>) -> String {
+    value.unwrap_or_default().trim().to_lowercase()
+}
+
+fn normalize_base_url_for_provider_protocol_registry(base_url: &str) -> String {
+    base_url.trim().trim_end_matches('/').to_lowercase()
+}
+
+fn get_provider_protocol_record(
+    provider_type: Option<&str>,
+) -> Option<&'static ProviderProtocolRegistryRecord> {
+    let normalized = normalize_provider_protocol_registry_value(provider_type);
+    if normalized.is_empty() {
+        return None;
+    }
+    PROVIDER_PROTOCOL_REGISTRY
+        .iter()
+        .find(|record| record.provider_type == normalized)
+}
+
+fn provider_allowed_protocols(provider_type: Option<&str>) -> Vec<String> {
+    get_provider_protocol_record(provider_type)
+        .map(|record| record.allowed_protocols.clone())
+        .filter(|protocols| !protocols.is_empty())
+        .unwrap_or_else(|| {
+            vec![
+                "openai_chat_completions".to_string(),
+                "openai_responses".to_string(),
+            ]
+        })
+}
+
+fn resolves_to_official_openai(provider_type: Option<&str>, base_url: &str) -> bool {
+    normalize_provider_protocol_registry_value(provider_type) == "openai"
+        || normalize_base_url_for_provider_protocol_registry(base_url).contains("api.openai.com")
+}
+
+pub(crate) fn provider_supports_openai_responses(
+    provider_type: Option<&str>,
+    base_url: &str,
+    supports_openai_responses: Option<bool>,
+) -> bool {
+    if supports_openai_responses == Some(true) {
+        return true;
+    }
+    if resolves_to_official_openai(provider_type, base_url) {
+        return true;
+    }
+    get_provider_protocol_record(provider_type)
+        .map(|record| record.supports_openai_responses)
+        .unwrap_or(false)
+}
+
+pub(crate) fn resolve_preferred_protocol_for_provider(
+    provider_type: Option<&str>,
+    adapter: Option<&str>,
+    base_url: &str,
+    supports_openai_responses: Option<bool>,
+) -> String {
+    match normalize_provider_protocol_registry_value(adapter).as_str() {
+        "anthropic" => return "anthropic_messages".to_string(),
+        "google" => return "google_generate_content".to_string(),
+        _ => {}
+    }
+
+    let allowed = provider_allowed_protocols(provider_type);
+    if provider_supports_openai_responses(provider_type, base_url, supports_openai_responses)
+        && allowed
+            .iter()
+            .any(|protocol| protocol == "openai_responses")
+    {
+        return "openai_responses".to_string();
+    }
+
+    if let Some(record) = get_provider_protocol_record(provider_type) {
+        if allowed
+            .iter()
+            .any(|protocol| protocol == &record.default_protocol)
+        {
+            return record.default_protocol.clone();
+        }
+    }
+
+    allowed
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| "openai_chat_completions".to_string())
+}
+
 #[inline]
 pub(crate) fn effective_max_tokens(max_output_tokens: u32, max_tokens_limit: Option<u32>) -> u32 {
     match max_tokens_limit {
         Some(limit) => max_output_tokens.min(limit),
         None => max_output_tokens,
     }
+}
+
+#[inline]
+pub(crate) fn should_use_openai_responses_for_config(config: &ApiConfig) -> bool {
+    if let Some(protocol) = config.api_protocol.as_deref() {
+        return matches!(protocol, "openai_responses");
+    }
+    if config.model_adapter != "general" {
+        return false;
+    }
+
+    resolve_preferred_protocol_for_provider(
+        config.provider_type.as_deref(),
+        Some(config.model_adapter.as_str()),
+        &config.base_url,
+        config.supports_openai_responses,
+    ) == "openai_responses"
+}
+
+pub(crate) fn build_provider_adapter(config: &ApiConfig) -> Box<dyn ProviderAdapter> {
+    if should_use_openai_responses_for_config(config) {
+        Box::new(crate::providers::OpenAIResponsesAdapter)
+    } else {
+        match config.model_adapter.as_str() {
+            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
+            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
+            _ => Box::new(crate::providers::OpenAIAdapter),
+        }
+    }
+}
+
+pub(crate) fn normalize_nonstream_response_to_openai(
+    config: &ApiConfig,
+    response_json: &Value,
+) -> Result<Value> {
+    if config.model_adapter == "google" {
+        if let Some(safety_msg) = LLMManager::extract_gemini_safety_error(response_json) {
+            return Err(AppError::llm(safety_msg));
+        }
+        return crate::adapters::gemini_openai_converter::convert_gemini_nonstream_response_to_openai(
+            response_json,
+            &config.model,
+        )
+        .map_err(|e| AppError::llm(format!("Gemini响应转换失败: {}", e)));
+    }
+
+    if matches!(config.model_adapter.as_str(), "anthropic" | "claude") {
+        return crate::providers::convert_anthropic_response_to_openai(
+            response_json,
+            &config.model,
+        )
+        .ok_or_else(|| AppError::llm("解析Anthropic响应失败".to_string()));
+    }
+
+    if should_use_openai_responses_for_config(config) {
+        let mut text_segments: Vec<String> = Vec::new();
+        if let Some(output) = response_json.get("output").and_then(|v| v.as_array()) {
+            for item in output {
+                if let Some(content_arr) = item.get("content").and_then(|v| v.as_array()) {
+                    for entry in content_arr {
+                        let entry_type = entry.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                        if matches!(entry_type, "output_text" | "text") {
+                            if let Some(text) = entry.get("text").and_then(|v| v.as_str()) {
+                                if !text.is_empty() {
+                                    text_segments.push(text.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if text_segments.is_empty() {
+            if let Some(output_text) = response_json.get("output_text").and_then(|v| v.as_str()) {
+                if !output_text.is_empty() {
+                    text_segments.push(output_text.to_string());
+                }
+            }
+        }
+        return Ok(json!({
+            "choices": [{
+                "message": {
+                    "content": text_segments.join("")
+                }
+            }],
+            "usage": response_json.get("usage").cloned()
+        }));
+    }
+
+    Ok(response_json.clone())
 }
 
 #[derive(Debug, Clone)]
@@ -1598,6 +2013,34 @@ impl LLMManager {
         self.db
             .save_setting(HIDDEN_BUILTIN_MODEL_PROFILES_KEY, &json)
             .map_err(|e| AppError::database(format!("保存隐藏内置模型列表失败: {}", e)))
+    }
+
+    fn reconcile_hidden_builtin_model_profile_ids(
+        &self,
+        builtin_profiles: &[ModelProfile],
+        user_profiles: &[ModelProfile],
+        hidden_builtin_ids: &mut HashSet<String>,
+        snapshot_map: &HashMap<String, ModelProfile>,
+    ) -> Result<bool> {
+        let builtin_id_set: HashSet<&str> = builtin_profiles.iter().map(|profile| profile.id.as_str()).collect();
+        let known_user_builtin_ids: HashSet<&str> = user_profiles
+            .iter()
+            .map(|profile| profile.id.as_str())
+            .filter(|id| builtin_id_set.contains(id))
+            .collect();
+
+        let original = hidden_builtin_ids.clone();
+        hidden_builtin_ids.retain(|id| {
+            builtin_id_set.contains(id.as_str())
+                && (snapshot_map.contains_key(id) || known_user_builtin_ids.contains(id.as_str()))
+        });
+
+        if *hidden_builtin_ids != original {
+            self.save_hidden_builtin_model_profile_ids(hidden_builtin_ids)?;
+            return Ok(true);
+        }
+
+        Ok(false)
     }
 
     pub fn new(db: Arc<Database>, file_manager: Arc<FileManager>) -> Result<Self> {
@@ -2660,10 +3103,7 @@ impl LLMManager {
     pub async fn get_model_profiles(&self) -> Result<Vec<ModelProfile>> {
         self.bootstrap_vendor_model_config().await?;
         let mut profiles = self.read_user_model_profiles().await?;
-        let hidden_builtin_ids = self.read_hidden_builtin_model_profile_ids();
-        if !hidden_builtin_ids.is_empty() {
-            profiles.retain(|profile| !hidden_builtin_ids.contains(&profile.id));
-        }
+        let mut hidden_builtin_ids = self.read_hidden_builtin_model_profile_ids();
 
         // 一次性迁移：直接将内置模型的能力字段写入用户存储的 model_profiles。
         // 背景：早期版本在无快照时保守地保留了用户数据（含错误的 supports_tools=false），
@@ -2719,6 +3159,22 @@ impl LLMManager {
 
         let snapshot_map = self.read_builtin_profile_snapshot_map();
         if let Ok((_, builtin_profiles)) = self.load_builtin_vendor_profiles() {
+            if self
+                .reconcile_hidden_builtin_model_profile_ids(
+                    &builtin_profiles,
+                    &profiles,
+                    &mut hidden_builtin_ids,
+                    &snapshot_map,
+                )
+                .is_err()
+            {
+                warn!("[VendorModel] 修正隐藏内置模型列表失败，继续使用现有值");
+            }
+
+            if !hidden_builtin_ids.is_empty() {
+                profiles.retain(|profile| !hidden_builtin_ids.contains(&profile.id));
+            }
+
             for builtin_profile in &builtin_profiles {
                 if hidden_builtin_ids.contains(&builtin_profile.id) {
                     continue;
@@ -2767,8 +3223,19 @@ impl LLMManager {
                 .filter(|id| builtin_id_set.contains(id))
                 .collect();
 
-            if !incoming_builtin_ids.is_empty() {
-                let hidden_builtin_ids: HashSet<String> = builtin_id_set
+            let existing_profiles = self.read_user_model_profiles().await.unwrap_or_default();
+            let snapshot_map = self.read_builtin_profile_snapshot_map();
+            let previously_known_builtin_ids: HashSet<String> = builtin_id_set
+                .iter()
+                .filter(|id| {
+                    snapshot_map.contains_key(*id)
+                        || existing_profiles.iter().any(|profile| profile.id == **id)
+                })
+                .cloned()
+                .collect();
+
+            if !previously_known_builtin_ids.is_empty() || !incoming_builtin_ids.is_empty() {
+                let hidden_builtin_ids: HashSet<String> = previously_known_builtin_ids
                     .difference(&incoming_builtin_ids)
                     .cloned()
                     .collect();
@@ -2845,6 +3312,18 @@ impl LLMManager {
             vendor_name: Some(vendor.name.clone()),
             provider_type: Some(vendor.provider_type.clone()),
             provider_scope,
+            api_protocol: profile
+                .api_protocol
+                .clone()
+                .or_else(|| vendor.api_protocol.clone())
+                .or_else(|| {
+                    Some(resolve_preferred_protocol_for_provider(
+                        Some(vendor.provider_type.as_str()),
+                        Some(profile.model_adapter.as_str()),
+                        &vendor.base_url,
+                        vendor.supports_openai_responses,
+                    ))
+                }),
             api_key,
             base_url: vendor.base_url.clone(),
             model: profile.model.clone(),
@@ -2889,6 +3368,7 @@ impl LLMManager {
             context_window: profile
                 .context_window
                 .or(capability_overrides.context_window),
+            supports_openai_responses: vendor.supports_openai_responses,
         };
 
         Ok(ResolvedModelConfig {
@@ -2931,6 +3411,8 @@ impl LLMManager {
                     } else {
                         cfg.model_adapter.clone()
                     },
+                    api_protocol: cfg.api_protocol.clone(),
+                    supports_openai_responses: cfg.supports_openai_responses,
                     base_url: cfg.base_url.clone(),
                     api_key: cfg.api_key.clone(),
                     headers: cfg.headers.clone().unwrap_or_default(),
@@ -2953,6 +3435,7 @@ impl LLMManager {
                     .provider_scope
                     .clone()
                     .or_else(|| cfg.provider_type.clone()),
+                api_protocol: cfg.api_protocol.clone(),
                 model_adapter: cfg.model_adapter.clone(),
                 is_multimodal: cfg.is_multimodal,
                 is_reasoning: cfg.is_reasoning,
@@ -3032,6 +3515,21 @@ impl LLMManager {
                 .map(|old| ApiConfig {
                     id: old.id,
                     name: old.name,
+                    vendor_id: None,
+                    vendor_name: None,
+                    provider_type: None,
+                    provider_scope: None,
+                    api_protocol: Some(resolve_preferred_protocol_for_provider(
+                        None,
+                        Some(default_model_adapter().as_str()),
+                        &old.base_url,
+                        None,
+                    )),
+                    supports_openai_responses: Some(provider_supports_openai_responses(
+                        None,
+                        &old.base_url,
+                        None,
+                    )),
                     api_key: old.api_key,
                     base_url: old.base_url,
                     model: old.model,
@@ -3056,10 +3554,6 @@ impl LLMManager {
                     thinking_budget: None,
                     include_thoughts: false,
                     supports_reasoning: old.is_reasoning,
-                    vendor_id: None,
-                    vendor_name: None,
-                    provider_type: None,
-                    provider_scope: None,
                     headers: None,
                     top_p_override: None,
                     frequency_penalty_override: None,
@@ -3083,6 +3577,21 @@ impl LLMManager {
             .map(|old| ApiConfig {
                 id: old.id,
                 name: old.name,
+                vendor_id: None,
+                vendor_name: None,
+                provider_type: None,
+                provider_scope: None,
+                api_protocol: Some(resolve_preferred_protocol_for_provider(
+                    None,
+                    Some(default_model_adapter().as_str()),
+                    &old.base_url,
+                    None,
+                )),
+                supports_openai_responses: Some(provider_supports_openai_responses(
+                    None,
+                    &old.base_url,
+                    None,
+                )),
                 api_key: old.api_key,
                 base_url: old.base_url,
                 model: old.model,
@@ -3107,10 +3616,6 @@ impl LLMManager {
                 thinking_budget: None,
                 include_thoughts: false,
                 supports_reasoning: false,
-                vendor_id: None,
-                vendor_name: None,
-                provider_type: None,
-                provider_scope: None,
                 headers: None,
                 top_p_override: None,
                 frequency_penalty_override: None,
@@ -3163,6 +3668,8 @@ impl LLMManager {
                         .filter(|name| !name.is_empty())
                         .unwrap_or_else(|| cfg.name.clone()),
                     provider_type,
+                    api_protocol: cfg.api_protocol.clone(),
+                    supports_openai_responses: cfg.supports_openai_responses,
                     base_url: cfg.base_url.clone(),
                     api_key: cfg.api_key.clone(),
                     headers: cfg.headers.clone().unwrap_or_default(),
@@ -3184,6 +3691,7 @@ impl LLMManager {
                 label: cfg.name.clone(),
                 model: cfg.model.clone(),
                 provider_scope,
+                api_protocol: cfg.api_protocol.clone(),
                 model_adapter: cfg.model_adapter.clone(),
                 is_multimodal: cfg.is_multimodal || capability_overrides.is_multimodal,
                 is_reasoning: cfg.is_reasoning,
@@ -4689,9 +5197,25 @@ impl LLMManager {
         }
         if let Some(first_msg) = messages.get_mut(0) {
             if first_msg["role"] == "system" {
-                let current_content = first_msg["content"].as_str().unwrap_or("");
-                first_msg["content"] =
-                    json!(format!("{}\n\n{}", current_content, inject_content.trim()));
+                match &first_msg["content"] {
+                    // 字符串格式：直接拼接
+                    Value::String(s) => {
+                        let new_content = format!("{}\n\n{}", s, inject_content.trim());
+                        first_msg["content"] = json!(new_content);
+                    }
+                    // 数组格式（如 OpenAI content array）：追加一个 text block
+                    Value::Array(arr) => {
+                        let mut new_arr = arr.clone();
+                        new_arr.push(json!({
+                            "type": "text",
+                            "text": inject_content.trim()
+                        }));
+                        first_msg["content"] = json!(new_arr);
+                    }
+                    _ => {
+                        first_msg["content"] = json!(inject_content.trim());
+                    }
+                }
                 debug!("[Inject] 已将注入文本追加到现有系统消息");
                 return;
             }

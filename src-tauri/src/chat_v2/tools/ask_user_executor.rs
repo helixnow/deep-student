@@ -180,12 +180,15 @@ impl ToolExecutor for AskUserExecutor {
             Ok(resp) => {
                 log::info!(
                     "[AskUserExecutor] Received user response: selected={:?}, source='{}'",
-                    resp.selected_texts, resp.source
+                    resp.selected_texts,
+                    resp.source
                 );
                 resp
             }
             Err(_) => {
-                log::warn!("[AskUserExecutor] Channel closed (session ended), reporting no response");
+                log::warn!(
+                    "[AskUserExecutor] Channel closed (session ended), reporting no response"
+                );
                 AskUserResponse {
                     tool_call_id: call.id.clone(),
                     selected_texts: vec![],

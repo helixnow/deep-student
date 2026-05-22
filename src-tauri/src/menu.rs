@@ -22,9 +22,7 @@
 #![cfg(target_os = "macos")]
 
 use tauri::{
-    menu::{
-        AboutMetadataBuilder, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu,
-    },
+    menu::{AboutMetadataBuilder, Menu, MenuEvent, MenuItem, PredefinedMenuItem, Submenu},
     AppHandle, Emitter, Manager, Runtime,
 };
 
@@ -163,15 +161,9 @@ fn build_menu<R: Runtime>(app: &AppHandle<R>) -> tauri::Result<Menu<R>> {
         true,
         None::<&str>,
     )?;
-    let report_issue =
-        MenuItem::with_id(app, "report_issue", "Report Issue…", true, None::<&str>)?;
+    let report_issue = MenuItem::with_id(app, "report_issue", "Report Issue…", true, None::<&str>)?;
 
-    let help_submenu = Submenu::with_items(
-        app,
-        "Help",
-        true,
-        &[&documentation, &report_issue],
-    )?;
+    let help_submenu = Submenu::with_items(app, "Help", true, &[&documentation, &report_issue])?;
 
     Menu::with_items(
         app,

@@ -285,6 +285,8 @@ export interface ApiConfig {
   vendorName?: string;
   providerType?: string;
   providerScope?: string;
+  apiProtocol?: ApiProtocol;
+  supportsOpenAIResponses?: boolean;
   apiKey: string;
   baseUrl: string;
   model: string;
@@ -328,6 +330,8 @@ export interface VendorConfig {
   id: string;
   name: string;
   providerType: string;
+  apiProtocol?: ApiProtocol;
+  supportsOpenAIResponses?: boolean;
   baseUrl: string;
   apiKey: string;
   headers?: Record<string, string>;
@@ -349,6 +353,7 @@ export interface ModelProfile {
   label: string;
   model: string;
   providerScope?: string;
+  apiProtocol?: ApiProtocol;
   modelAdapter: string;
   status?: string;
   enabled: boolean;
@@ -416,6 +421,12 @@ export type ModelAdapter =
   | 'ernie'        // 百度文心
   | 'mistral'      // Mistral
   | 'custom';      // 自定义（兼容旧版）
+
+export type ApiProtocol =
+  | 'openai_chat_completions'
+  | 'openai_responses'
+  | 'google_generate_content'
+  | 'anthropic_messages';
 
 // ============================================================================
 // System Settings Types

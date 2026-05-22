@@ -806,8 +806,10 @@ impl ChatV2Repo {
             .transpose()?;
         let variants_json = match message.variants.as_ref() {
             Some(v) => {
-                let mut sanitized: Vec<Variant> =
-                    v.iter().map(Variant::without_skill_runtime_contents).collect();
+                let mut sanitized: Vec<Variant> = v
+                    .iter()
+                    .map(Variant::without_skill_runtime_contents)
+                    .collect();
                 let raw = serde_json::to_string(&sanitized)?;
                 Some(Self::enforce_variants_json_size_limit(
                     raw,
@@ -949,8 +951,10 @@ impl ChatV2Repo {
             .transpose()?;
         let variants_json = match message.variants.as_ref() {
             Some(v) => {
-                let mut sanitized: Vec<Variant> =
-                    v.iter().map(Variant::without_skill_runtime_contents).collect();
+                let mut sanitized: Vec<Variant> = v
+                    .iter()
+                    .map(Variant::without_skill_runtime_contents)
+                    .collect();
                 let raw = serde_json::to_string(&sanitized)?;
                 Some(Self::enforce_variants_json_size_limit(
                     raw,
@@ -2830,11 +2834,7 @@ impl ChatV2Repo {
     /// 锁定会话标题（用户手动改名后调用）
     ///
     /// 锁定后自动摘要 LLM 不再覆盖标题，行为对齐 ChatGPT/Claude。
-    pub fn set_title_locked(
-        conn: &Connection,
-        session_id: &str,
-        locked: bool,
-    ) -> ChatV2Result<()> {
+    pub fn set_title_locked(conn: &Connection, session_id: &str, locked: bool) -> ChatV2Result<()> {
         conn.execute(
             "UPDATE chat_v2_sessions SET title_locked = ?2 WHERE id = ?1",
             params![session_id, locked as i64],
@@ -4179,11 +4179,8 @@ mod tests {
             raw.len()
         );
 
-        let out = ChatV2Repo::enforce_variants_json_size_limit(
-            raw,
-            &mut variants,
-            "msg_truncate_test",
-        );
+        let out =
+            ChatV2Repo::enforce_variants_json_size_limit(raw, &mut variants, "msg_truncate_test");
 
         assert!(
             out.len() < VARIANTS_JSON_LIMIT_BYTES,

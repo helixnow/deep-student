@@ -1923,10 +1923,8 @@ impl ChatV2Pipeline {
                         }
                     }
                     // v1 回退查询（保证旧"记住选择"仍生效）
-                    let v1_key = approval_scope::make_setting_key_v1(
-                        &tool_call.name,
-                        &tool_call.arguments,
-                    );
+                    let v1_key =
+                        approval_scope::make_setting_key_v1(&tool_call.name, &tool_call.arguments);
                     db.get_setting(&v1_key).ok().flatten().map(|v| v == "allow")
                 });
 

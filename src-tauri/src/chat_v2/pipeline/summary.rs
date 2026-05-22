@@ -239,13 +239,7 @@ Output JSON now:"#;
             "UPDATE chat_v2_sessions
              SET title = ?2, summary_hash = ?3, tags_hash = ?4, updated_at = ?5
              WHERE id = ?1 AND title_locked = 0",
-            rusqlite::params![
-                session_id,
-                metadata.title,
-                content_hash,
-                content_hash,
-                now,
-            ],
+            rusqlite::params![session_id, metadata.title, content_hash, content_hash, now,],
         )?;
 
         if rows == 0 {

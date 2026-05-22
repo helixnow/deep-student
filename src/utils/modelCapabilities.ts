@@ -46,6 +46,7 @@ export interface ModelDefaultParams {
   thinkingBudget?: number;
   includeThoughts?: boolean;
   reasoningEffort?: string;
+  verbosity?: string;
   temperature?: number;
   minP?: number;
   topK?: number;
@@ -174,6 +175,62 @@ const isMimoProvider = (options?: ModelDefaultParameterOptions): boolean => {
 // 统一默认参数
 export function getModelDefaultParameters(modelId: string, options: ModelDefaultParameterOptions = {}): ModelDefaultParams {
   const map: Record<string, ModelDefaultParams> = {
+    'gpt-5.5': {
+      enableThinking: true,
+      includeThoughts: true,
+      reasoningEffort: 'medium',
+      verbosity: 'medium',
+      maxOutputTokens: 128_000,
+      temperature: 1.0,
+    },
+    'gpt-5.5-pro': {
+      enableThinking: true,
+      includeThoughts: true,
+      reasoningEffort: 'high',
+      verbosity: 'medium',
+      maxOutputTokens: 128_000,
+      temperature: 1.0,
+    },
+    'gpt-5.4': {
+      enableThinking: true,
+      includeThoughts: true,
+      reasoningEffort: 'medium',
+      verbosity: 'medium',
+      maxOutputTokens: 128_000,
+      temperature: 1.0,
+    },
+    'gpt-5.4-pro': {
+      enableThinking: true,
+      includeThoughts: true,
+      reasoningEffort: 'high',
+      verbosity: 'medium',
+      maxOutputTokens: 128_000,
+      temperature: 1.0,
+    },
+    'gpt-5.4-mini': {
+      enableThinking: true,
+      includeThoughts: true,
+      reasoningEffort: 'medium',
+      verbosity: 'medium',
+      maxOutputTokens: 128_000,
+      temperature: 1.0,
+    },
+    'gpt-5.4-nano': {
+      enableThinking: true,
+      includeThoughts: true,
+      reasoningEffort: 'low',
+      verbosity: 'low',
+      maxOutputTokens: 128_000,
+      temperature: 1.0,
+    },
+    'gpt-5-pro': {
+      enableThinking: true,
+      includeThoughts: true,
+      reasoningEffort: 'high',
+      verbosity: 'medium',
+      maxOutputTokens: 128_000,
+      temperature: 1.0,
+    },
     'pro/qwen/qwen2.5-vl-7b-instruct': { maxOutputTokens: 4096 },
     'qwen/qwq-32b': { enableThinking: true, thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 },
     'qwen/qwq-32b-preview': { enableThinking: true, thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 },

@@ -1748,11 +1748,9 @@ fn dedup_key_for_source(s: &SourceInfo) -> String {
         return resource_id.to_string();
     }
 
-    s.title.clone().unwrap_or_else(|| {
-        s.snippet
-            .clone()
-            .unwrap_or_else(|| "<unknown>".to_string())
-    })
+    s.title
+        .clone()
+        .unwrap_or_else(|| s.snippet.clone().unwrap_or_else(|| "<unknown>".to_string()))
 }
 
 /// 使用 RRF 算法融合多路召回结果

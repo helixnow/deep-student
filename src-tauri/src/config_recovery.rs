@@ -17,6 +17,19 @@ pub fn create_default_api_configs() -> Vec<ApiConfig> {
             vendor_name: None,
             provider_type: Some("openai".to_string()),
             provider_scope: Some("openai".to_string()),
+            api_protocol: Some(crate::llm_manager::resolve_preferred_protocol_for_provider(
+                Some("openai"),
+                Some("openai"),
+                "https://api.openai.com/v1",
+                None,
+            )),
+            supports_openai_responses: Some(
+                crate::llm_manager::provider_supports_openai_responses(
+                    Some("openai"),
+                    "https://api.openai.com/v1",
+                    None,
+                ),
+            ),
             api_key: "".to_string(), // 用户需要填入
             base_url: "https://api.openai.com/v1".to_string(),
             model: "gpt-4-turbo-preview".to_string(),
@@ -61,6 +74,19 @@ pub fn create_default_api_configs() -> Vec<ApiConfig> {
             vendor_name: None,
             provider_type: Some("anthropic".to_string()),
             provider_scope: Some("anthropic".to_string()),
+            api_protocol: Some(crate::llm_manager::resolve_preferred_protocol_for_provider(
+                Some("anthropic"),
+                Some("anthropic"),
+                "https://api.anthropic.com/v1",
+                None,
+            )),
+            supports_openai_responses: Some(
+                crate::llm_manager::provider_supports_openai_responses(
+                    Some("anthropic"),
+                    "https://api.anthropic.com/v1",
+                    None,
+                ),
+            ),
             api_key: "".to_string(), // 用户需要填入
             base_url: "https://api.anthropic.com/v1".to_string(),
             model: "claude-3-5-sonnet-20241022".to_string(),

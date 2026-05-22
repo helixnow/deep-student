@@ -18,7 +18,9 @@ use url::Url;
 use uuid::Uuid;
 
 use super::{
-    adapters::get_adapter, parser, ApiConfig, ImagePayload, LLMManager, MergedChatMessage, Result,
+    adapters::get_adapter, build_provider_adapter, normalize_nonstream_response_to_openai, parser,
+    should_use_openai_responses_for_config, ApiConfig, ImagePayload, LLMManager, MergedChatMessage,
+    Result,
 };
 
 #[inline]
@@ -339,12 +341,13 @@ mod tests {
     }
 
     #[test]
-    fn test_should_use_openai_responses_for_o4_reasoning_models() {
+    fn test_should_use_openai_responses_for_declared_openai_compatible_responses_support() {
         let config = ApiConfig {
             model_adapter: "general".to_string(),
-            model: "o4-mini".to_string(),
-            is_reasoning: true,
-            supports_reasoning: true,
+            model: "gpt-4o-mini".to_string(),
+            supports_openai_responses: Some(true),
+            is_reasoning: false,
+            supports_reasoning: false,
             ..Default::default()
         };
 
@@ -358,6 +361,81 @@ mod tests {
             model: "o4-mini".to_string(),
             is_reasoning: true,
             supports_reasoning: true,
+            ..Default::default()
+        };
+
+        assert!(!should_use_openai_responses_for_config(&config));
+    }
+
+    #[test]
+    fn test_explicit_openai_responses_protocol_overrides_legacy_heuristics() {
+        let config = ApiConfig {
+            model_adapter: "general".to_string(),
+            api_protocol: Some("openai_responses".to_string()),
+            model: "gpt-4o-mini".to_string(),
+            is_reasoning: false,
+            supports_reasoning: false,
+            ..Default::default()
+        };
+
+        assert!(should_use_openai_responses_for_config(&config));
+    }
+
+    #[test]
+    fn test_explicit_chat_completions_protocol_blocks_responses_for_reasoning_models() {
+        let config = ApiConfig {
+            model_adapter: "general".to_string(),
+            api_protocol: Some("openai_chat_completions".to_string()),
+            model: "o4-mini".to_string(),
+            is_reasoning: true,
+            supports_reasoning: true,
+            ..Default::default()
+        };
+
+        assert!(!should_use_openai_responses_for_config(&config));
+    }
+
+    #[test]
+    fn test_official_openai_defaults_to_responses_without_explicit_protocol() {
+        let config = ApiConfig {
+            model_adapter: "general".to_string(),
+            provider_type: Some("openai".to_string()),
+            base_url: "https://api.openai.com/v1".to_string(),
+            model: "gpt-4o-mini".to_string(),
+            is_reasoning: false,
+            supports_reasoning: false,
+            ..Default::default()
+        };
+
+        assert!(should_use_openai_responses_for_config(&config));
+    }
+
+    #[test]
+    fn test_third_party_declared_responses_support_defaults_to_responses_without_explicit_protocol()
+    {
+        let config = ApiConfig {
+            model_adapter: "general".to_string(),
+            provider_type: Some("custom".to_string()),
+            base_url: "https://proxy.example.com/v1".to_string(),
+            supports_openai_responses: Some(true),
+            model: "gpt-4o-mini".to_string(),
+            is_reasoning: false,
+            supports_reasoning: false,
+            ..Default::default()
+        };
+
+        assert!(should_use_openai_responses_for_config(&config));
+    }
+
+    #[test]
+    fn test_generic_third_party_gpt4_stays_on_chat_completions_without_explicit_protocol() {
+        let config = ApiConfig {
+            model_adapter: "general".to_string(),
+            provider_type: Some("custom".to_string()),
+            base_url: "https://proxy.example.com/v1".to_string(),
+            model: "gpt-4o-mini".to_string(),
+            is_reasoning: false,
+            supports_reasoning: false,
             ..Default::default()
         };
 
@@ -488,17 +566,6 @@ mod tests {
         assert!(!body.as_object().unwrap().contains_key("max_tokens"));
         assert_eq!(body.pointer("/thinking/type"), Some(&json!("disabled")));
     }
-}
-
-fn should_use_openai_responses_for_config(config: &ApiConfig) -> bool {
-    if config.model_adapter != "general" {
-        return false;
-    }
-    if !(config.is_reasoning || config.supports_reasoning) {
-        return false;
-    }
-    let lower = config.model.to_lowercase();
-    lower.contains("o1") || lower.contains("o3") || lower.contains("o4") || lower.contains("gpt-5")
 }
 
 fn apply_runtime_reasoning_overrides(
@@ -744,7 +811,13 @@ impl LLMManager {
 
         // 🔧 P3修复：统一使用 system role，不再区分推理/非推理模型
         // 所有内容由 prompt_builder 统一管理，直接放入 system message
-        messages.push(json!({ "role": "system", "content": system_content }));
+        // 使用 content array 格式以支持 OpenAI/DeepSeek prompt caching
+        messages.push(json!({
+            "role": "system",
+            "content": [
+                {"type": "text", "text": system_content, "cache_control": {"type": "ephemeral"}}
+            ]
+        }));
 
         // 🔧 P1修复：预处理消息，合并连续的工具调用
         // OpenAI 协议期望：一个 assistant 消息包含 tool_calls 数组，然后跟着多个 tool 消息
@@ -1503,15 +1576,7 @@ impl LLMManager {
         let start_instant = std::time::Instant::now();
 
         // Provider 适配：构建请求
-        let adapter: Box<dyn ProviderAdapter> = if self.should_use_openai_responses(&config) {
-            Box::new(crate::providers::OpenAIResponsesAdapter)
-        } else {
-            match config.model_adapter.as_str() {
-                "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-                "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-                _ => Box::new(crate::providers::OpenAIAdapter),
-            }
-        };
+        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
         let preq = adapter
             .build_request(
                 &config.base_url,
@@ -2902,11 +2967,7 @@ impl LLMManager {
 
         debug!("发送请求到: {}", config.base_url);
         // 使用 ProviderAdapter 统一构建请求（避免覆盖分支硬编码/chat/completions）
-        let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
         let preq = adapter
             .build_request(
                 &config.base_url,
@@ -3752,15 +3813,7 @@ impl LLMManager {
         apply_generation_params(&mut request_body, &config);
 
         // 使用 ProviderAdapter 构建请求，确保 Gemini 模型走转换后的URL/Headers/Body
-        let adapter: Box<dyn ProviderAdapter> = if self.should_use_openai_responses(&config) {
-            Box::new(crate::providers::OpenAIResponsesAdapter)
-        } else {
-            match config.model_adapter.as_str() {
-                "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-                "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-                _ => Box::new(crate::providers::OpenAIAdapter),
-            }
-        };
+        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
         let preq = adapter
             .build_request(
                 &config.base_url,
@@ -3832,57 +3885,7 @@ impl LLMManager {
         let response_json: Value = serde_json::from_str(&response_text)
             .map_err(|e| AppError::llm(format!("解析模型二响应失败: {}", e)))?;
 
-        // Gemini 非流式响应统一转换为 OpenAI 形状
-        let openai_like_json = if config.model_adapter == "google" {
-            // 非流式：先检测安全阻断
-            if let Some(safety_msg) = Self::extract_gemini_safety_error(&response_json) {
-                return Err(AppError::llm(safety_msg));
-            }
-            match crate::adapters::gemini_openai_converter::convert_gemini_nonstream_response_to_openai(&response_json, &config.model) {
-                Ok(v) => v,
-                Err(e) => return Err(AppError::llm(format!("Gemini响应转换失败: {}", e))),
-            }
-        } else if matches!(config.model_adapter.as_str(), "anthropic" | "claude") {
-            crate::providers::convert_anthropic_response_to_openai(&response_json, &config.model)
-                .ok_or_else(|| AppError::llm("解析Anthropic响应失败".to_string()))?
-        } else if self.should_use_openai_responses(&config) {
-            let mut text_segments: Vec<String> = Vec::new();
-            if let Some(output) = response_json.get("output").and_then(|v| v.as_array()) {
-                for item in output {
-                    if let Some(content_arr) = item.get("content").and_then(|v| v.as_array()) {
-                        for entry in content_arr {
-                            let entry_type =
-                                entry.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                            if matches!(entry_type, "output_text" | "text") {
-                                if let Some(text) = entry.get("text").and_then(|v| v.as_str()) {
-                                    if !text.is_empty() {
-                                        text_segments.push(text.to_string());
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            if text_segments.is_empty() {
-                if let Some(output_text) = response_json.get("output_text").and_then(|v| v.as_str())
-                {
-                    if !output_text.is_empty() {
-                        text_segments.push(output_text.to_string());
-                    }
-                }
-            }
-            json!({
-                "choices": [{
-                    "message": {
-                        "content": text_segments.join("")
-                    }
-                }],
-                "usage": response_json.get("usage").cloned()
-            })
-        } else {
-            response_json.clone()
-        };
+        let openai_like_json = normalize_nonstream_response_to_openai(&config, &response_json)?;
 
         let content = openai_like_json["choices"][0]["message"]["content"]
             .as_str()
@@ -3978,11 +3981,7 @@ impl LLMManager {
             "stream": false
         });
 
-        let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
 
         let preq = adapter
             .build_request(
@@ -4048,20 +4047,7 @@ impl LLMManager {
         let response_json: Value = serde_json::from_str(&response_text)
             .map_err(|e| AppError::llm(format!("解析聊天元数据响应失败: {}", e)))?;
 
-        let openai_like_json = if config.model_adapter == "google" {
-            if let Some(safety_msg) = Self::extract_gemini_safety_error(&response_json) {
-                return Err(AppError::llm(safety_msg));
-            }
-            match crate::adapters::gemini_openai_converter::convert_gemini_nonstream_response_to_openai(&response_json, &config.model) {
-                Ok(v) => v,
-                Err(e) => return Err(AppError::llm(format!("Gemini响应转换失败: {}", e))),
-            }
-        } else if matches!(config.model_adapter.as_str(), "anthropic" | "claude") {
-            crate::providers::convert_anthropic_response_to_openai(&response_json, &config.model)
-                .ok_or_else(|| AppError::llm("解析Anthropic响应失败".to_string()))?
-        } else {
-            response_json.clone()
-        };
+        let openai_like_json = normalize_nonstream_response_to_openai(&config, &response_json)?;
 
         let content = openai_like_json["choices"][0]["message"]["content"]
             .as_str()
@@ -4673,11 +4659,7 @@ impl LLMManager {
         }
 
         // 4. 通过 ProviderAdapter 构造 HTTP 请求
-        let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
         let preq = adapter
             .build_request(
                 &config.base_url,
@@ -4889,11 +4871,7 @@ impl LLMManager {
         );
 
         // 4. 通过 ProviderAdapter 构造 HTTP 请求
-        let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
         let preq = adapter
             .build_request(
                 &config.base_url,
@@ -5009,11 +4987,7 @@ impl LLMManager {
         });
         apply_max_tokens_or_mimo_completion_limit(&mut request_body, &config, max_tokens);
 
-        let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
 
         let preq = adapter
             .build_request(&config.base_url, &api_key, &config.model, &request_body)
@@ -5236,11 +5210,7 @@ impl LLMManager {
         debug!("发送 Anki 制卡请求到: {} (经适配器)", config.base_url);
 
         // 5. 通过 ProviderAdapter 发送HTTP请求（支持 Gemini 中转）
-        let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
         let preq = adapter
             .build_request(
                 &config.base_url,

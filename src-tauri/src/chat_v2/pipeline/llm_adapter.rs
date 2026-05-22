@@ -78,6 +78,7 @@ pub fn parse_api_usage(usage: &Value) -> Option<TokenUsage> {
     // 提取 cached_tokens
     // - Anthropic 格式：cache_creation_input_tokens + cache_read_input_tokens（应相加）
     // - OpenAI 格式：prompt_tokens_details.cached_tokens
+    // - DeepSeek 格式：prompt_cache_hit_tokens（usage 顶层字段）
     let anthropic_cache_creation = usage
         .get("cache_creation_input_tokens")
         .and_then(|v| v.as_u64())
@@ -91,7 +92,12 @@ pub fn parse_api_usage(usage: &Value) -> Option<TokenUsage> {
         .and_then(|d| d.get("cached_tokens"))
         .and_then(|v| v.as_u64())
         .unwrap_or(0) as u32;
-    let total_cached = anthropic_cache_creation + anthropic_cache_read + openai_cached;
+    let deepseek_cached = usage
+        .get("prompt_cache_hit_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as u32;
+    let total_cached =
+        anthropic_cache_creation + anthropic_cache_read + openai_cached + deepseek_cached;
     let cached_tokens = if total_cached > 0 {
         Some(total_cached)
     } else {

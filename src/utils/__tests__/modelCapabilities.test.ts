@@ -57,6 +57,43 @@ describe('modelCapabilities DeepSeek version defaults', () => {
   });
 });
 
+describe('modelCapabilities OpenAI GPT-5 defaults', () => {
+  it('uses OpenAI GPT-5.5 defaults with reasoning effort and verbosity', () => {
+    expect(getModelDefaultParameters('gpt-5.5', { providerScope: 'openai' })).toMatchObject({
+      enableThinking: true,
+      includeThoughts: true,
+      reasoningEffort: 'medium',
+      verbosity: 'medium',
+      maxOutputTokens: 128_000,
+      temperature: 1.0,
+    });
+  });
+
+  it('uses stronger defaults for OpenAI GPT-5.5 Pro and GPT-5 Pro', () => {
+    expect(getModelDefaultParameters('gpt-5.5-pro', { providerScope: 'openai' })).toMatchObject({
+      reasoningEffort: 'high',
+      verbosity: 'medium',
+    });
+
+    expect(getModelDefaultParameters('gpt-5-pro', { providerScope: 'openai' })).toMatchObject({
+      reasoningEffort: 'high',
+      verbosity: 'medium',
+    });
+  });
+
+  it('uses lower-cost defaults for GPT-5.4 mini and nano variants', () => {
+    expect(getModelDefaultParameters('gpt-5.4-mini', { providerScope: 'openai' })).toMatchObject({
+      reasoningEffort: 'medium',
+      verbosity: 'medium',
+    });
+
+    expect(getModelDefaultParameters('gpt-5.4-nano', { providerScope: 'openai' })).toMatchObject({
+      reasoningEffort: 'low',
+      verbosity: 'low',
+    });
+  });
+});
+
 describe('modelCapabilities NVIDIA provider defaults', () => {
   it('keeps NVIDIA-hosted vendor/model ids on the generic adapter path', () => {
     const deepseekCaps = inferCapabilities({
