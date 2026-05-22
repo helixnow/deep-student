@@ -194,8 +194,8 @@ const TodoItemRow: React.FC<{
         {isCompleted ? (
           <CheckCircle size={20} className="text-[color:hsl(var(--success))]" />
         ) : (
-          <div className="flex h-5 w-5 items-center justify-center rounded-full border-[1.5px] border-[color:var(--border-default)] transition-colors group-hover:border-[color:hsl(var(--primary))]">
-            <Check size={12} className="text-[color:hsl(var(--primary))] opacity-0 transition-opacity group-hover:opacity-40" />
+          <div className="flex h-5 w-5 items-center justify-center rounded-full border-[1.5px] border-[color:var(--border-default)] transition-colors group-hover:border-[color:hsl(var(--primary))] group-focus-within:border-[color:hsl(var(--primary))]">
+            <Check size={12} className="text-[color:hsl(var(--primary))] opacity-0 transition-opacity group-hover:opacity-40 group-focus-within:opacity-40" />
           </div>
         )}
       </button>
@@ -278,7 +278,7 @@ const TodoItemRow: React.FC<{
           }}
           title={t('todo:actions.startFocusSession')}
           aria-label="start-focus"
-          className="flex-shrink-0 opacity-40 transition-opacity duration-100 group-hover:opacity-100 !p-1.5"
+          className="flex-shrink-0 opacity-40 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 !p-1.5"
         >
           <Play size={16} />
         </NotionButton>

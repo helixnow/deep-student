@@ -529,7 +529,7 @@ export const SettingsDrawer: React.FC<SettingsDrawerProps> = ({
                       key={index}
                       className="group flex items-center gap-1.5 p-1.5 rounded-md hover:bg-[var(--interactive-hover)] transition-colors"
                     >
-                      <DotsSixVertical size={14} className="text-muted-foreground/30 cursor-grab opacity-0 group-hover:opacity-100 transition-opacity flex-shrink-0" />
+                      <DotsSixVertical size={14} className="text-muted-foreground/30 cursor-grab opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity flex-shrink-0" />
                       <Input
                         value={dim.name}
                         onChange={e => handleUpdateDimension(index, 'name', e.target.value)}

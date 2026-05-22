@@ -18,7 +18,6 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { CaretRight } from '@phosphor-icons/react';
 import { Z_INDEX } from '@/config/zIndex';
 
@@ -173,28 +172,44 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
 
   const isVisible = preview ? (open ?? false) : true;
 
+  // 退场动画延迟卸载：先播放 200ms 退场动画，再真正卸载
+  const [shouldRender, setShouldRender] = useState(false);
+
   // 动画状态
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     if (isVisible) {
+      setShouldRender(true);
       // 下一帧触发入场动画
       requestAnimationFrame(() => setMounted(true));
     } else {
       setMounted(false);
+      const timer = setTimeout(() => setShouldRender(false), 200);
+      return () => clearTimeout(timer);
     }
   }, [isVisible]);
 
   // ESC 关闭（仅预览模式）
   useEffect(() => {
-    if (!preview || !isVisible) return;
+    if (!preview || !shouldRender) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose?.();
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [preview, isVisible, onClose]);
+  }, [preview, shouldRender, onClose]);
 
-  if (!isVisible) return null;
+  // 锁定 body 滚动，防止弹窗打开时页面背后可滚动
+  useEffect(() => {
+    if (!shouldRender) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [shouldRender]);
+
+  if (!shouldRender) return null;
 
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (preview && e.target === e.currentTarget) {
@@ -225,7 +240,7 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
       <div
         ref={panelRef}
         className={cn(
-          'relative flex flex-col',
+          'relative flex flex-col overflow-hidden',
           'w-[94vw] max-w-[520px] max-h-[80vh]',
           'bg-background',
           // Notion 风格：极其干净的阴影，几乎无边框
@@ -253,7 +268,10 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
         <div className="mx-6 h-px bg-foreground/[0.06]" />
 
         {/* 内容区 */}
-        <CustomScrollArea className="flex-1 min-h-0" viewportClassName="px-6 py-4">
+        <div
+          className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 py-4 scroll-area--native"
+          onWheel={(e) => e.stopPropagation()}
+        >
           <div className="space-y-0.5">
             {/* 用户协议 */}
             <ToggleBlock
@@ -334,7 +352,7 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
               </p>
             </ToggleBlock>
           </div>
-        </CustomScrollArea>
+        </div>
 
         {/* 分隔线 */}
         <div className="mx-6 h-px bg-foreground/[0.06]" />

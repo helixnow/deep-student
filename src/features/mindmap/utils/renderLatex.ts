@@ -4,6 +4,7 @@
  * 使用 KaTeX 渲染为 HTML。
  */
 import katex from 'katex';
+import 'katex/contrib/mhchem';
 
 const KATEX_OPTIONS: katex.KatexOptions = {
   throwOnError: false,

@@ -165,7 +165,7 @@ const QuestionGridCard: React.FC<{
       onClick={isEditMode ? () => onSelect?.(!isSelected) : onClick}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); (isEditMode ? () => onSelect?.(!isSelected) : onClick)?.(); } }}
       className={cn(
-        'group relative flex flex-col p-4 rounded-lg text-left transition-all duration-200 cursor-pointer',
+        'group relative flex flex-col p-4 rounded-lg text-left transition-[background-color,border-color,color,box-shadow] duration-200 cursor-pointer',
         'border border-transparent hover:border-border/60 hover:bg-[var(--interactive-hover)]',
         'hover:shadow-[var(--shadow-notion)]',
         status === 'mastered' && 'bg-emerald-500/[0.03]',
@@ -226,7 +226,7 @@ const QuestionGridCard: React.FC<{
         </span>
       </div>
       
-      <CaretRight size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-all" />
+      <CaretRight size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-[background-color,border-color,color,box-shadow]" />
     </div>
   );
 };
@@ -300,7 +300,7 @@ const QuestionListRow: React.FC<{
         )}
       </div>
       
-      <CaretRight size={16} className="text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-all flex-shrink-0" />
+      <CaretRight size={16} className="text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-[background-color,border-color,color,box-shadow] flex-shrink-0" />
     </NotionButton>
   );
 };

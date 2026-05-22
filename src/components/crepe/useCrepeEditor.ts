@@ -4,6 +4,7 @@
  */
 
 import { useRef, useEffect, useCallback, useState } from 'react';
+import 'katex/contrib/mhchem';
 import { Crepe, CrepeFeature } from '@milkdown/crepe';
 import { editorViewCtx, commandsCtx } from '@milkdown/kit/core';
 import { replaceAll } from '@milkdown/kit/utils';

@@ -443,7 +443,7 @@ export const FolderTreeItem: React.FC<FolderTreeItemProps> = React.memo(({
                 variant="ghost"
                 size="sm"
                 className={cn(
-                  'h-5 w-5 p-0 opacity-0 group-hover:opacity-100',
+                  'h-5 w-5 p-0 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100',
                   'transition-opacity'
                 )}
                 onClick={(e) => e.stopPropagation()}

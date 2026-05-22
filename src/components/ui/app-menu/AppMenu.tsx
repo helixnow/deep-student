@@ -29,6 +29,7 @@ interface AppMenuContextValue {
   setOpen: (open: boolean) => void;
   triggerRef: React.RefObject<HTMLDivElement>;
   contentRef: React.RefObject<HTMLDivElement>;
+  menuId: string;
   mode: 'dropdown' | 'context';
   position: { x: number; y: number };
   setPosition: (pos: { x: number; y: number }) => void;
@@ -55,6 +56,7 @@ export function AppMenu({ open, onOpenChange, mode = 'dropdown', className, chil
   const [internalOpen, setInternalOpen] = React.useState(false);
   const [position, setPosition] = React.useState({ x: 0, y: 0 });
   const actualOpen = isControlled ? !!open : internalOpen;
+  const menuId = React.useId();
   const { dismissTooltips, registerInteractiveOverlay } = useOverlayCoordinator();
 
   const setOpen = React.useCallback(
@@ -89,6 +91,8 @@ export function AppMenu({ open, onOpenChange, mode = 'dropdown', className, chil
     if (!actualOpen) return;
     const handleClick = (event: MouseEvent) => {
       const target = event.target as Node;
+      const targetElement = target instanceof Element ? target : null;
+      if (targetElement?.closest(`[data-app-menu-id="${menuId}"]`)) return;
       if (containerRef.current && containerRef.current.contains(target)) return;
       if (contentRef.current && contentRef.current.contains(target)) return;
       setOpen(false);
@@ -102,7 +106,7 @@ export function AppMenu({ open, onOpenChange, mode = 'dropdown', className, chil
   }, [actualOpen, handleKeyDown, setOpen]);
 
   return (
-    <AppMenuContext.Provider value={{ open: actualOpen, setOpen, triggerRef: containerRef, contentRef, mode, position, setPosition }}>
+    <AppMenuContext.Provider value={{ open: actualOpen, setOpen, triggerRef: containerRef, contentRef, menuId, mode, position, setPosition }}>
       <div ref={containerRef} className={cn('app-menu-root relative inline-flex', className)}>
         {children}
       </div>
@@ -208,6 +212,7 @@ export function AppMenuContent({
   const [internalSearchValue, setInternalSearchValue] = React.useState('');
   const fallbackContentRef = React.useRef<HTMLDivElement | null>(null);
   const contentRef = ctx?.contentRef ?? fallbackContentRef;
+  const portalContainerRef = React.useRef<HTMLElement | null>(null);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
   const isOpen = !!ctx?.open;
   const [shouldRender, setShouldRender] = React.useState(isOpen);
@@ -259,6 +264,8 @@ export function AppMenuContent({
 
   React.useLayoutEffect(() => {
     if (typeof document === 'undefined') return;
+    const triggerEl = ctx?.triggerRef.current;
+    portalContainerRef.current = triggerEl?.closest('[data-overlay-container="true"]') as HTMLElement | null;
     if (!shouldRender) return;
     
     const updatePosition = () => {
@@ -340,6 +347,7 @@ export function AppMenuContent({
     <div
       ref={contentRef}
       role="menu"
+      data-app-menu-id={ctx.menuId}
       tabIndex={-1}
       className={cn(
         'app-menu-content',
@@ -384,7 +392,7 @@ export function AppMenuContent({
         children
       )}
     </div>,
-    document.body
+    portalContainerRef.current ?? document.body
   );
 }
 
@@ -463,24 +471,74 @@ AppMenuItem.displayName = 'AppMenuItem';
 
 export interface AppMenuSubProps {
   children: React.ReactNode;
+  openOnClick?: boolean;
 }
 
 interface AppMenuSubContextValue {
   open: boolean;
   setOpen: (open: boolean) => void;
+  triggerRef: React.RefObject<HTMLDivElement>;
+  contentRef: React.RefObject<HTMLDivElement>;
+  openOnClick: boolean;
+  openSub: () => void;
+  closeSub: () => void;
+  toggleSub: () => void;
+  scheduleClose: () => void;
 }
 
 const AppMenuSubContext = React.createContext<AppMenuSubContextValue | null>(null);
 
-export function AppMenuSub({ children }: AppMenuSubProps) {
+export function AppMenuSub({ children, openOnClick = false }: AppMenuSubProps) {
   const [open, setOpen] = React.useState(false);
+  const triggerRef = React.useRef<HTMLDivElement>(null);
+  const contentRef = React.useRef<HTMLDivElement>(null);
+  const closeTimerRef = React.useRef<number | null>(null);
+
+  const clearCloseTimer = React.useCallback(() => {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }, []);
+
+  const openSub = React.useCallback(() => {
+    clearCloseTimer();
+    setOpen(true);
+  }, [clearCloseTimer]);
+
+  const closeSub = React.useCallback(() => {
+    clearCloseTimer();
+    setOpen(false);
+  }, [clearCloseTimer]);
+
+  const toggleSub = React.useCallback(() => {
+    clearCloseTimer();
+    setOpen((prev) => !prev);
+  }, [clearCloseTimer]);
+
+  const scheduleClose = React.useCallback(() => {
+    if (openOnClick) return;
+    clearCloseTimer();
+    closeTimerRef.current = window.setTimeout(() => {
+      setOpen(false);
+      closeTimerRef.current = null;
+    }, 120);
+  }, [clearCloseTimer, openOnClick]);
+
+  React.useEffect(() => {
+    return () => {
+      clearCloseTimer();
+    };
+  }, [clearCloseTimer]);
   
   return (
-    <AppMenuSubContext.Provider value={{ open, setOpen }}>
+    <AppMenuSubContext.Provider value={{ open, setOpen, triggerRef, contentRef, openOnClick, openSub, closeSub, toggleSub, scheduleClose }}>
       <div 
         className="app-menu-sub"
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
+        onMouseEnter={openOnClick ? undefined : openSub}
+        onMouseLeave={openOnClick ? undefined : scheduleClose}
+        onFocus={openOnClick ? undefined : openSub}
+        onBlur={openOnClick ? undefined : scheduleClose}
       >
         {children}
       </div>
@@ -493,11 +551,12 @@ export interface AppMenuSubTriggerProps extends React.HTMLAttributes<HTMLDivElem
   disabled?: boolean;
 }
 
-export function AppMenuSubTrigger({ icon, children, disabled, className, ...rest }: AppMenuSubTriggerProps) {
+export function AppMenuSubTrigger({ icon, children, disabled, className, onClick, onKeyDown, onMouseEnter, ...rest }: AppMenuSubTriggerProps) {
   const subCtx = React.useContext(AppMenuSubContext);
   
   return (
     <div
+      ref={subCtx?.triggerRef}
       role="menuitem"
       aria-haspopup="menu"
       aria-expanded={subCtx?.open}
@@ -506,6 +565,31 @@ export function AppMenuSubTrigger({ icon, children, disabled, className, ...rest
         disabled && 'app-menu-item-disabled',
         className
       )}
+      onMouseEnter={(event) => {
+        onMouseEnter?.(event);
+        if (event.defaultPrevented) return;
+        if (!disabled) {
+          if (subCtx?.openOnClick) return;
+          subCtx?.openSub();
+        }
+      }}
+      onClick={(event) => {
+        onClick?.(event);
+        if (event.defaultPrevented || disabled || !subCtx?.openOnClick) return;
+        subCtx.toggleSub();
+      }}
+      onKeyDown={(event) => {
+        onKeyDown?.(event);
+        if (event.defaultPrevented || disabled || !subCtx?.openOnClick) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          subCtx.toggleSub();
+        }
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          subCtx.closeSub();
+        }
+      }}
       {...rest}
     >
       {icon && <span className="app-menu-item-icon">{icon}</span>}
@@ -519,17 +603,73 @@ export type AppMenuSubContentProps = React.HTMLAttributes<HTMLDivElement>;
 
 export function AppMenuSubContent({ className, children, ...rest }: AppMenuSubContentProps) {
   const subCtx = React.useContext(AppMenuSubContext);
-  
+  const rootMenuCtx = React.useContext(AppMenuContext);
+  const [position, setPosition] = React.useState<{ left: number; top: number } | null>(null);
+
+  React.useLayoutEffect(() => {
+    if (!subCtx?.open || typeof window === 'undefined') return;
+
+    const updatePosition = () => {
+      const triggerEl = subCtx.triggerRef.current;
+      const contentEl = subCtx.contentRef.current;
+      if (!triggerEl || !contentEl) return;
+
+      const triggerRect = triggerEl.getBoundingClientRect();
+      const contentRect = contentEl.getBoundingClientRect();
+      const viewportPadding = 8;
+      const gap = 6;
+
+      const fitsRight = triggerRect.right + gap + contentRect.width <= window.innerWidth - viewportPadding;
+      const preferredLeft = fitsRight
+        ? triggerRect.right + gap
+        : triggerRect.left - gap - contentRect.width;
+      const maxLeft = Math.max(viewportPadding, window.innerWidth - contentRect.width - viewportPadding);
+      const left = Math.min(Math.max(viewportPadding, preferredLeft), maxLeft);
+
+      const preferredTop = triggerRect.top - 4;
+      const maxTop = Math.max(viewportPadding, window.innerHeight - contentRect.height - viewportPadding);
+      const top = Math.min(Math.max(viewportPadding, preferredTop), maxTop);
+
+      setPosition((prev) => (
+        prev && prev.left === left && prev.top === top
+          ? prev
+          : { left, top }
+      ));
+    };
+
+    updatePosition();
+    const frame = window.requestAnimationFrame(updatePosition);
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [subCtx]);
+
   if (!subCtx?.open) return null;
   
-  return (
+  return createPortal(
     <div
+      ref={subCtx.contentRef}
       role="menu"
+      data-app-menu-id={rootMenuCtx?.menuId}
       className={cn('app-menu-sub-content', className)}
+      onMouseEnter={subCtx.openOnClick ? undefined : subCtx.openSub}
+      onMouseLeave={subCtx.openOnClick ? undefined : subCtx.scheduleClose}
+      style={{
+        position: 'fixed',
+        left: position?.left ?? 8,
+        top: position?.top ?? 8,
+        visibility: position ? 'visible' : 'hidden',
+      }}
       {...rest}
     >
       {children}
-    </div>
+    </div>,
+    document.body
   );
 }
 

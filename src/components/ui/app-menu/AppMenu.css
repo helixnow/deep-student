@@ -38,7 +38,7 @@
   z-index: 110;
   min-width: 180px;
   max-width: 280px;
-  overflow-x: hidden;
+  overflow: visible;
   padding: var(--menu-shell-padding);
 
   border-radius: var(--menu-shell-radius);
@@ -288,9 +288,7 @@
 }
 
 .app-menu-sub-content {
-  position: absolute;
-  left: 100%;
-  top: -4px;
+  z-index: 110;
   min-width: 140px;
   padding: var(--menu-shell-padding);
   border-radius: var(--menu-shell-sub-radius);

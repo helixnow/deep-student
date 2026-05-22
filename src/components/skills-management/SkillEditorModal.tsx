@@ -359,21 +359,21 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
           <TabsList className="bg-muted/20 border border-border/30 rounded-xl px-1.5 py-1 h-auto gap-2 shadow-sm">
             <TabsTrigger
               value="basic"
-              className="data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-all font-medium text-muted-foreground text-sm hover:text-foreground/80"
+              className="data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
             >
               <Gear size={14} className="mr-1.5" />
               {t('skills:editor.tab_basic', '基本信息')}
             </TabsTrigger>
             <TabsTrigger
               value="content"
-              className="data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-all font-medium text-muted-foreground text-sm hover:text-foreground/80"
+              className="data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
             >
               <FileText size={14} className="mr-1.5" />
               {t('skills:editor.tab_content', '技能内容')}
             </TabsTrigger>
             <TabsTrigger
               value="tools"
-              className="data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-all font-medium text-muted-foreground text-sm hover:text-foreground/80"
+              className="data-[state=active]:bg-background data-[state=active]:shadow-sm data-[state=active]:border-border/50 data-[state=active]:text-foreground border border-transparent rounded-lg px-3 py-2 transition-colors font-medium text-muted-foreground text-sm hover:text-foreground/80"
             >
               <Wrench size={14} className="mr-1.5" />
               {t('skills:editor.tab_tools', '绑定工具')}
@@ -404,7 +404,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                     onChange={(e) => updateField('id', (e.target as HTMLInputElement).value)}
                     placeholder={t('skills:editor.id_placeholder', '例如：code-reviewer')}
                     className={cn(
-                      'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all h-10',
+                      'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors h-10',
                       errors.id && 'border-destructive'
                     )}
 />
@@ -428,7 +428,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                   onBlur={suggestId}
                   placeholder={t('skills:editor.name_placeholder', '小写字母/数字/连字符')}
                   className={cn(
-                    'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all h-10',
+                    'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors h-10',
                     errors.name && 'border-destructive'
                   )}
 />
@@ -452,7 +452,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                   placeholder={t('skills:editor.description_placeholder', '简要描述技能功能')}
                   rows={embeddedMode ? undefined : 2}
                   className={cn(
-                    'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all',
+                    'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors',
                     embeddedMode ? 'overflow-hidden resize-none min-h-[80px]' : 'resize-none',
                     errors.description && 'border-destructive'
                   )}
@@ -475,7 +475,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                     value={formData.version}
                     onChange={(e) => updateField('version', (e.target as HTMLInputElement).value)}
                     placeholder="1.0.0"
-                    className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all h-10"
+                    className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors h-10"
 />
                 </div>
                 <div className="space-y-2">
@@ -486,7 +486,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                     value={formData.author}
                     onChange={(e) => updateField('author', (e.target as HTMLInputElement).value)}
                     placeholder={t('skills:editor.author_placeholder', '可选')}
-                    className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all h-10"
+                    className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors h-10"
 />
                 </div>
               </div>
@@ -507,7 +507,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                       updateField('priority', Math.max(1, Math.min(10, value)));
                     }
                   }}
-                  className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all h-10 w-24"
+                  className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors h-10 w-24"
 />
                 <p className="text-[10px] text-muted-foreground/60">
                   {t('skills:editor.priority_hint', '1-10，数字越小优先级越高')}
@@ -586,7 +586,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
               </div>
 
               {/* 禁用自动激活 */}
-              <div className="flex items-center justify-between p-4 rounded-xl border border-border/40 hover:border-border/60 transition-all">
+              <div className="flex items-center justify-between p-4 rounded-xl border border-border/40 hover:border-border/60 transition-colors">
                 <div className="space-y-1">
                   <Label className="text-sm font-medium cursor-pointer">
                     {t('skills:editor.disable_auto_invoke', '禁用自动激活')}
@@ -617,7 +617,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
                   }}
                   placeholder={t('skills:editor.content_placeholder', '编写技能的详细指令...')}
                   className={cn(
-                    'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all font-mono text-sm',
+                    'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors font-mono text-sm',
                     embeddedMode ? 'overflow-hidden resize-none min-h-[200px]' : 'resize-none flex-1 min-h-[300px]'
                   )}
 />
@@ -659,7 +659,7 @@ export const SkillEditorModal: React.FC<SkillEditorModalProps> = ({
         <NotionButton
           type="submit"
           disabled={isSaving}
-          className="min-w-[100px] shadow-md hover:shadow-lg transition-all"
+          className="min-w-[100px] shadow-md hover:shadow-lg transition-colors"
         >
           {isSaving
             ? t('common:actions.saving', '保存中...')

@@ -22,7 +22,7 @@ const voiceInputController = createVoiceInputController({
 let globalVoiceInputListenerCount = 0;
 let globalVoiceInputListenerCleanup: (() => void) | null = null;
 
-function openSettingsTab(tab: 'app' | 'apis' | 'models'): void {
+function openSettingsTab(tab: 'general' | 'apis' | 'models'): void {
   setPendingSettingsRoute({ tab });
   window.dispatchEvent(new CustomEvent('navigate-to-tab', { detail: { tabName: 'settings' } }));
   window.dispatchEvent(new CustomEvent('SETTINGS_NAVIGATE_TAB', { detail: { tab } }));
@@ -80,7 +80,7 @@ function retainGlobalVoiceInputListeners(): () => void {
 }
 
 function openVoiceSettings(): void {
-  openSettingsTab('app');
+  openSettingsTab('general');
 }
 
 function openModelSettings(): void {

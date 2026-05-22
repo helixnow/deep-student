@@ -264,22 +264,24 @@ export function CommandPalette() {
       >
         {/* 搜索栏 */}
         <div className="command-palette-search">
-          <MagnifyingGlass className="command-palette-search-icon" size={18} />
-          <input
-            ref={inputRef}
-            type="text"
-            className="command-palette-input"
-            placeholder={t('command_palette:search_placeholder', '搜索命令...')}
-            value={query}
-            onChange={(e) => {
-              setQuery(e.target.value);
-              setSelectedIndex(0);
-              if (e.target.value) {
-                setViewMode('search');
-              }
-            }}
-            aria-label={t('command_palette:search_placeholder', '搜索命令...')}
-          />
+          <div className="command-palette-input-wrapper">
+            <MagnifyingGlass className="command-palette-search-icon" size={16} />
+            <input
+              ref={inputRef}
+              type="text"
+              className="command-palette-input"
+              placeholder={t('command_palette:search_placeholder', '搜索命令...')}
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setSelectedIndex(0);
+                if (e.target.value) {
+                  setViewMode('search');
+                }
+              }}
+              aria-label={t('command_palette:search_placeholder', '搜索命令...')}
+            />
+          </div>
           {/* 模式切换按钮 */}
           <div className="command-palette-mode-buttons">
             <button

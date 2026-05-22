@@ -1513,7 +1513,7 @@ export const MemoryView: React.FC<MemoryViewProps> = ({ className, onOpenApp }) 
                         </div>
                       </div>
                       {!batchMode && (
-                        <NotionButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/0 group-hover:text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10" onClick={(event) => { event.stopPropagation(); handleDeleteMemory(memory.id); }} aria-label="delete">
+                        <NotionButton variant="ghost" size="icon" iconOnly className="!p-1.5 text-muted-foreground/0 group-hover:text-muted-foreground group-focus-within:text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10" onClick={(event) => { event.stopPropagation(); handleDeleteMemory(memory.id); }} aria-label="delete">
                           <Trash size={14} />
                         </NotionButton>
                       )}
@@ -1714,7 +1714,7 @@ const MemoryTreeNode: React.FC<MemoryTreeNodeProps> = React.memo(({
                     )}
                     <NotionButton
                       variant="ghost" size="icon" iconOnly
-                      className="!p-1 text-muted-foreground/0 group-hover:text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10"
+                      className="!p-1 text-muted-foreground/0 group-hover:text-muted-foreground group-focus-within:text-muted-foreground hover:text-rose-500 hover:bg-rose-500/10"
                       onClick={(e) => { e.stopPropagation(); onDeleteNote(noteId); }}
                       aria-label="delete"
                     >
