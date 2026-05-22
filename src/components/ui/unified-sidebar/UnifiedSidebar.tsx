@@ -204,7 +204,7 @@ export const UnifiedSidebar: React.FC<UnifiedSidebarProps> = ({
     return (
         <div
         className={cn(
-          'sidebar-shell-surface flex flex-col transition-all duration-200 pt-[5px] font-sidebar-study-ui',
+          'sidebar-shell-surface flex flex-col transition-[width,opacity] duration-200 pt-[5px] font-sidebar-study-ui',
           'bg-[var(--sidebar-study-surface)]',
           // 全宽模式或 drawer/sheet 模式下，使用 w-full + h-full 填满容器
           shouldFillContainer ? 'w-full h-full overflow-hidden' : 'h-full flex-shrink-0',
@@ -350,7 +350,7 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={searchPlaceholder || t('search')}
                 className={cn(
-                  'sidebar-shell-search w-full rounded-2xl bg-background/70 border border-transparent placeholder:text-muted-foreground/50 focus:outline-none focus:bg-background focus:border-[color:var(--sidebar-study-border)] transition-all duration-150',
+                  'sidebar-shell-search w-full rounded-2xl bg-background/70 border border-transparent placeholder:text-muted-foreground/50 focus:outline-none focus:bg-background focus:border-[color:var(--sidebar-study-border)] transition-[background-color,border-color] duration-150',
                   styles.search.inputPadding
                 )}
 />

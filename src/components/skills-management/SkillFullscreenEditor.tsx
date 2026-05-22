@@ -361,7 +361,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                           onChange={(e) => updateField('id', (e.target as HTMLInputElement).value)}
                           placeholder={t('skills:editor.id_placeholder', '例如：code-reviewer')}
                           className={cn(
-                            'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all h-10',
+                            'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors h-10',
                             errors.id && 'border-destructive'
                           )}
 />
@@ -385,7 +385,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                         onBlur={suggestId}
                         placeholder={t('skills:editor.name_placeholder', '小写字母/数字/连字符')}
                         className={cn(
-                          'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all h-10',
+                          'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors h-10',
                           errors.name && 'border-destructive'
                         )}
 />
@@ -405,7 +405,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                         onChange={(e) => updateField('description', (e.target as HTMLTextAreaElement).value)}
                         placeholder={t('skills:editor.description_placeholder', '简要描述技能功能')}
                         className={cn(
-                          'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all resize-none min-h-[80px] overflow-hidden',
+                          'bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors resize-none min-h-[80px] overflow-hidden',
                           errors.description && 'border-destructive'
                         )}
 />
@@ -427,7 +427,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                           value={formData.version}
                           onChange={(e) => updateField('version', (e.target as HTMLInputElement).value)}
                           placeholder="1.0.0"
-                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all h-10"
+                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors h-10"
 />
                       </div>
                       <div className="space-y-2">
@@ -438,7 +438,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                           value={formData.author}
                           onChange={(e) => updateField('author', (e.target as HTMLInputElement).value)}
                           placeholder={t('skills:editor.author_placeholder', '可选')}
-                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all h-10"
+                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors h-10"
 />
                       </div>
                     </div>
@@ -460,7 +460,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                               updateField('priority', Math.max(1, Math.min(10, value)));
                             }
                           }}
-                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-all h-10 w-24"
+                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-background transition-colors h-10 w-24"
 />
                         <p className="text-[10px] text-muted-foreground/60">
                           {t('skills:editor.priority_hint', '1-10，数字越小优先级越高')}
@@ -562,7 +562,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
                   <NotionButton
                     type="submit"
                     disabled={isSaving}
-                    className="flex-1 shadow-md hover:shadow-lg transition-all"
+                    className="flex-1 shadow-md hover:shadow-lg transition-colors"
                   >
                     {isSaving
                       ? t('common:actions.saving', '保存中...')

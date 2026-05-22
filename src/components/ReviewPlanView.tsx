@@ -81,7 +81,7 @@ const StatCard: React.FC<StatCardProps> = ({
       'group relative flex flex-col gap-2 p-4 rounded-xl',
       'bg-gradient-to-br from-background to-muted/30',
       'border border-border/50 hover:border-border',
-      'transition-all duration-300 hover:shadow-md',
+      'transition-[background-color,border-color,color,box-shadow] duration-300 hover:shadow-md',
       className
     )}
   >
@@ -158,7 +158,7 @@ const ReviewQueueItem: React.FC<ReviewQueueItemProps> = ({
         'group flex items-center gap-3 p-3 rounded-lg',
         'bg-muted/20 hover:bg-[var(--interactive-hover)]',
         'border border-transparent hover:border-border/50',
-        'cursor-pointer transition-all duration-200',
+        'cursor-pointer transition-[background-color,border-color,color,box-shadow] duration-200',
         isOverdue && 'border-red-500/30 bg-red-500/5'
       )}
     >

@@ -132,7 +132,7 @@ const GlossaryEditor: React.FC<{
                 variant="ghost"
                 size="icon"
                 onClick={() => handleRemove(index)}
- className="w-6 h-6 opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/10 hover:text-destructive transition-all shrink-0"
+ className="w-6 h-6 opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/10 hover:text-destructive transition-colors shrink-0"
               >
                 <X size={14} />
               </NotionButton>

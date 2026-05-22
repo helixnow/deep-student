@@ -78,7 +78,7 @@ export const TextbookCard: React.FC<TextbookCardProps> = ({
   if (viewMode === 'grid') {
     return (
       <Card 
-        className="group relative overflow-hidden border bg-card text-card-foreground shadow-sm transition-all hover:shadow-md hover:-translate-y-1 cursor-pointer"
+        className="group relative overflow-hidden border bg-card text-card-foreground shadow-sm transition-[background-color,border-color,color,box-shadow,transform] hover:shadow-md hover:-translate-y-1 cursor-pointer"
         onClick={() => !isTrashed && onOpen(book)}
       >
         <div className="aspect-[3/4] w-full overflow-hidden bg-muted relative">
@@ -183,7 +183,7 @@ export const TextbookCard: React.FC<TextbookCardProps> = ({
   // List View
   return (
     <Card 
-      className="group flex flex-row items-center p-3 gap-4 overflow-hidden border bg-card text-card-foreground shadow-sm transition-all hover:shadow-md cursor-pointer"
+      className="group flex flex-row items-center p-3 gap-4 overflow-hidden border bg-card text-card-foreground shadow-sm transition-[background-color,border-color,color,box-shadow,transform] hover:shadow-md cursor-pointer"
       onClick={() => !isTrashed && onOpen(book)}
     >
       <div className="h-20 w-16 flex-shrink-0 overflow-hidden rounded-md bg-muted relative border">

@@ -189,7 +189,7 @@ const ReviewQuestionCard: React.FC<{
   return (
     <div
       className={cn(
-        'group flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all cursor-pointer',
+        'group flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors cursor-pointer',
         !isSelected && 'hover:bg-[var(--interactive-hover)]',
         isSelected && 'bg-amber-500/5'
       )}
@@ -237,7 +237,7 @@ const ReviewQuestionCard: React.FC<{
         <span className="hidden sm:inline">{lastAttemptText}</span>
       </div>
 
-      <CaretRight size={16} className="text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-all flex-shrink-0" />
+      <CaretRight size={16} className="text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-colors flex-shrink-0" />
     </div>
   );
 };

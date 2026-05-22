@@ -267,7 +267,7 @@ export const FinderFileItem = React.memo(function FinderFileItem({
               {relativeTime}
             </span>
             {/* 更多操作按钮 - 悬停时显示 */}
-            <NotionButton variant="ghost" size="icon" iconOnly className="!h-6 !w-6 !p-1 hover:bg-[var(--interactive-hover)] opacity-0 group-hover:opacity-100 transition-opacity duration-150" onClick={(e) => { e.stopPropagation(); onContextMenu(e); }} aria-label="more">
+            <NotionButton variant="ghost" size="icon" iconOnly className="!h-6 !w-6 !p-1 hover:bg-[var(--interactive-hover)] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150" onClick={(e) => { e.stopPropagation(); onContextMenu(e); }} aria-label="more">
               <DotsThree size={16} className="text-muted-foreground/60" />
             </NotionButton>
           </div>

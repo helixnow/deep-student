@@ -1029,7 +1029,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                             activatePlugin(plugin.id);
                             setActivePluginId(plugin.id);
                           }}
-                          className="group relative rounded-xl border border-transparent ring-1 ring-border/40 p-3.5 bg-card hover:bg-card/80 flex flex-col gap-3 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer"
+                          className="group relative rounded-xl border border-transparent ring-1 ring-border/40 p-3.5 bg-card hover:bg-card/80 flex flex-col gap-3 shadow-sm hover:shadow-md transition-[background-color,border-color,color,box-shadow] duration-200 cursor-pointer"
                         >
                           <button
                             type="button"
