@@ -219,18 +219,16 @@ export interface InputBarUIProps {
 
   /** 渲染 RAG 面板（模式插件提供） */
   renderRagPanel?: () => React.ReactNode;
-  /** 渲染模型选择面板（模式插件提供），hideHeader 用于移动端抽屉模式 */
-  renderModelPanel?: (hideHeader?: boolean) => React.ReactNode;
+  /** 渲染模型选择面板（模式插件提供） */
+  renderModelPanel?: (options?: { hideHeader?: boolean; onClose?: () => void }) => React.ReactNode;
   /** 渲染高级设置面板（模式插件提供） */
   renderAdvancedPanel?: () => React.ReactNode;
   /** 渲染 MCP 工具面板（模式插件提供） */
   renderMcpPanel?: () => React.ReactNode;
   /** 渲染技能选择面板 */
   renderSkillPanel?: () => React.ReactNode;
-  /** 打开模型面板（默认工具栏入口，可用于多模型/对比选择） */
-  onOpenModelPanel?: () => void;
-  /** 打开当前对话模型面板（runtime 入口，单模型） */
-  onOpenRuntimeModelPanel?: () => void;
+  /** 打开当前对话模型面板（统一入口，承接单模型 / 对比 / 重试） */
+  onOpenRuntimeModelPanel?: (mode?: 'single' | 'compare') => void;
 
   // ========== MCP 选中状态 ==========
 
@@ -259,9 +257,19 @@ export interface InputBarUIProps {
   runtimeModelLabel?: string;
   /** 当前 runtime 菜单中展示的生效模型供应商摘要 */
   runtimeModelProviderLabel?: string;
-  /** 运行时模型选择独立 AppMenu（渲染在 thinking 控件旁，由点击模型项触发） */
-  runtimeModelMenu?: React.ReactNode;
-
+  /** 当前 runtime 菜单中用于渲染 provider icon 的模型标识 */
+  runtimeModelIconId?: string;
+  /** 当前 runtime 菜单中生效模型的配置 id */
+  runtimeCurrentModelId?: string | null;
+  /** runtime 菜单使用的轻量模型列表 */
+  runtimeModelOptions?: Array<{
+    id: string;
+    label: string;
+    providerLabel?: string;
+    iconId?: string;
+  }>;
+  /** runtime 菜单中直接选择单模型 */
+  onSelectRuntimeModel?: (modelId: string) => void;
   // ========== 推理模式开关 ==========
 
   /** 是否启用推理/思维链模式 */

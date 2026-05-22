@@ -238,4 +238,31 @@ describe('InputBarUI attachment preview chips', () => {
       '!text-white'
     );
   });
+
+  it('keeps the stop control visible while streaming even when queue mode is enabled', () => {
+    render(
+      <InputBarUI
+        inputValue="继续讲"
+        canSend={false}
+        canAbort
+        canSubmit
+        isStreaming
+        queueEnabled
+        attachments={[]}
+        panelStates={createDefaultPanelStates()}
+        onInputChange={vi.fn()}
+        onSend={vi.fn()}
+        onAbort={vi.fn()}
+        onAddAttachment={vi.fn()}
+        onUpdateAttachment={vi.fn()}
+        onRemoveAttachment={vi.fn()}
+        onClearAttachments={vi.fn()}
+        onSetPanelState={vi.fn()}
+        placeholder="输入消息"
+      />
+    );
+
+    expect(screen.getByTestId('btn-stop')).toBeInTheDocument();
+    expect(screen.queryByTestId('btn-send')).not.toBeInTheDocument();
+  });
 });

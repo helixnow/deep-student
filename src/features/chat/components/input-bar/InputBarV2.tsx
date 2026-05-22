@@ -16,8 +16,8 @@ import { useQueueSettings } from '../../queue/useQueueSettings';
 import { QueuedMessageStack } from './QueuedMessageStack';
 import { modeRegistry } from '../../registry';
 import { ModelPicker, type ModelPickerMode } from './ModelPicker';
-import { RuntimeModelMenu } from './RuntimeModelMenu';
 import { SkillSelector } from '../../skills/components/SkillSelector';
+import { ThreadContentShell } from '../ui/ThreadContentShell';
 import { reloadSkills } from '../../skills/loader';
 import { useLoadedSkills } from '../../skills/hooks/useLoadedSkills';
 import type { InputBarV2Props, ModelMentionState, ModelMentionActions } from './types';
@@ -73,6 +73,12 @@ interface AggregatedStoreState {
 }
 
 const THINKING_DEPTH_LABELS: Record<DeepSeekReasoningControlKind, Partial<Record<DeepSeekReasoningOptionValue, string>>> = {
+  'openai-effort': {
+    low: '低',
+    medium: '中',
+    high: '高',
+    xhigh: '极高',
+  },
   'v4-effort': {
     high: '高',
     max: '最大',
@@ -81,8 +87,8 @@ const THINKING_DEPTH_LABELS: Record<DeepSeekReasoningControlKind, Partial<Record
     low: '低',
     medium: '中',
     high: '高',
-    xhigh: '超高',
-    max: '超高',
+    xhigh: '极高',
+    max: '最高',
   },
   'toggle-only': {},
 };
@@ -500,7 +506,6 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
     const [selectedModels, setSelectedModels] = useState<ModelInfo[]>([]);
     // 🆕 ModelPicker 模式：single 替换会话模型；compare 多选并行
     const [compareMode, setCompareMode] = useState(false);
-    const modelPanelIntentRef = useRef<'parallel' | 'runtime'>('parallel');
 
     // 使用 ref 存储 selectedModels，让回调能访问最新值
     const selectedModelsRef = useRef(selectedModels);
@@ -521,6 +526,26 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       () => getModelProviderLabel(activeRuntimeModelInfo),
       [activeRuntimeModelInfo]
     );
+    const runtimeModelIconId = useMemo(() => {
+      return (
+        activeRuntimeModelInfo?.model ||
+        activeRuntimeModelInfo?.name ||
+        activeRuntimeModelInfo?.id ||
+        runtimeModelLabel ||
+        modelDisplayName ||
+        model2OverrideId ||
+        modelId ||
+        ''
+      );
+    }, [
+      activeRuntimeModelInfo?.id,
+      activeRuntimeModelInfo?.model,
+      activeRuntimeModelInfo?.name,
+      model2OverrideId,
+      modelDisplayName,
+      modelId,
+      runtimeModelLabel,
+    ]);
 
     // 🚩 Feature Flag：关闭时仅允许单模型选中
     const multiModelSelectEnabled = isMultiModelSelectEnabled();
@@ -653,39 +678,23 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       setPanelState,
     } = useInputBarV2(store, inputBarOptions);
 
-    const openModelPanelWithIntent = useCallback(
-      (intent: 'parallel' | 'runtime') => {
-        const currentState = store.getState();
-        const isSamePanelOpen = currentState.panelStates?.model && modelPanelIntentRef.current === intent;
+    const handleOpenRuntimeModelPanel = useCallback((mode: 'single' | 'compare' = 'single') => {
+      const currentState = store.getState();
+      const isOpen = currentState.panelStates?.model === true;
+      setCompareMode(mode === 'compare');
 
-        modelPanelIntentRef.current = intent;
+      if (isOpen) {
+        currentState.setPanelState('model', false);
+        return;
+      }
 
-        if (isSamePanelOpen) {
-          currentState.setPanelState('model', false);
-          return;
+      COMPOSER_PANEL_KEYS.forEach((panel) => {
+        if (panel !== 'model') {
+          currentState.setPanelState(panel, false);
         }
-
-        COMPOSER_PANEL_KEYS.forEach((panel) => {
-          if (panel !== 'model') {
-            currentState.setPanelState(panel, false);
-          }
-        });
-        currentState.setPanelState('model', true);
-      },
-      [store]
-    );
-
-    const handleOpenParallelModelPanel = useCallback(() => {
-      openModelPanelWithIntent('parallel');
-    }, [openModelPanelWithIntent]);
-
-    // 🔧 Runtime 模型选择：使用独立 AppMenu 而非 ComposerPanelOverlay
-    const [runtimeModelMenuOpen, setRuntimeModelMenuOpen] = useState(false);
-    const runtimeModelMenuAnchorRef = useRef<HTMLElement | null>(null);
-
-    const handleOpenRuntimeModelPanel = useCallback(() => {
-      setRuntimeModelMenuOpen((prev) => !prev);
-    }, []);
+      });
+      currentState.setPanelState('model', true);
+    }, [store]);
 
     // 🔧 监听 model 面板关闭，自动清除 modelRetryTarget
     // 解决：点击面板外部关闭时 closeAllPanels 不会调用 handleCloseModelPanel 的问题
@@ -764,11 +773,9 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         return undefined;
       }
 
-      return (hideHeader = false) => {
-        if (modelPanelIntentRef.current === 'runtime' && RuntimeModelPanel) {
-          return <RuntimeModelPanel store={store} onClose={handleCloseModelPanel} closeOnSelect />;
-        }
-
+      return (options?: { hideHeader?: boolean; onClose?: () => void }) => {
+        const hideHeader = options?.hideHeader ?? false;
+        const handleClose = options?.onClose ?? handleCloseModelPanel;
         if (availableModels && availableModels.length > 0) {
           // 推导面板模式：retry 强制 compare；显式 compareMode 或已有 selectedModels 时进入 compare
           const pickerMode: ModelPickerMode =
@@ -782,7 +789,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
               compareSelected={selectedModels}
               onSelectSingle={handlePickSingleModel}
               onToggleCompare={handleToggleCompareModel}
-              onClose={handleCloseModelPanel}
+              onClose={handleClose}
               disabled={isStreaming}
               hideHeader={hideHeader}
               retryMessageId={modelRetryTarget}
@@ -792,7 +799,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         }
 
         if (!RuntimeModelPanel) return null;
-        return <RuntimeModelPanel store={store} onClose={handleCloseModelPanel} />;
+        return <RuntimeModelPanel store={store} onClose={handleClose} />;
       };
     }, [
       availableModels,
@@ -810,6 +817,22 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       modePlugin?.renderModelPanel,
       store,
     ]);
+
+    const runtimeModelOptions = useMemo(() => {
+      if (!availableModels || availableModels.length === 0) return [];
+      return availableModels.map((model) => ({
+        id: model.id,
+        label: model.model || model.name || model.id,
+        providerLabel: model.vendorName,
+        iconId: model.model || model.name || model.id,
+      }));
+    }, [availableModels]);
+
+    const handleSelectRuntimeModel = useCallback((modelId: string) => {
+      const selected = availableModels?.find((model) => model.id === modelId);
+      if (!selected) return;
+      handlePickSingleModel(selected);
+    }, [availableModels, handlePickSingleModel]);
 
     // 高级设置面板渲染函数
     const renderAdvancedPanel = useMemo(() => {
@@ -866,9 +889,9 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
             外层 px-4 / md:px-8 + 内层 mx-auto max-w-thread，
             使「引导」气泡和下方 chat 输入栏左右边对齐。 */}
         <div className="w-full px-4 md:px-8">
-          <div className="mx-auto w-full max-w-thread">
+          <ThreadContentShell>
             <QueuedMessageStack store={store} allowSteer={queueSettings.allowSteer} />
-          </div>
+          </ThreadContentShell>
         </div>
         <InputBarUI
         // 状态
@@ -906,7 +929,6 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         renderAdvancedPanel={renderAdvancedPanel}
         renderMcpPanel={renderMcpPanel}
         renderSkillPanel={renderSkillPanel}
-        onOpenModelPanel={handleOpenParallelModelPanel}
         onOpenRuntimeModelPanel={handleOpenRuntimeModelPanel}
         // 🔧 MCP 选中状态
         mcpEnabled={selectedMcpServers.length > 0}
@@ -924,14 +946,10 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         modelMentionActions={modelMentionActions}
         runtimeModelLabel={runtimeModelLabel}
         runtimeModelProviderLabel={runtimeModelProviderLabel}
-        runtimeModelMenu={
-          <RuntimeModelMenu
-            store={store}
-            open={runtimeModelMenuOpen}
-            onOpenChange={setRuntimeModelMenuOpen}
-            anchorRef={runtimeModelMenuAnchorRef}
-          />
-        }
+        runtimeModelIconId={runtimeModelIconId}
+        runtimeCurrentModelId={model2OverrideId}
+        runtimeModelOptions={runtimeModelOptions}
+        onSelectRuntimeModel={handleSelectRuntimeModel}
         // 推理模式
         enableThinking={effectiveEnableThinking}
         thinkingStateLabel={thinkingStateLabel}

@@ -1,60 +1,54 @@
 import { useEffect, useState, useCallback } from 'react';
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
 
-export const QUEUE_ENABLED_KEY = 'chat.queue.enabled';
+export const QUEUE_MODE_KEY = 'chat.queue.mode';
+
+export type QueueMode = 'queue' | 'guide';
 
 export interface QueueSettings {
-  /** 排队功能总开关。开启时同时启用排队 + 引导。 */
+  mode: QueueMode;
   queueEnabled: boolean;
-  /** 引导功能。当前与 queueEnabled 等价（合并为单开关）。 */
   allowSteer: boolean;
-  setQueueEnabled: (v: boolean) => Promise<void>;
+  setMode: (v: QueueMode) => Promise<void>;
 }
 
-async function readBool(key: string, defaultValue: boolean): Promise<boolean> {
+async function readMode(defaultValue: QueueMode): Promise<QueueMode> {
   try {
-    const raw = await tauriInvoke<string | null>('get_setting', { key });
-    if (raw == null || String(raw).trim() === '') return defaultValue;
-    // Anything other than literal 'false' is treated as true (default-on).
-    return String(raw).trim().toLowerCase() !== 'false';
+    const raw = await tauriInvoke<string | null>('get_setting', { key: QUEUE_MODE_KEY });
+    if (raw === 'queue' || raw === 'guide') return raw;
+    return defaultValue;
   } catch {
     return defaultValue;
   }
 }
 
-/**
- * 队列设置 hook（单开关版本）。
- * - 默认 queueEnabled=true。
- * - allowSteer === queueEnabled（合并到一个开关，简化心智）。
- * - 持久化到 Tauri `save_setting` / `get_setting`。
- * - 失败时乐观更新自动回滚。
- */
 export function useQueueSettings(): QueueSettings {
-  const [queueEnabled, setQueueEnabledState] = useState(true);
+  const [mode, setModeState] = useState<QueueMode>('queue');
 
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      const enabled = await readBool(QUEUE_ENABLED_KEY, true);
+      const m = await readMode('queue');
       if (cancelled) return;
-      setQueueEnabledState(enabled);
+      setModeState(m);
     })();
     return () => { cancelled = true; };
   }, []);
 
-  const setQueueEnabled = useCallback(async (v: boolean) => {
-    const prev = queueEnabled;
-    setQueueEnabledState(v);
+  const setMode = useCallback(async (v: QueueMode) => {
+    const prev = mode;
+    setModeState(v);
     try {
-      await tauriInvoke('save_setting', { key: QUEUE_ENABLED_KEY, value: String(v) });
+      await tauriInvoke('save_setting', { key: QUEUE_MODE_KEY, value: v });
     } catch {
-      setQueueEnabledState(prev);
+      setModeState(prev);
     }
-  }, [queueEnabled]);
+  }, [mode]);
 
   return {
-    queueEnabled,
-    allowSteer: queueEnabled,
-    setQueueEnabled,
+    mode,
+    queueEnabled: true,
+    allowSteer: mode === 'guide',
+    setMode,
   };
 }

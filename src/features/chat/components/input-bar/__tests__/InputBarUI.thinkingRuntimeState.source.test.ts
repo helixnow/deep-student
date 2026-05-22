@@ -4,7 +4,7 @@ import { resolve } from 'node:path';
 
 describe('InputBarUI thinking runtime state visibility', () => {
   const inputBarSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/components/input-bar/InputBarUI.tsx'),
+    resolve(process.cwd(), 'src/features/chat/components/input-bar/InputBarUI.tsx'),
     'utf-8'
   );
 
@@ -46,18 +46,25 @@ describe('InputBarUI thinking runtime state visibility', () => {
 
   it('adds the runtime model selector to the thinking runtime menu', () => {
     const menuBranchStart = inputBarSource.indexOf('{hasThinkingRuntimeMenu ? (');
-    const menuBranchEnd = inputBarSource.indexOf(') : (', menuBranchStart);
+    const menuBranchEnd = inputBarSource.indexOf('</AppMenuContent>', menuBranchStart);
     const menuBranch = inputBarSource.slice(menuBranchStart, menuBranchEnd);
 
     expect(menuBranchStart).toBeGreaterThan(-1);
     expect(menuBranchEnd).toBeGreaterThan(menuBranchStart);
     expect(inputBarSource).toContain("t('chatV2:inputBar.runtimeModelTitle', '模型')");
     expect(inputBarSource).toContain('onOpenRuntimeModelPanel');
-    expect(menuBranch).toContain('label={runtimeModelTitle}');
-    expect(menuBranch).toContain("t('chatV2:inputBar.chooseRuntimeModel', '选择模型')");
-    expect(menuBranch).toContain('handleOpenRuntimeModelPanel');
-    expect(menuBranch).not.toContain("togglePanel('model')");
-    expect(menuBranch).toContain('runtimeModelLabel');
+    expect(menuBranch).toContain('<AppMenuGroup label={runtimeModelTitle}>');
+    expect(menuBranch).toContain('runtimeModelOptions.length > 0 ? (');
+    expect(menuBranch).toContain('<AppMenuSub openOnClick>');
+    expect(menuBranch).toContain('<AppMenuSubTrigger');
+    expect(menuBranch).toContain('<AppMenuSubContent');
+    expect(menuBranch).toContain('runtimeModelSearchPlaceholder');
+    expect(menuBranch).toContain('groupedRuntimeModelOptions.map');
+    expect(menuBranch).toContain("handleOpenRuntimeModelPanel('compare')");
+    expect(menuBranch).toContain('<AppMenuItem');
+    expect(inputBarSource).toContain("t('chatV2:inputBar.chooseRuntimeModel', '选择模型')");
+    expect(menuBranch).toContain('onSelectRuntimeModel?.(model.id)');
+    expect(menuBranch).toContain('runtimeCurrentModelId');
   });
 
   it('places attachment on the left and reasoning depth in the former right attachment slot', () => {
@@ -71,6 +78,7 @@ describe('InputBarUI thinking runtime state visibility', () => {
     expect(rightStart).toBeGreaterThan(leftStart);
     expect(panelStart).toBeGreaterThan(rightStart);
     expect(leftToolbar).toContain('data-testid="btn-toggle-attachments"');
+    expect(leftToolbar).not.toContain('data-testid="btn-toggle-model"');
     expect(leftToolbar).not.toContain('data-testid="thinking-runtime-control"');
     expect(rightToolbar).toContain('data-testid="thinking-runtime-control"');
     expect(rightToolbar).not.toContain('data-testid="btn-toggle-attachments"');
@@ -161,7 +169,7 @@ describe('InputBarUI thinking runtime state visibility', () => {
 
     expect(buttonStart).toBeGreaterThan(-1);
     expect(buttonEnd).toBeGreaterThan(buttonStart);
-    expect(attachmentButton).toContain('<Plus size={18} />');
+    expect(attachmentButton).toContain('<Plus size={18} weight="bold" />');
     expect(attachmentButton).not.toContain('<Paperclip size={18} />');
     expect(attachmentButton).not.toContain('attachmentBadgeLabel');
     expect(attachmentButton).not.toContain('rounded-full border bg-primary');

@@ -1,12 +1,12 @@
 /**
  * Chat V2 - BlockingAskUserBar
  *
- * Compact ask_user UI that fits inside the input bar frame.
- * Replaces the textarea area when the LLM asks the user a question.
+ * ask_user UI that keeps the original visual semantics
+ * while presenting options in a clearer stacked layout.
  *
  * Supports:
- * - Single-select: click option chip → immediately submit
- * - Multi-select: checkboxes + confirm button
+ * - Single-select: choose one option, then submit
+ * - Multi-select: checkbox rows + submit button
  * - Custom input field (when allowCustom is true)
  * - "已回答" disabled state after responding
  *
@@ -20,19 +20,18 @@ import { invoke } from '@tauri-apps/api/core';
 import {
   ChatCircleDots,
   Check,
-  Star,
-  PaperPlaneRight,
 } from '@phosphor-icons/react';
 
 import type { BlockingInteraction } from '../../core/types/store';
 import { cn } from '@/utils/cn';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
+import type { PlaygroundAskUserInteraction } from '../../dev/playground/blockingRuntime';
 
 // ============================================================================
 // 类型定义
 // ============================================================================
 
-type AskUserInteraction = Extract<BlockingInteraction, { kind: 'ask_user' }>;
+type AskUserInteraction = Extract<BlockingInteraction, { kind: 'ask_user' }> | PlaygroundAskUserInteraction;
 
 interface BlockingAskUserBarProps {
   interaction: AskUserInteraction;
@@ -75,6 +74,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
 
     // State
     const [customInput, setCustomInput] = useState('');
+    const [selectedIndex, setSelectedIndex] = useState<number | null>(null);
     const [checkedIndices, setCheckedIndices] = useState<Set<number>>(
       () => new Set(multiple && options.length > 0 ? [0] : [])
     );
@@ -84,6 +84,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
     // Reset state when a new interaction arrives
     useEffect(() => {
       setCustomInput('');
+      setSelectedIndex(null);
       setCheckedIndices(new Set(multiple && options.length > 0 ? [0] : []));
       setIsResponding(false);
       setHasResponded(false);
@@ -101,13 +102,22 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
 
         setIsResponding(true);
         try {
-          await invoke('chat_v2_ask_user_respond', {
-            toolCallId,
-            selectedTexts,
-            selectedIndices,
-            customText: customText || null,
-            source,
-          });
+          if ('respond' in interaction && typeof interaction.respond === 'function') {
+            await interaction.respond({
+              selectedTexts,
+              selectedIndices,
+              customText: customText || null,
+              source,
+            });
+          } else {
+            await invoke('chat_v2_ask_user_respond', {
+              toolCallId,
+              selectedTexts,
+              selectedIndices,
+              customText: customText || null,
+              source,
+            });
+          }
           setHasResponded(true);
         } catch (error) {
           console.error('[BlockingAskUserBar] Failed to send response:', error);
@@ -117,15 +127,19 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
           setIsResponding(false);
         }
       },
-      [toolCallId, hasResponded, isResponding]
+      [interaction, toolCallId, hasResponded, isResponding]
     );
 
-    // Single-select: click chip → submit immediately
+    // Disabled state
+    const disabled = isResponding || hasResponded;
+
+    // Single-select: choose an option first, then submit in the footer
     const handleSingleSelect = useCallback(
-      (index: number, text: string) => {
-        handleSubmit([text], [index], null, 'user_click');
+      (index: number) => {
+        if (disabled) return;
+        setSelectedIndex((prev) => (prev === index ? null : index));
       },
-      [handleSubmit]
+      [disabled]
     );
 
     // Multi-select: toggle checkbox
@@ -141,9 +155,19 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
       });
     }, []);
 
-    // Multi-select: confirm
-    const handleMultiConfirm = useCallback(() => {
-      const indices = Array.from(checkedIndices).sort((a, b) => a - b);
+    const canSubmit = useMemo(() => {
+      if (multiple) {
+        return checkedIndices.size > 0 || customInput.trim().length > 0;
+      }
+      return selectedIndex !== null || customInput.trim().length > 0;
+    }, [checkedIndices.size, customInput, multiple, selectedIndex]);
+
+    const handlePrimarySubmit = useCallback(() => {
+      const indices = multiple
+        ? Array.from(checkedIndices).sort((a, b) => a - b)
+        : selectedIndex !== null
+          ? [selectedIndex]
+          : [];
       const texts = indices.map((i) => options[i]).filter(Boolean);
       const trimmedCustom = customInput.trim();
 
@@ -157,23 +181,17 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
       }
 
       handleSubmit(texts, indices, trimmedCustom || null, source);
-    }, [checkedIndices, options, customInput, handleSubmit]);
+    }, [checkedIndices, customInput, handleSubmit, multiple, options, selectedIndex]);
 
-    // Custom input submit (single-select mode)
-    const handleCustomSubmit = useCallback(() => {
-      const trimmed = customInput.trim();
-      if (!trimmed) return;
-      handleSubmit([], [], trimmed, 'custom_input');
-    }, [customInput, handleSubmit]);
-
-    // Disabled state
-    const disabled = isResponding || hasResponded;
+    const handleIgnore = useCallback(() => {
+      handleSubmit([], [], null, 'user_click');
+    }, [handleSubmit]);
 
     // ========== 已回答状态 ==========
     if (hasResponded) {
       return (
         <div className="flex items-center gap-2 px-3 py-2.5 text-sm text-muted-foreground">
-          <Check size={16} className="text-green-500" />
+          <Check size={16} className="text-[color:var(--button-primary-foreground)]" />
           <span>{t('askUser.responded', { defaultValue: '已回答' })}</span>
         </div>
       );
@@ -181,157 +199,163 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
 
     // ========== 活跃状态 ==========
     return (
-      <div className="flex flex-col gap-1.5 px-3 py-2">
-        {/* Row 1: Question */}
-        <div className="flex items-center gap-2">
+      <div className="flex flex-col gap-2 px-3 py-2">
+        <div className="flex items-start gap-2">
           <ChatCircleDots
             size={16}
-            className="text-[color:var(--button-primary-foreground)] flex-shrink-0"
+            className="mt-1 flex-shrink-0 text-[color:var(--button-primary-foreground)]"
           />
-          <span className="text-sm font-medium flex-1 truncate">{question}</span>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-medium leading-6 text-foreground">
+              {question}
+            </p>
+            {context && (
+              <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                {context}
+              </p>
+            )}
+          </div>
         </div>
 
-        {/* Row 2 (optional): Context */}
-        {context && (
-          <p className="text-xs text-muted-foreground pl-6 truncate">
-            {context}
-          </p>
-        )}
-
-        {/* Row 3: Option chips */}
         {options.length > 0 && (
-          <div className="flex flex-wrap gap-1.5 pl-6">
-            {multiple
-              ? // Multi-select: checkbox chips
-                options.map((option, index) => {
-                  const isRecommended = index === 0;
-                  const isChecked = checkedIndices.has(index);
-                  return (
-                    <label
-                      key={index}
-                      className={cn(
-                        'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm border cursor-pointer transition-colors',
-                        isRecommended
-                          ? 'bg-[color:var(--brand-50)] border-[color:var(--brand-outline)] dark:bg-[color:var(--brand-50)] dark:border-[color:var(--brand-outline)]'
-                          : 'bg-card border-border/50 hover:bg-muted',
-                        disabled && 'opacity-50 pointer-events-none'
-                      )}
-                    >
-                      <Checkbox
-                        checked={isChecked}
-                        onCheckedChange={() => handleToggleCheck(index)}
-                        disabled={disabled}
-                        className="h-3.5 w-3.5"
-                      />
-                      <span>{option}</span>
+          <div className="space-y-2 pl-6">
+            {options.map((option, index) => {
+              const isRecommended = index === 0;
+              const isChecked = multiple ? checkedIndices.has(index) : selectedIndex === index;
+              const numberLabel = `${index + 1}.`;
+
+              if (multiple) {
+                return (
+                  <label
+                    key={index}
+                    className={cn(
+                      'group flex w-full cursor-pointer items-center gap-3 rounded-[var(--radius-shell-row)] border px-3 py-2.5 text-left transition-colors',
+                      isChecked
+                        ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)]'
+                      : isRecommended
+                          ? 'border-[color:var(--brand-outline)] bg-[color:var(--brand-50)] hover:bg-[color:var(--button-primary-hover)]'
+                          : 'border-border/50 bg-card hover:bg-muted',
+                      disabled && 'pointer-events-none opacity-50'
+                    )}
+                  >
+                    <span className="w-6 flex-shrink-0 text-sm font-medium text-muted-foreground">
+                      {numberLabel}
+                    </span>
+                    <span className="min-w-0 flex-1 text-sm font-medium leading-6 text-foreground">
+                      {option}
                       {isRecommended && (
-                        <Star
-                          size={12}
-                          className="text-[color:var(--button-primary-foreground)] fill-current"
-                        />
+                        <span className="ml-1 text-muted-foreground">
+                          ({t('askUser.recommended', { defaultValue: '推荐' })})
+                        </span>
                       )}
-                    </label>
-                  );
-                })
-              : // Single-select: clickable chips
-                options.map((option, index) => {
-                  const isRecommended = index === 0;
-                  return (
-                    <NotionButton
-                      key={index}
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => handleSingleSelect(index, option)}
+                    </span>
+                    <Checkbox
+                      checked={isChecked}
+                      onCheckedChange={() => handleToggleCheck(index)}
                       disabled={disabled}
-                      className={cn(
-                        'inline-flex items-center gap-1.5 rounded-full px-3 py-1.5 text-sm border cursor-pointer transition-colors',
-                        isRecommended
-                          ? 'bg-[color:var(--brand-50)] border-[color:var(--brand-outline)] dark:bg-[color:var(--brand-50)] dark:border-[color:var(--brand-outline)]'
-                          : 'bg-card border-border/50 hover:bg-muted',
-                        disabled && 'opacity-50 pointer-events-none'
-                      )}
-                    >
-                      <span>{option}</span>
-                      {isRecommended && (
-                        <Star
-                          size={12}
-                          className="text-[color:var(--button-primary-foreground)] fill-current"
-                        />
-                      )}
-                    </NotionButton>
-                  );
-                })}
+                      className="h-4 w-4 rounded-[6px] border-[color:var(--button-primary-border)]"
+                    />
+                  </label>
+                );
+              }
 
-            {/* Multi-select confirm button */}
-            {multiple && (
-              <NotionButton
-                variant="primary"
-                size="sm"
-                onClick={handleMultiConfirm}
-                disabled={
-                  disabled || (checkedIndices.size === 0 && !customInput.trim())
-                }
-                className={cn(
-                  'inline-flex items-center gap-1 rounded-full px-3 py-1.5 text-sm',
-                  'bg-[color:var(--button-prominent-bg)] text-white border border-[color:var(--button-prominent-border)] hover:bg-[color:var(--button-prominent-hover-bg)] transition-colors',
-                  (disabled || (checkedIndices.size === 0 && !customInput.trim())) &&
-                    'opacity-50 pointer-events-none'
-                )}
-              >
-                <Check size={12} />
-                <span>
-                  {t('askUser.confirmSelection', { defaultValue: '确认选择' })}
-                </span>
-              </NotionButton>
-            )}
+              return (
+                <NotionButton
+                  key={index}
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => handleSingleSelect(index)}
+                  disabled={disabled}
+                  className={cn(
+                    'group flex h-auto w-full items-center gap-3 rounded-[var(--radius-shell-row)] border px-3 py-2.5 text-left transition-colors',
+                    isChecked
+                      ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)]'
+                    : isRecommended
+                        ? 'border-[color:var(--brand-outline)] bg-[color:var(--brand-50)] hover:bg-[color:var(--button-primary-hover)]'
+                        : 'border-border/50 bg-card hover:bg-muted',
+                    disabled && 'pointer-events-none opacity-50'
+                  )}
+                >
+                  <span className="w-6 flex-shrink-0 text-sm font-medium text-muted-foreground">
+                    {numberLabel}
+                  </span>
+                  <span className="min-w-0 flex-1 text-sm font-medium leading-6 text-foreground">
+                    {option}
+                    {isRecommended && (
+                      <span className="ml-1 text-muted-foreground">
+                        ({t('askUser.recommended', { defaultValue: '推荐' })})
+                      </span>
+                    )}
+                  </span>
+                  <span
+                    className={cn(
+                      'flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full transition-colors',
+                      isChecked
+                        ? 'text-[color:var(--button-primary-foreground)]'
+                        : 'text-transparent group-hover:text-muted-foreground/60'
+                    )}
+                  >
+                    <Check size={16} weight="bold" />
+                  </span>
+                </NotionButton>
+              );
+            })}
           </div>
         )}
 
-        {/* Row 4 (if allowCustom): Custom input */}
-        {allowCustom && (
-          <div className="flex items-center gap-2 pl-6">
-            <input
-              type="text"
-              value={customInput}
-              onChange={(e) => setCustomInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
-                  e.preventDefault();
-                  if (multiple) {
-                    handleMultiConfirm();
-                  } else {
-                    handleCustomSubmit();
-                  }
-                }
-              }}
-              placeholder={t('askUser.customPlaceholder', {
-                defaultValue: '输入自定义回答...',
-              })}
+        <div className="flex flex-col gap-2 pl-6 lg:flex-row lg:items-end lg:justify-between">
+          {allowCustom ? (
+            <label className="block flex-1">
+              <div className="flex items-center gap-2 rounded-[var(--radius-shell-control)] border border-border/50 bg-transparent px-3 py-2 transition-colors focus-within:border-[color:var(--button-primary-border)] focus-within:bg-card">
+                <input
+                  type="text"
+                  value={customInput}
+                  onChange={(e) => setCustomInput(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                      e.preventDefault();
+                      handlePrimarySubmit();
+                    }
+                  }}
+                  placeholder={t('askUser.customPlaceholder', {
+                    defaultValue: '或输入自定义回答...',
+                  })}
+                  disabled={disabled}
+                  className={cn(
+                    'flex-1 border-none bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/60',
+                    disabled && 'cursor-not-allowed opacity-50'
+                  )}
+                />
+              </div>
+            </label>
+          ) : (
+            <div className="hidden flex-1 lg:block" />
+          )}
+
+          <div className="flex items-center justify-end gap-2">
+            <NotionButton
+              variant="ghost"
+              size="sm"
+              onClick={handleIgnore}
               disabled={disabled}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              {t('askUser.ignore', { defaultValue: '忽略' })}
+            </NotionButton>
+            <NotionButton
+              variant="primary"
+              size="sm"
+              onClick={handlePrimarySubmit}
+              disabled={disabled || !canSubmit}
               className={cn(
-                'flex-1 text-sm bg-transparent placeholder:text-[color:var(--button-primary-foreground)]/50',
-                'outline-none border-none',
-                disabled && 'opacity-50 cursor-not-allowed'
+                'rounded-full px-4',
+                'bg-[color:var(--button-prominent-bg)] text-white border border-[color:var(--button-prominent-border)] hover:bg-[color:var(--button-prominent-hover-bg)]'
               )}
-            />
-            {!multiple && (
-              <NotionButton
-                variant="ghost"
-                size="icon"
-                onClick={handleCustomSubmit}
-                disabled={disabled || !customInput.trim()}
-                className={cn(
-                  'p-1 rounded text-[color:var(--button-primary-foreground)] hover:text-[color:var(--button-primary-foreground)] transition-colors',
-                  (disabled || !customInput.trim()) &&
-                    'opacity-30 pointer-events-none'
-                )}
-                aria-label={t('askUser.send', { defaultValue: '发送' })}
-              >
-                <PaperPlaneRight size={16} />
-              </NotionButton>
-            )}
+            >
+              <span>{t('askUser.submit', { defaultValue: '提交' })}</span>
+            </NotionButton>
           </div>
-        )}
+        </div>
       </div>
     );
   }

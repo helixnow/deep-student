@@ -16,12 +16,13 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getReadableToolName } from '@/features/chat/utils/toolDisplayName';
 import type { BlockingInteraction } from '../../core/types/store';
+import type { PlaygroundToolApprovalInteraction } from '../../dev/playground/blockingRuntime';
 
 // ============================================================================
 // 类型定义
 // ============================================================================
 
-type ToolApprovalInteraction = Extract<BlockingInteraction, { kind: 'tool_approval' }>;
+type ToolApprovalInteraction = Extract<BlockingInteraction, { kind: 'tool_approval' }> | PlaygroundToolApprovalInteraction;
 
 interface BlockingApprovalBarProps {
   interaction: ToolApprovalInteraction;
@@ -87,15 +88,23 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
         const remember = decision === 'always_allow' || decision === 'always_deny';
         const reason = approved ? undefined : 'user_rejected';
 
-        await invoke('chat_v2_tool_approval_respond', {
-          sessionId,
-          toolCallId: interaction.toolCallId,
-          toolName: interaction.toolName,
-          approved,
-          reason: reason ?? null,
-          remember,
-          arguments: interaction.arguments,
-        });
+        if ('respond' in interaction && typeof interaction.respond === 'function') {
+          await interaction.respond({
+            approved,
+            remember,
+            reason,
+          });
+        } else {
+          await invoke('chat_v2_tool_approval_respond', {
+            sessionId,
+            toolCallId: interaction.toolCallId,
+            toolName: interaction.toolName,
+            approved,
+            reason: reason ?? null,
+            remember,
+            arguments: interaction.arguments,
+          });
+        }
         setHasResponded(true);
       } catch (error: unknown) {
         const errorMessage = getErrorMessage(error);
