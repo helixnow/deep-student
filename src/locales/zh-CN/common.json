@@ -1471,14 +1471,14 @@
     }
   },
   "api_config_modal": {
-    "general_model": "通用模型",
+    "general_model": "OpenAI Compatible",
     "general_model_desc": "适用于大多数标准智能体模型（如 GPT、Claude、通义千问 等）",
     "google_gemini": "Google Gemini",
     "google_gemini_desc": "Google Gemini 系列模型，支持多模态输入与高质量文本生成",
     "anthropic_claude": "Anthropic Claude",
     "anthropic_claude_desc": "Anthropic Claude 系列模型，强调安全性并具备出色推理能力",
-    "adapter_general": "通用模型",
-    "adapter_general_desc": "适用于大多数 OpenAI 兼容 API（如 GPT、通义千问等）",
+    "adapter_general": "OpenAI Compatible",
+    "adapter_general_desc": "适用于大多数 OpenAI 兼容模型参数格式；具体请求协议由下方 OpenAI 协议决定",
     "adapter_google": "Google Gemini",
     "adapter_google_desc": "Gemini 系列，支持 thinkingLevel/thinkingBudget 参数",
     "adapter_anthropic": "Anthropic Claude",
@@ -1572,7 +1572,7 @@
     "adapter": "适配器",
     "adapters": {
       "google_gemini": "Google Gemini 适配器",
-      "general": "通用适配器"
+      "general": "OpenAI Compatible"
     },
     "status": "状态"
   },
@@ -1887,7 +1887,7 @@
   "settings.chat_stream.save_error_auto_cancel": "保存自动取消设置失败：{{error}}",
   "settings.chat_stream.invalid_timeout": "请输入大于或等于 0 的秒数",
   "adapter_options": {
-    "general": "通用模型",
+    "general": "OpenAI Compatible",
     "general_desc": "适用于大多数标准AI模型（如GPT、Claude、通义千问等）",
     "google": "Google Gemini",
     "google_desc": "Google Gemini系列模型，支持多模态和高质量文本生成"
@@ -2626,7 +2626,7 @@
       },
       "adapters": {
         "google_gemini": "Google Gemini",
-        "general": "通用模型"
+        "general": "OpenAI Compatible"
       }
     },
     "model_assignment_section": {
@@ -2719,7 +2719,7 @@
       "cancel": "Cancel",
       "save": "Save",
       "adapter_options": {
-        "general": "General Model",
+        "general": "OpenAI Compatible",
         "general_desc": "Suitable for most standard AI models",
         "google": "Google Gemini",
         "google_desc": "Google Gemini series models, supports multimodal and high-quality text generation"

@@ -1199,14 +1199,14 @@
     "cards_counter": "cards"
   },
   "api_config_modal": {
-    "general_model": "General Model",
+    "general_model": "OpenAI Compatible",
     "general_model_desc": "Suitable for most standard AI models (e.g., GPT, Claude, Tongyi Qianwen)",
     "google_gemini": "Google Gemini",
     "google_gemini_desc": "Google Gemini series models, supports multimodal and high-quality text generation",
     "anthropic_claude": "Anthropic Claude",
     "anthropic_claude_desc": "Anthropic Claude models with safety-focused design and strong reasoning ability",
-    "adapter_general": "General Model",
-    "adapter_general_desc": "For most OpenAI-compatible APIs (GPT, Qwen, etc.)",
+    "adapter_general": "OpenAI Compatible",
+    "adapter_general_desc": "For most OpenAI-compatible model parameter formats; the exact request shape is controlled by the OpenAI Protocol below",
     "adapter_google": "Google Gemini",
     "adapter_google_desc": "Gemini series, supports thinkingLevel/thinkingBudget",
     "adapter_anthropic": "Anthropic Claude",
@@ -1300,7 +1300,7 @@
     "adapter": "Adapter",
     "adapters": {
       "google_gemini": "Google Gemini Adapter",
-      "general": "General Adapter"
+      "general": "OpenAI Compatible"
     },
     "status": "Status"
   },
@@ -1535,7 +1535,7 @@
       },
       "adapters": {
         "google_gemini": "Google Gemini",
-        "general": "General Model"
+        "general": "OpenAI Compatible"
       }
     },
     "model_assignment_section": {
@@ -1628,7 +1628,7 @@
       "cancel": "Cancel",
       "save": "Save",
       "adapter_options": {
-        "general": "General Model",
+        "general": "OpenAI Compatible",
         "general_desc": "Suitable for most standard AI models",
         "google": "Google Gemini",
         "google_desc": "Google Gemini series models, supports multimodal and high-quality text generation"
@@ -3787,7 +3787,7 @@
     "calculating": "Calculating..."
   },
   "adapter_options": {
-    "general": "General Model",
+    "general": "OpenAI Compatible",
     "general_desc": "Suitable for most standard AI models (e.g., GPT, Claude, Qwen, etc.)",
     "google": "Google Gemini",
     "google_desc": "Google Gemini series models, supporting multimodal and high-quality text generation"

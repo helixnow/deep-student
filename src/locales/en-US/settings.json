@@ -16,39 +16,39 @@
     "voice_input": "Voice Input"
   },
   "voice_input": {
-  "title": "Dictation",
-  "description": "This is where dictation shortcut behavior, vocabulary hints, history, and runtime diagnostics live. ASR model assignment belongs to Settings > Models, provider credentials belong to Settings > APIs, and usage is tracked in Statistics.",
-  "loading": "Loading voice input settings…",
-  "load_failed": "Failed to load voice input settings.",
-  "save_failed": "Failed to save voice input settings.",
-  "shortcut_title": "Dictation Shortcut",
-  "shortcut_description": "Choose how the app-wide shortcut behaves inside DeepStudent. Dictation still inserts into the active supported input and never auto-sends.",
-  "hotkey": "Hotkey",
-  "max_duration_ms": "Max Duration (ms)",
-  "hold_mode_title": "Press and hold the dictation shortcut",
-  "hold_mode_description": "Hold the shortcut anywhere inside a supported DeepStudent input to dictate, then release to stop.",
-  "toggle_mode_title": "Tap once to start, tap once to stop",
-  "toggle_mode_description": "Use the same shortcut as a toggle when you want hands-free dictation inside DeepStudent.",
-  "mode_active": "Active",
-  "mode_select": "Use This Mode",
-  "quick_actions_title": "Setup & Recovery",
-  "quick_actions_description": "Jump straight to model assignment, provider credentials, and usage analytics when dictation needs attention.",
-  "dictionary_title": "Dictation Vocabulary",
-  "dictionary_description": "Add words or short phrases that dictation should prefer to recognize. Use one item per line.",
-  "dictionary_placeholder": "Photosynthesis\nAnkylosing spondylitis\nDeepStudent",
-  "dictionary_count": "{{count}} phrase hints",
-  "dictionary_hint": "These hints are merged into the ASR prompt when supported.",
-  "history_title": "Recent Dictation History",
-  "history_description": "Recent transcripts stay here so you can recover them if the text lands in the wrong place or focus changes unexpectedly.",
-  "history_empty": "Your recent dictation transcripts will appear here.",
-  "history_copy": "Copy",
-  "history_clear": "Clear",
-  "history_copy_success": "Dictation text copied.",
-  "history_copy_failed": "Unable to copy this dictation entry.",
-  "history_clear_success": "Recent dictation history cleared.",
-  "history_clear_failed": "Unable to clear recent dictation history.",
-  "request_access": "Request microphone access",
-  "permission_request_success": "Microphone access is ready. You can start voice input now.",
+    "title": "Dictation",
+    "description": "This is where dictation shortcut behavior, vocabulary hints, history, and runtime diagnostics live. ASR model assignment belongs to Settings > Models, provider credentials belong to Settings > APIs, and usage is tracked in Statistics.",
+    "loading": "Loading voice input settings…",
+    "load_failed": "Failed to load voice input settings.",
+    "save_failed": "Failed to save voice input settings.",
+    "shortcut_title": "Dictation Shortcut",
+    "shortcut_description": "Choose how the app-wide shortcut behaves inside DeepStudent. Dictation still inserts into the active supported input and never auto-sends.",
+    "hotkey": "Hotkey",
+    "max_duration_ms": "Max Duration (ms)",
+    "hold_mode_title": "Press and hold the dictation shortcut",
+    "hold_mode_description": "Hold the shortcut anywhere inside a supported DeepStudent input to dictate, then release to stop.",
+    "toggle_mode_title": "Tap once to start, tap once to stop",
+    "toggle_mode_description": "Use the same shortcut as a toggle when you want hands-free dictation inside DeepStudent.",
+    "mode_active": "Active",
+    "mode_select": "Use This Mode",
+    "quick_actions_title": "Setup & Recovery",
+    "quick_actions_description": "Jump straight to model assignment, provider credentials, and usage analytics when dictation needs attention.",
+    "dictionary_title": "Dictation Vocabulary",
+    "dictionary_description": "Add words or short phrases that dictation should prefer to recognize. Use one item per line.",
+    "dictionary_placeholder": "Photosynthesis\nAnkylosing spondylitis\nDeepStudent",
+    "dictionary_count": "{{count}} phrase hints",
+    "dictionary_hint": "These hints are merged into the ASR prompt when supported.",
+    "history_title": "Recent Dictation History",
+    "history_description": "Recent transcripts stay here so you can recover them if the text lands in the wrong place or focus changes unexpectedly.",
+    "history_empty": "Your recent dictation transcripts will appear here.",
+    "history_copy": "Copy",
+    "history_clear": "Clear",
+    "history_copy_success": "Dictation text copied.",
+    "history_copy_failed": "Unable to copy this dictation entry.",
+    "history_clear_success": "Recent dictation history cleared.",
+    "history_clear_failed": "Unable to clear recent dictation history.",
+    "request_access": "Request microphone access",
+    "permission_request_success": "Microphone access is ready. You can start voice input now.",
     "permission_request_denied": "Microphone access was denied. Allow it in the system dialog or OS settings.",
     "permission_request_missing_runtime": "This runtime is not exposing getUserMedia, so microphone capture cannot start yet.",
     "permission_request_missing_backend": "Microphone access is granted, but this runtime still lacks a usable recording backend.",
@@ -146,6 +146,26 @@
         "reasoning": "Reasoning"
       },
       "subtitle": "Configure your AI model endpoints and base settings",
+      "protocol_label": "OpenAI Protocol",
+      "protocol_hint": "Choose explicitly between OpenAI Chat and OpenAI Responses; the provider only supplies a default.",
+      "protocols": {
+        "openai_chat_completions": {
+          "label": "OpenAI Chat",
+          "description": "Uses /chat/completions with a messages-based payload. Best for most OpenAI-compatible providers."
+        },
+        "openai_responses": {
+          "label": "OpenAI Responses",
+          "description": "Uses /responses for newer OpenAI response semantics and native Responses behavior."
+        },
+        "google_generate_content": {
+          "label": "Google GenerateContent",
+          "description": "Native Gemini endpoint."
+        },
+        "anthropic_messages": {
+          "label": "Anthropic Messages",
+          "description": "Native Claude Messages endpoint."
+        }
+      },
       "model_name_hint": "Provide the exact model identifier used for API calls",
       "reasoning": {
         "title": "Reasoning / Chain-of-thought settings",
@@ -160,6 +180,11 @@
           "high": "high",
           "xhigh": "xhigh (extra high)",
           "max": "max"
+        },
+        "verbosity": {
+          "low": "Low",
+          "medium": "Medium",
+          "high": "High"
         },
         "enable_thinking": "Enable Thinking mode",
         "enable_thinking_hint": "Send the enable_thinking flag when this model supports it.",
@@ -321,10 +346,14 @@
     "base_url": "Base URL",
     "api_key": "API Key",
     "api_key_saved": "Saved",
-    "api_key_placeholder": "Enter API key (auto-save)",
+    "api_key_saving": "Saving…",
+    "api_key_placeholder": "Enter API key",
+    "api_key_manual_save_hint": "Paste or type your API key, then click Save",
     "api_key_save_failed": "Failed to save API key",
     "api_key_cleared": "API key cleared",
     "api_key_clear_failed": "Failed to clear API key",
+    "api_key_securely_stored": "Stored securely. You won't need to enter it again next time",
+    "api_key_unsaved": "You have unsaved changes",
     "clear_api_key": "Clear",
     "clear_api_key_confirm": "Confirm Clear",
     "clear_api_key_title": "Clear API Key",
@@ -387,6 +416,13 @@
     "name_label": "Provider Name",
     "name_placeholder": "Enter provider name",
     "provider_label": "Provider Type",
+    "protocol_label": "API Protocol",
+    "protocols": {
+      "openai_chat_completions": "OpenAI Chat Completions",
+      "openai_responses": "OpenAI Responses",
+      "google_generate_content": "Google GenerateContent",
+      "anthropic_messages": "Anthropic Messages"
+    },
     "providers": {
       "openai": "OpenAI",
       "anthropic": "Anthropic",
@@ -551,6 +587,8 @@
     "statistics": "Statistics",
     "data_manage": "Data Management",
     "data_governance": "Data Governance",
+    "general": "General",
+    "appearance": "Appearance",
     "app": "App Settings",
     "theme": "Theme",
     "params": "Parameters",
@@ -930,6 +968,10 @@
       "auto": "Auto",
       "light": "Light",
       "dark": "Dark"
+    },
+    "study_ui_descriptions": {
+      "general": "Manage language, interaction habits, input methods, and personal preferences.",
+      "appearance": "Customize themes, fonts, zoom, and the app's visual style."
     }
   },
   "api_config": {
@@ -1883,21 +1925,22 @@
     "label": "MCP Server JSON Config"
   },
   "memory": {
-    "title": "Memory System",
-    "description": "Configure AI memory storage location. Memory files will be stored as regular notes in the specified folder.",
-    "selectFolder": "Select memory folder...",
+    "title": "Memory",
+    "description": "Manage AI memory and storage. Memories are stored as notes with automatic categorization.",
+    "selectFolder": "Select storage folder...",
     "createFolder": "Create Folder",
     "defaultFolderName": "My Memories",
-    "configured": "✓ Memory system configured",
-    "notConfigured": "⚠ Please select or create a memory folder",
-    "rootFolder": "Memory Root Folder",
+    "configured": "✓ Configured",
+    "notConfigured": "⚠ No storage folder selected",
+    "disabled": "Disabled",
+    "rootFolder": "Storage",
     "noFolders": "No folders available",
     "createSuccess": "Memory folder created successfully",
     "setSuccess": "Memory root folder set successfully",
-    "privacyMode": "Privacy mode",
-    "privacyModeDesc": "When enabled, memory write and retrieval skip external LLM rewrite/rerank to reduce sensitive data exposure.",
-    "privacyModeEnabled": "Memory privacy mode enabled",
-    "privacyModeDisabled": "Memory privacy mode disabled"
+    "memoryEnabled": "Enable",
+    "memoryEnabledDesc": "When enabled, AI automatically extracts and uses information about you to personalize conversations. When disabled, memory extraction, retrieval, and injection are all stopped.",
+    "memoryEnabledToast": "Memory enabled",
+    "memoryDisabledToast": "Memory disabled"
   },
   "data_governance": {
     "backup_tiers": {

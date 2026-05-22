@@ -713,6 +713,8 @@
     "archive_load_failed": "Failed to load archived sessions",
     "archive_empty_state": "No archived sessions",
     "archive_empty_state_desc": "Sessions archived from the sidebar will appear here until restored or permanently deleted.",
+    "archive_ungrouped_title": "Ungrouped",
+    "archive_empty_group_hint": "No archived sessions remain in this group",
     "archive_untitled": "Untitled session",
     "archive_restore": "Restore",
     "archive_restore_success": "Session restored to the main list",

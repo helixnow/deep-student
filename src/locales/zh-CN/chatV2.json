@@ -33,6 +33,7 @@
     "copySuccess": "已复制代码到剪贴板",
     "copySuccessTitle": "复制成功",
     "render": "渲染",
+    "run": "运行",
     "source": "源码",
     "running": "运行中",
     "mermaidHint": "内容生成中，等待代码块封闭后再运行",
@@ -72,6 +73,7 @@
       "suggestion4": "我正在进行大学物理期末备考，请根据资源库中的相关资料，制作一套题目集。",
       "suggestion5": "根据我上传的高中英语资料，生成一套复习用的Anki闪卡。"
     },
+    "scrollToBottom": "回到底部",
     "waiting": "正在思考..."
   },
   "messageItem": {
@@ -279,8 +281,11 @@
   },
   "queue": {
     "settings": {
-      "enableTitle": "流式输出时排队后续消息",
-      "enableDescription": "AI 回复时输入新消息会自动排队，按发送后自动依次提交。开启时每条排队气泡支持「引导」立即打断当前回复并优先发送。"
+      "modeTitle": "排队模式",
+      "modeLabel": "选择排队模式",
+      "modeDescription": "AI 回复时输入新消息会自动排队并按序发送；「引导」模式下每条气泡可打断当前回复优先发送。",
+      "modeQueue": "排队",
+      "modeGuide": "引导"
     },
     "bubble": {
       "steer": "引导",
@@ -865,7 +870,7 @@
   "timeline": {
     "thinking": {
       "inProgress": "已思考 {{seconds}} 秒…",
-      "completed": "已思考（用时 {{seconds}} 秒）",
+      "completed": "已思考 {{seconds}} 秒",
       "stopped": "已停止思考",
       "contentLabel": "推理详情",
       "detail": {
@@ -890,7 +895,7 @@
       "pending": "等待执行",
       "running": "执行中...",
       "success": "执行完成",
-      "completed": "完成（{{ms}}ms）",
+      "completed": "执行完成",
       "failed": "执行失败",
       "input": "输入参数",
       "output": "输出结果",
@@ -910,7 +915,7 @@
       "set": "设置内容",
       "running": "执行中...",
       "failed": "执行失败",
-      "completed": "完成（{{ms}}ms）",
+      "completed": "执行完成",
       "pending": "等待执行",
       "readContent": "读取的内容",
       "addedContent": "追加的内容",
