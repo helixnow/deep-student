@@ -1,25 +1,5 @@
 /* NotesHome.css */
 
-/* Premium Scrollbar - 保持原有设计 */
-::-webkit-scrollbar {
-  width: 6px;
-  height: 6px;
-}
-
-::-webkit-scrollbar-track {
-  background: transparent;
-}
-
-::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground) / 0.2);
-  border-radius: 3px;
-  transition: background 0.2s;
-}
-
-::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.4);
-}
-
 /* Layout Helpers */
 .notes-home-container {
   --notes-sidebar-width: 250px;

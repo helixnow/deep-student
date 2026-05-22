@@ -106,8 +106,6 @@
   padding-right: 3px;
   font-size: var(--chat-font-size-sm, 0.75rem);
   line-height: 1.25;
-  scrollbar-width: thin;
-  scrollbar-color: var(--scrollbar-thumb) transparent !important;
 }
 
 /* 思维链内容块字号 - Tier S-1：使用全局 token，去 !important，回归用户可缩放 */
@@ -119,23 +117,6 @@
 .chat-v2 .thinking-content .markdown-content ol {
   font-size: var(--chat-thinking-font-size, var(--font-size-sm));
   line-height: 1.45;
-}
-
-.chat-v2 .thinking-trace__text::-webkit-scrollbar {
-  width: 6px;
-}
-
-.chat-v2 .thinking-trace__text::-webkit-scrollbar-track {
-  background: transparent !important;
-}
-
-.chat-v2 .thinking-trace__text::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  border-radius: 999px;
-}
-
-.chat-v2 .thinking-trace__text::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
 }
 
 .chat-v2 .thinking-trace__text::before,
@@ -425,7 +406,8 @@
 .thinking-chain-content .markdown-content ul,
 .thinking-chain-content .markdown-content ol {
   margin: 0.25rem 0 !important;
-  padding-left: 1rem !important;
+  padding-left: 1.5rem !important;
+  list-style-position: outside;
 }
 
 .thinking-chain-content .markdown-content li {
@@ -849,6 +831,14 @@
     animation: none;
     transition: none;
   }
+
+  .think-content-wrapper {
+    transition: none;
+  }
+
+  .think-pulse-dot {
+    animation: none;
+  }
 }
 
 .summary-panel .panel-body,
@@ -871,4 +861,173 @@
   border-radius: 12px;
   overflow: visible;
   box-shadow: none;
+}
+
+/* ============================================================================
+   V2 Thinking Block — 思考块（block plugin）
+   ============================================================================
+   与 markdown.css 中的 .chain-of-thought（legacy <thinking> tag 内联解析）分离。
+   视觉策略：左品牌色 accent bar + 卡片容器，层次高出普通助手消息。
+   ============================================================================ */
+
+.think-block {
+  border: 1px solid hsl(var(--border) / 0.3);
+  border-left: 2px solid var(--brand-primary);
+  border-radius: var(--radius-shell-toolbar);
+  background: hsl(var(--card));
+  overflow: hidden;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.think-block--expanded {
+  border-left-color: hsl(var(--primary) / 0.9);
+  box-shadow: var(--shadow-shell-soft);
+}
+
+.dark .think-block {
+  background: hsl(var(--muted) / 0.2);
+  border-color: hsl(var(--border) / 0.2);
+}
+
+.dark .think-block--expanded {
+  border-left-color: hsl(var(--primary));
+}
+
+/* ─── Header ──────────────────────────────────────────────────────────────── */
+
+.think-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.625rem 0.875rem;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: hsl(var(--muted-foreground));
+  font-size: var(--font-size-sm);
+  line-height: 1.2;
+  font-weight: 500;
+  user-select: none;
+  -webkit-user-select: none;
+  transition: background-color 0.15s;
+}
+
+.think-header:hover {
+  background: hsl(var(--muted) / 0.35);
+}
+
+.think-header-icon {
+  color: var(--brand-primary);
+  flex-shrink: 0;
+  opacity: 0.85;
+}
+
+.think-header:hover .think-header-icon {
+  opacity: 1;
+}
+
+.think-header-title {
+  color: hsl(var(--foreground) / 0.75);
+}
+
+.think-header:hover .think-header-title {
+  color: hsl(var(--foreground));
+}
+
+/* ─── Streaming pulse ─────────────────────────────────────────────────────── */
+
+.think-status-pulse {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.375rem;
+  margin-left: auto;
+  margin-right: 0.25rem;
+}
+
+.think-pulse-label {
+  font-size: 0.75rem;
+  color: var(--brand-primary);
+}
+
+.think-pulse-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--brand-primary);
+  animation: thinkPulse 1.4s ease-in-out infinite;
+}
+
+@keyframes thinkPulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.3;
+    transform: scale(0.65);
+  }
+}
+
+/* ─── Chevron ─────────────────────────────────────────────────────────────── */
+
+.think-chevron {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.25rem;
+  height: 1.25rem;
+  flex-shrink: 0;
+  color: hsl(var(--muted-foreground) / 0.5);
+  transition: transform 0.22s ease;
+}
+
+.think-chevron--expanded {
+  transform: rotate(180deg);
+  color: hsl(var(--muted-foreground) / 0.7);
+}
+
+/* ─── Content — animated expand/collapse ─────────────────────────────────── */
+
+.think-content-wrapper {
+  max-height: 0;
+  overflow: hidden;
+  transition: max-height 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.think-content-wrapper--expanded {
+  max-height: 2000px;
+}
+
+.think-content {
+  border-top: 1px solid hsl(var(--border) / 0.15);
+  padding: 0.75rem 0.875rem;
+}
+
+/* ─── Typography inside thinking block ────────────────────────────────────── */
+
+.think-content .markdown-content {
+  font-size: var(--chat-thinking-font-size, var(--font-size-sm));
+  line-height: 1.55;
+  color: hsl(var(--muted-foreground));
+}
+
+.think-content .markdown-content p {
+  margin: 0.35em 0;
+}
+
+.think-content .markdown-content p:first-child {
+  margin-top: 0;
+}
+
+.think-content .markdown-content p:last-child {
+  margin-bottom: 0;
+}
+
+.think-content .markdown-content code:not(pre code) {
+  background: hsl(var(--muted) / 0.5);
+  border-radius: 4px;
+  padding: 0.15em 0.35em;
+  font-size: 0.9em;
 }

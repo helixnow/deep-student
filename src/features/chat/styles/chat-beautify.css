@@ -114,7 +114,21 @@
    Dock/Undock 输入条动画与安全区适配
    ============================================================================ */
 .chat-v2 .unified-input-docked {
+  --unified-input-bottom-fade-size: 42px;
   will-change: transform, bottom;
+  background: transparent;
+  border-top: 0;
+}
+
+.chat-v2 .unified-input-docked::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  height: var(--unified-input-bottom-fade-size);
+  pointer-events: none;
+  background: linear-gradient(to bottom, hsl(var(--background) / 0) 0%, var(--shell-workspace-panel) 100%);
 }
 
 .chat-v2 .chat-composer-motion-frame {
@@ -163,9 +177,6 @@
 
 .chat-v2 .chat-empty-composer-layout__stack {
   grid-row: 2;
-  width: min(100%, var(--chat-thread-max-w));
-  margin: 0 auto;
-  padding: 0 1rem;
 }
 
 .chat-v2 .chat-empty-composer-layout__message-list {
@@ -207,8 +218,25 @@
   padding: 0 !important;
 }
 
+.chat-v2 .chat-empty-composer-layout__input.unified-input-docked::after {
+  content: none;
+}
+
 .chat-v2 .chat-empty-composer-layout__input.unified-input-docked > div {
   max-width: none;
+}
+
+.chat-v2 [data-slot="chat-loading-shell"] {
+  justify-content: flex-end;
+}
+
+.chat-v2 [data-slot="chat-loading-messages"] {
+  padding-top: 0.25rem;
+}
+
+.chat-v2 .chat-loading-shell__composer-panel {
+  --unified-input-shell-surface: var(--surface-root);
+  background: var(--surface-root);
 }
 
 @media (max-width: 768px) {
@@ -373,30 +401,6 @@
 .chat-v2 .chat-history {
   background: hsl(var(--background));
   position: relative;
-}
-
-/* 美化的滚动条 */
-.chat-v2 .chat-history::-webkit-scrollbar {
-  width: 10px;
-}
-
-.chat-v2 .chat-history::-webkit-scrollbar-track {
-  background: var(--scrollbar-track);
-  border-radius: 5px;
-  margin: 10px 0;
-}
-
-.chat-v2 .chat-history::-webkit-scrollbar-thumb {
-  background: var(--scrollbar-thumb);
-  border-radius: 5px;
-  border: 2px solid transparent;
-  background-clip: padding-box;
-  transition: all var(--chat-animation-fast);
-}
-
-.chat-v2 .chat-history::-webkit-scrollbar-thumb:hover {
-  background: var(--scrollbar-thumb-hover);
-  background-clip: padding-box;
 }
 
 /* ============================================================================
@@ -796,38 +800,6 @@
 
 .chat-v2 .thinking-container.expanded .thinking-toggle {
   transform: rotate(90deg);
-}
-
-/* 思维链内容区域 */
-.chat-v2 .thinking-content-box,
-.chat-v2 .thinking-content-box.thinking-scrollbar,
-.chat-v2 .thinking-content-box[data-thinking-scrollbar="true"] {
-  padding: 1rem;
-  background: hsl(var(--card));
-  border-top: none;
-  font-size: var(--chat-font-size-xs);
-  line-height: 1.6;
-  color: hsl(var(--muted-foreground));
-  max-height: 300px;
-  overflow-y: auto;
-}
-
-/* 思维链内容样式 */
-.chat-v2 .thinking-content-box p {
-  margin: 0.5rem 0;
-  font-size: var(--chat-font-size-xs);
-  line-height: 1.6;
-}
-
-.chat-v2 .thinking-content-box ul,
-.chat-v2 .thinking-content-box ol {
-  margin: 0.5rem 0;
-  padding-left: 1.5rem;
-}
-
-.chat-v2 .thinking-content-box li {
-  margin: 0.25rem 0;
-  font-size: var(--chat-font-size-xs);
 }
 
 /* 思维链状态指示器 */

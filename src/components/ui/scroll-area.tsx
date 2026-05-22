@@ -127,17 +127,6 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
 
     const osRef = React.useRef<OverlayScrollbarsComponentRef | null>(null);
 
-    // Expose the real viewport element to the consumer via viewportRef
-    // once OverlayScrollbars has initialized (defer bridges StrictMode double-mount).
-    React.useEffect(() => {
-      if (useNative) return;
-      const el = osRef.current?.getElement();
-      if (el) assignRef(viewportRef, el as HTMLDivElement);
-      return () => {
-        assignRef(viewportRef, null);
-      };
-    }, [useNative, viewportRef]);
-
     if (useNative) {
       const overflowClass = cn(
         overflowY === "scroll" ? "overflow-y-auto" : "overflow-y-hidden",
@@ -181,7 +170,6 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
         {...restProps}
       >
         <OverlayScrollbarsComponent
-          defer
           ref={osRef}
           element="div"
           className={cn("h-full w-full", viewportClassName)}
@@ -195,6 +183,14 @@ export const ScrollArea = React.forwardRef<HTMLDivElement, ScrollAreaProps>(
               clickScroll: true,
             },
             overflow: { x: overflowX, y: overflowY },
+          }}
+          events={{
+            initialized: (instance) => {
+              assignRef(viewportRef, instance.elements().viewport as HTMLDivElement);
+            },
+            destroyed: () => {
+              assignRef(viewportRef, null);
+            },
           }}
           {...(viewportProps ?? {})}
         >

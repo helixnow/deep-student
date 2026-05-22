@@ -70,9 +70,10 @@
 .streaming-block-renderer .chain-of-thought {
   margin-bottom: 0.75rem;
   padding: 0.75rem;
-  border-radius: 0.5rem;
-  background: hsl(var(--muted) / 0.3);
-  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius-shell-toolbar);
+  border: 1px solid hsl(var(--border) / 0.3);
+  border-left: 2px solid var(--brand-primary);
+  background: hsl(var(--card));
 }
 
 .streaming-block-renderer .chain-header {
