@@ -20,9 +20,9 @@ pub mod debug_log_service; // 调试日志持久化服务（JSON 文件 + 多级
 pub mod debug_logger;
 
 pub mod anr_watchdog; // ANR 看门狗（Android 主线程卡顿检测）
+pub mod background_tasks; // 全局后台任务追踪器（Audit 2 R-2.6：统一管理 fire-and-forget 任务并支持优雅关闭）
 pub mod backup_common;
 pub mod backup_config;
-pub mod background_tasks; // 全局后台任务追踪器（Audit 2 R-2.6：统一管理 fire-and-forget 任务并支持优雅关闭）
 pub mod chat_v2; // Chat V2 - 新版聊天后端模块（基于 Block 架构）
 pub mod cloud_storage;
 pub mod cross_page_merger;

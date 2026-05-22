@@ -17,8 +17,7 @@
 //! | Kimi K2.5 (官方/第三方) | `reasoning_content` | ✅ | ✅ | ❌ |
 //! | Kimi K2-Thinking (OpenRouter) | `reasoning_details` | ✅ | ✅ | ❌ |
 //! | MiniMax M2 (reasoning_split) | `reasoning_details` | ✅ | ✅ | ❌ |
-//! | Gemini 2.5 (OpenRouter/Google 直连) | `reasoning_details` | ✅ | ✅ | ❌ |
-//! | Gemini 3 (OpenRouter/Google 直连) | `reasoning_details` | ✅ | ✅ | ✅ (工具调用必需) |
+//! | Gemini 2.5 / 3.x (OpenRouter/Google 直连) | `reasoning_details` | ✅ | ✅ | ✅ (工具调用时按官方文档保留签名) |
 //! | Gemini 2.5/3 (第三方 OpenAI 兼容) | 取决于第三方 | ⚠️ 走通用逻辑 | ⚠️ | ❌ |
 //! | OpenAI o1/o3/o4 (OpenRouter) | `reasoning_details` | ✅ | ✅ | ❌ |
 //! | GPT 5.x (OpenRouter) | `reasoning_details` | ✅ | ✅ | ❌ |
@@ -63,11 +62,11 @@ impl Default for ReasoningPassbackPolicy {
 // Reasoning Details 数据结构
 // ============================================================================
 
-/// 结构化思维链详情（用于 Gemini 3、OpenAI o1 等模型）
+/// 结构化思维链详情（用于 Gemini 2.5+/3.x、OpenAI o1 等模型）
 ///
-/// ## Gemini 3 thoughtSignature 支持
-/// Gemini 3 在工具调用场景下要求回传 `thoughtSignature`，用于验证思维链的连续性。
-/// 如果不回传签名，后续的工具调用轮次会报错。
+/// ## Gemini thoughtSignature 支持
+/// Gemini 2.5+ 在启用 thinking 且声明工具时可能返回 `thoughtSignature`，
+/// 后续请求需要原样回传以维持思维链连续性。
 ///
 /// 参考文档：https://ai.google.dev/gemini-api/docs/thinking#tool-use
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -97,9 +96,9 @@ pub struct ReasoningDetail {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index: Option<u32>,
 
-    /// 思维签名（Gemini 3 工具调用必需）
+    /// 思维签名（Gemini 2.5+/3.x 工具调用可能必需）
     ///
-    /// Gemini 3 在响应中返回 `thoughtSignature`，在后续工具调用请求中必须回传此签名。
+    /// Gemini 在响应中返回 `thoughtSignature` 时，后续工具调用请求中必须回传此签名。
     /// 签名用于验证思维链的连续性和完整性。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signature: Option<String>,
@@ -119,7 +118,7 @@ impl ReasoningDetail {
         }
     }
 
-    /// 创建带签名的 thinking 类型详情（Gemini 3 工具调用）
+    /// 创建带签名的 thinking 类型详情（Gemini 工具调用）
     pub fn thinking_with_signature(text: String, signature: String) -> Self {
         Self {
             detail_type: "thinking".to_string(),
@@ -283,22 +282,20 @@ pub fn should_clear_reasoning_on_new_question(config: &ApiConfig) -> bool {
     is_official_deepseek_v4_family(config)
 }
 
-/// 是否需要回传 thoughtSignature（Gemini 3 工具调用专用）
+/// 是否需要回传 thoughtSignature（Gemini 2.5+/3.x 工具调用专用）
 ///
 /// ## 用途
-/// Gemini 3 在工具调用场景下要求回传 `thoughtSignature`。
+/// Gemini 2.5+ 在工具调用场景下可能要求回传 `thoughtSignature`。
 /// 此函数用于判断是否需要缓存和回传签名。
 ///
 /// ## 返回
-/// - `true`: 需要回传签名（Gemini 3 系列）
+/// - `true`: 需要回传签名（Gemini 2.5+/3.x）
 /// - `false`: 不需要（其他模型）
 pub fn requires_thought_signature(config: &ApiConfig) -> bool {
-    let model = config.model.to_lowercase();
-    // Gemini 3 系列需要回传 thoughtSignature
-    model.contains("gemini-3") || model.contains("gemini3")
+    is_gemini_thinking_model(config)
 }
 
-/// 是否是 Gemini 2.5 或更高版本（支持 thinking）
+/// 是否是 Gemini 2.5 或 3.x 版本（支持 thinking）
 ///
 /// ## 用途
 /// 判断是否是支持 thinking 配置的 Gemini 模型。
@@ -413,6 +410,15 @@ mod tests {
             get_passback_policy(&config),
             ReasoningPassbackPolicy::ReasoningDetails
         );
+    }
+
+    #[test]
+    fn test_google_gemini_thought_signatures_cover_25_and_3x() {
+        let gemini_25 = make_config(Some("google"), "gemini-2.5-flash", false);
+        let gemini_35 = make_config(Some("google"), "gemini-3.5-flash", false);
+
+        assert!(requires_thought_signature(&gemini_25));
+        assert!(requires_thought_signature(&gemini_35));
     }
 
     #[test]

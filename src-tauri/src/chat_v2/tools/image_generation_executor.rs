@@ -167,7 +167,7 @@ impl ImageGenerationExecutor {
         args: &ImageGenerationArgs,
         model: &ImageGenerationModel,
     ) -> Result<GeneratedImageBytes, String> {
-        let (_, _, size) = image_size_for_aspect_ratio(&args.aspect_ratio);
+        let (_, _, size) = image_size_for_config(Some(&model.config), &args.aspect_ratio);
         let endpoint = build_image_generation_url(&model.config.base_url)?;
         let client = reqwest::Client::builder()
             .timeout(std::time::Duration::from_secs(TOOL_TIMEOUT_SECS))
@@ -254,8 +254,13 @@ impl ImageGenerationExecutor {
         Ok(downloaded)
     }
 
-    fn emit_start(ctx: &ExecutionContext, args: &ImageGenerationArgs, model: &str) {
-        let (width, height, _) = image_size_for_aspect_ratio(&args.aspect_ratio);
+    fn emit_start(
+        ctx: &ExecutionContext,
+        args: &ImageGenerationArgs,
+        model: &str,
+        config: Option<&ApiConfig>,
+    ) {
+        let (width, height, _) = image_size_for_config(config, &args.aspect_ratio);
         ctx.emitter.emit_start_with_meta(
             event_types::IMAGE_GEN,
             &ctx.message_id,
@@ -433,7 +438,7 @@ impl ToolExecutor for ImageGenerationExecutor {
         let model = match Self::resolve_model(ctx).await {
             Ok(model) => model,
             Err(error) => {
-                Self::emit_start(ctx, &args, "");
+                Self::emit_start(ctx, &args, "", None);
                 Self::emit_error(ctx, &error);
                 let result = ToolResultInfo::failure(
                     Some(call.id.clone()),
@@ -448,9 +453,9 @@ impl ToolExecutor for ImageGenerationExecutor {
             }
         };
 
-        Self::emit_start(ctx, &args, &model.config.model);
+        Self::emit_start(ctx, &args, &model.config.model, Some(&model.config));
         let (requested_width, requested_height, _) =
-            image_size_for_aspect_ratio(&args.aspect_ratio);
+            image_size_for_config(Some(&model.config), &args.aspect_ratio);
 
         let result = match Self::request_image(&args, &model).await {
             Ok(generated) => {
@@ -516,6 +521,24 @@ fn image_size_for_aspect_ratio(aspect_ratio: &str) -> (u32, u32, String) {
         _ => (1024, 1024),
     };
     (width, height, format!("{}x{}", width, height))
+}
+
+fn image_size_for_sensenova(aspect_ratio: &str) -> (u32, u32, String) {
+    let (width, height) = match aspect_ratio {
+        "4:3" => (2368, 1760),
+        "16:9" => (2752, 1536),
+        "3:4" => (1760, 2368),
+        "9:16" => (1536, 2752),
+        _ => (2048, 2048),
+    };
+    (width, height, format!("{}x{}", width, height))
+}
+
+fn image_size_for_config(config: Option<&ApiConfig>, aspect_ratio: &str) -> (u32, u32, String) {
+    if config.is_some_and(is_sensenova_config) {
+        return image_size_for_sensenova(aspect_ratio);
+    }
+    image_size_for_aspect_ratio(aspect_ratio)
 }
 
 fn build_image_generation_url(base_url: &str) -> Result<String, String> {
@@ -722,6 +745,19 @@ fn provider_label(config: &ApiConfig) -> String {
         .unwrap_or_else(|| "OpenAI Compatible".to_string())
 }
 
+fn is_sensenova_config(config: &ApiConfig) -> bool {
+    let haystack = format!(
+        "{} {} {} {}",
+        config.vendor_name.as_deref().unwrap_or_default(),
+        config.provider_type.as_deref().unwrap_or_default(),
+        config.model,
+        config.base_url,
+    )
+    .to_lowercase();
+
+    haystack.contains("sensenova") || haystack.contains("sense nova")
+}
+
 fn shorten(value: &str, max_len: usize) -> String {
     if value.len() <= max_len {
         return value.to_string();
@@ -767,6 +803,43 @@ mod tests {
         assert_eq!(
             image_size_for_aspect_ratio("unexpected"),
             (1024, 1024, "1024x1024".to_string())
+        );
+    }
+
+    #[test]
+    fn maps_supported_aspect_ratios_to_sensenova_image_sizes() {
+        let config = ApiConfig {
+            name: "SenseNova Image".to_string(),
+            model: "sense-image-v1".to_string(),
+            vendor_name: Some("SenseNova".to_string()),
+            provider_type: Some("openai-compatible".to_string()),
+            base_url: "https://api.sensenova.cn/compatible-mode/v1".to_string(),
+            ..Default::default()
+        };
+
+        assert_eq!(
+            image_size_for_config(Some(&config), "1:1"),
+            (2048, 2048, "2048x2048".to_string())
+        );
+        assert_eq!(
+            image_size_for_config(Some(&config), "4:3"),
+            (2368, 1760, "2368x1760".to_string())
+        );
+        assert_eq!(
+            image_size_for_config(Some(&config), "16:9"),
+            (2752, 1536, "2752x1536".to_string())
+        );
+        assert_eq!(
+            image_size_for_config(Some(&config), "3:4"),
+            (1760, 2368, "1760x2368".to_string())
+        );
+        assert_eq!(
+            image_size_for_config(Some(&config), "9:16"),
+            (1536, 2752, "1536x2752".to_string())
+        );
+        assert_eq!(
+            image_size_for_config(Some(&config), "unexpected"),
+            (2048, 2048, "2048x2048".to_string())
         );
     }
 

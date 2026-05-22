@@ -204,7 +204,10 @@ fn split_into_turns(messages: &[ChatMessage]) -> Vec<TurnRange> {
 fn make_summary_system_message(summary_text: &str, compaction_id: &str) -> LegacyChatMessage {
     let safe_summary = summary_text
         .trim()
-        .replace("</compacted_context>", "</\u{ff1c}compacted_context\u{ff1e}")
+        .replace(
+            "</compacted_context>",
+            "</\u{ff1c}compacted_context\u{ff1e}",
+        )
         .replace("<compacted_context>", "<\u{ff1c}compacted_context\u{ff1e}");
     LegacyChatMessage {
         role: "user".to_string(),
@@ -512,8 +515,7 @@ fn render_messages_for_prompt(
         let combined = parts.join("\n\n");
 
         // 按 token 预算截断（粗略：若超预算 → 只保留前 80% + 标记）
-        let token_est =
-            crate::utils::token_budget::estimate_tokens_with_model(&combined, model_id);
+        let token_est = crate::utils::token_budget::estimate_tokens_with_model(&combined, model_id);
         let preview = if token_est > per_msg_token_cap && combined.len() > 0 {
             // 估算保留字符比例
             let keep_ratio = per_msg_token_cap as f64 / token_est as f64;
@@ -537,10 +539,7 @@ impl ChatV2Pipeline {
     /// 运行压缩：从 DB 加载全量历史，生成摘要并持久化，重置 ctx.needs_compaction
     ///
     /// 失败时仅记录日志并清零标志，不返回错误（退化为 FIFO 截断）
-    pub(crate) async fn run_compaction(
-        &self,
-        ctx: &mut PipelineContext,
-    ) -> ChatV2Result<()> {
+    pub(crate) async fn run_compaction(&self, ctx: &mut PipelineContext) -> ChatV2Result<()> {
         if !ctx.needs_compaction {
             return Ok(());
         }
@@ -662,10 +661,7 @@ impl ChatV2Pipeline {
 
         // 3. 解析 ApiConfig（基于 model_id）
         let api_config = self.resolve_api_config_by_id(model_id).await;
-        let model_id_for_tokens = api_config
-            .as_ref()
-            .map(|c| c.model.as_str())
-            .or(model_id);
+        let model_id_for_tokens = api_config.as_ref().map(|c| c.model.as_str()).or(model_id);
         let usable = usable_tokens(api_config.as_ref()) as usize;
         let tail_budget_raw = (usable as f64 * TAIL_PRESERVE_RATIO) as usize;
         let tail_budget = tail_budget_raw.clamp(MIN_TAIL_TOKENS, MAX_TAIL_TOKENS);
@@ -777,8 +773,7 @@ impl ChatV2Pipeline {
                 let hard_cap_tokens = tail_budget_raw / 2;
                 if summary_tokens > hard_cap_tokens && summary_tokens > 0 {
                     let ratio = hard_cap_tokens as f64 / summary_tokens as f64;
-                    let keep_chars =
-                        ((trimmed.chars().count() as f64) * ratio).max(500.0) as usize;
+                    let keep_chars = ((trimmed.chars().count() as f64) * ratio).max(500.0) as usize;
                     let truncated: String = trimmed.chars().take(keep_chars).collect();
                     warn!(
                         "[compaction] summary exceeds cap ({} > {} tokens); truncating",
@@ -884,10 +879,7 @@ impl ChatV2Pipeline {
     }
 
     /// 按 model_id（config.id 或 config.model）解析 ApiConfig
-    pub(crate) async fn resolve_api_config_by_id(
-        &self,
-        key: Option<&str>,
-    ) -> Option<ApiConfig> {
+    pub(crate) async fn resolve_api_config_by_id(&self, key: Option<&str>) -> Option<ApiConfig> {
         let key = key?.trim();
         if key.is_empty() {
             return None;
@@ -1118,7 +1110,10 @@ mod tests {
     #[test]
     fn default_context_window_when_no_config() {
         let u = usable_tokens(None);
-        assert_eq!(u, DEFAULT_CONTEXT_WINDOW - DEFAULT_MAX_OUTPUT.min(COMPACTION_BUFFER));
+        assert_eq!(
+            u,
+            DEFAULT_CONTEXT_WINDOW - DEFAULT_MAX_OUTPUT.min(COMPACTION_BUFFER)
+        );
         // 200_000 - 8_192 = 191_808
         assert_eq!(u, 191_808);
     }

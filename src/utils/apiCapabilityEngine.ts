@@ -537,11 +537,14 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
     GEMINI_THINKING_REGEX.test(id) &&
     !GEMINI_IMAGE_EXCLUDE_REGEX.test(id);
 
+  // Vendor-prefixed Qwen3 models (e.g., Qwen/Qwen3-8B from SiliconFlow) also support thinking
+  const isVendorQwen3 = /^qwen\/qwen3[-.]/i.test(id);
+
   let isQwenTokenModel = false;
   let isQwenThinkingModel = false;
   if (!id.includes('coder')) {
-    // Qwen3 系列支持 thinking/non-thinking 模式切换
-    if (id.startsWith('qwen3')) {
+    // Qwen3 系列支持 thinking/non-thinking 模式切换 (包括 vendor-prefixed 如 Qwen/Qwen3-8B)
+    if (id.startsWith('qwen3') || isVendorQwen3) {
       // qwen3-max-preview 支持 thinking 模式
       if (id.includes('preview')) {
         isQwenTokenModel = true;

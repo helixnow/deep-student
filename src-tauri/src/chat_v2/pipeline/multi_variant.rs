@@ -227,7 +227,12 @@ impl ChatV2Pipeline {
         // === 4.5. 🆕 R2-CR-R2-02 修复：多变体 fan-out 前先检查是否需要压缩 ===
         // 估算会话接近上下文上限时主动压一次；所有变体看同一压缩视图。
         // 失败 / 跳过时继续 fan-out，依赖 apply_compaction_view 读视图兜底。
-        if !options.parallel_model_ids.as_deref().unwrap_or(&[]).is_empty() {
+        if !options
+            .parallel_model_ids
+            .as_deref()
+            .unwrap_or(&[])
+            .is_empty()
+        {
             let model_for_budget = options.model_id.as_deref();
             let api_cfg = self.resolve_api_config_by_id(model_for_budget).await;
             if self

@@ -6,6 +6,18 @@ import {
 } from '../deepseekReasoningControls';
 
 describe('DeepSeek runtime reasoning controls', () => {
+  it('uses low/medium/high/xhigh runtime options for OpenAI GPT-5 family', () => {
+    const control = resolveDeepSeekRuntimeReasoningControl({
+      model: 'gpt-5.5',
+      providerType: 'openai',
+      providerScope: 'openai',
+      baseUrl: 'https://api.openai.com/v1',
+    });
+
+    expect(control.kind).toBe('openai-effort');
+    expect(control.options.map((option) => option.value)).toEqual(['low', 'medium', 'high', 'xhigh']);
+  });
+
   it('uses high/max runtime options for official DeepSeek V4', () => {
     const control = resolveDeepSeekRuntimeReasoningControl({
       model: 'deepseek-v4-pro',
@@ -44,19 +56,30 @@ describe('DeepSeek runtime reasoning controls', () => {
 
   it('keeps unknown non-DeepSeek models toggle-only', () => {
     const control = resolveDeepSeekRuntimeReasoningControl({
-      model: 'gpt-5.2',
-      providerType: 'openai',
-      baseUrl: 'https://api.openai.com/v1',
+      model: 'gpt-4o-mini',
+      providerType: 'openai-compatible',
+      baseUrl: 'https://proxy.example.com/v1',
     });
 
     expect(control.kind).toBe('toggle-only');
     expect(control.options).toEqual([]);
   });
 
+  it('normalizes OpenAI runtime depth to reasoning effort only', () => {
+    expect(
+      resolveDeepSeekRuntimeReasoningSelection({
+        control: resolveDeepSeekRuntimeReasoningControl({ model: 'gpt-5.5', providerType: 'openai' }),
+        enableThinking: true,
+        reasoningEffort: 'xhigh',
+        thinkingBudget: 32768,
+      })
+    ).toEqual({ enableThinking: true, reasoningEffort: 'xhigh', thinkingBudget: undefined });
+  });
+
   it('clears versioned runtime depth fields for toggle-only models', () => {
     expect(
       resolveDeepSeekRuntimeReasoningSelection({
-        control: resolveDeepSeekRuntimeReasoningControl({ model: 'gpt-5.2', providerType: 'openai' }),
+        control: resolveDeepSeekRuntimeReasoningControl({ model: 'gpt-4o-mini', providerType: 'openai-compatible' }),
         enableThinking: true,
         reasoningEffort: 'max',
         thinkingBudget: 32768,

@@ -1,4 +1,8 @@
-export type DeepSeekReasoningControlKind = 'v4-effort' | 'v32-budget-effort' | 'toggle-only';
+export type DeepSeekReasoningControlKind =
+  | 'openai-effort'
+  | 'v4-effort'
+  | 'v32-budget-effort'
+  | 'toggle-only';
 
 export type DeepSeekReasoningOptionValue = 'low' | 'medium' | 'high' | 'xhigh' | 'max';
 
@@ -46,6 +50,13 @@ const V4_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   { value: 'max', labelKey: 'settings:api.modal.deepseek.depth.max', defaultLabel: 'Max' },
 ];
 
+const OPENAI_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
+  { value: 'low', labelKey: 'settings:api.modal.reasoning.effort.low', defaultLabel: 'Low' },
+  { value: 'medium', labelKey: 'settings:api.modal.reasoning.effort.medium', defaultLabel: 'Medium' },
+  { value: 'high', labelKey: 'settings:api.modal.reasoning.effort.high', defaultLabel: 'High' },
+  { value: 'xhigh', labelKey: 'settings:api.modal.reasoning.effort.xhigh', defaultLabel: 'Extra High' },
+];
+
 const V32_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   { value: 'low', labelKey: 'settings:api.modal.deepseek.depth.low', defaultLabel: 'Low' },
   { value: 'medium', labelKey: 'settings:api.modal.deepseek.depth.medium', defaultLabel: 'Medium' },
@@ -62,6 +73,19 @@ export function isDeepSeekV4ModelId(modelId: string | undefined | null): boolean
 
 export function isDeepSeekV32ModelId(modelId: string | undefined | null): boolean {
   return normalize(modelId).includes('deepseek-v3.2');
+}
+
+export function isOpenAiReasoningModelId(modelId: string | undefined | null): boolean {
+  const lower = normalize(modelId);
+  if (!lower) return false;
+  return (
+    (lower.includes('gpt-5') && !lower.includes('gpt-5-chat')) ||
+    lower.includes('o1') ||
+    lower.includes('o3') ||
+    lower.includes('o4') ||
+    lower.includes('gpt-oss') ||
+    lower.includes('codex-mini')
+  );
 }
 
 export function deepSeekV32EffortToBudget(effort: string | undefined | null): number | undefined {
@@ -89,6 +113,9 @@ export function resolveDeepSeekReasoningControl(
   modelId: string | undefined | null,
   supportsReasoningEffort: boolean
 ): DeepSeekReasoningControl {
+  if (isOpenAiReasoningModelId(modelId)) {
+    return { kind: 'openai-effort', options: OPENAI_EFFORT_OPTIONS };
+  }
   if (supportsReasoningEffort || isDeepSeekV4ModelId(modelId)) {
     return { kind: 'v4-effort', options: V4_EFFORT_OPTIONS };
   }
@@ -102,6 +129,9 @@ export function resolveDeepSeekRuntimeReasoningControl(
   input: DeepSeekRuntimeReasoningControlInput
 ): DeepSeekReasoningControl {
   const model = normalize(input.model) || normalize(input.modelId);
+  if (isOpenAiReasoningModelId(model)) {
+    return { kind: 'openai-effort', options: OPENAI_EFFORT_OPTIONS };
+  }
   if (isDeepSeekV4ModelId(model)) {
     return { kind: 'v4-effort', options: V4_EFFORT_OPTIONS };
   }
@@ -115,6 +145,23 @@ export function resolveDeepSeekRuntimeReasoningSelection(
   input: DeepSeekRuntimeReasoningSelectionInput
 ): DeepSeekRuntimeReasoningSelection {
   const enableThinking = input.enableThinking ?? true;
+
+  if (input.control.kind === 'openai-effort') {
+    const normalizedEffort = normalize(input.reasoningEffort);
+    const effort =
+      normalizedEffort === 'low' ||
+      normalizedEffort === 'medium' ||
+      normalizedEffort === 'high' ||
+      normalizedEffort === 'xhigh'
+        ? normalizedEffort
+        : 'medium';
+
+    return {
+      enableThinking,
+      reasoningEffort: effort,
+      thinkingBudget: undefined,
+    };
+  }
 
   if (input.control.kind === 'v4-effort') {
     return {
