@@ -17,6 +17,7 @@ import { EVAL_CASES } from './eval/cases';
 import { RHYTHM_PRESETS, DEFAULT_RHYTHM } from './eval/rhythm';
 import { runEval, type RunEvalProgress } from './eval/runner';
 import { scoreToColor } from './eval/scoring';
+import { getStreamingPresetHint, getStreamingPresetLabel } from './labels';
 import type {
   EvalCaseResult,
   EvalReport,
@@ -199,6 +200,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
                   key={p}
                   type="button"
                   onClick={() => togglePreset(p)}
+                  title={getStreamingPresetHint(p)}
                   className={cn(
                     'flex-1 px-1.5 py-1 rounded text-[10px] transition-colors',
                     sel
@@ -206,7 +208,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
                       : 'bg-muted/50 hover:bg-muted text-muted-foreground',
                   )}
                 >
-                  {p}
+                  {getStreamingPresetLabel(p)}
                 </button>
               );
             })}
@@ -280,7 +282,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
           <div className="space-y-1">
             <div className="flex justify-between text-[10px] text-muted-foreground">
               <span>
-                {progress.current}/{progress.total} · {progress.caseId} · {progress.preset}
+                {progress.current}/{progress.total} · {progress.caseId} · {getStreamingPresetLabel(progress.preset)}
               </span>
               <span>{Math.round((progress.current / progress.total) * 100)}%</span>
             </div>
@@ -313,7 +315,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
                     key={p}
                     className="flex items-center justify-between px-2 py-1 rounded bg-muted/40 text-[11px]"
                   >
-                    <span className="font-mono text-muted-foreground">{p}</span>
+                    <span className="font-mono text-muted-foreground">{getStreamingPresetLabel(p as StreamingSmoothingPreset)}</span>
                     <span
                       className="font-semibold tabular-nums"
                       style={{ color: scoreToColor(avg) }}
@@ -339,7 +341,7 @@ export const EvalPanel: React.FC<EvalPanelProps> = ({ className }) => {
                       </th>
                       {usedPresets.map((p) => (
                         <th key={p} className="text-center font-medium px-1 py-1">
-                          {p}
+                          {getStreamingPresetLabel(p)}
                         </th>
                       ))}
                     </tr>

@@ -7,6 +7,8 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { useTranslation } from 'react-i18next';
 import DOMPurify from 'dompurify';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { CodeBlockShell } from '../ui/CodeBlockShell';
+import { ScrollArea } from '@/components/ui/scroll-area';
 
 // ============================================================================
 // HTML 转义辅助函数（防止 XSS）
@@ -632,71 +634,74 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
     setOffset({ x: offX, y: offY });
   };
 
-  return (
-    <div className="code-block-wrapper">
-      <div className="code-block-header">
-        <span className="code-block-lang">{language}</span>
-        <div className="code-block-actions">
-          <NotionButton variant="ghost" size="sm" className="code-block-copy" onClick={handleCopy}>
-            {copied ? <Check size={14} /> : <Copy size={14} />}
-            <span>{copied ? t('codeBlock.copied', '已复制') : t('codeBlock.copy', '复制')}</span>
-          </NotionButton>
+  const header = (
+    <div className="code-block-header">
+      <span className="code-block-lang">{language}</span>
+      <div className="code-block-actions">
+        <NotionButton variant="ghost" size="sm" className="code-block-copy" onClick={handleCopy}>
+          {copied ? <Check size={14} /> : <Copy size={14} />}
+          <span>{copied ? t('codeBlock.copied', '已复制') : t('codeBlock.copy', '复制')}</span>
+        </NotionButton>
 
-          {(canRunMermaid || canRenderSvg || canRenderHtml || canRenderXml) && (
-            (renderedSvg || htmlPreviewDoc) ? (
-              <NotionButton
-                variant="ghost"
-                size="sm"
-                className="code-block-copy"
-                onClick={() => setShowRendered(v => !v)}
-                title={showRendered ? t('codeBlock.viewSource', '查看源码') : t('codeBlock.viewRender', '查看渲染')}
-              >
-                <span style={{ marginRight: 4 }}>{showRendered ? '</>' : '◎'}</span>
-                <span>{showRendered ? t('codeBlock.source', '源码') : t('codeBlock.render', '渲染')}</span>
-              </NotionButton>
-            ) : (
-              <NotionButton 
-                variant="ghost"
-                size="sm"
-                className="code-block-copy" 
-                onClick={
-                  canRunMermaid ? handleRunMermaid :
-                  canRenderSvg ? handleRunSvg :
-                  canRenderHtml ? handleRunHtml :
-                  handleRunXml
-                }
-                disabled={!!isStreaming || running}
-                title={
-                  canRunMermaid ? (isStreaming ? t('codeBlock.mermaidHint', '内容生成中，等待代码块封闭后再运行') : t('codeBlock.runMermaid', '运行 mermaid 渲染')) :
-                  canRenderSvg ? t('codeBlock.renderSvg', '渲染 SVG') :
-                  canRenderHtml ? t('codeBlock.renderHtml', '渲染 HTML (隔离于 iframe)') :
-                  t('codeBlock.renderXml', '渲染 XML')
-                }
-              >
-                <span style={{ marginRight: 4 }}>{running && canRunMermaid ? '…' : '▶'}</span>
-                <span>{running && canRunMermaid ? t('codeBlock.running', '运行中') : t('codeBlock.render', '渲染')}</span>
-              </NotionButton>
-            )
-          )}
+        {(canRunMermaid || canRenderSvg || canRenderHtml || canRenderXml) && (
+          (renderedSvg || htmlPreviewDoc) ? (
+            <NotionButton
+              variant="ghost"
+              size="sm"
+              className="code-block-copy"
+              onClick={() => setShowRendered(v => !v)}
+              title={showRendered ? t('codeBlock.viewSource', '查看源码') : t('codeBlock.viewRender', '查看渲染')}
+            >
+              <span style={{ marginRight: 4 }}>{showRendered ? '</>' : '◎'}</span>
+              <span>{showRendered ? t('codeBlock.source', '源码') : t('codeBlock.render', '渲染')}</span>
+            </NotionButton>
+          ) : (
+            <NotionButton
+              variant="ghost"
+              size="sm"
+              className="code-block-copy"
+              onClick={
+                canRunMermaid ? handleRunMermaid :
+                canRenderSvg ? handleRunSvg :
+                canRenderHtml ? handleRunHtml :
+                handleRunXml
+              }
+              disabled={!!isStreaming || running}
+              title={
+                canRunMermaid ? (isStreaming ? t('codeBlock.mermaidHint', '内容生成中，等待代码块封闭后再运行') : t('codeBlock.runMermaid', '运行 mermaid 渲染')) :
+                canRenderSvg ? t('codeBlock.renderSvg', '渲染 SVG') :
+                canRenderHtml ? t('codeBlock.renderHtml', '渲染 HTML (隔离于 iframe)') :
+                t('codeBlock.renderXml', '渲染 XML')
+              }
+            >
+              <span style={{ marginRight: 4 }}>{running && canRunMermaid ? '…' : '▶'}</span>
+              <span>{running && canRunMermaid ? t('codeBlock.running', '运行中') : t('codeBlock.run', '运行')}</span>
+            </NotionButton>
+          )
+        )}
 
-          {(renderedSvg && showRendered && !htmlPreviewDoc) && (
-            <>
-              <NotionButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleZoomOut} aria-label={t('codeBlock.zoomOut', '缩小')} title={t('codeBlock.zoomOut', '缩小')}>
-                <Minus size={14} />
-              </NotionButton>
-              <NotionButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleZoomIn} aria-label={t('codeBlock.zoomIn', '放大')} title={t('codeBlock.zoomIn', '放大')}>
-                <Plus size={14} />
-              </NotionButton>
-              <NotionButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleFitView} aria-label={t('codeBlock.fitView', '适配视图')} title={t('codeBlock.fitView', '适配视图')}>
-                <span style={{ fontSize: 12 }}>⤢</span>
-              </NotionButton>
-              <NotionButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleResetView} aria-label={t('codeBlock.resetView', '重置视图')} title={t('codeBlock.resetView', '重置视图')}>
-                <ArrowCounterClockwise size={14} />
-              </NotionButton>
-            </>
-          )}
-        </div>
+        {(renderedSvg && showRendered && !htmlPreviewDoc) && (
+          <>
+            <NotionButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleZoomOut} aria-label={t('codeBlock.zoomOut', '缩小')} title={t('codeBlock.zoomOut', '缩小')}>
+              <Minus size={14} />
+            </NotionButton>
+            <NotionButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleZoomIn} aria-label={t('codeBlock.zoomIn', '放大')} title={t('codeBlock.zoomIn', '放大')}>
+              <Plus size={14} />
+            </NotionButton>
+            <NotionButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleFitView} aria-label={t('codeBlock.fitView', '适配视图')} title={t('codeBlock.fitView', '适配视图')}>
+              <span style={{ fontSize: 12 }}>⤢</span>
+            </NotionButton>
+            <NotionButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleResetView} aria-label={t('codeBlock.resetView', '重置视图')} title={t('codeBlock.resetView', '重置视图')}>
+              <ArrowCounterClockwise size={14} />
+            </NotionButton>
+          </>
+        )}
       </div>
+    </div>
+  );
+
+  return (
+    <CodeBlockShell header={header} bodyClassName="contents">
       {htmlPreviewDoc && showRendered ? (
         <MermaidErrorBoundary
           key={errorBoundaryKey.current}
@@ -729,7 +734,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
             onWheel={(e) => {
               if (!(e.ctrlKey || e.metaKey)) return; // 需要修饰键
               e.preventDefault();
-              const factor = e.deltaY < 0 ? 1.1 : 1/1.1;
+              const factor = e.deltaY < 0 ? 1.1 : 1 / 1.1;
               const rect = (e.currentTarget as HTMLDivElement).getBoundingClientRect();
               const anchor = { x: e.clientX - rect.left, y: e.clientY - rect.top };
               applyZoom(factor, anchor);
@@ -742,7 +747,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
                   transform: `translate(${offset.x}px, ${offset.y}px) scale(${scale})`,
                   transformOrigin: '0 0',
                   width: contentSize.width || undefined,
-                  height: contentSize.height || undefined
+                  height: contentSize.height || undefined,
                 }}
                 dangerouslySetInnerHTML={{ __html: renderedSvg }}
               />
@@ -750,10 +755,12 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
           </div>
         </MermaidErrorBoundary>
       ) : (
-        <pre className="code-block">
-          <code className={className}>{children}</code>
-        </pre>
+        <ScrollArea orientation="both" className="code-block-scroll-area">
+          <pre className="code-block code-block-inner">
+            <code className={className}>{children}</code>
+          </pre>
+        </ScrollArea>
       )}
-    </div>
+    </CodeBlockShell>
   );
 };

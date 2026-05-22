@@ -33,6 +33,12 @@ import {
   abortCurrentScenario,
   triggerScenario,
 } from './mockAdapter';
+import {
+  getRenderModeHint,
+  getRenderModeLabel,
+  getStreamingPresetHint,
+  getStreamingPresetLabel,
+} from './labels';
 
 const ALL_PRESETS: StreamingSmoothingPreset[] = ['natural', 'realtime', 'balanced', 'silky', 'fluid'];
 
@@ -128,7 +134,7 @@ export const LLMOutputPlayground: React.FC = () => {
           </span>
           {compareMode && (
             <span className="text-[10px] px-1.5 py-0.5 rounded bg-violet-100 text-violet-700 dark:bg-violet-900/50 dark:text-violet-300 font-mono">
-              对比 A:{presetA} vs B:{presetB}
+              对比 A:{getStreamingPresetLabel(presetA)} vs B:{getStreamingPresetLabel(presetB)}
             </span>
           )}
         </div>
@@ -197,7 +203,7 @@ export const LLMOutputPlayground: React.FC = () => {
               </div>
               <div className="text-center px-4 py-1">
                 <span className="text-[11px] text-muted-foreground/50 select-none">
-                  调试台模式 · 预设 {presetA} · 模式 {renderMode === 'legacy' ? '整段' : '块级'}
+                  调试台模式 · 预设 {getStreamingPresetLabel(presetA)} · 模式 {renderMode === 'legacy' ? '整段' : '块级'}
                 </span>
               </div>
               <div className="chat-composer-motion-frame chat-composer-motion-frame--docked">
@@ -315,24 +321,28 @@ const ComparePane: React.FC<ComparePaneProps> = ({
               key={p}
               type="button"
               onClick={() => onPresetChange(p)}
+              title={getStreamingPresetHint(p)}
               className={cn(
                 'px-1.5 py-0.5 text-[10px] rounded transition-colors',
                 preset === p
                   ? 'bg-primary text-primary-foreground'
                   : 'bg-muted hover:bg-muted/80 text-muted-foreground',
               )}
-            >
-              {p}
+              >
+                {getStreamingPresetLabel(p)}
             </button>
           ))}
         </div>
+        <span className="text-[10px] text-muted-foreground/80" title={getRenderModeHint(renderMode)}>
+          {getRenderModeLabel(renderMode)}
+        </span>
       </div>
       <StreamPreferencesProvider preset={preset} mode={renderMode}>
         <div className="flex-1 overflow-hidden">
           <MessageList store={store} />
         </div>
       </StreamPreferencesProvider>
-    </div>
+     </div>
   );
 };
 

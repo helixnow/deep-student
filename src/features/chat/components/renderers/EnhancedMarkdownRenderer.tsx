@@ -2,6 +2,8 @@ import React, { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { shallowEqualSpans, makeUncertaintyHighlightPlugin } from './rendererUtils';
+import { sanitizeDanglingMarkdown, computeExcludedRanges, isIndexExcluded } from './sanitizeDanglingMarkdown';
+import type { Range } from './sanitizeDanglingMarkdown';
 import './streaming.css';
 
 interface BaseStreamingProps {
@@ -17,7 +19,6 @@ interface BaseStreamingProps {
 
 export type RendererMode = 'legacy' | 'enhanced';
 
-type Range = { start: number; end: number };
 type Replacement = { start: number; end: number; value: string };
 
 type PrepareResult = {
@@ -57,43 +58,6 @@ const stripUiPlaceholderTags = (content: string): string => {
   );
 };
 
-const mergeRanges = (ranges: Range[]): Range[] => {
-  if (ranges.length === 0) return ranges;
-  const sorted = [...ranges].sort((a, b) => a.start - b.start);
-  const merged: Range[] = [];
-  for (const range of sorted) {
-    const last = merged[merged.length - 1];
-    if (!last || range.start > last.end) {
-      merged.push({ ...range });
-    } else if (range.end > last.end) {
-      last.end = range.end;
-    }
-  }
-  return merged;
-};
-
-const computeExcludedRanges = (content: string): Range[] => {
-  const ranges: Range[] = [];
-  const fenceRegex = /```[\s\S]*?```/g;
-  let match: RegExpExecArray | null;
-  while ((match = fenceRegex.exec(content)) !== null) {
-    ranges.push({ start: match.index, end: match.index + match[0].length });
-  }
-  const inlineRegex = /`[^`]*`/g;
-  while ((match = inlineRegex.exec(content)) !== null) {
-    ranges.push({ start: match.index, end: match.index + match[0].length });
-  }
-  return mergeRanges(ranges);
-};
-
-const isIndexExcluded = (index: number, ranges: Range[]) => {
-  for (const range of ranges) {
-    if (index >= range.start && index < range.end) return true;
-    if (index < range.start) break;
-  }
-  return false;
-};
-
 const applyReplacements = (text: string, replacements: Replacement[]): string => {
   if (replacements.length === 0) return text;
   const ordered = [...replacements].sort((a, b) => b.start - a.start);
@@ -102,73 +66,6 @@ const applyReplacements = (text: string, replacements: Replacement[]): string =>
     result = result.slice(0, rep.start) + rep.value + result.slice(rep.end);
   }
   return result;
-};
-
-const sanitizeDanglingMarkdown = (content: string): { text: string; touched: boolean } => {
-  let text = content;
-  let touched = false;
-
-  const fenceCount = (text.match(/```/g) || []).length;
-  if (fenceCount % 2 === 1) {
-    text += '\n```';
-    touched = true;
-  }
-
-  const linkMatch = text.match(/!?(\[[^\]]*)$/);
-  if (linkMatch && linkMatch.index !== undefined) {
-    text = text.slice(0, linkMatch.index);
-    touched = true;
-  }
-
-  const excluded = computeExcludedRanges(text);
-  const counts: Record<string, number> = Object.create(null);
-  const bump = (token: string) => {
-    counts[token] = (counts[token] || 0) + 1;
-  };
-
-  const pairedTokens = ['**', '__', '~~'];
-  const singleTokens = ['*', '_', '~', '`'];
-
-  for (let i = 0; i < text.length; i++) {
-    if (isIndexExcluded(i, excluded)) continue;
-
-    let matched = false;
-    for (const token of pairedTokens) {
-      if (text.startsWith(token, i)) {
-        bump(token);
-        i += token.length - 1;
-        matched = true;
-        break;
-      }
-    }
-    if (matched) continue;
-
-    const ch = text[i];
-    if (singleTokens.includes(ch)) {
-      if (ch === '`' && text.startsWith('```', i)) {
-        i += 2;
-        continue;
-      }
-      bump(ch);
-    }
-  }
-
-  const appendBuffer: string[] = [];
-  const ensureEven = (token: string) => {
-    if (counts[token] && counts[token] % 2 === 1) {
-      appendBuffer.push(token);
-      touched = true;
-    }
-  };
-
-  pairedTokens.forEach(ensureEven);
-  singleTokens.forEach(ensureEven);
-
-  if (appendBuffer.length > 0) {
-    text += appendBuffer.join('');
-  }
-
-  return { text, touched };
 };
 
 const escapeRegex = (value: string) => value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

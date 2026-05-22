@@ -28,6 +28,7 @@ import {
 import { cn } from '@/utils/cn';
 import { StreamingMarkdownRenderer } from '../renderers';
 import { humanizeToolName } from '@/features/chat/utils/toolDisplayName';
+import { formatToolDurationShort } from '@/features/chat/utils/toolDuration';
 import { TextShimmer } from '../ui/TextShimmer';
 
 // ============================================================================
@@ -166,10 +167,9 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
       };
     }
     if (isSuccess) {
-      const ms = durationMs ?? 0;
       return {
         icon: null,
-        text: t('timeline.noteTool.completed', { ms }),
+        text: t('timeline.noteTool.completed'),
         color: 'text-success',
         spin: false,
       };
@@ -181,6 +181,11 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
       spin: false,
     };
   }, [isRunning, isError, isSuccess, durationMs, t, ToolIcon]);
+
+  const durationText = useMemo(() => {
+    if (!isSuccess) return '';
+    return formatToolDurationShort(durationMs);
+  }, [durationMs, isSuccess]);
 
   // 处理打开笔记
   const handleOpenNote = useCallback(() => {
@@ -338,7 +343,12 @@ export const NoteToolPreview: React.FC<NoteToolPreviewProps> = ({
               {statusInfo.text}
             </TextShimmer>
           ) : (
-            <span className={cn('text-xs', statusInfo.color)}>{statusInfo.text}</span>
+            <>
+              <span className={cn('text-xs', statusInfo.color)}>{statusInfo.text}</span>
+              {durationText && (
+                <span className="text-xs text-muted-foreground">{durationText}</span>
+              )}
+            </>
           )}
         </div>
         <div className="flex items-center gap-1.5 flex-shrink-0">

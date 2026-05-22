@@ -16,6 +16,14 @@ import type { AutoReplyScenario } from './mockData';
 import { AUTO_REPLY_SCENARIOS, BLOCK_TEMPLATES, MOCK_MARKDOWN_CONTENT } from './mockData';
 import { planChunks, DEFAULT_RHYTHM } from './eval/rhythm';
 import type { RhythmStrategy } from './eval/types';
+import {
+  createPlaygroundAskUserInteraction,
+  createPlaygroundToolApprovalInteraction,
+  createPlaygroundToolLimitInteraction,
+  type PlaygroundAskUserTemplate,
+  type PlaygroundToolApprovalTemplate,
+  type PlaygroundToolLimitTemplate,
+} from './blockingRuntime';
 
 // ============================================================================
 // Mock Store 创建
@@ -421,8 +429,73 @@ export function clearAllMessages(store: StoreApi<ChatStore>): void {
     blocks: new Map(),
     activeBlockIds: new Set(),
     currentStreamingMessageId: null,
+    pendingBlockingInteraction: null,
     sessionStatus: 'idle',
   });
+}
+
+export function triggerBlockingAskUser(
+  store: StoreApi<ChatStore>,
+  template: PlaygroundAskUserTemplate,
+): string {
+  const messageId = createAssistantMessage(store);
+  const blockId = injectBlock(store, messageId, {
+    type: 'ask_user',
+    status: 'running',
+    toolName: 'builtin-ask_user',
+    toolInput: {
+      question: template.question,
+      options: template.options,
+      multiple: template.multiple ?? false,
+      allowCustom: template.allowCustom ?? true,
+      timeoutSeconds: template.timeoutSeconds ?? null,
+      context: template.context,
+    },
+  });
+
+  store.getState().setBlockingInteraction(
+    createPlaygroundAskUserInteraction(store, blockId, template),
+  );
+  store.setState({ sessionStatus: 'idle' });
+  return blockId;
+}
+
+export function triggerBlockingToolApproval(
+  store: StoreApi<ChatStore>,
+  template: PlaygroundToolApprovalTemplate,
+): string {
+  const messageId = createAssistantMessage(store);
+  const blockId = injectBlock(store, messageId, {
+    type: 'mcp_tool',
+    status: 'running',
+    toolName: template.toolName,
+    toolInput: template.arguments,
+    content: template.description,
+  });
+
+  store.getState().setBlockingInteraction(
+    createPlaygroundToolApprovalInteraction(store, blockId, template),
+  );
+  store.setState({ sessionStatus: 'idle' });
+  return blockId;
+}
+
+export function triggerBlockingToolLimit(
+  store: StoreApi<ChatStore>,
+  template: PlaygroundToolLimitTemplate,
+): string {
+  const messageId = createAssistantMessage(store);
+  const blockId = injectBlock(store, messageId, {
+    type: 'tool_limit',
+    status: 'running',
+    content: template.content,
+  });
+
+  store.getState().setBlockingInteraction(
+    createPlaygroundToolLimitInteraction(store, blockId, template),
+  );
+  store.setState({ sessionStatus: 'idle' });
+  return blockId;
 }
 
 /**

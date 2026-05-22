@@ -21,6 +21,7 @@ import { cn } from '@/utils/cn';
 import { MessageList } from './MessageList';
 import { InputBarV2 } from './input-bar';
 import { ChatErrorBoundary } from './ChatErrorBoundary';
+import { ThreadContentShell } from './ui/ThreadContentShell';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 // 🔧 严重修复：使用 useConnectedSession 确保后端连接
 import { useConnectedSession } from '../hooks/useConnectedSession';
@@ -160,38 +161,55 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 
   // 创建骨架屏组件
   const ChatSkeleton = () => (
-    <div className="flex flex-col h-full p-4 animate-pulse">
-      {/* 模拟消息列表 */}
-      <div className="flex-1 space-y-4">
-        {/* 用户消息骨架 */}
-        <div className="flex justify-end">
-          <div className="w-2/3 h-16 bg-muted rounded-lg" />
-        </div>
-        {/* 助手消息骨架 */}
-        <div className="flex justify-start gap-3">
-          <div className="w-8 h-8 bg-muted rounded-full flex-shrink-0" />
-          <div className="flex-1 space-y-2">
-            <div className="w-full h-4 bg-muted rounded" />
-            <div className="w-3/4 h-4 bg-muted rounded" />
-            <div className="w-1/2 h-4 bg-muted rounded" />
+    <ThreadContentShell
+      data-slot="chat-loading-shell"
+      className="flex h-full flex-col px-4 py-4 md:px-8"
+    >
+      <div className="flex h-full flex-col animate-pulse">
+        {/* 模拟消息列表 */}
+        <div data-slot="chat-loading-messages" className="flex-1 space-y-4">
+          {/* 用户消息骨架 */}
+          <div className="flex justify-end">
+            <div className="h-16 w-2/3 rounded-lg bg-muted" />
+          </div>
+          {/* 助手消息骨架 */}
+          <div className="flex justify-start gap-3">
+            <div className="h-8 w-8 flex-shrink-0 rounded-full bg-muted" />
+            <div className="flex-1 space-y-2">
+              <div className="h-4 w-full rounded bg-muted" />
+              <div className="h-4 w-3/4 rounded bg-muted" />
+              <div className="h-4 w-1/2 rounded bg-muted" />
+            </div>
+          </div>
+          {/* 用户消息骨架 */}
+          <div className="flex justify-end">
+            <div className="h-12 w-1/2 rounded-lg bg-muted" />
+          </div>
+          {/* 助手消息骨架 */}
+          <div className="flex justify-start gap-3">
+            <div className="h-8 w-8 flex-shrink-0 rounded-full bg-muted" />
+            <div className="flex-1 space-y-2">
+              <div className="h-4 w-full rounded bg-muted" />
+              <div className="h-4 w-2/3 rounded bg-muted" />
+            </div>
           </div>
         </div>
-        {/* 用户消息骨架 */}
-        <div className="flex justify-end">
-          <div className="w-1/2 h-12 bg-muted rounded-lg" />
-        </div>
-        {/* 助手消息骨架 */}
-        <div className="flex justify-start gap-3">
-          <div className="w-8 h-8 bg-muted rounded-full flex-shrink-0" />
-          <div className="flex-1 space-y-2">
-            <div className="w-full h-4 bg-muted rounded" />
-            <div className="w-2/3 h-4 bg-muted rounded" />
+        {/* 输入框骨架 */}
+        <div data-slot="chat-loading-composer" className="mt-4">
+          <div className="chat-loading-shell__composer-panel rounded-[var(--radius-shell-toolbar)] border border-[color:var(--input-shell-border)] bg-[color:var(--shell-inspector-panel)] p-3 shadow-[var(--shadow-shell-soft)]">
+            <div className="mb-3 flex items-center gap-2">
+              <div className="h-8 w-8 rounded-full bg-muted" />
+              <div className="h-8 w-24 rounded-full bg-muted" />
+              <div className="h-8 w-8 rounded-full bg-muted" />
+            </div>
+            <div className="space-y-2">
+              <div className="h-4 w-5/6 rounded bg-muted" />
+              <div className="h-4 w-2/5 rounded bg-muted" />
+            </div>
           </div>
         </div>
       </div>
-      {/* 输入框骨架 */}
-      <div className="mt-4 h-24 bg-muted rounded-2xl" />
-    </div>
+    </ThreadContentShell>
   );
 
   // 🚀 性能优化：不再等待 adapterReady
@@ -249,6 +267,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
   const shouldUseEmptyComposerLayout = showInputBar && (forceEmptyPreview || messageCount === 0);
   const shouldUseDesktopEmptyComposerLayout = shouldUseEmptyComposerLayout && !isMobile;
   const shouldAutoFocusMobileEmptyComposer = shouldUseEmptyComposerLayout && isMobile;
+  const shouldShowDisclaimer = showInputBar && messageCount > 0;
 
   const renderMessageList = ({
     className: messageListSlotClassName,
@@ -285,7 +304,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
     </div>
   ) : null;
 
-  const renderDisclaimer = (className?: string) => showInputBar ? (
+  const renderDisclaimer = (className?: string) => shouldShowDisclaimer ? (
     <div className={cn('text-center px-4 py-1', className)}>
       <span className="inline-flex items-center gap-1 text-[11px] text-muted-foreground/50 select-none">
         <Info size={12} className="h-3 w-3" />
@@ -339,7 +358,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 
       {shouldUseDesktopEmptyComposerLayout ? (
         <div className="chat-empty-composer-layout">
-          <div className="chat-empty-composer-layout__stack">
+          <ThreadContentShell className="chat-empty-composer-layout__stack px-4 md:px-8">
             {renderMessageList({
               className: 'chat-empty-composer-layout__message-list',
               compact: true,
@@ -348,7 +367,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
             {renderFooter('chat-empty-composer-layout__footer')}
             {renderDisclaimer('chat-empty-composer-layout__disclaimer')}
             {renderInputBar('chat-empty-composer-layout__input', 'empty')}
-          </div>
+          </ThreadContentShell>
         </div>
       ) : (
         <>

@@ -38,6 +38,7 @@ import { TodoListBlock } from './todoList';
 import { PaperSaveBlock } from './paperSave';
 import type { Block } from '../../core/types/block';
 import { getReadableToolName } from '@/features/chat/utils/toolDisplayName';
+import { formatToolDurationShort } from '@/features/chat/utils/toolDuration';
 import { TextShimmer } from '../../components/ui/TextShimmer';
 import { PulseDot } from '@/components/ui/PulseDot';
 import {
@@ -144,7 +145,7 @@ const ToolHeader: React.FC<ToolHeaderProps> = ({
         {/* 耗时 */}
         {duration !== undefined && status === 'success' && (
           <span className="text-xs text-muted-foreground">
-            {(duration / 1000).toFixed(2)}s
+            {formatToolDurationShort(duration)}
           </span>
         )}
 

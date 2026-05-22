@@ -1,11 +1,12 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { useMemo, type JSX } from "react";
 import { motion, useReducedMotion } from "framer-motion";
 import { cn } from "@/lib/utils";
 
 export type TextShimmerProps = {
   children: string;
+  as?: React.ElementType;
   className?: string;
   duration?: number;
   spread?: number;
@@ -16,6 +17,7 @@ export type TextShimmerProps = {
 
 function TextShimmerComponent({
   children,
+  as: Component = "span",
   className,
   duration = 2,
   spread = 2,
@@ -23,6 +25,11 @@ function TextShimmerComponent({
   shimmerColor,
   style,
 }: TextShimmerProps) {
+  const MotionComponent = useMemo(
+    () => motion.create(Component as keyof JSX.IntrinsicElements),
+    [Component],
+  );
+
   const dynamicSpread = useMemo(() => {
     return children.length * spread;
   }, [children, spread]);
@@ -30,13 +37,17 @@ function TextShimmerComponent({
   const prefersReduced = useReducedMotion();
 
   if (prefersReduced) {
-    return <span className={className} style={style}>{children}</span>;
+    return (
+      <Component className={className} style={style}>
+        {children}
+      </Component>
+    );
   }
 
   return (
-    <motion.span
+    <MotionComponent
       className={cn(
-        "relative inline-block bg-size-[250%_100%,auto] bg-clip-text",
+        "relative inline-block [background-size:250%_100%,auto] bg-clip-text",
         "[-webkit-text-fill-color:transparent]",
         "[background-repeat:no-repeat,padding-box] [--bg:linear-gradient(90deg,#0000_calc(50%-var(--spread)),var(--base-gradient-color),#0000_calc(50%+var(--spread)))]",
         className,
@@ -60,7 +71,7 @@ function TextShimmerComponent({
       }
     >
       {children}
-    </motion.span>
+    </MotionComponent>
   );
 }
 

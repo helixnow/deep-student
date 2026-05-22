@@ -5,9 +5,12 @@ import remarkMath from 'remark-math';
 import rehypeRaw from 'rehype-raw';
 import rehypeSanitize, { defaultSchema } from 'rehype-sanitize';
 import katex, { KatexOptions } from 'katex';
+import 'katex/contrib/mhchem';
 import { renderToStaticMarkup } from 'react-dom/server';
 import { CodeBlock } from './CodeBlock';
+import { TableBlockShell } from '../ui/TableBlockShell';
 import { ensureKatexStyles } from '@/utils/lazyStyles';
+import { sanitizeDanglingMarkdown } from './sanitizeDanglingMarkdown';
 import { openUrl } from '@/utils/urlOpener';
 import { makeCitationRemarkPlugin, CITATION_PLACEHOLDER_STYLES } from '../../utils/citationRemarkPlugin';
 import { CitationBadge } from '../../plugins/blocks/components/CitationPopover';
@@ -249,10 +252,17 @@ const fixCjkAdjacentBoldSyntaxSafely = (content: string): string => {
 };
 
 // 预处理函数：处理LaTeX和空行
-const preprocessContent = (content: string): string => {
+const preprocessContent = (content: string, isStreaming = false): string => {
   if (!content) return '';
 
   let processedContent = content;
+
+  // 流式期间自动闭合未配对的 markdown 标记（**bold / [link / `` ` `` 等）
+  // 仅处理 markdown 半边，不动数学（$...$ / \begin{}），后者由 remark-math 优雅降级
+  if (isStreaming) {
+    const { text } = sanitizeDanglingMarkdown(processedContent);
+    processedContent = text;
+  }
 
   // remark-math v6 仅支持 $...$ 和 $$...$$ 分隔符，不支持 \(...\) 和 \[...\]。
   // 许多 LLM（GPT、Claude 等）使用 \(...\) / \[...\] 格式输出数学公式，
@@ -521,7 +531,8 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
   }, []);
 
   // 🔧 性能优化：缓存预处理结果，避免每次渲染都重跑正则
-  const processedContent = useMemo(() => preprocessContent(content), [content]);
+  // 流式期间 isStreaming 变化会触发重新闭合半截标记
+  const processedContent = useMemo(() => preprocessContent(content, isStreaming), [content, isStreaming]);
 
   useEffect(() => {
     const container = containerRef.current;
@@ -646,9 +657,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
           },
           // 自定义表格渲染
           table: ({ children }) => (
-            <div className="table-wrapper">
-              <table className="markdown-table">{children}</table>
-            </div>
+            <TableBlockShell>{children}</TableBlockShell>
           ),
           // 🔧 修复：自定义图片渲染，支持本地文件路径转换为 asset:// URL
           img: ({ src, alt, ...props }: any) => {

@@ -1,15 +1,15 @@
 /**
- * Chat V2 - 思维链块渲染插件
+ * Chat V2 — 思维链块渲染插件
  *
- * 渲染 AI 的思维链/推理过程
- * 自执行注册：import 即注册
+ * 渲染 AI 的思维链/推理过程。
+ * 视觉层级：左品牌色 accent bar + 卡片容器，与普通消息块拉开差距。
+ * 动画：max-height 过渡支持展开/折叠平滑切换。
  */
 
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
-import { NotionButton } from '@/components/ui/NotionButton';
-import { CaretDown, CaretRight } from '@phosphor-icons/react';
+import { Brain, CaretDown } from '@phosphor-icons/react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { StreamingMarkdownRenderer } from '../../components/renderers';
 
@@ -39,52 +39,50 @@ const ThinkingBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStre
   return (
     <div
       className={cn(
-        'rounded-lg border',
-        'bg-muted/30 border-border/50',
-        'dark:bg-muted/20 dark:border-border/30',
-        'transition-colors'
+        'think-block',
+        isExpanded && 'think-block--expanded',
       )}
     >
-      <NotionButton
-        variant="ghost"
-        size="sm"
+      <button
+        type="button"
         onClick={toggleExpanded}
         aria-expanded={isExpanded}
         aria-controls={contentId}
-        className="w-full !justify-start gap-2 !px-3 !py-2 !rounded-lg text-muted-foreground"
+        className="think-header"
       >
-        {isExpanded ? <CaretDown size={16} /> : <CaretRight size={16} />}
-        <span className="font-medium">{t('blocks.thinking.title')}</span>
+        <Brain size={15} className="think-header-icon" weight="duotone" />
+        <span className="think-header-title">{t('blocks.thinking.title')}</span>
+
         {isStreaming && (
-          <span className="flex items-center gap-1 ml-auto">
-            <span className="w-1.5 h-1.5 bg-primary rounded-full" />
-            <span className="text-xs">{t('blocks.thinking.streaming')}</span>
+          <span className="think-status-pulse">
+            <span className="think-pulse-dot" />
+            <span className="think-pulse-label">{t('blocks.thinking.streaming')}</span>
           </span>
         )}
-      </NotionButton>
 
-      {isExpanded && (
-        <div
-          id={contentId}
-          role="region"
-          aria-label={t('blocks.thinking.title')}
-          className={cn(
-            'px-3 pb-3',
-            'border-t border-border/30',
-            'text-muted-foreground',
-            'thinking-content'
-          )}
-        >
-          <div className="pt-2">
-            <StreamingMarkdownRenderer
-              content={content}
-              isStreaming={isStreaming ?? false}
-              blockId={block.id}
-              messageId={block.messageId}
-            />
-          </div>
+        <span className={cn('think-chevron', isExpanded && 'think-chevron--expanded')}>
+          <CaretDown size={14} weight="bold" />
+        </span>
+      </button>
+
+      <div
+        id={contentId}
+        role="region"
+        aria-label={t('blocks.thinking.title')}
+        className={cn(
+          'think-content-wrapper',
+          isExpanded && 'think-content-wrapper--expanded',
+        )}
+      >
+        <div className="think-content">
+          <StreamingMarkdownRenderer
+            content={content}
+            isStreaming={isStreaming ?? false}
+            blockId={block.id}
+            messageId={block.messageId}
+          />
         </div>
-      )}
+      </div>
     </div>
   );
 });
