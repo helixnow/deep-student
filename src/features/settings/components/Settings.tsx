@@ -38,7 +38,8 @@ import { AppMenuDemo } from '@/components/ui/app-menu';
 import { McpToolsSection } from './McpToolsSection';
 import { ModelsTab } from './ModelsTab';
 import { AboutTab } from './AboutTab';
-import { AppTab } from './AppTab';
+import { AppearanceTab } from './AppearanceTab';
+import { GeneralTab } from './GeneralTab';
 import { ApisTab } from './ApisTab';
 import { ParamsTab } from './ParamsTab';
 import { ExternalSearchTab } from './ExternalSearchTab';
@@ -175,6 +176,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
   const getActiveTabLabel = useCallback(() => {
     const tabLabels: Record<string, string> = {
       'app': t('settings:tabs.app'),
+      'general': t('settings:tabs.general'),
+      'appearance': t('settings:tabs.appearance'),
       // UI 文案已统一为“模型服务”，内部 tab id 仍保持 apis 以最小化改动面
       'apis': t('settings:tabs.api_config'),
       'models': t('settings:tabs.model_assignment'),
@@ -191,6 +194,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
 
   const activeTabDescription = useMemo(() => {
     const descriptions: Record<string, string> = {
+      general: t('settings:study_ui_descriptions.general', '管理语言、交互习惯、输入方式和个人偏好。'),
+      appearance: t('settings:study_ui_descriptions.appearance', '自定义主题、字体、缩放和界面视觉风格。'),
       app: t('settings:study_ui_descriptions.app', '管理主题、语言、界面缩放和工作区外观。'),
       apis: t('settings:study_ui_descriptions.apis', '配置模型服务、供应商和连接方式。'),
       models: t('settings:study_ui_descriptions.models', '把不同任务分配到合适的模型。'),
@@ -1193,10 +1198,20 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
             <DataGovernanceDashboard tabTarget={dataGovernanceTabTarget} />
           </div>
         )}
-        {/* 应用设置 */}
-        {/* 应用设置 */}
-        {activeTab === 'app' && (
-          <AppTab
+        {activeTab === 'general' && (
+          <GeneralTab
+            voiceInputAssignedModel={voiceInputAssignedModel}
+            topbarTopMargin={topbarTopMargin}
+            setTopbarTopMargin={setTopbarTopMargin}
+            logTypeForOpen={logTypeForOpen}
+            setLogTypeForOpen={setLogTypeForOpen}
+            showRawRequest={showRawRequest}
+            setShowRawRequest={setShowRawRequest}
+            invoke={invoke}
+          />
+        )}
+        {activeTab === 'appearance' && (
+          <AppearanceTab
             uiZoom={uiZoom}
             zoomLoading={zoomLoading}
             zoomSaving={zoomSaving}
@@ -1220,15 +1235,8 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
             setThemePalette={setThemePalette}
             customColor={customColor}
             setCustomColor={setCustomColor}
-            topbarTopMargin={topbarTopMargin}
-            setTopbarTopMargin={setTopbarTopMargin}
-            logTypeForOpen={logTypeForOpen}
-            setLogTypeForOpen={setLogTypeForOpen}
-            showRawRequest={showRawRequest}
-            setShowRawRequest={setShowRawRequest}
             isTauriEnvironment={isTauriEnvironment}
             invoke={invoke}
-            voiceInputAssignedModel={voiceInputAssignedModel}
           />
         )}
         {/* 参数调整 */}

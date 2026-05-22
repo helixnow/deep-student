@@ -4,10 +4,10 @@ import { resolve } from 'node:path';
 
 describe('settings desktop header controls contract', () => {
   const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
-  const appCssSource = readFileSync(resolve(process.cwd(), 'src/App.css'), 'utf-8');
+  const appCssSource = readFileSync(resolve(process.cwd(), 'src/shared/styles/app.css'), 'utf-8');
 
   it('does not render desktop chat navigation controls while the settings view is active', () => {
-    expect(appSource).toContain("const shouldShowDesktopHeaderNavControls = currentView !== 'settings';");
+    expect(appSource).toContain("const shouldShowDesktopHeaderNavControls = currentView !== 'settings' && currentView !== 'todo';");
     expect(appSource).toContain('{shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}');
     expect(appSource).not.toContain('{leftPanelCollapsed && shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}');
     expect(appSource).not.toContain('{!leftPanelCollapsed && shouldShowDesktopHeaderNavControls ? desktopHeaderNavControls : null}');

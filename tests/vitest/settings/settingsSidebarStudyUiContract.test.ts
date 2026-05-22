@@ -11,11 +11,15 @@ describe('settings sidebar study-ui contract', () => {
     resolve(process.cwd(), 'src/features/settings/components/Settings.tsx'),
     'utf-8'
   );
+  const settingsNavigationSource = readFileSync(
+    resolve(process.cwd(), 'src/features/settings/components/useSettingsNavigation.tsx'),
+    'utf-8'
+  );
   const sidebarSettingsSource = readFileSync(
     resolve(process.cwd(), 'src/features/settings/components/sidebarSettings.ts'),
     'utf-8'
   );
-  const appCssSource = readFileSync(resolve(process.cwd(), 'src/App.css'), 'utf-8');
+  const sharedAppCssSource = readFileSync(resolve(process.cwd(), 'src/shared/styles/app.css'), 'utf-8');
 
   it('keeps the settings sidebar on the same study-ui typography path as the main sidebar', () => {
     expect(settingsSidebarSource).toContain('font-sidebar-study-ui');
@@ -45,23 +49,25 @@ describe('settings sidebar study-ui contract', () => {
   });
 
   it('defines the settings nav label utility so labels stay on the sidebar foreground token', () => {
-    expect(appCssSource).toMatch(/\.settings-nav-item-label\s*\{[\s\S]*color:\s*var\(--shell-navigation-foreground\);/);
-    expect(appCssSource).toMatch(/\[data-theme="dark"\]\s+\.settings-nav-item-label\s*\{[\s\S]*color:\s*var\(--shell-navigation-foreground\);/);
+    expect(sharedAppCssSource).toMatch(/\.settings-nav-item-label\s*\{[\s\S]*color:\s*var\(--shell-navigation-foreground\);/);
+    expect(sharedAppCssSource).toMatch(/\[data-theme="dark"\]\s+\.settings-nav-item-label\s*\{[\s\S]*color:\s*var\(--shell-navigation-foreground\);/);
   });
 
   it('uses phosphor icons for the settings sidebar navigation set', () => {
     expect(settingsSidebarSource).toContain("@phosphor-icons/react");
     expect(settingsSidebarSource).not.toContain("from 'lucide-react'");
     expect(settingsSource).toContain("@phosphor-icons/react");
-    expect(settingsSource).toContain("{ value: 'apis', icon: Robot");
-    expect(settingsSource).toContain("{ value: 'models', icon: Flask");
-    expect(settingsSource).toContain("{ value: 'app', icon: Palette");
-    expect(settingsSource).toContain("{ value: 'mcp', icon: Plug");
-    expect(settingsSource).toContain("{ value: 'search', icon: Globe");
-    expect(settingsSource).toContain("{ value: 'statistics', icon: ChartBar");
-    expect(settingsSource).toContain("{ value: 'data-governance', icon: Shield");
-    expect(settingsSource).toContain("{ value: 'params', icon: Wrench");
-    expect(settingsSource).toContain("{ value: 'shortcuts', icon: Keyboard");
-    expect(settingsSource).toContain("{ value: 'about', icon: BookOpen");
+    expect(settingsNavigationSource).toContain("{ value: 'apis', icon: Robot");
+    expect(settingsNavigationSource).toContain("{ value: 'models', icon: Flask");
+    expect(settingsNavigationSource).toContain("{ value: 'general', icon: SlidersHorizontal");
+    expect(settingsNavigationSource).toContain("{ value: 'appearance', icon: Palette");
+    expect(settingsNavigationSource).toContain("{ value: 'mcp', icon: Plug");
+    expect(settingsNavigationSource).toContain("{ value: 'search', icon: Globe");
+    expect(settingsNavigationSource).toContain("{ value: 'statistics', icon: ChartBar");
+    expect(settingsNavigationSource).toContain("{ value: 'data-governance', icon: Shield");
+    expect(settingsNavigationSource).toContain("{ value: 'params', icon: Wrench");
+    expect(settingsNavigationSource).toContain("{ value: 'shortcuts', icon: Keyboard");
+    expect(settingsNavigationSource).toContain("{ value: 'about', icon: BookOpen");
+    expect(settingsNavigationSource).not.toContain("{ value: 'app', icon: Palette");
   });
 });
