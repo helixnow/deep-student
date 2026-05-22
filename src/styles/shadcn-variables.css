@@ -20,6 +20,15 @@
    * ────────────────────────────────────────────────────────────────────── */
   --chat-thread-max-w: 44rem;
 
+  /* Chat content surface tokens */
+  --chat-block-radius: 12px;
+  --chat-block-surface: hsl(var(--card));
+  --chat-block-surface-muted: hsl(var(--muted) / 0.55);
+  --chat-code-inline-bg: hsl(var(--muted) / 0.72);
+  --chat-code-block-surface: hsl(var(--muted) / 0.34);
+  --chat-block-border: hsl(var(--border));
+  --chat-table-header-surface: hsl(var(--muted));
+
   --size-shell-control: 32px;
   --size-shell-window-control: 34px;
   --size-shell-touch-target: 36px;
@@ -356,6 +365,7 @@
 .sidebar-icon:hover {
   color: hsl(var(--foreground));
   background-color: hsl(var(--accent));
+  transition: color 150ms ease, background-color 150ms ease;
 }
 
 /* Font adjustments */

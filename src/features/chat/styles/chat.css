@@ -42,19 +42,19 @@
 }
 
 /* ============================================================================
-   文本选择 - Text Selection (原生应用风格)
+   文本选择 - Text Selection (SOTA 方案)
    ----------------------------------------------------------------------------
-   设计原则（对齐 Codex / ChatGPT / Claude / Notion 桌面版）：
+   对标 DeepSeek / ChatGPT / Claude Web / Notion 的最佳实践：
 
-   ❶ 选区色 alpha 控制低（亮 0.12 / 暗 0.22），低饱和不抢眼
-   ❷ 文本块用 width: fit-content，让块盒紧贴文字宽度 ——
-      跨段拖选时，浏览器原生的 line-fill 行为最远只延伸到文字末尾，
-      而不是延伸到 840px 容器右边。这是消除"一滑动一大片"的关键。
-   ❸ 装饰元素（骨架/思考头/徽标）一律 user-select: none，
-      防止跨段拖选时它们被一起涂色
+   核心原则：
+   ❶ 中间结构性 div 不参与选区渲染（user-select: none）
+   ❷ 叶子文本元素用 :not(div) 恢复选中（兜底，不遗漏 del/ins/mark/sub/sup 等）
+   ❸ 段落级元素 width: fit-content —— 选区紧贴文字不延伸到空白
+   ❹ 列表/定义容器（ul/ol/dl）保持全宽 —— 避免 bullet 对齐问题
+   ❺ 装饰元素 / UI 控件禁止选中
    ============================================================================ */
 
-/* 自定义选中色：主题色淡化版本，替代浏览器默认蓝色 */
+/* 选区色：主题色淡化版本，低饱和度不抢眼 */
 .chat-v2 .message-selectable-area ::selection {
   background: hsl(var(--primary) / 0.14);
   color: inherit;
@@ -63,8 +63,6 @@
   background: hsl(var(--primary) / 0.14);
   color: inherit;
 }
-
-/* 暗色模式下稍微调亮选中色 */
 :root.dark .chat-v2 .message-selectable-area ::selection {
   background: hsl(var(--primary) / 0.24);
 }
@@ -72,28 +70,46 @@
   background: hsl(var(--primary) / 0.24);
 }
 
-/* 消息内容区域允许文本选择 */
+/* 消息区域允许文本选择 */
 .chat-v2 .message-selectable-area {
-  user-select: text;
   -webkit-user-select: text;
+  user-select: text;
 }
 
-/* 🎯 关键：文本块改为"贴合文字宽度"
-   作用：跨段拖选时浏览器原生的 line-fill 不再延伸到容器右边，
-   而是只延伸到该块文字的最长行末尾，视觉上紧贴文本，不会"一大片"。
+/* ────────────────────────────────────────────────────────
+   ❶ 结构性容器 + 列表容器 → user-select: none
+   这些是全宽 block 元素，设为 none 后浏览器跳过它们的盒子，
+   只在子元素上绘制选区高亮 ── 消除"选中一大片空白"。
+   ──────────────────────────────────────────────────────── */
+.chat-v2 .message-selectable-area .streaming-markdown,
+.chat-v2 .message-selectable-area .normal-content,
+.chat-v2 .message-selectable-area .main-content,
+.chat-v2 .message-selectable-area .thinking-content,
+.chat-v2 .message-selectable-area .streaming-blocks,
+.chat-v2 .message-selectable-area .chain-of-thought,
+.chat-v2 .message-selectable-area .markdown-content,
+.chat-v2 .message-selectable-area .markdown-content ul,
+.chat-v2 .message-selectable-area .markdown-content ol,
+.chat-v2 .message-selectable-area .markdown-content dl {
+  -webkit-user-select: none;
+  user-select: none;
+}
 
-   策略：仅对**段落级**文本元素应用 fit-content（p / h1-h6 / li / blockquote 等）
-   以及流式渲染的每个段落块。
+/* ────────────────────────────────────────────────────────
+   ❷ 叶子文本元素恢复选中
+   用 :not(div) 兜底 —— 不遗漏 del / ins / mark / sub /
+   sup / details / summary / abbr 等元素
+   ──────────────────────────────────────────────────────── */
+.chat-v2 .message-selectable-area .markdown-content :not(div):not(script):not(style):not(br):not(hr) {
+  -webkit-user-select: text;
+  user-select: text;
+}
 
-   ⚠️ 重要：**不要**对 .markdown-content / .streaming-markdown 这种**根容器**应用
-   fit-content —— 否则它会被收缩到子元素 max-content 宽度（`width: 100%` 的子元素
-   对父级 max-content 计算贡献为 0），导致代码块/表格等块卡片与聊天容器
-   （max-w-thread）右边不对齐。
-   这是 ChatGPT/Claude/Cursor 等主流 chat UI 的做法 —— 段落级 fit-content
-   已足够提供 line-fill UX，根容器必须保持全宽。
-
-   ⚠️ 排除：pre（代码块需要全宽滚动）、table（表格需要对齐）、
-        figure / img / video / hr（块级媒体）、代码块所在的 stream-block */
+/* ────────────────────────────────────────────────────────
+   ❸ 段落级元素 → width: fit-content
+   跨行拖选时浏览器 line-fill 最远只到文字末尾
+   排除 ul / ol / dl —— 保持全宽，避免 bullet/编号对齐问题
+   ──────────────────────────────────────────────────────── */
 .chat-v2 .message-selectable-area .streaming-blocks > .stream-block,
 .chat-v2 .message-selectable-area .markdown-content > p,
 .chat-v2 .message-selectable-area .markdown-content > h1,
@@ -102,19 +118,15 @@
 .chat-v2 .message-selectable-area .markdown-content > h4,
 .chat-v2 .message-selectable-area .markdown-content > h5,
 .chat-v2 .message-selectable-area .markdown-content > h6,
-.chat-v2 .message-selectable-area .markdown-content > ul,
-.chat-v2 .message-selectable-area .markdown-content > ol,
 .chat-v2 .message-selectable-area .markdown-content li,
 .chat-v2 .message-selectable-area .markdown-content blockquote,
-.chat-v2 .message-selectable-area .markdown-content dl,
 .chat-v2 .message-selectable-area .markdown-content dt,
 .chat-v2 .message-selectable-area .markdown-content dd {
   width: fit-content;
   max-width: 100%;
 }
 
-/* Markdown 根容器必须保持全宽 —— 让块卡片（代码、表格、思考链等）的右边
- * 与聊天容器（max-w-thread）严格对齐。fit-content 仅作用于上面的段落级元素。 */
+/* Markdown 根容器全宽 —— 保证代码块/表格与聊天容器右边缘对齐 */
 .chat-v2 .message-selectable-area .markdown-content,
 .chat-v2 .message-selectable-area .streaming-markdown {
   display: block;
@@ -123,29 +135,26 @@
   min-width: 0;
 }
 
-/* 例外：以下原生 HTML 块级元素必须保持全宽（width: auto = 填满父容器，
- * 同时 max-width: 100% 防止溢出）。这些元素曾因 .markdown-content 的
- * `width: fit-content` 而被收缩，现在 fit-content 已只作用于段落级元素，
- * 但保留此例外仍有意义 —— 避免任何外层 fit-content 规则误伤这些块。
- *
- * 注意：LLM 输出"块卡片"包装器（.code-block-wrapper / .table-wrapper /
- * .chain-of-thought / .rag-sources-container / .mermaid-preview）**不**列
- * 在此处。它们由 markdown.css 的"LLM 输出块对齐契约"统一管理为
- * `width: 100%`。把它们放进这里会引入特异性冲突，反而让短表格收缩。
- */
+/* 例外：代码块 / 表格 / 媒体保持全宽 */
 .chat-v2 .message-selectable-area .markdown-content pre,
 .chat-v2 .message-selectable-area .markdown-content table,
 .chat-v2 .message-selectable-area .markdown-content figure,
 .chat-v2 .message-selectable-area .markdown-content hr,
 .chat-v2 .message-selectable-area .markdown-content img,
 .chat-v2 .message-selectable-area .markdown-content video,
+.chat-v2 .message-selectable-area .markdown-content .code-block-wrapper,
+.chat-v2 .message-selectable-area .markdown-content .table-wrapper,
 .chat-v2 .message-selectable-area .stream-block:has(pre),
-.chat-v2 .message-selectable-area .stream-block:has(table) {
-  width: auto;
+.chat-v2 .message-selectable-area .stream-block:has(table),
+.chat-v2 .message-selectable-area .stream-block:has(.code-block-wrapper),
+.chat-v2 .message-selectable-area .stream-block:has(.table-wrapper) {
   max-width: 100%;
+  width: 100%;
 }
 
-/* 装饰性元素禁止选中 —— 让用户拖选时它们不被一起涂色 */
+/* ────────────────────────────────────────────────────────
+   ❺ 装饰元素 / UI 控件禁止选中
+   ──────────────────────────────────────────────────────── */
 .chat-v2 .message-selectable-area .chain-header,
 .chat-v2 .message-selectable-area .thinking-trace__header,
 .chat-v2 .message-selectable-area .tool-trace__header,
@@ -156,8 +165,8 @@
 .chat-v2 .message-selectable-area .copy-button,
 .chat-v2 .message-selectable-area .code-toolbar,
 .chat-v2 .message-selectable-area .timeline-node-dot {
-  user-select: none;
   -webkit-user-select: none;
+  user-select: none;
 }
 
 /* ============================================================================
@@ -194,7 +203,7 @@
   border-radius: 0;
   box-shadow: none;
   overflow: hidden;
-  transition: all var(--chat-transition-speed) var(--chat-transition-timing);
+  transition: flex var(--chat-transition-speed) var(--chat-transition-timing), opacity var(--chat-transition-speed) var(--chat-transition-timing);
   flex: 1;
 }
 
@@ -1032,7 +1041,7 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
   width: 44px;
   height: 44px;
   cursor: pointer;
-  transition: all var(--chat-transition-speed);
+  transition: background-color var(--chat-transition-speed), box-shadow var(--chat-transition-speed);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1042,7 +1051,6 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
 
 .chat-v2 .send-button:hover:not(:disabled) {
   background: hsl(var(--secondary));
-  transform: scale(1.05);
   box-shadow: var(--shadow-content-soft);
 }
 
@@ -1072,7 +1080,7 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
   width: 44px;
   height: 44px;
   cursor: pointer;
-  transition: all var(--chat-transition-speed);
+  transition: background-color var(--chat-transition-speed), border-color var(--chat-transition-speed), color var(--chat-transition-speed), box-shadow var(--chat-transition-speed);
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1309,33 +1317,6 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
     font-size: 0.85rem;
   }
   
-}
-
-/* ============================================================================
-   滚动条美化 - Scrollbar Styling
-   ============================================================================ */
-
-.chat-v2 .chat-history::-webkit-scrollbar,
-.chat-v2 .chat-messages::-webkit-scrollbar {
-  width: 8px;
-}
-
-.chat-v2 .chat-history::-webkit-scrollbar-track,
-.chat-v2 .chat-messages::-webkit-scrollbar-track {
-  background: hsl(var(--muted)); /* 浅灰色背景 */
-  border-radius: 4px;
-}
-
-.chat-v2 .chat-history::-webkit-scrollbar-thumb,
-.chat-v2 .chat-messages::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted)); /* 中灰色滑块 */
-  border-radius: 4px;
-  transition: background var(--chat-transition-speed);
-}
-
-.chat-v2 .chat-history::-webkit-scrollbar-thumb:hover,
-.chat-v2 .chat-messages::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted)); /* 悬停时深灰色 */
 }
 
 /* ============================================================================

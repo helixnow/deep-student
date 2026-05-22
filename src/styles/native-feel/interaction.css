@@ -95,3 +95,72 @@
     transform: none;
   }
 }
+
+/* ---------------------------------------------------------------- */
+/* 5. Touch device hover safety                                      */
+/* ---------------------------------------------------------------- */
+/*
+ * Touch devices (phones, tablets without hover-capable pointer)
+ * emulate :hover on first tap, causing "sticky hover": the hover
+ * state persists until the user taps elsewhere. This section:
+ *
+ *   a) Neutralises scale transforms that only make sense with a
+ *      precise pointer (cards, icons, avatars).
+ *   b) Force-shows group-hover opacity-hidden action buttons so
+ *      they are reachable without a mouse.
+ *   c) Constrains :hover background changes to interactive
+ *      elements only — container :hover backgrounds stick on
+ *      touch and create visual confusion.
+ */
+@media (hover: none) and (pointer: coarse) {
+
+  /*
+   * No hover scale on ANY element.  On touch there is no
+   * "hover preview" that benefits from a subtle grow; scale
+   * only makes distortion and jank.
+   */
+  *:hover {
+    transform: none !important;
+  }
+
+  /*
+   * Group-hover opacity-hidden actions must be visible on
+   * touch so users can edit, delete and drag without a mouse.
+   *
+   * Tailwind generates classes like `group-hover:opacity-100`
+   * and `group-hover/main:opacity-100`.  This attribute selector
+   * catches both forms.
+   */
+  [class*="group-hover:opacity-100"] {
+    opacity: 1 !important;
+  }
+
+  /* Sibling text-reveal patterns (e.g. "show on group hover") */
+  [class*="group-hover:text-foreground"],
+  [class*="group-hover:text-muted-foreground"] {
+    opacity: 1 !important;
+  }
+
+  /*
+   * Container :hover that is purely decorative (message
+   * bubbles, table rows, mindmap outline nodes).  On touch
+   * these stick open and look broken.  We reset them to their
+   * default appearance and let the component's own :active
+   * (or JS-based selection) provide feedback instead.
+   */
+  .chat-v2 .message-content:hover {
+    background: inherit;
+  }
+
+  .chat-v2 .thinking-container:hover {
+    transform: none;
+  }
+
+  .chat-v2 .summary-box:hover,
+  .chat-v2 .knowledge-point:hover,
+  .chat-v2 .error-analysis:hover,
+  .chat-v2 .suggestion-card:hover {
+    transform: none;
+    border-color: inherit;
+  }
+}

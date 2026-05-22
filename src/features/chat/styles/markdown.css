@@ -268,10 +268,11 @@
 /* 代码块容器与头部（与组件匹配） */
 .chat-v2 .markdown-content .code-block-wrapper {
   position: relative;
+  box-sizing: border-box;
   margin: 1em 0;
-  border: 1px solid hsl(var(--border)); /* 保留外层边框 */
-  border-radius: 12px;
-  background: transparent; /* 透明背景 */
+  border: 1px solid var(--chat-block-border); /* 保留外层边框 */
+  border-radius: var(--chat-block-radius);
+  background: var(--chat-block-surface);
   overflow: hidden; /* 让内部头部与pre无缝衔接 */
   box-shadow: none;
 }
@@ -346,9 +347,9 @@
   justify-content: space-between;
   align-items: center;
   padding: 10px 12px;
-  background: transparent; /* 透明背景 */
+  background: var(--chat-block-surface-muted);
   border-bottom: none; /* 移除边框 */
-  border-radius: 12px 12px 0 0;
+  border-radius: var(--chat-block-radius) var(--chat-block-radius) 0 0;
   font-size: 12px;
   color: hsl(var(--muted-foreground));
 }
@@ -384,24 +385,41 @@
 
 /* 让 pre 与头部连为一个整体 */
 .chat-v2 .markdown-content pre.code-block {
-  background: transparent; /* 透明背景 */
+  background: var(--chat-code-block-surface);
   color: hsl(var(--card-foreground));
   padding: 14px 16px;
-  border-radius: 0 0 12px 12px;
+  border-radius: 0 0 var(--chat-block-radius) var(--chat-block-radius);
   margin: 0;
   overflow-x: auto;
   border: none;
   box-shadow: none; /* 移除阴影 */
 }
 
-/* 确保在带有复制头部时，pre 仍占满一行 */
-.chat-v2 .markdown-content .code-block-wrapper pre.code-block {
+/* 确保在带有复制头部时，pre 仍占满一行
+   同时覆盖 ScrollArea 内的 code-block-inner —— 块级代码必须撑满聊天栏宽度 */
+.chat-v2 .markdown-content .code-block-wrapper pre.code-block,
+.chat-v2 .markdown-content .code-block-scroll-area pre.code-block-inner {
   display: block !important;
   width: 100% !important;
   max-width: 100% !important;
+  min-width: 0 !important;
   white-space: pre;
+}
+
+/* Code block ScrollArea wrapper — vertical cap managed by OverlayScrollbars
+   必须显式 full-width 以防 ScrollArea（OverlayScrollbars）内部的 os-viewport 等
+   div 在 flex / fit-content 上下文中意外缩窄 */
+.chat-v2 .markdown-content .code-block-scroll-area {
   max-height: 80vh;
-  overflow-y: auto;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Inner pre inside ScrollArea — let OverlayScrollbars manage overflow */
+.chat-v2 .markdown-content .code-block-scroll-area pre.code-block-inner {
+  overflow-x: visible !important;
+  overflow-y: visible !important;
+  max-height: none !important;
 }
 
 .chat-v2 .markdown-content pre.code-block code {
@@ -412,7 +430,7 @@
 
 .chat-v2 .inline-code {
   display: inline !important; /* 确保内联显示 */
-  background: hsl(var(--muted));
+  background: var(--chat-code-inline-bg);
   color: hsl(var(--foreground));
   padding: 0.2em 0.4em;
   border-radius: 6px;
@@ -439,8 +457,9 @@
   display: block;
 }
 
-/* 特殊处理：如果代码块内容很短，使其内联显示 */
-.chat-v2 .code-block:has(code:only-child) {
+/* 特殊处理：如果代码块内容很短，使其内联显示
+   ⚠️ 排除 .code-block-inner（块级代码架内的 pre），否则块级代码块会被错误地 inline 化 */
+.chat-v2 .code-block:not(.code-block-inner):has(code:only-child) {
   display: inline-block !important;
   width: auto !important;
   max-width: 100% !important;
@@ -464,8 +483,9 @@
   overflow-wrap: anywhere;
 }
 
-/* 检测短代码块并内联显示 */
-.chat-v2 .markdown-content .code-block:not(:has(br)):not(:has(.hljs-ln)) {
+/* 检测短代码块并内联显示
+   ⚠️ 排除 .code-block-inner（块级代码架内的 pre），否则块级代码块会被错误地 inline 化 */
+.chat-v2 .markdown-content .code-block:not(.code-block-inner):not(:has(br)):not(:has(.hljs-ln)) {
   display: inline-block !important;
   width: auto !important;
   max-width: 100% !important;
@@ -476,16 +496,16 @@
   overflow-wrap: anywhere;
 }
 
-.chat-v2 .code-block:has(code:only-child) code,
+.chat-v2 .code-block:not(.code-block-inner):has(code:only-child) code,
 .chat-v2 .markdown-content p > .code-block code,
-.chat-v2 .markdown-content .code-block:not(:has(br)):not(:has(.hljs-ln)) code {
+.chat-v2 .markdown-content .code-block:not(.code-block-inner):not(:has(br)):not(:has(.hljs-ln)) code {
   white-space: pre-wrap !important;
   word-break: break-word;
   overflow-wrap: anywhere;
 }
 
-/* 确保pre标签不会占据整行 */
-.chat-v2 .markdown-content pre.code-block { display: block; width: 100%; max-width: 100%; min-width: 0; }
+/* 纯降级保护：markdown-content 中非 wrapper 内的裸 pre.code-block */
+.chat-v2 .markdown-content pre.code-block:not(.code-block-inner) { display: block; width: 100%; max-width: 100%; min-width: 0; }
 
 /* 针对在段落中的代码块 */
 .chat-v2 .markdown-content p pre.code-block {
@@ -545,6 +565,7 @@
 .chat-v2 .markdown-content .chain-of-thought,
 .chat-v2 .markdown-content .rag-sources-container {
   display: block;
+  box-sizing: border-box;
   width: 100%;
   max-width: 100%;
   min-width: 0;
@@ -556,17 +577,26 @@
    ============================================================================ */
 
 .chat-v2 .table-wrapper {
-  overflow-x: auto;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
   margin: 1.25em 0;
-  border-radius: 8px;
-  border: 1px solid hsl(var(--border));
+  border-radius: var(--chat-block-radius);
+  border: 1px solid var(--chat-block-border);
+  background: var(--chat-block-surface);
   box-shadow: none;
+}
+
+/* ScrollArea wrapper for tables — ensures full-width scroll area */
+.chat-v2 .markdown-content .table-scroll-area {
+  width: 100%;
+  min-width: 0;
 }
 
 .chat-v2 .markdown-table {
   width: 100%;
   border-collapse: collapse;
-  background: hsl(var(--card));
+  background: var(--chat-block-surface);
   border-radius: 8px;
   overflow: hidden;
 }
@@ -580,7 +610,7 @@
 }
 
 .chat-v2 .markdown-table th {
-  background: hsl(var(--muted));
+  background: var(--chat-table-header-surface);
   font-weight: 600;
   color: hsl(var(--foreground));
   border-bottom: 2px solid hsl(var(--border));
@@ -630,40 +660,52 @@
 
 .chat-v2 .chain-of-thought {
   margin-bottom: 1rem;
-  border: 1px solid hsl(var(--border));
-  border-radius: 8px;
-  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border) / 0.3);
+  border-left: 2px solid var(--brand-primary);
+  border-radius: var(--radius-shell-toolbar);
+  background: hsl(var(--card));
   overflow: hidden;
+  box-shadow: var(--shadow-shell-soft);
 }
 
 .chat-v2 .chain-header {
-  padding: 0.75rem 1rem;
-  background: hsl(var(--muted));
-  border-bottom: 1px solid hsl(var(--border));
+  padding: 0.625rem 0.875rem;
+  background: transparent;
+  border-bottom: 1px solid hsl(var(--border) / 0.15);
   display: flex;
   align-items: center;
   gap: 0.5rem;
   cursor: pointer;
-  transition: background-color 0.2s;
+  transition: background-color 0.15s;
+  user-select: none;
+  -webkit-user-select: none;
 }
 
 .chat-v2 .chain-header:hover {
-  background: hsl(var(--accent));
+  background: hsl(var(--muted) / 0.35);
 }
 
 .chat-v2 .chain-icon {
-  font-size: 1.1rem;
+  font-size: 1rem;
+  opacity: 0.85;
 }
 
 .chat-v2 .chain-title {
   font-weight: 500;
-  color: var(--brand-primary);
-  font-size: 0.9rem;
+  color: hsl(var(--foreground) / 0.75);
+  font-size: var(--font-size-sm);
+}
+
+.chat-v2 .chain-header:hover .chain-title {
+  color: hsl(var(--foreground));
 }
 
 .chat-v2 .thinking-content {
-  padding: 1rem;
-  background: hsl(var(--card));
+  padding: 0.75rem 0.875rem;
+  background: transparent;
+  font-size: var(--chat-thinking-font-size, var(--font-size-sm));
+  line-height: 1.55;
+  color: hsl(var(--muted-foreground));
 }
 
 /* ============================================================================

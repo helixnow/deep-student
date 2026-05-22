@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 // Phosphor icons for the SegmentedControl demo — matches the production
-// AppTab usage so the style-lab preview reflects what users actually see.
+// AppearanceTab usage so the style-lab preview reflects what users actually see.
 import { Monitor, Moon, Sun } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -26,6 +26,29 @@ import {
   TooltipProvider as ShadTooltipProvider,
   TooltipTrigger as ShadTooltipTrigger,
 } from '@/components/ui/shad/Tooltip';
+// eslint-disable-next-line no-restricted-imports
+import { Popover as ShadPopover, PopoverTrigger as ShadPopoverTrigger, PopoverContent as ShadPopoverContent } from '@/components/ui/shad/Popover';
+// eslint-disable-next-line no-restricted-imports
+import {
+  Dialog as ShadDialog,
+  DialogTrigger as ShadDialogTrigger,
+  DialogContent as ShadDialogContent,
+  DialogHeader as ShadDialogHeader,
+  DialogTitle as ShadDialogTitle,
+  DialogDescription as ShadDialogDescription,
+  DialogFooter as ShadDialogFooter,
+} from '@/components/ui/shad/Dialog';
+// eslint-disable-next-line no-restricted-imports
+import {
+  Sheet as ShadSheet,
+  SheetTrigger as ShadSheetTrigger,
+  SheetContent as ShadSheetContent,
+  SheetHeader as ShadSheetHeader,
+  SheetTitle as ShadSheetTitle,
+  SheetDescription as ShadSheetDescription,
+  SheetFooter as ShadSheetFooter,
+} from '@/components/ui/shad/Sheet';
+import { NotionDialog } from '@/components/ui/NotionDialog';
 import {
   showGlobalNotification,
   type GlobalNotificationBorderTone,
@@ -560,6 +583,241 @@ function ToastCompareSection() {
   );
 }
 
+// ─── 弹窗对比 ─────────────────────────────────────────────────
+
+type SheetSide = 'top' | 'right' | 'bottom' | 'left';
+
+function PopupCompareSection() {
+  const [sheetSide, setSheetSide] = useState<SheetSide>('right');
+  const [notionDialogOpen, setNotionDialogOpen] = useState(false);
+
+  return (
+    <div className="space-y-8">
+      {/* ── Popover ─────────────────────────────────────────────── */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">Popover</h3>
+        <p className="text-[11px] text-[color:var(--text-muted)]">
+          点击触发的浮层面板。用于表单选项、筛选菜单等轻量交互场景。
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <colgroup>
+              <col className="w-[14%]" />
+              <col className="w-[43%]" />
+              <col className="w-[43%]" />
+            </colgroup>
+            <thead>
+              <tr className="border-b border-[color:var(--border-soft)]">
+                <th className="text-left py-2 pr-4 text-[color:var(--text-muted)] font-medium">实现</th>
+                <th className="text-left py-2 pr-4 text-[color:var(--text-muted)] font-medium">shad Popover (目标)</th>
+                <th className="text-left py-2 text-[color:var(--text-muted)] font-medium">无对应遗留</th>
+              </tr>
+            </thead>
+            <tbody>
+              {/* 基本用法 */}
+              <tr className="border-b border-[color:var(--border-soft)]">
+                <td className="py-3 pr-4 align-top text-[color:var(--text-secondary)]">基本</td>
+                <td className="py-3 pr-4 align-top">
+                  <ShadPopover>
+                    <ShadPopoverTrigger asChild>
+                      <NotionButton variant="outline" size="sm">打开 Popover</NotionButton>
+                    </ShadPopoverTrigger>
+                    <ShadPopoverContent align="start" sideOffset={8}>
+                      <div className="space-y-2 p-2">
+                        <p className="text-sm font-medium text-[color:var(--text-primary)]">Popover 内容</p>
+                        <p className="text-[11px] text-[color:var(--text-muted)]">
+                          支持 portal 定位、碰撞检测、滚动跟随。
+                        </p>
+                      </div>
+                    </ShadPopoverContent>
+                  </ShadPopover>
+                </td>
+                <td className="py-3 align-top text-[color:var(--text-muted)]">
+                  <span className="text-[11px]">（Popover 无 Radix 遗留路径）</span>
+                </td>
+              </tr>
+              {/* 带表单内容 */}
+              <tr className="border-b border-[color:var(--border-soft)]">
+                <td className="py-3 pr-4 align-top text-[color:var(--text-secondary)]">表单</td>
+                <td className="py-3 pr-4 align-top">
+                  <ShadPopover>
+                    <ShadPopoverTrigger asChild>
+                      <NotionButton variant="outline" size="sm">日期筛选</NotionButton>
+                    </ShadPopoverTrigger>
+                    <ShadPopoverContent align="start" sideOffset={8} className="w-56">
+                      <div className="space-y-2 p-2">
+                        <p className="text-xs font-medium text-[color:var(--text-primary)]">时间范围</p>
+                        <div className="space-y-1.5">
+                          {['今天', '本周', '本月', '全部'].map(opt => (
+                            <button
+                              key={opt}
+                              type="button"
+                              className="w-full text-left px-2 py-1 rounded text-xs hover:bg-[color:var(--interactive-hover)] text-[color:var(--text-secondary)] transition-colors"
+                            >
+                              {opt}
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    </ShadPopoverContent>
+                  </ShadPopover>
+                </td>
+                <td className="py-3 align-top text-[color:var(--text-muted)]">
+                  <span className="text-[11px]">（无遗留路径）</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Dialog ──────────────────────────────────────────────── */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">Dialog</h3>
+        <p className="text-[11px] text-[color:var(--text-muted)]">
+          居中模态框，带遮罩层和动画。用于确认操作、表单提交等需要用户聚焦的场景。
+        </p>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <colgroup>
+              <col className="w-[14%]" />
+              <col className="w-[43%]" />
+              <col className="w-[43%]" />
+            </colgroup>
+            <thead>
+              <tr className="border-b border-[color:var(--border-soft)]">
+                <th className="text-left py-2 pr-4 text-[color:var(--text-muted)] font-medium">实现</th>
+                <th className="text-left py-2 pr-4 text-[color:var(--text-muted)] font-medium">shad Dialog (遗留)</th>
+                <th className="text-left py-2 text-[color:var(--text-muted)] font-medium">NotionDialog (目标)</th>
+              </tr>
+            </thead>
+            <tbody>
+              {/* 基本用法 */}
+              <tr className="border-b border-[color:var(--border-soft)]">
+                <td className="py-3 pr-4 align-top text-[color:var(--text-secondary)]">基本</td>
+                <td className="py-3 pr-4 align-top">
+                  <ShadDialog>
+                    <ShadDialogTrigger asChild>
+                      <NotionButton variant="outline" size="sm">shad Dialog</NotionButton>
+                    </ShadDialogTrigger>
+                    <ShadDialogContent>
+                      <ShadDialogHeader>
+                        <ShadDialogTitle>shad Dialog 标题</ShadDialogTitle>
+                        <ShadDialogDescription>这是 shad Dialog 的描述文字。</ShadDialogDescription>
+                      </ShadDialogHeader>
+                      <p className="text-sm text-[color:var(--text-secondary)]">
+                        内容区域示例。shad Dialog 基于自定义 portal 实现，使用 framer-motion 动画。
+                      </p>
+                      <ShadDialogFooter>
+                        <NotionButton variant="ghost" size="sm">取消</NotionButton>
+                        <NotionButton variant="primary" size="sm">确认</NotionButton>
+                      </ShadDialogFooter>
+                    </ShadDialogContent>
+                  </ShadDialog>
+                </td>
+                <td className="py-3 pr-4 align-top">
+                  <NotionButton variant="outline" size="sm" onClick={() => setNotionDialogOpen(true)}>
+                    NotionDialog
+                  </NotionButton>
+                  <NotionDialog
+                    open={notionDialogOpen}
+                    onOpenChange={setNotionDialogOpen}
+                    title="NotionDialog 标题"
+                    description="这是 NotionDialog 的描述文字。"
+                    actions={[
+                      { label: '取消', variant: 'ghost', onClick: () => setNotionDialogOpen(false) },
+                      { label: '确认', variant: 'primary', onClick: () => setNotionDialogOpen(false) },
+                    ]}
+                  >
+                    <p className="text-sm text-[color:var(--text-secondary)]">
+                      内容区域示例。NotionDialog 是目标设计系统的模态框，封装了 portal + 动画 + 可滚动内容区。
+                    </p>
+                  </NotionDialog>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* ── Sheet ───────────────────────────────────────────────── */}
+      <div className="space-y-3">
+        <h3 className="text-sm font-semibold text-[color:var(--text-primary)]">Sheet</h3>
+        <p className="text-[11px] text-[color:var(--text-muted)]">
+          边缘滑出面板，支持四方向。用于详情面板、设置面板等较大内容区域。
+        </p>
+        <div className="flex items-center gap-2 flex-wrap mb-3">
+          <span className="text-xs text-[color:var(--text-muted)]">方向:</span>
+          {(['top', 'right', 'bottom', 'left'] as SheetSide[]).map(side => (
+            <button
+              key={side}
+              type="button"
+              className={cn('px-2 py-0.5 rounded text-xs', sheetSide === side ? 'bg-[color:var(--interactive-selected)]' : 'hover:bg-[color:var(--interactive-hover)]')}
+              onClick={() => setSheetSide(side)}
+            >
+              {side}
+            </button>
+          ))}
+        </div>
+        <div className="overflow-x-auto">
+          <table className="w-full text-xs">
+            <colgroup>
+              <col className="w-[14%]" />
+              <col className="w-[43%]" />
+              <col className="w-[43%]" />
+            </colgroup>
+            <thead>
+              <tr className="border-b border-[color:var(--border-soft)]">
+                <th className="text-left py-2 pr-4 text-[color:var(--text-muted)] font-medium">实现</th>
+                <th className="text-left py-2 pr-4 text-[color:var(--text-muted)] font-medium">shad Sheet (目标)</th>
+                <th className="text-left py-2 text-[color:var(--text-muted)] font-medium">无对应遗留</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr className="border-b border-[color:var(--border-soft)]">
+                <td className="py-3 pr-4 align-top text-[color:var(--text-secondary)]">基本</td>
+                <td className="py-3 pr-4 align-top">
+                  <ShadSheet>
+                    <ShadSheetTrigger asChild>
+                      <NotionButton variant="outline" size="sm">打开 Sheet ({sheetSide})</NotionButton>
+                    </ShadSheetTrigger>
+                    <ShadSheetContent side={sheetSide}>
+                      <ShadSheetHeader>
+                        <ShadSheetTitle>Sheet 标题</ShadSheetTitle>
+                        <ShadSheetDescription>
+                          从 {sheetSide} 方向滑出的面板，当前方向：{sheetSide}
+                        </ShadSheetDescription>
+                      </ShadSheetHeader>
+                      <div className="py-4 text-sm text-[color:var(--text-secondary)]">
+                        <p>Sheet 内容区域。适用于详情面板、设置、筛选器等。</p>
+                        <p className="mt-2">基于 Radix Dialog 原语实现，支持四方向滑入动画。</p>
+                      </div>
+                      <ShadSheetFooter>
+                        <NotionButton variant="primary" size="sm">完成</NotionButton>
+                      </ShadSheetFooter>
+                    </ShadSheetContent>
+                  </ShadSheet>
+                </td>
+                <td className="py-3 align-top text-[color:var(--text-muted)]">
+                  <span className="text-[11px]">（Sheet 无遗留路径）</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      {/* 迁移建议 */}
+      <ul className="text-[11px] text-[color:var(--text-muted)] space-y-1 list-disc pl-4">
+        <li>Popover：业务代码统一使用 shad Popover；无 Radix 遗留，点击触发 + portal 定位 + 碰撞检测。</li>
+        <li>Dialog：新代码优先消费 NotionDialog（封装了 actions、scrollable、icon header 等高阶 API）；shad Dialog 保留用于需精细控制 content 的场景。</li>
+        <li>Sheet：统一使用 shad Sheet；无遗留路径，四方向滑出 + Radix 原语。</li>
+        <li>三者共享 <code>OverlayCoordinator</code> 避免 z-index 冲突；弹窗嵌套时由 coordinator 统一管理层级。</li>
+      </ul>
+    </div>
+  );
+}
+
 // ─── SegmentedControl 对比 ─────────────────────────────────────
 
 type ThemeMode = 'light' | 'dark' | 'system';
@@ -705,7 +963,7 @@ function SegmentedCompareSection() {
 
 // ─── 导出主组件 ─────────────────────────────────────────────────
 
-type CompareSection = 'button' | 'form' | 'segmented' | 'tooltip' | 'toast';
+type CompareSection = 'button' | 'form' | 'segmented' | 'tooltip' | 'toast' | 'popup';
 
 export function ComponentCompareTab() {
   const [activeSection, setActiveSection] = useState<CompareSection>('button');
@@ -716,6 +974,7 @@ export function ComponentCompareTab() {
     { id: 'segmented', label: 'Segmented' },
     { id: 'tooltip', label: 'Tooltip' },
     { id: 'toast', label: 'Toast' },
+    { id: 'popup', label: '弹窗' },
   ];
 
   return (
@@ -746,6 +1005,7 @@ export function ComponentCompareTab() {
         {activeSection === 'segmented' && <SegmentedCompareSection />}
         {activeSection === 'tooltip' && <TooltipCompareSection />}
         {activeSection === 'toast' && <ToastCompareSection />}
+        {activeSection === 'popup' && <PopupCompareSection />}
       </div>
     </div>
   );

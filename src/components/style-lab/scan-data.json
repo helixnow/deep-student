@@ -156,7 +156,7 @@
         "src/features/chat/plugins/chat/RagPanel.tsx",
         "src/features/settings/components/AnkiConnectSettingsSection.tsx",
         "src/features/settings/components/ApisTab.tsx",
-        "src/features/settings/components/AppTab.tsx",
+        "src/features/settings/components/AppearanceTab.tsx",
         "src/features/settings/components/CloudStorageSection.tsx",
         "src/features/settings/components/IndexMaintenanceSection.tsx",
         "src/features/settings/components/McpToolsSection.tsx",
@@ -214,7 +214,7 @@
         "src/features/chat/components/input-bar/InputBarUI.tsx",
         "src/features/learning-hub/apps/views/ExamContentView.tsx",
         "src/features/notes/NotesLibraryManager.tsx",
-        "src/features/settings/components/AppTab.tsx",
+        "src/features/settings/components/AppearanceTab.tsx",
         "src/features/settings/components/DimensionManagement.tsx",
         "src/features/settings/components/EngineSettingsSection.tsx",
         "src/features/settings/components/McpEditorSection.tsx"
