@@ -105,6 +105,7 @@ describe('InputBarUI thinking/runtime model menu', () => {
 
   it('keeps the runtime model dropdown available when the model has no depth options', async () => {
     const user = userEvent.setup();
+    const onSelectRuntimeModel = vi.fn();
     const onOpenRuntimeModelPanel = vi.fn();
 
     renderInputBar({
@@ -112,15 +113,65 @@ describe('InputBarUI thinking/runtime model menu', () => {
       thinkingStateLabel: '推理: 关闭',
       thinkingDepthOptions: [],
       onToggleThinking: vi.fn(),
+      runtimeModelOptions: [
+        { id: 'deepseek-v3.2', label: 'DeepSeek V3.2', providerLabel: 'DeepSeek', iconId: 'deepseek-v3.2' },
+        { id: 'gpt-4o', label: 'GPT-4o', providerLabel: 'OpenAI', iconId: 'gpt-4o' },
+        { id: 'deepseek-r1', label: 'DeepSeek R1', providerLabel: 'DeepSeek', iconId: 'deepseek-r1' },
+      ],
+      onSelectRuntimeModel,
       onOpenRuntimeModelPanel,
-      renderModelPanel: () => <div data-testid="runtime-model-panel" />,
       runtimeModelLabel: 'DeepSeek V3.2',
+      runtimeModelProviderLabel: 'DeepSeek',
+      runtimeCurrentModelId: 'deepseek-v3.2',
     });
 
     await user.click(screen.getByTestId('thinking-runtime-menu-trigger'));
-    await user.click(screen.getByRole('menuitem', { name: /选择模型/ }));
+    expect(screen.getByRole('menuitem', { name: /选择模型，当前：DeepSeek \/ DeepSeek V3\.2/ })).toBeInTheDocument();
+    expect(screen.queryByPlaceholderText('搜索名称或模型 ID...')).not.toBeInTheDocument();
 
-    expect(onOpenRuntimeModelPanel).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole('menuitem', { name: /选择模型，当前：DeepSeek \/ DeepSeek V3\.2/ }));
+
+    expect(screen.getByPlaceholderText('搜索名称或模型 ID...')).toBeInTheDocument();
+    expect(screen.getAllByText('DeepSeek').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('OpenAI').length).toBeGreaterThan(0);
+    expect(screen.getByRole('menuitem', { name: /进入多选模式/ })).toBeInTheDocument();
+
+    await user.type(screen.getByPlaceholderText('搜索名称或模型 ID...'), 'V3.2');
+    expect(screen.getAllByRole('menuitem', { name: /DeepSeek V3.2/ }).length).toBeGreaterThan(1);
+    expect(screen.queryByRole('menuitem', { name: /GPT-4o/ })).not.toBeInTheDocument();
+
+    const deepSeekSubmenuItems = screen.getAllByRole('menuitem', { name: /DeepSeek V3.2/ });
+    await user.click(deepSeekSubmenuItems.find((item) => item.getAttribute('aria-haspopup') !== 'menu') ?? deepSeekSubmenuItems[deepSeekSubmenuItems.length - 1]);
+    expect(onSelectRuntimeModel).toHaveBeenCalledWith('deepseek-v3.2');
+
+    expect(onOpenRuntimeModelPanel).not.toHaveBeenCalled();
+  });
+
+  it('offers a lightweight compare-mode entry from the runtime model submenu', async () => {
+    const user = userEvent.setup();
+    const onOpenRuntimeModelPanel = vi.fn();
+
+    renderInputBar({
+      enableThinking: false,
+      thinkingStateLabel: '推理: 关闭',
+      thinkingDepthOptions: [],
+      onToggleThinking: vi.fn(),
+      runtimeModelOptions: [
+        { id: 'deepseek-v3.2', label: 'DeepSeek V3.2', providerLabel: 'DeepSeek', iconId: 'deepseek-v3.2' },
+        { id: 'gpt-4o', label: 'GPT-4o', providerLabel: 'OpenAI', iconId: 'gpt-4o' },
+      ],
+      onSelectRuntimeModel: vi.fn(),
+      onOpenRuntimeModelPanel,
+      runtimeModelLabel: 'DeepSeek V3.2',
+      runtimeModelProviderLabel: 'DeepSeek',
+      runtimeCurrentModelId: 'deepseek-v3.2',
+    });
+
+    await user.click(screen.getByTestId('thinking-runtime-menu-trigger'));
+    await user.click(screen.getByRole('menuitem', { name: /选择模型，当前：DeepSeek \/ DeepSeek V3\.2/ }));
+    await user.click(screen.getByRole('menuitem', { name: /进入多选模式/ }));
+
+    expect(onOpenRuntimeModelPanel).toHaveBeenCalledWith('compare');
   });
 
   it('keeps the trigger focused on thinking state instead of the model name', () => {
@@ -192,7 +243,7 @@ describe('InputBarUI thinking/runtime model menu', () => {
 
   it('shows unsupported reasoning as unavailable while keeping model switching available', async () => {
     const user = userEvent.setup();
-    const onOpenRuntimeModelPanel = vi.fn();
+    const onSelectRuntimeModel = vi.fn();
 
     renderInputBar({
       enableThinking: false,
@@ -201,9 +252,13 @@ describe('InputBarUI thinking/runtime model menu', () => {
       thinkingUnsupported: true,
       onToggleThinking: vi.fn(),
       onSetThinkingDepth: vi.fn(),
-      onOpenRuntimeModelPanel,
-      renderModelPanel: () => <div data-testid="runtime-model-panel" />,
+      runtimeModelOptions: [
+        { id: 'gpt-4o', label: 'GPT-4o', providerLabel: 'OpenAI', iconId: 'gpt-4o' },
+      ],
+      onSelectRuntimeModel,
       runtimeModelLabel: 'GPT-4o',
+      runtimeModelProviderLabel: 'OpenAI',
+      runtimeCurrentModelId: 'gpt-4o',
     } as Partial<React.ComponentProps<typeof InputBarUI>>);
 
     expect(screen.getByTestId('thinking-runtime-state-label')).toHaveTextContent('不支持');
@@ -214,7 +269,9 @@ describe('InputBarUI thinking/runtime model menu', () => {
     expect(screen.queryByRole('menuitem', { name: '开启' })).not.toBeInTheDocument();
     expect(screen.queryByRole('menuitem', { name: '关闭' })).not.toBeInTheDocument();
 
-    await user.click(screen.getByRole('menuitem', { name: /选择模型/ }));
-    expect(onOpenRuntimeModelPanel).toHaveBeenCalledTimes(1);
+    await user.click(screen.getByRole('menuitem', { name: /选择模型，当前：OpenAI \/ GPT-4o/ }));
+    const gptItems = screen.getAllByRole('menuitem', { name: /GPT-4o/ });
+    await user.click(gptItems.find((item) => item.getAttribute('aria-haspopup') !== 'menu') ?? gptItems[gptItems.length - 1]);
+    expect(onSelectRuntimeModel).toHaveBeenCalledWith('gpt-4o');
   });
 });

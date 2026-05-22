@@ -3,6 +3,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render, waitFor } from '@testing-library/react';
 import { createStore } from 'zustand/vanilla';
 import { InputBarV2 } from '../InputBarV2';
+import { ModelPicker } from '../ModelPicker';
 
 let capturedInputBarUIProps: Record<string, any> | null = null;
 const mockModeRegistryState = vi.hoisted(() => ({
@@ -65,6 +66,7 @@ vi.mock('./usePdfPageRefs', () => ({
 
 vi.mock('@/contexts/DialogControlContext', () => ({
   useDialogControl: () => ({
+    availableMcpServers: [],
     selectedMcpServers: [],
     setSelectedMcpServers: vi.fn(),
   }),
@@ -305,7 +307,7 @@ describe('InputBarV2 stale context ref guard', () => {
     expect(capturedInputBarUIProps?.runtimeModelProviderLabel).toBe('DeepSeek Official');
   });
 
-  it('opens the single current-dialog model panel from the runtime menu', async () => {
+  it('opens the unified model picker from the runtime menu so compare and retry stay on the right side', async () => {
     function RuntimeModelPanel() {
       return null;
     }
@@ -340,8 +342,46 @@ describe('InputBarV2 stale context ref guard', () => {
 
     await waitFor(() => {
       const panel = capturedInputBarUIProps?.renderModelPanel?.();
-      expect(panel?.type).toBe(RuntimeModelPanel);
-      expect(panel?.props?.closeOnSelect).toBe(true);
+      expect(panel?.type).toBe(ModelPicker);
+      expect(panel?.props?.allowCompareToggle).toBe(true);
+      expect(panel?.props?.singleSelectedId).toBe(null);
+    });
+  });
+
+  it('opens the unified model picker in compare mode from the runtime submenu multi-select entry', async () => {
+    const { store } = createMockStore();
+
+    render(
+      <InputBarV2
+        store={store as any}
+        availableModels={[
+          {
+            id: 'deepseek-official-v4',
+            name: 'DeepSeek V4 Pro',
+            model: 'deepseek-v4-pro',
+            providerType: 'deepseek',
+          },
+          {
+            id: 'gpt-4o',
+            name: 'GPT-4o',
+            model: 'gpt-4o',
+            providerType: 'openai',
+          },
+        ]}
+      />
+    );
+
+    act(() => {
+      capturedInputBarUIProps?.onOpenRuntimeModelPanel?.('compare');
+    });
+
+    expect(store.getState().setPanelState).toHaveBeenCalledWith('model', true);
+
+    await waitFor(() => {
+      const panel = capturedInputBarUIProps?.renderModelPanel?.();
+      expect(panel?.type).toBe(ModelPicker);
+      expect(panel?.props?.mode).toBe('compare');
+      expect(panel?.props?.allowCompareToggle).toBe(true);
     });
   });
 

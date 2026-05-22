@@ -91,6 +91,8 @@ export interface ModelPickerProps {
   disabled?: boolean;
   /** 移动端底部抽屉模式可隐藏头部 */
   hideHeader?: boolean;
+  /** 紧凑模式：用于 app menu 子菜单，收窄宽度和高度 */
+  compact?: boolean;
 
   // Retry 模式
   /** 待重试的消息 ID（存在时进入重试模式，强制 compare） */
@@ -116,6 +118,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
   onClose,
   disabled = false,
   hideHeader,
+  compact = false,
   retryMessageId,
   onRetry,
 }) => {
@@ -258,6 +261,24 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
   }, [sortedAndFiltered, t]);
 
   useEffect(() => {
+    if (!compact || vendorGroups.length === 0) return;
+    setCollapsedVendors((prev) => {
+      if (prev.size > 0) return prev;
+      const selectedVendorId =
+        sortedAndFiltered.find((m) => m.id === singleSelectedId)?.vendorId
+        ?? compareSelected[0]?.vendorId
+        ?? vendorGroups[0]?.vendorId;
+      const next = new Set<string>();
+      vendorGroups.forEach((group) => {
+        if (group.vendorId !== selectedVendorId) {
+          next.add(group.vendorId);
+        }
+      });
+      return next;
+    });
+  }, [compact, compareSelected, singleSelectedId, sortedAndFiltered, vendorGroups]);
+
+  useEffect(() => {
     if (searchTerm.trim()) setCollapsedVendors(new Set());
   }, [searchTerm]);
 
@@ -283,10 +304,11 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
     if (disabled) return;
     if (effectiveMode === 'single') {
       onSelectSingle?.(toModelInfo(model));
+      onClose();
     } else {
       onToggleCompare?.(toModelInfo(model));
     }
-  }, [disabled, effectiveMode, onSelectSingle, onToggleCompare, toModelInfo]);
+  }, [disabled, effectiveMode, onClose, onSelectSingle, onToggleCompare, toModelInfo]);
 
   const handleSetAsDefault = useCallback(async (modelId: string) => {
     if (!modelId || modelId === defaultModelId) return;
@@ -350,17 +372,17 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
         onClick={() => handleRowClick(option)}
         disabled={disabled}
         className={cn(
-          'group flex w-full items-start gap-2 rounded-[var(--menu-shell-row-radius)] border text-left transition-colors',
+          'group flex w-full items-start gap-[var(--menu-shell-row-gap)] rounded-[var(--menu-shell-row-radius)] border text-left transition-colors',
           'px-[var(--menu-shell-row-padding-x)] py-[var(--menu-shell-row-padding-y)]',
           isHighlighted
             ? [
-                'border-[color:var(--button-primary-border)]',
-                'bg-[color:var(--button-primary-surface)]',
-                'text-[color:var(--button-primary-foreground)]',
-                'hover:bg-[color:var(--button-primary-hover)]',
+                'border-[color:color-mix(in_hsl,var(--menu-shell-border)_60%,var(--button-primary-border)_40%)]',
+                'bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_90%,var(--button-primary-surface)_10%)]',
+                'text-[color:var(--menu-shell-foreground)]',
+                'hover:bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_84%,var(--button-primary-surface)_16%)]',
               ]
             : [
-                'border-transparent',
+                'border-transparent bg-transparent',
                 'hover:bg-[color:var(--menu-shell-row-hover)]',
               ],
           disabled && 'cursor-not-allowed opacity-60'
@@ -371,10 +393,10 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
         {effectiveMode === 'compare' ? (
           <span
             className={cn(
-              'mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-md border text-[11px] font-semibold transition',
+              'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-[5px] border text-[10px] font-semibold transition',
               isCompareSelected
-                ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]'
-                : 'border-[color:var(--composer-panel-control-border)]'
+                ? 'border-[color:var(--menu-shell-border)] bg-[color:var(--menu-shell-foreground)] text-[color:var(--menu-shell-surface)]'
+                : 'border-[color:var(--menu-shell-border)] bg-transparent text-transparent'
             )}
             aria-hidden
           >
@@ -383,10 +405,10 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
         ) : (
           <span
             className={cn(
-              'mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded-full',
+              'mt-0.5 flex h-4 w-4 shrink-0 items-center justify-center rounded-full',
               isSingleSelected
-                ? 'text-[color:var(--button-primary-foreground)]'
-                : 'text-transparent'
+                ? 'text-[color:var(--menu-shell-foreground)] opacity-90'
+                : 'text-transparent opacity-0'
             )}
             aria-hidden
           >
@@ -395,7 +417,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
         )}
 
         <span className="min-w-0 flex-1">
-          <span className={cn('flex w-full min-w-0 items-center', isMobile ? 'gap-1' : 'gap-1.5')}>
+          <span className={cn('flex w-full min-w-0 items-center', compact ? 'gap-1' : isMobile ? 'gap-1' : 'gap-1.5')}>
             <ProviderIcon
               modelId={option.model || option.name}
               size={14}
@@ -408,15 +430,16 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
               isMultimodal={option.isMultimodal}
               isReasoning={option.isReasoning}
               supportsTools={option.supportsTools}
-              showTextOnly
               size="xs"
-              className={isMobile ? 'gap-1' : undefined}
+              chipClassName="h-4.5 w-4.5 text-[color:var(--menu-shell-muted-foreground)]/70 hover:bg-transparent hover:text-[color:var(--menu-shell-foreground)]"
+              iconClassName="h-3 w-3"
+              className={cn('gap-0', isMobile ? 'ml-0.5' : 'ml-1')}
             />
             {isDefault && (
               <CommonTooltip content={systemBadgeTooltip} position="top">
                 <Badge
                   variant="outline"
-                  className="hidden h-4 px-1 py-0 text-[10px] font-medium shrink-0 border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)] cursor-help sm:inline-flex"
+                  className="hidden h-[18px] px-1.5 py-0 text-[9px] font-medium shrink-0 border-[color:var(--menu-shell-border)] bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_88%,var(--menu-shell-row-hover)_12%)] text-[color:var(--menu-shell-muted-foreground)] cursor-help sm:inline-flex"
                 >
                   {systemBadge}
                 </Badge>
@@ -425,8 +448,8 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
           </span>
           <span
             className={cn(
-              'mt-0.5 block w-full truncate text-[color:var(--composer-panel-foreground)]',
-              isMobile ? 'text-[13px] leading-4' : 'text-[12px] leading-4'
+              'mt-0.5 block w-full truncate text-[color:var(--menu-shell-foreground)]',
+              compact ? 'text-[12px] leading-4' : isMobile ? 'text-[13px] leading-4' : 'text-[12px] leading-4'
             )}
           >
             {option.model || option.name}
@@ -443,9 +466,9 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                 void handleSetAsDefault(option.id);
               }}
               className={cn(
-                'mt-0.5 inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-[color:var(--composer-panel-muted-foreground)] opacity-0 transition group-hover:opacity-100',
-                'hover:bg-[color:var(--composer-panel-control-hover)]',
-                (disabled || savingDefault) && 'pointer-events-none opacity-30'
+                'mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-[var(--menu-shell-row-radius)] text-[color:var(--menu-shell-muted-foreground)] opacity-0 transition group-hover:opacity-100',
+                'hover:bg-[color:var(--menu-shell-row-hover)]',
+                (disabled || savingDefault) && 'pointer-events-none opacity-25'
               )}
               aria-label={t('chatV2:modelPicker.setAsDefault', '设为系统默认')}
             >
@@ -458,34 +481,34 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
   };
 
   return (
-    <div className="flex h-full min-h-0 flex-col gap-2">
+    <div className={cn('flex h-full min-h-0 flex-col gap-1 text-[color:var(--menu-shell-foreground)]', compact && 'w-full')}>
       {/* 头部 */}
       {!shouldHideHeader && (
-        <div className="flex items-center gap-2">
-          <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
+        <div className="flex items-start gap-2 px-1 pt-0.5">
+          <div className="flex min-w-0 flex-1 items-baseline gap-1">
             {isRetryMode && (
               <ArrowCounterClockwise
-                size={13}
-                className="shrink-0 self-center text-[color:var(--composer-panel-muted-foreground)]"
+                size={12}
+                className="shrink-0 self-center text-[color:var(--menu-shell-muted-foreground)]"
               />
             )}
-            <span className="shrink-0 text-[13px] font-semibold text-[color:var(--composer-panel-foreground)]">
+            <span className="shrink-0 text-[12px] font-medium text-[color:var(--menu-shell-foreground)]">
               {titleText}
             </span>
-            <span className="truncate text-[11.5px] text-[color:var(--composer-panel-muted-foreground)]">
+            <span className="truncate text-[10.5px] text-[color:var(--menu-shell-muted-foreground)]">
               · {subtitleText}
             </span>
             {effectiveMode === 'compare' && compareSelected.length >= 2 && !isRetryMode && (
               <Badge
                 variant="default"
-                className="h-5 shrink-0 self-center border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] px-1.5 py-0 text-[10px] text-[color:var(--button-primary-foreground)]"
+                className="h-[18px] shrink-0 self-center border-[color:var(--menu-shell-border)] bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_88%,var(--menu-shell-row-hover)_12%)] px-1.5 py-0 text-[9px] font-medium text-[color:var(--menu-shell-muted-foreground)]"
               >
                 {t('chatV2:modelPicker.parallelMode', '并行模式')}
               </Badge>
             )}
           </div>
 
-          <div className="flex shrink-0 items-center gap-1.5">
+          <div className="flex shrink-0 items-center gap-1">
             {showCompareToggle && (
               <CompareToggle
                 checked={effectiveMode === 'compare'}
@@ -499,7 +522,10 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
               <NotionButton
                 variant="primary"
                 size="sm"
-                onClick={() => onRetry(compareSelected.map((m) => m.id))}
+                onClick={() => {
+                  onRetry(compareSelected.map((m) => m.id));
+                  onClose();
+                }}
                 disabled={disabled || compareSelected.length === 0}
                 title={t('chatV2:modelMention.retry', '重试')}
               >
@@ -512,6 +538,7 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
               size="icon"
               iconOnly
               onClick={onClose}
+              className="h-7 w-7 rounded-[var(--menu-shell-row-radius)]"
               aria-label={t('common:actions.cancel')}
               title={t('common:actions.cancel')}
             >
@@ -521,27 +548,36 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
         </div>
       )}
 
-      {/* 搜索：嵌入式（ghost）— 不再以独立 control 控件呈现，融入 popover 表面 */}
-      <div className="relative shrink-0 -mx-1 border-b border-[color:var(--input-shell-border)] pb-2">
+      {/* 搜索：视觉收敛为 menu search shell，但保留 Input 组件语义 */}
+      <div className={cn('shrink-0 px-1', compact && 'pt-1')}>
+        <div
+          className={cn(
+            'relative flex items-center gap-1.5 rounded-[var(--menu-shell-row-radius)] border',
+            'bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_88%,var(--menu-shell-row-hover)_12%)]',
+            'border-[color:var(--menu-shell-border)] px-2 py-1.5 transition-colors',
+            'focus-within:border-[hsl(var(--primary)/0.55)] focus-within:bg-[color:var(--menu-shell-surface)]'
+          )}
+        >
         <MagnifyingGlass
           size={12}
-          className="pointer-events-none absolute left-2.5 top-1/2 -translate-y-1/2 text-[color:var(--composer-panel-muted-foreground)]"
+          className="pointer-events-none shrink-0 text-[color:var(--menu-shell-muted-foreground)]"
         />
         <Input
           type="text"
           value={searchTerm}
           onChange={(e) => setSearchTerm(e.target.value)}
           placeholder={t('chatV2:modelPicker.searchPlaceholder', '搜索名称或模型 ID...')}
-          className="h-8 w-full pl-7 pr-2 text-xs !rounded-none !border-0 !bg-transparent hover:!bg-transparent focus-visible:!bg-transparent focus-visible:!ring-0 focus-visible:!border-transparent"
+          className="h-auto w-full border-0 bg-transparent px-0 py-0 text-[var(--menu-shell-font-size)] text-[color:var(--menu-shell-foreground)] shadow-none hover:bg-transparent focus-visible:bg-transparent focus-visible:ring-0"
           disabled={disabled}
         />
+        </div>
       </div>
 
       {/* 列表：flex-1 占满 popover 剩余高度（由 popover heightMode='available' 决定总高）
           + 底部 24px 软渐隐 mask，空间受限时（如空状态输入栏居中）平滑提示"下方有更多内容"
           mask 仅影响视觉绘制，不改变 layout，与 flex-1 不冲突 */}
       <div
-        className="min-h-0 flex-1"
+        className={cn('min-h-0 flex-1', compact && 'max-h-[320px]')}
         style={{
           maskImage: 'linear-gradient(to bottom, black calc(100% - 24px), transparent)',
           WebkitMaskImage: 'linear-gradient(to bottom, black calc(100% - 24px), transparent)',
@@ -549,13 +585,13 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
       >
         <CustomScrollArea
           className="h-full"
-          viewportClassName="space-y-1 pr-1"
+          viewportClassName="space-y-1 px-1"
           trackOffsetTop={6}
           trackOffsetBottom={6}
         >
           <div className="space-y-0.5">
             {loading ? (
-              <div className="px-2 py-4 text-center text-sm text-[color:var(--composer-panel-muted-foreground)]">
+              <div className="px-2 py-4 text-center text-sm text-[color:var(--menu-shell-muted-foreground)]">
                 {t('common:loading')}
               </div>
             ) : hasModels ? (
@@ -571,38 +607,41 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
                       type="button"
                       onClick={() => toggleVendorCollapse(group.vendorId)}
                       className={cn(
-                        'flex w-full select-none items-center gap-2 rounded-md px-2 py-1.5 text-left transition-colors',
+                        'flex w-full select-none items-center gap-2 rounded-[var(--menu-shell-row-radius)] px-[var(--menu-shell-row-padding-x)] py-1 text-left transition-colors',
                         'hover:bg-[color:var(--menu-shell-row-hover)]'
                       )}
                     >
                       {isCollapsed ? (
-                        <CaretRight size={14} className="shrink-0 text-[color:var(--composer-panel-muted-foreground)]" />
+                        <CaretRight size={14} className="shrink-0 text-[color:var(--menu-shell-muted-foreground)]" />
                       ) : (
-                        <CaretDown size={14} className="shrink-0 text-[color:var(--composer-panel-muted-foreground)]" />
+                        <CaretDown size={14} className="shrink-0 text-[color:var(--menu-shell-muted-foreground)]" />
                       )}
-                      <span className="truncate text-[11px] font-semibold uppercase tracking-[0.04em] text-[color:var(--composer-panel-muted-foreground)]">
+                      <span className={cn(
+                        'truncate text-[10px] font-medium uppercase tracking-[0.025em] text-[color:var(--menu-shell-muted-foreground)]',
+                        compact && 'max-w-[10rem]'
+                      )}>
                         {group.vendorName}
                       </span>
-                      <span className="text-[11px] tabular-nums text-[color:var(--composer-panel-muted-foreground)] opacity-60">
+                      <span className="text-[11px] tabular-nums text-[color:var(--menu-shell-muted-foreground)] opacity-60">
                         {group.models.length}
                       </span>
                       {groupSelectedCount > 0 && (
                         <Badge
                           variant="default"
-                          className="ml-auto h-4 border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] px-1 py-0 text-[9px] font-medium text-[color:var(--button-primary-foreground)]"
+                          className="ml-auto h-[16px] border-[color:var(--menu-shell-border)] bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_84%,var(--menu-shell-row-hover)_16%)] px-1 py-0 text-[9px] font-medium text-[color:var(--menu-shell-muted-foreground)]"
                         >
                           {groupSelectedCount}
                         </Badge>
                       )}
                     </button>
                     {!isCollapsed && (
-                      <div className="space-y-0.5 pl-1">{group.models.map(renderRow)}</div>
+                      <div className="space-y-0.5">{group.models.map(renderRow)}</div>
                     )}
                   </div>
                 );
               })
             ) : (
-              <div className="px-2 py-4 text-center text-sm text-[color:var(--composer-panel-muted-foreground)]">
+              <div className="px-2 py-4 text-center text-sm text-[color:var(--menu-shell-muted-foreground)]">
                 {searchTerm
                   ? t('chatV2:modelPicker.noMatches', '未找到匹配的模型')
                   : t('chatV2:modelPicker.empty', '暂无可用模型')}
@@ -611,6 +650,29 @@ export const ModelPicker: React.FC<ModelPickerProps> = ({
           </div>
         </CustomScrollArea>
       </div>
+
+      {(showCompareToggle || (isRetryMode && onRetry)) && (
+        <div className="mx-1 h-px shrink-0 bg-[color:var(--menu-shell-border)]" />
+      )}
+
+      {isRetryMode && onRetry && (
+        <div className="flex shrink-0 items-center justify-end px-1 pb-1">
+          <NotionButton
+            variant="primary"
+            size="sm"
+            onClick={() => {
+              onRetry(compareSelected.map((m) => m.id));
+              onClose();
+            }}
+            disabled={disabled || compareSelected.length === 0}
+            title={t('chatV2:modelMention.retry', '重试')}
+            className="h-7 rounded-[var(--menu-shell-row-radius)] px-2.5 text-[12px]"
+          >
+            <ArrowCounterClockwise size={14} />
+            {t('chatV2:modelMention.retry', '重试')}
+          </NotionButton>
+        </div>
+      )}
     </div>
   );
 };
@@ -636,17 +698,17 @@ const CompareToggle: React.FC<CompareToggleProps> = ({ checked, onChange, label,
       disabled={disabled}
       onClick={() => onChange(!checked)}
       className={cn(
-        'inline-flex items-center gap-1.5 rounded-full border px-2.5 py-1 text-[11px] font-medium transition-colors',
+        'inline-flex items-center gap-1.5 rounded-[999px] border px-2 py-1 text-[10px] font-medium transition-colors',
         checked
-          ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]'
-          : 'border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-control-surface)] text-[color:var(--composer-panel-muted-foreground)] hover:bg-[color:var(--composer-panel-control-hover)]',
+          ? 'border-[color:var(--menu-shell-border)] bg-[color:color-mix(in_hsl,var(--menu-shell-surface)_84%,var(--menu-shell-row-hover)_16%)] text-[color:var(--menu-shell-foreground)]'
+          : 'border-[color:var(--menu-shell-border)] bg-transparent text-[color:var(--menu-shell-muted-foreground)] hover:bg-[color:var(--menu-shell-row-hover)]',
         disabled && 'cursor-not-allowed opacity-50'
       )}
     >
       <span
         className={cn(
           'h-1.5 w-1.5 rounded-full transition-colors',
-          checked ? 'bg-[color:var(--button-primary-foreground)]' : 'bg-[color:var(--composer-panel-muted-foreground)] opacity-50'
+          checked ? 'bg-[color:var(--menu-shell-foreground)]' : 'bg-[color:var(--menu-shell-muted-foreground)] opacity-50'
         )}
         aria-hidden
       />

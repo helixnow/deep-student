@@ -8,7 +8,6 @@
 import React, { useRef, useState, useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { invoke } from '@tauri-apps/api/core';
 import {
   ArrowUp,
   Square,
@@ -26,30 +25,32 @@ import {
   Network,
   Plus,
   Camera,
-  ImageSquare,
   Lightning,
   Sparkle,
   CircleNotch,
   FolderOpen,
   CaretDown,
+  MagnifyingGlass,
 } from '@phosphor-icons/react';
 import { usePdfProcessingProgress } from '@/hooks/usePdfProcessingProgress';
 import { usePdfProcessingStore } from '@/features/pdf/stores/pdfProcessingStore';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { ProviderIcon } from '@/components/ui/ProviderIcon';
 import {
   AppMenu,
   AppMenuTrigger,
   AppMenuContent,
   AppMenuItem,
   AppMenuGroup,
+  AppMenuSub,
+  AppMenuSubTrigger,
+  AppMenuSubContent,
   AppMenuSeparator,
   AppMenuSwitchItem,
 } from '@/components/ui/app-menu/AppMenu';
-import { AppSelect } from '@/components/ui/app-menu/AppSelect';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { Textarea } from '@/components/ui/shad/Textarea';
 import { useTauriDragAndDrop } from '@/hooks/useTauriDragAndDrop';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
@@ -77,6 +78,7 @@ import { AttachmentInjectModeSelector } from './AttachmentInjectModeSelector';
 import { ComposerPanelOverlay } from './ComposerPanelOverlay';
 import { ComposerPanel } from './ComposerPanel';
 import { ComposerToolButton } from './ComposerToolButton';
+import { ThreadContentShell } from '../ui/ThreadContentShell';
 import type { AttachmentInjectModes } from '../../core/types/common';
 import {
   type MediaInjectMode,
@@ -86,7 +88,6 @@ import {
 } from './injectModeUtils';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { useVoiceInputIntegration } from '@/voice-input';
-import { inferApiCapabilities } from '@/utils/apiCapabilityEngine';
 
 // ============================================================================
 // 常量
@@ -110,46 +111,6 @@ import {
  * 集中管理输入栏的各种硬编码值，便于维护和调整
  */
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
-
-type ImageGenPurpose = 'knowledge_card' | 'quiz_image' | 'concept_diagram' | 'cover_image';
-
-type ImageGenerationApiConfig = {
-  id: string;
-  name?: string;
-  model?: string;
-  vendorName?: string;
-  vendor_name?: string;
-  providerType?: string;
-  provider_type?: string;
-  providerScope?: string;
-  provider_scope?: string;
-  enabled?: boolean;
-  isImageGeneration?: boolean;
-  is_image_generation?: boolean;
-  isEmbedding?: boolean;
-  is_embedding?: boolean;
-  isReranker?: boolean;
-  is_reranker?: boolean;
-};
-
-type ImageGenerationAssignments = Record<string, string | null | undefined> & {
-  image_generation_model_config_id?: string | null;
-};
-
-function isImageGenerationApiConfig(api: ImageGenerationApiConfig): boolean {
-  if (api.isEmbedding === true || api.is_embedding === true) return false;
-  if (api.isReranker === true || api.is_reranker === true) return false;
-  if (api.isImageGeneration === true || api.is_image_generation === true) return true;
-  return inferApiCapabilities({
-    id: api.model || api.id,
-    name: api.name,
-    providerScope: api.providerScope ?? api.provider_scope ?? api.providerType ?? api.provider_type,
-  }).imageModel;
-}
-
-function getImageGenerationModelLabel(api: ImageGenerationApiConfig): string {
-  return api.name || api.model || api.id;
-}
 
 const INPUT_BAR_CONFIG = {
   /** 延迟时间配置 */
@@ -517,7 +478,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   renderAdvancedPanel,
   renderMcpPanel,
   renderSkillPanel,
-  onOpenModelPanel,
   onOpenRuntimeModelPanel,
   // 教材侧栏控制
   textbookOpen,
@@ -527,7 +487,10 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   modelMentionActions,
   runtimeModelLabel,
   runtimeModelProviderLabel,
-  runtimeModelMenu,
+  runtimeModelIconId,
+  runtimeCurrentModelId,
+  runtimeModelOptions = [],
+  onSelectRuntimeModel,
   // 推理模式
   enableThinking,
   thinkingStateLabel,
@@ -559,157 +522,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   onClearPdfPageRefs,
 }) => {
   const { t } = useTranslation(['analysis', 'common', 'chatV2', 'settings']);
-  const [imageGenPrompt, setImageGenPrompt] = useState('');
-  const [imageGenPurpose, setImageGenPurpose] = useState<ImageGenPurpose>('concept_diagram');
-  const [imageGenAspectRatio, setImageGenAspectRatio] = useState<'1:1' | '4:3' | '3:4' | '16:9' | '9:16'>('1:1');
-  const [imageGenQuality, setImageGenQuality] = useState<'auto' | 'low' | 'medium' | 'high'>('auto');
-  const [imageGenModels, setImageGenModels] = useState<ImageGenerationApiConfig[]>([]);
-  const [imageGenModelId, setImageGenModelId] = useState('');
-  const [imageGenModelsLoading, setImageGenModelsLoading] = useState(false);
-  const [imageGenModelSaving, setImageGenModelSaving] = useState(false);
-
-  const imageGenPurposes = useMemo(
-    () => [
-      { value: 'knowledge_card' as const, label: t('chatV2:inputBar.imageGen.purposes.knowledgeCard', '知识卡片插图') },
-      { value: 'quiz_image' as const, label: t('chatV2:inputBar.imageGen.purposes.quizImage', '题目配图') },
-      { value: 'concept_diagram' as const, label: t('chatV2:inputBar.imageGen.purposes.conceptDiagram', '概念图') },
-      { value: 'cover_image' as const, label: t('chatV2:inputBar.imageGen.purposes.coverImage', '封面图') },
-    ],
-    [t]
-  );
-
-  const selectedImageGenPurposeLabel = useMemo(
-    () => imageGenPurposes.find((purpose) => purpose.value === imageGenPurpose)?.label || imageGenPurpose,
-    [imageGenPurpose, imageGenPurposes]
-  );
-
-  const imageGenModelOptions = useMemo(
-    () => imageGenModels.map((model) => ({
-      value: model.id,
-      label: getImageGenerationModelLabel(model),
-      description: model.model,
-    })),
-    [imageGenModels]
-  );
-
-  const selectedImageGenModel = useMemo(
-    () => imageGenModels.find((model) => model.id === imageGenModelId),
-    [imageGenModelId, imageGenModels]
-  );
-
-  const hasImageGenModels = imageGenModels.length > 0;
-
-  const loadImageGenerationModels = useCallback(async () => {
-    setImageGenModelsLoading(true);
-    try {
-      const [configs, assignments] = await Promise.all([
-        invoke<ImageGenerationApiConfig[]>('get_api_configurations'),
-        invoke<ImageGenerationAssignments>('get_model_assignments'),
-      ]);
-      const candidates = (configs || [])
-        .filter((api) => api.enabled !== false && isImageGenerationApiConfig(api));
-      const assignedId = assignments?.image_generation_model_config_id || '';
-      const selectedId = assignedId && candidates.some((api) => api.id === assignedId)
-        ? assignedId
-        : candidates[0]?.id || '';
-      setImageGenModels(candidates);
-      setImageGenModelId(selectedId);
-    } catch (error: unknown) {
-      console.warn('[InputBarUI] Failed to load image generation models:', error);
-      setImageGenModels([]);
-      setImageGenModelId('');
-    } finally {
-      setImageGenModelsLoading(false);
-    }
-  }, []);
-
-  useEffect(() => {
-    if (panelStates.imageGen) {
-      void loadImageGenerationModels();
-    }
-  }, [loadImageGenerationModels, panelStates.imageGen]);
-
-  useEffect(() => {
-    const reload = () => {
-      if (panelStates.imageGen) {
-        void loadImageGenerationModels();
-      }
-    };
-    window.addEventListener('api_configurations_changed', reload as EventListener);
-    window.addEventListener('model_assignments_changed', reload as EventListener);
-    return () => {
-      window.removeEventListener('api_configurations_changed', reload as EventListener);
-      window.removeEventListener('model_assignments_changed', reload as EventListener);
-    };
-  }, [loadImageGenerationModels, panelStates.imageGen]);
-
-  const handleImageGenModelChange = useCallback(async (modelId: string) => {
-    setImageGenModelId(modelId);
-    setImageGenModelSaving(true);
-    try {
-      const currentAssignments = await invoke<ImageGenerationAssignments>('get_model_assignments');
-      await invoke<void>('save_model_assignments', {
-        assignments: {
-          ...currentAssignments,
-          image_generation_model_config_id: modelId || null,
-        },
-      });
-      window.dispatchEvent(new CustomEvent('model_assignments_changed'));
-      showGlobalNotification('success', t('settings:notifications.image_generation_saved', '生图模型配置已保存'));
-    } catch (error: unknown) {
-      showGlobalNotification('error', t('settings:mcp.save_model_assignment_failed', { error: getErrorMessage(error) }));
-      void loadImageGenerationModels();
-    } finally {
-      setImageGenModelSaving(false);
-    }
-  }, [loadImageGenerationModels, t]);
-
-  const handleImageGenerate = useCallback(() => {
-    const prompt = imageGenPrompt.trim();
-    if (!prompt) {
-      showGlobalNotification('warning', t('chatV2:inputBar.imageGen.promptRequired', '请输入生图描述'));
-      return;
-    }
-    if (imageGenModelsLoading || imageGenModelSaving) return;
-    if (!hasImageGenModels) {
-      showGlobalNotification('warning', t('chatV2:inputBar.imageGen.noModelTitle', '未配置生图模型'));
-      return;
-    }
-    const command = [
-      '请加载 image-generation 技能并调用 builtin-image_generate 生成 1 张图片。',
-      `prompt: ${prompt}`,
-      `aspectRatio: ${imageGenAspectRatio}`,
-      `quality: ${imageGenQuality}`,
-      `purpose: ${selectedImageGenPurposeLabel}`,
-      '生成完成后请简短说明图片已保存到 VFS 的“AI 生成图片”文件夹。',
-    ].join('\n');
-    onInputChange(command);
-    onSetPanelState('imageGen', false);
-    window.setTimeout(() => {
-      onSend();
-    }, 0);
-  }, [
-    hasImageGenModels,
-    imageGenAspectRatio,
-    imageGenModelSaving,
-    imageGenModelsLoading,
-    imageGenPrompt,
-    imageGenQuality,
-    onInputChange,
-    onSend,
-    onSetPanelState,
-    selectedImageGenPurposeLabel,
-    t,
-  ]);
-
-  const handleOpenImageGenerationSettings = useCallback(() => {
-    onSetPanelState('imageGen', false);
-    window.dispatchEvent(new CustomEvent('navigate-to-tab', { detail: { tabName: 'settings' } }));
-    window.setTimeout(() => {
-      window.dispatchEvent(new CustomEvent(COMMAND_EVENTS.SETTINGS_NAVIGATE_TAB, { detail: { tab: 'models' } }));
-    }, 120);
-  }, [onSetPanelState]);
-
   const modeLabelMap = useMemo<Record<MediaInjectMode, string>>(() => ({
     text: t('chatV2:injectMode.pdf.text'),
     ocr: t('chatV2:injectMode.image.ocr'),
@@ -1238,7 +1050,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const advancedPanelMotion = useDeferredOpen(panelStates.advanced);
   const mcpPanelMotion = useDeferredOpen(panelStates.mcp);
   const skillPanelMotion = useDeferredOpen(panelStates.skill);
-  const imageGenPanelMotion = useDeferredOpen(panelStates.imageGen);
 
   // ========== 派生值 ==========
   const iconButtonClass = 'inline-flex items-center justify-center h-9 w-9 rounded-[var(--radius-shell-control)] text-[color:var(--button-utility-foreground)] transition-colors hover:bg-[color:var(--button-utility-hover)] hover:text-[color:var(--text-primary)] active:bg-[color:var(--button-utility-active)]';
@@ -1260,6 +1071,9 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const compactThinkingStateLabel = getCompactThinkingLabel(thinkingStateLabel);
   const runtimeModelTitle = t('chatV2:inputBar.runtimeModelTitle', '模型');
   const chooseRuntimeModelLabel = t('chatV2:inputBar.chooseRuntimeModel', '选择模型');
+  const runtimeModelSearchPlaceholder = t('app_menu.search.placeholder', '搜索名称或模型 ID...');
+  const runtimeCompareModeLabel = t('chatV2:inputBar.runtimeModelCompareMode', '进入多选模式...');
+  const fallbackRuntimeProviderLabel = t('chatV2:inputBar.runtimeModelOtherProvider', '其他');
   const runtimeModelAccessibleCurrent = runtimeModelLabel
     ? runtimeModelProviderLabel
       ? `${runtimeModelProviderLabel} / ${runtimeModelLabel}`
@@ -1283,10 +1097,41 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     thinkingDepthOptions.length > 0
   );
   const hasThinkingUnsupportedMenu = !!(compactThinkingStateLabel && thinkingUnsupported);
-  const hasRuntimeModelMenu = !!renderModelPanel;
+  const hasRuntimeModelMenu = runtimeModelOptions.length > 0 || !!renderModelPanel;
   const hasThinkingRuntimeMenu = hasThinkingDepthMenu || hasThinkingUnsupportedMenu || hasRuntimeModelMenu;
   const hasThinkingToggleMenu = !!(!thinkingUnsupported && compactThinkingStateLabel && (onSetThinkingDepth || onToggleThinking));
   const thinkingRuntimeTriggerLabel = compactThinkingStateLabel || runtimeModelLabel || runtimeModelTitle;
+  const [runtimeModelSearch, setRuntimeModelSearch] = useState('');
+  const normalizedRuntimeModelSearch = runtimeModelSearch.trim().toLowerCase();
+  const groupedRuntimeModelOptions = useMemo(() => {
+    if (runtimeModelOptions.length === 0) return [];
+
+    const filteredOptions = normalizedRuntimeModelSearch.length === 0
+      ? runtimeModelOptions
+      : runtimeModelOptions.filter((model) => {
+          const haystack = [model.label, model.providerLabel, model.id]
+            .filter((value): value is string => typeof value === 'string' && value.length > 0)
+            .join(' ')
+            .toLowerCase();
+          return haystack.includes(normalizedRuntimeModelSearch);
+        });
+
+    const groups = new Map<string, typeof runtimeModelOptions>();
+    filteredOptions.forEach((model) => {
+      const providerLabel = model.providerLabel?.trim() || fallbackRuntimeProviderLabel;
+      const existing = groups.get(providerLabel);
+      if (existing) {
+        existing.push(model);
+        return;
+      }
+      groups.set(providerLabel, [model]);
+    });
+
+    return Array.from(groups.entries()).map(([providerLabel, models]) => ({
+      providerLabel,
+      models,
+    }));
+  }, [fallbackRuntimeProviderLabel, normalizedRuntimeModelSearch, runtimeModelOptions]);
   const hasText = inputValue.trim().length > 0;
   const hasAttachments = attachmentCount > 0;
   const hasContent = hasText || hasAttachments;
@@ -1299,9 +1144,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   // 🔧 面板容器 ref，用于检测点击是否在面板内
   const panelContainerRef = useRef<HTMLDivElement>(null);
   const composerPanelOverlayRef = useRef<HTMLDivElement | null>(null);
-  // 模型面板 popover 的当前 placement（top: popover 在输入栏上方；bottom: 在下方）
-  // 用于让输入栏在与 popover 接缝的那条边变方角，形成"长出来"效果
-  const [modelPanelPlacement, setModelPanelPlacement] = useState<'top' | 'bottom'>('top');
+  const runtimeModelTriggerRef = useRef<HTMLSpanElement | null>(null);
   // 🔧 P1修复：检查是否有附件正在上传
   const hasUploadingAttachments = attachments.some(a => a.status === 'uploading' || a.status === 'pending');
   // 允许 ready 或 processing 但选中模式已就绪的附件发送
@@ -1403,8 +1246,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const dockedHeightVarValue = `${dockedHeightWithGap}px`;
 
   // ========== 发送/停止按钮状态 ==========
-  // 🆕 队列模式启用时，流式中不切换为 Stop —— 改为允许继续发送（入队）
-  const showStop = isStreaming && !queueEnabled;
+  // 流式输出时始终优先展示 Stop，避免队列模式隐藏中断入口。
+  const showStop = isStreaming;
   // 🆕 canSubmit 允许在 idle 或 队列模式下放行，未提供时退化到 canSend
   const effectiveCanSubmit = canSubmit ?? canSend;
   // 🔧 P1修复：附件上传中时禁用发送
@@ -1599,27 +1442,16 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     togglePanel('attachment');
   }, [togglePanel]);
 
-  const handleOpenModelPanel = useCallback(() => {
-    setIsAttachmentMenuOpen(false);
-    modelMentionActions?.closeAutoComplete();
-
-    if (onOpenModelPanel) {
-      onOpenModelPanel();
-      return;
-    }
-    togglePanel('model');
-  }, [modelMentionActions, onOpenModelPanel, togglePanel]);
-
-  const handleOpenRuntimeModelPanel = useCallback(() => {
+  const handleOpenRuntimeModelPanel = useCallback((mode: 'single' | 'compare' = 'single') => {
     setIsAttachmentMenuOpen(false);
     modelMentionActions?.closeAutoComplete();
 
     if (onOpenRuntimeModelPanel) {
-      onOpenRuntimeModelPanel();
+      onOpenRuntimeModelPanel(mode);
       return;
     }
     togglePanel('model');
-  }, [modelMentionActions, onOpenRuntimeModelPanel, togglePanel]);
+  }, [modelMentionActions, onOpenRuntimeModelPanel, renderModelPanel, togglePanel]);
 
   const handleTurnThinkingOn = useCallback(() => {
     if (enableThinking) return;
@@ -1648,7 +1480,10 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       setIsAttachmentMenuOpen(false);
       modelMentionActions?.closeAutoComplete();
       closeAllPanels();
+      setRuntimeModelSearch('');
+      return;
     }
+    setRuntimeModelSearch('');
   }, [closeAllPanels, modelMentionActions]);
 
   const handleAddAttachmentAction = useCallback(() => {
@@ -2213,7 +2048,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       className={cn(
         // 🎨 布局分离：作为 flex 子项，relative 用于面板定位
         // 🔧 P0修复：移除 ring 样式，避免拖拽时显示难看的实心边框
-        'relative z-[100] w-full flex-shrink-0 px-4 pt-2.5 transition-all duration-500 ease-out unified-input-docked md:px-8 md:pb-4',
+        'relative isolate z-[100] w-full flex-shrink-0 px-4 pt-2.5 transition-all duration-500 ease-out unified-input-docked md:px-8 md:pb-4',
         className
       )}
       style={{
@@ -2227,19 +2062,13 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       }}
       {...dropZoneProps}
     >
-      <div className="mx-auto w-full max-w-thread">
+      <ThreadContentShell>
         {/* study-ui 对齐：输入区回到安静的居中 composer，而不是漂浮玻璃卡片。 */}
         <div
           ref={inputContainerRef}
           data-composer-panel-anchor
           className={cn(
-            'relative z-[200] overflow-hidden rounded-[var(--radius-shell-toolbar)] border border-[color:var(--input-shell-border)] bg-[color:var(--unified-input-shell-surface,var(--shell-inspector-panel))] p-3 pl-4 shadow-[var(--shadow-shell-soft)] transition-shadow duration-150 ease-out focus-within:shadow-[var(--shadow-shell-panel)]',
-            // 模型面板"展开/正在收起"期间，与 popover 接缝的那条边变方角
-            // 用 shouldRender 而不是 activeComposerPanel，确保关闭动画期间不闪烁
-            // placement=top: popover 在上方 → 输入栏顶角变方
-            // placement=bottom: popover 在下方（视口顶部场景）→ 输入栏底角变方
-            modelPanelMotion.shouldRender && modelPanelPlacement === 'top' && 'rounded-t-none',
-            modelPanelMotion.shouldRender && modelPanelPlacement === 'bottom' && 'rounded-b-none'
+            'relative z-[200] overflow-hidden rounded-[var(--radius-shell-toolbar)] border border-[color:var(--input-shell-border)] bg-[color:var(--unified-input-shell-surface,var(--shell-inspector-panel))] p-3 pl-4 shadow-[var(--shadow-shell-soft)] transition-shadow duration-150 ease-out focus-within:shadow-[var(--shadow-shell-panel)]'
           )}
         >
         {/* 🔧 P0修复：拖拽遮罩层移到输入容器内部，确保与输入框完全重合 */}
@@ -2554,26 +2383,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
             {/* ★ 加号菜单已移除，统一桌面端和移动端样式 */}
 
-            {/* 模型选择按钮 */}
-            <ComposerToolButton
-              data-testid="btn-toggle-model"
-              icon={Sparkle}
-              label={t('chatV2:inputBar.toggleModelPanel')}
-              tooltipContent={t('chat_host:model_panel.title')}
-              active={panelStates.model}
-              onClick={handleOpenModelPanel}
-              tooltipDisabled={tooltipDisabled}
-            />
-
-            <ComposerToolButton
-              data-testid="btn-toggle-image-gen"
-              icon={ImageSquare}
-              label={t('chatV2:inputBar.imageGen.title', '生成图片')}
-              active={panelStates.imageGen}
-              onClick={() => togglePanel('imageGen')}
-              tooltipDisabled={tooltipDisabled}
-            />
-
             {/* 🔧 P0: 技能选择独立按钮 */}
             {renderSkillPanel && (
               <ComposerToolButton
@@ -2648,6 +2457,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             {/* 推理强度 - 放在原附件按钮位置，靠近发送动作 */}
             {onToggleThinking && (
               <span
+                ref={runtimeModelTriggerRef}
                 className={cn(
                   'relative inline-flex h-8 min-w-0 max-w-[8rem] shrink-0 items-center rounded-[var(--radius-shell-control)] px-1 text-[13px] font-semibold leading-none',
                   enableThinking && !thinkingUnsupported
@@ -2672,7 +2482,17 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                             : t('chatV2:inputBar.thinking', '推理模式')
                         }
                       >
-                        <Lightning size={15} weight={enableThinking && !thinkingUnsupported ? "fill" : "bold"} className="shrink-0 opacity-90" />
+                        {runtimeModelIconId ? (
+                          <ProviderIcon
+                            modelId={runtimeModelIconId}
+                            size={15}
+                            showTooltip={false}
+                            variant="mono"
+                            className="shrink-0 opacity-80"
+                          />
+                        ) : (
+                          <Lightning size={15} weight={enableThinking && !thinkingUnsupported ? "fill" : "bold"} className="shrink-0 opacity-90" />
+                        )}
                         <span data-testid="thinking-runtime-state-label" className="min-w-0 max-w-[5.75rem] truncate">
                           {thinkingRuntimeTriggerLabel}
                         </span>
@@ -2717,33 +2537,119 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                       )}
                       {hasRuntimeModelMenu && (
                         <AppMenuGroup label={runtimeModelTitle}>
-                          <AppMenuItem
-                            aria-label={runtimeModelSwitchLabel}
-                            className={runtimeModelLabel ? '[&_.app-menu-item-content]:whitespace-normal' : undefined}
-                            title={runtimeModelSwitchTitle}
-                            onClick={handleOpenRuntimeModelPanel}
-                          >
-                            {runtimeModelLabel ? (
-                              <span className="flex min-w-0 max-w-full flex-col gap-0.5 leading-tight">
-                                <span
-                                  className="block min-w-0 max-w-full truncate text-[12px] font-medium text-foreground"
-                                  title={runtimeModelLabel}
-                                >
-                                  {runtimeModelLabel}
-                                </span>
-                                {runtimeModelProviderLabel && (
-                                  <span
-                                    className="block min-w-0 max-w-full truncate text-[10.5px] text-muted-foreground"
-                                    title={runtimeModelProviderLabel}
-                                  >
-                                    {runtimeModelProviderLabel}
+                          {runtimeModelOptions.length > 0 ? (
+                            <AppMenuSub openOnClick>
+                              <AppMenuSubTrigger
+                                aria-label={runtimeModelSwitchLabel}
+                                className={runtimeModelLabel ? '[&_.app-menu-item-content]:whitespace-normal' : undefined}
+                                title={runtimeModelSwitchTitle}
+                              >
+                                {runtimeModelLabel ? (
+                                  <span className="flex min-w-0 max-w-full flex-col gap-0.5 leading-tight">
+                                    <span
+                                      className="block min-w-0 max-w-full truncate text-[12px] font-medium text-foreground"
+                                      title={runtimeModelLabel}
+                                    >
+                                      {runtimeModelLabel}
+                                    </span>
+                                    {runtimeModelProviderLabel && (
+                                      <span
+                                        className="block min-w-0 max-w-full truncate text-[10.5px] text-muted-foreground"
+                                        title={runtimeModelProviderLabel}
+                                      >
+                                        {runtimeModelProviderLabel}
+                                      </span>
+                                    )}
                                   </span>
+                                ) : (
+                                  chooseRuntimeModelLabel
                                 )}
-                              </span>
-                            ) : (
-                              chooseRuntimeModelLabel
-                            )}
-                          </AppMenuItem>
+                              </AppMenuSubTrigger>
+                              <AppMenuSubContent className="w-[min(240px,calc(100vw-24px))] max-w-[min(240px,calc(100vw-24px))] p-1">
+                                <div className="app-menu-search">
+                                  <MagnifyingGlass className="app-menu-search-icon" />
+                                  <input
+                                    type="text"
+                                    className="app-menu-search-input"
+                                    placeholder={runtimeModelSearchPlaceholder}
+                                    value={runtimeModelSearch}
+                                    onChange={(event) => setRuntimeModelSearch(event.target.value)}
+                                    onClick={(event) => event.stopPropagation()}
+                                  />
+                                </div>
+                                <div className="max-h-[220px] overflow-y-auto">
+                                  {groupedRuntimeModelOptions.length > 0 ? (
+                                    groupedRuntimeModelOptions.map((group) => (
+                                      <AppMenuGroup key={group.providerLabel} label={group.providerLabel}>
+                                        {group.models.map((model) => (
+                                          <AppMenuItem
+                                            key={model.id}
+                                            icon={model.iconId ? (
+                                              <ProviderIcon
+                                                modelId={model.iconId}
+                                                size={14}
+                                                showTooltip={false}
+                                                variant="mono"
+                                              />
+                                            ) : undefined}
+                                            checked={model.id === runtimeCurrentModelId}
+                                            onClick={() => onSelectRuntimeModel?.(model.id)}
+                                          >
+                                            <span className="flex min-w-0 max-w-full flex-col gap-0.5 leading-tight">
+                                              <span className="block min-w-0 max-w-full truncate text-[12px] font-medium text-foreground">
+                                                {model.label}
+                                              </span>
+                                              {model.providerLabel && (
+                                                <span className="block min-w-0 max-w-full truncate text-[10.5px] text-muted-foreground">
+                                                  {model.providerLabel}
+                                                </span>
+                                              )}
+                                            </span>
+                                          </AppMenuItem>
+                                        ))}
+                                      </AppMenuGroup>
+                                    ))
+                                  ) : (
+                                    <AppMenuItem disabled>
+                                      {t('chatV2:inputBar.runtimeModelNoResults', '未找到匹配模型')}
+                                    </AppMenuItem>
+                                  )}
+                                </div>
+                                <AppMenuSeparator />
+                                <AppMenuItem onClick={() => handleOpenRuntimeModelPanel('compare')}>
+                                  {runtimeCompareModeLabel}
+                                </AppMenuItem>
+                              </AppMenuSubContent>
+                            </AppMenuSub>
+                          ) : (
+                            <AppMenuItem
+                              aria-label={runtimeModelSwitchLabel}
+                              className={runtimeModelLabel ? '[&_.app-menu-item-content]:whitespace-normal' : undefined}
+                              title={runtimeModelSwitchTitle}
+                              onClick={handleOpenRuntimeModelPanel}
+                            >
+                              {runtimeModelLabel ? (
+                                <span className="flex min-w-0 max-w-full flex-col gap-0.5 leading-tight">
+                                  <span
+                                    className="block min-w-0 max-w-full truncate text-[12px] font-medium text-foreground"
+                                    title={runtimeModelLabel}
+                                  >
+                                    {runtimeModelLabel}
+                                  </span>
+                                  {runtimeModelProviderLabel && (
+                                    <span
+                                      className="block min-w-0 max-w-full truncate text-[10.5px] text-muted-foreground"
+                                      title={runtimeModelProviderLabel}
+                                    >
+                                      {runtimeModelProviderLabel}
+                                    </span>
+                                  )}
+                                </span>
+                              ) : (
+                                chooseRuntimeModelLabel
+                              )}
+                            </AppMenuItem>
+                          )}
                         </AppMenuGroup>
                       )}
                     </AppMenuContent>
@@ -2778,10 +2684,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 )}
               </span>
             )}
-
-            {/* 运行时模型选择独立 AppMenu */}
-            {runtimeModelMenu}
-
             {/* 🆕 媒体处理中提示 */}
             {hasProcessingMedia && (
               <div className="text-xs text-muted-foreground flex items-center gap-1 mr-1">
@@ -2835,7 +2737,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
           </>
         )}
       </div>
-      </div>
+      </ThreadContentShell>
 
       {/* 🔧 面板容器 - 用于检测点击是否在面板内 */}
       {/* 🔧 P0修复：stopPropagation 防止面板内点击冒泡到 document 触发 handleClickOutside */}
@@ -3121,213 +3023,27 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
         {/* ★ RAG 知识库面板已移至对话控制面板 */}
 
-        {/* 模型选择面板 - 贴齐输入栏宽度，无缝粘连，占满可用高度 */}
+        {/* 模型选择面板 - 供命令面板/消息重试等外部入口复用 */}
         {renderModelPanel && (
           activeComposerPanel === 'model' && modelPanelMotion.shouldRender && (
             <ComposerPanelOverlay
               panelKey="model"
-              anchorRef={inputContainerRef}
+              anchorRef={runtimeModelTriggerRef}
               overlayRef={composerPanelOverlayRef}
               motionState={modelPanelMotion.motionState}
               maxHeight={500}
-              widthMode="anchor"
-              gap={0}
-              heightMode="available"
-              onPlacementChange={setModelPanelPlacement}
-              // 视觉：让模型面板与输入栏共享一条接缝——同 surface/border/shadow
-              // 接缝边（朝向输入栏的那条）去圆角去 border；远端边保留 toolbar 圆角
-              // 通过 data-composer-panel-placement 自适应：popover 在上方时去下边圆角，在下方时去上边圆角
+              preferredWidth={560}
+              widthMode="wide"
+              gap={8}
+              heightMode="content"
               className={cn(
-                '!border-[color:var(--input-shell-border)] !bg-[color:var(--unified-input-shell-surface,var(--shell-inspector-panel))] !shadow-[var(--shadow-shell-panel)]',
-                'data-[composer-panel-placement=top]:!rounded-b-none data-[composer-panel-placement=top]:!border-b-0 data-[composer-panel-placement=top]:!rounded-t-[var(--radius-shell-toolbar)]',
-                'data-[composer-panel-placement=bottom]:!rounded-t-none data-[composer-panel-placement=bottom]:!border-t-0 data-[composer-panel-placement=bottom]:!rounded-b-[var(--radius-shell-toolbar)]'
+                '!border-[color:var(--menu-shell-border)] !bg-[color:var(--menu-shell-surface)] !text-[color:var(--menu-shell-foreground)]',
+                '!rounded-[var(--menu-shell-radius)] !p-[var(--menu-shell-padding)] !shadow-[var(--menu-shell-shadow)]'
               )}
             >
               {renderModelPanel()}
             </ComposerPanelOverlay>
           )
-        )}
-
-        {activeComposerPanel === 'imageGen' && imageGenPanelMotion.shouldRender && (
-          <ComposerPanelOverlay
-            panelKey="imageGen"
-            anchorRef={inputContainerRef}
-            overlayRef={composerPanelOverlayRef}
-            motionState={imageGenPanelMotion.motionState}
-            maxHeight={620}
-            widthMode="anchor"
-            heightMode="available"
-          >
-              <ComposerPanel.Root fillHeight>
-                <ComposerPanel.Header
-                  icon={ImageSquare}
-                  title={t('chatV2:inputBar.imageGen.title', '生成图片')}
-                  subtitle={t('chatV2:inputBar.imageGen.subtitle', '通过内置工具生成图片，结果会保存到 VFS。')}
-                  actions={
-                    <NotionButton
-                      type="button"
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleOpenImageGenerationSettings}
-                      className="text-xs"
-                    >
-                      {t('chatV2:inputBar.imageGen.configureModel', '设置模型')}
-                    </NotionButton>
-                  }
-                  onClose={() => onSetPanelState('imageGen', false)}
-                  closeAriaLabel={t('common:actions.cancel')}
-                />
-
-                {imageGenModelsLoading ? (
-                  <ComposerPanel.Loading
-                    label={t('chatV2:inputBar.imageGen.loadingModels', '正在加载生图模型...')}
-                  />
-                ) : hasImageGenModels ? (
-                  <div className="grid gap-2 sm:grid-cols-[minmax(0,1fr)_auto] sm:items-end">
-                    <div className="min-w-0">
-                      <div className="mb-1.5 text-[11px] font-medium text-[color:var(--composer-panel-muted-foreground)]">
-                        {t('chatV2:inputBar.imageGen.model', '模型')}
-                      </div>
-                      <AppSelect
-                        value={imageGenModelId}
-                        onValueChange={handleImageGenModelChange}
-                        options={imageGenModelOptions}
-                        placeholder={t('settings:placeholders.no_image_generation_model', '暂无可用的生图模型')}
-                        disabled={imageGenModelSaving}
-                        className="w-full max-w-full border border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-control-surface)]"
-                        width={320}
-                        size="sm"
-                        triggerIcon={<ImageSquare size={14} weight="bold" />}
-                      />
-                    </div>
-                    <div className="min-w-0 rounded-lg border border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-muted-surface)] px-2 py-1.5 text-[11px] text-[color:var(--composer-panel-muted-foreground)] sm:max-w-[13rem]">
-                      <div className="truncate font-medium text-[color:var(--composer-panel-foreground)]">
-                        {selectedImageGenModel ? getImageGenerationModelLabel(selectedImageGenModel) : t('chatV2:inputBar.imageGen.autoModel', '自动选择')}
-                      </div>
-                      <div className="truncate">
-                        {selectedImageGenModel?.model || t('chatV2:inputBar.imageGen.openAICompatible', 'OpenAI 兼容 Image API')}
-                      </div>
-                    </div>
-                  </div>
-                ) : (
-                  <ComposerPanel.Empty
-                    icon={ImageSquare}
-                    title={t('chatV2:inputBar.imageGen.noModelTitle', '未配置生图模型')}
-                    description={t('chatV2:inputBar.imageGen.noModelDescription', '请先在模型设置中标记并选择一个支持 /images/generations 的模型。')}
-                    action={
-                      <NotionButton
-                        type="button"
-                        variant="ghost"
-                        size="sm"
-                        onClick={handleOpenImageGenerationSettings}
-                        className="text-xs"
-                      >
-                        {t('chatV2:inputBar.imageGen.configureModel', '设置模型')}
-                      </NotionButton>
-                    }
-                  />
-                )}
-
-                <Textarea
-                  value={imageGenPrompt}
-                  onChange={(event) => setImageGenPrompt(event.target.value)}
-                  placeholder={t('chatV2:inputBar.imageGen.placeholder', '例如：光合作用概念图，清晰标注阳光、水、二氧化碳、叶绿体和葡萄糖')}
-                  className="min-h-[88px] resize-none rounded-xl border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-control-surface)] text-[color:var(--composer-panel-foreground)] placeholder:text-[color:var(--composer-panel-placeholder)] focus-visible:border-[color:var(--composer-panel-focus-border)]"
-                />
-
-                <div className="flex flex-wrap gap-2">
-                  {imageGenPurposes.map((purpose) => (
-                    <button
-                      key={purpose.value}
-                      type="button"
-                      onClick={() => setImageGenPurpose(purpose.value)}
-                      aria-pressed={imageGenPurpose === purpose.value}
-                      className={cn(
-                        'rounded-full border px-3 py-1.5 text-xs transition-colors',
-                        'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--composer-panel-focus-border)]',
-                        imageGenPurpose === purpose.value
-                          ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]'
-                          : 'border-[color:var(--composer-panel-control-border)] text-[color:var(--composer-panel-muted-foreground)] hover:bg-[color:var(--composer-panel-control-hover)]'
-                      )}
-                    >
-                      {purpose.label}
-                    </button>
-                  ))}
-                </div>
-
-                <div className="grid gap-3 sm:grid-cols-2">
-                  <div className="min-w-0">
-                    <div className="mb-1.5 text-[11px] font-medium text-[color:var(--composer-panel-muted-foreground)]">
-                      {t('chatV2:inputBar.imageGen.aspectRatio', '比例')}
-                    </div>
-                    <div className="grid grid-cols-5 gap-1">
-                      {(['1:1', '4:3', '3:4', '16:9', '9:16'] as const).map((ratio) => (
-                        <button
-                          key={ratio}
-                          type="button"
-                          onClick={() => setImageGenAspectRatio(ratio)}
-                          aria-pressed={imageGenAspectRatio === ratio}
-                          className={cn(
-                            'h-8 rounded-lg border text-xs transition-colors',
-                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--composer-panel-focus-border)]',
-                            imageGenAspectRatio === ratio
-                              ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]'
-                              : 'border-[color:var(--composer-panel-control-border)] text-[color:var(--composer-panel-muted-foreground)] hover:bg-[color:var(--composer-panel-control-hover)]'
-                          )}
-                        >
-                          {ratio}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                  <div className="min-w-0">
-                    <div className="mb-1.5 text-[11px] font-medium text-[color:var(--composer-panel-muted-foreground)]">
-                      {t('chatV2:inputBar.imageGen.quality', '质量')}
-                    </div>
-                    <div className="grid grid-cols-4 gap-1">
-                      {(['auto', 'low', 'medium', 'high'] as const).map((quality) => (
-                        <button
-                          key={quality}
-                          type="button"
-                          onClick={() => setImageGenQuality(quality)}
-                          aria-pressed={imageGenQuality === quality}
-                          className={cn(
-                            'h-8 rounded-lg border text-xs capitalize transition-colors',
-                            'focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--composer-panel-focus-border)]',
-                            imageGenQuality === quality
-                              ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)]'
-                              : 'border-[color:var(--composer-panel-control-border)] text-[color:var(--composer-panel-muted-foreground)] hover:bg-[color:var(--composer-panel-control-hover)]'
-                          )}
-                        >
-                          {quality}
-                        </button>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-
-                <ComposerPanel.Footer className="mt-auto">
-                  <NotionButton
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => onSetPanelState('imageGen', false)}
-                  >
-                    {t('common:actions.cancel')}
-                  </NotionButton>
-                  <NotionButton
-                    type="button"
-                    size="sm"
-                    onClick={handleImageGenerate}
-                    disabled={!hasImageGenModels || imageGenModelsLoading || imageGenModelSaving || isStreaming}
-                    className="border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)] text-[color:var(--button-primary-foreground)] hover:bg-[color:var(--button-primary-hover)]"
-                  >
-                    <Sparkle size={14} weight="bold" />
-                    <span>{t('chatV2:inputBar.imageGen.generate', '生成')}</span>
-                  </NotionButton>
-                </ComposerPanel.Footer>
-              </ComposerPanel.Root>
-            </ComposerPanelOverlay>
         )}
 
         {/* MCP 工具面板 - 贴齐输入栏宽度 */}
