@@ -126,7 +126,13 @@ fn build_change(
 #[test]
 fn adv_01_clock_rewind_by_attacker() {
     let conn = new_db();
-    insert_raw(&conn, "n1", "local_fresh", "current", "2026-05-01T12:00:00Z");
+    insert_raw(
+        &conn,
+        "n1",
+        "local_fresh",
+        "current",
+        "2026-05-01T12:00:00Z",
+    );
     mark_all_synced(&conn);
 
     // 恶意端回调时钟到"3 天前"
@@ -381,7 +387,13 @@ fn adv_07_legitimate_revive_with_newer_timestamp() {
 #[test]
 fn adv_08_row_level_lww_loses_orthogonal_field_edits() {
     let conn = new_db();
-    insert_raw(&conn, "n1", "base_title", "base_body", "2026-05-01T09:00:00Z");
+    insert_raw(
+        &conn,
+        "n1",
+        "base_title",
+        "base_body",
+        "2026-05-01T09:00:00Z",
+    );
     mark_all_synced(&conn);
 
     // 本地改 body（只改 body）
@@ -489,7 +501,13 @@ fn adv_10_prune_gap_detection() {
 #[test]
 fn adv_11_payload_missing_fields_preserves_local() {
     let conn = new_db();
-    insert_raw(&conn, "n1", "base_title", "base_body", "2026-05-01T09:00:00Z");
+    insert_raw(
+        &conn,
+        "n1",
+        "base_title",
+        "base_body",
+        "2026-05-01T09:00:00Z",
+    );
     mark_all_synced(&conn);
 
     // 云端 payload 只有 id 和 updated_at，没有 title/body（模拟旧版本客户端）
@@ -573,7 +591,10 @@ fn adv_14_device_id_collision_scenario() {
     // 本测试仅断言 get_device_id 的返回值不变（稳定性），提示开发者这个问题。
     let id_1 = deep_student_lib::cloud_storage::get_device_id();
     let id_2 = deep_student_lib::cloud_storage::get_device_id();
-    assert_eq!(id_1, id_2, "device_id 应稳定（但不保证全局唯一，需要 install_uuid 加强）");
+    assert_eq!(
+        id_1, id_2,
+        "device_id 应稳定（但不保证全局唯一，需要 install_uuid 加强）"
+    );
 }
 
 /// **A.15** 回声循环：收到自己刚上传的变更再次应用 —— 不能重复产生 __change_log 条目
@@ -614,7 +635,10 @@ fn adv_15_echo_loop_prevention() {
         )
         .unwrap();
 
-    assert_eq!(before, after, "回放同一变更不应积累 pending change_log 条目");
+    assert_eq!(
+        before, after,
+        "回放同一变更不应积累 pending change_log 条目"
+    );
 }
 
 // ============================================================================
@@ -1132,10 +1156,7 @@ fn adv_31_tags_field_semantic_equality() {
     .unwrap();
 
     // 数据业务上相同 title，不同 updated_at → 不是冲突
-    assert_eq!(
-        conflict.conflicts_saved, 0,
-        "业务字段等价时不应记录冲突"
-    );
+    assert_eq!(conflict.conflicts_saved, 0, "业务字段等价时不应记录冲突");
 }
 
 // ============================================================================
@@ -1207,8 +1228,12 @@ fn adv_33_payload_id_mismatch_with_record_id() {
     let _ = r;
 
     // 检查：如果应用成功，写入的 id 是什么？
-    let count_n1: i64 = conn.query_row("SELECT COUNT(*) FROM items WHERE id='n1'", [], |r| r.get(0)).unwrap();
-    let count_n2: i64 = conn.query_row("SELECT COUNT(*) FROM items WHERE id='n2'", [], |r| r.get(0)).unwrap();
+    let count_n1: i64 = conn
+        .query_row("SELECT COUNT(*) FROM items WHERE id='n1'", [], |r| r.get(0))
+        .unwrap();
+    let count_n2: i64 = conn
+        .query_row("SELECT COUNT(*) FROM items WHERE id='n2'", [], |r| r.get(0))
+        .unwrap();
 
     println!(
         "adv_33 (payload id mismatch): n1_count={}, n2_count={}",
@@ -1264,7 +1289,10 @@ fn adv_34_conflict_table_query_by_record() {
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(unresolved, 2, "n1 应有 2 条未解决冲突（local side + cloud side）");
+    assert_eq!(
+        unresolved, 2,
+        "n1 应有 2 条未解决冲突（local side + cloud side）"
+    );
 }
 
 /// **A.35** 冲突解决后，再次发生冲突是否能正确累积
@@ -1361,7 +1389,12 @@ fn adv_38_delete_then_update_in_same_batch() {
     insert_raw(&conn, "n1", "original", "", "2026-01-01T00:00:00Z");
     mark_all_synced(&conn);
 
-    let del = build_change("n1", ChangeOperation::Delete, json!({}), "2026-05-01T10:00:00Z");
+    let del = build_change(
+        "n1",
+        ChangeOperation::Delete,
+        json!({}),
+        "2026-05-01T10:00:00Z",
+    );
     let upd = build_change(
         "n1",
         ChangeOperation::Update,
@@ -1397,7 +1430,12 @@ fn adv_39_update_then_delete_in_same_batch() {
         }),
         "2026-05-01T10:00:00Z",
     );
-    let del = build_change("n1", ChangeOperation::Delete, json!({}), "2026-05-01T11:00:00Z");
+    let del = build_change(
+        "n1",
+        ChangeOperation::Delete,
+        json!({}),
+        "2026-05-01T11:00:00Z",
+    );
 
     SyncManager::apply_downloaded_changes(&conn, &[upd, del], None).unwrap();
 

@@ -60,8 +60,8 @@ mod tests {
     /// 新增迁移只会让实际 count **增加**，不应减少。
     /// 如果新增了迁移，请将基线更新为新值。
     /// 如果这些断言失败，说明有迁移被误删。
-    const VFS_MIGRATION_BASELINE: usize = 10;
-    const CHAT_V2_MIGRATION_BASELINE: usize = 7;
+    const VFS_MIGRATION_BASELINE: usize = 28;
+    const CHAT_V2_MIGRATION_BASELINE: usize = 14;
     const MISTAKES_MIGRATION_BASELINE: usize = 6;
     const LLM_USAGE_MIGRATION_BASELINE: usize = 3;
 

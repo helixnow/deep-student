@@ -51,11 +51,9 @@ fn new_db() -> Connection {
 }
 
 fn get_title(conn: &Connection, id: &str) -> Option<String> {
-    conn.query_row(
-        "SELECT title FROM items WHERE id = ?1",
-        params![id],
-        |r| r.get(0),
-    )
+    conn.query_row("SELECT title FROM items WHERE id = ?1", params![id], |r| {
+        r.get(0)
+    })
     .ok()
 }
 
@@ -75,10 +73,7 @@ fn hlc_string_lww_ordering() {
         Ordering::Greater
     );
     // 非 HLC 格式回退到字符串比较
-    assert_eq!(
-        compare_hlc_strings("garbage", "garbage"),
-        Ordering::Equal
-    );
+    assert_eq!(compare_hlc_strings("garbage", "garbage"), Ordering::Equal);
 }
 
 /// **I.02** HLC 时钟在合法使用场景下能正确推进
@@ -256,7 +251,9 @@ fn partial_failure_retry_is_idempotent() {
     // 第一次尝试：含非法 → 全部回滚
     let r = SyncManager::apply_downloaded_changes(&conn, &[c1.clone(), bad], None);
     assert!(r.is_err());
-    let n: i64 = conn.query_row("SELECT COUNT(*) FROM items", [], |r| r.get(0)).unwrap();
+    let n: i64 = conn
+        .query_row("SELECT COUNT(*) FROM items", [], |r| r.get(0))
+        .unwrap();
     assert_eq!(n, 0);
 
     // 第二次重试：去掉非法条目
@@ -265,7 +262,9 @@ fn partial_failure_retry_is_idempotent() {
 
     // 第三次再重试：幂等
     SyncManager::apply_downloaded_changes(&conn, &[c1], None).unwrap();
-    let n2: i64 = conn.query_row("SELECT COUNT(*) FROM items", [], |r| r.get(0)).unwrap();
+    let n2: i64 = conn
+        .query_row("SELECT COUNT(*) FROM items", [], |r| r.get(0))
+        .unwrap();
     assert_eq!(n2, 1);
 }
 
@@ -361,7 +360,9 @@ fn invariant_delete_sets_tombstone() {
     .unwrap();
 
     let del: Option<String> = conn
-        .query_row("SELECT deleted_at FROM items WHERE id='n1'", [], |r| r.get(0))
+        .query_row("SELECT deleted_at FROM items WHERE id='n1'", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert!(del.is_some());
 }
@@ -475,7 +476,7 @@ fn invariant_self_applied_changes_have_no_echo() {
 /// **I.12** 冲突记录的 data_json 字段必须能被完整反序列化回来
 #[test]
 fn conflict_record_data_is_roundtripped() {
-    use deep_student_lib::data_governance::sync::{ConflictPolicy};
+    use deep_student_lib::data_governance::sync::ConflictPolicy;
 
     let conn = new_db();
     let now = chrono::Utc::now();

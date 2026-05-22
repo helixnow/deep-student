@@ -52,8 +52,7 @@ pub use emitter::{OptionalEmitter, SyncProgressCallback, SyncProgressEmitter, EV
 pub use hlc::{compare_hlc_strings, Hlc, HlcClock, HlcError, MAX_DRIFT_MS};
 pub use progress::{ProgressTracker, SpeedCalculator, SyncPhase, SyncProgress};
 pub use tombstone::{
-    apply_blob_tombstones, AssetTombstoneEntry, AssetTombstones, BlobTombstoneEntry,
-    BlobTombstones,
+    apply_blob_tombstones, AssetTombstoneEntry, AssetTombstones, BlobTombstoneEntry, BlobTombstones,
 };
 
 /// 公开的时间戳解析函数（供 conflict_resolver 等子模块复用）
@@ -536,9 +535,8 @@ impl SyncManager {
     fn encode_payload(&self, plaintext: &[u8]) -> Result<Vec<u8>, SyncError> {
         match self.encryption_password.as_deref() {
             Some(pw) if !pw.is_empty() => {
-                crate::crypto::backup_crypto::encrypt_backup(plaintext, pw).map_err(|e| {
-                    SyncError::Database(format!("加密 sync payload 失败: {}", e))
-                })
+                crate::crypto::backup_crypto::encrypt_backup(plaintext, pw)
+                    .map_err(|e| SyncError::Database(format!("加密 sync payload 失败: {}", e)))
             }
             _ => Ok(plaintext.to_vec()),
         }
@@ -1231,10 +1229,9 @@ impl SyncManager {
                                 continue;
                             }
                         };
-                        let decoded_data = zstd::stream::decode_all(std::io::Cursor::new(
-                            decrypted.as_slice(),
-                        ))
-                        .unwrap_or(decrypted);
+                        let decoded_data =
+                            zstd::stream::decode_all(std::io::Cursor::new(decrypted.as_slice()))
+                                .unwrap_or(decrypted);
 
                         if let Ok(payload) =
                             serde_json::from_slice::<SyncChangesPayload>(&decoded_data)
@@ -2228,9 +2225,8 @@ impl SyncManager {
         }
 
         // 只把 deleted_at 的显式 null 作为"复活意图"处理，其他 null 字段走 COALESCE
-        let revive_record =
-            matches!(obj.get("deleted_at"), Some(serde_json::Value::Null))
-                && Self::table_has_column(conn, table_name, "deleted_at");
+        let revive_record = matches!(obj.get("deleted_at"), Some(serde_json::Value::Null))
+            && Self::table_has_column(conn, table_name, "deleted_at");
 
         // build_insert_parts 已经跳过所有 null，因此 deleted_at=null 不会参与 INSERT/COALESCE
         let (columns, placeholders, values) = Self::build_insert_parts(obj)?;
@@ -2524,12 +2520,7 @@ impl SyncManager {
                         "UPDATE __change_log SET sync_version = ?1 \
                          WHERE id > ?2 AND sync_version = 0 \
                          AND table_name = ?3 AND record_id = ?4",
-                        params![
-                            sync_version,
-                            max_id,
-                            &change.table_name,
-                            &change.record_id,
-                        ],
+                        params![sync_version, max_id, &change.table_name, &change.record_id,],
                     );
                 }
             }
@@ -2605,7 +2596,13 @@ impl SyncManager {
         policy: conflict_resolver::ConflictPolicy,
         cloud_device_id: Option<&str>,
         local_device_id: Option<&str>,
-    ) -> Result<(ApplyChangesResult, conflict_resolver::ConflictAwareApplyResult), SyncError> {
+    ) -> Result<
+        (
+            ApplyChangesResult,
+            conflict_resolver::ConflictAwareApplyResult,
+        ),
+        SyncError,
+    > {
         use conflict_resolver::{ConflictResolver, ConflictSide};
 
         if changes.is_empty() {
@@ -2740,13 +2737,13 @@ impl SyncManager {
                                 .ok();
 
                             // 冲突已裁决为 Cloud 胜，绕过 LWW 门强制应用
-                            let applied = Self::apply_single_change_force(conn, &cloud_change, id_column)?;
+                            let applied =
+                                Self::apply_single_change_force(conn, &cloud_change, id_column)?;
                             if applied {
                                 apply_result.success_count += 1;
-                                apply_result.applied_keys.insert((
-                                    change.table_name.clone(),
-                                    change.record_id.clone(),
-                                ));
+                                apply_result
+                                    .applied_keys
+                                    .insert((change.table_name.clone(), change.record_id.clone()));
                                 conflict_result.applied += 1;
                             } else {
                                 apply_result.skipped_count += 1;
@@ -2941,8 +2938,7 @@ impl SyncManager {
                 // 1. 如果云端 changed_at 超出 wall clock "未来 60 秒" → 视为可疑漂移，跳过
                 // 2. 如果本地记录的 updated_at 严格晚于云端 DELETE 的 changed_at → 跳过（LWW）
                 if !skip_lww && has_tombstone {
-                    if let Some(cloud_ts) = parse_flexible_timestamp_public(&change.changed_at)
-                    {
+                    if let Some(cloud_ts) = parse_flexible_timestamp_public(&change.changed_at) {
                         // ─── HLC drift check ───
                         let now = chrono::Utc::now();
                         if (cloud_ts - now).num_milliseconds() > hlc::MAX_DRIFT_MS {
@@ -2970,7 +2966,9 @@ impl SyncManager {
                                     }
                                     if let Ok(ms) = row.get::<_, i64>(0) {
                                         return Ok(
-                                            chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms),
+                                            chrono::DateTime::<chrono::Utc>::from_timestamp_millis(
+                                                ms,
+                                            ),
                                         );
                                     }
                                     Ok(None)
@@ -2982,7 +2980,9 @@ impl SyncManager {
                                 if local_ts > cloud_ts {
                                     tracing::debug!(
                                         "[sync] LWW skip DELETE: {}.{} = {} (本地 update 更新)",
-                                        change.table_name, id_column, change.record_id
+                                        change.table_name,
+                                        id_column,
+                                        change.record_id
                                     );
                                     return Ok(false);
                                 }
@@ -3009,12 +3009,9 @@ impl SyncManager {
                     //
                     // [幂等性修复] 使用 `change.changed_at`（来自云端变更日志）而不是 `now()`，
                     // 确保同一 DELETE 变更被多次回放时写入相同时间戳（否则 checksum 每次都变）。
-                    let col_type = Self::get_column_declared_type(
-                        conn,
-                        &change.table_name,
-                        "deleted_at",
-                    )
-                    .unwrap_or_else(|| "TEXT".to_string());
+                    let col_type =
+                        Self::get_column_declared_type(conn, &change.table_name, "deleted_at")
+                            .unwrap_or_else(|| "TEXT".to_string());
                     let sql = format!(
                         "UPDATE {} SET \"deleted_at\" = ?1 WHERE {} = ?2 AND \"deleted_at\" IS NULL",
                         table_ident, id_col_ident
@@ -3082,10 +3079,20 @@ impl SyncManager {
                 // 抵达" 的场景产生分叉）。
                 //
                 // 跳过的判定需要**双方的 updated_at 都能解析**，否则保持原有行为（直接 UPSERT）。
-                if !skip_lww && Self::should_skip_stale_update(conn, &change.table_name, &change.record_id, id_column, data) {
+                if !skip_lww
+                    && Self::should_skip_stale_update(
+                        conn,
+                        &change.table_name,
+                        &change.record_id,
+                        id_column,
+                        data,
+                    )
+                {
                     tracing::debug!(
                         "[sync] LWW skip: {}.{} = {} (本地更新)",
-                        change.table_name, id_column, change.record_id
+                        change.table_name,
+                        id_column,
+                        change.record_id
                     );
                     return Ok(false);
                 }
@@ -4791,8 +4798,7 @@ impl SyncManager {
                             mf.updated_at = chrono::Utc::now().to_rfc3339();
                             if let Ok(json) = serde_json::to_vec(&mf) {
                                 if let Ok(payload) = self.encode_payload(&json) {
-                                    let _ =
-                                        storage.put(Self::BLOBS_MANIFEST_KEY, &payload).await;
+                                    let _ = storage.put(Self::BLOBS_MANIFEST_KEY, &payload).await;
                                 }
                             }
                         }
@@ -4822,11 +4828,7 @@ impl SyncManager {
                 // 云端删除
                 let remote_key = format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key);
                 if let Err(e) = storage.delete(&remote_key).await {
-                    tracing::warn!(
-                        "[sync] 删除云端资产失败（忽略）: {}: {}",
-                        remote_key,
-                        e
-                    );
+                    tracing::warn!("[sync] 删除云端资产失败（忽略）: {}: {}", remote_key, e);
                 }
                 // 本地删除
                 if let Some(local) = Self::asset_local_path_from_key(active_dir, app_data_dir, key)
@@ -4850,8 +4852,7 @@ impl SyncManager {
                             mf.updated_at = chrono::Utc::now().to_rfc3339();
                             if let Ok(json) = serde_json::to_vec(&mf) {
                                 if let Ok(payload) = self.encode_payload(&json) {
-                                    let _ =
-                                        storage.put(Self::ASSETS_MANIFEST_KEY, &payload).await;
+                                    let _ = storage.put(Self::ASSETS_MANIFEST_KEY, &payload).await;
                                 }
                             }
                         }
@@ -4861,7 +4862,8 @@ impl SyncManager {
         }
 
         // 2. 走标准同步流程
-        self.sync_asset_directories(storage, active_dir, app_data_dir).await
+        self.sync_asset_directories(storage, active_dir, app_data_dir)
+            .await
     }
 }
 
@@ -5372,8 +5374,7 @@ mod tests {
         )
         .unwrap();
 
-        let (truncated, reset) =
-            SyncManager::reset_sync_baseline_after_restore(&conn).unwrap();
+        let (truncated, reset) = SyncManager::reset_sync_baseline_after_restore(&conn).unwrap();
         assert_eq!(truncated, 2);
         // 优化后仅更新 "sync_version != local_version" 的行，避免不必要的 trigger。
         // n1 (lv=5, sv=3) 需要更新；n2 (lv=2, sv=2) 相等不需更新。

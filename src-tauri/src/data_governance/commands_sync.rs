@@ -144,7 +144,10 @@ async fn drain_blob_deletion_queue(
     let conn = match rusqlite::Connection::open(&vfs_path) {
         Ok(c) => c,
         Err(e) => {
-            warn!("[data_governance] 打开 vfs.db 失败（跳过 blob 删除队列）: {}", e);
+            warn!(
+                "[data_governance] 打开 vfs.db 失败（跳过 blob 删除队列）: {}",
+                e
+            );
             return 0;
         }
     };
@@ -218,10 +221,7 @@ async fn drain_blob_deletion_queue(
     }
 
     if success > 0 {
-        info!(
-            "[data_governance] blob 删除队列已传播 {} 条到云端",
-            success
-        );
+        info!("[data_governance] blob 删除队列已传播 {} 条到云端", success);
     }
     success
 }
@@ -471,10 +471,8 @@ pub async fn data_governance_detect_conflicts(
             .await
             .map_err(|e| format!("创建云存储失败: {}", e))?;
         // [P0-2] 下载清单需要解密能力：用带密码的 manager 覆盖
-        let crypto_manager = SyncManager::with_encryption(
-            device_id.clone(),
-            cfg.encryption_password.clone(),
-        );
+        let crypto_manager =
+            SyncManager::with_encryption(device_id.clone(), cfg.encryption_password.clone());
         let cloud = crypto_manager
             .download_manifest(storage.as_ref())
             .await
@@ -830,10 +828,8 @@ pub async fn data_governance_run_sync(
 
     // 创建同步管理器
     // [P0-2] 透传加密密码，让所有上传/下载走 DSBK 容器
-    let manager = SyncManager::with_encryption(
-        device_id.clone(),
-        config.encryption_password.clone(),
-    );
+    let manager =
+        SyncManager::with_encryption(device_id.clone(), config.encryption_password.clone());
 
     // 构建本地同步清单（遍历所有治理数据库）
     let mut local_databases: HashMap<String, DatabaseSyncState> = HashMap::new();
@@ -1164,7 +1160,10 @@ pub async fn data_governance_run_sync(
             }
             // 先消费本地 blob 删除队列（把 VFS 物理删除的 blob 上报成 tombstone）
             drain_blob_deletion_queue(&active_dir, &manager, storage.as_ref()).await;
-            match manager.sync_vfs_blobs_with_tombstones(storage.as_ref(), &blobs_dir).await {
+            match manager
+                .sync_vfs_blobs_with_tombstones(storage.as_ref(), &blobs_dir)
+                .await
+            {
                 Ok(outcome) => {
                     if outcome.has_failures() {
                         if let Some(msg) = outcome.failure_summary() {
@@ -1184,7 +1183,11 @@ pub async fn data_governance_run_sync(
                 }
             }
             match manager
-                .sync_asset_directories_with_tombstones(storage.as_ref(), &active_dir, &app_data_dir)
+                .sync_asset_directories_with_tombstones(
+                    storage.as_ref(),
+                    &active_dir,
+                    &app_data_dir,
+                )
                 .await
             {
                 Ok(outcome) => {
@@ -1877,10 +1880,8 @@ pub async fn data_governance_run_sync_with_progress(
 
     // 创建同步管理器（复用上方已获取的 device_id）
     // [P0-2] 透传加密密码
-    let manager = SyncManager::with_encryption(
-        device_id.clone(),
-        config.encryption_password.clone(),
-    );
+    let manager =
+        SyncManager::with_encryption(device_id.clone(), config.encryption_password.clone());
 
     // 构建本地同步清单（遍历所有治理数据库）
     let mut local_databases: HashMap<String, DatabaseSyncState> = HashMap::new();
@@ -2222,11 +2223,7 @@ async fn execute_upload_with_progress_v2(
                         percent: pct,
                         current: done,
                         total: total_bytes,
-                        current_item: Some(format!(
-                            "上传批次 {}/{}",
-                            batch_idx + 1,
-                            batch_count
-                        )),
+                        current_item: Some(format!("上传批次 {}/{}", batch_idx + 1, batch_count)),
                         speed_bytes_per_sec: None,
                         eta_seconds: None,
                         error: None,
@@ -2236,12 +2233,14 @@ async fn execute_upload_with_progress_v2(
             manager
                 .upload_enriched_changes(storage, batch, Some(byte_progress_cb))
                 .await
-                .map_err(|e| format!(
-                    "上传同步失败（批次 {}/{}）: {}",
-                    batch_idx + 1,
-                    batch_count,
-                    e
-                ))?;
+                .map_err(|e| {
+                    format!(
+                        "上传同步失败（批次 {}/{}）: {}",
+                        batch_idx + 1,
+                        batch_count,
+                        e
+                    )
+                })?;
 
             // 批次间让权给事件循环；key 冲突由 build_change_key 内的 UUID nonce 防护
             tokio::task::yield_now().await;
@@ -2303,10 +2302,12 @@ async fn execute_upload_with_progress_v2(
         tracing::warn!("[data_governance] 工作区数据库同步失败（非致命）: {}", e);
     }
     drain_blob_deletion_queue(active_dir, manager, storage).await;
-    
 
     let mut blob_warning: Option<String> = None;
-    match manager.sync_vfs_blobs_with_tombstones(storage, &blobs_dir).await {
+    match manager
+        .sync_vfs_blobs_with_tombstones(storage, &blobs_dir)
+        .await
+    {
         Ok(outcome) => {
             if outcome.has_failures() {
                 blob_warning = outcome.failure_summary();
@@ -2414,9 +2415,11 @@ async fn execute_download_with_progress_v2(
         tracing::warn!("[data_governance] 工作区数据库同步失败（非致命）: {}", e);
     }
     drain_blob_deletion_queue(active_dir, manager, storage).await;
-    
 
-    match manager.sync_vfs_blobs_with_tombstones(storage, &blobs_dir).await {
+    match manager
+        .sync_vfs_blobs_with_tombstones(storage, &blobs_dir)
+        .await
+    {
         Ok(outcome) => {
             if outcome.has_failures() {
                 let blob_msg = outcome.failure_summary().unwrap_or_default();
@@ -2644,10 +2647,12 @@ async fn execute_bidirectional_with_progress_v2(
         tracing::warn!("[data_governance] 工作区数据库同步失败（非致命）: {}", e);
     }
     drain_blob_deletion_queue(active_dir, manager, storage).await;
-    
 
     let mut file_sync_failed = false;
-    match manager.sync_vfs_blobs_with_tombstones(storage, &blobs_dir).await {
+    match manager
+        .sync_vfs_blobs_with_tombstones(storage, &blobs_dir)
+        .await
+    {
         Ok(outcome) => {
             if outcome.has_failures() {
                 let blob_msg = outcome.failure_summary().unwrap_or_default();
@@ -2948,18 +2953,19 @@ pub async fn data_governance_resolve_record_conflict(
         }
     };
 
-    let target_json = match resolution.as_str() {
-        "keep_local" => get_side_data("local")?
-            .ok_or_else(|| "找不到该冲突的 local side 数据".to_string())?,
-        "keep_cloud" => get_side_data("cloud")?
-            .ok_or_else(|| "找不到该冲突的 cloud side 数据".to_string())?,
-        "merged" => merged_data_json
-            .ok_or_else(|| "resolution='merged' 时必须提供 merged_data_json".to_string())?,
-        other => return Err(format!("未知 resolution: {}", other)),
-    };
+    let target_json =
+        match resolution.as_str() {
+            "keep_local" => get_side_data("local")?
+                .ok_or_else(|| "找不到该冲突的 local side 数据".to_string())?,
+            "keep_cloud" => get_side_data("cloud")?
+                .ok_or_else(|| "找不到该冲突的 cloud side 数据".to_string())?,
+            "merged" => merged_data_json
+                .ok_or_else(|| "resolution='merged' 时必须提供 merged_data_json".to_string())?,
+            other => return Err(format!("未知 resolution: {}", other)),
+        };
 
-    let data: serde_json::Value = serde_json::from_str(&target_json)
-        .map_err(|e| format!("解析合并后数据失败: {}", e))?;
+    let data: serde_json::Value =
+        serde_json::from_str(&target_json).map_err(|e| format!("解析合并后数据失败: {}", e))?;
 
     // 通过同步链路回写：构造一条 suppress=true 的 Update change 走 force 路径
     let now = chrono::Utc::now().to_rfc3339();
@@ -3062,7 +3068,8 @@ pub async fn data_governance_detect_prune_gap(
     // 本地最大 data_version
     let mut since_version: u64 = 0;
     for db_id in _DatabaseId::all_ordered() {
-        let db_path = crate::data_governance::commands_backup::resolve_database_path(&db_id, &active_dir);
+        let db_path =
+            crate::data_governance::commands_backup::resolve_database_path(&db_id, &active_dir);
         if !db_path.exists() {
             continue;
         }

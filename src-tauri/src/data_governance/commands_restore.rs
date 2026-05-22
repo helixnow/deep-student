@@ -661,21 +661,18 @@ async fn execute_restore_with_progress(
             "llm_usage" => DatabaseId::LlmUsage,
             _ => continue,
         };
-        let db_path = super::backup::BackupManager::resolve_database_path_in_dir(
-            &inactive_dir,
-            &db_id,
-        );
+        let db_path =
+            super::backup::BackupManager::resolve_database_path_in_dir(&inactive_dir, &db_id);
         if !db_path.exists() {
             continue;
         }
         match rusqlite::Connection::open(&db_path) {
             Ok(conn) => {
                 let tx_res = (|| -> Result<(usize, usize), String> {
-                    conn.execute("BEGIN IMMEDIATE", []).map_err(|e| e.to_string())?;
-                    let result = super::sync::SyncManager::reset_sync_baseline_after_restore(
-                        &conn,
-                    )
-                    .map_err(|e| format!("{}", e));
+                    conn.execute("BEGIN IMMEDIATE", [])
+                        .map_err(|e| e.to_string())?;
+                    let result = super::sync::SyncManager::reset_sync_baseline_after_restore(&conn)
+                        .map_err(|e| format!("{}", e));
                     match result {
                         Ok(stats) => {
                             conn.execute("COMMIT", []).map_err(|e| e.to_string())?;

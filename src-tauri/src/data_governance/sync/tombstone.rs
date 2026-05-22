@@ -189,20 +189,14 @@ pub async fn download_workspace_tombstones(
             let decoded = match codec.decode(&bytes) {
                 Ok(v) => v,
                 Err(e) => {
-                    tracing::warn!(
-                        "[sync] workspace tombstone 解密失败，忽略并重建: {}",
-                        e
-                    );
+                    tracing::warn!("[sync] workspace tombstone 解密失败，忽略并重建: {}", e);
                     return Ok(WorkspaceTombstones::default());
                 }
             };
             match serde_json::from_slice::<WorkspaceTombstones>(&decoded) {
                 Ok(v) => Ok(v),
                 Err(e) => {
-                    tracing::warn!(
-                        "[sync] workspace tombstone 清单损坏，忽略并重建: {}",
-                        e
-                    );
+                    tracing::warn!("[sync] workspace tombstone 清单损坏，忽略并重建: {}", e);
                     Ok(WorkspaceTombstones::default())
                 }
             }

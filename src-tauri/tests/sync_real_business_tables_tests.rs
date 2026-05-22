@@ -397,11 +397,9 @@ fn b03_resources_integer_deleted_at_tombstone() {
 
     // deleted_at 应该被设置（软删除）
     let deleted_at: Option<i64> = conn
-        .query_row(
-            "SELECT deleted_at FROM resources WHERE id='res'",
-            [],
-            |r| r.get(0),
-        )
+        .query_row("SELECT deleted_at FROM resources WHERE id='res'", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert!(
         deleted_at.is_some(),
@@ -1124,11 +1122,9 @@ fn b21_mistakes_revive_from_soft_delete() {
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
 
     let deleted_at: Option<String> = conn
-        .query_row(
-            "SELECT deleted_at FROM mistakes WHERE id='m1'",
-            [],
-            |r| r.get(0),
-        )
+        .query_row("SELECT deleted_at FROM mistakes WHERE id='m1'", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert!(deleted_at.is_none());
 }
@@ -1141,7 +1137,7 @@ fn b21_mistakes_revive_from_soft_delete() {
 #[test]
 fn b22_mixed_tables_apply_in_one_batch() {
     let conn = new_mistakes_db(); // 用 mistakes 作为容器，但实际只测 record_id 映射
-    // 验证 __change_log 能存各种格式的 record_id
+                                  // 验证 __change_log 能存各种格式的 record_id
     conn.execute(
         "INSERT INTO __change_log (table_name, record_id, operation, changed_at, sync_version)
          VALUES
@@ -1197,12 +1193,7 @@ fn b23_resources_then_notes_ordered_insert() {
         suppress_change_log: None,
     };
 
-    let result = SyncManager::apply_downloaded_changes(
-        &conn,
-        &[note_change],
-        None,
-    )
-    .unwrap();
+    let result = SyncManager::apply_downloaded_changes(&conn, &[note_change], None).unwrap();
     assert_eq!(result.success_count, 1);
 
     // 不同 table 的 change 在一次 apply 里全部 INSERT 成功
