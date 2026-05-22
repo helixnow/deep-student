@@ -27,7 +27,7 @@ import {
   SlidersHorizontal,
   SquaresFour
 } from '@phosphor-icons/react';
-import type { ApiConfig as BaseApiConfig } from '@/types';
+import type { ApiConfig as BaseApiConfig, ApiProtocol } from '@/types';
 import { inferApiCapabilities } from '@/utils/apiCapabilityEngine';
 import { getModelDefaultParameters } from '@/utils/modelCapabilities';
 import { cn } from '@/lib/utils';
@@ -38,6 +38,11 @@ import {
   normalizeDeepSeekV4Effort,
   resolveDeepSeekReasoningControl,
 } from './deepseekReasoningControls';
+import {
+  defaultApiProtocolForModelAdapter,
+  getAllowedApiProtocolsForModelAdapter,
+  normalizeApiProtocolForModelAdapter,
+} from './modelConverters';
 
 // Tauri 2.x API导入（可选）
 import { invoke as tauriInvoke } from '@tauri-apps/api/core';
@@ -143,6 +148,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
       model: `api-model-${api.id}`,
       apiKey: `api-key-${api.id}`,
       adapter: `api-adapter-${api.id}`,
+      protocol: `api-protocol-${api.id}`,
       temperature: `api-temperature-${api.id}`,
       maxTokens: `api-maxTokens-${api.id}`,
     }),
@@ -166,6 +172,10 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
     isReranker: api.isReranker ?? false,
     isImageGeneration: api.isImageGeneration ?? false,
     modelAdapter: normalizedAdapter,
+    apiProtocol: normalizeApiProtocolForModelAdapter(api.apiProtocol, normalizedAdapter, api.providerType, {
+      model: api.model,
+      baseUrl: api.baseUrl,
+    }),
     temperature: api.temperature ?? 0.7,
     maxOutputTokens: api.maxOutputTokens ?? 8192,
     maxTokensLimit: api.maxTokensLimit,
@@ -204,6 +214,24 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
     deepSeekReasoningControl.kind === 'v32-budget-effort'
       ? formData.reasoningEffort ?? deepSeekV32BudgetToEffort(formData.thinkingBudget)
       : normalizeDeepSeekV4Effort(formData.reasoningEffort);
+
+  const protocolOptions = useMemo<Array<{ value: ApiProtocol; label: string; description?: string }>>(() => {
+    const allowed = getAllowedApiProtocolsForModelAdapter(formData.modelAdapter);
+    return allowed.map(protocol => ({
+      value: protocol,
+      label: t(`settings:api.modal.protocols.${protocol}.label`, {
+        defaultValue:
+          protocol === 'openai_responses'
+            ? 'OpenAI Responses'
+            : protocol === 'google_generate_content'
+              ? 'Google GenerateContent'
+              : protocol === 'anthropic_messages'
+                ? 'Anthropic Messages'
+                : 'OpenAI Chat Completions',
+      }),
+      description: t(`settings:api.modal.protocols.${protocol}.description`, { defaultValue: '' }) || undefined,
+    }));
+  }, [formData.modelAdapter, t]);
 
   const inferenceTimeoutRef = useRef<number | null>(null);
   const lastInferredModelRef = useRef<string | null>(api.model ?? null);
@@ -341,6 +369,17 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
       }
     };
   }, [formData.model, formData.name, formData.modelAdapter, formData.providerScope, formData.providerType]);
+
+  useEffect(() => {
+    setFormData(prev => {
+      const normalizedProtocol = normalizeApiProtocolForModelAdapter(prev.apiProtocol, prev.modelAdapter, prev.providerType, {
+        model: prev.model,
+        baseUrl: prev.baseUrl,
+      });
+      if (normalizedProtocol === prev.apiProtocol) return prev;
+      return { ...prev, apiProtocol: normalizedProtocol };
+    });
+  }, [formData.modelAdapter, formData.providerType, formData.model, formData.baseUrl]);
 
   useEffect(() => {
     if (formData.modelAdapter !== 'general') return;
@@ -672,28 +711,28 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                 <TabsTrigger 
                   value="general" 
                   variant="bare"
-                  className="flex-1 sm:flex-none data-[state=active]:border-b-primary data-[state=active]:text-primary border-b-2 border-b-transparent rounded-none px-1 sm:px-0.5 py-2 transition-all font-medium text-muted-foreground text-[11px] sm:text-sm hover:text-foreground/80"
+                  className="flex-1 sm:flex-none data-[state=active]:border-b-primary data-[state=active]:text-primary border-b-2 border-b-transparent rounded-none px-1 sm:px-0.5 py-2 transition-colors font-medium text-muted-foreground text-[11px] sm:text-sm hover:text-foreground/80"
                 >
                   {t('settings:api.modal.basic_info')}
                 </TabsTrigger>
                 <TabsTrigger 
                   value="capabilities" 
                   variant="bare"
-                  className="flex-1 sm:flex-none data-[state=active]:border-b-primary data-[state=active]:text-primary border-b-2 border-b-transparent rounded-none px-1 sm:px-0.5 py-2 transition-all font-medium text-muted-foreground text-[11px] sm:text-sm hover:text-foreground/80"
+                  className="flex-1 sm:flex-none data-[state=active]:border-b-primary data-[state=active]:text-primary border-b-2 border-b-transparent rounded-none px-1 sm:px-0.5 py-2 transition-colors font-medium text-muted-foreground text-[11px] sm:text-sm hover:text-foreground/80"
                 >
                   {t('settings:api.modal.capabilities.title')}
                 </TabsTrigger>
                 <TabsTrigger 
                   value="params" 
                   variant="bare"
-                  className="flex-1 sm:flex-none data-[state=active]:border-b-primary data-[state=active]:text-primary border-b-2 border-b-transparent rounded-none px-1 sm:px-0.5 py-2 transition-all font-medium text-muted-foreground text-[11px] sm:text-sm hover:text-foreground/80"
+                  className="flex-1 sm:flex-none data-[state=active]:border-b-primary data-[state=active]:text-primary border-b-2 border-b-transparent rounded-none px-1 sm:px-0.5 py-2 transition-colors font-medium text-muted-foreground text-[11px] sm:text-sm hover:text-foreground/80"
                 >
                   {t('settings:api.modal.advanced_settings')}
                 </TabsTrigger>
                 <TabsTrigger 
                   value="reasoning" 
                   variant="bare"
-                  className="flex-1 sm:flex-none data-[state=active]:border-b-primary data-[state=active]:text-primary border-b-2 border-b-transparent rounded-none px-1 sm:px-0.5 py-2 transition-all font-medium text-muted-foreground text-[11px] sm:text-sm hover:text-foreground/80"
+                  className="flex-1 sm:flex-none data-[state=active]:border-b-primary data-[state=active]:text-primary border-b-2 border-b-transparent rounded-none px-1 sm:px-0.5 py-2 transition-colors font-medium text-muted-foreground text-[11px] sm:text-sm hover:text-foreground/80"
                 >
                   {t('settings:api.modal.reasoning.title')}
                 </TabsTrigger>
@@ -714,7 +753,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         value={formData.name}
                         onChange={e => setFormData(prev => ({ ...prev, name: (e.target as HTMLInputElement).value }))}
                         placeholder={t('common:api_config_modal.config_name_placeholder')}
-                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-all h-10"
+                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                       />
                     </div>
                     <div className="space-y-2">
@@ -727,7 +766,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           value={formData.model}
                           onChange={e => setFormData(prev => ({ ...prev, model: (e.target as HTMLInputElement).value }))}
                           placeholder={t('common:api_config_modal.model_name_placeholder')}
-                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-all h-10 pr-8"
+                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10 pr-8"
                         />
                         <Sparkle className="absolute right-3 top-1/2 -translate-y-1/2 h-4 w-4 text-amber-400/60 pointer-events-none" />
                       </div>
@@ -756,7 +795,14 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                   const prevNormalized = normalizeBaseUrlForCompare(prev.baseUrl);
                                   const prevDefaultNormalized = prevDefault ? normalizeBaseUrlForCompare(prevDefault) : '';
                                   const shouldReplaceBase = prevNormalized.length === 0 || (prevDefaultNormalized !== '' && prevNormalized === prevDefaultNormalized);
-                                  const next: EditApiConfig = { ...prev, modelAdapter: option.value };
+                                  const next: EditApiConfig = {
+                                    ...prev,
+                                    modelAdapter: option.value,
+                                    apiProtocol: normalizeApiProtocolForModelAdapter(prev.apiProtocol, option.value, prev.providerType, {
+                                      model: prev.model,
+                                      baseUrl: prev.baseUrl,
+                                    }),
+                                  };
                                   if (shouldReplaceBase) {
                                     next.baseUrl = nextDefault ?? prev.baseUrl;
                                   }
@@ -784,6 +830,38 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                     </div>
                   </div>
 
+                  <div className="pt-1">
+                    <div className="grid gap-3 md:grid-cols-2">
+                      <div className="space-y-2 md:col-span-2">
+                        <Label htmlFor={fieldIds.protocol} className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
+                          {t('settings:api.modal.protocol_label')}
+                        </Label>
+                        <AppSelect
+                          value={formData.apiProtocol ?? defaultApiProtocolForModelAdapter(formData.modelAdapter, {
+                            providerType: formData.providerType,
+                            model: formData.model,
+                            baseUrl: formData.baseUrl,
+                          })}
+                          onValueChange={value =>
+                            setFormData(prev => ({
+                              ...prev,
+                              apiProtocol: normalizeApiProtocolForModelAdapter(value as ApiProtocol, prev.modelAdapter, prev.providerType, {
+                                model: prev.model,
+                                baseUrl: prev.baseUrl,
+                              }),
+                            }))
+                          }
+                          options={protocolOptions.map(option => ({ value: option.value, label: option.label }))}
+                          variant="ghost"
+                          className="font-mono text-sm bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10 w-full"
+                        />
+                        <p className="text-[10px] text-muted-foreground/70 ml-1">
+                          {t('settings:api.modal.protocol_hint')}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
                   {!hideConnectionFields && (
                     <div className="pt-1">
                       <div className="flex items-center gap-2 mb-2">
@@ -803,7 +881,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                             value={formData.baseUrl}
                             onChange={e => setFormData(prev => ({ ...prev, baseUrl: (e.target as HTMLInputElement).value }))}
                             placeholder={ADAPTER_DEFAULT_BASE_URL[formData.modelAdapter] ?? t('common:api_config_modal.base_url_placeholder')}
-                            className="font-mono text-sm bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-all h-10"
+                            className="font-mono text-sm bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                           />
                         </div>
                         <div className="space-y-2 md:col-span-2">
@@ -859,13 +937,13 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                             });
                           }}
                           className={cn(
-                            'relative flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition-all duration-200 select-none group',
+                            'relative flex cursor-pointer items-center gap-3 rounded-lg border px-3 py-2.5 transition-colors duration-200 select-none group',
                             checked
                               ? 'border-primary/50 bg-primary/5'
                               : 'border-border/40 bg-card hover:border-primary/20 hover:bg-[var(--interactive-hover)]'
                           )}
                         >
-                          <div className={cn("p-2 rounded-md shrink-0 transition-all duration-200", checked ? "bg-primary text-primary-foreground" : "bg-muted/50 text-muted-foreground group-hover:text-foreground")}>
+                          <div className={cn("p-2 rounded-md shrink-0 transition-colors duration-200", checked ? "bg-primary text-primary-foreground" : "bg-muted/50 text-muted-foreground group-hover:text-foreground")}>
                             {option.icon}
                           </div>
                           <div className="flex-1 min-w-0">
@@ -881,7 +959,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               {option.description}
                             </p>
                           </div>
-                          <div className={cn("w-4 h-4 rounded-full border transition-all flex items-center justify-center shrink-0", checked ? "bg-primary border-primary" : "border-muted-foreground/30")}>
+                          <div className={cn("w-4 h-4 rounded-full border transition-colors flex items-center justify-center shrink-0", checked ? "bg-primary border-primary" : "border-muted-foreground/30")}>
                             {checked && <div className="w-1.5 h-1.5 bg-background rounded-full" />}
                           </div>
                         </div>
@@ -914,7 +992,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         min={0}
                         max={2}
                         step={0.1}
-                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-all h-10"
+                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                       />
                       <p className="text-[10px] text-muted-foreground/60 ml-1">
                         {t('settings:api.modal.fields.temperature_hint')}
@@ -941,7 +1019,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                         min={1}
                         max={128000}
                         step={1}
-                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-all h-10"
+                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                       />
                       <p className="text-[10px] text-muted-foreground/60 ml-1">
                         {t('settings:api.modal.fields.max_tokens_hint')}
@@ -981,7 +1059,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       max={1000000}
                       step={1}
                       placeholder={t('settings:api.modal.fields.max_tokens_limit_placeholder')}
-                      className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-all h-10"
+                      className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                     />
                     <p className="text-[10px] text-muted-foreground/60 ml-1">
                       {t('settings:api.modal.fields.max_tokens_limit_hint')}
@@ -1017,7 +1095,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                       max={2000000}
                       step={1024}
                       placeholder={t('settings:api.modal.fields.context_window_placeholder', { defaultValue: `${t('settings:api.modal.fields.context_window_auto_inferred')}: ${inferredCaps.contextWindow.toLocaleString()}` })}
-                      className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-all h-10"
+                      className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                     />
                     <p className="text-[10px] text-muted-foreground/60 ml-1">
                       {t('settings:api.modal.fields.context_window_hint')}
@@ -1042,7 +1120,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               return { ...prev, minP: Math.max(0, Math.min(num, 1)) };
                             });
                           }}
-                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-all h-10"
+                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                         />
                       </div>
                       <div className="space-y-2">
@@ -1060,7 +1138,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               return { ...prev, topK: Math.max(0, Math.min(Math.round(num), 10000)) };
                             });
                           }}
-                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-all h-10"
+                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                         />
                       </div>
                     </div>
@@ -1090,7 +1168,25 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               { value: 'xhigh', label: t('settings:api.modal.reasoning.effort.xhigh', 'Extra High') },
                             ]}
                             variant="ghost"
-                            className="bg-muted/30 border-transparent hover:border-border/50 transition-all h-10"
+                            className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
+                          />
+                        </div>
+                        <div className="space-y-2">
+                          <Label className="text-xs font-medium text-muted-foreground/80 uppercase tracking-wider ml-1">
+                            {t('settings:api.modal.reasoning.verbosity_label', 'Verbosity')}
+                          </Label>
+                          <AppSelect
+                            value={formData.verbosity ?? 'unset'}
+                            onValueChange={v => setFormData(prev => ({ ...prev, verbosity: v === 'unset' ? undefined : v }))}
+                            placeholder={t('settings:api.modal.reasoning.default_option')}
+                            options={[
+                              { value: 'unset', label: t('settings:api.modal.reasoning.unset_option') },
+                              { value: 'low', label: t('settings:api.modal.reasoning.verbosity.low', 'Low') },
+                              { value: 'medium', label: t('settings:api.modal.reasoning.verbosity.medium', 'Medium') },
+                              { value: 'high', label: t('settings:api.modal.reasoning.verbosity.high', 'High') },
+                            ]}
+                            variant="ghost"
+                            className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                           />
                         </div>
                         <div className="space-y-2">
@@ -1109,13 +1205,13 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                 return { ...prev, thinkingBudget: Math.max(0, Math.min(Math.round(num), 2_147_483_647)) };
                               });
                             }}
-                            className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-all h-10"
+                            className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                           />
                         </div>
                       </div>
                       
                       <div className="grid gap-3 md:grid-cols-2">
-                        <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-all duration-200", formData.enableThinking ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
+                        <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.enableThinking ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                           <div className="space-y-1">
                             <Label className="text-sm font-medium cursor-pointer" onClick={() => formData.supportsReasoning && setFormData(prev => ({ ...prev, enableThinking: !prev.enableThinking }))}>{t('settings:api.modal.reasoning.enable_thinking')}</Label>
                             <p className="text-xs text-muted-foreground/70">{t('settings:api.modal.reasoning.enable_thinking_hint')}</p>
@@ -1126,7 +1222,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                             onCheckedChange={v => setFormData(prev => ({ ...prev, enableThinking: !!v }))}
                           />
                         </div>
-                        <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-all duration-200", formData.includeThoughts ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
+                        <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.includeThoughts ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                           <div className="space-y-1">
                             <Label className="text-sm font-medium cursor-pointer" onClick={() => formData.supportsReasoning && setFormData(prev => ({ ...prev, includeThoughts: !prev.includeThoughts }))}>{t('settings:api.modal.reasoning.include_thoughts')}</Label>
                             <p className="text-xs text-muted-foreground/70">{t('settings:api.modal.reasoning.include_thoughts_hint')}</p>
@@ -1155,7 +1251,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                          <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-all duration-200", formData.enableThinking ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
+                          <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.enableThinking ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
                               <Label className="text-sm font-medium cursor-pointer" onClick={() => formData.supportsReasoning && setFormData(prev => ({ ...prev, enableThinking: !prev.enableThinking, thinkingEnabled: !prev.enableThinking }))}>
                                 {t('settings:api.modal.mimo.enable_thinking', 'Thinking Mode')}
@@ -1170,7 +1266,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               onCheckedChange={v => setFormData(prev => ({ ...prev, enableThinking: !!v, thinkingEnabled: !!v }))}
                             />
                           </div>
-                          <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-all duration-200", formData.includeThoughts ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
+                          <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.includeThoughts ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
                               <Label className="text-sm font-medium cursor-pointer" onClick={() => formData.supportsReasoning && setFormData(prev => ({ ...prev, includeThoughts: !prev.includeThoughts }))}>
                                 {t('settings:api.modal.mimo.preserve_reasoning', 'Preserve Reasoning')}
@@ -1211,7 +1307,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           });
                         }}
                         placeholder={t('settings:api.modal.fields.repetition_penalty_placeholder', 'Qwen: >1.0, Doubao: >0')}
-                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-all h-10"
+                        className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                       />
                       <p className="text-[10px] text-muted-foreground/60 ml-1">
                         {t('settings:api.modal.fields.repetition_penalty_hint', 'Qwen/Doubao models: penalize repeated tokens')}
@@ -1222,7 +1318,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                   {/* Reasoning Split - for MiniMax models */}
                   {formData.modelAdapter === 'general' && (
                     <div className="pt-4 border-t border-border/40">
-                      <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-all duration-200", formData.reasoningSplit ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
+                      <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.reasoningSplit ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                         <div className="space-y-1">
                           <Label className="text-sm font-medium cursor-pointer" onClick={() => setFormData(prev => ({ ...prev, reasoningSplit: !prev.reasoningSplit }))}>
                             {t('settings:api.modal.fields.reasoning_split', 'MiniMax Reasoning Split')}
@@ -1241,7 +1337,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
 
                   {formData.modelAdapter === 'anthropic' && (
                     <div className="space-y-6">
-                      <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-all duration-200", formData.thinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
+                      <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.thinkingEnabled ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                         <div className="space-y-1">
                           <Label className="text-sm font-medium cursor-pointer" onClick={() => setFormData(prev => ({ ...prev, thinkingEnabled: !prev.thinkingEnabled }))}>{t('settings:api.modal.anthropic.title')}</Label>
                           <p className="text-xs text-muted-foreground/70">{t('settings:api.modal.anthropic.description')}</p>
@@ -1266,7 +1362,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               return { ...prev, thinkingBudget: Math.max(0, Math.min(Math.round(num), 2_147_483_647)) };
                             });
                           }}
-                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-all h-10"
+                          className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                         />
                         <p className="text-[10px] text-muted-foreground/60 ml-1">{t('settings:api.modal.anthropic.budget_hint')}</p>
                       </div>
@@ -1289,7 +1385,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               { value: 'high', label: t('settings:api.modal.reasoning.effort.high') },
                             ]}
                             variant="ghost"
-                            className="bg-muted/30 border-transparent hover:border-border/50 transition-all h-10"
+                            className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                           />
                         </div>
                         <div className="space-y-2">
@@ -1306,11 +1402,11 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                 return { ...prev, thinkingBudget: Math.max(-1, Math.min(Math.round(num), 2_147_483_647)) };
                               });
                             }}
-                            className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-all h-10"
+                            className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                           />
                         </div>
                       </div>
-                      <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-all duration-200", formData.includeThoughts ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
+                      <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.includeThoughts ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                         <div className="space-y-1">
                           <Label className="text-sm font-medium cursor-pointer" onClick={() => setFormData(prev => ({ ...prev, includeThoughts: !prev.includeThoughts }))}>{t('settings:api.modal.google.include_thoughts_label')}</Label>
                           {isGeminiReasoningWithThoughts && (
@@ -1350,7 +1446,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                          <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-all duration-200", formData.enableThinking ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
+                          <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.enableThinking ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
                               <Label className="text-sm font-medium cursor-pointer" onClick={() => effectiveSupportsReasoning && setFormData(prev => ({ ...prev, enableThinking: !prev.enableThinking }))}>
                                 {t('settings:api.modal.deepseek.enable_thinking')}
@@ -1394,7 +1490,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                   label: t(option.labelKey, option.defaultLabel),
                                 }))}
                                 variant="ghost"
-                                className="bg-muted/30 border-transparent hover:border-border/50 transition-all h-10"
+                                className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                               />
                               <p className="text-[10px] text-muted-foreground/60 ml-1">
                                 {deepSeekReasoningControl.kind === 'v32-budget-effort'
@@ -1428,7 +1524,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                          <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-all duration-200", formData.enableThinking ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
+                          <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.enableThinking ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
                               <Label className="text-sm font-medium cursor-pointer" onClick={() => setFormData(prev => ({ ...prev, enableThinking: !prev.enableThinking }))}>
                                 {t('settings:api.modal.qwen.enable_thinking')}
@@ -1462,7 +1558,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                   });
                                 }}
                                 placeholder={t('settings:api.modal.qwen.thinking_budget_placeholder')}
-                                className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-all h-10"
+                                className="bg-muted/30 border-transparent hover:border-border/50 focus:border-primary/30 focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors h-10"
                               />
                             </div>
                             <div className="space-y-2">
@@ -1480,7 +1576,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                   { value: 'high', label: t('settings:api.modal.reasoning.effort.high') },
                                 ]}
                                 variant="ghost"
-                                className="bg-muted/30 border-transparent hover:border-border/50 transition-all h-10"
+                                className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                               />
                             </div>
                           </div>
@@ -1517,7 +1613,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                 { value: 'high', label: t('settings:api.modal.reasoning.effort.high') },
                               ]}
                               variant="ghost"
-                              className="bg-muted/30 border-transparent hover:border-border/50 transition-all h-10"
+                              className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                             />
                             <p className="text-[10px] text-muted-foreground/60 ml-1">
                               {t('settings:api.modal.grok.reasoning_effort_hint')}
@@ -1566,7 +1662,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                                 { value: 'auto', label: t('settings:api.modal.doubao.mode_auto') },
                               ]}
                               variant="ghost"
-                              className="bg-muted/30 border-transparent hover:border-border/50 transition-all h-10"
+                              className="bg-muted/30 border-transparent hover:border-border/50 transition-colors h-10"
                             />
                             <p className="text-[10px] text-muted-foreground/60 ml-1">
                               {t('settings:api.modal.doubao.thinking_mode_hint')}
@@ -1591,7 +1687,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                          <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-all duration-200", formData.enableThinking ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
+                          <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.enableThinking ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
                               <Label className="text-sm font-medium cursor-pointer" onClick={() => setFormData(prev => ({ ...prev, enableThinking: !prev.enableThinking }))}>
                                 {t('settings:api.modal.zhipu.enable_thinking')}
@@ -1605,7 +1701,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                               onCheckedChange={v => setFormData(prev => ({ ...prev, enableThinking: !!v, supportsReasoning: !!v }))}
                             />
                           </div>
-                          <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-all duration-200", formData.includeThoughts ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
+                          <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.includeThoughts ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
                               <Label className="text-sm font-medium cursor-pointer" onClick={() => setFormData(prev => ({ ...prev, includeThoughts: !prev.includeThoughts }))}>
                                 {t('settings:api.modal.zhipu.preserve_thinking')}
@@ -1664,7 +1760,7 @@ export const ShadApiEditModal: React.FC<ApiEditModalProps> = ({
                           </CardDescription>
                         </CardHeader>
                         <CardContent className="space-y-4">
-                          <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-all duration-200", formData.reasoningSplit ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
+                          <div className={cn("flex items-center justify-between p-4 rounded-xl border transition-colors duration-200", formData.reasoningSplit ? "bg-primary/5 border-primary/30" : "bg-card border-border/40 hover:border-border/60")}>
                             <div className="space-y-1">
                               <Label className="text-sm font-medium cursor-pointer" onClick={() => setFormData(prev => ({ ...prev, reasoningSplit: !prev.reasoningSplit }))}>
                                 {t('settings:api.modal.minimax.reasoning_split', 'Reasoning Split')}

@@ -19,7 +19,6 @@ export const settingsQuietActiveSurfaceClassName = 'bg-[color:var(--sidebar-quie
 
 export const settingsQuietInteractiveRowClassName = cn(
   settingsQuietRowBaseClassName,
-  settingsQuietHoverClassName,
 );
 
 export const settingsQuietIdleRowClassName = 'text-muted-foreground';

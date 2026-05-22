@@ -227,7 +227,7 @@ function ServerListItem({
   return (
     <div
       className={cn(
-        'rounded-lg overflow-hidden transition-all duration-200 border border-transparent',
+        'rounded-lg overflow-hidden transition-colors duration-200 border border-transparent',
         isExpanded ? 'bg-muted/30 border-border/40' : 'hover:bg-[var(--interactive-hover)] hover:border-border/20'
       )}
     >

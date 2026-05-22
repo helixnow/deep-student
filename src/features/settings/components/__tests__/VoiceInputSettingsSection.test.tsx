@@ -274,4 +274,39 @@ describe('VoiceInputSettingsSection', () => {
 
     expect(await screen.findByText('Recovered transcript')).toBeInTheDocument();
   });
+
+  it('can render in embedded mode without the outer section spacing while keeping the dictation heading', async () => {
+    loadVoiceInputConfigMock.mockResolvedValue({
+      maxDurationMs: 60000,
+      insertMode: 'replace-selection',
+      hotkey: 'mod+shift+space',
+      hotkeyMode: 'hold-to-talk',
+    });
+    loadVoiceInputHistoryMock.mockResolvedValue([]);
+    detectVoiceRecordingSupportMock.mockResolvedValue({
+      canRecord: true,
+      recorderMode: 'media-recorder',
+      reasonCode: null,
+      permissionState: 'granted',
+    });
+
+    const { container } = render(
+      <VoiceInputSettingsSection
+        embedded
+        assignedModel={{
+          status: 'ready',
+          configId: 'voice-asr',
+          providerId: 'siliconflow',
+          providerLabel: 'SiliconFlow',
+          model: 'TeleAI/TeleSpeechASR',
+          modelLabel: 'SiliconFlow - TeleAI/TeleSpeechASR',
+          disabled: false,
+        }}
+      />
+    );
+
+    const section = container.querySelector('section');
+    expect(section?.className).not.toContain('mt-8');
+    expect(await screen.findByText('Dictation')).toBeInTheDocument();
+  });
 });

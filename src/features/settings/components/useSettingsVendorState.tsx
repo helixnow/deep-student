@@ -4,7 +4,14 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { debugLog } from '@/debug-panel/debugMasterSwitch';
 import { GENERAL_DEFAULT_MIN_P, GENERAL_DEFAULT_TOP_K } from './ShadApiEditModal';
-import { convertProfileToApiConfig, convertApiConfigToProfile, normalizeBaseUrl, providerTypeFromConfig } from './modelConverters';
+import {
+  convertProfileToApiConfig,
+  convertApiConfigToProfile,
+  defaultApiProtocolForProvider,
+  defaultApiProtocolForModelAdapter,
+  normalizeBaseUrl,
+  providerTypeFromConfig,
+} from './modelConverters';
 import { inferCapabilities, getModelDefaultParameters, applyProviderSpecificAdjustments } from '@/utils/modelCapabilities';
 import { inferApiCapabilities } from '@/utils/apiCapabilityEngine';
 import { type UnifiedModelInfo } from '@/components/shared/UnifiedModelSelector';
@@ -135,6 +142,10 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
           apiKey: api.apiKey,
           api_base: api.baseUrl,
           apiBase: api.baseUrl,
+          api_protocol: api.apiProtocol,
+          apiProtocol: api.apiProtocol,
+          supports_openai_responses: api.supportsOpenAIResponses,
+          supportsOpenAIResponses: api.supportsOpenAIResponses,
           model: api.model, // 传递用户指定的模型名称
           vendor_id: vendorId, // 传递供应商 ID 以便后端获取真实密钥
           vendorId: vendorId,
@@ -211,6 +222,13 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
         id: '',
         name: configData.vendorName || configData.name || `${providerType.toUpperCase()} Vendor`,
         providerType,
+        apiProtocol:
+          configData.apiProtocol ??
+          defaultApiProtocolForProvider(providerType, {
+            model: configData.model,
+            baseUrl: configData.baseUrl,
+            adapter: configData.modelAdapter,
+          }),
         baseUrl: configData.baseUrl,
         apiKey: configData.apiKey,
         headers: configData.headers ?? {},
@@ -417,6 +435,14 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
           vendorId: vendor.id,
           vendorName: vendor.name,
           providerType: vendor.providerType,
+          apiProtocol:
+            vendor.apiProtocol ??
+            defaultApiProtocolForModelAdapter(baseAdapter, {
+              providerType: vendor.providerType,
+              baseUrl: vendor.baseUrl,
+              supportsOpenAIResponses: vendor.supportsOpenAIResponses,
+            }),
+          supportsOpenAIResponses: vendor.supportsOpenAIResponses,
           apiKey: vendor.apiKey ?? '',
           baseUrl: vendor.baseUrl,
           model: '',
@@ -489,6 +515,14 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
       vendorId: vendor.id,
       vendorName: vendor.name,
       providerType: vendor.providerType,
+      apiProtocol:
+        vendor.apiProtocol ??
+        defaultApiProtocolForModelAdapter(baseAdapter, {
+          providerType: vendor.providerType,
+          baseUrl: vendor.baseUrl,
+          supportsOpenAIResponses: vendor.supportsOpenAIResponses,
+        }),
+      supportsOpenAIResponses: vendor.supportsOpenAIResponses,
       apiKey: vendor.apiKey ?? '',
       baseUrl: vendor.baseUrl,
       model: '',

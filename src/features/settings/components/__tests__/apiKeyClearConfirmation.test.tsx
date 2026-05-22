@@ -1,7 +1,6 @@
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, beforeEach, describe, expect, test, vi } from 'vitest';
-
 import { SiliconFlowSection } from '../SiliconFlowSection';
 import { VendorApiKeySection } from '../VendorApiKeySection';
 import { TauriAPI } from '@/utils/tauriApi';
@@ -38,7 +37,7 @@ vi.mock('../../UnifiedNotification', () => ({
   showGlobalNotification: vi.fn(),
 }));
 
-vi.mock('../../../utils/tauriApi', () => ({
+vi.mock('@/utils/tauriApi', () => ({
   TauriAPI: {
     getSetting: vi.fn(),
     saveSetting: vi.fn(),
@@ -180,10 +179,9 @@ describe('API key clearing confirmation', () => {
     expect(revealButton.className).not.toContain('rounded-[var(--button-radius)]');
   });
 
-  test('does not re-save a stale debounced vendor API key after clear', async () => {
-    vi.useFakeTimers();
+  test('does not save a vendor API key until the user clicks save', async () => {
     const onSave = vi.fn().mockResolvedValue(undefined);
-    const onClear = vi.fn().mockResolvedValue(undefined);
+    const showMessage = vi.fn();
 
     render(
       <VendorApiKeySection
@@ -196,22 +194,22 @@ describe('API key clearing confirmation', () => {
           headers: {},
         }}
         onSave={onSave}
-        onClear={onClear}
+        onClear={vi.fn()}
+        showMessage={showMessage}
       />
     );
 
     const input = screen.getByPlaceholderText(/settings:vendor_panel.api_key_placeholder/);
-    fireEvent.change(input, { target: { value: 'sk-new-value' } });
-
-    fireEvent.click(screen.getByRole('button', { name: /settings:vendor_panel.clear_api_key/ }));
-    fireEvent.click(screen.getByRole('button', { name: /settings:vendor_panel.clear_api_key_confirm/ }));
-
-    await Promise.resolve();
-    await Promise.resolve();
-    expect(onClear).toHaveBeenCalledTimes(1);
-
-    await vi.advanceTimersByTimeAsync(900);
+    fireEvent.change(input, { target: { value: 'sk-pasted-value' } });
 
     expect(onSave).not.toHaveBeenCalled();
+    expect(screen.getByText(/unsaved|未保存/)).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /save|保存/i }));
+
+    await waitFor(() => {
+      expect(onSave).toHaveBeenCalledWith('sk-pasted-value');
+    });
+    expect(showMessage).toHaveBeenCalledWith('success', expect.stringMatching(/saved|已保存/i));
   });
 });

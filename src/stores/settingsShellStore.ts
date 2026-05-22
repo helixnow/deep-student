@@ -30,6 +30,9 @@ const DATA_GOVERNANCE_TAB_ALIASES: Record<string, DashboardTab> = {
 };
 
 const SETTINGS_TAB_MAPPING: Record<string, string> = {
+  app: 'general',
+  general: 'general',
+  appearance: 'appearance',
   api: 'apis',
   apis: 'apis',
   search: 'search',
