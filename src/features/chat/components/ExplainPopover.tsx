@@ -29,6 +29,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { cn } from '@/utils/cn';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { Z_INDEX } from '@/config/zIndex';
+import { useViewStore } from '@/stores/viewStore';
 import type { SelectionRect } from '../hooks/useTextSelection';
 
 // ============================================================================
@@ -215,6 +216,14 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
       setPosition(null);
     }
   }, [isVisible]);
+
+  // 全局视图切换离开 chat-v2 时，强制关闭弹窗
+  const currentView = useViewStore((s) => s.currentView);
+  useEffect(() => {
+    if (isVisible && currentView !== 'chat-v2') {
+      onClose();
+    }
+  }, [isVisible, currentView, onClose]);
 
   // ===== 关闭事件 =====
 

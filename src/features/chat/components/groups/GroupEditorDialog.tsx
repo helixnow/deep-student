@@ -332,7 +332,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                       key={iconName}
                       onClick={() => setIcon(iconName)}
                       className={cn(
-                        "w-9 h-9 flex items-center justify-center rounded-md cursor-pointer transition-all",
+                        "w-9 h-9 flex items-center justify-center rounded-md cursor-pointer transition-colors",
                         icon === iconName
                           ? "bg-primary/15 text-primary ring-1 ring-primary/30"
                           : "hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground"
@@ -346,7 +346,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                   {icon && (
                     <div
                       onClick={() => setIcon('')}
-                      className="w-9 h-9 flex items-center justify-center rounded-md cursor-pointer hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-all"
+                      className="w-9 h-9 flex items-center justify-center rounded-md cursor-pointer hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
                       title={t('common:clear')}
                     >
                       <X size={16} />
@@ -358,7 +358,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                   value={icon}
                   onChange={(e) => setIcon(e.target.value)}
                   placeholder={t('page.groupIconPlaceholder')}
-                  className="h-8 text-sm border-transparent shadow-none bg-transparent hover:bg-[var(--interactive-hover)] focus:bg-muted/20 focus:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 outline-none px-2 transition-all"
+                  className="h-8 text-sm border-transparent shadow-none bg-transparent hover:bg-[var(--interactive-hover)] focus:bg-muted/20 focus:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 outline-none px-2 transition-colors"
                 />
               </div>
             </PropertyRow>
@@ -368,7 +368,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                 value={description}
                 onChange={(e) => setDescription(e.target.value)}
                 placeholder={t('page.groupDescriptionPlaceholder')}
-                className="h-9 border-transparent shadow-none bg-transparent hover:bg-[var(--interactive-hover)] focus:bg-muted/20 focus:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 outline-none px-2 transition-all"
+                className="h-9 border-transparent shadow-none bg-transparent hover:bg-[var(--interactive-hover)] focus:bg-muted/20 focus:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 outline-none px-2 transition-colors"
               />
             </PropertyRow>
 
@@ -378,7 +378,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                 value={systemPrompt}
                 onChange={(e) => setSystemPrompt(e.target.value)}
                 rows={5}
-                className="min-h-[120px] border-transparent shadow-none bg-transparent hover:bg-[var(--interactive-hover)] focus:bg-muted/20 focus:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 outline-none px-2 py-2 transition-all resize-none overflow-hidden"
+                className="min-h-[120px] border-transparent shadow-none bg-transparent hover:bg-[var(--interactive-hover)] focus:bg-muted/20 focus:border-transparent focus-visible:ring-0 focus-visible:ring-offset-0 outline-none px-2 py-2 transition-colors resize-none overflow-hidden"
                 placeholder={t('page.groupSystemPromptPlaceholder')}
               />
             </PropertyRow>
@@ -447,7 +447,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                         type="button"
                         onClick={() => removePinnedResource(ref.sourceId)}
                         className={cn(
-                          'p-0.5 rounded hover:bg-destructive/10 hover:text-destructive transition-all',
+                          'p-0.5 rounded hover:bg-destructive/10 hover:text-destructive transition-colors',
                           isSmallScreen ? 'opacity-100' : 'opacity-0 group-hover:opacity-100 focus-visible:opacity-100'
                         )}
                         aria-label={t('common:remove', '移除')}
@@ -470,7 +470,7 @@ export const GroupEditorPanel: React.FC<GroupEditorPanelProps> = ({
                   setPickerOpen(true);
                 }
               }}
-              className="w-full flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-border/60 text-sm text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground hover:border-border transition-all cursor-pointer"
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-md border border-dashed border-border/60 text-sm text-muted-foreground hover:bg-[var(--interactive-hover)] hover:text-foreground hover:border-border transition-colors cursor-pointer"
             >
               <Plus size={16} />
               <span>{t('page.groupPinnedBrowse')}</span>

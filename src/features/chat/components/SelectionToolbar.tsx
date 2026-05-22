@@ -15,6 +15,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { useViewStore } from '@/stores/viewStore';
 import type { SelectionRect } from '../hooks/useTextSelection';
 
 // ============================================================================
@@ -102,6 +103,14 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
 
     setPosition({ top, left, flipped });
   }, [selectionRect, isVisible]);
+
+  // 全局视图切换离开 chat-v2 时，强制关闭工具栏
+  const currentView = useViewStore((s) => s.currentView);
+  useEffect(() => {
+    if (isVisible && currentView !== 'chat-v2') {
+      onClear();
+    }
+  }, [isVisible, currentView, onClear]);
 
   // 复制操作
   const handleCopy = useCallback(async (e: React.MouseEvent) => {

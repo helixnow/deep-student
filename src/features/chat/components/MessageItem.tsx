@@ -41,6 +41,7 @@ import { useDevShowRawRequest, useCopyFilterConfig, type CopyFilterConfig } from
 // 🆕 AI 内容标识（合规）
 import { AiContentLabel } from '@/components/shared/AiContentLabel';
 import { PulseDot } from '@/components/ui/PulseDot';
+import { ThreadContentShell } from './ui/ThreadContentShell';
 import { ThinkingIndicator } from './ThinkingIndicator';
 import { dispatchContextRefPreview } from '../utils/contextRefPreview';
 import { notesDstuAdapter } from '@/dstu/adapters/notesDstuAdapter';
@@ -107,9 +108,13 @@ function hasSharedContextSources(message: { sharedContext?: {
 
 type RawRequest = { _source?: string; model?: string; url?: string; body?: unknown; logFilePath?: string };
 
+function parseJsonSafe(text: string): unknown {
+  try { return JSON.parse(text); } catch { return null; }
+}
+
 async function applyCopyFilter(
   raw: RawRequest,
-  isBackendLlm: boolean,
+  _isBackendLlm: boolean,
   fallbackText: string,
   cfg: CopyFilterConfig,
   t: (key: string, options?: Record<string, unknown>) => string,
@@ -117,7 +122,9 @@ async function applyCopyFilter(
 ): Promise<string> {
   const needsFullSource = cfg.images === 'full' || cfg.tools === 'full';
 
-  let body: Record<string, unknown>;
+  let body: Record<string, unknown> | null = null;
+  let usedRawBody = false;
+
   if (needsFullSource && raw.logFilePath) {
     try {
       const { invoke: tauriInvoke } = await import('@tauri-apps/api/core');
@@ -126,13 +133,27 @@ async function applyCopyFilter(
     } catch {
       notify('warning', t('messageItem.rawRequest.logReadFailed'));
       body = (raw.body ? raw.body : raw) as Record<string, unknown>;
+      usedRawBody = true;
     }
   } else if (needsFullSource && !raw.logFilePath) {
     notify('warning', t('messageItem.rawRequest.persistentLogRequired'));
     body = (raw.body ? raw.body : raw) as Record<string, unknown>;
+    usedRawBody = true;
   } else {
     body = (raw.body ? raw.body : raw) as Record<string, unknown>;
+    usedRawBody = true;
   }
+
+  if (body && usedRawBody && typeof body === 'object' && !Array.isArray(body) && body.messages === undefined && fallbackText) {
+    try {
+      const parsed = JSON.parse(fallbackText);
+      if (parsed && typeof parsed === 'object' && !Array.isArray(parsed) && parsed.messages !== undefined) {
+        body = parsed as Record<string, unknown>;
+      }
+    } catch { /* fallbackText parse failed, keep original body */ }
+  }
+
+  if (!body) return fallbackText || '{}';
 
   const result: Record<string, unknown> = {};
 
@@ -352,14 +373,27 @@ function RawRequestPreview({ rawRequests, rawRequest, copyFilterConfig }: RawReq
 
   const handleCopy = async () => {
     try {
-      const asRaw: RawRequest = {
-        _source: current._source,
-        model: current.model,
-        url: current.url,
-        body: current.body,
-        logFilePath: current.logFilePath,
-      };
-      const textToCopy = await applyCopyFilter(asRaw, isBackendLlm, displayText, copyFilterConfig, t, showGlobalNotification);
+      const needsFullSource = copyFilterConfig.images === 'full' || copyFilterConfig.tools === 'full';
+      let textToCopy = displayText;
+
+      if (needsFullSource && current.logFilePath) {
+        try {
+          const { invoke: tauriInvoke } = await import('@tauri-apps/api/core');
+          const fullContent = await tauriInvoke<string>('read_debug_log_file', { path: current.logFilePath });
+          const fullBody = JSON.parse(fullContent);
+          const asRaw: RawRequest = {
+            _source: current._source,
+            model: current.model,
+            url: current.url,
+            body: fullBody,
+            logFilePath: current.logFilePath,
+          };
+          textToCopy = await applyCopyFilter(asRaw, isBackendLlm, displayText, copyFilterConfig, t, showGlobalNotification);
+        } catch {
+          showGlobalNotification('warning', t('messageItem.rawRequest.logReadFailed'));
+        }
+      }
+
       await copyTextToClipboard(textToCopy);
       showGlobalNotification('success', t('messageItem.rawRequest.copySuccess'));
     } catch (error: unknown) {
@@ -1110,7 +1144,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     >
       {/* 📱 移动端多变体：使用垂直布局，不显示外层头像（卡片内已有） */}
       {isMobileMultiVariant ? (
-        <div className="max-w-thread mx-auto group">
+        <ThreadContentShell className="group">
           {/* 多变体内容：居中显示，使用全宽 */}
           <ParallelVariantView
             store={store}
@@ -1128,15 +1162,12 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
             onBranchSession={handleBranch}
             hideMessageLevelActions={!isSmallScreen}
           />
-        </div>
+        </ThreadContentShell>
       ) : (
         /* 💻 桌面端/非多变体：消息内容布局 */
-        <div
-          className={cn(
-            'mx-auto',
-            // 与输入栏 (InputBarUI: max-w-thread) 严格对齐
-            isMultiVariant ? 'max-w-full' : 'max-w-thread',
-          )}
+        <ThreadContentShell
+          // 与输入栏 (InputBarUI: max-w-thread) 严格对齐
+          width={isMultiVariant ? 'full' : 'thread'}
         >
           {/* 消息内容 */}
           <div className="min-w-0 message-selectable-area" ref={messageContentRef}>
@@ -1606,7 +1637,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
             />
           )}
         </div>
-      </div>
+      </ThreadContentShell>
       )}
 
       {/* 🔧 移除模态框，改用底部面板 */}

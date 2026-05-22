@@ -1,12 +1,12 @@
 import { existsSync, readFileSync } from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { describe, expect, it } from 'vitest';
 
-const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../../..');
-const messageListPath = path.join(repoRoot, 'src/chat-v2/components/MessageList.tsx');
-const chatContainerPath = path.join(repoRoot, 'src/chat-v2/components/ChatContainer.tsx');
-const chatPagePath = path.join(repoRoot, 'src/chat-v2/pages/ChatV2Page.tsx');
+const repoRoot = process.cwd();
+const messageListPath = path.join(repoRoot, 'src/features/chat/components/MessageList.tsx');
+const threadEmptyStateShellPath = path.join(repoRoot, 'src/features/chat/components/ui/ThreadEmptyStateShell.tsx');
+const chatContainerPath = path.join(repoRoot, 'src/features/chat/components/ChatContainer.tsx');
+const chatPagePath = path.join(repoRoot, 'src/features/chat/pages/ChatV2Page.tsx');
 const oldWorkspaceLabel = ['当前工作区：', 'study-ui'].join('');
 const oldWorkspaceKey = ['workspace', 'Label'].join('');
 const oldWorkspaceHintKey = ['workspace', 'Hint'].join('');
@@ -23,10 +23,11 @@ function readSource(absolutePath: string) {
 describe('MessageList empty state source guards', () => {
   it('keeps the default new-session landing quiet and folds the group name into the primary action when provided', () => {
     const source = readSource(messageListPath);
+    const emptyStateShellSource = readSource(threadEmptyStateShellPath);
     const emptyStateMatch = source.match(/if \(forceEmptyPreview \|\| messageOrder\.length === 0\) \{([\s\S]*?)return \(/);
     const emptyBlock = emptyStateMatch?.[1] ?? '';
 
-    expect(source).toContain('data-slot="thread-empty-state"');
+    expect(emptyStateShellSource).toContain('data-slot="thread-empty-state"');
     expect(source).toContain('emptyStateGroupName?: string | null');
     expect(source).toContain('emptyStateGroupName = null');
     expect(source).toContain("t('messageList.empty.primaryAction'");
@@ -34,7 +35,7 @@ describe('MessageList empty state source guards', () => {
     expect(source).toContain("t('messageList.empty.primaryActionInGroup'");
     expect(source).toContain('groupName: emptyStateGroupName');
     expect(source).toContain("defaultValue: '在「{{groupName}}」里学点什么？'");
-    expect(source).toContain('{emptyStatePrimaryAction}');
+    expect(source).toContain('title={emptyStatePrimaryAction}');
     expect(emptyBlock).not.toContain('<p className="text-base text-muted-foreground">{emptyStateGroupName}</p>');
 
     expect(source).not.toContain(`t('chatV2:messageList.empty.${oldWorkspaceKey}'`);

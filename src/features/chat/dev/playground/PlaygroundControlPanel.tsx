@@ -36,6 +36,9 @@ import {
 import {
   triggerScenario,
   triggerSingleBlock,
+  triggerBlockingAskUser,
+  triggerBlockingToolApproval,
+  triggerBlockingToolLimit,
   clearAllMessages,
   abortCurrentScenario,
   createAssistantMessage,
@@ -45,6 +48,12 @@ import {
 import { ProfilerPanel } from './ProfilerPanel';
 import { EvalPanel } from './EvalPanel';
 import { RHYTHM_PRESETS } from './eval/rhythm';
+import {
+  getRenderModeHint,
+  getRenderModeLabel,
+  getStreamingPresetHint,
+  getStreamingPresetLabel,
+} from './labels';
 
 // ============================================================================
 // Props
@@ -159,6 +168,34 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
     }
   }, [store, selectedStatus]);
 
+  const handleInjectBlockingAskUser = useCallback(() => {
+    triggerBlockingAskUser(store, {
+      question: '你希望我下一步怎么做？',
+      options: ['继续自动执行', '先解释方案', '只给我 patch'],
+      allowCustom: true,
+      context: '这是 playground 中的真实 ask_user 调试入口，会接管输入栏。',
+    });
+  }, [store]);
+
+  const handleInjectBlockingApproval = useCallback(() => {
+    triggerBlockingToolApproval(store, {
+      toolName: 'builtin-session_archive',
+      arguments: {
+        session_ids: ['sess_alpha', 'sess_beta'],
+        confirmed: false,
+      },
+      sensitivity: 'high',
+      description: '调试真实审批条，验证参数展开、批准/拒绝与 resolved 状态。',
+      timeoutSeconds: 45,
+    });
+  }, [store]);
+
+  const handleInjectBlockingToolLimit = useCallback(() => {
+    triggerBlockingToolLimit(store, {
+      content: '已达到工具调用上限，点击继续以验证真实 tool_limit 接管条。',
+    });
+  }, [store]);
+
   // 清空
   const handleClear = useCallback(() => {
     abortCurrentScenario();
@@ -205,6 +242,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                 key={p}
                 type="button"
                 onClick={() => onPresetChange(p)}
+                title={getStreamingPresetHint(p)}
                 className={cn(
                   'flex-1 px-1 py-0.5 text-[10px] rounded transition-colors',
                   preset === p
@@ -212,11 +250,14 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                     : 'bg-muted hover:bg-muted/80 text-muted-foreground',
                 )}
               >
-                {p}
+                {getStreamingPresetLabel(p)}
               </button>
             ))}
           </div>
         </div>
+        <p className="pl-[3.375rem] text-[10px] leading-relaxed text-muted-foreground/80">
+          {getStreamingPresetHint(preset)}
+        </p>
         <div className="flex items-center gap-1.5">
           <span className="text-[10px] text-muted-foreground tracking-wider font-medium w-12">
             模式
@@ -227,6 +268,7 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                 key={m}
                 type="button"
                 onClick={() => onRenderModeChange(m)}
+                title={getRenderModeHint(m)}
                 className={cn(
                   'flex-1 px-1 py-0.5 text-[10px] rounded transition-colors',
                   renderMode === m
@@ -234,11 +276,14 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                     : 'bg-muted hover:bg-muted/80 text-muted-foreground',
                 )}
               >
-                {m === 'legacy' ? '整段' : '块级'}
+                {getRenderModeLabel(m)}
               </button>
             ))}
           </div>
         </div>
+        <p className="pl-[3.375rem] text-[10px] leading-relaxed text-muted-foreground/80">
+          {getRenderModeHint(renderMode)}
+        </p>
       </div>
 
       {/* Tabs */}
@@ -405,6 +450,47 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                     </div>
                   </button>
                 ))}
+              </div>
+            </CollapsibleSection>
+
+            <CollapsibleSection
+              title="真实阻塞交互"
+              icon={<WarningCircle size={14} />}
+              expanded={expandedSections.has('blocking')}
+              onToggle={() => toggleSection('blocking')}
+              badge="ask_user"
+            >
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={handleInjectBlockingAskUser}
+                  className="w-full text-left rounded px-2 py-2 text-[11px] transition-colors hover:bg-muted/80"
+                >
+                  <div className="font-medium">真实 `ask_user`</div>
+                  <div className="mt-0.5 text-[10px] text-muted-foreground">
+                    接管输入栏，显示带选项和自定义输入的真实调试弹条。
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleInjectBlockingApproval}
+                  className="w-full text-left rounded px-2 py-2 text-[11px] transition-colors hover:bg-muted/80"
+                >
+                  <div className="font-medium">真实 `tool_approval`</div>
+                  <div className="mt-0.5 text-[10px] text-muted-foreground">
+                    验证敏感度徽章、参数展开，以及批准/拒绝后的 resolved 态。
+                  </div>
+                </button>
+                <button
+                  type="button"
+                  onClick={handleInjectBlockingToolLimit}
+                  className="w-full text-left rounded px-2 py-2 text-[11px] transition-colors hover:bg-muted/80"
+                >
+                  <div className="font-medium">真实 `tool_limit`</div>
+                  <div className="mt-0.5 text-[10px] text-muted-foreground">
+                    直接走输入栏 continue 交互，检查阻塞态与恢复行为。
+                  </div>
+                </button>
               </div>
             </CollapsibleSection>
           </div>

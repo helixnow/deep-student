@@ -34,6 +34,7 @@ import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { AppSelect } from '@/components/ui/app-menu/AppSelect';
 import { OverlayLayerProvider } from '@/components/shared/OverlayLayer';
 import { Z_INDEX } from '@/config/zIndex';
+import { useViewStore } from '@/stores/viewStore';
 import type { ApiConfig, ModelAssignments } from '@/types';
 import type { SelectionRect } from '../hooks/useTextSelection';
 import type { AlignedSegment, TranslationDisplayMode } from './translationTypes';
@@ -522,6 +523,14 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
       cancelActiveStream();
     };
   }, [cancelActiveStream]);
+
+  // 全局视图切换离开 chat-v2 时，强制关闭弹窗
+  const currentView = useViewStore((s) => s.currentView);
+  useEffect(() => {
+    if (isVisible && currentView !== 'chat-v2') {
+      onClose();
+    }
+  }, [isVisible, currentView, onClose]);
 
   // 打开时固定位置（只计算一次）
   useEffect(() => {

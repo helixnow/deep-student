@@ -161,6 +161,46 @@ export interface LoadSessionResponseType {
 }
 
 // ============================================================================
+// Blocking Interaction 类型
+// ============================================================================
+
+export interface ToolApprovalBlockingInteraction {
+  kind: 'tool_approval';
+  toolCallId: string;
+  toolName: string;
+  arguments: Record<string, unknown>;
+  sensitivity: 'low' | 'medium' | 'high';
+  description: string;
+  timeoutSeconds: number;
+  resolvedStatus?: 'approved' | 'rejected' | 'timeout' | 'expired' | 'error';
+  resolvedReason?: string;
+}
+
+export interface AskUserBlockingInteraction {
+  kind: 'ask_user';
+  blockId: string;
+  toolCallId: string;
+  question: string;
+  options: Array<string | { label?: string; value?: string; text?: string }>;
+  multiple: boolean;
+  allowCustom: boolean;
+  timeoutSeconds: number | null;
+  context?: string;
+}
+
+export interface ToolLimitBlockingInteraction {
+  kind: 'tool_limit';
+  blockId: string;
+  content: string;
+  onContinue: (() => Promise<void>) | null;
+}
+
+export type BlockingInteraction =
+  | ToolApprovalBlockingInteraction
+  | AskUserBlockingInteraction
+  | ToolLimitBlockingInteraction;
+
+// ============================================================================
 // ChatStore 类型定义
 // ============================================================================
 
@@ -280,6 +320,9 @@ export interface ChatStore {
     resolvedStatus?: 'approved' | 'rejected' | 'timeout' | 'expired' | 'error';
     resolvedReason?: string;
   } | null;
+
+  /** 待处理的阻塞交互（tool approval / ask user / tool limit） */
+  pendingBlockingInteraction: BlockingInteraction | null;
 
   // ========== 🆕 队列状态（❌ 不持久化，per-session 内存态） ==========
 
@@ -518,6 +561,12 @@ export interface ChatStore {
 
   /** 设置面板状态 */
   setPanelState(panel: keyof PanelStates, open: boolean): void;
+
+  /** 设置阻塞交互 */
+  setBlockingInteraction(interaction: BlockingInteraction | null): void;
+
+  /** 清除阻塞交互 */
+  clearBlockingInteraction(): void;
 
   // ========== 🆕 上下文引用 Actions ==========
 

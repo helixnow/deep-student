@@ -17,6 +17,7 @@ import { motion, AnimatePresence } from 'framer-motion';
 import { useDisclosureMotion } from '../../hooks/useDisclosureMotion';
 import { useLiveDurationSeconds } from '../../hooks/useLiveDurationSeconds';
 import {
+  Brain,
   CaretDown,
   CaretRight,
   CircleNotch,
@@ -317,6 +318,12 @@ interface TimelineNodeProps {
   onToggle?: () => void;
   /** Disclosure pattern: id of the panel this dot/trigger controls. */
   contentId?: string;
+  /** 可选：替换默认圆点的装饰图标（非交互） */
+  icon?: React.ReactNode;
+  /** 隐藏节点圆点，仅保留连接线 */
+  hideDot?: boolean;
+  /** 图标是否跟随吸顶 */
+  stickyIcon?: boolean;
   children: React.ReactNode;
 }
 
@@ -328,6 +335,9 @@ const TimelineNode: React.FC<TimelineNodeProps> = ({
   isExpanded = false,
   onToggle,
   contentId,
+  icon,
+  hideDot,
+  stickyIcon,
   children,
 }) => {
   const { t } = useTranslation('chatV2');
@@ -342,8 +352,20 @@ const TimelineNode: React.FC<TimelineNodeProps> = ({
             isFirst ? 'h-2 bg-transparent' : 'h-2 bg-border'
           )}
         />
-        {/* 节点圆点 - 使用 CSS 类确保 Android WebView 正确渲染 */}
-        {isClickable ? (
+        {/* 节点标记：图标变体 / 圆点变体 */}
+        {icon ? (
+          <div
+            aria-hidden="true"
+            className={cn(
+              '-mx-1 h-4 w-4 flex-shrink-0 z-10 inline-flex items-center justify-center',
+              stickyIcon && 'sticky top-0'
+            )}
+          >
+            {icon}
+          </div>
+        ) : hideDot ? (
+          <div className="w-2 h-2 flex-shrink-0 z-10" aria-hidden="true" />
+        ) : isClickable ? (
           <NotionButton
             variant="ghost"
             size="icon"
@@ -403,6 +425,7 @@ const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst
   const { t } = useTranslation('chatV2');
   const disclosureMotion = useDisclosureMotion();
   const contentId = useId();
+  const summaryRef = useRef<HTMLDivElement | null>(null);
   const liveDurationSeconds = useLiveDurationSeconds(
     node.block.startedAt,
     node.block.endedAt,
@@ -411,32 +434,84 @@ const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst
   const displayDurationSeconds = node.isThinking
     ? liveDurationSeconds
     : (node.durationSeconds ?? liveDurationSeconds);
-  // 🔧 流式优化：正在思考时默认展开，完成后默认折叠
-  const [isExpanded, setIsExpanded] = useState(node.isThinking ?? false);
-  // 记录是否被用户手动操作过
+  // 思维链默认展开，正在流式时确保展开
+  const [isExpanded, setIsExpanded] = useState(true);
+  const [preserveStickyOnCollapse, setPreserveStickyOnCollapse] = useState(false);
   const isManuallyControlled = useRef(false);
 
-  // 🔧 流式优化：自动展开正在流式的思维链，折叠已完成的
   useEffect(() => {
-    // 如果用户手动操作过，不再自动控制
     if (isManuallyControlled.current) return;
-
     if (node.isThinking) {
-      // 正在思考时自动展开
       setIsExpanded(true);
-    } else {
-      // 思考完成时自动折叠
-      setIsExpanded(false);
+      setPreserveStickyOnCollapse(false);
     }
   }, [node.isThinking]);
+
+  const getScrollContainer = useCallback((element: HTMLElement | null): HTMLElement | null => {
+    if (typeof window === 'undefined') return null;
+
+    let current = element?.parentElement ?? null;
+    while (current) {
+      const { overflowY } = window.getComputedStyle(current);
+      if (overflowY === 'auto' || overflowY === 'scroll' || overflowY === 'overlay') {
+        return current;
+      }
+      current = current.parentElement;
+    }
+
+    return null;
+  }, []);
+
+  const isSummaryPinnedAtTop = useCallback((element: HTMLElement | null): boolean => {
+    const scrollContainer = getScrollContainer(element);
+    if (!element || !scrollContainer) return false;
+
+    const summaryRect = element.getBoundingClientRect();
+    const containerRect = scrollContainer.getBoundingClientRect();
+
+    return Math.abs(summaryRect.top - containerRect.top) <= 2;
+  }, [getScrollContainer]);
+
+  const hasSummaryScrolledPastTop = useCallback((element: HTMLElement | null): boolean => {
+    const scrollContainer = getScrollContainer(element);
+    if (!element || !scrollContainer) return false;
+
+    const summaryRect = element.getBoundingClientRect();
+    const containerRect = scrollContainer.getBoundingClientRect();
+
+    return summaryRect.top < containerRect.top - 2;
+  }, [getScrollContainer]);
 
   const toggleExpanded = useCallback(() => {
     // 标记为用户手动控制
     isManuallyControlled.current = true;
-    setIsExpanded((prev) => !prev);
-  }, []);
+    const pinnedAtTop = isSummaryPinnedAtTop(summaryRef.current);
+    setIsExpanded((prev) => {
+      const nextExpanded = !prev;
+      setPreserveStickyOnCollapse(!nextExpanded && pinnedAtTop);
+      return nextExpanded;
+    });
+  }, [isSummaryPinnedAtTop]);
+
+  useEffect(() => {
+    if (isExpanded || !preserveStickyOnCollapse) return;
+
+    const scrollContainer = getScrollContainer(summaryRef.current);
+    if (!scrollContainer) return;
+
+    const handleScroll = () => {
+      if (hasSummaryScrolledPastTop(summaryRef.current)) {
+        setPreserveStickyOnCollapse(false);
+      }
+    };
+
+    handleScroll();
+    scrollContainer.addEventListener('scroll', handleScroll, { passive: true });
+    return () => scrollContainer.removeEventListener('scroll', handleScroll);
+  }, [getScrollContainer, hasSummaryScrolledPastTop, isExpanded, preserveStickyOnCollapse]);
 
   const hasContent = !!(node.content || node.isThinking);
+  const shouldStickSummary = hasContent && (isExpanded || preserveStickyOnCollapse);
 
   const paragraphs = useMemo(
     () => (node.content ?? '')
@@ -455,40 +530,64 @@ const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst
       isExpanded={isExpanded}
       onToggle={toggleExpanded}
       contentId={contentId}
+      hideDot
     >
-      {/* 🔧 统一交互：文字区域也可以点击展开 */}
-      <NotionButton
-        variant="ghost"
-        size="sm"
-        onClick={hasContent ? toggleExpanded : undefined}
-        disabled={!hasContent}
-        aria-expanded={hasContent ? isExpanded : undefined}
-        aria-controls={hasContent ? contentId : undefined}
+      <div
+        ref={summaryRef}
         className={cn(
-          '!justify-start !px-0 hover:!bg-transparent',
-          'text-muted-foreground',
-          hasContent && 'hover:text-foreground cursor-pointer',
-          'disabled:cursor-default'
+          shouldStickSummary && cn(
+          'thinking-summary-sticky sticky top-0 z-10 -ml-[28px] -mr-3 pl-[28px] pr-3 pt-1'
+          )
         )}
       >
-        {node.isThinking ? (
-          <TextShimmer
-            className="text-sm"
-            duration={1.5}
-            spread={3}
+        <div className="thinking-summary-row flex w-full max-w-full items-center pb-0.5 -ml-[22px]">
+          <Brain
+            size={15}
+            weight={node.isThinking ? 'fill' : 'regular'}
+            className="text-primary flex-shrink-0 mr-[3px]"
+          />
+          <NotionButton
+            variant="ghost"
+            size="sm"
+            onClick={hasContent ? toggleExpanded : undefined}
+            disabled={!hasContent}
+            aria-expanded={hasContent ? isExpanded : undefined}
+            aria-controls={hasContent ? contentId : undefined}
+            className={cn(
+              'thinking-summary-trigger w-full !justify-start !px-0 rounded-[var(--radius-shell-control)] transition-colors group',
+              'text-muted-foreground gap-1.5 hover:text-foreground',
+              'focus-visible:text-foreground',
+              hasContent && 'hover:text-foreground cursor-pointer',
+              'disabled:cursor-default disabled:hover:!bg-transparent'
+            )}
           >
-            {t('timeline.thinking.inProgress', { seconds: liveDurationSeconds })}
-          </TextShimmer>
-        ) : node.isAborted ? (
-          <span className="text-muted-foreground/80">
-            {t('timeline.thinking.stopped')}
-          </span>
-        ) : (
-          <span>
-            {t('timeline.thinking.completed', { seconds: displayDurationSeconds })}
-          </span>
-        )}
-      </NotionButton>
+            {node.isThinking ? (
+              <TextShimmer className="text-sm" duration={1.5} spread={3}>
+                {t('timeline.thinking.inProgress', { seconds: liveDurationSeconds })}
+              </TextShimmer>
+            ) : node.isAborted ? (
+              <span className="text-muted-foreground/80">
+                {t('timeline.thinking.stopped')}
+              </span>
+            ) : (
+              <span>
+                {t('timeline.thinking.completed', { seconds: displayDurationSeconds })}
+              </span>
+            )}
+            {hasContent && (
+              <motion.span
+                aria-hidden="true"
+                className="flex-shrink-0 inline-flex items-center justify-center text-muted-foreground/50 group-hover:text-foreground/70 transition-colors duration-200"
+                initial={false}
+                animate={{ rotate: isExpanded ? 90 : 0 }}
+                transition={{ duration: 0.2, ease: 'easeOut' }}
+              >
+                <CaretRight size={12} weight="bold" />
+              </motion.span>
+            )}
+          </NotionButton>
+        </div>
+      </div>
 
       <AnimatePresence initial={false}>
         {isExpanded && node.content && (
@@ -497,11 +596,10 @@ const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst
             id={contentId}
             role="region"
             aria-label={t('timeline.thinking.contentLabel')}
-            className="overflow-hidden"
+            className={cn('overflow-hidden', shouldStickSummary && 'pt-3')}
           >
             <div
-              className="py-1.5 text-gray-500 dark:text-gray-400 text-xs leading-snug overflow-y-auto"
-              style={{ maxHeight: 'min(60vh, 320px)' }}
+              className="py-1.5 pl-2 pr-1 text-gray-500 dark:text-gray-400 text-xs leading-snug"
             >
               <div className="space-y-1.5">
                 {paragraphs.map((paragraph, idx, arr) => (

@@ -22,7 +22,11 @@ import { useMessageOrder, useSessionStatus, useIsDataLoaded } from '../hooks/use
 import type { ChatStore } from '../core/types';
 import { sessionSwitchPerf } from '../debug/sessionSwitchPerf';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
+import Z_INDEX from '@/config/zIndex';
+import { useSmoothWheel } from '../hooks/useSmoothWheel';
 import { ArrowDown } from '@phosphor-icons/react';
+import { ThreadEmptyStateShell } from './ui/ThreadEmptyStateShell';
+import { ThreadContentShell } from './ui/ThreadContentShell';
 
 // ============================================================================
 // 常量定义
@@ -89,6 +93,9 @@ const MessageListInner: React.FC<MessageListProps> = ({
   });
 
   const { t } = useTranslation('chatV2');
+  const scrollToBottomLabel = t('messageList.scrollToBottom', {
+    defaultValue: 'Scroll to bottom',
+  });
 
   // 📱 移动端适配：检测屏幕尺寸
   const { isSmallScreen } = useBreakpoint();
@@ -225,62 +232,101 @@ const MessageListInner: React.FC<MessageListProps> = ({
     return () => cancelAnimationFrame(rafId);
   }, [useDirectRender, virtualizerReady, virtualRowCount, isStreaming, virtualizer]);
 
-  // 滚动到底部
-  const scrollToBottom = useCallback(() => {
-    if (viewportElement) {
-      viewportElement.scrollTop = viewportElement.scrollHeight;
-    }
-  }, [viewportElement]);
-
-  /** 点击"回到底部"按钮 */
-  const handleScrollToBottomClick = useCallback(() => {
-    scrollToBottom();
-    userHasScrolledRef.current = false;
-    setShowScrollToBottom(false);
-  }, [scrollToBottom]);
-
   // 🔧 优化：使用 ref 追踪上一次消息数量和滚动状态
   const prevMessageCountRef = useRef(messageOrder.length);
   const isAutoScrollingRef = useRef(false);
   const rafIdRef = useRef<number | null>(null);
+  const programmaticScrollLockRef = useRef(false);
+  const programmaticScrollUnlockTimerRef = useRef<number | null>(null);
 
-  // 🔧 用户滚动意图检测：通过 wheel/touch 事件判断用户是否主动滚动
-  // 避免仅靠距离阈值判断导致的"拔河"问题
+  // 🔧 用户滚动意图检测：根据实际滚动位置决定是否保持吸底跟随
   const userHasScrolledRef = useRef(false);
   const [showScrollToBottom, setShowScrollToBottom] = useState(false);
 
-  /** 检查当前是否在底部附近（阈值 150px） */
+  /** 检查当前是否在底部附近（阈值 50px，ChatGPT/Claude 同级灵敏度） */
   const isNearBottom = useCallback(() => {
     if (!viewportElement) return true;
     const { scrollTop, scrollHeight, clientHeight } = viewportElement;
-    return scrollHeight - scrollTop - clientHeight < 150;
+    return scrollHeight - scrollTop - clientHeight < 50;
   }, [viewportElement]);
 
-  // 监听用户主动滚动事件（wheel / touchmove），设置 userHasScrolled 标志
+  const scheduleProgrammaticScrollUnlock = useCallback((delayMs: number) => {
+    if (programmaticScrollUnlockTimerRef.current !== null) {
+      window.clearTimeout(programmaticScrollUnlockTimerRef.current);
+    }
+    programmaticScrollUnlockTimerRef.current = window.setTimeout(() => {
+      programmaticScrollLockRef.current = false;
+      programmaticScrollUnlockTimerRef.current = null;
+    }, delayMs);
+  }, []);
+
+  // 滚动到底部
+  const scrollToBottom = useCallback((behavior: ScrollBehavior = 'auto') => {
+    if (!viewportElement) return;
+
+    const top = viewportElement.scrollHeight;
+    const shouldLock = behavior === 'smooth';
+
+    if (shouldLock) {
+      programmaticScrollLockRef.current = true;
+    }
+
+    if (typeof viewportElement.scrollTo === 'function') {
+      viewportElement.scrollTo({ top, behavior });
+    } else {
+      viewportElement.scrollTop = top;
+    }
+
+    if (shouldLock) {
+      scheduleProgrammaticScrollUnlock(250);
+    }
+  }, [scheduleProgrammaticScrollUnlock, viewportElement]);
+
+  /** 点击"回到底部"按钮 */
+  const handleScrollToBottomClick = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    event.currentTarget.blur();
+    userHasScrolledRef.current = false;
+    setShowScrollToBottom(false);
+    scrollToBottom('smooth');
+  }, [scrollToBottom]);
+
+  // 基于真实滚动位置同步吸底状态与按钮可见性
   useEffect(() => {
     if (!viewportElement) return;
 
-    const handleUserScroll = () => {
-      // 用户主动滚动且不在底部附近 → 标记为用户已接管滚动
-      if (!isNearBottom()) {
-        userHasScrolledRef.current = true;
-        setShowScrollToBottom(true);
-      } else {
-        // 用户滚回底部 → 恢复跟随
-        userHasScrolledRef.current = false;
-        setShowScrollToBottom(false);
-      }
+    const syncScrollState = () => {
+      if (programmaticScrollLockRef.current) return;
+
+      const nearBottom = isNearBottom();
+      userHasScrolledRef.current = !nearBottom;
+      setShowScrollToBottom(!nearBottom);
     };
 
-    // wheel 和 touchmove 是用户主动发起的滚动行为
-    viewportElement.addEventListener('wheel', handleUserScroll, { passive: true });
-    viewportElement.addEventListener('touchmove', handleUserScroll, { passive: true });
+    syncScrollState();
+    viewportElement.addEventListener('scroll', syncScrollState, { passive: true });
 
     return () => {
-      viewportElement.removeEventListener('wheel', handleUserScroll);
-      viewportElement.removeEventListener('touchmove', handleUserScroll);
+      viewportElement.removeEventListener('scroll', syncScrollState);
     };
   }, [viewportElement, isNearBottom]);
+
+  useEffect(() => {
+    return () => {
+      if (programmaticScrollUnlockTimerRef.current !== null) {
+        window.clearTimeout(programmaticScrollUnlockTimerRef.current);
+      }
+    };
+  }, []);
+
+  // 🖱️ 平滑滚轮惯性 + 第一时间检测向上滚动意图（ChatGPT/Claude 同级手感）
+  useSmoothWheel(containerRef.current, {
+    onUserScrollUp: () => {
+      if (isAutoScrollingRef.current) {
+        userHasScrolledRef.current = true;
+        setShowScrollToBottom(true);
+      }
+    },
+  });
 
   // 🚀 P1优化：流式生成时使用 rAF 自动滚动（替代 setInterval）
   useEffect(() => {
@@ -290,17 +336,13 @@ const MessageListInner: React.FC<MessageListProps> = ({
         cancelAnimationFrame(rafIdRef.current);
         rafIdRef.current = null;
       }
-      // 流式结束后重置用户滚动标志，下次流式重新开始跟随
-      if (!isStreaming) {
-        userHasScrolledRef.current = false;
-        setShowScrollToBottom(false);
-      }
       return;
     }
 
     isAutoScrollingRef.current = true;
 
     // 使用 rAF 循环，仅在流式时执行
+    // 大块内容（代码块/图片）出现时用 easing 平滑追赶，逐行文本用 instant 紧跟
     const scrollLoop = () => {
       if (!isAutoScrollingRef.current) return;
 
@@ -310,12 +352,22 @@ const MessageListInner: React.FC<MessageListProps> = ({
         return;
       }
 
-      // 用户未主动滚动，检查是否在底部附近
-      if (isNearBottom()) {
-        viewportElement.scrollTop = viewportElement.scrollHeight;
+      const maxScroll = viewportElement.scrollHeight - viewportElement.clientHeight;
+      const currentBottom = viewportElement.scrollTop + viewportElement.clientHeight;
+      const distance = maxScroll + viewportElement.clientHeight - currentBottom;
+
+      if (distance <= 0) {
+        rafIdRef.current = requestAnimationFrame(scrollLoop);
+        return;
+      }
+
+      // 大块内容（>200px，如代码块/图片）→ easing 追赶，避免视觉跳动
+      // 小块内容（逐行文本）→ instant 紧跟
+      if (distance > 200) {
+        const eased = currentBottom + distance * 0.35 - viewportElement.clientHeight;
+        viewportElement.scrollTop = Math.min(eased, maxScroll);
       } else {
-        // 被程序以外的原因滚离（如内容高度突变），也标记为脱离
-        userHasScrolledRef.current = true;
+        viewportElement.scrollTop = maxScroll;
       }
 
       rafIdRef.current = requestAnimationFrame(scrollLoop);
@@ -330,20 +382,54 @@ const MessageListInner: React.FC<MessageListProps> = ({
         rafIdRef.current = null;
       }
     };
-  }, [isStreaming, viewportElement, isNearBottom]);
+  }, [isStreaming, viewportElement]);
 
-  // 新消息时滚动到底部（只在用户仍在底部附近时触发，避免打断阅读）
+  // 🆕 追踪 streaming 状态变化，用于检测"用户刚发送了新消息"
+  const prevIsStreamingRef = useRef(isStreaming);
+
+  // 新消息定位：用户发送新消息时，以该消息在顶部开始（ChatGPT/Claude 同级体验）
+  // 流式开始后由 rAF 循环接管滚动；非流式新增消息仍 scrollToBottom
+  useEffect(() => {
+    const wasStreaming = prevIsStreamingRef.current;
+    prevIsStreamingRef.current = isStreaming;
+
+    // 流式刚开始 → 用户刚发了新消息，定位用户消息到顶部
+    if (isStreaming && !wasStreaming) {
+      userHasScrolledRef.current = false;
+      setShowScrollToBottom(false);
+      requestAnimationFrame(() => {
+        if (!viewportElement) return;
+        // 仅直渲模式（<80条消息）用 scrollIntoView 精确定位
+        // 虚拟模式下消息是绝对定位的，回退到 scrollToBottom
+        if (useDirectRender) {
+          const lastChild = viewportElement.lastElementChild as HTMLElement | null;
+          if (lastChild) {
+            lastChild.scrollIntoView({ block: 'start', behavior: 'instant' as ScrollBehavior });
+            return;
+          }
+        }
+        scrollToBottom();
+      });
+      return;
+    }
+
+    // 流式结束 → 确保停在底部
+    if (!isStreaming && wasStreaming) {
+      if (!userHasScrolledRef.current) {
+        requestAnimationFrame(() => { scrollToBottom(); });
+      }
+    }
+  }, [isStreaming, viewportElement, scrollToBottom]);
+
+  // 非流式期间新消息到达时滚动到底部（如加载历史记录）
   useEffect(() => {
     if (messageOrder.length > prevMessageCountRef.current) {
-      // 仅在用户没有主动滚离底部时才自动滚动
-      if (!userHasScrolledRef.current && isNearBottom()) {
-        requestAnimationFrame(() => {
-          scrollToBottom();
-        });
+      if (!isStreaming && !userHasScrolledRef.current) {
+        requestAnimationFrame(() => { scrollToBottom(); });
       }
     }
     prevMessageCountRef.current = messageOrder.length;
-  }, [messageOrder.length, scrollToBottom, isNearBottom]);
+  }, [messageOrder.length, isStreaming, scrollToBottom]);
 
   // 📊 性能打点：首次渲染完成
   // 只有当 isDataLoaded 为 true 时才触发 first_render，避免 race condition
@@ -411,22 +497,10 @@ const MessageListInner: React.FC<MessageListProps> = ({
         )}
       >
         <div className="custom-scrollbar min-h-0 flex-1 overflow-y-auto px-4 pb-6 pt-3 md:px-8 md:pb-8 md:pt-4">
-          <div className="mx-auto flex min-h-full w-full max-w-[44rem] items-center">
-            <section
-              data-slot="thread-empty-state"
-              className={cn(
-                'flex w-full flex-col items-center justify-center gap-4 text-center',
-                isSmallScreen ? 'py-10' : 'py-16'
-              )}
-            >
-              <h2
-                data-slot="thread-empty-primary-action"
-                className="text-balance text-xl font-medium text-foreground"
-              >
-                {emptyStatePrimaryAction}
-              </h2>
-            </section>
-          </div>
+          <ThreadEmptyStateShell
+            title={emptyStatePrimaryAction}
+            contentClassName={isSmallScreen ? 'py-10' : 'py-16'}
+          />
         </div>
       </div>
     );
@@ -512,23 +586,43 @@ const MessageListInner: React.FC<MessageListProps> = ({
       )}
     </CustomScrollArea>
     {/* 回到底部浮动按钮 */}
-    {showScrollToBottom && isStreaming && (
-      <button
-        onClick={handleScrollToBottomClick}
-        className={cn(
-          'absolute bottom-4 left-1/2 -translate-x-1/2 z-20',
-          'flex items-center gap-1.5 px-3 py-1.5 rounded-full',
-          'bg-background/90 border border-border shadow-md backdrop-blur-sm',
-          'text-xs text-muted-foreground hover:text-foreground',
-          'transition-all duration-200 hover:shadow-lg',
-          'cursor-pointer'
-        )}
-        aria-label="Scroll to bottom"
-      >
-        <ArrowDown size={14} weight="bold" />
-        <span>新内容</span>
-      </button>
-    )}
+    <div
+      className="pointer-events-none absolute inset-x-0 bottom-2 px-4 md:bottom-3 md:px-8"
+      style={{ zIndex: Z_INDEX.inputBar - 10 }}
+    >
+      <ThreadContentShell className="pointer-events-none overflow-visible">
+        <div
+          className="t-panel-slide ml-auto w-fit"
+          data-open={showScrollToBottom ? 'true' : 'false'}
+          aria-hidden={!showScrollToBottom}
+          style={{
+            ['--panel-translate-y' as string]: '12px',
+            ['--panel-open-dur' as string]: '180ms',
+            ['--panel-close-dur' as string]: '140ms',
+          }}
+        >
+          <button
+            type="button"
+            onClick={handleScrollToBottomClick}
+            title={scrollToBottomLabel}
+            data-slot="message-list-scroll-to-bottom"
+            tabIndex={showScrollToBottom ? 0 : -1}
+            className={cn(
+              'pointer-events-auto ml-auto flex h-10 w-10 items-center justify-center rounded-full',
+              'border border-[color:var(--button-utility-border)] bg-[color:var(--button-utility-surface)]',
+              'text-[color:var(--button-utility-foreground)] transition-colors duration-150',
+              'hover:border-[color:var(--button-utility-border)] hover:bg-[color:var(--button-utility-hover)] hover:text-[color:var(--button-utility-foreground)]',
+              'active:bg-[color:var(--button-utility-active)]',
+              'focus:outline-none focus-visible:ring-2 focus-visible:ring-primary/30',
+              'cursor-pointer'
+            )}
+            aria-label={scrollToBottomLabel}
+          >
+            <ArrowDown size={16} weight="bold" />
+          </button>
+        </div>
+      </ThreadContentShell>
+    </div>
     </div>
   );
 };

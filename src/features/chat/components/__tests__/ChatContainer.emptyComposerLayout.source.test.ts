@@ -4,23 +4,23 @@ import { describe, expect, it } from 'vitest';
 
 describe('ChatContainer empty composer layout source contract', () => {
   const containerSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/components/ChatContainer.tsx'),
+    resolve(process.cwd(), 'src/features/chat/components/ChatContainer.tsx'),
     'utf-8'
   );
   const beautifySource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/styles/chat-beautify.css'),
+    resolve(process.cwd(), 'src/features/chat/styles/chat-beautify.css'),
     'utf-8'
   );
   const inputBarTypesSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/components/input-bar/types.ts'),
+    resolve(process.cwd(), 'src/features/chat/components/input-bar/types.ts'),
     'utf-8'
   );
   const inputBarV2Source = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/components/input-bar/InputBarV2.tsx'),
+    resolve(process.cwd(), 'src/features/chat/components/input-bar/InputBarV2.tsx'),
     'utf-8'
   );
   const inputBarUiSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/components/input-bar/InputBarUI.tsx'),
+    resolve(process.cwd(), 'src/features/chat/components/input-bar/InputBarUI.tsx'),
     'utf-8'
   );
 
@@ -29,6 +29,7 @@ describe('ChatContainer empty composer layout source contract', () => {
     expect(containerSource).toContain('const messageCount = useStore(store, (s) => s.messageOrder.length);');
     expect(containerSource).toContain('messageCount === 0');
     expect(containerSource).toContain('showInputBar &&');
+    expect(containerSource).toContain('const shouldShowDisclaimer = showInputBar && messageCount > 0;');
     expect(containerSource).toContain('chat-empty-composer-layout');
     expect(containerSource).toContain('chat-empty-composer-layout__input');
   });

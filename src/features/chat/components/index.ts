@@ -63,3 +63,13 @@ export { ToolApprovalCard } from './ToolApprovalCard';
 export type { ApprovalRequestData, ToolApprovalCardProps } from './ToolApprovalCard';
 export { CompletionCard } from './CompletionCard';
 export type { CompletionData, CompletionCardProps } from './CompletionCard';
+
+export { ThreadContentShell } from './ui/ThreadContentShell';
+export type { ThreadContentShellProps } from './ui/ThreadContentShell';
+
+export { CodeBlockShell } from './ui/CodeBlockShell';
+export type { CodeBlockShellProps } from './ui/CodeBlockShell';
+export { TableBlockShell } from './ui/TableBlockShell';
+export type { TableBlockShellProps } from './ui/TableBlockShell';
+export { ThreadEmptyStateShell } from './ui/ThreadEmptyStateShell';
+export type { ThreadEmptyStateShellProps } from './ui/ThreadEmptyStateShell';
