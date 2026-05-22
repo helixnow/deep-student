@@ -3307,16 +3307,14 @@ impl LanceVectorStore {
             Ok::<_, AppError>(collected)
         };
 
-        let rows_map: HashMap<String, LanceChunkRow> =
-            match tokio::runtime::Handle::try_current() {
-                Ok(handle) => tokio::task::block_in_place(|| handle.block_on(fut))?,
-                Err(_) => {
-                    let rt = tokio::runtime::Runtime::new().map_err(|e| {
-                        AppError::database(format!("创建临时 Tokio 运行时失败: {}", e))
-                    })?;
-                    rt.block_on(fut)?
-                }
-            };
+        let rows_map: HashMap<String, LanceChunkRow> = match tokio::runtime::Handle::try_current() {
+            Ok(handle) => tokio::task::block_in_place(|| handle.block_on(fut))?,
+            Err(_) => {
+                let rt = tokio::runtime::Runtime::new()
+                    .map_err(|e| AppError::database(format!("创建临时 Tokio 运行时失败: {}", e)))?;
+                rt.block_on(fut)?
+            }
+        };
 
         let mut out = Vec::with_capacity(ids.len());
         for id in ids {

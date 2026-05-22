@@ -4,7 +4,7 @@ use serde_json::json;
 use std::sync::Arc;
 
 use crate::database::Database;
-use crate::llm_manager::{ApiConfig, LLMManager};
+use crate::llm_manager::{build_provider_adapter, ApiConfig, LLMManager};
 use crate::models::AppError;
 use crate::providers::ProviderAdapter;
 // ★ VFS 统一存储（2025-12-07）
@@ -273,11 +273,7 @@ where
         crate::llm_manager::LLMManager::apply_reasoning_config(&mut request_body, config, None);
 
         // 选择适配器
-        let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(config);
 
         // 构造 HTTP 请求
         let preq = adapter
