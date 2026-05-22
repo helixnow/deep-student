@@ -972,8 +972,8 @@ impl QuestionImportService {
         let format_owned = format.to_string();
         let vfs_db_arc = vfs_db.clone();
 
-        let result: RasterizerResult = tokio::task::spawn_blocking(move || {
-            match format_owned.as_str() {
+        let result: RasterizerResult =
+            tokio::task::spawn_blocking(move || match format_owned.as_str() {
                 "pdf" => PageRasterizer::rasterize_pdf(&content, &vfs_db_arc),
                 "docx" => PageRasterizer::rasterize_docx(&content, &vfs_db_arc),
                 fmt if is_image_format(fmt) => {
@@ -983,10 +983,9 @@ impl QuestionImportService {
                     "不支持的导入格式: {}",
                     format_owned
                 ))),
-            }
-        })
-        .await
-        .map_err(|e| AppError::internal(format!("渲染任务调度失败: {}", e)))??;
+            })
+            .await
+            .map_err(|e| AppError::internal(format!("渲染任务调度失败: {}", e)))??;
 
         if let Some(ref tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::RenderingPages {

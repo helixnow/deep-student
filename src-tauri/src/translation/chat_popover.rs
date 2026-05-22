@@ -193,7 +193,13 @@ async fn run_chat_translation(
         Ok(cfg) => cfg,
         Err(e) => {
             let msg = format!("翻译模型未配置：{}", e);
-            emit_event(&window, &event_name, ChatTranslationEvent::Error { message: msg.clone() });
+            emit_event(
+                &window,
+                &event_name,
+                ChatTranslationEvent::Error {
+                    message: msg.clone(),
+                },
+            );
             return Err(AppError::llm(msg));
         }
     };
@@ -202,7 +208,13 @@ async fn run_chat_translation(
         Ok(k) => k,
         Err(e) => {
             let msg = format!("API 密钥解密失败：{}", e);
-            emit_event(&window, &event_name, ChatTranslationEvent::Error { message: msg.clone() });
+            emit_event(
+                &window,
+                &event_name,
+                ChatTranslationEvent::Error {
+                    message: msg.clone(),
+                },
+            );
             return Err(AppError::llm(msg));
         }
     };
@@ -241,7 +253,11 @@ async fn run_chat_translation(
     match stream_result {
         Ok(StreamStatus::Completed) => {
             emit_event(&window, &event_name, ChatTranslationEvent::Complete);
-            info!("[ChatTranslation] complete event={} chars={}", event_name, accumulated.chars().count());
+            info!(
+                "[ChatTranslation] complete event={} chars={}",
+                event_name,
+                accumulated.chars().count()
+            );
             Ok(())
         }
         Ok(StreamStatus::Cancelled) => {
@@ -251,7 +267,13 @@ async fn run_chat_translation(
         }
         Err(e) => {
             let msg = e.to_string();
-            emit_event(&window, &event_name, ChatTranslationEvent::Error { message: msg.clone() });
+            emit_event(
+                &window,
+                &event_name,
+                ChatTranslationEvent::Error {
+                    message: msg.clone(),
+                },
+            );
             warn!("[ChatTranslation] error event={} msg={}", event_name, msg);
             Err(e)
         }

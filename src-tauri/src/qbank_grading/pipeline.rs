@@ -11,7 +11,7 @@ use rusqlite::{params, OptionalExtension};
 use serde_json::json;
 use std::sync::Arc;
 
-use crate::llm_manager::{ApiConfig, LLMManager};
+use crate::llm_manager::{build_provider_adapter, ApiConfig, LLMManager};
 use crate::models::AppError;
 use crate::providers::ProviderAdapter;
 use crate::vfs::database::VfsDatabase;
@@ -483,11 +483,7 @@ where
 
         crate::llm_manager::LLMManager::apply_reasoning_config(&mut request_body, config, None);
 
-        let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(config);
 
         let preq = adapter
             .build_request(&config.base_url, api_key, &config.model, &request_body)

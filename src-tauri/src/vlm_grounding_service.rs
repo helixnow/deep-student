@@ -17,7 +17,9 @@ use serde_json::{json, Value};
 use std::sync::Arc;
 use tracing::{info, warn};
 
-use crate::llm_manager::LLMManager;
+use crate::llm_manager::{
+    build_provider_adapter, normalize_nonstream_response_to_openai, LLMManager,
+};
 use crate::models::AppError;
 use crate::page_rasterizer::PageSlice;
 
@@ -193,12 +195,7 @@ impl VlmGroundingService {
             }
         }
 
-        let provider: Box<dyn crate::providers::ProviderAdapter> =
-            match config.model_adapter.as_str() {
-                "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-                "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-                _ => Box::new(crate::providers::OpenAIAdapter),
-            };
+        let provider: Box<dyn crate::providers::ProviderAdapter> = build_provider_adapter(&config);
 
         let preq = provider
             .build_request(&config.base_url, &api_key, &config.model, &request_body)
@@ -272,12 +269,9 @@ impl VlmGroundingService {
             let resp_json: Value = serde_json::from_str(&body)
                 .map_err(|e| AppError::llm(format!("解析 VLM 响应 JSON 失败: {}", e)))?;
 
-            let content = resp_json
-                .get("choices")
-                .and_then(|c| c.get(0))
-                .and_then(|c| c.get("message"))
-                .and_then(|m| m.get("content"))
-                .and_then(|c| c.as_str())
+            let openai_like = normalize_nonstream_response_to_openai(&config, &resp_json)?;
+            let content = openai_like["choices"][0]["message"]["content"]
+                .as_str()
                 .ok_or_else(|| AppError::llm("VLM 响应格式错误：无法提取 content"))?;
 
             info!(
@@ -354,12 +348,7 @@ impl VlmGroundingService {
             }
         }
 
-        let provider: Box<dyn crate::providers::ProviderAdapter> =
-            match config.model_adapter.as_str() {
-                "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-                "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-                _ => Box::new(crate::providers::OpenAIAdapter),
-            };
+        let provider: Box<dyn crate::providers::ProviderAdapter> = build_provider_adapter(&config);
 
         let preq = provider
             .build_request(&config.base_url, &api_key, &config.model, &request_body)
@@ -398,12 +387,9 @@ impl VlmGroundingService {
         let resp_json: Value = serde_json::from_str(&body)
             .map_err(|e| AppError::llm(format!("解析 VLM 响应 JSON 失败: {}", e)))?;
 
-        let content = resp_json
-            .get("choices")
-            .and_then(|c| c.get(0))
-            .and_then(|c| c.get("message"))
-            .and_then(|m| m.get("content"))
-            .and_then(|c| c.as_str())
+        let openai_like = normalize_nonstream_response_to_openai(&config, &resp_json)?;
+        let content = openai_like["choices"][0]["message"]["content"]
+            .as_str()
             .unwrap_or("");
 
         Ok(content.trim().to_string())
@@ -486,12 +472,7 @@ impl VlmGroundingService {
             }
         }
 
-        let provider: Box<dyn crate::providers::ProviderAdapter> =
-            match config.model_adapter.as_str() {
-                "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-                "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-                _ => Box::new(crate::providers::OpenAIAdapter),
-            };
+        let provider: Box<dyn crate::providers::ProviderAdapter> = build_provider_adapter(&config);
 
         let preq = provider
             .build_request(&config.base_url, &api_key, &config.model, &request_body)

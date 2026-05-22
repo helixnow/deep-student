@@ -1,6 +1,5 @@
 use crate::database::Database;
-use crate::llm_manager::ApiConfig;
-use crate::llm_manager::LLMManager;
+use crate::llm_manager::{build_provider_adapter, ApiConfig, LLMManager};
 use crate::models::{
     AnkiCard, AnkiGenerationOptions, AppError, DocumentTask, FieldExtractionRule, FieldType,
     StreamedCardPayload, TaskStatus, TemplateDescription,
@@ -653,11 +652,7 @@ impl StreamingAnkiService {
         });
 
         // 使用 ProviderAdapter 构建请求（支持 Gemini 中转）
-        let adapter: Box<dyn ProviderAdapter> = match api_config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(api_config);
         let preq = adapter
             .build_request(
                 &api_config.base_url,
