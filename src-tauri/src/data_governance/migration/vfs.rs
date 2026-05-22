@@ -10,7 +10,7 @@
 //! - 全文检索索引
 //! - 向量索引元数据
 //!
-//! ## 表结构 (27 个表 + 1 视图 + 1 FTS5 虚拟表)
+//! ## 表结构 (32 个表 + 1 视图 + 1 FTS5 虚拟表)
 //!
 //! ### 核心资源表
 //! - `resources`: 统一资源存储（SSOT）
@@ -37,6 +37,8 @@
 //! - `memory_config`: 记忆系统配置
 //! - `vfs_indexing_config`: 索引配置
 //! - `vfs_index_units`, `vfs_index_segments`, `vfs_embedding_dims`: 向量索引
+//! - `todo_lists`, `todo_items`, `pomodoro_records`: 待办与番茄钟
+//! - `memory_write_idempotency`, `__blob_deletion_queue`: 本地辅助表
 
 use super::definitions::{MigrationDef, MigrationSet};
 
@@ -333,6 +335,22 @@ pub const V20260212_ADD_MINDMAP_VERSIONS: MigrationDef = MigrationDef::new(
 ])
 .idempotent();
 
+/// V20260213: 为向量化状态查询补充 resources(source_id) 单列索引
+pub const V20260213_ADD_INDEX_STATUS_PERF_INDEXES: MigrationDef = MigrationDef::new(
+    20260213,
+    "add_index_status_perf_indexes",
+    include_str!("../../../migrations/vfs/V20260213__add_index_status_perf_indexes.sql"),
+)
+.with_expected_indexes(&["idx_resources_source_id"])
+.idempotent();
+
+/// V20260214: 删除已废弃的 notes_versions 表
+pub const V20260214_DROP_NOTES_VERSIONS: MigrationDef = MigrationDef::new(
+    20260214,
+    "drop_notes_versions",
+    include_str!("../../../migrations/vfs/V20260214__drop_notes_versions.sql"),
+);
+
 /// V20260215: 题目集导入断点续导支持
 ///
 /// 新增 `import_state_json` 列，持久化导入中间状态（OCR 文本、chunk 进度等）。
@@ -370,6 +388,42 @@ pub const V20260302_NORMALIZE_FOLDER_ITEMS_TIMESTAMPS: MigrationDef = MigrationD
 )
 .idempotent();
 
+/// V20260303: 记忆写入幂等表
+pub const V20260303_ADD_MEMORY_WRITE_IDEMPOTENCY: MigrationDef = MigrationDef::new(
+    20260303,
+    "add_memory_write_idempotency",
+    include_str!("../../../migrations/vfs/V20260303__add_memory_write_idempotency.sql"),
+)
+.with_expected_tables(&["memory_write_idempotency"])
+.with_expected_indexes(&["idx_memory_write_idempotency_created_at"])
+.idempotent();
+
+/// V20260304: 加固 note folder_items 与 memory audit 关键索引
+pub const V20260304_HARDEN_MEMORY_FOLDER_ITEMS_AND_AUDIT_INDEXES: MigrationDef = MigrationDef::new(
+    20260304,
+    "harden_memory_folder_items_and_audit_indexes",
+    include_str!(
+        "../../../migrations/vfs/V20260304__harden_memory_folder_items_and_audit_indexes.sql"
+    ),
+)
+.with_expected_indexes(&[
+    "idx_folder_items_note_active_unique",
+    "idx_folder_items_note_folder_sort_active",
+    "idx_folder_items_note_lifecycle",
+    "idx_memory_audit_log_source_operation_success_id_desc",
+    "idx_memory_audit_log_operation_id_desc",
+])
+.idempotent();
+
+/// V20260305: 为 answer_submissions 增加客户端请求幂等键
+pub const V20260305_ADD_ANSWER_SUBMISSION_IDEMPOTENCY: MigrationDef = MigrationDef::new(
+    20260305,
+    "add_answer_submission_idempotency",
+    include_str!("../../../migrations/vfs/V20260305__add_answer_submission_idempotency.sql"),
+)
+.with_expected_columns(&[("answer_submissions", "client_request_id")])
+.with_expected_indexes(&["idx_submissions_question_request_id"]);
+
 /// V20260306: 统一 folder_items/path_cache 的 file 别名并补活动挂载唯一约束
 pub const V20260306_CANONICALIZE_FOLDER_ITEM_MOUNTS: MigrationDef = MigrationDef::new(
     20260306,
@@ -377,6 +431,77 @@ pub const V20260306_CANONICALIZE_FOLDER_ITEM_MOUNTS: MigrationDef = MigrationDef
     include_str!("../../../migrations/vfs/V20260306__canonicalize_folder_item_mounts.sql"),
 )
 .with_expected_indexes(&["idx_folder_items_item_active_unique"])
+.idempotent();
+
+/// V20260308: 添加待办列表与待办项表
+pub const V20260308_ADD_TODO_TABLES: MigrationDef = MigrationDef::new(
+    20260308,
+    "add_todo_tables",
+    include_str!("../../../migrations/vfs/V20260308__add_todo_tables.sql"),
+)
+.with_expected_tables(&["todo_lists", "todo_items"])
+.with_expected_indexes(&[
+    "idx_todo_lists_deleted",
+    "idx_todo_lists_favorite",
+    "idx_todo_lists_updated",
+    "idx_todo_lists_default",
+    "idx_todo_items_list",
+    "idx_todo_items_status",
+    "idx_todo_items_priority",
+    "idx_todo_items_due_date",
+    "idx_todo_items_parent",
+    "idx_todo_items_deleted",
+    "idx_todo_items_updated",
+    "idx_todo_items_list_status",
+])
+.idempotent();
+
+/// V20260309: 待办列表与 VFS resources 解耦
+pub const V20260309_DECOUPLE_TODO_FROM_VFS: MigrationDef = MigrationDef::new(
+    20260309,
+    "decouple_todo_from_vfs",
+    include_str!("../../../migrations/vfs/V20260309__decouple_todo_from_vfs.sql"),
+)
+.with_expected_columns(&[
+    ("todo_lists", "id"),
+    ("todo_lists", "title"),
+    ("todo_lists", "updated_at"),
+]);
+
+/// V20260310: 为待办增加番茄钟字段与 pomodoro_records 表
+pub const V20260310_ADD_POMODORO: MigrationDef = MigrationDef::new(
+    20260310,
+    "add_pomodoro",
+    include_str!("../../../migrations/vfs/V20260310__add_pomodoro.sql"),
+)
+.with_expected_tables(&["pomodoro_records"])
+.with_expected_columns(&[
+    ("todo_items", "estimated_pomodoros"),
+    ("todo_items", "completed_pomodoros"),
+])
+.with_expected_indexes(&[
+    "idx_pomodoro_item",
+    "idx_pomodoro_type",
+    "idx_pomodoro_status",
+    "idx_pomodoro_created",
+]);
+
+/// V20260311: 为 todo_items 添加约束触发器
+pub const V20260311_TODO_CONSTRAINTS: MigrationDef = MigrationDef::new(
+    20260311,
+    "todo_constraints",
+    include_str!("../../../migrations/vfs/V20260311__todo_constraints.sql"),
+)
+.idempotent();
+
+/// V20260312: 添加本地 blob 删除队列表
+pub const V20260312_ADD_BLOB_DELETION_QUEUE: MigrationDef = MigrationDef::new(
+    20260312,
+    "add_blob_deletion_queue",
+    include_str!("../../../migrations/vfs/V20260312__add_blob_deletion_queue.sql"),
+)
+.with_expected_tables(&["__blob_deletion_queue"])
+.with_expected_indexes(&["idx__blob_deletion_queue_retry"])
 .idempotent();
 
 /// VFS 数据库所有迁移定义
@@ -395,10 +520,20 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260210_ADD_ANSWER_SUBMISSIONS,
     V20260211_FIX_CHANGE_LOG_RECORD_ID,
     V20260212_ADD_MINDMAP_VERSIONS,
+    V20260213_ADD_INDEX_STATUS_PERF_INDEXES,
+    V20260214_DROP_NOTES_VERSIONS,
     V20260215_ADD_IMPORT_CHECKPOINT,
     V20260227_ADD_MEMORY_AUDIT_LOG,
     V20260302_NORMALIZE_FOLDER_ITEMS_TIMESTAMPS,
+    V20260303_ADD_MEMORY_WRITE_IDEMPOTENCY,
+    V20260304_HARDEN_MEMORY_FOLDER_ITEMS_AND_AUDIT_INDEXES,
+    V20260305_ADD_ANSWER_SUBMISSION_IDEMPOTENCY,
     V20260306_CANONICALIZE_FOLDER_ITEM_MOUNTS,
+    V20260308_ADD_TODO_TABLES,
+    V20260309_DECOUPLE_TODO_FROM_VFS,
+    V20260310_ADD_POMODORO,
+    V20260311_TODO_CONSTRAINTS,
+    V20260312_ADD_BLOB_DELETION_QUEUE,
 ];
 
 /// VFS 迁移集合
@@ -436,12 +571,19 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
     "question_sync_logs",
     "memory_config",
     "memory_audit_log",
+    "memory_write_idempotency",
     "vfs_indexing_config",
     "vfs_index_units",
     "vfs_index_segments",
     "vfs_embedding_dims",
     // 作答历史
     "answer_submissions",
+    // Todo / Pomodoro
+    "todo_lists",
+    "todo_items",
+    "pomodoro_records",
+    // 本地辅助队列
+    "__blob_deletion_queue",
     // FTS5 虚拟表
     "questions_fts",
 ];
@@ -450,7 +592,7 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
 pub const VFS_VIEW_NAMES: &[&str] = &["trash_view"];
 
 /// VFS 数据库表总数（不含视图和虚拟表）
-pub const VFS_TABLE_COUNT: usize = 27;
+pub const VFS_TABLE_COUNT: usize = 32;
 
 /// VFS 数据库视图总数
 pub const VFS_VIEW_COUNT: usize = 1;
@@ -478,10 +620,14 @@ mod tests {
         // + V20260209 (add_questions_images)
         // + V20260210 (add_answer_submissions)
         // + V20260211 (fix_change_log_record_id)
-        // + V20260227 (add_memory_audit_log)
-        // + V20260302 (normalize_folder_items_timestamps)
-        // + V20260306 (canonicalize_folder_item_mounts)
-        assert_eq!(VFS_MIGRATION_SET.count(), 18);
+        // + V20260227 (add_memory_audit_log) + V20260302 (normalize_folder_items_timestamps)
+        // + V20260303 (add_memory_write_idempotency)
+        // + V20260304 (harden_memory_folder_items_and_audit_indexes)
+        // + V20260305 (add_answer_submission_idempotency)
+        // + V20260306 (canonicalize_folder_item_mounts) + V20260308 (add_todo_tables)
+        // + V20260309 (decouple_todo_from_vfs) + V20260310 (add_pomodoro)
+        // + V20260311 (todo_constraints) + V20260312 (add_blob_deletion_queue)
+        assert_eq!(VFS_MIGRATION_SET.count(), 28);
     }
 
     #[test]
@@ -501,7 +647,7 @@ mod tests {
     #[test]
     fn test_v001_expected_tables_count() {
         // 验证表数量正确
-        assert_eq!(VFS_V001_TABLES.len(), 26); // 28 - 1 (questions_fts 虚拟表) - 1 (answer_submissions 在 V20260210)
+        assert_eq!(VFS_V001_TABLES.len(), 26); // init schema only
     }
 
     #[test]
@@ -556,12 +702,16 @@ mod tests {
         assert!(migration.is_some());
         assert_eq!(migration.unwrap().refinery_version, 20260130);
 
+        let migration = VFS_MIGRATION_SET.get(20260312);
+        assert!(migration.is_some());
+        assert_eq!(migration.unwrap().refinery_version, 20260312);
+
         // 不存在的版本
         assert!(VFS_MIGRATION_SET.get(1).is_none());
     }
 
     #[test]
     fn test_latest_version() {
-        assert_eq!(VFS_MIGRATION_SET.latest_version(), 20260306);
+        assert_eq!(VFS_MIGRATION_SET.latest_version(), 20260312);
     }
 }

@@ -1342,13 +1342,13 @@ mod critical_audit_tests {
         let actual_llm_usage = LLM_USAGE_MIGRATION_SET.count();
 
         assert!(
-            actual_vfs >= 9,
-            "Issue 14: VFS should have at least 9 migrations, got {}",
+            actual_vfs >= 28,
+            "Issue 14: VFS should have at least 28 migrations, got {}",
             actual_vfs
         );
         assert!(
-            actual_chat_v2 >= 7,
-            "Issue 14: ChatV2 should have at least 7 migrations, got {}",
+            actual_chat_v2 >= 14,
+            "Issue 14: ChatV2 should have at least 14 migrations, got {}",
             actual_chat_v2
         );
         assert!(

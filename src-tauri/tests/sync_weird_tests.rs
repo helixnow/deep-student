@@ -59,12 +59,21 @@ fn ts_ago(secs: i64) -> String {
     (chrono::Utc::now() - chrono::Duration::seconds(secs)).to_rfc3339()
 }
 
-fn mk_change(id: &str, op: ChangeOperation, data: serde_json::Value, changed_at: &str) -> SyncChangeWithData {
+fn mk_change(
+    id: &str,
+    op: ChangeOperation,
+    data: serde_json::Value,
+    changed_at: &str,
+) -> SyncChangeWithData {
     SyncChangeWithData {
         table_name: "items".into(),
         record_id: id.into(),
         operation: op,
-        data: if op == ChangeOperation::Delete { None } else { Some(data) },
+        data: if op == ChangeOperation::Delete {
+            None
+        } else {
+            Some(data)
+        },
         changed_at: changed_at.into(),
         change_log_id: None,
         database_name: Some("test".into()),
@@ -73,11 +82,19 @@ fn mk_change(id: &str, op: ChangeOperation, data: serde_json::Value, changed_at:
 }
 
 fn get_title(conn: &Connection, id: &str) -> Option<String> {
-    conn.query_row("SELECT title FROM items WHERE id = ?1", params![id], |r| r.get(0)).ok()
+    conn.query_row("SELECT title FROM items WHERE id = ?1", params![id], |r| {
+        r.get(0)
+    })
+    .ok()
 }
 
 fn get_counter(conn: &Connection, id: &str) -> Option<i64> {
-    conn.query_row("SELECT counter FROM items WHERE id = ?1", params![id], |r| r.get(0)).ok()
+    conn.query_row(
+        "SELECT counter FROM items WHERE id = ?1",
+        params![id],
+        |r| r.get(0),
+    )
+    .ok()
 }
 
 // ============================================================================
@@ -359,7 +376,10 @@ fn w13_float_infinity_nan_not_serializable() {
     // 这里测试确认：构造时就会失败，不会传到 apply_downloaded_changes
     let nan = f64::NAN;
     let r = serde_json::to_string(&nan);
-    assert!(r.is_err() || r.unwrap() == "null", "serde_json 对 NaN 的处理");
+    assert!(
+        r.is_err() || r.unwrap() == "null",
+        "serde_json 对 NaN 的处理"
+    );
 }
 
 /// **W.14** score 字段用极小浮点数（接近 f64::MIN_POSITIVE）
@@ -503,16 +523,20 @@ fn w20_nanosecond_precision() {
     // 精度到纳秒
     let nano = "2026-05-01T12:00:00.123456789Z";
     // 这个时间在 2026-05-09 左右 → drift 应允许
-    let r = SyncManager::apply_downloaded_changes(&conn2, &[mk_change(
-        "nano",
-        ChangeOperation::Insert,
-        json!({
-            "id": "nano", "title": "t",
-            "updated_at": nano,
-            "deleted_at": serde_json::Value::Null,
-        }),
-        nano,
-    )], None);
+    let r = SyncManager::apply_downloaded_changes(
+        &conn2,
+        &[mk_change(
+            "nano",
+            ChangeOperation::Insert,
+            json!({
+                "id": "nano", "title": "t",
+                "updated_at": nano,
+                "deleted_at": serde_json::Value::Null,
+            }),
+            nano,
+        )],
+        None,
+    );
     println!("W.20 (nano precision) result: {:?}", r);
     let _ = ts1;
 }
@@ -524,28 +548,37 @@ fn w21_nanosecond_tie_break() {
     let ts1 = "2026-05-01T12:00:00.100000001Z";
     let ts2 = "2026-05-01T12:00:00.100000002Z";
 
-    SyncManager::apply_downloaded_changes(&conn, &[mk_change(
-        "n",
-        ChangeOperation::Insert,
-        json!({
-            "id": "n", "title": "v1",
-            "updated_at": ts1,
-            "deleted_at": serde_json::Value::Null,
-        }),
-        ts1,
-    )], None).unwrap();
+    SyncManager::apply_downloaded_changes(
+        &conn,
+        &[mk_change(
+            "n",
+            ChangeOperation::Insert,
+            json!({
+                "id": "n", "title": "v1",
+                "updated_at": ts1,
+                "deleted_at": serde_json::Value::Null,
+            }),
+            ts1,
+        )],
+        None,
+    )
+    .unwrap();
 
     // 第二次尝试纳秒更晚
-    let r = SyncManager::apply_downloaded_changes(&conn, &[mk_change(
-        "n",
-        ChangeOperation::Update,
-        json!({
-            "id": "n", "title": "v2",
-            "updated_at": ts2,
-            "deleted_at": serde_json::Value::Null,
-        }),
-        ts2,
-    )], None);
+    let r = SyncManager::apply_downloaded_changes(
+        &conn,
+        &[mk_change(
+            "n",
+            ChangeOperation::Update,
+            json!({
+                "id": "n", "title": "v2",
+                "updated_at": ts2,
+                "deleted_at": serde_json::Value::Null,
+            }),
+            ts2,
+        )],
+        None,
+    );
     println!("W.21 result: {:?}, title: {:?}", r, get_title(&conn, "n"));
 }
 
@@ -770,18 +803,33 @@ fn w33_deeply_nested_recursion() {
 fn w34_string_value_equals_another_pk() {
     let conn = new_db();
     // 先 INSERT n1, n2
-    SyncManager::apply_downloaded_changes(&conn, &[
-        mk_change("n1", ChangeOperation::Insert, json!({
-            "id": "n1", "title": "n2", // title == another pk
-            "updated_at": now_ts(),
-            "deleted_at": serde_json::Value::Null,
-        }), &now_ts()),
-        mk_change("n2", ChangeOperation::Insert, json!({
-            "id": "n2", "title": "x",
-            "updated_at": now_ts(),
-            "deleted_at": serde_json::Value::Null,
-        }), &now_ts()),
-    ], None).unwrap();
+    SyncManager::apply_downloaded_changes(
+        &conn,
+        &[
+            mk_change(
+                "n1",
+                ChangeOperation::Insert,
+                json!({
+                    "id": "n1", "title": "n2", // title == another pk
+                    "updated_at": now_ts(),
+                    "deleted_at": serde_json::Value::Null,
+                }),
+                &now_ts(),
+            ),
+            mk_change(
+                "n2",
+                ChangeOperation::Insert,
+                json!({
+                    "id": "n2", "title": "x",
+                    "updated_at": now_ts(),
+                    "deleted_at": serde_json::Value::Null,
+                }),
+                &now_ts(),
+            ),
+        ],
+        None,
+    )
+    .unwrap();
 
     // WHERE id = 'n1' → 应返回 n1 而不是因为 title 是 'n2' 产生混乱
     let t = get_title(&conn, "n1").unwrap();
@@ -793,7 +841,8 @@ fn w34_string_value_equals_another_pk() {
 fn w35_sql_reserved_words_as_data_keys() {
     let conn = Connection::open_in_memory().unwrap();
     // 建个表带 SELECT 作为列名（必须双引号）
-    conn.execute_batch(r#"
+    conn.execute_batch(
+        r#"
         CREATE TABLE "weird" (
             "id" TEXT PRIMARY KEY,
             "select" TEXT NOT NULL DEFAULT '',
@@ -808,7 +857,9 @@ fn w35_sql_reserved_words_as_data_keys() {
             changed_at TEXT NOT NULL DEFAULT (datetime('now')),
             sync_version INTEGER DEFAULT 0
         );
-    "#).unwrap();
+    "#,
+    )
+    .unwrap();
 
     let c = SyncChangeWithData {
         table_name: "weird".into(),
@@ -827,9 +878,13 @@ fn w35_sql_reserved_words_as_data_keys() {
         suppress_change_log: Some(true),
     };
     SyncManager::apply_downloaded_changes(&conn, &[c], None).unwrap();
-    let (s, f): (String, String) = conn.query_row(
-        r#"SELECT "select", "from" FROM weird WHERE id='n1'"#, [], |r| Ok((r.get(0)?, r.get(1)?))
-    ).unwrap();
+    let (s, f): (String, String) = conn
+        .query_row(
+            r#"SELECT "select", "from" FROM weird WHERE id='n1'"#,
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
+        .unwrap();
     assert_eq!(s, "val1");
     assert_eq!(f, "val2");
 }
@@ -846,14 +901,17 @@ fn w36_delete_already_deleted() {
     conn.execute(
         "INSERT INTO items (id, title, updated_at, deleted_at) VALUES ('n1', 't', ?1, ?1)",
         params![ts_ago(10)],
-    ).unwrap();
+    )
+    .unwrap();
 
     let c = mk_change("n1", ChangeOperation::Delete, json!({}), &ts_ago(5));
     SyncManager::apply_downloaded_changes(&conn, &[c], None).unwrap();
     // 仍然软删除（deleted_at 不变或被 LWW 拒绝）
-    let d: Option<String> = conn.query_row(
-        "SELECT deleted_at FROM items WHERE id='n1'", [], |r| r.get(0)
-    ).unwrap();
+    let d: Option<String> = conn
+        .query_row("SELECT deleted_at FROM items WHERE id='n1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
     assert!(d.is_some());
 }
 
@@ -862,11 +920,18 @@ fn w36_delete_already_deleted() {
 #[test]
 fn w37_delete_ghost_record() {
     let conn = new_db();
-    let c = mk_change("never_existed", ChangeOperation::Delete, json!({}), &now_ts());
+    let c = mk_change(
+        "never_existed",
+        ChangeOperation::Delete,
+        json!({}),
+        &now_ts(),
+    );
     let r = SyncManager::apply_downloaded_changes(&conn, &[c], None);
     assert!(r.is_ok());
     // 没有记录被插入
-    let n: i64 = conn.query_row("SELECT COUNT(*) FROM items", [], |r| r.get(0)).unwrap();
+    let n: i64 = conn
+        .query_row("SELECT COUNT(*) FROM items", [], |r| r.get(0))
+        .unwrap();
     assert_eq!(n, 0);
 }
 
@@ -875,18 +940,25 @@ fn w37_delete_ghost_record() {
 fn w38_delete_timestamp_before_insert() {
     let conn = new_db();
     // 先 INSERT 在 t=10s ago
-    let c1 = mk_change("n1", ChangeOperation::Insert, json!({
-        "id": "n1", "title": "t",
-        "updated_at": ts_ago(10),
-        "deleted_at": serde_json::Value::Null,
-    }), &ts_ago(10));
+    let c1 = mk_change(
+        "n1",
+        ChangeOperation::Insert,
+        json!({
+            "id": "n1", "title": "t",
+            "updated_at": ts_ago(10),
+            "deleted_at": serde_json::Value::Null,
+        }),
+        &ts_ago(10),
+    );
     // 后来的 DELETE 的 changed_at 在 INSERT 之前（t=30s ago）
     let c2 = mk_change("n1", ChangeOperation::Delete, json!({}), &ts_ago(30));
     SyncManager::apply_downloaded_changes(&conn, &[c1, c2], None).unwrap();
     // LWW 门应保护：本地 INSERT 较新 → DELETE 被拒绝
-    let d: Option<String> = conn.query_row(
-        "SELECT deleted_at FROM items WHERE id='n1'", [], |r| r.get::<_, Option<String>>(0)
-    ).unwrap();
+    let d: Option<String> = conn
+        .query_row("SELECT deleted_at FROM items WHERE id='n1'", [], |r| {
+            r.get::<_, Option<String>>(0)
+        })
+        .unwrap();
     assert!(d.is_none(), "过时 DELETE 应被 LWW 拒绝");
 }
 
@@ -895,23 +967,49 @@ fn w38_delete_timestamp_before_insert() {
 async fn w39_tombstone_for_nonexistent_blob() {
     let tmp = tempfile::TempDir::new().unwrap();
     let mut m = tombstone::BlobTombstones::default();
-    m.entries.insert("ghost_hash".into(), tombstone::BlobTombstoneEntry {
-        deleted_at: chrono::Utc::now().to_rfc3339(),
-        device_id: "d1".into(),
-        size: Some(0),
-        relative_path: Some("gh/ghost_hash.bin".into()),
-    });
+    m.entries.insert(
+        "ghost_hash".into(),
+        tombstone::BlobTombstoneEntry {
+            deleted_at: chrono::Utc::now().to_rfc3339(),
+            device_id: "d1".into(),
+            size: Some(0),
+            relative_path: Some("gh/ghost_hash.bin".into()),
+        },
+    );
     // 本地没有这个 blob，tombstone 不应报错
     struct NoopStorage;
     #[async_trait::async_trait]
     impl deep_student_lib::cloud_storage::CloudStorage for NoopStorage {
-        fn provider_name(&self) -> &'static str { "noop" }
-        async fn check_connection(&self) -> deep_student_lib::cloud_storage::Result<()> { Ok(()) }
-        async fn put(&self, _: &str, _: &[u8]) -> deep_student_lib::cloud_storage::Result<()> { Ok(()) }
-        async fn get(&self, _: &str) -> deep_student_lib::cloud_storage::Result<Option<Vec<u8>>> { Ok(None) }
-        async fn list(&self, _: &str) -> deep_student_lib::cloud_storage::Result<Vec<deep_student_lib::cloud_storage::FileInfo>> { Ok(vec![]) }
-        async fn delete(&self, _: &str) -> deep_student_lib::cloud_storage::Result<()> { Ok(()) }
-        async fn stat(&self, _: &str) -> deep_student_lib::cloud_storage::Result<Option<deep_student_lib::cloud_storage::FileInfo>> { Ok(None) }
+        fn provider_name(&self) -> &'static str {
+            "noop"
+        }
+        async fn check_connection(&self) -> deep_student_lib::cloud_storage::Result<()> {
+            Ok(())
+        }
+        async fn put(&self, _: &str, _: &[u8]) -> deep_student_lib::cloud_storage::Result<()> {
+            Ok(())
+        }
+        async fn get(&self, _: &str) -> deep_student_lib::cloud_storage::Result<Option<Vec<u8>>> {
+            Ok(None)
+        }
+        async fn list(
+            &self,
+            _: &str,
+        ) -> deep_student_lib::cloud_storage::Result<Vec<deep_student_lib::cloud_storage::FileInfo>>
+        {
+            Ok(vec![])
+        }
+        async fn delete(&self, _: &str) -> deep_student_lib::cloud_storage::Result<()> {
+            Ok(())
+        }
+        async fn stat(
+            &self,
+            _: &str,
+        ) -> deep_student_lib::cloud_storage::Result<
+            Option<deep_student_lib::cloud_storage::FileInfo>,
+        > {
+            Ok(None)
+        }
     }
     let storage = NoopStorage;
     let r = tombstone::apply_blob_tombstones(&storage, &m, tmp.path(), "blobs").await;
@@ -925,15 +1023,21 @@ fn w40_delete_rollback_preserves_record() {
     conn.execute(
         "INSERT INTO items (id, title, updated_at) VALUES ('n1', 'original', ?1)",
         params![ts_ago(100)],
-    ).unwrap();
+    )
+    .unwrap();
 
     // 构造一批：包含 OK 的 DELETE 和非法变更
     let changes = vec![
         mk_change("n1", ChangeOperation::Delete, json!({}), &ts_ago(10)),
-        mk_change("n2", ChangeOperation::Insert, json!({
-            "id": "n2", "title": "x",
-            "updated_at": now_ts(),
-        }), &now_ts()),
+        mk_change(
+            "n2",
+            ChangeOperation::Insert,
+            json!({
+                "id": "n2", "title": "x",
+                "updated_at": now_ts(),
+            }),
+            &now_ts(),
+        ),
         // 非法：未知表
         SyncChangeWithData {
             table_name: "nope".into(),
@@ -950,9 +1054,11 @@ fn w40_delete_rollback_preserves_record() {
     assert!(r.is_err());
 
     // n1 没被删
-    let d: Option<String> = conn.query_row(
-        "SELECT deleted_at FROM items WHERE id='n1'", [], |r| r.get::<_, Option<String>>(0)
-    ).unwrap();
+    let d: Option<String> = conn
+        .query_row("SELECT deleted_at FROM items WHERE id='n1'", [], |r| {
+            r.get::<_, Option<String>>(0)
+        })
+        .unwrap();
     assert!(d.is_none(), "非法批次里的 DELETE 应被回滚");
 }
 
@@ -968,11 +1074,16 @@ fn w41_same_record_alternating_20_ops() {
     for i in 0..20 {
         let ts = ts_ago(100 - i as i64 * 2);
         if i % 2 == 0 {
-            changes.push(mk_change("n1", ChangeOperation::Insert, json!({
-                "id": "n1", "title": format!("v{}", i),
-                "updated_at": ts.clone(),
-                "deleted_at": serde_json::Value::Null,
-            }), &ts));
+            changes.push(mk_change(
+                "n1",
+                ChangeOperation::Insert,
+                json!({
+                    "id": "n1", "title": format!("v{}", i),
+                    "updated_at": ts.clone(),
+                    "deleted_at": serde_json::Value::Null,
+                }),
+                &ts,
+            ));
         } else {
             changes.push(mk_change("n1", ChangeOperation::Delete, json!({}), &ts));
         }
@@ -981,9 +1092,11 @@ fn w41_same_record_alternating_20_ops() {
 
     // 最后一个 op (i=19, DELETE, ts = ts_ago(62))
     // 但因为 upsert/delete 交替，最终状态取决于 LWW 门和内部顺序
-    let d: Option<String> = conn.query_row(
-        "SELECT deleted_at FROM items WHERE id='n1'", [], |r| r.get(0)
-    ).unwrap();
+    let d: Option<String> = conn
+        .query_row("SELECT deleted_at FROM items WHERE id='n1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
     // 该记录至少存在（被 INSERT 过）
     let t = get_title(&conn, "n1");
     assert!(t.is_some(), "n1 至少在某次 INSERT 后存在了");
@@ -999,20 +1112,35 @@ fn w42_many_records_many_versions_in_one_batch() {
         for v in 0..5 {
             let id = format!("r{:04}", r);
             let ts = ts_ago(5000 - (r * 5 + v) as i64);
-            changes.push(mk_change(&id, if v == 0 { ChangeOperation::Insert } else { ChangeOperation::Update }, json!({
-                "id": id, "title": format!("r{}_v{}", r, v),
-                "counter": v,
-                "updated_at": ts.clone(),
-                "deleted_at": serde_json::Value::Null,
-            }), &ts));
+            changes.push(mk_change(
+                &id,
+                if v == 0 {
+                    ChangeOperation::Insert
+                } else {
+                    ChangeOperation::Update
+                },
+                json!({
+                    "id": id, "title": format!("r{}_v{}", r, v),
+                    "counter": v,
+                    "updated_at": ts.clone(),
+                    "deleted_at": serde_json::Value::Null,
+                }),
+                &ts,
+            ));
         }
     }
     let result = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
     assert_eq!(result.success_count, 2500);
-    let n: i64 = conn.query_row("SELECT COUNT(*) FROM items", [], |r| r.get(0)).unwrap();
+    let n: i64 = conn
+        .query_row("SELECT COUNT(*) FROM items", [], |r| r.get(0))
+        .unwrap();
     assert_eq!(n, 500);
     // 每个 record 的最终 counter 应是 4
-    let sample: i64 = conn.query_row("SELECT counter FROM items WHERE id='r0100'", [], |r| r.get(0)).unwrap();
+    let sample: i64 = conn
+        .query_row("SELECT counter FROM items WHERE id='r0100'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
     assert_eq!(sample, 4);
 }
 
@@ -1023,11 +1151,20 @@ fn w43_all_same_timestamp() {
     let same_ts = ts_ago(10);
     let mut changes = Vec::new();
     for i in 0..100 {
-        changes.push(mk_change("n1", if i == 0 { ChangeOperation::Insert } else { ChangeOperation::Update }, json!({
-            "id": "n1", "title": format!("v{}", i), "counter": i,
-            "updated_at": same_ts.clone(),
-            "deleted_at": serde_json::Value::Null,
-        }), &same_ts));
+        changes.push(mk_change(
+            "n1",
+            if i == 0 {
+                ChangeOperation::Insert
+            } else {
+                ChangeOperation::Update
+            },
+            json!({
+                "id": "n1", "title": format!("v{}", i), "counter": i,
+                "updated_at": same_ts.clone(),
+                "deleted_at": serde_json::Value::Null,
+            }),
+            &same_ts,
+        ));
     }
     SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
     // LWW 门：相等不跳过，所以每次都会覆盖。最终 = v99
@@ -1039,30 +1176,42 @@ fn w43_all_same_timestamp() {
 #[test]
 fn w44_single_bad_in_1000_rolls_back_all() {
     let conn = new_db();
-    let mut changes: Vec<SyncChangeWithData> = (0..1000).map(|i| {
-        let id = format!("n{:04}", i);
-        let ts = ts_ago(2000 - i as i64);
-        mk_change(&id, ChangeOperation::Insert, json!({
-            "id": id, "title": format!("v{}", i),
-            "updated_at": ts.clone(),
-            "deleted_at": serde_json::Value::Null,
-        }), &ts)
-    }).collect();
+    let mut changes: Vec<SyncChangeWithData> = (0..1000)
+        .map(|i| {
+            let id = format!("n{:04}", i);
+            let ts = ts_ago(2000 - i as i64);
+            mk_change(
+                &id,
+                ChangeOperation::Insert,
+                json!({
+                    "id": id, "title": format!("v{}", i),
+                    "updated_at": ts.clone(),
+                    "deleted_at": serde_json::Value::Null,
+                }),
+                &ts,
+            )
+        })
+        .collect();
     // 在中间插入非法
-    changes.insert(500, SyncChangeWithData {
-        table_name: "nonexistent".into(),
-        record_id: "x".into(),
-        operation: ChangeOperation::Insert,
-        data: Some(json!({"id": "x"})),
-        changed_at: now_ts(),
-        change_log_id: None,
-        database_name: None,
-        suppress_change_log: Some(true),
-    });
+    changes.insert(
+        500,
+        SyncChangeWithData {
+            table_name: "nonexistent".into(),
+            record_id: "x".into(),
+            operation: ChangeOperation::Insert,
+            data: Some(json!({"id": "x"})),
+            changed_at: now_ts(),
+            change_log_id: None,
+            database_name: None,
+            suppress_change_log: Some(true),
+        },
+    );
 
     let r = SyncManager::apply_downloaded_changes(&conn, &changes, None);
     assert!(r.is_err());
-    let n: i64 = conn.query_row("SELECT COUNT(*) FROM items", [], |r| r.get(0)).unwrap();
+    let n: i64 = conn
+        .query_row("SELECT COUNT(*) FROM items", [], |r| r.get(0))
+        .unwrap();
     assert_eq!(n, 0, "任何一条失败必须回滚所有");
 }
 
@@ -1074,21 +1223,29 @@ fn w45_revive_then_delete_in_same_batch() {
     conn.execute(
         "INSERT INTO items (id, title, updated_at, deleted_at) VALUES ('n1', 't', ?1, ?1)",
         params![ts_ago(100)],
-    ).unwrap();
+    )
+    .unwrap();
 
     let changes = vec![
-        mk_change("n1", ChangeOperation::Update, json!({
-            "id": "n1", "title": "revived",
-            "updated_at": ts_ago(50),
-            "deleted_at": serde_json::Value::Null,
-        }), &ts_ago(50)),
+        mk_change(
+            "n1",
+            ChangeOperation::Update,
+            json!({
+                "id": "n1", "title": "revived",
+                "updated_at": ts_ago(50),
+                "deleted_at": serde_json::Value::Null,
+            }),
+            &ts_ago(50),
+        ),
         mk_change("n1", ChangeOperation::Delete, json!({}), &ts_ago(10)),
     ];
     SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
     // 最终应被软删除（后 DELETE 胜出）
-    let d: Option<String> = conn.query_row(
-        "SELECT deleted_at FROM items WHERE id='n1'", [], |r| r.get(0)
-    ).unwrap();
+    let d: Option<String> = conn
+        .query_row("SELECT deleted_at FROM items WHERE id='n1'", [], |r| {
+            r.get(0)
+        })
+        .unwrap();
     assert!(d.is_some());
     // title 应是 "revived"（被复活后再软删，title 保留）
     assert_eq!(get_title(&conn, "n1").as_deref(), Some("revived"));
@@ -1129,7 +1286,10 @@ fn w47_hlc_concurrent_ticks() {
         }));
     }
 
-    let mut all: Vec<Hlc> = handles.into_iter().flat_map(|h| h.join().unwrap()).collect();
+    let mut all: Vec<Hlc> = handles
+        .into_iter()
+        .flat_map(|h| h.join().unwrap())
+        .collect();
     all.sort();
     all.dedup();
     // 20 × 100 = 2000 次 tick，在 Mutex 保护下应全部不同（Hlc 作为 Ord 值）
@@ -1194,7 +1354,9 @@ fn w51_multiple_connections_to_same_file() {
     // 用第一个连接建表
     {
         let conn1 = Connection::open(path).unwrap();
-        conn1.execute_batch(r#"
+        conn1
+            .execute_batch(
+                r#"
             CREATE TABLE items (
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL DEFAULT '',
@@ -1208,24 +1370,31 @@ fn w51_multiple_connections_to_same_file() {
                 changed_at TEXT NOT NULL DEFAULT (datetime('now')),
                 sync_version INTEGER DEFAULT 0
             );
-        "#).unwrap();
+        "#,
+            )
+            .unwrap();
     }
 
     // 用第二个连接应用变更
     let conn2 = Connection::open(path).unwrap();
-    let c = mk_change("n1", ChangeOperation::Insert, json!({
-        "id": "n1", "title": "t",
-        "updated_at": now_ts(),
-        "deleted_at": serde_json::Value::Null,
-    }), &now_ts());
+    let c = mk_change(
+        "n1",
+        ChangeOperation::Insert,
+        json!({
+            "id": "n1", "title": "t",
+            "updated_at": now_ts(),
+            "deleted_at": serde_json::Value::Null,
+        }),
+        &now_ts(),
+    );
     SyncManager::apply_downloaded_changes(&conn2, &[c], None).unwrap();
     drop(conn2);
 
     // 用第三个连接读
     let conn3 = Connection::open(path).unwrap();
-    let title: String = conn3.query_row(
-        "SELECT title FROM items WHERE id='n1'", [], |r| r.get(0)
-    ).unwrap();
+    let title: String = conn3
+        .query_row("SELECT title FROM items WHERE id='n1'", [], |r| r.get(0))
+        .unwrap();
     assert_eq!(title, "t");
 }
 
@@ -1238,7 +1407,8 @@ fn w52_concurrent_user_write_during_sync() {
     // 建表
     {
         let conn = Connection::open(&path).unwrap();
-        conn.execute_batch(r#"
+        conn.execute_batch(
+            r#"
             CREATE TABLE items (
                 id TEXT PRIMARY KEY,
                 title TEXT NOT NULL DEFAULT '',
@@ -1252,25 +1422,36 @@ fn w52_concurrent_user_write_during_sync() {
                 changed_at TEXT NOT NULL DEFAULT (datetime('now')),
                 sync_version INTEGER DEFAULT 0
             );
-        "#).unwrap();
+        "#,
+        )
+        .unwrap();
     }
 
     // 同步连接应用
     let sync_conn = Connection::open(&path).unwrap();
-    let changes: Vec<_> = (0..100).map(|i| {
-        let id = format!("n{}", i);
-        mk_change(&id, ChangeOperation::Insert, json!({
-            "id": id, "title": format!("v{}", i),
-            "updated_at": now_ts(),
-            "deleted_at": serde_json::Value::Null,
-        }), &now_ts())
-    }).collect();
+    let changes: Vec<_> = (0..100)
+        .map(|i| {
+            let id = format!("n{}", i);
+            mk_change(
+                &id,
+                ChangeOperation::Insert,
+                json!({
+                    "id": id, "title": format!("v{}", i),
+                    "updated_at": now_ts(),
+                    "deleted_at": serde_json::Value::Null,
+                }),
+                &now_ts(),
+            )
+        })
+        .collect();
 
     // 另一个连接尝试同时写 —— 会因 BEGIN IMMEDIATE 锁等待或失败
     let user_conn = Connection::open(&path).unwrap();
     let user_thread = std::thread::spawn(move || {
         // 设 busy_timeout 避免立即失败
-        user_conn.execute_batch("PRAGMA busy_timeout = 5000").unwrap();
+        user_conn
+            .execute_batch("PRAGMA busy_timeout = 5000")
+            .unwrap();
         user_conn.execute(
             "INSERT INTO items (id, title, updated_at) VALUES ('user_1', 'user_data', ?1)",
             params![now_ts()],
@@ -1281,9 +1462,14 @@ fn w52_concurrent_user_write_during_sync() {
     SyncManager::apply_downloaded_changes(&sync_conn, &changes, None).unwrap();
 
     let r = user_thread.join().unwrap();
-    assert!(r.is_ok(), "用户写入应最终成功（busy timeout 让它等到锁释放）");
+    assert!(
+        r.is_ok(),
+        "用户写入应最终成功（busy timeout 让它等到锁释放）"
+    );
 
-    let final_n: i64 = sync_conn.query_row("SELECT COUNT(*) FROM items", [], |r| r.get(0)).unwrap();
+    let final_n: i64 = sync_conn
+        .query_row("SELECT COUNT(*) FROM items", [], |r| r.get(0))
+        .unwrap();
     assert_eq!(final_n, 101, "同步的 100 + 用户的 1");
 }
 
@@ -1297,9 +1483,13 @@ fn w53_negative_sync_version_tolerated() {
         [],
     ).unwrap();
     // get_pending_changes 查 sync_version = 0 → 不会命中，应无异常
-    let pending: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM __change_log WHERE sync_version = 0", [], |r| r.get(0)
-    ).unwrap();
+    let pending: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM __change_log WHERE sync_version = 0",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
     assert_eq!(pending, 0);
 }
 
@@ -1314,13 +1504,20 @@ fn w54_change_log_id_large_autoincrement() {
     ).unwrap();
 
     // 后续应用变更会尝试递增 id，接近 i64::MAX 会很快溢出
-    let r = SyncManager::apply_downloaded_changes(&conn, &[
-        mk_change("n2", ChangeOperation::Insert, json!({
-            "id": "n2", "title": "t",
-            "updated_at": now_ts(),
-            "deleted_at": serde_json::Value::Null,
-        }), &now_ts())
-    ], None);
+    let r = SyncManager::apply_downloaded_changes(
+        &conn,
+        &[mk_change(
+            "n2",
+            ChangeOperation::Insert,
+            json!({
+                "id": "n2", "title": "t",
+                "updated_at": now_ts(),
+                "deleted_at": serde_json::Value::Null,
+            }),
+            &now_ts(),
+        )],
+        None,
+    );
     // 可能成功（在剩余空间内）或失败（AUTOINCREMENT 耗尽）
     println!("W.54 near-max id result: {:?}", r);
 }
@@ -1342,13 +1539,19 @@ fn w55_readonly_connection_rejected() {
     let conn_ro = Connection::open_with_flags(
         tmp.path(),
         OpenFlags::SQLITE_OPEN_READ_ONLY | OpenFlags::SQLITE_OPEN_URI,
-    ).unwrap();
+    )
+    .unwrap();
 
-    let c = mk_change("n1", ChangeOperation::Insert, json!({
-        "id": "n1", "title": "t",
-        "updated_at": now_ts(),
-        "deleted_at": serde_json::Value::Null,
-    }), &now_ts());
+    let c = mk_change(
+        "n1",
+        ChangeOperation::Insert,
+        json!({
+            "id": "n1", "title": "t",
+            "updated_at": now_ts(),
+            "deleted_at": serde_json::Value::Null,
+        }),
+        &now_ts(),
+    );
     let r = SyncManager::apply_downloaded_changes(&conn_ro, &[c], None);
     assert!(r.is_err(), "只读连接必须失败");
 }
@@ -1368,18 +1571,30 @@ fn w56_crash_after_commit_preserves_changes() {
             CREATE TABLE __change_log (id INTEGER PRIMARY KEY AUTOINCREMENT, table_name TEXT, record_id TEXT, operation TEXT, changed_at TEXT DEFAULT (datetime('now')), sync_version INTEGER DEFAULT 0);
         "#).unwrap();
 
-        SyncManager::apply_downloaded_changes(&conn, &[mk_change("n1", ChangeOperation::Insert, json!({
-            "id": "n1", "title": "survives_crash",
-            "updated_at": now_ts(),
-            "deleted_at": serde_json::Value::Null,
-        }), &now_ts())], None).unwrap();
+        SyncManager::apply_downloaded_changes(
+            &conn,
+            &[mk_change(
+                "n1",
+                ChangeOperation::Insert,
+                json!({
+                    "id": "n1", "title": "survives_crash",
+                    "updated_at": now_ts(),
+                    "deleted_at": serde_json::Value::Null,
+                }),
+                &now_ts(),
+            )],
+            None,
+        )
+        .unwrap();
 
         // "崩溃"：不正常关闭，直接 drop 连接
     }
 
     // 重新打开
     let conn2 = Connection::open(tmp.path()).unwrap();
-    let title: String = conn2.query_row("SELECT title FROM items WHERE id='n1'", [], |r| r.get(0)).unwrap();
+    let title: String = conn2
+        .query_row("SELECT title FROM items WHERE id='n1'", [], |r| r.get(0))
+        .unwrap();
     assert_eq!(title, "survives_crash");
 }
 
@@ -1391,8 +1606,12 @@ async fn w57_many_blob_tombstones() {
     }
     #[async_trait::async_trait]
     impl deep_student_lib::cloud_storage::CloudStorage for MemStore {
-        fn provider_name(&self) -> &'static str { "mem" }
-        async fn check_connection(&self) -> deep_student_lib::cloud_storage::Result<()> { Ok(()) }
+        fn provider_name(&self) -> &'static str {
+            "mem"
+        }
+        async fn check_connection(&self) -> deep_student_lib::cloud_storage::Result<()> {
+            Ok(())
+        }
         async fn put(&self, k: &str, d: &[u8]) -> deep_student_lib::cloud_storage::Result<()> {
             self.files.lock().await.insert(k.into(), d.into());
             Ok(())
@@ -1400,21 +1619,40 @@ async fn w57_many_blob_tombstones() {
         async fn get(&self, k: &str) -> deep_student_lib::cloud_storage::Result<Option<Vec<u8>>> {
             Ok(self.files.lock().await.get(k).cloned())
         }
-        async fn list(&self, _: &str) -> deep_student_lib::cloud_storage::Result<Vec<deep_student_lib::cloud_storage::FileInfo>> { Ok(vec![]) }
+        async fn list(
+            &self,
+            _: &str,
+        ) -> deep_student_lib::cloud_storage::Result<Vec<deep_student_lib::cloud_storage::FileInfo>>
+        {
+            Ok(vec![])
+        }
         async fn delete(&self, k: &str) -> deep_student_lib::cloud_storage::Result<()> {
             self.files.lock().await.remove(k);
             Ok(())
         }
-        async fn stat(&self, _: &str) -> deep_student_lib::cloud_storage::Result<Option<deep_student_lib::cloud_storage::FileInfo>> { Ok(None) }
+        async fn stat(
+            &self,
+            _: &str,
+        ) -> deep_student_lib::cloud_storage::Result<
+            Option<deep_student_lib::cloud_storage::FileInfo>,
+        > {
+            Ok(None)
+        }
     }
-    let store = MemStore { files: tokio::sync::Mutex::new(Default::default()) };
+    let store = MemStore {
+        files: tokio::sync::Mutex::new(Default::default()),
+    };
     let mgr = SyncManager::new("d1".into());
     for i in 0..100 {
-        mgr.mark_blob_deleted(&store, &format!("hash_{}", i), None, Some(0)).await.unwrap();
+        mgr.mark_blob_deleted(&store, &format!("hash_{}", i), None, Some(0))
+            .await
+            .unwrap();
     }
     // [P0-2] download helper 现在要求一个 PayloadCodec；测试里用明文即可
     // 因为 mgr 是 SyncManager::new（未启用加密），等价于 PlainCodec
-    let m = tombstone::download_blob_tombstones(&store, &tombstone::PlainCodec).await.unwrap();
+    let m = tombstone::download_blob_tombstones(&store, &tombstone::PlainCodec)
+        .await
+        .unwrap();
     assert_eq!(m.entries.len(), 100);
 }
 
@@ -1424,25 +1662,45 @@ fn w58_large_conflict_table_state() {
     let conn = new_db();
     // 先插入一条并软改
     let base_ts = ts_ago(100);
-    conn.execute("INSERT INTO items (id, title, updated_at) VALUES ('n1', 'base', ?1)", params![base_ts]).unwrap();
-    conn.execute("UPDATE items SET title = ?1, updated_at = ?2 WHERE id='n1'", params!["local_huge".to_string() + &"x".repeat(1000), ts_ago(50)]).unwrap();
+    conn.execute(
+        "INSERT INTO items (id, title, updated_at) VALUES ('n1', 'base', ?1)",
+        params![base_ts],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE items SET title = ?1, updated_at = ?2 WHERE id='n1'",
+        params!["local_huge".to_string() + &"x".repeat(1000), ts_ago(50)],
+    )
+    .unwrap();
 
     // 制造 200 次冲突（每次 200 条记录进冲突表，200 * 2 = 400 条）
     for i in 0..200 {
         let ts = ts_ago(40 - i as i64);
-        let change = mk_change("n1", ChangeOperation::Update, json!({
-            "id": "n1",
-            "title": format!("cloud_{}", i) + &"y".repeat(500),
-            "updated_at": ts.clone(),
-            "deleted_at": serde_json::Value::Null,
-        }), &ts);
+        let change = mk_change(
+            "n1",
+            ChangeOperation::Update,
+            json!({
+                "id": "n1",
+                "title": format!("cloud_{}", i) + &"y".repeat(500),
+                "updated_at": ts.clone(),
+                "deleted_at": serde_json::Value::Null,
+            }),
+            &ts,
+        );
         // LWW 门会拒绝较早的 → 走 conflict_guard 路径
         let _ = SyncManager::apply_downloaded_changes_with_conflict_guard(
-            &conn, &[change], None, ConflictPolicy::KeepLatest, Some("cloud"), Some("local"),
+            &conn,
+            &[change],
+            None,
+            ConflictPolicy::KeepLatest,
+            Some("cloud"),
+            Some("local"),
         );
     }
     // 应能正常查到大量冲突记录
-    let n: i64 = conn.query_row("SELECT COUNT(*) FROM __sync_conflicts", [], |r| r.get(0)).unwrap();
+    let n: i64 = conn
+        .query_row("SELECT COUNT(*) FROM __sync_conflicts", [], |r| r.get(0))
+        .unwrap();
     println!("W.58 conflict count: {}", n);
 }
 
@@ -1455,19 +1713,39 @@ fn w59_wall_clock_jump_backward_between_events() {
     // 假设我们用"未来"时间戳（模拟时钟错误）INSERT
     // 然后"纠正"成现在时间戳 UPDATE —— 较早的 UPDATE 会被 LWW 拒绝
     let future = (chrono::Utc::now() + chrono::Duration::seconds(30)).to_rfc3339(); // 30s future，未触发 drift guard
-    SyncManager::apply_downloaded_changes(&conn, &[mk_change("n1", ChangeOperation::Insert, json!({
-        "id": "n1", "title": "future_me",
-        "updated_at": future.clone(),
-        "deleted_at": serde_json::Value::Null,
-    }), &future)], None).unwrap();
+    SyncManager::apply_downloaded_changes(
+        &conn,
+        &[mk_change(
+            "n1",
+            ChangeOperation::Insert,
+            json!({
+                "id": "n1", "title": "future_me",
+                "updated_at": future.clone(),
+                "deleted_at": serde_json::Value::Null,
+            }),
+            &future,
+        )],
+        None,
+    )
+    .unwrap();
 
     // 现在用"正常当前时间"发 UPDATE
     let now = now_ts();
-    SyncManager::apply_downloaded_changes(&conn, &[mk_change("n1", ChangeOperation::Update, json!({
-        "id": "n1", "title": "corrected_now",
-        "updated_at": now.clone(),
-        "deleted_at": serde_json::Value::Null,
-    }), &now)], None).unwrap();
+    SyncManager::apply_downloaded_changes(
+        &conn,
+        &[mk_change(
+            "n1",
+            ChangeOperation::Update,
+            json!({
+                "id": "n1", "title": "corrected_now",
+                "updated_at": now.clone(),
+                "deleted_at": serde_json::Value::Null,
+            }),
+            &now,
+        )],
+        None,
+    )
+    .unwrap();
 
     // LWW 保护：较晚的本地 future 值获胜
     assert_eq!(get_title(&conn, "n1").as_deref(), Some("future_me"));
@@ -1509,21 +1787,40 @@ fn w60_llm_usage_daily_malformed_record_id() {
 fn w61_identical_edits_from_two_devices_no_conflict() {
     let conn = new_db();
     let base_ts = ts_ago(100);
-    conn.execute("INSERT INTO items (id, title, updated_at) VALUES ('n1', 'base', ?1)", params![base_ts]).unwrap();
+    conn.execute(
+        "INSERT INTO items (id, title, updated_at) VALUES ('n1', 'base', ?1)",
+        params![base_ts],
+    )
+    .unwrap();
 
     // 本地改成 "both_same"
-    conn.execute("UPDATE items SET title='both_same', updated_at=?1 WHERE id='n1'", params![ts_ago(50)]).unwrap();
+    conn.execute(
+        "UPDATE items SET title='both_same', updated_at=?1 WHERE id='n1'",
+        params![ts_ago(50)],
+    )
+    .unwrap();
 
     // 云端也改成 "both_same"（业务上一样）
-    let c = mk_change("n1", ChangeOperation::Update, json!({
-        "id": "n1", "title": "both_same",
-        "updated_at": ts_ago(20),
-        "deleted_at": serde_json::Value::Null,
-    }), &ts_ago(20));
+    let c = mk_change(
+        "n1",
+        ChangeOperation::Update,
+        json!({
+            "id": "n1", "title": "both_same",
+            "updated_at": ts_ago(20),
+            "deleted_at": serde_json::Value::Null,
+        }),
+        &ts_ago(20),
+    );
 
     let (_, conflict) = SyncManager::apply_downloaded_changes_with_conflict_guard(
-        &conn, &[c], None, ConflictPolicy::KeepLatest, None, None,
-    ).unwrap();
+        &conn,
+        &[c],
+        None,
+        ConflictPolicy::KeepLatest,
+        None,
+        None,
+    )
+    .unwrap();
     assert_eq!(conflict.conflicts_saved, 0, "语义相同的编辑不应算冲突");
     assert_eq!(get_title(&conn, "n1").as_deref(), Some("both_same"));
 }
@@ -1532,16 +1829,36 @@ fn w61_identical_edits_from_two_devices_no_conflict() {
 #[test]
 fn w62_empty_vs_whitespace_title_distinct() {
     let conn = new_db();
-    SyncManager::apply_downloaded_changes(&conn, &[mk_change("e", ChangeOperation::Insert, json!({
-        "id": "e", "title": "",
-        "updated_at": now_ts(),
-        "deleted_at": serde_json::Value::Null,
-    }), &now_ts())], None).unwrap();
-    SyncManager::apply_downloaded_changes(&conn, &[mk_change("w", ChangeOperation::Insert, json!({
-        "id": "w", "title": "   ",
-        "updated_at": now_ts(),
-        "deleted_at": serde_json::Value::Null,
-    }), &now_ts())], None).unwrap();
+    SyncManager::apply_downloaded_changes(
+        &conn,
+        &[mk_change(
+            "e",
+            ChangeOperation::Insert,
+            json!({
+                "id": "e", "title": "",
+                "updated_at": now_ts(),
+                "deleted_at": serde_json::Value::Null,
+            }),
+            &now_ts(),
+        )],
+        None,
+    )
+    .unwrap();
+    SyncManager::apply_downloaded_changes(
+        &conn,
+        &[mk_change(
+            "w",
+            ChangeOperation::Insert,
+            json!({
+                "id": "w", "title": "   ",
+                "updated_at": now_ts(),
+                "deleted_at": serde_json::Value::Null,
+            }),
+            &now_ts(),
+        )],
+        None,
+    )
+    .unwrap();
     assert_eq!(get_title(&conn, "e").as_deref(), Some(""));
     assert_eq!(get_title(&conn, "w").as_deref(), Some("   "));
 }
@@ -1550,28 +1867,34 @@ fn w62_empty_vs_whitespace_title_distinct() {
 #[test]
 fn w63_all_changes_without_suppress_flag() {
     let conn = new_db();
-    let changes: Vec<_> = (0..5).map(|i| {
-        SyncChangeWithData {
-            table_name: "items".into(),
-            record_id: format!("n{}", i),
-            operation: ChangeOperation::Insert,
-            data: Some(json!({
-                "id": format!("n{}", i), "title": format!("v{}", i),
-                "updated_at": now_ts(),
-                "deleted_at": serde_json::Value::Null,
-            })),
-            changed_at: now_ts(),
-            change_log_id: None,
-            database_name: Some("test".into()),
-            suppress_change_log: None, // 不抑制
-        }
-    }).collect();
+    let changes: Vec<_> = (0..5)
+        .map(|i| {
+            SyncChangeWithData {
+                table_name: "items".into(),
+                record_id: format!("n{}", i),
+                operation: ChangeOperation::Insert,
+                data: Some(json!({
+                    "id": format!("n{}", i), "title": format!("v{}", i),
+                    "updated_at": now_ts(),
+                    "deleted_at": serde_json::Value::Null,
+                })),
+                changed_at: now_ts(),
+                change_log_id: None,
+                database_name: Some("test".into()),
+                suppress_change_log: None, // 不抑制
+            }
+        })
+        .collect();
     SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
 
     // 应用后 __change_log 里会多出 pending（因为不抑制）
-    let pending: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM __change_log WHERE sync_version = 0", [], |r| r.get(0)
-    ).unwrap();
+    let pending: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM __change_log WHERE sync_version = 0",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
     assert!(pending >= 5, "不抑制时回放产生 pending，实际 {}", pending);
 }
 
@@ -1579,12 +1902,17 @@ fn w63_all_changes_without_suppress_flag() {
 #[test]
 fn w64_id_as_number_in_payload() {
     let conn = new_db();
-    let c = mk_change("123", ChangeOperation::Insert, json!({
-        "id": 123, // number
-        "title": "t",
-        "updated_at": now_ts(),
-        "deleted_at": serde_json::Value::Null,
-    }), &now_ts());
+    let c = mk_change(
+        "123",
+        ChangeOperation::Insert,
+        json!({
+            "id": 123, // number
+            "title": "t",
+            "updated_at": now_ts(),
+            "deleted_at": serde_json::Value::Null,
+        }),
+        &now_ts(),
+    );
     // id 列是 TEXT，SQLite 类型亲和性会把 number 转 string
     let r = SyncManager::apply_downloaded_changes(&conn, &[c], None);
     println!("W.64 result: {:?}", r);
@@ -1595,11 +1923,16 @@ fn w64_id_as_number_in_payload() {
 fn w65_extremely_long_record_id() {
     let conn = new_db();
     let long_id = "k".repeat(10000);
-    let c = mk_change(&long_id, ChangeOperation::Insert, json!({
-        "id": long_id.clone(), "title": "t",
-        "updated_at": now_ts(),
-        "deleted_at": serde_json::Value::Null,
-    }), &now_ts());
+    let c = mk_change(
+        &long_id,
+        ChangeOperation::Insert,
+        json!({
+            "id": long_id.clone(), "title": "t",
+            "updated_at": now_ts(),
+            "deleted_at": serde_json::Value::Null,
+        }),
+        &now_ts(),
+    );
     SyncManager::apply_downloaded_changes(&conn, &[c], None).unwrap();
     assert_eq!(get_title(&conn, &long_id).as_deref(), Some("t"));
 }
@@ -1609,17 +1942,26 @@ fn w65_extremely_long_record_id() {
 fn w66_many_small_batches_sequential() {
     let conn = new_db();
     for batch in 0..50 {
-        let changes: Vec<_> = (0..10).map(|i| {
-            let id = format!("b{}_{}", batch, i);
-            mk_change(&id, ChangeOperation::Insert, json!({
-                "id": id, "title": format!("b{}_i{}", batch, i),
-                "updated_at": ts_ago(5000 - (batch * 10 + i) as i64),
-                "deleted_at": serde_json::Value::Null,
-            }), &ts_ago(5000 - (batch * 10 + i) as i64))
-        }).collect();
+        let changes: Vec<_> = (0..10)
+            .map(|i| {
+                let id = format!("b{}_{}", batch, i);
+                mk_change(
+                    &id,
+                    ChangeOperation::Insert,
+                    json!({
+                        "id": id, "title": format!("b{}_i{}", batch, i),
+                        "updated_at": ts_ago(5000 - (batch * 10 + i) as i64),
+                        "deleted_at": serde_json::Value::Null,
+                    }),
+                    &ts_ago(5000 - (batch * 10 + i) as i64),
+                )
+            })
+            .collect();
         SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
     }
-    let n: i64 = conn.query_row("SELECT COUNT(*) FROM items", [], |r| r.get(0)).unwrap();
+    let n: i64 = conn
+        .query_row("SELECT COUNT(*) FROM items", [], |r| r.get(0))
+        .unwrap();
     assert_eq!(n, 500);
 }
 
@@ -1641,20 +1983,41 @@ fn w67_existing_conflict_table_is_reused() {
     "#).unwrap();
 
     // 制造新冲突
-    conn.execute("INSERT INTO items (id, title, updated_at) VALUES ('n1', 'base', ?1)", params![ts_ago(100)]).unwrap();
-    conn.execute("UPDATE items SET title='local', updated_at=?1 WHERE id='n1'", params![ts_ago(50)]).unwrap();
-    let change = mk_change("n1", ChangeOperation::Update, json!({
-        "id": "n1", "title": "cloud",
-        "updated_at": ts_ago(30),
-        "deleted_at": serde_json::Value::Null,
-    }), &ts_ago(30));
+    conn.execute(
+        "INSERT INTO items (id, title, updated_at) VALUES ('n1', 'base', ?1)",
+        params![ts_ago(100)],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE items SET title='local', updated_at=?1 WHERE id='n1'",
+        params![ts_ago(50)],
+    )
+    .unwrap();
+    let change = mk_change(
+        "n1",
+        ChangeOperation::Update,
+        json!({
+            "id": "n1", "title": "cloud",
+            "updated_at": ts_ago(30),
+            "deleted_at": serde_json::Value::Null,
+        }),
+        &ts_ago(30),
+    );
 
     SyncManager::apply_downloaded_changes_with_conflict_guard(
-        &conn, &[change], None, ConflictPolicy::KeepLatest, Some("cloud"), Some("local"),
-    ).unwrap();
+        &conn,
+        &[change],
+        None,
+        ConflictPolicy::KeepLatest,
+        Some("cloud"),
+        Some("local"),
+    )
+    .unwrap();
 
     // 旧的 preexisting + 新的 2 条 = 3 条
-    let n: i64 = conn.query_row("SELECT COUNT(*) FROM __sync_conflicts", [], |r| r.get(0)).unwrap();
+    let n: i64 = conn
+        .query_row("SELECT COUNT(*) FROM __sync_conflicts", [], |r| r.get(0))
+        .unwrap();
     assert_eq!(n, 3);
 }
 
@@ -1662,35 +2025,77 @@ fn w67_existing_conflict_table_is_reused() {
 #[test]
 fn w68_resolved_conflicts_dont_block_new_ones() {
     let conn = new_db();
-    conn.execute("INSERT INTO items (id, title, updated_at) VALUES ('n1', 'base', ?1)", params![ts_ago(200)]).unwrap();
-    conn.execute("UPDATE items SET title='local_1', updated_at=?1 WHERE id='n1'", params![ts_ago(100)]).unwrap();
+    conn.execute(
+        "INSERT INTO items (id, title, updated_at) VALUES ('n1', 'base', ?1)",
+        params![ts_ago(200)],
+    )
+    .unwrap();
+    conn.execute(
+        "UPDATE items SET title='local_1', updated_at=?1 WHERE id='n1'",
+        params![ts_ago(100)],
+    )
+    .unwrap();
 
     // 第一次冲突
     SyncManager::apply_downloaded_changes_with_conflict_guard(
-        &conn, &[mk_change("n1", ChangeOperation::Update, json!({
-            "id": "n1", "title": "cloud_1",
-            "updated_at": ts_ago(90),
-            "deleted_at": serde_json::Value::Null,
-        }), &ts_ago(90))], None, ConflictPolicy::KeepLatest, Some("cloud"), Some("local"),
-    ).unwrap();
+        &conn,
+        &[mk_change(
+            "n1",
+            ChangeOperation::Update,
+            json!({
+                "id": "n1", "title": "cloud_1",
+                "updated_at": ts_ago(90),
+                "deleted_at": serde_json::Value::Null,
+            }),
+            &ts_ago(90),
+        )],
+        None,
+        ConflictPolicy::KeepLatest,
+        Some("cloud"),
+        Some("local"),
+    )
+    .unwrap();
     // "解决"它
     conn.execute("UPDATE __sync_conflicts SET resolved_at=datetime('now'), resolution='keep_local' WHERE record_id='n1'", []).unwrap();
 
     // 再次改本地
-    conn.execute("UPDATE items SET title='local_2', updated_at=?1 WHERE id='n1'", params![ts_ago(50)]).unwrap();
+    conn.execute(
+        "UPDATE items SET title='local_2', updated_at=?1 WHERE id='n1'",
+        params![ts_ago(50)],
+    )
+    .unwrap();
 
     // 再次冲突
     SyncManager::apply_downloaded_changes_with_conflict_guard(
-        &conn, &[mk_change("n1", ChangeOperation::Update, json!({
-            "id": "n1", "title": "cloud_2",
-            "updated_at": ts_ago(40),
-            "deleted_at": serde_json::Value::Null,
-        }), &ts_ago(40))], None, ConflictPolicy::KeepLatest, Some("cloud"), Some("local"),
-    ).unwrap();
+        &conn,
+        &[mk_change(
+            "n1",
+            ChangeOperation::Update,
+            json!({
+                "id": "n1", "title": "cloud_2",
+                "updated_at": ts_ago(40),
+                "deleted_at": serde_json::Value::Null,
+            }),
+            &ts_ago(40),
+        )],
+        None,
+        ConflictPolicy::KeepLatest,
+        Some("cloud"),
+        Some("local"),
+    )
+    .unwrap();
 
     // 已解决的 2 条 + 新的 2 条 = 4 条总记录，其中 2 条 resolved_at IS NOT NULL
-    let total: i64 = conn.query_row("SELECT COUNT(*) FROM __sync_conflicts", [], |r| r.get(0)).unwrap();
-    let unresolved: i64 = conn.query_row("SELECT COUNT(*) FROM __sync_conflicts WHERE resolved_at IS NULL", [], |r| r.get(0)).unwrap();
+    let total: i64 = conn
+        .query_row("SELECT COUNT(*) FROM __sync_conflicts", [], |r| r.get(0))
+        .unwrap();
+    let unresolved: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM __sync_conflicts WHERE resolved_at IS NULL",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
     assert_eq!(total, 4);
     assert_eq!(unresolved, 2);
 }
@@ -1703,17 +2108,24 @@ fn w69_ten_thousand_tiny_records() {
     for i in 0..10000 {
         let id = format!("t{:05}", i);
         let ts = ts_ago(20000 - i as i64);
-        changes.push(mk_change(&id, ChangeOperation::Insert, json!({
-            "id": id, "title": "x",
-            "updated_at": ts.clone(),
-            "deleted_at": serde_json::Value::Null,
-        }), &ts));
+        changes.push(mk_change(
+            &id,
+            ChangeOperation::Insert,
+            json!({
+                "id": id, "title": "x",
+                "updated_at": ts.clone(),
+                "deleted_at": serde_json::Value::Null,
+            }),
+            &ts,
+        ));
     }
     let t = std::time::Instant::now();
     let r = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
     let elapsed = t.elapsed();
     assert_eq!(r.success_count, 10000);
-    let n: i64 = conn.query_row("SELECT COUNT(*) FROM items", [], |r| r.get(0)).unwrap();
+    let n: i64 = conn
+        .query_row("SELECT COUNT(*) FROM items", [], |r| r.get(0))
+        .unwrap();
     assert_eq!(n, 10000);
     println!("W.69 applied 10000 in {:?}", elapsed);
     assert!(elapsed.as_secs() < 30, "10000 条批次应在 30s 内完成");
@@ -1724,18 +2136,27 @@ fn w69_ten_thousand_tiny_records() {
 #[test]
 fn w70_seven_devices_cross_edit() {
     let conn = new_db();
-    conn.execute("INSERT INTO items (id, title, updated_at) VALUES ('n1', 'base', ?1)", params![ts_ago(1000)]).unwrap();
+    conn.execute(
+        "INSERT INTO items (id, title, updated_at) VALUES ('n1', 'base', ?1)",
+        params![ts_ago(1000)],
+    )
+    .unwrap();
 
     // 7 个设备分别写，时间戳按 1 小时错开
     let mut changes = Vec::new();
     for dev in 0..7 {
         let ts = ts_ago(500 - dev as i64 * 50);
-        changes.push(mk_change("n1", ChangeOperation::Update, json!({
-            "id": "n1", "title": format!("dev_{}", dev),
-            "counter": dev,
-            "updated_at": ts.clone(),
-            "deleted_at": serde_json::Value::Null,
-        }), &ts));
+        changes.push(mk_change(
+            "n1",
+            ChangeOperation::Update,
+            json!({
+                "id": "n1", "title": format!("dev_{}", dev),
+                "counter": dev,
+                "updated_at": ts.clone(),
+                "deleted_at": serde_json::Value::Null,
+            }),
+            &ts,
+        ));
     }
 
     SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();

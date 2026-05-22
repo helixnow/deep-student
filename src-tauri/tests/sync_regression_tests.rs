@@ -169,7 +169,7 @@ fn r03_hlc_drift_over_60s_future_rejected() {
 
     let now_ms = chrono::Utc::now().timestamp_millis() as u64;
     let past_hlc = Hlc::new(now_ms - 10_000, 0).to_string(); // 本地较早
-    // 云端"未来 5 分钟"：远超 60 秒漂移门
+                                                             // 云端"未来 5 分钟"：远超 60 秒漂移门
     let future_hlc = Hlc::new(now_ms + 300_000, 0).to_string();
 
     insert_item(&conn, "n1", "local", &past_hlc);
@@ -293,7 +293,9 @@ fn r07_reset_baseline_skips_tables_without_sync_columns() {
 
     // plain_table 应原封不动
     let name: String = conn
-        .query_row("SELECT name FROM plain_table WHERE id='x'", [], |r| r.get(0))
+        .query_row("SELECT name FROM plain_table WHERE id='x'", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert_eq!(name, "alpha");
 }
@@ -340,11 +342,9 @@ fn r09_reset_baseline_is_idempotent() {
     SyncManager::reset_sync_baseline_after_restore(&conn).unwrap();
 
     let sv: i64 = conn
-        .query_row(
-            "SELECT sync_version FROM items WHERE id='n1'",
-            [],
-            |r| r.get(0),
-        )
+        .query_row("SELECT sync_version FROM items WHERE id='n1'", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert_eq!(sv, 3);
     let cnt: i64 = conn
@@ -373,10 +373,8 @@ fn r10_post_restore_no_pending_changes() {
     }
 
     // 模拟源设备残留的 __change_log（sync_version 混合）
-    conn.execute_batch(
-        "UPDATE __change_log SET sync_version = 100 WHERE id <= 10;",
-    )
-    .unwrap();
+    conn.execute_batch("UPDATE __change_log SET sync_version = 100 WHERE id <= 10;")
+        .unwrap();
 
     // 恢复后 pending 条目看起来还有
     assert!(count_pending(&conn) > 0);
@@ -445,7 +443,12 @@ fn r12_repeated_restore_reset_cycles() {
             );
         }
         SyncManager::reset_sync_baseline_after_restore(&conn).unwrap();
-        assert_eq!(count_pending(&conn), 0, "第 {} 轮恢复后 pending 应为 0", round);
+        assert_eq!(
+            count_pending(&conn),
+            0,
+            "第 {} 轮恢复后 pending 应为 0",
+            round
+        );
     }
 }
 
@@ -617,7 +620,10 @@ fn r18_apply_3000_records_crosses_batch_boundary() {
 fn r19_apply_empty_noop() {
     let conn = new_db();
     let result = SyncManager::apply_downloaded_changes(&conn, &[], None).unwrap();
-    assert_eq!(result.success_count + result.failure_count + result.skipped_count, 0);
+    assert_eq!(
+        result.success_count + result.failure_count + result.skipped_count,
+        0
+    );
 }
 
 /// R20：分批期间每批内的 HLC 顺序和跨批 HLC 顺序都必须保持
@@ -627,7 +633,11 @@ fn r20_hlc_ordering_preserved_across_batch_size() {
     let base_ms = 1_700_000_000_000u64;
     let mut stamps = Vec::new();
     for i in 0..1999u64 {
-        let millis = if i < 1000 { base_ms + i } else { base_ms + 10_000 + i };
+        let millis = if i < 1000 {
+            base_ms + i
+        } else {
+            base_ms + 10_000 + i
+        };
         stamps.push(Hlc::new(millis, 0).to_string());
     }
     // 验证所有 stamp 都能独立按 HLC 解析 + 整体字典序单调递增（用于跨批保序的前提）
@@ -645,8 +655,8 @@ fn r20_hlc_ordering_preserved_across_batch_size() {
 /// 这个测试记录现有行为，防止未来误伤。
 #[test]
 fn r21_mixed_format_cmp_is_deterministic() {
-    use deep_student_lib::data_governance::sync::MergeStrategy;
     use deep_student_lib::data_governance::sync::ConflictRecord;
+    use deep_student_lib::data_governance::sync::MergeStrategy;
 
     // 完整 HLC 串 vs ISO 串 —— 测试冲突合并的 KeepLatest 策略不 panic 且给出一致结果
     let local_hlc = Hlc::new(1_700_000_000_000, 99).to_string();
@@ -672,8 +682,8 @@ fn r21_mixed_format_cmp_is_deterministic() {
 /// R22：两端 HLC 完全相同 —— 视为 Equal（tie，保留本地）
 #[test]
 fn r22_identical_hlc_treated_as_equal() {
-    use deep_student_lib::data_governance::sync::MergeStrategy;
     use deep_student_lib::data_governance::sync::ConflictRecord;
+    use deep_student_lib::data_governance::sync::MergeStrategy;
 
     let hlc = Hlc::new(1_700_000_000_000, 42).to_string();
 
@@ -699,8 +709,8 @@ fn r22_identical_hlc_treated_as_equal() {
 /// 不会被 2 秒容差淹没
 #[test]
 fn r23_hlc_not_swallowed_by_clock_skew_tolerance() {
-    use deep_student_lib::data_governance::sync::MergeStrategy;
     use deep_student_lib::data_governance::sync::ConflictRecord;
+    use deep_student_lib::data_governance::sync::MergeStrategy;
 
     // 同毫秒的 HLC：counter 差 1。时钟容差是 2 秒 = 2000 毫秒，理论上会吞掉，
     // 但 HLC fast-path 优先走，counter 差必须决胜

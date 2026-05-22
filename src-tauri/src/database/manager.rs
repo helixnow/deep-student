@@ -1973,7 +1973,9 @@ impl DatabaseManager {
                     .unwrap_or(false);
 
                 if anki_cards_needs_fix {
-                    tracing::info!("🔧 检测到 anki_cards 表仍然引用 document_tasks_old，开始修复...");
+                    tracing::info!(
+                        "🔧 检测到 anki_cards 表仍然引用 document_tasks_old，开始修复..."
+                    );
 
                     // 使用嵌套 SAVEPOINT（不能用 conn.transaction()，外层已有事务）
                     conn.execute_batch("SAVEPOINT v25_anki_fix")?;
@@ -2105,7 +2107,9 @@ impl DatabaseManager {
                 tracing::info!("数据库迁移 v26 -> v27 完成");
             }
             28 => {
-                tracing::info!("开始数据库迁移 v27 -> v28: 为 mistakes 表添加 last_accessed_at 字段...");
+                tracing::info!(
+                    "开始数据库迁移 v27 -> v28: 为 mistakes 表添加 last_accessed_at 字段..."
+                );
 
                 let has_column: bool = conn
                     .query_row(
@@ -2171,7 +2175,9 @@ impl DatabaseManager {
                 tracing::info!("数据库迁移 v29 -> v30 完成");
             }
             31 => {
-                tracing::info!("开始数据库迁移 v30 -> v31: 确保 stable_id 列与索引存在（幂等补齐）...");
+                tracing::info!(
+                    "开始数据库迁移 v30 -> v31: 确保 stable_id 列与索引存在（幂等补齐）..."
+                );
 
                 // 幂等检查并添加 stable_id 列
                 let has_column: bool = conn
@@ -2346,7 +2352,9 @@ impl DatabaseManager {
                 tracing::info!("数据库迁移 v35 -> v36 完成（已删除 stream_snapshot、last_snapshot_hash、last_snapshot_at 字段）");
             }
             37 => {
-                tracing::info!("开始数据库迁移 v36 -> v37: 为 translations 表添加收藏和评分字段...");
+                tracing::info!(
+                    "开始数据库迁移 v36 -> v37: 为 translations 表添加收藏和评分字段..."
+                );
 
                 // 添加 is_favorite 字段（默认 0 = 未收藏）
                 conn.execute(

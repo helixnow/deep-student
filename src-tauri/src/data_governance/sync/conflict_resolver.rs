@@ -288,8 +288,12 @@ impl ConflictResolver {
             if !has_local_change {
                 return Ok(None);
             }
-            let local_data =
-                SyncManager::get_record_data(conn, &change.table_name, &change.record_id, id_column)?;
+            let local_data = SyncManager::get_record_data(
+                conn,
+                &change.table_name,
+                &change.record_id,
+                id_column,
+            )?;
             let Some(local_data) = local_data else {
                 return Ok(None);
             };
@@ -370,7 +374,9 @@ impl ConflictResolver {
             ConflictPolicy::KeepLatest => {
                 let local_ts = Self::extract_updated_at(&local_data);
                 let cloud_ts = Self::extract_updated_at(&cloud_data).or_else(|| {
-                    crate::data_governance::sync::parse_flexible_timestamp_public(&change.changed_at)
+                    crate::data_governance::sync::parse_flexible_timestamp_public(
+                        &change.changed_at,
+                    )
                 });
                 match (local_ts, cloud_ts) {
                     (Some(l), Some(c)) => {

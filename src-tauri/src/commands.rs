@@ -5,7 +5,9 @@ use log::{debug, error, info, warn};
 use crate::database::{Database, DatabaseManager};
 use crate::database_optimizations::DatabaseOptimizationExt;
 use crate::exam_sheet_service::ExamSheetService;
-use crate::llm_manager::{ApiConfig, ModelProfile, VendorConfig};
+use crate::llm_manager::{
+    should_use_openai_responses_for_config, ApiConfig, ModelProfile, VendorConfig,
+};
 #[cfg(feature = "mcp")]
 use crate::mcp::McpConfig;
 use crate::models::{
@@ -1586,10 +1588,44 @@ pub async fn save_model_profiles(
 /// - api_base: API 基础 URL
 /// - model: 模型名称（可选）
 /// - vendor_id: 供应商 ID（可选，用于从安全存储获取真实密钥）
+fn resolve_test_api_protocol(
+    api_base: &str,
+    explicit_protocol: Option<&str>,
+    model: Option<&str>,
+    supports_openai_responses: Option<bool>,
+) -> &'static str {
+    if let Some(protocol) = explicit_protocol {
+        return if protocol == "openai_responses" {
+            "openai_responses"
+        } else {
+            "openai_chat_completions"
+        };
+    }
+
+    let mut inferred_config = ApiConfig {
+        base_url: api_base.to_string(),
+        model: model.unwrap_or_default().to_string(),
+        model_adapter: "general".to_string(),
+        ..Default::default()
+    };
+    inferred_config.supports_openai_responses = supports_openai_responses;
+    if api_base.to_lowercase().contains("api.openai.com") {
+        inferred_config.provider_type = Some("openai".to_string());
+    }
+
+    if should_use_openai_responses_for_config(&inferred_config) {
+        "openai_responses"
+    } else {
+        "openai_chat_completions"
+    }
+}
+
 #[tauri::command]
 pub async fn test_api_connection(
     api_key: String,
     api_base: String,
+    api_protocol: Option<String>,
+    supports_openai_responses: Option<bool>,
     model: Option<String>,
     vendor_id: Option<String>,
     state: State<'_, AppState>,
@@ -1669,17 +1705,42 @@ pub async fn test_api_connection(
         }
     };
 
+    let protocol = resolve_test_api_protocol(
+        &api_base,
+        api_protocol.as_deref(),
+        model.as_deref(),
+        supports_openai_responses,
+    );
+
     // 构建请求 URL
-    let url = format!("{}/chat/completions", api_base.trim_end_matches('/'));
+    let url = match protocol {
+        "openai_responses" => format!("{}/responses", api_base.trim_end_matches('/')),
+        _ => format!("{}/chat/completions", api_base.trim_end_matches('/')),
+    };
 
     // 构建最小化请求体
-    let model_id = model.unwrap_or_else(|| "gpt-3.5-turbo".to_string());
-    let request_body = serde_json::json!({
-        "model": model_id,
-        "messages": [{"role": "user", "content": "Hi"}],
-        "max_tokens": 1,
-        "stream": false
+    let model_id = model.unwrap_or_else(|| {
+        if protocol == "openai_responses" {
+            "gpt-4o-mini".to_string()
+        } else {
+            "gpt-4o-mini".to_string()
+        }
     });
+    let request_body = if protocol == "openai_responses" {
+        serde_json::json!({
+            "model": model_id,
+            "input": "Hi",
+            "max_output_tokens": 1,
+            "stream": false
+        })
+    } else {
+        serde_json::json!({
+            "model": model_id,
+            "messages": [{"role": "user", "content": "Hi"}],
+            "max_tokens": 1,
+            "stream": false
+        })
+    };
 
     // 创建 HTTP 客户端（10 秒超时）
     let client = Client::builder()
@@ -3027,7 +3088,9 @@ fn parse_version_parts(version: &str) -> Option<Vec<u64>> {
 
 #[cfg(test)]
 mod tests {
-    use super::{compare_template_version, should_update_builtin_template};
+    use super::{
+        compare_template_version, resolve_test_api_protocol, should_update_builtin_template,
+    };
     use std::cmp::Ordering;
 
     #[test]
@@ -3045,6 +3108,71 @@ mod tests {
     fn compare_template_version_tolerates_non_standard_versions() {
         assert!(should_update_builtin_template("legacy", "2.0.0"));
         assert!(!should_update_builtin_template("2.1.0", "beta"));
+    }
+
+    #[test]
+    fn resolve_test_api_protocol_prefers_explicit_protocol() {
+        assert_eq!(
+            resolve_test_api_protocol(
+                "https://proxy.example.com/v1",
+                Some("openai_responses"),
+                Some("gpt-4o-mini"),
+                None
+            ),
+            "openai_responses"
+        );
+        assert_eq!(
+            resolve_test_api_protocol(
+                "https://api.openai.com/v1",
+                Some("openai_chat_completions"),
+                Some("gpt-5"),
+                None
+            ),
+            "openai_chat_completions"
+        );
+    }
+
+    #[test]
+    fn resolve_test_api_protocol_defaults_official_openai_to_responses() {
+        assert_eq!(
+            resolve_test_api_protocol("https://api.openai.com/v1", None, Some("gpt-4o-mini"), None),
+            "openai_responses"
+        );
+    }
+
+    #[test]
+    fn resolve_test_api_protocol_defaults_third_party_gpt5_to_responses() {
+        assert_eq!(
+            resolve_test_api_protocol(
+                "https://proxy.example.com/v1",
+                None,
+                Some("gpt-4o-mini"),
+                Some(true)
+            ),
+            "openai_responses"
+        );
+        assert_eq!(
+            resolve_test_api_protocol(
+                "https://proxy.example.com/v1",
+                None,
+                Some("o4-mini"),
+                Some(true)
+            ),
+            "openai_responses"
+        );
+    }
+
+    #[test]
+    fn resolve_test_api_protocol_keeps_generic_third_party_models_on_chat_completions() {
+        assert_eq!(
+            resolve_test_api_protocol(
+                "https://proxy.example.com/v1",
+                None,
+                Some("gpt-4o-mini"),
+                None
+            ),
+            "openai_chat_completions"
+        );
     }
 }
 

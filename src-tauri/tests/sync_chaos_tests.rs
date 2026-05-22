@@ -14,9 +14,7 @@
 //! 运行 30-60 秒后，强制两端做一次"最终同步"（把所有 pending 变更互相交换完毕）。
 //! 断言：最终 A 和 B 的业务表内容（忽略元字段后）完全相同。
 
-use deep_student_lib::data_governance::sync::{
-    ChangeOperation, SyncChangeWithData, SyncManager,
-};
+use deep_student_lib::data_governance::sync::{ChangeOperation, SyncChangeWithData, SyncManager};
 use rand::rngs::StdRng;
 use rand::{Rng, SeedableRng};
 use rusqlite::{params, Connection};
@@ -26,8 +24,14 @@ use std::collections::HashMap;
 /// chaos 里的操作
 #[derive(Debug, Clone)]
 enum ChaosAction {
-    InsertOrUpdate { id: String, label: String, counter: i64 },
-    Delete { id: String },
+    InsertOrUpdate {
+        id: String,
+        label: String,
+        counter: i64,
+    },
+    Delete {
+        id: String,
+    },
     Sync,
     NetworkOutage,
 }
@@ -78,13 +82,7 @@ fn new_db(device_id: &str) -> Connection {
 }
 
 /// 本地业务操作：直接 SQL 写入，触发器会产生 __change_log 条目
-fn local_insert_or_update(
-    conn: &Connection,
-    id: &str,
-    label: &str,
-    counter: i64,
-    ts_sec: i64,
-) {
+fn local_insert_or_update(conn: &Connection, id: &str, label: &str, counter: i64, ts_sec: i64) {
     let ts = chrono::DateTime::<chrono::Utc>::from_timestamp(ts_sec, 0)
         .unwrap()
         .to_rfc3339();
@@ -359,7 +357,11 @@ fn run_chaos_session(
 #[test]
 fn chaos_short_session_converges_seed_1() {
     let (a, b, ao, bo) = run_chaos_session(1, 100, 0.0);
-    assert_eq!(a, b, "seed=1 短会话应收敛: A={}, B={} (a_ops={}, b_ops={})", a, b, ao, bo);
+    assert_eq!(
+        a, b,
+        "seed=1 短会话应收敛: A={}, B={} (a_ops={}, b_ops={})",
+        a, b, ao, bo
+    );
 }
 
 #[test]
@@ -570,8 +572,16 @@ fn chaos_per_record_state_matches() {
 
     // 两端彼此应用
     cloud.sort_by(|a, b| a.1.changed_at.cmp(&b.1.changed_at));
-    let a_to_apply: Vec<_> = cloud.iter().filter(|(s, _)| s == "dev_b").map(|(_, c)| c.clone()).collect();
-    let b_to_apply: Vec<_> = cloud.iter().filter(|(s, _)| s == "dev_a").map(|(_, c)| c.clone()).collect();
+    let a_to_apply: Vec<_> = cloud
+        .iter()
+        .filter(|(s, _)| s == "dev_b")
+        .map(|(_, c)| c.clone())
+        .collect();
+    let b_to_apply: Vec<_> = cloud
+        .iter()
+        .filter(|(s, _)| s == "dev_a")
+        .map(|(_, c)| c.clone())
+        .collect();
     let _ = SyncManager::apply_downloaded_changes(&conn_a, &a_to_apply, None);
     let _ = SyncManager::apply_downloaded_changes(&conn_b, &b_to_apply, None);
 
@@ -590,8 +600,16 @@ fn chaos_per_record_state_matches() {
     cloud.sort_by(|a, b| a.1.changed_at.cmp(&b.1.changed_at));
 
     // 重新全量应用（模拟完整下载）
-    let all_to_a: Vec<_> = cloud.iter().filter(|(s, _)| s == "dev_b").map(|(_, c)| c.clone()).collect();
-    let all_to_b: Vec<_> = cloud.iter().filter(|(s, _)| s == "dev_a").map(|(_, c)| c.clone()).collect();
+    let all_to_a: Vec<_> = cloud
+        .iter()
+        .filter(|(s, _)| s == "dev_b")
+        .map(|(_, c)| c.clone())
+        .collect();
+    let all_to_b: Vec<_> = cloud
+        .iter()
+        .filter(|(s, _)| s == "dev_a")
+        .map(|(_, c)| c.clone())
+        .collect();
     let _ = SyncManager::apply_downloaded_changes(&conn_a, &all_to_a, None);
     let _ = SyncManager::apply_downloaded_changes(&conn_b, &all_to_b, None);
 
@@ -607,6 +625,12 @@ fn chaos_per_record_state_matches() {
     assert!(map_b.contains_key("k3"));
 
     // k2 是竞争场景：A 后写，按时间戳排序 A 胜
-    assert_eq!(map_a.get("k2").map(|t| t.0.clone()), Some("a_override_k2".into()));
-    assert_eq!(map_b.get("k2").map(|t| t.0.clone()), Some("a_override_k2".into()));
+    assert_eq!(
+        map_a.get("k2").map(|t| t.0.clone()),
+        Some("a_override_k2".into())
+    );
+    assert_eq!(
+        map_b.get("k2").map(|t| t.0.clone()),
+        Some("a_override_k2".into())
+    );
 }

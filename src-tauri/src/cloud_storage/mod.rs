@@ -259,12 +259,7 @@ pub async fn cloud_sync_upload(
     });
 
     let upload_result = manager
-        .upload_with_progress(
-            &actual_upload_path,
-            app_version,
-            note,
-            Some(progress_cb),
-        )
+        .upload_with_progress(&actual_upload_path, app_version, note, Some(progress_cb))
         .await;
 
     // 无论成功失败都清理临时加密文件
@@ -355,7 +350,10 @@ pub async fn cloud_sync_download(
     };
     let is_encrypted = crate::crypto::backup_crypto::is_encrypted_backup(&head);
     if is_encrypted {
-        let pwd = config.encryption_password.as_deref().filter(|s| !s.is_empty());
+        let pwd = config
+            .encryption_password
+            .as_deref()
+            .filter(|s| !s.is_empty());
         let pwd = pwd.ok_or_else(|| {
             AppError::configuration(
                 "云端备份已加密，但未提供解密密码。请在云存储配置里填写相同的加密密码后重试。"
@@ -365,8 +363,10 @@ pub async fn cloud_sync_download(
         tracing::info!("[CloudSync] 检测到加密备份，开始解密...");
         let ciphertext = std::fs::read(downloaded_path)
             .map_err(|e| AppError::file_system(format!("读取加密备份失败: {}", e)))?;
-        let plaintext = crate::crypto::backup_crypto::decrypt_backup(&ciphertext, pwd)
-            .map_err(|e| AppError::validation(format!("解密备份失败（密码错或数据损坏）: {}", e)))?;
+        let plaintext =
+            crate::crypto::backup_crypto::decrypt_backup(&ciphertext, pwd).map_err(|e| {
+                AppError::validation(format!("解密备份失败（密码错或数据损坏）: {}", e))
+            })?;
         std::fs::write(downloaded_path, &plaintext)
             .map_err(|e| AppError::file_system(format!("写入解密后 ZIP 失败: {}", e)))?;
     }

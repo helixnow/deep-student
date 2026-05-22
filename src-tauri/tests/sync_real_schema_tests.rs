@@ -316,11 +316,7 @@ fn real_62_cascade_insert_order_independence() {
     // 同一批 child 先 parent 后
     let r = SyncManager::apply_downloaded_changes(&conn, &[child, parent], None);
     // 应成功：apply_downloaded_changes 内部用 defer_foreign_keys
-    assert!(
-        r.is_ok(),
-        "延迟外键应允许同批顺序无关: {:?}",
-        r.err()
-    );
+    assert!(r.is_ok(), "延迟外键应允许同批顺序无关: {:?}", r.err());
     let note_count: i64 = conn
         .query_row("SELECT COUNT(*) FROM notes", [], |r| r.get(0))
         .unwrap();
@@ -568,9 +564,15 @@ fn real_65_fts_trigger_fires_but_batch_stays_transactional() {
 
     // FTS 重建日志应至少 100 次
     let fts_count: i64 = conn
-        .query_row("SELECT COUNT(*) FROM questions_fts_rebuild_log", [], |r| r.get(0))
+        .query_row("SELECT COUNT(*) FROM questions_fts_rebuild_log", [], |r| {
+            r.get(0)
+        })
         .unwrap();
-    assert!(fts_count >= 100, "FTS 触发器应被触发 100 次，实际 {}", fts_count);
+    assert!(
+        fts_count >= 100,
+        "FTS 触发器应被触发 100 次，实际 {}",
+        fts_count
+    );
 }
 
 /// 66. resource.ref_count 并发递增 —— LWW 会丢失一次计数（已知问题）
@@ -585,17 +587,19 @@ fn real_66_ref_count_concurrent_increment_loses_data() {
     mark_all_synced(&conn_b);
 
     // A 递增到 2
-    conn_a.execute(
-        "UPDATE resources SET ref_count = 2, updated_at = ?1 WHERE id = 'res1'",
-        params![now_ms()],
-    )
-    .unwrap();
+    conn_a
+        .execute(
+            "UPDATE resources SET ref_count = 2, updated_at = ?1 WHERE id = 'res1'",
+            params![now_ms()],
+        )
+        .unwrap();
     // B 同时递增到 2
-    conn_b.execute(
-        "UPDATE resources SET ref_count = 2, updated_at = ?1 WHERE id = 'res1'",
-        params![now_ms() + 1000],
-    )
-    .unwrap();
+    conn_b
+        .execute(
+            "UPDATE resources SET ref_count = 2, updated_at = ?1 WHERE id = 'res1'",
+            params![now_ms() + 1000],
+        )
+        .unwrap();
 
     // B 的变更推到 A
     let b_change = SyncChangeWithData {
@@ -624,18 +628,13 @@ fn real_66_ref_count_concurrent_increment_loses_data() {
 
     // A 的最终 ref_count 是 2，而不是 3（正确的并发计数应该是 1 + 2 = 3）
     let ref_count: i64 = conn_a
-        .query_row(
-            "SELECT ref_count FROM resources WHERE id='res1'",
-            [],
-            |r| r.get(0),
-        )
+        .query_row("SELECT ref_count FROM resources WHERE id='res1'", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     // 记录已知行为：LWW 无法正确合并计数器
     // 如果未来引入 CRDT Counter 类型，这个断言需要改为 == 3
-    assert_eq!(
-        ref_count, 2,
-        "已知限制：LWW 策略下并发 +1 会丢失一次"
-    );
+    assert_eq!(ref_count, 2, "已知限制：LWW 策略下并发 +1 会丢失一次");
     // 冲突表应该记录了这次竞争，用户可以手动决策
     assert!(conflict.conflicts_saved > 0, "竞争应该产生冲突记录");
 }
@@ -692,7 +691,9 @@ fn real_67_integer_updated_at_handled_correctly() {
     // 整数 updated_at 会被当成 None，落到"优先保留本地"分支
     // 这是需要显式记录的已知限制
     let data: Option<String> = conn
-        .query_row("SELECT data FROM resources WHERE id='res1'", [], |r| r.get(0))
+        .query_row("SELECT data FROM resources WHERE id='res1'", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     // 记录实际行为（但不强断言一个分支，因为取决于实现）
     println!(
@@ -803,11 +804,9 @@ fn real_69_delete_resource_after_child_was_deleted_by_another_device() {
 
     // notes 软删除（有 deleted_at 列）
     let note_deleted: Option<String> = conn
-        .query_row(
-            "SELECT deleted_at FROM notes WHERE id='note1'",
-            [],
-            |r| r.get(0),
-        )
+        .query_row("SELECT deleted_at FROM notes WHERE id='note1'", [], |r| {
+            r.get(0)
+        })
         .ok()
         .flatten();
     // resources 物理删除（deleted_at 是 INTEGER，走物理删）

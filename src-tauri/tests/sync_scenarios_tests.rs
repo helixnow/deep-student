@@ -230,11 +230,9 @@ fn pending_count(conn: &Connection) -> i64 {
 }
 
 fn get_title(conn: &Connection, id: &str) -> Option<String> {
-    conn.query_row(
-        "SELECT title FROM notes WHERE id = ?1",
-        params![id],
-        |r| r.get(0),
-    )
+    conn.query_row("SELECT title FROM notes WHERE id = ?1", params![id], |r| {
+        r.get(0)
+    })
     .ok()
 }
 
@@ -254,12 +252,8 @@ fn count_notes(conn: &Connection) -> i64 {
 }
 
 fn conflict_count(conn: &Connection) -> i64 {
-    conn.query_row(
-        "SELECT COUNT(*) FROM __sync_conflicts",
-        [],
-        |r| r.get(0),
-    )
-    .unwrap_or(0)
+    conn.query_row("SELECT COUNT(*) FROM __sync_conflicts", [], |r| r.get(0))
+        .unwrap_or(0)
 }
 
 fn conflict_count_for(conn: &Connection, id: &str) -> i64 {
@@ -380,7 +374,13 @@ fn scenario_04_delete_idempotent() {
 #[test]
 fn scenario_05_upsert_coalesces_null_fields() {
     let conn = new_test_db();
-    insert_note(&conn, "n1", "local_title", "local_content", "2026-05-01T09:00:00Z");
+    insert_note(
+        &conn,
+        "n1",
+        "local_title",
+        "local_content",
+        "2026-05-01T09:00:00Z",
+    );
     mark_all_synced(&conn);
     // 云端数据中 content 字段是 null，应使用 COALESCE 保留本地
     let mut change = build_update_change("n1", "cloud_title", "2026-05-01T10:00:00Z");
@@ -389,7 +389,9 @@ fn scenario_05_upsert_coalesces_null_fields() {
     }
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
     let content: String = conn
-        .query_row("SELECT content FROM notes WHERE id = 'n1'", [], |r| r.get(0))
+        .query_row("SELECT content FROM notes WHERE id = 'n1'", [], |r| {
+            r.get(0)
+        })
         .unwrap();
     assert_eq!(content, "local_content", "NULL 云端值应保留本地值");
     assert_eq!(get_title(&conn, "n1").as_deref(), Some("cloud_title"));
@@ -958,10 +960,7 @@ fn scenario_29_millis_sync_version_normalized() {
     // 混有毫秒时间戳的 sync_version 应被 apply_downloaded_changes 的上层归一化
     // 这里验证 has_prune_gap 在参数已为秒时表现正确
     let ms = 1_700_000_000_000u64; // 毫秒级
-    assert!(
-        ms > 100_000_000_000,
-        "阈值 1e11 分界"
-    );
+    assert!(ms > 100_000_000_000, "阈值 1e11 分界");
     // normalize_version_to_seconds 被定义为私有，但语义可以通过 has_prune_gap 间接验证
     // 这里仅表明约定：上层调用前必须调用 normalize，否则会误判为"未来版本"
 }
@@ -993,9 +992,14 @@ fn scenario_30_empty_batch_is_noop() {
 async fn scenario_31_blob_tombstone_upload_download() {
     let storage = MockCloudStorage::new();
     let mgr = SyncManager::new("device_a".into());
-    mgr.mark_blob_deleted(&storage, "hash_abc", Some("ab/hash_abc.pdf".into()), Some(1024))
-        .await
-        .unwrap();
+    mgr.mark_blob_deleted(
+        &storage,
+        "hash_abc",
+        Some("ab/hash_abc.pdf".into()),
+        Some(1024),
+    )
+    .await
+    .unwrap();
 
     let m = tombstone::download_blob_tombstones(&storage, &tombstone::PlainCodec)
         .await
@@ -1085,14 +1089,10 @@ async fn scenario_35_apply_blob_tombstones_removes_local_file() {
         },
     );
 
-    let affected = tombstone::apply_blob_tombstones(
-        &storage,
-        &tombstones,
-        blobs_dir,
-        "data_governance/blobs",
-    )
-    .await
-    .unwrap();
+    let affected =
+        tombstone::apply_blob_tombstones(&storage, &tombstones, blobs_dir, "data_governance/blobs")
+            .await
+            .unwrap();
 
     assert_eq!(affected.len(), 1);
     assert!(!blob_path.exists(), "本地 blob 应被删除");
@@ -1185,13 +1185,11 @@ async fn scenario_37_sync_vfs_blobs_with_tombstones_respects_deletion() {
     let blob_on_b = blobs_dir_b.join("ab").join("ab_hash1.pdf");
     assert!(!blob_on_b.exists(), "tombstoned blob 不应下载到 B");
     // 云端对应条目应已被删除
-    assert!(
-        storage
-            .get("data_governance/blobs/ab/ab_hash1.pdf")
-            .await
-            .unwrap()
-            .is_none()
-    );
+    assert!(storage
+        .get("data_governance/blobs/ab/ab_hash1.pdf")
+        .await
+        .unwrap()
+        .is_none());
     assert_eq!(outcome.downloaded, 0);
 }
 
@@ -1228,7 +1226,11 @@ async fn scenario_40_full_cycle_two_devices_sync_and_delete() {
     let mgr_b = SyncManager::new("dev_b".into());
 
     // A 写 3 个 blob
-    for (sub, name) in [("ab", "ab_h1.pdf"), ("cd", "cd_h2.pdf"), ("ef", "ef_h3.pdf")] {
+    for (sub, name) in [
+        ("ab", "ab_h1.pdf"),
+        ("cd", "cd_h2.pdf"),
+        ("ef", "ef_h3.pdf"),
+    ] {
         let d = tmp_a.path().join(sub);
         std::fs::create_dir_all(&d).unwrap();
         std::fs::write(d.join(name), b"data").unwrap();
@@ -1236,19 +1238,12 @@ async fn scenario_40_full_cycle_two_devices_sync_and_delete() {
     let _ = mgr_a.sync_vfs_blobs(&storage, tmp_a.path()).await.unwrap();
     // 云端应有 3 个
     assert_eq!(
-        storage
-            .list("data_governance/blobs/")
-            .await
-            .unwrap()
-            .len(),
+        storage.list("data_governance/blobs/").await.unwrap().len(),
         3
     );
 
     // B 拉
-    let out_b = mgr_b
-        .sync_vfs_blobs(&storage, tmp_b.path())
-        .await
-        .unwrap();
+    let out_b = mgr_b.sync_vfs_blobs(&storage, tmp_b.path()).await.unwrap();
     assert_eq!(out_b.downloaded, 3);
     assert!(tmp_b.path().join("ab").join("ab_h1.pdf").exists());
 
@@ -1273,7 +1268,6 @@ async fn scenario_40_full_cycle_two_devices_sync_and_delete() {
     assert!(tmp_b.path().join("ef").join("ef_h3.pdf").exists());
     assert_eq!(out_b2.uploaded, 0);
 }
-
 
 // ============================================================================
 // 扩展场景 41-60：更极端的真实数据状态
@@ -1877,13 +1871,11 @@ async fn scenario_59_tombstone_then_recreate_with_same_hash() {
         .sync_vfs_blobs_with_tombstones(&storage, tmp_a.path())
         .await
         .unwrap();
-    assert!(
-        storage
-            .get("data_governance/blobs/ab/ab_h1.pdf")
-            .await
-            .unwrap()
-            .is_none()
-    );
+    assert!(storage
+        .get("data_governance/blobs/ab/ab_h1.pdf")
+        .await
+        .unwrap()
+        .is_none());
 
     // 现在又重新创建内容相同的 blob
     std::fs::write(&blob_path, b"content").unwrap();
