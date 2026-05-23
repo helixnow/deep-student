@@ -818,6 +818,8 @@
     "selectSessionFirst": "请先选择一个会话",
     "loading": "加载中...",
     "loadMore": "加载更多",
+    "studySessions": "课题",
+    "studySessionsEmpty": "暂无课题",
     "resourceUnsupported": "该资源类型暂不支持在学习中心打开",
     "groupSaveFailed": "保存分组失败",
     "openNoteFailed": "打开笔记失败"

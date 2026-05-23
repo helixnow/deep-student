@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useId } from 'react';
 import { cn } from '@/lib/utils';
 import { Switch } from '@/components/ui/shad/Switch';
 import { settingsQuietInteractiveRowClassName } from './SettingsCommon';
@@ -41,19 +41,30 @@ export const SwitchRow = ({
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   disabled?: boolean;
-}) => (
-  <div className={cn('group flex items-center justify-between gap-4 py-2.5 px-1', settingsQuietInteractiveRowClassName)}>
-    <div className="flex-1 min-w-0">
-      <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
-      {description && (
-        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
-          {description}
-        </p>
-      )}
+}) => {
+  const switchLabelId = useId();
+  const switchDescriptionId = `${switchLabelId}-description`;
+
+  return (
+    <div className={cn('group flex items-center justify-between gap-4 py-2.5 px-1', settingsQuietInteractiveRowClassName)}>
+      <div className="flex-1 min-w-0">
+        <h3 id={switchLabelId} className="text-sm text-foreground/90 leading-tight">{title}</h3>
+        {description && (
+          <p id={switchDescriptionId} className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+            {description}
+          </p>
+        )}
+      </div>
+      <Switch
+        checked={checked}
+        onCheckedChange={onCheckedChange}
+        disabled={disabled}
+        aria-labelledby={switchLabelId}
+        aria-describedby={description ? switchDescriptionId : undefined}
+      />
     </div>
-    <Switch checked={checked} onCheckedChange={onCheckedChange} disabled={disabled} />
-  </div>
-);
+  );
+};
 
 export const GroupTitle = ({ title }: { title: string }) => (
   <div className="px-1 mb-3 mt-0">
