@@ -73,6 +73,7 @@ import './styles/shadcn-overrides.css'; // 修复图标尺寸被覆盖的问题
 import { MigrationStatusBanner } from './components/system-status/MigrationStatusBanner';
 import { SettingsShellSidebar } from '@/features/settings';
 import { TodoShellSidebar } from '@/features/todo';
+import { SidebarFrameIcon, SidebarFrameWithLeftRailIcon } from './app/shell/DesktopShellIcons';
 import { settingsMobileSheetCloseButtonClassName } from '@/features/settings';
 import { setPendingSettingsTab } from './utils/pendingSettingsTab';
 import { useBreakpoint } from './hooks/useBreakpoint';
@@ -114,6 +115,7 @@ import {
   LazyStyleDebugPage,
   LazyTemplateJsonPreviewPage,
   LazyLearningHubPage,
+  LazySandboxWorkbenchPage,
   LazyPdfReader,
   LazyTodoPage,
   LazyTreeDragTest,
@@ -292,23 +294,6 @@ function CommandPaletteButton({
         <Terminal size={16} />
       </NotionButton>
     </CommonTooltip>
-  );
-}
-
-function SidebarFrameIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="size-[18px] fill-none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2">
-      <rect x="4" y="5" width="16" height="14" rx="2" />
-    </svg>
-  );
-}
-
-function SidebarFrameWithLeftRailIcon() {
-  return (
-    <svg aria-hidden="true" viewBox="0 0 24 24" className="size-[18px] fill-none" stroke="currentColor" strokeLinecap="round" strokeLinejoin="round" strokeWidth="2">
-      <rect x="4" y="5" width="16" height="14" rx="2" />
-      <path d="M9 5v14" />
-    </svg>
   );
 }
 
@@ -2475,6 +2460,8 @@ function App() {
 
               {/* Learning Hub 学习资源全屏模式（已整合教材库功能） */}
               {renderViewLayer('learning-hub', learningHubContent)}
+
+              {renderViewLayer('sandbox-workbench', <Suspense fallback={<PageLoadingFallback />}><LazySandboxWorkbenchPage /></Suspense>)}
 
               {renderViewLayer('pdf-reader', pdfReaderContent)}
 
