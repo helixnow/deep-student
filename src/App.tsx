@@ -90,6 +90,7 @@ import { useEventRegistry } from './hooks/useEventRegistry';
 import { useNetworkStatus } from './hooks/useNetworkStatus';
 import { useViewStore } from './stores/viewStore';
 import { debugLog } from './debug-panel/debugMasterSwitch';
+import { useIsUILabEnabled } from './utils/uiLabToggle';
 import { sessionManager } from './features/chat/core/session/sessionManager';
 import { setSessionSidebarViewContext } from './features/chat/hooks/useSessionSidebarIndicators';
 import { groupCache } from './features/chat/core/store/groupCache';
@@ -955,6 +956,14 @@ function App() {
     });
   }, []);
   const templateJsonPreviewReturnRef = useRef<CurrentView>('template-management');
+
+  const uiLabEnabled = useIsUILabEnabled();
+
+  useEffect(() => {
+    if (currentView === 'ui-lab' && !uiLabEnabled) {
+      setCurrentView('chat-v2');
+    }
+  }, [currentView, uiLabEnabled, setCurrentView]);
 
   // ★ 移动端顶栏活跃视图同步已移至 MobileHeaderActiveViewSync 组件
 
@@ -2499,7 +2508,7 @@ function App() {
 
               {renderViewLayer('template-management', templateManagementContent)}
 
-              {renderViewLayer('ui-lab', styleDebugContent)}
+              {uiLabEnabled && renderViewLayer('ui-lab', styleDebugContent)}
 
               {renderViewLayer('template-json-preview', templateJsonPreviewContent)}
 

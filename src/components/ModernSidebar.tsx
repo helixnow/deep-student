@@ -38,6 +38,7 @@ import {
 } from '@phosphor-icons/react';
 import type { Icon } from '@phosphor-icons/react';
 import { createNavItems } from '../config/navigation';
+import { useIsUILabEnabled } from '../utils/uiLabToggle';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
@@ -401,7 +402,8 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   const streamingSessionIdSet = useMemo(() => new Set(streamingSessionIds), [streamingSessionIds]);
   const unreadSessionIdSet = useMemo(() => new Set(unreadSessionIds), [unreadSessionIds]);
 
-  const navItems = useMemo(() => createNavItems(t), [t]);
+  const uiLabEnabled = useIsUILabEnabled();
+  const navItems = useMemo(() => createNavItems(t, uiLabEnabled), [t, uiLabEnabled]);
   const primaryItems = useMemo(
     () =>
       navItems.filter((item) =>
