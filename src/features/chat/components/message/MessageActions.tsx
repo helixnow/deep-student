@@ -2,11 +2,12 @@
  * MessageActions - 消息操作按钮组件
  */
 import React, { useCallback, useState } from 'react';
-import { CopySimple, Check, ArrowCounterClockwise, Trash, PencilSimple, Bug, BookmarkSimple, GitBranch } from '@phosphor-icons/react';
+import { CopySimple, Check, ArrowCounterClockwise, Trash, PencilSimple, Bug, BookmarkSimple, GitBranch, DotsThree } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { NotionAlertDialog } from '@/components/ui/NotionDialog';
+import { AppMenu, AppMenuTrigger, AppMenuContent, AppMenuItem, AppMenuSeparator } from '@/components/ui/app-menu/AppMenu';
 
 export interface MessageActionsProps {
   messageId: string;
@@ -25,6 +26,8 @@ export interface MessageActionsProps {
   onSaveAsNote?: () => Promise<void>;
   /** 🆕 会话分支 */
   onBranchSession?: () => Promise<void>;
+  /** 移动端紧凑模式：仅展示主操作，其余进入更多菜单 */
+  compactMobile?: boolean;
   className?: string;
 }
 
@@ -42,6 +45,7 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
   onSaveAsNote,
   onBranchSession,
   onCopyDebug,
+  compactMobile = false,
   className,
 }) => {
   const { t } = useTranslation('chatV2');
@@ -120,6 +124,104 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
       setIsDeleting(false);
     }
   }, [canDelete, isDeleting, onDelete]);
+
+  const compactButtonClassName = compactMobile
+    ? '!h-9 !w-9 rounded-full [&_svg]:h-[14px] [&_svg]:w-[14px]'
+    : undefined;
+
+  const actionsMenu = (
+    <AppMenu>
+      <AppMenuTrigger asChild>
+        <NotionButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          aria-label={t('common.more', '更多操作')}
+          title={t('common.more', '更多操作')}
+          className={compactButtonClassName}
+        >
+          <DotsThree className="w-4 h-4" weight="bold" />
+        </NotionButton>
+      </AppMenuTrigger>
+      <AppMenuContent
+        align="end"
+        width={compactMobile ? 168 : 188}
+        className={compactMobile ? '[&_.app-menu-item]:text-[12px] [&_.app-menu-item]:py-1.5 [&_.app-menu-item-icon_svg]:h-3.5 [&_.app-menu-item-icon_svg]:w-3.5' : undefined}
+      >
+        {!isUser && onRetry && (
+          <AppMenuItem onClick={handleRetry} disabled={isLocked || isRetrying} icon={<ArrowCounterClockwise size={16} />}>
+            {t('messageItem.actions.retry')}
+          </AppMenuItem>
+        )}
+        {isUser && onResend && (
+          <AppMenuItem onClick={handleResend} disabled={isLocked || isResending} icon={<ArrowCounterClockwise size={16} />}>
+            {t('messageItem.actions.resend')}
+          </AppMenuItem>
+        )}
+        {isUser && onEdit && (
+          <AppMenuItem onClick={onEdit} disabled={!canEdit} icon={<PencilSimple size={16} />}>
+            {t('messageItem.actions.edit')}
+          </AppMenuItem>
+        )}
+        {onSaveAsNote && (
+          <AppMenuItem onClick={handleSaveAsNote} disabled={isSavingNote} icon={<BookmarkSimple size={16} />}>
+            {t('messageItem.actions.saveAsNote')}
+          </AppMenuItem>
+        )}
+        {onBranchSession && (
+          <AppMenuItem onClick={handleBranch} disabled={isBranching || isLocked} icon={<GitBranch size={16} />}>
+            {t('messageItem.actions.branch', '从此处分支')}
+          </AppMenuItem>
+        )}
+        {onCopyDebug && (
+          <AppMenuItem onClick={handleCopyDebug} icon={<Bug size={16} />}>
+            {t('debug.copyDebugInfo', '复制调试信息')}
+          </AppMenuItem>
+        )}
+        <AppMenuSeparator />
+        <AppMenuItem
+          onClick={() => setDeleteConfirmOpen(true)}
+          disabled={!canDelete || isDeleting}
+          destructive
+          icon={<Trash size={16} />}
+        >
+          {t('messageItem.actions.delete')}
+        </AppMenuItem>
+      </AppMenuContent>
+    </AppMenu>
+  );
+
+  if (compactMobile) {
+    return (
+      <>
+        <div className={cn('flex items-center gap-0.5', className)}>
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            iconOnly
+            className={compactButtonClassName}
+            onClick={handleCopy}
+            aria-label={t('messageItem.actions.copy')}
+            title={t('messageItem.actions.copy')}
+          >
+            {copied ? <Check className="w-4 h-4 text-green-500" /> : <CopySimple className="w-4 h-4" />}
+          </NotionButton>
+          {actionsMenu}
+        </div>
+        <NotionAlertDialog
+          open={deleteConfirmOpen}
+          onOpenChange={setDeleteConfirmOpen}
+          title={t('messageItem.actions.deleteConfirmTitle', '确认删除')}
+          description={t('messageItem.actions.deleteConfirmDesc', '确定要删除这条消息吗？此操作无法撤销。')}
+          icon={<Trash className="h-5 w-5 text-red-500" />}
+          confirmText={t('messageItem.actions.delete', '删除')}
+          cancelText={t('common.cancel', '取消')}
+          confirmVariant="danger"
+          onConfirm={() => { setDeleteConfirmOpen(false); handleDelete(); }}
+        />
+      </>
+    );
+  }
 
   return (
     <div className={cn('flex items-center gap-1', className)}>

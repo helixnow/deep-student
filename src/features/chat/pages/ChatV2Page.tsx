@@ -576,7 +576,7 @@ export const ChatV2Page: React.FC = () => {
   // ===== 页面布局 hook =====
   useChatPageLayout({
     currentSession, currentSessionId, expandGroup, currentSessionHasMessages,
-    viewMode, t, sessionCount: sessions.length,
+    viewMode, sessionSheetOpen, t, sessionCount: sessions.length,
     createSession, isLoading,
     mobileResourcePanelOpen, finderBreadcrumbs, finderJumpToBreadcrumb,
     setMobileResourcePanelOpen, setSessionSheetOpen, setShowChatControl, setViewMode,
@@ -965,6 +965,7 @@ export const ChatV2Page: React.FC = () => {
       {/* ===== 移动端布局：DeepSeek 风格推拉式侧边栏 ===== */}
       {isSmallScreen ? (
         <MobileSlidingLayout
+          className="flex-1"
           sidebar={
             <div className="study-shell-sidebar-frame font-sidebar-study-ui h-full flex flex-col bg-[color:var(--shell-navigation-surface)] text-[color:var(--shell-navigation-foreground)]">
               {renderSessionSidebarContent()}

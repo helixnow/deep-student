@@ -505,6 +505,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   activeSkillIds,
   hasLoadedSkills,
   onToggleSkill,
+  onClearAllSkills,
   // 🔧 MCP 选中状态
   mcpEnabled = false,
   selectedMcpServerCount = 0,
@@ -1584,11 +1585,26 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         }
         return;
       }
+      // ⌘⇧S / Ctrl+Shift+S: 切换技能面板
+      if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key.toLowerCase() === 's') {
+        e.preventDefault();
+        e.stopPropagation();
+        if (renderSkillPanel) {
+          if (panelStates.skill) {
+            togglePanel('skill');
+          } else if (activeSkillIds && activeSkillIds.length > 0) {
+            onClearAllSkills?.();
+          } else {
+            togglePanel('skill');
+          }
+        }
+        return;
+      }
     };
 
     document.addEventListener('keydown', handleGlobalKeyDown);
     return () => document.removeEventListener('keydown', handleGlobalKeyDown);
-  }, [onToggleThinking, renderRagPanel, renderMcpPanel, togglePanel]);
+  }, [onToggleThinking, renderRagPanel, renderMcpPanel, renderSkillPanel, panelStates.skill, activeSkillIds, onClearAllSkills, togglePanel]);
 
   // ★ Bug2 修复：监听资源库注入事件，自动打开附件面板
   useEffect(() => {
@@ -2165,7 +2181,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
           <AttachmentPreviewChips
             attachments={attachments}
             onRemove={onRemoveAttachment}
-            onOpenPanel={toggleAttachmentPanel}
             disabled={isStreaming}
           />
 
@@ -2405,7 +2420,15 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 }
                 active={panelStates.skill || !!(activeSkillIds && activeSkillIds.length > 0)}
                 ariaPressed={panelStates.skill || !!(activeSkillIds && activeSkillIds.length > 0) || !!hasLoadedSkills}
-                onClick={() => togglePanel('skill')}
+                onClick={() => {
+                  if (panelStates.skill) {
+                    togglePanel('skill');
+                  } else if (activeSkillIds && activeSkillIds.length > 0) {
+                    onClearAllSkills?.();
+                  } else {
+                    togglePanel('skill');
+                  }
+                }}
                 tooltipDisabled={tooltipDisabled}
                 indicator={
                   activeSkillIds && activeSkillIds.length > 0

@@ -215,7 +215,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                     onClick={() => handleSelect(skill.id)}
                     aria-label={skillName}
                     leading={
-                      isToolLoaded ? (
+                      !isActiveSkill && isToolLoaded ? (
                         <span
                           className="mt-0.5 flex h-[18px] w-[18px] shrink-0 items-center justify-center text-amber-500"
                           title={t('skills:status.toolLoaded')}
@@ -440,7 +440,7 @@ export const SkillSelector: React.FC<SkillSelectorProps> = ({
                   </span>
                 </NotionButton>
 
-                {isSkillLoaded(selectedSkill.id) ? (
+                {isSkillLoaded(selectedSkill.id) && !isSkillActive(selectedSkill.id) ? (
                   <div className="flex w-full items-center justify-center gap-2 rounded-lg border border-amber-500/30 bg-amber-500/10 px-4 py-2.5 text-sm font-medium text-amber-600 dark:text-amber-400">
                     <Lightning size={16} />
                     <span>{t('skills:card.loadedByTool')}</span>

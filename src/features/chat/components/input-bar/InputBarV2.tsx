@@ -861,6 +861,10 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       }
     }, [activeSkillIds, activateSkill, deactivateSkill]);
 
+    const handleClearAllSkills = useCallback(async () => {
+      await deactivateSkill();
+    }, [deactivateSkill]);
+
     const handleRefreshSkills = useCallback(async () => {
       await reloadSkills();
     }, []);
@@ -940,6 +944,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         activeSkillIds={displayActiveSkillIds}
         hasLoadedSkills={hasLoadedSkills}
         onToggleSkill={handleToggleSkill}
+        onClearAllSkills={handleClearAllSkills}
         // 教材侧栏控制
         textbookOpen={textbookOpen}
         onTextbookToggle={onTextbookToggle}

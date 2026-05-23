@@ -829,6 +829,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     const subsequentCount = msgIndex >= 0 ? currentState.messageOrder.length - msgIndex - 1 : 0;
 
     if (subsequentCount > 0) {
+      // eslint-disable-next-line no-alert -- 这是一个阻断性确认，和当前删除后续消息的破坏性操作直接绑定
       const confirmed = window.confirm(
         t('messageItem.actions.retryDeleteConfirm', { count: subsequentCount })
       );
@@ -1421,25 +1422,25 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
               'mt-3 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity',
               isMultiVariant && 'max-w-thread mx-auto',
             )}>
-              {/* 第一行：移动端 = Token用量(左) + 操作按钮+时间(右)；桌面端 = 模型名+操作按钮+时间(左) + AI标识+Token(右) */}
+              {/* 第一行：移动端 = 时间/AI标识(左) + 精简操作(右)；桌面端 = 模型名+操作按钮+时间(左) + AI标识+Token(右) */}
               <div
                 className={cn(
-                  'flex items-center gap-2',
+                  'flex items-center gap-1.5',
                   isUser ? 'justify-end' : 'justify-between'
                 )}
               >
-                {/* 📱 移动端左侧：Token 用量 */}
+                {/* 📱 移动端左侧：弱化元信息，只保留必要状态 */}
                 {isSmallScreen && !isUser && (
-                  <div className="flex items-center gap-2 flex-shrink-0">
-                    {!hasMultipleVariants && singleVariantUsage && (
-                      <TokenUsageDisplay usage={singleVariantUsage} compact />
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    {message.timestamp && (
+                      <span
+                        className="text-[10px] leading-none text-muted-foreground/45 flex items-center whitespace-nowrap"
+                        title={new Date(message.timestamp).toLocaleString()}
+                      >
+                        {formatMessageTime(message.timestamp)}
+                      </span>
                     )}
-                    {hasMultipleVariants && (() => {
-                      const aggregatedUsage = aggregateVariantUsage(variants);
-                      return aggregatedUsage ? (
-                        <TokenUsageDisplay usage={aggregatedUsage} compact />
-                      ) : null;
-                    })()}
+                    <AiContentLabel variant="badge" />
                   </div>
                 )}
 
@@ -1543,7 +1544,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
 
                 {/* 📱 移动端右侧：操作按钮 + 用户消息时间 */}
                 {isSmallScreen && (
-                  <div className="flex items-center gap-1">
+                  <div className="flex items-center gap-0.5">
                     {!isMultiVariant && (
                       <MessageActions
                         messageId={messageId}
@@ -1559,12 +1560,13 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         onDelete={handleDelete}
                         onSaveAsNote={!isUser ? handleSaveAsNote : undefined}
                         onBranchSession={handleBranch}
+                        compactMobile
                       />
                     )}
-                    {/* 移动端用户消息的时间显示（AI 消息时间在第二行渲染） */}
+                    {/* 移动端用户消息的时间显示 */}
                     {isUser && message.timestamp && (
                       <span
-                        className="text-[11px] text-muted-foreground/50 flex items-center"
+                        className="text-[10px] leading-none text-muted-foreground/45 flex items-center"
                         title={new Date(message.timestamp).toLocaleString()}
                       >
                         {formatMessageTime(message.timestamp)}
@@ -1576,7 +1578,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                 {/* 💻 桌面端右侧：AI 标识 + Token 统计 */}
                 {!isSmallScreen && (
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    {!isUser && <AiContentLabel variant="badge" />}
+                    {!isUser && <AiContentLabel variant="badge" className="scale-90 origin-right" />}
                     {!isUser && !hasMultipleVariants && singleVariantUsage && (
                       <TokenUsageDisplay usage={singleVariantUsage} compact />
                     )}
@@ -1590,41 +1592,6 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                 )}
               </div>
 
-              {/* 📱 第二行（移动端）：模型名称(左) + AI 标识(右) */}
-              {isSmallScreen && !isUser && (
-                <div className="mt-1 flex items-center justify-between">
-                  {!isMultiVariant && singleVariantModelId ? (
-                    <NotionButton
-                      variant="ghost"
-                      size="sm"
-                      onClick={() => {
-                        store.getState().setModelRetryTarget(messageId);
-                        store.getState().setPanelState('model', true);
-                      }}
-                      disabled={isLocked}
-                      className={cn(
-                        '!h-auto !px-1.5 !py-0.5',
-                        'text-[11px] text-muted-foreground/70',
-                        'hover:text-foreground'
-                      )}
-                      title={t('messageItem.modelRetry.clickToRetry')}
-                    >
-                      {getModelDisplayName(message._meta?.modelDisplayName || singleVariantModelId)}
-                    </NotionButton>
-                  ) : <span />}
-                  <div className="flex items-center gap-2">
-                    {message.timestamp && (
-                      <span
-                        className="text-[11px] text-muted-foreground/50 flex items-center"
-                        title={new Date(message.timestamp).toLocaleString()}
-                      >
-                        {formatMessageTime(message.timestamp)}
-                      </span>
-                    )}
-                    <AiContentLabel variant="badge" />
-                  </div>
-                </div>
-              )}
             </div>
           )}
 
