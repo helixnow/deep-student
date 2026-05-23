@@ -27,6 +27,7 @@ const DEPRECATED_VIEW_MAP: Readonly<Record<string, CurrentView>> = {
 
 const BASE_CANONICAL_VIEWS: CurrentView[] = [
   'chat-v2',
+  'sandbox-workbench',
   'settings',
   'dashboard',
   'data-management',

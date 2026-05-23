@@ -98,6 +98,11 @@ export const LazyLearningHubPage = React.lazy(() =>
   import('./features/learning-hub').then(m => ({ default: m.LearningHubPage }))
 );
 
+// Sandbox 工作台
+export const LazySandboxWorkbenchPage = React.lazy(() =>
+  import('./features/sandbox/pages/SandboxWorkbenchPage').then(m => ({ default: m.SandboxWorkbenchPage }))
+);
+
 // PDF 阅读器
 export const LazyPdfReader = React.lazy(() =>
   import('./features/pdf/components/PdfReader').then(m => ({ default: m.default }))

@@ -10,6 +10,7 @@
 
 export type CurrentView =
   | 'chat-v2'           // Chat V2 正式入口（主入口）
+  | 'sandbox-workbench' // Sandbox 工作台（HTML / Preview workbench）
   | 'settings'
   | 'dashboard'
   | 'data-management'
