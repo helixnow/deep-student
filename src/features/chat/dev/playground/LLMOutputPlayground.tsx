@@ -21,6 +21,7 @@ import {
   ArrowCounterClockwise,
   Columns,
 } from '@phosphor-icons/react';
+import { AgentTaskPanel } from '../../components/AgentTaskPanel';
 import { MessageList } from '../../components/MessageList';
 import { InputBarV2 } from '../../components/input-bar';
 import { StreamPreferencesProvider } from '../../components/renderers/StreamPreferencesContext';
@@ -58,7 +59,7 @@ export const LLMOutputPlayground: React.FC = () => {
   // 渲染偏好（preset / mode）— 通过 Provider 透传到所有 StreamingMarkdownRenderer
   const [presetA, setPresetA] = useState<StreamingSmoothingPreset>('balanced');
   const [presetB, setPresetB] = useState<StreamingSmoothingPreset>('silky');
-  const [renderMode, setRenderMode] = useState<StreamRenderingMode>('legacy');
+  const [renderMode, setRenderMode] = useState<StreamRenderingMode>('blocked');
 
   // 订阅 store A 状态
   const sessionStatus = useStore(storeA, (s) => s.sessionStatus);
@@ -206,8 +207,12 @@ export const LLMOutputPlayground: React.FC = () => {
                   调试台模式 · 预设 {getStreamingPresetLabel(presetA)} · 模式 {renderMode === 'legacy' ? '整段' : '块级'}
                 </span>
               </div>
+              <AgentTaskPanel store={storeA} />
               <div className="chat-composer-motion-frame chat-composer-motion-frame--docked">
-                <InputBarV2 store={storeA} autoFocus />
+                <InputBarV2
+                  store={storeA}
+                  autoFocus
+                />
               </div>
             </StreamPreferencesProvider>
           )}

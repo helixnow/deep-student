@@ -17,6 +17,7 @@ import {
   CaretRight,
   Stack,
   Cube,
+  ListChecks,
   WarningCircle,
   CircleNotch,
   CheckCircle,
@@ -32,6 +33,7 @@ import {
   BLOCK_TEMPLATES,
   ALL_BLOCK_STATUSES,
   AUTO_REPLY_SCENARIOS,
+  PLAYGROUND_BLOCKING_SAMPLES,
 } from './mockData';
 import {
   triggerScenario,
@@ -39,6 +41,7 @@ import {
   triggerBlockingAskUser,
   triggerBlockingToolApproval,
   triggerBlockingToolLimit,
+  triggerTodoSample,
   clearAllMessages,
   abortCurrentScenario,
   createAssistantMessage,
@@ -169,31 +172,19 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
   }, [store, selectedStatus]);
 
   const handleInjectBlockingAskUser = useCallback(() => {
-    triggerBlockingAskUser(store, {
-      question: '你希望我下一步怎么做？',
-      options: ['继续自动执行', '先解释方案', '只给我 patch'],
-      allowCustom: true,
-      context: '这是 playground 中的真实 ask_user 调试入口，会接管输入栏。',
-    });
+    triggerBlockingAskUser(store, PLAYGROUND_BLOCKING_SAMPLES.askUser);
   }, [store]);
 
   const handleInjectBlockingApproval = useCallback(() => {
-    triggerBlockingToolApproval(store, {
-      toolName: 'builtin-session_archive',
-      arguments: {
-        session_ids: ['sess_alpha', 'sess_beta'],
-        confirmed: false,
-      },
-      sensitivity: 'high',
-      description: '调试真实审批条，验证参数展开、批准/拒绝与 resolved 状态。',
-      timeoutSeconds: 45,
-    });
+    triggerBlockingToolApproval(store, PLAYGROUND_BLOCKING_SAMPLES.toolApproval);
   }, [store]);
 
   const handleInjectBlockingToolLimit = useCallback(() => {
-    triggerBlockingToolLimit(store, {
-      content: '已达到工具调用上限，点击继续以验证真实 tool_limit 接管条。',
-    });
+    triggerBlockingToolLimit(store, PLAYGROUND_BLOCKING_SAMPLES.toolLimit);
+  }, [store]);
+
+  const handleInjectTodoSample = useCallback(() => {
+    triggerTodoSample(store, PLAYGROUND_BLOCKING_SAMPLES.todoList);
   }, [store]);
 
   // 清空
@@ -489,6 +480,27 @@ export const PlaygroundControlPanel: React.FC<PlaygroundControlPanelProps> = ({
                   <div className="font-medium">真实 `tool_limit`</div>
                   <div className="mt-0.5 text-[10px] text-muted-foreground">
                     直接走输入栏 continue 交互，检查阻塞态与恢复行为。
+                  </div>
+                </button>
+              </div>
+            </CollapsibleSection>
+
+            <CollapsibleSection
+              title="任务面板"
+              icon={<ListChecks size={14} />}
+              expanded={expandedSections.has('task-panel')}
+              onToggle={() => toggleSection('task-panel')}
+              badge="todo"
+            >
+              <div className="space-y-1.5">
+                <button
+                  type="button"
+                  onClick={handleInjectTodoSample}
+                  className="w-full text-left rounded px-2 py-2 text-[11px] transition-colors hover:bg-muted/80"
+                >
+                  <div className="font-medium">Todo sample 数据</div>
+                  <div className="mt-0.5 text-[10px] text-muted-foreground">
+                    注入一组带 running / completed / pending 状态的 todo_list 示例，调试折叠摘要和步骤高亮。
                   </div>
                 </button>
               </div>

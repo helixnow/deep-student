@@ -11,6 +11,10 @@ describe('PlaygroundControlPanel blocking interaction source contract', () => {
     resolve(process.cwd(), 'src/features/chat/dev/playground/mockAdapter.ts'),
     'utf-8',
   );
+  const mockDataSource = readFileSync(
+    resolve(process.cwd(), 'src/features/chat/dev/playground/mockData.ts'),
+    'utf-8',
+  );
 
   it('exposes real blocking interaction controls for ask_user, tool approval, and tool limit', () => {
     expect(controlPanelSource).toContain('title="真实阻塞交互"');
@@ -31,5 +35,17 @@ describe('PlaygroundControlPanel blocking interaction source contract', () => {
     expect(adapterSource).toContain('export function triggerBlockingToolApproval');
     expect(adapterSource).toContain('export function triggerBlockingToolLimit');
     expect(adapterSource).toContain('setBlockingInteraction(');
+    expect(controlPanelSource).toContain('PLAYGROUND_BLOCKING_SAMPLES');
+    expect(mockDataSource).toContain('export const PLAYGROUND_BLOCKING_SAMPLES');
+    expect(mockDataSource).toContain('todo_init');
+  });
+
+  it('surfaces todo sample controls under a dedicated non-blocking task panel section', () => {
+    expect(controlPanelSource).toContain('title="任务面板"');
+    expect(controlPanelSource).toContain('Todo sample 数据');
+    expect(controlPanelSource).toContain('handleInjectTodoSample');
+    expect(controlPanelSource).toContain('triggerTodoSample');
+
+    expect(adapterSource).toContain('export function triggerTodoSample');
   });
 });

@@ -9,6 +9,8 @@ import DOMPurify from 'dompurify';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { CodeBlockShell } from '../ui/CodeBlockShell';
 import { ScrollArea } from '@/components/ui/scroll-area';
+import { HtmlSandboxPreview } from '@/components/previews/HtmlSandboxPreview';
+import { launchSandboxWorkbench } from '@/features/sandbox/launchSandboxWorkbench';
 
 // ============================================================================
 // HTML 转义辅助函数（防止 XSS）
@@ -192,8 +194,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
   const [running, setRunning] = useState(false);
   const [renderedSvg, setRenderedSvg] = useState<string | null>(null);
   const [showRendered, setShowRendered] = useState(false);
-  const [htmlPreviewDoc, setHtmlPreviewDoc] = useState<string | null>(null);
-  const htmlIframeRef = useRef<HTMLIFrameElement | null>(null);
+  const [htmlPreviewContent, setHtmlPreviewContent] = useState<string | null>(null);
   const [scale, setScale] = useState(1);
   const [offset, setOffset] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
   const [panning, setPanning] = useState(false);
@@ -238,21 +239,21 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
   // 使用 useMemo 避免流式过程中频繁触发
   useEffect(() => {
     // 流式过程中不重置（除非内容完全不同的新代码块）
-    if (isStreaming && (renderedSvg || htmlPreviewDoc)) {
+    if (isStreaming && (renderedSvg || htmlPreviewContent)) {
       return;
     }
     // 只有内容真正稳定后才重置
     if (prevCodeRef.current !== codeContent) {
       prevCodeRef.current = codeContent;
       setRenderedSvg(null);
-      setHtmlPreviewDoc(null);
+      setHtmlPreviewContent(null);
       setShowRendered(false);
       setScale(1);
       setOffset({ x: 0, y: 0 });
       setMermaidError(null);
       didAutoFitRef.current = false;
     }
-  }, [codeContent, isStreaming, renderedSvg]);
+  }, [codeContent, htmlPreviewContent, isStreaming, renderedSvg]);
 
   // 切回渲染视图时允许再次自动适配
   useEffect(() => {
@@ -360,16 +361,6 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
 
   const clamp = (val: number, min: number, max: number) => Math.max(min, Math.min(max, val));
 
-  const sanitizeForIframe = (html: string) => {
-    // 🔒 安全审计修复: 使用 DOMPurify 替代不完整的正则过滤
-    const isFullDoc = /^\s*(<\!doctype|<html[\s>])/i.test(html.trim());
-    return DOMPurify.sanitize(String(html), {
-      WHOLE_DOCUMENT: isFullDoc,
-      ADD_TAGS: ['link', 'style', 'meta'],
-      FORBID_TAGS: ['script', 'iframe', 'embed', 'object', 'base'],
-    });
-  };
-
   const buildIframeDoc = (inner: string) => `<!doctype html><html><head><meta charset="utf-8"><style>
     html,body{margin:0;padding:0;background:#fff;color:#111;overflow:visible!important;height:auto;min-width:0}
     *,*:before,*:after{box-sizing:border-box}
@@ -384,17 +375,13 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
     if (!canRenderHtml || isStreaming) return;
     try {
       setMermaidError(null);
-      const sanitized = sanitizeForIframe(codeContent);
-      const isFullDoc = /^\s*(<\!doctype|<html[\s>])/i.test(codeContent.trim());
-      // 完整 HTML 文档直接作为 srcdoc，保留用户原始样式；片段则包裹在基础文档中
-      const doc = isFullDoc ? sanitized : buildIframeDoc(sanitized);
-      setHtmlPreviewDoc(doc);
+      setHtmlPreviewContent(codeContent);
       setShowRendered(true);
     } catch (err: unknown) {
       const errorMsg = getErrorMessage(err);
       console.error('[CodeBlock] HTML render failed:', errorMsg);
       setMermaidError(errorMsg);
-      setHtmlPreviewDoc(null);
+      setHtmlPreviewContent(null);
       setRenderedSvg(`<div class="mermaid-render-error"><span class="error-icon">⚠️</span><span class="error-text">${t('codeBlock.htmlFailed', 'HTML 渲染失败')}：${escapeHtml(errorMsg)}</span></div>`);
       setShowRendered(true);
     }
@@ -442,7 +429,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
         .replace(/>/g, '&gt;');
       const doc = buildIframeDoc(`<pre style="margin:0;padding:12px;font:12px/1.5 monospace;white-space:pre">${escaped}</pre>`);
       const srcdoc = doc.replace(/&/g, '&amp;').replace(/"/g, '&quot;');
-      setRenderedSvg(`<iframe data-html-preview sandbox="allow-same-origin" srcdoc="${srcdoc}"></iframe>`);
+      setRenderedSvg(`<iframe data-html-preview sandbox="" srcdoc="${srcdoc}"></iframe>`);
       setShowRendered(true);
     } catch (err: unknown) {
       const errorMsg = getErrorMessage(err);
@@ -451,6 +438,18 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
       setRenderedSvg(`<div class="mermaid-render-error"><span class="error-icon">⚠️</span><span class="error-text">${t('codeBlock.xmlFailed', 'XML 渲染失败')}：${escapeHtml(errorMsg)}</span></div>`);
       setShowRendered(true);
     }
+  };
+
+  const handleOpenSandbox = () => {
+    if (!canRenderHtml || isStreaming) return;
+
+    launchSandboxWorkbench({
+      sourceType: 'chat-code-block',
+      sourceMessageId: 'chat-code-block',
+      language: langLower,
+      title: t('codeBlock.sandboxTitle', 'HTML Sandbox'),
+      content: codeContent,
+    });
   };
 
   const applyZoom = (factor: number, anchor?: { x: number; y: number }) => {
@@ -496,7 +495,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
     errorBoundaryKey.current += 1;
     setMermaidError(null);
     setRenderedSvg(null);
-    setHtmlPreviewDoc(null);
+    setHtmlPreviewContent(null);
     setShowRendered(false);
   };
 
@@ -644,7 +643,7 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
         </NotionButton>
 
         {(canRunMermaid || canRenderSvg || canRenderHtml || canRenderXml) && (
-          (renderedSvg || htmlPreviewDoc) ? (
+          (renderedSvg || htmlPreviewContent) ? (
             <NotionButton
               variant="ghost"
               size="sm"
@@ -656,31 +655,46 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
               <span>{showRendered ? t('codeBlock.source', '源码') : t('codeBlock.render', '渲染')}</span>
             </NotionButton>
           ) : (
-            <NotionButton
-              variant="ghost"
-              size="sm"
-              className="code-block-copy"
-              onClick={
-                canRunMermaid ? handleRunMermaid :
-                canRenderSvg ? handleRunSvg :
-                canRenderHtml ? handleRunHtml :
-                handleRunXml
-              }
-              disabled={!!isStreaming || running}
-              title={
-                canRunMermaid ? (isStreaming ? t('codeBlock.mermaidHint', '内容生成中，等待代码块封闭后再运行') : t('codeBlock.runMermaid', '运行 mermaid 渲染')) :
-                canRenderSvg ? t('codeBlock.renderSvg', '渲染 SVG') :
-                canRenderHtml ? t('codeBlock.renderHtml', '渲染 HTML (隔离于 iframe)') :
-                t('codeBlock.renderXml', '渲染 XML')
-              }
-            >
-              <span style={{ marginRight: 4 }}>{running && canRunMermaid ? '…' : '▶'}</span>
-              <span>{running && canRunMermaid ? t('codeBlock.running', '运行中') : t('codeBlock.run', '运行')}</span>
-            </NotionButton>
+            <>
+              <NotionButton
+                variant="ghost"
+                size="sm"
+                className="code-block-copy"
+                onClick={
+                  canRunMermaid ? handleRunMermaid :
+                  canRenderSvg ? handleRunSvg :
+                  canRenderHtml ? handleRunHtml :
+                  handleRunXml
+                }
+                disabled={!!isStreaming || running}
+                title={
+                  canRunMermaid ? (isStreaming ? t('codeBlock.mermaidHint', '内容生成中，等待代码块封闭后再运行') : t('codeBlock.runMermaid', '运行 mermaid 渲染')) :
+                  canRenderSvg ? t('codeBlock.renderSvg', '渲染 SVG') :
+                  canRenderHtml ? t('codeBlock.renderHtml', '渲染 HTML (隔离于 iframe)') :
+                  t('codeBlock.renderXml', '渲染 XML')
+                }
+              >
+                <span style={{ marginRight: 4 }}>{running && canRunMermaid ? '…' : '▶'}</span>
+                <span>{running && canRunMermaid ? t('codeBlock.running', '运行中') : t('codeBlock.run', '运行')}</span>
+              </NotionButton>
+
+              {canRenderHtml && (
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  className="code-block-copy"
+                  onClick={handleOpenSandbox}
+                  disabled={!!isStreaming}
+                  title={t('codeBlock.openSandbox', 'Open in Sandbox')}
+                >
+                  <span>{t('codeBlock.openSandbox', 'Open in Sandbox')}</span>
+                </NotionButton>
+              )}
+            </>
           )
         )}
 
-        {(renderedSvg && showRendered && !htmlPreviewDoc) && (
+        {(renderedSvg && showRendered && !htmlPreviewContent) && (
           <>
             <NotionButton variant="ghost" size="icon" iconOnly className="code-block-copy" onClick={handleZoomOut} aria-label={t('codeBlock.zoomOut', '缩小')} title={t('codeBlock.zoomOut', '缩小')}>
               <Minus size={14} />
@@ -702,18 +716,19 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
 
   return (
     <CodeBlockShell header={header} bodyClassName="contents">
-      {htmlPreviewDoc && showRendered ? (
+      {htmlPreviewContent && showRendered ? (
         <MermaidErrorBoundary
           key={errorBoundaryKey.current}
           fallbackCode={codeContent}
           language={language}
           onReset={handleErrorBoundaryReset}
         >
-          <iframe
-            ref={htmlIframeRef}
+          <HtmlSandboxPreview
+            mode="chat-safe"
             className="html-preview-iframe"
-            sandbox="allow-same-origin"
-            srcDoc={htmlPreviewDoc}
+            htmlContent={htmlPreviewContent}
+            title="chat-html-preview"
+            height={320}
           />
         </MermaidErrorBoundary>
       ) : renderedSvg && showRendered ? (

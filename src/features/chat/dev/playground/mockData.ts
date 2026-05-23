@@ -6,6 +6,7 @@
  */
 
 import type { BlockType, BlockStatus } from '../../core/types/block';
+import type { TodoListOutput } from '../../plugins/blocks/todoList';
 
 // ============================================================================
 // 模拟内容模板
@@ -171,6 +172,102 @@ export const MOCK_TOOL_CALLS: Record<string, { toolName: string; toolInput: Reco
         { title: 'BERT: Pre-training of Deep Bidirectional Transformers', authors: 'Devlin et al.', year: 2019, citations: 72000 },
       ],
     },
+  },
+  todo_init: {
+    toolName: 'todo_init',
+    toolInput: {
+      title: '迁移 study-ui playground 调试能力',
+      steps: [
+        '梳理真实阻塞交互链路',
+        '补 ask_user / approval / tool_limit playground',
+        '增加 todo sample 数据与交互入口',
+        '跑测试并记录剩余风险',
+      ],
+    },
+    toolOutput: {
+      success: true,
+      todoListId: 'todo_playground_migration',
+      title: '迁移 study-ui playground 调试能力',
+      progress: '2/4 completed',
+      completedCount: 2,
+      totalCount: 4,
+      isAllDone: false,
+      continue_execution: true,
+      currentRunning: {
+        id: 'todo_3',
+        description: '增加 todo sample 数据与交互入口',
+        status: 'running',
+        createdAt: 1716307200000,
+        updatedAt: 1716307800000,
+      },
+      nextStep: {
+        id: 'todo_4',
+        description: '跑测试并记录剩余风险',
+        status: 'pending',
+        createdAt: 1716307200000,
+      },
+      steps: [
+        {
+          id: 'todo_1',
+          description: '梳理真实阻塞交互链路',
+          status: 'completed',
+          result: '已确认输入栏接管依赖 pendingBlockingInteraction。',
+          createdAt: 1716307200000,
+          updatedAt: 1716307300000,
+        },
+        {
+          id: 'todo_2',
+          description: '补 ask_user / approval / tool_limit playground',
+          status: 'completed',
+          result: '真实阻塞交互入口已接入控制面板。',
+          createdAt: 1716307200000,
+          updatedAt: 1716307600000,
+        },
+        {
+          id: 'todo_3',
+          description: '增加 todo sample 数据与交互入口',
+          status: 'running',
+          result: '正在校准 todo panel 的 sample 数据与折叠摘要。',
+          createdAt: 1716307200000,
+          updatedAt: 1716307800000,
+        },
+        {
+          id: 'todo_4',
+          description: '跑测试并记录剩余风险',
+          status: 'pending',
+          createdAt: 1716307200000,
+        },
+      ],
+      message: '还剩 2 项，继续执行中。',
+    } satisfies TodoListOutput,
+  },
+};
+
+export const PLAYGROUND_BLOCKING_SAMPLES = {
+  askUser: {
+    question: '你希望我下一步怎么做？',
+    options: ['继续自动执行', '先解释方案', '只给我 patch'],
+    allowCustom: true,
+    context: '这是 playground 中的真实 ask_user 调试入口，会接管输入栏。',
+  },
+  toolApproval: {
+    toolName: 'builtin-session_archive',
+    arguments: {
+      session_ids: ['sess_alpha', 'sess_beta'],
+      confirmed: false,
+    },
+    sensitivity: 'high' as const,
+    description: '调试真实审批条，验证参数展开、批准/拒绝与 resolved 状态。',
+    timeoutSeconds: 45,
+  },
+  toolLimit: {
+    content: '已达到工具调用上限，点击继续以验证真实 tool_limit 接管条。',
+  },
+  todoList: {
+    toolName: 'todo_init',
+    toolInput: MOCK_TOOL_CALLS.todo_init.toolInput,
+    toolOutput: MOCK_TOOL_CALLS.todo_init.toolOutput as TodoListOutput,
+    content: 'Agent 已初始化一份待办列表，正在执行第 3 步。',
   },
 };
 
