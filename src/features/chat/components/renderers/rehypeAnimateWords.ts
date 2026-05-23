@@ -24,6 +24,7 @@ export interface RehypeAnimateWordsOptions {
 const SKIP_TAGS = new Set([
   'code', 'pre', 'svg', 'math', 'annotation',
   'script', 'style', 'textarea', 'input',
+  'table', 'thead', 'tbody', 'tfoot', 'tr', 'th', 'td',
 ]);
 
 /**
@@ -57,11 +58,11 @@ function splitIntoWords(text: string): string[] {
  * 由 React 节点复用机制天然保证"已显示词不再播放"。
  */
 function walkAndSplit(
-  node: Root | Element,
+  node: Root | Element | null | undefined,
   className: string,
   insideSkipped: boolean,
 ): void {
-  if (!node.children) return;
+  if (!node || !('children' in node) || !node.children) return;
 
   const children = node.children as (ElementContent | RootContent)[];
   let i = 0;

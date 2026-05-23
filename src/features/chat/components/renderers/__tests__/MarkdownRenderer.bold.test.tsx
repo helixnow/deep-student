@@ -40,6 +40,19 @@ describe('MarkdownRenderer bold compatibility', () => {
     expect(container.querySelector('.streaming-markdown')).toHaveAttribute('data-streaming', 'true');
   });
 
+  it('keeps streaming prose free of per-word fade wrappers', () => {
+    const { container } = render(<MarkdownRenderer content="流式输出更自然" isStreaming />);
+
+    expect(container.querySelector('.sd-word')).toBeNull();
+  });
+
+  it('does not split table cell text into animated word spans while streaming', () => {
+    const md = `| 项目 | 说明 |\n| --- | --- |\n| 流式输出 | 保持稳定 |`;
+    const { container } = render(<MarkdownRenderer content={md} isStreaming />);
+
+    expect(container.querySelector('table .sd-word')).toBeNull();
+  });
+
   it('renders strong in table first cell with CJK text and citation-like suffix', () => {
     const md = `| 事件 | 简述 | 适用话题 | 论证角度 |
 |------|------|----------|----------|

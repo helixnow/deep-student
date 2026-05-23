@@ -10,10 +10,27 @@
    Markdown基础样式 - Markdown Base Styles
    ============================================================================ */
 
+@keyframes ft-fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.chat-v2 .flowtoken-markdown span[style*="animation-name: ft-fadeIn"] {
+  will-change: opacity;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
 .chat-v2 .markdown-content {
-  line-height: 1.6;
+  line-height: var(--chat-md-line-height);
   color: hsl(var(--foreground));
-  font-size: 0.95rem;
+  font-size: var(--chat-md-font-size);
+  letter-spacing: var(--chat-md-letter-spacing);
   overflow: visible;
   word-wrap: break-word;
   width: 100%;
@@ -40,9 +57,9 @@
 .chat-v2 .markdown-content h6 {
   /* Vertical rhythm 参考 Tailwind Typography (prose) 略收：标题前需要更
    * 多呼吸空间标记小节，标题后比段落间距略大但比标题前小。 */
-  margin: 1.75em 0 0.75em 0;
+  margin: var(--chat-md-heading-top-gap) 0 var(--chat-md-heading-bottom-gap);
   font-weight: 600;
-  line-height: 1.4;
+  line-height: 1.32;
   color: hsl(var(--foreground));
 }
 
@@ -55,32 +72,18 @@
 
 /* 段落和文本 */
 .chat-v2 .markdown-content p {
-  margin: 1em 0;
+  margin: var(--chat-md-paragraph-gap) 0;
   word-wrap: break-word;
   overflow-wrap: break-word;
 }
 
 /* 空行优化 - 使空行变得非常窄 */
-.chat-v2 .markdown-content p:empty {
-  margin: 0.2em 0;
-  height: 0.2em;
-  line-height: 0.2;
+.chat-v2 .markdown-content p:empty,
+.chat-v2 .markdown-content p:has(br:only-child) {
+  margin: 0.25rem 0;
+  min-height: 0.25rem;
+  line-height: 1;
   display: block;
-}
-
-/* 处理只包含空白字符的段落 */
-.chat-v2 .markdown-content p:has(br:only-child),
-.chat-v2 .markdown-content p:not(:has(*)):not(:has(text)):empty {
-  margin: 0.1em 0;
-  height: 0.1em;
-  line-height: 0.1;
-}
-
-/* 使用CSS选择器匹配只包含空白字符的段落 */
-.chat-v2 .markdown-content p:is(:empty, :not(:has(*)):has(br:only-child)) {
-  margin: 0.1em 0;
-  height: 0.1em;
-  line-height: 0.1;
 }
 
 /* 全局的空行处理 - 适用于所有可能的空行情况 */
@@ -89,38 +92,9 @@
   line-height: 0.2;
 }
 
-/* 连续的空行处理 */
-.chat-v2 .markdown-content p:empty + p:empty {
-  display: none;
-}
-
-/* 更强的空行控制 */
-.chat-v2 .markdown-content p:empty,
-.chat-v2 .markdown-content p:has(br:only-child) {
-  margin: 0.2em 0 !important;
-  height: 0.2em !important;
-  line-height: 0.2 !important;
-  padding: 0 !important;
-}
-
-/* 对于包含只有空白字符的段落 */
-.chat-v2 .markdown-content p:not(:has(*)):is([children=" "], [children="\n"], [children="\t"]) {
-  margin: 0.1em 0 !important;
-  height: 0.1em !important;
-  line-height: 0.1 !important;
-  display: block !important;
-}
-
-/* ReactMarkdown生成的空段落 */
-.chat-v2 .markdown-content > p:empty {
-  margin: 0.15em 0 !important;
-  height: 0.15em !important;
-  font-size: 0.5em !important;
-}
-
 /* 全局减少段落间距 */
 .chat-v2 .markdown-content p + p {
-  margin-top: 0.75em;
+  margin-top: var(--chat-md-paragraph-gap);
 }
 
 .chat-v2 .markdown-content strong {
@@ -154,38 +128,38 @@
 /* 列表样式 */
 .chat-v2 .markdown-content ul,
 .chat-v2 .markdown-content ol {
-  margin: 1em 0;
+  margin: var(--chat-md-paragraph-gap) 0;
   padding-left: 1.625em;
 }
 
 .chat-v2 .markdown-content li {
-  margin: 0.5em 0;
-  line-height: 1.6;
+  margin: var(--chat-md-list-item-gap) 0;
+  line-height: var(--chat-md-line-height);
 }
 
 /* 空列表项优化 */
 .chat-v2 .markdown-content li:empty {
-  margin: 0.1em 0 !important;
-  height: 0.1em !important;
-  line-height: 0.1 !important;
-  display: list-item !important;
+  margin: 0.1em 0;
+  height: 0.1em;
+  line-height: 0.1;
+  display: list-item;
 }
 
 /* 只包含少量内容的列表项 */
 .chat-v2 .markdown-content li:has(p:empty),
 .chat-v2 .markdown-content li:has(br:only-child) {
-  margin: 0.15em 0 !important;
-  line-height: 1.2 !important;
+  margin: 0.15em 0;
+  line-height: 1.2;
 }
 
 /* 连续的空列表项 */
 .chat-v2 .markdown-content li:empty + li:empty {
-  display: none !important;
+  display: none;
 }
 
 /* 减少列表项中段落的间距 */
 .chat-v2 .markdown-content li p {
-  margin: 0.2em 0 !important;
+  margin: calc(var(--chat-md-list-item-gap) * 0.5) 0 !important;
 }
 
 .chat-v2 .markdown-content li p:only-child {
@@ -217,8 +191,8 @@
  * - 正文颜色 — 引用是用户主动加亮的"重点"，淡化与意图矛盾
  */
 .chat-v2 .markdown-content blockquote {
-  margin: 1.5em 0;
-  padding: 0.875em 1.125em;
+  margin: var(--chat-md-block-gap) 0;
+  padding: 0.9em 1.05em;
   border-left: 3px solid hsl(var(--border));
   background: hsl(var(--muted) / 0.5);
   border-radius: 0;
@@ -242,7 +216,7 @@
   border: none;
   height: 1px;
   background: hsl(var(--border));
-  margin: 2em 0; /* HR 是大节分隔，需要充足呼吸空间 */
+  margin: calc(var(--chat-md-block-gap) * 1.35) 0; /* HR 是大节分隔，需要充足呼吸空间 */
 }
 
 /* ============================================================================
@@ -269,7 +243,7 @@
 .chat-v2 .markdown-content .code-block-wrapper {
   position: relative;
   box-sizing: border-box;
-  margin: 1em 0;
+  margin: var(--chat-md-block-gap) 0;
   border: 1px solid var(--chat-block-border); /* 保留外层边框 */
   border-radius: var(--chat-block-radius);
   background: var(--chat-block-surface);
@@ -422,8 +396,13 @@
   max-height: none !important;
 }
 
-.chat-v2 .markdown-content pre.code-block code {
+/* 代码块保持单一外层 surface，避免内容区再叠一层浅底色 */
+.chat-v2 .markdown-content .code-block-wrapper pre.code-block.code-block-inner {
   background: transparent;
+}
+
+.chat-v2 .markdown-content pre.code-block code {
+  background: transparent !important;
   white-space: pre;
   font-feature-settings: 'liga' off, 'calt' off;
 }
@@ -580,11 +559,33 @@
   box-sizing: border-box;
   width: 100%;
   max-width: 100%;
-  margin: 1.25em 0;
-  border-radius: var(--chat-block-radius);
-  border: 1px solid var(--chat-block-border);
-  background: var(--chat-block-surface);
-  box-shadow: none;
+  margin: var(--chat-md-table-gap) 0;
+  margin-block-start: calc(var(--chat-md-table-gap) * 1.15);
+  margin-block-end: calc(var(--chat-md-table-gap) * 1.6);
+  overflow-x: auto;
+}
+
+/* 只做表格区块与相邻正文的外部间距强化，不引入任何内部 padding。
+ *
+ * 说明：
+ * - 兄弟块之间的垂直 margin 会折叠，单独放大标题/段落自身 margin 往往不会生效；
+ * - 因此真正起作用的空间放在 .table-wrapper 自己的上下 margin 上，并仅在
+ *   它贴近正文/标题时按需放大。
+ */
+.chat-v2 .markdown-content > :is(h1, h2, h3, h4, h5, h6):has(+ .table-wrapper) {
+  margin-bottom: calc(var(--chat-md-heading-bottom-gap) + 0.35rem);
+}
+
+.chat-v2 .markdown-content > :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6):has(+ .table-wrapper) + .table-wrapper {
+  margin-top: calc(var(--chat-md-table-gap) * 1.35);
+}
+
+.chat-v2 .markdown-content > .table-wrapper:has(+ :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6)) {
+  margin-bottom: calc(var(--chat-md-table-gap) * 1.6);
+}
+
+.chat-v2 .markdown-content > .table-wrapper + :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6) {
+  margin-top: calc(var(--chat-md-paragraph-gap) + 0.3rem);
 }
 
 /* ScrollArea wrapper for tables — ensures full-width scroll area */
@@ -593,35 +594,51 @@
   min-width: 0;
 }
 
+/* Blocked streaming path: each markdown block is its own .markdown-content root,
+ * so table spacing must be applied at the block shell level, not only inside the table subtree. */
+.chat-v2 .blocked-markdown > .markdown-content.block-type-table {
+  margin-block-start: calc(var(--chat-md-table-gap) * 1.1);
+  margin-block-end: calc(var(--chat-md-table-gap) * 1.45);
+}
+
+.chat-v2 .blocked-markdown > .markdown-content.block-type-table + .markdown-content {
+  margin-block-start: calc(var(--chat-md-table-gap) * 0.22);
+}
+
 .chat-v2 .markdown-table {
   width: 100%;
   border-collapse: collapse;
-  background: var(--chat-block-surface);
-  border-radius: 8px;
-  overflow: hidden;
+  border-top: 1.5px solid hsl(var(--border) / 0.82);
+  border-bottom: 1.5px solid hsl(var(--border) / 0.82);
+  background: transparent;
 }
 
 .chat-v2 .markdown-table th,
 .chat-v2 .markdown-table td {
-  padding: 0.875em 1.125em;
+  padding: 0.7em 0.85em;
   text-align: left;
-  border-bottom: 1px solid hsl(var(--border));
+  vertical-align: top;
   line-height: 1.6;
 }
 
 .chat-v2 .markdown-table th {
-  background: var(--chat-table-header-surface);
-  font-weight: 600;
+  font-weight: 500;
   color: hsl(var(--foreground));
-  border-bottom: 2px solid hsl(var(--border));
+  border-bottom: 1px solid hsl(var(--border) / 0.72);
 }
 
-.chat-v2 .markdown-table tr:hover {
-  background: hsl(var(--muted));
+.chat-v2 .markdown-table td {
+  color: hsl(var(--foreground) / 0.92);
 }
 
-.chat-v2 .markdown-table tr:last-child td {
-  border-bottom: none;
+.chat-v2 .markdown-table th:first-child,
+.chat-v2 .markdown-table td:first-child {
+  padding-left: 0;
+}
+
+.chat-v2 .markdown-table th:last-child,
+.chat-v2 .markdown-table td:last-child {
+  padding-right: 0;
 }
 
 /* ============================================================================
@@ -659,7 +676,7 @@
 }
 
 .chat-v2 .chain-of-thought {
-  margin-bottom: 1rem;
+  margin: var(--chat-md-block-gap) 0;
   border: 1px solid hsl(var(--border) / 0.3);
   border-left: 2px solid var(--brand-primary);
   border-radius: var(--radius-shell-toolbar);
@@ -701,10 +718,10 @@
 }
 
 .chat-v2 .thinking-content {
-  padding: 0.75rem 0.875rem;
+  padding: var(--chat-md-compact-gap);
   background: transparent;
-  font-size: var(--chat-thinking-font-size, var(--font-size-sm));
-  line-height: 1.55;
+  font-size: var(--chat-md-compact-font-size);
+  line-height: var(--chat-md-compact-line-height);
   color: hsl(var(--muted-foreground));
 }
 
@@ -713,7 +730,7 @@
    ============================================================================ */
 
 .chat-v2 .rag-sources-container {
-  margin-top: 12px;
+  margin: var(--chat-md-block-gap) 0;
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
   background: hsl(var(--muted));
@@ -740,13 +757,13 @@
 }
 
 .chat-v2 .rag-sources-content {
-  padding: 8px 12px;
+  padding: var(--chat-md-compact-gap);
   background: hsl(var(--card));
 }
 
 .chat-v2 .rag-source-item {
   margin-bottom: 12px;
-  padding: 10px;
+  padding: var(--chat-md-compact-gap);
   background: hsl(var(--card));
   border-radius: 6px;
   border: 1px solid hsl(var(--border));
@@ -765,7 +782,7 @@
 }
 
 .chat-v2 .rag-source-title {
-  font-size: 12px;
+  font-size: 0.8125rem;
   font-weight: 600;
   color: hsl(var(--foreground));
   display: flex;
@@ -780,7 +797,7 @@
 .chat-v2 .rag-source-meta {
   color: hsl(var(--muted-foreground));
   font-weight: normal;
-  font-size: 11px;
+  font-size: 0.75rem;
 }
 
 .chat-v2 .rag-source-score {
@@ -793,12 +810,12 @@
 }
 
 .chat-v2 .rag-source-content {
-  font-size: 12px;
+  font-size: var(--chat-md-compact-font-size);
   color: hsl(var(--foreground));
-  line-height: 1.4;
-  font-style: italic;
+  line-height: var(--chat-md-compact-line-height);
+  font-style: normal;
   background: hsl(var(--muted));
-  padding: 8px;
+  padding: var(--chat-md-compact-gap);
   border-radius: 4px;
   border: 1px solid hsl(var(--border));
 }
@@ -828,8 +845,7 @@
   }
   
   .chat-v2 .table-wrapper {
-    box-shadow: none;
-    border: 1px solid hsl(var(--border));
+    margin: calc(var(--chat-md-table-gap) * 0.78) 0;
   }
   
   .chat-v2 .rag-sources-header {

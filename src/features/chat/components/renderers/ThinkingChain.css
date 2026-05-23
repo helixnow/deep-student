@@ -104,8 +104,8 @@
   overflow-y: auto;
   position: relative;
   padding-right: 3px;
-  font-size: var(--chat-font-size-sm, 0.75rem);
-  line-height: 1.25;
+  font-size: var(--chat-md-compact-font-size);
+  line-height: var(--chat-md-compact-line-height);
 }
 
 /* 思维链内容块字号 - Tier S-1：使用全局 token，去 !important，回归用户可缩放 */
@@ -115,8 +115,8 @@
 .chat-v2 .thinking-content .markdown-content li,
 .chat-v2 .thinking-content .markdown-content ul,
 .chat-v2 .thinking-content .markdown-content ol {
-  font-size: var(--chat-thinking-font-size, var(--font-size-sm));
-  line-height: 1.45;
+  font-size: var(--chat-thinking-font-size, var(--chat-md-compact-font-size));
+  line-height: var(--chat-md-compact-line-height);
 }
 
 .chat-v2 .thinking-trace__text::before,
@@ -149,7 +149,7 @@
 }
 
 .chat-v2 .thinking-trace__text p {
-  margin: 0 0 4px;
+  margin: 0 0 calc(var(--chat-md-compact-gap) * 0.4);
   color: inherit;
   white-space: pre-wrap;
 }
@@ -379,8 +379,8 @@
 .thinking-chain-content .markdown-content li,
 .thinking-chain-content .markdown-content ul,
 .thinking-chain-content .markdown-content ol {
-  font-size: var(--chat-thinking-font-size, var(--font-size-sm));
-  line-height: 1.45;
+  font-size: var(--chat-thinking-font-size, var(--chat-md-compact-font-size));
+  line-height: var(--chat-md-compact-line-height);
   color: hsl(var(--muted-foreground));
 }
 
@@ -400,12 +400,12 @@
 }
 
 .thinking-chain-content .markdown-content p {
-  margin: 0 0 0.25rem !important;
+  margin: 0 0 calc(var(--chat-md-compact-gap) * 0.4) !important;
 }
 
 .thinking-chain-content .markdown-content ul,
 .thinking-chain-content .markdown-content ol {
-  margin: 0.25rem 0 !important;
+  margin: calc(var(--chat-md-compact-gap) * 0.4) 0 !important;
   padding-left: 1.5rem !important;
   list-style-position: outside;
 }
@@ -1008,13 +1008,13 @@
 /* ─── Typography inside thinking block ────────────────────────────────────── */
 
 .think-content .markdown-content {
-  font-size: var(--chat-thinking-font-size, var(--font-size-sm));
-  line-height: 1.55;
+  font-size: var(--chat-thinking-font-size, var(--chat-md-compact-font-size));
+  line-height: var(--chat-md-compact-line-height);
   color: hsl(var(--muted-foreground));
 }
 
 .think-content .markdown-content p {
-  margin: 0.35em 0;
+  margin: calc(var(--chat-md-compact-gap) * 0.45) 0;
 }
 
 .think-content .markdown-content p:first-child {

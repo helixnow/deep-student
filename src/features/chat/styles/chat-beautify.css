@@ -15,8 +15,6 @@
   --chat-primary-gradient-hover: var(--brand-gradient-hover);
   --chat-secondary-gradient: linear-gradient(135deg, hsl(var(--primary) / 0.6) 0%, hsl(var(--destructive) / 0.5) 100%);
   --chat-assistant-gradient: linear-gradient(135deg, hsl(var(--warning) / 0.2) 0%, hsl(var(--warning) / 0.35) 100%);
-  /* 新增：可读内容最大宽度 */
-  --chat-content-max-width: 840px;
   /* 新增：容器最大宽度（需与输入条保持一致） */
   --chat-container-max-width: 980px;
   
@@ -263,24 +261,24 @@
    ============================================================================ */
 /* 更加舒展、以阅读为中心的正文字体节奏 */
 .chat-v2 .message.assistant .message-content .markdown-content {
-  font-size: 1rem;
-  line-height: 1.8;
-  letter-spacing: 0.1px;
+  font-size: var(--chat-md-font-size);
+  line-height: var(--chat-md-line-height);
+  letter-spacing: var(--chat-md-letter-spacing);
   color: hsl(var(--foreground));
 }
 
 .chat-v2 .message.assistant .message-content .markdown-content p {
-  margin: 1em 0;
+  margin: var(--chat-md-paragraph-gap) 0;
 }
 
 .chat-v2 .message.assistant .message-content .markdown-content h2 {
   font-size: 1.35rem;
-  margin: 1.75em 0 0.75em;
+  margin: var(--chat-md-heading-top-gap) 0 var(--chat-md-heading-bottom-gap);
 }
 
 .chat-v2 .message.assistant .message-content .markdown-content h3 {
   font-size: 1.15rem;
-  margin: 1.75em 0 0.75em;
+  margin: var(--chat-md-heading-top-gap) 0 var(--chat-md-heading-bottom-gap);
 }
 
 /* Blockquote 在 assistant 消息中保持 markdown.css 的中性边框 + 圆角设计，
@@ -659,7 +657,6 @@
 
 /* 可读性优化：限制助手消息的行宽 */
 .chat-v2 .message.assistant .message-content {
-  max-width: var(--chat-content-max-width);
   margin-left: 0;
   margin-right: 0;
   line-height: 1.75;
@@ -675,7 +672,6 @@
 .chat-v2 .message.assistant .message-content > div,
 .chat-v2 .message.assistant .message-content > section,
 .chat-v2 .message.assistant .message-content > article {
-  max-width: var(--chat-content-max-width);
   margin-left: 0;
   margin-right: 0;
 }

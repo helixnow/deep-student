@@ -1,7 +1,9 @@
 import React, { useMemo, memo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { FlowTokenMarkdownRenderer } from './FlowTokenMarkdownRenderer';
 import { BlockedMarkdownRenderer } from './BlockedMarkdownRenderer';
+import { canUseDirectFlowTokenMarkdown } from './flowTokenEligibility';
 import { shallowEqualSpans, makeUncertaintyHighlightPlugin } from './rendererUtils';
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
 import {
@@ -13,8 +15,8 @@ import './streaming.css';
 
 /**
  * 流式渲染模式：
- * - legacy: 整段一次性丢给 MarkdownRenderer（旧行为，默认值）
- * - blocked: 切分为 markdown 块，每块独立 memo，仅最后一块流式
+ * - legacy: 整段一次性丢给 MarkdownRenderer（旧行为，兼容/排障用）
+ * - blocked: 切分为 markdown 块，每块独立 memo，仅最后一块流式（默认值）
  */
 export type StreamRenderingMode = 'legacy' | 'blocked';
 
@@ -36,7 +38,7 @@ interface StreamingMarkdownRendererProps {
   resolveCitationImage?: (type: RetrievalSourceType, index: number) => { url: string; title?: string } | null | undefined;
   // 流式平滑预设：参考 Lobe 的 realtime / balanced / silky 模型，默认 balanced
   streamSmoothingPreset?: StreamingSmoothingPreset | string | null;
-  // 流式渲染模式：legacy（整段，默认）或 blocked（按 markdown 块独立 memo）
+  // 流式渲染模式：legacy（整段）或 blocked（按 markdown 块独立 memo，默认）
   streamRenderingMode?: StreamRenderingMode;
   // 调试/Profiler 关联信息
   blockId?: string;
@@ -81,18 +83,16 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
   blockId,
   messageId,
 }) => {
-  // 业务侧未指定时回退到 context（Playground/DevTool 全局覆盖），最后再回退到默认值
-  // 默认 'legacy' 整段渲染：保持与现有 markdown.css 中
-  // `.markdown-content > *:first-child` / `p + p` 等假设的兼容性。
-  // 'blocked' 模式（按 markdown 块切分独立 memo）作为实验性优化，
-  // 当前仍需要对应 CSS 适配，故仅在 Playground 内或显式开启时使用。
+  // 业务侧未指定时回退到 context（Playground/DevTool 全局覆盖），最后再回退到默认值。
+  // 2026 默认改为 blocked：更接近当前主流聊天产品的结构化流式渲染，
+  // legacy 保留给兼容性排查与 A/B 对比。
   const prefs = useStreamPreferences();
-  // 行业最优解：默认 'natural'（零节流，token 即来即显）。
-  // Playground 仍可通过 prefs/props 覆盖为 balanced/silky/fluid 做对比。
+  // 默认 balanced：保持即时感，同时把碎 chunk 合并得更像自然输出。
+  // Playground 仍可通过 prefs/props 覆盖为 natural/silky/fluid 做对比。
   const effectivePreset: StreamingSmoothingPreset | string | null =
-    streamSmoothingPreset ?? prefs.preset ?? 'natural';
+    streamSmoothingPreset ?? prefs.preset ?? 'balanced';
   const effectiveMode: 'legacy' | 'blocked' =
-    streamRenderingMode ?? prefs.mode ?? 'legacy';
+    streamRenderingMode ?? prefs.mode ?? 'blocked';
   const { t } = useTranslation('chatV2');
   // 流式期间用 preset-based smoothing 代替固定 100ms throttle，
   // 保留 MarkdownRenderer 的业务渲染能力，只改变进入渲染器前的可见文本节奏。
@@ -136,6 +136,25 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
 
   const parsedContent = parseChainOfThought(displayContent);
   const stableHighlightSpans = highlightSpansRef.current;
+  const hasExtendedMarkdownFeatures = Boolean(
+    onCitationClick ||
+    resolveCitationImage ||
+    (extraRemarkPlugins && extraRemarkPlugins.length > 0)
+  );
+  const thinkingContent = parsedContent?.thinkingContent ?? '';
+  const shouldUseThinkingFlowToken = Boolean(
+    isStreaming &&
+    thinkingContent &&
+    !thinkingContent.includes('\n') &&
+    canUseDirectFlowTokenMarkdown(thinkingContent, hasExtendedMarkdownFeatures),
+  );
+  const shouldUseDirectFlowTokenForParsedMainContent =
+    isStreaming &&
+    Boolean(parsedContent?.mainContent) &&
+    canUseDirectFlowTokenMarkdown(
+      parsedContent?.mainContent ?? '',
+      hasExtendedMarkdownFeatures,
+    );
 
   // P1修复：大文本memo化 - 流式渲染优化
   const renderedContent = useMemo(() => {
@@ -199,13 +218,22 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
                 <span className="chain-title">{t('renderer.aiThinkingProcess')}</span>
               </div>
               <div className="thinking-content">
-              <MarkdownRenderer
-                content={parsedContent.thinkingContent}
-                isStreaming={isStreaming}
-                onLinkClick={onLinkClick}
-                onCitationClick={onCitationClick}
-                resolveCitationImage={resolveCitationImage}
-              />
+                {shouldUseThinkingFlowToken ? (
+                  <FlowTokenMarkdownRenderer
+                    content={thinkingContent}
+                    isStreaming
+                    onLinkClick={onLinkClick}
+                  />
+                ) : (
+                  <MarkdownRenderer
+                    content={thinkingContent}
+                    isStreaming={isStreaming}
+                    onLinkClick={onLinkClick}
+                    extraRemarkPlugins={extraRemarkPlugins}
+                    onCitationClick={onCitationClick}
+                    resolveCitationImage={resolveCitationImage}
+                  />
+                )}
               </div>
             </div>
           )}
@@ -213,19 +241,27 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
           {/* 渲染主要内容 */}
           <div className="main-content">
             {parsedContent.mainContent ? (
-              <MarkdownRenderer
-                content={parsedContent.mainContent}
-                isStreaming={isStreaming}
-                onLinkClick={onLinkClick}
-                extraRemarkPlugins={[
-                  ...(extraRemarkPlugins || []),
-                  ...(highlightSpans?.length
-                    ? [makeUncertaintyHighlightPlugin(parsedContent.mainContent, stableHighlightSpans, t('renderer.uncertain'))]
-                    : [])
-                ]}
-                onCitationClick={onCitationClick}
-                resolveCitationImage={resolveCitationImage}
-              />
+              shouldUseDirectFlowTokenForParsedMainContent ? (
+                <FlowTokenMarkdownRenderer
+                  content={parsedContent.mainContent}
+                  isStreaming
+                  onLinkClick={onLinkClick}
+                />
+              ) : (
+                <MarkdownRenderer
+                  content={parsedContent.mainContent}
+                  isStreaming={isStreaming}
+                  onLinkClick={onLinkClick}
+                  extraRemarkPlugins={[
+                    ...(extraRemarkPlugins || []),
+                    ...(highlightSpans?.length
+                      ? [makeUncertaintyHighlightPlugin(parsedContent.mainContent, stableHighlightSpans, t('renderer.uncertain'))]
+                      : [])
+                  ]}
+                  onCitationClick={onCitationClick}
+                  resolveCitationImage={resolveCitationImage}
+                />
+              )
             ) : (
               renderedContent
             )}

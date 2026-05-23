@@ -8,12 +8,12 @@ import {
 import { createStreamingMarkdownProfiler } from '../streamingProfiler';
 
 describe('streaming smoothing presets', () => {
-  it('falls back to the natural preset when the input is unknown or undefined', () => {
-    // 行业最优解（2026）：默认 preset 改为 'natural'，对齐 ChatGPT / Claude.ai。
-    // 任何未知值或 undefined 都回退到 natural（零节流）。
+  it('falls back to the balanced preset when the input is unknown or undefined', () => {
+    // 行业最优解（2026）：默认 preset 为 'balanced'。
+    // 让内容既保持流式即时感，又把碎 chunk 合并得更自然。
     expect(resolveStreamingSmoothingPreset('silky')).toBe('silky');
-    expect(resolveStreamingSmoothingPreset('experimental')).toBe('natural');
-    expect(resolveStreamingSmoothingPreset(undefined)).toBe('natural');
+    expect(resolveStreamingSmoothingPreset('experimental')).toBe('balanced');
+    expect(resolveStreamingSmoothingPreset(undefined)).toBe('balanced');
   });
 
   it('recognises the natural preset', () => {
@@ -58,6 +58,16 @@ describe('streaming smoothing presets', () => {
 
     expect(result.delta).toBeGreaterThan(config.minChunkChars);
     expect(result.delta).toBeLessThanOrEqual(config.maxChunkChars);
+  });
+
+  it('keeps CJK streaming chunks from collapsing to single characters', () => {
+    const config = getStreamingSmoothingConfig('balanced');
+    const target = '渐渐出来而不是打字机。';
+
+    const result = computeNextSmoothedContentByTime('', target, config, 32);
+
+    expect(result.content.length).toBeGreaterThan(1);
+    expect(result.reason).toBe('append');
   });
 });
 

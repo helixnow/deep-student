@@ -280,11 +280,16 @@ export function splitMarkdownBlocks(content: string, isStreaming: boolean): Mark
   // 填充 ID 并标记流式状态
   for (let idx = 0; idx < blocks.length; idx++) {
     const block = blocks[idx];
-    // 稳定 ID：索引 + 类型 + 内容 hash
-    block.id = `b${idx}-${block.type[0]}-${hashStr(block.raw)}`;
+    const isActiveStreamingBlock = isStreaming && idx === blocks.length - 1;
+
+    // 流式期间，最后一个活跃块使用不随 raw 变化的稳定 key，
+    // 避免每个 chunk 都触发 React remount，打断内部动画 / diff 状态。
+    block.id = isActiveStreamingBlock
+      ? `b${idx}-${block.type[0]}-streaming`
+      : `b${idx}-${block.type[0]}-${hashStr(block.raw)}`;
 
     // 流式期间，最后一个块标记为未完成
-    if (isStreaming && idx === blocks.length - 1) {
+    if (isActiveStreamingBlock) {
       block.isComplete = false;
     }
   }
