@@ -44,10 +44,9 @@ export interface UseSmoothedStreamingContentOptions {
   messageId?: string;
 }
 
-// 行业最优解（2026）：与 ChatGPT / Claude.ai 对齐，默认零节流，让 token 即来即显。
-// 任何强制 smoothing 都会让快速读者本能停顿等待文字"画完"，反而拖慢阅读。
-// Playground 仍可切到 balanced/silky/fluid 做对比。
-const DEFAULT_STREAMING_SMOOTHING_PRESET: StreamingSmoothingPreset = 'natural';
+// 行业最优解（2026）：默认 balanced。
+// 既保留流式即时感，也把碎 chunk 适度合并，配合块级渐显更像“内容长出来”。
+const DEFAULT_STREAMING_SMOOTHING_PRESET: StreamingSmoothingPreset = 'balanced';
 
 /**
  * Preset 设计说明（rAF + 时间预算 + commit gate）
@@ -61,7 +60,8 @@ const DEFAULT_STREAMING_SMOOTHING_PRESET: StreamingSmoothingPreset = 'natural';
  *                    解决"每帧都重跑 ReactMarkdown 管线"的卡顿。
  * - commitOnWordBoundary: 当推进刚好越过词边界（空格/标点/CJK）立刻 commit。
  *
- * natural: 不做任何节流，文本即来即显（适合后端已经按合适节奏吐字时）。
+ * natural: 直通模式，文本即来即显。
+ * balanced: 默认档位，适度合并 chunk，配合渐显更自然。
  * 其它预设按"丝滑度→速度"递进。
  */
 const STREAMING_SMOOTHING_CONFIGS: Record<StreamingSmoothingPreset, StreamingSmoothingConfig> = {
@@ -144,8 +144,8 @@ export function getStreamingSmoothingConfig(
 }
 
 /**
- * 在给定位置附近寻找词边界（空格、标点、CJK 字符边界），
- * 避免在单词中间截断，产生更自然的"词组淡入"效果。
+ * 在给定位置附近寻找词边界（空格、标点）。
+ * 中文不再按单字边界切分，改由 chunk 尺度和节奏自然推进，避免打字机感。
  */
 function snapToWordBoundary(text: string, fromIndex: number, rawEnd: number): number {
   if (rawEnd >= text.length) return text.length;
@@ -159,10 +159,6 @@ function snapToWordBoundary(text: string, fromIndex: number, rawEnd: number): nu
         ch === '：' || ch === '！' || ch === '？') {
       return i + 1;
     }
-    const code = ch.charCodeAt(0);
-    if (code >= 0x3000 && code <= 0x9fff) {
-      return i + 1;
-    }
   }
 
   const searchEnd = Math.min(text.length, rawEnd + 6);
@@ -172,10 +168,6 @@ function snapToWordBoundary(text: string, fromIndex: number, rawEnd: number): nu
         ch === ',' || ch === '.' || ch === ';' || ch === ':' ||
         ch === '、' || ch === '，' || ch === '。' || ch === '；' ||
         ch === '：' || ch === '！' || ch === '？') {
-      return i + 1;
-    }
-    const code = ch.charCodeAt(0);
-    if (code >= 0x3000 && code <= 0x9fff) {
       return i + 1;
     }
   }
@@ -382,9 +374,6 @@ function isWordBoundaryEnd(text: string, end: number): boolean {
   if (end <= 0 || end > text.length) return false;
   const ch = text[end - 1];
   if (WORD_BOUNDARY_CHARS.has(ch)) return true;
-  // CJK 表意文字本身就是词，每个字结束都是边界
-  const code = ch.charCodeAt(0);
-  if (code >= 0x3000 && code <= 0x9fff) return true;
   // 末尾恰好是文本末尾
   if (end === text.length) return true;
   return false;

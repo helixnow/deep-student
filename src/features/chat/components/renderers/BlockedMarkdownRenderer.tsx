@@ -57,6 +57,7 @@ const SingleBlock: React.FC<SingleBlockProps> = memo(
         extraRemarkPlugins={extraRemarkPlugins}
         onCitationClick={onCitationClick}
         resolveCitationImage={resolveCitationImage}
+        className={`block-type-${block.type}`}
       />
     );
   },

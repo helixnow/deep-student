@@ -27,11 +27,40 @@
 .stream-block {
   position: relative;
   opacity: 1;
+  will-change: opacity;
 }
 
-/* 新块极轻 opacity 入场（无位移、无模糊） */
-.stream-block[data-new="true"] {
-  animation: stream-block-fade-in 120ms ease-out both;
+/* flowtoken 片段已经有自己的 token 级动效，外层不再做任何入场淡入 */
+.stream-block[data-flowtoken="true"] {
+  animation: none;
+  opacity: 1;
+}
+
+/* 活跃块更新时做极轻渐显，避免“打字机式逐字跳变” */
+.stream-block[data-updating="true"] {
+  animation: stream-block-soft-reveal 120ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+/* 活跃块如果已经由 inline token 动画接管，就不要再叠一层整块 opacity 动画 */
+.stream-block[data-flowtoken="true"][data-updating="true"],
+.stream-block[data-motion-layer="inline"][data-updating="true"] {
+  animation: none;
+  opacity: 1;
+}
+
+/* 新块极轻 opacity 入场（避开活跃块，防止双重动画） */
+.stream-block[data-flowtoken="true"][data-new="true"] {
+  animation: none;
+  opacity: 1;
+}
+
+.stream-block[data-new="true"]:not([data-active="true"]) {
+  animation: stream-block-fade-in 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes stream-block-soft-reveal {
+  from { opacity: 0.62; }
+  to   { opacity: 1; }
 }
 
 @keyframes stream-block-fade-in {
@@ -97,6 +126,7 @@
 /* ─── Reduced motion ─────────────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
+  .stream-block[data-updating="true"],
   .stream-block[data-new="true"] {
     animation: none;
     opacity: 1;

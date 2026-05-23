@@ -1,6 +1,8 @@
 import React, { memo, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { FlowTokenMarkdownRenderer } from './FlowTokenMarkdownRenderer';
+import { canUseDirectFlowTokenMarkdown } from './flowTokenEligibility';
 import { shallowEqualSpans, makeUncertaintyHighlightPlugin } from './rendererUtils';
 import { sanitizeDanglingMarkdown, computeExcludedRanges, isIndexExcluded } from './sanitizeDanglingMarkdown';
 import type { Range } from './sanitizeDanglingMarkdown';
@@ -262,7 +264,21 @@ export const EnhancedStreamingMarkdownRenderer: React.FC<BaseStreamingProps> = m
                 <span className="chain-title">{t('renderer.aiThinkingProcess')}</span>
               </div>
               <div className="thinking-content">
-                <MarkdownRenderer content={parsed.thinkingContent} isStreaming={isStreaming} onLinkClick={onLinkClick} />
+                {isStreaming &&
+                !parsed.thinkingContent.includes('\n') &&
+                canUseDirectFlowTokenMarkdown(parsed.thinkingContent, false) ? (
+                  <FlowTokenMarkdownRenderer
+                    content={parsed.thinkingContent}
+                    isStreaming
+                    onLinkClick={onLinkClick}
+                  />
+                ) : (
+                  <MarkdownRenderer
+                    content={parsed.thinkingContent}
+                    isStreaming={isStreaming}
+                    onLinkClick={onLinkClick}
+                  />
+                )}
               </div>
             </div>
           )}

@@ -1,6 +1,8 @@
-import React, { useMemo, memo, useRef, useEffect } from 'react';
+import React, { useMemo, memo, useRef, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MarkdownRenderer } from './MarkdownRenderer';
+import { FlowTokenMarkdownRenderer } from './FlowTokenMarkdownRenderer';
+import { canUseDirectFlowTokenMarkdown } from './flowTokenEligibility';
 import { shallowEqualSpans, makeUncertaintyHighlightPlugin } from './rendererUtils';
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
 import {
@@ -8,6 +10,7 @@ import {
   type StreamingSmoothingPreset,
 } from './streamingSmoothing';
 import { splitMarkdownBlocks, type MarkdownBlock } from './splitMarkdownBlocks';
+import { useStreamPreferences } from './StreamPreferencesContext';
 import './streamingBlocks.css';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -38,6 +41,26 @@ interface MemoizedBlockProps {
   extraRemarkPlugins?: any[];
   onCitationClick?: (type: string, index: number) => void;
   resolveCitationImage?: (type: RetrievalSourceType, index: number) => { url: string; title?: string } | null | undefined;
+  hasExtendedMarkdownFeatures: boolean;
+}
+
+const FLOWTOKEN_SUPPORTED_BLOCK_TYPES = new Set<MarkdownBlock['type']>([
+  'paragraph',
+  'heading',
+  'list',
+  'blockquote',
+]);
+
+function shouldUseFullFlowTokenEffect(
+  block: MarkdownBlock,
+  isStreamingBlock: boolean,
+  hasExtendedMarkdownFeatures: boolean,
+): boolean {
+  if (!isStreamingBlock || !FLOWTOKEN_SUPPORTED_BLOCK_TYPES.has(block.type)) {
+    return false;
+  }
+
+  return canUseDirectFlowTokenMarkdown(block.raw, hasExtendedMarkdownFeatures);
 }
 
 // ─── MemoizedBlock ───────────────────────────────────────────────────────────
@@ -56,23 +79,59 @@ const MemoizedBlock = memo<MemoizedBlockProps>(({
   extraRemarkPlugins,
   onCitationClick,
   resolveCitationImage,
+  hasExtendedMarkdownFeatures,
 }) => {
+  const [isUpdating, setIsUpdating] = useState(false);
+  const previousRawRef = useRef(block.raw);
+  const shouldUseFlowToken = shouldUseFullFlowTokenEffect(
+    block,
+    isActive && isStreaming,
+    hasExtendedMarkdownFeatures,
+  );
+  const motionLayer = isActive && isStreaming ? 'inline' : 'block';
+
+  useEffect(() => {
+    if (!isActive) {
+      previousRawRef.current = block.raw;
+      setIsUpdating(false);
+      return;
+    }
+
+    if (previousRawRef.current !== block.raw) {
+      previousRawRef.current = block.raw;
+      setIsUpdating(true);
+      const timer = window.setTimeout(() => setIsUpdating(false), 140);
+      return () => window.clearTimeout(timer);
+    }
+  }, [block.raw, isActive]);
+
   return (
     <div
       className="stream-block"
       data-complete={block.isComplete ? 'true' : 'false'}
       data-new={isNew ? 'true' : 'false'}
       data-active={isActive ? 'true' : 'false'}
+      data-updating={isUpdating ? 'true' : 'false'}
       data-block-type={block.type}
+      data-flowtoken={shouldUseFlowToken ? 'true' : 'false'}
+      data-motion-layer={motionLayer}
     >
-      <MarkdownRenderer
-        content={block.raw}
-        isStreaming={isActive && isStreaming}
-        onLinkClick={onLinkClick}
-        extraRemarkPlugins={extraRemarkPlugins}
-        onCitationClick={onCitationClick}
-        resolveCitationImage={resolveCitationImage}
-      />
+      {shouldUseFlowToken ? (
+        <FlowTokenMarkdownRenderer
+          content={block.raw}
+          isStreaming
+          onLinkClick={onLinkClick}
+        />
+      ) : (
+        <MarkdownRenderer
+          content={block.raw}
+          isStreaming={isActive && isStreaming}
+          onLinkClick={onLinkClick}
+          extraRemarkPlugins={extraRemarkPlugins}
+          onCitationClick={onCitationClick}
+          resolveCitationImage={resolveCitationImage}
+        />
+      )}
     </div>
   );
 }, (prev, next) => {
@@ -81,7 +140,8 @@ const MemoizedBlock = memo<MemoizedBlockProps>(({
     return (
       prev.isNew === next.isNew &&
       prev.onLinkClick === next.onLinkClick &&
-      prev.extraRemarkPlugins === next.extraRemarkPlugins
+      prev.extraRemarkPlugins === next.extraRemarkPlugins &&
+      prev.hasExtendedMarkdownFeatures === next.hasExtendedMarkdownFeatures
     );
   }
   // 活跃块或状态变化：重渲染
@@ -144,10 +204,12 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
   messageId,
 }) => {
   const { t } = useTranslation('chatV2');
+  const prefs = useStreamPreferences();
+  const effectivePreset = streamSmoothingPreset ?? prefs.preset;
 
   // 流式平滑
   const smoothedContent = useSmoothedStreamingContent(content, isStreaming, {
-    preset: streamSmoothingPreset,
+    preset: effectivePreset,
     blockId,
     messageId,
   });
@@ -186,6 +248,11 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
     highlightSpansRef.current = highlightSpans;
   }
   const stableHighlightSpans = highlightSpansRef.current;
+  const hasExtendedMarkdownFeatures = Boolean(
+    onCitationClick ||
+    resolveCitationImage ||
+    (extraRemarkPlugins && extraRemarkPlugins.length > 0),
+  );
 
   const allRemarkPlugins = useMemo(() => {
     const highlightPlugins = (!isStreaming && Array.isArray(stableHighlightSpans) && stableHighlightSpans.length > 0)
@@ -195,13 +262,20 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
   }, [isStreaming, stableHighlightSpans, extraRemarkPlugins, mainContent, t]);
 
   const hasVisibleContent = mainContent.trim().length > 0;
+  const thinkingContent = parsedContent?.thinkingContent ?? '';
+  const shouldUseThinkingFlowToken = Boolean(
+    isStreaming &&
+    thinkingContent &&
+    !thinkingContent.includes('\n') &&
+    canUseDirectFlowTokenMarkdown(thinkingContent, hasExtendedMarkdownFeatures),
+  );
 
   return (
     <div
       className="streaming-block-renderer"
       data-streaming={isStreaming ? 'true' : 'false'}
       data-has-visible-content={hasVisibleContent ? 'true' : 'false'}
-      data-stream-preset={streamSmoothingPreset || 'balanced'}
+      data-stream-preset={effectivePreset || 'balanced'}
     >
       {/* 思维链内容 */}
       {parsedContent?.thinkingContent && (
@@ -211,13 +285,22 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
             <span className="chain-title">{t('renderer.aiThinkingProcess')}</span>
           </div>
           <div className="thinking-content">
-            <MarkdownRenderer
-              content={parsedContent.thinkingContent}
-              isStreaming={isStreaming}
-              onLinkClick={onLinkClick}
-              onCitationClick={onCitationClick}
-              resolveCitationImage={resolveCitationImage}
-            />
+            {shouldUseThinkingFlowToken ? (
+              <FlowTokenMarkdownRenderer
+                content={thinkingContent}
+                isStreaming
+                onLinkClick={onLinkClick}
+              />
+            ) : (
+              <MarkdownRenderer
+                content={thinkingContent}
+                isStreaming={isStreaming}
+                onLinkClick={onLinkClick}
+                extraRemarkPlugins={allRemarkPlugins}
+                onCitationClick={onCitationClick}
+                resolveCitationImage={resolveCitationImage}
+              />
+            )}
           </div>
         </div>
       )}
@@ -235,6 +318,7 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
             extraRemarkPlugins={allRemarkPlugins}
             onCitationClick={onCitationClick}
             resolveCitationImage={resolveCitationImage}
+            hasExtendedMarkdownFeatures={hasExtendedMarkdownFeatures}
           />
         ))}
       </div>

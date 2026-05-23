@@ -27,6 +27,22 @@
   --chat-spacing-md: 1rem;
   --chat-spacing-lg: 1.5rem;
 
+  /* LLM 输出阅读节奏 */
+  --chat-md-font-size: 1rem;
+  --chat-md-line-height: 1.72;
+  --chat-md-letter-spacing: 0.01em;
+  --chat-md-paragraph-gap: 0.9rem;
+  --chat-md-heading-top-gap: 1.85rem;
+  --chat-md-heading-bottom-gap: 0.72rem;
+  --chat-md-block-gap: 1.35rem;
+  --chat-md-list-item-gap: 0.42rem;
+  --chat-md-compact-gap: 0.75rem;
+  --chat-md-table-gap: 2.75rem;
+  --chat-content-max-width: 76ch;
+  --chat-md-compact-font-size: 0.9375rem;
+  --chat-md-compact-line-height: 1.6;
+  --chat-thinking-font-size: var(--chat-md-compact-font-size);
+
   /* 边框圆角 */
   --chat-radius-sm: 8px;
   --chat-radius-md: 12px;
@@ -106,22 +122,25 @@
 }
 
 /* ────────────────────────────────────────────────────────
-   ❸ 段落级元素 → width: fit-content
-   跨行拖选时浏览器 line-fill 最远只到文字末尾
-   排除 ul / ol / dl —— 保持全宽，避免 bullet/编号对齐问题
+   ❸ 正文段落与标题 → width: fit-content
+   只对真正的 prose block 收紧选区宽度；列表项、引用块、stream block
+   等结构容器保持正常块布局，避免破坏理想阅读行长与内部排版。
    ──────────────────────────────────────────────────────── */
-.chat-v2 .message-selectable-area .streaming-blocks > .stream-block,
 .chat-v2 .message-selectable-area .markdown-content > p,
 .chat-v2 .message-selectable-area .markdown-content > h1,
 .chat-v2 .message-selectable-area .markdown-content > h2,
 .chat-v2 .message-selectable-area .markdown-content > h3,
 .chat-v2 .message-selectable-area .markdown-content > h4,
 .chat-v2 .message-selectable-area .markdown-content > h5,
-.chat-v2 .message-selectable-area .markdown-content > h6,
-.chat-v2 .message-selectable-area .markdown-content li,
-.chat-v2 .message-selectable-area .markdown-content blockquote,
-.chat-v2 .message-selectable-area .markdown-content dt,
-.chat-v2 .message-selectable-area .markdown-content dd {
+.chat-v2 .message-selectable-area .markdown-content > h6 {
+  width: fit-content;
+  max-width: 100%;
+}
+
+.chat-v2 .message-selectable-area .markdown-content li > p,
+.chat-v2 .message-selectable-area .markdown-content blockquote > p,
+.chat-v2 .message-selectable-area .markdown-content dt > p,
+.chat-v2 .message-selectable-area .markdown-content dd > p {
   width: fit-content;
   max-width: 100%;
 }
@@ -557,7 +576,7 @@ body.sidebar-collapsed .chat-v2 .chat-container.chat-fullscreen {
   border: none;
   border-radius: 0;
   width: 100%;
-  max-width: 100%;
+  max-width: var(--chat-content-max-width);
   padding: 0;
   box-shadow: none;
   outline: none;
