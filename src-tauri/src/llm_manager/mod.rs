@@ -691,6 +691,56 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn get_model_profiles_drops_hidden_flag_when_builtin_slot_points_to_new_model() {
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+
+        manager
+            .db
+            .save_setting("vendor_configs", "[]")
+            .expect("seed vendor configs");
+        manager
+            .db
+            .save_setting("model_profiles", "[]")
+            .expect("seed model profiles");
+        manager
+            .db
+            .save_setting(
+                HIDDEN_BUILTIN_MODEL_PROFILES_KEY,
+                r#"["builtin-gemini-3-flash"]"#,
+            )
+            .expect("seed hidden builtin ids");
+        manager
+            .save_builtin_profile_snapshot(&[profile(
+                "builtin-gemini-3-flash",
+                "Gemini 3 Flash (均衡)",
+                "gemini-3-flash-preview",
+                true,
+                true,
+            )])
+            .expect("seed legacy builtin snapshot");
+        manager
+            .db
+            .save_setting("builtin_caps_migration_v2", "done")
+            .expect("skip caps migration");
+
+        let profiles = manager
+            .get_model_profiles()
+            .await
+            .expect("load model profiles");
+
+        assert!(profiles.iter().any(|profile| {
+            profile.id == "builtin-gemini-3-flash" && profile.model == "gemini-3.5-flash"
+        }));
+
+        let hidden_ids = manager.read_hidden_builtin_model_profile_ids();
+        assert!(
+            !hidden_ids.contains("builtin-gemini-3-flash"),
+            "repurposed builtin slot should be treated as a new model and unhidden"
+        );
+    }
+
+    #[tokio::test]
     async fn save_model_profiles_does_not_hide_new_builtin_models() {
         let temp_dir = TempDir::new().expect("create temp dir");
         let manager = create_test_llm_manager(&temp_dir);
@@ -725,6 +775,50 @@ mod tests {
         assert!(
             !hidden_ids.contains("builtin-gemini-3-flash"),
             "new builtin model should not be inferred as hidden when absent from older saved profile sets"
+        );
+    }
+
+    #[tokio::test]
+    async fn save_model_profiles_does_not_hide_retargeted_builtin_slot() {
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+
+        manager
+            .db
+            .save_setting("vendor_configs", "[]")
+            .expect("seed vendor configs");
+        manager
+            .db
+            .save_setting("model_profiles", "[]")
+            .expect("seed model profiles");
+
+        manager
+            .save_builtin_profile_snapshot(&[profile(
+                "builtin-gemini-3-flash",
+                "Gemini 3 Flash (均衡)",
+                "gemini-3-flash-preview",
+                true,
+                true,
+            )])
+            .expect("seed legacy builtin snapshot");
+
+        let known_builtin = profile(
+            "builtin-gemini-3-pro",
+            "Gemini 3.1 Pro Preview (旗舰)",
+            "gemini-3.1-pro-preview",
+            true,
+            true,
+        );
+
+        manager
+            .save_model_profiles(&[known_builtin])
+            .await
+            .expect("save user-visible builtin profiles");
+
+        let hidden_ids = manager.read_hidden_builtin_model_profile_ids();
+        assert!(
+            !hidden_ids.contains("builtin-gemini-3-flash"),
+            "legacy preview snapshot should not cause the retargeted 3.5 flash slot to be hidden"
         );
     }
 
@@ -2022,17 +2116,37 @@ impl LLMManager {
         hidden_builtin_ids: &mut HashSet<String>,
         snapshot_map: &HashMap<String, ModelProfile>,
     ) -> Result<bool> {
-        let builtin_id_set: HashSet<&str> = builtin_profiles.iter().map(|profile| profile.id.as_str()).collect();
-        let known_user_builtin_ids: HashSet<&str> = user_profiles
+        let builtin_id_set: HashSet<&str> =
+            builtin_profiles.iter().map(|profile| profile.id.as_str()).collect();
+        let builtin_profile_map: HashMap<&str, &ModelProfile> = builtin_profiles
             .iter()
-            .map(|profile| profile.id.as_str())
-            .filter(|id| builtin_id_set.contains(id))
+            .map(|profile| (profile.id.as_str(), profile))
+            .collect();
+        let known_user_builtin_models: HashMap<&str, &str> = user_profiles
+            .iter()
+            .filter_map(|profile| {
+                builtin_id_set
+                    .contains(profile.id.as_str())
+                    .then_some((profile.id.as_str(), profile.model.as_str()))
+            })
             .collect();
 
         let original = hidden_builtin_ids.clone();
         hidden_builtin_ids.retain(|id| {
-            builtin_id_set.contains(id.as_str())
-                && (snapshot_map.contains_key(id) || known_user_builtin_ids.contains(id.as_str()))
+            let Some(current_builtin) = builtin_profile_map.get(id.as_str()) else {
+                return false;
+            };
+
+            let snapshot_matches = snapshot_map
+                .get(id)
+                .map(|snapshot| snapshot.model == current_builtin.model)
+                .unwrap_or(false);
+            let user_model_matches = known_user_builtin_models
+                .get(id.as_str())
+                .map(|model| *model == current_builtin.model.as_str())
+                .unwrap_or(false);
+
+            snapshot_matches || user_model_matches
         });
 
         if *hidden_builtin_ids != original {
@@ -3217,6 +3331,10 @@ impl LLMManager {
                 .iter()
                 .map(|profile| profile.id.clone())
                 .collect();
+            let builtin_model_map: HashMap<&str, &str> = builtin_profiles
+                .iter()
+                .map(|profile| (profile.id.as_str(), profile.model.as_str()))
+                .collect();
             let incoming_builtin_ids: HashSet<String> = profiles
                 .iter()
                 .map(|profile| profile.id.clone())
@@ -3228,8 +3346,19 @@ impl LLMManager {
             let previously_known_builtin_ids: HashSet<String> = builtin_id_set
                 .iter()
                 .filter(|id| {
-                    snapshot_map.contains_key(*id)
-                        || existing_profiles.iter().any(|profile| profile.id == **id)
+                    let Some(current_model) = builtin_model_map.get(id.as_str()) else {
+                        return false;
+                    };
+
+                    let snapshot_matches = snapshot_map
+                        .get(*id)
+                        .map(|snapshot| snapshot.model.as_str() == *current_model)
+                        .unwrap_or(false);
+                    let existing_matches = existing_profiles.iter().any(|profile| {
+                        profile.id == **id && profile.model.as_str() == *current_model
+                    });
+
+                    snapshot_matches || existing_matches
                 })
                 .cloned()
                 .collect();
