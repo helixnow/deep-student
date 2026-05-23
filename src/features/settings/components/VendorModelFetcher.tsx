@@ -451,7 +451,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
                     className={cn(
                       'sticky top-0 z-[1] flex items-baseline gap-1.5',
                       'px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70',
-                      'bg-background/90 supports-[backdrop-filter]:bg-background/65 supports-[backdrop-filter]:backdrop-blur',
+                      'bg-background',
                       'border-b border-border/30'
                     )}
                   >

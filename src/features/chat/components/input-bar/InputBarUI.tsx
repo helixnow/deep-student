@@ -2085,7 +2085,10 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
           ref={inputContainerRef}
           data-composer-panel-anchor
           className={cn(
-            'relative z-[200] overflow-hidden rounded-[var(--radius-shell-toolbar)] border border-[color:var(--input-shell-border)] bg-[color:var(--unified-input-shell-surface,var(--shell-inspector-panel))] p-3 pl-4 shadow-[var(--shadow-shell-soft)] transition-shadow duration-150 ease-out focus-within:shadow-[var(--shadow-shell-panel)]'
+            'relative z-[200] overflow-hidden border transition-[background-color,border-color,box-shadow] duration-150 ease-out',
+            isMobile
+              ? 'rounded-[22px] border-[color:var(--composer-panel-border)] bg-[color:var(--surface-root)] px-3 py-2.5 shadow-[0_10px_24px_hsl(var(--shadow-base)/0.05)] focus-within:shadow-[0_14px_28px_hsl(var(--shadow-base)/0.07)]'
+              : 'rounded-[var(--radius-shell-toolbar)] border-[color:var(--input-shell-border)] bg-[color:var(--unified-input-shell-surface,var(--shell-inspector-panel))] p-3 pl-4 shadow-[var(--shadow-shell-soft)] focus-within:shadow-[var(--shadow-shell-panel)]'
           )}
         >
         {/* 🔧 P0修复：拖拽遮罩层移到输入容器内部，确保与输入框完全重合 */}
@@ -2279,7 +2282,9 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 // 正常的发送快捷键处理
                 if (shouldSendOnEnter(e)) {
                   e.preventDefault();
-                  if (showStop) {
+                  // 队列/引导模式下，流式中的 Enter 语义改成“入队”，
+                  // Stop 只保留给按钮显式点击，避免键盘误中断当前回复。
+                  if (showStop && !queueEnabled) {
                     handleStop();
                   } else {
                     handleSend();

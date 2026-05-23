@@ -1,11 +1,10 @@
-import React, { useMemo, memo, useRef, useEffect, useState } from 'react';
+import React, { useMemo, memo, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { MarkdownRenderer } from './MarkdownRenderer';
 import { FlowTokenMarkdownRenderer } from './FlowTokenMarkdownRenderer';
 import { canUseDirectFlowTokenMarkdown } from './flowTokenEligibility';
 import { shallowEqualSpans, makeUncertaintyHighlightPlugin } from './rendererUtils';
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
-import type { StreamingSmoothingPreset } from './streamingSmoothing';
 import { splitMarkdownBlocks, type MarkdownBlock } from './splitMarkdownBlocks';
 import './streamingBlocks.css';
 
@@ -23,7 +22,6 @@ interface StreamingBlockRendererProps {
   extraRemarkPlugins?: any[];
   onCitationClick?: (type: string, index: number) => void;
   resolveCitationImage?: (type: RetrievalSourceType, index: number) => { url: string; title?: string } | null | undefined;
-  streamSmoothingPreset?: StreamingSmoothingPreset | string | null;
   blockId?: string;
   messageId?: string;
 }
@@ -37,7 +35,6 @@ interface MemoizedBlockProps {
   extraRemarkPlugins?: any[];
   onCitationClick?: (type: string, index: number) => void;
   resolveCitationImage?: (type: RetrievalSourceType, index: number) => { url: string; title?: string } | null | undefined;
-  streamSmoothingPreset?: StreamingSmoothingPreset | string | null;
   blockId?: string;
   messageId?: string;
 }
@@ -76,32 +73,14 @@ const MemoizedBlock = memo<MemoizedBlockProps>(({
   extraRemarkPlugins,
   onCitationClick,
   resolveCitationImage,
-  streamSmoothingPreset,
   blockId,
   messageId,
 }) => {
-  const [isUpdating, setIsUpdating] = useState(false);
-  const previousRawRef = useRef(block.raw);
   const shouldUseFlowToken = shouldUseFullFlowTokenEffect(
     block,
     isActive && isStreaming,
   );
   const motionLayer = isActive && isStreaming ? 'inline' : 'block';
-
-  useEffect(() => {
-    if (!isActive) {
-      previousRawRef.current = block.raw;
-      setIsUpdating(false);
-      return;
-    }
-
-    if (previousRawRef.current !== block.raw) {
-      previousRawRef.current = block.raw;
-      setIsUpdating(true);
-      const timer = window.setTimeout(() => setIsUpdating(false), 140);
-      return () => window.clearTimeout(timer);
-    }
-  }, [block.raw, isActive]);
 
   return (
     <div
@@ -118,7 +97,6 @@ const MemoizedBlock = memo<MemoizedBlockProps>(({
           content={block.raw}
           isStreaming
           onLinkClick={onLinkClick}
-          streamSmoothingPreset={streamSmoothingPreset}
           blockId={blockId}
           messageId={messageId}
         />
@@ -198,7 +176,6 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
   extraRemarkPlugins,
   onCitationClick,
   resolveCitationImage,
-  streamSmoothingPreset,
   blockId,
   messageId,
 }) => {
@@ -280,7 +257,6 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
                 content={thinkingContent}
                 isStreaming
                 onLinkClick={onLinkClick}
-                streamSmoothingPreset={streamSmoothingPreset}
                 blockId={blockId}
                 messageId={messageId}
               />
@@ -311,7 +287,6 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
             extraRemarkPlugins={allRemarkPlugins}
             onCitationClick={onCitationClick}
             resolveCitationImage={resolveCitationImage}
-            streamSmoothingPreset={streamSmoothingPreset}
             blockId={blockId}
             messageId={messageId}
           />
@@ -325,7 +300,6 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
     prevProps.isStreaming === nextProps.isStreaming &&
     shallowEqualSpans(prevProps.highlightSpans, nextProps.highlightSpans) &&
     prevProps.extraRemarkPlugins === nextProps.extraRemarkPlugins &&
-    prevProps.streamSmoothingPreset === nextProps.streamSmoothingPreset &&
     prevProps.blockId === nextProps.blockId &&
     prevProps.messageId === nextProps.messageId
   );

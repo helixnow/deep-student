@@ -556,6 +556,43 @@ export const fullscreenPanelVariants: Variants = {
   },
 };
 
+// ============================================================================
+// 新消息入场动画（transitions-dev Panel Reveal 风格）
+// ============================================================================
+
+/**
+ * 新消息入场动画 — 纯气泡弹出感
+ *
+ * 仅缩放 + 淡入，无位移。Discord / iMessage 风格。
+ *  - scale: 0.95 → 1（从微缩弹出）
+ *  - opacity: 0 → 1
+ *  - 快速 spring，干净利落
+ */
+export const newMessageVariants: Variants = {
+  initial: {
+    opacity: 0,
+    scale: 0.95,
+  },
+  animate: {
+    opacity: 1,
+    scale: 1,
+    transition: {
+      type: 'spring',
+      stiffness: 400,
+      damping: 30,
+      mass: 0.8,
+    },
+  },
+  exit: {
+    opacity: 0,
+    scale: 0.95,
+    transition: {
+      duration: 0.12,
+      ease: easingConfig.easeOut,
+    },
+  },
+};
+
 /**
  * 主内容区在全屏面板进入时的动画
  * 轻微向左偏移 + 缩小，营造层叠感
@@ -612,4 +649,5 @@ export default {
   badgeCount: badgeCountVariants,
   fullscreenPanel: fullscreenPanelVariants,
   mainContent: mainContentVariants,
+  newMessage: newMessageVariants,
 };

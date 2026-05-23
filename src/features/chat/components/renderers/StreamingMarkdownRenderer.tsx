@@ -6,7 +6,6 @@ import { BlockedMarkdownRenderer } from './BlockedMarkdownRenderer';
 import { canUseDirectFlowTokenMarkdown } from './flowTokenEligibility';
 import { shallowEqualSpans, makeUncertaintyHighlightPlugin } from './rendererUtils';
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
-import type { StreamingSmoothingPreset } from './streamingSmoothing';
 import './streaming.css';
 
 /**
@@ -32,8 +31,6 @@ interface StreamingMarkdownRendererProps {
   onCitationClick?: (type: string, index: number) => void;
   // 引用图片解析器：根据引用类型与序号返回图片 URL
   resolveCitationImage?: (type: RetrievalSourceType, index: number) => { url: string; title?: string } | null | undefined;
-  // 流式平滑预设：参考 Lobe 的 realtime / balanced / silky 模型，默认 balanced
-  streamSmoothingPreset?: StreamingSmoothingPreset | string | null;
   // 流式渲染模式：legacy（整段）或 blocked（按 markdown 块独立 memo，默认）
   streamRenderingMode?: StreamRenderingMode;
   // 调试/Profiler 关联信息
@@ -74,7 +71,6 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
   extraRemarkPlugins,
   onCitationClick,
   resolveCitationImage,
-  streamSmoothingPreset: _streamSmoothingPreset,
   streamRenderingMode,
   blockId,
   messageId,
@@ -208,7 +204,6 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
                     content={thinkingContent}
                     isStreaming
                     onLinkClick={onLinkClick}
-                    streamSmoothingPreset={streamSmoothingPreset}
                     blockId={blockId}
                     messageId={messageId}
                   />
@@ -228,13 +223,12 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
 
           {/* 渲染主要内容 */}
           <div className="main-content">
-              {parsedContent.mainContent ? (
+            {parsedContent.mainContent ? (
               shouldUseDirectFlowTokenForParsedMainContent ? (
                 <FlowTokenMarkdownRenderer
                   content={parsedContent.mainContent}
                   isStreaming
                   onLinkClick={onLinkClick}
-                  streamSmoothingPreset={streamSmoothingPreset}
                   blockId={blockId}
                   messageId={messageId}
                 />

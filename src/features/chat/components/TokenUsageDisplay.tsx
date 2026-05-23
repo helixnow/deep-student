@@ -103,7 +103,7 @@ export const TokenUsageDisplay: React.FC<TokenUsageDisplayProps> = memo(
           {/* 输入 */}
           <div className="flex items-center justify-between">
             <span className="text-muted-foreground flex items-center gap-2">
-              <span className="w-2 h-2 rounded-full bg-success"></span>
+              <span className="w-2 h-2 rounded-full bg-primary"></span>
               {t('tokenUsage.prompt')}
             </span>
             <span className="font-mono tabular-nums text-foreground">{usage.promptTokens.toLocaleString()}</span>
@@ -122,7 +122,7 @@ export const TokenUsageDisplay: React.FC<TokenUsageDisplayProps> = memo(
           {usage.reasoningTokens !== undefined && (
              <div className="flex items-center justify-between">
               <span className="text-muted-foreground flex items-center gap-2">
-                <span className="w-2 h-2 rounded-full bg-violet-500 dark:bg-violet-400"></span>
+                <span className="w-2 h-2 rounded-full bg-primary/40"></span>
                 {t('tokenUsage.reasoning')}
               </span>
               <span className="font-mono tabular-nums text-foreground">{usage.reasoningTokens.toLocaleString()}</span>
@@ -136,7 +136,14 @@ export const TokenUsageDisplay: React.FC<TokenUsageDisplayProps> = memo(
                 <span className="w-2 h-2 rounded-full bg-warning"></span>
                 {t('tokenUsage.cached')}
               </span>
-              <span className="font-mono tabular-nums text-foreground">{usage.cachedTokens.toLocaleString()}</span>
+              <span className="font-mono tabular-nums text-foreground">
+                {usage.cachedTokens.toLocaleString()}
+                {usage.promptTokens > 0 && (
+                  <span className="text-muted-foreground">
+                    {' '}({((usage.cachedTokens / usage.promptTokens) * 100).toFixed(1)}%)
+                  </span>
+                )}
+              </span>
             </div>
           )}
 
@@ -177,7 +184,7 @@ export const TokenUsageDisplay: React.FC<TokenUsageDisplayProps> = memo(
             )}
           >
             <span className="font-medium text-foreground/80">{formatTokenCount(usage.totalTokens)}</span>
-            <span className="text-success">↑{formatTokenCount(usage.promptTokens)}</span>
+            <span className="text-primary">↑{formatTokenCount(usage.promptTokens)}</span>
             <span className="text-info">↓{formatTokenCount(usage.completionTokens)}</span>
           </span>
         </CommonTooltip>
@@ -197,7 +204,7 @@ export const TokenUsageDisplay: React.FC<TokenUsageDisplayProps> = memo(
           )}
         >
           <span className="font-semibold text-foreground">{formatTokenCount(usage.totalTokens)}</span>
-          <span className="flex items-center gap-0.5 text-success">
+          <span className="flex items-center gap-0.5 text-primary">
             <span className="text-[9px] opacity-70">↑</span>{formatTokenCount(usage.promptTokens)}
           </span>
           <span className="flex items-center gap-0.5 text-info">

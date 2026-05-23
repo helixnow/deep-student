@@ -2,11 +2,10 @@
  * StreamPreferencesContext
  *
  * 让 Playground / DevTool 在不修改业务调用点的前提下，
- * 全局覆盖流式渲染的 preset 与 mode。
+ * 全局覆盖流式渲染的调试模式。
  *
- * - 业务侧（如 BlockRenderer）不传 streamSmoothingPreset 时，
- *   StreamingMarkdownRenderer 会优先读 context 值，再回退到内置默认 'balanced'。
  * - 生产环境不挂 Provider → 行为保持不变。
+ * - preset 仅保留给 Playground / profiler 相关 UI，不参与主渲染路径。
  */
 
 import React, { createContext, useContext, useMemo } from 'react';

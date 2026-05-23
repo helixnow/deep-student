@@ -34,17 +34,17 @@
   -webkit-backdrop-filter: blur(20px) saturate(180%);
 }
 
-/* 深色主题（默认） - 使用侧边栏颜色 */
+/* 深色主题（默认） */
 .common-tooltip--dark .common-tooltip__content,
 .common-tooltip--auto .common-tooltip__content {
-  background: hsl(var(--nav-background));
-  color: hsl(var(--foreground));
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
   border: 1px solid hsl(var(--border) / 0.4);
 }
 
 .common-tooltip--dark .common-tooltip__arrow,
 .common-tooltip--auto .common-tooltip__arrow {
-  background: hsl(var(--nav-background));
+  background: hsl(var(--popover));
 }
 
 /* 浅色主题 */
@@ -130,24 +130,27 @@
 /* 暗色模式适配 - 使用 .dark 类选择器与项目主题系统一致 */
 :root.dark .common-tooltip--auto .common-tooltip__content,
 .dark .common-tooltip--auto .common-tooltip__content {
-  background: hsl(var(--nav-background));
-  color: hsl(var(--foreground));
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
   border-color: hsl(var(--border) / 0.4);
 }
 
 :root.dark .common-tooltip--auto .common-tooltip__arrow,
 .dark .common-tooltip--auto .common-tooltip__arrow {
-  background: hsl(var(--nav-background));
+  background: hsl(var(--popover));
 }
 
 :root:not(.dark) .common-tooltip--auto .common-tooltip__content {
-  background: hsl(var(--nav-background));
-  color: hsl(var(--foreground));
+  background: linear-gradient(135deg,
+    hsl(var(--popover)) 0%,
+    hsl(var(--card)) 100%
+  );
+  color: hsl(var(--popover-foreground));
   border-color: hsl(var(--border) / 0.4);
 }
 
 :root:not(.dark) .common-tooltip--auto .common-tooltip__arrow {
-  background: hsl(var(--nav-background));
+  background: hsl(var(--popover));
 }
 
 /* 响应式调整 */

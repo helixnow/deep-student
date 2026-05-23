@@ -2,6 +2,7 @@ import React, { useEffect, useState, useRef, Component } from 'react';
 import type { ReactNode, ErrorInfo } from 'react';
 import { Copy, Check, Plus, Minus, ArrowCounterClockwise, Warning } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { IconSwap } from '@/components/ui/IconSwap';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { useTranslation } from 'react-i18next';
@@ -638,7 +639,11 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
       <span className="code-block-lang">{language}</span>
       <div className="code-block-actions">
         <NotionButton variant="ghost" size="sm" className="code-block-copy" onClick={handleCopy}>
-          {copied ? <Check size={14} /> : <Copy size={14} />}
+          <IconSwap
+            active={copied}
+            a={<Copy size={14} />}
+            b={<Check size={14} />}
+          />
           <span>{copied ? t('codeBlock.copied', '已复制') : t('codeBlock.copy', '复制')}</span>
         </NotionButton>
 

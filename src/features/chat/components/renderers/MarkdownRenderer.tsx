@@ -602,7 +602,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
   };
 
   return (
-    <div ref={containerRef} className={`markdown-content ${className}`} onClick={handleCitationClick}>
+    <div ref={containerRef} className={`markdown-content ${className}`.trim()} onClick={handleCitationClick}>
       <ReactMarkdown
         remarkPlugins={remarkPlugins}
         rehypePlugins={[rehypeRaw, [rehypeSanitize, markdownSanitizeSchema]]}
@@ -817,6 +817,8 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
               </a>
             );
           },
+          strong: ({ children, ...props }: any) => <strong {...props}>{children}</strong>,
+          em: ({ children, ...props }: any) => <em {...props}>{children}</em>,
         }}
       >
         {processedContent}

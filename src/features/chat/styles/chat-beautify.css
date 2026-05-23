@@ -113,6 +113,7 @@
    ============================================================================ */
 .chat-v2 .unified-input-docked {
   --unified-input-bottom-fade-size: 42px;
+  --unified-input-shell-surface: var(--surface-root);
   will-change: transform, bottom;
   background: transparent;
   border-top: 0;
@@ -234,7 +235,20 @@
 
 .chat-v2 .chat-loading-shell__composer-panel {
   --unified-input-shell-surface: var(--surface-root);
+  --composer-panel-surface: var(--surface-root);
+  --composer-panel-border: color-mix(in hsl, var(--border-default) 62%, transparent 38%);
+  --composer-panel-shadow: 0 10px 24px hsl(var(--shadow-base) / 0.05);
   background: var(--surface-root);
+}
+
+@media (max-width: 768px) {
+  .chat-v2 .unified-input-docked {
+    --unified-input-bottom-fade-size: 28px;
+  }
+
+  .chat-v2 .chat-empty-composer-layout__input.unified-input-docked > div {
+    padding-inline: 0.875rem;
+  }
 }
 
 @media (max-width: 768px) {

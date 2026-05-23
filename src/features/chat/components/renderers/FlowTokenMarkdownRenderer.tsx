@@ -2,16 +2,11 @@ import React, { memo, useCallback } from 'react';
 import { AnimatedMarkdown } from '@nvq/flowtoken';
 import '@nvq/flowtoken/dist/styles.css';
 import { openUrl } from '@/utils/urlOpener';
-import {
-  useSmoothedStreamingContent,
-  type StreamingSmoothingPreset,
-} from './streamingSmoothing';
 
 interface FlowTokenMarkdownRendererProps {
   content: string;
   isStreaming: boolean;
   onLinkClick?: (url: string) => void;
-  streamSmoothingPreset?: StreamingSmoothingPreset | string | null;
   blockId?: string;
   messageId?: string;
 }
@@ -24,17 +19,9 @@ export const FlowTokenMarkdownRenderer: React.FC<FlowTokenMarkdownRendererProps>
   content,
   isStreaming,
   onLinkClick,
-  streamSmoothingPreset,
   blockId,
   messageId,
 }) => {
-  const displayContent = useSmoothedStreamingContent(content, isStreaming, {
-    preset: streamSmoothingPreset,
-    enabled: true,
-    blockId,
-    messageId,
-  });
-
   const handleClick = useCallback(async (event: React.MouseEvent<HTMLDivElement>) => {
     const rawTarget = event.target as EventTarget | null;
     const target = rawTarget instanceof Element
@@ -59,7 +46,7 @@ export const FlowTokenMarkdownRenderer: React.FC<FlowTokenMarkdownRendererProps>
   return (
     <div className="markdown-content flowtoken-markdown" onClick={handleClick}>
       <AnimatedMarkdown
-        content={displayContent}
+        content={content}
         animation={isStreaming ? FLOWTOKEN_ANIMATION : null}
         animationDuration={FLOWTOKEN_DURATION}
         animationTimingFunction={FLOWTOKEN_TIMING}
