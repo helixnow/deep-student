@@ -37,6 +37,9 @@ interface MemoizedBlockProps {
   extraRemarkPlugins?: any[];
   onCitationClick?: (type: string, index: number) => void;
   resolveCitationImage?: (type: RetrievalSourceType, index: number) => { url: string; title?: string } | null | undefined;
+  streamSmoothingPreset?: StreamingSmoothingPreset | string | null;
+  blockId?: string;
+  messageId?: string;
 }
 
 const FLOWTOKEN_SUPPORTED_BLOCK_TYPES = new Set<MarkdownBlock['type']>([
@@ -73,6 +76,9 @@ const MemoizedBlock = memo<MemoizedBlockProps>(({
   extraRemarkPlugins,
   onCitationClick,
   resolveCitationImage,
+  streamSmoothingPreset,
+  blockId,
+  messageId,
 }) => {
   const [isUpdating, setIsUpdating] = useState(false);
   const previousRawRef = useRef(block.raw);
@@ -103,7 +109,6 @@ const MemoizedBlock = memo<MemoizedBlockProps>(({
       data-complete={block.isComplete ? 'true' : 'false'}
       data-new={isNew ? 'true' : 'false'}
       data-active={isActive ? 'true' : 'false'}
-      data-updating={isUpdating ? 'true' : 'false'}
       data-block-type={block.type}
       data-flowtoken={shouldUseFlowToken ? 'true' : 'false'}
       data-motion-layer={motionLayer}
@@ -113,6 +118,9 @@ const MemoizedBlock = memo<MemoizedBlockProps>(({
           content={block.raw}
           isStreaming
           onLinkClick={onLinkClick}
+          streamSmoothingPreset={streamSmoothingPreset}
+          blockId={blockId}
+          messageId={messageId}
         />
       ) : (
         <MarkdownRenderer
@@ -190,7 +198,7 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
   extraRemarkPlugins,
   onCitationClick,
   resolveCitationImage,
-  streamSmoothingPreset: _streamSmoothingPreset,
+  streamSmoothingPreset,
   blockId,
   messageId,
 }) => {
@@ -272,6 +280,9 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
                 content={thinkingContent}
                 isStreaming
                 onLinkClick={onLinkClick}
+                streamSmoothingPreset={streamSmoothingPreset}
+                blockId={blockId}
+                messageId={messageId}
               />
             ) : (
               <MarkdownRenderer
@@ -300,6 +311,9 @@ export const StreamingBlockRenderer: React.FC<StreamingBlockRendererProps> = mem
             extraRemarkPlugins={allRemarkPlugins}
             onCitationClick={onCitationClick}
             resolveCitationImage={resolveCitationImage}
+            streamSmoothingPreset={streamSmoothingPreset}
+            blockId={blockId}
+            messageId={messageId}
           />
         ))}
       </div>
