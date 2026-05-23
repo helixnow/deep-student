@@ -21,6 +21,7 @@ import { CustomScrollArea } from '../custom-scroll-area';
 import { X } from '@phosphor-icons/react';
 import { Z_INDEX } from '@/config/zIndex';
 import { HorizontalResizable } from '../shared/Resizable';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
 import { cn } from '@/lib/utils';
 import { unifiedConfirm } from '@/utils/unifiedDialogs';
 import type { SkillDefinition, SkillLocation, SkillType, ToolSchema } from '@/features/chat/skills/types';
@@ -298,6 +299,18 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
     onClose();
   }, [isDirty, onClose, t]);
 
+  useEventRegistry(open ? [
+    {
+      target: 'window',
+      type: 'keydown',
+      listener: ((e: KeyboardEvent) => {
+        if (e.key === 'Escape') {
+          handleCloseRequest();
+        }
+      }) as EventListener,
+    },
+  ] : [], [open, handleCloseRequest]);
+
   // 根据名称生成建议 ID
   const suggestId = useCallback(() => {
     if (isEdit) return;
@@ -335,7 +348,23 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
           }}
           onLayoutAnimationComplete={() => setIsAnimationComplete(true)}
         >
-          <form onSubmit={handleSubmit} className="h-full">
+          <form onSubmit={handleSubmit} className="h-full flex flex-col">
+            {/* 顶部工具栏 */}
+            <div className="flex-none flex items-center justify-between px-4 py-2 border-b border-border/20 bg-background">
+              <h2 className="text-sm font-medium text-foreground/80 truncate">
+                {isEdit ? formData.name || skill?.id : t('skills:editor.new_skill', '新建技能')}
+              </h2>
+              <NotionButton
+                type="button"
+                variant="ghost"
+                size="icon"
+                onClick={handleCloseRequest}
+                aria-label={t('common:actions.close', '关闭')}
+              >
+                <X size={18} />
+              </NotionButton>
+            </div>
+            <div className="flex-1 min-h-0">
             <HorizontalResizable
               initial={0.35}
               minLeft={0.25}
@@ -618,6 +647,7 @@ export const SkillFullscreenEditor: React.FC<SkillFullscreenEditorProps> = ({
               </motion.div>
               }
 />
+            </div>
           </form>
         </motion.div>
       )}

@@ -1892,8 +1892,9 @@ function ToolPermissionsSection({ toolsByServer }: {
               </div>
             ) : (
               <CustomScrollArea
+                fullHeight={false}
                 className="rounded-lg border border-border/30"
-                style={{ maxHeight: 400 }}
+                viewportProps={{ style: { maxHeight: 400 } }}
               >
                 <div className="space-y-1 p-1">
                   {allTools.map(({ name, display }) => {
