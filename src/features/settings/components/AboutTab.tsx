@@ -122,11 +122,10 @@ export const AboutTab: React.FC = () => {
   const [frequencyDays, setFrequencyDaysState] = useState<number>(getUpdateFrequencyDays);
   const [noRemind, setNoRemindState] = useState<boolean>(getNoRemind);
 
-  const toggleChannel = useCallback(() => {
-    const next: UpdateChannel = channel === 'stable' ? 'experimental' : 'stable';
-    setUpdateChannel(next);
-    setChannel(next);
-  }, [channel]);
+  const handleChannelChange = useCallback((val: UpdateChannel) => {
+    setUpdateChannel(val);
+    setChannel(val);
+  }, []);
 
   const handleFrequencyChange = useCallback((freq: UpdateFrequency) => {
     setUpdateFrequency(freq);
@@ -191,16 +190,15 @@ export const AboutTab: React.FC = () => {
                 ? t('about.update.channelExpDesc', '接收实验版更新，可能包含未充分测试的功能')
                 : t('about.update.channelStableDesc', '仅接收经过验证的稳定版更新')}
             >
-              <NotionButton
-                variant="ghost"
-                size="sm"
-                onClick={toggleChannel}
-                className="h-6 px-2 text-xs"
-              >
-                {channel === 'experimental'
-                  ? t('about.update.channelExp', '实验版')
-                  : t('about.update.channelStable', '稳定版')}
-              </NotionButton>
+              <Select value={channel} onValueChange={(val) => handleChannelChange(val as UpdateChannel)}>
+                <SelectTrigger className="h-6 px-1.5 text-xs w-auto min-h-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="stable">{t('about.update.channelStable', '稳定版')}</SelectItem>
+                  <SelectItem value="experimental">{t('about.update.channelExp', '实验版')}</SelectItem>
+                </SelectContent>
+              </Select>
             </SettingRow>
 
             <SettingRow
@@ -391,16 +389,18 @@ export const AboutTab: React.FC = () => {
 
         <div className="mt-8">
           <GroupTitle title={t('acknowledgements.partners.title', '技术合作伙伴致谢')} />
-          <div className="relative p-4 rounded-lg bg-muted/30">
-            <h4 className="text-sm font-medium text-foreground/90 mb-1.5">
-              {t('acknowledgements.partners.cards.siliconflow.title', 'SiliconFlow')}
-            </h4>
-            <p className="text-[11px] text-muted-foreground/70 leading-relaxed mb-6 max-w-md">
-              {t('acknowledgements.partners.cards.siliconflow.description', '提供多模态与推理模型服务，保障 DeepStudent 在国产算力生态中的高效稳定运行。')}
-            </p>
+          <div className="flex items-start justify-between gap-4 px-1 py-1.5">
+            <div className="min-w-0 flex-1 max-w-3xl">
+              <h4 className="text-sm font-medium text-foreground/90">
+                {t('acknowledgements.partners.cards.siliconflow.title', 'SiliconFlow')}
+              </h4>
+              <p className="mt-2 text-[12.5px] leading-relaxed text-muted-foreground/70">
+                {t('acknowledgements.partners.cards.siliconflow.description', '提供多模态与推理模型服务，保障 DeepStudent 在国产算力生态中的高效稳定运行。')}
+              </p>
+            </div>
             <SiliconFlowLogo
               alt={t('acknowledgements.partners.cards.siliconflow.alt', 'Powered by SiliconFlow')}
-              className="absolute bottom-3 right-3 h-7 w-auto opacity-60"
+              className="mt-0.5 h-6 w-auto shrink-0 opacity-65"
             />
           </div>
         </div>
