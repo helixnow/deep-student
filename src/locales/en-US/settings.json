@@ -307,7 +307,7 @@
         },
         "embedding": {
           "title": "Embedding model",
-          "description": "Marks the model as suitable for vector embeddings (e.g. text-embedding-ada-002, bge-m3)."
+          "description": "Marks the model as suitable for vector embeddings (e.g. text-embedding-3-small, text-embedding-3-large, bge-m3)."
         },
         "reranker": {
           "title": "Reranker model",

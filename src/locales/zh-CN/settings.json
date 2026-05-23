@@ -314,7 +314,7 @@
         },
         "embedding": {
           "title": "嵌入模型",
-          "description": "勾选此项表示该模型用于生成向量嵌入（如text-embedding-ada-002、bge-m3等）"
+          "description": "勾选此项表示该模型用于生成向量嵌入（如 text-embedding-3-small、text-embedding-3-large、bge-m3 等）"
         },
         "reranker": {
           "title": "重排序模型",

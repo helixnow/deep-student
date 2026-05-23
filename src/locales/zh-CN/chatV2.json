@@ -869,7 +869,7 @@
   },
   "timeline": {
     "thinking": {
-      "inProgress": "已思考 {{seconds}} 秒…",
+      "inProgress": "正在思考...",
       "completed": "已思考 {{seconds}} 秒",
       "stopped": "已停止思考",
       "contentLabel": "推理详情",
