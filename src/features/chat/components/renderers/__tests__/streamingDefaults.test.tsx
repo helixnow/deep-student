@@ -10,17 +10,17 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 describe('streaming renderer defaults', () => {
-  it('defaults markdown streaming to blocked mode with balanced smoothing', () => {
+  it('defaults markdown streaming to blocked mode with flowtoken-direct preset', () => {
     const { container } = render(
       <StreamingMarkdownRenderer content="正在输出" isStreaming />
     );
 
     const root = container.querySelector('.streaming-markdown');
     expect(root).toHaveAttribute('data-stream-mode', 'blocked');
-    expect(root).toHaveAttribute('data-stream-preset', 'balanced');
+    expect(root).toHaveAttribute('data-stream-preset', 'flowtoken-direct');
   });
 
-  it('lets block streaming inherit the provider preset', () => {
+  it('block streaming uses flowtoken-direct preset (smoothing removed)', () => {
     const { container } = render(
       <StreamPreferencesProvider preset="silky">
         <StreamingBlockRenderer content="正在输出" isStreaming />
@@ -28,6 +28,6 @@ describe('streaming renderer defaults', () => {
     );
 
     const root = container.querySelector('.streaming-block-renderer');
-    expect(root).toHaveAttribute('data-stream-preset', 'silky');
+    expect(root).toHaveAttribute('data-stream-preset', 'flowtoken-direct');
   });
 });

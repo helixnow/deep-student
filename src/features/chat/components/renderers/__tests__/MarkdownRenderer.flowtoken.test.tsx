@@ -15,16 +15,22 @@ const FLOWTOKEN_ANIMATION_SELECTOR =
   '[style*="animation-name: ft-fadeIn"]';
 
 describe('MarkdownRenderer flowtoken streaming animation', () => {
-  it('animates streaming prose with flowtoken diff spans', () => {
+  it('does not emit flowtoken spans from MarkdownRenderer (AnimatedMarkdown handles animation)', () => {
     const { container } = render(<MarkdownRenderer content="流式输出正在变得更自然。" isStreaming />);
 
-    expect(container.querySelector(FLOWTOKEN_ANIMATION_SELECTOR)).not.toBeNull();
+    expect(container.querySelector(FLOWTOKEN_ANIMATION_SELECTOR)).toBeNull();
   });
 
   it('does not add flowtoken animation spans for completed prose', () => {
     const { container } = render(<MarkdownRenderer content="流式输出已经完成。" isStreaming={false} />);
 
     expect(container.querySelector('[style*="animation-name: ft-fadeIn"]')).toBeNull();
+  });
+
+  it('FlowTokenMarkdownRenderer animates streaming prose with flowtoken diff spans', () => {
+    const { container } = render(<FlowTokenMarkdownRenderer content="流式输出正在变得更自然。" isStreaming />);
+
+    expect(container.querySelector(FLOWTOKEN_ANIMATION_SELECTOR)).not.toBeNull();
   });
 
   it('keeps fenced code blocks out of the flowtoken text animation path', () => {
@@ -85,16 +91,15 @@ describe('MarkdownRenderer flowtoken streaming animation', () => {
     expect(container.querySelector('.think-content [style*="animation-name: ft-fadeIn"]')).not.toBeNull();
   });
 
-  it('falls back to the app markdown renderer for citation-like streaming blocks', () => {
+  it('uses flowtoken for citation-like streaming blocks (content gate removed)', () => {
     const { container } = render(
       <StreamingBlockRenderer content="参考这个结论 [知识库-1]" isStreaming />
     );
 
-    expect(container.querySelector('li.ft-custom-li')).toBeNull();
-    expect(container.querySelector('.stream-block')?.getAttribute('data-flowtoken')).toBe('false');
+    expect(container.querySelector('.stream-block')?.getAttribute('data-flowtoken')).toBe('true');
   });
 
-  it('keeps fallback streaming blocks on a single motion layer while content grows', () => {
+  it('keeps streaming blocks on flowtoken while content grows (content gate removed)', () => {
     const { container, rerender } = render(
       <StreamingBlockRenderer content="参考这个结论 [知识库-1]" isStreaming />
     );
@@ -104,7 +109,7 @@ describe('MarkdownRenderer flowtoken streaming animation', () => {
     );
 
     const block = container.querySelector('.stream-block');
-    expect(block?.getAttribute('data-flowtoken')).toBe('false');
+    expect(block?.getAttribute('data-flowtoken')).toBe('true');
     expect(block?.getAttribute('data-motion-layer')).toBe('inline');
   });
 
@@ -117,13 +122,13 @@ describe('MarkdownRenderer flowtoken streaming animation', () => {
     expect(container.querySelector('.stream-block')?.getAttribute('data-flowtoken')).toBe('true');
   });
 
-  it('keeps bare LaTeX out of the full flowtoken streaming path', () => {
+  it('uses flowtoken for bare LaTeX streaming blocks (content gate removed)', () => {
     const { container } = render(
       <StreamingBlockRenderer content={'score(Q, K) = \\\\frac{QK^T}{\\\\sqrt{d_k}}'} isStreaming />
     );
 
-    expect(container.querySelector('.stream-block')?.getAttribute('data-flowtoken')).toBe('false');
-    expect(container.querySelector('.flowtoken-markdown')).toBeNull();
+    expect(container.querySelector('.stream-block')?.getAttribute('data-flowtoken')).toBe('true');
+    expect(container.querySelector('.flowtoken-markdown')).not.toBeNull();
     expect(container.textContent).not.toContain('[object Object]');
   });
 
@@ -210,7 +215,56 @@ describe('MarkdownRenderer flowtoken streaming animation', () => {
 
     const animatedSpan = container.querySelector(FLOWTOKEN_ANIMATION_SELECTOR);
     expect(animatedSpan).not.toBeNull();
-    expect(animatedSpan).toHaveStyle('animation-duration: 0.80s');
-    expect(animatedSpan).toHaveStyle('animation-timing-function: ease-in-out');
+    expect(animatedSpan).toHaveStyle('animation-duration: 0.35s');
+    expect(animatedSpan).toHaveStyle('animation-timing-function: ease-out');
+  });
+
+  it('buffers high-frequency streaming updates before committing them to flowtoken', () => {
+    vi.useFakeTimers();
+    vi.stubGlobal(
+      'requestAnimationFrame',
+      ((callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 16)) as typeof requestAnimationFrame,
+    );
+    vi.stubGlobal(
+      'cancelAnimationFrame',
+      ((id: number) => clearTimeout(id as unknown as ReturnType<typeof setTimeout>)) as typeof cancelAnimationFrame,
+    );
+
+    try {
+      const initial = 'Alpha ';
+      const target = 'Alpha beta gamma delta epsilon zeta eta theta.';
+      const { container, rerender } = render(
+        <FlowTokenMarkdownRenderer
+          content={initial}
+          isStreaming
+          streamSmoothingPreset="balanced"
+        />
+      );
+
+      rerender(
+        <FlowTokenMarkdownRenderer
+          content={target}
+          isStreaming
+          streamSmoothingPreset="balanced"
+        />
+      );
+
+      expect(container.textContent).toContain(initial);
+      expect(container.textContent).not.toContain(target);
+
+      vi.advanceTimersByTime(16);
+      expect(container.textContent).not.toContain(target);
+
+      vi.advanceTimersByTime(48);
+      const partialText = container.textContent ?? '';
+      expect(partialText.length).toBeGreaterThan(initial.length);
+      expect(partialText.length).toBeLessThan(target.length);
+
+      vi.advanceTimersByTime(2000);
+      expect(container.textContent).toContain(target);
+    } finally {
+      vi.useRealTimers();
+      vi.unstubAllGlobals();
+    }
   });
 });
