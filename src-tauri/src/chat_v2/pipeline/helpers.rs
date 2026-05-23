@@ -1,6 +1,90 @@
 use super::*;
 use std::collections::{HashMap, HashSet};
 
+#[derive(Debug, Clone)]
+struct HistoryUnit {
+    start: usize,
+    end: usize,
+    is_pinned: bool,
+    token_estimate: usize,
+}
+
+fn history_unit_token_estimate(msg: &LegacyChatMessage) -> usize {
+    use crate::utils::token_budget::estimate_tokens;
+
+    let mut total = estimate_tokens(&msg.content);
+    if let Some(thinking) = &msg.thinking_content {
+        total = total.saturating_add(estimate_tokens(thinking));
+    }
+    if let Some(tool_call) = &msg.tool_call {
+        total = total.saturating_add(estimate_tokens(&tool_call.args_json.to_string()));
+    }
+    if let Some(tool_result) = &msg.tool_result {
+        if let Some(data) = &tool_result.data_json {
+            total = total.saturating_add(estimate_tokens(&data.to_string()));
+        }
+        if let Some(error) = &tool_result.error {
+            total = total.saturating_add(estimate_tokens(error));
+        }
+    }
+    if let Some(image_base64) = &msg.image_base64 {
+        for image in image_base64 {
+            total = total.saturating_add(image.len() / 4);
+        }
+    }
+    if let Some(doc_attachments) = &msg.doc_attachments {
+        for doc in doc_attachments {
+            if let Some(text) = &doc.text_content {
+                total = total.saturating_add(estimate_tokens(text));
+            }
+            if let Some(base64) = &doc.base64_content {
+                total = total.saturating_add(base64.len() / 4);
+            }
+        }
+    }
+    total
+}
+
+fn is_pinned_history_message(msg: &LegacyChatMessage) -> bool {
+    is_transient_llm_only_message(msg)
+        || msg
+            .metadata
+            .as_ref()
+            .is_some_and(|metadata| metadata.get("kind").and_then(Value::as_str) == Some("compaction_summary"))
+}
+
+fn group_history_units(history: &[LegacyChatMessage]) -> Vec<HistoryUnit> {
+    let mut units = Vec::new();
+    let mut i = 0usize;
+
+    while i < history.len() {
+        let mut end = i + 1;
+        let mut total = history_unit_token_estimate(&history[i]);
+
+        while end < history.len() {
+            let prev = &history[end - 1];
+            let current = &history[end];
+            let prev_is_tool_related = prev.tool_call.is_some() || prev.tool_result.is_some();
+            let current_is_tool_related = current.tool_call.is_some() || current.tool_result.is_some();
+            if !prev_is_tool_related || !current_is_tool_related {
+                break;
+            }
+            total = total.saturating_add(history_unit_token_estimate(current));
+            end += 1;
+        }
+
+        units.push(HistoryUnit {
+            start: i,
+            end,
+            is_pinned: history[i..end].iter().any(is_pinned_history_message),
+            token_estimate: total,
+        });
+        i = end;
+    }
+
+    units
+}
+
 // ============================================================
 // 类型转换实现
 // ============================================================
@@ -498,27 +582,26 @@ pub(crate) fn trim_history_by_token_budget(
     history: &mut Vec<LegacyChatMessage>,
     max_tokens: usize,
 ) {
-    let mut total_tokens: usize = history
-        .iter()
-        .map(|m| estimate_token_count(&m.content))
-        .sum();
+    let units = group_history_units(history);
+    let mut total_tokens: usize = units.iter().map(|u| u.token_estimate).sum();
 
     let original_len = history.len();
-    while total_tokens > max_tokens
-        && history
-            .iter()
-            .filter(|m| !is_transient_llm_only_message(m))
-            .count()
-            > 2
-    {
-        let Some(remove_idx) = history
-            .iter()
-            .position(|m| !is_transient_llm_only_message(m))
-        else {
+    let mut removable_units: Vec<HistoryUnit> = units.into_iter().filter(|u| !u.is_pinned).collect();
+
+    while total_tokens > max_tokens && removable_units.len() > 2 {
+        let Some(unit) = removable_units.first().cloned() else {
             break;
         };
-        let removed = history.remove(remove_idx);
-        total_tokens = total_tokens.saturating_sub(estimate_token_count(&removed.content));
+        history.drain(unit.start..unit.end);
+        total_tokens = total_tokens.saturating_sub(unit.token_estimate);
+        removable_units.remove(0);
+
+        for remaining in &mut removable_units {
+            if remaining.start >= unit.end {
+                remaining.start -= unit.end - unit.start;
+                remaining.end -= unit.end - unit.start;
+            }
+        }
     }
 
     if history.len() < original_len {
@@ -612,5 +695,76 @@ mod tests {
         assert!(is_transient_skill_message(&history[0]));
         assert_eq!(history[1].content, "assistant reply");
         assert_eq!(history[2].content, "latest user turn");
+    }
+
+    #[test]
+    fn test_trim_history_by_token_budget_counts_tool_payloads() {
+        let mut tool_call_message = make_empty_message("assistant", String::new());
+        tool_call_message.tool_call = Some(crate::models::ToolCall {
+            id: "call-1".to_string(),
+            tool_name: "builtin_fetch".to_string(),
+            args_json: json!({ "payload": "x".repeat(4000) }),
+        });
+
+        let mut tool_result_message = make_empty_message("tool", "ok".to_string());
+        tool_result_message.tool_result = Some(crate::models::ToolResult {
+            call_id: "call-1".to_string(),
+            ok: true,
+            error: None,
+            error_details: None,
+            data_json: Some(json!({ "result": "y".repeat(4000) })),
+            usage: None,
+            citations: None,
+        });
+
+        let mut history = vec![
+            make_empty_message("user", "oldest user message".to_string()),
+            tool_call_message,
+            tool_result_message,
+            make_empty_message("assistant", "latest assistant reply".to_string()),
+            make_empty_message("user", "latest user turn".to_string()),
+        ];
+
+        trim_history_by_token_budget(&mut history, estimate_token_count("latest assistant replylatest user turn"));
+
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].content, "latest assistant reply");
+        assert_eq!(history[1].content, "latest user turn");
+    }
+
+    #[test]
+    fn test_trim_history_by_token_budget_removes_complete_tool_rounds() {
+        let mut tool_call_message = make_empty_message("assistant", String::new());
+        tool_call_message.tool_call = Some(crate::models::ToolCall {
+            id: "call-1".to_string(),
+            tool_name: "builtin_fetch".to_string(),
+            args_json: json!({ "query": "enzyme kinetics" }),
+        });
+
+        let mut tool_result_message = make_empty_message("tool", "ok".to_string());
+        tool_result_message.tool_result = Some(crate::models::ToolResult {
+            call_id: "call-1".to_string(),
+            ok: true,
+            error: None,
+            error_details: None,
+            data_json: Some(json!({ "result": "Michaelis-Menten" })),
+            usage: None,
+            citations: None,
+        });
+
+        let mut history = vec![
+            make_empty_message("user", "turn 1".to_string()),
+            tool_call_message,
+            tool_result_message,
+            make_empty_message("assistant", "turn 2 assistant".to_string()),
+            make_empty_message("user", "turn 2 user".to_string()),
+        ];
+
+        trim_history_by_token_budget(&mut history, estimate_token_count("turn 2 assistantturn 2 user"));
+
+        assert_eq!(history.len(), 2);
+        assert!(history.iter().all(|msg| msg.tool_call.is_none() && msg.tool_result.is_none()));
+        assert_eq!(history[0].content, "turn 2 assistant");
+        assert_eq!(history[1].content, "turn 2 user");
     }
 }
