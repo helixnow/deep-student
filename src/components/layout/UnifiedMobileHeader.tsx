@@ -32,6 +32,10 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
   const ctx = useMobileHeaderContextSafe();
   const config = ctx?.config ?? { title: '', titleNode: undefined, subtitle: undefined, rightActions: undefined, showMenu: false, onMenuClick: undefined, showBackArrow: false, suppressGlobalBackButton: false };
 
+  if (config.hidden) {
+    return null;
+  }
+
   // 决定左侧显示什么按钮：
   // 1. showBackArrow 优先 - 显示返回箭头（使用 onMenuClick 回调）
   // 2. showMenu - 显示菜单图标

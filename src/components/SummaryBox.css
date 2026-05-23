@@ -122,17 +122,8 @@ html.dark .summary-box {
   background: var(--sb-surface-muted);
   border-top: 1px solid var(--sb-border);
   padding: 14px;
-  max-height: 0;
-  opacity: 0;
-  overflow: hidden;
-  transform: translateY(-4px);
-  transition: max-height 260ms cubic-bezier(0.4, 0, 0.2, 1), opacity 220ms ease, transform 260ms ease;
-}
-
-.summary-box.expanded .summary-content {
-  max-height: 320px; /* 合理的可视上限，避免过高 */
-  opacity: 1;
-  transform: translateY(0);
+  max-height: 320px;
+  overflow-y: auto;
 }
 
 .summary-text {
@@ -193,12 +184,12 @@ html.dark .summary-box {
 
 /* 无障碍：减少动画偏好 */
 @media (prefers-reduced-motion: reduce) {
-  .summary-box, .summary-content, .toggle-icon, .sb-btn { transition: none !important; }
+  .summary-box, .toggle-icon, .sb-btn { transition: none !important; }
   .loading-spinner { animation: none !important; }
 }
 
 /* 移动端密集排版 */
 @media (max-width: 640px) {
   .summary-header { padding: 8px 10px; }
-  .summary-content { padding: 12px; max-height: 260px; }
+  .summary-content { padding: 12px; max-height: 220px; }
 }

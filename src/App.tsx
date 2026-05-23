@@ -129,6 +129,7 @@ import {
 const console = debugLog as Pick<typeof debugLog, 'log' | 'warn' | 'error' | 'info' | 'debug'>;
 const LazyGlobalDebugPanel = React.lazy(() => import('./components/dev/GlobalDebugPanel'));
 const MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY = 'macos.native_font_smoothing';
+const POINTER_CURSOR_SETTING_KEY = 'ui.pointer_cursor';
 
 function applyMacOSFontSmoothingPreference(enabled: boolean) {
   if (typeof document === 'undefined') {
@@ -136,6 +137,14 @@ function applyMacOSFontSmoothingPreference(enabled: boolean) {
   }
 
   document.documentElement.dataset.fontSmoothing = enabled ? 'macos-native' : 'macos-grayscale';
+}
+
+function applyPointerCursorPreference(enabled: boolean) {
+  if (typeof document === 'undefined') {
+    return;
+  }
+
+  document.documentElement.dataset.pointerCursor = enabled ? 'true' : 'false';
 }
 
 /**
@@ -743,6 +752,47 @@ function App() {
     })();
 
     return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    const loadPointerCursorSetting = async () => {
+      try {
+        const val = await invoke<string | null>('get_setting', { key: POINTER_CURSOR_SETTING_KEY });
+        if (cancelled) return;
+        applyPointerCursorPreference(String(val ?? '').trim() !== 'false');
+      } catch {
+        if (cancelled) return;
+        applyPointerCursorPreference(true);
+      }
+    };
+
+    void loadPointerCursorSetting();
+
+    const handleSettingsChange = (event: any) => {
+      if (
+        event?.detail?.pointerCursor ||
+        event?.detail?.settingKey === POINTER_CURSOR_SETTING_KEY
+      ) {
+        void loadPointerCursorSetting();
+      }
+    };
+
+    try {
+      window.addEventListener('systemSettingsChanged' as any, handleSettingsChange as any);
+    } catch {
+      /* non-critical: event listener setup may fail in test env */
+    }
+
+    return () => {
+      cancelled = true;
+      try {
+        window.removeEventListener('systemSettingsChanged' as any, handleSettingsChange as any);
+      } catch {
+        /* non-critical: cleanup */
+      }
+    };
   }, []);
   
   // 🎯 命令面板：注册内置命令
