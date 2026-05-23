@@ -5,7 +5,7 @@
 
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { ArrowSquareOut, CaretDown, CaretUp, Check, DotsThree, Key, LinkSimple, NotePencil, PencilSimple, Plus, Pulse, Spinner, Star, Trash } from '@phosphor-icons/react';
+import { ArrowSquareOut, CaretDown, CaretUp, Check, DotsThree, DownloadSimple, Key, LinkSimple, NotePencil, PencilSimple, Plus, Pulse, Spinner, Star, Trash } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '@/components/ui/shad/Input';
 import { Textarea } from '@/components/ui/shad/Textarea';
@@ -13,6 +13,7 @@ import { Label } from '@/components/ui/shad/Label';
 import { Badge } from '@/components/ui/shad/Badge';
 import { Switch } from '@/components/ui/shad/Switch';
 import { Sheet, SheetContent, SheetHeader, SheetTitle, SheetDescription } from '@/components/ui/shad/Sheet';
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from '@/components/ui/shad/Dialog';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -31,6 +32,7 @@ import { VendorModelFetcher, supportsModelFetching } from './VendorModelFetcher'
 import { ShadApiEditModal } from './ShadApiEditModal';
 import { useVendorSettings } from './VendorSettingsContext';
 import { convertProfileToApiConfig } from './modelConverters';
+import { groupByModelFamily } from './modelFamily';
 import type { VendorConfig } from '@/types';
 
 // --- Save Status Indicator ---
@@ -138,6 +140,8 @@ export const VendorDetailPanel: React.FC = () => {
   const [baseUrlDraft, setBaseUrlDraft] = useState('');
   const [baseUrlSaveStatus, setBaseUrlSaveStatus] = useState<SaveStatus>('idle');
   const [connectionExpanded, setConnectionExpanded] = useState(false);
+  const [collapsedFamilies, setCollapsedFamilies] = useState<Set<string>>(new Set());
+  const [isModelFetcherDialogOpen, setIsModelFetcherDialogOpen] = useState(false);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // 判断连接是否已配置（有 baseUrl 且有 apiKey）
@@ -147,12 +151,22 @@ export const VendorDetailPanel: React.FC = () => {
     return hasUrl && hasKey;
   }, [selectedVendor?.baseUrl, selectedVendor?.apiKey]);
 
+  // 模型按家族分组（GPT-4 / Claude Opus / Gemini 2.5 …）
+  const familyGroups = useMemo(
+    () => groupByModelFamily(selectedVendorModels, ({ api }) => api.model),
+    [selectedVendorModels],
+  );
+  // 仅当存在 2 个及以上家族时才分组渲染；否则维持扁平避免噪声
+  const shouldGroupByFamily = familyGroups.length >= 2;
+
   // 切换供应商时重置状态
   useEffect(() => {
     setBaseUrlDraft(selectedVendor?.baseUrl || '');
     setBaseUrlSaveStatus('idle');
     // 已配置的供应商默认收起连接区，未配置的默认展开
     setConnectionExpanded(!isConnectionConfigured);
+    // 切换供应商时折叠状态归零（默认全展开）
+    setCollapsedFamilies(new Set());
   }, [selectedVendor?.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // baseUrl 变化时同步 draft（外部更新）
@@ -198,6 +212,119 @@ export const VendorDetailPanel: React.FC = () => {
 
   const providerLabel = getProviderDisplayName(selectedVendor.providerType, t);
   const vendorDisplayName = getVendorDisplayName(selectedVendor, providerLabel);
+
+  const renderModelCard = ({ profile, api }: (typeof selectedVendorModels)[number]) => {
+    const isEditing = inlineEditState?.profileId === profile.id;
+
+    const handleEditClick = () => {
+      if (isEditing) {
+        setInlineEditState(null);
+      } else {
+        if (isAddingNewModel) handleCancelAddModel();
+        const editApi = convertProfileToApiConfig(profile, selectedVendor);
+        setInlineEditState({ profileId: profile.id, api: editApi });
+      }
+    };
+
+    const isReadOnly = !!(api.isBuiltin && api.isReadOnly);
+
+    return (
+      <div key={profile.id} className={cn(
+        "group/card relative border border-transparent",
+        isEditing
+          ? cn(settingsQuietRowBaseClassName, settingsQuietActiveSurfaceClassName)
+          : settingsQuietInteractiveRowClassName
+      )}>
+        {/* 卡片头部 */}
+        <div className="p-3">
+          <div className="flex items-center gap-3">
+            <ProviderIcon modelId={api.model} size={20} showTooltip={false} />
+            <div className="flex-1 min-w-0 space-y-0.5">
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-medium text-foreground truncate">{profile.label || api.name}</span>
+                {!profile.enabled && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground whitespace-nowrap shrink-0">{t('settings:status.disabled')}</span>}
+                {isReadOnly && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary whitespace-nowrap shrink-0">{t('settings:api_config.badge_builtin_free')}</span>}
+              </div>
+              <div className="flex items-center gap-1.5">
+                <span className="font-mono text-xs text-muted-foreground truncate">{api.model}</span>
+                <ModelCapabilityIcons
+                  isMultimodal={profile.isMultimodal}
+                  isReasoning={profile.isReasoning}
+                  isEmbedding={profile.isEmbedding}
+                  isReranker={profile.isReranker}
+                  supportsTools={profile.supportsTools}
+                  size="xs"
+                />
+              </div>
+            </div>
+
+            {/* 操作区域：次要操作 + 编辑 + 开关（开关在最右） */}
+            <div className="flex items-center gap-1.5 shrink-0">
+              {/* 次要操作：hover 时显示 */}
+              <div className="flex items-center gap-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity duration-150">
+                <NotionButton
+                  size="sm"
+                  variant="ghost"
+                  iconOnly
+                  className={cn(profile.isFavorite && "text-yellow-500 opacity-100")}
+                  onClick={() => handleToggleFavorite(profile)}
+                  disabled={vendorBusy}
+                  title={t('settings:api_config.toggle_favorite')}
+                >
+                  <Star className="h-3.5 w-3.5" weight={profile.isFavorite ? 'fill' : 'regular'} />
+                </NotionButton>
+                <NotionButton
+                  size="sm"
+                  variant="ghost"
+                  iconOnly
+                  onClick={() => void testApiConnection(api)}
+                  disabled={testingApi === api.id || vendorBusy}
+                  title={t('settings:api_config.test_button')}
+                >
+                  {testingApi === api.id ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <Pulse className="h-3.5 w-3.5" />}
+                </NotionButton>
+
+                {/* 删除：触发全局确认对话框 */}
+                {!isReadOnly ? (
+                  <NotionButton
+                    size="sm"
+                    variant="ghost"
+                    iconOnly
+                    disabled={vendorBusy}
+                    title={t('common:actions.delete')}
+                    className="text-muted-foreground hover:text-destructive"
+                    onClick={() => handleDeleteModelProfile(profile)}
+                  >
+                    <Trash className="h-3.5 w-3.5" />
+                  </NotionButton>
+                ) : (
+                  /* 占位：保持对齐 */
+                  <div className="h-7 w-7 shrink-0" />
+                )}
+              </div>
+              {/* 编辑按钮 */}
+              <NotionButton
+                size="sm"
+                variant={isEditing ? "default" : "ghost"}
+                iconOnly
+                onClick={handleEditClick}
+                disabled={vendorBusy}
+                title={t('common:actions.edit')}
+              >
+                <PencilSimple className="h-3.5 w-3.5" />
+              </NotionButton>
+              {/* 开关：最右 */}
+              <Switch
+                checked={profile.enabled}
+                onCheckedChange={value => handleToggleModelProfile(profile, value)}
+                disabled={isReadOnly || vendorBusy}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+    );
+  };
 
   return (
     <>
@@ -370,16 +497,36 @@ export const VendorDetailPanel: React.FC = () => {
       <div className="w-full pt-4">
         <div className="space-y-6">
           {!selectedVendorIsSiliconflow && (
-            <div className="flex flex-wrap items-center justify-between gap-2">
+            <div
+              className={cn(
+                'sticky top-0 md:top-4 z-10 -mx-1 px-1 py-3',
+                'bg-[color:var(--shell-workspace-panel)]/85',
+                'supports-[backdrop-filter]:bg-[color:var(--shell-workspace-panel)]/65 supports-[backdrop-filter]:backdrop-blur-md',
+                'border-b border-border/40',
+                'flex flex-wrap items-center justify-between gap-2'
+              )}
+            >
               <div className="min-w-0 flex-1 space-y-1">
                 <h3 className="text-lg font-medium text-foreground">{t('settings:vendor_panel.model_list_title')}</h3>
                 <p className="text-sm text-muted-foreground">{t('settings:vendor_panel.model_list_desc', { count: selectedVendorModels.length })}</p>
               </div>
-              <NotionButton size="sm" variant="primary" className="flex-shrink-0" onClick={() => {
-                handleAddModelInline(selectedVendor);
-              }}>
-                <Plus className="h-3.5 w-3.5" />{t('settings:vendor_panel.add_model_button')}
-              </NotionButton>
+              <div className="flex flex-shrink-0 items-center gap-2">
+                {onAddVendorModels && supportsModelFetching(selectedVendor.providerType) && (
+                  <NotionButton
+                    size="sm"
+                    variant="ghost"
+                    onClick={() => setIsModelFetcherDialogOpen(true)}
+                  >
+                    <DownloadSimple className="h-3.5 w-3.5" />
+                    {t('settings:vendor_panel.fetch_models_button')}
+                  </NotionButton>
+                )}
+                <NotionButton size="sm" variant="primary" onClick={() => {
+                  handleAddModelInline(selectedVendor);
+                }}>
+                  <Plus className="h-3.5 w-3.5" />{t('settings:vendor_panel.add_model_button')}
+                </NotionButton>
+              </div>
             </div>
           )}
 
@@ -389,133 +536,61 @@ export const VendorDetailPanel: React.FC = () => {
                 <SiliconFlowSection variant="models" onCreateConfig={handleSiliconFlowConfig} onBatchCreateConfigs={handleBatchCreateConfigs} onBatchConfigsCreated={handleBatchConfigsCreated} showMessage={showGlobalNotification} />
               </div>
             )}
-            {!selectedVendorIsSiliconflow && onAddVendorModels && supportsModelFetching(selectedVendor.providerType) && (
-              <div className="mb-6">
-                <VendorModelFetcher
-                  key={selectedVendor.id}
-                  vendor={selectedVendor}
-                  existingModelIds={selectedVendorModels.map(({ profile }) => profile.model)}
-                  onAddModels={onAddVendorModels}
-                />
-              </div>
-            )}
             <div className="space-y-3">
               {selectedVendorModels.length === 0 && !isAddingNewModel ? (
                 <div className="rounded-lg border border-dashed border-border/60 p-8 text-center text-sm text-muted-foreground bg-muted/10">{t('settings:vendor_panel.model_empty')}</div>
-              ) : (
-                <div className="max-h-[min(60vh,560px)] overflow-y-auto overscroll-contain space-y-3 pr-1 -mr-1">
-                  {selectedVendorModels.map(({ profile, api }) => {
-                    const isEditing = inlineEditState?.profileId === profile.id;
-
-                    const handleEditClick = () => {
-                      if (isEditing) {
-                        setInlineEditState(null);
-                      } else {
-                        if (isAddingNewModel) handleCancelAddModel();
-                        const editApi = convertProfileToApiConfig(profile, selectedVendor);
-                        setInlineEditState({ profileId: profile.id, api: editApi });
-                      }
-                    };
-
-                    const isReadOnly = !!(api.isBuiltin && api.isReadOnly);
-
+              ) : shouldGroupByFamily ? (
+                <div className="space-y-3">
+                  {familyGroups.map((group) => {
+                    const isCollapsed = collapsedFamilies.has(group.family.id);
+                    const groupId = `vendor-family-${group.family.id}`;
                     return (
-                      <div key={profile.id} className={cn(
-                        "group/card relative border border-transparent",
-                        isEditing
-                          ? cn(settingsQuietRowBaseClassName, settingsQuietActiveSurfaceClassName)
-                          : settingsQuietInteractiveRowClassName
-                      )}>
-                        {/* 卡片头部 */}
-                        <div className="p-3">
-                          <div className="flex items-center gap-3">
-                            <ProviderIcon modelId={api.model} size={20} showTooltip={false} />
-                            <div className="flex-1 min-w-0 space-y-0.5">
-                              <div className="flex items-center gap-2">
-                                <span className="text-sm font-medium text-foreground truncate">{profile.label || api.name}</span>
-                                {!profile.enabled && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-muted text-muted-foreground whitespace-nowrap shrink-0">{t('settings:status.disabled')}</span>}
-                                {isReadOnly && <span className="text-[10px] px-1.5 py-0.5 rounded-full bg-primary/10 text-primary whitespace-nowrap shrink-0">{t('settings:api_config.badge_builtin_free')}</span>}
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                <span className="font-mono text-xs text-muted-foreground truncate">{api.model}</span>
-                                <ModelCapabilityIcons
-                                  isMultimodal={profile.isMultimodal}
-                                  isReasoning={profile.isReasoning}
-                                  isEmbedding={profile.isEmbedding}
-                                  isReranker={profile.isReranker}
-                                  supportsTools={profile.supportsTools}
-                                  size="xs"
-                                />
-                              </div>
-                            </div>
-
-                            {/* 操作区域：次要操作 + 编辑 + 开关（开关在最右） */}
-                            <div className="flex items-center gap-1.5 shrink-0">
-                              {/* 次要操作：hover 时显示 */}
-                              <div className="flex items-center gap-0.5 opacity-0 group-hover/card:opacity-100 transition-opacity duration-150">
-                                <NotionButton
-                                  size="sm"
-                                  variant="ghost"
-                                  iconOnly
-                                  className={cn(profile.isFavorite && "text-yellow-500 opacity-100")}
-                                  onClick={() => handleToggleFavorite(profile)}
-                                  disabled={vendorBusy}
-                                  title={t('settings:api_config.toggle_favorite')}
-                                >
-                                  <Star className="h-3.5 w-3.5" weight={profile.isFavorite ? 'fill' : 'regular'} />
-                                </NotionButton>
-                                <NotionButton
-                                  size="sm"
-                                  variant="ghost"
-                                  iconOnly
-                                  onClick={() => void testApiConnection(api)}
-                                  disabled={testingApi === api.id || vendorBusy}
-                                  title={t('settings:api_config.test_button')}
-                                >
-                                  {testingApi === api.id ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <Pulse className="h-3.5 w-3.5" />}
-                                </NotionButton>
-
-                                {/* 删除：触发全局确认对话框 */}
-                                {!isReadOnly ? (
-                                  <NotionButton
-                                    size="sm"
-                                    variant="ghost"
-                                    iconOnly
-                                    disabled={vendorBusy}
-                                    title={t('common:actions.delete')}
-                                    className="text-muted-foreground hover:text-destructive"
-                                    onClick={() => handleDeleteModelProfile(profile)}
-                                  >
-                                    <Trash className="h-3.5 w-3.5" />
-                                  </NotionButton>
-                                ) : (
-                                  /* 占位：保持对齐 */
-                                  <div className="h-7 w-7 shrink-0" />
-                                )}
-                              </div>
-                              {/* 编辑按钮 */}
-                              <NotionButton
-                                size="sm"
-                                variant={isEditing ? "default" : "ghost"}
-                                iconOnly
-                                onClick={handleEditClick}
-                                disabled={vendorBusy}
-                                title={t('common:actions.edit')}
-                              >
-                                <PencilSimple className="h-3.5 w-3.5" />
-                              </NotionButton>
-                              {/* 开关：最右 */}
-                              <Switch
-                                checked={profile.enabled}
-                                onCheckedChange={value => handleToggleModelProfile(profile, value)}
-                                disabled={isReadOnly || vendorBusy}
-                              />
+                      <section
+                        key={group.family.id}
+                        className="rounded-lg border border-border/40 overflow-hidden"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCollapsedFamilies((prev) => {
+                              const next = new Set(prev);
+                              if (next.has(group.family.id)) next.delete(group.family.id);
+                              else next.add(group.family.id);
+                              return next;
+                            });
+                          }}
+                          className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover:bg-muted/30 transition-colors"
+                          aria-expanded={!isCollapsed}
+                          aria-controls={groupId}
+                        >
+                          <div className="flex items-baseline gap-2 min-w-0">
+                            <span className="text-sm font-medium text-foreground truncate">{group.family.label}</span>
+                            <span className="text-xs text-muted-foreground/60 shrink-0 tabular-nums">{group.items.length}</span>
+                          </div>
+                          <span className="text-muted-foreground shrink-0" aria-hidden="true">
+                            {isCollapsed ? <CaretDown className="h-4 w-4" /> : <CaretUp className="h-4 w-4" />}
+                          </span>
+                        </button>
+                        <div
+                          id={groupId}
+                          className={cn(
+                            'grid transition-all duration-300 ease-in-out',
+                            isCollapsed ? 'grid-rows-[0fr]' : 'grid-rows-[1fr]'
+                          )}
+                        >
+                          <div className="overflow-hidden">
+                            <div className="px-2 pb-2 pt-1 space-y-2">
+                              {group.items.map(renderModelCard)}
                             </div>
                           </div>
                         </div>
-                      </div>
+                      </section>
                     );
                   })}
+                </div>
+              ) : (
+                <div className="space-y-3">
+                  {selectedVendorModels.map(renderModelCard)}
                 </div>
               )}
             </div>
@@ -571,6 +646,29 @@ export const VendorDetailPanel: React.FC = () => {
           </CustomScrollArea>
         </SheetContent>
       </Sheet>
+
+      {/* 获取模型列表 Dialog */}
+      {onAddVendorModels && supportsModelFetching(selectedVendor.providerType) && (
+        <Dialog open={isModelFetcherDialogOpen} onOpenChange={setIsModelFetcherDialogOpen}>
+          <DialogContent className="w-full max-w-2xl p-0 overflow-hidden">
+            <DialogHeader className="px-5 pt-5 pb-4 border-b border-border/40">
+              <DialogTitle>{t('settings:vendor_model_fetcher.dialog_title')}</DialogTitle>
+              <DialogDescription>
+                {t('settings:vendor_model_fetcher.dialog_description', { vendor: selectedVendor.name || providerLabel })}
+              </DialogDescription>
+            </DialogHeader>
+            <div className="p-4">
+              <VendorModelFetcher
+                key={selectedVendor.id}
+                vendor={selectedVendor}
+                existingModelIds={selectedVendorModels.map(({ profile }) => profile.model)}
+                onAddModels={onAddVendorModels}
+                embedded="dialog"
+              />
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </>
   );
 };

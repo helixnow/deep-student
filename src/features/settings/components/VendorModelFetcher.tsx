@@ -7,7 +7,7 @@
 
 import React, { useState, useCallback, useMemo, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, Clock, DownloadSimple, MagnifyingGlass, Plus, Spinner, Stack } from '@phosphor-icons/react';
+import { CaretDown, CaretUp, Check, Clock, DownloadSimple, MagnifyingGlass, Plus, Spinner, Stack } from '@phosphor-icons/react';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { ProviderIcon } from '@/components/ui/ProviderIcon';
@@ -16,6 +16,7 @@ import { Input } from '@/components/ui/shad/Input';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { TauriAPI } from '@/utils/tauriApi';
 import { cn } from '@/lib/utils';
+import { groupByModelFamily } from './modelFamily';
 import type { VendorConfig } from '@/types';
 
 const GEMINI_PROVIDER = 'gemini';
@@ -51,12 +52,18 @@ interface VendorModelFetcherProps {
   vendor: VendorConfig;
   existingModelIds: string[];
   onAddModels: (vendor: VendorConfig, models: Array<{ modelId: string; label: string }>) => Promise<void>;
+  /**
+   * 'card' (default): 内嵌卡片样式（圆角边框 + bg-muted/10 外壳，列表 max-h-60）。
+   * 'dialog': 由外层 Dialog 提供边框/背景，组件移除外壳并放宽列表高度至 max-h-[60vh]。
+   */
+  embedded?: 'card' | 'dialog';
 }
 
 export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
   vendor,
   existingModelIds,
   onAddModels,
+  embedded = 'card',
 }) => {
   const { t } = useTranslation(['settings', 'common']);
   const [loading, setLoading] = useState(false);
@@ -66,6 +73,7 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
   const [lastFetchTime, setLastFetchTime] = useState<number | null>(null);
   const [isFromCache, setIsFromCache] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
+  const [existingExpanded, setExistingExpanded] = useState(false);
 
   const cacheKey = `vendor_models.${vendor.id}`;
   const cacheTimeKey = `vendor_models_time.${vendor.id}`;
@@ -315,6 +323,13 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
   const newModels = useMemo(() => filteredModels.filter(m => !existingSet.has(m.id.toLowerCase())), [filteredModels, existingSet]);
   const existingModelsInList = useMemo(() => filteredModels.filter(m => existingSet.has(m.id.toLowerCase())), [filteredModels, existingSet]);
 
+  // 可添加模型按家族分组（GPT-4 / Claude Opus / Gemini 2.5 …）
+  // 单家族时也分组，因为远程 list 经常 100+ 模型，sticky 小标题帮助定位
+  const newModelGroups = useMemo(
+    () => groupByModelFamily(newModels, (m) => m.id),
+    [newModels],
+  );
+
   // 单条添加
   const handleAddSingle = async (model: FetchedModel) => {
     setAddingId(model.id);
@@ -352,7 +367,12 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
   };
 
   return (
-    <div className="rounded-lg border border-border/50 bg-muted/10 overflow-hidden">
+    <div
+      className={cn(
+        'overflow-hidden',
+        embedded === 'card' && 'rounded-lg border border-border/50 bg-muted/10'
+      )}
+    >
       {/* 头部：搜索框 + 获取按钮 */}
       <div className="flex items-center gap-2 px-3 py-2.5 border-b border-border/30">
         <div className="relative flex-1 min-w-0">
@@ -417,55 +437,105 @@ export const VendorModelFetcher: React.FC<VendorModelFetcherProps> = ({
           </div>
 
           {/* 列表：使用原生 overflow，避免 OverlayScrollbars 在 max-height（无固定 height）父级下高度解析失败导致不滚动。 */}
-          <div className="max-h-60 overflow-y-auto overscroll-contain">
+          <div
+            className={cn(
+              'overflow-y-auto overscroll-contain',
+              embedded === 'dialog' ? 'max-h-[60vh]' : 'max-h-60'
+            )}
+          >
             <div className="py-1">
-              {/* 可添加的模型 */}
-              {newModels.map(m => (
-                <button
-                  key={m.id}
-                  type="button"
-                  onClick={() => handleAddSingle(m)}
-                  disabled={addingId === m.id}
-                  className={cn(
-                    "flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left transition-colors",
-                    "hover:bg-[var(--interactive-hover)] text-foreground",
-                    addingId === m.id && "opacity-50 pointer-events-none"
-                  )}
-                >
-                  <ProviderIcon modelId={m.id} size={16} showTooltip={false} variant="color" style={{ opacity: 0.7 }} />
-                  <span className="truncate font-mono flex-1 min-w-0">{m.label}</span>
-                  <span className="shrink-0 text-muted-foreground/50 group-hover:text-primary">
-                    {addingId === m.id
-                      ? <Spinner className="h-3.5 w-3.5 animate-spin" />
-                      : <Plus className="h-3.5 w-3.5" />
-                    }
-                  </span>
-                </button>
+              {/* 可添加的模型 - 按家族分组 */}
+              {newModelGroups.map((group) => (
+                <div key={group.family.id}>
+                  <div
+                    className={cn(
+                      'sticky top-0 z-[1] flex items-baseline gap-1.5',
+                      'px-3 py-1 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70',
+                      'bg-background/90 supports-[backdrop-filter]:bg-background/65 supports-[backdrop-filter]:backdrop-blur',
+                      'border-b border-border/30'
+                    )}
+                  >
+                    <span>{group.family.label}</span>
+                    <span className="text-muted-foreground/40" aria-hidden="true">·</span>
+                    <span className="tabular-nums normal-case tracking-normal text-muted-foreground/60">{group.items.length}</span>
+                  </div>
+                  {group.items.map(m => (
+                    <button
+                      key={m.id}
+                      type="button"
+                      onClick={() => handleAddSingle(m)}
+                      disabled={addingId === m.id}
+                      className={cn(
+                        "flex items-center gap-2 w-full px-3 py-1.5 text-xs text-left transition-colors",
+                        "hover:bg-[var(--interactive-hover)] text-foreground",
+                        addingId === m.id && "opacity-50 pointer-events-none"
+                      )}
+                    >
+                      <ProviderIcon modelId={m.id} size={16} showTooltip={false} variant="color" style={{ opacity: 0.7 }} />
+                      <span className="truncate font-mono flex-1 min-w-0">{m.label}</span>
+                      <span className="shrink-0 text-muted-foreground/50 group-hover:text-primary">
+                        {addingId === m.id
+                          ? <Spinner className="h-3.5 w-3.5 animate-spin" />
+                          : <Plus className="h-3.5 w-3.5" />
+                        }
+                      </span>
+                    </button>
+                  ))}
+                </div>
               ))}
 
-              {/* 已添加的模型 */}
+              {/* 已添加的模型 - 可折叠 */}
               {existingModelsInList.length > 0 && (
                 <>
                   {newModels.length > 0 && <div className="my-1 border-t border-border/20" />}
-                  <div className="px-3 py-1 text-[10px] text-muted-foreground/50 uppercase tracking-wider">
-                    {t('settings:vendor_model_fetcher.already_added')}
-                  </div>
-                  {existingModelsInList.map(m => (
-                    <div
-                      key={m.id}
-                      className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-muted-foreground/40"
-                    >
-                      <ProviderIcon
-                        modelId={m.id}
-                        size={16}
-                        showTooltip={false}
-                        variant="color"
-                        style={{ filter: 'grayscale(1)', opacity: 0.3 }}
-                      />
-                      <span className="truncate font-mono flex-1 min-w-0">{m.label}</span>
-                      <Check className="h-3.5 w-3.5 text-green-500/40 shrink-0" />
+                  <button
+                    type="button"
+                    onClick={() => setExistingExpanded(v => !v)}
+                    aria-expanded={existingExpanded}
+                    aria-controls="vendor-model-fetcher-existing-list"
+                    className={cn(
+                      'flex items-center justify-between w-full gap-2 px-3 py-1.5',
+                      'text-[10px] uppercase tracking-wider text-muted-foreground/60',
+                      'hover:text-muted-foreground hover:bg-[var(--interactive-hover)]',
+                      'transition-colors'
+                    )}
+                  >
+                    <span className="flex items-baseline gap-1.5">
+                      <span>{t('settings:vendor_model_fetcher.already_added')}</span>
+                      <span className="tabular-nums normal-case tracking-normal text-muted-foreground/40">
+                        {existingModelsInList.length}
+                      </span>
+                    </span>
+                    <span className="shrink-0 text-muted-foreground/50" aria-hidden="true">
+                      {existingExpanded ? <CaretUp className="h-3 w-3" /> : <CaretDown className="h-3 w-3" />}
+                    </span>
+                  </button>
+                  <div
+                    id="vendor-model-fetcher-existing-list"
+                    className={cn(
+                      'grid transition-all duration-300 ease-in-out',
+                      existingExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]'
+                    )}
+                  >
+                    <div className="overflow-hidden">
+                      {existingModelsInList.map(m => (
+                        <div
+                          key={m.id}
+                          className="flex items-center gap-2 w-full px-3 py-1.5 text-xs text-muted-foreground/40"
+                        >
+                          <ProviderIcon
+                            modelId={m.id}
+                            size={16}
+                            showTooltip={false}
+                            variant="color"
+                            style={{ filter: 'grayscale(1)', opacity: 0.3 }}
+                          />
+                          <span className="truncate font-mono flex-1 min-w-0">{m.label}</span>
+                          <Check className="h-3.5 w-3.5 text-green-500/40 shrink-0" />
+                        </div>
+                      ))}
                     </div>
-                  ))}
+                  </div>
                 </>
               )}
 

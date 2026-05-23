@@ -93,11 +93,16 @@ type MotionConflictProps = 'onDrag' | 'onDragStart' | 'onDragEnd' | 'onAnimation
 
 interface DialogContentProps extends Omit<React.HTMLAttributes<HTMLDivElement>, MotionConflictProps> {
   closeOnOverlayClick?: boolean;
-  /** 
+  /**
    * 指定 Dialog 渲染的容器选择器（如 '#main-content'）
    * 如果提供，遮罩和内容将相对于该容器定位而不是整个视口
    */
   containerSelector?: string;
+  /**
+   * 自定义遮罩层 className。默认使用 var(--overlay) 实色遮罩（无高斯模糊），
+   * 颜色随主题切换，符合项目设计语义。
+   */
+  overlayClassName?: string;
 }
 
 // Internal portal component to handle animations
@@ -134,13 +139,14 @@ function DialogPortal({
   );
 }
 
-export function DialogContent({ 
-  className, 
-  children, 
-  closeOnOverlayClick = true, 
+export function DialogContent({
+  className,
+  children,
+  closeOnOverlayClick = true,
   containerSelector,
-  onClick, 
-  ...rest 
+  overlayClassName,
+  onClick,
+  ...rest
 }: DialogContentProps) {
   const ctx = React.useContext(DialogContext);
   if (!ctx) return null;
@@ -150,9 +156,13 @@ export function DialogContent({
 
   return (
     <DialogPortal open={ctx.open} containerSelector={containerSelector}>
-      {/* Overlay - 独立层，不影响内容定位 */}
+      {/* Overlay - 实色遮罩，无高斯模糊。颜色随主题切换。 */}
       <motion.div
-        className={cn("inset-0 bg-black/40 backdrop-blur-sm", positionClass)}
+        className={cn(
+          'inset-0 bg-[color:var(--overlay)]',
+          positionClass,
+          overlayClassName
+        )}
         style={{ zIndex: Z_INDEX.modal }}
         variants={overlayVariants}
         initial="hidden"
