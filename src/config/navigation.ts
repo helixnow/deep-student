@@ -44,7 +44,7 @@ export type NavItem = {
  * @param t - i18next翻译函数
  * @returns 导航项数组
  */
-export const createNavItems = (t: TFunction): NavItem[] => {
+export const createNavItems = (t: TFunction, includeUILab = false): NavItem[] => {
   const items: NavItem[] = [
     // 🔧 Chat V2 放第一位
     {
@@ -80,11 +80,15 @@ export const createNavItems = (t: TFunction): NavItem[] => {
       view: 'template-management',
       icon: StudyBlocksIcon,
     },
-    {
-      name: t('sidebar:navigation.ui_lab', '样式调试'),
-      view: 'ui-lab',
-      icon: StudyBlocksIcon,
-    },
+    ...(includeUILab
+      ? [
+          {
+            name: t('sidebar:navigation.ui_lab', '样式调试'),
+            view: 'ui-lab' as NavViewType,
+            icon: StudyBlocksIcon,
+          },
+        ]
+      : []),
     {
       name: t('sidebar:navigation.settings', '设置'),
       view: 'settings',
@@ -98,7 +102,7 @@ export const createNavItems = (t: TFunction): NavItem[] => {
 /**
  * 导航项总数（用于布局计算）
  */
-export const NAV_ITEMS_COUNT = 8;
+export const NAV_ITEMS_COUNT = 7;
 
 /**
  * 估算单个导航项的平均宽度（像素）

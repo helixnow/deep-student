@@ -10,6 +10,7 @@ import { getCurrentWindow } from '@tauri-apps/api/window';
 import { useTranslation } from 'react-i18next';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { createNavItems } from '../../config/navigation';
+import { useIsUILabEnabled } from '../../utils/uiLabToggle';
 import { getPlatform } from '../../utils/platform';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import type { CurrentView } from '@/types/navigation';
@@ -124,9 +125,10 @@ export default function Topbar({ currentView, onNavigate, sidebarCollapsed, onTo
   const { t } = useTranslation(['sidebar', 'common']);
   const { isSmallScreen } = useBreakpoint(); // 后备检测：小屏幕（<768px）
   const platform = useMemo(() => getPlatform(), []);
-  
+  const uiLabEnabled = useIsUILabEnabled();
+
   // 使用统一的导航项配置（与MobileNavDrawer完全一致）
-  const navItems = useMemo(() => createNavItems(t), [t]);
+  const navItems = useMemo(() => createNavItems(t, uiLabEnabled), [t, uiLabEnabled]);
   
   // 窗口控制函数（Windows专用）
   const handleMinimize = useCallback(async () => {
@@ -602,7 +604,7 @@ export default function Topbar({ currentView, onNavigate, sidebarCollapsed, onTo
     return () => el.removeEventListener('wheel', onWheel as any);
   }, [navRef]);
 
-  const primary = useMemo(() => navItems, []);
+  const primary = useMemo(() => navItems, [navItems]);
   const activeIndex = useMemo(() => primary.findIndex((it) => it.view === currentView), [primary, currentView]);
 
   const itemBase =

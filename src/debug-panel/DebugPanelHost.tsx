@@ -43,6 +43,7 @@ import SubagentMessageFlowDebugPlugin from './plugins/SubagentMessageFlowDebugPl
 import ThinkingBlockDebugPlugin from './plugins/ThinkingBlockDebugPlugin';
 import MarkdownStreamingProfilerPlugin from './plugins/MarkdownStreamingProfilerPlugin';
 import { debugMasterSwitch } from './debugMasterSwitch';
+import { useUILabToggle } from '../utils/uiLabToggle';
 import DstuDebugPlugin from './plugins/DstuDebugPlugin';
 import AttachmentInjectionDebugPlugin from './plugins/AttachmentInjectionDebugPlugin';
 import AttachmentOcrRequestAuditPlugin from './plugins/AttachmentOcrRequestAuditPlugin';
@@ -640,6 +641,8 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
     debugMasterSwitch.toggle();
   }, []);
 
+  const [uiLabEnabled, toggleUILab] = useUILabToggle();
+
   const toggleFavorite = React.useCallback((pluginId: string) => {
     setFavoriteIds(prev => {
       const next = new Set(prev);
@@ -921,6 +924,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
           </div>
           <div className="flex items-center gap-1.5" onMouseDown={ev => ev.stopPropagation()}>
             {!collapsed && (
+              <>
               <NotionButton
                 onClick={handleToggleMasterSwitch}
                 variant={masterSwitchEnabled ? 'success' : 'ghost'}
@@ -936,6 +940,19 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                   : t('debug_panel.logs_off', '日志关')
                 }
               </NotionButton>
+              <NotionButton
+                onClick={toggleUILab}
+                variant={uiLabEnabled ? 'warning' : 'ghost'}
+                size="sm"
+                className="text-[10px] h-6 px-2"
+                title={uiLabEnabled
+                  ? '样式调试已开启，点击关闭'
+                  : '样式调试已关闭，点击开启'
+                }
+              >
+                {uiLabEnabled ? 'UI Lab 开' : 'UI Lab 关'}
+              </NotionButton>
+              </>
             )}
             {collapsed ? (
               <NotionButton
