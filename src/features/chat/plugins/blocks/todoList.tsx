@@ -73,32 +73,32 @@ const StatusIcon: React.FC<StatusIconProps> = ({ status, index }) => {
   switch (status) {
     case 'running':
       return (
-        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-blue-500 text-white text-[9px] font-bold flex-shrink-0">
+        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[color:hsl(var(--primary))] text-[color:hsl(var(--primary-foreground))] text-[9px] font-bold flex-shrink-0">
           {index + 1}
         </span>
       );
     case 'completed':
       return (
-        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-green-500/20 flex-shrink-0">
-          <Check size={12} className="text-green-500" strokeWidth={3} />
+        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[color:hsl(var(--success)/0.18)] flex-shrink-0">
+          <Check size={12} className="text-[color:hsl(var(--success))]" strokeWidth={3} />
         </span>
       );
     case 'failed':
       return (
-        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-red-500/20 flex-shrink-0">
-          <X size={12} className="text-red-500" strokeWidth={3} />
+        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[color:hsl(var(--destructive)/0.14)] flex-shrink-0">
+          <X size={12} className="text-[color:hsl(var(--destructive))]" strokeWidth={3} />
         </span>
       );
     case 'skipped':
       return (
-        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-muted flex-shrink-0">
-          <SkipForward size={10} className="text-muted-foreground" />
+        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full bg-[color:hsl(var(--muted))] flex-shrink-0">
+          <SkipForward size={10} className="text-[color:var(--text-muted)]" />
         </span>
       );
     default: // pending
       return (
-        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-muted-foreground/30 flex-shrink-0">
-          <Circle size={6} className="text-muted-foreground/30" fill="currentColor" />
+        <span className="inline-flex items-center justify-center w-4 h-4 rounded-full border border-[color:var(--border-soft)] flex-shrink-0">
+          <Circle size={6} className="text-[color:var(--text-muted)] opacity-25" fill="currentColor" />
         </span>
       );
   }
@@ -212,9 +212,9 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
         />
         <span className={cn(
           'truncate',
-          !isExpanded && changedStep?.status === 'completed' && 'text-green-600 dark:text-green-400',
-          !isExpanded && changedStep?.status === 'running' && 'text-blue-600 dark:text-blue-400',
-          !isExpanded && changedStep?.status === 'failed' && 'text-red-600 dark:text-red-400'
+          !isExpanded && changedStep?.status === 'completed' && 'text-[color:hsl(var(--success))]',
+          !isExpanded && changedStep?.status === 'running' && 'text-[color:hsl(var(--primary))]',
+          !isExpanded && changedStep?.status === 'failed' && 'text-[color:hsl(var(--destructive))]'
         )}>
           {getCollapsedSummary()}
         </span>
@@ -239,13 +239,13 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
                     className={cn(
                       'flex items-start gap-2 px-2 py-1',
                       'text-xs',
-                      step.status === 'completed' && 'text-green-600 dark:text-green-400',
-                      step.status === 'running' && 'text-foreground font-medium',
-                      step.status === 'failed' && 'text-red-600 dark:text-red-400',
-                      step.status === 'skipped' && 'text-muted-foreground line-through',
-                      step.status === 'pending' && 'text-muted-foreground',
+                      step.status === 'completed' && 'text-[color:hsl(var(--success))]',
+                      step.status === 'running' && 'text-[color:var(--text-primary)] font-medium',
+                      step.status === 'failed' && 'text-[color:hsl(var(--destructive))]',
+                      step.status === 'skipped' && 'text-[color:var(--text-muted)] line-through',
+                      step.status === 'pending' && 'text-[color:var(--text-muted)]',
                       // 🆕 高亮本次变更的步骤
-                      step.id === changedStepId && 'bg-primary/10 -mx-2 px-2 rounded'
+                      step.id === changedStepId && 'bg-[color:hsl(var(--primary)/0.1)] -mx-2 px-2 rounded'
                     )}
                   >
                     <StatusIcon status={step.status} index={index} />
@@ -258,14 +258,14 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
                       </span>
                       {/* 失败时显示错误信息 */}
                       {step.status === 'failed' && step.result && (
-                        <span className="block text-[10px] text-red-500/80 mt-0.5">
+                        <span className="block text-[10px] text-[color:hsl(var(--destructive))] opacity-65 mt-0.5">
                           {step.result}
                         </span>
                       )}
                     </div>
                     {/* 执行中的加载动画 */}
                     {step.status === 'running' && (
-                      <CircleNotch size={12} className="animate-spin text-blue-500 flex-shrink-0 mt-0.5" />
+                      <CircleNotch size={12} className="animate-spin text-[color:hsl(var(--primary))] flex-shrink-0 mt-0.5" />
                     )}
                   </li>
                 ))}
@@ -274,7 +274,7 @@ export const TodoListPanel: React.FC<TodoListPanelProps> = ({
 
             {/* 完成消息 */}
             {isAllDone && message && (
-              <div className="mt-1 text-[10px] text-green-600 dark:text-green-400">
+              <div className="mt-1 text-[10px] text-[color:hsl(var(--success))]">
                 {message}
               </div>
             )}

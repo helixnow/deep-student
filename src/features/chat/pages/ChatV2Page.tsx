@@ -10,10 +10,11 @@
 import React, { useState, useCallback, useEffect, useMemo, useDeferredValue, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
-import { Plus, Chat, PencilSimple, Check, X, SquaresFour, Books, FileText, BookOpen, ClipboardText, Image, File, CircleNotch, DotsSixVertical, List, CaretRight, ArrowClockwise, Folder, ArrowSquareOut } from '@phosphor-icons/react';
+import { Plus, Chat, PencilSimple, Check, X, SquaresFour, Books, FileText, BookOpen, ClipboardText, Image, File, CircleNotch, DotsSixVertical, List, ArrowClockwise, Folder, ArrowSquareOut } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
+import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from 'react-resizable-panels';
 import { cn } from '@/lib/utils';
+import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { ChatContainer } from '../components/ChatContainer';
 import { ChatErrorBoundary } from '../components/ChatErrorBoundary';
@@ -44,6 +45,10 @@ import { usePageMount, pageLifecycleTracker } from '@/debug-panel/hooks/usePageL
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { useMobileHeader, MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
 import { SidebarDrawer } from '@/components/ui/unified-sidebar/SidebarDrawer';
+import { SandboxWorkbenchSurface } from '@/features/sandbox/components/SandboxWorkbenchSurface';
+import { useSandboxWorkbenchStore } from '@/features/sandbox/store/useSandboxWorkbenchStore';
+import { SidebarFrameIcon, SidebarFrameWithLeftRailIcon } from '@/app/shell/DesktopShellIcons';
+import { DESKTOP_SHELL } from '@/app/shell/desktopShell';
 // P1-07: 导入命令面板事件 hook
 import { useCommandEvents, COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 // P1-07: 导入 sessionManager 以访问当前会话 store
@@ -75,6 +80,7 @@ import { useSessionItemRenderer } from './SessionItemRenderer';
 import { useSessionSidebarContent } from './SessionSidebarContent';
 import { getSessionTitleText } from '../utils/sessionTitle';
 import { compareSessionsForSidebar } from '../utils/sessionPin';
+import { StreamPreferencesProvider } from '../components/renderers/StreamPreferencesContext';
 import {
   clearHiddenDraftSessionId,
   clearHiddenDraftSessionMetadata,
@@ -148,6 +154,7 @@ export const ChatV2Page: React.FC = () => {
       if (newId !== prev) {
         setOpenApp(null);
         setAttachmentPreviewOpen(false);
+        useSandboxWorkbenchStore.getState().closeSession();
       }
       return newId;
     });
@@ -158,6 +165,11 @@ export const ChatV2Page: React.FC = () => {
   const [learningHubSheetOpen, setLearningHubSheetOpen] = useState(false);
   const [attachmentPreviewOpen, setAttachmentPreviewOpen] = useState(false);
   const [sessionSheetOpen, setSessionSheetOpen] = useState(false);
+  const sandboxActiveSession = useSandboxWorkbenchStore((state) => state.activeSession);
+  const sandboxWorkbenchOpen = useSandboxWorkbenchStore((state) => state.isOpen);
+  const openSandboxWorkbench = useSandboxWorkbenchStore((state) => state.openWorkbench);
+  const closeSandboxWorkbench = useSandboxWorkbenchStore((state) => state.closeWorkbench);
+  const sandboxDesktopPanelRef = useRef<ImperativePanelHandle>(null);
   // 移动端：资源库右侧滑屏状态
   const [mobileResourcePanelOpen, setMobileResourcePanelOpen] = useState(false);
   // 移动端：分组编辑器资源选择回调（右面板复用，返回 'added'|'removed'|false）
@@ -624,6 +636,202 @@ export const ChatV2Page: React.FC = () => {
     setAttachmentPreviewOpen(false);
   }, []);
 
+  const handleCloseSandbox = useCallback(() => {
+    setOpenApp(null);
+    setAttachmentPreviewOpen(false);
+    setCanvasSidebarOpen(false);
+    setMobileResourcePanelOpen(false);
+  }, [setAttachmentPreviewOpen, setCanvasSidebarOpen, setMobileResourcePanelOpen, setOpenApp]);
+  const otherSecondaryPanelOpen = canvasSidebarOpen || attachmentPreviewOpen;
+
+  const toggleSandboxWorkbench = useCallback(() => {
+    const panel = sandboxDesktopPanelRef.current;
+    if (!panel || !sandboxActiveSession) return;
+
+    if (sandboxWorkbenchOpen) {
+      panel.collapse();
+    } else {
+      openSandboxWorkbench();
+      panel.expand();
+    }
+  }, [openSandboxWorkbench, sandboxActiveSession, sandboxWorkbenchOpen]);
+
+  useEffect(() => {
+    if (isSmallScreen || !sandboxActiveSession || otherSecondaryPanelOpen) return;
+
+    const panel = sandboxDesktopPanelRef.current;
+    if (!panel) return;
+
+    if (sandboxWorkbenchOpen) {
+      panel.expand();
+    } else {
+      panel.collapse();
+    }
+  }, [isSmallScreen, sandboxActiveSession, sandboxWorkbenchOpen, otherSecondaryPanelOpen]);
+
+  const renderDesktopSecondaryPanel = () => {
+    if (!sandboxWorkbenchOpen && !canvasSidebarOpen && !attachmentPreviewOpen) {
+      return null;
+    }
+
+    if (sandboxWorkbenchOpen && sandboxActiveSession) {
+      return (
+        <div className="h-full transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none opacity-100 translate-x-0">
+          <SandboxWorkbenchSurface
+            embedded
+            className="h-full"
+            onClose={handleCloseSandbox}
+          />
+        </div>
+      );
+    }
+
+    if (attachmentPreviewOpen && !canvasSidebarOpen && openApp) {
+      return (
+        <div className="study-shell-panel h-full flex flex-col">
+          {/* 应用标题栏 */}
+          <div className="study-shell-toolbar flex items-center justify-between px-3 py-2 border-b shrink-0">
+            <div className="flex items-center gap-2 min-w-0">
+              {(() => {
+                const AppIcon = getAppIcon(openApp.type);
+                return <AppIcon size={16} className="text-muted-foreground shrink-0" />;
+              })()}
+              <span className="text-sm font-medium truncate">
+                {openApp.title || t('common:untitled')}
+              </span>
+              <span className="text-xs text-muted-foreground">
+                ({t(`learningHub:resourceType.${openApp.type}`, openApp.type)})
+              </span>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label="在学习中心打开" title="在学习中心打开" className="!h-7 !w-7">
+                <ArrowSquareOut size={14} className="text-muted-foreground" />
+              </NotionButton>
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCloseApp} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
+                <X size={16} className="text-muted-foreground" />
+              </NotionButton>
+            </div>
+          </div>
+
+          {/* 应用内容 - 复用 UnifiedAppPanel */}
+          <div className="flex-1 overflow-hidden">
+            <Suspense
+              fallback={
+                <div className="flex items-center justify-center h-full">
+                  <CircleNotch size={24} className="animate-spin text-muted-foreground" />
+                  <span className="ml-2 text-muted-foreground">
+                    {t('common:loading')}
+                  </span>
+                </div>
+              }
+            >
+              <UnifiedAppPanel
+                type={openApp.type}
+                resourceId={openApp.id}
+                dstuPath={openApp.filePath || `/${openApp.id}`}
+                onClose={handleCloseApp}
+                onTitleChange={handleTitleChange}
+                className="h-full"
+              />
+            </Suspense>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <PanelGroup direction="horizontal" className="h-full">
+        {/* Learning Hub 侧边栏 */}
+        <Panel
+          defaultSize={openApp ? 35 : 100}
+          minSize={openApp ? 25 : 100}
+          className="h-full"
+        >
+          <LearningHubSidebar
+            mode="canvas"
+            onClose={toggleCanvasSidebar}
+            onOpenApp={handleOpenApp}
+            className="h-full"
+          />
+        </Panel>
+
+        {/* 应用面板（当有 openApp 时显示） */}
+        {openApp && (
+          <>
+            <PanelResizeHandle className="w-1 bg-border hover:bg-primary/30 transition-colors flex items-center justify-center">
+              <DotsSixVertical size={12} className="text-muted-foreground/50" />
+            </PanelResizeHandle>
+            <Panel
+              defaultSize={65}
+              minSize={40}
+              className="h-full"
+            >
+              <div className="study-shell-panel h-full flex flex-col border-l border-[color:var(--shell-inspector-border)]">
+                {/* 应用标题栏 */}
+                <div className="study-shell-toolbar flex items-center justify-between px-3 py-2 border-b shrink-0">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {(() => {
+                      const AppIcon = getAppIcon(openApp.type);
+                      return <AppIcon size={16} className="text-muted-foreground shrink-0" />;
+                    })()}
+                    <span className="text-sm font-medium truncate">
+                      {openApp.title || t('common:untitled')}
+                    </span>
+                    <span className="text-xs text-muted-foreground">
+                      ({t(`learningHub:resourceType.${openApp.type}`, openApp.type)})
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label="在学习中心打开" title="在学习中心打开" className="!h-7 !w-7">
+                      <ArrowSquareOut size={14} className="text-muted-foreground" />
+                    </NotionButton>
+                    <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCloseApp} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
+                      <X size={16} className="text-muted-foreground" />
+                    </NotionButton>
+                  </div>
+                </div>
+
+                {/* 应用内容 - 复用 UnifiedAppPanel */}
+                <div className="flex-1 overflow-hidden">
+                  <Suspense
+                    fallback={
+                      <div className="flex items-center justify-center h-full">
+                        <CircleNotch size={24} className="animate-spin text-muted-foreground" />
+                        <span className="ml-2 text-muted-foreground">
+                          {t('common:loading')}
+                        </span>
+                      </div>
+                    }
+                  >
+                    <UnifiedAppPanel
+                      type={openApp.type}
+                      resourceId={openApp.id}
+                      dstuPath={openApp.filePath || `/${openApp.id}`}
+                      onClose={handleCloseApp}
+                      onTitleChange={handleTitleChange}
+                      className="h-full"
+                    />
+                  </Suspense>
+                </div>
+              </div>
+            </Panel>
+          </>
+        )}
+      </PanelGroup>
+    );
+  };
+
+  useEffect(() => {
+    if (!sandboxActiveSession) {
+      return;
+    }
+
+    setOpenApp(null);
+    setAttachmentPreviewOpen(false);
+    setCanvasSidebarOpen(false);
+    setMobileResourcePanelOpen(true);
+  }, [sandboxActiveSession, setAttachmentPreviewOpen, setCanvasSidebarOpen, setMobileResourcePanelOpen, setOpenApp]);
+
   const navigateToShellView = useCallback((view: 'learning-hub' | 'skills-management' | 'settings') => {
     window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { detail: { view } }));
   }, []);
@@ -749,10 +957,11 @@ export const ChatV2Page: React.FC = () => {
   );
 
   return (
-    <div className={cn(
-      "study-shell-page chat-v2 absolute inset-0 flex overflow-hidden",
-      isSmallScreen && "flex-col"
-    )}>
+    <StreamPreferencesProvider preset="balanced" mode="blocked">
+      <div className={cn(
+        "study-shell-page chat-v2 absolute inset-0 flex overflow-hidden",
+        isSmallScreen && "flex-col"
+      )}>
       {/* ===== 移动端布局：DeepSeek 风格推拉式侧边栏 ===== */}
       {isSmallScreen ? (
         <MobileSlidingLayout
@@ -768,7 +977,13 @@ export const ChatV2Page: React.FC = () => {
                 paddingBottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
               }}
             >
-              {openApp ? (
+              {sandboxWorkbenchOpen && sandboxActiveSession ? (
+                <SandboxWorkbenchSurface
+                  embedded
+                  className="h-full"
+                  onClose={handleCloseSandbox}
+                />
+              ) : openApp ? (
                 <div className="study-shell-panel h-full flex flex-col">
                   {/* 附件/资源预览标题栏 */}
                   <div className="study-shell-toolbar study-shell-toolbar--floating flex items-center justify-between px-3 py-2 border-b shrink-0 backdrop-blur-lg">
@@ -842,7 +1057,7 @@ export const ChatV2Page: React.FC = () => {
             </div>
           }
           screenPosition={
-            mobileResourcePanelOpen ? 'right' :
+            sandboxWorkbenchOpen || mobileResourcePanelOpen ? 'right' :
             sessionSheetOpen ? 'left' : 'center'
           }
           onScreenPositionChange={(pos: ScreenPosition) => {
@@ -882,169 +1097,88 @@ export const ChatV2Page: React.FC = () => {
 
       {/* 桌面端：主聊天区域 + Canvas 侧边栏 */}
       {!isSmallScreen && (
-        <PanelGroup
-          direction="horizontal"
-          autoSaveId="chat-v2-canvas-layout"
-          className="flex-1 min-w-0 h-full"
-        >
-          {/* 聊天区域 */}
-          <Panel
-            defaultSize={(canvasSidebarOpen || attachmentPreviewOpen) ? 60 : 100}
-            minSize={30}
-            className="h-full"
-          >
+        <PanelGroup direction="horizontal" autoSaveId="chat-v2-canvas-layout" className="flex-1 min-w-0 h-full">
+          <Panel defaultSize={(canvasSidebarOpen || attachmentPreviewOpen || sandboxWorkbenchOpen || sandboxActiveSession) ? 60 : 100} minSize={30} className="h-full">
             {renderMainContent()}
           </Panel>
-
-          {/* Learning Hub 学习资源面板 - 包含侧边栏和应用面板 */}
-          {/* ★ 支持两种打开方式：1) canvasSidebarOpen（从侧边栏打开）2) attachmentPreviewOpen（从附件点击） */}
-          {(canvasSidebarOpen || attachmentPreviewOpen) && (
-          <>
-            <PanelResizeHandle
-              className="w-1.5 bg-border hover:bg-primary/50 active:bg-primary transition-colors cursor-col-resize"
-              title={t('learningHub:toolbar.resize')}
-            />
+          {(sandboxWorkbenchOpen || canvasSidebarOpen || attachmentPreviewOpen) && (
+            <>
+              <PanelResizeHandle
+                className="w-1.5 bg-border hover:bg-primary/50 active:bg-primary transition-colors cursor-col-resize"
+                title={t('learningHub:toolbar.resize')}
+              />
+            </>
+          )}
+          {(sandboxActiveSession || canvasSidebarOpen || attachmentPreviewOpen) && (
             <Panel
-              defaultSize={openApp ? 50 : 30}
+              ref={sandboxDesktopPanelRef}
+              defaultSize={sandboxWorkbenchOpen ? 42 : openApp ? 50 : 30}
               minSize={20}
               maxSize={70}
-              className="h-full"
+              collapsedSize={0}
+              collapsible
+              onCollapse={() => {
+                if (sandboxWorkbenchOpen) {
+                  closeSandboxWorkbench();
+                }
+              }}
+              className="h-full overflow-hidden transition-[flex-grow] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none"
             >
-              {/* 内部使用 PanelGroup 实现侧边栏和应用面板的布局 */}
-              {/* ★ 如果只有附件预览（attachmentPreviewOpen && !canvasSidebarOpen），直接显示应用面板 */}
-              {attachmentPreviewOpen && !canvasSidebarOpen && openApp ? (
-                <div className="study-shell-panel h-full flex flex-col">
-                  {/* 应用标题栏 */}
-                  <div className="study-shell-toolbar flex items-center justify-between px-3 py-2 border-b shrink-0">
-                    <div className="flex items-center gap-2 min-w-0">
-                      {(() => {
-                        const AppIcon = getAppIcon(openApp.type);
-                        return <AppIcon size={16} className="text-muted-foreground shrink-0" />;
-                      })()}
-                      <span className="text-sm font-medium truncate">
-                        {openApp.title || t('common:untitled')}
-                      </span>
-                      <span className="text-xs text-muted-foreground">
-                        ({t(`learningHub:resourceType.${openApp.type}`, openApp.type)})
-                      </span>
-                    </div>
-                    <div className="flex items-center gap-1 shrink-0">
-                      <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label="在学习中心打开" title="在学习中心打开" className="!h-7 !w-7">
-                        <ArrowSquareOut size={14} className="text-muted-foreground" />
-                      </NotionButton>
-                      <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCloseApp} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
-                        <X size={16} className="text-muted-foreground" />
-                      </NotionButton>
-                    </div>
-                  </div>
-
-                  {/* 应用内容 - 复用 UnifiedAppPanel */}
-                  <div className="flex-1 overflow-hidden">
-                    <Suspense
-                      fallback={
-                        <div className="flex items-center justify-center h-full">
-                          <CircleNotch size={24} className="animate-spin text-muted-foreground" />
-                          <span className="ml-2 text-muted-foreground">
-                            {t('common:loading')}
-                          </span>
-                        </div>
-                      }
-                    >
-                      <UnifiedAppPanel
-                        type={openApp.type}
-                        resourceId={openApp.id}
-                        dstuPath={openApp.filePath || `/${openApp.id}`}
-                        onClose={handleCloseApp}
-                        onTitleChange={handleTitleChange}
-                        className="h-full"
-                      />
-                    </Suspense>
-                  </div>
-                </div>
-              ) : (
-                <PanelGroup direction="horizontal" className="h-full">
-                  {/* Learning Hub 侧边栏 */}
-                  <Panel
-                    defaultSize={openApp ? 35 : 100}
-                    minSize={openApp ? 25 : 100}
-                    className="h-full"
-                  >
-                    <LearningHubSidebar
-                      mode="canvas"
-                      onClose={toggleCanvasSidebar}
-                      onOpenApp={handleOpenApp}
-                      className="h-full"
-                    />
-                  </Panel>
-                  
-                  {/* 应用面板（当有 openApp 时显示） */}
-                  {openApp && (
-                    <>
-                      <PanelResizeHandle className="w-1 bg-border hover:bg-primary/30 transition-colors flex items-center justify-center">
-                        <DotsSixVertical size={12} className="text-muted-foreground/50" />
-                      </PanelResizeHandle>
-                      <Panel
-                        defaultSize={65}
-                        minSize={40}
-                        className="h-full"
-                      >
-                        <div className="study-shell-panel h-full flex flex-col border-l border-[color:var(--shell-inspector-border)]">
-                          {/* 应用标题栏 */}
-                          <div className="study-shell-toolbar flex items-center justify-between px-3 py-2 border-b shrink-0">
-                            <div className="flex items-center gap-2 min-w-0">
-                              {(() => {
-                                const AppIcon = getAppIcon(openApp.type);
-                                return <AppIcon size={16} className="text-muted-foreground shrink-0" />;
-                              })()}
-                              <span className="text-sm font-medium truncate">
-                                {openApp.title || t('common:untitled')}
-                              </span>
-                              <span className="text-xs text-muted-foreground">
-                                ({t(`learningHub:resourceType.${openApp.type}`, openApp.type)})
-                              </span>
-                            </div>
-                            <div className="flex items-center gap-1 shrink-0">
-                              <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenInLearningHub} aria-label="在学习中心打开" title="在学习中心打开" className="!h-7 !w-7">
-                                <ArrowSquareOut size={14} className="text-muted-foreground" />
-                              </NotionButton>
-                              <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCloseApp} aria-label={t('common:close')} title={t('common:close')} className="!h-7 !w-7">
-                                <X size={16} className="text-muted-foreground" />
-                              </NotionButton>
-                            </div>
-                          </div>
-
-                          {/* 应用内容 - 复用 UnifiedAppPanel */}
-                          <div className="flex-1 overflow-hidden">
-                            <Suspense
-                              fallback={
-                                <div className="flex items-center justify-center h-full">
-                                  <CircleNotch size={24} className="animate-spin text-muted-foreground" />
-                                  <span className="ml-2 text-muted-foreground">
-                                    {t('common:loading')}
-                                  </span>
-                                </div>
-                              }
-                            >
-                              <UnifiedAppPanel
-                                type={openApp.type}
-                                resourceId={openApp.id}
-                                dstuPath={openApp.filePath || `/${openApp.id}`}
-                                onClose={handleCloseApp}
-                                onTitleChange={handleTitleChange}
-                                className="h-full"
-                              />
-                            </Suspense>
-                          </div>
-                        </div>
-                      </Panel>
-                    </>
-                  )}
-                </PanelGroup>
-              )}
+              {renderDesktopSecondaryPanel()}
             </Panel>
-          </>
-        )}
+          )}
         </PanelGroup>
+      )}
+
+      {!isSmallScreen && sandboxActiveSession && (
+        <div
+          className="absolute z-20"
+          style={{
+            top: `calc(var(--topbar-safe-area, 0px) + ${(DESKTOP_SHELL.titlebarBaseHeight - 32) / 2}px)`,
+            right: '16px',
+          }}
+        >
+          <CommonTooltip
+            content={sandboxWorkbenchOpen ? '收起沙箱工作台' : '展开沙箱工作台'}
+            position="bottom"
+          >
+            <NotionButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              onClick={toggleSandboxWorkbench}
+              className={cn(
+                'relative overflow-hidden border border-border/80 bg-background/95 shadow-[var(--shadow-shell-soft)] backdrop-blur-md transition-[transform,opacity,background-color,color,border-color,box-shadow] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] hover:bg-background hover:shadow-lg',
+                sandboxWorkbenchOpen
+                  ? '!h-8 !w-8 translate-x-0 rounded-[var(--shell-nav-row-radius)] border-foreground/10 bg-foreground/[0.04] text-foreground'
+                  : '!h-8 !w-8 translate-x-0 rounded-[var(--shell-nav-row-radius)] text-muted-foreground'
+              )}
+              aria-label={sandboxWorkbenchOpen ? '收起沙箱工作台' : '展开沙箱工作台'}
+              title={sandboxWorkbenchOpen ? '收起沙箱工作台' : '展开沙箱工作台'}
+            >
+              <span className="relative block h-[18px] w-[18px]">
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    'absolute inset-0 transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)]',
+                    sandboxWorkbenchOpen ? 'translate-x-[-4px] opacity-0' : 'translate-x-0 opacity-100'
+                  )}
+                >
+                  <SidebarFrameIcon />
+                </span>
+                <span
+                  aria-hidden="true"
+                  className={cn(
+                    'absolute inset-0 transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)]',
+                    sandboxWorkbenchOpen ? 'translate-x-0 opacity-100' : 'translate-x-[4px] opacity-0'
+                  )}
+                >
+                  <SidebarFrameWithLeftRailIcon />
+                </span>
+              </span>
+            </NotionButton>
+          </CommonTooltip>
+        </div>
       )}
 
       {/* 移动端：Learning Hub SidebarDrawer */}
@@ -1127,21 +1261,22 @@ export const ChatV2Page: React.FC = () => {
       )}
 
       {/* CardForge 2.0 Anki 编辑面板 - 监听 open-anki-panel 事件 */}
-      <AnkiPanelHost />
+        <AnkiPanelHost />
 
       {/* 归档分组确认对话框 */}
-      <NotionAlertDialog
-        open={!!pendingArchiveGroup}
-        onOpenChange={(open) => !open && setPendingArchiveGroup(null)}
-        title={t('page.archiveGroupTitle')}
-        description={t('page.archiveGroupDesc', { name: pendingArchiveGroup?.name })}
-        confirmText={t('page.archiveGroupConfirm')}
-        cancelText={t('common:cancel')}
-        confirmVariant="warning"
-        onConfirm={confirmArchiveGroup}
-      />
+        <NotionAlertDialog
+          open={!!pendingArchiveGroup}
+          onOpenChange={(open) => !open && setPendingArchiveGroup(null)}
+          title={t('page.archiveGroupTitle')}
+          description={t('page.archiveGroupDesc', { name: pendingArchiveGroup?.name })}
+          confirmText={t('page.archiveGroupConfirm')}
+          cancelText={t('common:cancel')}
+          confirmVariant="warning"
+          onConfirm={confirmArchiveGroup}
+        />
 
-    </div>
+      </div>
+    </StreamPreferencesProvider>
   );
 };
 

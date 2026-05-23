@@ -470,6 +470,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   leftAccessory,
   extraButtonsRight,
   inputToolSlot,
+  composerInlinePanel,
   className,
   autoFocus = false,
   // 模式插件面板
@@ -2089,6 +2090,12 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
           </div>
         )}
 
+        {composerInlinePanel && (
+          <div className="mb-2 w-full">
+            {composerInlinePanel}
+          </div>
+        )}
+
         {pendingApprovalRequest ? (
           <BlockingInteractionBar
             interaction={pendingApprovalRequest}
@@ -2626,7 +2633,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                               aria-label={runtimeModelSwitchLabel}
                               className={runtimeModelLabel ? '[&_.app-menu-item-content]:whitespace-normal' : undefined}
                               title={runtimeModelSwitchTitle}
-                              onClick={handleOpenRuntimeModelPanel}
+                              onClick={() => handleOpenRuntimeModelPanel?.()}
                             >
                               {runtimeModelLabel ? (
                                 <span className="flex min-w-0 max-w-full flex-col gap-0.5 leading-tight">

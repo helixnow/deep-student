@@ -36,6 +36,7 @@ import { modeRegistry } from '../registry';
 import { useWorkspaceStore } from '../workspace/workspaceStore';
 // 🆕 2026-01-20: 工作区状态恢复
 import { useWorkspaceRestore } from '../workspace/hooks';
+import { AgentTaskPanel } from './AgentTaskPanel';
 import { groupCache } from '../core/store/groupCache';
 // ★ 图谱模块已废弃 - GraphSelectDialog 已移除
 // import { GraphSelectDialog } from '@/components/graph-manager/GraphSelectDialog';
@@ -326,14 +327,16 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
           : 'chat-composer-motion-frame--docked'
       )}
     >
-      <InputBarV2
-        store={store}
-        textbookOpen={textbookOpen}
-        onTextbookToggle={onTextbookToggle}
-        availableModels={availableModels}
-        className={className}
-        autoFocus={autoFocusOnMount}
-      />
+      <div className="w-full">
+        <InputBarV2
+          store={store}
+          textbookOpen={textbookOpen}
+          onTextbookToggle={onTextbookToggle}
+          availableModels={availableModels}
+          className={className}
+          autoFocus={autoFocusOnMount}
+        />
+      </div>
     </div>
   ) : null;
 
@@ -366,6 +369,7 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
             })}
             {renderFooter('chat-empty-composer-layout__footer')}
             {renderDisclaimer('chat-empty-composer-layout__disclaimer')}
+            <AgentTaskPanel store={store} />
             {renderInputBar('chat-empty-composer-layout__input', 'empty')}
           </ThreadContentShell>
         </div>
@@ -382,6 +386,9 @@ export const ChatContainer: React.FC<ChatContainerProps> = ({
 
           {/* AI 内容免责提示（合规要求） */}
           {renderDisclaimer()}
+
+          {/* Agent todo panel — 贴在输入栏上方 */}
+          <AgentTaskPanel store={store} />
 
           {/* 输入栏 */}
           {renderInputBar(undefined, 'docked', shouldAutoFocusMobileEmptyComposer)}

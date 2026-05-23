@@ -11,7 +11,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { Brain, CaretDown } from '@phosphor-icons/react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
-import { StreamingMarkdownRenderer } from '../../components/renderers';
+import { StreamingBlockRenderer } from '../../components/renderers';
 
 const ThinkingBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStreaming }) => {
   const { t } = useTranslation('chatV2');
@@ -75,7 +75,7 @@ const ThinkingBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStre
         )}
       >
         <div className="think-content">
-          <StreamingMarkdownRenderer
+          <StreamingBlockRenderer
             content={content}
             isStreaming={isStreaming ?? false}
             blockId={block.id}

@@ -88,6 +88,9 @@ export interface InputBarV2Props {
   /** 靠近发送区的稳定工具插槽 */
   inputToolSlot?: React.ReactNode;
 
+  /** 输入栏上方的固定 inline 面板（如 todo sample） */
+  composerInlinePanel?: React.ReactNode;
+
   /** 自定义类名 */
   className?: string;
 
@@ -208,6 +211,9 @@ export interface InputBarUIProps {
 
   /** 靠近发送区的稳定工具插槽 */
   inputToolSlot?: React.ReactNode;
+
+  /** 输入栏上方的固定 inline 面板（如 todo sample） */
+  composerInlinePanel?: React.ReactNode;
 
   /** 自定义类名 */
   className?: string;

@@ -24,6 +24,7 @@ import {
   type PlaygroundToolApprovalTemplate,
   type PlaygroundToolLimitTemplate,
 } from './blockingRuntime';
+import type { TodoListOutput } from '../../plugins/blocks/todoList';
 
 // ============================================================================
 // Mock Store 创建
@@ -494,6 +495,29 @@ export function triggerBlockingToolLimit(
   store.getState().setBlockingInteraction(
     createPlaygroundToolLimitInteraction(store, blockId, template),
   );
+  store.setState({ sessionStatus: 'idle' });
+  return blockId;
+}
+
+export function triggerTodoSample(
+  store: StoreApi<ChatStore>,
+  sample: {
+    toolName: string;
+    toolInput: Record<string, unknown>;
+    toolOutput: TodoListOutput;
+    content?: string;
+  },
+): string {
+  const messageId = createAssistantMessage(store);
+  const blockId = injectBlock(store, messageId, {
+    type: 'mcp_tool',
+    status: sample.toolOutput.currentRunning ? 'running' : 'success',
+    toolName: sample.toolName,
+    toolInput: sample.toolInput,
+    toolOutput: sample.toolOutput,
+    content: sample.content,
+  });
+
   store.setState({ sessionStatus: 'idle' });
   return blockId;
 }

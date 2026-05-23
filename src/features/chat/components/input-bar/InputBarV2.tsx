@@ -178,7 +178,7 @@ function getManualPinnedSkillIds(
 }
 
 export const InputBarV2: React.FC<InputBarV2Props> = memo(
-  ({ store, placeholder, sendShortcut, leftAccessory, extraButtonsRight, className, autoFocus, onFilesUpload, textbookOpen, onTextbookToggle, availableModels }) => {
+  ({ store, placeholder, sendShortcut, leftAccessory, extraButtonsRight, inputToolSlot, composerInlinePanel, className, autoFocus, onFilesUpload, textbookOpen, onTextbookToggle, availableModels }) => {
     // 🔧 订阅合并：使用单个聚合选择器 + shallow 比较，避免多次重渲染
     const {
       sessionId,
@@ -921,6 +921,8 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         sendShortcut={sendShortcut}
         leftAccessory={mergedLeftAccessory}
         extraButtonsRight={mergedRightAccessory}
+        inputToolSlot={inputToolSlot}
+        composerInlinePanel={composerInlinePanel}
         className={className}
         autoFocus={autoFocus}
         // 模式插件面板
