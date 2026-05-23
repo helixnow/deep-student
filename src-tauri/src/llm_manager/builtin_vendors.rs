@@ -9,6 +9,8 @@
 
 use super::{ModelProfile, VendorConfig};
 use std::collections::HashMap;
+use std::sync::LazyLock;
+use serde::Deserialize;
 
 /// 内置供应商定义
 pub struct BuiltinVendor {
@@ -35,6 +37,53 @@ pub struct BuiltinModel {
     pub max_output_tokens: u32,
     pub temperature: f32,
 }
+
+#[derive(Debug, Clone, Deserialize)]
+struct GeminiBuiltinRegistryDocument {
+    vendor: GeminiBuiltinVendor,
+    models: Vec<GeminiBuiltinModel>,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct GeminiBuiltinVendor {
+    id: String,
+    name: String,
+    provider_type: String,
+    base_url: String,
+    notes: String,
+    #[serde(default)]
+    max_tokens_limit: Option<u32>,
+    website_url: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct GeminiBuiltinModel {
+    id: String,
+    label: String,
+    model: String,
+    is_multimodal: bool,
+    is_reasoning: bool,
+    supports_tools: bool,
+    max_output_tokens: u32,
+    temperature: f32,
+    #[serde(default)]
+    reasoning_effort: Option<String>,
+    #[serde(default)]
+    thinking_enabled: Option<bool>,
+    #[serde(default)]
+    include_thoughts: Option<bool>,
+    #[serde(default)]
+    gemini_api_version: Option<String>,
+}
+
+static GEMINI_BUILTIN_REGISTRY: LazyLock<GeminiBuiltinRegistryDocument> = LazyLock::new(|| {
+    serde_json::from_str::<GeminiBuiltinRegistryDocument>(include_str!(
+        "../../../scripts/gemini-model-registry.json"
+    ))
+    .unwrap_or_else(|err| {
+        panic!("[BuiltinGemini] failed to parse Gemini model registry: {}", err);
+    })
+});
 
 /// 所有内置供应商列表
 pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
@@ -117,16 +166,6 @@ pub const BUILTIN_VENDORS: &[BuiltinVendor] = &[
         notes: "OpenAI 官方 API。根据 OpenAI 官方模型文档，当前 GPT-5.x 家族可用模型包括: gpt-5.5, gpt-5.5-pro, gpt-5.4, gpt-5.4-pro, gpt-5.4-mini, gpt-5.4-nano；全部模型页仍列出 gpt-5.2, gpt-5.2-pro, gpt-5.1, gpt-5, gpt-5-pro, gpt-5-mini, gpt-5-nano，以及 o3-pro/o3/o4-mini。默认协议建议使用 Responses。",
         max_tokens_limit: None,
         website_url: "https://platform.openai.com",
-    },
-    // Google Gemini
-    BuiltinVendor {
-        id: "builtin-gemini",
-        name: "Google Gemini",
-        provider_type: "gemini",
-        base_url: "https://generativelanguage.googleapis.com",
-        notes: "Google Gemini API (原生模式)。推荐模型: gemini-3.5-flash, gemini-3.1-pro-preview, gemini-3.1-flash-lite, gemini-2.5-pro, gemini-2.5-flash, gemini-2.5-flash-lite。启用 thinking / systemInstruction / thoughtSignature 相关能力时建议走 v1beta。",
-        max_tokens_limit: None,
-        website_url: "https://aistudio.google.com",
     },
     // NVIDIA NIM / API Catalog
     BuiltinVendor {
@@ -666,75 +705,6 @@ pub const BUILTIN_MODELS: &[BuiltinModel] = &[
         max_output_tokens: 100000,
         temperature: 1.0,
     },
-    // ===== Google Gemini 模型 (2.5+) =====
-    // --- Gemini 3.x 系列（截至 2026-05 官方文档主推） ---
-    BuiltinModel {
-        id: "builtin-gemini-3-pro",
-        vendor_id: "builtin-gemini",
-        label: "Gemini 3.1 Pro Preview (旗舰)",
-        model: "gemini-3.1-pro-preview",
-        is_multimodal: true,
-        is_reasoning: true,
-        supports_tools: true,
-        max_output_tokens: 65536,
-        temperature: 0.7,
-    },
-    BuiltinModel {
-        id: "builtin-gemini-3-flash",
-        vendor_id: "builtin-gemini",
-        label: "Gemini 3.5 Flash (最新稳定)",
-        model: "gemini-3.5-flash",
-        is_multimodal: true,
-        is_reasoning: true,
-        supports_tools: true,
-        max_output_tokens: 65536,
-        temperature: 0.7,
-    },
-    BuiltinModel {
-        id: "builtin-gemini-3.1-flash-lite",
-        vendor_id: "builtin-gemini",
-        label: "Gemini 3.1 Flash-Lite (轻量)",
-        model: "gemini-3.1-flash-lite",
-        is_multimodal: true,
-        is_reasoning: true,
-        supports_tools: true,
-        max_output_tokens: 65536,
-        temperature: 0.7,
-    },
-    // --- Gemini 2.5 系列 (Stable) ---
-    BuiltinModel {
-        id: "builtin-gemini-2.5-pro",
-        vendor_id: "builtin-gemini",
-        label: "Gemini 2.5 Pro (思考模型)",
-        model: "gemini-2.5-pro",
-        is_multimodal: true,
-        is_reasoning: true,
-        supports_tools: true,
-        max_output_tokens: 65536,
-        temperature: 0.7,
-    },
-    BuiltinModel {
-        id: "builtin-gemini-2.5-flash",
-        vendor_id: "builtin-gemini",
-        label: "Gemini 2.5 Flash (高速)",
-        model: "gemini-2.5-flash",
-        is_multimodal: true,
-        is_reasoning: true,
-        supports_tools: true,
-        max_output_tokens: 65536,
-        temperature: 0.7,
-    },
-    BuiltinModel {
-        id: "builtin-gemini-2.5-flash-lite",
-        vendor_id: "builtin-gemini",
-        label: "Gemini 2.5 Flash-Lite (轻量)",
-        model: "gemini-2.5-flash-lite",
-        is_multimodal: true,
-        is_reasoning: true,
-        supports_tools: true,
-        max_output_tokens: 65536,
-        temperature: 0.7,
-    },
     // ===== NVIDIA NIM 模型 =====
     BuiltinModel {
         id: "builtin-nvidia-nemotron-3-nano",
@@ -974,22 +944,130 @@ impl BuiltinModel {
     }
 }
 
+impl GeminiBuiltinVendor {
+    fn to_vendor_config(&self) -> VendorConfig {
+        VendorConfig {
+            id: self.id.clone(),
+            name: self.name.clone(),
+            provider_type: self.provider_type.clone(),
+            api_protocol: Some(super::resolve_preferred_protocol_for_provider(
+                Some(self.provider_type.as_str()),
+                Some(self.provider_type.as_str()),
+                self.base_url.as_str(),
+                None,
+            )),
+            supports_openai_responses: Some(super::provider_supports_openai_responses(
+                Some(self.provider_type.as_str()),
+                self.base_url.as_str(),
+                None,
+            )),
+            base_url: self.base_url.clone(),
+            api_key: String::new(),
+            headers: HashMap::new(),
+            rate_limit_per_minute: None,
+            default_timeout_ms: None,
+            notes: Some(self.notes.clone()),
+            is_builtin: true,
+            is_read_only: false,
+            sort_order: None,
+            max_tokens_limit: self.max_tokens_limit,
+            website_url: if self.website_url.is_empty() {
+                None
+            } else {
+                Some(self.website_url.clone())
+            },
+        }
+    }
+}
+
+impl GeminiBuiltinModel {
+    fn to_model_profile(&self, vendor: &GeminiBuiltinVendor) -> ModelProfile {
+        let thinking_enabled = self.thinking_enabled.unwrap_or(self.is_reasoning);
+        let include_thoughts = self.include_thoughts.unwrap_or(thinking_enabled);
+
+        ModelProfile {
+            id: self.id.clone(),
+            vendor_id: vendor.id.clone(),
+            label: self.label.clone(),
+            model: self.model.clone(),
+            provider_scope: Some(vendor.provider_type.clone()),
+            api_protocol: Some(super::resolve_preferred_protocol_for_provider(
+                Some(vendor.provider_type.as_str()),
+                Some("google"),
+                vendor.base_url.as_str(),
+                None,
+            )),
+            model_adapter: "google".to_string(),
+            is_multimodal: self.is_multimodal,
+            is_reasoning: self.is_reasoning,
+            is_embedding: false,
+            is_reranker: false,
+            is_image_generation: false,
+            supports_tools: self.supports_tools,
+            supports_reasoning: self.is_reasoning,
+            status: "enabled".to_string(),
+            enabled: true,
+            max_output_tokens: self.max_output_tokens,
+            temperature: self.temperature,
+            reasoning_effort: self.reasoning_effort.clone(),
+            thinking_enabled,
+            thinking_budget: None,
+            include_thoughts,
+            enable_thinking: None,
+            min_p: None,
+            top_k: None,
+            gemini_api_version: Some(
+                self.gemini_api_version
+                    .clone()
+                    .unwrap_or_else(|| "v1beta".to_string()),
+            ),
+            is_builtin: false,
+            is_favorite: false,
+            max_tokens_limit: vendor.max_tokens_limit,
+            context_window: None,
+            repetition_penalty: None,
+            reasoning_split: None,
+            effort: None,
+            verbosity: None,
+        }
+    }
+}
+
 /// 加载所有内置供应商（不包含已存在的）
 pub fn load_builtin_vendors(existing_vendor_ids: &[String]) -> Vec<VendorConfig> {
-    BUILTIN_VENDORS
+    let mut vendors: Vec<VendorConfig> = BUILTIN_VENDORS
         .iter()
         .filter(|v| !existing_vendor_ids.contains(&v.id.to_string()))
         .map(|v| v.to_vendor_config())
-        .collect()
+        .collect();
+
+    if !existing_vendor_ids
+        .iter()
+        .any(|id| id == &GEMINI_BUILTIN_REGISTRY.vendor.id)
+    {
+        vendors.push(GEMINI_BUILTIN_REGISTRY.vendor.to_vendor_config());
+    }
+
+    vendors
 }
 
 /// 加载所有内置模型（不包含已存在的）
 pub fn load_builtin_models(existing_profile_ids: &[String]) -> Vec<ModelProfile> {
-    BUILTIN_MODELS
+    let mut profiles: Vec<ModelProfile> = BUILTIN_MODELS
         .iter()
         .filter(|m| !existing_profile_ids.contains(&m.id.to_string()))
         .map(|m| m.to_model_profile())
-        .collect()
+        .collect();
+
+    profiles.extend(
+        GEMINI_BUILTIN_REGISTRY
+            .models
+            .iter()
+            .filter(|m| !existing_profile_ids.contains(&m.id))
+            .map(|m| m.to_model_profile(&GEMINI_BUILTIN_REGISTRY.vendor)),
+    );
+
+    profiles
 }
 
 /// 一次性加载所有内置供应商和模型
@@ -1202,10 +1280,7 @@ mod tests {
 
     #[test]
     fn gemini_builtin_vendor_notes_track_current_google_models() {
-        let vendor = BUILTIN_VENDORS
-            .iter()
-            .find(|vendor| vendor.id == "builtin-gemini")
-            .expect("builtin Gemini vendor should exist");
+        let vendor = &GEMINI_BUILTIN_REGISTRY.vendor;
 
         assert!(vendor.notes.contains("gemini-3.5-flash"));
         assert!(vendor.notes.contains("gemini-3.1-pro-preview"));
@@ -1214,10 +1289,36 @@ mod tests {
     }
 
     #[test]
+    fn gemini_builtin_catalog_is_loaded_from_registry() {
+        let vendors = load_builtin_vendors(&[]);
+        let profiles = load_builtin_models(&[]);
+
+        assert!(vendors.iter().any(|vendor| vendor.id == "builtin-gemini"));
+        assert!(profiles.iter().any(|profile| profile.id == "builtin-gemini-3-flash"));
+        assert!(profiles.iter().any(|profile| profile.model == "gemini-3.5-flash"));
+    }
+
+    #[test]
     fn gemini_builtin_profiles_promote_current_3x_models() {
-        let flash = builtin_model("builtin-gemini-3-flash").to_model_profile();
-        let pro = builtin_model("builtin-gemini-3-pro").to_model_profile();
-        let flash_lite = builtin_model("builtin-gemini-3.1-flash-lite").to_model_profile();
+        let vendor = &GEMINI_BUILTIN_REGISTRY.vendor;
+        let flash = GEMINI_BUILTIN_REGISTRY
+            .models
+            .iter()
+            .find(|model| model.id == "builtin-gemini-3-flash")
+            .expect("gemini flash model should exist")
+            .to_model_profile(vendor);
+        let pro = GEMINI_BUILTIN_REGISTRY
+            .models
+            .iter()
+            .find(|model| model.id == "builtin-gemini-3-pro")
+            .expect("gemini pro model should exist")
+            .to_model_profile(vendor);
+        let flash_lite = GEMINI_BUILTIN_REGISTRY
+            .models
+            .iter()
+            .find(|model| model.id == "builtin-gemini-3.1-flash-lite")
+            .expect("gemini flash-lite model should exist")
+            .to_model_profile(vendor);
 
         assert_eq!(flash.model, "gemini-3.5-flash");
         assert_eq!(pro.model, "gemini-3.1-pro-preview");
