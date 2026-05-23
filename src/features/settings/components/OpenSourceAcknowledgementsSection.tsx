@@ -108,13 +108,13 @@ export const OpenSourceAcknowledgementsSection: React.FC = () => {
             size="sm"
             onClick={() => setOpen(true)}
             aria-label={t('acknowledgements.openSource.openDialog')}
-            className="mr-1 h-7 gap-1.5 text-xs text-muted-foreground"
+            className="mr-1 h-7 gap-1.5 px-2 text-xs text-muted-foreground/85"
           >
             <span>{t('acknowledgements.openSource.openDialog')}</span>
             <ListChecks size={14} />
           </NotionButton>
         </div>
-        <p className="text-[12.5px] text-muted-foreground/70 leading-relaxed px-1 mt-2 mb-5">
+        <p className="mt-2 mb-1 px-1 text-[12.5px] leading-relaxed text-muted-foreground/70">
           {t('acknowledgements.openSource.description')}
         </p>
       </div>

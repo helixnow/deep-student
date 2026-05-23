@@ -8,6 +8,7 @@ vi.mock('react-i18next', () => ({
   useTranslation: () => ({
     t: (key: string, fallback?: string) => fallback ?? key,
   }),
+  initReactI18next: { type: '3rdParty', init: () => undefined },
 }));
 
 vi.mock('@/hooks/useAppUpdater', () => ({
@@ -41,7 +42,7 @@ vi.mock('@/version', () => ({
 }));
 
 vi.mock('@/features/settings/components/OpenSourceAcknowledgementsSection', () => ({
-  OpenSourceAcknowledgementsSection: () => <div data-testid="acknowledgements" />,
+  OpenSourceAcknowledgementsSection: () => <section data-testid="acknowledgements" />,
 }));
 
 vi.mock('@/components/legal/PrivacyPolicyDialog', () => ({
@@ -82,8 +83,17 @@ describe('AboutTab official link action rows', () => {
     expect(firstRow.className).toContain('rounded-[var(--button-radius)]');
     expect(firstRow.className).toContain('focus-visible:ring-[color:var(--ring)]');
     rows.forEach((row) => {
-      expect(row.outerHTML).not.toContain('group-hover:text-primary');
+    expect(row.outerHTML).not.toContain('group-hover:text-primary');
     });
+  });
+
+  it('keeps the partner thanks card and open source acknowledgements surface visible', () => {
+    render(<AboutTab />);
+
+    expect(screen.getByText('技术合作伙伴致谢')).toBeInTheDocument();
+    expect(screen.getByText('SiliconFlow')).toBeInTheDocument();
+    expect(screen.getByTestId('siliconflow-logo')).toBeInTheDocument();
+    expect(screen.getByTestId('acknowledgements')).toBeInTheDocument();
   });
 
   it('uses the Phosphor shield icon for the privacy policy action', () => {
