@@ -10,6 +10,7 @@
 
 import React, { useRef, useState, useCallback, useEffect, useId, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
+import { Z_INDEX } from '@/config/zIndex';
 import { useMobileLayoutSafe } from './MobileLayoutContext';
 import { MobileSidebarNavigation } from './MobileSidebarNavigation';
 
@@ -412,8 +413,12 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
   return (
     <div
       ref={containerRef}
-      className={cn('h-full overflow-hidden select-none', className)}
-      style={{ touchAction: 'pan-y pinch-zoom', cursor: isDragging ? 'grabbing' : 'default' }}
+      className={cn('relative h-full overflow-hidden select-none', className)}
+      style={{
+        touchAction: 'pan-y pinch-zoom',
+        cursor: isDragging ? 'grabbing' : 'default',
+        zIndex: Z_INDEX.drawer,
+      }}
     >
       <div
         className="flex h-full"
@@ -425,7 +430,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
       >
         {/* 侧边栏 */}
         <div
-          className="flex h-full min-h-0 flex-shrink-0 flex-col bg-background"
+          className="relative z-[2] flex h-full min-h-0 flex-shrink-0 flex-col bg-background"
           style={{ width: sidebarWidth }}
         >
           <div className="min-h-0 flex-1 overflow-hidden">
@@ -438,7 +443,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
 
         {/* 主内容区域 - 宽度等于外层容器宽度（视口宽度） */}
         <div
-          className="relative h-full flex-shrink-0 bg-background overflow-x-hidden"
+          className="relative z-[1] h-full flex-shrink-0 overflow-x-hidden bg-background"
           style={{ width: containerWidth || '100vw' }}
         >
           {showContentOverlay && hasSidebar && (
