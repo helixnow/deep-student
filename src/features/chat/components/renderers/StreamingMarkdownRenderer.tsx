@@ -6,11 +6,7 @@ import { BlockedMarkdownRenderer } from './BlockedMarkdownRenderer';
 import { canUseDirectFlowTokenMarkdown } from './flowTokenEligibility';
 import { shallowEqualSpans, makeUncertaintyHighlightPlugin } from './rendererUtils';
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
-import {
-  useSmoothedStreamingContent,
-  type StreamingSmoothingPreset,
-} from './streamingSmoothing';
-import { useStreamPreferences } from './StreamPreferencesContext';
+import type { StreamingSmoothingPreset } from './streamingSmoothing';
 import './streaming.css';
 
 /**
@@ -78,32 +74,21 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
   extraRemarkPlugins,
   onCitationClick,
   resolveCitationImage,
-  streamSmoothingPreset,
+  streamSmoothingPreset: _streamSmoothingPreset,
   streamRenderingMode,
   blockId,
   messageId,
 }) => {
-  // 业务侧未指定时回退到 context（Playground/DevTool 全局覆盖），最后再回退到默认值。
-  // 2026 默认改为 blocked：更接近当前主流聊天产品的结构化流式渲染，
+  // 2026 默认 blocked：结构化流式渲染，由 flowtoken AnimatedMarkdown sep="diff" 负责增量动画。
   // legacy 保留给兼容性排查与 A/B 对比。
-  const prefs = useStreamPreferences();
-  // 默认 balanced：保持即时感，同时把碎 chunk 合并得更像自然输出。
-  // Playground 仍可通过 prefs/props 覆盖为 natural/silky/fluid 做对比。
-  const effectivePreset: StreamingSmoothingPreset | string | null =
-    streamSmoothingPreset ?? prefs.preset ?? 'balanced';
   const effectiveMode: 'legacy' | 'blocked' =
-    streamRenderingMode ?? prefs.mode ?? 'blocked';
+    streamRenderingMode ?? 'blocked';
   const { t } = useTranslation('chatV2');
-  // 流式期间用 preset-based smoothing 代替固定 100ms throttle，
-  // 保留 MarkdownRenderer 的业务渲染能力，只改变进入渲染器前的可见文本节奏。
-  const smoothedContent = useSmoothedStreamingContent(content, isStreaming, {
-    preset: effectivePreset,
-    blockId,
-    messageId,
-  });
+  // 原始 content 直通渲染器，不再经过平滑层。
+  // flowtoken AnimatedMarkdown / SplitText sep="diff" 自行处理增量 diff 和动画。
   const processedContent = useMemo(
-    () => preprocessStreamingContent(smoothedContent, isStreaming),
-    [smoothedContent, isStreaming]
+    () => preprocessStreamingContent(content, isStreaming),
+    [content, isStreaming]
   );
   const displayContent = processedContent.content;
   const hasVisibleContent = displayContent.trim().length > 0;
@@ -205,7 +190,7 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
       className="streaming-markdown"
       data-streaming={isStreaming ? 'true' : 'false'}
       data-has-visible-content={hasVisibleContent ? 'true' : 'false'}
-      data-stream-preset={String(effectivePreset || 'natural')}
+      data-stream-preset="flowtoken-direct"
       data-stream-mode={effectiveMode}
     >
       {parsedContent ? (
@@ -275,13 +260,11 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
     </div>
   );
 }, (prevProps: StreamingMarkdownRendererProps, nextProps: StreamingMarkdownRendererProps) => {
-  // P1修复：精确memo比较 - 避免流式过程中的过度重渲染
   return (
     prevProps.content === nextProps.content &&
     prevProps.isStreaming === nextProps.isStreaming &&
     shallowEqualSpans(prevProps.highlightSpans, nextProps.highlightSpans) &&
     prevProps.extraRemarkPlugins === nextProps.extraRemarkPlugins &&
-    prevProps.streamSmoothingPreset === nextProps.streamSmoothingPreset &&
     prevProps.streamRenderingMode === nextProps.streamRenderingMode &&
     prevProps.blockId === nextProps.blockId &&
     prevProps.messageId === nextProps.messageId

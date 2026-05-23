@@ -16,7 +16,7 @@ import { makeCitationRemarkPlugin, CITATION_PLACEHOLDER_STYLES } from '../../uti
 import { CitationBadge } from '../../plugins/blocks/components/CitationPopover';
 import { MindmapCitationCard } from '../MindmapCitationCard';
 import { QbankCitationBadge } from '../QbankCitationBadge';
-import { renderFlowTokenStreamingChildren } from './flowTokenStreaming';
+
 import type { RetrievalSourceType } from '../../plugins/blocks/components/types';
 import { convertFileSrc } from '@tauri-apps/api/core';
 import { getPdfPageImageDataUrl } from '@/api/vfsRagApi';
@@ -458,10 +458,6 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
 }) => {
   const shouldEnableCitations = enableCitations ?? !!(onCitationClick || resolveCitationImage);
   const containerRef = useRef<HTMLDivElement | null>(null);
-  const renderStreamingChildren = useCallback(
-    (children: React.ReactNode) => renderFlowTokenStreamingChildren(children, isStreaming),
-    [isStreaming],
-  );
   // 🚀 性能优化：按需加载 KaTeX CSS
   useEffect(() => {
     ensureKatexStyles();
@@ -611,12 +607,12 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
         remarkPlugins={remarkPlugins}
         rehypePlugins={[rehypeRaw, [rehypeSanitize, markdownSanitizeSchema]]}
         components={{
-          h1: ({ children, ...props }: any) => <h1 {...props}>{renderStreamingChildren(children)}</h1>,
-          h2: ({ children, ...props }: any) => <h2 {...props}>{renderStreamingChildren(children)}</h2>,
-          h3: ({ children, ...props }: any) => <h3 {...props}>{renderStreamingChildren(children)}</h3>,
-          h4: ({ children, ...props }: any) => <h4 {...props}>{renderStreamingChildren(children)}</h4>,
-          h5: ({ children, ...props }: any) => <h5 {...props}>{renderStreamingChildren(children)}</h5>,
-          h6: ({ children, ...props }: any) => <h6 {...props}>{renderStreamingChildren(children)}</h6>,
+          h1: ({ children, ...props }: any) => <h1 {...props}>{children}</h1>,
+          h2: ({ children, ...props }: any) => <h2 {...props}>{children}</h2>,
+          h3: ({ children, ...props }: any) => <h3 {...props}>{children}</h3>,
+          h4: ({ children, ...props }: any) => <h4 {...props}>{children}</h4>,
+          h5: ({ children, ...props }: any) => <h5 {...props}>{children}</h5>,
+          h6: ({ children, ...props }: any) => <h6 {...props}>{children}</h6>,
           // @ts-expect-error - remark-math plugin provides math/inlineMath components not in react-markdown types
           math: ({ value }: { value?: string }) => renderMath(String(value ?? ''), true),
           inlineMath: ({ value }: { value?: string }) => renderMath(String(value ?? ''), false),
@@ -694,12 +690,12 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
             if (hasMindmapCard) {
               return <div className="my-3">{children}</div>;
             }
-            return <p {...props}>{renderStreamingChildren(children)}</p>;
+            return <p {...props}>{children}</p>;
           },
           blockquote: ({ children, ...props }: any) => (
-            <blockquote {...props}>{renderStreamingChildren(children)}</blockquote>
+            <blockquote {...props}>{children}</blockquote>
           ),
-          li: ({ children, ...props }: any) => <li {...props}>{renderStreamingChildren(children)}</li>,
+          li: ({ children, ...props }: any) => <li {...props}>{children}</li>,
           span: ({ children, ...props }: any) => {
             // 处理思维导图引用 - 渲染完整的 ReactFlow 预览
             const isMindmapCitation = props['data-mindmap-citation'] === 'true';
@@ -736,7 +732,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
             // 处理普通引用
             const isCitation = props['data-citation'] === 'true';
             if (!isCitation) {
-              return <span {...props}>{renderStreamingChildren(children)}</span>;
+              return <span {...props}>{children}</span>;
             }
 
             const citationType = props['data-citation-type'] as RetrievalSourceType | undefined;
@@ -817,7 +813,7 @@ export const MarkdownRenderer: React.FC<MarkdownRendererProps> = React.memo(({
                 className="text-primary underline cursor-pointer"
                 {...props}
               >
-                {renderStreamingChildren(children)}
+                {children}
               </a>
             );
           },
