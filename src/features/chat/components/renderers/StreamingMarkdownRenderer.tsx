@@ -208,6 +208,9 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
                     content={thinkingContent}
                     isStreaming
                     onLinkClick={onLinkClick}
+                    streamSmoothingPreset={streamSmoothingPreset}
+                    blockId={blockId}
+                    messageId={messageId}
                   />
                 ) : (
                   <MarkdownRenderer
@@ -225,12 +228,15 @@ export const StreamingMarkdownRenderer: React.FC<StreamingMarkdownRendererProps>
 
           {/* 渲染主要内容 */}
           <div className="main-content">
-            {parsedContent.mainContent ? (
+              {parsedContent.mainContent ? (
               shouldUseDirectFlowTokenForParsedMainContent ? (
                 <FlowTokenMarkdownRenderer
                   content={parsedContent.mainContent}
                   isStreaming
                   onLinkClick={onLinkClick}
+                  streamSmoothingPreset={streamSmoothingPreset}
+                  blockId={blockId}
+                  messageId={messageId}
                 />
               ) : (
                 <MarkdownRenderer
