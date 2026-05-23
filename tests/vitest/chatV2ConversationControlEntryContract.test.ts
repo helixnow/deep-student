@@ -3,15 +3,15 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 describe('chat v2 conversation control entry contract', () => {
-  const chatPageSource = readFileSync(resolve(process.cwd(), 'src/chat-v2/pages/ChatV2Page.tsx'), 'utf-8');
-  const inputBarSource = readFileSync(resolve(process.cwd(), 'src/chat-v2/components/input-bar/InputBarUI.tsx'), 'utf-8');
-  const layoutHookSource = readFileSync(resolve(process.cwd(), 'src/chat-v2/pages/useChatPageLayout.tsx'), 'utf-8');
-  const sessionSidebarSource = readFileSync(resolve(process.cwd(), 'src/chat-v2/pages/SessionSidebarContent.tsx'), 'utf-8');
+  const chatPageSource = readFileSync(resolve(process.cwd(), 'src/features/chat/pages/ChatV2Page.tsx'), 'utf-8');
+  const inputBarSource = readFileSync(resolve(process.cwd(), 'src/features/chat/components/input-bar/InputBarUI.tsx'), 'utf-8');
+  const layoutHookSource = readFileSync(resolve(process.cwd(), 'src/features/chat/pages/useChatPageLayout.tsx'), 'utf-8');
+  const sessionSidebarSource = readFileSync(resolve(process.cwd(), 'src/features/chat/pages/SessionSidebarContent.tsx'), 'utf-8');
 
   it('moves the desktop conversation-control trigger into the input bar', () => {
     expect(inputBarSource).toContain('renderAdvancedPanel');
     expect(inputBarSource).toContain('SlidersHorizontal');
-    expect(inputBarSource).toContain('aria-label={t(\'common:chat_controls\')}');
+    expect(inputBarSource).toContain("label={t('common:chat_controls')}");
     expect(inputBarSource).toContain('togglePanel(\'advanced\')');
   });
 

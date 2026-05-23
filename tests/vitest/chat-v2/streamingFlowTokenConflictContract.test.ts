@@ -8,12 +8,13 @@ describe('chat v2 flowtoken streaming conflict contract', () => {
     'utf-8',
   );
 
-  it('disables block-level update fades for flowtoken-driven streaming blocks', () => {
+  it('flowtoken blocks have no outer animation that would conflict with token-level animation', () => {
     expect(streamingBlocksCssSource).toContain('.stream-block[data-flowtoken="true"] {');
-    expect(streamingBlocksCssSource).toContain('.stream-block[data-flowtoken="true"][data-new="true"]');
-    expect(streamingBlocksCssSource).toContain('.stream-block[data-flowtoken="true"][data-updating="true"]');
-    expect(streamingBlocksCssSource).toContain('.stream-block[data-motion-layer="inline"][data-updating="true"]');
     expect(streamingBlocksCssSource).toContain('animation: none;');
     expect(streamingBlocksCssSource).toContain('opacity: 1;');
+  });
+
+  it('removed block-level update fades (data-updating) since smoothing is disabled for flowtoken path', () => {
+    expect(streamingBlocksCssSource).not.toContain('data-updating');
   });
 });

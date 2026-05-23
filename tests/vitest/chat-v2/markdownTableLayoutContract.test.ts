@@ -61,14 +61,14 @@ describe('chat v2 markdown table layout contract', () => {
     expect(tableWrapperRule).not.toContain('background:');
 
     expect(tableRuleStart).toBeGreaterThan(-1);
-    expect(tableRule).toContain('border-top: 1.5px solid');
-    expect(tableRule).toContain('border-bottom: 1.5px solid');
+    expect(tableRule).toContain('border-top: 2px solid');
+    expect(tableRule).toContain('border-bottom: 2px solid');
     expect(tableRule).not.toContain('border-radius:');
 
     expect(tableHeaderRuleStart).toBeGreaterThan(-1);
     expect(tableHeaderRule).not.toContain('background:');
     expect(tableHeaderRule).toContain('border-bottom: 1px solid');
-    expect(tableHeaderRule).toContain('font-weight: 500;');
+    expect(tableHeaderRule).toContain('font-weight: 600;');
 
     expect(tableCellRuleStart).toBeGreaterThan(-1);
     expect(tableCellRule).not.toContain('border-bottom:');
