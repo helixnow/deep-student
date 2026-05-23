@@ -37,8 +37,10 @@
 //! - 进度回调和实时状态更新
 
 // 子模块声明
+pub mod classification;
 pub mod conflict_resolver;
 pub mod emitter;
+pub mod field_merge;
 pub mod hlc;
 pub mod progress;
 pub mod tombstone;
@@ -85,6 +87,7 @@ pub fn parse_flexible_timestamp_public(s: &str) -> Option<chrono::DateTime<chron
 use rusqlite::{params, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
+use classification::{sync_classification_registry, SyncCategory, TableClassification};
 
 /// 记录并跳过迭代中的错误，避免静默丢弃
 fn log_and_skip_err<T, E: std::fmt::Display>(result: Result<T, E>) -> Option<T> {
@@ -1894,13 +1897,14 @@ impl SyncManager {
     pub fn reset_sync_baseline_after_restore(
         conn: &Connection,
     ) -> Result<(usize, usize), SyncError> {
-        // 注意步骤顺序：必须先 UPDATE 业务表（touch local_version = sync_version），
+        // 注意步骤顺序：必须先 UPDATE 业务表（touch local_version），
         // 再 DELETE __change_log。因为业务表上通常装有 trg_upd 触发器，
         // UPDATE 会重新向 __change_log 写一批新条目——如果先清 __change_log 再 UPDATE，
         // 清理就白做了。
 
-        // 1. 找出所有装配了同步字段的业务表，把 sync_version 提升到 local_version
-        //    schema 要求所有同步表同时具备 local_version 和 sync_version 两列。
+        // 1. 找出所有装配了同步字段的业务表，递增 local_version
+        //    Migration V20260201 只为业务表添加 device_id + local_version，
+        //    sync_version 列只存在于 __change_log 中。
         let mut table_stmt = conn
             .prepare(
                 "SELECT name FROM sqlite_master
@@ -1919,7 +1923,7 @@ impl SyncManager {
 
         let mut reset_count = 0usize;
         for table in table_names {
-            // 检查表是否有 local_version/sync_version 两列
+            // 检查表是否有 local_version 列（业务表无 sync_version）
             let col_names: Vec<String> = match conn.prepare(&format!(
                 "SELECT name FROM pragma_table_info('{}')",
                 table.replace('\'', "''")
@@ -1931,9 +1935,7 @@ impl SyncManager {
                 Err(_) => continue,
             };
 
-            if !col_names.iter().any(|c| c == "local_version")
-                || !col_names.iter().any(|c| c == "sync_version")
-            {
+            if !col_names.iter().any(|c| c == "local_version") {
                 continue;
             }
 
@@ -1942,16 +1944,17 @@ impl SyncManager {
                 continue;
             }
 
-            // 仅在需要时 UPDATE，避免触发器为"相等"的 row 写无谓 change_log
+            // 递增 local_version，使 ZIP 恢复后的记录在下次同步时
+            // 被识别为"本地已修改"，从而上传为新基线
             let sql = format!(
-                "UPDATE \"{}\" SET sync_version = local_version WHERE sync_version != local_version",
+                "UPDATE \"{}\" SET local_version = local_version + 1 WHERE local_version IS NOT NULL",
                 table
             );
             match conn.execute(&sql, []) {
                 Ok(n) => reset_count += n,
                 Err(e) => {
                     tracing::warn!(
-                        "[sync] 重置 sync_version 失败（表 {}，非致命）: {}",
+                        "[sync] Touch local_version 失败（表 {}，非致命）: {}",
                         table,
                         e
                     );
@@ -1969,7 +1972,7 @@ impl SyncManager {
         let _ = conn.execute("DELETE FROM __sync_conflicts", []);
 
         tracing::info!(
-            "[sync] reset_sync_baseline_after_restore: 清理 __change_log {} 条, 重置业务记录 {} 条",
+            "[sync] reset_sync_baseline_after_restore: cleaned __change_log {} rows, touched {} business records for re-upload",
             truncated,
             reset_count
         );
@@ -2168,6 +2171,109 @@ impl SyncManager {
         Ok(updated)
     }
 
+    /// 获取指定表的 UPSERT 冲突目标子句（不含 DO UPDATE SET 部分）。
+    ///
+    /// 用于处理业务唯一键冲突。当一张表除了主键 `id` 之外还有额外的 UNIQUE 约束
+    /// （如 `resources.hash`、`review_plans.question_id`、`files.sha256`、
+    /// `folder_items(folder_id,item_type,item_id)`），需使用对应的冲突目标来正确合并数据，
+    /// 而非在插入新 `id` 时遭遇 UNIQUE 约束违反。
+    fn get_upsert_conflict_target(table_name: &str, _data: &serde_json::Value) -> String {
+        match table_name {
+            "resources" | "chat_v2_resources" => {
+                "ON CONFLICT(id)".to_string()
+            }
+            "review_plans" => {
+                "ON CONFLICT(question_id) WHERE question_id IS NOT NULL".to_string()
+            }
+            "files" => {
+                "ON CONFLICT(sha256)".to_string()
+            }
+            "folder_items" => {
+                "ON CONFLICT(folder_id, item_type, item_id) WHERE deleted_at IS NULL".to_string()
+            }
+            "llm_usage_daily" => {
+                "ON CONFLICT(date, caller_type, model, provider)".to_string()
+            }
+            _ => {
+                "ON CONFLICT(id)".to_string()
+            }
+        }
+    }
+
+    /// 生成业务键冲突时的回落 UPSERT SQL。
+    ///
+    /// 当主 UPSERT（基于 id 或业务唯一键）因 UNIQUE 约束违反失败时，
+    /// 根据表类型构造替代冲突目标的 UPSERT，确保数据正确合并：
+    /// - `review_plans`：从 question_id 回落至 id
+    /// - `resources`：从 id 回落至 hash（合并相同内容记录）
+    /// - `files`：从 id 回落至 sha256
+    /// - `folder_items`：从 id 回落至 (folder_id, item_type, item_id)
+    fn get_fallback_upsert_sql(
+        table_name: &str,
+        table_ident: &str,
+        columns: &str,
+        placeholders: &str,
+        columns_list: &[&str],
+        id_column: &str,
+    ) -> Result<String, SyncError> {
+        let (conflict_target, conflict_cols) = match table_name {
+            "review_plans" => (
+                format!("ON CONFLICT({})", Self::quote_identifier(id_column)?),
+                vec![id_column],
+            ),
+            "resources" | "chat_v2_resources" => (
+                "ON CONFLICT(hash)".to_string(),
+                vec!["hash"],
+            ),
+            "files" => (
+                "ON CONFLICT(sha256)".to_string(),
+                vec!["sha256"],
+            ),
+            "folder_items" => (
+                "ON CONFLICT(folder_id, item_type, item_id) WHERE deleted_at IS NULL".to_string(),
+                vec!["folder_id", "item_type", "item_id"],
+            ),
+            "llm_usage_daily" => (
+                "ON CONFLICT(date, caller_type, model, provider)".to_string(),
+                vec!["date", "caller_type", "model", "provider"],
+            ),
+            "chat_v2_attachments" => (
+                "ON CONFLICT(content_hash) WHERE content_hash IS NOT NULL".to_string(),
+                vec!["content_hash"],
+            ),
+            _ => {
+                return Err(SyncError::Database(format!(
+                    "表 {} 不支持业务键回落，id 冲突需要人工处理",
+                    table_name
+                )));
+            }
+        };
+
+        let update_set = columns_list
+            .iter()
+            .filter(|c| !conflict_cols.contains(c))
+            .map(|c| {
+                let quoted = Self::quote_identifier(c).unwrap_or_else(|_| format!("\"{}\"", c));
+                format!(
+                    "{}=COALESCE(excluded.{}, {}.{})",
+                    quoted, quoted, table_ident, quoted
+                )
+            })
+            .collect::<Vec<_>>()
+            .join(", ");
+
+        let action = if update_set.is_empty() {
+            "DO NOTHING".to_string()
+        } else {
+            format!("DO UPDATE SET {}", update_set)
+        };
+
+        Ok(format!(
+            "INSERT INTO {} ({}) VALUES ({}) {} {}",
+            table_ident, columns, placeholders, conflict_target, action
+        ))
+    }
+
     /// 应用单条记录到数据库
     ///
     /// 使用标准 UPSERT (`ON CONFLICT DO UPDATE`) 策略处理更新。
@@ -2251,6 +2357,91 @@ impl SyncManager {
                     table_ident, columns, placeholders, update_set
                 )
             }
+        } else if table_name == "review_plans" {
+            let pk_ident = Self::quote_identifier(id_column)?;
+            let update_set = columns_list
+                .iter()
+                .filter(|c| **c != pk_ident.as_str())
+                .map(|c| format!("{}=COALESCE(excluded.{}, {}.{})", c, c, table_ident, c))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let action = if update_set.is_empty() {
+                "DO NOTHING".to_string()
+            } else {
+                format!("DO UPDATE SET {}", update_set)
+            };
+            format!(
+                "INSERT INTO {} ({}) VALUES ({}) ON CONFLICT(question_id) WHERE question_id IS NOT NULL {}",
+                table_ident, columns, placeholders, action
+            )
+        } else if table_name == "resources" {
+            let pk_ident = Self::quote_identifier(id_column)?;
+            let update_set = columns_list
+                .iter()
+                .filter(|c| **c != pk_ident.as_str())
+                .map(|c| format!("{}=COALESCE(excluded.{}, {}.{})", c, c, table_ident, c))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let action = if update_set.is_empty() {
+                "DO NOTHING".to_string()
+            } else {
+                format!("DO UPDATE SET {}", update_set)
+            };
+            format!(
+                "INSERT INTO {} ({}) VALUES ({}) ON CONFLICT(id) {}",
+                table_ident, columns, placeholders, action
+            )
+        } else if table_name == "files" {
+            let pk_ident = Self::quote_identifier(id_column)?;
+            let update_set = columns_list
+                .iter()
+                .filter(|c| **c != pk_ident.as_str())
+                .map(|c| format!("{}=COALESCE(excluded.{}, {}.{})", c, c, table_ident, c))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let action = if update_set.is_empty() {
+                "DO NOTHING".to_string()
+            } else {
+                format!("DO UPDATE SET {}", update_set)
+            };
+            format!(
+                "INSERT INTO {} ({}) VALUES ({}) ON CONFLICT(sha256) {}",
+                table_ident, columns, placeholders, action
+            )
+        } else if table_name == "folder_items" {
+            let pk_ident = Self::quote_identifier(id_column)?;
+            let update_set = columns_list
+                .iter()
+                .filter(|c| **c != pk_ident.as_str())
+                .map(|c| format!("{}=COALESCE(excluded.{}, {}.{})", c, c, table_ident, c))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let action = if update_set.is_empty() {
+                "DO NOTHING".to_string()
+            } else {
+                format!("DO UPDATE SET {}", update_set)
+            };
+            format!(
+                "INSERT INTO {} ({}) VALUES ({}) ON CONFLICT(folder_id, item_type, item_id) WHERE deleted_at IS NULL {}",
+                table_ident, columns, placeholders, action
+            )
+        } else if table_name == "chat_v2_attachments" {
+            let pk_ident = Self::quote_identifier(id_column)?;
+            let update_set = columns_list
+                .iter()
+                .filter(|c| **c != pk_ident.as_str())
+                .map(|c| format!("{}=COALESCE(excluded.{}, {}.{})", c, c, table_ident, c))
+                .collect::<Vec<_>>()
+                .join(", ");
+            let action = if update_set.is_empty() {
+                "DO NOTHING".to_string()
+            } else {
+                format!("DO UPDATE SET {}", update_set)
+            };
+            format!(
+                "INSERT INTO {} ({}) VALUES ({}) ON CONFLICT(content_hash) WHERE content_hash IS NOT NULL {}",
+                table_ident, columns, placeholders, action
+            )
         } else {
             let pk_ident = Self::quote_identifier(id_column)?;
             let update_set = columns_list
@@ -2273,8 +2464,48 @@ impl SyncManager {
         };
 
         let params_refs: Vec<&dyn rusqlite::ToSql> = values.iter().map(|v| v.as_ref()).collect();
-        conn.execute(&upsert_sql, params_refs.as_slice())
-            .map_err(|e| SyncError::Database(format!("UPSERT (OnConflict) 记录失败: {}", e)))?;
+        match conn.execute(&upsert_sql, params_refs.as_slice()) {
+            Ok(_) => {}
+            Err(e) => {
+                let err_msg = e.to_string();
+                if !err_msg.contains("UNIQUE constraint failed") {
+                    return Err(SyncError::Database(format!(
+                        "UPSERT (OnConflict) 记录失败: {}",
+                        e
+                    )));
+                }
+
+                let fallback_sql = Self::get_fallback_upsert_sql(
+                    table_name,
+                    &table_ident,
+                    &columns,
+                    &placeholders,
+                    &columns_list,
+                    id_column,
+                )?;
+
+                conn.execute("SAVEPOINT sp_upsert_fallback", [])
+                    .map_err(|e| {
+                        SyncError::Database(format!("创建 SAVEPOINT 失败: {}", e))
+                    })?;
+                match conn.execute(&fallback_sql, params_refs.as_slice()) {
+                    Ok(_) => {
+                        conn.execute("RELEASE SAVEPOINT sp_upsert_fallback", [])
+                            .map_err(|e| {
+                                SyncError::Database(format!("释放 SAVEPOINT 失败: {}", e))
+                            })?;
+                    }
+                    Err(e2) => {
+                        let _ = conn.execute("ROLLBACK TO SAVEPOINT sp_upsert_fallback", []);
+                        let _ = conn.execute("RELEASE SAVEPOINT sp_upsert_fallback", []);
+                        return Err(SyncError::Database(format!(
+                            "UPSERT (业务键回落) 记录失败: {}",
+                            e2
+                        )));
+                    }
+                }
+            }
+        }
 
         // 复活意图：清空 deleted_at
         //
@@ -2288,6 +2519,87 @@ impl SyncManager {
             );
             conn.execute(&null_sql, params![record_id])
                 .map_err(|e| SyncError::Database(format!("复活软删记录失败: {}", e)))?;
+        }
+
+        // 应用字段级合并策略（针对特定列的 domain-aware 合并逻辑）
+        // 在 UPSERT 之后运行，补充 COALESCE 无法处理的计数器、标签合集、布尔 OR 等语义
+        {
+            let table_specific_columns = match table_name {
+                "resources" | "chat_v2_resources" => vec!["ref_count", "metadata_json"],
+                "questions" => vec![
+                    "attempt_count", "correct_count", "user_note", "ai_feedback",
+                    "is_favorite", "is_bookmarked", "tags", "images_json",
+                    "options_json", "ai_score",
+                ],
+                "notes" => vec!["tags", "is_favorite"],
+                "review_plans" => vec!["total_reviews", "total_correct", "ease_factor", "interval_days", "consecutive_failures"],
+                "todo_items" => vec!["estimated_pomodoros", "completed_pomodoros", "tags_json"],
+                "chat_v2_sessions" => vec!["metadata_json"],
+                "chat_v2_messages" => vec!["meta_json", "variants_json", "shared_context_json", "attachments_json"],
+                "chat_v2_blocks" => vec!["citations_json", "tool_input_json", "tool_output_json"],
+                "essays" => vec!["grading_result_json", "dimension_scores_json"],
+                "mindmaps" => vec!["settings"],
+                "exam_sheets" => vec!["metadata_json", "preview_json"],
+                "translations" => vec!["metadata_json"],
+                "mistakes" => vec!["tags", "question_images", "analysis_images", "chat_metadata"],
+                "review_analyses" => vec!["tags", "mistake_ids"],
+                "anki_cards" => vec!["tags_json", "images_json", "extra_fields_json"],
+                _ => vec![],
+            };
+
+            let id_col_ident = Self::quote_identifier(id_column)?;
+
+            for col_name in &table_specific_columns {
+                if !Self::table_has_column(conn, table_name, col_name) {
+                    continue;
+                }
+                let remote_val = match obj.get(*col_name) {
+                    Some(v) if !v.is_null() => v,
+                    _ => continue,
+                };
+
+                let read_sql = format!(
+                    "SELECT \"{}\" FROM {} WHERE {} = ?1",
+                    col_name, table_ident, id_col_ident
+                );
+                let local_val: Option<serde_json::Value> = conn
+                    .query_row(&read_sql, params![record_id], |row| {
+                        Ok(Self::sqlite_value_to_json(row, 0))
+                    })
+                    .ok();
+
+                let (merged_val, was_merged, _conflict) =
+                    field_merge::merge_field(table_name, col_name, local_val.as_ref(), Some(remote_val));
+
+                if was_merged {
+                    let merge_sql = format!(
+                        "UPDATE {} SET \"{}\" = ?1 WHERE {} = ?2",
+                        table_ident, col_name, id_col_ident
+                    );
+                    let _ = match &merged_val {
+                        serde_json::Value::Number(n) => {
+                            if let Some(i) = n.as_i64() {
+                                conn.execute(&merge_sql, params![i, record_id])
+                            } else if let Some(f) = n.as_f64() {
+                                conn.execute(&merge_sql, params![f, record_id])
+                            } else {
+                                Ok(0)
+                            }
+                        }
+                        serde_json::Value::String(s) => {
+                            conn.execute(&merge_sql, params![s.as_str(), record_id])
+                        }
+                        serde_json::Value::Bool(b) => {
+                            conn.execute(&merge_sql, params![*b, record_id])
+                        }
+                        serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
+                            let json_str = serde_json::to_string(&merged_val).unwrap_or_default();
+                            conn.execute(&merge_sql, params![json_str, record_id])
+                        }
+                        _ => Ok(0),
+                    };
+                }
+            }
         }
 
         Ok(())
@@ -3585,6 +3897,8 @@ impl SyncManager {
         conn: &Connection,
         database_name: &str,
     ) -> Result<String, SyncError> {
+        let classifications = classification::sync_classification_registry();
+
         let tables: Vec<String> = conn
             .prepare(
                 "SELECT name FROM sqlite_master WHERE type='table'
@@ -3594,8 +3908,40 @@ impl SyncManager {
             .map_err(|e| SyncError::Database(format!("查询表列表失败: {}", e)))?
             .query_map([], |row| row.get(0))
             .map_err(|e| SyncError::Database(format!("获取表名失败: {}", e)))?
-            .collect::<Result<Vec<_>, _>>()
-            .map_err(|e| SyncError::Database(format!("解析表名失败: {}", e)))?;
+            .filter_map(|r: Result<String, _>| r.ok())
+            .filter(|table_name| {
+                // Exclude FTS5 shadow tables when the FTS virtual table is in DerivedRebuild
+                if let Some(base) = table_name.strip_suffix("_content")
+                    .or_else(|| table_name.strip_suffix("_docsize"))
+                    .or_else(|| table_name.strip_suffix("_config"))
+                    .or_else(|| table_name.strip_suffix("_idx"))
+                    .or_else(|| table_name.strip_suffix("_segdir"))
+                    .or_else(|| table_name.strip_suffix("_segments"))
+                    .or_else(|| table_name.strip_suffix("_stat"))
+                    .or_else(|| table_name.strip_suffix("_data"))
+                {
+                    let is_fts_base = classifications.iter().any(|c| {
+                        c.database == database_name
+                            && c.table_name == base
+                            && c.primary_key == "(virtual)"
+                    });
+                    if is_fts_base {
+                        return false;
+                    }
+                }
+
+                // Only include tables classified as RowSync or FileSync for checksum
+                classifications.iter().any(|c| {
+                    c.database == database_name
+                        && c.table_name == table_name.as_str()
+                        && matches!(
+                            c.category,
+                            classification::SyncCategory::RowSync
+                                | classification::SyncCategory::FileSync
+                        )
+                })
+            })
+            .collect();
 
         let mut hasher_input = format!("{}:", database_name);
 
