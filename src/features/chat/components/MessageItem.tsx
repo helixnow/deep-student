@@ -686,15 +686,6 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     setTranslationPopoverState({ isVisible: false, sourceText: '', rect: null, contextBefore: '', contextAfter: '' });
   }, []);
 
-  // 选中文本后的操作回调：制卡
-  const handleSelectionMakeCard = useCallback((text: string) => {
-    // 派发 open-anki-panel 事件，传入选中文本作为卡片内容
-    const event = new CustomEvent('open-anki-panel', {
-      detail: { cards: [{ front: text, back: '' }], messageId },
-    });
-    window.dispatchEvent(event);
-  }, [messageId]);
-
   // 选中文本后的操作回调：添加到聊天输入框
   const handleSelectionAddToChat = useCallback((text: string) => {
     window.dispatchEvent(new CustomEvent('CHAT_V2_SET_INPUT', {
@@ -1619,7 +1610,6 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
         onExplain={handleSelectionExplain}
         onTranslate={handleSelectionTranslate}
         onAddToChat={handleSelectionAddToChat}
-        onMakeCard={handleSelectionMakeCard}
       />
 
       {/* 🆕 翻译 Popover */}

@@ -63,8 +63,8 @@ describe('MessageList empty state source guards', () => {
 
     expect(pageSource).not.toContain('const ungroupedGroupName = t(');
     expect(pageSource).toContain('const currentSessionGroupName = currentSession?.groupId');
-    expect(pageSource).toContain('groupNameMap.get(currentSession.groupId) ?? null');
-    expect(pageSource).toContain(': null');
+    expect(pageSource).toContain("groupNameMap.get(currentSession.groupId) ?? t('page.studySessions', '课题')");
+    expect(pageSource).toContain("t('page.studySessions', '课题')");
     expect(pageSource).toContain('emptyStateGroupName={currentSessionGroupName}');
   });
 });

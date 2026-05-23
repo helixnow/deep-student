@@ -862,9 +862,11 @@
    ============================================================================
    与 markdown.css 中的 .chain-of-thought（legacy <thinking> tag 内联解析）分离。
    视觉策略：左品牌色 accent bar + 卡片容器，层次高出普通助手消息。
-   动画：transitions-dev panel-reveal 模式 — translateY + opacity + blur，
-         纯 compositor 属性 GPU 加速；contain:layout 隔离布局级联重算；
-         高度由 class 瞬时切换，不做过渡。
+   动画：transitions-dev 双域协同 —
+         • chevron 旋转走 --icon-swap-* 域（200ms ease-in-out）
+         • content 入场走 --panel-* 域（translateY + opacity + blur，
+           保留 -6px 而非 --panel-translate-y 的 100px，避免内联块过度位移）
+         height: 0/auto 瞬时切换不参与过渡，由 overflow:hidden 兜住。
    ============================================================================ */
 
 .think-block {
@@ -978,7 +980,8 @@
   height: 1.25rem;
   flex-shrink: 0;
   color: hsl(var(--muted-foreground) / 0.5);
-  transition: transform 0.22s ease;
+  transition: transform var(--icon-swap-dur, 200ms) var(--icon-swap-ease, ease-in-out);
+  will-change: transform;
 }
 
 .think-chevron--expanded {
@@ -1002,11 +1005,11 @@
   padding: 0.75rem 0.875rem;
   transform: translateY(-6px);
   opacity: 0;
-  filter: blur(2px);
+  filter: blur(var(--panel-blur, 2px));
   transition:
-    transform var(--resize-dur, 300ms) var(--resize-ease, cubic-bezier(0.22, 1, 0.36, 1)),
-    opacity   var(--resize-dur, 300ms) var(--resize-ease, cubic-bezier(0.22, 1, 0.36, 1)),
-    filter    var(--resize-dur, 300ms) var(--resize-ease, cubic-bezier(0.22, 1, 0.36, 1));
+    transform var(--panel-open-dur, 400ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    opacity   var(--panel-open-dur, 400ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    filter    var(--panel-open-dur, 400ms) var(--panel-ease, cubic-bezier(0.22, 1, 0.36, 1));
   will-change: transform, opacity, filter;
 }
 
@@ -1014,6 +1017,13 @@
   transform: translateY(0);
   opacity: 1;
   filter: blur(0);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .think-chevron,
+  .think-content {
+    transition: none !important;
+  }
 }
 
 /* ─── Typography inside thinking block ────────────────────────────────────── */

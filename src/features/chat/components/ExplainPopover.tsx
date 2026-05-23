@@ -27,6 +27,7 @@ import { Copy, Check, ChatDots, X, ArrowsClockwise } from '@phosphor-icons/react
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { cn } from '@/utils/cn';
+import { IconSwap } from '@/components/ui/IconSwap';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { Z_INDEX } from '@/config/zIndex';
 import { useViewStore } from '@/stores/viewStore';
@@ -358,7 +359,13 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
             <div className="flex items-center gap-1 px-2.5 pb-2 border-t border-border/30 pt-1.5">
               <ActionButton
                 onClick={handleCopy}
-                icon={copied ? <Check size={13} className="text-green-500" /> : <Copy size={13} />}
+                icon={
+                  <IconSwap
+                    active={copied}
+                    a={<Copy size={13} />}
+                    b={<Check size={13} className="text-green-500" />}
+                  />
+                }
                 label={copied ? t('selectionToolbar.copied', '已复制') : t('selectionToolbar.copy', '复制')}
               />
               {onAddToInput && (

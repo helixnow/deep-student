@@ -30,6 +30,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import { nanoid } from 'nanoid';
 import { cn } from '@/utils/cn';
+import { IconSwap } from '@/components/ui/IconSwap';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { AppSelect } from '@/components/ui/app-menu/AppSelect';
 import { OverlayLayerProvider } from '@/components/shared/OverlayLayer';
@@ -771,11 +772,11 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
               <ActionButton
                 onClick={handleCopySource}
                 icon={
-                  copiedSource ? (
-                    <Check size={13} className="text-green-500" />
-                  ) : (
-                    <Copy size={13} />
-                  )
+                  <IconSwap
+                    active={copiedSource}
+                    a={<Copy size={13} />}
+                    b={<Check size={13} className="text-green-500" />}
+                  />
                 }
                 label={
                   copiedSource
@@ -786,11 +787,11 @@ export const TranslationPopover: React.FC<TranslationPopoverProps> = ({
               <ActionButton
                 onClick={handleCopyTranslation}
                 icon={
-                  copiedTranslation ? (
-                    <Check size={13} className="text-green-500" />
-                  ) : (
-                    <Copy size={13} />
-                  )
+                  <IconSwap
+                    active={copiedTranslation}
+                    a={<Copy size={13} />}
+                    b={<Check size={13} className="text-green-500" />}
+                  />
                 }
                 label={
                   copiedTranslation

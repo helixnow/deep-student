@@ -2,7 +2,7 @@
  * SelectionToolbar - 文本选中浮动工具栏
  *
  * 当用户在消息内容中选中文本时，在选区上方显示操作工具栏。
- * 提供：复制、AI 解释、翻译、制卡 四个操作。
+ * 提供：复制、AI 解释、翻译、添加到聊天 四个操作。
  *
  * 视觉风格：毛玻璃胶囊形，带入场/出场动画。
  * 定位：Portal 渲染到 body，基于选区 rect 定位。
@@ -10,7 +10,7 @@
 
 import React, { useCallback, useState, useEffect, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Copy, Check, Sparkle, Translate, CreditCard, ChatDots } from '@phosphor-icons/react';
+import { Copy, Check, Sparkle, Translate, ChatDots } from '@phosphor-icons/react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
@@ -39,8 +39,6 @@ export interface SelectionToolbarProps {
   onTranslate?: (text: string) => void;
   /** 添加到聊天输入框回调 */
   onAddToChat?: (text: string) => void;
-  /** 制卡回调 */
-  onMakeCard?: (text: string) => void;
 }
 
 // ============================================================================
@@ -67,7 +65,6 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
   onExplain,
   onTranslate,
   onAddToChat,
-  onMakeCard,
 }) => {
   const { t } = useTranslation('chatV2');
   const [copied, setCopied] = useState(false);
@@ -151,16 +148,6 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
     onClear();
   }, [selectedText, onAddToChat, onClear]);
 
-  // 制卡
-  const handleMakeCard = useCallback((e: React.MouseEvent) => {
-    e.preventDefault();
-    e.stopPropagation();
-    if (onMakeCard) {
-      onMakeCard(selectedText);
-    }
-    onClear();
-  }, [selectedText, onMakeCard, onClear]);
-
   // 动画变体
   const motionVariants = {
     initial: { opacity: 0, scale: 0.92, y: position.flipped ? -4 : 4 },
@@ -230,16 +217,6 @@ export const SelectionToolbar: React.FC<SelectionToolbarProps> = ({
             icon={<ChatDots size={14} />}
             label={t('selectionToolbar.addToChat', '添加到聊天')}
             disabled={!onAddToChat}
-          />
-
-          <Divider />
-
-          {/* 制卡 */}
-          <ToolbarButton
-            onClick={handleMakeCard}
-            icon={<CreditCard size={14} />}
-            label={t('selectionToolbar.makeCard', '制卡')}
-            disabled={!onMakeCard}
             isLast
           />
         </motion.div>

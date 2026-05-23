@@ -244,17 +244,25 @@
   position: relative;
   box-sizing: border-box;
   margin: var(--chat-md-block-gap) 0;
-  border: 1px solid var(--chat-block-border); /* 保留外层边框 */
+  border: 1px solid var(--chat-block-border);
   border-radius: var(--chat-block-radius);
   background: var(--chat-block-surface);
-  overflow: visible; /* 允许 sticky 头部在滚动容器内挂顶 */
+  overflow: visible;
   box-shadow: none;
+  transition: border-radius 0.18s ease;
 }
 
+/* 吸顶 — wrapper 全直角，与脱离的 header 协同 */
 .chat-v2 .markdown-content .code-block-wrapper:has(.code-block-sticky-header--stuck) {
   border-radius: 0;
 }
 
+/* 划出 — wrapper 上直下圆，保留底部圆角与 header 的下圆角呼应 */
+.chat-v2 .markdown-content .code-block-wrapper:has(.code-block-sticky-header--exiting) {
+  border-radius: 0 0 var(--chat-block-radius) var(--chat-block-radius);
+}
+
+/* Sticky 头部容器：仅负责 sticky 定位，外观由内层 .code-block-header 控制 */
 .chat-v2 .markdown-content .code-block-sticky-header {
   position: sticky;
   top: 0;
@@ -271,22 +279,25 @@
   opacity: 0;
 }
 
+/* Sticky 模式下内层 header：实底 + 过渡动画 */
 .chat-v2 .markdown-content .code-block-sticky-header--sticky .code-block-header {
-  background: var(--chat-block-surface-muted);
-  box-shadow: none;
+  background: var(--chat-table-header-surface);
+  transition: border-radius 0.18s ease;
 }
 
+/* 吸顶 — header 全直角，脱离 wrapper 贴齐视窗顶部 */
 .chat-v2 .markdown-content .code-block-sticky-header--stuck .code-block-header {
   border-radius: 0;
+}
+
+/* 划出 — header 上直下圆，与 wrapper 底部圆角呼应 */
+.chat-v2 .markdown-content .code-block-sticky-header--exiting .code-block-header {
+  border-radius: 0 0 var(--chat-block-radius) var(--chat-block-radius);
 }
 
 .chat-v2 .markdown-content .code-block-body-shell {
   overflow: hidden;
   border-radius: 0 0 var(--chat-block-radius) var(--chat-block-radius);
-}
-
-.chat-v2 .markdown-content .code-block-wrapper:has(.code-block-sticky-header--stuck) .code-block-body-shell {
-  border-radius: 0;
 }
 
 /* Mermaid 预览容器：设置最小高度与拖拽态样式 */
@@ -359,7 +370,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 10px 12px;
-  background: var(--chat-block-surface-muted);
+  background: var(--chat-table-header-surface);
   border-bottom: none; /* 移除边框 */
   border-radius: var(--chat-block-radius) var(--chat-block-radius) 0 0;
   font-size: 12px;

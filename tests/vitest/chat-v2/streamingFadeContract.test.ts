@@ -8,10 +8,10 @@ describe('chat v2 streaming fade contract', () => {
     'utf-8',
   );
 
-  it('fades the active streaming block instead of only animating new blocks', () => {
-    expect(streamingBlocksCssSource).toContain('.stream-block[data-updating="true"]');
-    expect(streamingBlocksCssSource).toContain('stream-block-soft-reveal');
+  it('keeps only non-active new block fades and leaves the active flowtoken block untouched', () => {
+    expect(streamingBlocksCssSource).not.toContain('data-updating');
+    expect(streamingBlocksCssSource).not.toContain('stream-block-soft-reveal');
     expect(streamingBlocksCssSource).toContain('.stream-block[data-new="true"]:not([data-active="true"])');
-    expect(streamingBlocksCssSource).toContain('will-change: opacity;');
+    expect(streamingBlocksCssSource).toContain('animation: stream-block-fade-in 160ms');
   });
 });

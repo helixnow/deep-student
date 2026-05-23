@@ -8,9 +8,13 @@ describe('CodeBlock sticky header contract', () => {
     'utf-8'
   );
 
-  it('defines a sticky header shell with stuck-state markup for the code block toolbar', () => {
-    expect(codeBlockShellSource).toContain('code-block-sticky-sentinel');
+  it('defines pinned and exiting sticky phases for the code block toolbar', () => {
+    expect(codeBlockShellSource).toContain('const wrapperRect = wrapper.getBoundingClientRect();');
+    expect(codeBlockShellSource).toContain('const remainingBodyHeight = wrapperRect.bottom - (rootTop + headerHeight);');
+    expect(codeBlockShellSource).toContain('const stickyExitThreshold = headerHeight > 0 ? headerHeight : 16;');
     expect(codeBlockShellSource).toContain('code-block-sticky-header--stuck');
+    expect(codeBlockShellSource).toContain('code-block-sticky-header--exiting');
     expect(codeBlockShellSource).toContain('data-stuck={isStuck ? \'true\' : \'false\'}');
+    expect(codeBlockShellSource).toContain("data-sticky-phase={isExitingSticky ? 'exiting' : isStuck ? 'pinned' : 'resting'}");
   });
 });

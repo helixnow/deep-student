@@ -15,7 +15,7 @@ const FLOWTOKEN_ANIMATION_SELECTOR =
   '[style*="animation-name: ft-fadeIn"]';
 
 describe('MarkdownRenderer flowtoken streaming animation', () => {
-  it('does not emit flowtoken spans from MarkdownRenderer (AnimatedMarkdown handles animation)', () => {
+  it('does not emit flowtoken spans from MarkdownRenderer in streaming mode', () => {
     const { container } = render(<MarkdownRenderer content="流式输出正在变得更自然。" isStreaming />);
 
     expect(container.querySelector(FLOWTOKEN_ANIMATION_SELECTOR)).toBeNull();
@@ -132,7 +132,7 @@ describe('MarkdownRenderer flowtoken streaming animation', () => {
     expect(container.textContent).not.toContain('[object Object]');
   });
 
-  it('keeps bare LaTeX out of the streaming thinking-chain flowtoken path', () => {
+  it('keeps bare LaTeX in the streaming thinking chain static', () => {
     const { container } = render(
       <StreamingBlockRenderer
         content={'<thinking>先想一想\nscore(Q, K) = \\\\frac{QK^T}{\\\\sqrt{d_k}}</thinking>\n最终答案'}
@@ -140,12 +140,12 @@ describe('MarkdownRenderer flowtoken streaming animation', () => {
       />
     );
 
-    expect(container.querySelector('.chain-of-thought .flowtoken-markdown')).toBeNull();
     expect(container.querySelector('.chain-of-thought .markdown-content')).not.toBeNull();
+    expect(container.querySelector('.chain-of-thought [style*="animation-name: ft-fadeIn"]')).toBeNull();
     expect(container.textContent).not.toContain('[object Object]');
   });
 
-  it('keeps multiline thinking content on the markdown renderer even when it is plain text', () => {
+  it('keeps multiline thinking content static while preserving markdown rendering', () => {
     const { container } = render(
       <StreamingBlockRenderer
         content={'<thinking>先想一想\n第二行继续说明</thinking>\n最终答案'}
@@ -153,11 +153,11 @@ describe('MarkdownRenderer flowtoken streaming animation', () => {
       />
     );
 
-    expect(container.querySelector('.chain-of-thought .flowtoken-markdown')).toBeNull();
     expect(container.querySelector('.chain-of-thought .markdown-content')).not.toBeNull();
+    expect(container.querySelector('.chain-of-thought [style*="animation-name: ft-fadeIn"]')).toBeNull();
   });
 
-  it('keeps multiline parsed thinking content on the markdown renderer in StreamingMarkdownRenderer', () => {
+  it('keeps multiline parsed thinking content static in StreamingMarkdownRenderer', () => {
     const { container } = render(
       <StreamingMarkdownRenderer
         content={'<thinking>先想一想\n第二行继续说明</thinking>\n最终答案'}
@@ -165,11 +165,11 @@ describe('MarkdownRenderer flowtoken streaming animation', () => {
       />
     );
 
-    expect(container.querySelector('.thinking-content .flowtoken-markdown')).toBeNull();
     expect(container.querySelector('.thinking-content .markdown-content')).not.toBeNull();
+    expect(container.querySelector('.thinking-content [style*="animation-name: ft-fadeIn"]')).toBeNull();
   });
 
-  it('does not route parsed streaming main content with bare LaTeX through full flowtoken', () => {
+  it('keeps parsed streaming main content static when markdown fallback is required', () => {
     const { container } = render(
       <StreamingMarkdownRenderer
         content={'<thinking>先想一想</thinking>\\nscore(Q, K) = \\\\frac{QK^T}{\\\\sqrt{d_k}}'}
@@ -177,11 +177,12 @@ describe('MarkdownRenderer flowtoken streaming animation', () => {
       />
     );
 
-    expect(container.querySelector('.main-content .flowtoken-markdown')).toBeNull();
+    expect(container.querySelector('.main-content .markdown-content')).not.toBeNull();
+    expect(container.querySelector('.main-content [style*="animation-name: ft-fadeIn"]')).toBeNull();
     expect(container.textContent).not.toContain('[object Object]');
   });
 
-  it('keeps bare LaTeX out of the parsed thinking-chain flowtoken path', () => {
+  it('keeps bare LaTeX in the parsed thinking chain static', () => {
     const { container } = render(
       <StreamingMarkdownRenderer
         content={'<thinking>先想一想\nscore(Q, K) = \\\\frac{QK^T}{\\\\sqrt{d_k}}</thinking>\n最终答案'}
@@ -189,8 +190,8 @@ describe('MarkdownRenderer flowtoken streaming animation', () => {
       />
     );
 
-    expect(container.querySelector('.thinking-content .flowtoken-markdown')).toBeNull();
     expect(container.querySelector('.thinking-content .markdown-content')).not.toBeNull();
+    expect(container.querySelector('.thinking-content [style*="animation-name: ft-fadeIn"]')).toBeNull();
     expect(container.textContent).not.toContain('[object Object]');
   });
 
@@ -219,52 +220,22 @@ describe('MarkdownRenderer flowtoken streaming animation', () => {
     expect(animatedSpan).toHaveStyle('animation-timing-function: ease-out');
   });
 
-  it('buffers high-frequency streaming updates before committing them to flowtoken', () => {
-    vi.useFakeTimers();
-    vi.stubGlobal(
-      'requestAnimationFrame',
-      ((callback: FrameRequestCallback) => setTimeout(() => callback(performance.now()), 16)) as typeof requestAnimationFrame,
-    );
-    vi.stubGlobal(
-      'cancelAnimationFrame',
-      ((id: number) => clearTimeout(id as unknown as ReturnType<typeof setTimeout>)) as typeof cancelAnimationFrame,
+  it('renders streaming updates directly without buffering them', () => {
+    const { container, rerender } = render(
+      <FlowTokenMarkdownRenderer
+        content="Alpha"
+        isStreaming
+      />
     );
 
-    try {
-      const initial = 'Alpha ';
-      const target = 'Alpha beta gamma delta epsilon zeta eta theta.';
-      const { container, rerender } = render(
-        <FlowTokenMarkdownRenderer
-          content={initial}
-          isStreaming
-          streamSmoothingPreset="balanced"
-        />
-      );
+    rerender(
+      <FlowTokenMarkdownRenderer
+        content="Alpha beta gamma delta epsilon zeta eta theta."
+        isStreaming
+      />
+    );
 
-      rerender(
-        <FlowTokenMarkdownRenderer
-          content={target}
-          isStreaming
-          streamSmoothingPreset="balanced"
-        />
-      );
-
-      expect(container.textContent).toContain(initial);
-      expect(container.textContent).not.toContain(target);
-
-      vi.advanceTimersByTime(16);
-      expect(container.textContent).not.toContain(target);
-
-      vi.advanceTimersByTime(48);
-      const partialText = container.textContent ?? '';
-      expect(partialText.length).toBeGreaterThan(initial.length);
-      expect(partialText.length).toBeLessThan(target.length);
-
-      vi.advanceTimersByTime(2000);
-      expect(container.textContent).toContain(target);
-    } finally {
-      vi.useRealTimers();
-      vi.unstubAllGlobals();
-    }
+    expect(container.textContent).toContain('Alpha beta gamma delta epsilon zeta eta theta.');
+    expect(container.querySelector(FLOWTOKEN_ANIMATION_SELECTOR)).not.toBeNull();
   });
 });

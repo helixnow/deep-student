@@ -7,6 +7,7 @@ import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { NotionAlertDialog } from '@/components/ui/NotionDialog';
+import { IconSwap } from '@/components/ui/IconSwap';
 import { AppMenu, AppMenuTrigger, AppMenuContent, AppMenuItem, AppMenuSeparator } from '@/components/ui/app-menu/AppMenu';
 
 export interface MessageActionsProps {
@@ -204,7 +205,11 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
             aria-label={t('messageItem.actions.copy')}
             title={t('messageItem.actions.copy')}
           >
-            {copied ? <Check className="w-4 h-4 text-green-500" /> : <CopySimple className="w-4 h-4" />}
+            <IconSwap
+              active={copied}
+              a={<CopySimple className="w-4 h-4" />}
+              b={<Check className="w-4 h-4 text-green-500" />}
+            />
           </NotionButton>
           {actionsMenu}
         </div>
@@ -227,7 +232,11 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
     <div className={cn('flex items-center gap-1', className)}>
       {/* 复制按钮 */}
       <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCopy} aria-label={t('messageItem.actions.copy')} title={t('messageItem.actions.copy')}>
-        {copied ? <Check className="w-4 h-4 text-green-500" /> : <CopySimple className="w-4 h-4" />}
+        <IconSwap
+          active={copied}
+          a={<CopySimple className="w-4 h-4" />}
+          b={<Check className="w-4 h-4 text-green-500" />}
+        />
       </NotionButton>
 
       {/* 🆕 保存为笔记按钮（仅助手消息） */}
@@ -247,7 +256,11 @@ export const MessageActions: React.FC<MessageActionsProps> = ({
       {/* 🆕 复制调试信息按钮 */}
       {onCopyDebug && (
         <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCopyDebug} aria-label={t('debug.copyDebugInfo', '复制调试信息')} title={t('debug.copyDebugInfo', '复制调试信息')}>
-          {debugCopied ? <Check className="w-4 h-4 text-green-500" /> : <Bug className="w-4 h-4" />}
+          <IconSwap
+            active={debugCopied}
+            a={<Bug className="w-4 h-4" />}
+            b={<Check className="w-4 h-4 text-green-500" />}
+          />
         </NotionButton>
       )}
 

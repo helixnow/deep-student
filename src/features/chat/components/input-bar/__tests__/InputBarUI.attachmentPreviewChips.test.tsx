@@ -265,4 +265,100 @@ describe('InputBarUI attachment preview chips', () => {
     expect(screen.getByTestId('btn-stop')).toBeInTheDocument();
     expect(screen.queryByTestId('btn-send')).not.toBeInTheDocument();
   });
+
+  it('sends on Enter while streaming when queue mode is enabled', () => {
+    const onSend = vi.fn();
+    const onAbort = vi.fn();
+
+    render(
+      <InputBarUI
+        inputValue="继续讲"
+        canSend={false}
+        canAbort
+        canSubmit
+        isStreaming
+        queueEnabled
+        attachments={[]}
+        panelStates={createDefaultPanelStates()}
+        onInputChange={vi.fn()}
+        onSend={onSend}
+        onAbort={onAbort}
+        onAddAttachment={vi.fn()}
+        onUpdateAttachment={vi.fn()}
+        onRemoveAttachment={vi.fn()}
+        onClearAttachments={vi.fn()}
+        onSetPanelState={vi.fn()}
+        placeholder="输入消息"
+      />
+    );
+
+    fireEvent.keyDown(screen.getByTestId('input-bar-v2-textarea'), {
+      key: 'Enter',
+      code: 'Enter',
+    });
+
+    expect(onSend).toHaveBeenCalledTimes(1);
+    expect(onAbort).not.toHaveBeenCalled();
+  });
+
+  it('still stops when the Stop button is clicked during queue mode streaming', () => {
+    const onAbort = vi.fn();
+
+    render(
+      <InputBarUI
+        inputValue="继续讲"
+        canSend={false}
+        canAbort
+        canSubmit
+        isStreaming
+        queueEnabled
+        attachments={[]}
+        panelStates={createDefaultPanelStates()}
+        onInputChange={vi.fn()}
+        onSend={vi.fn()}
+        onAbort={onAbort}
+        onAddAttachment={vi.fn()}
+        onUpdateAttachment={vi.fn()}
+        onRemoveAttachment={vi.fn()}
+        onClearAttachments={vi.fn()}
+        onSetPanelState={vi.fn()}
+        placeholder="输入消息"
+      />
+    );
+
+    fireEvent.click(screen.getByTestId('btn-stop'));
+
+    expect(onAbort).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps Enter as Stop while streaming when queue mode is disabled', () => {
+    const onAbort = vi.fn();
+
+    render(
+      <InputBarUI
+        inputValue="继续讲"
+        canSend={false}
+        canAbort
+        isStreaming
+        attachments={[]}
+        panelStates={createDefaultPanelStates()}
+        onInputChange={vi.fn()}
+        onSend={vi.fn()}
+        onAbort={onAbort}
+        onAddAttachment={vi.fn()}
+        onUpdateAttachment={vi.fn()}
+        onRemoveAttachment={vi.fn()}
+        onClearAttachments={vi.fn()}
+        onSetPanelState={vi.fn()}
+        placeholder="输入消息"
+      />
+    );
+
+    fireEvent.keyDown(screen.getByTestId('input-bar-v2-textarea'), {
+      key: 'Enter',
+      code: 'Enter',
+    });
+
+    expect(onAbort).toHaveBeenCalledTimes(1);
+  });
 });

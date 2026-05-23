@@ -35,6 +35,13 @@ describe('CodeBlock sticky header CSS contract', () => {
     expect(stuckWrapperRuleStart).toBeGreaterThan(-1);
     expect(stuckWrapperRule).toContain('border-radius: 0;');
 
+    const exitingWrapperRuleStart = markdownCssSource.indexOf('.chat-v2 .markdown-content .code-block-wrapper:has(.code-block-sticky-header--exiting) {');
+    const exitingWrapperRuleEnd = markdownCssSource.indexOf('}', exitingWrapperRuleStart);
+    const exitingWrapperRule = markdownCssSource.slice(exitingWrapperRuleStart, exitingWrapperRuleEnd);
+
+    expect(exitingWrapperRuleStart).toBeGreaterThan(-1);
+    expect(exitingWrapperRule).toContain('border-radius: 0 0 var(--chat-block-radius) var(--chat-block-radius);');
+
     expect(stickyRuleStart).toBeGreaterThan(-1);
     expect(stickyRule).toContain('position: sticky;');
     expect(stickyRule).toContain('top: 0;');
@@ -42,7 +49,22 @@ describe('CodeBlock sticky header CSS contract', () => {
     expect(stuckRuleStart).toBeGreaterThan(-1);
     expect(stuckRule).toContain('border-radius: 0;');
 
+    const exitingRuleStart = markdownCssSource.indexOf('.chat-v2 .markdown-content .code-block-sticky-header--exiting .code-block-header {');
+    const exitingRuleEnd = markdownCssSource.indexOf('}', exitingRuleStart);
+    const exitingRule = markdownCssSource.slice(exitingRuleStart, exitingRuleEnd);
+
+    expect(exitingRuleStart).toBeGreaterThan(-1);
+    expect(exitingRule).toContain('border-radius: 0 0 var(--chat-block-radius) var(--chat-block-radius);');
+
     expect(bodyShellRuleStart).toBeGreaterThan(-1);
     expect(bodyShellRule).toContain('overflow: hidden;');
+
+    const headerRuleStart = markdownCssSource.indexOf('.chat-v2 .markdown-content .code-block-header {');
+    const headerRuleEnd = markdownCssSource.indexOf('}', headerRuleStart);
+    const headerRule = markdownCssSource.slice(headerRuleStart, headerRuleEnd);
+
+    expect(headerRuleStart).toBeGreaterThan(-1);
+    expect(headerRule).toContain('background: var(--chat-table-header-surface);');
+    expect(headerRule).not.toContain('--chat-block-surface-muted');
   });
 });

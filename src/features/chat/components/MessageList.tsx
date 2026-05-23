@@ -15,7 +15,9 @@ import React, { useRef, useEffect, useCallback, memo, useMemo, useState } from '
 import { useVirtualizer } from '@tanstack/react-virtual';
 import { useTranslation } from 'react-i18next';
 import type { StoreApi } from 'zustand';
+import { motion, AnimatePresence } from 'framer-motion';
 import { cn } from '@/utils/cn';
+import { newMessageVariants } from '@/styles/motion-variants';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { MessageItem } from './MessageItem';
 import { useMessageOrder, useSessionStatus, useIsDataLoaded } from '../hooks/useChatStore';
@@ -550,14 +552,32 @@ const MessageListInner: React.FC<MessageListProps> = ({
           aria-relevant="additions"
           style={{ width: '100%' }}
         >
-          {messageOrder.map((messageId, messageIndex) => (
-            <MessageItem
-              key={messageId}
-              messageId={messageId}
-              store={store}
-              isFirst={messageIndex === 0}
-            />
-          ))}
+          <AnimatePresence>
+            {messageOrder.map((messageId, messageIndex) => {
+              const isUserMessage = store.getState().getMessage(messageId)?.role === 'user';
+              const content = (
+                <MessageItem
+                  messageId={messageId}
+                  store={store}
+                  isFirst={messageIndex === 0}
+                />
+              );
+              if (isUserMessage) {
+                return (
+                  <motion.div
+                    key={messageId}
+                    variants={newMessageVariants}
+                    initial="initial"
+                    animate="animate"
+                    exit="exit"
+                  >
+                    {content}
+                  </motion.div>
+                );
+              }
+              return <div key={messageId}>{content}</div>;
+            })}
+          </AnimatePresence>
         </div>
       ) : (
         // 虚拟滚动模式
@@ -575,6 +595,8 @@ const MessageListInner: React.FC<MessageListProps> = ({
             const messageId = messageOrder[virtualRow.index];
             if (!messageId) return null;
 
+            const isUserMessage = store.getState().getMessage(messageId)?.role === 'user';
+
             return (
               <div
                 key={messageId}
@@ -588,11 +610,25 @@ const MessageListInner: React.FC<MessageListProps> = ({
                   transform: `translateY(${virtualRow.start}px)`,
                 }}
               >
-                <MessageItem
-                  messageId={messageId}
-                  store={store}
-                  isFirst={virtualRow.index === 0}
-                />
+                {isUserMessage ? (
+                  <motion.div
+                    variants={newMessageVariants}
+                    initial="initial"
+                    animate="animate"
+                  >
+                    <MessageItem
+                      messageId={messageId}
+                      store={store}
+                      isFirst={virtualRow.index === 0}
+                    />
+                  </motion.div>
+                ) : (
+                  <MessageItem
+                    messageId={messageId}
+                    store={store}
+                    isFirst={virtualRow.index === 0}
+                  />
+                )}
               </div>
             );
           })}
