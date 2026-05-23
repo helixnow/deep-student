@@ -14,6 +14,7 @@ export interface UseChatPageLayoutDeps {
   expandGroup: (groupId: string) => void;
   currentSessionHasMessages: boolean;
   viewMode: 'sidebar' | 'browser';
+  sessionSheetOpen: boolean;
   t: TFunction<any, any>;
   sessionCount: number;
   createSession: (groupId?: string) => Promise<void>;
@@ -30,7 +31,7 @@ export interface UseChatPageLayoutDeps {
 export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
   const {
     currentSession, currentSessionId, expandGroup, currentSessionHasMessages,
-    viewMode, t, sessionCount, createSession, isLoading,
+    viewMode, sessionSheetOpen, t, sessionCount, createSession, isLoading,
     mobileResourcePanelOpen, finderBreadcrumbs, finderJumpToBreadcrumb,
     setMobileResourcePanelOpen, setSessionSheetOpen, setShowChatControl, setViewMode,
   } = deps;
@@ -123,6 +124,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
     showBackArrow: true,
     onMenuClick: () => setMobileResourcePanelOpen(false),
   } : {
+    hidden: sessionSheetOpen,
     title: headerTitle,
     showMenu: viewMode !== 'browser',
     showBackArrow: viewMode === 'browser',
@@ -133,7 +135,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
         }
       : () => setSessionSheetOpen(prev => !prev),
     rightActions: headerRightActions,
-  }, [headerTitle, viewMode, headerRightActions, mobileResourcePanelOpen, finderBreadcrumbs, handleFinderBreadcrumbNavigate, t]);
+  }, [headerTitle, viewMode, headerRightActions, mobileResourcePanelOpen, sessionSheetOpen, finderBreadcrumbs, handleFinderBreadcrumbNavigate, t]);
 
   return {
     isEmptyNewChat,

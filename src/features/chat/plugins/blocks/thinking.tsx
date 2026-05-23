@@ -3,7 +3,7 @@
  *
  * 渲染 AI 的思维链/推理过程。
  * 视觉层级：左品牌色 accent bar + 卡片容器，与普通消息块拉开差距。
- * 动画：max-height 过渡支持展开/折叠平滑切换。
+ * 动画：CSS opacity 过渡 + contain:layout 隔离布局重算。
  */
 
 import React, { useCallback, useEffect, useId, useRef, useState } from 'react';

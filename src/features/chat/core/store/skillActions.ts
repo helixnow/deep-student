@@ -67,6 +67,37 @@ function updateManualPinnedSkillState(
 }
 
 // ============================================================================
+// 辅助函数
+// ============================================================================
+
+interface SkillLike {
+  dependencies?: string[];
+}
+
+function collectSkillClosure(
+  skill: SkillLike,
+  registry: { get: (id: string) => SkillLike | undefined },
+): Set<string> {
+  const closure = new Set<string>();
+  const collect = (id: string, path: string[] = []): void => {
+    if (path.includes(id) || closure.has(id)) return;
+    closure.add(id);
+    const s = registry.get(id);
+    if (s?.dependencies) {
+      for (const depId of s.dependencies) {
+        collect(depId, [...path, id]);
+      }
+    }
+  };
+  if (skill.dependencies) {
+    for (const depId of skill.dependencies) {
+      collect(depId);
+    }
+  }
+  return closure;
+}
+
+// ============================================================================
 // Skill Actions 创建
 // ============================================================================
 
@@ -190,13 +221,36 @@ export function createSkillActions(
             (ref) => !(ref.typeId === SKILL_INSTRUCTION_TYPE_ID && ref.skillId === skillId)
           ),
         }));
-        void import('../../skills/progressiveDisclosure').then(({ unloadSkill }) => {
+
+        void import('../../skills/progressiveDisclosure').then(async ({ unloadSkill }) => {
           unloadSkill(state.sessionId, skillId);
+
+          const { skillRegistry } = await import('../../skills/registry');
+          const removedSkill = skillRegistry.get(skillId);
+          if (removedSkill?.dependencies?.length) {
+            const closure = collectSkillClosure(removedSkill, skillRegistry);
+            const remainingActive = get().activeSkillIds;
+            const neededDeps = new Set<string>();
+            for (const activeId of remainingActive) {
+              const s = skillRegistry.get(activeId);
+              if (s) {
+                for (const depId of collectSkillClosure(s, skillRegistry)) {
+                  neededDeps.add(depId);
+                }
+              }
+            }
+            for (const depId of closure) {
+              if (!neededDeps.has(depId) && depId !== skillId) {
+                unloadSkill(state.sessionId, depId);
+              }
+            }
+          }
         }).catch((error: unknown) => {
           console.warn(LOG_PREFIX, 'Unload skill tools failed:', error);
         });
         console.log(LOG_PREFIX, `Deactivated skill: ${skillId}`);
       } else {
+        const activeIds = [...state.activeSkillIds];
         set((s: ChatStoreState) => ({
           activeSkillIds: [],
           skillStateJson: updateManualPinnedSkillState(s.skillStateJson, () => []),
@@ -204,6 +258,14 @@ export function createSkillActions(
             (ref) => ref.typeId !== SKILL_INSTRUCTION_TYPE_ID
           ),
         }));
+        void import('../../skills/progressiveDisclosure').then(({ unloadSkill, clearSessionSkills }) => {
+          for (const id of activeIds) {
+            unloadSkill(state.sessionId, id);
+          }
+          clearSessionSkills(state.sessionId);
+        }).catch((error: unknown) => {
+          console.warn(LOG_PREFIX, 'Unload all skill tools failed:', error);
+        });
         console.log(LOG_PREFIX, 'Deactivated all skills');
       }
     },

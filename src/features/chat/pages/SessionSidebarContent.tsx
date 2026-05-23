@@ -241,20 +241,34 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
           </section>
         )}
 
-        {(visibleGroups.length > 0 || ungroupedNonPinned.length > 0) && (
-          <section className="space-y-0.5" aria-label={t('page.recentSessions', '最近')}>
-            <div className="px-3">
-              <p className="text-[11px] font-normal text-[color:var(--sidebar-muted)]">最近</p>
-            </div>
-            <div className="space-y-0.5">
-              {visibleGroups.map((group) =>
+        <section className="space-y-0.5" aria-label={t('page.studySessions', '课题')}>
+          <div className="px-3">
+            <p className="text-[11px] font-normal text-[color:var(--sidebar-muted)]">{t('page.studySessions', '课题')}</p>
+          </div>
+          <div className="space-y-0.5">
+            {visibleGroups.length > 0 ? (
+              visibleGroups.map((group) =>
                 renderFolderRow(
                   group.id,
                   group.name,
                   sessionsByGroup.get(group.id) ?? [],
                   activeGroupId === group.id
                 )
-              )}
+              )
+            ) : (
+              <div className="px-3 py-2 text-[13px] text-[color:var(--sidebar-muted)] opacity-80">
+                {t('page.studySessionsEmpty', '暂无课题')}
+              </div>
+            )}
+          </div>
+        </section>
+
+        {(visibleGroups.length > 0 || ungroupedNonPinned.length > 0) && (
+          <section className="space-y-0.5" aria-label={t('page.recentSessions', '最近')}>
+            <div className="px-3">
+              <p className="text-[11px] font-normal text-[color:var(--sidebar-muted)]">最近</p>
+            </div>
+            <div className="space-y-0.5">
               {ungroupedNonPinned.length > 0 && renderFolderRow(
                 'ungrouped',
                 '未分类',

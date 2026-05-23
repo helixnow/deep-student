@@ -277,24 +277,24 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
     const displayText = displayParts.join(' + ') || t('askUser.autoSelected', { defaultValue: '（自动选择）' });
 
     return (
-      <div className="rounded-lg border border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-900/10 overflow-hidden">
+      <div className="overflow-hidden rounded-[var(--radius-shell-row)] border border-[color:var(--border-soft)] bg-[color:var(--surface-elevated)] shadow-[var(--shadow-content-subtle)]">
         {/* 头部 */}
-        <div className="flex items-center gap-2 px-3 py-2 bg-green-100/50 dark:bg-green-900/20">
-          <Check size={16} className="text-green-600 dark:text-green-400" />
-          <span className="text-sm font-medium text-green-700 dark:text-green-300">
+        <div className="flex items-center gap-2 border-b border-[color:var(--border-soft)] bg-[color:var(--surface-panel-strong)] px-3 py-2">
+          <Check size={16} className="text-[color:hsl(var(--success)/0.8)]" />
+          <span className="text-sm font-medium text-[color:var(--text-primary)]">
             {question}
           </span>
         </div>
         {/* 结果 */}
         <div className="px-3 py-2 flex items-center gap-2 text-sm">
-          <span className="text-muted-foreground">
+          <span className="text-[color:var(--text-muted)]">
             {t('askUser.selected')}:
           </span>
-          <span className="font-medium">
+          <span className="font-medium text-[color:var(--text-primary)]">
             {displayText}
           </span>
           {resolvedSource && (
-            <span className="text-xs text-muted-foreground">
+            <span className="text-xs text-[color:var(--text-muted)]">
               ({sourceLabel})
             </span>
           )}
@@ -305,15 +305,15 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
 
   // ========== 活跃状态：交互式提问卡片 ==========
   return (
-    <div className="rounded-lg border-2 border-blue-300 dark:border-blue-700 bg-blue-50/50 dark:bg-blue-950/20 overflow-hidden">
+    <div className="overflow-hidden rounded-[var(--radius-shell-row)] border border-[color:var(--border-soft)] bg-[color:var(--surface-elevated)] shadow-[var(--shadow-content-subtle)]">
       {/* 头部：问题 + 倒计时 */}
-      <div className="flex items-center gap-2 px-3 py-2 bg-blue-100/50 dark:bg-blue-900/20">
-          <ChatCircleDots size={16} className="text-blue-600 dark:text-blue-400 flex-shrink-0" />
-        <span className="text-sm font-medium text-blue-800 dark:text-blue-200 flex-1">
+      <div className="flex items-center gap-2 border-b border-[color:var(--border-soft)] bg-[color:var(--surface-panel-strong)] px-3 py-2">
+          <ChatCircleDots size={16} className="flex-shrink-0 text-[color:var(--text-secondary)]" />
+        <span className="flex-1 text-sm font-medium text-[color:var(--text-primary)]">
           {question}
         </span>
         {remainingSeconds !== null && remainingSeconds > 0 && (
-          <div className="flex items-center gap-1 text-xs text-muted-foreground flex-shrink-0">
+          <div className="flex flex-shrink-0 items-center gap-1 text-xs text-[color:var(--text-muted)]">
             <Clock size={14} />
             <span>{remainingSeconds}s</span>
           </div>
@@ -322,7 +322,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
 
       {/* 上下文说明 */}
       {context && (
-        <div className="px-3 py-1.5 text-xs text-muted-foreground border-b border-blue-200/50 dark:border-blue-800/50">
+        <div className="border-b border-[color:var(--border-soft)] px-3 py-1.5 text-xs text-[color:var(--text-muted)]">
           {context}
         </div>
       )}
@@ -339,10 +339,12 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
                 <label
                   key={index}
                   className={cn(
-                    'flex items-center gap-2.5 px-3 py-2 rounded-md border cursor-pointer transition-colors',
-                    isRecommended
-                      ? 'border-blue-300 dark:border-blue-600 bg-blue-100/60 dark:bg-blue-900/30 hover:bg-blue-200/60 dark:hover:bg-blue-800/40'
-                      : 'border-border/50 bg-card hover:bg-[var(--interactive-hover)]',
+                    'flex cursor-pointer items-center gap-2.5 rounded-[var(--radius-shell-control)] border px-3 py-2 transition-colors',
+                    isChecked
+                      ? 'border-[color:var(--border-strong)] bg-[color:var(--interactive-selected)]'
+                      : isRecommended
+                        ? 'border-[color:var(--border-soft)] bg-[color:var(--surface-panel-strong)] hover:bg-[color:var(--interactive-hover)]'
+                        : 'border-[color:var(--border-soft)] bg-[color:var(--surface-elevated)] hover:bg-[color:var(--interactive-hover)]',
                     isResponding && 'opacity-50 pointer-events-none'
                   )}
                 >
@@ -351,9 +353,9 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
                     onCheckedChange={() => handleToggleCheck(index)}
                     disabled={isResponding}
                   />
-                  <span className="flex-1 text-sm">{option}</span>
+                  <span className="flex-1 text-sm text-[color:var(--text-primary)]">{option}</span>
                   {isRecommended && (
-                    <span className="flex items-center gap-1 text-xs text-blue-600 dark:text-blue-400 flex-shrink-0">
+                    <span className="flex flex-shrink-0 items-center gap-1 text-xs text-[color:var(--text-secondary)]">
                       <Star size={12} className="fill-current" />
                       {t('askUser.recommended')}
                     </span>
@@ -377,14 +379,14 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
                   'w-full !justify-start gap-2 !px-3 !py-2 text-left',
                   'border',
                   isRecommended
-                    ? 'border-blue-300 dark:border-blue-600 bg-blue-600 dark:bg-blue-700 text-white hover:bg-blue-700 dark:hover:bg-blue-600'
-                    : 'border-border/50 bg-card hover:bg-[var(--interactive-hover)]',
+                    ? 'border-[color:var(--border-soft)] bg-[color:var(--surface-panel-strong)] text-[color:var(--text-primary)] hover:bg-[color:var(--interactive-hover)]'
+                    : 'border-[color:var(--border-soft)] bg-[color:var(--surface-elevated)] text-[color:var(--text-primary)] hover:bg-[var(--interactive-hover)]',
                   isResponding && 'opacity-50'
                 )}
               >
                 <span className="flex-1">{option}</span>
                 {isRecommended && (
-                  <span className="flex items-center gap-1 text-xs flex-shrink-0 opacity-90">
+                  <span className="flex flex-shrink-0 items-center gap-1 text-xs text-[color:var(--text-secondary)]">
                     <Star className="w-3 h-3 fill-current" />
                     {t('askUser.recommended')}
                   </span>
@@ -403,7 +405,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
             size="sm"
             onClick={handleMultiConfirm}
             disabled={isResponding || (checkedIndices.size === 0 && !customInput.trim())}
-            className="w-full bg-blue-600 hover:bg-blue-700 text-white"
+            className="w-full"
           >
             <Check size={14} className="mr-1.5" />
             {t('askUser.confirmSelection', { defaultValue: '确认选择' })}
@@ -433,7 +435,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
             className={cn(
               'flex-1 px-3 py-1.5 text-sm rounded-md border border-border/50',
               'bg-background placeholder:text-muted-foreground/50',
-              'focus:outline-none focus:ring-1 focus:ring-blue-400',
+              'focus:outline-none focus:ring-1 focus:ring-[color:var(--input-shell-focus)]',
               isResponding && 'opacity-50 cursor-not-allowed'
             )}
           />
@@ -444,7 +446,6 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
               onClick={handleCustomSubmit}
               disabled={isResponding || !customInput.trim()}
               iconOnly
-              className="bg-blue-600 hover:bg-blue-700 text-white"
               aria-label="send"
             >
               <PaperPlaneRight size={14} />
