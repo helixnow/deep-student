@@ -382,7 +382,8 @@
     "select_vendor_to_edit": "Select a provider to edit",
     "select_model_to_edit": "Select a model to edit",
     "reorder_failed": "Reorder failed",
-    "api_key_configured": "API Key configured"
+    "api_key_configured": "API Key configured",
+    "fetch_models_button": "Fetch Models"
   },
   "vendor_model_fetcher": {
     "fetch_button": "Fetch Model List",
@@ -407,7 +408,9 @@
     "add_selected": "Add {{count}} models",
     "adding": "Adding…",
     "add_success": "Successfully added {{count}} models",
-    "add_failed": "Failed to add models: {{error}}"
+    "add_failed": "Failed to add models: {{error}}",
+    "dialog_title": "Fetch available models from API",
+    "dialog_description": "{{vendor}}: pick items to add to your model list"
   },
   "vendor_modal": {
     "title_new": "Add Provider",

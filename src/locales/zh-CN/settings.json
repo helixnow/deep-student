@@ -389,7 +389,8 @@
     "select_vendor_to_edit": "选择要编辑的供应商",
     "select_model_to_edit": "选择要编辑的模型",
     "reorder_failed": "重新排序失败",
-    "api_key_configured": "API Key 已配置"
+    "api_key_configured": "API Key 已配置",
+    "fetch_models_button": "获取模型列表"
   },
   "vendor_model_fetcher": {
     "fetch_button": "获取模型列表",
@@ -414,7 +415,9 @@
     "add_selected": "添加 {{count}} 个模型",
     "adding": "正在添加…",
     "add_success": "成功添加 {{count}} 个模型",
-    "add_failed": "添加模型失败: {{error}}"
+    "add_failed": "添加模型失败: {{error}}",
+    "dialog_title": "从 API 获取可用模型",
+    "dialog_description": "{{vendor}}：选择要添加到模型列表的项"
   },
   "vendor_modal": {
     "title_new": "添加供应商",
