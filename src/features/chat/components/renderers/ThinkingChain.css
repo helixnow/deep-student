@@ -163,7 +163,6 @@
   padding-left: 14px;
   border-left: 1px solid hsl(var(--border) / 0.35);
   --timeline-ease: cubic-bezier(0.16, 0.84, 0.44, 1);
-  --timeline-body-height: 0px;
 }
 
 [data-theme="dark"] .chat-v2 .timeline-panel {
@@ -222,27 +221,25 @@
 }
 
 .chat-v2 .timeline-panel__body {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-template-rows: 1fr;
   padding: 4px 0 0;
+  transition: grid-template-rows 0.36s var(--timeline-ease), opacity 0.28s ease, transform 0.36s var(--timeline-ease);
+}
+
+.chat-v2 .timeline-panel__body > * {
   overflow: hidden;
-  max-height: var(--timeline-body-height, 0px);
-  opacity: 1;
-  transform: translateY(0);
-  transition: max-height 0.36s var(--timeline-ease), opacity 0.28s ease, transform 0.36s var(--timeline-ease);
-  will-change: max-height, opacity, transform;
 }
 
 .chat-v2 .timeline-panel__body--closed {
-  max-height: 0;
+  grid-template-rows: 0fr;
   opacity: 0;
   transform: translateY(-6px);
   pointer-events: none;
 }
 
 .chat-v2 .timeline-panel__body--open {
-  max-height: var(--timeline-body-height, 0px);
+  grid-template-rows: 1fr;
   opacity: 1;
   transform: translateY(0);
 }
@@ -827,13 +824,10 @@
   .timeline-panel__body,
   .timeline-panel__body--closed,
   .timeline-panel__body--open,
-  .timeline-item--expanded .timeline-item__details {
-    animation: none;
-    transition: none;
-  }
-
-  .think-content-wrapper {
-    transition: none;
+  .timeline-item--expanded .timeline-item__details,
+  .think-content {
+    animation: none !important;
+    transition: none !important;
   }
 
   .think-pulse-dot {
@@ -868,6 +862,9 @@
    ============================================================================
    与 markdown.css 中的 .chain-of-thought（legacy <thinking> tag 内联解析）分离。
    视觉策略：左品牌色 accent bar + 卡片容器，层次高出普通助手消息。
+   动画：transitions-dev panel-reveal 模式 — translateY + opacity + blur，
+         纯 compositor 属性 GPU 加速；contain:layout 隔离布局级联重算；
+         高度由 class 瞬时切换，不做过渡。
    ============================================================================ */
 
 .think-block {
@@ -876,6 +873,7 @@
   border-radius: var(--radius-shell-toolbar);
   background: hsl(var(--card));
   overflow: hidden;
+  contain: layout style;
   transition: border-color 0.2s, box-shadow 0.2s;
 }
 
@@ -991,18 +989,31 @@
 /* ─── Content — animated expand/collapse ─────────────────────────────────── */
 
 .think-content-wrapper {
-  max-height: 0;
   overflow: hidden;
-  transition: max-height 0.28s cubic-bezier(0.16, 1, 0.3, 1);
+  height: 0;
 }
 
 .think-content-wrapper--expanded {
-  max-height: 2000px;
+  height: auto;
 }
 
 .think-content {
   border-top: 1px solid hsl(var(--border) / 0.15);
   padding: 0.75rem 0.875rem;
+  transform: translateY(-6px);
+  opacity: 0;
+  filter: blur(2px);
+  transition:
+    transform var(--resize-dur, 300ms) var(--resize-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    opacity   var(--resize-dur, 300ms) var(--resize-ease, cubic-bezier(0.22, 1, 0.36, 1)),
+    filter    var(--resize-dur, 300ms) var(--resize-ease, cubic-bezier(0.22, 1, 0.36, 1));
+  will-change: transform, opacity, filter;
+}
+
+.think-content-wrapper--expanded .think-content {
+  transform: translateY(0);
+  opacity: 1;
+  filter: blur(0);
 }
 
 /* ─── Typography inside thinking block ────────────────────────────────────── */

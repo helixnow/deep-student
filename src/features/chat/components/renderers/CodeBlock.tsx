@@ -715,7 +715,11 @@ export const CodeBlock: React.FC<CodeBlockProps> = ({ children, className, isStr
   );
 
   return (
-    <CodeBlockShell header={header} bodyClassName="contents">
+    <CodeBlockShell
+      header={header}
+      stickyHeader
+      bodyClassName="code-block-body-shell"
+    >
       {htmlPreviewContent && showRendered ? (
         <MermaidErrorBoundary
           key={errorBoundaryKey.current}

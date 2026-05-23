@@ -5,11 +5,10 @@
  * 行业最优解（2026，对齐 ChatGPT / Claude.ai）
  *
  * 设计原则：
- * 1. 文本节奏由 API 决定（preset = natural），不做字符级节流
+ * 1. 文本节奏由 API 原速决定，flowtoken AnimatedMarkdown sep="diff" 负责增量动画
  * 2. 块出现就是出现，不做 blur / translate / stagger 入场动画
- *    → 减少 GPU 合成成本；避免长文中"波浪式入场"撕裂阅读节奏
- * 3. 仅保留极轻的 opacity 入场（120ms），让"新块"和"已渲染块"在视觉上有微弱区分
- * 4. 不在活跃块尾部加 dot/caret —— 用户已通过滚动锚定 + 顶层"生成中"状态感知流式
+ * 3. flowtoken 活跃块不做任何外层 opacity 动画，避免与 token 级动画冲突
+ * 4. 全新块（非活跃）保留极轻 opacity 入场以区分"新块"
  * 5. 数学/代码：流式期间保持原文渲染，闭合时由 KaTeX/Prism 自然接管
  */
 
@@ -27,40 +26,17 @@
 .stream-block {
   position: relative;
   opacity: 1;
-  will-change: opacity;
 }
 
-/* flowtoken 片段已经有自己的 token 级动效，外层不再做任何入场淡入 */
+/* flowtoken 片段已经有自己的 token 级动效，外层不做任何入场淡入 */
 .stream-block[data-flowtoken="true"] {
   animation: none;
   opacity: 1;
 }
 
-/* 活跃块更新时做极轻渐显，避免“打字机式逐字跳变” */
-.stream-block[data-updating="true"] {
-  animation: stream-block-soft-reveal 120ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-/* 活跃块如果已经由 inline token 动画接管，就不要再叠一层整块 opacity 动画 */
-.stream-block[data-flowtoken="true"][data-updating="true"],
-.stream-block[data-motion-layer="inline"][data-updating="true"] {
-  animation: none;
-  opacity: 1;
-}
-
-/* 新块极轻 opacity 入场（避开活跃块，防止双重动画） */
-.stream-block[data-flowtoken="true"][data-new="true"] {
-  animation: none;
-  opacity: 1;
-}
-
+/* 全新非活跃块轻微入场，不与活跃块动画冲突 */
 .stream-block[data-new="true"]:not([data-active="true"]) {
   animation: stream-block-fade-in 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
-}
-
-@keyframes stream-block-soft-reveal {
-  from { opacity: 0.62; }
-  to   { opacity: 1; }
 }
 
 @keyframes stream-block-fade-in {
@@ -113,7 +89,6 @@
   font-size: 0.85em;
   font-weight: 500;
   color: hsl(var(--muted-foreground));
-  /* 装饰性头部，不进入文本选区 */
   user-select: none;
   -webkit-user-select: none;
 }
@@ -126,7 +101,6 @@
 /* ─── Reduced motion ─────────────────────────────────────────────────────── */
 
 @media (prefers-reduced-motion: reduce) {
-  .stream-block[data-updating="true"],
   .stream-block[data-new="true"] {
     animation: none;
     opacity: 1;
