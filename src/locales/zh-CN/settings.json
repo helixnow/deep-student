@@ -492,6 +492,8 @@
     "mode_label": "选择主题模式",
     "font_smoothing_title": "macOS 原生字体平滑",
     "font_smoothing_description": "在 macOS 下优先跟随系统默认字体平滑策略，不再全局强制 antialiased。关闭后回退为兼容旧版观感的灰度平滑。",
+    "pointer_cursor_title": "使用指针光标",
+    "pointer_cursor_description": "悬停交互元素时切换为指针光标。",
     "accent_label": "强调色",
     "accent_hint": "只调整按钮、链接和选中态的颜色。背景、卡片和文本保持稳定。",
     "system_default": "系统默认",

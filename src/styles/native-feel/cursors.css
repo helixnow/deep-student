@@ -34,7 +34,7 @@ body {
 /* ---------------------------------------------------------------- */
 /* 2. Clickable elements — pointer cursor                            */
 /* ---------------------------------------------------------------- */
-:where(
+:root:not([data-pointer-cursor="false"]) :where(
   button,
   a,
   [role="button"],
@@ -49,6 +49,26 @@ body {
   label[for]
 ) {
   cursor: pointer;
+}
+
+:root[data-pointer-cursor="false"] :where(
+  button,
+  a,
+  [role="button"],
+  [role="menuitem"],
+  [role="tab"],
+  [role="option"],
+  [role="link"],
+  [role="checkbox"],
+  [role="radio"],
+  [role="switch"],
+  summary,
+  label[for],
+  .cursor-pointer,
+  [class*=" cursor-pointer"],
+  [class^="cursor-pointer"]
+) {
+  cursor: default !important;
 }
 
 /* Disabled controls override pointer */

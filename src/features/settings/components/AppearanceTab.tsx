@@ -23,6 +23,7 @@ import { SettingRow, SettingsGroup, SwitchRow } from './settingsTabPrimitives';
 const DEFAULT_UI_ZOOM = 1.0;
 const MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY = 'macos.native_font_smoothing';
 const SIDEBAR_TRANSLUCENT_KEY = 'sidebar.translucent';
+const POINTER_CURSOR_SETTING_KEY = 'ui.pointer_cursor';
 const UI_ZOOM_PRESETS = [
   { value: 0.8, label: '80%' },
   { value: 0.9, label: '90%' },
@@ -94,6 +95,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
   const { t } = useTranslation(['settings']);
   const [macosNativeFontSmoothingEnabled, setMacosNativeFontSmoothingEnabled] = useState(true);
   const [sidebarTranslucent, setSidebarTranslucent] = useState(false);
+  const [pointerCursorEnabled, setPointerCursorEnabled] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -109,6 +111,29 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
         setSidebarTranslucent(false);
       }
     })();
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await tauriInvoke<string | null>('get_setting', {
+          key: POINTER_CURSOR_SETTING_KEY,
+        }).catch(() => null);
+        if (cancelled) return;
+        const enabled = String(raw ?? '').trim() !== 'false';
+        setPointerCursorEnabled(enabled);
+        document.documentElement.setAttribute('data-pointer-cursor', String(enabled));
+      } catch {
+        if (cancelled) return;
+        setPointerCursorEnabled(true);
+        document.documentElement.setAttribute('data-pointer-cursor', 'true');
+      }
+    })();
+
     return () => {
       cancelled = true;
     };
@@ -226,6 +251,34 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
     }
   }, [invoke, sidebarTranslucent]);
 
+  const handlePointerCursorChange = React.useCallback(async (checked: boolean) => {
+    const previousValue = pointerCursorEnabled;
+    setPointerCursorEnabled(checked);
+    document.documentElement.setAttribute('data-pointer-cursor', String(checked));
+
+    if (!invoke) return;
+
+    try {
+      await (invoke as typeof tauriInvoke)('save_setting', {
+        key: POINTER_CURSOR_SETTING_KEY,
+        value: String(checked),
+      });
+
+      window.dispatchEvent(
+        new CustomEvent('systemSettingsChanged', {
+          detail: {
+            pointerCursor: true,
+            settingKey: POINTER_CURSOR_SETTING_KEY,
+          },
+        }),
+      );
+    } catch (error: unknown) {
+      setPointerCursorEnabled(previousValue);
+      document.documentElement.setAttribute('data-pointer-cursor', String(previousValue));
+      showGlobalNotification('error', getErrorMessage(error));
+    }
+  }, [invoke, pointerCursorEnabled]);
+
   return (
     <div className="space-y-1 pb-10 text-left animate-in fade-in duration-500" data-tour-id="appearance-settings">
       <SettingSection
@@ -285,6 +338,18 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
               checked={sidebarTranslucent}
               onCheckedChange={(checked) => {
                 void handleSidebarTranslucentChange(checked);
+              }}
+            />
+
+            <SwitchRow
+              title={t('settings:theme.pointer_cursor_title', '使用指针光标')}
+              description={t(
+                'settings:theme.pointer_cursor_description',
+                '悬停交互元素时切换为指针光标。',
+              )}
+              checked={pointerCursorEnabled}
+              onCheckedChange={(checked) => {
+                void handlePointerCursorChange(checked);
               }}
             />
 

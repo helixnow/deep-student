@@ -818,6 +818,8 @@
     "selectSessionFirst": "Please select a session first",
     "loading": "Loading...",
     "loadMore": "Load More",
+    "studySessions": "Topics",
+    "studySessionsEmpty": "No topics yet",
     "resourceUnsupported": "This resource type is not yet supported in Learning Hub",
     "groupSaveFailed": "Failed to save group",
     "openNoteFailed": "Failed to open note"
