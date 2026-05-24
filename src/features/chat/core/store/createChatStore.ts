@@ -329,6 +329,8 @@ export function createChatStore(sessionId: string): StoreApi<ChatStore> {
 
         // ========== 辅助方法 ==========
 
+        pendingApprovalRequest: null,
+
         getMessage: (messageId: string) => {
           return getState().messageMap.get(messageId);
         },

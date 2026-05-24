@@ -2,7 +2,7 @@ import React from 'react';
 import { cn } from '@/utils/cn';
 import { ThreadContentShell } from './ThreadContentShell';
 
-export interface ThreadEmptyStateShellProps extends React.HTMLAttributes<HTMLElement> {
+export interface ThreadEmptyStateShellProps extends Omit<React.HTMLAttributes<HTMLElement>, 'title'> {
   title: React.ReactNode;
   titleClassName?: string;
   contentClassName?: string;

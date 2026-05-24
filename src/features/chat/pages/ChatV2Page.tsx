@@ -1072,7 +1072,6 @@ export const ChatV2Page: React.FC = () => {
           enableGesture={true}
           edgeWidth={20}
           threshold={0.3}
-          className="flex-1"
         >
           {/* 移动端：会话浏览作为主内容区域的一部分，直接切换 */}
           {viewMode === 'browser' ? (

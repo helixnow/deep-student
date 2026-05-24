@@ -224,7 +224,6 @@ export const convertApiConfigToProfile = (api: ApiConfig, vendorId: string): Mod
       supportsOpenAIResponses: api.supportsOpenAIResponses,
     }),
     modelAdapter,
-    supportsOpenAIResponses: api.supportsOpenAIResponses,
     isMultimodal: api.isMultimodal,
     isReasoning: api.isReasoning,
     isEmbedding: api.isEmbedding,
