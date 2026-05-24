@@ -24,7 +24,7 @@
 import { useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { sessionManager } from '@/features/chat/core/session';
+import { sessionManager } from '@/features/chat/core/session/sessionManager';
 import { resourceStoreApi } from '@/features/chat/resources';
 import type { ContextRef, ResourceType as StoreResourceType } from '@/features/chat/resources/types';
 import { vfsRefApi, type VfsContextRefData } from '@/features/chat/context';

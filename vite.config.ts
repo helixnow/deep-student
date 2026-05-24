@@ -225,28 +225,9 @@ export default defineConfig(({ command, mode }) => ({
         // 🚀 P1-4 性能优化：手动分包策略，将 vendor 依赖分离为独立的长期缓存 chunk
         manualChunks(id: string) {
           if (!id.includes('node_modules')) return;
-          // React 核心（变化极少，长期缓存）
-          if (id.includes('react/') || id.includes('react-dom/') || id.includes('scheduler/')) {
-            return 'vendor-react';
-          }
-          // Zustand 状态管理
-          if (id.includes('zustand/')) {
-            return 'vendor-react';
-          }
-          // Milkdown/Crepe 编辑器（较大，独立分包）
-          if (id.includes('@milkdown/') || id.includes('prosemirror') || id.includes('@prosekit/')) {
-            return 'vendor-milkdown';
-          }
           // i18n
           if (id.includes('i18next') || id.includes('react-i18next')) {
             return 'vendor-i18n';
-          }
-          // 重型可视化依赖（按需加载视图独立分包）
-          if (id.includes('@xyflow/') || id.includes('reactflow')) {
-            return 'vendor-xyflow';
-          }
-          if (id.includes('recharts') || id.includes('d3-')) {
-            return 'vendor-charts';
           }
           if (id.includes('pdfjs-dist')) {
             return 'vendor-pdfjs';

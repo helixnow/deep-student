@@ -2,9 +2,8 @@
 
 **简体中文** | [English](./README.md)
 
-<img src="./public/logo.svg" alt="DeepStudent" width="120" />
+<img src="./public/deepstudent-logo-dark.svg" alt="DeepStudent" width="200" />
 
-# DeepStudent
 
 ### 一个开源、本地优先的 AI 学习工作台
 
