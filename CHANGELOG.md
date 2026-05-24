@@ -10,6 +10,18 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.36](https://github.com/helixnow/deep-student/compare/v0.9.35...v0.9.36) (2026-05-24)
+
+
+### Features
+
+* **data_governance:** support virtual URI targets for ZIP exports ([b5bd171](https://github.com/helixnow/deep-student/commit/b5bd171fb5a8c16f71797c5bf191c5e25e31a320))
+
+
+### Bug Fixes
+
+* 修正在学习资源内题库中答题结束的祝贺弹窗在移动端的错误位置 ([#51](https://github.com/helixnow/deep-student/issues/51)) ([f6690e9](https://github.com/helixnow/deep-student/commit/f6690e960585f0338d96b95146479ec3566c036b))
+
 ## [0.9.35](https://github.com/helixnow/deep-student/compare/v0.9.34...v0.9.35) (2026-03-14)
 
 
