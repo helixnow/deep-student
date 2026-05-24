@@ -80,6 +80,7 @@ jobs:
   sync-tests:
     name: Sync Regression Tests
     runs-on: ubuntu-latest
+    timeout-minutes: 45
     env:
       CARGO_INCREMENTAL: 0
       # proptest 在 CI 里用随机种子；固定一下便于 reproduce
@@ -140,4 +141,4 @@ jobs:
 
       - name: Cargo audit
         working-directory: src-tauri
-        run: cargo audit
+        run: cargo audit --deny warnings
