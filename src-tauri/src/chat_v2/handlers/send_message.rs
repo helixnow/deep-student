@@ -302,25 +302,26 @@ pub(crate) fn apply_original_skill_snapshot_overrides(
         return options;
     }
 
-    let mut replay_skill_ids = runtime_snapshot
+    let mut replay_pinned_skill_ids = runtime_snapshot
         .map(|snapshot| snapshot.active_skill_ids.clone())
         .unwrap_or_default();
     if let Some(snapshot) = snapshot {
-        replay_skill_ids.extend(snapshot.manual_pinned_skill_ids.clone());
-        replay_skill_ids.extend(snapshot.agentic_session_skill_ids.clone());
-        replay_skill_ids.extend(snapshot.branch_local_skill_ids.clone());
-        replay_skill_ids.extend(snapshot.mode_required_bundle_ids.clone());
+        replay_pinned_skill_ids = snapshot.manual_pinned_skill_ids.clone();
     }
-    replay_skill_ids.sort();
-    replay_skill_ids.dedup();
+    replay_pinned_skill_ids.sort();
+    replay_pinned_skill_ids.dedup();
 
-    if !replay_skill_ids.is_empty() {
-        options.active_skill_ids = Some(replay_skill_ids);
+    if !replay_pinned_skill_ids.is_empty() {
+        options.active_skill_ids = Some(replay_pinned_skill_ids);
     }
 
     if let Some(runtime_snapshot) = runtime_snapshot {
         if !runtime_snapshot.skill_contents.is_empty() {
             options.skill_contents = Some(runtime_snapshot.skill_contents.clone());
+            options.replay_skill_contents = Some(runtime_snapshot.skill_contents.clone());
+        }
+        if !runtime_snapshot.skill_dependencies.is_empty() {
+            options.skill_dependencies = Some(runtime_snapshot.skill_dependencies.clone());
         }
         if !runtime_snapshot.skill_embedded_tools.is_empty() {
             options.skill_embedded_tools = Some(runtime_snapshot.skill_embedded_tools.clone());
@@ -666,6 +667,9 @@ pub async fn chat_v2_retry_message(
         );
     }
 
+    let original_meta = original_message.meta.clone();
+    let preceding_user_meta = user_msg_result.message_meta.clone();
+
     // 🔧 修复：删除助手消息之后的所有消息（含自身），确保前后端一致
     let messages_to_delete: Vec<String> = {
         let conn = db.get_conn_safe().map_err(|e| {
@@ -833,6 +837,11 @@ pub async fn chat_v2_retry_message(
         // - skip_assistant_message_save = false：旧助手消息已删除，需要创建新消息（使用相同 ID）
         let merged_options = {
             let mut opts = apply_replay_mode_overrides(options.unwrap_or_default());
+            opts = apply_original_skill_snapshot_overrides(
+                opts,
+                original_meta.as_ref(),
+                preceding_user_meta.as_ref(),
+            );
             opts.skip_user_message_save = Some(true);
             // 🔧 修复：旧助手消息已被删除，需要创建新消息而非更新
             // skip_assistant_message_save 默认为 None/false，save_results 会调用 create_message_with_conn
@@ -1249,6 +1258,8 @@ pub async fn chat_v2_edit_and_resend(
 
     // 预先生成 assistant_message_id，确保返回值与 Pipeline 使用的 ID 一致
     let assistant_message_id = ChatMessage::generate_id();
+    let original_meta = original_message.meta.clone();
+    let preceding_user_meta: Option<crate::chat_v2::types::MessageMeta> = None;
 
     // 克隆必要的数据用于异步任务
     let session_id_for_cleanup = session_id.clone();
@@ -1268,6 +1279,11 @@ pub async fn chat_v2_edit_and_resend(
         // 这样 Pipeline 不会创建新的用户消息，避免冗余创建+删除
         let merged_options = {
             let mut opts = apply_replay_mode_overrides(options.unwrap_or_default());
+            opts = apply_original_skill_snapshot_overrides(
+                opts,
+                original_meta.as_ref(),
+                preceding_user_meta.as_ref(),
+            );
             opts.skip_user_message_save = Some(true);
             opts
         };
@@ -1384,6 +1400,8 @@ struct UserMessageRestoreResult {
     content: String,
     /// 用户消息附件
     attachments: Option<Vec<AttachmentMeta>>,
+    /// 用户消息元数据（用于 replay fallback）
+    message_meta: Option<crate::chat_v2::types::MessageMeta>,
     /// 上下文快照（用于恢复上下文引用）
     context_snapshot: Option<ContextSnapshot>,
     /// 用户消息时间戳（用于删除后续消息）
@@ -1449,6 +1467,7 @@ fn find_preceding_user_message_with_attachments(
             Ok(UserMessageRestoreResult {
                 content,
                 attachments,
+                message_meta: msg.meta.clone(),
                 context_snapshot,
                 timestamp,
             })
@@ -1899,7 +1918,7 @@ mod tests {
     }
 
     #[test]
-    fn test_apply_original_skill_snapshot_overrides_restores_skill_ids_and_allowlist() {
+    fn test_apply_original_skill_snapshot_overrides_restores_manual_pins_only() {
         let options = SendOptions {
             replay_mode: Some(ReplayMode::Original),
             ..Default::default()
@@ -1912,6 +1931,7 @@ mod tests {
                 branch_local_skill_ids: vec!["branch-a".to_string()],
                 effective_allowed_internal_tools: vec!["builtin-web_search".to_string()],
                 effective_allowed_external_tools: vec!["mcp_fetch".to_string()],
+                effective_allowed_external_servers: vec!["server-a".to_string()],
                 ..Default::default()
             }),
             ..Default::default()
@@ -1920,21 +1940,13 @@ mod tests {
         let updated = apply_original_skill_snapshot_overrides(options, Some(&meta), None);
         assert_eq!(
             updated.active_skill_ids.unwrap(),
-            vec![
-                "agentic-a".to_string(),
-                "branch-a".to_string(),
-                "manual-a".to_string(),
-                "mode-a".to_string(),
-            ]
+            vec!["manual-a".to_string()]
         );
-        assert_eq!(
-            updated.skill_allowed_tools.unwrap(),
-            vec!["builtin-web_search".to_string(), "mcp_fetch".to_string()]
-        );
+        assert_eq!(updated.mcp_tools.unwrap(), vec!["server-a".to_string()]);
     }
 
     #[test]
-    fn test_apply_original_skill_snapshot_overrides_restores_runtime_mcp_payload() {
+    fn test_apply_original_skill_snapshot_overrides_restores_runtime_skill_payload() {
         let options = SendOptions {
             replay_mode: Some(ReplayMode::Original),
             ..Default::default()
@@ -1942,8 +1954,14 @@ mod tests {
         let meta = MessageMeta {
             skill_runtime_after: Some(crate::chat_v2::types::ReplaySkillPayloadSnapshot {
                 active_skill_ids: vec!["runtime-skill".to_string()],
-                skill_allowed_tools: vec!["server-a::fetch".to_string()],
-                skill_contents: std::collections::HashMap::new(),
+                skill_contents: std::collections::HashMap::from([(
+                    "runtime-skill".to_string(),
+                    "runtime body".to_string(),
+                )]),
+                skill_dependencies: std::collections::HashMap::from([(
+                    "runtime-skill".to_string(),
+                    vec!["dep-a".to_string()],
+                )]),
                 skill_embedded_tools: std::collections::HashMap::new(),
                 mcp_tool_schemas: vec![crate::chat_v2::types::McpToolSchema {
                     name: "fetch".to_string(),
@@ -1962,8 +1980,29 @@ mod tests {
             vec!["runtime-skill".to_string()]
         );
         assert_eq!(
-            updated.skill_allowed_tools.unwrap(),
-            vec!["server-a::fetch".to_string()]
+            updated
+                .skill_contents
+                .unwrap()
+                .get("runtime-skill")
+                .map(String::as_str),
+            Some("runtime body")
+        );
+        assert_eq!(
+            updated
+                .replay_skill_contents
+                .unwrap()
+                .get("runtime-skill")
+                .map(String::as_str),
+            Some("runtime body")
+        );
+        assert_eq!(
+            updated
+                .skill_dependencies
+                .unwrap()
+                .get("runtime-skill")
+                .cloned()
+                .unwrap(),
+            vec!["dep-a".to_string()]
         );
         assert_eq!(updated.mcp_tools.unwrap(), vec!["server-a".to_string()]);
         assert_eq!(

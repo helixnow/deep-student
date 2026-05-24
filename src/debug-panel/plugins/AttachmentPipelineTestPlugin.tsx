@@ -12,25 +12,26 @@ import { Button } from '../../components/ui/shad/Button';
 import { Badge } from '../../components/ui/shad/Badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/shad/Card';
 import { ScrollArea } from '../../components/ui/shad/ScrollArea';
+import { Switch } from '@/components/ui/shad/Switch';
 import {
   Play,
   Square,
   Download,
-  RefreshCw,
-  CheckCircle2,
+  ArrowClockwise,
+  CheckCircle,
   XCircle,
-  Loader2,
+  CircleNotch,
   Upload,
   FileImage,
   FileText,
   Copy,
-  Trash2,
-  ChevronDown,
-  ChevronRight,
-  AlertTriangle,
+  Trash,
+  CaretDown,
+  CaretRight,
+  Warning,
   SkipForward,
-  FlaskConical,
-} from 'lucide-react';
+  Flask,
+} from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import {
   generateTestMatrix,
@@ -47,9 +48,9 @@ import {
   type PipelineLogEntry,
   type OverallStatus,
   type PdfExtractionDiagResult,
-} from '../../chat-v2/debug/attachmentPipelineTestPlugin';
-import { ensureModelsCacheLoaded } from '../../chat-v2/hooks/useAvailableModels';
-import type { ModelInfo } from '../../chat-v2/utils/parseModelMentions';
+} from '../../features/chat/debug/attachmentPipelineTestPlugin';
+import { ensureModelsCacheLoaded } from '../../features/chat/hooks/useAvailableModels';
+import type { ModelInfo } from '../../features/chat/utils/parseModelMentions';
 import { fileManager } from '../../utils/fileManager';
 import { TauriAPI } from '../../utils/tauriApi';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
@@ -65,11 +66,11 @@ function fmtTime(ts: string) {
 
 function statusIcon(s: TestCaseResult['status']) {
   switch (s) {
-    case 'passed': return <CheckCircle2 className="w-4 h-4 text-green-500" />;
-    case 'failed': return <XCircle className="w-4 h-4 text-red-500" />;
-    case 'running': return <Loader2 className="w-4 h-4 animate-spin text-blue-500" />;
-    case 'skipped': return <SkipForward className="w-4 h-4 text-gray-400" />;
-    default: return <RefreshCw className="w-4 h-4 text-gray-400" />;
+    case 'passed': return <CheckCircle size={16} className="text-green-500" />;
+    case 'failed': return <XCircle size={16} className="text-red-500" />;
+    case 'running': return <CircleNotch size={16} className="animate-spin text-blue-500" />;
+    case 'skipped': return <SkipForward size={16} className="text-gray-400" />;
+    default: return <ArrowClockwise size={16} className="text-gray-400" />;
   }
 }
 
@@ -325,9 +326,9 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
       <Card>
         <CardHeader className="py-3">
           <CardTitle className="flex items-center gap-2 text-base">
-            <FlaskConical className="w-5 h-5" />
+            <Flask size={20} />
             附件流水线自动化测试
-            {status === 'running' && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+            {status === 'running' && <CircleNotch size={16} className="animate-spin text-blue-500" />}
             {status === 'completed' && (
               <Badge variant={failed > 0 ? 'destructive' : 'default'}>
                 ✅{passed} ❌{failed} ⏭️{skipped}
@@ -350,7 +351,7 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
                   const f = await loadFileFromPath(path, 'image/png');
                   if (f) { setImageFile(f); setImagePath(path); saveConfig({ imagePath: path }); }
                 }} disabled={status === 'running'}>
-                <FileImage className="w-4 h-4" />
+                <FileImage size={16} />
                 {imageFile ? (
                   <span className="truncate">{imageFile.name} ({(imageFile.size / 1024).toFixed(0)}KB)</span>
                 ) : (
@@ -370,7 +371,7 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
                   const f = await loadFileFromPath(path, 'application/pdf');
                   if (f) { setPdfFile(f); setPdfPath(path); saveConfig({ pdfPath: path }); }
                 }} disabled={status === 'running'}>
-                <FileText className="w-4 h-4" />
+                <FileText size={16} />
                 {pdfFile ? (
                   <span className="truncate">{pdfFile.name} ({(pdfFile.size / 1024).toFixed(0)}KB)</span>
                 ) : (
@@ -413,40 +414,40 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
           {/* 选项 + 控制 */}
           <div className="flex items-center justify-between">
             <label className="flex items-center gap-2 text-sm cursor-pointer">
-              <input type="checkbox" checked={skipSend} onChange={e => { setSkipSend(e.target.checked); saveConfig({ skipSend: e.target.checked }); }}
+              <Switch size="sm" checked={skipSend} onCheckedChange={(checked) => { setSkipSend(checked); saveConfig({ skipSend: checked }); }}
                 disabled={status === 'running'} />
               仅上传（跳过发送）
             </label>
             <div className="flex items-center gap-2">
               {status === 'running' ? (
                 <Button size="sm" variant="destructive" onClick={handleAbort}>
-                  <Square className="w-4 h-4 mr-1" /> 中止
+                  <Square size={16} className="mr-1" /> 中止
                 </Button>
               ) : (
                 <>
                   <Button size="sm" onClick={() => handleStart('image')} disabled={!canStartImage}>
-                    <FileImage className="w-4 h-4 mr-1" /> 图片测试 ({imageMatrixCount})
+                    <FileImage size={16} className="mr-1" /> 图片测试 ({imageMatrixCount})
                   </Button>
                   <Button size="sm" onClick={() => handleStart('pdf')} disabled={!canStartPdf}>
-                    <FileText className="w-4 h-4 mr-1" /> PDF 测试 ({pdfMatrixCount})
+                    <FileText size={16} className="mr-1" /> PDF 测试 ({pdfMatrixCount})
                   </Button>
                   <Button size="sm" variant="secondary" onClick={handlePdfDiag}
                     disabled={!pdfFile || isDiagRunning}
                     title="PDF 提取诊断：对比不加盐/加盐的文本提取结果">
-                    {isDiagRunning ? <Loader2 className="w-4 h-4 mr-1 animate-spin" /> : <AlertTriangle className="w-4 h-4 mr-1" />}
+                    {isDiagRunning ? <CircleNotch size={16} className="mr-1 animate-spin" /> : <Warning size={16} className="mr-1" />}
                     提取诊断
                   </Button>
                 </>
               )}
               <Button size="sm" variant="outline" onClick={handleDownload} disabled={results.length === 0}>
-                <Download className="w-4 h-4" />
+                <Download size={16} />
               </Button>
               <Button size="sm" variant="outline" onClick={handleCopyLogs} disabled={liveLogs.length === 0}>
-                <Copy className="w-4 h-4" />
+                <Copy size={16} />
               </Button>
               <Button size="sm" variant="outline" onClick={handleCleanup} disabled={isCleaningUp || status === 'running'}
                 title="批量清理测试会话和关联附件">
-                {isCleaningUp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+                {isCleaningUp ? <CircleNotch size={16} className="animate-spin" /> : <Trash size={16} />}
                 {isCleaningUp && <span className="ml-1 text-xs">清理中...</span>}
               </Button>
             </div>
@@ -494,7 +495,7 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
           <div className="px-3 pb-3 space-y-1">
             {results.length === 0 && status !== 'running' ? (
               <div className="text-center text-muted-foreground py-8">
-                <FlaskConical className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                <Flask size={32} className="mx-auto mb-2 opacity-30" />
                 <p className="text-sm">选择文件和模型后点击「开始测试」</p>
               </div>
             ) : (
@@ -507,7 +508,7 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
                     {/* 摘要行 */}
                     <div className="flex items-center gap-2 p-2 cursor-pointer hover:bg-muted/50 text-sm"
                       onClick={() => setExpandedCase(isExpanded ? null : r.testCase.id)}>
-                      {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                      {isExpanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
                       {statusIcon(r.status)}
                       <span className="font-mono flex-1 truncate">{r.testCase.label}</span>
                       <Badge variant="outline" className="text-xs">{r.durationMs}ms</Badge>
@@ -534,7 +535,7 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
                             <div className="text-xs font-medium text-muted-foreground">验证检查:</div>
                             {r.verification.checks.map((c, i) => (
                               <div key={i} className={`text-xs flex items-start gap-1 ${c.passed ? 'text-green-600' : 'text-red-500'}`}>
-                                {c.passed ? <CheckCircle2 className="w-3 h-3 mt-0.5" /> : <XCircle className="w-3 h-3 mt-0.5" />}
+                                {c.passed ? <CheckCircle size={12} className="mt-0.5" /> : <XCircle size={12} className="mt-0.5" />}
                                 <span><strong>{c.name}</strong>: {c.detail}</span>
                               </div>
                             ))}
@@ -612,7 +613,7 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
           <div className="px-3 py-1 border-b flex items-center justify-between">
             <span className="text-xs font-medium text-muted-foreground">PDF 提取诊断（不加盐 vs 加盐）</span>
             <Button size="sm" variant="ghost" className="h-5 px-1" onClick={() => { setDiagResult(null); setDiagLogs([]); }}>
-              <Trash2 className="w-3 h-3" />
+              <Trash size={12} />
             </Button>
           </div>
           <div className="p-3 space-y-2">
@@ -658,7 +659,7 @@ const AttachmentPipelineTestPlugin: React.FC<DebugPanelPluginProps> = ({
           <div className="px-3 py-1 border-b flex items-center justify-between">
             <span className="text-xs font-medium text-muted-foreground">实时日志</span>
             <Button size="sm" variant="ghost" className="h-5 px-1" onClick={() => setLiveLogs([])}>
-              <Trash2 className="w-3 h-3" />
+              <Trash size={12} />
             </Button>
           </div>
           <ScrollArea className="h-[calc(100%-28px)]" ref={logScrollRef}>

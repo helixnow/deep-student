@@ -11,12 +11,12 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import React from 'react';
-import { InputBar } from '@/chat-v2/components/InputBar';
-import type { ChatStore } from '@/chat-v2/core/types';
+import { InputBar } from '@/features/chat/components/InputBar';
+import type { ChatStore } from '@/features/chat/core/types';
 import type { StoreApi } from 'zustand';
 
 // Mock hooks
-vi.mock('@/chat-v2/hooks/useChatStore', () => ({
+vi.mock('@/features/chat/hooks/useChatStore', () => ({
   useSessionStatus: vi.fn(),
   useInputValue: vi.fn(),
   useCanSend: vi.fn(),
@@ -48,7 +48,7 @@ import {
   useInputValue,
   useCanSend,
   useAttachments,
-} from '@/chat-v2/hooks/useChatStore';
+} from '@/features/chat/hooks/useChatStore';
 
 // 创建 Mock Store
 function createMockStore(overrides: Partial<ChatStore> = {}): StoreApi<ChatStore> {

@@ -10,8 +10,8 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import React from 'react';
-import type { Block } from '@/chat-v2/core/types';
-import type { RagBlockData } from '@/chat-v2/plugins/blocks/components/types';
+import type { Block } from '@/features/chat/core/types';
+import type { RagBlockData } from '@/features/chat/plugins/blocks/components/types';
 
 // Mock react-i18next
 vi.mock('react-i18next', () => ({
@@ -38,8 +38,8 @@ vi.mock('react-i18next', () => ({
 }));
 
 // 导入组件（需要在 mock 之后）
-import { RagBlock } from '@/chat-v2/plugins/blocks/rag';
-import { blockRegistry } from '@/chat-v2/registry';
+import { RagBlock } from '@/features/chat/plugins/blocks/rag';
+import { blockRegistry } from '@/features/chat/registry';
 
 // ============================================================================
 // 测试数据
@@ -91,7 +91,7 @@ describe('RagBlock', () => {
 
   it('should be registered in blockRegistry', async () => {
     // 导入触发注册
-    await import('@/chat-v2/plugins/blocks/rag');
+    await import('@/features/chat/plugins/blocks/rag');
     
     expect(blockRegistry.has('rag')).toBe(true);
     const plugin = blockRegistry.get('rag');

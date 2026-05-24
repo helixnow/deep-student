@@ -8,7 +8,7 @@ import { unifiedAlert, unifiedConfirm } from '@/utils/unifiedDialogs';
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
-import { Activity, Database, Search, Brain, Globe, ChevronDown, ChevronRight, Download, Trash2 } from 'lucide-react';
+import { Pulse, Database, MagnifyingGlass, Brain, Globe, CaretDown, CaretRight, Download, Trash } from '@phosphor-icons/react';
 
 // ==================== 类型定义 ====================
 
@@ -76,12 +76,12 @@ const getChannelColor = (channel: SourceChannel): string => {
 
 const getChannelIcon = (channel: SourceChannel) => {
   const iconMap: Record<SourceChannel, React.ReactNode> = {
-    rag: <Database className="w-4 h-4" />,
-    graph: <Activity className="w-4 h-4" />,
-    memory: <Brain className="w-4 h-4" />,
-    web_search: <Globe className="w-4 h-4" />,
+    rag: <Database size={16} />,
+    graph: <Pulse size={16} />,
+    memory: <Brain size={16} />,
+    web_search: <Globe size={16} />,
   };
-  return iconMap[channel] || <Search className="w-4 h-4" />;
+  return iconMap[channel] || <MagnifyingGlass size={16} />;
 };
 
 const getLayerBadgeColor = (layer: 'backend' | 'engine' | 'runtime'): string => {
@@ -369,7 +369,7 @@ export const TimelineSourceMonitorPlugin: React.FC<DebugPanelPluginProps> = ({
       {/* 标题栏 */}
       <div className="flex items-center justify-between px-4 py-3 border-b border-slate-700">
         <div className="flex items-center gap-2">
-          <Activity className="w-5 h-5 text-blue-400" />
+          <Pulse size={20} className="text-blue-400" />
           <h2 className="text-lg font-semibold">时间线阶段与来源监控</h2>
           {debugModeEnabled && (
             <span className="px-2 py-0.5 text-xs bg-green-500/20 text-green-300 border border-green-500/30 rounded">
@@ -383,7 +383,7 @@ export const TimelineSourceMonitorPlugin: React.FC<DebugPanelPluginProps> = ({
             className="px-2 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded flex items-center gap-1"
             title="导出日志"
           >
-            <Download className="w-3 h-3" />
+            <Download size={12} />
             导出
           </button>
           <button
@@ -391,7 +391,7 @@ export const TimelineSourceMonitorPlugin: React.FC<DebugPanelPluginProps> = ({
             className="px-2 py-1 text-xs bg-slate-700 hover:bg-slate-600 rounded flex items-center gap-1"
             title="清空数据"
           >
-            <Trash2 className="w-3 h-3" />
+            <Trash size={12} />
             清空
           </button>
         </div>
@@ -401,7 +401,7 @@ export const TimelineSourceMonitorPlugin: React.FC<DebugPanelPluginProps> = ({
       {!debugModeEnabled && stageEvents.length === 0 && sourceEvents.length === 0 && (
         <div className="mx-4 mt-3 p-3 bg-amber-500/10 border border-amber-500/30 rounded-lg">
           <div className="flex items-start gap-2">
-            <Activity className="w-4 h-4 text-amber-400 mt-0.5 flex-shrink-0" />
+            <Pulse size={16} className="text-amber-400 mt-0.5 flex-shrink-0" />
             <div className="text-xs text-amber-200">
               <p className="font-semibold mb-1">提示：监听事件需要开启调试模式</p>
               <p className="text-amber-300/80">
@@ -463,7 +463,7 @@ export const TimelineSourceMonitorPlugin: React.FC<DebugPanelPluginProps> = ({
         {/* 阶段事件区域 */}
         <div>
           <h3 className="text-sm font-semibold text-slate-300 mb-2 flex items-center gap-2">
-            <Activity className="w-4 h-4" />
+            <Pulse size={16} />
             阶段事件 ({filteredStageEvents.length})
           </h3>
           <div className="space-y-2">
@@ -484,9 +484,9 @@ export const TimelineSourceMonitorPlugin: React.FC<DebugPanelPluginProps> = ({
                       className="w-full px-3 py-2 flex items-center gap-2 hover:bg-slate-750 transition-colors text-left"
                     >
                       {isExpanded ? (
-                        <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                        <CaretDown size={16} className="text-slate-400 flex-shrink-0" />
                       ) : (
-                        <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                        <CaretRight size={16} className="text-slate-400 flex-shrink-0" />
                       )}
                       <div className="flex items-center gap-2 flex-shrink-0">
                         {getChannelIcon(event.channel)}
@@ -542,7 +542,7 @@ export const TimelineSourceMonitorPlugin: React.FC<DebugPanelPluginProps> = ({
         {/* 来源事件区域 */}
         <div>
           <h3 className="text-sm font-semibold text-slate-300 mb-2 flex items-center gap-2">
-            <Database className="w-4 h-4" />
+            <Database size={16} />
             来源事件 ({filteredSourceEvents.length})
           </h3>
           <div className="space-y-2">
@@ -563,9 +563,9 @@ export const TimelineSourceMonitorPlugin: React.FC<DebugPanelPluginProps> = ({
                       className="w-full px-3 py-2 flex items-center gap-2 hover:bg-slate-750 transition-colors text-left"
                     >
                       {isExpanded ? (
-                        <ChevronDown className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                        <CaretDown size={16} className="text-slate-400 flex-shrink-0" />
                       ) : (
-                        <ChevronRight className="w-4 h-4 text-slate-400 flex-shrink-0" />
+                        <CaretRight size={16} className="text-slate-400 flex-shrink-0" />
                       )}
                       <div className="flex items-center gap-2 flex-shrink-0">
                         {getChannelIcon(event.channel)}

@@ -1,12 +1,12 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Edit2, Copy, Trash2, Search, FileText, Plus,
-  Edit, AlertTriangle, X, Lightbulb, User,
-  Target, Settings, Palette, Brush, Upload, Download,
-  RefreshCw, Loader2, ArrowLeft, LayoutGrid, List, Eye, BookOpen,
-  Code, Database, ChevronRight
-} from 'lucide-react';
+  PencilSimple, Copy, Trash, MagnifyingGlass, FileText, Plus,
+  PencilSimple as EditIcon, Warning, X, Lightbulb, User,
+  Target, Gear, Palette, PaintBrush, Upload, Download,
+  ArrowClockwise, CircleNotch, ArrowLeft, SquaresFour, List, Eye, BookOpen,
+  Code, Database, CaretRight
+} from '@phosphor-icons/react';
 import { unifiedAlert, unifiedConfirm } from '@/utils/unifiedDialogs';
 import {
   UnifiedSidebar,
@@ -34,7 +34,6 @@ import { fileManager } from '../utils/fileManager';
 import { usePageMount, pageLifecycleTracker } from '@/debug-panel/hooks/usePageLifecycle';
 import { useMobileHeader, MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
-import { MOBILE_LAYOUT } from '@/config/mobileLayout';
 import { showGlobalNotification } from './UnifiedNotification';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
@@ -97,7 +96,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
         <NotionButton variant="ghost" size="sm" onClick={() => onBackToAnki?.()} className="hover:text-primary !p-0 !h-auto truncate max-w-[100px]">
           {tAnki('page_title')}
         </NotionButton>
-        <ChevronRight className="h-4 w-4 flex-shrink-0 text-muted-foreground" />
+        <CaretRight size={16} className="flex-shrink-0 text-muted-foreground" />
         <span className="truncate max-w-[120px]">
           {t('manager_title')}
         </span>
@@ -485,7 +484,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
           justify-content: space-between;
           margin-bottom: 1.5rem;
           position: relative;
-          background-color: hsl(var(--card));
+          background-color: var(--surface-panel-strong);
           padding: 0 24px;
           overflow: visible;
         }
@@ -508,7 +507,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
           padding: 1rem 1.5rem;
           background: transparent;
           border: none;
-          color: #64748b;
+          color: var(--text-secondary);
           font-size: 0.875rem;
           font-weight: 500;
           cursor: pointer;
@@ -524,11 +523,11 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
         }
 
         .template-tab-button:hover {
-          color: hsl(var(--primary));
+          color: var(--button-primary-foreground);
         }
 
         .template-tab-button.active {
-          color: hsl(var(--primary));
+          color: var(--button-primary-foreground);
           font-weight: 600;
         }
 
@@ -590,7 +589,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
           onRefreshClick={loadTemplates}
           isRefreshing={isLoading}
           showCollapse={true}
-        />
+/>
         
         <UnifiedSidebarContent>
           {/* 编辑模式下显示返回按钮 */}
@@ -606,7 +605,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                 }}
                 icon={ArrowLeft}
                 title={t('back_to_browse')}
-              />
+/>
             </div>
           )}
 
@@ -620,7 +619,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                 icon={BookOpen}
                 title={t('tab_browse')}
                 description={t('total_templates', { count: filteredTemplates.length })}
-              />
+/>
             </div>
           )}
 
@@ -637,35 +636,35 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                   onClick={() => setEditorTab('basic')}
                   icon={FileText}
                   title={t('basic_info')}
-                />
+/>
                 <UnifiedSidebarItem
                   id="editor-templates"
                   isSelected={editorTab === 'templates' || editorTab === 'styles'}
                   onClick={() => setEditorTab('templates')}
                   icon={Code}
                   title={t('template_code')}
-                />
+/>
                 <UnifiedSidebarItem
                   id="editor-data"
                   isSelected={editorTab === 'data'}
                   onClick={() => setEditorTab('data')}
                   icon={Database}
                   title={t('preview_data')}
-                />
+/>
                 <UnifiedSidebarItem
                   id="editor-rules"
                   isSelected={editorTab === 'rules'}
                   onClick={() => setEditorTab('rules')}
-                  icon={Settings}
+                  icon={Gear}
                   title={t('extraction_rules')}
-                />
+/>
                 <UnifiedSidebarItem
                   id="editor-advanced"
                   isSelected={editorTab === 'advanced'}
                   onClick={() => setEditorTab('advanced')}
-                  icon={Settings}
+                  icon={Gear}
                   title={t('advanced_settings')}
-                />
+/>
               </div>
             </>
           )}
@@ -682,19 +681,19 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                 onClick={handleImportBuiltinTemplates}
                 icon={Download}
                 title={isImporting ? t('importing') : t('import_builtin_templates')}
-              />
+/>
               <UnifiedSidebarItem
                 id="import-external"
                 onClick={handleImportExternalClick}
                 icon={Upload}
                 title={t('import_external_templates')}
-              />
+/>
               <UnifiedSidebarItem
                 id="export"
                 onClick={handleOpenBatchExportDialog}
                 icon={Download}
                 title={t('export_templates_sidebar')}
-              />
+/>
             </div>
           )}
 
@@ -706,20 +705,20 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
               </div>
               <div className="flex gap-1 px-2">
                 <NotionButton
-                  variant="ghost"
+                  variant="nav"
                   size="sm"
                   onClick={() => setViewMode('grid')}
-                  className={viewMode === 'grid' ? 'bg-accent text-foreground' : ''}
+                  className={viewMode === 'grid' ? 'bg-[color:var(--button-utility-surface)] text-foreground' : ''}
                 >
-                  <LayoutGrid className="h-4 w-4" />
+                  <SquaresFour size={16} />
                 </NotionButton>
                 <NotionButton
-                  variant="ghost"
+                  variant="nav"
                   size="sm"
                   onClick={() => setViewMode('list')}
-                  className={viewMode === 'list' ? 'bg-accent text-foreground' : ''}
+                  className={viewMode === 'list' ? 'bg-[color:var(--button-utility-surface)] text-foreground' : ''}
                 >
-                  <List className="h-4 w-4" />
+                  <List size={16} />
                 </NotionButton>
               </div>
             </div>
@@ -738,7 +737,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
               }}
               className="w-full justify-start gap-2"
             >
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft size={16} />
               {isSelectingMode ? t('back_button') : t('back_to_anki_button')}
             </NotionButton>
           </div>
@@ -747,15 +746,15 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
         );
 
         const mainContent = (
-          <div className="flex-1 flex flex-col min-w-0 h-full">
+          <div className="study-shell-page flex-1 flex flex-col min-w-0 h-full">
         {/* 错误提示 */}
         {error && (
-          <div className="mx-4 mt-4 rounded-lg border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 px-4 py-3 text-sm text-amber-800 dark:text-amber-200 flex items-center justify-between">
+          <div className="study-shell-panel mx-4 mt-4 border-[color:var(--button-danger-border)] bg-[color:var(--button-danger-surface)] px-4 py-3 text-sm text-[color:var(--button-danger-foreground)] flex items-center justify-between">
             <span className="flex items-center gap-2">
-              <AlertTriangle size={16} />
+              <Warning size={16} />
               {error}
             </span>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setError(null)} className="text-amber-700 hover:text-amber-900 dark:text-amber-300 dark:hover:text-amber-100" aria-label="close">
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setError(null)} className="text-[color:var(--button-danger-foreground)] hover:text-[color:var(--button-danger-foreground)]" aria-label="close">
               <X size={14} />
             </NotionButton>
           </div>
@@ -789,7 +788,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                   setEditingTemplate(null);
                   setEditorTab('basic');
                 }}
-              />
+/>
             )}
             {activeTab === 'edit' && editingTemplate && (
               <MinimalTemplateEditor
@@ -821,7 +820,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                   setEditingTemplate(null);
                   setEditorTab('basic');
                 }}
-              />
+/>
             )}
           </div>
         ) : (
@@ -831,7 +830,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
           trackOffsetRight={isSmallScreen ? 0 : 6}
         >
         {(isSelectingMode || activeTab === 'browse') && (
-          <div className="animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <div className="study-shell-pane animate-in fade-in slide-in-from-bottom-2 duration-200">
             <TemplateBrowser
               templates={filteredTemplates}
               selectedTemplate={selectedTemplate}
@@ -848,12 +847,12 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
               onExportTemplate={handleExportTemplate}
               viewMode={viewMode}
               isSmallScreen={isSmallScreen}
-            />
+/>
           </div>
         )}
 
         {!isSelectingMode && activeTab === 'create' && (
-          <div className="animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <div className="study-shell-pane animate-in fade-in slide-in-from-bottom-2 duration-200">
             <MinimalTemplateEditor
               template={editingTemplate}
               mode="create"
@@ -877,12 +876,12 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                 setEditingTemplate(null);
                 setEditorTab('basic');
               }}
-            />
+/>
           </div>
         )}
 
         {!isSelectingMode && activeTab === 'edit' && editingTemplate && (
-          <div className="animate-in fade-in slide-in-from-bottom-2 duration-200">
+          <div className="study-shell-pane animate-in fade-in slide-in-from-bottom-2 duration-200">
             <MinimalTemplateEditor
               template={editingTemplate}
               mode="edit"
@@ -911,7 +910,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
                 setEditingTemplate(null);
                 setEditorTab('basic');
               }}
-            />
+/>
           </div>
         )}
         </CustomScrollArea>
@@ -922,14 +921,11 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
         // ===== 移动端布局：MobileSlidingLayout =====
         if (isSmallScreen) {
           return (
-            <div className="w-full h-full bg-background flex flex-col overflow-hidden">
+            <div className="study-shell-page w-full h-full flex flex-col overflow-hidden">
               <MobileSlidingLayout
                 sidebar={
                   <div
-                    className="h-full flex flex-col bg-background"
-                    style={{
-                      paddingBottom: `calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + ${MOBILE_LAYOUT.bottomTabBar.defaultHeight}px)`,
-                    }}
+                    className="study-shell-sidebar-frame h-full flex flex-col"
                   >
                     {sidebarContent}
                   </div>
@@ -956,7 +952,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
 
         // ===== 桌面端布局 =====
         return (
-          <div className="w-full h-full bg-background flex flex-col overflow-hidden">
+          <div className="study-shell-page w-full h-full flex flex-col overflow-hidden">
             <div className="flex-1 flex overflow-hidden min-h-0">
               {sidebarContent}
               {mainContent}
@@ -1016,7 +1012,7 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
     >
       <NotionDialogHeader>
         <NotionDialogTitle>
-          <Download className="h-4 w-4 mr-2 inline" /> {t('export_templates_sidebar')}
+          <Download size={16} className="mr-2 inline" /> {t('export_templates_sidebar')}
         </NotionDialogTitle>
         <NotionDialogDescription>
           {t('export_dialog_desc')}
@@ -1029,13 +1025,13 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
         {templates.map(template => (
           <label
             key={template.id}
-            className="flex items-start gap-3 rounded-lg border border-border bg-white p-3 hover:border-border"
+            className="study-shell-secondary-card flex items-start gap-3 p-3"
           >
             <Checkbox
               checked={batchExportSelection.has(template.id)}
               onCheckedChange={(checked) => handleToggleBatchExportSelection(template.id, checked === true)}
               disabled={isExporting}
-            />
+/>
             <div className="flex flex-col gap-1">
               <span className="text-sm font-semibold text-foreground">{template.name}</span>
               <span className="text-xs text-muted-foreground line-clamp-2">{template.description}</span>
@@ -1143,7 +1139,7 @@ const TemplateBrowser: React.FC<TemplateBrowserProps> = ({
               renderPreview={renderPreview}
               onExportTemplate={() => onExportTemplate(template)}
               viewMode={viewMode}
-            />
+/>
           ))}
         </div>
       ) : (
@@ -1165,7 +1161,7 @@ const TemplateBrowser: React.FC<TemplateBrowserProps> = ({
                 renderPreview={renderPreview}
                 onExportTemplate={() => onExportTemplate(template)}
                 viewMode={viewMode}
-              />
+/>
             ))}
           </div>
           <div className="masonry-column">
@@ -1185,19 +1181,19 @@ const TemplateBrowser: React.FC<TemplateBrowserProps> = ({
                 renderPreview={renderPreview}
                 onExportTemplate={() => onExportTemplate(template)}
                 viewMode={viewMode}
-              />
+/>
             ))}
           </div>
         </div>
       )}
 
       {templates.length === 0 && !isLoading && (
-        <div className="empty-state">
-          <div className="empty-icon">
+        <div className="study-shell-empty-state">
+          <div className="study-shell-empty-state__icon">
             <FileText size={64} />
           </div>
-          <h3 className="empty-title">{t('empty_title')}</h3>
-          <p className="empty-description">{t('empty_description')}</p>
+          <h3 className="study-shell-empty-state__title">{t('empty_title')}</h3>
+          <p className="study-shell-empty-state__description">{t('empty_description')}</p>
         </div>
       )}
     </div>
@@ -1240,8 +1236,8 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
   const isDefault = defaultTemplateId === template.id;
 
   // 操作按钮渲染函数
-  const renderActions = () => (
-    <div className="notion-card-actions" onClick={e => e.stopPropagation()}>
+const renderActions = () => (
+    <div className="template-shell-card-actions" onClick={e => e.stopPropagation()}>
       {isSelectingMode ? (
         <NotionButton
           variant="primary"
@@ -1253,7 +1249,7 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
       ) : (
         <>
           <NotionButton
-            variant="primary"
+            variant="shell"
             size="sm"
             className="flex-1 min-w-0"
             onClick={isDefault ? undefined : onSetDefaultTemplate}
@@ -1261,18 +1257,18 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
           >
             {isDefault ? t('default_template') : t('set_default')}
           </NotionButton>
-          <div className="notion-action-buttons">
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={onEdit} aria-label={t('edit_tooltip')} title={t('edit_tooltip')}>
-              <Edit2 size={16} />
+          <div className="template-shell-action-buttons">
+            <NotionButton variant="utility" size="icon" iconOnly onClick={onEdit} aria-label={t('edit_tooltip')} title={t('edit_tooltip')}>
+              <PencilSimple size={16} />
             </NotionButton>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={onDuplicate} aria-label={t('duplicate_tooltip')} title={t('duplicate_tooltip')}>
+            <NotionButton variant="utility" size="icon" iconOnly onClick={onDuplicate} aria-label={t('duplicate_tooltip')} title={t('duplicate_tooltip')}>
               <Copy size={16} />
             </NotionButton>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={onExportTemplate} aria-label={t('export_tooltip')} title={t('export_tooltip')}>
+            <NotionButton variant="utility" size="icon" iconOnly onClick={onExportTemplate} aria-label={t('export_tooltip')} title={t('export_tooltip')}>
               <Download size={16} />
             </NotionButton>
             <NotionButton variant="danger" size="icon" iconOnly onClick={onDelete} aria-label={t('delete_tooltip')} title={t('delete_tooltip')}>
-              <Trash2 size={16} />
+              <Trash size={16} />
             </NotionButton>
           </div>
         </>
@@ -1283,18 +1279,19 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
   // Notion 风格卡片 - 统一结构
   return (
     <div
-      className={`notion-template-card ${isSelected ? 'selected' : ''} ${!template.is_active ? 'inactive' : ''} ${viewMode === 'list' ? 'list-view' : ''}`}
+      className={`template-shell-card ${isSelected ? 'selected' : ''} ${!template.is_active ? 'inactive' : ''} ${viewMode === 'list' ? 'list-view' : ''}`}
+      data-selected={isSelected}
       onClick={onSelect}
     >
       {/* 卡片头部 */}
-      <div className="notion-card-header">
+      <div className="template-shell-card-header">
         <div>
-          <h4 className="notion-card-title">{template.name}</h4>
-          <div className="notion-card-badges">
-            {isDefault && <span className="notion-badge default">{t('default_badge')}</span>}
-            {template.is_built_in && <span className="notion-badge builtin">{t('builtin_badge')}</span>}
-            {!template.is_active && <span className="notion-badge inactive">{t('inactive_badge')}</span>}
-            <span className="notion-badge version">v{template.version}</span>
+          <h4 className="template-shell-card-title">{template.name}</h4>
+          <div className="template-shell-card-badges">
+            {isDefault && <span className="study-shell-badge study-shell-badge--primary">{t('default_badge')}</span>}
+            {template.is_built_in && <span className="study-shell-badge">{t('builtin_badge')}</span>}
+            {!template.is_active && <span className="study-shell-badge study-shell-badge--danger">{t('inactive_badge')}</span>}
+            <span className="study-shell-badge study-shell-badge--success">v{template.version}</span>
           </div>
         </div>
         {/* 列表视图：操作按钮放在 header 内 */}
@@ -1302,46 +1299,46 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
       </div>
 
       {/* 预览区域 - 固定高度，可滚动 */}
-      <div className="notion-preview-container">
-        <div className="notion-preview-section">
-          <div className="notion-preview-label">{t('front_label')}</div>
-          <div className="notion-preview-content">
+      <div className="template-shell-preview-container">
+        <div className="template-shell-preview-section">
+          <div className="template-shell-preview-label">{t('front_label')}</div>
+          <div className="template-shell-preview-content">
             <IframePreview
               htmlContent={renderPreview(template.front_template || template.preview_front || '', template, false)}
               cssContent={template.css_style || ''}
-            />
+/>
           </div>
         </div>
-        <div className="notion-preview-section">
-          <div className="notion-preview-label">{t('back_label')}</div>
-          <div className="notion-preview-content">
+        <div className="template-shell-preview-section">
+          <div className="template-shell-preview-label">{t('back_label')}</div>
+          <div className="template-shell-preview-content">
             <IframePreview
               htmlContent={renderPreview(template.back_template || template.preview_back || '', template, true)}
               cssContent={template.css_style || ''}
-            />
+/>
           </div>
         </div>
       </div>
 
       {/* 卡片信息 */}
-      <div className="notion-card-info">
-        <p className="notion-card-description">{template.description}</p>
-        <div className="notion-card-meta">
-          <span className="notion-meta-item">
-            <User size={12} className="notion-meta-icon" />
+      <div className="template-shell-card-info">
+        <p className="template-shell-card-description">{template.description}</p>
+        <div className="template-shell-card-meta">
+          <span className="template-shell-meta-item">
+            <User size={12} className="template-shell-meta-icon" />
             {template.author || t('author_unknown')}
           </span>
-          <span className="notion-meta-item">
-            <FileText size={12} className="notion-meta-icon" />
+          <span className="template-shell-meta-item">
+            <FileText size={12} className="template-shell-meta-icon" />
             {t('fields_count', { count: template.fields.length })}
           </span>
         </div>
-        <div className="notion-fields">
+        <div className="template-shell-fields">
           {template.fields.slice(0, 4).map(field => (
-            <span key={field} className="notion-field-tag">{field}</span>
+            <span key={field} className="template-shell-field-tag">{field}</span>
           ))}
           {template.fields.length > 4 && (
-            <span className="notion-field-tag more">+{template.fields.length - 4}</span>
+            <span className="template-shell-field-tag more">+{template.fields.length - 4}</span>
           )}
         </div>
       </div>

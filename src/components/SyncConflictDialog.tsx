@@ -22,20 +22,20 @@ import { Alert, AlertDescription } from '@/components/ui/shad/Alert';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import {
-  AlertCircle,
+  WarningCircle,
   GitBranch,
   GitMerge,
   Check,
   X,
   Clock,
-  ChevronRight,
-  ChevronDown,
-  RefreshCw,
-  Loader2,
+  CaretRight,
+  CaretDown,
+  ArrowClockwise,
+  CircleNotch,
   FileText,
   Tag,
   Star,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { useShallow } from 'zustand/react/shallow';
 import {
   SyncConflict,
@@ -123,7 +123,7 @@ function VersionCompare({ local, remote }: VersionCompareProps) {
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center justify-between">
             <span className="flex items-center gap-2">
-              <GitBranch className="h-4 w-4" />
+              <GitBranch size={16} />
               {t('localVersion', '本地版本')}
             </span>
             {newerSide === 'local' && (
@@ -145,14 +145,14 @@ function VersionCompare({ local, remote }: VersionCompareProps) {
             </div>
           )}
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Clock className="h-3 w-3" />
+            <Clock size={12} />
             {formatTime(local.updated_at)}
           </div>
           <div className="flex items-center gap-2">
-            {local.is_favorite && <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />}
+            {local.is_favorite && <Star size={12} className="text-yellow-500 fill-yellow-500" />}
             {local.tags.length > 0 && (
               <div className="flex items-center gap-1">
-                <Tag className="h-3 w-3" />
+                <Tag size={12} />
                 <span className="text-xs">{local.tags.length}</span>
               </div>
             )}
@@ -165,7 +165,7 @@ function VersionCompare({ local, remote }: VersionCompareProps) {
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center justify-between">
             <span className="flex items-center gap-2">
-              <GitMerge className="h-4 w-4" />
+              <GitMerge size={16} />
               {t('remoteVersion', '远程版本')}
             </span>
             {newerSide === 'remote' && (
@@ -187,14 +187,14 @@ function VersionCompare({ local, remote }: VersionCompareProps) {
             </div>
           )}
           <div className="flex items-center gap-2 text-xs text-muted-foreground">
-            <Clock className="h-3 w-3" />
+            <Clock size={12} />
             {formatTime(remote.updated_at)}
           </div>
           <div className="flex items-center gap-2">
-            {remote.is_favorite && <Star className="h-3 w-3 text-yellow-500 fill-yellow-500" />}
+            {remote.is_favorite && <Star size={12} className="text-yellow-500 fill-yellow-500" />}
             {remote.tags.length > 0 && (
               <div className="flex items-center gap-1">
-                <Tag className="h-3 w-3" />
+                <Tag size={12} />
                 <span className="text-xs">{remote.tags.length}</span>
               </div>
             )}
@@ -235,24 +235,24 @@ function ConflictItem({
     <div className="border rounded-lg overflow-hidden">
       {/* 冲突头部 */}
       <div 
-        className="flex items-center gap-3 p-3 bg-muted/50 cursor-pointer hover:bg-muted/80 transition-colors"
+        className="flex items-center gap-3 p-3 bg-muted/50 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
         onClick={onToggleExpand}
       >
         <Checkbox
           checked={isSelected}
           onCheckedChange={() => onToggleSelect()}
           onClick={(e) => e.stopPropagation()}
-        />
+/>
         
         {isExpanded ? (
-          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          <CaretDown size={16} className="text-muted-foreground" />
         ) : (
-          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          <CaretRight size={16} className="text-muted-foreground" />
         )}
         
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 text-amber-500" />
+            <WarningCircle size={16} className="text-amber-500" />
             <span className="font-medium truncate">
               {conflict.local_version.content.slice(0, 50)}...
             </span>
@@ -271,11 +271,10 @@ function ConflictItem({
             <NotionButton
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
-              onClick={() => onResolve('keep_local')}
+ className="w-8 h-8"               onClick={() => onResolve('keep_local')}
               disabled={isResolving}
             >
-              <GitBranch className="h-4 w-4" />
+              <GitBranch size={16} />
             </NotionButton>
           </CommonTooltip>
 
@@ -283,11 +282,10 @@ function ConflictItem({
             <NotionButton
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
-              onClick={() => onResolve('keep_remote')}
+ className="w-8 h-8"               onClick={() => onResolve('keep_remote')}
               disabled={isResolving}
             >
-              <GitMerge className="h-4 w-4" />
+              <GitMerge size={16} />
             </NotionButton>
           </CommonTooltip>
 
@@ -295,11 +293,10 @@ function ConflictItem({
             <NotionButton
               variant="ghost"
               size="icon"
-              className="h-8 w-8"
-              onClick={() => onResolve('keep_newer')}
+ className="w-8 h-8"               onClick={() => onResolve('keep_newer')}
               disabled={isResolving}
             >
-              <Clock className="h-4 w-4" />
+              <Clock size={16} />
             </NotionButton>
           </CommonTooltip>
         </div>
@@ -311,7 +308,7 @@ function ConflictItem({
           <VersionCompare
             local={conflict.local_version}
             remote={conflict.remote_version}
-          />
+/>
         </div>
       )}
     </div>
@@ -441,7 +438,7 @@ export function SyncConflictDialog({
     <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-4xl">
         <NotionDialogHeader>
           <NotionDialogTitle className="flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 text-amber-500" />
+            <WarningCircle size={20} className="text-amber-500" />
             {t('syncConflicts', '同步冲突')}
             <Badge variant="secondary">{pendingConflicts.length}</Badge>
           </NotionDialogTitle>
@@ -449,11 +446,11 @@ export function SyncConflictDialog({
             {t('conflictDescription', '以下题目在本地和远程存在冲突，请选择解决策略。')}
           </NotionDialogDescription>
         </NotionDialogHeader>
-        <NotionDialogBody nativeScroll>
+        <NotionDialogBody>
 
         {pendingConflicts.length === 0 ? (
           <Alert>
-            <Check className="h-4 w-4" />
+            <Check size={16} />
             <AlertDescription>
               {t('noConflicts', '没有待解决的冲突。')}
             </AlertDescription>
@@ -466,7 +463,7 @@ export function SyncConflictDialog({
                 <Checkbox
                   checked={selectedIds.size === pendingConflicts.length && pendingConflicts.length > 0}
                   onCheckedChange={toggleSelectAll}
-                />
+/>
                 <span className="text-sm text-muted-foreground">
                   {selectedIds.size > 0
                     ? t('selectedCount', '已选择 {{count}} 项', { count: selectedIds.size })
@@ -484,7 +481,7 @@ export function SyncConflictDialog({
                           className={`cursor-pointer transition-all bg-transparent ${
                             batchStrategy === strategy
                               ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
-                              : 'hover:border-border/60 hover:bg-muted/30 border-muted'
+                              : 'hover:border-border/60 hover:bg-[var(--interactive-hover)] border-muted'
                           }`}
                         >
                           <input
@@ -493,8 +490,8 @@ export function SyncConflictDialog({
                             value={strategy}
                             checked={batchStrategy === strategy}
                             onChange={() => setBatchStrategy(strategy)}
-                            className="accent-primary h-4 w-4"
-                          />
+                            size={16} className="accent-primary"
+/>
                           <span className="text-sm">
                             {strategy === 'keep_local' ? t('keepLocal', '保留本地')
                               : strategy === 'keep_remote' ? t('keepRemote', '保留远程')
@@ -513,9 +510,9 @@ export function SyncConflictDialog({
                     disabled={isSyncing}
                   >
                     {isSyncing ? (
-                      <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                      <CircleNotch size={16} className="animate-spin mr-2" />
                     ) : (
-                      <Check className="h-4 w-4 mr-2" />
+                      <Check size={16} className="mr-2" />
                     )}
                     {t('batchResolve', '批量解决')}
                   </NotionButton>
@@ -536,7 +533,7 @@ export function SyncConflictDialog({
                     onToggleExpand={() => toggleExpand(conflict.id)}
                     onResolve={(strategy) => handleResolve(conflict.id, strategy)}
                     isResolving={resolvingIds.has(conflict.id)}
-                  />
+/>
                 ))}
               </div>
             </CustomScrollArea>

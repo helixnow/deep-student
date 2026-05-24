@@ -167,7 +167,8 @@
       "label": "Enable Thinking",
       "helper": "Enable reasoning mode for supported models"
     },
-    "thinking_mode_notice": "In reasoning mode, the temperature parameter may be ignored by the model."
+    "thinking_mode_notice": "In reasoning mode, the temperature parameter may be ignored by the model.",
+    "deepseek_v4_sampling_notice": "In DeepSeek V4 thinking mode ({{effort}}), temperature, Top-P, frequency penalty, and presence penalty do not take effect. Turn thinking off to use sampling controls."
   },
   "token_estimate": {
     "approx": "~",

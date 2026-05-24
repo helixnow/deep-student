@@ -34,7 +34,7 @@ import {
   initializeContextSystem,
   resetContextSystem,
   contextTypeRegistry,
-} from '@/chat-v2/context';
+} from '@/features/chat/context';
 
 // ============================================================================
 // 工具函数测试

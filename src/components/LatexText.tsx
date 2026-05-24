@@ -6,7 +6,7 @@
 import React, { useEffect, useMemo } from 'react';
 import DOMPurify from 'dompurify';
 import { ensureKatexStyles } from '@/utils/lazyStyles';
-import { containsLatex, renderLatexToHtml } from '@/components/mindmap/utils/renderLatex';
+import { containsLatex, renderLatexToHtml } from '@/features/mindmap/utils/renderLatex';
 
 interface LatexTextProps {
   content: string;  // 使用 content 以兼容现有调用

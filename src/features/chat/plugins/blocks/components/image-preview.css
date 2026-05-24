@@ -1,0 +1,23 @@
+/* 图片预览 */
+.image-preview {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin-top: 0.5rem;
+}
+
+.preview-image {
+  width: 100px;
+  height: 100px;
+  object-fit: cover;
+  border-radius: 8px;
+  border: 2px solid hsl(var(--border));
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.preview-image:hover {
+  transform: scale(1.05);
+  box-shadow: 0 4px 12px hsl(var(--shadow-base) / 0.15);
+  border-color: hsl(var(--primary));
+}

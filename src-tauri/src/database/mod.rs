@@ -1327,32 +1327,32 @@ impl Database {
 
         if !existing.iter().any(|c| c == "turn_id") {
             conn.execute("ALTER TABLE chat_messages ADD COLUMN turn_id TEXT;", [])?;
-            println!("SQLite: chat_messages.turn_id 列已添加");
+            tracing::info!("SQLite: chat_messages.turn_id 列已添加");
         }
         if !existing.iter().any(|c| c == "turn_seq") {
             conn.execute(
                 "ALTER TABLE chat_messages ADD COLUMN turn_seq SMALLINT;",
                 [],
             )?;
-            println!("SQLite: chat_messages.turn_seq 列已添加");
+            tracing::info!("SQLite: chat_messages.turn_seq 列已添加");
         }
         if !existing.iter().any(|c| c == "reply_to_msg_id") {
             conn.execute(
                 "ALTER TABLE chat_messages ADD COLUMN reply_to_msg_id INTEGER;",
                 [],
             )?;
-            println!("SQLite: chat_messages.reply_to_msg_id 列已添加");
+            tracing::info!("SQLite: chat_messages.reply_to_msg_id 列已添加");
         }
         if !existing.iter().any(|c| c == "message_kind") {
             conn.execute(
                 "ALTER TABLE chat_messages ADD COLUMN message_kind TEXT;",
                 [],
             )?;
-            println!("SQLite: chat_messages.message_kind 列已添加");
+            tracing::info!("SQLite: chat_messages.message_kind 列已添加");
         }
         if !existing.iter().any(|c| c == "lifecycle") {
             conn.execute("ALTER TABLE chat_messages ADD COLUMN lifecycle TEXT;", [])?;
-            println!("SQLite: chat_messages.lifecycle 列已添加");
+            tracing::info!("SQLite: chat_messages.lifecycle 列已添加");
         }
 
         // 幂等创建索引
@@ -1381,7 +1381,7 @@ impl Database {
             .any(|name| name == "overrides");
         if !has_overrides {
             conn.execute("ALTER TABLE chat_messages ADD COLUMN overrides TEXT;", [])?;
-            println!("SQLite: chat_messages.overrides 列已添加");
+            tracing::info!("SQLite: chat_messages.overrides 列已添加");
         }
 
         // chat_messages.relations
@@ -1392,7 +1392,7 @@ impl Database {
             .any(|name| name == "relations");
         if !has_relations {
             conn.execute("ALTER TABLE chat_messages ADD COLUMN relations TEXT;", [])?;
-            println!("SQLite: chat_messages.relations 列已添加");
+            tracing::info!("SQLite: chat_messages.relations 列已添加");
         }
 
         // review_chat_messages.overrides
@@ -1406,7 +1406,7 @@ impl Database {
                 "ALTER TABLE review_chat_messages ADD COLUMN overrides TEXT;",
                 [],
             )?;
-            println!("SQLite: review_chat_messages.overrides 列已添加");
+            tracing::info!("SQLite: review_chat_messages.overrides 列已添加");
         }
 
         // review_chat_messages.relations
@@ -1420,7 +1420,7 @@ impl Database {
                 "ALTER TABLE review_chat_messages ADD COLUMN relations TEXT;",
                 [],
             )?;
-            println!("SQLite: review_chat_messages.relations 列已添加");
+            tracing::info!("SQLite: review_chat_messages.relations 列已添加");
         }
         Ok(())
     }
@@ -1437,7 +1437,7 @@ impl Database {
                 "ALTER TABLE chat_messages ADD COLUMN thinking_content TEXT;",
                 [],
             )?;
-            println!("SQLite: thinking_content 列已添加");
+            tracing::info!("SQLite: thinking_content 列已添加");
         }
         Ok(())
     }
@@ -1451,7 +1451,7 @@ impl Database {
 
         if !column_exists {
             conn.execute("ALTER TABLE chat_messages ADD COLUMN rag_sources TEXT;", [])?;
-            println!("SQLite: rag_sources 列已添加");
+            tracing::info!("SQLite: rag_sources 列已添加");
         }
         Ok(())
     }
@@ -1471,7 +1471,7 @@ impl Database {
                 "ALTER TABLE chat_messages ADD COLUMN memory_sources TEXT;",
                 [],
             )?;
-            println!("SQLite: chat_messages.memory_sources 列已添加");
+            tracing::info!("SQLite: chat_messages.memory_sources 列已添加");
         }
 
         // review_chat_messages.memory_sources
@@ -1485,7 +1485,7 @@ impl Database {
                 "ALTER TABLE review_chat_messages ADD COLUMN memory_sources TEXT;",
                 [],
             )?;
-            println!("SQLite: review_chat_messages.memory_sources 列已添加");
+            tracing::info!("SQLite: review_chat_messages.memory_sources 列已添加");
         }
         Ok(())
     }
@@ -1505,7 +1505,7 @@ impl Database {
                 "ALTER TABLE chat_messages ADD COLUMN web_search_sources TEXT;",
                 [],
             )?;
-            println!("SQLite: chat_messages.web_search_sources 列已添加");
+            tracing::info!("SQLite: chat_messages.web_search_sources 列已添加");
         }
 
         // review_chat_messages.web_search_sources
@@ -1519,7 +1519,7 @@ impl Database {
                 "ALTER TABLE review_chat_messages ADD COLUMN web_search_sources TEXT;",
                 [],
             )?;
-            println!("SQLite: review_chat_messages.web_search_sources 列已添加");
+            tracing::info!("SQLite: review_chat_messages.web_search_sources 列已添加");
         }
         Ok(())
     }
@@ -1534,7 +1534,7 @@ impl Database {
 
         if !has_image_paths {
             conn.execute("ALTER TABLE chat_messages ADD COLUMN image_paths TEXT;", [])?;
-            println!("SQLite: image_paths 列已添加");
+            tracing::info!("SQLite: image_paths 列已添加");
         }
 
         // 添加 image_base64 列
@@ -1549,7 +1549,7 @@ impl Database {
                 "ALTER TABLE chat_messages ADD COLUMN image_base64 TEXT;",
                 [],
             )?;
-            println!("SQLite: image_base64 列已添加");
+            tracing::info!("SQLite: image_base64 列已添加");
         }
 
         Ok(())
@@ -1564,7 +1564,7 @@ impl Database {
             .any(|name| name == "tool_call");
         if !has_tool_call {
             conn.execute("ALTER TABLE chat_messages ADD COLUMN tool_call TEXT;", [])?;
-            println!("SQLite: chat_messages.tool_call 列已添加");
+            tracing::info!("SQLite: chat_messages.tool_call 列已添加");
         }
 
         // chat_messages.tool_result
@@ -1575,7 +1575,7 @@ impl Database {
             .any(|name| name == "tool_result");
         if !has_tool_result {
             conn.execute("ALTER TABLE chat_messages ADD COLUMN tool_result TEXT;", [])?;
-            println!("SQLite: chat_messages.tool_result 列已添加");
+            tracing::info!("SQLite: chat_messages.tool_result 列已添加");
         }
 
         // review_chat_messages.tool_call
@@ -1589,7 +1589,7 @@ impl Database {
                 "ALTER TABLE review_chat_messages ADD COLUMN tool_call TEXT;",
                 [],
             )?;
-            println!("SQLite: review_chat_messages.tool_call 列已添加");
+            tracing::info!("SQLite: review_chat_messages.tool_call 列已添加");
         }
 
         // review_chat_messages.tool_result
@@ -1603,7 +1603,7 @@ impl Database {
                 "ALTER TABLE review_chat_messages ADD COLUMN tool_result TEXT;",
                 [],
             )?;
-            println!("SQLite: review_chat_messages.tool_result 列已添加");
+            tracing::info!("SQLite: review_chat_messages.tool_result 列已添加");
         }
         Ok(())
     }
@@ -1619,7 +1619,7 @@ impl Database {
     // ============================================
     /*
     fn migrate_v1_to_v2(&self, conn: &rusqlite::Connection) -> anyhow::Result<()> {
-        println!("数据库迁移: v1 -> v2 (添加Anki增强功能表)");
+        tracing::info!("数据库迁移: v1 -> v2 (添加Anki增强功能表)");
 
         // 检查document_tasks表是否已存在
         let document_tasks_exists = conn
@@ -1645,7 +1645,7 @@ impl Database {
                 );",
                 [],
             )?;
-            println!("创建document_tasks表");
+            tracing::info!("创建document_tasks表");
         }
 
         // 检查anki_cards表是否已存在
@@ -1671,7 +1671,7 @@ impl Database {
                 );",
                 [],
             )?;
-            println!("创建anki_cards表");
+            tracing::info!("创建anki_cards表");
         }
 
         // 创建索引
@@ -1689,12 +1689,12 @@ impl Database {
             [],
         )?;
 
-        println!("数据库迁移完成: v1 -> v2");
+        tracing::info!("数据库迁移完成: v1 -> v2");
         Ok(())
     }
 
     fn migrate_v2_to_v3(&self, conn: &rusqlite::Connection) -> anyhow::Result<()> {
-        println!("数据库迁移: v2 -> v3 (添加RAG配置表)");
+        tracing::info!("数据库迁移: v2 -> v3 (添加RAG配置表)");
 
         // 检查rag_configurations表是否已存在
         let rag_config_exists = conn
@@ -1719,7 +1719,7 @@ impl Database {
                 );",
                 [],
             )?;
-            println!("创建rag_configurations表");
+            tracing::info!("创建rag_configurations表");
 
             // 插入默认配置
             let now = Utc::now().to_rfc3339();
@@ -1728,25 +1728,25 @@ impl Database {
                  VALUES ('default', 512, 50, 'fixed_size', 20, 5, 1, ?1, ?2)",
                 params![now, now],
             )?;
-            println!("插入默认RAG配置");
+            tracing::info!("插入默认RAG配置");
         }
 
-        println!("数据库迁移完成: v2 -> v3");
+        tracing::info!("数据库迁移完成: v2 -> v3");
         Ok(())
     }
 
     fn migrate_v3_to_v4(&self, _conn: &rusqlite::Connection) -> anyhow::Result<()> {
-        println!("📦 开始数据库迁移 v3 -> v4: 添加RAG来源信息支持");
+        tracing::info!("📦 开始数据库迁移 v3 -> v4: 添加RAG来源信息支持");
 
         // v3到v4的迁移主要通过migrate_add_rag_sources_column处理
         // 这里可以添加其他v4特有的迁移逻辑
 
-        println!("数据库迁移 v3 -> v4 完成");
+        tracing::info!("数据库迁移 v3 -> v4 完成");
         Ok(())
     }
 
     fn migrate_v4_to_v5(&self, conn: &rusqlite::Connection) -> anyhow::Result<()> {
-        println!("📦 开始数据库迁移 v4 -> v5: 升级回顾分析表结构");
+        tracing::info!("📦 开始数据库迁移 v4 -> v5: 升级回顾分析表结构");
 
         // 强制创建review_analyses和review_chat_messages表（如果不存在）
         conn.execute(
@@ -1779,17 +1779,17 @@ impl Database {
             [],
         )?;
 
-        println!("强制创建了review_analyses和review_chat_messages表");
+        tracing::info!("强制创建了review_analyses和review_chat_messages表");
 
         // 迁移旧的review_sessions到新的review_analyses
         self.migrate_review_sessions_to_review_analyses(conn)?;
 
-        println!("数据库迁移 v4 -> v5 完成");
+        tracing::info!("数据库迁移 v4 -> v5 完成");
         Ok(())
     }
 
     fn migrate_v5_to_v6(&self, conn: &rusqlite::Connection) -> anyhow::Result<()> {
-        println!("📦 开始数据库迁移 v5 -> v6: 修复回顾分析表结构");
+        tracing::info!("📦 开始数据库迁移 v5 -> v6: 修复回顾分析表结构");
 
         // 强制重新创建review_analyses和review_chat_messages表，确保schema正确
         conn.execute("DROP TABLE IF EXISTS review_chat_messages", [])?;
@@ -1825,13 +1825,13 @@ impl Database {
             [],
         )?;
 
-        println!("重新创建了review_analyses和review_chat_messages表");
-        println!("数据库迁移 v5 -> v6 完成");
+        tracing::info!("重新创建了review_analyses和review_chat_messages表");
+        tracing::info!("数据库迁移 v5 -> v6 完成");
         Ok(())
     }
 
     fn migrate_v6_to_v7(&self, conn: &rusqlite::Connection) -> anyhow::Result<()> {
-        println!("📦 开始数据库迁移 v6 -> v7: 添加错题总结字段");
+        tracing::info!("📦 开始数据库迁移 v6 -> v7: 添加错题总结字段");
 
         // 为mistakes表添加新的总结字段
         let mut stmt = conn.prepare("PRAGMA table_info(mistakes);")?;
@@ -1857,13 +1857,13 @@ impl Database {
             )?;
         }
 
-        println!("已为mistakes表添加mistake_summary和user_error_analysis字段");
-        println!("数据库迁移 v6 -> v7 完成");
+        tracing::info!("已为mistakes表添加mistake_summary和user_error_analysis字段");
+        tracing::info!("数据库迁移 v6 -> v7 完成");
         Ok(())
     }
 
     fn migrate_v7_to_v8(&self, conn: &rusqlite::Connection) -> anyhow::Result<()> {
-        println!("📦 开始数据库迁移 v7 -> v8: 添加模板支持字段");
+        tracing::info!("📦 开始数据库迁移 v7 -> v8: 添加模板支持字段");
 
         // 为anki_cards表添加扩展字段和模板ID字段
         let add_extra_fields = conn.execute(
@@ -1876,16 +1876,16 @@ impl Database {
 
         match (add_extra_fields, add_template_id) {
             (Ok(_), Ok(_)) => {
-                println!("已为anki_cards表添加extra_fields_json和template_id字段");
+                tracing::info!("已为anki_cards表添加extra_fields_json和template_id字段");
             }
             (Err(e1), Err(e2)) => {
-                println!("添加字段时遇到错误，可能字段已存在: {} / {}", e1, e2);
+                tracing::info!("添加字段时遇到错误，可能字段已存在: {} / {}", e1, e2);
             }
             (Ok(_), Err(e)) => {
-                println!("添加template_id字段时遇到错误，可能字段已存在: {}", e);
+                tracing::info!("添加template_id字段时遇到错误，可能字段已存在: {}", e);
             }
             (Err(e), Ok(_)) => {
-                println!(
+                tracing::info!(
                     "添加extra_fields_json字段时遇到错误，可能字段已存在: {}",
                     e
                 );
@@ -1918,14 +1918,14 @@ impl Database {
         )?;
 
         // 仅确保表存在；内置模板的导入统一由 JSON 文件驱动
-        println!("v11->v12: 跳过硬编码内置模板插入，改用 JSON 导入");
+        tracing::info!("v11->v12: 跳过硬编码内置模板插入，改用 JSON 导入");
 
         // 创建模板表索引
         conn.execute("CREATE INDEX IF NOT EXISTS idx_custom_anki_templates_is_active ON custom_anki_templates(is_active);", [])?;
         conn.execute("CREATE INDEX IF NOT EXISTS idx_custom_anki_templates_is_built_in ON custom_anki_templates(is_built_in);", [])?;
 
-        println!("已创建custom_anki_templates表");
-        println!("数据库迁移 v7 -> v8 完成");
+        tracing::info!("已创建custom_anki_templates表");
+        tracing::info!("数据库迁移 v7 -> v8 完成");
         Ok(())
     }
     */
@@ -2338,11 +2338,11 @@ impl Database {
             .any(|_| true);
 
         if !old_table_exists {
-            println!("旧的review_sessions表不存在，跳过迁移");
+            tracing::info!("旧的review_sessions表不存在，跳过迁移");
             return Ok(());
         }
 
-        println!("检查review_sessions表结构");
+        tracing::info!("检查review_sessions表结构");
 
         // 🔧 关键修复：检查表结构是否匹配
         let columns = conn
@@ -2357,20 +2357,20 @@ impl Database {
         let has_analysis_summary = columns.contains(&"analysis_summary".to_string());
 
         if !has_mistake_ids || !has_analysis_summary {
-            println!("review_sessions表结构不匹配，跳过数据迁移");
-            println!("   - 当前字段: {:?}", columns);
-            println!(
+            tracing::info!("review_sessions表结构不匹配，跳过数据迁移");
+            tracing::info!("   - 当前字段: {:?}", columns);
+            tracing::info!(
                 "   - 需要字段: mistake_ids={}, analysis_summary={}",
                 has_mistake_ids, has_analysis_summary
             );
 
             // 🔧 直接删除不兼容的旧表，避免后续冲突
             conn.execute("DROP TABLE IF EXISTS review_sessions", [])?;
-            println!("已删除不兼容的review_sessions表");
+            tracing::info!("已删除不兼容的review_sessions表");
             return Ok(());
         }
 
-        println!("迁移review_sessions数据到review_analyses");
+        tracing::info!("迁移review_sessions数据到review_analyses");
 
         // 创建新表（如果不存在）
         conn.execute(
@@ -2468,7 +2468,7 @@ impl Database {
         // conn.execute("DROP TABLE IF EXISTS review_sessions", [])?;
         // conn.execute("DROP TABLE IF EXISTS review_chat_messages", [])?;
 
-        println!(
+        tracing::info!(
             "review_sessions迁移完成，迁移了{}条记录",
             migration_count
         );
@@ -3619,11 +3619,10 @@ impl Database {
         // 从安全存储删除
         if SecureStore::is_sensitive_key(key) {
             if let Some(ref secure_store) = self.secure_store {
-                if let Err(e) = secure_store.delete_secret(key) {
-                    log::warn!("从安全存储删除失败: {} - {}", key, e);
-                } else {
-                    deleted = true;
-                }
+                secure_store
+                    .delete_secret(key)
+                    .map_err(|e| anyhow::anyhow!("从安全存储删除失败: {} - {}", key, e))?;
+                deleted = true;
             }
         }
 
@@ -4804,7 +4803,7 @@ impl Database {
     /*
     /// 版本8到版本9的数据库迁移：过去用于添加图片遮罩卡表，现在改为清理遗留结构
     fn migrate_v8_to_v9(&self, conn: &rusqlite::Connection) -> Result<()> {
-        println!("正在迁移数据库版本8到版本9：清理图片遮罩卡遗留表...");
+        tracing::info!("正在迁移数据库版本8到版本9：清理图片遮罩卡遗留表...");
 
         conn.execute_batch(
             "DROP INDEX IF EXISTS idx_image_occlusion_cards_task_id;
@@ -4813,12 +4812,12 @@ impl Database {
             DROP TABLE IF EXISTS image_occlusion_cards;",
         )?;
 
-        println!("数据库版本8到版本9迁移完成（已移除图片遮罩卡表）");
+        tracing::info!("数据库版本8到版本9迁移完成（已移除图片遮罩卡表）");
         Ok(())
     }
 
     fn migrate_v9_to_v10(&self, conn: &rusqlite::Connection) -> Result<()> {
-        println!("正在迁移数据库版本9到版本10：为anki_cards表添加text字段支持Cloze模板...");
+        tracing::info!("正在迁移数据库版本9到版本10：为anki_cards表添加text字段支持Cloze模板...");
 
         // 🔧 检查text字段是否已存在
         let text_column_exists = conn
@@ -4832,9 +4831,9 @@ impl Database {
         if !text_column_exists {
             // 添加text字段到anki_cards表
             conn.execute("ALTER TABLE anki_cards ADD COLUMN text TEXT;", [])?;
-            println!("已为anki_cards表添加text字段");
+            tracing::info!("已为anki_cards表添加text字段");
         } else {
-            println!("text字段已存在，跳过添加");
+            tracing::info!("text字段已存在，跳过添加");
         }
 
         // 添加索引以优化查询性能
@@ -4843,12 +4842,12 @@ impl Database {
             [],
         )?;
 
-        println!("数据库版本9到版本10迁移完成");
+        tracing::info!("数据库版本9到版本10迁移完成");
         Ok(())
     }
 
     fn migrate_v10_to_v11(&self, conn: &rusqlite::Connection) -> Result<()> {
-        println!("正在迁移数据库版本10到版本11：为review_analyses表添加会话管理字段...");
+        tracing::info!("正在迁移数据库版本10到版本11：为review_analyses表添加会话管理字段...");
 
         // 为review_analyses表添加temp_session_data字段
         let add_temp_session = conn.execute(
@@ -4864,24 +4863,24 @@ impl Database {
 
         match (add_temp_session, add_session_sequence) {
             (Ok(_), Ok(_)) => {
-                println!("已为review_analyses表添加temp_session_data和session_sequence字段");
+                tracing::info!("已为review_analyses表添加temp_session_data和session_sequence字段");
             }
             (Err(e), _) | (_, Err(e)) => {
                 // 如果字段已存在，这是正常的
                 if e.to_string().contains("duplicate column name") {
-                    println!("字段已存在，跳过添加");
+                    tracing::info!("字段已存在，跳过添加");
                 } else {
                     return Err(e.into());
                 }
             }
         }
 
-        println!("数据库版本10到版本11迁移完成");
+        tracing::info!("数据库版本10到版本11迁移完成");
         Ok(())
     }
 
     fn migrate_v11_to_v12(&self, conn: &rusqlite::Connection) -> Result<()> {
-        println!("开始数据库迁移 v11 -> v12: 插入内置模板...");
+        tracing::info!("开始数据库迁移 v11 -> v12: 插入内置模板...");
 
 
 
@@ -4918,20 +4917,20 @@ impl Database {
             |row| row.get(0),
         )?;
 
-        println!("当前内置模板数量: {}", count);
+        tracing::info!("当前内置模板数量: {}", count);
 
         // 如果已有内置模板，跳过迁移
         if count > 0 {
-            println!("内置模板已存在，跳过迁移");
+            tracing::info!("内置模板已存在，跳过迁移");
             return Ok(());
         }
 
-        println!("v11->v12: 跳过硬编码模板插入，改用 JSON 导入");
+        tracing::info!("v11->v12: 跳过硬编码模板插入，改用 JSON 导入");
         Ok(())
     }
 
     fn migrate_v12_to_v13(&self, conn: &rusqlite::Connection) -> Result<()> {
-        println!("开始数据库迁移 v12 -> v13: 添加预览数据字段...");
+        tracing::info!("开始数据库迁移 v12 -> v13: 添加预览数据字段...");
 
         // 检查是否已有 preview_data_json 列
         let has_preview_data_json: bool = conn.query_row(
@@ -4945,20 +4944,20 @@ impl Database {
                 "ALTER TABLE custom_anki_templates ADD COLUMN preview_data_json TEXT",
                 [],
             )?;
-            println!("已添加 preview_data_json 字段");
+            tracing::info!("已添加 preview_data_json 字段");
         } else {
-            println!("preview_data_json 字段已存在");
+            tracing::info!("preview_data_json 字段已存在");
         }
 
         // 注意：内置模板导入将通过前端的导入按钮或应用启动时自动处理
-        println!("内置模板将通过独立的导入机制处理");
+        tracing::info!("内置模板将通过独立的导入机制处理");
 
-        println!("数据库迁移 v12 -> v13 完成");
+        tracing::info!("数据库迁移 v12 -> v13 完成");
         Ok(())
     }
 
     fn migrate_v13_to_v14(&self, conn: &rusqlite::Connection) -> Result<()> {
-        println!("开始数据库迁移 v13 -> v14: 添加向量化表、子库表和错题笔记整理会话表...");
+        tracing::info!("开始数据库迁移 v13 -> v14: 添加向量化表、子库表和错题笔记整理会话表...");
 
         // 创建向量化数据表
         conn.execute(
@@ -5022,12 +5021,12 @@ impl Database {
             [],
         )?;
 
-        println!("数据库迁移 v13 -> v14 完成");
+        tracing::info!("数据库迁移 v13 -> v14 完成");
         Ok(())
     }
 
     fn migrate_v14_to_v15(&self, conn: &rusqlite::Connection) -> Result<()> {
-        println!("开始数据库迁移 v14 -> v15: 添加搜索日志表...");
+        tracing::info!("开始数据库迁移 v14 -> v15: 添加搜索日志表...");
 
         // 创建搜索日志表
         conn.execute(
@@ -5055,14 +5054,14 @@ impl Database {
             [],
         )?;
 
-        println!("搜索日志表创建成功");
-        println!("数据库迁移 v14 -> v15 完成");
+        tracing::info!("搜索日志表创建成功");
+        tracing::info!("数据库迁移 v14 -> v15 完成");
         Ok(())
     }
 
     fn migrate_v15_to_v16(&self, conn: &rusqlite::Connection) -> Result<()> {
         // 添加文档控制状态表
-        println!("开始数据库迁移 v15 -> v16: 添加文档控制状态持久化...");
+        tracing::info!("开始数据库迁移 v15 -> v16: 添加文档控制状态持久化...");
 
         // 创建文档控制状态表
         conn.execute(
@@ -5099,14 +5098,14 @@ impl Database {
             [],
         )?;
 
-        println!("文档控制状态表创建成功");
-        println!("数据库迁移 v15 -> v16 完成");
+        tracing::info!("文档控制状态表创建成功");
+        tracing::info!("数据库迁移 v15 -> v16 完成");
         Ok(())
     }
 
 
     fn migrate_v17_to_v18(&self, conn: &rusqlite::Connection) -> anyhow::Result<()> {
-        println!("开始数据库迁移 v17 -> v18: 添加数学工作流图片存储...");
+        tracing::info!("开始数据库迁移 v17 -> v18: 添加数学工作流图片存储...");
 
         // 🔧 检查 kg_problem_cards 表是否存在（它属于irec数据库，在主数据库中可能不存在）
         let kg_table_exists = conn
@@ -5122,38 +5121,38 @@ impl Database {
                 "ALTER TABLE kg_problem_cards ADD COLUMN original_image_path TEXT NULL",
                 [],
             ) {
-                Ok(_) => println!("kg_problem_cards.original_image_path 字段添加成功"),
+                Ok(_) => tracing::info!("kg_problem_cards.original_image_path 字段添加成功"),
                 Err(e) => {
                     if e.to_string().contains("duplicate column name") {
-                        println!("kg_problem_cards.original_image_path 字段已存在");
+                        tracing::info!("kg_problem_cards.original_image_path 字段已存在");
                     } else {
-                        println!("添加 original_image_path 字段失败: {}", e);
+                        tracing::info!("添加 original_image_path 字段失败: {}", e);
                     }
                 }
             }
         } else {
-            println!("kg_problem_cards表不存在（属于irec数据库），跳过相关字段添加");
+            tracing::info!("kg_problem_cards表不存在（属于irec数据库），跳过相关字段添加");
         }
 
-        println!("数学工作流图片路径字段添加成功");
-        println!("数据库迁移 v17 -> v18 完成");
+        tracing::info!("数学工作流图片路径字段添加成功");
+        tracing::info!("数据库迁移 v17 -> v18 完成");
         Ok(())
     }
 
     fn migrate_v18_to_v19(&self, conn: &rusqlite::Connection) -> anyhow::Result<()> {
-        println!("开始数据库迁移 v18 -> v19: 添加文档附件支持...");
+        tracing::info!("开始数据库迁移 v18 -> v19: 添加文档附件支持...");
 
         // 为 chat_messages 表添加文档附件字段
         match conn.execute(
             "ALTER TABLE chat_messages ADD COLUMN doc_attachments TEXT",
             [],
         ) {
-            Ok(_) => println!("chat_messages.doc_attachments 字段添加成功"),
+            Ok(_) => tracing::info!("chat_messages.doc_attachments 字段添加成功"),
             Err(e) => {
                 if e.to_string().contains("duplicate column name") {
-                    println!("chat_messages.doc_attachments 字段已存在");
+                    tracing::info!("chat_messages.doc_attachments 字段已存在");
                 } else {
-                    println!("添加 doc_attachments 字段失败: {}", e);
+                    tracing::info!("添加 doc_attachments 字段失败: {}", e);
                 }
             }
         }
@@ -5163,12 +5162,12 @@ impl Database {
             "ALTER TABLE review_chat_messages ADD COLUMN doc_attachments TEXT",
             [],
         ) {
-            Ok(_) => println!("review_chat_messages.doc_attachments 字段添加成功"),
+            Ok(_) => tracing::info!("review_chat_messages.doc_attachments 字段添加成功"),
             Err(e) => {
                 if e.to_string().contains("duplicate column name") {
-                    println!("review_chat_messages.doc_attachments 字段已存在");
+                    tracing::info!("review_chat_messages.doc_attachments 字段已存在");
                 } else {
-                    println!(
+                    tracing::info!(
                         "添加 doc_attachments 字段到 review_chat_messages 失败: {}",
                         e
                     );
@@ -5176,24 +5175,24 @@ impl Database {
             }
         }
 
-        println!("数据库迁移 v18 -> v19 完成");
+        tracing::info!("数据库迁移 v18 -> v19 完成");
         Ok(())
     }
 
     fn migrate_v19_to_v20(&self, conn: &rusqlite::Connection) -> anyhow::Result<()> {
-        println!("开始数据库迁移 v19 -> v20: 为review_chat_messages表添加多模态支持...");
+        tracing::info!("开始数据库迁移 v19 -> v20: 为review_chat_messages表添加多模态支持...");
 
         // 为 review_chat_messages 表添加 image_paths 字段
         match conn.execute(
             "ALTER TABLE review_chat_messages ADD COLUMN image_paths TEXT",
             [],
         ) {
-            Ok(_) => println!("review_chat_messages.image_paths 字段添加成功"),
+            Ok(_) => tracing::info!("review_chat_messages.image_paths 字段添加成功"),
             Err(e) => {
                 if e.to_string().contains("duplicate column name") {
-                    println!("review_chat_messages.image_paths 字段已存在");
+                    tracing::info!("review_chat_messages.image_paths 字段已存在");
                 } else {
-                    println!(
+                    tracing::info!(
                         "添加 image_paths 字段到 review_chat_messages 失败: {}",
                         e
                     );
@@ -5206,12 +5205,12 @@ impl Database {
             "ALTER TABLE review_chat_messages ADD COLUMN image_base64 TEXT",
             [],
         ) {
-            Ok(_) => println!("review_chat_messages.image_base64 字段添加成功"),
+            Ok(_) => tracing::info!("review_chat_messages.image_base64 字段添加成功"),
             Err(e) => {
                 if e.to_string().contains("duplicate column name") {
-                    println!("review_chat_messages.image_base64 字段已存在");
+                    tracing::info!("review_chat_messages.image_base64 字段已存在");
                 } else {
-                    println!(
+                    tracing::info!(
                         "添加 image_base64 字段到 review_chat_messages 失败: {}",
                         e
                     );
@@ -5219,12 +5218,12 @@ impl Database {
             }
         }
 
-        println!("数据库迁移 v19 -> v20 完成");
+        tracing::info!("数据库迁移 v19 -> v20 完成");
         Ok(())
     }
 
     fn migrate_v26_to_v27(&self, conn: &rusqlite::Connection) -> anyhow::Result<()> {
-        println!("开始数据库迁移 v26 -> v27: 添加题目集识别关联字段...");
+        tracing::info!("开始数据库迁移 v26 -> v27: 添加题目集识别关联字段...");
 
         let has_column: bool = conn
             .query_row(
@@ -5236,17 +5235,17 @@ impl Database {
 
         if !has_column {
             conn.execute("ALTER TABLE mistakes ADD COLUMN exam_sheet TEXT", [])?;
-            println!("已为 mistakes 表添加 exam_sheet 列");
+            tracing::info!("已为 mistakes 表添加 exam_sheet 列");
         } else {
-            println!("mistakes 表已包含 exam_sheet 列，跳过添加");
+            tracing::info!("mistakes 表已包含 exam_sheet 列，跳过添加");
         }
 
-        println!("数据库迁移 v26 -> v27 完成");
+        tracing::info!("数据库迁移 v26 -> v27 完成");
         Ok(())
     }
 
     fn migrate_v27_to_v28(&self, conn: &rusqlite::Connection) -> anyhow::Result<()> {
-        println!("开始数据库迁移 v27 -> v28: 为 mistakes 表添加 last_accessed_at 字段...");
+        tracing::info!("开始数据库迁移 v27 -> v28: 为 mistakes 表添加 last_accessed_at 字段...");
 
         let has_column: bool = conn
             .query_row(
@@ -5265,17 +5264,17 @@ impl Database {
                 "UPDATE mistakes SET last_accessed_at = updated_at WHERE last_accessed_at IS NULL OR last_accessed_at = '1970-01-01T00:00:00Z'",
                 [],
             )?;
-            println!("已为 mistakes 表添加 last_accessed_at 列");
+            tracing::info!("已为 mistakes 表添加 last_accessed_at 列");
         } else {
-            println!("mistakes 表已包含 last_accessed_at 列，跳过添加");
+            tracing::info!("mistakes 表已包含 last_accessed_at 列，跳过添加");
         }
 
-        println!("数据库迁移 v27 -> v28 完成");
+        tracing::info!("数据库迁移 v27 -> v28 完成");
         Ok(())
     }
 
     fn migrate_v28_to_v29(&self, conn: &rusqlite::Connection) -> anyhow::Result<()> {
-        println!("开始数据库迁移 v28 -> v29: 创建 exam_sheet_sessions 表...");
+        tracing::info!("开始数据库迁移 v28 -> v29: 创建 exam_sheet_sessions 表...");
 
         conn.execute(
             "CREATE TABLE IF NOT EXISTS exam_sheet_sessions (
@@ -5298,12 +5297,12 @@ impl Database {
             [],
         )?;
 
-        println!("数据库迁移 v28 -> v29 完成");
+        tracing::info!("数据库迁移 v28 -> v29 完成");
         Ok(())
     }
 
     fn migrate_v29_to_v30(&self, conn: &rusqlite::Connection) -> anyhow::Result<()> {
-        println!(
+        tracing::info!(
             "开始数据库迁移 v29 -> v30: 校验 exam_sheet_sessions 表的 linked_mistake_ids 列..."
         );
 
@@ -5320,12 +5319,12 @@ impl Database {
                 "ALTER TABLE exam_sheet_sessions ADD COLUMN linked_mistake_ids TEXT",
                 [],
             )?;
-            println!("已为 exam_sheet_sessions 表添加 linked_mistake_ids 列");
+            tracing::info!("已为 exam_sheet_sessions 表添加 linked_mistake_ids 列");
         } else {
-            println!("exam_sheet_sessions 表已包含 linked_mistake_ids 列，跳过添加");
+            tracing::info!("exam_sheet_sessions 表已包含 linked_mistake_ids 列，跳过添加");
         }
 
-        println!("数据库迁移 v29 -> v30 完成");
+        tracing::info!("数据库迁移 v29 -> v30 完成");
         Ok(())
     }
     */
@@ -5342,7 +5341,7 @@ impl DatabaseManager {
     // ============================================
     /*
     fn migrate_v26_to_v27(&self, conn: &rusqlite::Connection) -> anyhow::Result<()> {
-        println!("开始数据库迁移 v26 -> v27: 添加题目集识别关联字段...");
+        tracing::info!("开始数据库迁移 v26 -> v27: 添加题目集识别关联字段...");
 
         let has_column: bool = conn
             .query_row(
@@ -5354,12 +5353,12 @@ impl DatabaseManager {
 
         if !has_column {
             conn.execute("ALTER TABLE mistakes ADD COLUMN exam_sheet TEXT", [])?;
-            println!("已为 mistakes 表添加 exam_sheet 列");
+            tracing::info!("已为 mistakes 表添加 exam_sheet 列");
         } else {
-            println!("mistakes 表已包含 exam_sheet 列，跳过添加");
+            tracing::info!("mistakes 表已包含 exam_sheet 列，跳过添加");
         }
 
-        println!("数据库迁移 v26 -> v27 完成");
+        tracing::info!("数据库迁移 v26 -> v27 完成");
         Ok(())
     }
     /// 导入包含预览数据的内置模板
@@ -5367,7 +5366,7 @@ impl DatabaseManager {
         &self,
         conn: &SqlitePooledConnection,
     ) -> Result<()> {
-        println!("跳过硬编码内置模板（含预览数据）的导入，改用 JSON 导入");
+        tracing::info!("跳过硬编码内置模板（含预览数据）的导入，改用 JSON 导入");
         return Ok(());
 
     }

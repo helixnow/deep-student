@@ -1,6 +1,7 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
-import { Maximize2, Copy, Check } from 'lucide-react';
+import { ArrowsOut, Copy, Check } from '@phosphor-icons/react';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { Switch } from '@/components/ui/shad/Switch';
 
 interface CSSRuleInfo {
   selector: string;
@@ -333,17 +334,12 @@ export default function LayoutDebugPlugin() {
       {/* Header */}
       <div className="flex items-center justify-between pb-2 border-b border-gray-300 dark:border-gray-700">
         <div className="flex items-center gap-2">
-          <Maximize2 size={16} className="text-blue-600 dark:text-blue-400" />
+          <ArrowsOut size={16} className="text-blue-600 dark:text-blue-400" />
           <h3 className="font-semibold text-sm">布局调试器</h3>
         </div>
         <div className="flex items-center gap-2">
           <label className="flex items-center gap-1 text-xs">
-            <input
-              type="checkbox"
-              checked={autoRefresh}
-              onChange={(e) => setAutoRefresh(e.target.checked)}
-              className="w-3 h-3"
-            />
+            <Switch size="sm" checked={autoRefresh} onCheckedChange={setAutoRefresh} />
             自动刷新
           </label>
           <button

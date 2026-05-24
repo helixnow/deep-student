@@ -1,9 +1,9 @@
 import { describe, expect, it, vi } from 'vitest';
 
-import { createSkillActions } from '@/chat-v2/core/store/skillActions';
-import type { ChatStoreState, GetState, SetState } from '@/chat-v2/core/store/types';
+import { createSkillActions } from '@/features/chat/core/store/skillActions';
+import type { ChatStoreState, GetState, SetState } from '@/features/chat/core/store/types';
 
-vi.mock('@/chat-v2/skills/registry', () => ({
+vi.mock('@/features/chat/skills/registry', () => ({
   skillRegistry: {
     get: (id: string) =>
       id === 'deep-student'
@@ -17,7 +17,7 @@ vi.mock('@/chat-v2/skills/registry', () => ({
   },
 }));
 
-vi.mock('@/chat-v2/skills/progressiveDisclosure', () => ({
+vi.mock('@/features/chat/skills/progressiveDisclosure', () => ({
   loadSkillsToSession: vi.fn(() => ({ loaded: [], alreadyLoaded: [], notFound: [] })),
   isSkillLoaded: vi.fn(() => false),
   unloadSkill: vi.fn(),

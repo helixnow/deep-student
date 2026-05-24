@@ -4,7 +4,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { BookOpen } from 'lucide-react';
+import { BookOpen } from '@phosphor-icons/react';
 
 interface ModelEssayViewProps {
   essay: string;
@@ -25,7 +25,7 @@ export const ModelEssayView: React.FC<ModelEssayViewProps> = ({ essay, className
   return (
     <div className={cn('space-y-4', className)}>
       <div className="flex items-center gap-2 text-xs text-muted-foreground/60 px-1">
-        <BookOpen className="w-3.5 h-3.5" />
+        <BookOpen size={14} />
         <span>{t('essay_grading:sections.model_essay_desc')}</span>
       </div>
       <div className="rounded-lg border border-border/30 bg-card/50 px-5 py-4">

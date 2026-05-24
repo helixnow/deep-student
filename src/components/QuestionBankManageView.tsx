@@ -29,24 +29,23 @@ import {
 } from '@/components/ui/app-menu/AppMenu';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
-  Search,
-  Filter,
-  MoreHorizontal,
-  Trash2,
+  MagnifyingGlass,
+  Funnel,
+  DotsThree,
+  Trash,
   Star,
-  StarOff,
-  RotateCcw,
+  ArrowCounterClockwise,
   CheckCircle,
   XCircle,
-  ChevronLeft,
-  ChevronRight,
-  Loader2,
+  CaretLeft,
+  CaretRight,
+  CircleNotch,
   Download,
   Upload,
-  FileSpreadsheet,
-  AlertTriangle,
-  History,
-} from 'lucide-react';
+  Table as TableIcon,
+  Warning,
+  ClockCounterClockwise,
+} from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import type { Question, QuestionStatus, Difficulty, QuestionType } from '@/api/questionBankApi';
 
@@ -313,35 +312,35 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
         {/* 搜索和筛选 */}
         <div className="flex items-center gap-2">
           <div className="relative flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
+            <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
             <Input
               placeholder={t('exam_sheet:questionBank.search', '搜索题目...')}
               value={filters.search || ''}
               onChange={(e) => handleFilterChange('search', e.target.value)}
               className="pl-9 h-8 text-sm bg-muted/30 border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors"
-            />
+/>
           </div>
           
           {/* CSV 导入导出按钮 */}
           {showCsvActions && (
             <div className="flex items-center gap-1">
               {onCsvImport && (
-                <NotionButton variant="ghost" size="sm" onClick={onCsvImport} className="!h-auto !px-2.5 !py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50" title={t('exam_sheet:csv.import_title', 'CSV 导入')}>
-                  <Upload className="w-3.5 h-3.5" />
+                <NotionButton variant="ghost" size="sm" onClick={onCsvImport} className="!h-auto !px-2.5 !py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]" title={t('exam_sheet:csv.import_title', 'CSV 导入')}>
+                  <Upload size={14} />
                   <span className="hidden sm:inline">{t('exam_sheet:csv.import_title', 'CSV 导入')}</span>
                 </NotionButton>
               )}
               {onCsvExport && (
-                <NotionButton variant="ghost" size="sm" onClick={onCsvExport} className="!h-auto !px-2.5 !py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50" title={t('exam_sheet:questionBank.export.title', '导出')}>
-                  <Download className="w-3.5 h-3.5" />
+                <NotionButton variant="ghost" size="sm" onClick={onCsvExport} className="!h-auto !px-2.5 !py-1.5 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]" title={t('exam_sheet:questionBank.export.title', '导出')}>
+                  <Download size={14} />
                   <span className="hidden sm:inline">{t('exam_sheet:questionBank.export.title', '导出')}</span>
                 </NotionButton>
               )}
             </div>
           )}
           
-          <NotionButton variant="ghost" size="sm" onClick={() => setShowFilters(!showFilters)} className={cn('!h-auto !px-2.5 !py-1.5 text-xs', showFilters ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50')}>
-            <Filter className="w-3.5 h-3.5" />
+          <NotionButton variant="ghost" size="sm" onClick={() => setShowFilters(!showFilters)} className={cn('!h-auto !px-2.5 !py-1.5 text-xs', showFilters ? 'bg-foreground text-background' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
+            <Funnel size={14} />
             {t('common:filter', '筛选')}
           </NotionButton>
         </div>
@@ -376,11 +375,11 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
               {t('practice:questionBank.selectedCount', { count: selectedIds.size })}
             </span>
             <NotionButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('reset')} disabled={!canReset || actionLoading === 'reset'} className="!h-auto !px-2 !py-1 text-xs text-sky-600 hover:bg-sky-500/10">
-              <RotateCcw className={cn('w-3 h-3', actionLoading === 'reset' && 'animate-spin')} />
+              <ArrowCounterClockwise className={cn('w-3 h-3', actionLoading === 'reset' && 'animate-spin')} />
               {t('practice:questionBank.reset')}
             </NotionButton>
             <NotionButton variant="ghost" size="sm" onClick={() => handleBatchActionClick('delete')} disabled={!canDelete || actionLoading === 'delete'} className="!h-auto !px-2 !py-1 text-xs text-rose-600 hover:bg-rose-500/10">
-              <Trash2 className="w-3 h-3" />
+              <Trash size={12} />
               {t('common:delete')}
             </NotionButton>
           </div>
@@ -391,7 +390,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
       <div className="flex-1 overflow-auto">
         {isLoading ? (
           <div className="flex items-center justify-center h-full">
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            <CircleNotch size={24} className="animate-spin text-muted-foreground" />
           </div>
         ) : questions.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
@@ -405,7 +404,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                   <Checkbox
                     checked={allSelected || (someSelected ? 'indeterminate' : false)}
                     onCheckedChange={handleSelectAll}
-                  />
+/>
                 </TableHead>
                 <TableHead className="w-16">{t('exam_sheet:questionBank.label', '题号')}</TableHead>
                 <TableHead>{t('exam_sheet:questionBank.content', '题目')}</TableHead>
@@ -420,7 +419,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                 <TableRow
                   key={q.id}
                   className={cn(
-                    'cursor-pointer hover:bg-muted/50',
+                    'cursor-pointer hover:bg-[var(--interactive-hover)]',
                     selectedIds.has(q.id) && 'bg-muted/30'
                   )}
                   onClick={() => onViewDetail?.(q)}
@@ -429,7 +428,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                     <Checkbox
                       checked={selectedIds.has(q.id)}
                       onCheckedChange={(checked) => handleSelectOne(q.id, !!checked)}
-                    />
+/>
                   </TableCell>
                   <TableCell className="font-mono text-sm">
                     {q.questionLabel || q.cardId}
@@ -441,10 +440,10 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                         {q.content.length > 100 && '...'}
                       </span>
                       {q.isCorrect === true && (
-                        <CheckCircle className="w-4 h-4 text-green-500 flex-shrink-0" />
+                        <CheckCircle size={16} className="text-green-500 flex-shrink-0" />
                       )}
                       {q.isCorrect === false && (
-                        <XCircle className="w-4 h-4 text-red-500 flex-shrink-0" />
+                        <XCircle size={16} className="text-red-500 flex-shrink-0" />
                       )}
                     </div>
                   </TableCell>
@@ -466,14 +465,14 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                   <TableCell onClick={(e) => e.stopPropagation()}>
                     <AppMenu>
                       <AppMenuTrigger asChild>
-                        <NotionButton variant="ghost" iconOnly size="sm" className="h-8 w-8">
-                          <MoreHorizontal className="w-4 h-4" />
+                        <NotionButton variant="ghost" iconOnly size="sm" className="w-8 h-8" >
+                          <DotsThree size={16} />
                         </NotionButton>
                       </AppMenuTrigger>
                       <AppMenuContent align="end" width={160}>
                         <AppMenuItem
                           onClick={() => onViewHistory?.(q.id)}
-                          icon={<History className="w-4 h-4" />}
+                          icon={<ClockCounterClockwise size={16} />}
                         >
                           {t('exam_sheet:questionBank.history.title', '历史记录')}
                         </AppMenuItem>
@@ -481,7 +480,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                         <AppMenuItem
                           onClick={() => void handleToggleFavoriteAction(q.id)}
                           disabled={!canToggleFavorite || actionLoading === `favorite:${q.id}` || isLoading}
-                          icon={q.isFavorite ? <StarOff className="w-4 h-4" /> : <Star className="w-4 h-4" />}
+                          icon={q.isFavorite ? <Star size={16} /> : <Star size={16} />}
                         >
                           {q.isFavorite
                             ? t('exam_sheet:questionBank.unfavorite', '取消收藏')
@@ -491,7 +490,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                         <AppMenuItem
                           onClick={() => handleSingleResetClick(q.id)}
                           disabled={!canReset}
-                          icon={<RotateCcw className="w-4 h-4" />}
+                          icon={<ArrowCounterClockwise size={16} />}
                         >
                           {t('exam_sheet:questionBank.resetProgress', '重置进度')}
                         </AppMenuItem>
@@ -499,7 +498,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
                           onClick={() => handleSingleDeleteClick(q.id)}
                           disabled={!canDelete}
                           destructive
-                          icon={<Trash2 className="w-4 h-4" />}
+                          icon={<Trash size={16} />}
                         >
                           {t('common:delete', '删除')}
                         </AppMenuItem>
@@ -523,11 +522,10 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
             <NotionButton
               variant="outline"
               iconOnly size="sm"
-              className="h-8 w-8"
-              disabled={pagination.page <= 1}
+ className="w-8 h-8"               disabled={pagination.page <= 1}
               onClick={() => pagination.onPageChange(pagination.page - 1)}
             >
-              <ChevronLeft className="w-4 h-4" />
+              <CaretLeft size={16} />
             </NotionButton>
             <span className="text-sm px-2">
               {pagination.page} / {totalPages}
@@ -535,11 +533,10 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
             <NotionButton
               variant="outline"
               iconOnly size="sm"
-              className="h-8 w-8"
-              disabled={pagination.page >= totalPages}
+ className="w-8 h-8"               disabled={pagination.page >= totalPages}
               onClick={() => pagination.onPageChange(pagination.page + 1)}
             >
-              <ChevronRight className="w-4 h-4" />
+              <CaretRight size={16} />
             </NotionButton>
           </div>
         </div>
@@ -552,7 +549,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
           setDeleteConfirmOpen(open);
           if (!open) setSingleDeleteId(null);
         }}
-        icon={<AlertTriangle className="w-5 h-5 text-rose-500" />}
+        icon={<Warning size={20} className="text-rose-500" />}
         title={t('exam_sheet:questionBank.confirmDelete', '确认删除')}
         description={
           singleDeleteId 
@@ -563,7 +560,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
         cancelText={t('common:cancel', '取消')}
         confirmVariant="danger"
         onConfirm={handleDeleteConfirm}
-      />
+/>
       
       {/* 重置进度确认对话框 */}
       <NotionAlertDialog
@@ -572,7 +569,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
           setResetConfirmOpen(open);
           if (!open) setSingleResetId(null);
         }}
-        icon={<AlertTriangle className="w-5 h-5 text-amber-500" />}
+        icon={<Warning size={20} className="text-amber-500" />}
         title={t('exam_sheet:questionBank.confirmReset', '确认重置进度')}
         description={
           singleResetId
@@ -583,7 +580,7 @@ export const QuestionBankManageView: React.FC<QuestionBankManageViewProps> = ({
         cancelText={t('common:cancel', '取消')}
         confirmVariant="warning"
         onConfirm={handleResetConfirm}
-      />
+/>
     </div>
   );
 };

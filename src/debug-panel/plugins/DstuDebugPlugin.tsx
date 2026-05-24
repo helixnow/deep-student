@@ -5,7 +5,7 @@
  */
 
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { Copy, Trash2, Filter, Download, CheckCircle2, XCircle, Clock } from 'lucide-react';
+import { Copy, Trash, Funnel, Download, CheckCircle, XCircle, Clock } from '@phosphor-icons/react';
 import { Button } from '@/components/ui/shad/Button';
 import { cn } from '@/lib/utils';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
@@ -239,13 +239,13 @@ export const DstuDebugPlugin: React.FC<DstuDebugPluginProps> = ({
         </span>
 
         <Button variant="ghost" size="sm" onClick={copyAllLogs} title="复制全部">
-          <Copy className="w-3.5 h-3.5" />
+          <Copy size={14} />
         </Button>
         <Button variant="ghost" size="sm" onClick={exportLogs} title="导出">
-          <Download className="w-3.5 h-3.5" />
+          <Download size={14} />
         </Button>
         <Button variant="ghost" size="sm" onClick={clearLogs} title="清空">
-          <Trash2 className="w-3.5 h-3.5" />
+          <Trash size={14} />
         </Button>
       </div>
 
@@ -268,9 +268,9 @@ export const DstuDebugPlugin: React.FC<DstuDebugPluginProps> = ({
             >
               {/* 头部 */}
               <div className="flex items-center gap-2 mb-1">
-                {log.type === 'error' && <XCircle className="w-3.5 h-3.5 text-red-500" />}
-                {log.type === 'success' && <CheckCircle2 className="w-3.5 h-3.5 text-green-500" />}
-                {log.type === 'call' && <Clock className="w-3.5 h-3.5 text-blue-500" />}
+                {log.type === 'error' && <XCircle size={14} className="text-red-500" />}
+                {log.type === 'success' && <CheckCircle size={14} className="text-green-500" />}
+                {log.type === 'call' && <Clock size={14} className="text-blue-500" />}
                 
                 <span className="font-semibold">{log.method}</span>
                 <span className="text-muted-foreground text-[10px]">
@@ -290,9 +290,9 @@ export const DstuDebugPlugin: React.FC<DstuDebugPluginProps> = ({
                   title="复制"
                 >
                   {copiedId === log.id ? (
-                    <CheckCircle2 className="w-3 h-3 text-green-500" />
+                    <CheckCircle size={12} className="text-green-500" />
                   ) : (
-                    <Copy className="w-3 h-3" />
+                    <Copy size={12} />
                   )}
                 </button>
               </div>

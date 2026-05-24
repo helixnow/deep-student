@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { createPortal } from 'react-dom';
-import { X, ExternalLink, Download, ZoomIn, ZoomOut, Home, Copy, Search, WrapText } from 'lucide-react';
+import { X, ArrowSquareOut, Download, MagnifyingGlassPlus, MagnifyingGlassMinus, House, Copy, MagnifyingGlass, TextIndent } from '@phosphor-icons/react';
 import { openUrl } from '@/utils/urlOpener';
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { fileManager } from '@/utils/fileManager';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { Input } from '@/components/ui/shad/Input';
 
 interface DocumentViewerProps {
   isOpen: boolean;
@@ -218,7 +219,7 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
           {showPreviewDownload && textContent && (
             <>
               <NotionButton variant="ghost" size="icon" iconOnly onClick={handlePreview} className="modern-viewer-icon-button modern-viewer-icon-button--primary" title={t('document_viewer.preview_in_new_window')} aria-label={t('document_viewer.aria_preview')}>
-                <ExternalLink size={16} />
+                <ArrowSquareOut size={16} />
               </NotionButton>
               <NotionButton variant="ghost" size="icon" iconOnly onClick={handleDownload} className="modern-viewer-icon-button modern-viewer-icon-button--success" title={t('document_viewer.download_document')} aria-label={t('document_viewer.aria_download')}>
                 <Download size={16} />
@@ -233,25 +234,25 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
                 <Copy size={16} />
               </NotionButton>
               <NotionButton variant="ghost" size="icon" iconOnly title={t('document_viewer.decrease_font')} aria-label={t('document_viewer.aria_decrease_font')} onClick={() => setFontScale(v => Math.max(0.75, v / 1.1))} className="modern-viewer-icon-button">
-                <ZoomOut size={16} />
+                <MagnifyingGlassMinus size={16} />
               </NotionButton>
               <NotionButton variant="ghost" size="icon" iconOnly title={t('document_viewer.increase_font')} aria-label={t('document_viewer.aria_increase_font')} onClick={() => setFontScale(v => Math.min(2, v * 1.1))} className="modern-viewer-icon-button">
-                <ZoomIn size={16} />
+                <MagnifyingGlassPlus size={16} />
               </NotionButton>
               <NotionButton variant="ghost" size="icon" iconOnly title={t('document_viewer.reset_font')} aria-label={t('document_viewer.aria_reset_font')} onClick={() => setFontScale(1)} className="modern-viewer-icon-button">
-                <Home size={16} />
+                <House size={16} />
               </NotionButton>
               <div className="flex items-center gap-0.5 px-1.5 py-0.5 rounded-md bg-transparent">
-                <Search size={14} className="text-muted-foreground" />
-                <input
+                <MagnifyingGlass size={14} className="text-muted-foreground" />
+                <Input
                   placeholder={t('document_viewer.search_placeholder')}
                   value={query}
                   onChange={(e) => setQuery(e.target.value)}
                   className="text-xs bg-transparent outline-none min-w-[80px] text-foreground placeholder:text-muted-foreground"
-                />
+/>
               </div>
               <NotionButton variant="ghost" size="icon" iconOnly title={wrap ? t('document_viewer.toggle_nowrap') : t('document_viewer.toggle_wrap')} aria-label={wrap ? t('document_viewer.aria_toggle_nowrap') : t('document_viewer.aria_toggle_wrap')} onClick={() => setWrap(w => !w)} className="modern-viewer-icon-button">
-                <WrapText size={16} />
+                <TextIndent size={16} />
               </NotionButton>
             </>
           )}
@@ -259,18 +260,18 @@ export const DocumentViewer: React.FC<DocumentViewerProps> = ({
           {url && (
             <>
               <NotionButton variant="ghost" size="icon" iconOnly title={t('document_viewer.zoom_out')} aria-label={t('document_viewer.aria_zoom_out')} onClick={() => setScale(s => Math.max(0.5, s / 1.1))} className="modern-viewer-icon-button">
-                <ZoomOut size={16} />
+                <MagnifyingGlassMinus size={16} />
               </NotionButton>
               <span className="modern-viewer-zoom-readout" role="status" aria-label={t('document_viewer.aria_zoom_level', { level: Math.round(scale * 100) })}>{Math.round(scale * 100)}%</span>
               <NotionButton variant="ghost" size="icon" iconOnly title={t('document_viewer.zoom_in')} aria-label={t('document_viewer.aria_zoom_in')} onClick={() => setScale(s => Math.min(3, s * 1.1))} className="modern-viewer-icon-button">
-                <ZoomIn size={16} />
+                <MagnifyingGlassPlus size={16} />
               </NotionButton>
               <NotionButton variant="ghost" size="icon" iconOnly title={t('document_viewer.reset')} aria-label={t('document_viewer.aria_reset')} onClick={() => { setScale(1); setPosition({ x: 0, y: 0 }); }} className="modern-viewer-icon-button">
-                <Home size={16} />
+                <House size={16} />
               </NotionButton>
               <div className="modern-viewer-divider" />
               <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenExternal} className="modern-viewer-icon-button" title={t('document_viewer.open_in_new_tab')} aria-label="open external">
-                <ExternalLink size={16} />
+                <ArrowSquareOut size={16} />
               </NotionButton>
               <NotionButton variant="ghost" size="icon" iconOnly onClick={handleDownload} className="modern-viewer-icon-button" title={t('document_viewer.download')} aria-label="download">
                 <Download size={16} />

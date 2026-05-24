@@ -45,10 +45,10 @@ vi.mock('@/api/dataGovernance', () => ({
   setBackupConfig: vi.fn().mockResolvedValue(undefined),
 }));
 
-import { OverviewTab } from '@/components/settings/data-governance/OverviewTab';
-import { BackupTab } from '@/components/settings/data-governance/BackupTab';
+import { OverviewTab } from '@/features/settings';
+import { BackupTab } from '@/features/settings';
 import type { AutoVerifyResponse, BackupInfoResponse } from '@/types/dataGovernance';
-import type { BackupVerificationStatus } from '@/components/settings/data-governance/BackupTab';
+import type { BackupVerificationStatus } from '@/features/settings';
 
 // ============================================================================
 // 默认 mock 数据

@@ -11,14 +11,14 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { modeRegistry } from '@/chat-v2/registry';
-import type { ChatStore } from '@/chat-v2/core/types';
-import type { AnalysisModeState } from '@/chat-v2/plugins/modes/analysis';
+import { modeRegistry } from '@/features/chat/registry';
+import type { ChatStore } from '@/features/chat/core/types';
+import type { AnalysisModeState } from '@/features/chat/plugins/modes/analysis';
 import {
   canSendInAnalysisMode,
   getAnalysisOcrStatus,
   createInitialAnalysisModeState,
-} from '@/chat-v2/plugins/modes/analysis';
+} from '@/features/chat/plugins/modes/analysis';
 
 // Mock Tauri invoke：analysis 模式 OCR 依赖 chat_v2_perform_ocr
 vi.mock('@tauri-apps/api/core', () => ({
@@ -26,7 +26,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 // Mock VFS / Resource layer used by analysis auto-send flow
-vi.mock('@/chat-v2/context', async (importOriginal) => {
+vi.mock('@/features/chat/context', async (importOriginal) => {
   const actual = await importOriginal<any>();
   return {
     ...actual,
@@ -39,7 +39,7 @@ vi.mock('@/chat-v2/context', async (importOriginal) => {
   };
 });
 
-vi.mock('@/chat-v2/resources', async (importOriginal) => {
+vi.mock('@/features/chat/resources', async (importOriginal) => {
   const actual = await importOriginal<any>();
   return {
     ...actual,
@@ -57,7 +57,7 @@ vi.mock('@/chat-v2/resources', async (importOriginal) => {
 import { invoke } from '@tauri-apps/api/core';
 
 // 导入插件（触发自动注册）
-import '@/chat-v2/plugins/modes/analysis';
+import '@/features/chat/plugins/modes/analysis';
 
 // ============================================================================
 // Mock Store 工厂

@@ -1,0 +1,90 @@
+/* 通用按钮样式 */
+.btn-primary,
+.btn-secondary,
+.btn-success,
+.btn-test,
+.btn-edit,
+.btn-delete {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  border: none;
+  padding: 0.5rem 1rem;
+  border-radius: 6px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.btn-primary {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+
+.btn-secondary {
+  background: hsl(var(--secondary));
+  color: hsl(var(--foreground));
+  border: 1px solid hsl(var(--border));
+}
+
+.btn-success {
+  background: hsl(var(--success));
+  color: hsl(var(--success-foreground));
+}
+
+.btn-test {
+  background: hsl(var(--warning));
+  color: hsl(var(--warning-foreground));
+}
+
+.btn-edit {
+  background: hsl(var(--info));
+  color: hsl(var(--info-foreground));
+}
+
+.btn-delete {
+  background: hsl(var(--destructive));
+  color: hsl(var(--destructive-foreground));
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: color-mix(in hsl, hsl(var(--primary)) 85%, hsl(var(--foreground)) 15%);
+  transform: translateY(-1px);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: hsl(var(--secondary));
+}
+
+.btn-success:hover:not(:disabled) {
+  background: color-mix(in hsl, hsl(var(--success)) 85%, hsl(var(--foreground)) 15%);
+  transform: translateY(-1px);
+}
+
+.btn-test:hover:not(:disabled) {
+  background: color-mix(in hsl, hsl(var(--warning)) 85%, hsl(var(--foreground)) 15%);
+  transform: translateY(-1px);
+}
+
+.btn-edit:hover:not(:disabled) {
+  background: color-mix(in hsl, hsl(var(--info)) 85%, hsl(var(--foreground)) 15%);
+  transform: translateY(-1px);
+}
+
+.btn-delete:hover:not(:disabled) {
+  background: color-mix(in hsl, hsl(var(--destructive)) 85%, hsl(var(--foreground)) 15%);
+  transform: translateY(-1px);
+}
+
+.btn-primary:disabled,
+.btn-secondary:disabled,
+.btn-success:disabled,
+.btn-test:disabled,
+.btn-edit:disabled,
+.btn-delete:disabled {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  cursor: not-allowed;
+  transform: none;
+}

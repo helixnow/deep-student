@@ -13,12 +13,12 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
   Crop,
-  ChevronLeft,
-  ChevronRight,
-  Loader2,
+  CaretLeft,
+  CaretRight,
+  CircleNotch,
   ImageIcon,
-  Trash2,
-} from 'lucide-react';
+  Trash,
+} from '@phosphor-icons/react';
 
 // ============================================================================
 // Types
@@ -216,7 +216,7 @@ export function ImageCropDialog({
     >
       <NotionDialogHeader>
         <NotionDialogTitle className="flex items-center gap-2">
-          <ImageIcon className="h-4 w-4" />
+          <ImageIcon size={16} />
           {t('question_bank.source_images', '原始导入图片')}
         </NotionDialogTitle>
         <NotionDialogDescription>
@@ -224,14 +224,14 @@ export function ImageCropDialog({
         </NotionDialogDescription>
       </NotionDialogHeader>
 
-      <NotionDialogBody nativeScroll>
+      <NotionDialogBody>
         {loading ? (
           <div className="flex items-center justify-center py-20">
-            <Loader2 className="h-6 w-6 animate-spin text-muted-foreground" />
+            <CircleNotch size={24} className="animate-spin text-muted-foreground" />
           </div>
         ) : sourceImages.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-muted-foreground">
-            <ImageIcon className="h-10 w-10 mb-2 opacity-40" />
+            <ImageIcon size={40} className="mb-2 opacity-40" />
             <p className="text-sm">
               {t('question_bank.no_source_images', '该题目集没有原始导入图片')}
             </p>
@@ -248,7 +248,7 @@ export function ImageCropDialog({
                   disabled={currentPage === 0}
                   onClick={() => { setCurrentPage(p => p - 1); setCropRect(null); }}
                 >
-                  <ChevronLeft className="h-4 w-4" />
+                  <CaretLeft size={16} />
                 </NotionButton>
                 <span className="text-sm text-muted-foreground tabular-nums">
                   {currentPage + 1} / {sourceImages.length}
@@ -260,7 +260,7 @@ export function ImageCropDialog({
                   disabled={currentPage === sourceImages.length - 1}
                   onClick={() => { setCurrentPage(p => p + 1); setCropRect(null); }}
                 >
-                  <ChevronRight className="h-4 w-4" />
+                  <CaretRight size={16} />
                 </NotionButton>
               </div>
             )}
@@ -284,7 +284,7 @@ export function ImageCropDialog({
                   alt={`Page ${currentImage.pageIndex + 1}`}
                   className="w-full h-auto pointer-events-none"
                   draggable={false}
-                />
+/>
 
                 {/* Crop overlay */}
                 {cropRect && (
@@ -302,7 +302,7 @@ export function ImageCropDialog({
                           ${cropRect.x * 100}% ${cropRect.y * 100}%
                         )`,
                       }}
-                    />
+/>
                     {/* Selection border */}
                     <div
                       className="absolute border-2 border-blue-500 pointer-events-none"
@@ -312,7 +312,7 @@ export function ImageCropDialog({
                         width: `${cropRect.width * 100}%`,
                         height: `${cropRect.height * 100}%`,
                       }}
-                    />
+/>
                     {/* Size label */}
                     {imageRef.current && (
                       <div
@@ -354,7 +354,7 @@ export function ImageCropDialog({
                 size="sm"
                 onClick={() => setCropRect(null)}
               >
-                <Trash2 className="h-3.5 w-3.5 mr-1" />
+                <Trash size={14} className="mr-1" />
                 {t('question_bank.clear_selection', '清除')}
               </NotionButton>
             )}
@@ -365,9 +365,9 @@ export function ImageCropDialog({
               onClick={handleCrop}
             >
               {cropping ? (
-                <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+                <CircleNotch size={14} className="mr-1 animate-spin" />
               ) : (
-                <Crop className="h-3.5 w-3.5 mr-1" />
+                <Crop size={14} className="mr-1" />
               )}
               {t('question_bank.crop_and_add', '裁剪并添加')}
             </NotionButton>

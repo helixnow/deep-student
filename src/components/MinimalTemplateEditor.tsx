@@ -2,9 +2,9 @@ import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react'
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
-  FileText, Code, Database, Settings, Eye, EyeOff,
-  Plus, Trash2, AlertCircle, Copy
-} from 'lucide-react';
+  FileText, Code, Database, Gear, Eye, EyeSlash,
+  Plus, Trash, WarningCircle, Copy
+} from '@phosphor-icons/react';
 import { CustomAnkiTemplate, CreateTemplateRequest, FieldExtractionRule } from '../types';
 import { IframePreview, renderCardPreview } from './SharedPreview';
 import { templateService } from '../services/templateService';
@@ -13,6 +13,7 @@ import { Input } from './ui/shad/Input';
 import { Textarea } from './ui/shad/Textarea';
 import { Label } from './ui/shad/Label';
 import { Switch } from './ui/shad/Switch';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from './ui/shad/Select';
 import { UnifiedCodeEditor } from './shared/UnifiedCodeEditor';
 import CodeMirror from '@uiw/react-codemirror';
 import { html } from '@codemirror/lang-html';
@@ -407,11 +408,11 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
               {t('preview_data', '预览数据')}
             </NotionButton>
             <NotionButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'rules' ? 'active' : ''}`} onClick={() => setActiveTab('rules')}>
-              <Settings size={18} />
+              <Gear size={18} />
               {t('extraction_rules')}
             </NotionButton>
             <NotionButton variant="ghost" size="sm" className={`nav-item ${activeTab === 'advanced' ? 'active' : ''}`} onClick={() => setActiveTab('advanced')}>
-              <Settings size={18} />
+              <Gear size={18} />
               {t('advanced_settings', '高级设置')}
             </NotionButton>
           </nav>
@@ -425,7 +426,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
           {/* 错误提示 */}
           {validationErrors.length > 0 && (
             <div className="validation-alert">
-              <AlertCircle size={16} />
+              <WarningCircle size={16} />
               <div className="validation-messages">
                 {validationErrors.map((error, index) => (
                   <div key={index} className="validation-message">
@@ -451,7 +452,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                       value={formData.name}
                       onChange={(e) => setFormData({...formData, name: e.target.value})}
                       placeholder={t('form_name_placeholder', '例如：编程代码卡片')}
-                    />
+/>
                     <span className="field-hint">{t('template_name_hint')}</span>
                   </div>
 
@@ -462,7 +463,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                       value={formData.author}
                       onChange={(e) => setFormData({...formData, author: e.target.value})}
                       placeholder={t('form_author_placeholder', '您的名字')}
-                    />
+/>
                   </div>
 
                   <div className="form-field">
@@ -473,7 +474,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                         value={formData.version}
                         onChange={(e) => setFormData({...formData, version: e.target.value})}
                         placeholder="1.0.0"
-                      />
+/>
                       {mode === 'edit' && (
                         <NotionButton
                           type="button"
@@ -495,7 +496,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                       <Switch
                         checked={formData.is_active}
                         onCheckedChange={(checked) => setFormData({...formData, is_active: checked})}
-                      />
+/>
                       <span className="text-sm text-muted-foreground">
                         {formData.is_active ? t('active', '已激活') : t('inactive', '未激活')}
                       </span>
@@ -509,7 +510,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                       onChange={(e) => setFormData({...formData, description: e.target.value})}
                       placeholder={t('form_description_placeholder', '描述模板的用途和特点')}
                       rows={3}
-                    />
+/>
                   </div>
 
                   <div className="form-field">
@@ -519,7 +520,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                       value={formData.note_type}
                       onChange={(e) => setFormData({...formData, note_type: e.target.value})}
                       placeholder={t('note_type_placeholder', 'Basic')}
-                    />
+/>
                   </div>
 
                   <div className="form-field">
@@ -529,7 +530,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                       value={formData.preview_front}
                       onChange={(e) => setFormData({...formData, preview_front: e.target.value})}
                       placeholder={t('form_preview_front_placeholder') as string}
-                    />
+/>
                   </div>
 
                   <div className="form-field">
@@ -539,7 +540,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                       value={formData.preview_back}
                       onChange={(e) => setFormData({...formData, preview_back: e.target.value})}
                       placeholder={t('form_preview_back_placeholder') as string}
-                    />
+/>
                   </div>
                 </div>
 
@@ -556,7 +557,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                           value={field}
                           onChange={(e) => updateFieldName(index, e.target.value)}
                           placeholder={t('field_name_placeholder', '字段名称')}
-                        />
+/>
                         <div className="field-item-actions">
                           <NotionButton
                             type="button"
@@ -567,7 +568,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                             disabled={formData.fields.length <= 1}
                             className="text-destructive hover:text-destructive"
                           >
-                            <Trash2 size={16} />
+                            <Trash size={16} />
                           </NotionButton>
                         </div>
                       </div>
@@ -617,7 +618,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                             previewMode === 'back'
                           )}
                           cssContent={formData.css_style}
-                        />
+/>
                       </div>
                       {codeSubTab !== 'css' && (
                         <div className="text-[10px] text-muted-foreground/60 space-y-1">
@@ -626,7 +627,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                             {formData.fields.map(field => (
                               <code
                                 key={field}
-                                className="px-1.5 py-0.5 bg-muted/50 rounded text-[10px] font-mono cursor-pointer hover:bg-muted transition-colors"
+                                className="px-1.5 py-0.5 bg-muted/50 rounded text-[10px] font-mono cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
                                 onClick={() => {
                                   copyTextToClipboard(`{{${field}}}`);
                                 }}
@@ -667,7 +668,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                           height="100%"
                           className="h-full template-codemirror-editor"
                           basicSetup={{ lineNumbers: true, highlightActiveLine: true, foldGutter: true, bracketMatching: true, closeBrackets: true, autocompletion: true }}
-                        />
+/>
                       </div>
                     </div>,
                     mobileEditorPortalTarget
@@ -728,7 +729,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                                 previewMode === 'back'
                               )}
                               cssContent={formData.css_style}
-                            />
+/>
                           </div>
                         </div>
 
@@ -740,7 +741,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                               {formData.fields.map(field => (
                                 <code
                                   key={field}
-                                  className="px-1.5 py-0.5 bg-muted/50 rounded text-[10px] font-mono cursor-pointer hover:bg-muted transition-colors"
+                                  className="px-1.5 py-0.5 bg-muted/50 rounded text-[10px] font-mono cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
                                   onClick={() => {
                                     copyTextToClipboard(`{{${field}}}`);
                                   }}
@@ -781,12 +782,12 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                           crosshairCursor: false,
                           highlightSelectionMatches: true,
                         }}
-                      />
+/>
                       <CodeMirrorScrollOverlay containerRef={cmContainerRef} />
                     </div>
                   </div>
                 }
-              />
+/>
               )}
             </div>
           )}
@@ -814,7 +815,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                   language="json"
                   height="400px"
                   placeholder="{}"
-                />
+/>
                 {!validateJson(previewDataJson) && (
                   <div className="text-destructive text-sm mt-2">
                     {t('json_invalid', 'JSON格式无效')}
@@ -837,23 +838,27 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                         <div className="grid grid-cols-3 gap-4">
                           <div className="form-field col-span-1">
                             <Label className="field-label">{t('field_type_label', '字段类型')}</Label>
-                            <select
+                            <Select
                               value={rule.field_type}
-                              onChange={(e) => {
+                              onValueChange={(value) => {
                                 setFieldExtractionRules({
                                   ...fieldExtractionRules,
-                                  [fieldName]: { ...rule, field_type: e.target.value as any }
+                                  [fieldName]: { ...rule, field_type: value as any }
                                 });
                               }}
-                              className="flex h-9 w-full rounded-md border border-transparent bg-transparent hover:bg-muted/30 focus-within:bg-background focus-within:border-border/60 focus-within:ring-1 focus-within:ring-border/50 px-3 py-2 text-sm text-foreground focus:outline-none transition-colors"
                             >
-                              <option value="Text">{t('field_type.text', '文本')}</option>
-                              <option value="Integer">{t('field_type_option.integer', '整数')}</option>
-                              <option value="Float">{t('field_type_option.float', '浮点数')}</option>
-                              <option value="Boolean">{t('field_type.boolean', '布尔值')}</option>
-                              <option value="Date">{t('field_type.date', '日期')}</option>
-                              <option value="Array">{t('field_type.array', '数组')}</option>
-                            </select>
+                              <SelectTrigger className="flex h-9 w-full rounded-md border border-transparent bg-transparent hover:bg-[var(--interactive-hover)] focus-within:bg-background focus-within:border-border/60 focus-within:ring-1 focus-within:ring-border/50 px-3 py-2 text-sm text-foreground focus:outline-none transition-colors">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="Text">{t('field_type.text', '文本')}</SelectItem>
+                                <SelectItem value="Integer">{t('field_type_option.integer', '整数')}</SelectItem>
+                                <SelectItem value="Float">{t('field_type_option.float', '浮点数')}</SelectItem>
+                                <SelectItem value="Boolean">{t('field_type.boolean', '布尔值')}</SelectItem>
+                                <SelectItem value="Date">{t('field_type.date', '日期')}</SelectItem>
+                                <SelectItem value="Array">{t('field_type.array', '数组')}</SelectItem>
+                              </SelectContent>
+                            </Select>
                           </div>
                           
                           <div className="form-field col-span-2">
@@ -868,7 +873,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                               }}
                               placeholder={t('field_purpose_placeholder', '描述这个字段的用途和内容要求')}
                               rows={2}
-                            />
+/>
                           </div>
                           
                           <div className="form-field col-span-1">
@@ -882,7 +887,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                                     [fieldName]: { ...rule, is_required: checked }
                                   });
                                 }}
-                              />
+/>
                               <span className="text-sm text-muted-foreground">
                                 {rule.is_required ? t('required', '必填') : t('optional_label', '选填')}
                               </span>
@@ -901,7 +906,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                                 });
                               }}
                               placeholder={rule.field_type === 'Array' ? '[]' : ''}
-                            />
+/>
                           </div>
                         </div>
                     </div>
@@ -927,7 +932,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                         size="sm"
                         onClick={() => setShowPromptPreview(!showPromptPreview)}
                       >
-                        {showPromptPreview ? <EyeOff size={16} className="mr-2" /> : <Eye size={16} className="mr-2" />}
+                        {showPromptPreview ? <EyeSlash size={16} className="mr-2" /> : <Eye size={16} className="mr-2" />}
                         {showPromptPreview ? t('hide', '隐藏') : t('preview', '预览')}{t('full_prompt', '完整提示词')}
                       </NotionButton>
                     </div>
@@ -936,7 +941,7 @@ const MinimalTemplateEditor: React.FC<MinimalTemplateEditorProps> = ({
                       onChange={(e) => setFormData({...formData, generation_prompt: e.target.value})}
                       placeholder={t('generation_prompt_placeholder') as string}
                       rows={10}
-                    />
+/>
                     <span className="field-hint">{t('generation_prompt_hint')}</span>
                   </div>
               </div>

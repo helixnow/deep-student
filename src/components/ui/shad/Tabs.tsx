@@ -43,7 +43,7 @@ const TabsList = React.forwardRef<HTMLDivElement, React.HTMLAttributes<HTMLDivEl
     <div
       ref={ref}
       className={cn(
-        'inline-flex h-9 items-center justify-start border-b border-border/40 text-muted-foreground bg-transparent w-full',
+        'inline-flex h-10 items-center justify-start gap-1 border-b border-[color:var(--shell-workspace-border)] bg-transparent text-[color:var(--text-secondary)] w-full',
         className
       )}
       {...props}
@@ -67,8 +67,8 @@ const TabsTrigger = React.forwardRef<
         ctx.setValue?.(value);
       }}
       className={cn(
-        'inline-flex items-center justify-center whitespace-nowrap rounded-sm px-3 py-1.5 text-sm font-medium ring-offset-background transition-all focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 disabled:pointer-events-none disabled:opacity-50 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-none',
-        variant === 'bare' && 'bg-transparent data-[state=active]:bg-transparent data-[state=active]:shadow-none',
+        'inline-flex min-h-8 items-center justify-center whitespace-nowrap rounded-[var(--radius-shell-control)] border border-transparent px-3 py-1.5 text-sm font-medium text-[color:var(--text-secondary)] ring-offset-background transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--input-shell-focus)] disabled:pointer-events-none disabled:opacity-50 hover:bg-[color:var(--sidebar-quiet-hover)] hover:text-[color:var(--text-primary)] data-[state=active]:border-[color:var(--button-utility-border)] data-[state=active]:bg-[color:var(--surface-panel-strong)] data-[state=active]:text-[color:var(--text-primary)] data-[state=active]:shadow-[var(--shadow-shell-soft)]',
+        variant === 'bare' && 'border-transparent bg-transparent data-[state=active]:border-transparent data-[state=active]:bg-transparent data-[state=active]:shadow-none',
         className
       )}
       data-state={active ? 'active' : 'inactive'}
@@ -91,7 +91,7 @@ const TabsContent = React.forwardRef<HTMLDivElement, TabsContentProps>(({ classN
     <div
       ref={ref}
       role="tabpanel"
-      className={cn('mt-4 ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2', className)}
+      className={cn('mt-4 ring-offset-background focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-[color:var(--input-shell-focus)]', className)}
       {...props}
     />
   );

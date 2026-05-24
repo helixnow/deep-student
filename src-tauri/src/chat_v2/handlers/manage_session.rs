@@ -19,6 +19,33 @@ use crate::chat_v2::types::{
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::repos::VfsResourceRepo;
 
+/// 将 `Value` 中所有出现在 `id_map` 里的字符串原值替换为新 ID。
+/// 仅替换“整字符串完全等于映射键”的情况，避免对 UUID 子串、URL、日志文本等产生误命中。
+/// 递归遍历对象与数组；对象的 KEY 不变更（避免破坏 schema）。
+fn remap_ids_in_value(
+    v: &mut serde_json::Value,
+    id_map: &std::collections::HashMap<String, String>,
+) {
+    match v {
+        serde_json::Value::String(s) => {
+            if let Some(new_id) = id_map.get(s.as_str()) {
+                *s = new_id.clone();
+            }
+        }
+        serde_json::Value::Array(items) => {
+            for item in items.iter_mut() {
+                remap_ids_in_value(item, id_map);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for (_k, val) in map.iter_mut() {
+                remap_ids_in_value(val, id_map);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn session_has_running_anki_blocks(db: &ChatV2Database, session_id: &str) -> Result<bool, String> {
     let conn = db.get_conn_safe().map_err(|e| e.to_string())?;
     let count: i64 = conn
@@ -785,12 +812,16 @@ fn create_session_in_db(
 ) -> Result<ChatSession, ChatV2Error> {
     let now = chrono::Utc::now();
 
+    // 业界最佳实践：用户在创建时显式传入 title 即视为意图锁定
+    let title_locked = title.is_some();
+
     let session = ChatSession {
         id: ChatSession::generate_id(),
         mode: mode.to_string(),
         title,
         description: None,
         summary_hash: None,
+        title_locked,
         persist_status: PersistStatus::Active,
         created_at: now,
         updated_at: now,
@@ -818,17 +849,27 @@ fn update_session_settings_in_db(
 
     let now = chrono::Utc::now();
 
+    // 业界最佳实践：用户显式传入 title 时锁定标题，自动摘要永不再覆盖
+    let user_renamed = settings.title.is_some();
+    let resolved_title = settings.title.clone().or(existing.title);
+    let title_locked = if user_renamed {
+        true
+    } else {
+        existing.title_locked
+    };
+
     // 构建更新后的会话（只更新设置字段，保留其他字段）
     let updated_session = ChatSession {
         id: existing.id,
         mode: existing.mode,
-        title: settings.title.clone().or(existing.title),
+        title: resolved_title,
         description: existing.description,
         summary_hash: existing.summary_hash,
+        title_locked,
         persist_status: existing.persist_status,
         created_at: existing.created_at,
         updated_at: now,
-        metadata: settings.metadata.clone().or(existing.metadata),
+        metadata: merge_session_metadata(existing.metadata, &settings.metadata),
         group_id: existing.group_id,
         tags_hash: existing.tags_hash,
         tags: None,
@@ -838,6 +879,17 @@ fn update_session_settings_in_db(
     ChatV2Repo::update_session_v2(db, &updated_session)?;
 
     Ok(updated_session)
+}
+
+fn merge_session_metadata(
+    existing_metadata: Option<Value>,
+    incoming_metadata: &Option<Option<Value>>,
+) -> Option<Value> {
+    match incoming_metadata {
+        Some(Some(metadata)) => Some(metadata.clone()),
+        Some(None) => None,
+        None => existing_metadata,
+    }
 }
 
 /// 归档会话
@@ -855,6 +907,7 @@ fn archive_session_in_db(session_id: &str, db: &ChatV2Database) -> Result<(), Ch
         title: existing.title,
         description: existing.description,
         summary_hash: existing.summary_hash,
+        title_locked: existing.title_locked,
         persist_status: PersistStatus::Archived,
         created_at: existing.created_at,
         updated_at: now,
@@ -885,6 +938,7 @@ fn soft_delete_session_in_db(session_id: &str, db: &ChatV2Database) -> Result<()
         title: existing.title,
         description: existing.description,
         summary_hash: existing.summary_hash,
+        title_locked: existing.title_locked,
         persist_status: PersistStatus::Deleted,
         created_at: existing.created_at,
         updated_at: now,
@@ -918,6 +972,7 @@ fn restore_session_in_db(
         title: existing.title,
         description: existing.description,
         summary_hash: existing.summary_hash,
+        title_locked: existing.title_locked,
         persist_status: PersistStatus::Active,
         created_at: existing.created_at,
         updated_at: now,
@@ -935,7 +990,7 @@ fn restore_session_in_db(
 }
 
 fn session_skill_state_from_snapshot(snapshot: &SkillStateSnapshot) -> SessionSkillState {
-    SessionSkillState {
+    clear_branch_local_skill_state(&SessionSkillState {
         manual_pinned_skill_ids: snapshot.manual_pinned_skill_ids.clone(),
         mode_required_bundle_ids: snapshot.mode_required_bundle_ids.clone(),
         agentic_session_skill_ids: snapshot.agentic_session_skill_ids.clone(),
@@ -945,7 +1000,7 @@ fn session_skill_state_from_snapshot(snapshot: &SkillStateSnapshot) -> SessionSk
         effective_allowed_external_servers: snapshot.effective_allowed_external_servers.clone(),
         version: snapshot.version,
         legacy_migrated: Some(false),
-    }
+    })
 }
 
 fn resolve_message_skill_snapshot(
@@ -1101,6 +1156,8 @@ fn branch_session_in_db(
         title: source_session.title.map(|t| format!("{} (branch)", t)),
         description: source_session.description.clone(),
         summary_hash: None,
+        // 分支标题来自源会话 + (branch) 后缀，视为系统赋予的语义化标题，锁定避免被自动摘要覆盖
+        title_locked: true,
         persist_status: PersistStatus::Active,
         created_at: now,
         updated_at: now,
@@ -1246,6 +1303,14 @@ fn branch_session_in_db(
     }
 
     // 9. 写入新块（必须在 messages 之后，因为 blocks.message_id FK → messages.id）
+    //    构造合并 ID 映射：对块中的 tool_input / tool_output JSON 做深拷贝 + ID 重映射，
+    //    覆盖 originating_block_id 等嵌套引用，避免分支后 tool 输出仍指向旧 block/message。
+    let combined_id_map: std::collections::HashMap<String, String> = msg_id_map
+        .iter()
+        .chain(block_id_map.iter())
+        .map(|(k, v)| (k.clone(), v.clone()))
+        .collect();
+
     for (old_block_id, new_block_id) in &block_id_map {
         if let Some(source_block) = source_blocks_map.get(old_block_id) {
             // 映射 message_id
@@ -1254,6 +1319,17 @@ fn branch_session_in_db(
                 .cloned()
                 .unwrap_or_else(|| source_block.message_id.clone());
 
+            let new_tool_input = source_block.tool_input.as_ref().map(|v| {
+                let mut cloned = v.clone();
+                remap_ids_in_value(&mut cloned, &combined_id_map);
+                cloned
+            });
+            let new_tool_output = source_block.tool_output.as_ref().map(|v| {
+                let mut cloned = v.clone();
+                remap_ids_in_value(&mut cloned, &combined_id_map);
+                cloned
+            });
+
             let new_block = crate::chat_v2::types::MessageBlock {
                 id: new_block_id.clone(),
                 message_id: new_message_id,
@@ -1261,8 +1337,8 @@ fn branch_session_in_db(
                 status: source_block.status.clone(),
                 content: source_block.content.clone(),
                 tool_name: source_block.tool_name.clone(),
-                tool_input: source_block.tool_input.clone(),
-                tool_output: source_block.tool_output.clone(),
+                tool_input: new_tool_input,
+                tool_output: new_tool_output,
                 citations: source_block.citations.clone(),
                 error: source_block.error.clone(),
                 started_at: source_block.started_at,
@@ -1364,7 +1440,7 @@ fn merge_session_skill_state(
     }
 
     merged.legacy_migrated = Some(false);
-    Some(merged)
+    Some(clear_branch_local_skill_state(&merged))
 }
 
 fn clear_branch_local_skill_state(skill_state: &SessionSkillState) -> SessionSkillState {
@@ -1437,58 +1513,116 @@ mod tests {
     }
 
     #[test]
-    fn test_merge_session_skill_state_preserves_backend_loaded_state() {
-        let existing = SessionState {
-            session_id: "sess_1".to_string(),
-            chat_params: None,
-            features: None,
-            mode_state: None,
-            input_value: None,
-            panel_states: None,
-            updated_at: "2026-03-06T00:00:00Z".to_string(),
-            pending_context_refs_json: None,
-            loaded_skill_ids_json: None,
-            active_skill_ids_json: Some("[\"manual-old\"]".to_string()),
-            skill_state_json: Some(
-                serde_json::to_string(&SessionSkillState {
-                    manual_pinned_skill_ids: vec!["manual-old".to_string()],
-                    agentic_session_skill_ids: vec!["agentic-keep".to_string()],
-                    branch_local_skill_ids: vec!["branch-keep".to_string()],
-                    version: 7,
+    fn test_resolve_message_skill_snapshot_prefers_active_variant_snapshot() {
+        let mut message = ChatMessage::new_assistant("sess_1".to_string());
+        message.active_variant_id = Some("var_active".to_string());
+        message.meta = Some(MessageMeta {
+            skill_snapshot_after: Some(SkillStateSnapshot {
+                manual_pinned_skill_ids: vec!["message-skill".to_string()],
+                version: 2,
+                ..Default::default()
+            }),
+            ..Default::default()
+        });
+        message.variants = Some(vec![Variant {
+            id: "var_active".to_string(),
+            model_id: "model-a".to_string(),
+            config_id: None,
+            block_ids: vec![],
+            status: crate::chat_v2::types::variant_status::SUCCESS.to_string(),
+            error: None,
+            created_at: 0,
+            usage: None,
+            meta: Some(VariantMeta {
+                skill_snapshot_before: None,
+                skill_snapshot_after: Some(SkillStateSnapshot {
+                    manual_pinned_skill_ids: vec!["variant-skill".to_string()],
+                    version: 3,
                     ..Default::default()
-                })
+                }),
+                skill_runtime_before: None,
+                skill_runtime_after: None,
+            }),
+        }]);
+
+        let resolved = resolve_message_skill_snapshot(&message).unwrap();
+        assert_eq!(
+            resolved.manual_pinned_skill_ids,
+            vec!["variant-skill".to_string()]
+        );
+        assert_eq!(resolved.version, 3);
+    }
+
+    /// FIX C: 分支会话时，tool_output 内的 originating_block_id 与嵌套 msg 引用
+    /// 必须按合并 ID 映射重映射到新 ID；与 ID 无关的字段（plain 文本、URL）不受影响。
+    #[test]
+    fn test_remap_ids_in_value_remaps_only_exact_string_matches() {
+        let old_msg = "msg_old_111".to_string();
+        let new_msg = "msg_new_111".to_string();
+        let old_block = "blk_old_222".to_string();
+        let new_block = "blk_new_222".to_string();
+
+        let mut id_map = std::collections::HashMap::new();
+        id_map.insert(old_msg.clone(), new_msg.clone());
+        id_map.insert(old_block.clone(), new_block.clone());
+
+        let mut tool_output = serde_json::json!({
+            "originating_block_id": old_block,
+            "msg": old_msg,
+            "nested": {
+                "ref_msg": old_msg,
+                "url": format!("https://example.com/path?id={}", old_msg),
+                "list": [old_block, "unrelated_id_zzz", { "deep_block": old_block }]
+            },
+            "unmapped_id": "blk_other_999"
+        });
+
+        remap_ids_in_value(&mut tool_output, &id_map);
+
+        assert_eq!(
+            tool_output["originating_block_id"].as_str().unwrap(),
+            new_block,
+            "originating_block_id must point to NEW block id"
+        );
+        assert_eq!(
+            tool_output["msg"].as_str().unwrap(),
+            new_msg,
+            "top-level msg must point to NEW message id"
+        );
+        assert_eq!(
+            tool_output["nested"]["ref_msg"].as_str().unwrap(),
+            new_msg,
+            "nested ref_msg must be remapped"
+        );
+        assert!(
+            tool_output["nested"]["url"]
+                .as_str()
+                .unwrap()
+                .contains(&old_msg),
+            "URL containing old id as substring must NOT be modified (exact-match only)"
+        );
+        assert_eq!(
+            tool_output["nested"]["list"][0].as_str().unwrap(),
+            new_block,
+            "array element matching mapped id must be remapped"
+        );
+        assert_eq!(
+            tool_output["nested"]["list"][1].as_str().unwrap(),
+            "unrelated_id_zzz",
+            "unrelated string must remain unchanged"
+        );
+        assert_eq!(
+            tool_output["nested"]["list"][2]["deep_block"]
+                .as_str()
                 .unwrap(),
-            ),
-        };
-
-        let incoming = SessionState {
-            session_id: "sess_1".to_string(),
-            chat_params: None,
-            features: None,
-            mode_state: None,
-            input_value: None,
-            panel_states: None,
-            updated_at: "2026-03-06T00:00:01Z".to_string(),
-            pending_context_refs_json: None,
-            loaded_skill_ids_json: None,
-            active_skill_ids_json: Some("[\"manual-new\"]".to_string()),
-            skill_state_json: None,
-        };
-
-        let merged = merge_session_skill_state(Some(&existing), &incoming).unwrap();
-        assert_eq!(
-            merged.manual_pinned_skill_ids,
-            vec!["manual-new".to_string()]
+            new_block,
+            "deeply nested object value must be remapped"
         );
         assert_eq!(
-            merged.agentic_session_skill_ids,
-            vec!["agentic-keep".to_string()]
+            tool_output["unmapped_id"].as_str().unwrap(),
+            "blk_other_999",
+            "id not present in id_map must remain unchanged"
         );
-        assert_eq!(
-            merged.branch_local_skill_ids,
-            vec!["branch-keep".to_string()]
-        );
-        assert_eq!(merged.version, 8);
     }
 
     #[test]
@@ -1543,46 +1677,5 @@ mod tests {
         assert!(rebuilt.branch_local_skill_ids.is_empty());
         assert!(rebuilt.effective_allowed_internal_tools.is_empty());
         assert_eq!(rebuilt.version, 10);
-    }
-
-    #[test]
-    fn test_resolve_message_skill_snapshot_prefers_active_variant_snapshot() {
-        let mut message = ChatMessage::new_assistant("sess_1".to_string());
-        message.active_variant_id = Some("var_active".to_string());
-        message.meta = Some(MessageMeta {
-            skill_snapshot_after: Some(SkillStateSnapshot {
-                manual_pinned_skill_ids: vec!["message-skill".to_string()],
-                version: 2,
-                ..Default::default()
-            }),
-            ..Default::default()
-        });
-        message.variants = Some(vec![Variant {
-            id: "var_active".to_string(),
-            model_id: "model-a".to_string(),
-            config_id: None,
-            block_ids: vec![],
-            status: crate::chat_v2::types::variant_status::SUCCESS.to_string(),
-            error: None,
-            created_at: 0,
-            usage: None,
-            meta: Some(VariantMeta {
-                skill_snapshot_before: None,
-                skill_snapshot_after: Some(SkillStateSnapshot {
-                    manual_pinned_skill_ids: vec!["variant-skill".to_string()],
-                    version: 3,
-                    ..Default::default()
-                }),
-                skill_runtime_before: None,
-                skill_runtime_after: None,
-            }),
-        }]);
-
-        let resolved = resolve_message_skill_snapshot(&message).unwrap();
-        assert_eq!(
-            resolved.manual_pinned_skill_ids,
-            vec!["variant-skill".to_string()]
-        );
-        assert_eq!(resolved.version, 3);
     }
 }

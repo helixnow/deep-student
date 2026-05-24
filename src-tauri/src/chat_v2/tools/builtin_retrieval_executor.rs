@@ -766,6 +766,10 @@ impl BuiltinRetrievalExecutor {
 
         let start_time = Instant::now();
         let mut all_sources: Vec<SourceInfo> = Vec::new();
+        // ★ 2026-05 hybrid RAG：将文本与多模态分别收集到独立池，
+        //   稍后用 RRF 融合 + VL-Reranker 精排，最后再与记忆合并。
+        let mut kb_text_pool: Vec<SourceInfo> = Vec::new();
+        let mut kb_mm_pool: Vec<SourceInfo> = Vec::new();
 
         // 获取必要的上下文
         let vfs_db = ctx.vfs_db.as_ref().ok_or("VFS database not available")?;
@@ -890,7 +894,7 @@ impl BuiltinRetrievalExecutor {
                     })),
                 })
                 .collect();
-            all_sources.extend(text_sources);
+            kb_text_pool.extend(text_sources);
         }
 
         // ========== 2. VFS 多模态搜索（如果配置了） ==========
@@ -960,7 +964,7 @@ impl BuiltinRetrievalExecutor {
                         .flatten()
                         .and_then(|res| res.source_id);
 
-                    all_sources.push(SourceInfo {
+                    kb_mm_pool.push(SourceInfo {
                         title: Some(format!("Page {} - {}", page_display, r.resource_type)),
                         url: image_url.clone(),
                         snippet: r.text_content.clone(),
@@ -980,6 +984,61 @@ impl BuiltinRetrievalExecutor {
                 }
             }
         }
+
+        // ========== 2.6 hybrid RAG：RRF 融合 + VL-Reranker 跨模态精排 ==========
+        // 业界最佳实践（2025-2026）：
+        //   1. 双路独立召回（已完成）
+        //   2. RRF（Reciprocal Rank Fusion，k=60）合并不同向量空间结果
+        //      —— 基于 rank 而非分数，天然解决跨模态分数不可比问题
+        //   3. 统一跨模态 reranker（VL-Reranker）对融合结果精排
+        //      —— Qwen3-VL-Reranker 同时支持纯文本和图文输入
+        //
+        // 配置开关：tool 参数 `enable_reranking`（默认 true）
+        let kb_text_count = kb_text_pool.len();
+        let kb_mm_count = kb_mm_pool.len();
+        let fused_kb: Vec<SourceInfo> = if kb_text_count == 0 && kb_mm_count == 0 {
+            Vec::new()
+        } else {
+            // RRF 融合（top_k * 3 作为融合候选数，给精排留余量）
+            let merge_top_k = (top_k * 3).max(top_k).max(20);
+            let mut input_lists: Vec<Vec<SourceInfo>> = Vec::with_capacity(2);
+            if !kb_text_pool.is_empty() {
+                input_lists.push(kb_text_pool);
+            }
+            if !kb_mm_pool.is_empty() {
+                input_lists.push(kb_mm_pool);
+            }
+            let fused = rrf_fuse_sources(input_lists, merge_top_k);
+            log::debug!(
+                "[hybrid-rag] RRF 融合: text={} mm={} -> {} 候选",
+                kb_text_count,
+                kb_mm_count,
+                fused.len()
+            );
+
+            // VL-Reranker 跨模态精排（如果配置且未禁用）
+            if _enable_reranking && !fused.is_empty() {
+                if ctx.is_cancelled() {
+                    return Err("Unified search cancelled before reranking".to_string());
+                }
+                if let Some(cancel_token) = ctx.cancellation_token() {
+                    tokio::select! {
+                        reranked = vl_rerank_sources(query, fused, top_k, llm_manager, vfs_db) => reranked,
+                        _ = cancel_token.cancelled() => {
+                            log::info!("[hybrid-rag] Unified search cancelled during reranking");
+                            return Err("Unified search cancelled during reranking".to_string());
+                        }
+                    }
+                } else {
+                    vl_rerank_sources(query, fused, top_k, llm_manager, vfs_db).await
+                }
+            } else {
+                let mut out = fused;
+                out.truncate(top_k);
+                out
+            }
+        };
+        all_sources.extend(fused_kb);
 
         // ========== 2.5 用户记忆搜索 ==========
         // 🆕 取消检查：在记忆搜索前检查
@@ -1653,6 +1712,226 @@ fn preferred_read_resource_id<'a>(
         }
     }
     source_id.or(resource_id)
+}
+
+// ============================================================================
+// Hybrid RAG 融合工具：RRF + VL-Reranker
+// ============================================================================
+
+/// RRF (Reciprocal Rank Fusion) 算法常数
+///
+/// 取值 60 是业界标准（来自 Cormack et al. 2009 原始论文）。
+/// k 值越大，对 rank 差异越不敏感；越小则前排名权重越高。
+const RRF_K: f32 = 60.0;
+
+/// 计算 SourceInfo 的去重键
+///
+/// 用于跨源去重：同一 (resourceId, pageIndex) 的文本块和页面图片视为同一文档。
+/// 退化策略：
+/// - 同时有 resourceId + pageIndex：`{resourceId}:p{pageIndex}`
+/// - 仅有 resourceId：`{resourceId}`
+/// - 都没有：使用 title 作为兜底
+fn dedup_key_for_source(s: &SourceInfo) -> String {
+    let meta = s.metadata.as_ref();
+    let resource_id = meta
+        .and_then(|m| m.get("resourceId"))
+        .and_then(|v| v.as_str())
+        .unwrap_or("");
+    let page_index = meta
+        .and_then(|m| m.get("pageIndex"))
+        .and_then(|v| v.as_i64());
+
+    if !resource_id.is_empty() {
+        if let Some(pi) = page_index {
+            return format!("{}:p{}", resource_id, pi);
+        }
+        return resource_id.to_string();
+    }
+
+    s.title
+        .clone()
+        .unwrap_or_else(|| s.snippet.clone().unwrap_or_else(|| "<unknown>".to_string()))
+}
+
+/// 使用 RRF 算法融合多路召回结果
+///
+/// ## 参数
+/// - `result_lists`: 每路召回的有序结果列表（按相关性降序）
+/// - `top_k`: 融合后保留的最大数量
+///
+/// ## 返回
+/// 按 RRF 分数降序排列的融合结果。每个结果的 `score` 字段被覆盖为 RRF 分数。
+///
+/// ## 算法
+/// 对每个文档 d，RRF 分数 = Σ 1 / (k + rank_i(d))，其中 rank_i 为 d 在第 i 路结果中的排名（1-based）。
+/// 不出现在某路结果中的文档不贡献该路分数。
+fn rrf_fuse_sources(result_lists: Vec<Vec<SourceInfo>>, top_k: usize) -> Vec<SourceInfo> {
+    if result_lists.is_empty() {
+        return Vec::new();
+    }
+    if result_lists.len() == 1 {
+        let mut single = result_lists.into_iter().next().unwrap();
+        single.truncate(top_k);
+        return single;
+    }
+
+    use std::collections::HashMap;
+    let mut rrf_scores: HashMap<String, f32> = HashMap::new();
+    let mut doc_map: HashMap<String, SourceInfo> = HashMap::new();
+
+    for results in result_lists {
+        for (rank, source) in results.into_iter().enumerate() {
+            let key = dedup_key_for_source(&source);
+            let rrf = 1.0 / (RRF_K + rank as f32 + 1.0);
+            *rrf_scores.entry(key.clone()).or_insert(0.0) += rrf;
+
+            // 保留分数更高的版本作为代表（用于展示原始 snippet/title 等）
+            doc_map
+                .entry(key)
+                .and_modify(|existing| {
+                    if source.score.unwrap_or(0.0) > existing.score.unwrap_or(0.0) {
+                        *existing = source.clone();
+                    }
+                })
+                .or_insert(source);
+        }
+    }
+
+    let mut sorted: Vec<(String, f32)> = rrf_scores.into_iter().collect();
+    sorted.sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+
+    sorted
+        .into_iter()
+        .take(top_k)
+        .filter_map(|(k, rrf)| {
+            doc_map.remove(&k).map(|mut s| {
+                // 用 RRF 分数覆盖原始分数，保证后续排序一致
+                s.score = Some(rrf);
+                s
+            })
+        })
+        .collect()
+}
+
+/// 使用 VL-Reranker 对融合后的候选集做跨模态精排
+///
+/// ## 参数
+/// - `query`: 查询文本（图片查询暂不支持，未来可扩展）
+/// - `candidates`: RRF 融合后的候选列表
+/// - `top_k`: 最终返回数量
+/// - `llm_manager`: LLM 管理器（用于调用 VL-Reranker API）
+/// - `vfs_db`: VFS 数据库（用于加载图片 Blob）
+///
+/// ## 返回
+/// 重排序后的结果。如果 VL-Reranker 未配置或调用失败，返回原始候选（截断到 top_k）。
+///
+/// ## 实现说明
+/// - 文本类候选：仅传入 snippet 文本
+/// - 多模态类候选（有 blobHash）：加载图片 Base64 + snippet 一起送入
+/// - 失败时降级为原始排序，不阻断检索流程
+async fn vl_rerank_sources(
+    query: &str,
+    candidates: Vec<SourceInfo>,
+    top_k: usize,
+    llm_manager: &std::sync::Arc<crate::llm_manager::LLMManager>,
+    vfs_db: &std::sync::Arc<crate::vfs::database::VfsDatabase>,
+) -> Vec<SourceInfo> {
+    use crate::multimodal::types::MultimodalInput;
+    use crate::vfs::repos::VfsBlobRepo;
+    use base64::{engine::general_purpose::STANDARD as BASE64, Engine as _};
+
+    if candidates.is_empty() {
+        return Vec::new();
+    }
+
+    // 检查 VL-Reranker 是否已配置
+    if !llm_manager.is_multimodal_reranking_configured().await {
+        log::debug!("[hybrid-rag] VL-Reranker 未配置，跳过精排");
+        let mut out = candidates;
+        out.truncate(top_k);
+        return out;
+    }
+
+    // 构造 query 输入
+    let query_input = MultimodalInput::text(query);
+
+    // 构造文档输入：有图片则加载，否则用文本
+    let mut doc_inputs: Vec<MultimodalInput> = Vec::with_capacity(candidates.len());
+    for c in &candidates {
+        let meta = c.metadata.as_ref();
+        let blob_hash = meta
+            .and_then(|m| m.get("blobHash"))
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.is_empty());
+        let snippet = c.snippet.clone().unwrap_or_default();
+
+        let input = if let Some(hash) = blob_hash {
+            // 多模态文档：加载图片
+            let image_loaded = (|| -> Option<(String, String)> {
+                let blob_path = VfsBlobRepo::get_blob_path(vfs_db, hash).ok().flatten()?;
+                let data = std::fs::read(&blob_path).ok()?;
+                let base64 = BASE64.encode(&data);
+                // 推断 MIME（默认 png；后续可从资源 metadata 取）
+                let mime = blob_path
+                    .extension()
+                    .and_then(|e| e.to_str())
+                    .map(|e| match e.to_lowercase().as_str() {
+                        "jpg" | "jpeg" => "image/jpeg".to_string(),
+                        "webp" => "image/webp".to_string(),
+                        _ => "image/png".to_string(),
+                    })
+                    .unwrap_or_else(|| "image/png".to_string());
+                Some((base64, mime))
+            })();
+
+            match image_loaded {
+                Some((b64, mime)) => {
+                    if snippet.is_empty() {
+                        MultimodalInput::image_base64(b64, mime)
+                    } else {
+                        MultimodalInput::text_and_image(snippet, b64, mime)
+                    }
+                }
+                None => {
+                    log::debug!("[hybrid-rag] blob {} 加载失败，降级为纯文本", hash);
+                    MultimodalInput::text(snippet)
+                }
+            }
+        } else {
+            MultimodalInput::text(snippet)
+        };
+
+        doc_inputs.push(input);
+    }
+
+    // 调用 VL-Reranker
+    match llm_manager
+        .call_multimodal_reranker_api(&query_input, &doc_inputs)
+        .await
+    {
+        Ok(results) => {
+            // results 包含 (index, relevance_score)，已按分数降序
+            let mut reranked: Vec<SourceInfo> = Vec::with_capacity(top_k.min(results.len()));
+            for r in results.into_iter().take(top_k) {
+                if let Some(mut src) = candidates.get(r.index).cloned() {
+                    src.score = Some(r.relevance_score);
+                    reranked.push(src);
+                }
+            }
+            log::info!(
+                "[hybrid-rag] VL-Reranker 精排完成: {} 候选 -> {} 结果",
+                doc_inputs.len(),
+                reranked.len()
+            );
+            reranked
+        }
+        Err(e) => {
+            log::warn!("[hybrid-rag] VL-Reranker 调用失败，降级为 RRF 排序: {}", e);
+            let mut out = candidates;
+            out.truncate(top_k);
+            out
+        }
+    }
 }
 
 // ============================================================================

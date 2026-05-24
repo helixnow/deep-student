@@ -21,24 +21,24 @@ import { Textarea } from '../../components/ui/shad/Textarea';
 import { ScrollArea } from '../../components/ui/shad/ScrollArea';
 import {
   Copy,
-  Trash2,
+  Trash,
   Play,
   Square,
   Download,
-  RefreshCw,
-  CheckCircle2,
-  AlertCircle,
+  ArrowClockwise,
+  CheckCircle,
+  WarningCircle,
   Clock,
-  Loader2,
-  Bot,
+  CircleNotch,
+  Robot,
   Eye,
-  MousePointer,
+  Cursor,
   Database,
-  Radio,
-  AlertTriangle,
-  FileJson,
-  BarChart3,
-} from 'lucide-react';
+  RadioButton,
+  Warning,
+  FileJs,
+  ChartBar,
+} from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import {
   startTest,
@@ -56,7 +56,7 @@ import {
   type TestStatus,
   type SubagentTestConfig,
   type SubagentTestReport,
-} from '../../chat-v2/debug/subagentTestPlugin';
+} from '../../features/chat/debug/subagentTestPlugin';
 
 // =============================================================================
 // 类型定义
@@ -71,23 +71,23 @@ type LogFilter = 'all' | SubagentLogType;
 function getLogTypeIcon(type: SubagentLogType) {
   switch (type) {
     case 'lifecycle':
-      return <RefreshCw className="w-3 h-3" />;
+      return <ArrowClockwise size={12} />;
     case 'task':
-      return <Database className="w-3 h-3" />; // 🆕 任务持久化
+      return <Database size={12} />; // 🆕 任务持久化
     case 'ui_render':
-      return <Eye className="w-3 h-3" />;
+      return <Eye size={12} />;
     case 'ui_interaction':
-      return <MousePointer className="w-3 h-3" />;
+      return <Cursor size={12} />;
     case 'data_load':
-      return <Database className="w-3 h-3" />;
+      return <Database size={12} />;
     case 'event':
-      return <Radio className="w-3 h-3" />;
+      return <RadioButton size={12} />;
     case 'error':
-      return <AlertTriangle className="w-3 h-3" />;
+      return <Warning size={12} />;
     case 'test':
-      return <Bot className="w-3 h-3" />;
+      return <Robot size={12} />;
     default:
-      return <Clock className="w-3 h-3" />;
+      return <Clock size={12} />;
   }
 }
 
@@ -109,13 +109,13 @@ function getLogTypeBadgeVariant(type: SubagentLogType): 'default' | 'secondary' 
 function getStatusIcon(status: TestStatus) {
   switch (status) {
     case 'running':
-      return <Loader2 className="w-4 h-4 animate-spin text-green-500" />;
+      return <CircleNotch size={16} className="animate-spin text-green-500" />;
     case 'completed':
-      return <CheckCircle2 className="w-4 h-4 text-blue-500" />;
+      return <CheckCircle size={16} className="text-blue-500" />;
     case 'failed':
-      return <AlertCircle className="w-4 h-4 text-red-500" />;
+      return <WarningCircle size={16} className="text-red-500" />;
     default:
-      return <Clock className="w-4 h-4 text-gray-400" />;
+      return <Clock size={16} className="text-gray-400" />;
   }
 }
 
@@ -231,7 +231,7 @@ const SubagentTestPlugin: React.FC<DebugPanelPluginProps> = ({
         <CardHeader className="py-3">
           <CardTitle className="flex items-center justify-between text-base">
             <div className="flex items-center gap-2">
-              <Bot className="w-5 h-5" />
+              <Robot size={20} />
               <span>子代理自动测试</span>
               {getStatusIcon(status)}
               <Badge variant={status === 'running' ? 'default' : 'secondary'}>
@@ -241,12 +241,12 @@ const SubagentTestPlugin: React.FC<DebugPanelPluginProps> = ({
             <div className="flex items-center gap-2">
               {status === 'running' ? (
                 <Button size="sm" variant="destructive" onClick={handleStopTest}>
-                  <Square className="w-4 h-4 mr-1" />
+                  <Square size={16} className="mr-1" />
                   停止
                 </Button>
               ) : (
                 <Button size="sm" onClick={handleStartTest}>
-                  <Play className="w-4 h-4 mr-1" />
+                  <Play size={16} className="mr-1" />
                   启动测试
                 </Button>
               )}
@@ -305,7 +305,7 @@ const SubagentTestPlugin: React.FC<DebugPanelPluginProps> = ({
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-4 text-sm">
               <div className="flex items-center gap-1">
-                <BarChart3 className="w-4 h-4 text-muted-foreground" />
+                <ChartBar size={16} className="text-muted-foreground" />
                 <span className="text-muted-foreground">总日志:</span>
                 <Badge variant="outline">{report.totalLogs}</Badge>
               </div>
@@ -330,16 +330,16 @@ const SubagentTestPlugin: React.FC<DebugPanelPluginProps> = ({
             </div>
             <div className="flex items-center gap-2">
               <Button size="sm" variant="ghost" onClick={handleCopyLogs} title="复制日志">
-                <Copy className="w-4 h-4" />
+                <Copy size={16} />
               </Button>
               <Button size="sm" variant="ghost" onClick={handleDownloadReport} title="下载报告">
-                <Download className="w-4 h-4" />
+                <Download size={16} />
               </Button>
               <Button size="sm" variant="ghost" onClick={handleClearLogs} title="清空">
-                <Trash2 className="w-4 h-4" />
+                <Trash size={16} />
               </Button>
               <Button size="sm" variant="ghost" onClick={refreshLogs} title="刷新">
-                <RefreshCw className="w-4 h-4" />
+                <ArrowClockwise size={16} />
               </Button>
             </div>
           </div>
@@ -375,7 +375,7 @@ const SubagentTestPlugin: React.FC<DebugPanelPluginProps> = ({
           <div className="p-3 space-y-2">
             {logs.length === 0 ? (
               <div className="text-center text-muted-foreground py-8">
-                <Bot className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                <Robot size={32} className="mx-auto mb-2 opacity-50" />
                 <p>暂无日志</p>
                 <p className="text-xs mt-1">点击"启动测试"开始自动测试</p>
               </div>

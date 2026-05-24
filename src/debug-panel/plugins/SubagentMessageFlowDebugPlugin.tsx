@@ -19,23 +19,23 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/sh
 import { ScrollArea } from '../../components/ui/shad/ScrollArea';
 import {
   Copy,
-  Trash2,
+  Trash,
   Play,
-  RefreshCw,
-  CheckCircle2,
-  AlertCircle,
+  ArrowClockwise,
+  CheckCircle,
+  WarningCircle,
   Clock,
-  Loader2,
+  CircleNotch,
   Bug,
-  Zap,
+  Lightning,
   Eye,
   Database,
-  MessageSquare,
-} from 'lucide-react';
+  Chat,
+} from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
-import { sessionManager } from '../../chat-v2/core/session/sessionManager';
-import { adapterManager } from '../../chat-v2/adapters/AdapterManager';
+import { sessionManager } from '../../features/chat/core/session/sessionManager';
+import { adapterManager } from '../../features/chat/adapters/AdapterManager';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // =============================================================================
@@ -365,7 +365,7 @@ export function SubagentMessageFlowDebugPlugin({ isActive }: DebugPanelPluginPro
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
-            <Bug className="w-4 h-4" />
+            <Bug size={16} />
             子代理消息流调试
           </CardTitle>
         </CardHeader>
@@ -378,26 +378,26 @@ export function SubagentMessageFlowDebugPlugin({ isActive }: DebugPanelPluginPro
             >
               {isMonitoring ? (
                 <>
-                  <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                  <CircleNotch size={12} className="mr-1 animate-spin" />
                   停止监控
                 </>
               ) : (
                 <>
-                  <Play className="w-3 h-3 mr-1" />
+                  <Play size={12} className="mr-1" />
                   启动监控
                 </>
               )}
             </Button>
             <Button size="sm" variant="outline" onClick={refreshAdapterStates}>
-              <RefreshCw className="w-3 h-3 mr-1" />
+              <ArrowClockwise size={12} className="mr-1" />
               刷新状态
             </Button>
             <Button size="sm" variant="outline" onClick={copyLogs}>
-              <Copy className="w-3 h-3 mr-1" />
+              <Copy size={12} className="mr-1" />
               复制日志
             </Button>
             <Button size="sm" variant="outline" onClick={clearLogs}>
-              <Trash2 className="w-3 h-3 mr-1" />
+              <Trash size={12} className="mr-1" />
               清空
             </Button>
           </div>
@@ -421,7 +421,7 @@ export function SubagentMessageFlowDebugPlugin({ isActive }: DebugPanelPluginPro
               disabled={!selectedSessionId}
               onClick={() => runDiagnostic(selectedSessionId)}
             >
-              <Zap className="w-3 h-3 mr-1" />
+              <Lightning size={12} className="mr-1" />
               运行诊断
             </Button>
           </div>
@@ -433,7 +433,7 @@ export function SubagentMessageFlowDebugPlugin({ isActive }: DebugPanelPluginPro
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Database className="w-4 h-4" />
+              <Database size={16} />
               Adapter 状态 ({adapterStates.length})
             </CardTitle>
           </CardHeader>
@@ -469,7 +469,7 @@ export function SubagentMessageFlowDebugPlugin({ isActive }: DebugPanelPluginPro
         <Card>
           <CardHeader className="pb-2">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Eye className="w-4 h-4" />
+              <Eye size={16} />
               诊断结果
             </CardTitle>
           </CardHeader>
@@ -484,9 +484,9 @@ export function SubagentMessageFlowDebugPlugin({ isActive }: DebugPanelPluginPro
                     {diag.checks.map((check, i) => (
                       <div key={i} className="flex items-center gap-2">
                         {check.passed ? (
-                          <CheckCircle2 className="w-3 h-3 text-green-500" />
+                          <CheckCircle size={12} className="text-green-500" />
                         ) : (
-                          <AlertCircle className="w-3 h-3 text-red-500" />
+                          <WarningCircle size={12} className="text-red-500" />
                         )}
                         <span className="font-mono">{check.name}:</span>
                         <span className={check.passed ? 'text-green-500' : 'text-red-500'}>
@@ -511,7 +511,7 @@ export function SubagentMessageFlowDebugPlugin({ isActive }: DebugPanelPluginPro
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="text-sm flex items-center gap-2">
-            <MessageSquare className="w-4 h-4" />
+            <Chat size={16} />
             实时日志 ({logs.length})
           </CardTitle>
         </CardHeader>

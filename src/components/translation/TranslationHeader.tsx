@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Badge } from '../ui/shad/Badge';
 import { Tabs, TabsList, TabsTrigger } from '../ui/shad/Tabs';
-import { Languages, RefreshCw, History } from 'lucide-react';
+import { Translate, ArrowClockwise, ClockCounterClockwise } from '@phosphor-icons/react';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 
 interface TranslationHeaderProps {
@@ -32,7 +32,7 @@ export const TranslationHeader: React.FC<TranslationHeaderProps> = ({
         {hideHistoryTab ? (
           // DSTU 模式：只显示翻译标题，无 Tab 切换
           <div className="flex items-center gap-2 text-sm font-medium text-foreground">
-            <Languages className="h-4 w-4 text-primary" />
+            <Translate size={16} className="text-primary" />
             {t('translation:tabs.translate')}
           </div>
         ) : (
@@ -47,14 +47,14 @@ export const TranslationHeader: React.FC<TranslationHeaderProps> = ({
                 value="translate"
                 className="text-[12px] leading-none px-3 py-1 h-7 gap-1.5 rounded-full border border-transparent data-[state=active]:bg-primary/10 data-[state=active]:text-primary"
               >
-                <Languages className="h-3.5 w-3.5" />
+                <Translate size={14} />
                 {t('translation:tabs.translate')}
               </TabsTrigger>
               <TabsTrigger
                 value="history"
                 className="text-[12px] leading-none px-3 py-1 h-7 gap-1.5 rounded-full border border-transparent data-[state=active]:bg-primary/10 data-[state=active]:text-primary"
               >
-                <History className="h-3.5 w-3.5" />
+                <ClockCounterClockwise size={14} />
                 {t('translation:tabs.history')}
               </TabsTrigger>
             </TabsList>
@@ -67,8 +67,8 @@ export const TranslationHeader: React.FC<TranslationHeaderProps> = ({
         {!hideHistoryTab && (
           <>
             {historyTotal > 0 && (
-              <Badge variant="secondary" className="h-7 px-2.5 bg-muted/50 text-muted-foreground hover:bg-muted font-normal text-xs">
-                <History className="w-3 h-3 mr-1.5" />
+              <Badge variant="secondary" className="h-7 px-2.5 bg-muted/50 text-muted-foreground hover:bg-[var(--interactive-hover)] font-normal text-xs">
+                <ClockCounterClockwise size={12} className="mr-1.5" />
                 {historyTotal}
               </Badge>
             )}
@@ -78,9 +78,9 @@ export const TranslationHeader: React.FC<TranslationHeaderProps> = ({
                   size="icon"
                   onClick={onRefreshHistory}
                   disabled={isTranslating}
-                  className="h-8 w-8 rounded-full hover:bg-muted"
+ className="w-8 h-8 rounded-full hover:bg-[var(--interactive-hover)]"
                 >
-                  <RefreshCw className={`h-3.5 w-3.5 ${isTranslating ? 'animate-spin' : ''}`} />
+                  <ArrowClockwise className={`h-3.5 w-3.5 ${isTranslating ? 'animate-spin' : ''}`} />
                 </NotionButton>
             </CommonTooltip>
           </>

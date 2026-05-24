@@ -13,10 +13,10 @@
 import React from 'react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { 
-  Copy, Clipboard, Trash2, Play, Pause, Eye, 
-  AlertTriangle, CheckCircle, XCircle, GripVertical,
-  MousePointer, Target, ArrowDown
-} from 'lucide-react';
+  Copy, Clipboard, Trash, Play, Pause, Eye, 
+  Warning, CheckCircle, XCircle, DotsSixVertical,
+  Cursor, Target, ArrowDown
+} from '@phosphor-icons/react';
 import { showGlobalNotification } from '../../components/UnifiedNotification';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
@@ -109,12 +109,12 @@ const EVENT_COLORS: Record<DragEventType, string> = {
 };
 
 const EVENT_ICONS: Record<DragEventType, React.FC<any>> = {
-  mousedown: MousePointer,
-  mouseup: MousePointer,
-  pointerdown: MousePointer,
-  pointerup: MousePointer,
+  mousedown: Cursor,
+  mouseup: Cursor,
+  pointerdown: Cursor,
+  pointerup: Cursor,
   dragstart: Play,
-  drag: GripVertical,
+  drag: DotsSixVertical,
   dragover: Target,
   dragenter: ArrowDown,
   dragleave: XCircle,
@@ -940,7 +940,7 @@ const CrepeDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, is
       {/* 标题栏 */}
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <h2 className="text-lg font-semibold flex items-center gap-2">
-          <GripVertical className="h-5 w-5" />
+          <DotsSixVertical size={20} />
           Crepe 拖放调试
         </h2>
         <div className="flex items-center gap-2 flex-wrap">
@@ -950,14 +950,14 @@ const CrepeDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, is
               isRecording ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-700'
             }`}
           >
-            {isRecording ? <Pause className="h-4 w-4" /> : <Play className="h-4 w-4" />}
+            {isRecording ? <Pause size={16} /> : <Play size={16} />}
             {isRecording ? '录制中' : '已暂停'}
           </button>
           <button
             onClick={() => setShowIssuesOnly(!showIssuesOnly)}
             className={`px-3 py-1 text-sm rounded ${showIssuesOnly ? 'bg-orange-500 text-white' : 'bg-gray-200 text-gray-700'}`}
           >
-            <AlertTriangle className="h-4 w-4" />
+            <Warning size={16} />
           </button>
           <button
             onClick={() => setAutoScroll(!autoScroll)}
@@ -969,7 +969,7 @@ const CrepeDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, is
             onClick={runDiagnosis}
             className="px-3 py-1 text-sm bg-purple-500 text-white rounded hover:bg-purple-600 flex items-center gap-1"
           >
-            <Target className="h-4 w-4" />
+            <Target size={16} />
             运行诊断
           </button>
           <button
@@ -977,13 +977,13 @@ const CrepeDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, is
             className="px-3 py-1 text-sm bg-blue-500 text-white rounded hover:bg-blue-600"
             disabled={filteredLogs.length === 0}
           >
-            <Clipboard className="h-4 w-4" />
+            <Clipboard size={16} />
           </button>
           <button
             onClick={clearLogs}
             className="px-3 py-1 text-sm bg-gray-500 text-white rounded hover:bg-gray-600"
           >
-            <Trash2 className="h-4 w-4" />
+            <Trash size={16} />
           </button>
         </div>
       </div>
@@ -991,7 +991,7 @@ const CrepeDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, is
       {/* 诊断面板 */}
       <div className="border rounded-lg p-3 bg-gradient-to-r from-slate-50 to-blue-50">
         <div className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-          <Eye className="h-4 w-4" />
+          <Eye size={16} />
           实时诊断
         </div>
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-2">
@@ -1005,9 +1005,9 @@ const CrepeDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, is
               } border`}
             >
               <div className="font-medium flex items-center gap-1">
-                {d.status === 'ok' ? <CheckCircle className="h-3 w-3 text-green-600" /> :
-                 d.status === 'warning' ? <AlertTriangle className="h-3 w-3 text-yellow-600" /> :
-                 <XCircle className="h-3 w-3 text-red-600" />}
+                {d.status === 'ok' ? <CheckCircle size={12} className="text-green-600" /> :
+                 d.status === 'warning' ? <Warning size={12} className="text-yellow-600" /> :
+                 <XCircle size={12} className="text-red-600" />}
                 {d.category}
               </div>
               <div className="text-gray-700 mt-0.5">{d.message}</div>
@@ -1070,7 +1070,7 @@ const CrepeDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, is
                     className={`p-2 hover:bg-gray-50 ${log.issues.length > 0 ? 'bg-red-50' : ''}`}
                   >
                     <div className="flex items-start gap-2">
-                      <Icon className="h-4 w-4 mt-0.5 flex-shrink-0" style={{ color }} />
+                      <Icon size={16} className="mt-0.5 flex-shrink-0" style={{ color }} />
                       
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
@@ -1148,7 +1148,7 @@ const CrepeDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, is
                         className="p-1 text-gray-400 hover:text-gray-600 flex-shrink-0"
                         title="复制日志"
                       >
-                        <Copy className="h-3 w-3" />
+                        <Copy size={12} />
                       </button>
                     </div>
                   </div>

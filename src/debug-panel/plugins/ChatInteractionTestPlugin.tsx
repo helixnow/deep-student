@@ -12,22 +12,23 @@ import { Button } from '../../components/ui/shad/Button';
 import { Badge } from '../../components/ui/shad/Badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/shad/Card';
 import { ScrollArea } from '../../components/ui/shad/ScrollArea';
+import { Checkbox } from '@/components/ui/shad/Checkbox';
 import {
   Play,
   Square,
   Download,
-  RefreshCw,
-  CheckCircle2,
+  ArrowClockwise,
+  CheckCircle,
   XCircle,
-  Loader2,
+  CircleNotch,
   Copy,
-  Trash2,
-  ChevronDown,
-  ChevronRight,
-  Zap,
+  Trash,
+  CaretDown,
+  CaretRight,
+  Lightning,
   Eye,
-  EyeOff,
-} from 'lucide-react';
+  EyeSlash,
+} from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import {
   ALL_STEPS,
@@ -41,9 +42,9 @@ import {
   type StepResult,
   type LogEntry,
   type OverallStatus,
-} from '../../chat-v2/debug/chatInteractionTestPlugin';
-import { ensureModelsCacheLoaded } from '../../chat-v2/hooks/useAvailableModels';
-import type { ModelInfo } from '../../chat-v2/utils/parseModelMentions';
+} from '../../features/chat/debug/chatInteractionTestPlugin';
+import { ensureModelsCacheLoaded } from '../../features/chat/hooks/useAvailableModels';
+import type { ModelInfo } from '../../features/chat/utils/parseModelMentions';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // =============================================================================
@@ -62,10 +63,10 @@ function fmtDuration(ms: number) {
 
 function stepStatusIcon(s: StepResult['status']) {
   switch (s) {
-    case 'passed': return <CheckCircle2 className="w-4 h-4 text-green-500" />;
-    case 'failed': return <XCircle className="w-4 h-4 text-red-500" />;
-    case 'skipped': return <RefreshCw className="w-4 h-4 text-gray-400" />;
-    default: return <Loader2 className="w-4 h-4 animate-spin text-blue-500" />;
+    case 'passed': return <CheckCircle size={16} className="text-green-500" />;
+    case 'failed': return <XCircle size={16} className="text-red-500" />;
+    case 'skipped': return <ArrowClockwise size={16} className="text-gray-400" />;
+    default: return <CircleNotch size={16} className="animate-spin text-blue-500" />;
   }
 }
 
@@ -296,9 +297,9 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
       <Card>
         <CardHeader className="py-3">
           <CardTitle className="flex items-center gap-2 text-base">
-            <Zap className="w-5 h-5" />
+            <Lightning size={20} />
             聊天交互自动化测试
-            {status === 'running' && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
+            {status === 'running' && <CircleNotch size={16} className="animate-spin text-primary" />}
             {status === 'completed' && (
               <Badge variant={failed > 0 ? 'destructive' : 'default'}>
                 ✅{passed} ❌{failed} ⏭️{skipped}
@@ -346,11 +347,11 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
               {ALL_STEPS.map(step => (
                 <label key={step} className="flex items-center gap-2 text-xs cursor-pointer hover:bg-muted/30 rounded px-1.5 py-1"
                   title={STEP_DESCRIPTIONS[step]}>
-                  <input type="checkbox"
+                  <Checkbox
                     checked={!skipSteps.has(step)}
-                    onChange={() => toggleSkipStep(step)}
+                    onCheckedChange={() => toggleSkipStep(step)}
                     disabled={status === 'running'}
-                    className="rounded" />
+                  />
                   <span className={skipSteps.has(step) ? 'text-muted-foreground line-through' : ''}>
                     {STEP_LABELS[step]}
                   </span>
@@ -363,7 +364,7 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
           <div>
             <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
               onClick={() => setShowAdvanced(!showAdvanced)}>
-              {showAdvanced ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+              {showAdvanced ? <CaretDown size={12} /> : <CaretRight size={12} />}
               高级配置
             </button>
             {showAdvanced && (
@@ -408,25 +409,25 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
           <div className="flex items-center justify-end gap-2">
             {status === 'running' ? (
               <Button size="sm" variant="destructive" onClick={handleAbort}>
-                <Square className="w-4 h-4 mr-1" /> 中止
+                <Square size={16} className="mr-1" /> 中止
               </Button>
             ) : (
               <Button size="sm" onClick={handleStart} disabled={!canStart}>
-                <Play className="w-4 h-4 mr-1" /> 开始测试 ({activeSteps.length} 步)
+                <Play size={16} className="mr-1" /> 开始测试 ({activeSteps.length} 步)
               </Button>
             )}
             <Button size="sm" variant="outline" onClick={handleDownload} disabled={results.length === 0}
               title="下载测试报告">
-              <Download className="w-4 h-4" />
+              <Download size={16} />
             </Button>
             <Button size="sm" variant="outline" onClick={handleCopyLogs} disabled={liveLogs.length === 0}
               title="复制日志">
-              <Copy className="w-4 h-4" />
+              <Copy size={16} />
             </Button>
             <Button size="sm" variant="outline" onClick={handleCleanup}
               disabled={isCleaningUp || status === 'running'}
               title="清理测试会话">
-              {isCleaningUp ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              {isCleaningUp ? <CircleNotch size={16} className="animate-spin" /> : <Trash size={16} />}
             </Button>
           </div>
 
@@ -472,7 +473,7 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
           <div className="px-3 pb-3 space-y-1">
             {results.length === 0 && status !== 'running' ? (
               <div className="text-center text-muted-foreground py-8">
-                <Zap className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                <Lightning size={32} className="mx-auto mb-2 opacity-30" />
                 <p className="text-sm">选择模型后点击「开始测试」</p>
                 <p className="text-xs mt-1 opacity-70">将模拟用户点击操作 7 个交互场景</p>
               </div>
@@ -486,7 +487,7 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
                     {/* 摘要行 */}
                     <div className="flex items-center gap-2 p-2 cursor-pointer hover:bg-muted/50 text-sm"
                       onClick={() => setExpandedStep(isExpanded ? null : r.step)}>
-                      {isExpanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                      {isExpanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
                       {stepStatusIcon(r.status)}
                       <span className="font-medium flex-1">{STEP_LABELS[r.step]}</span>
                       <span className="text-[10px] text-muted-foreground">{r.startTime ? fmtTime(r.startTime) : ''}</span>
@@ -522,7 +523,7 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
                             <div className="text-xs font-medium text-muted-foreground">验证检查:</div>
                             {r.verification.checks.map((c, i) => (
                               <div key={i} className={`text-xs flex items-start gap-1 ${c.passed ? 'text-success' : 'text-destructive'}`}>
-                                {c.passed ? <CheckCircle2 className="w-3 h-3 mt-0.5 flex-shrink-0" /> : <XCircle className="w-3 h-3 mt-0.5 flex-shrink-0" />}
+                                {c.passed ? <CheckCircle size={12} className="mt-0.5 flex-shrink-0" /> : <XCircle size={12} className="mt-0.5 flex-shrink-0" />}
                                 <span><strong>{c.name}</strong>: {c.detail}</span>
                               </div>
                             ))}
@@ -535,7 +536,7 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
                             <div className="text-xs font-medium text-muted-foreground">Model Icon 检查:</div>
                             {r.modelIconChecks.map((ic, i) => (
                               <div key={i} className={`text-xs flex items-start gap-1 ${ic.iconLost ? 'text-destructive' : 'text-success'}`}>
-                                {ic.iconLost ? <XCircle className="w-3 h-3 mt-0.5 flex-shrink-0" /> : <CheckCircle2 className="w-3 h-3 mt-0.5 flex-shrink-0" />}
+                                {ic.iconLost ? <XCircle size={12} className="mt-0.5 flex-shrink-0" /> : <CheckCircle size={12} className="mt-0.5 flex-shrink-0" />}
                                 <span>
                                   期望 <strong>{ic.expectedBrand}</strong> ({ic.expectedModelId?.slice(0, 30)})
                                   → 实际 <strong>{ic.actualBrand}</strong> ({ic.actualModelId?.slice(0, 30) || '空'})
@@ -549,7 +550,7 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
                         {/* 持久化检查 */}
                         {r.persistenceCheck && (
                           <div className={`text-xs flex items-start gap-1 ${r.persistenceCheck.verified ? 'text-green-600 dark:text-green-400' : 'text-yellow-600'}`}>
-                            {r.persistenceCheck.verified ? <CheckCircle2 className="w-3 h-3 mt-0.5 flex-shrink-0" /> : <XCircle className="w-3 h-3 mt-0.5 flex-shrink-0" />}
+                            {r.persistenceCheck.verified ? <CheckCircle size={12} className="mt-0.5 flex-shrink-0" /> : <XCircle size={12} className="mt-0.5 flex-shrink-0" />}
                             <span><strong>持久化</strong>: {r.persistenceCheck.detail}</span>
                           </div>
                         )}
@@ -559,7 +560,7 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
                           <div>
                             <button className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
                               onClick={() => setShowRequestBody(showRequestBody === r.step ? null : r.step)}>
-                              {showRequestBody === r.step ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+                              {showRequestBody === r.step ? <EyeSlash size={12} /> : <Eye size={12} />}
                               请求体详情 ({r.capturedRequestBodies.length})
                             </button>
                             {showRequestBody === r.step && (
@@ -641,7 +642,7 @@ const ChatInteractionTestPlugin: React.FC<DebugPanelPluginProps> = ({
           <div className="px-3 py-1 border-b flex items-center justify-between">
             <span className="text-xs font-medium text-muted-foreground">实时日志</span>
             <Button size="sm" variant="ghost" className="h-5 px-1" onClick={() => setLiveLogs([])}>
-              <Trash2 className="w-3 h-3" />
+              <Trash size={12} />
             </Button>
           </div>
           <ScrollArea className="h-[calc(100%-28px)]" ref={logScrollRef}>

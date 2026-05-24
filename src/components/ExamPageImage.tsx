@@ -9,10 +9,10 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { getBlobAsDataUrl } from '@/chat-v2/context/blobApi';
+import { getBlobAsDataUrl } from '@/features/chat/context/blobApi';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
-import { AlertCircle, ImageOff } from 'lucide-react';
+import { WarningCircle, ImageBroken } from '@phosphor-icons/react';
 
 // ============================================================================
 // 类型定义
@@ -121,7 +121,7 @@ export const ExamPageImage: React.FC<ExamPageImageProps> = ({
           )}
           style={style}
         >
-          <AlertCircle className="h-5 w-5" />
+          <WarningCircle size={20} />
           <span>{error}</span>
         </div>
       );
@@ -137,7 +137,7 @@ export const ExamPageImage: React.FC<ExamPageImageProps> = ({
           style={style}
           onLoad={onLoad}
           onError={() => onError?.(t('image.load_failed'))}
-        />
+/>
       );
     }
   }
@@ -154,7 +154,7 @@ export const ExamPageImage: React.FC<ExamPageImageProps> = ({
         style={style}
         onLoad={onLoad}
         onError={() => onError?.(t('image.load_failed'))}
-      />
+/>
     );
   }
 
@@ -167,7 +167,7 @@ export const ExamPageImage: React.FC<ExamPageImageProps> = ({
       )}
       style={{ minHeight: 200, ...style }}
     >
-      <ImageOff className="h-8 w-8" />
+      <ImageBroken size={32} />
       <span>{t('image.no_image')}</span>
     </div>
   );

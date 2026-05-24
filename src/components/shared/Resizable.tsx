@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { GripVertical } from 'lucide-react';
+import { DotsSixVertical } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 
 interface HorizontalResizableProps {
@@ -54,7 +54,7 @@ export const HorizontalResizable: React.FC<HorizontalResizableProps> = ({
         className={`w-1.5 cursor-col-resize flex items-center justify-center shrink-0 bg-border ${dragging ? 'bg-primary' : 'hover:bg-primary/30'} transition-colors`}
         title={t('resizable.dragToResizeWidth')}
       >
-        <GripVertical className="w-3 h-3 text-muted-foreground/50" />
+        <DotsSixVertical size={12} className="text-muted-foreground/50" />
       </div>
       <div style={{ width: `calc(${(1 - ratio) * 100}% - 3px)` }} className="shrink-0 min-w-0 overflow-hidden [&>*]:!w-full [&>*]:!h-full [&>*]:!basis-auto [&>*]:!flex-none">
         {right}
@@ -120,7 +120,7 @@ export const VerticalResizable: React.FC<VerticalResizableProps> = ({
         aria-orientation="horizontal"
         onMouseDown={() => setDragging(true)}
         onTouchStart={() => setDragging(true)}
-        className={`h-6 cursor-row-resize flex items-center justify-center shrink-0 ${dragging ? 'bg-accent/20' : 'hover:bg-accent/10'} transition-colors`}
+        className={`h-6 cursor-row-resize flex items-center justify-center shrink-0 ${dragging ? 'bg-accent/20' : 'hover:bg-[var(--interactive-hover)]'} transition-colors`}
         title={t('resizable.dragToResizeHeight')}
       >
         {/* 拖拽手柄指示器 */}

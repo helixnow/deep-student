@@ -12,7 +12,7 @@
 
 import React, { useState, useCallback, useMemo, useEffect } from 'react';
 import { cn } from '@/lib/utils';
-import { MarkdownRenderer } from '@/chat-v2/components/renderers';
+import { MarkdownRenderer } from '@/features/chat/components/renderers';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Progress } from '@/components/ui/shad/Progress';
 import { Badge } from '@/components/ui/shad/Badge';
@@ -20,25 +20,25 @@ import { Card } from '@/components/ui/shad/Card';
 import {
   X,
   Eye,
-  EyeOff,
-  RotateCcw,
-  ChevronLeft,
-  ChevronRight,
+  EyeSlash,
+  ArrowCounterClockwise,
+  CaretLeft,
+  CaretRight,
   Clock,
   CheckCircle,
   XCircle,
-  Award,
-  Frown,
-  Meh,
-  Smile,
-  PartyPopper,
+  Trophy,
+  SmileySad,
+  Smiley,
+  Smiley as SmileyIcon,
+  Confetti,
   Timer,
-  Zap,
+  Lightning,
   Target,
-  TrendingUp,
+  TrendUp,
   ArrowRight,
   SkipForward,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import {
   useReviewPlanStore,
@@ -130,14 +130,14 @@ const CompletionStats: React.FC<CompletionStatsProps> = ({
   const performanceMessage = useMemo(() => {
     if (stats.accuracy >= 90) {
       return {
-        icon: <PartyPopper className="w-16 h-16 text-amber-500" />,
+        icon: <Confetti className="w-16 h-16 text-amber-500" />,
         title: t('review:complete.excellent'),
         message: t('review:complete.excellentMsg'),
       };
     }
     if (stats.accuracy >= 70) {
       return {
-        icon: <Award className="w-16 h-16 text-emerald-500" />,
+        icon: <Trophy className="w-16 h-16 text-emerald-500" />,
         title: t('review:complete.good'),
         message: t('review:complete.goodMsg'),
       };
@@ -150,7 +150,7 @@ const CompletionStats: React.FC<CompletionStatsProps> = ({
       };
     }
     return {
-      icon: <TrendingUp className="w-16 h-16 text-purple-500" />,
+      icon: <TrendUp className="w-16 h-16 text-purple-500" />,
         title: t('review:complete.needsPractice'),
         message: t('review:complete.needsPracticeMsg'),
     };
@@ -170,7 +170,7 @@ const CompletionStats: React.FC<CompletionStatsProps> = ({
       {/* 统计卡片 */}
       <div className="grid grid-cols-3 gap-4 w-full max-w-md mb-8">
         <Card className="p-4 text-center bg-emerald-500/10 border-emerald-500/20">
-          <CheckCircle className="w-6 h-6 text-emerald-500 mx-auto mb-2" />
+          <CheckCircle size={24} className="text-emerald-500 mx-auto mb-2" />
           <p className="text-2xl font-bold text-emerald-600 dark:text-emerald-400">
             {stats.correct}
           </p>
@@ -180,7 +180,7 @@ const CompletionStats: React.FC<CompletionStatsProps> = ({
         </Card>
 
         <Card className="p-4 text-center bg-sky-500/10 border-sky-500/20">
-          <Target className="w-6 h-6 text-sky-500 mx-auto mb-2" />
+          <Target size={24} className="text-sky-500 mx-auto mb-2" />
           <p className="text-2xl font-bold text-sky-600 dark:text-sky-400">
             {stats.accuracy}%
           </p>
@@ -190,7 +190,7 @@ const CompletionStats: React.FC<CompletionStatsProps> = ({
         </Card>
 
         <Card className="p-4 text-center bg-purple-500/10 border-purple-500/20">
-          <Timer className="w-6 h-6 text-purple-500 mx-auto mb-2" />
+          <Timer size={24} className="text-purple-500 mx-auto mb-2" />
           <p className="text-2xl font-bold text-purple-600 dark:text-purple-400">
             {formatTime(stats.totalTime)}
           </p>
@@ -204,13 +204,13 @@ const CompletionStats: React.FC<CompletionStatsProps> = ({
       <div className="flex items-center gap-3">
         {onRestart && (
           <NotionButton variant="ghost" onClick={onRestart} className="gap-2">
-            <RotateCcw className="w-4 h-4" />
+            <ArrowCounterClockwise size={16} />
             {t('review:complete.reviewAgain')}
           </NotionButton>
         )}
         <NotionButton onClick={onClose} className="gap-2">
           {t('review:complete.finish')}
-          <ArrowRight className="w-4 h-4" />
+          <ArrowRight size={16} />
         </NotionButton>
       </div>
     </div>
@@ -333,7 +333,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
             totalTime: elapsedTime,
           }}
           onClose={handleClose}
-        />
+/>
       </div>
     );
   }
@@ -364,7 +364,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
       {/* 顶部导航栏 */}
       <div className="flex-shrink-0 flex items-center justify-between px-4 py-3 border-b border-border/50">
         <NotionButton variant="ghost" iconOnly size="sm" onClick={handleClose}>
-          <X className="w-5 h-5" />
+          <X size={20} />
         </NotionButton>
 
         {/* 进度指示器 */}
@@ -376,13 +376,13 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
             <Progress
               value={(progress.current / progress.total) * 100}
               className="h-1.5"
-            />
+/>
           </div>
         </div>
 
         {/* 计时器 */}
         <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-          <Clock className="w-4 h-4" />
+          <Clock size={16} />
           {formatTime(elapsedTime)}
         </div>
       </div>
@@ -425,7 +425,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
             <div className="prose prose-sm dark:prose-invert max-w-none text-lg leading-relaxed">
               <MarkdownRenderer
                 content={question?.content || t('review:unknownQuestion')}
-              />
+/>
             </div>
           </div>
 
@@ -447,7 +447,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
                     <div className="p-4 rounded-lg bg-emerald-500/5 border border-emerald-500/20 text-foreground">
                       <MarkdownRenderer
                         content={question.answer}
-                      />
+/>
                     </div>
                   </div>
                 )}
@@ -461,7 +461,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
                     <div className="p-4 rounded-lg bg-sky-500/5 border border-sky-500/20 text-muted-foreground text-sm">
                       <MarkdownRenderer
                         content={question.explanation}
-                      />
+/>
                     </div>
                   </div>
                 )}
@@ -481,7 +481,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
               onClick={handleSkip}
               className="gap-2"
             >
-              <SkipForward className="w-4 h-4" />
+              <SkipForward size={16} />
               {t('review:action.skip')}
             </NotionButton>
             <NotionButton
@@ -489,7 +489,7 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
               onClick={() => setShowAnswer(true)}
               className="gap-2 min-w-[200px]"
             >
-              <Eye className="w-5 h-5" />
+              <Eye size={20} />
               {t('review:action.showAnswer')}
             </NotionButton>
           </div>
@@ -504,38 +504,38 @@ export const ReviewSession: React.FC<ReviewSessionProps> = ({
                 quality={0}
                 label={t('review:rating.again')}
                 sublabel={t('review:rating.againDesc')}
-                icon={<Frown className="w-6 h-6" />}
+                icon={<SmileySad size={24} />}
                 color="border-red-500/50 bg-red-500/5 text-red-600 hover:bg-red-500/10 hover:border-red-500"
                 onClick={() => handleRate(0)}
                 disabled={isProcessing}
-              />
+/>
               <RatingButton
                 quality={2}
                 label={t('review:rating.hard')}
                 sublabel={t('review:rating.hardDesc')}
-                icon={<Meh className="w-6 h-6" />}
+                icon={<Smiley size={24} />}
                 color="border-amber-500/50 bg-amber-500/5 text-amber-600 hover:bg-amber-500/10 hover:border-amber-500"
                 onClick={() => handleRate(2)}
                 disabled={isProcessing}
-              />
+/>
               <RatingButton
                 quality={3}
                 label={t('review:rating.good')}
                 sublabel={t('review:rating.goodDesc')}
-                icon={<Smile className="w-6 h-6" />}
+                icon={<Smiley size={24} />}
                 color="border-emerald-500/50 bg-emerald-500/5 text-emerald-600 hover:bg-emerald-500/10 hover:border-emerald-500"
                 onClick={() => handleRate(3)}
                 disabled={isProcessing}
-              />
+/>
               <RatingButton
                 quality={5}
                 label={t('review:rating.easy')}
                 sublabel={t('review:rating.easyDesc')}
-                icon={<Zap className="w-6 h-6" />}
+                icon={<Lightning size={24} />}
                 color="border-sky-500/50 bg-sky-500/5 text-sky-600 hover:bg-sky-500/10 hover:border-sky-500"
                 onClick={() => handleRate(5)}
                 disabled={isProcessing}
-              />
+/>
             </div>
           </div>
         )}

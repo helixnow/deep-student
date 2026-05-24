@@ -4,16 +4,16 @@
 
 import i18next from 'i18next';
 import {
-  Settings,
+  Gear,
   Moon,
   Sun,
-  Languages,
+  Translate,
   Database,
   Download,
   Upload,
   Cloud,
   Key,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import type { Command } from '../registry/types';
 
 /** Helper: get localized keywords array for a given command key */
@@ -27,7 +27,7 @@ export const settingsCommands: Command[] = [
     get description() { return i18next.t('command_palette:descriptions.settings.open', 'Open app settings and preferences'); },
     category: 'settings',
     // shortcut 已由 nav.goto.settings (mod+,) 提供
-    icon: Settings,
+    icon: Gear,
     get keywords() { return kw('settings.open'); },
     priority: 100,
     execute: (deps) => {
@@ -63,7 +63,7 @@ export const settingsCommands: Command[] = [
     get name() { return i18next.t('command_palette:commands.settings.switch-language', 'Switch Language'); },
     get description() { return i18next.t('command_palette:descriptions.settings.switch-language', 'Switch between Chinese and English'); },
     category: 'settings',
-    icon: Languages,
+    icon: Translate,
     get keywords() { return kw('settings.switch-language'); },
     priority: 98,
     execute: (deps) => {

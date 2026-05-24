@@ -11,20 +11,21 @@ import {
   Upload,
   Download,
   Plus,
-  RotateCcw,
-  Search,
-  Zap,
+  ArrowCounterClockwise,
+  MagnifyingGlass,
+  Lightning,
   Globe,
   FolderOpen,
   Package,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { SegmentedControl } from '@/components/ui/SegmentedControl';
+import { Input } from '@/components/ui/shad/Input';
 import { NotionAlertDialog } from '../ui/NotionDialog';
 import { showGlobalNotification } from '../UnifiedNotification';
 import { useMobileHeader, MobileSlidingLayout, ScreenPosition } from '@/components/layout';
-import { MOBILE_LAYOUT } from '@/config/mobileLayout';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { fileManager } from '@/utils/fileManager';
 
@@ -42,9 +43,9 @@ import {
   parseSkillFile,
   useSkillDefaults,
   extractCustomizationFromSkill,
-} from '@/chat-v2/skills';
-import type { SkillDefinition, SkillLocation } from '@/chat-v2/skills/types';
-import { getLocalizedSkillDescription, getLocalizedSkillName } from '@/chat-v2/skills/utils';
+} from '@/features/chat/skills';
+import type { SkillDefinition, SkillLocation } from '@/features/chat/skills/types';
+import { getLocalizedSkillDescription, getLocalizedSkillName } from '@/features/chat/skills/utils';
 
 // 子组件
 import { SkillsList } from './SkillsList';
@@ -672,15 +673,15 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
         }
       : undefined,
     rightActions: !isEditorView ? (
-      <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCreate} className="!p-1.5 hover:bg-accent text-muted-foreground hover:text-foreground" title={t('skills:management.create', '新建技能')} aria-label="create">
-        <Plus className="w-5 h-5" />
+      <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCreate} className="!p-1.5 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground" title={t('skills:management.create', '新建技能')} aria-label="create">
+        <Plus size={20} />
       </NotionButton>
     ) : undefined,
   }, [headerTitle, headerSubtitle, isEditorView, handleCreate, t]);
 
   // ========== 位置筛选标签 ==========
   const locationTabs = useMemo(() => [
-    { id: 'all' as const, label: t('skills:location.all', '全部'), icon: <Zap size={12} /> },
+    { id: 'all' as const, label: t('skills:location.all', '全部'), icon: <Lightning size={12} /> },
     { id: 'global' as const, label: t('skills:location.global', '全局'), icon: <Globe size={12} /> },
     { id: 'project' as const, label: t('skills:location.project', '项目'), icon: <FolderOpen size={12} /> },
     { id: 'builtin' as const, label: t('skills:location.builtin', '内置'), icon: <Package size={12} /> },
@@ -712,8 +713,8 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
 
   // ========== 渲染主内容 ==========
   const renderMainContent = () => (
-    <div className="flex-1 flex flex-col min-w-0 h-full overflow-hidden bg-background">
-      <div className="flex-shrink-0 px-4 sm:px-6 py-3 border-b border-border/20 bg-background/50 backdrop-blur-sm sticky top-0 z-10 space-y-3">
+    <div className="study-shell-page flex-1 flex flex-col min-w-0 h-full overflow-hidden">
+      <div className="study-shell-toolbar flex-shrink-0 px-4 sm:px-6 py-3 sticky top-0 z-10 space-y-3">
         <div className={cn("flex items-center gap-4", isSmallScreen ? "justify-between" : "justify-between")}>
           <div className="flex items-center gap-2 text-sm text-muted-foreground min-w-0">
             <span className="font-medium text-foreground truncate">{t('skills:management.all_skills', '所有技能')}</span>
@@ -729,16 +730,16 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
               multiple
               onChange={handleImportFile}
               className="hidden"
-            />
+/>
             
             {/* 新建按钮：移动端在应用顶栏，桌面端保留在此 */}
             {!isSmallScreen && (
               <>
                 <NotionButton
-                  variant="primary"
+                  variant="shell"
                   size="sm"
                   onClick={handleCreate}
-                  className="h-7 text-xs px-2.5 shadow-sm"
+                  className="h-7 text-xs px-2.5"
                 >
                   <Plus size={14} className="mr-1.5" />
                   {t('skills:management.create', '新建')}
@@ -748,7 +749,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             )}
 
             <NotionButton
-              variant="ghost"
+              variant="utility"
               size="sm"
               onClick={handleImportClick}
               className="h-7 text-xs px-2 text-muted-foreground"
@@ -758,7 +759,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
             </NotionButton>
 
             <NotionButton
-              variant="ghost"
+              variant="utility"
               size="sm"
               onClick={handleExportAll}
               disabled={allSkills.filter(s => !s.isBuiltin).length === 0}
@@ -773,45 +774,52 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
 
         <div className={cn("flex items-center gap-3", isSmallScreen && "flex-col items-stretch")}>
           <div className={cn("relative flex-1", !isSmallScreen && "max-w-xs")}>
-            <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
-            <input
+            <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
+            <Input
               type="text"
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder={t('skills:selector.searchPlaceholder', '搜索技能...')}
-              className="w-full h-7 pl-8 pr-3 text-xs rounded-md border border-border/40 bg-muted/30 placeholder:text-muted-foreground/50 focus:outline-none focus:ring-1 focus:ring-primary/30 focus:border-primary/30"
-            />
+              className="h-8 pl-8 pr-3 text-xs"
+/>
           </div>
 
-          <div className={cn("flex items-center gap-1 overflow-x-auto scrollbar-none", isSmallScreen && "-mx-1 px-1")}>
-            {locationTabs.map(tab => {
-              const count = locationCounts[tab.id];
-              const isActiveTab = locationFilter === tab.id;
-              if (tab.id !== 'all' && count === 0) return null;
-              return (
-                <NotionButton
-                  key={tab.id}
-                  variant="ghost" size="sm"
-                  onClick={() => setLocationFilter(tab.id)}
-                  className={cn(
-                    '!px-2.5 !py-1 !h-auto text-[11px] font-medium whitespace-nowrap',
-                    isActiveTab
-                      ? 'bg-secondary text-secondary-foreground shadow-sm'
-                      : 'text-muted-foreground hover:bg-muted/50 hover:text-foreground'
-                  )}
-                >
-                  <span className={cn("opacity-70", isActiveTab && "opacity-100")}>{tab.icon}</span>
-                  <span>{tab.label}</span>
-                  <span className={cn(
-                    'ml-0.5 text-[10px] opacity-60',
-                    isActiveTab && 'opacity-100 font-bold'
-                  )}>
-                    {count}
-                  </span>
-                </NotionButton>
-              );
-            })}
-          </div>
+          <SegmentedControl<typeof locationFilter>
+            ariaLabel={t('skills:location.all', '全部')}
+            value={locationFilter}
+            onValueChange={setLocationFilter}
+            size="compact"
+            className={cn(
+              'flex items-center gap-1 overflow-x-auto scrollbar-none',
+              isSmallScreen && '-mx-1 px-1',
+            )}
+            itemClassName="!h-auto !px-2.5 !py-1 text-[11px] font-medium whitespace-nowrap"
+            options={locationTabs
+              .filter((tab) => tab.id === 'all' || locationCounts[tab.id] > 0)
+              .map((tab) => {
+                const count = locationCounts[tab.id];
+                const isActiveTab = locationFilter === tab.id;
+                return {
+                  value: tab.id,
+                  label: (
+                    <>
+                      <span className={cn('opacity-70', isActiveTab && 'opacity-100')}>
+                        {tab.icon}
+                      </span>
+                      <span>{tab.label}</span>
+                      <span
+                        className={cn(
+                          'ml-0.5 text-[10px] opacity-60',
+                          isActiveTab && 'opacity-100 font-bold',
+                        )}
+                      >
+                        {count}
+                      </span>
+                    </>
+                  ),
+                };
+              })}
+/>
         </div>
       </div>
 
@@ -828,19 +836,8 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           onSelectSkill={(skill) => setSelectedSkillId(skill.id)}
           cardRefsMap={cardRefsMap}
           editingSkillId={editorOpen ? editingSkill?.id : null}
-        />
+/>
       </CustomScrollArea>
-
-      {/* 移动端底部导航栏占位 */}
-      {isSmallScreen && (
-        <div
-          className="flex-shrink-0"
-          style={{
-            // 使用 CSS 变量作为 Android fallback
-            height: `calc(${MOBILE_LAYOUT.bottomTabBar.defaultHeight}px + var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)))`
-          }}
-        />
-      )}
     </div>
   );
 
@@ -862,7 +859,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           location={editorLocation}
           onSave={handleSave}
           embeddedMode={true}
-        />
+/>
       )}
     </div>
   );
@@ -870,7 +867,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
   // ========== 移动端布局 ==========
   if (isSmallScreen) {
     return (
-      <div className={cn('skills-management-page absolute inset-0 flex flex-col overflow-hidden bg-background', className)}>
+      <div className={cn('skills-management-page study-shell-page absolute inset-0 flex flex-col overflow-hidden', className)}>
         <MobileSlidingLayout
           sidebar={null}
           rightPanel={renderRightPanel()}
@@ -889,7 +886,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           open={deleteConfirmOpen}
           onOpenChange={setDeleteConfirmOpen}
           onConfirm={handleConfirmDelete}
-        />
+/>
 
         <NotionAlertDialog
           open={importOverwriteOpen}
@@ -905,7 +902,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           confirmVariant="warning"
           onConfirm={handleConfirmOverwrite}
           onCancel={handleCancelOverwrite}
-        />
+/>
       </div>
     );
   }
@@ -913,7 +910,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
   // ========== 桌面端布局 ==========
   return (
     <LayoutGroup>
-      <div className={cn('skills-management-page absolute inset-0 flex flex-col overflow-hidden bg-background', className)}>
+      <div className={cn('skills-management-page study-shell-page absolute inset-0 flex flex-col overflow-hidden', className)}>
         {renderMainContent()}
 
         <SkillFullscreenEditor
@@ -924,14 +921,14 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           onSave={handleSave}
           originRect={editOriginRect}
           theme={isDarkMode ? 'dark' : 'light'}
-        />
+/>
 
         <SkillDeleteConfirm
           skill={skillToDelete}
           open={deleteConfirmOpen}
           onOpenChange={setDeleteConfirmOpen}
           onConfirm={handleConfirmDelete}
-        />
+/>
 
         <NotionAlertDialog
           open={importOverwriteOpen}
@@ -947,7 +944,7 @@ const handleImportFile = useCallback(async (e: React.ChangeEvent<HTMLInputElemen
           confirmVariant="warning"
           onConfirm={handleConfirmOverwrite}
           onCancel={handleCancelOverwrite}
-        />
+/>
       </div>
     </LayoutGroup>
   );

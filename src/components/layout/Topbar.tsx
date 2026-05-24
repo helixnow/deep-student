@@ -1,15 +1,16 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { createPortal } from 'react-dom';
-import { ChevronsLeft, ChevronsRight, Pin, PinOff, Beaker, Minus, Square, X, Command, ChevronRight, Home } from 'lucide-react';
-import { useFinderStore } from '@/components/learning-hub/stores/finderStore';
-import { getQuickAccessTypeFromPath } from '@/components/learning-hub/learningHubContracts';
+import { CaretDoubleLeft, CaretDoubleRight, Flask, Minus, Square, X, Command, CaretRight, House } from '@phosphor-icons/react';
+import { useFinderStore } from '@/features/learning-hub/stores/finderStore';
+import { getQuickAccessTypeFromPath } from '@/features/learning-hub/learningHubContracts';
 import { useCommandPalette } from '@/command-palette';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 // ★ 文档31清理：SubjectSelectShad 已删除
 import { useTranslation } from 'react-i18next';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
 import { createNavItems } from '../../config/navigation';
+import { useIsUILabEnabled } from '../../utils/uiLabToggle';
 import { getPlatform } from '../../utils/platform';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import type { CurrentView } from '@/types/navigation';
@@ -38,7 +39,7 @@ function CommandPaletteButton() {
   return (
     <CommonTooltip content={`${t('command_palette:title', '命令面板')} (${isMac ? '⌘' : 'Ctrl'}+K)`} position="bottom">
       <NotionButton variant="ghost" size="sm" onClick={open} className="h-8 px-2 hover:bg-[hsl(var(--accent))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]" aria-label={t('command_palette:title', '命令面板')}>
-        <Command className="h-4 w-4" />
+        <Command size={16} />
         <span className="text-xs font-medium hidden sm:inline">
           {isMac ? '⌘K' : 'Ctrl+K'}
         </span>
@@ -73,7 +74,7 @@ function LearningHubBreadcrumb() {
   if (!currentTitle && breadcrumbs.length === 0) {
     return (
       <div className="flex items-center gap-1 text-sm" data-no-drag>
-        <Home className="h-4 w-4 text-muted-foreground" />
+        <House size={16} className="text-muted-foreground" />
         <span className="font-medium text-foreground">{rootTitle}</span>
       </div>
     );
@@ -84,10 +85,10 @@ function LearningHubBreadcrumb() {
     return (
       <div className="flex items-center gap-1 text-sm" data-no-drag>
         <NotionButton variant="ghost" size="sm" onClick={() => quickAccessNavigate('allFiles')} className="!h-auto !p-0 text-muted-foreground hover:text-foreground">
-          <Home className="h-4 w-4" />
+          <House size={16} />
           <span>{rootTitle}</span>
         </NotionButton>
-        <ChevronRight className="h-4 w-4 text-muted-foreground" />
+        <CaretRight size={16} className="text-muted-foreground" />
         <span className="font-medium text-foreground">{currentTitle}</span>
       </div>
     );
@@ -97,14 +98,14 @@ function LearningHubBreadcrumb() {
   return (
     <div className="flex items-center gap-1 text-sm overflow-hidden" data-no-drag>
       <NotionButton variant="ghost" size="sm" onClick={() => quickAccessNavigate('allFiles')} className="!h-auto !p-0 text-muted-foreground hover:text-foreground shrink-0">
-        <Home className="h-4 w-4" />
+        <House size={16} />
         <span className="hidden sm:inline">{rootTitle}</span>
       </NotionButton>
       {breadcrumbs.map((crumb, index) => {
         const isLast = index === breadcrumbs.length - 1;
         return (
           <React.Fragment key={crumb.id || index}>
-            <ChevronRight className="h-4 w-4 text-muted-foreground shrink-0" />
+            <CaretRight size={16} className="text-muted-foreground shrink-0" />
             {isLast ? (
               <span className="font-medium text-foreground truncate max-w-[150px]">{crumb.name}</span>
             ) : (
@@ -124,9 +125,10 @@ export default function Topbar({ currentView, onNavigate, sidebarCollapsed, onTo
   const { t } = useTranslation(['sidebar', 'common']);
   const { isSmallScreen } = useBreakpoint(); // 后备检测：小屏幕（<768px）
   const platform = useMemo(() => getPlatform(), []);
-  
+  const uiLabEnabled = useIsUILabEnabled();
+
   // 使用统一的导航项配置（与MobileNavDrawer完全一致）
-  const navItems = useMemo(() => createNavItems(t), [t]);
+  const navItems = useMemo(() => createNavItems(t, uiLabEnabled), [t, uiLabEnabled]);
   
   // 窗口控制函数（Windows专用）
   const handleMinimize = useCallback(async () => {
@@ -177,14 +179,9 @@ export default function Topbar({ currentView, onNavigate, sidebarCollapsed, onTo
   const navRef = useRef<HTMLDivElement | null>(null);
   const [indicator, setIndicator] = useState<{ x: number; y: number; w: number; h: number; visible: boolean }>({ x: 0, y: 0, w: 0, h: 0, visible: false });
   const outerRef = useRef<HTMLDivElement | null>(null);
-  const dragState = useRef<{ dragging: boolean; startX: number; startY: number; baseLeft: number; baseTop: number }>({ dragging: false, startX: 0, startY: 0, baseLeft: 0, baseTop: 0 });
-  const [pos, setPos] = useState<{ left: number; top: number } | null>(null);
   const collapsibleRef = useRef<HTMLDivElement | null>(null);
   const [collapsed, setCollapsed] = useState<boolean>(() => {
     try { return localStorage.getItem('topbarCollapsed.v1') === '1'; } catch { return false; }
-  });
-  const [pinned, setPinned] = useState<boolean>(() => {
-    try { return localStorage.getItem('topbarPinned.v1') === '1'; } catch { return false; }
   });
   // Easter egg: click logo 5 times quickly => confetti + spiral flight
   const logoRef = useRef<HTMLImageElement | null>(null);
@@ -443,9 +440,7 @@ export default function Topbar({ currentView, onNavigate, sidebarCollapsed, onTo
       spiralLogoFlight();
     }
   };
-  const storageKey = 'topbarPos.v1';
-  const SNAP_BREAKPOINT = 768; // 窄屏阈值（含移动端）
-  const MARGIN = 8;
+  // Phase D1 (2026-05-14 native-feel): drag widget constants removed.
   // 统一的指示器重算函数，供多处调用
   const recalcIndicator = useCallback(() => {
     const el = navRef.current;
@@ -526,20 +521,8 @@ export default function Topbar({ currentView, onNavigate, sidebarCollapsed, onTo
       el.style.width = prev;
     }
     // 若靠近右侧边缘，展开前先左移以保证完整显示
-    try {
-      const outer = outerRef.current;
-      if (outer && !collapsed) {
-        const outerRect = outer.getBoundingClientRect();
-        const staticWidth = Math.max(0, outerRect.width - current);
-        const expandedWidth = staticWidth + target;
-        const candidateLeft = pos ? pos.left : outerRect.left;
-        const maxLeft = Math.max(MARGIN, window.innerWidth - expandedWidth - MARGIN);
-        const desiredLeft = Math.min(Math.max(candidateLeft, MARGIN), maxLeft);
-        if (!pos || Math.abs(desiredLeft - pos.left) > 1) {
-          setPos({ left: desiredLeft, top: pos ? pos.top : outerRect.top });
-        }
-      }
-    } catch (e) { console.warn('Failed to adjust topbar position before expand:', e); }
+    // (drag-widget legacy removed in Phase D1; Topbar is now fixed-top so no
+    //  reposition is needed before expand)
     // 定义过渡结束处理函数（放在外层作用域）
     const handleTransitionEnd = (ev: TransitionEvent) => {
       if (ev.propertyName === 'width') {
@@ -575,151 +558,12 @@ export default function Topbar({ currentView, onNavigate, sidebarCollapsed, onTo
     };
   }, [collapsed, recalcIndicator]);
 
-  // 位置计算与持久化
-  const clampToViewport = (left: number, top: number) => {
-    const el = outerRef.current;
-    const rect = el ? el.getBoundingClientRect() : ({ width: 320, height: 56 } as any);
-    const minLeft = MARGIN;
-    const minTop = MARGIN;
-    const maxLeft = Math.max(minLeft, window.innerWidth - rect.width - MARGIN);
-    const maxTop = Math.max(minTop, window.innerHeight - rect.height - MARGIN);
-    return { left: Math.min(Math.max(left, minLeft), maxLeft), top: Math.min(Math.max(top, minTop), maxTop) };
-  };
-
-  // 在窄屏时将 Topbar 靠左/靠右吸附
-  const snapIfNarrow = (left: number, top: number) => {
-    if (window.innerWidth > SNAP_BREAKPOINT) return { left, top };
-    const el = outerRef.current;
-    const rect = el ? el.getBoundingClientRect() : ({ width: 320 } as any);
-    const mid = window.innerWidth / 2;
-    const snapLeft = MARGIN;
-    const snapRight = Math.max(MARGIN, window.innerWidth - (rect.width || 320) - MARGIN);
-    const snappedLeft = left + (rect.width || 320) / 2 < mid ? snapLeft : snapRight;
-    return { left: snappedLeft, top };
-  };
-
-  // 初始化定位：优先使用本地存储；否则居中靠上
-  useEffect(() => {
-    const init = () => {
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved) as { left: number; top: number };
-          const clamped = clampToViewport(parsed.left, parsed.top);
-          setPos(clamped);
-          return;
-        } catch (e) { console.warn('Failed to parse saved topbar position:', e); }
-      }
-      const el = outerRef.current;
-      const rect = el ? el.getBoundingClientRect() : ({ width: 640 } as any);
-      const left = Math.max(MARGIN, (window.innerWidth - (rect.width || 640)) / 2);
-      const top = 24;
-      const clamped = clampToViewport(left, top);
-      const snapped = snapIfNarrow(clamped.left, clamped.top);
-      setPos(snapped);
-    };
-    // 等一帧确保宽度已渲染
-    requestAnimationFrame(init);
-    const onResize = () => setPos((p) => {
-      if (!p) return p;
-      const clamped = clampToViewport(p.left, p.top);
-      return snapIfNarrow(clamped.left, clamped.top);
-    });
-    window.addEventListener('resize', onResize);
-    return () => window.removeEventListener('resize', onResize);
-  }, []);
-
-  // 拖拽：在页面内移动 Topbar（鼠标与触摸）
-  useEffect(() => {
-    let rafId: number | null = null;
-    let lastMouseX = 0;
-    let lastMouseY = 0;
-    const scheduleMove = () => {
-      if (rafId != null) return;
-      rafId = requestAnimationFrame(() => {
-        rafId = null;
-        if (!dragState.current.dragging || !outerRef.current) return;
-        const el = outerRef.current;
-        const rect = el.getBoundingClientRect();
-        const dx = lastMouseX - dragState.current.startX;
-        const dy = lastMouseY - dragState.current.startY;
-        const newLeft = Math.min(Math.max(MARGIN, dragState.current.baseLeft + dx), Math.max(MARGIN, window.innerWidth - rect.width - MARGIN));
-        const newTop = Math.min(Math.max(MARGIN, dragState.current.baseTop + dy), Math.max(MARGIN, window.innerHeight - rect.height - MARGIN));
-        setPos({ left: newLeft, top: newTop });
-      });
-    };
-    const onMove = (e: MouseEvent) => {
-      if (!dragState.current.dragging) return;
-      lastMouseX = e.clientX;
-      lastMouseY = e.clientY;
-      scheduleMove();
-    };
-    const onUp = () => {
-      if (dragState.current.dragging) {
-        dragState.current.dragging = false;
-        // 吸边并保存
-        setPos((p) => {
-          if (!p) return p;
-          const clamped = clampToViewport(p.left, p.top);
-          const snapped = snapIfNarrow(clamped.left, clamped.top);
-          try { localStorage.setItem(storageKey, JSON.stringify(snapped)); } catch (e) { console.warn('Failed to persist topbar position:', e); }
-          return snapped;
-        });
-      }
-    };
-    // 触摸事件
-    let lastTouchX = 0;
-    let lastTouchY = 0;
-    const onTouchMove = (e: TouchEvent) => {
-      if (!dragState.current.dragging) return;
-      const t = e.touches[0];
-      if (!t) return;
-      lastTouchX = t.clientX;
-      lastTouchY = t.clientY;
-      // Reuse the same rAF scheduler
-      lastMouseX = lastTouchX;
-      lastMouseY = lastTouchY;
-      scheduleMove();
-    };
-    const onTouchEnd = () => onUp();
-    window.addEventListener('mousemove', onMove, { passive: true });
-    window.addEventListener('mouseup', onUp, { passive: true });
-    window.addEventListener('touchmove', onTouchMove, { passive: true });
-    window.addEventListener('touchend', onTouchEnd, { passive: true });
-    return () => {
-      if (rafId != null) cancelAnimationFrame(rafId);
-      window.removeEventListener('mousemove', onMove as any);
-      window.removeEventListener('mouseup', onUp as any);
-      window.removeEventListener('touchmove', onTouchMove as any);
-      window.removeEventListener('touchend', onTouchEnd as any);
-    };
-  }, []);
-
-  const startDrag = (e: React.MouseEvent) => {
-    // 避免在交互元素上触发拖拽
-    const target = (e.target as HTMLElement).closest('button, a, input, select, textarea');
-    if (target) return;
-    if (!outerRef.current || !pos) return;
-    dragState.current.dragging = true;
-    dragState.current.startX = e.clientX;
-    dragState.current.startY = e.clientY;
-    dragState.current.baseLeft = pos.left;
-    dragState.current.baseTop = pos.top;
-    e.preventDefault();
-  };
-
-  const startTouchDrag = (e: React.TouchEvent) => {
-    const target = (e.target as HTMLElement).closest('button, a, input, select, textarea');
-    if (target) return;
-    if (!outerRef.current || !pos) return;
-    const t = e.touches[0];
-    if (!t) return;
-    dragState.current.dragging = true;
-    dragState.current.startX = t.clientX;
-    dragState.current.startY = t.clientY;
-    dragState.current.baseLeft = pos.left;
-    dragState.current.baseTop = pos.top;
-  };
+  // Phase D1 (2026-05-14 native-feel): in-window drag widget removed.
+  // Topbar is now permanently fixed-top via Tailwind `fixed top-0 left-0
+  // right-0` and Tauri's `data-tauri-drag-region` handles window-drag.
+  // Previous behaviour (free-positioned floating bar with localStorage
+  // persistence and viewport snapping) was an Electron-style demo widget,
+  // not native to macOS or Windows desktop applications.
 
   // 计算并更新滑动指示器位置（根据当前激活项）- 使用 rAF 节流，减少同步重排
   useEffect(() => {
@@ -760,7 +604,7 @@ export default function Topbar({ currentView, onNavigate, sidebarCollapsed, onTo
     return () => el.removeEventListener('wheel', onWheel as any);
   }, [navRef]);
 
-  const primary = useMemo(() => navItems, []);
+  const primary = useMemo(() => navItems, [navItems]);
   const activeIndex = useMemo(() => primary.findIndex((it) => it.view === currentView), [primary, currentView]);
 
   const itemBase =
@@ -790,6 +634,10 @@ export default function Topbar({ currentView, onNavigate, sidebarCollapsed, onTo
     return null;
   }
 
+  const sidebarToggleLabel = sidebarCollapsed
+    ? t('sidebar:expand', '展开侧边栏')
+    : t('sidebar:collapse', '收起侧边栏');
+
   // 桌面模式：显示虚拟标题栏
   const content = (
     <div
@@ -813,13 +661,15 @@ export default function Topbar({ currentView, onNavigate, sidebarCollapsed, onTo
       
       {/* 左侧：侧边栏折叠按钮 */}
       <div className="flex-shrink-0 flex items-center gap-2 pl-3" data-no-drag>
-        <NotionButton variant="ghost" size="icon" iconOnly onClick={onToggleSidebar} className="hover:bg-[hsl(var(--accent))] text-[hsl(var(--foreground))]" style={{ width: 32, height: 32, minWidth: 32, minHeight: 32, flexShrink: 0 }} title={sidebarCollapsed ? t('sidebar:expand', '展开侧边栏') : t('sidebar:collapse', '收起侧边栏')} aria-label={sidebarCollapsed ? t('sidebar:expand', '展开侧边栏') : t('sidebar:collapse', '收起侧边栏')}>
-          {sidebarCollapsed ? (
-            <ChevronsRight style={{ width: 16, height: 16, minWidth: 16, minHeight: 16 }} />
-          ) : (
-            <ChevronsLeft style={{ width: 16, height: 16, minWidth: 16, minHeight: 16 }} />
-          )}
-        </NotionButton>
+        <CommonTooltip content={sidebarToggleLabel} position="bottom">
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={onToggleSidebar} className="hover:bg-[hsl(var(--accent))] text-[hsl(var(--foreground))]" style={{ width: 32, height: 32, minWidth: 32, minHeight: 32, flexShrink: 0 }} aria-label={sidebarToggleLabel}>
+            {sidebarCollapsed ? (
+              <CaretDoubleRight style={{ width: 16, height: 16, minWidth: 16, minHeight: 16 }} />
+            ) : (
+              <CaretDoubleLeft style={{ width: 16, height: 16, minWidth: 16, minHeight: 16 }} />
+            )}
+          </NotionButton>
+        </CommonTooltip>
       </div>
       
       {/* 中间：应用标题/面包屑导航 */}
@@ -841,13 +691,13 @@ export default function Topbar({ currentView, onNavigate, sidebarCollapsed, onTo
         {platform === 'windows' && (
           <div className="flex items-center ml-2">
             <NotionButton variant="ghost" size="icon" iconOnly onClick={handleMinimize} className="!h-8 !w-10 !rounded-none hover:bg-[hsl(var(--accent))] text-[hsl(var(--foreground))]" title={t('common:topbar.minimize')} aria-label={t('common:topbar.minimize')}>
-              <Minus className="h-3.5 w-3.5" />
+              <Minus size={14} />
             </NotionButton>
             <NotionButton variant="ghost" size="icon" iconOnly onClick={handleMaximize} className="!h-8 !w-10 !rounded-none hover:bg-[hsl(var(--accent))] text-[hsl(var(--foreground))]" title={t('common:topbar.maximize_restore')} aria-label={t('common:topbar.maximize_restore')}>
-              <Square className="h-3.5 w-3.5" />
+              <Square size={14} />
             </NotionButton>
             <NotionButton variant="ghost" size="icon" iconOnly onClick={handleClose} className="!h-8 !w-10 !rounded-none hover:bg-red-500 hover:text-white text-[hsl(var(--foreground))]" title={t('common:topbar.close')} aria-label={t('common:topbar.close')}>
-              <X className="h-3.5 w-3.5" />
+              <X size={14} />
             </NotionButton>
           </div>
         )}

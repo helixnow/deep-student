@@ -94,6 +94,7 @@ import ReactDOM from "react-dom/client";
 // 🚀 性能优化：KaTeX CSS 改为按需加载，见 src/utils/lazyStyles.ts
 import App from "./App";
 import { ErrorBoundary } from "./components/ErrorBoundary";
+import { OverlayCoordinatorProvider } from './components/shared/OverlayCoordinator';
 // 日志与错误上报初始化（跨平台）：结合 Tauri 日志插件与自定义上报
 import { disposeGlobalCacheManager } from './utils/cacheConsistencyManager';
 import { DialogControlProvider } from './contexts/DialogControlContext';
@@ -105,9 +106,13 @@ import { dstuDebugLog } from './debug-panel/plugins/DstuDebugPlugin';
 import { debugMasterSwitch, debugLog } from './debug-panel/debugMasterSwitch';
 // ★ 平台检测初始化（为 Android WebView 兼容性添加 CSS 类）
 import { initPlatformClasses } from './utils/platform';
+import { OverlayScrollbars, ClickScrollPlugin } from 'overlayscrollbars';
 
 // 尽早初始化平台检测类，确保 CSS 规则在渲染前生效
 initPlatformClasses();
+
+// 注册 OverlayScrollbars ClickScrollPlugin — 点击轨道时平滑滚动到目标位置
+OverlayScrollbars.plugin(ClickScrollPlugin);
 
 const maybeInstallReactGrab = () => {
   try {
@@ -356,9 +361,11 @@ const TopLevelFallback: React.FC<{ error?: any; componentStack?: string }> = ({ 
 
 const appTree = (
   <ErrorBoundary name="TopLevel" fallback={(error, componentStack) => <TopLevelFallback error={error} componentStack={componentStack} />}>
-    <DialogControlProvider>
-      <App />
-    </DialogControlProvider>
+    <OverlayCoordinatorProvider>
+      <DialogControlProvider>
+        <App />
+      </DialogControlProvider>
+    </OverlayCoordinatorProvider>
   </ErrorBoundary>
 );
 

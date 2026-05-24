@@ -3,7 +3,7 @@ import { describe, expect, it } from 'vitest';
 import {
   checkChatReadiness,
   resolveChatReadiness,
-} from '@/chat-v2/readiness/readinessGate';
+} from '@/features/chat/readiness/readinessGate';
 
 describe('readinessGate', () => {
   it('blocks send when model2 is missing', () => {

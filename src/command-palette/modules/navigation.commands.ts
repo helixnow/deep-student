@@ -9,19 +9,19 @@
 
 import i18next from 'i18next';
 import {
-  SquareStack,
-  Settings,
-  ChevronLeft,
-  ChevronRight,
+  Stack,
+  Gear,
+  CaretLeft,
+  CaretRight,
   Palette,
-  MessageSquare,
+  Chat,
   GraduationCap,
   FileText,
-  BarChart3,
+  ChartBar,
   Database,
-  Home,
-  Zap,
-} from 'lucide-react';
+  House,
+  Lightning,
+} from '@phosphor-icons/react';
 import type { Command } from '../registry/types';
 
 /** Helper: get localized keywords array for a given command key */
@@ -42,7 +42,7 @@ export function getNavigationCommands(): Command[] {
       description: i18next.t('command_palette:descriptions.nav.goto.chat-v2', 'Chat V2 - AI chat main entry'),
       category: 'navigation',
       shortcut: 'mod+1',
-      icon: MessageSquare,
+      icon: Chat,
       keywords: kw('nav.goto.chat-v2'),
       priority: 100,
       execute: (deps) => {
@@ -54,7 +54,7 @@ export function getNavigationCommands(): Command[] {
       name: i18next.t('command_palette:commands.nav.goto.skills-management', 'Go to Skills Management'),
       description: i18next.t('command_palette:descriptions.nav.goto.skills-management', 'MCP skills and tools management'),
       category: 'navigation',
-      icon: Zap,
+      icon: Lightning,
       keywords: kw('nav.goto.skills-management'),
       priority: 95,
       execute: (deps) => {
@@ -67,7 +67,7 @@ export function getNavigationCommands(): Command[] {
       description: i18next.t('command_palette:descriptions.nav.goto.task-dashboard', 'Manage card generation tasks'),
       category: 'navigation',
       shortcut: 'mod+shift+6',
-      icon: SquareStack,
+      icon: Stack,
       keywords: kw('nav.goto.task-dashboard'),
       priority: 94,
       execute: (deps) => {
@@ -122,7 +122,7 @@ export function getNavigationCommands(): Command[] {
       description: i18next.t('command_palette:descriptions.nav.goto.dashboard', 'Data statistics and overview'),
       category: 'navigation',
       shortcut: 'mod+5',
-      icon: BarChart3,
+      icon: ChartBar,
       keywords: kw('nav.goto.dashboard'),
       priority: 85,
       execute: (deps) => {
@@ -148,7 +148,7 @@ export function getNavigationCommands(): Command[] {
       description: i18next.t('command_palette:descriptions.nav.goto.settings', 'App settings and preferences'),
       category: 'navigation',
       shortcut: 'mod+,',
-      icon: Settings,
+      icon: Gear,
       keywords: kw('nav.goto.settings'),
       priority: 80,
       execute: (deps) => {
@@ -163,7 +163,7 @@ export function getNavigationCommands(): Command[] {
       description: i18next.t('command_palette:descriptions.nav.back', 'Go back to previous page'),
       category: 'navigation',
       shortcut: 'mod+[',
-      icon: ChevronLeft,
+      icon: CaretLeft,
       keywords: kw('nav.back'),
       priority: 70,
       execute: () => {
@@ -176,7 +176,7 @@ export function getNavigationCommands(): Command[] {
       description: i18next.t('command_palette:descriptions.nav.forward', 'Go forward to next page'),
       category: 'navigation',
       shortcut: 'mod+]',
-      icon: ChevronRight,
+      icon: CaretRight,
       keywords: kw('nav.forward'),
       priority: 69,
       execute: () => {
@@ -189,7 +189,7 @@ export function getNavigationCommands(): Command[] {
       description: i18next.t('command_palette:descriptions.nav.home', 'Return to app home page'),
       category: 'navigation',
       shortcut: 'mod+shift+h',
-      icon: Home,
+      icon: House,
       keywords: kw('nav.home'),
       priority: 68,
       execute: (deps) => {

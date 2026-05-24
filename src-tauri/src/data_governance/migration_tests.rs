@@ -60,8 +60,8 @@ mod tests {
     /// 新增迁移只会让实际 count **增加**，不应减少。
     /// 如果新增了迁移，请将基线更新为新值。
     /// 如果这些断言失败，说明有迁移被误删。
-    const VFS_MIGRATION_BASELINE: usize = 10;
-    const CHAT_V2_MIGRATION_BASELINE: usize = 7;
+    const VFS_MIGRATION_BASELINE: usize = 28;
+    const CHAT_V2_MIGRATION_BASELINE: usize = 14;
     const MISTAKES_MIGRATION_BASELINE: usize = 6;
     const LLM_USAGE_MIGRATION_BASELINE: usize = 3;
 
@@ -288,8 +288,9 @@ mod tests {
         assert!(report.success, "LLM Usage migration should succeed");
         assert_eq!(report.id, DatabaseId::LlmUsage);
         assert_eq!(
-            report.to_version, 20260201,
-            "LLM Usage should migrate to version 20260201"
+            report.to_version,
+            LLM_USAGE_MIGRATION_SET.latest_version() as u32,
+            "LLM Usage should migrate to the latest version"
         );
     }
 

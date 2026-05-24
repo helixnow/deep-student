@@ -8,7 +8,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, AlertCircle, Languages, RefreshCw } from 'lucide-react';
+import { CircleNotch, WarningCircle, Translate, ArrowClockwise } from '@phosphor-icons/react';
 import type { EditorProps, CreateEditorProps } from '../editorTypes';
 import { pathUtils } from '../utils/pathUtils';
 import { dstu } from '../api';
@@ -92,7 +92,7 @@ export const TranslationViewerWrapper: React.FC<EditorProps | CreateEditorProps>
   if (isLoading) {
     return (
       <div className={cn('flex items-center justify-center h-full py-8', props.className)}>
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        <CircleNotch size={24} className="animate-spin text-muted-foreground" />
         <span className="ml-2 text-muted-foreground">{t('dstu:preview.loading')}</span>
       </div>
     );
@@ -103,19 +103,19 @@ export const TranslationViewerWrapper: React.FC<EditorProps | CreateEditorProps>
     const onClose = 'onClose' in props ? props.onClose : undefined;
     return (
       <div className={cn('flex flex-col items-center justify-center h-full py-8 gap-4', props.className)}>
-        <AlertCircle className="w-8 h-8 text-destructive" />
+        <WarningCircle size={32} className="text-destructive" />
         <span className="text-destructive text-center max-w-md">{error}</span>
         <div className="flex gap-2">
           <button
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
             onClick={() => void loadTranslation()}
           >
-            <RefreshCw className="w-4 h-4" />
+            <ArrowClockwise size={16} />
             {t('common:actions.retry')}
           </button>
           {onClose && (
             <button
-              className="px-4 py-2 border rounded-md hover:bg-muted"
+              className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)]"
               onClick={onClose}
             >
               {t('common:actions.close')}
@@ -132,7 +132,7 @@ export const TranslationViewerWrapper: React.FC<EditorProps | CreateEditorProps>
       {/* 工具栏 */}
       <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 bg-muted/50 border-b">
         <div className="flex items-center gap-2">
-          <Languages className="w-5 h-5 text-muted-foreground" />
+          <Translate size={20} className="text-muted-foreground" />
           <span className="text-sm font-medium">{t('dstu:types.translation')}</span>
           <span className="text-xs text-muted-foreground">
             {translationData?.sourceLang} → {translationData?.targetLang}
@@ -140,7 +140,7 @@ export const TranslationViewerWrapper: React.FC<EditorProps | CreateEditorProps>
         </div>
         {'onClose' in props && props.onClose && (
           <button
-            className="px-3 py-1 text-sm border rounded-md hover:bg-muted"
+            className="px-3 py-1 text-sm border rounded-md hover:bg-[var(--interactive-hover)]"
             onClick={props.onClose}
           >
             {t('common:actions.close')}

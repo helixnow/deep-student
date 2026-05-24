@@ -285,6 +285,8 @@ export interface ApiConfig {
   vendorName?: string;
   providerType?: string;
   providerScope?: string;
+  apiProtocol?: ApiProtocol;
+  supportsOpenAIResponses?: boolean;
   apiKey: string;
   baseUrl: string;
   model: string;
@@ -292,6 +294,7 @@ export interface ApiConfig {
   isReasoning: boolean;
   isEmbedding: boolean;
   isReranker: boolean;
+  isImageGeneration?: boolean;
   enabled: boolean;
   modelAdapter: string;
   supportsTools?: boolean;
@@ -319,12 +322,16 @@ export interface ApiConfig {
   reasoningSplit?: boolean;
   effort?: string;
   verbosity?: string;
+  /** 前端基于模型能力推断的 ASR / Speech-to-Text 能力 */
+  isAudioTranscription?: boolean;
 }
 
 export interface VendorConfig {
   id: string;
   name: string;
   providerType: string;
+  apiProtocol?: ApiProtocol;
+  supportsOpenAIResponses?: boolean;
   baseUrl: string;
   apiKey: string;
   headers?: Record<string, string>;
@@ -346,6 +353,7 @@ export interface ModelProfile {
   label: string;
   model: string;
   providerScope?: string;
+  apiProtocol?: ApiProtocol;
   modelAdapter: string;
   status?: string;
   enabled: boolean;
@@ -353,6 +361,7 @@ export interface ModelProfile {
   isReasoning: boolean;
   isEmbedding: boolean;
   isReranker: boolean;
+  isImageGeneration?: boolean;
   supportsTools?: boolean;
   supportsReasoning?: boolean;
   maxOutputTokens?: number;
@@ -369,6 +378,8 @@ export interface ModelProfile {
   isReadOnly?: boolean;
   /** 是否收藏（收藏的模型在列表中优先显示） */
   isFavorite?: boolean;
+  /** 上下文窗口大小（tokens），用于设置页和 Chat V2 自动预算 */
+  contextWindow?: number;
   repetitionPenalty?: number;
   reasoningSplit?: boolean;
   effort?: string;
@@ -388,6 +399,10 @@ export interface ModelAssignments {
   vl_embedding_model_config_id: string | null;  // 多模态嵌入模型（Qwen3-VL-Embedding）
   vl_reranker_model_config_id: string | null;   // 多模态重排序模型（Qwen3-VL-Reranker）
   memory_decision_model_config_id: string | null; // 记忆决策模型（smart write 去重判断）
+  voice_input_asr_model_config_id: string | null; // 语音输入 ASR 模型
+  image_generation_model_config_id: string | null; // 生图模型
+  /** 聊天内翻译弹窗显示模式：'aligned' = 短语对照（默认），'streaming' = 流式纯译文 */
+  translation_display_mode: 'aligned' | 'streaming' | null;
 }
 
 // 子适配器类型（与后端 ADAPTER_REGISTRY 保持一致）
@@ -406,6 +421,12 @@ export type ModelAdapter =
   | 'ernie'        // 百度文心
   | 'mistral'      // Mistral
   | 'custom';      // 自定义（兼容旧版）
+
+export type ApiProtocol =
+  | 'openai_chat_completions'
+  | 'openai_responses'
+  | 'google_generate_content'
+  | 'anthropic_messages';
 
 // ============================================================================
 // System Settings Types

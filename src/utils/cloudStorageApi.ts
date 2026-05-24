@@ -45,6 +45,12 @@ export interface CloudStorageConfig {
   s3?: S3Config;
   /** 根目录路径 */
   root?: string;
+  /** 端到端加密密码（可选）
+   *
+   * 非空时后端上传 ZIP 前会用 AES-256-GCM + Argon2id 加密，下载时自动解密。
+   * 密码存储在系统安全存储（与 webdav/s3 凭据同机制）。
+   */
+  encryptionPassword?: string;
 }
 
 // ============== 前端本地配置存储（非敏感信息） ==============
@@ -79,6 +85,7 @@ export async function loadStoredCloudStorageConfigWithCredentials(): Promise<Clo
   if (!safe) return null;
 
   const credentials = await getCredentials().catch(() => null);
+  const encryptionPassword = credentials?.encryptionPassword ?? undefined;
 
   if (safe.provider === 'webdav') {
     return {
@@ -86,11 +93,11 @@ export async function loadStoredCloudStorageConfigWithCredentials(): Promise<Clo
       webdav: safe.webdav
         ? {
             ...safe.webdav,
-            // 防御性编程：不回退到 safe（localStorage）中的密码字段，
-            // 虽然 saveConfig 已将其清空为 ''，但直接使用 '' 避免残留泄漏风险
+            // 防御性编程：不回退到 safe（localStorage）中的密码字段
             password: credentials?.webdavPassword ?? '',
           }
         : undefined,
+      encryptionPassword,
     };
   }
 
@@ -99,10 +106,10 @@ export async function loadStoredCloudStorageConfigWithCredentials(): Promise<Clo
     s3: safe.s3
       ? {
           ...safe.s3,
-          // 防御性编程：同上，不回退到 localStorage 中可能残留的 secretAccessKey
           secretAccessKey: credentials?.s3SecretAccessKey ?? '',
         }
       : undefined,
+    encryptionPassword,
   };
 }
 
@@ -441,6 +448,8 @@ export interface CloudStorageCredentials {
   webdavPassword?: string;
   /** S3 Secret Access Key */
   s3SecretAccessKey?: string;
+  /** 端到端加密密码 */
+  encryptionPassword?: string;
 }
 
 /**

@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { buildImageDataUrl, extractImageOcrText, extractImagePayload } from '@/chat-v2/context/imagePayload';
+import { buildImageDataUrl, extractImageOcrText, extractImagePayload } from '@/features/chat/context/imagePayload';
 
 describe('imagePayload helpers', () => {
   it('extracts base64 and OCR text from mixed data URL payload', () => {

@@ -27,11 +27,13 @@ const DEPRECATED_VIEW_MAP: Readonly<Record<string, CurrentView>> = {
 
 const BASE_CANONICAL_VIEWS: CurrentView[] = [
   'chat-v2',
+  'sandbox-workbench',
   'settings',
   'dashboard',
   'data-management',
   'task-dashboard',
   'template-management',
+  'ui-lab',
   'template-json-preview',
   'pdf-reader',
   'learning-hub',
@@ -39,7 +41,7 @@ const BASE_CANONICAL_VIEWS: CurrentView[] = [
   'todo',
 ];
 
-const DEV_ONLY_VIEWS: CurrentView[] = ['crepe-demo', 'chat-v2-test', 'tree-test'];
+const DEV_ONLY_VIEWS: CurrentView[] = ['crepe-demo', 'chat-v2-test', 'tree-test', 'llm-playground'];
 
 export const CANONICAL_VIEWS: ReadonlySet<CurrentView> = new Set([
   ...BASE_CANONICAL_VIEWS,

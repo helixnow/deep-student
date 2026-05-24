@@ -5,9 +5,9 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import {
-  Search, Filter, Download, Tags, Edit, Trash2, 
-  Copy, CheckSquare, Square, MoreVertical, X, ChevronDown
-} from 'lucide-react';
+  MagnifyingGlass, Funnel, Download, Tag, PencilSimple, Trash, 
+  Copy, CheckSquare, Square, DotsThreeVertical, X, CaretDown
+} from '@phosphor-icons/react';
 import { unifiedAlert, unifiedConfirm, unifiedPrompt } from '@/utils/unifiedDialogs';
 import BatchEditDialog from './BatchEditDialog';
 import FilterBuilder from './FilterBuilder';
@@ -22,7 +22,7 @@ interface BatchOperationToolbarProps {
   onSelectionChange?: (selectedIds: Set<string>) => void;
 }
 
-interface Filter {
+interface Funnel {
   id: string;
   type: 'tag' | 'content' | 'date' | 'has_image' | 'no_tags' | 'created_today';
   field?: string;
@@ -40,7 +40,7 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
   // 状态管理
   const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState('');
-  const [activeFilters, setActiveFilters] = useState<Filter[]>([]);
+  const [activeFilters, setActiveFilters] = useState<Funnel[]>([]);
   const [showFilterBuilder, setShowFilterBuilder] = useState(false);
   const [showBatchEdit, setShowBatchEdit] = useState(false);
   const [isProcessing, setIsProcessing] = useState(false);
@@ -125,7 +125,7 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
   
   // 添加快速过滤器
   const addQuickFilter = (filterType: string) => {
-    const newFilter: Filter = {
+    const newFilter: Funnel = {
       id: generateId(),
       type: filterType as any,
       value: true
@@ -278,14 +278,14 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
         {/* 搜索和筛选区 */}
         <div className="toolbar-section search-filter">
           <div className="search-box">
-            <Search size={18} />
+            <MagnifyingGlass size={18} />
             <input
               type="text"
               placeholder={t('search_cards_placeholder')}
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               className="search-input"
-            />
+/>
             {searchQuery && (
               <NotionButton variant="ghost" size="icon" iconOnly className="clear-search" onClick={() => setSearchQuery('')} aria-label="clear">
                 <X size={14} />
@@ -294,7 +294,7 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
           </div>
           
           <NotionButton variant="ghost" size="sm" className="filter-button" onClick={() => setShowFilterBuilder(true)}>
-            <Filter size={18} />
+            <Funnel size={18} />
             {t('filter')}
             {activeFilters.length > 0 && (
               <span className="filter-count">{activeFilters.length}</span>
@@ -338,12 +338,12 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
         {/* 批量操作按钮 */}
         <div className="toolbar-section batch-actions">
           <NotionButton variant="ghost" size="sm" className="action-btn" onClick={() => setShowBatchEdit(true)} disabled={selectedIds.size === 0 || isProcessing}>
-            <Edit size={18} />
+            <PencilSimple size={18} />
             {t('edit')}
           </NotionButton>
           
           <NotionButton variant="ghost" size="sm" className="action-btn" onClick={handleBatchAddTags} disabled={selectedIds.size === 0 || isProcessing}>
-            <Tags size={18} />
+            <Tag size={18} />
             {t('tags')}
           </NotionButton>
           
@@ -358,13 +358,13 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
           </NotionButton>
           
           <NotionButton variant="danger" size="sm" className="action-btn danger" onClick={handleBatchDelete} disabled={selectedIds.size === 0 || isProcessing}>
-            <Trash2 size={18} />
+            <Trash size={18} />
             {t('delete')}
           </NotionButton>
           
           <div className="dropdown-container">
             <NotionButton variant="ghost" size="icon" iconOnly className="action-btn more" onClick={() => setShowMoreMenu(!showMoreMenu)} aria-label="more">
-              <MoreVertical size={18} />
+              <DotsThreeVertical size={18} />
             </NotionButton>
             
             {showMoreMenu && (
@@ -417,7 +417,7 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
                   card={card}
                   isSelected={isSelected}
                   onSelect={(e) => handleSelect(cardId, virtualItem.index, e)}
-                />
+/>
               </div>
             );
           })}
@@ -428,12 +428,12 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
       {showFilterBuilder && (
           <FilterBuilder
             filters={activeFilters}
-            onApply={(newFilters: Filter[]) => {
+            onApply={(newFilters: Funnel[]) => {
               setActiveFilters(() => newFilters);
               setShowFilterBuilder(false);
             }}
             onClose={() => setShowFilterBuilder(false)}
-          />
+/>
       )}
       
       {showBatchEdit && (
@@ -447,7 +447,7 @@ export const BatchOperationToolbar: React.FC<BatchOperationToolbarProps> = ({
             showNotification(t('batch_updated', { count: selectedIds.size }));
           }}
           onClose={() => setShowBatchEdit(false)}
-        />
+/>
       )}
     </>
   );
@@ -493,7 +493,7 @@ const BatchCardItem: React.FC<BatchCardItemProps> = React.memo(({
 });
 
 // 辅助函数
-function applyFilter(cards: AnkiCard[], filter: Filter): AnkiCard[] {
+function applyFilter(cards: AnkiCard[], filter: Funnel): AnkiCard[] {
   switch (filter.type) {
     case 'tag':
       return cards.filter(card => {

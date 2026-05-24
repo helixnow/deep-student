@@ -61,6 +61,8 @@ fn get_tool_timeout_secs(tool_name: &str) -> u64 {
                 35 * 60 // 35 分钟（比内部 30 分钟稍长，避免竞态）
             } else if stripped.starts_with("chatanki_") {
                 600 // 10 分钟（chatanki_run/start/export/sync 可能涉及大量 IO）
+            } else if stripped == "image_generate" {
+                300 // 5 分钟（第三方生图 API 可能排队）
             } else if tool_name.starts_with("mcp_") {
                 // 前缀匹配：MCP 工具通常需要网络请求
                 180 // 3 分钟
@@ -372,5 +374,11 @@ mod tests {
             Some(ToolSensitivity::Low)
         );
         assert_eq!(registry.get_sensitivity("unknown_tool"), None);
+    }
+
+    #[test]
+    fn image_generation_tool_uses_five_minute_timeout() {
+        assert_eq!(get_tool_timeout_secs("builtin-image_generate"), 300);
+        assert_eq!(get_tool_timeout_secs("image_generate"), 300);
     }
 }

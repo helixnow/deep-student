@@ -12,6 +12,8 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
+import { Sparkle } from '@phosphor-icons/react';
+import { CommonTooltip } from '@/components/shared/CommonTooltip';
 
 export type AiContentLabelVariant = 'inline' | 'badge' | 'footnote';
 
@@ -24,26 +26,14 @@ export interface AiContentLabelProps {
   showIcon?: boolean;
 }
 
-/**
- * AI 内容标识图标 (sparkle)
- */
 const AiSparkleIcon: React.FC<{ className?: string }> = ({ className }) => (
-  <svg
-    className={cn('inline-block', className)}
-    width="12"
-    height="12"
-    viewBox="0 0 16 16"
-    fill="currentColor"
-    aria-hidden="true"
-  >
-    <path d="M8 0 L9.5 5.5 L16 8 L9.5 10.5 L8 16 L6.5 10.5 L0 8 L6.5 5.5 Z" />
-  </svg>
+  <Sparkle weight="fill" className={cn('inline-block', className)} aria-hidden="true" />
 );
 
 export const AiContentLabel: React.FC<AiContentLabelProps> = ({
   variant = 'inline',
   className,
-  showIcon = true,
+  showIcon = false,
 }) => {
   const { t } = useTranslation('common');
 
@@ -51,21 +41,22 @@ export const AiContentLabel: React.FC<AiContentLabelProps> = ({
 
   if (variant === 'badge') {
     return (
-      <span
-        className={cn(
-          'inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full',
-          'text-[10px] leading-none font-medium',
-          'bg-blue-500/10 text-blue-600 dark:text-blue-400',
-          'select-none',
-          className
-        )}
-        title={t('aiContentLabel.tooltip', '此内容由人工智能生成，可能存在错误，请注意甄别')}
-        role="note"
-        aria-label={t('aiContentLabel.ariaLabel', 'AI 生成内容')}
-      >
-        {showIcon && <AiSparkleIcon className="w-2.5 h-2.5" />}
-        {label}
-      </span>
+      <CommonTooltip content={t('aiContentLabel.tooltip', '此内容由人工智能生成，可能存在错误，请注意甄别')}>
+        <span
+          className={cn(
+            'inline-flex items-center gap-0.5 px-1.5 py-0.5 rounded-full',
+            'text-[10px] leading-none font-medium',
+            'bg-primary/10 text-primary',
+            'select-none',
+            className
+          )}
+          role="note"
+          aria-label={t('aiContentLabel.ariaLabel', 'AI 生成内容')}
+        >
+          {showIcon && <AiSparkleIcon className="w-2.5 h-2.5" />}
+          {label}
+        </span>
+      </CommonTooltip>
     );
   }
 
@@ -88,19 +79,20 @@ export const AiContentLabel: React.FC<AiContentLabelProps> = ({
 
   // Default: inline
   return (
-    <span
-      className={cn(
-        'inline-flex items-center gap-1',
-        'text-[11px] text-muted-foreground/60 select-none',
-        className
-      )}
-      title={t('aiContentLabel.tooltip', '此内容由人工智能生成，可能存在错误，请注意甄别')}
-      role="note"
-      aria-label={t('aiContentLabel.ariaLabel', 'AI 生成内容')}
-    >
-      {showIcon && <AiSparkleIcon className="w-3 h-3" />}
-      <span>{label}</span>
-    </span>
+    <CommonTooltip content={t('aiContentLabel.tooltip', '此内容由人工智能生成，可能存在错误，请注意甄别')}>
+      <span
+        className={cn(
+          'inline-flex items-center gap-1',
+          'text-[11px] text-muted-foreground/60 select-none',
+          className
+        )}
+        role="note"
+        aria-label={t('aiContentLabel.ariaLabel', 'AI 生成内容')}
+      >
+        {showIcon && <AiSparkleIcon className="w-3 h-3" />}
+        <span>{label}</span>
+      </span>
+    </CommonTooltip>
   );
 };
 

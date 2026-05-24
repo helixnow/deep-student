@@ -6,7 +6,7 @@
 /* 页面容器 */
 .template-management-page {
   min-height: 100vh;
-  background: hsl(var(--background));
+  background: var(--shell-workspace-surface);
   display: flex;
   flex-direction: column;
 }
@@ -21,9 +21,9 @@
 
 /* 选择模式提示 */
 .selecting-mode-hint {
-  background: hsl(var(--warning) / 0.1);
-  border: 1px solid hsl(var(--warning) / 0.3);
-  border-radius: 8px;
+  background: color-mix(in hsl, hsl(var(--warning)) 10%, var(--surface-panel-strong) 90%);
+  border: 1px solid color-mix(in hsl, hsl(var(--warning)) 22%, transparent 78%);
+  border-radius: var(--radius-shell-control);
   padding: 12px 16px;
   margin-bottom: 20px;
   display: flex;
@@ -66,83 +66,58 @@
 /* ============================================
    模板卡片 - Notion 风格
    ============================================ */
-.notion-template-card {
-  background: hsl(var(--card));
-  border: 1px solid hsl(var(--border));
-  border-radius: 8px;
-  transition: box-shadow 0.2s ease, border-color 0.2s ease;
+.template-shell-card {
+  background: var(--surface-panel-strong);
+  border: 1px solid var(--shell-workspace-border);
+  border-radius: var(--radius-shell-panel);
+  transition: box-shadow 0.2s ease, border-color 0.2s ease, background-color 0.2s ease;
   cursor: pointer;
+  box-shadow: var(--shadow-shell-soft);
 }
 
-.notion-template-card:hover {
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.08);
-  border-color: hsl(var(--border));
+.template-shell-card:hover {
+  box-shadow: var(--shadow-shell-panel);
+  border-color: var(--shell-navigation-border);
+  background: var(--shell-workspace-panel);
 }
 
-.notion-template-card.selected {
-  border-color: hsl(var(--primary));
-  box-shadow: 0 0 0 2px hsl(var(--primary) / 0.15);
+.template-shell-card.selected {
+  border-color: var(--button-primary-border);
+  box-shadow: var(--shadow-shell-panel);
 }
 
-.notion-template-card.inactive {
+.template-shell-card.inactive {
   opacity: 0.6;
 }
 
 /* 卡片头部 */
-.notion-card-header {
+.template-shell-card-header {
   padding: 16px;
-  border-bottom: 1px solid hsl(var(--border));
+  border-bottom: 1px solid var(--shell-workspace-border);
   display: flex;
   justify-content: space-between;
   align-items: flex-start;
   gap: 12px;
 }
 
-.notion-card-title {
+.template-shell-card-title {
   font-size: 15px;
   font-weight: 600;
-  color: hsl(var(--foreground));
+  color: var(--text-primary);
   margin: 0;
   line-height: 1.4;
   flex: 1;
 }
 
-.notion-card-badges {
+.template-shell-card-badges {
   display: flex;
   gap: 6px;
   flex-shrink: 0;
   flex-wrap: wrap;
 }
 
-.notion-badge {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 4px;
-  font-weight: 500;
-}
-
-.notion-badge.default {
-  background: hsl(var(--primary) / 0.1);
-  color: hsl(var(--primary));
-}
-
-.notion-badge.builtin {
-  background: hsl(var(--muted));
-  color: hsl(var(--muted-foreground));
-}
-
-.notion-badge.version {
-  background: hsl(142 76% 36% / 0.1);
-  color: hsl(142 76% 36%);
-}
-
-.notion-badge.inactive {
-  background: hsl(var(--destructive) / 0.1);
-  color: hsl(var(--destructive));
-}
-
 /* 预览区域容器 */
-.notion-preview-container {
+.template-shell-preview-container {
   padding: 16px;
   display: flex;
   flex-direction: column;
@@ -150,65 +125,64 @@
 }
 
 /* 单个预览区域 */
-.notion-preview-section {
-  background: hsl(var(--muted) / 0.3);
-  border-radius: 6px;
+.template-shell-preview-section {
+  background: color-mix(in hsl, var(--surface-panel-strong) 72%, var(--surface-root) 28%);
+  border: 1px solid var(--shell-workspace-border);
+  border-radius: var(--radius-shell-control);
   overflow: hidden;
 }
 
-.notion-preview-label {
+.template-shell-preview-label {
   font-size: 11px;
   font-weight: 600;
-  color: hsl(var(--muted-foreground));
-  text-transform: uppercase;
-  letter-spacing: 0.5px;
+  color: var(--text-secondary);
   padding: 8px 12px;
-  background: hsl(var(--muted) / 0.5);
-  border-bottom: 1px solid hsl(var(--border) / 0.5);
+  background: color-mix(in hsl, var(--surface-panel-strong) 82%, var(--surface-root) 18%);
+  border-bottom: 1px solid var(--shell-workspace-border);
 }
 
 /* 预览内容 - 自适应高度，完整展示 */
-.notion-preview-content {
+.template-shell-preview-content {
   min-height: 150px;
   padding: 12px;
-  background: hsl(var(--background));
+  background: var(--surface-root);
 }
 
 /* 预览内容内的 ShadowDom 样式 */
-.notion-preview-content [data-shadow-host="true"] {
+.template-shell-preview-content [data-shadow-host="true"] {
   display: block;
   width: 100%;
 }
 
 /* 滚动条样式 */
-.notion-preview-content::-webkit-scrollbar {
+.template-shell-preview-content::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
 
-.notion-preview-content::-webkit-scrollbar-track {
+.template-shell-preview-content::-webkit-scrollbar-track {
   background: transparent;
 }
 
-.notion-preview-content::-webkit-scrollbar-thumb {
-  background: hsl(var(--muted-foreground) / 0.3);
+.template-shell-preview-content::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
   border-radius: 3px;
 }
 
-.notion-preview-content::-webkit-scrollbar-thumb:hover {
-  background: hsl(var(--muted-foreground) / 0.5);
+.template-shell-preview-content::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
 }
 
 /* 卡片信息 */
-.notion-card-info {
+.template-shell-card-info {
   padding: 12px 16px;
-  border-top: 1px solid hsl(var(--border));
-  background: hsl(var(--muted) / 0.2);
+  border-top: 1px solid var(--shell-workspace-border);
+  background: color-mix(in hsl, var(--surface-panel-strong) 88%, var(--surface-root) 12%);
 }
 
-.notion-card-description {
+.template-shell-card-description {
   font-size: 13px;
-  color: hsl(var(--muted-foreground));
+  color: var(--text-secondary);
   margin: 0 0 8px 0;
   line-height: 1.5;
   display: -webkit-box;
@@ -217,143 +191,105 @@
   overflow: hidden;
 }
 
-.notion-card-meta {
+.template-shell-card-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 12px;
   font-size: 12px;
-  color: hsl(var(--muted-foreground));
+  color: var(--text-secondary);
 }
 
-.notion-meta-item {
+.template-shell-meta-item {
   display: flex;
   align-items: center;
   gap: 4px;
 }
 
-.notion-meta-icon {
+.template-shell-meta-icon {
   width: 12px;
   height: 12px;
   opacity: 0.7;
 }
 
 /* 字段标签 */
-.notion-fields {
+.template-shell-fields {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   margin-top: 8px;
 }
 
-.notion-field-tag {
+.template-shell-field-tag {
   font-size: 11px;
   padding: 2px 6px;
-  background: hsl(var(--muted));
-  color: hsl(var(--muted-foreground));
-  border-radius: 3px;
+  background: var(--button-utility-surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--button-utility-border);
+  border-radius: 999px;
 }
 
-.notion-field-tag.more {
-  background: hsl(var(--primary) / 0.1);
-  color: hsl(var(--primary));
+.template-shell-field-tag.more {
+  background: var(--button-primary-surface);
+  color: var(--button-primary-foreground);
+  border-color: var(--button-primary-border);
 }
 
 /* 卡片操作栏 */
-.notion-card-actions {
+.template-shell-card-actions {
   padding: 12px 16px;
-  border-top: 1px solid hsl(var(--border));
+  border-top: 1px solid var(--shell-workspace-border);
   display: flex;
   justify-content: space-between;
   align-items: center;
   gap: 8px;
 }
 
-.notion-action-buttons {
+.template-shell-action-buttons {
   display: flex;
   gap: 4px;
-}
-
-.notion-action-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: none;
-  background: transparent;
-  border-radius: 6px;
-  cursor: pointer;
-  color: hsl(var(--muted-foreground));
-  transition: all 0.15s ease;
-}
-
-.notion-action-btn:hover {
-  background: hsl(var(--muted));
-  color: hsl(var(--foreground));
-}
-
-.notion-action-btn.danger:hover {
-  background: hsl(var(--destructive) / 0.1);
-  color: hsl(var(--destructive));
-}
-
-.notion-primary-btn {
-  padding: 6px 14px;
-  font-size: 13px;
-  font-weight: 500;
-  border: none;
-  border-radius: 6px;
-  cursor: pointer;
-  background: hsl(var(--primary));
-  color: hsl(var(--primary-foreground));
-  transition: opacity 0.15s ease;
-}
-
-.notion-primary-btn:hover {
-  opacity: 0.9;
 }
 
 /* ============================================
    列表视图卡片 - 水平布局，按钮在左侧 header 内
    ============================================ */
-.notion-template-card.list-view {
+.template-shell-card.list-view {
   display: flex;
   flex-direction: row;
   align-items: stretch;
 }
 
-.notion-template-card.list-view .notion-card-header {
+.template-shell-card.list-view .template-shell-card-header {
   flex: 0 0 200px;
   border-bottom: none;
-  border-right: 1px solid hsl(var(--border));
+  border-right: 1px solid var(--shell-workspace-border);
   display: flex;
   flex-direction: column;
   justify-content: space-between; /* 标题在上，按钮在下 */
   padding: 12px;
 }
 
-.notion-template-card.list-view .notion-preview-container {
+.template-shell-card.list-view .template-shell-preview-container {
   flex: 1;
   display: flex;
   flex-direction: row;
   padding: 12px;
 }
 
-.notion-template-card.list-view .notion-preview-section {
+.template-shell-card.list-view .template-shell-preview-section {
   flex: 1;
 }
 
-.notion-template-card.list-view .notion-preview-content {
+.template-shell-card.list-view .template-shell-preview-content {
   min-height: 120px;
   height: auto;
 }
 
-.notion-template-card.list-view .notion-card-info {
+.template-shell-card.list-view .template-shell-card-info {
   display: none;
 }
 
 /* 列表视图：操作按钮放在 header 内底部 */
-.notion-template-card.list-view .notion-card-actions {
+.template-shell-card.list-view .template-shell-card-actions {
   display: flex;
   flex-direction: row;
   flex-wrap: wrap;
@@ -365,19 +301,10 @@
   background: transparent;
 }
 
-.notion-template-card.list-view .notion-primary-btn {
-  font-size: 11px;
-  padding: 4px 8px;
-}
-
-.notion-template-card.list-view .notion-action-buttons {
+.template-shell-card.list-view .template-shell-action-buttons {
   display: flex;
   flex-direction: row;
   gap: 2px;
-}
-
-.notion-template-card.list-view .notion-action-btn {
-  padding: 4px;
 }
 
 /* ============================================
@@ -554,7 +481,7 @@
 }
 
 /* 移动端卡片：无圆角，无左右边框，紧贴边缘 */
-.template-browser.mobile-layout .notion-template-card {
+.template-browser.mobile-layout .template-shell-card {
   border-radius: 0;
   border-left: none;
   border-right: none;
@@ -562,11 +489,11 @@
 }
 
 /* 相邻卡片之间的边框合并 */
-.template-browser.mobile-layout .notion-template-card + .notion-template-card {
+.template-browser.mobile-layout .template-shell-card + .template-shell-card {
   border-top: none;
 }
 
-.template-browser.mobile-layout .notion-card-header {
+.template-browser.mobile-layout .template-shell-card-header {
   padding: 12px;
   flex-wrap: wrap;
 }
@@ -575,43 +502,43 @@
    响应式调整（CSS 媒体查询备用）
    ============================================ */
 @media (max-width: 768px) {
-  .notion-card-header {
+  .template-shell-card-header {
     padding: 12px;
     flex-wrap: wrap;
   }
 
-  .notion-card-title {
+  .template-shell-card-title {
     font-size: 14px;
   }
 
-  .notion-card-badges {
+  .template-shell-card-badges {
     width: 100%;
     margin-top: 8px;
   }
 
-  .notion-preview-container {
+  .template-shell-preview-container {
     padding: 12px;
   }
 
-  .notion-preview-content {
+  .template-shell-preview-content {
     min-height: 120px;
     padding: 10px;
   }
 
-  .notion-preview-label {
+  .template-shell-preview-label {
     font-size: 10px;
     padding: 6px 10px;
   }
 
-  .notion-card-info {
+  .template-shell-card-info {
     padding: 10px 12px;
   }
 
-  .notion-card-description {
+  .template-shell-card-description {
     font-size: 12px;
   }
 
-  .notion-card-actions {
+  .template-shell-card-actions {
     padding: 10px 12px;
     flex-wrap: wrap;
     gap: 6px;
@@ -624,34 +551,34 @@
     font-size: 13px;
   }
 
-  .notion-action-buttons {
+  .template-shell-action-buttons {
     width: 100%;
     justify-content: space-around;
   }
 
   /* 列表视图在移动端变回垂直布局 */
-  .notion-template-card.list-view {
+  .template-shell-card.list-view {
     flex-direction: column;
   }
 
-  .notion-template-card.list-view .notion-card-header {
+  .template-shell-card.list-view .template-shell-card-header {
     flex: none;
     border-right: none;
-    border-bottom: 1px solid hsl(var(--border));
+    border-bottom: 1px solid var(--shell-workspace-border);
   }
 
-  .notion-template-card.list-view .notion-preview-container {
+  .template-shell-card.list-view .template-shell-preview-container {
     flex-direction: column;
   }
 
-  .notion-template-card.list-view .notion-card-actions {
+  .template-shell-card.list-view .template-shell-card-actions {
     flex-direction: row;
     border-left: none;
-    border-top: 1px solid hsl(var(--border));
+    border-top: 1px solid var(--shell-workspace-border);
     padding: 10px 12px;
   }
 
-  .notion-template-card.list-view .notion-action-buttons {
+  .template-shell-card.list-view .template-shell-action-buttons {
     flex-direction: row;
   }
 

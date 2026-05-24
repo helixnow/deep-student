@@ -4,6 +4,7 @@ import { defineConfig, normalizePath } from "vite";
 import react from "@vitejs/plugin-react";
 import { fileURLToPath } from "node:url";
 import { viteStaticCopy } from "vite-plugin-static-copy";
+import { visualizer } from "rollup-plugin-visualizer";
 // Explicit PostCSS config to ensure Tailwind is applied even if auto-detection fails
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore
@@ -48,7 +49,14 @@ export default defineConfig(({ command, mode }) => ({
         { src: wasmDir, dest: '' },
       ],
     }),
-  ],
+    process.env.ANALYZE === '1' && visualizer({
+      filename: 'dist/bundle-report.html',
+      template: 'treemap',
+      gzipSize: true,
+      brotliSize: false,
+      open: false,
+    }),
+  ].filter(Boolean) as any,
   define: {
     __VUE_OPTIONS_API__: false,
     __VUE_PROD_DEVTOOLS__: false,
@@ -232,6 +240,19 @@ export default defineConfig(({ command, mode }) => ({
           // i18n
           if (id.includes('i18next') || id.includes('react-i18next')) {
             return 'vendor-i18n';
+          }
+          // 重型可视化依赖（按需加载视图独立分包）
+          if (id.includes('@xyflow/') || id.includes('reactflow')) {
+            return 'vendor-xyflow';
+          }
+          if (id.includes('recharts') || id.includes('d3-')) {
+            return 'vendor-charts';
+          }
+          if (id.includes('pdfjs-dist')) {
+            return 'vendor-pdfjs';
+          }
+          if (id.includes('mermaid')) {
+            return 'vendor-mermaid';
           }
         },
       }

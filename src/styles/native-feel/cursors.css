@@ -1,0 +1,189 @@
+/**
+ * Native-feel: cursor strategy
+ * -----------------------------
+ * Phase E of native-feel migration (2026-05-14).
+ *
+ * Companion to selection.css. With `user-select: none` as the global default
+ * (Phase A), the browser would still show an I-beam text cursor whenever the
+ * pointer hovered any element containing text — defaulting `cursor: auto` to
+ * I-beam is browser behaviour for text-bearing nodes. That looked wrong: chrome
+ * said "you can select me" while behaviour said "no you can't."
+ *
+ * Industry consensus (VS Code / Cursor / Linear / Notion / Obsidian / Safari):
+ *   - chrome / shell / non-interactive areas:  cursor: default (arrow)
+ *   - clickable elements (button, a, role=button): cursor: pointer
+ *   - content surfaces that mirror selection.css whitelist: cursor: text
+ *   - disabled controls: cursor: not-allowed
+ *
+ * macOS native apps technically use `default` arrow on buttons too (no pointer
+ * on Cocoa controls), but desktop web/Electron applications have settled on
+ * `pointer` because it is the 30-year web convention; users expect it. We
+ * follow that — same as VS Code, Cursor, ChatGPT Desktop.
+ *
+ * Design doc: docs/plans/2026-05-14-native-feel-migration-design.md
+ */
+
+/* ---------------------------------------------------------------- */
+/* 1. Chrome baseline — arrow cursor                                 */
+/* ---------------------------------------------------------------- */
+html,
+body {
+  cursor: default;
+}
+
+/* ---------------------------------------------------------------- */
+/* 2. Clickable elements — pointer cursor                            */
+/* ---------------------------------------------------------------- */
+:root:not([data-pointer-cursor="false"]) :where(
+  button,
+  a,
+  [role="button"],
+  [role="menuitem"],
+  [role="tab"],
+  [role="option"],
+  [role="link"],
+  [role="checkbox"],
+  [role="radio"],
+  [role="switch"],
+  summary,
+  label[for]
+) {
+  cursor: pointer;
+}
+
+:root[data-pointer-cursor="false"] :where(
+  button,
+  a,
+  [role="button"],
+  [role="menuitem"],
+  [role="tab"],
+  [role="option"],
+  [role="link"],
+  [role="checkbox"],
+  [role="radio"],
+  [role="switch"],
+  summary,
+  label[for],
+  .cursor-pointer,
+  [class*=" cursor-pointer"],
+  [class^="cursor-pointer"]
+) {
+  cursor: default !important;
+}
+
+/* Disabled controls override pointer */
+:where(button, [role="button"])[disabled],
+:where(button, [role="button"])[aria-disabled="true"],
+:where(input, textarea, select)[disabled] {
+  cursor: not-allowed;
+}
+
+/* ---------------------------------------------------------------- */
+/* 3. Content surfaces — text cursor                                 */
+/* Mirrors the user-select whitelist in selection.css                */
+/* ---------------------------------------------------------------- */
+input,
+textarea,
+[contenteditable="true"],
+[contenteditable=""],
+[contenteditable="plaintext-only"] {
+  cursor: text;
+}
+
+/* Read-only inputs / disabled inputs already handled above */
+
+.message-selectable-area,
+.message-selectable-area p,
+.message-selectable-area span,
+.message-selectable-area li,
+.message-content,
+.message-content p,
+.message-content span,
+.message-content li,
+.markdown-content,
+.markdown-content p,
+.markdown-content span,
+.markdown-content li,
+.prose,
+.prose p,
+.prose span,
+.prose li,
+.markdown-body,
+.markdown-body p,
+.markdown-body span,
+.markdown-body li {
+  cursor: text;
+}
+
+/* Code surfaces */
+pre,
+pre *,
+code,
+.code-block,
+.code-block *,
+.cm-editor,
+.cm-content,
+.cm-line {
+  cursor: text;
+}
+
+/* Notes editor (Milkdown / Crepe / ProseMirror) */
+.crepe-editor-wrapper,
+.crepe-editor-wrapper p,
+.crepe-editor-wrapper span,
+.ProseMirror,
+.ProseMirror p,
+.ProseMirror span,
+.milkdown,
+.milkdown p {
+  cursor: text;
+}
+
+/* PDF text layer */
+.react-pdf__Page__textContent,
+.react-pdf__Page__textContent span {
+  cursor: text;
+}
+
+/* Generic escape hatch — selection.css and cursors.css stay in sync */
+[data-selectable="true"],
+[data-selectable="true"] * {
+  cursor: text;
+}
+
+/* ---------------------------------------------------------------- */
+/* 4. Specialised cursors                                            */
+/* ---------------------------------------------------------------- */
+:where([data-tauri-drag-region], .header-drag-region) {
+  cursor: default;
+}
+
+:where([draggable="true"]) {
+  cursor: grab;
+}
+
+:where([draggable="true"]):active {
+  cursor: grabbing;
+}
+
+/* Resize handles */
+:where([data-resize="horizontal"]) {
+  cursor: col-resize;
+}
+
+:where([data-resize="vertical"]) {
+  cursor: row-resize;
+}
+
+/* ---------------------------------------------------------------- */
+/* 5. Reinstate cursor for buttons that wrap content surfaces        */
+/* (e.g. NotionButton inside a code-block-actions toolbar)           */
+/* Without this, child cursor:text would override the pointer on the */
+/* outer button. Re-assert pointer for actual interactive ancestors. */
+/* ---------------------------------------------------------------- */
+button code,
+button pre,
+[role="button"] code,
+[role="button"] pre {
+  cursor: inherit;
+}

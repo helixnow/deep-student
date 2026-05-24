@@ -24,7 +24,7 @@ use tokio_util::sync::CancellationToken;
 use crate::chat_v2::database::ChatV2Database;
 use crate::chat_v2::event_types;
 use crate::chat_v2::events::ChatV2EventEmitter;
-use crate::chat_v2::types::{block_status, MessageBlock, ToolCall, ToolResultInfo};
+use crate::chat_v2::types::{block_status, McpToolSchema, MessageBlock, ToolCall, ToolResultInfo};
 use crate::database::Database;
 use crate::notes_manager::NotesManager;
 use crate::tools::ToolRegistry;
@@ -107,8 +107,10 @@ pub struct ExecutionContext {
     /// 🆕 智能题目集服务（用于 qbank_* 工具，2026-01）
     pub question_bank_service: Option<Arc<crate::question_bank_service::QuestionBankService>>,
     /// 🆕 渐进披露：技能内容映射（skillId -> content）
-    /// 用于 load_skills 工具返回技能的完整内容给 LLM
+    /// 用于 load_skills 验证技能是否可加载；技能正文由 transient message 注入给 LLM
     pub skill_contents: Option<std::collections::HashMap<String, String>>,
+    /// 技能嵌入工具映射（skillId -> embedded tools）
+    pub skill_embedded_tools: Option<std::collections::HashMap<String, Vec<McpToolSchema>>>,
     /// 🆕 取消令牌：用于工具执行取消机制
     /// 工具执行器可以检查此令牌以响应取消请求
     pub cancellation_token: Option<CancellationToken>,
@@ -151,6 +153,7 @@ impl ExecutionContext {
             chat_v2_db: None,
             question_bank_service: None,
             skill_contents: None,
+            skill_embedded_tools: None,
             cancellation_token: None,
             rag_top_k: None,
             rag_enable_reranking: None,

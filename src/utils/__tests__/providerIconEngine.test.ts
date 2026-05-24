@@ -44,6 +44,16 @@ describe('ProviderIconEngine', () => {
       expect(detectProviderBrand('grok-2')).toBe('xai');
       expect(detectProviderBrand('grok-vision-beta')).toBe('xai');
     });
+
+    it('应该正确识别 NVIDIA 模型', () => {
+      expect(detectProviderBrand('nvidia/nemotron-3-nano-30b-a3b')).toBe('nvidia');
+      expect(detectProviderBrand('nim-chat')).toBe('nvidia');
+    });
+
+    it('应该正确识别 Xiaomi MiMo 模型', () => {
+      expect(detectProviderBrand('mimo-v2.5-pro')).toBe('mimo');
+      expect(detectProviderBrand('MiMo-V2-Flash')).toBe('mimo');
+    });
   });
 
   describe('detectProviderBrand - 中国供应商', () => {
@@ -125,6 +135,13 @@ describe('ProviderIconEngine', () => {
     });
   });
 
+  describe('detectProviderBrand - 其他供应商', () => {
+    it('应该正确识别 Hugging Face 供应商ID', () => {
+      expect(detectProviderBrand('huggingface')).toBe('huggingface');
+      expect(detectProviderBrand('hf')).toBe('huggingface');
+    });
+  });
+
   describe('detectProviderBrand - 带平台前缀的模型名', () => {
     it('应该正确处理 SiliconFlow 格式的模型名', () => {
       expect(detectProviderBrand('SiliconFlow - Qwen/Qwen3-8B')).toBe('qwen');
@@ -164,10 +181,12 @@ describe('ProviderIconEngine', () => {
       expect(getProviderIcon('claude-3-opus')).toBe('/icons/providers/anthropic.svg');
       expect(getProviderIcon('gemini-2.0')).toBe('/icons/providers/gemini.svg');
       expect(getProviderIcon('deepseek-v3.1')).toBe('/icons/providers/deepseek.svg');
+      expect(getProviderIcon('nvidia/nemotron-3-nano-30b-a3b')).toBe('/icons/providers/nvidia.svg');
+      expect(getProviderIcon('mimo-v2.5-pro')).toBe('/icons/providers/mimo.svg');
     });
 
-    it('未识别的模型应该返回 generic 图标路径', () => {
-      expect(getProviderIcon('unknown-model-xyz')).toBe('/icons/providers/generic.svg');
+    it('未识别的模型不应该再回退到 generic 图标路径', () => {
+      expect(getProviderIcon('unknown-model-xyz')).toBe('');
     });
   });
 
@@ -193,8 +212,3 @@ describe('ProviderIconEngine', () => {
     });
   });
 });
-
-
-
-
-

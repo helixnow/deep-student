@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Badge } from '../ui/shad/Badge';
 import { Tabs, TabsList, TabsTrigger } from '../ui/shad/Tabs';
-import { PenLine, RefreshCw, History, ChevronLeft, ChevronRight } from 'lucide-react';
+import { Pen, ArrowClockwise, ClockCounterClockwise, CaretLeft, CaretRight } from '@phosphor-icons/react';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 
 interface GradingHeaderProps {
@@ -51,14 +51,14 @@ export const GradingHeader: React.FC<GradingHeaderProps> = ({
                 value="grading"
                 className="text-[12px] leading-none px-3 py-1 h-7 gap-1.5 rounded-full border border-transparent data-[state=active]:bg-primary/10 data-[state=active]:text-primary"
               >
-                <PenLine className="h-3.5 w-3.5" />
+                <Pen size={14} />
                 {t('essay_grading:tabs.grading')}
               </TabsTrigger>
               <TabsTrigger
                 value="history"
                 className="text-[12px] leading-none px-3 py-1 h-7 gap-1.5 rounded-full border border-transparent data-[state=active]:bg-primary/10 data-[state=active]:text-primary"
               >
-                <History className="h-3.5 w-3.5" />
+                <ClockCounterClockwise size={14} />
                 {t('essay_grading:tabs.history')}
               </TabsTrigger>
             </TabsList>
@@ -66,7 +66,7 @@ export const GradingHeader: React.FC<GradingHeaderProps> = ({
         ) : (
           /* DSTU 模式下只显示批改标签 */
           <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-            <PenLine className="h-4 w-4" />
+            <Pen size={16} />
             {t('essay_grading:tabs.grading')}
           </div>
         )}
@@ -91,7 +91,7 @@ export const GradingHeader: React.FC<GradingHeaderProps> = ({
                 disabled={currentRound <= 1 || isGrading}
                 className="h-7 w-7 rounded-full"
               >
-                <ChevronLeft className="h-4 w-4" />
+                <CaretLeft size={16} />
               </NotionButton>
             </CommonTooltip>
 
@@ -107,15 +107,15 @@ export const GradingHeader: React.FC<GradingHeaderProps> = ({
                 disabled={currentRound >= totalRounds || isGrading}
                 className="h-7 w-7 rounded-full"
               >
-                <ChevronRight className="h-4 w-4" />
+                <CaretRight size={16} />
               </NotionButton>
             </CommonTooltip>
           </div>
         )}
 
         {showHistoryTab && historyTotal > 0 && (
-          <Badge variant="secondary" className="h-7 px-2.5 bg-muted/50 text-muted-foreground hover:bg-muted font-normal text-xs">
-            <History className="w-3 h-3 mr-1.5" />
+          <Badge variant="secondary" className="h-7 px-2.5 bg-muted/50 text-muted-foreground hover:bg-[var(--interactive-hover)] font-normal text-xs">
+            <ClockCounterClockwise size={12} className="mr-1.5" />
             {historyTotal}
           </Badge>
         )}
@@ -125,9 +125,9 @@ export const GradingHeader: React.FC<GradingHeaderProps> = ({
             size="icon"
             onClick={onRefreshHistory}
             disabled={isGrading}
-            className="h-8 w-8 rounded-full hover:bg-muted"
+ className="w-8 h-8 rounded-full hover:bg-[var(--interactive-hover)]"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${isGrading ? 'animate-spin' : ''}`} />
+            <ArrowClockwise className={`h-3.5 w-3.5 ${isGrading ? 'animate-spin' : ''}`} />
           </NotionButton>
         </CommonTooltip>
       </div>

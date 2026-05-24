@@ -2,9 +2,10 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { useTauriEventListener } from '../../hooks/useTauriEventListener';
-import { Copy, Search, Filter, AlertCircle, CheckCircle, Clock, FileText } from 'lucide-react';
+import { Copy, MagnifyingGlass, Funnel, WarningCircle, CheckCircle, Clock, FileText } from '@phosphor-icons/react';
 import { unifiedAlert, unifiedConfirm } from '@/utils/unifiedDialogs';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { Switch } from '@/components/ui/shad/Switch';
 
 type LogLevel = 'debug' | 'info' | 'warn' | 'error';
 
@@ -132,10 +133,10 @@ const DeepSeekOcrDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
   };
 
   const levelIcons = {
-    debug: <Search className="w-4 h-4" />,
-    info: <CheckCircle className="w-4 h-4" />,
-    warn: <AlertCircle className="w-4 h-4" />,
-    error: <AlertCircle className="w-4 h-4" />,
+    debug: <MagnifyingGlass size={16} />,
+    info: <CheckCircle size={16} />,
+    warn: <WarningCircle size={16} />,
+    error: <WarningCircle size={16} />,
   };
 
   if (!visible) return null;
@@ -145,7 +146,7 @@ const DeepSeekOcrDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
       {/* 头部工具栏 */}
       <div className="flex flex-wrap items-center gap-2 pb-2 border-b border-border">
         <div className="flex items-center gap-2">
-          <FileText className="w-5 h-5 text-primary" />
+          <FileText size={20} className="text-primary" />
           <h3 className="font-semibold text-lg">DeepSeek-OCR 调试</h3>
         </div>
         
@@ -153,7 +154,7 @@ const DeepSeekOcrDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
         
         {/* 过滤器 */}
         <div className="flex items-center gap-2">
-          <Filter className="w-4 h-4 text-muted-foreground" />
+          <Funnel size={16} className="text-muted-foreground" />
           <select
             value={filterLevel}
             onChange={(e) => setFilterLevel(e.target.value as any)}
@@ -187,12 +188,7 @@ const DeepSeekOcrDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
 
         {/* 操作按钮 */}
         <label className="flex items-center gap-1 text-sm cursor-pointer">
-          <input
-            type="checkbox"
-            checked={autoScroll}
-            onChange={(e) => setAutoScroll(e.target.checked)}
-            className="rounded"
-          />
+          <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
           自动滚动
         </label>
 
@@ -200,7 +196,7 @@ const DeepSeekOcrDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
           onClick={copyAll}
           className="flex items-center gap-1 px-3 py-1 text-sm rounded bg-primary text-primary-foreground hover:bg-primary/90"
         >
-          <Copy className="w-4 h-4" />
+          <Copy size={16} />
           复制全部
         </button>
 
@@ -234,7 +230,7 @@ const DeepSeekOcrDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, isAc
       <div className="flex-1 overflow-auto space-y-2 font-mono text-xs">
         {filteredLogs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full text-muted-foreground">
-            <Clock className="w-12 h-12 mb-2 opacity-50" />
+            <Clock size={48} className="mb-2 opacity-50" />
             <p>等待 DeepSeek-OCR 调用...</p>
             <p className="text-xs mt-1">在题目集工作台选择 DeepSeek-OCR 格式并识别</p>
           </div>

@@ -13,12 +13,12 @@ import {
 import {
   FileText,
   FolderPlus,
-  Edit3,
-  Maximize2,
-  Minimize2,
+  PencilSimple,
+  ArrowsOut,
+  ArrowsIn,
   Plus,
-  Search
-} from 'lucide-react';
+  MagnifyingGlass
+} from '@phosphor-icons/react';
 
 type NoteLite = { id: string; title?: string };
 
@@ -71,23 +71,23 @@ const CommandPalette: React.FC<Props> = ({
         placeholder={t('placeholder')}
         value={search}
         onValueChange={setSearch}
-      />
+/>
       <CommandList>
         <CommandEmpty>{t('no_results_simple')}</CommandEmpty>
 
         <CommandGroup heading={t('group_actions')}>
           <CommandItem onSelect={() => runCommand(onCreateNote)}>
-            <Plus className="mr-2 h-4 w-4" />
+            <Plus size={16} className="mr-2" />
             <span>{t('new_note')}</span>
             <CommandShortcut>N</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={() => runCommand(onCreateFolder)}>
-            <FolderPlus className="mr-2 h-4 w-4" />
+            <FolderPlus size={16} className="mr-2" />
             <span>{t('new_folder')}</span>
             <CommandShortcut>⇧N</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={() => runCommand(onRename)}>
-            <Edit3 className="mr-2 h-4 w-4" />
+            <PencilSimple size={16} className="mr-2" />
             <span>{t('rename')}</span>
             <CommandShortcut>F2</CommandShortcut>
           </CommandItem>
@@ -98,17 +98,17 @@ const CommandPalette: React.FC<Props> = ({
 
         <CommandGroup heading={t('group_ai_assistant')}>
           <CommandItem onSelect={() => runCommand(onOpenAssistantSelection || (() => {}))}>
-            <Search className="mr-2 h-4 w-4" />
+            <MagnifyingGlass size={16} className="mr-2" />
             <span>{t('ai_on_selection')}</span>
             <CommandShortcut>⌘K S</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={() => runCommand(onOpenAssistantDocument || (() => {}))}>
-            <Search className="mr-2 h-4 w-4" />
+            <MagnifyingGlass size={16} className="mr-2" />
             <span>{t('ai_on_document')}</span>
             <CommandShortcut>⌘K D</CommandShortcut>
           </CommandItem>
           <CommandItem onSelect={() => runCommand(onOpenAssistantLibrary || (() => {}))}>
-            <Search className="mr-2 h-4 w-4" />
+            <MagnifyingGlass size={16} className="mr-2" />
             <span>{t('ai_on_library')}</span>
             <CommandShortcut>⌘K L</CommandShortcut>
           </CommandItem>
@@ -118,11 +118,11 @@ const CommandPalette: React.FC<Props> = ({
 
         <CommandGroup heading={t('group_view')}>
           <CommandItem onSelect={() => runCommand(onExpandAll)}>
-            <Maximize2 className="mr-2 h-4 w-4" />
+            <ArrowsOut size={16} className="mr-2" />
             <span>{t('expand_all')}</span>
           </CommandItem>
           <CommandItem onSelect={() => runCommand(onCollapseAll)}>
-            <Minimize2 className="mr-2 h-4 w-4" />
+            <ArrowsIn size={16} className="mr-2" />
             <span>{t('collapse_all')}</span>
           </CommandItem>
         </CommandGroup>
@@ -137,13 +137,13 @@ const CommandPalette: React.FC<Props> = ({
                   value={note.title || t('untitled')}
                   onSelect={() => runCommand(() => onOpenNote(note.id))}
                 >
-                  <FileText className="mr-2 h-4 w-4" />
+                  <FileText size={16} className="mr-2" />
                   <span className="truncate">{note.title || t('untitled')}</span>
                 </CommandItem>
               ))}
               {notes.length > 20 && (
                 <CommandItem disabled>
-                  <Search className="mr-2 h-4 w-4" />
+                  <MagnifyingGlass size={16} className="mr-2" />
                   <span className="text-muted-foreground">
                     {t('more_notes', { count: notes.length - 20 })}
                   </span>

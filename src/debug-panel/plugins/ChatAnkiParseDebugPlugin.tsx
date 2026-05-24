@@ -4,9 +4,10 @@
  */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Copy, Trash2, Download, ChevronDown, ChevronRight, AlertCircle, CheckCircle, Clock, Filter } from 'lucide-react';
+import { Copy, Trash, Download, CaretDown, CaretRight, WarningCircle, CheckCircle, Clock, Funnel } from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { Switch } from '@/components/ui/shad/Switch';
 
 // ============ 类型定义 ============
 interface DebugEvent {
@@ -386,10 +387,10 @@ const ChatAnkiParseDebugPlugin: React.FC<DebugPanelPluginProps> = ({
   );
 
   const statusIcons = {
-    info: <Clock className="w-3 h-3 text-gray-400" />,
-    success: <CheckCircle className="w-3 h-3 text-green-400" />,
-    warning: <AlertCircle className="w-3 h-3 text-yellow-400" />,
-    error: <AlertCircle className="w-3 h-3 text-red-400" />,
+    info: <Clock size={12} className="text-gray-400" />,
+    success: <CheckCircle size={12} className="text-green-400" />,
+    warning: <WarningCircle size={12} className="text-yellow-400" />,
+    error: <WarningCircle size={12} className="text-red-400" />,
   };
 
   const errorCount = useMemo(() => events.filter(e => e.status === 'error').length, [events]);
@@ -422,12 +423,7 @@ const ChatAnkiParseDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         </div>
         <div className="flex items-center gap-1">
           <label className="flex items-center gap-1 text-xs text-gray-400 mr-2">
-            <input
-              type="checkbox"
-              checked={autoScroll}
-              onChange={(e) => setAutoScroll(e.target.checked)}
-              className="rounded"
-            />
+            <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
             自动滚动
           </label>
           <button
@@ -435,7 +431,7 @@ const ChatAnkiParseDebugPlugin: React.FC<DebugPanelPluginProps> = ({
             className="p-1.5 rounded hover:bg-gray-700 transition-colors"
             title="清空日志"
           >
-            <Trash2 className="w-4 h-4 text-gray-400" />
+            <Trash size={16} className="text-gray-400" />
           </button>
           <button
             onClick={handleCopyReport}
@@ -449,14 +445,14 @@ const ChatAnkiParseDebugPlugin: React.FC<DebugPanelPluginProps> = ({
             className="p-1.5 rounded hover:bg-gray-700 transition-colors"
             title="下载报告"
           >
-            <Download className="w-4 h-4 text-gray-400" />
+            <Download size={16} className="text-gray-400" />
           </button>
         </div>
       </div>
 
       {/* 过滤器 */}
       <div className="flex items-center gap-1 p-2 border-b border-gray-700 overflow-x-auto">
-        <Filter className="w-4 h-4 text-gray-500 mr-1 flex-shrink-0" />
+        <Funnel size={16} className="text-gray-500 mr-1 flex-shrink-0" />
         <button
           onClick={() => setFilter('all')}
           className={`px-2 py-0.5 rounded text-xs whitespace-nowrap transition-colors ${
@@ -495,9 +491,9 @@ const ChatAnkiParseDebugPlugin: React.FC<DebugPanelPluginProps> = ({
                 className="flex items-center gap-2 p-2 cursor-pointer hover:bg-gray-700/50 transition-colors"
               >
                 {expandedEvents.has(event.id) ? (
-                  <ChevronDown className="w-3 h-3 text-gray-500 flex-shrink-0" />
+                  <CaretDown size={12} className="text-gray-500 flex-shrink-0" />
                 ) : (
-                  <ChevronRight className="w-3 h-3 text-gray-500 flex-shrink-0" />
+                  <CaretRight size={12} className="text-gray-500 flex-shrink-0" />
                 )}
                 {statusIcons[event.status]}
                 <span className={`px-1.5 py-0.5 rounded text-[10px] ${PHASE_COLORS[event.phase]}`}>

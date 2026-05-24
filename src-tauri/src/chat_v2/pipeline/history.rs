@@ -56,6 +56,11 @@ impl ChatV2Pipeline {
             .filter(|m| !exclude_ids.contains(m.id.as_str()))
             .collect();
 
+        // 🆕 P1: 应用 compaction 视图 — 隐藏 tail_start 之前的原始消息，
+        // 返回一条 system 摘要伪消息。原消息仍在 DB 中（供"展开原文"）。
+        let (compaction_summary_msg, messages) =
+            super::compaction::apply_compaction_view(&conn, &ctx.session_id, messages);
+
         if messages.is_empty() {
             log::debug!(
                 "[ChatV2::pipeline] No chat history after excluding current messages for session={}",
@@ -405,10 +410,6 @@ impl ChatV2Pipeline {
         // 🔧 改进 5：验证工具调用链完整性
         validate_tool_chain(&chat_history);
 
-        // 🆕 2026-02-22: 为已激活的默认技能自动注入合成 load_skills 工具交互
-        // 技能内容通过 role: tool 投递，模型遵循度远高于 user message 中的 XML 块
-        inject_synthetic_load_skills(&mut chat_history, &ctx.options);
-
         // 🔧 Token 预算裁剪：在条数限制基础上，按 token 预算从最旧消息开始移除
         let max_tokens = ctx
             .options
@@ -416,6 +417,11 @@ impl ChatV2Pipeline {
             .map(|v| (v as usize).min(DEFAULT_MAX_HISTORY_TOKENS))
             .unwrap_or(DEFAULT_MAX_HISTORY_TOKENS);
         trim_history_by_token_budget(&mut chat_history, max_tokens);
+
+        // 🆕 P1: 如果有 compaction 摘要，插到最前面（system 伪消息承载锚定摘要）
+        if let Some(summary_msg) = compaction_summary_msg {
+            chat_history.insert(0, summary_msg);
+        }
 
         ctx.chat_history = chat_history;
         Ok(())

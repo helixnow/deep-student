@@ -26,7 +26,7 @@ vi.mock('@/stores/systemStatusStore', () => ({
   }),
 }));
 
-import { DebugTab } from '@/components/settings/DataGovernanceDashboard';
+import { DebugTab } from '@/features/settings';
 
 describe('DataGovernance DebugTab slot migration buttons', () => {
   beforeEach(() => {

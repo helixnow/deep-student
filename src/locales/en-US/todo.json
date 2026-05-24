@@ -14,6 +14,8 @@
     "quickAddPlaceholder": "Add a todo...",
     "add": "Add",
     "search": "Search",
+    "searchLists": "Search lists...",
+    "newList": "New list",
     "newListPlaceholder": "New list name...",
     "favorite": "Favorite",
     "unfavorite": "Unfavorite",
@@ -28,7 +30,9 @@
   },
   "empty": {
     "noItems": "No items yet",
-    "hint": "Keep the momentum going."
+    "hint": "Keep the momentum going.",
+    "noLists": "No lists yet",
+    "noMatchingLists": "No matching lists"
   },
   "detail": {
     "title": "Details",
@@ -39,7 +43,8 @@
     "priority": "Priority",
     "dueDate": "Due Date",
     "dueTime": "Time",
-    "description": "Description"
+    "description": "Description",
+    "pomodoros": "Pomodoros"
   },
   "status": {
     "completed": "Completed",

@@ -9,7 +9,7 @@
 //! | 模型/Provider | 格式 | 需要回传 | 新问题清理 | 签名 |
 //! |--------------|------|---------|-----------|------|
 //! | DeepSeek R1/Reasoner | `reasoning_content` | ✅ | ✅ | ❌ |
-//! | DeepSeek V3.x (enable_thinking) | `reasoning_content` | ✅ | ✅ | ❌ |
+//! | DeepSeek V3.x/V4 | `reasoning_content` | ✅ | ✅ | ❌ |
 //! | Perplexity Sonar Reasoning | `reasoning_content` | ✅ | ✅ | ❌ |
 //! | xAI Grok | `reasoning_content` | ✅ | ✅ | ❌ |
 //! | GLM-4-Thinking (SiliconFlow) | `reasoning_content` | ✅ | ✅ | ❌ |
@@ -17,8 +17,7 @@
 //! | Kimi K2.5 (官方/第三方) | `reasoning_content` | ✅ | ✅ | ❌ |
 //! | Kimi K2-Thinking (OpenRouter) | `reasoning_details` | ✅ | ✅ | ❌ |
 //! | MiniMax M2 (reasoning_split) | `reasoning_details` | ✅ | ✅ | ❌ |
-//! | Gemini 2.5 (OpenRouter/Google 直连) | `reasoning_details` | ✅ | ✅ | ❌ |
-//! | Gemini 3 (OpenRouter/Google 直连) | `reasoning_details` | ✅ | ✅ | ✅ (工具调用必需) |
+//! | Gemini 2.5 / 3.x (OpenRouter/Google 直连) | `reasoning_details` | ✅ | ✅ | ✅ (工具调用时按官方文档保留签名) |
 //! | Gemini 2.5/3 (第三方 OpenAI 兼容) | 取决于第三方 | ⚠️ 走通用逻辑 | ⚠️ | ❌ |
 //! | OpenAI o1/o3/o4 (OpenRouter) | `reasoning_details` | ✅ | ✅ | ❌ |
 //! | GPT 5.x (OpenRouter) | `reasoning_details` | ✅ | ✅ | ❌ |
@@ -63,11 +62,11 @@ impl Default for ReasoningPassbackPolicy {
 // Reasoning Details 数据结构
 // ============================================================================
 
-/// 结构化思维链详情（用于 Gemini 3、OpenAI o1 等模型）
+/// 结构化思维链详情（用于 Gemini 2.5+/3.x、OpenAI o1 等模型）
 ///
-/// ## Gemini 3 thoughtSignature 支持
-/// Gemini 3 在工具调用场景下要求回传 `thoughtSignature`，用于验证思维链的连续性。
-/// 如果不回传签名，后续的工具调用轮次会报错。
+/// ## Gemini thoughtSignature 支持
+/// Gemini 2.5+ 在启用 thinking 且声明工具时可能返回 `thoughtSignature`，
+/// 后续请求需要原样回传以维持思维链连续性。
 ///
 /// 参考文档：https://ai.google.dev/gemini-api/docs/thinking#tool-use
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -97,9 +96,9 @@ pub struct ReasoningDetail {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub index: Option<u32>,
 
-    /// 思维签名（Gemini 3 工具调用必需）
+    /// 思维签名（Gemini 2.5+/3.x 工具调用可能必需）
     ///
-    /// Gemini 3 在响应中返回 `thoughtSignature`，在后续工具调用请求中必须回传此签名。
+    /// Gemini 在响应中返回 `thoughtSignature` 时，后续工具调用请求中必须回传此签名。
     /// 签名用于验证思维链的连续性和完整性。
     #[serde(skip_serializing_if = "Option::is_none")]
     pub signature: Option<String>,
@@ -119,7 +118,7 @@ impl ReasoningDetail {
         }
     }
 
-    /// 创建带签名的 thinking 类型详情（Gemini 3 工具调用）
+    /// 创建带签名的 thinking 类型详情（Gemini 工具调用）
     pub fn thinking_with_signature(text: String, signature: String) -> Self {
         Self {
             detail_type: "thinking".to_string(),
@@ -187,6 +186,16 @@ pub fn get_passback_policy(config: &ApiConfig) -> ReasoningPassbackPolicy {
         }
     }
 
+    // Direct Google Gemini thinking responses use structured reasoning details.
+    if (provider == "google" || provider == "gemini") && is_gemini_thinking_model(config) {
+        return ReasoningPassbackPolicy::ReasoningDetails;
+    }
+
+    // Perplexity Sonar reasoning models stream DeepSeek-style reasoning_content.
+    if provider == "perplexity" && model.contains("sonar") && model.contains("reasoning") {
+        return ReasoningPassbackPolicy::DeepSeekStyle;
+    }
+
     // 委托给适配器系统
     let adapter = get_adapter(
         config.provider_type.as_deref(),
@@ -214,6 +223,40 @@ pub fn requires_reasoning_passback(config: &ApiConfig) -> bool {
     )
 }
 
+fn is_official_deepseek_v4_family(config: &ApiConfig) -> bool {
+    let model = config.model.to_lowercase();
+    let provider = config
+        .provider_type
+        .as_deref()
+        .map(|s| s.to_lowercase())
+        .unwrap_or_default();
+    let scope = config
+        .provider_scope
+        .as_deref()
+        .map(|s| s.to_lowercase())
+        .unwrap_or_default();
+    let base_url = config.base_url.to_lowercase();
+
+    let is_deepseek_host =
+        provider == "deepseek" || scope == "deepseek" || base_url.contains("api.deepseek.com");
+    let is_v4_family = model.contains("deepseek-v4")
+        || matches!(model.as_str(), "deepseek-chat" | "deepseek-reasoner");
+
+    is_deepseek_host && is_v4_family
+}
+
+/// 普通历史 assistant 消息是否应继续回传思维链
+///
+/// DeepSeek 官方 Thinking Mode 文档要求区分两类场景：
+/// - 同一个用户问题里的 tool loop：必须回传 reasoning_content
+/// - 进入下一次用户提问时：应删除上一轮普通 assistant 的 reasoning_content
+///
+/// 因此，DeepSeek 官方 V4 / 兼容别名的普通历史 assistant 消息不应继续携带
+/// reasoning_content；只有工具调用链路中的 assistant tool_calls 消息仍需回传。
+pub fn should_passback_plain_assistant_reasoning(config: &ApiConfig) -> bool {
+    requires_reasoning_passback(config) && !is_official_deepseek_v4_family(config)
+}
+
 /// 是否使用 reasoning_details 格式
 ///
 /// ## 用途
@@ -228,31 +271,31 @@ pub fn uses_reasoning_details_format(config: &ApiConfig) -> bool {
 /// 新问题是否应清理历史思维链
 ///
 /// ## 用途
-/// 某些模型要求在新问题开始时清理之前的思维链历史，避免污染。
+/// 某些模型要求在新问题开始时清理之前的思维链历史。
+/// DeepSeek 官方 V4 / 兼容别名是已确认需要清理的场景：
+/// 同一问题内工具调用要回传 reasoning_content，但进入下一个用户问题时要删除。
 ///
 /// ## 返回
-/// - `true`: 应该清理（大多数推理模型）
-/// - `false`: 不需要清理（普通模型）
+/// - `true`: 应该清理
+/// - `false`: 不需要清理或当前无官方要求
 pub fn should_clear_reasoning_on_new_question(config: &ApiConfig) -> bool {
-    requires_reasoning_passback(config)
+    is_official_deepseek_v4_family(config)
 }
 
-/// 是否需要回传 thoughtSignature（Gemini 3 工具调用专用）
+/// 是否需要回传 thoughtSignature（Gemini 2.5+/3.x 工具调用专用）
 ///
 /// ## 用途
-/// Gemini 3 在工具调用场景下要求回传 `thoughtSignature`。
+/// Gemini 2.5+ 在工具调用场景下可能要求回传 `thoughtSignature`。
 /// 此函数用于判断是否需要缓存和回传签名。
 ///
 /// ## 返回
-/// - `true`: 需要回传签名（Gemini 3 系列）
+/// - `true`: 需要回传签名（Gemini 2.5+/3.x）
 /// - `false`: 不需要（其他模型）
 pub fn requires_thought_signature(config: &ApiConfig) -> bool {
-    let model = config.model.to_lowercase();
-    // Gemini 3 系列需要回传 thoughtSignature
-    model.contains("gemini-3") || model.contains("gemini3")
+    is_gemini_thinking_model(config)
 }
 
-/// 是否是 Gemini 2.5 或更高版本（支持 thinking）
+/// 是否是 Gemini 2.5 或 3.x 版本（支持 thinking）
 ///
 /// ## 用途
 /// 判断是否是支持 thinking 配置的 Gemini 模型。
@@ -326,6 +369,19 @@ mod tests {
     }
 
     #[test]
+    fn test_deepseek_v4_official() {
+        let config = make_config(Some("deepseek"), "deepseek-v4-pro", true);
+        assert_eq!(
+            get_passback_policy(&config),
+            ReasoningPassbackPolicy::DeepSeekStyle
+        );
+        assert!(requires_reasoning_passback(&config));
+        assert!(!uses_reasoning_details_format(&config));
+        assert!(!should_passback_plain_assistant_reasoning(&config));
+        assert!(should_clear_reasoning_on_new_question(&config));
+    }
+
+    #[test]
     fn test_deepseek_v3_no_reasoning() {
         // DeepSeek V3.x without reasoning should not passback
         let config = make_config(Some("siliconflow"), "deepseek-ai/deepseek-v3.2", false);
@@ -354,6 +410,34 @@ mod tests {
             get_passback_policy(&config),
             ReasoningPassbackPolicy::ReasoningDetails
         );
+    }
+
+    #[test]
+    fn test_google_gemini_thought_signatures_cover_25_and_3x() {
+        let gemini_25 = make_config(Some("google"), "gemini-2.5-flash", false);
+        let gemini_35 = make_config(Some("google"), "gemini-3.5-flash", false);
+
+        assert!(requires_thought_signature(&gemini_25));
+        assert!(requires_thought_signature(&gemini_35));
+    }
+
+    #[test]
+    fn test_deepseek_alias_new_turn_clears_plain_reasoning_history() {
+        let config = make_config(Some("deepseek"), "deepseek-reasoner", true);
+        assert_eq!(
+            get_passback_policy(&config),
+            ReasoningPassbackPolicy::DeepSeekStyle
+        );
+        assert!(!should_passback_plain_assistant_reasoning(&config));
+        assert!(should_clear_reasoning_on_new_question(&config));
+    }
+
+    #[test]
+    fn test_non_deepseek_plain_reasoning_history_still_passes_back_when_required() {
+        let config = make_config(Some("moonshot"), "kimi-k2-thinking", true);
+        assert!(requires_reasoning_passback(&config));
+        assert!(should_passback_plain_assistant_reasoning(&config));
+        assert!(!should_clear_reasoning_on_new_question(&config));
     }
 
     #[test]

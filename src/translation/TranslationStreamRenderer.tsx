@@ -14,7 +14,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { CustomScrollArea } from '../components/custom-scroll-area';
-import { Loader2 } from 'lucide-react';
+import { CircleNotch } from '@phosphor-icons/react';
 
 interface TranslationStreamRendererProps {
   content: string;
@@ -49,7 +49,7 @@ export const TranslationStreamRenderer: React.FC<TranslationStreamRendererProps 
       {/* 流式状态提示 */}
       {isStreaming && (
         <div className="flex items-center gap-2 mb-3 px-4 text-sm text-primary animate-pulse">
-          <Loader2 className="h-4 w-4 animate-spin" />
+          <CircleNotch size={16} className="animate-spin" />
           <span>{t('translation:progress.translating')}...</span>
         </div>
       )}

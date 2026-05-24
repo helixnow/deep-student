@@ -12,21 +12,16 @@
 - **mistral.svg** - Mistral AI
 - **grok.svg** - xAI (Grok)
 - **azure.svg** - Microsoft Azure AI
-- **github-copilot.svg** - GitHub Copilot
 
 ### 中国供应商
 - **deepseek.svg** - DeepSeek
-- **qwen.svg** - 阿里巴巴通义千问
 - **bailian.svg** - 阿里云百炼
 - **doubao.svg** - 字节跳动豆包
 - **zhipu.svg** - 智谱AI
-- **chatglm.svg** - 智谱ChatGLM
 - **hunyuan.svg** - 腾讯混元
 - **moonshot.svg** - 月之暗面 (Kimi)
 - **kling.svg** - 快手可灵
-- **jimeng.svg** - 即梦AI
 - **spark.svg** - 讯飞星火
-- **vidu.svg** - Vidu
 - **yi.svg** - 零一万物
 - **minimax.svg** - MiniMax
 - **wenxin.svg** - 百度文心
@@ -51,8 +46,6 @@
 
 ### 其他工具
 - **ollama.svg** - Ollama
-- **langchain.svg** - LangChain
-- **bing.svg** - Bing
 
 ## 使用说明
 
@@ -78,4 +71,3 @@ const iconPath = `/icons/providers/${providerName}.svg`;
 ## 许可说明
 
 这些图标仅用于显示对应AI服务供应商的品牌标识，版权归各自公司所有。
-

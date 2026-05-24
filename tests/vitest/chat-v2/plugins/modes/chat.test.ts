@@ -7,11 +7,11 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { modeRegistry } from '@/chat-v2/registry';
-import type { ChatStore } from '@/chat-v2/core/types';
+import { modeRegistry } from '@/features/chat/registry';
+import type { ChatStore } from '@/features/chat/core/types';
 
 // 导入插件（触发自动注册）
-import '@/chat-v2/plugins/modes/chat';
+import '@/features/chat/plugins/modes/chat';
 
 describe('ChatModePlugin', () => {
   beforeEach(() => {

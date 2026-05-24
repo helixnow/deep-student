@@ -16,9 +16,17 @@ html, body, #root {
 	line-height: var(--line-height-normal);
 	font-weight: var(--font-weight-normal);
 	letter-spacing: var(--letter-spacing-normal);
+	text-rendering: optimizeLegibility;
+}
+
+html[data-font-smoothing="macos-native"] body {
+	-webkit-font-smoothing: auto;
+	-moz-osx-font-smoothing: auto;
+}
+
+html[data-font-smoothing="macos-grayscale"] body {
 	-webkit-font-smoothing: antialiased;
 	-moz-osx-font-smoothing: grayscale;
-	text-rendering: optimizeLegibility;
 }
 
 /* 中文环境优化 */
@@ -68,4 +76,15 @@ small, .text-sm {
 	font-size: var(--font-size-sm);
 	font-weight: var(--font-weight-medium);
 	letter-spacing: var(--letter-spacing-normal);
-} 
+}
+
+/* study-ui 对齐：仅侧边栏范围使用更贴近参考项目的字体栈 */
+.font-sidebar-study-ui {
+	font-family: ui-sans-serif, system-ui, sans-serif, "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol", "Noto Color Emoji";
+	font-weight: var(--font-weight-normal);
+	font-synthesis: none;
+	--sidebar-study-surface: var(--sidebar);
+	--sidebar-study-hover: var(--interactive-hover);
+	--sidebar-study-selected: var(--interactive-selected);
+	--sidebar-study-border: var(--sidebar-border);
+}

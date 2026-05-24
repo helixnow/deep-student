@@ -7,15 +7,15 @@ import { Label } from '../ui/shad/Label';
 import { Badge } from '../ui/shad/Badge';
 import { CommonTooltip } from '../shared/CommonTooltip';
 import {
-    Languages,
-    Edit3,
-    Volume2,
+    Translate,
+    PencilSimple,
+    SpeakerHigh,
     Copy,
     Download,
-    CheckCircle2,
+    CheckCircle,
     Star,
-    Columns2,
-} from 'lucide-react';
+    Columns,
+} from '@phosphor-icons/react';
 import { TranslationStreamRenderer } from '../../translation/TranslationStreamRenderer';
 import { ComparisonView } from './ComparisonView';
 
@@ -83,7 +83,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
             <div className="hidden sm:flex items-center justify-between px-4 h-12 border-b bg-background/50 backdrop-blur z-10">
                 <div className="flex items-center gap-2">
                     <Badge variant="outline" className="font-normal bg-background/50 backdrop-blur-sm border-primary/20 text-primary">
-                        <Languages className="w-3.5 h-3.5 mr-1.5" />
+                        <Translate size={14} className="mr-1.5" />
                         {t('translation:target_section.title')}
                     </Badge>
                 </div>
@@ -98,18 +98,18 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                             disabled={isEditingTranslation}
                             className={`h-8 w-8 ${showComparison ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground'}`}
                         >
-                            <Columns2 className="w-4 h-4" />
+                            <Columns size={16} />
                         </NotionButton>
                     </CommonTooltip>
 
                     {/* Sync Scroll Toggle */}
-                    <div className="flex items-center gap-2 mr-3 px-2 py-1 rounded-md hover:bg-muted/50 transition-colors">
+                    <div className="flex items-center gap-2 mr-3 px-2 py-1 rounded-md hover:bg-[var(--interactive-hover)] transition-colors">
                         <Switch
                             id="sync-scroll"
                             checked={isSyncScroll}
                             onCheckedChange={setIsSyncScroll}
                             className="data-[state=checked]:bg-primary"
-                        />
+/>
                         <Label htmlFor="sync-scroll" className="text-xs font-medium text-muted-foreground cursor-pointer whitespace-nowrap">
                             {t('translation:sync_scroll')}
                         </Label>
@@ -126,9 +126,9 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                         size="icon"
                                         onClick={onEditTranslation}
                                         disabled={isEditingTranslation}
-                                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+ className="w-8 h-8 text-muted-foreground hover:text-foreground"
                                     >
-                                        <Edit3 className="w-4 h-4" />
+                                        <PencilSimple size={16} />
                                     </NotionButton>
                                 </CommonTooltip>
                                 <CommonTooltip content={isSpeaking ? t('translation:target_section.stop_listen') : t('translation:target_section.listen')}>
@@ -139,7 +139,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                         disabled={!translatedText || isEditingTranslation}
                                         className={`h-8 w-8 ${isSpeaking ? 'text-primary bg-primary/10' : 'text-muted-foreground hover:text-foreground'}`}
                                     >
-                                        <Volume2 className={`w-4 h-4 ${isSpeaking ? 'animate-pulse' : ''}`} />
+                                        <SpeakerHigh className={`w-4 h-4 ${isSpeaking ? 'animate-pulse' : ''}`} />
                                     </NotionButton>
                                 </CommonTooltip>
                                 <CommonTooltip content={t('translation:target_section.copy')}>
@@ -147,9 +147,9 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                         variant="ghost"
                                         size="icon"
                                         onClick={onCopyResult}
-                                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+ className="w-8 h-8 text-muted-foreground hover:text-foreground"
                                     >
-                                        <Copy className="w-4 h-4" />
+                                        <Copy size={16} />
                                     </NotionButton>
                                 </CommonTooltip>
                                 <CommonTooltip content={t('translation:target_section.export')}>
@@ -157,9 +157,9 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                         variant="ghost"
                                         size="icon"
                                         onClick={onExportTranslation}
-                                        className="h-8 w-8 text-muted-foreground hover:text-foreground"
+ className="w-8 h-8 text-muted-foreground hover:text-foreground"
                                     >
-                                        <Download className="w-4 h-4" />
+                                        <Download size={16} />
                                     </NotionButton>
                                 </CommonTooltip>
                             </>
@@ -176,7 +176,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                             value={editedTranslation}
                             onChange={(e) => setEditedTranslation(e.target.value)}
                             className="flex-1 min-h-0 resize-none font-mono !bg-transparent !border-0 !shadow-none !rounded-none p-6 focus-visible:!ring-0"
-                        />
+/>
                         <div className="flex items-center justify-between mt-3">
                             <span className="text-xs text-muted-foreground">
                                 {editedTranslation.length} {t('translation:stats.characters')}
@@ -194,7 +194,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                     size="sm"
                                     onClick={onSaveEditedTranslation}
                                 >
-                                    <CheckCircle2 className="w-4 h-4 mr-2" />
+                                    <CheckCircle size={16} className="mr-2" />
                                     {t('common:save')}
                                 </NotionButton>
                             </div>
@@ -208,7 +208,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                             srcLang={srcLang}
                             tgtLang={tgtLang}
                             isTranslating={isTranslating}
-                        />
+/>
                     </div>
                 ) : (
                     <div className="flex-1 min-h-0 flex flex-col" ref={ref}>
@@ -221,7 +221,7 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                 showStats={false}
                                 charCount={charCount}
                                 wordCount={wordCount}
-                            />
+/>
                         </div>
 
                         {/* Floating Status Bar (Target) */}
@@ -234,14 +234,14 @@ export const TargetPanel = React.forwardRef<HTMLDivElement, TargetPanelProps>(({
                                             variant="ghost"
                                             size="icon"
                                             onClick={() => onRateTranslation(rating)}
-                                            className="h-7 w-7 p-1.5 hover:bg-muted rounded-full"
+                                            className="h-7 w-7 p-1.5 hover:bg-[var(--interactive-hover)] rounded-full"
                                         >
                                             <Star
                                                 className={`w-3.5 h-3.5 transition-colors ${translationQuality && rating <= translationQuality
                                                     ? 'fill-yellow-500 text-yellow-500'
                                                     : 'text-muted-foreground hover:text-yellow-400'
                                                     }`}
-                                            />
+/>
                                         </NotionButton>
                                     ))}
                                 </div>

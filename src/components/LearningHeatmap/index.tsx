@@ -14,7 +14,7 @@ import HeatMap from '@uiw/react-heat-map';
 import { CommonTooltip } from '../shared/CommonTooltip';
 import { useTranslation } from 'react-i18next';
 import { useLearningHeatmap, type LearningActivity } from '../../hooks/useLearningHeatmap';
-import { Loader2, RefreshCw, TrendingUp, Calendar, Zap, Activity } from 'lucide-react';
+import { CircleNotch, ArrowsClockwise, TrendUp, Calendar, Lightning, Pulse } from '@phosphor-icons/react';
 import { cn } from '../../lib/utils';
 import './LearningHeatmap.css';
 
@@ -138,7 +138,7 @@ interface StatsCardProps {
 function StatsCard({ icon, label, value, index }: StatsCardProps) {
   return (
     <div 
-      className="flex flex-col gap-1 p-3 rounded-md hover:bg-muted/30 transition-colors"
+      className="flex flex-col gap-1 p-3 rounded-md hover:bg-[var(--interactive-hover)] transition-colors"
       style={{ animationDelay: `${index * 100}ms` }}
     >
       <div className="flex items-center gap-2 text-muted-foreground">
@@ -232,7 +232,7 @@ export function LearningHeatmap({
   if (loading) {
     return (
       <div className={cn("py-12 flex flex-col items-center justify-center text-muted-foreground/50", className)}>
-        <Loader2 className="animate-spin mb-2" size={20} />
+        <CircleNotch className="animate-spin mb-2" size={20} />
         <span className="text-xs font-medium">{t('heatmap.loading', '加载学习数据...')}</span>
       </div>
     );
@@ -242,8 +242,8 @@ export function LearningHeatmap({
     return (
       <div className={cn("py-8 flex flex-col items-center justify-center text-muted-foreground/50", className)}>
         <span className="text-xs mb-3">{t('heatmap.error', { error })}</span>
-        <NotionButton variant="ghost" size="sm" onClick={refresh} className="!px-3 !py-1.5 !h-auto text-xs font-medium hover:bg-muted/40">
-          <RefreshCw size={12} />
+        <NotionButton variant="ghost" size="sm" onClick={refresh} className="!px-3 !py-1.5 !h-auto text-xs font-medium hover:bg-[var(--interactive-hover)]">
+          <ArrowsClockwise size={12} />
           {t('heatmap.retry', '重试')}
         </NotionButton>
       </div>
@@ -254,7 +254,7 @@ export function LearningHeatmap({
     <div className={cn("flex flex-col", className)}>
       {/* 标题 */}
       <div className="flex items-center gap-2 mb-4 pl-1">
-        <Activity className="w-4 h-4 text-muted-foreground/70" />
+        <Pulse size={16} className="text-muted-foreground/70" />
         <h3 className="font-medium text-sm text-foreground/80">{t('heatmap.title')}</h3>
       </div>
 
@@ -262,23 +262,35 @@ export function LearningHeatmap({
       {showStats && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-3 mb-6">
           <StatsCard
-            icon={<TrendingUp size={16} />}
+            icon={<TrendUp size={16} />}
             label={t('heatmap.stats.totalActivities', '总活动')}
             value={totalActivities}
             index={0}
-          />
+/>
           <StatsCard
             icon={<Calendar size={16} />}
             label={t('heatmap.stats.activeDays', '活跃天数')}
             value={activeDays}
             index={1}
-          />
+/>
           <StatsCard
-            icon={<Zap size={16} />}
+            icon={<Lightning size={16} />}
             label={t('heatmap.stats.maxDaily', '单日峰值')}
             value={maxCount}
             index={2}
-          />
+/>
+          <StatsCard
+            icon={<Calendar size={16} />}
+            label={t('heatmap.stats.activeDays', '活跃天数')}
+            value={activeDays}
+            index={1}
+/>
+          <StatsCard
+            icon={<Lightning size={16} />}
+            label={t('heatmap.stats.maxDaily', '单日峰值')}
+            value={maxCount}
+            index={2}
+/>
         </div>
       )}
 
@@ -321,11 +333,11 @@ export function LearningHeatmap({
                   <rect
                     {...props}
                     className="transition-all duration-200 hover:opacity-80 cursor-pointer"
-                  />
+/>
                 </CommonTooltip>
               );
             }}
-          />
+/>
         </div>
       </div>
 
@@ -339,7 +351,7 @@ export function LearningHeatmap({
                 key={index}
                 className="w-2.5 h-2.5 rounded-[1px]"
                 style={{ backgroundColor: color }}
-              />
+/>
             ))}
           </div>
           <span className="text-[10px] text-muted-foreground/60">{t('heatmap.legend.more', 'More')}</span>

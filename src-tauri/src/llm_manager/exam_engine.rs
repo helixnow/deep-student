@@ -13,7 +13,8 @@ use std::io::Cursor;
 use std::path::Path;
 
 use super::{
-    ApiConfig, ExamSegmentationCard, LLMManager, Result, EXAM_SEGMENT_MAX_DIMENSION,
+    build_provider_adapter, normalize_nonstream_response_to_openai, ApiConfig,
+    ExamSegmentationCard, LLMManager, Result, EXAM_SEGMENT_MAX_DIMENSION,
     EXAM_SEGMENT_MAX_IMAGE_BYTES,
 };
 
@@ -25,6 +26,7 @@ struct PreparedOcrRequest {
     engine_name: String,
     model_name: String,
     model_adapter: String,
+    api_protocol: Option<String>,
     url: String,
     headers: reqwest::header::HeaderMap,
     body: serde_json::Value,
@@ -101,19 +103,14 @@ async fn run_single_ocr_request(
         )
     })?;
 
-    // Gemini / Anthropic 响应格式转换
-    let openai_like = if req.model_adapter == "google" {
-        crate::adapters::gemini_openai_converter::convert_gemini_nonstream_response_to_openai(
-            &response_json,
-            &req.model_name,
-        )
-        .map_err(|e| format!("Gemini conversion failed: {}", e))?
-    } else if matches!(req.model_adapter.as_str(), "anthropic" | "claude") {
-        crate::providers::convert_anthropic_response_to_openai(&response_json, &req.model_name)
-            .ok_or_else(|| "Anthropic conversion failed".to_string())?
-    } else {
-        response_json
+    let temp_config = ApiConfig {
+        model: req.model_name.clone(),
+        model_adapter: req.model_adapter.clone(),
+        api_protocol: req.api_protocol.clone(),
+        ..ApiConfig::default()
     };
+    let openai_like = normalize_nonstream_response_to_openai(&temp_config, &response_json)
+        .map_err(|e| e.message)?;
 
     let content = openai_like["choices"][0]["message"]["content"]
         .as_str()
@@ -341,6 +338,8 @@ impl LLMManager {
             "stream": false,
         });
 
+        crate::llm_manager::LLMManager::apply_reasoning_config(&mut request_body, config, None);
+
         // GLM-4.5+ 支持 thinking 参数；OCR 默认关闭以降低延迟
         if crate::llm_manager::adapters::zhipu::ZhipuAdapter::supports_thinking_static(
             &config.model,
@@ -372,11 +371,7 @@ impl LLMManager {
             }
         }
 
-        let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(config);
 
         let preq = adapter
             .build_request(
@@ -676,6 +671,8 @@ impl LLMManager {
                 "stream": false,
             });
 
+            crate::llm_manager::LLMManager::apply_reasoning_config(&mut request_body, config, None);
+
             if let Some(extra) = adapter.get_extra_request_params() {
                 if let Some(obj) = request_body.as_object_mut() {
                     if let Some(extra_obj) = extra.as_object() {
@@ -741,6 +738,7 @@ impl LLMManager {
                 engine_name: engine_type.as_str().to_string(),
                 model_name: config.model.clone(),
                 model_adapter: config.model_adapter.clone(),
+                api_protocol: config.api_protocol.clone(),
                 url: preq.url,
                 headers: header_map,
                 body: preq.body,
@@ -768,7 +766,7 @@ impl LLMManager {
 
             let client = self.client.clone();
             let tx_clone = tx.clone();
-            tokio::spawn(async move {
+            crate::background_tasks::BACKGROUND_TASKS.spawn(async move {
                 let result = run_single_ocr_request(client, req, ENGINE_TIMEOUT_SECS).await;
                 let _ = tx_clone.send((engine_idx, result));
             });

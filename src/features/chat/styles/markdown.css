@@ -1,0 +1,1297 @@
+/**
+ * Markdown & RAG Styles - Markdown渲染和RAG相关样式
+ * 提取自原项目中所有Markdown和知识库相关的样式
+ *
+ * 作用域：所有样式限定在 .chat-v2 内
+ * 暗色模式：使用 CSS 变量自动响应
+ */
+
+/* ============================================================================
+   Markdown基础样式 - Markdown Base Styles
+   ============================================================================ */
+
+@keyframes ft-fadeIn {
+  from {
+    opacity: 0;
+  }
+
+  to {
+    opacity: 1;
+  }
+}
+
+.chat-v2 .flowtoken-markdown span[style*="animation-name: ft-fadeIn"] {
+  will-change: opacity;
+  backface-visibility: hidden;
+  transform: translateZ(0);
+}
+
+.chat-v2 .markdown-content {
+  line-height: var(--chat-md-line-height);
+  color: hsl(var(--foreground));
+  font-size: var(--chat-md-font-size);
+  letter-spacing: var(--chat-md-letter-spacing);
+  overflow: visible;
+  word-wrap: break-word;
+  width: 100%;
+  max-width: 100%;
+  font-feature-settings: "kern" 1, "liga" 1;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+.chat-v2 .markdown-content > *:first-child {
+  margin-top: 0;
+}
+
+.chat-v2 .markdown-content > *:last-child {
+  margin-bottom: 0;
+}
+
+/* 标题样式 */
+.chat-v2 .markdown-content h1,
+.chat-v2 .markdown-content h2,
+.chat-v2 .markdown-content h3,
+.chat-v2 .markdown-content h4,
+.chat-v2 .markdown-content h5,
+.chat-v2 .markdown-content h6 {
+  /* Vertical rhythm 参考 Tailwind Typography (prose) 略收：标题前需要更
+   * 多呼吸空间标记小节，标题后比段落间距略大但比标题前小。 */
+  margin: var(--chat-md-heading-top-gap) 0 var(--chat-md-heading-bottom-gap);
+  font-weight: 600;
+  line-height: 1.32;
+  color: hsl(var(--foreground));
+}
+
+.chat-v2 .markdown-content h1 { font-size: 1.5em; }
+.chat-v2 .markdown-content h2 { font-size: 1.3em; }
+.chat-v2 .markdown-content h3 { font-size: 1.15em; }
+.chat-v2 .markdown-content h4 { font-size: 1.05em; }
+.chat-v2 .markdown-content h5 { font-size: 1em; }
+.chat-v2 .markdown-content h6 { font-size: 0.95em; color: hsl(var(--muted-foreground)); }
+
+/* 段落和文本 */
+.chat-v2 .markdown-content p {
+  margin: var(--chat-md-paragraph-gap) 0;
+  word-wrap: break-word;
+  overflow-wrap: break-word;
+}
+
+/* 空行优化 - 使空行变得非常窄 */
+.chat-v2 .markdown-content p:empty,
+.chat-v2 .markdown-content p:has(br:only-child) {
+  margin: 0.25rem 0;
+  min-height: 0.25rem;
+  line-height: 1;
+  display: block;
+}
+
+/* 全局的空行处理 - 适用于所有可能的空行情况 */
+.chat-v2 .markdown-content br + br,
+.chat-v2 .markdown-content br:only-child {
+  line-height: 0.2;
+}
+
+/* 全局减少段落间距 */
+.chat-v2 .markdown-content p + p {
+  margin-top: var(--chat-md-paragraph-gap);
+}
+
+.chat-v2 .markdown-content strong {
+  font-weight: 600;
+  color: hsl(var(--foreground));
+}
+
+.chat-v2 .markdown-content em {
+  font-style: italic;
+  color: hsl(var(--muted-foreground));
+}
+
+.chat-v2 .markdown-content del {
+  text-decoration: line-through;
+  color: hsl(var(--muted-foreground) / 0.7);
+}
+
+/* 链接样式 */
+.chat-v2 .markdown-content a {
+  color: var(--brand-primary);
+  text-decoration: none;
+  border-bottom: 1px solid transparent;
+  transition: all 0.2s ease;
+}
+
+.chat-v2 .markdown-content a:hover {
+  color: var(--brand-primary-dark);
+  border-bottom-color: var(--brand-primary-dark);
+}
+
+/* 列表样式 */
+.chat-v2 .markdown-content ul,
+.chat-v2 .markdown-content ol {
+  margin: var(--chat-md-paragraph-gap) 0;
+  padding-left: 1.625em;
+}
+
+.chat-v2 .markdown-content li {
+  margin: var(--chat-md-list-item-gap) 0;
+  line-height: var(--chat-md-line-height);
+}
+
+/* 空列表项优化 */
+.chat-v2 .markdown-content li:empty {
+  margin: 0.1em 0;
+  height: 0.1em;
+  line-height: 0.1;
+  display: list-item;
+}
+
+/* 只包含少量内容的列表项 */
+.chat-v2 .markdown-content li:has(p:empty),
+.chat-v2 .markdown-content li:has(br:only-child) {
+  margin: 0.15em 0;
+  line-height: 1.2;
+}
+
+/* 连续的空列表项 */
+.chat-v2 .markdown-content li:empty + li:empty {
+  display: none;
+}
+
+/* 减少列表项中段落的间距 */
+.chat-v2 .markdown-content li p {
+  margin: calc(var(--chat-md-list-item-gap) * 0.5) 0 !important;
+}
+
+.chat-v2 .markdown-content li p:only-child {
+  margin: 0 !important;
+}
+
+.chat-v2 .markdown-content ul li {
+  list-style-type: disc;
+}
+
+.chat-v2 .markdown-content ol li {
+  list-style-type: decimal;
+}
+
+.chat-v2 .markdown-content ul ul li {
+  list-style-type: circle;
+}
+
+.chat-v2 .markdown-content ul ul ul li {
+  list-style-type: square;
+}
+
+/* 引用块样式 - 严谨 / 学术风
+ *
+ * 设计原则：
+ * - 直角 (border-radius: 0) — 引用是严肃的内容标记，不是 UI 卡片
+ * - 浅背景 + 左边框 — 与正文区隔但不喧宾夺主
+ * - 无 italic — 中文伪斜体效果差，是 CJK 反模式
+ * - 正文颜色 — 引用是用户主动加亮的"重点"，淡化与意图矛盾
+ */
+.chat-v2 .markdown-content blockquote {
+  margin: var(--chat-md-block-gap) 0;
+  padding: 0.9em 1.05em;
+  border-left: 3px solid hsl(var(--border));
+  background: hsl(var(--muted) / 0.5);
+  border-radius: 0;
+  color: hsl(var(--foreground));
+}
+
+.chat-v2 .markdown-content blockquote p {
+  margin: 0.5em 0;
+}
+
+.chat-v2 .markdown-content blockquote p:first-child {
+  margin-top: 0;
+}
+
+.chat-v2 .markdown-content blockquote p:last-child {
+  margin-bottom: 0;
+}
+
+/* 水平分割线 */
+.chat-v2 .markdown-content hr {
+  border: none;
+  height: 1px;
+  background: hsl(var(--border));
+  margin: calc(var(--chat-md-block-gap) * 1.35) 0; /* HR 是大节分隔，需要充足呼吸空间 */
+}
+
+/* ============================================================================
+   代码样式 - Code Styles
+   ============================================================================ */
+
+.chat-v2 .markdown-content code {
+  font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', 'Consolas', 'source-code-pro', monospace;
+  font-size: 0.9em;
+  display: inline; /* 默认内联显示 */
+}
+
+/* 确保内联代码正确显示 */
+.chat-v2 .markdown-content p code,
+.chat-v2 .markdown-content li code,
+.chat-v2 .markdown-content td code,
+.chat-v2 .markdown-content :not(pre) > code {
+  display: inline !important;
+  width: auto !important;
+  max-width: none !important;
+}
+
+/* 代码块容器与头部（与组件匹配） */
+.chat-v2 .markdown-content .code-block-wrapper {
+  position: relative;
+  box-sizing: border-box;
+  margin: var(--chat-md-block-gap) 0;
+  border: 1px solid var(--chat-block-border);
+  border-radius: var(--chat-block-radius);
+  background: var(--chat-block-surface);
+  overflow: visible;
+  box-shadow: none;
+  transition: border-radius 0.18s ease;
+}
+
+/* 吸顶 — wrapper 全直角，与脱离的 header 协同 */
+.chat-v2 .markdown-content .code-block-wrapper:has(.code-block-sticky-header--stuck) {
+  border-radius: 0;
+}
+
+/* 划出 — wrapper 上直下圆，保留底部圆角与 header 的下圆角呼应 */
+.chat-v2 .markdown-content .code-block-wrapper:has(.code-block-sticky-header--exiting) {
+  border-radius: 0 0 var(--chat-block-radius) var(--chat-block-radius);
+}
+
+/* Sticky 头部容器：仅负责 sticky 定位，外观由内层 .code-block-header 控制 */
+.chat-v2 .markdown-content .code-block-sticky-header {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.chat-v2 .markdown-content .code-block-sticky-sentinel {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 1px;
+  pointer-events: none;
+  opacity: 0;
+}
+
+/* Sticky 模式下内层 header：实底 + 过渡动画 */
+.chat-v2 .markdown-content .code-block-sticky-header--sticky .code-block-header {
+  background: var(--chat-table-header-surface);
+  transition: border-radius 0.18s ease;
+}
+
+/* 吸顶 — header 全直角，脱离 wrapper 贴齐视窗顶部 */
+.chat-v2 .markdown-content .code-block-sticky-header--stuck .code-block-header {
+  border-radius: 0;
+}
+
+/* 划出 — header 上直下圆，与 wrapper 底部圆角呼应 */
+.chat-v2 .markdown-content .code-block-sticky-header--exiting .code-block-header {
+  border-radius: 0 0 var(--chat-block-radius) var(--chat-block-radius);
+}
+
+.chat-v2 .markdown-content .code-block-body-shell {
+  overflow: hidden;
+  border-radius: 0 0 var(--chat-block-radius) var(--chat-block-radius);
+}
+
+/* Mermaid 预览容器：设置最小高度与拖拽态样式 */
+.chat-v2 .markdown-content .mermaid-preview {
+  height: 420px; /* 固定视窗高度，防止边框随内容跳动 */
+  background: transparent; /* 透明背景 */
+  border: none; /* 使用外层wrapper边框 */
+  border-radius: 0;
+  overflow: hidden; /* 使用变换平移缩放，隐藏溢出 */
+  cursor: grab;
+  padding: 0 !important; /* 占满边框可视区域 */
+  width: 100%;
+  display: block;
+}
+
+.chat-v2 .markdown-content .mermaid-preview.panning {
+  cursor: grabbing;
+}
+
+.chat-v2 .markdown-content .mermaid-canvas {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* 为 mermaid 内容容器提供固有尺寸与更高优先级，避免被其它样式（如通用 svg 规则、flex 限制）干扰 */
+.chat-v2 .markdown-content .mermaid-content {
+  position: absolute;
+  top: 0;
+  left: 0;
+  will-change: transform;
+  display: inline-block !important; /* 避免百分比尺寸坍塌 */
+  width: max-content;
+  height: max-content;
+}
+
+/* 强化 SVG 尺寸策略，杜绝 100% 带来的 0 尺寸问题 */
+.chat-v2 .markdown-content .mermaid-content svg {
+  display: block !important;
+  max-width: none !important;
+  width: auto !important;
+  height: auto !important;
+  text-rendering: geometricPrecision;
+  shape-rendering: geometricPrecision;
+}
+
+/* 让 HTML/XML 预览用的 iframe 在预览画布中可被平移缩放 */
+.chat-v2 .markdown-content .mermaid-content iframe[data-html-preview] {
+  display: block !important;
+  border: none !important;
+  width: auto !important; /* 具体宽高由渲染后脚本测量写入 */
+  height: auto !important;
+  background: hsl(var(--background)) !important;
+  overflow: visible !important; /* 避免内部再滚动 */
+}
+
+/* HTML 预览 iframe：独立渲染容器，不使用 mermaid 的 zoom/pan */
+.chat-v2 .markdown-content .html-preview-iframe {
+  display: block;
+  width: 100%;
+  max-height: 70vh;
+  min-height: 120px;
+  border: none;
+  border-radius: 0 0 12px 12px;
+  background: hsl(var(--background));
+}
+
+.chat-v2 .markdown-content .code-block-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 10px 12px;
+  background: var(--chat-table-header-surface);
+  border-bottom: none; /* 移除边框 */
+  border-radius: var(--chat-block-radius) var(--chat-block-radius) 0 0;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+
+.chat-v2 .markdown-content .code-block-header .code-block-actions {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.chat-v2 .markdown-content .code-block-copy {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: hsl(var(--muted-foreground));
+  padding: 4px 8px;
+  border-radius: 6px;
+  box-shadow: none;
+  transition: color 0.15s ease, background-color 0.15s ease;
+  font-size: 12px;
+}
+.chat-v2 .markdown-content .code-block-copy:hover {
+  color: hsl(var(--foreground));
+  background: hsl(var(--muted) / 0.5);
+}
+.chat-v2 .markdown-content .code-block-copy:active {
+  background: hsl(var(--muted) / 0.8);
+}
+
+/* 让 pre 与头部连为一个整体 */
+.chat-v2 .markdown-content pre.code-block {
+  background: var(--chat-code-block-surface);
+  color: hsl(var(--card-foreground));
+  padding: 14px 16px;
+  border-radius: 0 0 var(--chat-block-radius) var(--chat-block-radius);
+  margin: 0;
+  overflow-x: auto;
+  border: none;
+  box-shadow: none; /* 移除阴影 */
+}
+
+/* 确保在带有复制头部时，pre 仍占满一行
+   同时覆盖 ScrollArea 内的 code-block-inner —— 块级代码必须撑满聊天栏宽度 */
+.chat-v2 .markdown-content .code-block-wrapper pre.code-block,
+.chat-v2 .markdown-content .code-block-scroll-area pre.code-block-inner {
+  display: block !important;
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  white-space: pre;
+}
+
+/* Code block ScrollArea wrapper — vertical cap managed by OverlayScrollbars
+   必须显式 full-width 以防 ScrollArea（OverlayScrollbars）内部的 os-viewport 等
+   div 在 flex / fit-content 上下文中意外缩窄 */
+.chat-v2 .markdown-content .code-block-scroll-area {
+  max-height: 80vh;
+  width: 100%;
+  min-width: 0;
+}
+
+/* Inner pre inside ScrollArea — let OverlayScrollbars manage overflow */
+.chat-v2 .markdown-content .code-block-scroll-area pre.code-block-inner {
+  overflow-x: visible !important;
+  overflow-y: visible !important;
+  max-height: none !important;
+}
+
+/* 代码块保持单一外层 surface，避免内容区再叠一层浅底色 */
+.chat-v2 .markdown-content .code-block-wrapper pre.code-block.code-block-inner {
+  background: transparent;
+}
+
+.chat-v2 .markdown-content pre.code-block code {
+  background: transparent !important;
+  white-space: pre;
+  font-feature-settings: 'liga' off, 'calt' off;
+}
+
+.chat-v2 .inline-code {
+  display: inline !important; /* 确保内联显示 */
+  background: var(--chat-code-inline-bg);
+  color: hsl(var(--foreground));
+  padding: 0.2em 0.4em;
+  border-radius: 6px;
+  font-weight: 400;
+  border: none;
+  font-size: 0.875em;
+  white-space: pre-wrap; /* 允许在容器内换行 */
+  word-break: break-word;
+  overflow-wrap: anywhere;
+  width: auto !important; /* 自适应宽度 */
+  max-width: 100% !important;
+}
+
+.chat-v2 .code-block {
+  background: transparent; /* 透明背景 */
+  color: hsl(var(--foreground));
+  padding: 1.2em;
+  border-radius: 8px;
+  margin: 1em 0;
+  overflow-x: auto; /* 滚动只在最外层pre出现 */
+  box-shadow: none; /* 移除阴影 */
+  border: none; /* 移除边框 */
+  max-width: 100%;
+  display: block;
+}
+
+/* 特殊处理：如果代码块内容很短，使其内联显示
+   ⚠️ 排除 .code-block-inner（块级代码架内的 pre），否则块级代码块会被错误地 inline 化 */
+.chat-v2 .code-block:not(.code-block-inner):has(code:only-child) {
+  display: inline-block !important;
+  width: auto !important;
+  max-width: 100% !important;
+  margin: 0.2em 0.4em !important;
+  padding: 0.2em 0.6em !important;
+  white-space: pre-wrap !important;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* 对于单行短代码块的特殊样式 */
+.chat-v2 .markdown-content p > .code-block {
+  display: inline-block !important;
+  width: auto !important;
+  max-width: 100% !important;
+  margin: 0.2em 0 !important;
+  padding: 0.15em 0.4em !important;
+  vertical-align: baseline;
+  white-space: pre-wrap !important;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* 检测短代码块并内联显示
+   ⚠️ 排除 .code-block-inner（块级代码架内的 pre），否则块级代码块会被错误地 inline 化 */
+.chat-v2 .markdown-content .code-block:not(.code-block-inner):not(:has(br)):not(:has(.hljs-ln)) {
+  display: inline-block !important;
+  width: auto !important;
+  max-width: 100% !important;
+  margin: 0.2em 0.4em !important;
+  padding: 0.3em 0.6em !important;
+  white-space: pre-wrap !important;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.chat-v2 .code-block:not(.code-block-inner):has(code:only-child) code,
+.chat-v2 .markdown-content p > .code-block code,
+.chat-v2 .markdown-content .code-block:not(.code-block-inner):not(:has(br)):not(:has(.hljs-ln)) code {
+  white-space: pre-wrap !important;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+/* 纯降级保护：markdown-content 中非 wrapper 内的裸 pre.code-block */
+.chat-v2 .markdown-content pre.code-block:not(.code-block-inner) { display: block; width: 100%; max-width: 100%; min-width: 0; }
+
+/* 针对在段落中的代码块 */
+.chat-v2 .markdown-content p pre.code-block {
+  display: inline !important;
+  margin: 0 !important;
+  padding: 0.2em 0.4em !important;
+  line-height: inherit;
+  white-space: pre-wrap !important;
+  word-break: break-word;
+  overflow-wrap: anywhere;
+}
+
+.chat-v2 .code-block code { background: none; color: inherit; padding: 0; border-radius: 0; border: none; font-size: 0.85em; line-height: 1.5; display: inline; white-space: pre; }
+
+/* 语法高亮增强 */
+.chat-v2 .code-block .token.comment {
+  color: hsl(var(--muted-foreground));
+  font-style: italic;
+}
+
+.chat-v2 .code-block .token.keyword {
+  color: hsl(var(--info));
+  font-weight: bold;
+}
+
+.chat-v2 .code-block .token.string {
+  color: hsl(var(--success));
+}
+
+.chat-v2 .code-block .token.number {
+  color: hsl(var(--warning));
+}
+
+/* ============================================================================
+   LLM 输出块对齐契约 - LLM Output Block Alignment Contract
+   ============================================================================
+
+   背景：.markdown-content 在 chat.css:92 被设为 `width: fit-content`，是为了
+   让跨段落拖选时浏览器原生的 line-fill 紧贴文本而不延伸到容器右边。代价是
+   它的子块默认会被收缩到自身 max-content 宽度。
+
+   契约：所有"LLM 输出块"（代码块、表格、思考链、RAG 来源、Mermaid 预览
+   等带卡片外观的块包装器）必须满足以下两条：
+
+     1. 显式 `width: 100%; max-width: 100%; min-width: 0` —— 不依赖
+        fit-content 的隐式计算
+     2. `margin-inline: 0` —— 与聊天容器（max-w-thread）严格贴边对齐
+
+   新增块包装器时：
+     a. 在 chat.css 的 fit-content 例外列表中加入该类名（line 113 区段）
+     b. 在此处加入下面的统一选择器列表
+     c. 不要单独硬编码不同的 border-radius / margin —— 复用现有 token
+
+   ============================================================================ */
+.chat-v2 .markdown-content .code-block-wrapper,
+.chat-v2 .markdown-content .table-wrapper,
+.chat-v2 .markdown-content .chain-of-thought,
+.chat-v2 .markdown-content .rag-sources-container {
+  display: block;
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin-inline: 0;
+}
+
+/* ============================================================================
+   表格样式 - Table Styles
+   ============================================================================ */
+
+.chat-v2 .table-wrapper {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  margin: var(--chat-md-table-gap) 0;
+  margin-block-start: calc(var(--chat-md-table-gap) * 1.15);
+  margin-block-end: calc(var(--chat-md-table-gap) * 1.6);
+  overflow-x: auto;
+}
+
+/* 只做表格区块与相邻正文的外部间距强化，不引入任何内部 padding。
+ *
+ * 说明：
+ * - 兄弟块之间的垂直 margin 会折叠，单独放大标题/段落自身 margin 往往不会生效；
+ * - 因此真正起作用的空间放在 .table-wrapper 自己的上下 margin 上，并仅在
+ *   它贴近正文/标题时按需放大。
+ */
+.chat-v2 .markdown-content > :is(h1, h2, h3, h4, h5, h6):has(+ .table-wrapper) {
+  margin-bottom: calc(var(--chat-md-heading-bottom-gap) + 0.35rem);
+}
+
+.chat-v2 .markdown-content > :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6):has(+ .table-wrapper) + .table-wrapper {
+  margin-top: calc(var(--chat-md-table-gap) * 1.35);
+}
+
+.chat-v2 .markdown-content > .table-wrapper:has(+ :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6)) {
+  margin-bottom: calc(var(--chat-md-table-gap) * 1.6);
+}
+
+.chat-v2 .markdown-content > .table-wrapper + :is(p, ul, ol, blockquote, h1, h2, h3, h4, h5, h6) {
+  margin-top: calc(var(--chat-md-paragraph-gap) + 0.3rem);
+}
+
+/* ScrollArea wrapper for tables — ensures full-width scroll area */
+.chat-v2 .markdown-content .table-scroll-area {
+  width: 100%;
+  min-width: 0;
+}
+
+/* Blocked streaming path: each markdown block is its own .markdown-content root,
+ * so table spacing must be applied at the block shell level, not only inside the table subtree. */
+.chat-v2 .blocked-markdown > .markdown-content.block-type-table {
+  margin-block-start: calc(var(--chat-md-table-gap) * 1.1);
+  margin-block-end: calc(var(--chat-md-table-gap) * 1.45);
+}
+
+.chat-v2 .blocked-markdown > .markdown-content.block-type-table + .markdown-content {
+  margin-block-start: calc(var(--chat-md-table-gap) * 0.22);
+}
+
+/* 三线表风格：顶线、底线为粗线（反线），表头分隔线为细线（正线） */
+.chat-v2 .markdown-table {
+  width: 100%;
+  border-collapse: collapse;
+  border-top: 2px solid hsl(var(--border));
+  border-bottom: 2px solid hsl(var(--border));
+  background: transparent;
+}
+
+.chat-v2 .markdown-table th,
+.chat-v2 .markdown-table td {
+  padding: 0.7em 0.85em;
+  text-align: left;
+  vertical-align: top;
+  line-height: 1.6;
+}
+
+.chat-v2 .markdown-table th {
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  border-bottom: 1px solid hsl(var(--border));
+}
+
+.chat-v2 .markdown-table td {
+  color: hsl(var(--foreground) / 0.92);
+}
+
+
+
+/* ============================================================================
+   流式Markdown样式 - Streaming Markdown Styles
+   ============================================================================ */
+
+.chat-v2 .streaming-markdown {
+  position: relative;
+  --stream-reveal-duration: 220ms;
+  --stream-reveal-ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --stream-tail-duration: 1.45s;
+}
+
+.chat-v2 .normal-content,
+.chat-v2 .main-content {
+  position: relative;
+}
+
+.chat-v2 .streaming-markdown[data-streaming="true"] .normal-content,
+.chat-v2 .streaming-markdown[data-streaming="true"] .main-content {
+  transition:
+    opacity var(--stream-reveal-duration) var(--stream-reveal-ease),
+    filter var(--stream-reveal-duration) var(--stream-reveal-ease),
+    transform var(--stream-reveal-duration) var(--stream-reveal-ease);
+}
+
+/* 流式末尾光标统一在 streaming.css 中定义为单一强调色圆点，
+ * 此处不再追加额外的 ::after，避免与之叠加形成『双光标』。 */
+
+@media (prefers-reduced-motion: reduce) {
+  .chat-v2 .streaming-markdown[data-streaming="true"] .normal-content,
+  .chat-v2 .streaming-markdown[data-streaming="true"] .main-content {
+    transition: none;
+  }
+}
+
+.chat-v2 .chain-of-thought {
+  margin: var(--chat-md-block-gap) 0;
+  border: 1px solid hsl(var(--border) / 0.3);
+  border-left: 2px solid var(--brand-primary);
+  border-radius: var(--radius-shell-toolbar);
+  background: hsl(var(--card));
+  overflow: hidden;
+  box-shadow: var(--shadow-shell-soft);
+}
+
+.chat-v2 .chain-header {
+  padding: 0.625rem 0.875rem;
+  background: transparent;
+  border-bottom: 1px solid hsl(var(--border) / 0.15);
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  cursor: pointer;
+  transition: background-color 0.15s;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.chat-v2 .chain-header:hover {
+  background: hsl(var(--muted) / 0.35);
+}
+
+.chat-v2 .chain-icon {
+  font-size: 1rem;
+  opacity: 0.85;
+}
+
+.chat-v2 .chain-title {
+  font-weight: 500;
+  color: hsl(var(--foreground) / 0.75);
+  font-size: var(--font-size-sm);
+}
+
+.chat-v2 .chain-header:hover .chain-title {
+  color: hsl(var(--foreground));
+}
+
+.chat-v2 .thinking-content {
+  padding: var(--chat-md-compact-gap);
+  background: transparent;
+  font-size: var(--chat-md-compact-font-size);
+  line-height: var(--chat-md-compact-line-height);
+  color: hsl(var(--muted-foreground));
+}
+
+/* ============================================================================
+   RAG来源样式 - RAG Sources Styles  
+   ============================================================================ */
+
+.chat-v2 .rag-sources-container {
+  margin: var(--chat-md-block-gap) 0;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  background: hsl(var(--muted));
+  overflow: hidden;
+}
+
+.chat-v2 .rag-sources-header {
+  padding: 8px 12px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--brand-primary);
+  background: hsl(var(--muted));
+  border-bottom: 1px solid hsl(var(--border));
+  transition: background-color 0.2s;
+  user-select: none;
+}
+
+.chat-v2 .rag-sources-header:hover {
+  background: hsl(var(--accent));
+}
+
+.chat-v2 .rag-sources-content {
+  padding: var(--chat-md-compact-gap);
+  background: hsl(var(--card));
+}
+
+.chat-v2 .rag-source-item {
+  margin-bottom: 12px;
+  padding: var(--chat-md-compact-gap);
+  background: hsl(var(--card));
+  border-radius: 6px;
+  border: 1px solid hsl(var(--border));
+  box-shadow: none;
+}
+
+.chat-v2 .rag-source-item:last-child {
+  margin-bottom: 0;
+}
+
+.chat-v2 .rag-source-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.chat-v2 .rag-source-title {
+  font-size: 0.8125rem;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.chat-v2 .rag-source-title span:first-child {
+  font-size: 14px;
+}
+
+.chat-v2 .rag-source-meta {
+  color: hsl(var(--muted-foreground));
+  font-weight: normal;
+  font-size: 0.75rem;
+}
+
+.chat-v2 .rag-source-score {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted));
+  padding: 2px 6px;
+  border-radius: 4px;
+  font-weight: 500;
+}
+
+.chat-v2 .rag-source-content {
+  font-size: var(--chat-md-compact-font-size);
+  color: hsl(var(--foreground));
+  line-height: var(--chat-md-compact-line-height);
+  font-style: normal;
+  background: hsl(var(--muted));
+  padding: var(--chat-md-compact-gap);
+  border-radius: 4px;
+  border: 1px solid hsl(var(--border));
+}
+
+/* ============================================================================
+   响应式设计 - Responsive Design
+   ============================================================================ */
+
+@media (max-width: 768px) {
+  .chat-v2 .markdown-content {
+    font-size: 1.0rem;
+  }
+  
+  .chat-v2 .markdown-content h1 { font-size: 1.3em; }
+  .chat-v2 .markdown-content h2 { font-size: 1.2em; }
+  .chat-v2 .markdown-content h3 { font-size: 1.1em; }
+  
+  .chat-v2 .code-block {
+    padding: 1em;
+    font-size: 0.8em;
+  }
+  
+  .chat-v2 .markdown-table th,
+  .chat-v2 .markdown-table td {
+    padding: 0.6em 0.8em;
+    font-size: 0.85em;
+  }
+  
+  .chat-v2 .table-wrapper {
+    margin: calc(var(--chat-md-table-gap) * 0.78) 0;
+  }
+  
+  .chat-v2 .rag-sources-header {
+    padding: 6px 8px;
+    font-size: 11px;
+  }
+  
+  .chat-v2 .rag-sources-content {
+    padding: 6px 10px;
+  }
+  
+  .chat-v2 .rag-source-item {
+    padding: 8px;
+    margin-bottom: 8px;
+  }
+  
+  .chat-v2 .rag-source-title {
+    font-size: 11px;
+  }
+  
+  .chat-v2 .rag-source-content {
+    font-size: 11px;
+    padding: 6px;
+  }
+}
+
+@media (max-width: 480px) {
+  .chat-v2 .markdown-content {
+    font-size: 0.95rem;
+  }
+  
+  .chat-v2 .markdown-content ul,
+  .chat-v2 .markdown-content ol {
+    padding-left: 1.5em;
+  }
+  
+  .chat-v2 .markdown-content blockquote {
+    padding: 0.6em 1em;
+    margin: 0.8em 0;
+  }
+  
+  .chat-v2 .code-block {
+    padding: 0.8em;
+    margin: 0.8em 0;
+  }
+  
+  .chat-v2 .chain-header {
+    padding: 0.5rem 0.6rem;
+    font-size: 0.8rem;
+  }
+  
+  .chat-v2 .thinking-content {
+    padding: 0.8rem;
+  }
+}
+
+/* ============================================================================
+   打印样式 - Print Styles
+   ============================================================================ */
+
+@media print {
+  .chat-v2 .markdown-content {
+    color: hsl(var(--foreground));
+    background: hsl(var(--card));
+  }
+  
+  .chat-v2 .code-block {
+    background: hsl(var(--muted));
+    color: hsl(var(--foreground));
+    border: 1px solid hsl(var(--border));
+  }
+  
+  .rag-sources-container {
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--card));
+  }
+  
+  .rag-sources-header {
+    background: hsl(var(--muted));
+    border-bottom: 1px solid hsl(var(--border));
+  }
+  
+  .chain-of-thought {
+    border: 1px solid hsl(var(--border));
+    background: hsl(var(--card));
+  }
+  
+  .chain-header {
+    background: hsl(var(--muted));
+    border-bottom: 1px solid hsl(var(--border));
+  }
+}
+
+/* ============================================================================
+   Mermaid 错误边界样式 - Mermaid Error Boundary Styles
+   ============================================================================ */
+
+/* 错误边界容器 */
+.chat-v2 .mermaid-error-boundary {
+  border: 1px solid hsl(var(--destructive) / 0.3);
+  border-radius: 8px;
+  overflow: hidden;
+  background: hsl(var(--card));
+}
+
+/* 错误头部 */
+.chat-v2 .mermaid-error-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  background: hsl(var(--destructive) / 0.1);
+  border-bottom: 1px solid hsl(var(--destructive) / 0.2);
+}
+
+.chat-v2 .mermaid-error-icon {
+  color: hsl(var(--destructive));
+  flex-shrink: 0;
+}
+
+.chat-v2 .mermaid-error-title {
+  font-size: 0.85em;
+  font-weight: 500;
+  color: hsl(var(--destructive));
+}
+
+.chat-v2 .mermaid-error-reset {
+  margin-left: auto;
+  padding: 4px 12px;
+  font-size: 0.75em;
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+  border-radius: 4px;
+  cursor: pointer;
+  color: hsl(var(--foreground));
+  transition: all 0.15s ease;
+}
+
+.chat-v2 .mermaid-error-reset:hover {
+  background: hsl(var(--accent));
+}
+
+/* 错误消息 */
+.chat-v2 .mermaid-error-message {
+  padding: 8px 12px;
+  font-size: 0.8em;
+  color: hsl(var(--muted-foreground));
+  background: hsl(var(--muted) / 0.5);
+  border-bottom: 1px solid hsl(var(--border));
+  word-break: break-word;
+}
+
+/* 降级代码显示 */
+.chat-v2 .mermaid-fallback-code {
+  margin: 0 !important;
+  border: none !important;
+  border-radius: 0 !important;
+  max-height: 300px;
+  overflow: auto;
+}
+
+/* 渲染错误提示（在预览区域内显示） */
+.chat-v2 .mermaid-render-error {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 24px;
+  color: hsl(var(--destructive));
+  font-size: 0.9em;
+  text-align: center;
+}
+
+.chat-v2 .mermaid-render-error .error-icon {
+  font-size: 1.5em;
+}
+
+.chat-v2 .mermaid-render-error .error-text {
+  max-width: 400px;
+  word-break: break-word;
+}
+
+/* 预览区域有错误时的样式 */
+.chat-v2 .mermaid-preview.has-error {
+  border-color: hsl(var(--destructive) / 0.3);
+}
+
+/* 暗色模式适配 */
+.dark .chat-v2 .mermaid-error-boundary {
+  background: hsl(var(--card));
+  border-color: hsl(var(--destructive) / 0.4);
+}
+
+.dark .chat-v2 .mermaid-error-header {
+  background: hsl(var(--destructive) / 0.15);
+}
+
+.dark .chat-v2 .mermaid-error-message {
+  background: hsl(var(--muted) / 0.3);
+}
+
+.dark .chat-v2 .mermaid-error-reset {
+  background: hsl(var(--muted));
+  border-color: hsl(var(--border));
+}
+
+.dark .chat-v2 .mermaid-error-reset:hover {
+  background: hsl(var(--accent));
+}
+
+/* ============================================================================
+   Mermaid Mindmap 文字可读性修复
+   官方主题在 mindmap 上的深色节点背景会导致文字不可读
+   通过 CSS 强制覆盖，确保文字始终清晰可见
+   ============================================================================ */
+
+/* 
+ * Mermaid mindmap 生成的 SVG 结构：
+ * - 节点容器使用 class="mindmap-node" 或 class="section-X"
+ * - 文字使用 <text> 和 <tspan> 元素
+ * - 使用通用选择器确保覆盖所有情况
+ */
+
+/* 亮色模式 - Mindmap 所有节点文字强制白色 */
+.chat-v2 .mermaid-content svg g[class*="mindmap"] text,
+.chat-v2 .mermaid-content svg g[class*="mindmap"] tspan,
+.chat-v2 .mermaid-content svg g[class*="section"] text,
+.chat-v2 .mermaid-content svg g[class*="section"] tspan,
+.chat-v2 .mermaid-content svg .mindmap-node text,
+.chat-v2 .mermaid-content svg .mindmap-node tspan {
+  fill: var(--diagram-node-contrast-text) !important;
+  font-weight: 500;
+  text-shadow: var(--text-shadow-contrast-medium);
+}
+
+/* 暗色模式 - Mindmap 文字使用浅灰色 */
+.dark .chat-v2 .mermaid-content svg g[class*="mindmap"] text,
+.dark .chat-v2 .mermaid-content svg g[class*="mindmap"] tspan,
+.dark .chat-v2 .mermaid-content svg g[class*="section"] text,
+.dark .chat-v2 .mermaid-content svg g[class*="section"] tspan,
+.dark .chat-v2 .mermaid-content svg .mindmap-node text,
+.dark .chat-v2 .mermaid-content svg .mindmap-node tspan {
+  fill: var(--diagram-node-contrast-text) !important;
+  text-shadow: var(--text-shadow-contrast-strong);
+}
+
+/* Mindmap 节点边框增强 */
+.chat-v2 .mermaid-content svg g[class*="mindmap"] rect,
+.chat-v2 .mermaid-content svg g[class*="mindmap"] circle,
+.chat-v2 .mermaid-content svg g[class*="mindmap"] ellipse,
+.chat-v2 .mermaid-content svg g[class*="mindmap"] polygon,
+.chat-v2 .mermaid-content svg g[class*="section"] rect,
+.chat-v2 .mermaid-content svg g[class*="section"] circle,
+.chat-v2 .mermaid-content svg g[class*="section"] ellipse,
+.chat-v2 .mermaid-content svg g[class*="section"] polygon {
+  stroke-width: 2px !important;
+}
+
+/* ============================================================================
+   引用徽章样式 - Citation Badge Styles
+   ============================================================================ */
+
+/* 引用徽章占位符（由 remark 插件生成，等待 React 替换） */
+.chat-v2 .citation-badge-placeholder {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.25rem;
+  height: 1.25rem;
+  padding: 0 0.25rem;
+  margin: 0 0.125rem;
+  font-size: 0.75rem;
+  font-weight: 500;
+  border-radius: 0.25rem;
+  background-color: hsl(var(--primary) / var(--citation-badge-bg-alpha));
+  color: hsl(var(--primary));
+  cursor: pointer;
+  transition: background-color 0.2s;
+  vertical-align: middle;
+  text-decoration: none;
+}
+
+.chat-v2 .citation-badge-placeholder:hover {
+  background-color: hsl(var(--primary) / var(--citation-badge-hover-alpha));
+}
+
+/* 暗色模式适配 */
+.dark .chat-v2 .citation-badge-placeholder {
+  background-color: hsl(var(--primary) / var(--citation-badge-bg-alpha));
+}
+
+.dark .chat-v2 .citation-badge-placeholder:hover {
+  background-color: hsl(var(--primary) / var(--citation-badge-hover-alpha));
+}
+
+/* 不同来源类型的颜色变体 */
+.chat-v2 .citation-badge-placeholder[data-citation-type="rag"] {
+  background-color: hsl(var(--citation-source-rag) / var(--citation-badge-bg-alpha));
+  color: hsl(var(--citation-source-rag));
+}
+
+.chat-v2 .citation-badge-placeholder[data-citation-type="rag"]:hover {
+  background-color: hsl(var(--citation-source-rag) / var(--citation-badge-hover-alpha));
+}
+
+.chat-v2 .citation-badge-placeholder[data-citation-type="multimodal"] {
+  background-color: hsl(var(--citation-source-multimodal) / var(--citation-badge-bg-alpha));
+  color: hsl(var(--citation-source-multimodal));
+}
+
+.chat-v2 .citation-badge-placeholder[data-citation-type="multimodal"]:hover {
+  background-color: hsl(var(--citation-source-multimodal) / var(--citation-badge-hover-alpha));
+}
+
+.chat-v2 .citation-badge-placeholder[data-citation-type="memory"] {
+  background-color: hsl(var(--citation-source-memory) / var(--citation-badge-bg-alpha));
+  color: hsl(var(--citation-source-memory));
+}
+
+.chat-v2 .citation-badge-placeholder[data-citation-type="memory"]:hover {
+  background-color: hsl(var(--citation-source-memory) / var(--citation-badge-hover-alpha));
+}
+
+.chat-v2 .citation-badge-placeholder[data-citation-type="web_search"] {
+  background-color: hsl(var(--citation-source-web-search) / var(--citation-badge-bg-alpha));
+  color: hsl(var(--citation-source-web-search));
+}
+
+.chat-v2 .citation-badge-placeholder[data-citation-type="web_search"]:hover {
+  background-color: hsl(var(--citation-source-web-search) / var(--citation-badge-hover-alpha));
+}
+
+/* 暗色模式下的类型颜色 */
+.dark .chat-v2 .citation-badge-placeholder[data-citation-type="rag"] {
+  background-color: hsl(var(--citation-source-rag) / var(--citation-badge-bg-alpha));
+  color: hsl(var(--citation-source-rag));
+}
+
+.dark .chat-v2 .citation-badge-placeholder[data-citation-type="multimodal"] {
+  background-color: hsl(var(--citation-source-multimodal) / var(--citation-badge-bg-alpha));
+  color: hsl(var(--citation-source-multimodal));
+}
+
+.dark .chat-v2 .citation-badge-placeholder[data-citation-type="memory"] {
+  background-color: hsl(var(--citation-source-memory) / var(--citation-badge-bg-alpha));
+  color: hsl(var(--citation-source-memory));
+}
+
+.dark .chat-v2 .citation-badge-placeholder[data-citation-type="web_search"] {
+  background-color: hsl(var(--citation-source-web-search) / var(--citation-badge-bg-alpha));
+  color: hsl(var(--citation-source-web-search));
+}
+
+/* 引用徽章 + 内联图片渲染（按来源序号自动解析） */
+.chat-v2 .citation-inline-wrapper {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  vertical-align: middle;
+}
+
+/* ★ 2026-01 修复：图片引用块 - 作为独立布局元素显示 */
+.chat-v2 .citation-image-block {
+  display: inline-block; /* 只包裹内容，不占全宽 */
+  margin: 1rem 0;
+  padding: 0.5rem;
+  background: hsl(var(--muted) / 0.3);
+  border-radius: 12px;
+  border: 1px solid hsl(var(--border) / 0.5);
+  max-width: 50%; /* 默认占有效区域的半宽 */
+}
+
+/* 图片块中的 badge 样式 */
+.chat-v2 .citation-image-block button {
+  margin-bottom: 0.5rem;
+}
+
+/* 引用图片 - 块级大图展示 */
+.chat-v2 .citation-inline-image {
+  display: block;
+  max-width: 100%; /* 相对于容器的 100% */
+  width: auto;
+  max-height: 500px; /* PDF 页面高度 */
+  border-radius: 8px;
+  object-fit: contain;
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--muted) / 0.2);
+  box-shadow: none;
+}
+
+/* 图片加载中占位符 */
+.chat-v2 .citation-inline-image-loading {
+  display: block;
+  width: 100%;
+  max-width: 400px;
+  height: 300px;
+  background: linear-gradient(90deg, hsl(var(--muted)) 25%, hsl(var(--muted) / 0.5) 50%, hsl(var(--muted)) 75%);
+  background-size: 200% 100%;
+  animation: citation-image-loading 1.5s infinite;
+  border-radius: 8px;
+  border: 1px solid hsl(var(--border));
+}
+
+@keyframes citation-image-loading {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}

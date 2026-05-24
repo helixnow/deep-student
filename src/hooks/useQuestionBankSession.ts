@@ -189,7 +189,7 @@ export function useQuestionBankSession({
 
     const allQuestions = [...firstPage.questions];
     let page = firstPage.page;
-    let hasMore = firstPage.has_more;
+    let hasMore: boolean = firstPage.has_more;
 
     while (hasMore) {
       const nextPage = page + 1;

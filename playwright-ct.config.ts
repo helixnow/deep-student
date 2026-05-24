@@ -2,12 +2,13 @@ import { defineConfig } from '@playwright/experimental-ct-react';
 import react from '@vitejs/plugin-react';
 import path from 'path';
 import { fileURLToPath } from 'url';
+
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const subjectCtxPath = path.resolve(__dirname, 'src/contexts/SubjectContext.tsx');
 
 export default defineConfig({
   testDir: './tests/ct',
+  testMatch: ['**/*.spec.{ts,tsx}'],
   fullyParallel: true,
   retries: 0,
   timeout: 30000,
@@ -26,6 +27,7 @@ export default defineConfig({
       },
       resolve: {
         alias: {
+          '@': path.resolve(__dirname, 'src'),
           '@tauri-apps/api/core': path.resolve(__dirname, 'tests/ct/mocks/tauri-core-mock.ts'),
           '@tauri-apps/api/event': path.resolve(__dirname, 'tests/ct/mocks/tauri-event-mock.ts'),
           '@tauri-apps/api/window': path.resolve(__dirname, 'tests/ct/mocks/tauri-window-mock.ts'),
@@ -46,5 +48,3 @@ export default defineConfig({
     },
   },
 });
-
-

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { templateDesignerSkill } from '@/chat-v2/skills/builtin-tools/template-designer';
+import { templateDesignerSkill } from '@/features/chat/skills/builtin-tools/template-designer';
 
 describe('templateDesignerSkill definition', () => {
   it('includes strict runtime guidance for template id and version handling', () => {

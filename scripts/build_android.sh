@@ -456,8 +456,8 @@ say "✓ 版本信息生成完成"
 # 4. 图标生成
 # ============================================================================
 if [[ -z "${SKIP_ICON_GENERATION:-}" ]]; then
-    if [[ ! -f "$REPO_ROOT/app-icon.png" ]]; then
-        warn "未找到 app-icon.png，将使用现有图标"
+    if [[ ! -f "$REPO_ROOT/public/app-icon.png" ]]; then
+        warn "未找到 public/app-icon.png，将使用现有图标"
     else
         ensure_android_project
         say "生成应用图标..."

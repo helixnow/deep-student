@@ -34,7 +34,9 @@ pub mod variant_handlers;
 pub mod workspace_handlers;
 
 // 重导出所有 Tauri 命令
-pub use approval_handlers::{chat_v2_tool_approval_cancel, chat_v2_tool_approval_respond};
+pub use approval_handlers::{
+    chat_v2_clear_approval_history, chat_v2_tool_approval_cancel, chat_v2_tool_approval_respond,
+};
 pub use ask_user_handlers::chat_v2_ask_user_respond; // 🆕 用户提问响应
 pub use block_actions::{
     chat_v2_anki_cards_result, chat_v2_copy_block_content, chat_v2_delete_message,

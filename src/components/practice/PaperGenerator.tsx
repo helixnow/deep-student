@@ -9,7 +9,7 @@
 
 import React, { useState, useCallback, useMemo } from 'react';
 import { cn } from '@/lib/utils';
-import { MarkdownRenderer } from '@/chat-v2/components/renderers';
+import { MarkdownRenderer } from '@/features/chat/components/renderers';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/shad/Card';
 import { Badge } from '@/components/ui/shad/Badge';
@@ -23,16 +23,16 @@ import {
   FileText,
   Download,
   Eye,
-  Settings2,
+  GearSix,
   Target,
   Tag,
-  Loader2,
-  FileDown,
+  CircleNotch,
+  DownloadSimple,
   Printer,
-  ChevronDown,
-  ChevronUp,
+  CaretDown,
+  CaretUp,
   CheckCircle,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { useQuestionBankStore, PaperConfig, PaperExportFormat, GeneratedPaper, Question } from '@/stores/questionBankStore';
 import { useTranslation } from 'react-i18next';
 
@@ -55,10 +55,10 @@ const DIFFICULTY_KEYS = [
 ];
 
 const EXPORT_FORMAT_KEYS: Array<{ key: PaperExportFormat; icon: React.ReactNode }> = [
-  { key: 'preview', icon: <Eye className="w-4 h-4" /> },
-  { key: 'pdf', icon: <FileDown className="w-4 h-4" /> },
-  { key: 'word', icon: <FileText className="w-4 h-4" /> },
-  { key: 'markdown', icon: <FileText className="w-4 h-4" /> },
+  { key: 'preview', icon: <Eye size={16} /> },
+  { key: 'pdf', icon: <DownloadSimple size={16} /> },
+  { key: 'word', icon: <FileText size={16} /> },
+  { key: 'markdown', icon: <FileText size={16} /> },
 ];
 
 export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
@@ -171,7 +171,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
           <CardHeader className="pb-4">
             <div className="flex items-center justify-between">
               <CardTitle className="flex items-center gap-2 text-lg">
-                <FileText className="w-5 h-5 text-sky-500" />
+                <FileText size={20} className="text-sky-500" />
                 {generatedPaper.title}
               </CardTitle>
               <div className="flex items-center gap-2">
@@ -187,7 +187,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                 </NotionButton>
                 {exportFormat !== 'preview' && (
                   <NotionButton size="sm" onClick={handleExport}>
-                    <Download className="w-4 h-4 mr-1" />
+                    <Download size={16} className="mr-1" />
                     {t('paper.export', '导出')}
                   </NotionButton>
                 )}
@@ -201,7 +201,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
           <div className="space-y-4 pr-4">
             {generatedPaper.questions.map((question, idx) => (
               <Card key={question.id} className="overflow-hidden">
-                <NotionButton variant="ghost" size="sm" className="!w-full !text-left !p-4 !h-auto !rounded-none hover:bg-muted/30" onClick={() => toggleQuestion(question.id)}>
+                <NotionButton variant="ghost" size="sm" className="!w-full !text-left !p-4 !h-auto !rounded-none hover:bg-[var(--interactive-hover)]" onClick={() => toggleQuestion(question.id)}>
                   <div className="flex items-start gap-3">
                     <Badge variant="outline" className="flex-shrink-0 font-mono">
                       {idx + 1}
@@ -210,9 +210,9 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                       <p className="text-sm line-clamp-2">{question.content}</p>
                     </div>
                     {expandedQuestions.has(question.id) ? (
-                      <ChevronUp className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      <CaretUp size={16} className="text-muted-foreground flex-shrink-0" />
                     ) : (
-                      <ChevronDown className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                      <CaretDown size={16} className="text-muted-foreground flex-shrink-0" />
                     )}
                   </div>
                 </NotionButton>
@@ -235,7 +235,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                     {includeAnswers && question.answer && (
                       <div className="ml-8 p-3 rounded-lg bg-emerald-500/5 border border-emerald-500/20">
                         <div className="flex items-center gap-1.5 text-sm font-medium text-emerald-600 mb-1">
-                          <CheckCircle className="w-4 h-4" />
+                          <CheckCircle size={16} />
                           {t('paper.answer', '答案')}
                         </div>
                         <div className="text-sm"><MarkdownRenderer content={question.answer} /></div>
@@ -266,7 +266,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
     <Card className={cn('', className)}>
       <CardHeader className="pb-4">
         <CardTitle className="flex items-center gap-2 text-lg">
-          <FileText className="w-5 h-5 text-sky-500" />
+          <FileText size={20} className="text-sky-500" />
           {t('paper.title', '组卷生成器')}
         </CardTitle>
       </CardHeader>
@@ -278,13 +278,13 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
             value={title}
             onChange={(e) => setTitle(e.target.value)}
             placeholder={t('paper.titlePlaceholder', '请输入试卷标题')}
-          />
+/>
         </div>
         
         {/* 题型选择 */}
         <div className="space-y-3">
           <Label className="flex items-center gap-1">
-            <Settings2 className="w-4 h-4" />
+            <GearSix size={16} />
             {t('paper.typeSelection', '题型配置')}
           </Label>
           <div className="space-y-2">
@@ -297,7 +297,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                   max={20}
                   step={1}
                   className="flex-1"
-                />
+/>
                 <span className="text-sm w-8 text-right font-medium">
                   {typeSelection[key] || 0}
                 </span>
@@ -312,7 +312,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
         {/* 难度筛选 */}
         <div className="space-y-3">
           <Label className="flex items-center gap-1">
-            <Target className="w-4 h-4" />
+            <Target size={16} />
             {t('paper.difficultyFilter', '难度筛选')}
             <span className="text-muted-foreground text-xs">{t('paper.noRestriction', '（不选则不限制）')}</span>
           </Label>
@@ -326,7 +326,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                   '!px-3 !py-1.5 !rounded-full !h-auto text-sm font-medium',
                   selectedDifficulties.includes(key)
                     ? color
-                    : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                    : 'bg-muted text-muted-foreground hover:bg-[var(--interactive-hover)]'
                 )}
               >
                 {t(`difficultyLevel.${key}`)}
@@ -339,7 +339,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
         {availableTags.length > 0 && (
           <div className="space-y-3">
             <Label className="flex items-center gap-1">
-              <Tag className="w-4 h-4" />
+              <Tag size={16} />
               {t('paper.tagsFilter', '标签筛选')}
               <span className="text-muted-foreground text-xs">{t('paper.noRestriction', '（不选则不限制）')}</span>
             </Label>
@@ -353,7 +353,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                     '!px-3 !py-1.5 !rounded-full !h-auto text-sm',
                     selectedTags.includes(tag)
                       ? 'bg-sky-500/20 text-sky-600'
-                      : 'bg-muted text-muted-foreground hover:bg-muted/80'
+                      : 'bg-muted text-muted-foreground hover:bg-[var(--interactive-hover)]'
                   )}
                 >
                   {tag}
@@ -392,7 +392,7 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
                   '!flex !flex-col !items-center !gap-1 !p-3 !h-auto !rounded-lg border',
                   exportFormat === key
                     ? 'border-sky-500 bg-sky-500/10 text-sky-600'
-                    : 'border-border hover:bg-muted/50'
+                    : 'border-border hover:bg-[var(--interactive-hover)]'
                 )}
               >
                 {icon}
@@ -409,12 +409,12 @@ export const PaperGenerator: React.FC<PaperGeneratorProps> = ({
         >
           {isLoadingPractice ? (
             <>
-              <Loader2 className="w-5 h-5 mr-2 animate-spin" />
+              <CircleNotch size={20} className="mr-2 animate-spin" />
               {t('paper.generating', '生成中...')}
             </>
           ) : (
             <>
-              <FileText className="w-5 h-5 mr-2" />
+              <FileText size={20} className="mr-2" />
               {t('paper.generate', '生成试卷')}
             </>
           )}

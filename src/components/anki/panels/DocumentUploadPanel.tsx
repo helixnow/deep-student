@@ -11,7 +11,7 @@
 
 import React, { useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Upload, X, BookOpen, Loader2 } from 'lucide-react';
+import { Upload, X, BookOpen, CircleNotch } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { UnifiedDragDropZone } from '@/components/shared/UnifiedDragDropZone';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -100,7 +100,7 @@ export function DocumentUploadPanel({
       {/* 导入进度提示 */}
       {isImporting && (
         <div className="px-5 pb-3 flex items-center text-xs text-muted-foreground shrink-0">
-          <Loader2 className="h-3.5 w-3.5 mr-1 animate-spin" />
+          <CircleNotch size={14} className="mr-1 animate-spin" />
           {t('import_in_progress')}
         </div>
       )}
@@ -140,12 +140,12 @@ export function DocumentUploadPanel({
           <span
             className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_top,_hsl(var(--muted-foreground)/0.22)_0%,_transparent_65%)] transition-opacity duration-300 dark:bg-[radial-gradient(circle_at_top,_hsl(var(--muted-foreground)/0.32)_0%,_transparent_70%)]"
             style={{ opacity: isDragging ? 1 : 0.45 }}
-          />
+/>
 
           {/* 上传图标和提示 */}
           <div className="relative flex flex-col items-center gap-2 text-[hsl(var(--foreground))] z-10">
             <div className="flex h-12 w-12 items-center justify-center rounded-full bg-card shadow-sm transition group-hover:scale-105">
-              <Upload className="h-6 w-6 text-[hsl(var(--foreground))]" aria-hidden />
+              <Upload size={24} className="text-[hsl(var(--foreground))]" aria-hidden />
             </div>
             <p className="text-xs text-[hsl(var(--muted-foreground))] break-words text-center px-2">
               {supportedExtensions} · {t('upload_drag_text')}
@@ -161,7 +161,7 @@ export function DocumentUploadPanel({
             className="absolute inset-0 h-full w-full cursor-pointer opacity-0 z-20"
             id="anki-file-input"
             multiple
-          />
+/>
 
           {/* 选择按钮 */}
           <div className="relative flex items-center gap-3 z-10">
@@ -169,7 +169,7 @@ export function DocumentUploadPanel({
               variant="outline"
               size="sm"
               onClick={() => fileInputRef.current?.click()}
-              className="border-transparent ring-1 ring-border/40 bg-card text-foreground hover:bg-accent/50"
+              className="border-transparent ring-1 ring-border/40 bg-card text-foreground hover:bg-[var(--interactive-hover)]"
             >
               {t('upload_button')}
             </NotionButton>
@@ -216,7 +216,7 @@ export function DocumentUploadPanel({
                     onClick={() => onRemoveFile(index)}
                     disabled={isProcessingFiles || isDragProcessing}
                   >
-                    <X className="h-4 w-4" />
+                    <X size={16} />
                   </NotionButton>
                 </div>
               ))}

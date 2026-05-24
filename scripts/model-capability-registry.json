@@ -1,6 +1,6 @@
 {
   "schema_version": "1.0",
-  "updated_at": "2026-02-28",
+  "updated_at": "2026-05-22",
   "purpose": "持续维护模型能力、参数形态和适配注意事项，用于修正 chat-v2 适配器与模型能力推断实现",
   "records": [
     {
@@ -524,10 +524,16 @@
           "quirks": [
             "适配器需优先识别 customtools 变体，避免将其误识别为普通 Pro Preview。"
           ]
-        },
+        }
+      ]
+    },
+    {
+      "vendor": "Google",
+      "series": "Gemini 3.5",
+      "models": [
         {
-          "model_id": "gemini-3-flash",
-          "release_date": "2025-12",
+          "model_id": "gemini-3.5-flash",
+          "release_date": "2026-05-19",
           "status": "confirmed",
           "capabilities": {
             "text": true,

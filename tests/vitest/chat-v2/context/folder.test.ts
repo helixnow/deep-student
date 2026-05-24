@@ -9,8 +9,8 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { Resource } from '@/chat-v2/context/types';
-import { isTextContentBlock } from '@/chat-v2/context/types';
+import type { Resource } from '@/features/chat/context/types';
+import { isTextContentBlock } from '@/features/chat/context/types';
 import {
   folderDefinition,
   getToolsForFolderResource,
@@ -18,7 +18,7 @@ import {
   FOLDER_XML_TAG,
   FOLDER_TOOLS,
   type FolderContextData,
-} from '@/chat-v2/context/definitions/folder';
+} from '@/features/chat/context/definitions/folder';
 
 // ============================================================================
 // 测试数据构造

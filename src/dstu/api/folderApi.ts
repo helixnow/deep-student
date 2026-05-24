@@ -22,8 +22,8 @@ import type {
   FolderResourcesResult,
   FolderItemType,
 } from '../types/folder';
-import { updatePathCacheV2 } from '@/chat-v2/context/vfsRefApi';
-import { invalidateResourceCache } from '@/chat-v2/context/vfsRefApiEnhancements';
+import { updatePathCacheV2 } from '@/features/chat/context/vfsRefApi';
+import { invalidateResourceCache } from '@/features/chat/context/vfsRefApiEnhancements';
 
 // ============================================================================
 // 日志前缀

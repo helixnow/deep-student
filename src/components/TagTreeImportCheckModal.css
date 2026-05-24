@@ -11,12 +11,12 @@
 }
 
 .tag-tree-modal {
-  background: #fff;
+  background: var(--surface-elevated);
   padding: 24px 32px;
   border-radius: 8px;
   width: 420px;
   max-width: 90%;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 10px 40px hsl(var(--shadow-base) / 0.2);
 }
 
 .tag-tree-modal h3 {
@@ -29,14 +29,14 @@
 }
 
 .warning-list {
-  color: #d97706;
+  color: hsl(var(--warning));
   padding-left: 0;
   margin: 8px 0;
   list-style: none;
 }
 
 .error-list {
-  color: #dc2626;
+  color: hsl(var(--destructive));
   padding-left: 0;
   margin: 8px 0;
   list-style: none;
@@ -64,18 +64,18 @@
 }
 
 .actions button.confirm-btn {
-  background: #3b82f6;
-  color: #fff;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
 }
 
 .actions button.confirm-btn:disabled {
-  background: #9ca3af;
+  background: hsl(var(--muted-foreground));
   cursor: not-allowed;
 }
 
 .actions button:not(.confirm-btn) {
-  background: #e5e7eb;
-  color: #374151;
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
 }
 /* === Typography & Layout Enhancement === */
 .tag-tree-modal {
@@ -88,20 +88,20 @@
   font-size: 22px;
   font-weight: 600;
   margin-bottom: 16px;
-  color: #111827;
+  color: hsl(var(--foreground));
 }
 
 .tag-tree-modal h4 {
   margin: 16px 0 8px 0;
   font-size: 16px;
   font-weight: 600;
-  color: #374151;
+  color: hsl(var(--foreground));
 }
 
 .summary p {
   margin: 4px 0;
   font-size: 15px;
-  color: #374151;
+  color: hsl(var(--foreground));
 }
 
 .rules,
@@ -119,17 +119,17 @@
 .rules .rule-status {
   font-size: 13px;
   margin-top: 4px;
-  color: #2563eb;
+  color: hsl(var(--primary));
 }
 
 .hard-rule-list li::marker,
 .error-list li::marker {
-  color: #dc2626;
+  color: hsl(var(--destructive));
 }
 
 .soft-rule-list li::marker,
 .warning-list li::marker {
-  color: #d97706;
+  color: hsl(var(--warning));
 }
 
 .warning-list li,
@@ -143,9 +143,9 @@
 }
 
 .actions button.confirm-btn:not(:disabled):hover {
-  background: #2563eb;
+  background: hsl(var(--primary) / 0.9);
 }
 
 .actions button:not(.confirm-btn):hover {
-  background: #d1d5db;
+  background: hsl(var(--border));
 }

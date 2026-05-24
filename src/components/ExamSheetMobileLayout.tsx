@@ -24,20 +24,20 @@ import { cn } from '../lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Badge } from './ui/shad/Badge';
 import {
-  ChevronLeft,
-  ZoomIn,
-  ZoomOut,
+  CaretLeft,
+  MagnifyingGlassPlus,
+  MagnifyingGlassMinus,
   Eye,
-  EyeOff,
-  MoreHorizontal,
-  Sparkles,
+  EyeSlash,
+  DotsThree,
+  Sparkle,
   Bookmark,
-  RefreshCw,
+  ArrowClockwise,
   Camera,
-  Send,
+  PaperPlaneRight,
   ArrowLeft,
   FileText,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { ExamPageImage } from './ExamPageImage';
 
@@ -170,7 +170,7 @@ const CardSelector: React.FC<CardSelectorProps> = ({
               'border-2',
               isSelected
                 ? 'bg-primary text-primary-foreground border-primary scale-110 shadow-lg'
-                : 'bg-card text-foreground border-border hover:border-primary/50 hover:bg-accent'
+                : 'bg-card text-foreground border-border hover:border-primary/50 hover:bg-[var(--interactive-hover)]'
             )}
           >
             {index + 1}
@@ -215,7 +215,7 @@ const CardDetail: React.FC<CardDetailProps> = ({ card, onBookmark }) => {
             onClick={() => onBookmark(card.id)}
             className="shrink-0"
           >
-            <Bookmark className="w-4 h-4 mr-1.5" />
+            <Bookmark size={16} className="mr-1.5" />
             {t('exam_sheet:bookmark')}
           </NotionButton>
         )}
@@ -376,9 +376,9 @@ export const ExamSheetMobileLayout: React.FC<ExamSheetMobileLayoutProps> = ({
               variant="ghost"
               size="icon"
               onClick={onBack}
-              className="w-10 h-10 rounded-full text-white hover:bg-white/20"
+              className="w-10 h-10 rounded-full text-white hover:bg-[var(--overlay-control-hover)]"
             >
-              <ArrowLeft className="w-5 h-5" />
+              <ArrowLeft size={20} />
             </NotionButton>
           )}
           
@@ -430,7 +430,7 @@ export const ExamSheetMobileLayout: React.FC<ExamSheetMobileLayoutProps> = ({
                 resolveImageSrc={resolveImageSrc}
                 alt={`Page ${currentPage.pageIndex + 1}`}
                 className="w-full h-auto object-contain !rounded-lg !shadow-none"
-              />
+/>
 
               {/* 识别框叠加层 */}
               {showBboxes && (
@@ -484,7 +484,7 @@ export const ExamSheetMobileLayout: React.FC<ExamSheetMobileLayoutProps> = ({
               onClick={onToggleBboxes}
               className="w-10 h-10 rounded-full shadow-lg bg-card/90 backdrop-blur"
             >
-              {showBboxes ? <EyeOff className="w-5 h-5" /> : <Eye className="w-5 h-5" />}
+              {showBboxes ? <EyeSlash size={20} /> : <Eye size={20} />}
             </NotionButton>
           )}
           {onZoomChange && (
@@ -495,7 +495,7 @@ export const ExamSheetMobileLayout: React.FC<ExamSheetMobileLayoutProps> = ({
                 onClick={() => onZoomChange(Math.min(3, zoom + 0.2))}
                 className="w-10 h-10 rounded-full shadow-lg bg-card/90 backdrop-blur"
               >
-                <ZoomIn className="w-5 h-5" />
+                <MagnifyingGlassPlus size={20} />
               </NotionButton>
               <NotionButton
                 variant="secondary"
@@ -503,7 +503,7 @@ export const ExamSheetMobileLayout: React.FC<ExamSheetMobileLayoutProps> = ({
                 onClick={() => onZoomChange(Math.max(0.5, zoom - 0.2))}
                 className="w-10 h-10 rounded-full shadow-lg bg-card/90 backdrop-blur"
               >
-                <ZoomOut className="w-5 h-5" />
+                <MagnifyingGlassMinus size={20} />
               </NotionButton>
               <NotionButton
                 variant="secondary"
@@ -511,7 +511,7 @@ export const ExamSheetMobileLayout: React.FC<ExamSheetMobileLayoutProps> = ({
                 onClick={() => onZoomChange(1)}
                 className="w-10 h-10 rounded-full shadow-lg bg-card/90 backdrop-blur"
               >
-                <RefreshCw className="w-4 h-4" />
+                <ArrowClockwise size={16} />
               </NotionButton>
             </>
           )}
@@ -553,7 +553,7 @@ export const ExamSheetMobileLayout: React.FC<ExamSheetMobileLayoutProps> = ({
             cards={currentCards}
             selectedCardId={selectedCardId}
             onSelect={onCardSelect}
-          />
+/>
         </div>
 
         {/* 题目详情（可滚动） */}
@@ -585,7 +585,7 @@ export const ExamSheetMobileLayout: React.FC<ExamSheetMobileLayoutProps> = ({
                 disabled={isUploading}
                 className="shrink-0 rounded-full gap-1.5"
               >
-                <Camera className="w-4 h-4" />
+                <Camera size={16} />
                 {isUploading 
                   ? t('exam_sheet:uploading')
                   : t('exam_sheet:retake_page')
@@ -600,7 +600,7 @@ export const ExamSheetMobileLayout: React.FC<ExamSheetMobileLayoutProps> = ({
                   onClick={() => onAnalyze(selectedCard.id)}
                   className="flex-1 rounded-full gap-1.5"
                 >
-                  <Sparkles className="w-4 h-4" />
+                  <Sparkle size={16} />
                   {t('exam_sheet:ai_analyze')}
                 </NotionButton>
               )}
@@ -617,7 +617,7 @@ export const ExamSheetMobileLayout: React.FC<ExamSheetMobileLayoutProps> = ({
             accept="image/*"
             onChange={onFileChange}
             className="hidden"
-          />
+/>
         )}
       </motion.div>
 

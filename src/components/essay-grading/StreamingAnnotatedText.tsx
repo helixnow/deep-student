@@ -13,7 +13,7 @@ import {
   type ParsedScore,
 } from '@/essay-grading/streamingMarkerParser';
 import { ScoreCard } from './ScoreCard';
-import { Loader2 } from 'lucide-react';
+import { CircleNotch } from '@phosphor-icons/react';
 
 // 调试日志（仅在开发模式下生效）
 const debugLog = (message: string, data?: Record<string, unknown>) => {
@@ -209,7 +209,7 @@ const MarkerRenderer: React.FC<{ marker: StreamingMarker; t: (key: string) => st
 
 const ScoreGeneratingPlaceholder: React.FC<{ t: (key: string) => string }> = ({ t }) => (
   <div className="flex items-center gap-2 px-4 py-3 bg-muted/20 rounded-lg border border-border/20">
-    <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+    <CircleNotch size={16} className="animate-spin text-muted-foreground" />
     <span className="text-sm text-muted-foreground">{t('essay_grading:score_generating')}</span>
   </div>
 );

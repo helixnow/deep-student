@@ -1,0 +1,742 @@
+/* Deep Student Design - Global platform compat & shared utilities */
+
+/* =================== 安卓 WebView 兼容性修复 =================== */
+
+/*
+ * 安卓 WebView 会自动调整以下内容：
+ * 1. 小字体会被放大以提高可读性（text-size-adjust）
+ * 2. 触摸目标会被放大以提高可用性
+ * 3. 输入框聚焦时页面会自动缩放（font-size < 16px）
+ *
+ * 解决方案：
+ * - 使用 text-size-adjust: 100% 禁止字体自动调整
+ * - 使用固定像素值限制元素尺寸（!important 确保优先级）
+ * - 输入框使用 16px 最小字号防止缩放
+ */
+
+/* 全局禁止文字大小自动调整 */
+html {
+  -webkit-text-size-adjust: 100%;
+  -moz-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* ★ 全局移动端触控优化：消除双击缩放的 300ms 延迟 */
+html {
+  touch-action: manipulation;
+}
+
+/* ---- 1. 小字体元素保护（10px-15px 全覆盖）---- */
+
+/* 10px-11px 字体保护 */
+.text-\[10px\],
+.text-\[11px\],
+[class*="text-[10px]"],
+[class*="text-[11px]"] {
+  -webkit-text-size-adjust: 100% !important;
+  text-size-adjust: 100% !important;
+  line-height: 1.2;
+}
+
+/* 12px-15px 字体保护（扩展覆盖） */
+.text-\[12px\],
+.text-\[13px\],
+.text-\[14px\],
+.text-\[15px\],
+[class*="text-[12px]"],
+[class*="text-[13px]"],
+[class*="text-[14px]"],
+[class*="text-[15px]"] {
+  -webkit-text-size-adjust: 100% !important;
+  text-size-adjust: 100% !important;
+}
+
+/* Tailwind text-xs (12px) 和 text-sm (14px) 保护 */
+.text-xs,
+.text-sm {
+  -webkit-text-size-adjust: 100% !important;
+  text-size-adjust: 100% !important;
+}
+
+/* ---- 2. Badge/Chip/Tag 类元素固定尺寸保护 ---- */
+
+.inline-flex.items-center.rounded-full,
+.inline-flex.items-center.rounded-md {
+  -webkit-text-size-adjust: 100% !important;
+  text-size-adjust: 100% !important;
+  flex-shrink: 0;
+}
+
+/* ---- 3. 小尺寸 UI 组件保护 ---- */
+
+/* Checkbox 组件 (16x16) */
+[data-state="checked"],
+[data-state="unchecked"] {
+  -webkit-text-size-adjust: 100% !important;
+  text-size-adjust: 100% !important;
+}
+
+.peer.h-4.w-4,
+[class*="h-4"][class*="w-4"].rounded {
+  min-width: 16px !important;
+  min-height: 16px !important;
+  flex-shrink: 0 !important;
+}
+
+/* Progress 组件 (高度 8px) */
+[role="progressbar"] {
+  min-height: 8px !important;
+  flex-shrink: 0 !important;
+}
+
+[role="progressbar"] .bar,
+[role="progressbar"] > div {
+  min-height: 8px !important;
+}
+
+/* ---- 4. 小图标保护 (12px-16px) ---- */
+
+/* w-3 h-3 (12px) 图标 - 精确匹配 */
+.w-3.h-3 {
+  min-width: 12px !important;
+  min-height: 12px !important;
+  flex-shrink: 0 !important;
+}
+
+/* w-3.5 h-3.5 (14px) 图标 */
+.w-3\.5.h-3\.5 {
+  min-width: 14px !important;
+  min-height: 14px !important;
+  flex-shrink: 0 !important;
+}
+
+/* w-4 h-4 (16px) 图标 - 精确匹配 */
+.w-4.h-4 {
+  min-width: 16px !important;
+  min-height: 16px !important;
+  flex-shrink: 0 !important;
+}
+
+/* w-5 h-5 (20px) 图标 */
+.w-5.h-5 {
+  min-width: 20px !important;
+  min-height: 20px !important;
+  flex-shrink: 0 !important;
+}
+
+/* w-6 h-6 (24px) 图标 */
+.w-6.h-6 {
+  min-width: 24px !important;
+  min-height: 24px !important;
+  flex-shrink: 0 !important;
+}
+
+/* SVG 图标通用保护 - 精确匹配 */
+svg.w-3 {
+  min-width: 12px !important;
+}
+
+svg.h-3 {
+  min-height: 12px !important;
+}
+
+svg.w-4 {
+  min-width: 16px !important;
+}
+
+svg.h-4 {
+  min-height: 16px !important;
+}
+
+/* size-* 工具类保护 (Tailwind v3.3+) */
+.size-3 {
+  min-width: 12px !important;
+  min-height: 12px !important;
+}
+
+.size-4 {
+  min-width: 16px !important;
+  min-height: 16px !important;
+}
+
+.size-5 {
+  min-width: 20px !important;
+  min-height: 20px !important;
+}
+
+/* ---- 5. 输入框防缩放 ---- */
+
+@media (pointer: coarse) and (hover: none) and (max-width: 1024px) {
+  input[type="text"],
+  input[type="number"],
+  input[type="email"],
+  input[type="password"],
+  input[type="search"],
+  input[type="tel"],
+  input[type="url"],
+  textarea,
+  [contenteditable="true"] {
+    font-size: 16px !important;
+    -webkit-text-size-adjust: 100% !important;
+    text-size-adjust: 100% !important;
+  }
+}
+
+/* JavaScript 检测到 Android WebView 时的专用类 */
+html.is-android-webview input,
+html.is-android-webview textarea,
+html.is-android-webview [contenteditable="true"] {
+  font-size: 16px !important;
+}
+
+/* ---- 6. 固定高度小元素保护 ---- */
+
+/* h-[14px] - ModelMentionChip 等 */
+.h-\[14px\] {
+  min-height: 14px !important;
+  flex-shrink: 0 !important;
+}
+
+.min-h-\[14px\] {
+  min-height: 14px !important;
+}
+
+/* h-[18px] - Badge, Chip 等 */
+.h-\[18px\] {
+  min-height: 18px !important;
+  flex-shrink: 0 !important;
+}
+
+.min-h-\[18px\] {
+  min-height: 18px !important;
+}
+
+/* h-[20px] - NotesEditorHeader 等 */
+.h-\[20px\] {
+  min-height: 20px !important;
+  flex-shrink: 0 !important;
+}
+
+.min-h-\[20px\] {
+  min-height: 20px !important;
+}
+
+/* h-[22px] - ModelMentionChip 等 */
+.h-\[22px\] {
+  min-height: 22px !important;
+  flex-shrink: 0 !important;
+}
+
+.min-h-\[22px\] {
+  min-height: 22px !important;
+}
+
+/* h-[24px] - NoteTagsEditor 等 */
+.h-\[24px\] {
+  min-height: 24px !important;
+  flex-shrink: 0 !important;
+}
+
+.min-h-\[24px\] {
+  min-height: 24px !important;
+}
+
+/* h-[25px] - Select 组件 */
+.h-\[25px\] {
+  min-height: 25px !important;
+  flex-shrink: 0 !important;
+}
+
+/* ---- 7. backdrop-filter 兼容性 fallback ---- */
+
+@supports not (backdrop-filter: blur(1px)) {
+  /* 毛玻璃效果降级为半透明背景 */
+  .backdrop-blur-sm {
+    background-color: color-mix(in hsl, var(--shell-titlebar-surface) 96%, transparent) !important;
+  }
+
+  .backdrop-blur {
+    background-color: color-mix(in hsl, var(--shell-titlebar-surface) 93%, transparent) !important;
+  }
+
+  .backdrop-blur-md {
+    background-color: color-mix(in hsl, var(--shell-titlebar-surface) 90%, transparent) !important;
+  }
+
+  .backdrop-blur-lg,
+  .backdrop-blur-xl {
+    background-color: color-mix(in hsl, var(--shell-titlebar-surface) 87%, transparent) !important;
+  }
+}
+
+/* ---- 8. env() 安全区域 fallback ---- */
+
+@supports not (padding: env(safe-area-inset-bottom)) {
+  .pb-safe,
+  .safe-area-bottom {
+    padding-bottom: var(--android-safe-area-bottom, 48px) !important;
+  }
+
+  .pt-safe,
+  .safe-area-top {
+    padding-top: var(--android-safe-area-top, 24px) !important;
+  }
+}
+
+/* Android 专用安全区域类 - 始终使用 CSS 变量 */
+html.is-android .android-safe-bottom {
+  padding-bottom: var(--android-safe-area-bottom, 48px);
+}
+
+html.is-android .android-safe-top {
+  padding-top: var(--android-safe-area-top, 24px);
+}
+
+/* =================== 移动端响应式适配 =================== */
+
+:root {
+  /* 移动端固定顶部栏高度（统一管理） */
+  --mobile-topbar-height: 56px;
+  /* 桌面固定标题栏高度（统一管理） */
+  --desktop-titlebar-height: 40px;
+  --shell-titlebar-height: var(--desktop-titlebar-height);
+  --shell-navigation-width: 272px;
+}
+
+/* 小屏幕下：显示ModernSidebar，隐藏Topbar和content-header */
+@media (max-width: 767px) {
+  :root {
+    --sidebar-width: 110px;
+    --desktop-titlebar-height: 0px;
+  }
+  
+  .app-sidebar {
+    display: flex !important;
+    width: var(--sidebar-width) !important;
+    min-width: var(--sidebar-width) !important;
+  }
+  
+  .dstu-topbar {
+    display: none !important;
+  }
+  
+  .content-header {
+    display: none !important;
+  }
+
+  .content-header::after {
+    display: none;
+  }
+  
+  .content-body {
+    padding-top: 0 !important;
+  }
+  
+  .app-content {
+    margin-left: 0 !important;
+  }
+}
+
+/* =================== Shell layer styles =================== */
+
+[data-shell-layer="navigation"] {
+  position: relative;
+  background: var(--shell-navigation-surface);
+  border-right: 0;
+  isolation: isolate;
+}
+
+[data-shell-layer="navigation"]::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: var(--shell-navigation-depth-overlay);
+}
+
+[data-shell-window-controls] {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--shell-window-control-gap);
+  padding: 2px;
+  border-radius: calc(var(--shell-window-control-radius) + 2px);
+  border: 1px solid var(--shell-control-border);
+  background: var(--shell-control-surface);
+  box-shadow: var(--shell-shadow-active);
+}
+
+[data-shell-window-button] {
+  height: var(--shell-window-control-size) !important;
+  width: var(--shell-window-control-size) !important;
+  min-height: var(--shell-window-control-size) !important;
+  min-width: var(--shell-window-control-size) !important;
+  border-radius: var(--shell-window-control-radius) !important;
+  background: transparent !important;
+  color: var(--shell-navigation-foreground) !important;
+  border: 1px solid transparent !important;
+  box-shadow: none !important;
+}
+
+[data-shell-window-button]:hover,
+[data-shell-window-button]:focus-visible {
+  background: var(--shell-control-hover) !important;
+  color: var(--shell-navigation-foreground) !important;
+}
+
+[data-shell-window-button]:active {
+  background: var(--shell-control-active) !important;
+}
+
+[data-shell-window-button="close"]:hover,
+[data-shell-window-button="close"]:focus-visible {
+  background: var(--shell-window-close-hover) !important;
+  color: var(--shell-window-close-foreground) !important;
+}
+
+[data-shell-window-button="close"]:active {
+  background: var(--shell-window-close-active) !important;
+}
+
+/* =================== Print styles =================== */
+
+@media print {
+  .window-controls,
+  .dstu-topbar,
+  .custom-titlebar,
+  #dstu-topbar-portal,
+  .app-sidebar,
+  .content-header,
+  .topbar-portal,
+  [data-panel-id="notes-sidebar"],
+  [data-panel-id="notes-context"],
+  [data-panel-group-id] > [data-resize-handle],
+  .notes-home-container [data-radix-popper-content-wrapper],
+  .notes-home-container .notes-header-wrapper,
+  .notes-editor-toolbar,
+  .milkdown-toolbar,
+  .milkdown-block-handle,
+  .milkdown-slash-menu {
+    display: none !important;
+    visibility: hidden !important;
+  }
+  
+  html, body {
+    background: white !important;
+    color: black !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+  
+  .app,
+  .app-body,
+  .app-content,
+  .content-body {
+    position: static !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    width: 100% !important;
+    max-width: none !important;
+    height: auto !important;
+    min-height: auto !important;
+  }
+  
+  .page-container {
+    position: static !important;
+    overflow: visible !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+  }
+}
+
+/* =================== Topbar button override =================== */
+
+.dstu-topbar button.icon-ghost-btn {
+  padding: 0 16px !important;
+}
+
+/* =================== Drag region & no-drag =================== */
+
+.header-drag-region {
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.header-drag-region:active {
+  cursor: grabbing;
+}
+
+/* 确保交互元素不能被拖拽 */
+.app-content,
+.content-body,
+.sidebar-content,
+.page-container,
+.window-controls,
+.window-button,
+button,
+input,
+select,
+textarea,
+a {
+  -webkit-app-region: no-drag !important;
+}
+
+/* =================== Debug overlay hiding =================== */
+
+[data-tauri-debug],
+[data-debug],
+.debug-overlay,
+.size-indicator,
+.resize-indicator,
+.window-size-indicator,
+.dimension-overlay,
+*[class*="debug"]:not([id*="dstu-debugger"]),
+*[id*="debug"]:not([id*="dstu-debugger"]),
+*[class*="debugger"]:not([id*="dstu-debugger"]),
+*[class*="dev-tools"],
+*[class*="devtools"],
+*[class*="resize-info"],
+*[class*="size-info"] {
+  display: none !important;
+  visibility: hidden !important;
+  opacity: 0 !important;
+  pointer-events: none !important;
+}
+
+div[style*="position: fixed"][style*="top: 0"][style*="right: 0"][class*="debug"]:not(.window-controls),
+div[style*="position: absolute"][style*="top: 0"][style*="right: 0"][class*="debug"]:not(.window-controls),
+div[style*="position: fixed"][style*="top: 0"][style*="right: 0"][id*="debug"]:not(.window-controls),
+div[style*="position: absolute"][style*="top: 0"][style*="right: 0"][id*="debug"]:not(.window-controls) {
+  display: none !important;
+}
+
+/* =================== Shared component styles =================== */
+
+/* nav-item: used by EnhancedTemplateEditor, MinimalTemplateEditor */
+.nav-item {
+  width: 100%;
+  padding: 0.4rem 0.75rem;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground)) !important;
+  text-align: left;
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+  margin-bottom: 0;
+  position: relative;
+  will-change: background-color, transform;
+}
+
+.nav-item:hover {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground)) !important;
+}
+
+.nav-item.active {
+  background: hsl(var(--accent));
+  color: hsl(var(--accent-foreground)) !important;
+  font-weight: 600;
+}
+
+/* logo-icon: used by LoadingScreen */
+.logo-icon {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  object-fit: contain;
+}
+
+/* app-title: used by LoadingScreen */
+.app-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* =================== Form group styles (TemplateManager) =================== */
+
+.form-group {
+  margin-bottom: 1.5rem;
+  max-width: 100%;
+  box-sizing: border-box;
+}
+
+.form-group label {
+  display: block;
+  margin-bottom: 0.75rem;
+  font-weight: 600;
+  color: var(--text-secondary);
+  font-size: 0.9rem;
+}
+
+.form-group select,
+.form-group input,
+.form-group textarea {
+  width: 100%;
+  padding: 0.875rem 1rem;
+  border: 1px solid var(--input-shell-border);
+  border-radius: 10px;
+  font-size: 0.9rem;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+  background: var(--input-shell-surface);
+  box-shadow: none;
+  color: var(--text-primary);
+}
+
+.form-group select:focus,
+.form-group input:focus,
+.form-group textarea:focus {
+  outline: none;
+  border-color: var(--input-shell-focus);
+  box-shadow: 0 0 0 3px var(--input-shell-focus);
+}
+
+/* Modern Select styling */
+.form-group select {
+  appearance: none !important;
+  -webkit-appearance: none !important;
+  -moz-appearance: none !important;
+  background-color: hsl(var(--muted)) !important;
+  background-image: url("data:image/svg+xml,%3Csvg fill='none' stroke='%23667eea' stroke-width='2' viewBox='0 0 24 24' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M6 9l6 6 6-6'/%3E%3C/svg%3E") !important;
+  background-repeat: no-repeat !important;
+  background-position: right 1rem center !important;
+  background-size: 1rem !important;
+  padding-right: 3rem !important;
+  cursor: pointer !important;
+  border: 2px solid hsl(var(--border)) !important;
+  border-radius: 10px !important;
+  font-weight: 500 !important;
+  transition: all 0.2s ease !important;
+}
+
+.form-group select:hover {
+  border-color: hsl(var(--primary)) !important;
+}
+
+.form-group select:focus {
+  outline: none !important;
+  border-color: hsl(var(--primary)) !important;
+  box-shadow: 0 0 0 3px hsl(var(--ring) / 0.15) !important;
+}
+
+.form-group select::-ms-expand {
+  display: none !important;
+}
+
+.form-group select:disabled {
+  background-color: hsl(var(--muted)) !important;
+  cursor: not-allowed !important;
+  opacity: 0.6 !important;
+}
+
+/* =================== Button styles (shared across components) =================== */
+
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0.625rem 1.25rem;
+  font-size: 0.875rem;
+  font-weight: 500;
+  border-radius: 8px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  transition: all 0.15s ease;
+  text-decoration: none;
+  gap: 0.5rem;
+  background: hsl(var(--background));
+  position: relative;
+  overflow: hidden;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  transform: none !important;
+}
+
+.btn-primary {
+  background: hsl(var(--muted));
+  color: hsl(var(--foreground));
+  border-color: hsl(var(--border));
+  box-shadow: var(--shadow-content-subtle);
+}
+
+.btn-primary:hover:not(:disabled) {
+  background: hsl(var(--accent));
+  border-color: hsl(var(--border));
+  box-shadow: var(--shadow-content-soft);
+}
+
+.btn-success {
+  background: hsl(var(--success) / 0.08);
+  color: hsl(var(--success));
+  border-color: hsl(var(--success) / 0.3);
+  box-shadow: var(--shadow-content-subtle);
+}
+
+.btn-success:hover:not(:disabled) {
+  background: hsl(var(--success) / 0.14);
+  border-color: hsl(var(--success) / 0.45);
+  box-shadow: var(--shadow-content-soft);
+}
+
+.btn-secondary {
+  background: hsl(var(--muted));
+  color: hsl(var(--muted-foreground));
+  border-color: hsl(var(--border));
+  box-shadow: var(--shadow-content-subtle);
+}
+
+.btn-secondary:hover:not(:disabled) {
+  background: hsl(var(--accent));
+  border-color: hsl(var(--border));
+  color: hsl(var(--foreground));
+  box-shadow: var(--shadow-content-soft);
+}
+
+.btn-danger {
+  background: hsl(var(--destructive) / 0.08);
+  color: hsl(var(--destructive));
+  border-color: hsl(var(--destructive) / 0.3);
+  box-shadow: var(--shadow-content-subtle);
+}
+
+.btn-danger:hover:not(:disabled) {
+  background: hsl(var(--destructive) / 0.14);
+  border-color: hsl(var(--destructive) / 0.45);
+  box-shadow: var(--shadow-content-soft);
+}
+
+/* =================== Utility keyframes =================== */
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.spinner {
+  animation: spin 1s linear infinite;
+}
+
+/* =================== macOS window chrome =================== */
+
+html.is-macos .window-controls {
+  border-top-right-radius: 12px !important;
+  overflow: hidden !important;
+}
+
+html.is-macos .window-button:last-child {
+  border-top-right-radius: 12px !important;
+}

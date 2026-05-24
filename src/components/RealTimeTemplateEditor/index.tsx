@@ -7,9 +7,10 @@ import { useTranslation } from 'react-i18next';
 import Mustache from 'mustache';
 import { debounce } from '../../utils/common';
 import { ValidationError } from './template.worker';
-import { CheckCircle, AlertTriangle, X, Save, Eye, Code, Palette } from 'lucide-react';
+import { CheckCircle, Warning, X, FloppyDisk, Eye, Code, Palette } from '@phosphor-icons/react';
 import './RealTimeTemplateEditor.css';
 import { unifiedAlert, unifiedConfirm } from '@/utils/unifiedDialogs';
+import { Input } from '@/components/ui/shad/Input';
 
 // 创建Worker实例
 let templateWorker: Worker | null = null;
@@ -234,7 +235,7 @@ export const RealTimeTemplateEditor: React.FC<RealTimeTemplateEditorProps> = ({
             {t('cancel')}
           </NotionButton>
           <NotionButton variant="primary" size="sm" className="btn-primary" onClick={handleSave} disabled={isSaving} title={t('save_template')}>
-            <Save size={16} />
+            <FloppyDisk size={16} />
             {t('save')} {isDirty && '*'}
           </NotionButton>
         </div>
@@ -275,7 +276,7 @@ export const RealTimeTemplateEditor: React.FC<RealTimeTemplateEditorProps> = ({
                 onChange={(value) => handleTemplateChange('front_template', value)}
                 language="html"
                 errors={errors.get('front') || []}
-              />
+/>
             )}
             {activeTab === 'back' && (
               <TemplateCodeEditor
@@ -283,7 +284,7 @@ export const RealTimeTemplateEditor: React.FC<RealTimeTemplateEditorProps> = ({
                 onChange={(value) => handleTemplateChange('back_template', value)}
                 language="html"
                 errors={errors.get('back') || []}
-              />
+/>
             )}
             {activeTab === 'css' && (
               <TemplateCodeEditor
@@ -291,7 +292,7 @@ export const RealTimeTemplateEditor: React.FC<RealTimeTemplateEditorProps> = ({
                 onChange={(value) => handleTemplateChange('css_style', value)}
                 language="css"
                 errors={errors.get('css') || []}
-              />
+/>
             )}
           </div>
 
@@ -314,7 +315,7 @@ export const RealTimeTemplateEditor: React.FC<RealTimeTemplateEditorProps> = ({
             data={previewData}
             onChange={setPreviewData}
             fields={editingTemplate.fields}
-          />
+/>
 
           {/* 卡片预览 */}
           <div className="card-previews">
@@ -324,7 +325,7 @@ export const RealTimeTemplateEditor: React.FC<RealTimeTemplateEditorProps> = ({
                 <IframePreview
                   htmlContent={getRenderedHtml('front')}
                   cssContent={editingTemplate.css_style}
-                />
+/>
               </div>
             )}
             
@@ -334,7 +335,7 @@ export const RealTimeTemplateEditor: React.FC<RealTimeTemplateEditorProps> = ({
                 <IframePreview
                   htmlContent={getRenderedHtml('back')}
                   cssContent={editingTemplate.css_style}
-                />
+/>
               </div>
             )}
           </div>
@@ -371,7 +372,7 @@ const TemplateCodeEditor: React.FC<TemplateCodeEditorProps> = ({
       foldGutter={true}
       highlightActiveLine={true}
       className="h-full"
-    />
+/>
   );
 };
 
@@ -399,7 +400,7 @@ const PreviewDataEditor: React.FC<PreviewDataEditorProps> = ({ data, onChange, f
             <div key={field} className="field-editor">
               <label>{field}:</label>
               {Array.isArray(data[field]) ? (
-                <input
+                <Input
                   type="text"
                   value={data[field].join(', ')}
                   onChange={(e) => onChange({
@@ -407,9 +408,9 @@ const PreviewDataEditor: React.FC<PreviewDataEditorProps> = ({ data, onChange, f
                     [field]: e.target.value.split(',').map(s => s.trim())
                   })}
                   placeholder={t('enter_values')}
-                />
+/>
               ) : (
-                <input
+                <Input
                   type="text"
                   value={data[field] || ''}
                   onChange={(e) => onChange({
@@ -417,7 +418,7 @@ const PreviewDataEditor: React.FC<PreviewDataEditorProps> = ({ data, onChange, f
                     [field]: e.target.value
                   })}
                   placeholder={t('enter_value')}
-                />
+/>
               )}
             </div>
           ))}
@@ -448,7 +449,7 @@ const ErrorPanel: React.FC<{ errors: ValidationError[] }> = ({ errors }) => {
             {error.severity === 'error' ? (
               <X size={16} />
             ) : (
-              <AlertTriangle size={16} />
+              <Warning size={16} />
             )}
           </span>
           <div className="error-content">

@@ -11,6 +11,8 @@ import React, { createContext, useContext, useState, useCallback, useLayoutEffec
 
 /** 移动端顶栏配置 */
 export interface MobileHeaderConfig {
+  /** 是否暂时隐藏整个移动端顶栏 */
+  hidden?: boolean;
   /** 标题（字符串形式） */
   title?: string;
   /** 自定义标题节点（优先级高于 title，用于面包屑等复杂渲染） */
@@ -42,6 +44,7 @@ interface MobileHeaderContextValue {
 }
 
 const defaultConfig: MobileHeaderConfig = {
+  hidden: false,
   title: '',
   subtitle: undefined,
   rightActions: undefined,

@@ -3,7 +3,11 @@
     "flat_analysis": "Flat Analysis",
     "stereoscopic_analysis": "Stereoscopic Analysis",
     "anki_tools": "Anki Tools",
-    "system_tools": "System Tools"
+    "system_tools": "System Tools",
+    "pinned": "Pinned",
+    "topics": "Topics",
+    "conversations": "Conversations",
+    "emptyGroup": "No conversations yet"
   },
   "theme": "Theme",
   "navigation": {
@@ -31,7 +35,19 @@
     "skills_management": "Skills Management"
   },
   "aria": {
-    "sidebar_navigation": "Main navigation"
+    "sidebar_navigation": "Main navigation",
+    "workspace_primary_entry": "Primary workspace entry",
+    "pinned_sessions": "Pinned sessions",
+    "topic_sessions": "Topics",
+    "conversation_sessions": "Conversations"
+  },
+  "actions": {
+    "collapse_all_topics": "Collapse all topics",
+    "expand_all_topics": "Expand all topics",
+    "create_topic": "New topic",
+    "create_conversation": "New conversation",
+    "expand_group_sessions": "Show more",
+    "collapse_group_sessions": "Show less"
   },
   "expand": "Expand sidebar",
   "collapse": "Collapse sidebar",
@@ -45,4 +61,3 @@
     "auto": "Auto mode"
   }
 }
-

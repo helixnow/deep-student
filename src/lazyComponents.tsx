@@ -40,7 +40,7 @@ export const PageLoadingFallback: React.FC = () => {
 
 // 设置页
 export const LazySettings = React.lazy(() =>
-  import('./components/Settings').then(m => ({ default: m.Settings }))
+  import('./features/settings/components/Settings').then(m => ({ default: m.Settings }))
 );
 
 // ★ 2026-02：批量分析已废弃（旧错题系统已移除）
@@ -80,6 +80,11 @@ export const LazyTemplateManagementPage = React.lazy(() =>
   import('./components/TemplateManagementPage').then(m => ({ default: m.default }))
 );
 
+// UI 样式调试
+export const LazyStyleDebugPage = React.lazy(() =>
+  import('./components/style-lab/StyleDebugPage')
+);
+
 // 模板 JSON 预览
 export const LazyTemplateJsonPreviewPage = React.lazy(() =>
   import('./components/TemplateJsonPreviewPage').then(m => ({ default: m.default }))
@@ -90,17 +95,22 @@ export const LazyTemplateJsonPreviewPage = React.lazy(() =>
 
 // 学习中心
 export const LazyLearningHubPage = React.lazy(() =>
-  import('./components/learning-hub').then(m => ({ default: m.LearningHubPage }))
+  import('./features/learning-hub').then(m => ({ default: m.LearningHubPage }))
+);
+
+// Sandbox 工作台
+export const LazySandboxWorkbenchPage = React.lazy(() =>
+  import('./features/sandbox/pages/SandboxWorkbenchPage').then(m => ({ default: m.SandboxWorkbenchPage }))
 );
 
 // PDF 阅读器
 export const LazyPdfReader = React.lazy(() =>
-  import('./components/PdfReader').then(m => ({ default: m.default }))
+  import('./features/pdf/components/PdfReader').then(m => ({ default: m.default }))
 );
 
 // 待办事项
 export const LazyTodoPage = React.lazy(() =>
-  import('./components/todo/TodoPage').then(m => ({ default: m.TodoPage }))
+  import('@/features/todo/components/TodoPage').then(m => ({ default: m.TodoPage }))
 );
 
 // 开发专用组件：生产构建中 import.meta.env.DEV 为 false，动态 import 被 Rollup 死代码消除
@@ -108,7 +118,7 @@ const DevNull: React.FC<any> = () => null;
 const devLazy = () => Promise.resolve({ default: DevNull as React.ComponentType<any> });
 
 export const LazyTreeDragTest = import.meta.env.DEV
-  ? React.lazy(() => import('./components/notes/TreeDragTest').then(m => ({ default: m.default })))
+  ? React.lazy(() => import('./features/notes/TreeDragTest').then(m => ({ default: m.default })))
   : React.lazy(devLazy);
 
 export const LazyCrepeDemoPage = import.meta.env.DEV
@@ -116,7 +126,11 @@ export const LazyCrepeDemoPage = import.meta.env.DEV
   : React.lazy(devLazy);
 
 export const LazyChatV2IntegrationTest = import.meta.env.DEV
-  ? React.lazy(() => import('./chat-v2/dev').then(m => ({ default: m.IntegrationTest })))
+  ? React.lazy(() => import('./features/chat/dev').then(m => ({ default: m.IntegrationTest })))
+  : React.lazy(devLazy);
+
+export const LazyLLMOutputPlayground = import.meta.env.DEV
+  ? React.lazy(() => import('./features/chat/dev/playground').then(m => ({ default: m.LLMOutputPlayground })))
   : React.lazy(devLazy);
 
 // 图片查看器
@@ -127,5 +141,5 @@ export const LazyImageViewer = React.lazy(() =>
 // 🚀 Chat V2 主页面（默认视图，改为懒加载以减少初始 bundle）
 // 其依赖链包含 @hello-pangea/dnd、framer-motion、chat-v2/init 等重量级模块
 export const LazyChatV2Page = React.lazy(() =>
-  import('./chat-v2/pages').then(m => ({ default: m.ChatV2Page }))
+  import('./features/chat/pages').then(m => ({ default: m.ChatV2Page }))
 );

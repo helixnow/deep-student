@@ -10,7 +10,7 @@ import { Button } from '../../components/ui/shad/Button';
 import { Badge } from '../../components/ui/shad/Badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/shad/Card';
 import { Separator } from '../../components/ui/shad/Separator';
-import { Copy, Trash2, Play, AlertCircle, CheckCircle2, AlertTriangle, Database, RefreshCw } from 'lucide-react';
+import { Copy, Trash, Play, WarningCircle, CheckCircle, Warning, Database, ArrowClockwise } from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
@@ -220,13 +220,13 @@ const SessionLoadFlowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
   const getSeverityIcon = (severity: LogEntry['severity']) => {
     switch (severity) {
       case 'error':
-        return <AlertCircle className="w-4 h-4 text-red-500" />;
+        return <WarningCircle size={16} className="text-red-500" />;
       case 'warning':
-        return <AlertTriangle className="w-4 h-4 text-yellow-500" />;
+        return <Warning size={16} className="text-yellow-500" />;
       case 'success':
-        return <CheckCircle2 className="w-4 h-4 text-green-500" />;
+        return <CheckCircle size={16} className="text-green-500" />;
       default:
-        return <Database className="w-4 h-4 text-blue-500" />;
+        return <Database size={16} className="text-blue-500" />;
     }
   };
 
@@ -256,15 +256,15 @@ const SessionLoadFlowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         </div>
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={handleManualCapture}>
-            <RefreshCw className="w-4 h-4 mr-1" />
+            <ArrowClockwise size={16} className="mr-1" />
             捕获状态
           </Button>
           <Button size="sm" variant="outline" onClick={handleCopyLogs}>
-            <Copy className="w-4 h-4 mr-1" />
+            <Copy size={16} className="mr-1" />
             复制全部
           </Button>
           <Button size="sm" variant="destructive" onClick={handleClear}>
-            <Trash2 className="w-4 h-4 mr-1" />
+            <Trash size={16} className="mr-1" />
             清空
           </Button>
         </div>
@@ -291,7 +291,7 @@ const SessionLoadFlowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       <div className="flex-1 overflow-auto border rounded-md p-2 space-y-2 bg-muted/30">
         {logs.length === 0 ? (
           <div className="text-center text-muted-foreground py-8">
-            <Database className="w-12 h-12 mx-auto mb-2 opacity-50" />
+            <Database size={48} className="mx-auto mb-2 opacity-50" />
             <p>暂无日志</p>
             <p className="text-xs">从分析库点击会话开始追踪</p>
           </div>

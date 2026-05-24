@@ -1,4 +1,89 @@
 use super::*;
+use std::collections::{HashMap, HashSet};
+
+#[derive(Debug, Clone)]
+struct HistoryUnit {
+    start: usize,
+    end: usize,
+    is_pinned: bool,
+    token_estimate: usize,
+}
+
+fn history_unit_token_estimate(msg: &LegacyChatMessage) -> usize {
+    use crate::utils::token_budget::estimate_tokens;
+
+    let mut total = estimate_tokens(&msg.content);
+    if let Some(thinking) = &msg.thinking_content {
+        total = total.saturating_add(estimate_tokens(thinking));
+    }
+    if let Some(tool_call) = &msg.tool_call {
+        total = total.saturating_add(estimate_tokens(&tool_call.args_json.to_string()));
+    }
+    if let Some(tool_result) = &msg.tool_result {
+        if let Some(data) = &tool_result.data_json {
+            total = total.saturating_add(estimate_tokens(&data.to_string()));
+        }
+        if let Some(error) = &tool_result.error {
+            total = total.saturating_add(estimate_tokens(error));
+        }
+    }
+    if let Some(image_base64) = &msg.image_base64 {
+        for image in image_base64 {
+            total = total.saturating_add(image.len() / 4);
+        }
+    }
+    if let Some(doc_attachments) = &msg.doc_attachments {
+        for doc in doc_attachments {
+            if let Some(text) = &doc.text_content {
+                total = total.saturating_add(estimate_tokens(text));
+            }
+            if let Some(base64) = &doc.base64_content {
+                total = total.saturating_add(base64.len() / 4);
+            }
+        }
+    }
+    total
+}
+
+fn is_pinned_history_message(msg: &LegacyChatMessage) -> bool {
+    is_transient_llm_only_message(msg)
+        || msg
+            .metadata
+            .as_ref()
+            .is_some_and(|metadata| metadata.get("kind").and_then(Value::as_str) == Some("compaction_summary"))
+}
+
+fn group_history_units(history: &[LegacyChatMessage]) -> Vec<HistoryUnit> {
+    let mut units = Vec::new();
+    let mut i = 0usize;
+
+    while i < history.len() {
+        let mut end = i + 1;
+        let mut total = history_unit_token_estimate(&history[i]);
+
+        while end < history.len() {
+            let prev = &history[end - 1];
+            let current = &history[end];
+            let prev_is_tool_related = prev.tool_call.is_some() || prev.tool_result.is_some();
+            let current_is_tool_related = current.tool_call.is_some() || current.tool_result.is_some();
+            if !prev_is_tool_related || !current_is_tool_related {
+                break;
+            }
+            total = total.saturating_add(history_unit_token_estimate(current));
+            end += 1;
+        }
+
+        units.push(HistoryUnit {
+            start: i,
+            end,
+            is_pinned: history[i..end].iter().any(is_pinned_history_message),
+            token_estimate: total,
+        });
+        i = end;
+    }
+
+    units
+}
 
 // ============================================================
 // 类型转换实现
@@ -117,11 +202,9 @@ pub(crate) fn sanitize_tool_name_for_api(name: &str) -> String {
 }
 
 pub(crate) fn approval_scope_setting_key(tool_name: &str, arguments: &Value) -> String {
-    let serialized = serde_json::to_string(arguments).unwrap_or_else(|_| "null".to_string());
-    let mut hasher = Sha256::new();
-    hasher.update(serialized.as_bytes());
-    let fingerprint = hex::encode(hasher.finalize());
-    format!("tool_approval.scope.{}.{}", tool_name, fingerprint)
+    // 🔧 M-081 修复（P2）：统一入口，v2 优先，未知工具 fallback v1
+    use crate::chat_v2::approval_scope;
+    approval_scope::make_setting_key(tool_name, arguments)
 }
 
 /// 工具审批结果枚举
@@ -204,116 +287,278 @@ pub(crate) fn make_empty_message(role: &str, content: String) -> LegacyChatMessa
     }
 }
 
-/// 🆕 2026-02-22: 为已激活的默认技能自动注入合成 load_skills 工具交互
-///
-/// 模型对 `role: tool` 结果中的指令遵循度远高于 user message 中的 XML 块。
-/// 此函数在消息历史开头 prepend 一对合成的 assistant(tool_call) + tool(result) 消息，
-/// 与真实 `load_skills` 返回格式完全一致。
-///
-/// 跳过条件：
-/// - 没有 active_skill_ids 或 skill_contents
-/// - 历史中已存在真实的 load_skills 调用（避免 regenerate/retry 时重复注入）
-pub(crate) fn inject_synthetic_load_skills(
-    chat_history: &mut Vec<LegacyChatMessage>,
-    options: &SendOptions,
-) {
-    let active_ids = match options.active_skill_ids.as_ref() {
-        Some(ids) if !ids.is_empty() => ids,
-        _ => {
-            log::debug!("[ChatV2::pipeline] inject_synthetic_load_skills: skipped (active_skill_ids is None/empty)");
-            return;
-        }
-    };
-    let skill_contents = match options.skill_contents.as_ref() {
-        Some(sc) if !sc.is_empty() => sc,
-        _ => {
-            log::info!(
-                "[ChatV2::pipeline] inject_synthetic_load_skills: active_skill_ids={:?} but skill_contents is None/empty!",
-                active_ids
-            );
-            return;
-        }
-    };
+const TRANSIENT_SKILL_METADATA_KIND: &str = "skill_instruction";
+const TRANSIENT_REQUEST_ANCHOR_METADATA_KIND: &str = "request_context_anchor";
 
-    // 收集有内容的已激活技能
-    let skills_to_inject: Vec<(&String, &String)> = active_ids
-        .iter()
-        .filter_map(|id| skill_contents.get(id).map(|content| (id, content)))
-        .collect();
+#[derive(Debug, Clone, Default)]
+pub(crate) struct SkillInjectionAudit {
+    pub injected_skill_ids: Vec<String>,
+    pub dropped_skill_ids: Vec<String>,
+    pub missing_skill_ids: Vec<String>,
+    pub estimated_tokens: usize,
+    pub skill_state_version: u64,
+}
 
-    if skills_to_inject.is_empty() {
-        log::info!(
-            "[ChatV2::pipeline] inject_synthetic_load_skills: no match! active_ids={:?}, skill_contents_keys={:?}",
-            active_ids,
-            skill_contents.keys().collect::<Vec<_>>()
-        );
-        return;
-    }
+#[derive(Debug, Clone, Default)]
+pub(crate) struct TransientSkillMessages {
+    pub messages: Vec<LegacyChatMessage>,
+    pub audit: SkillInjectionAudit,
+}
 
-    // 检查历史中是否已有真实的 load_skills 调用（regenerate/retry 场景）
-    let has_existing_load_skills = chat_history.iter().any(|m| {
-        m.tool_call.as_ref().map_or(false, |tc| {
-            SkillsExecutor::is_load_skills_tool(&tc.tool_name)
+pub(crate) fn is_transient_skill_message(msg: &LegacyChatMessage) -> bool {
+    msg.metadata.as_ref().is_some_and(|metadata| {
+        metadata.get("kind").and_then(Value::as_str) == Some(TRANSIENT_SKILL_METADATA_KIND)
+            && metadata
+                .get("hidden")
+                .and_then(Value::as_bool)
+                .unwrap_or(false)
+    })
+}
+
+pub(crate) fn is_transient_llm_only_message(msg: &LegacyChatMessage) -> bool {
+    is_transient_skill_message(msg)
+        || msg.metadata.as_ref().is_some_and(|metadata| {
+            metadata.get("kind").and_then(Value::as_str)
+                == Some(TRANSIENT_REQUEST_ANCHOR_METADATA_KIND)
+                && metadata
+                    .get("hidden")
+                    .and_then(Value::as_bool)
+                    .unwrap_or(false)
         })
-    });
+}
 
-    if has_existing_load_skills {
-        log::debug!(
-            "[ChatV2::pipeline] Skipping synthetic load_skills: history already contains real load_skills call"
+fn escape_xml_attr(value: &str) -> String {
+    value
+        .replace('&', "&amp;")
+        .replace('"', "&quot;")
+        .replace('<', "&lt;")
+        .replace('>', "&gt;")
+}
+
+fn push_skill_with_dependencies(
+    skill_id: &str,
+    tier: u8,
+    dependencies: Option<&HashMap<String, Vec<String>>>,
+    seen: &mut HashSet<String>,
+    visiting: &mut HashSet<String>,
+    ordered: &mut Vec<(String, u8)>,
+) {
+    if seen.contains(skill_id) {
+        return;
+    }
+    if !visiting.insert(skill_id.to_string()) {
+        log::warn!(
+            "[ChatV2::pipeline] Skill dependency cycle detected at '{}'; skipping recursive edge",
+            skill_id
         );
         return;
     }
 
-    // 构建合成的 load_skills 工具交互（与 SkillsExecutor 输出格式一致）
-    let skill_ids: Vec<&str> = skills_to_inject.iter().map(|(id, _)| id.as_str()).collect();
-    let tool_call_id = format!("tc_auto_skills_{}", uuid::Uuid::new_v4().simple());
-
-    // 1. 合成 assistant 消息（tool_call: load_skills）
-    let tool_call_args = json!({ "skills": skill_ids });
-    let mut assistant_msg = make_empty_message("assistant", String::new());
-    assistant_msg.tool_call = Some(crate::models::ToolCall {
-        id: tool_call_id.clone(),
-        tool_name: "load_skills".to_string(),
-        args_json: tool_call_args,
-    });
-
-    // 2. 构建工具结果内容（与 SkillsExecutor 格式一致）
-    let mut content_parts: Vec<String> = Vec::with_capacity(skills_to_inject.len() + 1);
-    for (skill_id, content) in &skills_to_inject {
-        content_parts.push(format!(
-            "<skill_loaded id=\"{}\">\n<instructions>\n{}\n</instructions>\n</skill_loaded>",
-            skill_id, content
-        ));
+    if let Some(deps) = dependencies.and_then(|map| map.get(skill_id)) {
+        let mut deps = deps.clone();
+        deps.sort();
+        deps.dedup();
+        for dep in deps {
+            push_skill_with_dependencies(&dep, tier, dependencies, seen, visiting, ordered);
+        }
     }
-    content_parts.push(format!(
-        "\n共加载 {} 个技能。这些工具现在可以使用了。",
-        skills_to_inject.len()
-    ));
-    let full_content = content_parts.join("\n");
-    let content_len = full_content.len();
 
-    let mut tool_msg = make_empty_message("tool", full_content);
-    tool_msg.tool_result = Some(crate::models::ToolResult {
-        call_id: tool_call_id,
-        ok: true,
-        error: None,
-        error_details: None,
-        data_json: None,
-        usage: None,
-        citations: None,
-    });
+    visiting.remove(skill_id);
+    if seen.insert(skill_id.to_string()) {
+        ordered.push((skill_id.to_string(), tier));
+    }
+}
 
-    // 3. Prepend 到消息历史开头（这两条消息会出现在 [LLM_REVIEW_DEBUG] 请求体日志中）
-    log::info!(
-        "[ChatV2::pipeline] 🆕 Synthetic load_skills injected: {} skill(s) {:?}, content_len={}, history {} -> {} messages",
-        skills_to_inject.len(),
-        skill_ids,
-        content_len,
-        chat_history.len(),
-        chat_history.len() + 2
+fn ordered_skill_ids_for_injection(
+    skill_state: &super::super::types::SessionSkillState,
+    dependencies: Option<&HashMap<String, Vec<String>>>,
+) -> Vec<(String, u8)> {
+    let mut ordered = Vec::new();
+    let mut seen = HashSet::new();
+    let mut visiting = HashSet::new();
+
+    let mut push_group = |ids: &[String], tier: u8| {
+        let mut sorted = ids.to_vec();
+        sorted.sort();
+        sorted.dedup();
+        for skill_id in sorted {
+            push_skill_with_dependencies(
+                &skill_id,
+                tier,
+                dependencies,
+                &mut seen,
+                &mut visiting,
+                &mut ordered,
+            );
+        }
+    };
+
+    push_group(&skill_state.manual_pinned_skill_ids, 0);
+    push_group(&skill_state.mode_required_bundle_ids, 1);
+    push_group(&skill_state.agentic_session_skill_ids, 2);
+    push_group(&skill_state.branch_local_skill_ids, 3);
+
+    ordered
+}
+
+fn make_transient_skill_message(skill_id: &str, content: &str) -> LegacyChatMessage {
+    let mut msg = make_empty_message(
+        "user",
+        format!(
+            "<skill_instructions id=\"{}\">\n{}\n</skill_instructions>",
+            escape_xml_attr(skill_id),
+            content
+        ),
     );
-    chat_history.insert(0, assistant_msg);
-    chat_history.insert(1, tool_msg);
+    msg.metadata = Some(json!({
+        "kind": TRANSIENT_SKILL_METADATA_KIND,
+        "hidden": true,
+        "skillId": skill_id,
+    }));
+    msg
+}
+
+fn make_transient_request_anchor_message() -> LegacyChatMessage {
+    let mut msg = make_empty_message(
+        "user",
+        "<request_context>Transient skill instructions for this request follow.</request_context>"
+            .to_string(),
+    );
+    msg.metadata = Some(json!({
+        "kind": TRANSIENT_REQUEST_ANCHOR_METADATA_KIND,
+        "hidden": true,
+    }));
+    msg
+}
+
+pub(crate) fn insert_transient_skill_messages(
+    messages: &mut Vec<LegacyChatMessage>,
+    insertion_index: usize,
+    transient_skill_messages: Vec<LegacyChatMessage>,
+) {
+    if transient_skill_messages.is_empty() {
+        return;
+    }
+
+    let mut insert_at = insertion_index.min(messages.len());
+    if insert_at == 0 {
+        messages.insert(0, make_transient_request_anchor_message());
+        insert_at = 1;
+    }
+
+    messages.splice(insert_at..insert_at, transient_skill_messages);
+}
+
+pub(crate) fn build_transient_skill_messages(
+    skill_state: &super::super::types::SessionSkillState,
+    skill_contents: &HashMap<String, String>,
+    skill_dependencies: Option<&HashMap<String, Vec<String>>>,
+    token_budget: Option<usize>,
+) -> Vec<LegacyChatMessage> {
+    build_transient_skill_messages_with_audit(
+        skill_state,
+        skill_contents,
+        skill_dependencies,
+        token_budget,
+    )
+    .messages
+}
+
+pub(crate) fn build_transient_skill_messages_with_audit(
+    skill_state: &super::super::types::SessionSkillState,
+    skill_contents: &HashMap<String, String>,
+    skill_dependencies: Option<&HashMap<String, Vec<String>>>,
+    token_budget: Option<usize>,
+) -> TransientSkillMessages {
+    let mut result = TransientSkillMessages {
+        audit: SkillInjectionAudit {
+            skill_state_version: skill_state.version,
+            ..Default::default()
+        },
+        ..Default::default()
+    };
+
+    let ordered_skill_ids = ordered_skill_ids_for_injection(skill_state, skill_dependencies);
+    if ordered_skill_ids.is_empty() {
+        return result;
+    }
+
+    let mut remaining_budget = token_budget.unwrap_or(usize::MAX);
+    for (skill_id, _tier) in ordered_skill_ids {
+        let Some(content) = skill_contents.get(&skill_id) else {
+            log::warn!(
+                "[ChatV2::pipeline] Transient skill injection skipped missing content: {}",
+                skill_id
+            );
+            result.audit.missing_skill_ids.push(skill_id);
+            continue;
+        };
+
+        let message = make_transient_skill_message(&skill_id, content);
+        let estimated_tokens = estimate_token_count(&message.content);
+        if estimated_tokens > remaining_budget {
+            result.audit.dropped_skill_ids.push(skill_id);
+            continue;
+        }
+
+        remaining_budget = remaining_budget.saturating_sub(estimated_tokens);
+        result.audit.estimated_tokens += estimated_tokens;
+        result.audit.injected_skill_ids.push(skill_id);
+        result.messages.push(message);
+    }
+
+    result
+}
+
+impl ChatV2Pipeline {
+    pub(crate) fn load_effective_session_skill_state(
+        &self,
+        session_id: &str,
+        options: &SendOptions,
+    ) -> super::super::types::SessionSkillState {
+        let replay_with_runtime_snapshot = options.replay_mode
+            == Some(super::super::types::ReplayMode::Original)
+            && options.replay_skill_contents.is_some();
+        let mut state = if replay_with_runtime_snapshot {
+            super::super::types::SessionSkillState::default()
+        } else {
+            match ChatV2Repo::load_session_state_v2(&self.db, session_id) {
+                Ok(Some(state)) => state.resolved_skill_state(),
+                Ok(None) => super::super::types::SessionSkillState::default(),
+                Err(err) => {
+                    log::warn!(
+                        "[ChatV2::pipeline] Failed to load session skill state for transient injection: session_id={}, error={}",
+                        session_id,
+                        err
+                    );
+                    super::super::types::SessionSkillState::default()
+                }
+            }
+        };
+
+        if let Some(active_ids) = &options.active_skill_ids {
+            state.manual_pinned_skill_ids = active_ids.clone();
+            state.manual_pinned_skill_ids.sort();
+            state.manual_pinned_skill_ids.dedup();
+        }
+
+        if let Some(replay_skill_contents) = options.replay_skill_contents.as_ref() {
+            if options.replay_mode == Some(super::super::types::ReplayMode::Original) {
+                let pinned: HashSet<String> =
+                    state.manual_pinned_skill_ids.iter().cloned().collect();
+                let mut replay_loaded_ids: Vec<String> = replay_skill_contents
+                    .keys()
+                    .filter(|skill_id| !pinned.contains(*skill_id))
+                    .cloned()
+                    .collect();
+                replay_loaded_ids.sort();
+                replay_loaded_ids.dedup();
+                state.agentic_session_skill_ids = replay_loaded_ids;
+            }
+        }
+
+        state
+    }
 }
 
 /// 启发式估算文本的 token 数量（支持中英混排）
@@ -337,15 +582,26 @@ pub(crate) fn trim_history_by_token_budget(
     history: &mut Vec<LegacyChatMessage>,
     max_tokens: usize,
 ) {
-    let mut total_tokens: usize = history
-        .iter()
-        .map(|m| estimate_token_count(&m.content))
-        .sum();
+    let units = group_history_units(history);
+    let mut total_tokens: usize = units.iter().map(|u| u.token_estimate).sum();
 
     let original_len = history.len();
-    while total_tokens > max_tokens && history.len() > 2 {
-        let removed = history.remove(0);
-        total_tokens = total_tokens.saturating_sub(estimate_token_count(&removed.content));
+    let mut removable_units: Vec<HistoryUnit> = units.into_iter().filter(|u| !u.is_pinned).collect();
+
+    while total_tokens > max_tokens && removable_units.len() > 2 {
+        let Some(unit) = removable_units.first().cloned() else {
+            break;
+        };
+        history.drain(unit.start..unit.end);
+        total_tokens = total_tokens.saturating_sub(unit.token_estimate);
+        removable_units.remove(0);
+
+        for remaining in &mut removable_units {
+            if remaining.start >= unit.end {
+                remaining.start -= unit.end - unit.start;
+                remaining.end -= unit.end - unit.start;
+            }
+        }
     }
 
     if history.len() < original_len {
@@ -356,5 +612,159 @@ pub(crate) fn trim_history_by_token_budget(
             max_tokens,
             total_tokens
         );
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_transient_skill_messages_orders_dependencies_before_parents() {
+        let skill_state = crate::chat_v2::types::SessionSkillState {
+            manual_pinned_skill_ids: vec!["manual-a".to_string()],
+            agentic_session_skill_ids: vec!["agentic-a".to_string()],
+            branch_local_skill_ids: vec!["branch-a".to_string()],
+            version: 7,
+            ..Default::default()
+        };
+        let skill_contents = HashMap::from([
+            ("dep-a".to_string(), "dependency-a".to_string()),
+            ("manual-a".to_string(), "manual-body".to_string()),
+            ("agentic-a".to_string(), "agentic-body".to_string()),
+            ("dep-b".to_string(), "dependency-b".to_string()),
+            ("branch-a".to_string(), "branch-body".to_string()),
+        ]);
+        let skill_dependencies = HashMap::from([
+            ("manual-a".to_string(), vec!["dep-a".to_string()]),
+            ("branch-a".to_string(), vec!["dep-b".to_string()]),
+        ]);
+
+        let injected = build_transient_skill_messages_with_audit(
+            &skill_state,
+            &skill_contents,
+            Some(&skill_dependencies),
+            None,
+        );
+
+        assert_eq!(
+            injected.audit.injected_skill_ids,
+            vec![
+                "dep-a".to_string(),
+                "manual-a".to_string(),
+                "agentic-a".to_string(),
+                "dep-b".to_string(),
+                "branch-a".to_string(),
+            ]
+        );
+        assert_eq!(injected.audit.skill_state_version, 7);
+        assert_eq!(injected.messages.len(), 5);
+        assert!(injected.messages.iter().all(is_transient_skill_message));
+    }
+
+    #[test]
+    fn test_insert_transient_skill_messages_keeps_skill_instruction_off_first_position() {
+        let mut messages = Vec::new();
+        insert_transient_skill_messages(
+            &mut messages,
+            0,
+            vec![make_transient_skill_message("skill-a", "private body")],
+        );
+
+        assert_eq!(messages.len(), 2);
+        assert!(is_transient_llm_only_message(&messages[0]));
+        assert!(!is_transient_skill_message(&messages[0]));
+        assert!(is_transient_skill_message(&messages[1]));
+    }
+
+    #[test]
+    fn test_trim_history_by_token_budget_preserves_transient_skill_messages() {
+        let mut history = vec![
+            make_empty_message("user", "oldest user message".to_string()),
+            make_transient_skill_message("skill-a", "skill body"),
+            make_empty_message("assistant", "assistant reply".to_string()),
+            make_empty_message("user", "latest user turn".to_string()),
+        ];
+
+        trim_history_by_token_budget(
+            &mut history,
+            estimate_token_count("skill bodyassistant replylatest user turn"),
+        );
+
+        assert_eq!(history.len(), 3);
+        assert!(is_transient_skill_message(&history[0]));
+        assert_eq!(history[1].content, "assistant reply");
+        assert_eq!(history[2].content, "latest user turn");
+    }
+
+    #[test]
+    fn test_trim_history_by_token_budget_counts_tool_payloads() {
+        let mut tool_call_message = make_empty_message("assistant", String::new());
+        tool_call_message.tool_call = Some(crate::models::ToolCall {
+            id: "call-1".to_string(),
+            tool_name: "builtin_fetch".to_string(),
+            args_json: json!({ "payload": "x".repeat(4000) }),
+        });
+
+        let mut tool_result_message = make_empty_message("tool", "ok".to_string());
+        tool_result_message.tool_result = Some(crate::models::ToolResult {
+            call_id: "call-1".to_string(),
+            ok: true,
+            error: None,
+            error_details: None,
+            data_json: Some(json!({ "result": "y".repeat(4000) })),
+            usage: None,
+            citations: None,
+        });
+
+        let mut history = vec![
+            make_empty_message("user", "oldest user message".to_string()),
+            tool_call_message,
+            tool_result_message,
+            make_empty_message("assistant", "latest assistant reply".to_string()),
+            make_empty_message("user", "latest user turn".to_string()),
+        ];
+
+        trim_history_by_token_budget(&mut history, estimate_token_count("latest assistant replylatest user turn"));
+
+        assert_eq!(history.len(), 2);
+        assert_eq!(history[0].content, "latest assistant reply");
+        assert_eq!(history[1].content, "latest user turn");
+    }
+
+    #[test]
+    fn test_trim_history_by_token_budget_removes_complete_tool_rounds() {
+        let mut tool_call_message = make_empty_message("assistant", String::new());
+        tool_call_message.tool_call = Some(crate::models::ToolCall {
+            id: "call-1".to_string(),
+            tool_name: "builtin_fetch".to_string(),
+            args_json: json!({ "query": "enzyme kinetics" }),
+        });
+
+        let mut tool_result_message = make_empty_message("tool", "ok".to_string());
+        tool_result_message.tool_result = Some(crate::models::ToolResult {
+            call_id: "call-1".to_string(),
+            ok: true,
+            error: None,
+            error_details: None,
+            data_json: Some(json!({ "result": "Michaelis-Menten" })),
+            usage: None,
+            citations: None,
+        });
+
+        let mut history = vec![
+            make_empty_message("user", "turn 1".to_string()),
+            tool_call_message,
+            tool_result_message,
+            make_empty_message("assistant", "turn 2 assistant".to_string()),
+            make_empty_message("user", "turn 2 user".to_string()),
+        ];
+
+        trim_history_by_token_budget(&mut history, estimate_token_count("turn 2 assistantturn 2 user"));
+
+        assert_eq!(history.len(), 2);
+        assert!(history.iter().all(|msg| msg.tool_call.is_none() && msg.tool_result.is_none()));
+        assert_eq!(history[0].content, "turn 2 assistant");
+        assert_eq!(history[1].content, "turn 2 user");
     }
 }

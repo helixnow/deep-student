@@ -16,10 +16,15 @@ use std::time::Instant;
 use super::database::ChatV2Database;
 use super::error::{ChatV2Error, ChatV2Result};
 use super::types::{
-    AttachmentMeta, ChatMessage, ChatParams, ChatSession, DeleteVariantResult, LoadSessionResponse,
-    MessageBlock, MessageMeta, MessageRole, PanelStates, PersistStatus, SessionGroup,
-    SessionSkillState, SessionState, SharedContext, Variant,
+    AttachmentMeta, ChatMessage, ChatParams, ChatSession, CompactionRecord, DeleteVariantResult,
+    LoadSessionResponse, MessageBlock, MessageMeta, MessageRole, PanelStates, PersistStatus,
+    SessionGroup, SessionSkillState, SessionState, SharedContext, Variant,
 };
+
+/// 变体 JSON 尺寸告警阈值（64KB）：超过即记录 warn 日志，但不截断。
+const VARIANTS_JSON_WARN_BYTES: usize = 64 * 1024;
+/// 变体 JSON 尺寸硬上限（256KB）：超过则从最旧的变体开始截断，避免单条 SQLite 行膨胀。
+const VARIANTS_JSON_LIMIT_BYTES: usize = 256 * 1024;
 
 /// Chat V2 数据存取层
 ///
@@ -27,6 +32,84 @@ use super::types::{
 pub struct ChatV2Repo;
 
 impl ChatV2Repo {
+    fn append_visible_session_filter(sql: &mut String) {
+        sql.push_str(" AND COALESCE(json_extract(metadata_json, '$.chatV2Draft.hidden'), 0) != 1");
+    }
+
+    /// 检查 variants_json 大小：达到 LIMIT 即从最旧变体起截断；达到 WARN 仅日志。
+    /// 入参 `json` 是 `serde_json::to_string(variants)` 的结果；命中 LIMIT 时会原地修改 `variants` 并重新序列化。
+    /// 单变体即超 LIMIT 的极端情况下记录 error 但不强行截断（避免丢失正在写入的回复）。
+    fn enforce_variants_json_size_limit(
+        json: String,
+        variants: &mut Vec<Variant>,
+        message_id: &str,
+    ) -> String {
+        let size = json.len();
+        if size < VARIANTS_JSON_WARN_BYTES {
+            return json;
+        }
+
+        if size < VARIANTS_JSON_LIMIT_BYTES {
+            log::warn!(
+                "[ChatV2::Repo] variants_json size {} bytes approaching limit (warn={}, limit={}, count={}, message_id={})",
+                size,
+                VARIANTS_JSON_WARN_BYTES,
+                VARIANTS_JSON_LIMIT_BYTES,
+                variants.len(),
+                message_id
+            );
+            return json;
+        }
+
+        log::error!(
+            "[ChatV2::Repo] variants_json size {} bytes exceeded hard limit {} (count={}, message_id={}); truncating oldest variants",
+            size,
+            VARIANTS_JSON_LIMIT_BYTES,
+            variants.len(),
+            message_id
+        );
+
+        if variants.len() <= 1 {
+            log::error!(
+                "[ChatV2::Repo] cannot truncate: single variant already exceeds limit (size={}, message_id={})",
+                size,
+                message_id
+            );
+            return json;
+        }
+
+        let mut current = json;
+        while current.len() >= VARIANTS_JSON_LIMIT_BYTES && variants.len() > 1 {
+            let removed = variants.remove(0);
+            log::warn!(
+                "[ChatV2::Repo] truncated oldest variant {} (model={}, message_id={})",
+                removed.id,
+                removed.model_id,
+                message_id
+            );
+            current = match serde_json::to_string(&*variants) {
+                Ok(s) => s,
+                Err(e) => {
+                    log::error!(
+                        "[ChatV2::Repo] re-serialize after truncation failed (message_id={}): {}",
+                        message_id,
+                        e
+                    );
+                    return current;
+                }
+            };
+        }
+
+        if current.len() >= VARIANTS_JSON_LIMIT_BYTES {
+            log::error!(
+                "[ChatV2::Repo] variants_json still {} bytes after truncation (message_id={})",
+                current.len(),
+                message_id
+            );
+        }
+
+        current
+    }
     // ========================================================================
     // 会话 CRUD
     // ========================================================================
@@ -59,10 +142,10 @@ impl ChatV2Repo {
         conn.execute(
             r#"
             INSERT INTO chat_v2_sessions (
-                id, mode, title, description, summary_hash, persist_status,
+                id, mode, title, description, summary_hash, title_locked, persist_status,
                 created_at, updated_at, metadata_json, group_id
             )
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)
             "#,
             params![
                 session.id,
@@ -70,6 +153,7 @@ impl ChatV2Repo {
                 session.title,
                 session.description,
                 session.summary_hash,
+                session.title_locked as i64,
                 persist_status,
                 session.created_at.to_rfc3339(),
                 session.updated_at.to_rfc3339(),
@@ -95,7 +179,7 @@ impl ChatV2Repo {
     ) -> ChatV2Result<Option<ChatSession>> {
         let mut stmt = conn.prepare(
             r#"
-            SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash
+            SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash, title_locked
             FROM chat_v2_sessions
             WHERE id = ?1
             "#,
@@ -121,6 +205,8 @@ impl ChatV2Repo {
         let metadata_json: Option<String> = row.get(8)?;
         let group_id: Option<String> = row.get(9)?;
         let tags_hash: Option<String> = row.get::<_, Option<String>>(10).unwrap_or(None);
+        // title_locked 在 V20260516 之后存在；旧库 / 缺列回退到 false
+        let title_locked: bool = row.get::<_, i64>(11).map(|v| v != 0).unwrap_or(false);
 
         let persist_status = match persist_status_str.as_str() {
             "active" => PersistStatus::Active,
@@ -163,6 +249,7 @@ impl ChatV2Repo {
             title,
             description,
             summary_hash,
+            title_locked,
             persist_status,
             created_at,
             updated_at,
@@ -199,7 +286,7 @@ impl ChatV2Repo {
             r#"
             UPDATE chat_v2_sessions
             SET mode = ?2, title = ?3, description = ?4, summary_hash = ?5, persist_status = ?6,
-                updated_at = ?7, metadata_json = ?8, group_id = ?9, tags_hash = ?10
+                updated_at = ?7, metadata_json = ?8, group_id = ?9, tags_hash = ?10, title_locked = ?11
             WHERE id = ?1
             "#,
             params![
@@ -213,6 +300,7 @@ impl ChatV2Repo {
                 metadata_json,
                 session.group_id,
                 session.tags_hash,
+                session.title_locked as i64,
             ],
         )?;
 
@@ -282,11 +370,12 @@ impl ChatV2Repo {
         // 🔧 2026-01-20: 过滤掉 mode='agent' 的 Worker 会话，它们应该在工作区面板中单独显示
         let mut sql = String::from(
             r#"
-                SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash
+                SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash, title_locked
                 FROM chat_v2_sessions
                 WHERE mode != 'agent'
             "#,
         );
+        Self::append_visible_session_filter(&mut sql);
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
         if let Some(s) = status {
@@ -339,6 +428,7 @@ impl ChatV2Repo {
         group_id: Option<&str>,
     ) -> ChatV2Result<u32> {
         let mut sql = String::from("SELECT COUNT(*) FROM chat_v2_sessions WHERE mode != 'agent'");
+        Self::append_visible_session_filter(&mut sql);
         let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
         if let Some(s) = status {
@@ -637,7 +727,7 @@ impl ChatV2Repo {
         let (sql, params_vec): (String, Vec<Box<dyn rusqlite::ToSql>>) = match workspace_id {
             Some(wid) => (
                 r#"
-                    SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash
+                    SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash, title_locked
                     FROM chat_v2_sessions
                     WHERE mode = 'agent'
                       AND persist_status = 'active'
@@ -649,7 +739,7 @@ impl ChatV2Repo {
             ),
             None => (
                 r#"
-                    SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash
+                    SELECT id, mode, title, description, summary_hash, persist_status, created_at, updated_at, metadata_json, group_id, tags_hash, title_locked
                     FROM chat_v2_sessions
                     WHERE mode = 'agent' AND persist_status = 'active'
                     ORDER BY updated_at DESC
@@ -707,18 +797,28 @@ impl ChatV2Repo {
         let meta_json = message
             .meta
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(|v| serde_json::to_string(&v.without_skill_runtime_contents()))
             .transpose()?;
         let attachments_json = message
             .attachments
             .as_ref()
             .map(|v| serde_json::to_string(v))
             .transpose()?;
-        let variants_json = message
-            .variants
-            .as_ref()
-            .map(|v| serde_json::to_string(v))
-            .transpose()?;
+        let variants_json = match message.variants.as_ref() {
+            Some(v) => {
+                let mut sanitized: Vec<Variant> = v
+                    .iter()
+                    .map(Variant::without_skill_runtime_contents)
+                    .collect();
+                let raw = serde_json::to_string(&sanitized)?;
+                Some(Self::enforce_variants_json_size_limit(
+                    raw,
+                    &mut sanitized,
+                    &message.id,
+                ))
+            }
+            None => None,
+        };
         let shared_context_json = message
             .shared_context
             .as_ref()
@@ -842,18 +942,28 @@ impl ChatV2Repo {
         let meta_json = message
             .meta
             .as_ref()
-            .map(|v| serde_json::to_string(v))
+            .map(|v| serde_json::to_string(&v.without_skill_runtime_contents()))
             .transpose()?;
         let attachments_json = message
             .attachments
             .as_ref()
             .map(|v| serde_json::to_string(v))
             .transpose()?;
-        let variants_json = message
-            .variants
-            .as_ref()
-            .map(|v| serde_json::to_string(v))
-            .transpose()?;
+        let variants_json = match message.variants.as_ref() {
+            Some(v) => {
+                let mut sanitized: Vec<Variant> = v
+                    .iter()
+                    .map(Variant::without_skill_runtime_contents)
+                    .collect();
+                let raw = serde_json::to_string(&sanitized)?;
+                Some(Self::enforce_variants_json_size_limit(
+                    raw,
+                    &mut sanitized,
+                    &message.id,
+                ))
+            }
+            None => None,
+        };
         let shared_context_json = message
             .shared_context
             .as_ref()
@@ -951,6 +1061,7 @@ impl ChatV2Repo {
                     e
                 })
                 .ok()
+                .map(|meta: MessageMeta| meta.without_skill_runtime_contents())
         });
 
         let attachments: Option<Vec<AttachmentMeta>> = attachments_json.as_ref().and_then(|s| {
@@ -977,6 +1088,12 @@ impl ChatV2Repo {
                     e
                 })
                 .ok()
+                .map(|variants: Vec<Variant>| {
+                    variants
+                        .into_iter()
+                        .map(|variant| variant.without_skill_runtime_contents())
+                        .collect()
+                })
         });
 
         let shared_context: Option<SharedContext> = shared_context_json.as_ref().and_then(|s| {
@@ -1874,7 +1991,7 @@ impl ChatV2Repo {
             message_id, meta.model_id
         );
 
-        let meta_json = serde_json::to_string(meta)?;
+        let meta_json = serde_json::to_string(&meta.without_skill_runtime_contents())?;
 
         let rows_affected = conn.execute(
             "UPDATE chat_v2_messages SET meta_json = ?2 WHERE id = ?1",
@@ -1957,7 +2074,10 @@ impl ChatV2Repo {
             variants.len()
         );
 
-        let variants_json = serde_json::to_string(variants)?;
+        let raw_json = serde_json::to_string(variants)?;
+        let mut variants_owned = variants.to_vec();
+        let variants_json =
+            Self::enforce_variants_json_size_limit(raw_json, &mut variants_owned, message_id);
 
         let rows_affected = conn.execute(
             "UPDATE chat_v2_messages SET variants_json = ?2, active_variant_id = ?3 WHERE id = ?1",
@@ -2016,7 +2136,9 @@ impl ChatV2Repo {
         variant.error = error.map(|s| s.to_string());
 
         // 保存更新后的变体列表
-        let variants_json = serde_json::to_string(&variants)?;
+        let raw_json = serde_json::to_string(&variants)?;
+        let variants_json =
+            Self::enforce_variants_json_size_limit(raw_json, &mut variants, message_id);
         conn.execute(
             "UPDATE chat_v2_messages SET variants_json = ?2 WHERE id = ?1",
             params![message_id, variants_json],
@@ -2126,7 +2248,9 @@ impl ChatV2Repo {
         };
 
         // 更新消息
-        let variants_json = serde_json::to_string(&variants)?;
+        let raw_json = serde_json::to_string(&variants)?;
+        let variants_json =
+            Self::enforce_variants_json_size_limit(raw_json, &mut variants, message_id);
         let update_result = conn.execute(
             "UPDATE chat_v2_messages SET variants_json = ?2, active_variant_id = ?3 WHERE id = ?1",
             params![message_id, variants_json, &new_active_id],
@@ -2220,7 +2344,9 @@ impl ChatV2Repo {
         }
 
         // 保存更新后的变体列表
-        let variants_json = serde_json::to_string(&variants)?;
+        let raw_json = serde_json::to_string(&variants)?;
+        let variants_json =
+            Self::enforce_variants_json_size_limit(raw_json, &mut variants, message_id);
         conn.execute(
             "UPDATE chat_v2_messages SET variants_json = ?2 WHERE id = ?1",
             params![message_id, variants_json],
@@ -2334,7 +2460,9 @@ impl ChatV2Repo {
         };
 
         // 保存更新
-        let variants_json = serde_json::to_string(&variants)?;
+        let raw_json = serde_json::to_string(&variants)?;
+        let variants_json =
+            Self::enforce_variants_json_size_limit(raw_json, &mut variants, message_id);
         conn.execute(
             "UPDATE chat_v2_messages SET variants_json = ?2, active_variant_id = ?3 WHERE id = ?1",
             params![message_id, variants_json, &new_active_id],
@@ -2702,6 +2830,17 @@ impl ChatV2Repo {
         )?;
         Ok(())
     }
+
+    /// 锁定会话标题（用户手动改名后调用）
+    ///
+    /// 锁定后自动摘要 LLM 不再覆盖标题，行为对齐 ChatGPT/Claude。
+    pub fn set_title_locked(conn: &Connection, session_id: &str, locked: bool) -> ChatV2Result<()> {
+        conn.execute(
+            "UPDATE chat_v2_sessions SET title_locked = ?2 WHERE id = ?1",
+            params![session_id, locked as i64],
+        )?;
+        Ok(())
+    }
 }
 
 // ============================================================================
@@ -2719,9 +2858,26 @@ mod tests {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
 
-        // 初始化 schema（使用完整的初始化迁移，包含所有表结构）
-        let init_sql = include_str!("../../migrations/chat_v2/V20260130__init.sql");
-        conn.execute_batch(init_sql).unwrap();
+        // 初始化 schema：依次应用所有迁移，与生产环境保持一致
+        // （单独应用 V20260130 会缺少后续迁移加的列，导致测试 schema 与运行时不一致）
+        let migrations: &[&str] = &[
+            include_str!("../../migrations/chat_v2/V20260130__init.sql"),
+            include_str!("../../migrations/chat_v2/V20260131__add_change_log.sql"),
+            include_str!("../../migrations/chat_v2/V20260201__add_sync_fields.sql"),
+            include_str!("../../migrations/chat_v2/V20260202__schema_repair.sql"),
+            include_str!("../../migrations/chat_v2/V20260203__ensure_subagent_task.sql"),
+            include_str!("../../migrations/chat_v2/V20260204__session_groups.sql"),
+            include_str!("../../migrations/chat_v2/V20260207__add_active_skill_ids_json.sql"),
+            include_str!("../../migrations/chat_v2/V20260221__group_pinned_resources.sql"),
+            include_str!("../../migrations/chat_v2/V20260301__content_search_and_tags.sql"),
+            include_str!("../../migrations/chat_v2/V20260302__subagent_task_schema_align.sql"),
+            include_str!("../../migrations/chat_v2/V20260306__add_skill_state_json.sql"),
+            include_str!("../../migrations/chat_v2/V20260502__archive_legacy_deleted_sessions.sql"),
+            include_str!("../../migrations/chat_v2/V20260516__add_title_locked.sql"),
+        ];
+        for sql in migrations {
+            conn.execute_batch(sql).unwrap();
+        }
 
         conn
     }
@@ -2766,6 +2922,75 @@ mod tests {
 
         let deleted = ChatV2Repo::get_session_with_conn(&conn, "sess_test_123").unwrap();
         assert!(deleted.is_none());
+    }
+
+    #[test]
+    fn test_session_title_locked_default_false() {
+        let conn = setup_test_db();
+
+        let session = ChatSession::new("sess_lock_default".to_string(), "general_chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        let loaded = ChatV2Repo::get_session_with_conn(&conn, "sess_lock_default")
+            .unwrap()
+            .expect("Session should exist");
+        assert!(
+            !loaded.title_locked,
+            "新会话默认 title_locked = false，允许 LLM 自动生成标题"
+        );
+    }
+
+    #[test]
+    fn test_session_title_locked_persists_through_update() {
+        let conn = setup_test_db();
+
+        let mut session = ChatSession::new("sess_lock_persist".to_string(), "chat".to_string());
+        session.title_locked = true;
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        let loaded = ChatV2Repo::get_session_with_conn(&conn, "sess_lock_persist")
+            .unwrap()
+            .unwrap();
+        assert!(loaded.title_locked);
+
+        // 经过 update_session 后仍保留锁定状态
+        let mut updated = loaded.clone();
+        updated.description = Some("changed".to_string());
+        ChatV2Repo::update_session_with_conn(&conn, &updated).unwrap();
+
+        let reloaded = ChatV2Repo::get_session_with_conn(&conn, "sess_lock_persist")
+            .unwrap()
+            .unwrap();
+        assert!(reloaded.title_locked, "update_session 不应清除锁定标志");
+        assert_eq!(reloaded.description.as_deref(), Some("changed"));
+    }
+
+    #[test]
+    fn test_set_title_locked_helper() {
+        let conn = setup_test_db();
+
+        let session = ChatSession::new("sess_lock_helper".to_string(), "chat".to_string());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        // 初始未锁定
+        let loaded = ChatV2Repo::get_session_with_conn(&conn, "sess_lock_helper")
+            .unwrap()
+            .unwrap();
+        assert!(!loaded.title_locked);
+
+        // 通过 helper 锁定
+        ChatV2Repo::set_title_locked(&conn, "sess_lock_helper", true).unwrap();
+        let after_lock = ChatV2Repo::get_session_with_conn(&conn, "sess_lock_helper")
+            .unwrap()
+            .unwrap();
+        assert!(after_lock.title_locked);
+
+        // 通过 helper 解锁
+        ChatV2Repo::set_title_locked(&conn, "sess_lock_helper", false).unwrap();
+        let after_unlock = ChatV2Repo::get_session_with_conn(&conn, "sess_lock_helper")
+            .unwrap()
+            .unwrap();
+        assert!(!after_unlock.title_locked);
     }
 
     #[test]
@@ -3910,5 +4135,237 @@ mod tests {
 
         // active_variant_id 应该更新为第一个 success 变体
         assert_eq!(loaded.active_variant_id, Some(var3_id));
+    }
+
+    /// FIX B: variants_json 命中 WARN 阈值（>=64KB 但 <256KB）应仅记录日志、不改动数据。
+    #[test]
+    fn test_enforce_variants_json_size_limit_warn_path_does_not_truncate() {
+        let mut variants = vec![Variant::new("model_warn".to_string())];
+        variants[0].error = Some("x".repeat(VARIANTS_JSON_WARN_BYTES + 1024));
+        let raw = serde_json::to_string(&variants).unwrap();
+        let original_len = variants.len();
+
+        assert!(raw.len() >= VARIANTS_JSON_WARN_BYTES);
+        assert!(raw.len() < VARIANTS_JSON_LIMIT_BYTES);
+
+        let out = ChatV2Repo::enforce_variants_json_size_limit(
+            raw.clone(),
+            &mut variants,
+            "msg_warn_test",
+        );
+
+        assert_eq!(out, raw, "warn-path must not rewrite the JSON");
+        assert_eq!(variants.len(), original_len, "warn-path must not truncate");
+    }
+
+    /// FIX B: variants_json 超过硬上限时必须从最旧变体开始截断，直到 JSON 字节数低于 LIMIT。
+    #[test]
+    fn test_enforce_variants_json_size_limit_hard_truncates_oldest() {
+        let payload = "y".repeat(VARIANTS_JSON_LIMIT_BYTES / 4);
+        let mut variants: Vec<Variant> = (0..6)
+            .map(|i| {
+                let mut v = Variant::new(format!("model_{}", i));
+                v.error = Some(payload.clone());
+                v
+            })
+            .collect();
+
+        let oldest_id = variants[0].id.clone();
+        let newest_id = variants.last().unwrap().id.clone();
+        let raw = serde_json::to_string(&variants).unwrap();
+        assert!(
+            raw.len() >= VARIANTS_JSON_LIMIT_BYTES,
+            "test fixture must exceed limit; got {}",
+            raw.len()
+        );
+
+        let out =
+            ChatV2Repo::enforce_variants_json_size_limit(raw, &mut variants, "msg_truncate_test");
+
+        assert!(
+            out.len() < VARIANTS_JSON_LIMIT_BYTES,
+            "post-truncation JSON must be under limit; got {}",
+            out.len()
+        );
+        assert!(
+            variants.iter().all(|v| v.id != oldest_id),
+            "oldest variant must be removed"
+        );
+        assert!(
+            variants.iter().any(|v| v.id == newest_id),
+            "newest variant must be preserved"
+        );
+        assert!(
+            !variants.is_empty(),
+            "at least one variant must remain after truncation"
+        );
+    }
+}
+
+// ============================================================================
+// 🆕 P1: Compaction CRUD
+// ============================================================================
+impl ChatV2Repo {
+    pub fn create_compaction_with_conn(
+        conn: &Connection,
+        rec: &CompactionRecord,
+    ) -> ChatV2Result<()> {
+        // 🔧 CR-02 / WR-01 改进：只 INSERT 不 UPDATE，避免 UPSERT 意外覆盖
+        // 已有记录的 tail cutoff；session 指针更新解耦到 set_session_last_compaction
+        conn.execute(
+            r#"
+            INSERT INTO chat_v2_compactions (
+                id, session_id, summary_message_id, tail_start_message_id,
+                tail_start_time_created, reason, is_auto, is_overflow,
+                tokens_before, tokens_after, model_id, created_at
+            )
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)
+            "#,
+            params![
+                rec.id,
+                rec.session_id,
+                rec.summary_message_id,
+                rec.tail_start_message_id,
+                rec.tail_start_time_created,
+                rec.reason,
+                if rec.is_auto { 1 } else { 0 },
+                if rec.is_overflow { 1 } else { 0 },
+                rec.tokens_before,
+                rec.tokens_after,
+                rec.model_id,
+                rec.created_at,
+            ],
+        )?;
+        Ok(())
+    }
+
+    /// 把会话的"当前活跃压缩"指针指向指定记录
+    pub fn set_session_last_compaction_with_conn(
+        conn: &Connection,
+        session_id: &str,
+        compaction_id: &str,
+    ) -> ChatV2Result<()> {
+        conn.execute(
+            "UPDATE chat_v2_sessions SET last_compaction_id = ?1 WHERE id = ?2",
+            params![compaction_id, session_id],
+        )?;
+        Ok(())
+    }
+
+    pub fn create_compaction(db: &Database, rec: &CompactionRecord) -> ChatV2Result<()> {
+        let conn = db.get_conn_safe()?;
+        Self::create_compaction_with_conn(&conn, rec)?;
+        Self::set_session_last_compaction_with_conn(&conn, &rec.session_id, &rec.id)
+    }
+
+    pub fn get_active_compaction_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Option<CompactionRecord>> {
+        // 1) 查 session 指针
+        let last_id: Option<String> = conn
+            .query_row(
+                "SELECT last_compaction_id FROM chat_v2_sessions WHERE id = ?1",
+                params![session_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten();
+
+        // 2) 指针存在 → 查该记录；若记录不在（pointer stale，比如被同步/清理删掉），
+        //    回退到最新 compaction，保证视图不丢失
+        if let Some(id) = last_id {
+            if !id.is_empty() {
+                if let Some(rec) = Self::get_compaction_by_id_with_conn(conn, &id)? {
+                    return Ok(Some(rec));
+                }
+                log::warn!(
+                    "[chat_v2::repo] session {} last_compaction_id={} points to missing record; fallback to latest",
+                    session_id,
+                    id
+                );
+            }
+        }
+        // 3) 指针为空或悬挂 → 按 created_at DESC 取最新
+        Self::get_latest_compaction_with_conn(conn, session_id)
+    }
+
+    pub fn get_latest_compaction_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Option<CompactionRecord>> {
+        conn.query_row(
+            r#"
+            SELECT id, session_id, summary_message_id, tail_start_message_id,
+                   tail_start_time_created, reason, is_auto, is_overflow,
+                   tokens_before, tokens_after, model_id, created_at
+            FROM chat_v2_compactions
+            WHERE session_id = ?1
+            ORDER BY created_at DESC
+            LIMIT 1
+            "#,
+            params![session_id],
+            Self::row_to_compaction,
+        )
+        .optional()
+        .map_err(ChatV2Error::from)
+    }
+
+    pub fn get_compaction_by_id_with_conn(
+        conn: &Connection,
+        id: &str,
+    ) -> ChatV2Result<Option<CompactionRecord>> {
+        conn.query_row(
+            r#"
+            SELECT id, session_id, summary_message_id, tail_start_message_id,
+                   tail_start_time_created, reason, is_auto, is_overflow,
+                   tokens_before, tokens_after, model_id, created_at
+            FROM chat_v2_compactions
+            WHERE id = ?1
+            "#,
+            params![id],
+            Self::row_to_compaction,
+        )
+        .optional()
+        .map_err(ChatV2Error::from)
+    }
+
+    pub fn list_compactions_with_conn(
+        conn: &Connection,
+        session_id: &str,
+    ) -> ChatV2Result<Vec<CompactionRecord>> {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, session_id, summary_message_id, tail_start_message_id,
+                   tail_start_time_created, reason, is_auto, is_overflow,
+                   tokens_before, tokens_after, model_id, created_at
+            FROM chat_v2_compactions
+            WHERE session_id = ?1
+            ORDER BY created_at ASC
+            "#,
+        )?;
+        let iter = stmt.query_map(params![session_id], Self::row_to_compaction)?;
+        let mut out = Vec::new();
+        for r in iter {
+            out.push(r?);
+        }
+        Ok(out)
+    }
+
+    fn row_to_compaction(row: &rusqlite::Row<'_>) -> rusqlite::Result<CompactionRecord> {
+        Ok(CompactionRecord {
+            id: row.get(0)?,
+            session_id: row.get(1)?,
+            summary_message_id: row.get(2)?,
+            tail_start_message_id: row.get(3)?,
+            tail_start_time_created: row.get(4)?,
+            reason: row.get(5)?,
+            is_auto: row.get::<_, i64>(6)? != 0,
+            is_overflow: row.get::<_, i64>(7)? != 0,
+            tokens_before: row.get::<_, Option<i64>>(8)?.map(|v| v as u32),
+            tokens_after: row.get::<_, Option<i64>>(9)?.map(|v| v as u32),
+            model_id: row.get(10)?,
+            created_at: row.get(11)?,
+        })
     }
 }

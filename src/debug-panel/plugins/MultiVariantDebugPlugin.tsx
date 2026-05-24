@@ -13,7 +13,7 @@ import { Button } from '../../components/ui/shad/Button';
 import { Badge } from '../../components/ui/shad/Badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/shad/Card';
 import { Separator } from '../../components/ui/shad/Separator';
-import { Copy, Trash2, AlertCircle, CheckCircle2, AlertTriangle, Layers, ArrowRight, Bug } from 'lucide-react';
+import { Copy, Trash, WarningCircle, CheckCircle, Warning, Stack, ArrowRight, Bug } from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import {
@@ -26,7 +26,7 @@ import {
   type ChatV2LogEntry,
   type ChatV2LogCategory,
   type ChatV2LogStage,
-} from '../../chat-v2/debug/chatV2Logger';
+} from '../../features/chat/debug/chatV2Logger';
 
 // =============================================================================
 // 类型定义（兼容旧接口）
@@ -200,15 +200,15 @@ const MultiVariantDebugPlugin: React.FC<DebugPanelPluginProps> = ({
   const getSeverityIcon = (severity: ChatV2LogEntry['severity']) => {
     switch (severity) {
       case 'error':
-        return <AlertCircle className="w-4 h-4 text-red-500" />;
+        return <WarningCircle size={16} className="text-red-500" />;
       case 'warning':
-        return <AlertTriangle className="w-4 h-4 text-yellow-500" />;
+        return <Warning size={16} className="text-yellow-500" />;
       case 'success':
-        return <CheckCircle2 className="w-4 h-4 text-green-500" />;
+        return <CheckCircle size={16} className="text-green-500" />;
       case 'debug':
-        return <Bug className="w-4 h-4 text-gray-500" />;
+        return <Bug size={16} className="text-gray-500" />;
       default:
-        return <ArrowRight className="w-4 h-4 text-blue-500" />;
+        return <ArrowRight size={16} className="text-blue-500" />;
     }
   };
 
@@ -258,17 +258,17 @@ const MultiVariantDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       {/* 工具栏 */}
       <div className="flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-2">
-          <Layers className="w-5 h-5 text-primary" />
+          <Stack size={20} className="text-primary" />
           <h3 className="text-lg font-semibold">多变体并行调试</h3>
           <Badge variant="outline">{logs.length} 条日志</Badge>
         </div>
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={handleCopyLogs}>
-            <Copy className="w-4 h-4 mr-1" />
+            <Copy size={16} className="mr-1" />
             复制全部
           </Button>
           <Button size="sm" variant="destructive" onClick={handleClear}>
-            <Trash2 className="w-4 h-4 mr-1" />
+            <Trash size={16} className="mr-1" />
             清空
           </Button>
         </div>
@@ -327,7 +327,7 @@ const MultiVariantDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       <div className="flex-1 overflow-auto border rounded-md p-2 space-y-2 bg-muted/30">
         {logs.length === 0 ? (
           <div className="text-center text-muted-foreground py-8">
-            <Layers className="w-12 h-12 mx-auto mb-2 opacity-50" />
+            <Stack size={48} className="mx-auto mb-2 opacity-50" />
             <p>暂无日志</p>
             <p className="text-xs">选择 2+ 个模型并发送消息开始追踪</p>
           </div>

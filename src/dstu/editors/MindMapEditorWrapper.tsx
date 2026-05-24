@@ -11,7 +11,7 @@
 
 import React, { lazy, Suspense, useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { CircleNotch, WarningCircle, ArrowClockwise } from '@phosphor-icons/react';
 import type { EditorProps, CreateEditorProps } from '../editorTypes';
 import { dstu } from '../index';
 import { createEmpty } from '../factory';
@@ -22,7 +22,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 // 懒加载 MindMapContentView
 const MindMapContentView = lazy(() => 
-  import('@/components/mindmap/MindMapContentView').then(m => ({ default: m.MindMapContentView }))
+  import('@/features/mindmap/MindMapContentView').then(m => ({ default: m.MindMapContentView }))
 );
 
 /**
@@ -125,11 +125,11 @@ export const MindMapEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (
       <div className={cn('flex flex-col items-center justify-center h-full py-8 gap-3', props.className)}>
         {error ? (
           <>
-            <AlertCircle className="w-10 h-10 text-destructive/60" />
+            <WarningCircle size={40} className="text-destructive/60" />
             <span className="text-sm text-destructive text-center max-w-md">{error}</span>
             {onClose && (
               <NotionButton variant="ghost"
-                className="px-4 py-2 border rounded-md hover:bg-muted"
+                className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)]"
                 onClick={onClose}
               >
                 {t('common:actions.close')}
@@ -138,7 +138,7 @@ export const MindMapEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (
           </>
         ) : isLoading ? (
           <>
-            <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+            <CircleNotch size={24} className="animate-spin text-muted-foreground" />
             <span className="text-sm text-muted-foreground">
               {t('dstu:actions.createMindMap')}...
             </span>
@@ -148,7 +148,7 @@ export const MindMapEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (
             <span className="text-sm text-muted-foreground">{t('dstu:actions.mindMapCreated')}</span>
             {onClose && (
               <NotionButton variant="ghost"
-                className="px-4 py-2 border rounded-md hover:bg-muted"
+                className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)]"
                 onClick={onClose}
               >
                 {t('common:actions.close')}
@@ -164,7 +164,7 @@ export const MindMapEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (
   if (isLoading) {
     return (
       <div className={cn('flex items-center justify-center h-full', props.className)}>
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        <CircleNotch size={24} className="animate-spin text-muted-foreground" />
       </div>
     );
   }
@@ -173,13 +173,13 @@ export const MindMapEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (
   if (error) {
     return (
       <div className={cn('flex flex-col items-center justify-center h-full py-8 gap-4', props.className)}>
-        <AlertCircle className="w-12 h-12 text-destructive/50" />
+        <WarningCircle size={48} className="text-destructive/50" />
         <span className="text-destructive text-center max-w-md">{error}</span>
         <NotionButton variant="ghost"
-          className="flex items-center gap-2 px-4 py-2 border rounded-md hover:bg-muted"
+          className="flex items-center gap-2 px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)]"
           onClick={loadNode}
         >
-          <RefreshCw className="w-4 h-4" />
+          <ArrowClockwise size={16} />
           {t('common:actions.retry')}
         </NotionButton>
       </div>
@@ -190,7 +190,7 @@ export const MindMapEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (
   if (!node) {
     return (
       <div className={cn('flex flex-col items-center justify-center h-full py-8 gap-4', props.className)}>
-        <AlertCircle className="w-12 h-12 text-muted-foreground/50" />
+        <WarningCircle size={48} className="text-muted-foreground/50" />
         <span className="text-muted-foreground text-center">
           {t('mindmap:errors.notFound')}
         </span>
@@ -205,7 +205,7 @@ export const MindMapEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (
     <Suspense
       fallback={
         <div className={cn('flex items-center justify-center h-full', props.className)}>
-          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          <CircleNotch size={24} className="animate-spin text-muted-foreground" />
         </div>
       }
     >

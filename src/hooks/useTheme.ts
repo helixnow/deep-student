@@ -40,20 +40,24 @@ export const COLOR_PALETTES = ALL_PALETTES;
 export const SPECIAL_PALETTES: ThemePalette[] = [];
 
 /**
- * 调色板预览色（用于 UI 显示）
- * 颜色主题：精确匹配 CSS --primary 值
- * 特殊主题：代表调色板整体"感觉"
- * custom 的预览色在运行时由 customColor 决定
+ * Accent 预览颜色（用于 UI 圆点显示）
+ *
+ * Phase 3.1：这些 hex 仅用于 AccentPicker 的圆点背景色，**不再**
+ * 参与真实主题渲染。真实主题色由 shadcn-variables.css 里对应的
+ * `[data-theme-palette="..."]` 规则块定义的 HSL 三元组决定。
+ *
+ * 保持这些 hex 与 CSS 变量视觉接近即可，不需要精确匹配；
+ * 任何小偏差只影响设置页的圆点示例，不影响实际运行中的界面。
  */
 export const PALETTE_PREVIEW_COLORS: Record<string, string> = {
-  default: '#0952c6',   // hsl(217, 91%, 40%)
-  purple: '#8b5cf6',    // hsl(262, 83%, 58%)
-  green: '#1a9a4a',     // hsl(142, 71%, 35%)
-  orange: '#f97316',    // hsl(24, 95%, 50%)
-  pink: '#e72478',      // hsl(340, 82%, 52%)
-  teal: '#1b9898',      // hsl(180, 70%, 35%)
-  muted: '#6078b8',     // hsl(220, 25%, 50%)
-  paper: '#c9a96e',     // hsl(36, 40%, 70%) 暖金代表纸质感
+  default: '#1e62b8',
+  purple: '#5e33a3',
+  green: '#2b7352',
+  orange: '#9f5014',
+  pink: '#9d2a59',
+  teal: '#247078',
+  muted: '#445a7e',
+  paper: '#473c37',
 };
 
 // ============ 颜色工具函数 ============
@@ -79,101 +83,51 @@ function hexToHsl(hex: string): [number, number, number] {
   return [Math.round(h * 360), Math.round(s * 100), Math.round(l * 100)];
 }
 
+function clampPercent(value: number, min: number, max: number) {
+  return Math.min(max, Math.max(min, value));
+}
+
+/**
+ * 仅生成 accent 相关的 CSS 变量（不动中性色 / 背景 / 边框 / 文本）。
+ *
+ * 设计约束（Phase 3.1）：
+ * - 自选色必须只影响 --primary / --primary-foreground / --ring 以及派生的 --brand-primary / --primary-color。
+ * - 禁止改写 --background / --card / --muted / --border / --input / --foreground 等中性 token。
+ * - --primary-foreground 在浅/深模式各自固定一个高对比度前景色，避免低对比度组合。
+ */
 function generateCustomThemeVars(hex: string, isDark: boolean): Record<string, string> {
   const [h, s, l] = hexToHsl(hex);
   const hue = h;
+  const primaryS = clampPercent(s, 48, 76);
 
   if (isDark) {
-    const primaryL = Math.max(50, Math.min(l + 15, 70));
-    const primaryS = Math.max(50, s);
+    // 暗色模式下把主色亮度抬高，保证在深底上可读
+    const primaryL = clampPercent(l + 18, 66, 74);
     return {
-      '--titlebar-background': `${hue} 5% 22%`,
-      '--nav-background': `${hue} 5% 11%`,
-      '--background': `${hue} 5% 14%`,
-      '--foreground': `${hue} 5% 82%`,
-      '--card': `${hue} 5% 17%`,
-      '--card-foreground': `${hue} 5% 82%`,
-      '--popover': `${hue} 5% 18%`,
-      '--popover-foreground': `${hue} 5% 82%`,
-      '--secondary': `${hue} 5% 20%`,
-      '--secondary-foreground': `${hue} 5% 82%`,
-      '--muted': `${hue} 5% 20%`,
-      '--muted-foreground': `${hue} 5% 55%`,
-      '--accent': `${hue} 5% 23%`,
-      '--accent-foreground': `${hue} 5% 82%`,
-      '--destructive': '0 55% 45%',
-      '--destructive-foreground': '0 0% 100%',
-      '--border': `${hue} 5% 23%`,
-      '--input': `${hue} 5% 20%`,
       '--primary': `${hue} ${primaryS}% ${primaryL}%`,
-      '--primary-foreground': '0 0% 100%',
-      '--ring': `${hue} ${primaryS}% ${primaryL}%`,
-      '--success': '152 55% 42%',
-      '--success-foreground': '144 100% 10%',
-      '--warning': '38 65% 50%',
-      '--warning-foreground': '40 100% 10%',
-      '--info': `${hue} ${Math.max(40, primaryS - 20)}% ${Math.min(primaryL + 5, 65)}%`,
-      '--info-foreground': `${hue} 100% 10%`,
-      '--danger': '0 50% 48%',
-      '--danger-foreground': '0 0% 98%',
+      '--primary-foreground': '220 30% 10%',
+      '--ring': `${hue} ${Math.max(38, primaryS - 8)}% ${Math.max(60, primaryL - 6)}%`,
       '--brand-primary': `var(--primary)`,
-      '--brand-secondary': `var(--secondary)`,
-      '--brand-accent': `var(--accent)`,
-      '--brand-primary-dark': `${hue} ${primaryS}% ${Math.min(primaryL + 20, 85)}%`,
+      '--brand-primary-dark': `${hue} ${primaryS}% ${Math.min(primaryL + 10, 84)}%`,
       '--primary-color': 'hsl(var(--primary))',
     };
   }
 
-  const primaryL = Math.max(30, Math.min(l, 55));
-  const primaryS = Math.max(60, s);
+  // 浅色模式下保留原有的降亮度策略
+  const primaryL = clampPercent(l - 6, 32, 42);
   return {
-    '--titlebar-background': `${hue} 6% 96%`,
-    '--nav-background': `${hue} 6% 88%`,
-    '--background': `${hue} 6% 92%`,
-    '--foreground': `${hue} 10% 18%`,
-    '--card': `${hue} 6% 94%`,
-    '--card-foreground': `${hue} 10% 18%`,
-    '--popover': `${hue} 6% 96%`,
-    '--popover-foreground': `${hue} 10% 18%`,
-    '--secondary': `${hue} 6% 89%`,
-    '--secondary-foreground': `${hue} 10% 18%`,
-    '--muted': `${hue} 6% 89%`,
-    '--muted-foreground': `${hue} 6% 42%`,
-    '--accent': `${hue} 6% 85%`,
-    '--accent-foreground': `${hue} 10% 18%`,
-    '--destructive': '0 65% 51%',
-    '--destructive-foreground': '0 0% 100%',
-    '--border': `${hue} 6% 82%`,
-    '--input': `${hue} 6% 85%`,
     '--primary': `${hue} ${primaryS}% ${primaryL}%`,
     '--primary-foreground': '0 0% 100%',
-    '--ring': `${hue} ${primaryS}% ${primaryL}%`,
-    '--success': '152 60% 36%',
-    '--success-foreground': '0 0% 100%',
-    '--warning': '38 70% 45%',
-    '--warning-foreground': '0 0% 100%',
-    '--info': `${hue} ${Math.max(40, primaryS - 20)}% ${Math.min(primaryL + 10, 58)}%`,
-    '--info-foreground': '0 0% 100%',
-    '--danger': '0 55% 50%',
-    '--danger-foreground': '0 0% 100%',
+    '--ring': `${hue} ${Math.max(38, primaryS - 8)}% ${Math.min(primaryL + 6, 50)}%`,
     '--brand-primary': `var(--primary)`,
-    '--brand-secondary': `var(--secondary)`,
-    '--brand-accent': `var(--accent)`,
-    '--brand-primary-dark': `${hue} ${primaryS}% ${Math.max(primaryL - 15, 18)}%`,
+    '--brand-primary-dark': `${hue} ${primaryS}% ${Math.max(primaryL - 12, 20)}%`,
     '--primary-color': 'hsl(var(--primary))',
   };
 }
 
 const CUSTOM_THEME_VARS = [
-  '--titlebar-background', '--nav-background', '--background', '--foreground',
-  '--card', '--card-foreground', '--popover', '--popover-foreground',
-  '--secondary', '--secondary-foreground', '--muted', '--muted-foreground',
-  '--accent', '--accent-foreground', '--destructive', '--destructive-foreground',
-  '--border', '--input', '--primary', '--primary-foreground', '--ring',
-  '--success', '--success-foreground', '--warning', '--warning-foreground',
-  '--info', '--info-foreground', '--danger', '--danger-foreground',
-  '--brand-primary', '--brand-secondary', '--brand-accent',
-  '--brand-primary-dark', '--primary-color',
+  '--primary', '--primary-foreground', '--ring',
+  '--brand-primary', '--brand-primary-dark', '--primary-color',
 ];
 
 function applyCustomThemeVars(hex: string, isDark: boolean) {

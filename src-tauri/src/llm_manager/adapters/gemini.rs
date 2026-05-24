@@ -2,12 +2,12 @@
 //!
 //! Gemini 使用独特的 thinking 配置格式（注意：REST API 使用 camelCase）：
 //!
-//! ## Gemini 3 (2025-11+)
+//! ## Gemini 3.x（当前文档覆盖 3.1 / 3.5）
 //! ```json
 //! { "thinkingConfig": { "thinkingLevel": "low" | "high" } }
 //! ```
-//! - **Gemini 3 Pro**: 支持 `"low"`, `"high"`（默认 `"high"`），不能禁用
-//! - **Gemini 3 Flash**: 支持 `"minimal"`, `"low"`, `"medium"`, `"high"`
+//! - **Gemini 3.1 Pro Preview**: 支持 `"low"`, `"high"`（默认 `"high"`），不能禁用
+//! - **Gemini 3.5 Flash / 3.1 Flash-Lite**: 支持 `"minimal"`, `"low"`, `"medium"`, `"high"`
 //!
 //! ## Gemini 2.5 (退役 2026-06)
 //! ```json
@@ -25,18 +25,18 @@ use serde_json::{json, Map, Value};
 /// Google Gemini 专用适配器
 ///
 /// 处理 Gemini 的 thinking 配置格式（REST API 使用 camelCase）：
-/// - Gemini 3: `thinkingLevel: "low" | "high"` (Pro) 或 `"minimal" | "low" | "medium" | "high"` (Flash)
+/// - Gemini 3.x: `thinkingLevel: "low" | "high"` (Pro) 或 `"minimal" | "low" | "medium" | "high"` (Flash)
 /// - Gemini 2.5: `thinkingBudget: number` (-1 = dynamic, 0 = off for Flash)
 pub struct GeminiAdapter;
 
 impl GeminiAdapter {
-    /// 检查是否是 Gemini 3 模型
+    /// 检查是否是 Gemini 3.x 模型（3.1 / 3.5 等）
     fn is_gemini_3(model: &str) -> bool {
         let model_lower = model.to_lowercase();
         model_lower.contains("gemini-3") || model_lower.contains("gemini3")
     }
 
-    /// 检查是否是 Gemini 3 Flash 模型（支持更多 thinkingLevel 值）
+    /// 检查是否是 Gemini 3.x Flash 模型（支持更多 thinkingLevel 值）
     fn is_gemini_3_flash(model: &str) -> bool {
         let model_lower = model.to_lowercase();
         (model_lower.contains("gemini-3") || model_lower.contains("gemini3"))
@@ -45,8 +45,8 @@ impl GeminiAdapter {
 
     /// 将 reasoning_effort 映射到 thinkingLevel
     ///
-    /// Gemini 3 Pro: 仅支持 "low", "high"
-    /// Gemini 3 Flash: 支持 "minimal", "low", "medium", "high"
+    /// Gemini 3.x Pro: 仅支持 "low", "high"
+    /// Gemini 3.x Flash: 支持 "minimal", "low", "medium", "high"
     fn map_effort_to_level(effort: Option<&str>, is_flash: bool) -> &'static str {
         match effort {
             Some(e) if e.eq_ignore_ascii_case("high") || e.eq_ignore_ascii_case("xhigh") => "high",
@@ -192,12 +192,12 @@ mod tests {
 
     #[test]
     fn test_gemini_3_thinking_level() {
-        // Gemini 3 Pro 使用 thinkingLevel（camelCase）
+        // Gemini 3.1 Pro 使用 thinkingLevel（camelCase）
         let adapter = GeminiAdapter;
         let config = ApiConfig {
             thinking_enabled: true,
             reasoning_effort: Some("high".to_string()),
-            model: "gemini-3-pro-preview".to_string(),
+            model: "gemini-3.1-pro-preview".to_string(),
             ..Default::default()
         };
         let mut body = Map::new();
@@ -215,11 +215,11 @@ mod tests {
 
     #[test]
     fn test_gemini_3_flash_default_level() {
-        // Gemini 3 Flash 默认使用 "low"
+        // Gemini 3.5 Flash 默认使用 "low"
         let adapter = GeminiAdapter;
         let config = ApiConfig {
             thinking_enabled: true,
-            model: "gemini-3-flash-preview".to_string(),
+            model: "gemini-3.5-flash".to_string(),
             ..Default::default()
         };
         let mut body = Map::new();
@@ -232,12 +232,12 @@ mod tests {
 
     #[test]
     fn test_gemini_3_flash_medium_level() {
-        // Gemini 3 Flash 支持 "medium"
+        // Gemini 3.5 Flash 支持 "medium"
         let adapter = GeminiAdapter;
         let config = ApiConfig {
             thinking_enabled: true,
             reasoning_effort: Some("medium".to_string()),
-            model: "gemini-3-flash-preview".to_string(),
+            model: "gemini-3.5-flash".to_string(),
             ..Default::default()
         };
         let mut body = Map::new();
@@ -250,11 +250,11 @@ mod tests {
 
     #[test]
     fn test_gemini_3_flash_minimal_level() {
-        // Gemini 3 Flash 支持 "minimal"（近似禁用）
+        // Gemini 3.5 Flash 支持 "minimal"（近似禁用）
         let adapter = GeminiAdapter;
         let config = ApiConfig {
             thinking_enabled: false, // 用户想禁用
-            model: "gemini-3-flash-preview".to_string(),
+            model: "gemini-3.5-flash".to_string(),
             ..Default::default()
         };
         let mut body = Map::new();
@@ -271,11 +271,11 @@ mod tests {
 
     #[test]
     fn test_gemini_3_pro_cannot_disable() {
-        // Gemini 3 Pro 不能禁用 thinking，最低是 "low"
+        // Gemini 3.1 Pro 不能禁用 thinking，最低是 "low"
         let adapter = GeminiAdapter;
         let config = ApiConfig {
             thinking_enabled: false, // 用户想禁用
-            model: "gemini-3-pro-preview".to_string(),
+            model: "gemini-3.1-pro-preview".to_string(),
             ..Default::default()
         };
         let mut body = Map::new();

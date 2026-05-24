@@ -5,9 +5,9 @@
  */
 
 import { describe, it, expect, beforeEach } from 'vitest';
-import { createChatStore } from '@/chat-v2/core/store/createChatStore';
+import { createChatStore } from '@/features/chat/core/store/createChatStore';
 import type { StoreApi } from 'zustand';
-import type { ChatStore } from '@/chat-v2/core/types';
+import type { ChatStore } from '@/features/chat/core/types';
 
 // ============================================================================
 // 测试辅助

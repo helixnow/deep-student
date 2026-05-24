@@ -20,7 +20,8 @@ export type ModelAdapterType =
   | 'grok'         // xAI Grok
   | 'minimax'      // MiniMax
   | 'ernie'        // 百度文心
-  | 'mistral';     // Mistral
+  | 'mistral'      // Mistral
+  | 'mimo';        // Xiaomi MiMo
 
 export interface BasicModelDescriptor {
   id: string;
@@ -44,9 +45,16 @@ export interface ModelDefaultParams {
   enableThinking?: boolean;
   thinkingBudget?: number;
   includeThoughts?: boolean;
+  reasoningEffort?: string;
+  verbosity?: string;
   temperature?: number;
   minP?: number;
   topK?: number;
+}
+
+export interface ModelDefaultParameterOptions {
+  providerScope?: string;
+  providerType?: string;
 }
 
 const toLower = (s: string) => s.toLowerCase();
@@ -62,7 +70,19 @@ const featureHas = (features: string[] | undefined, ...candidates: string[]) => 
  * 
  * 匹配顺序很重要：更具体的模式应该在更通用的模式之前
  */
-function detectAdapterById(lowerId: string): ModelAdapterType {
+const isNvidiaProvider = (options?: ModelDefaultParameterOptions | { providerScope?: string }): boolean => {
+  const providerScope = options?.providerScope?.toLowerCase();
+  const providerType = 'providerType' in (options ?? {}) ? (options as ModelDefaultParameterOptions).providerType?.toLowerCase() : undefined;
+  return providerScope === 'nvidia' || providerType === 'nvidia';
+};
+
+function detectAdapterById(lowerId: string, providerScope?: string): ModelAdapterType {
+  if (providerScope?.toLowerCase() === 'nvidia') return 'general';
+  if (providerScope?.toLowerCase() === 'mimo') return 'mimo';
+
+  // Xiaomi MiMo 系列
+  if (lowerId.includes('mimo-v')) return 'mimo';
+
   // DeepSeek 系列
   if (lowerId.includes('deepseek')) return 'deepseek';
   
@@ -131,7 +151,7 @@ export function inferCapabilities(modelLike: BasicModelDescriptor | string): Inf
   const supportsTools = apiCaps.functionCalling || featureSupportsTools;
   const supportsReasoning = isReasoning || apiCaps.supportsReasoningEffort;
 
-  const modelAdapter = detectAdapterById(lowerId);
+  const modelAdapter = detectAdapterById(lowerId, providerScope);
 
   return {
     isMultimodal,
@@ -144,16 +164,80 @@ export function inferCapabilities(modelLike: BasicModelDescriptor | string): Inf
   };
 }
 
+const isDeepSeekV4Id = (lowerId: string): boolean => lowerId.includes('deepseek-v4');
+const isDeepSeekLegacyAlias = (lowerId: string): boolean => lowerId === 'deepseek-chat' || lowerId === 'deepseek-reasoner';
+const isMimoProvider = (options?: ModelDefaultParameterOptions): boolean => {
+  const providerScope = options?.providerScope?.toLowerCase();
+  const providerType = options?.providerType?.toLowerCase();
+  return providerScope === 'mimo' || providerType === 'mimo';
+};
+
 // 统一默认参数
-export function getModelDefaultParameters(modelId: string): ModelDefaultParams {
+export function getModelDefaultParameters(modelId: string, options: ModelDefaultParameterOptions = {}): ModelDefaultParams {
   const map: Record<string, ModelDefaultParams> = {
+    'gpt-5.5': {
+      enableThinking: true,
+      includeThoughts: true,
+      reasoningEffort: 'medium',
+      verbosity: 'medium',
+      maxOutputTokens: 128_000,
+      temperature: 1.0,
+    },
+    'gpt-5.5-pro': {
+      enableThinking: true,
+      includeThoughts: true,
+      reasoningEffort: 'high',
+      verbosity: 'medium',
+      maxOutputTokens: 128_000,
+      temperature: 1.0,
+    },
+    'gpt-5.4': {
+      enableThinking: true,
+      includeThoughts: true,
+      reasoningEffort: 'medium',
+      verbosity: 'medium',
+      maxOutputTokens: 128_000,
+      temperature: 1.0,
+    },
+    'gpt-5.4-pro': {
+      enableThinking: true,
+      includeThoughts: true,
+      reasoningEffort: 'high',
+      verbosity: 'medium',
+      maxOutputTokens: 128_000,
+      temperature: 1.0,
+    },
+    'gpt-5.4-mini': {
+      enableThinking: true,
+      includeThoughts: true,
+      reasoningEffort: 'medium',
+      verbosity: 'medium',
+      maxOutputTokens: 128_000,
+      temperature: 1.0,
+    },
+    'gpt-5.4-nano': {
+      enableThinking: true,
+      includeThoughts: true,
+      reasoningEffort: 'low',
+      verbosity: 'low',
+      maxOutputTokens: 128_000,
+      temperature: 1.0,
+    },
+    'gpt-5-pro': {
+      enableThinking: true,
+      includeThoughts: true,
+      reasoningEffort: 'high',
+      verbosity: 'medium',
+      maxOutputTokens: 128_000,
+      temperature: 1.0,
+    },
     'pro/qwen/qwen2.5-vl-7b-instruct': { maxOutputTokens: 4096 },
     'qwen/qwq-32b': { enableThinking: true, thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 },
     'qwen/qwq-32b-preview': { enableThinking: true, thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 },
-    'deepseek-ai/deepseek-v3.1': { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 },
-    'deepseek-ai/deepseek-v3': { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 },
-    'deepseek-ai/deepseek-v3.2-exp': { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 },
-    'deepseek-ai/deepseek-v3.2': { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 },
+    'deepseek-ai/deepseek-v3.1': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 },
+    'deepseek-ai/deepseek-v3': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 },
+    'deepseek-ai/deepseek-v3.2-exp': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 },
+    'deepseek-ai/deepseek-v3.2': { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 },
     // Doubao Seed 2.0 系列
     'doubao-seed-2-0-pro-260215': { enableThinking: true, thinkingBudget: 16384, includeThoughts: true, temperature: 0.7 },
     'doubao-seed-2-0-lite-260215': { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.7 },
@@ -164,9 +248,51 @@ export function getModelDefaultParameters(modelId: string): ModelDefaultParams {
     'glm-4.7': { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.7 },
   };
   const lower = toLower(modelId);
+  if (isNvidiaProvider(options)) {
+    if (lower.includes('nemotron')) {
+      return { maxOutputTokens: 8192, temperature: 0.7 };
+    }
+    return {};
+  }
+  if (isMimoProvider(options) || lower.includes('mimo-v')) {
+    if (lower.includes('tts')) {
+      return { maxOutputTokens: 8192, temperature: 0.6 };
+    }
+    if (lower === 'mimo-v2.5-pro' || lower === 'mimo-v2-pro') {
+      return { enableThinking: true, includeThoughts: true, maxOutputTokens: 131_072, temperature: 1.0 };
+    }
+    if (lower === 'mimo-v2.5' || lower === 'mimo-v2-omni') {
+      return { enableThinking: true, includeThoughts: true, maxOutputTokens: 32_768, temperature: 1.0 };
+    }
+    if (lower === 'mimo-v2-flash' || lower === 'mimo-v2.5-flash') {
+      return { enableThinking: false, includeThoughts: false, maxOutputTokens: 65_536, temperature: 0.3 };
+    }
+    return { enableThinking: true, includeThoughts: true, temperature: 1.0 };
+  }
   if (map[lower]) return map[lower];
+
+  if (isDeepSeekV4Id(lower)) {
+    return {
+      enableThinking: true,
+      includeThoughts: true,
+      reasoningEffort: 'high',
+      maxOutputTokens: 32_768,
+      temperature: 0.6,
+    };
+  }
+
+  if (isDeepSeekLegacyAlias(lower)) {
+    if (lower === 'deepseek-chat') {
+      return { enableThinking: false, includeThoughts: false, maxOutputTokens: 32_768, temperature: 0.6 };
+    }
+    return { enableThinking: true, includeThoughts: true, reasoningEffort: 'high', maxOutputTokens: 32_768, temperature: 0.6 };
+  }
+
+  if (lower.includes('deepseek-v3.2') || lower.includes('deepseek-v3.1')) {
+    return { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 };
+  }
   if (lower.includes('qwq')) return { enableThinking: true, thinkingBudget: 4096, includeThoughts: true, temperature: 0.7 };
-  if (lower.includes('deepseek')) return { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 };
+  if (lower.includes('deepseek')) return { enableThinking: true, reasoningEffort: 'medium', thinkingBudget: 8192, includeThoughts: true, temperature: 0.6 };
   if (lower.includes('doubao-seed-2')) return { enableThinking: true, thinkingBudget: 16384, includeThoughts: true, temperature: 0.7 };
   if (lower.includes('doubao-seed-1')) return { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.7 };
   if ((lower.includes('glm-5') || lower.includes('glm-4.7')) && !lower.includes('-flash')) return { enableThinking: true, thinkingBudget: 8192, includeThoughts: true, temperature: 0.7 };

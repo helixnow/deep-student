@@ -1183,7 +1183,130 @@ export async function runSlotDCloneDbTest(): Promise<SlotMigrationTestResponse> 
   return invoke<SlotMigrationTestResponse>('data_governance_run_slot_d_clone_db_test');
 }
 
-// ==================== 导出统一的 API 对象 ====================
+// ==================== 记录级冲突 API ====================
+
+/**
+ * 一条记录级冲突（__sync_conflicts 表行）
+ */
+export interface RecordConflictRow {
+  id: number;
+  database_name: string;
+  table_name: string;
+  record_id: string;
+  side: 'local' | 'cloud';
+  data_json: string;
+  winning_device_id?: string | null;
+  losing_device_id?: string | null;
+  detected_at: string;
+  resolved_at?: string | null;
+  resolution?: string | null;
+}
+
+/**
+ * 列出所有数据库未解决的记录级冲突
+ */
+export async function listRecordConflicts(
+  limit?: number,
+  offset?: number,
+): Promise<RecordConflictRow[]> {
+  return invoke<RecordConflictRow[]>('data_governance_list_record_conflicts', {
+    limit,
+    offset,
+  });
+}
+
+/**
+ * 按数据库统计未解决冲突数（用于 UI 徽章）
+ */
+export async function countRecordConflicts(): Promise<Record<string, number>> {
+  return invoke<Record<string, number>>('data_governance_count_record_conflicts');
+}
+
+/**
+ * 解决一条记录级冲突
+ * @param databaseName 数据库标识
+ * @param tableName 业务表名
+ * @param recordId 记录主键
+ * @param resolution "keep_local" | "keep_cloud" | "merged"
+ * @param mergedDataJson 当 resolution = "merged" 时提供的合并后行 JSON
+ */
+export async function resolveRecordConflict(
+  databaseName: string,
+  tableName: string,
+  recordId: string,
+  resolution: 'keep_local' | 'keep_cloud' | 'merged',
+  mergedDataJson?: string,
+): Promise<void> {
+  return invoke<void>('data_governance_resolve_record_conflict', {
+    databaseName,
+    tableName,
+    recordId,
+    resolution,
+    mergedDataJson,
+  });
+}
+
+/**
+ * 清理已解决的冲突记录（保留 olderThanDays 天以上的）
+ */
+export async function purgeResolvedConflicts(olderThanDays?: number): Promise<number> {
+  return invoke<number>('data_governance_purge_resolved_conflicts', {
+    olderThanDays,
+  });
+}
+
+// ==================== Tombstone（删除传播）API ====================
+
+import type { CloudStorageConfig as CloudCfg } from '../types/dataGovernance';
+
+/**
+ * 标记一个 blob 已被本地删除（用于跨设备删除传播）
+ * 通常由 VFS 自动入队，无需前端直接调用；仅开发者工具需要。
+ */
+export async function markBlobDeleted(
+  hash: string,
+  cloudConfig: CloudCfg,
+  relativePath?: string,
+  size?: number,
+): Promise<void> {
+  return invoke<void>('data_governance_mark_blob_deleted', {
+    hash,
+    relativePath,
+    size,
+    cloudConfig,
+  });
+}
+
+/**
+ * 标记一个资产文件已被本地删除
+ */
+export async function markAssetDeleted(
+  key: string,
+  cloudConfig: CloudCfg,
+  size?: number,
+): Promise<void> {
+  return invoke<void>('data_governance_mark_asset_deleted', {
+    key,
+    size,
+    cloudConfig,
+  });
+}
+
+// ==================== 同步断层检测 API ====================
+
+export interface PruneGapResponse {
+  has_gap: boolean;
+  since_version: number;
+  min_available_version: number | null;
+}
+
+/**
+ * 检查云端变更保留范围是否覆盖本地的 since_version
+ * 返回 has_gap = true 时，应提示用户走"全量恢复"而不是普通同步
+ */
+export async function detectPruneGap(cloudConfig: CloudCfg): Promise<PruneGapResponse> {
+  return invoke<PruneGapResponse>('data_governance_detect_prune_gap', { cloudConfig });
+}
 
 export const DataGovernanceApi = {
   // Schema 相关
@@ -1267,6 +1390,19 @@ export const DataGovernanceApi = {
   runSyncWithProgress,
   runSyncWithProgressTracking,
   createSyncProgressState,
+
+  // 记录级冲突（__sync_conflicts）
+  listRecordConflicts,
+  countRecordConflicts,
+  resolveRecordConflict,
+  purgeResolvedConflicts,
+
+  // Tombstone 删除传播
+  markBlobDeleted,
+  markAssetDeleted,
+
+  // Prune 断层检测
+  detectPruneGap,
 };
 
 export default DataGovernanceApi;

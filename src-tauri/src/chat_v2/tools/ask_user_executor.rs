@@ -38,11 +38,13 @@ use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 pub struct AskUserResponse {
     /// 工具调用 ID（用于匹配等待的 channel）
     pub tool_call_id: String,
-    /// 用户选择的文本内容
-    pub selected_text: String,
-    /// 选择的选项索引（0-2 为固定选项，-1 为自定义输入）
-    pub selected_index: Option<i32>,
-    /// 回答来源："user_click" | "custom_input" | "timeout"
+    /// 用户选择的文本内容（支持多选）
+    pub selected_texts: Vec<String>,
+    /// 选择的选项索引列表
+    pub selected_indices: Vec<i32>,
+    /// 用户自定义输入文本（allow_custom 模式下）
+    pub custom_text: Option<String>,
+    /// 回答来源："user_click" | "custom_input" | "mixed" | "timeout" | "channel_closed"
     pub source: String,
 }
 
@@ -85,8 +87,8 @@ pub fn handle_ask_user_response(response: AskUserResponse) {
     }
 }
 
-/// 用户提问超时时间（毫秒）
-const ASK_USER_TIMEOUT_MS: u64 = 30_000;
+/// 用户提问超时时间（毫秒）— 仅在 LLM 指定 timeoutSeconds 时使用
+/// 默认无超时，无限等待用户回答。
 
 // ============================================================================
 // 工具执行器
@@ -95,7 +97,7 @@ const ASK_USER_TIMEOUT_MS: u64 = 30_000;
 /// 用户提问工具执行器
 ///
 /// 在工具调用循环中向用户提出轻量级问题。
-/// 提供 3 个固定选项 + 自定义输入，30 秒超时自动选择推荐选项。
+/// 支持单选/多选 + 可选自定义输入 + 可选超时（默认无限等待）。
 pub struct AskUserExecutor;
 
 impl AskUserExecutor {
@@ -127,11 +129,20 @@ impl ToolExecutor for AskUserExecutor {
             .to_string();
         let options: Vec<String> =
             get_string_array_arg(&call.arguments, "options").unwrap_or_default();
-        let recommended = call
+        let multiple = call
             .arguments
-            .get("recommended")
-            .and_then(|v| v.as_u64())
-            .unwrap_or(0) as usize;
+            .get("multiple")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(false);
+        let allow_custom = call
+            .arguments
+            .get("allowCustom")
+            .and_then(|v| v.as_bool())
+            .unwrap_or(true);
+        let timeout_seconds: Option<u64> = call
+            .arguments
+            .get("timeoutSeconds")
+            .and_then(|v| v.as_u64());
         let _context = call
             .arguments
             .get("context")
@@ -140,10 +151,12 @@ impl ToolExecutor for AskUserExecutor {
             .to_string();
 
         log::info!(
-            "[AskUserExecutor] Asking user: question='{}', options={:?}, recommended={}",
+            "[AskUserExecutor] Asking user: question='{}', options={:?}, multiple={}, allow_custom={}, timeout={:?}s",
             question,
             options,
-            recommended
+            multiple,
+            allow_custom,
+            timeout_seconds
         );
 
         // 2. 发射 tool_call_start 事件（前端创建 ask_user 类型 block）
@@ -153,44 +166,35 @@ impl ToolExecutor for AskUserExecutor {
         let (tx, rx) = oneshot::channel();
         register_ask_callback(&call.id, tx);
 
-        // 4. 等待用户回答或超时
-        let answer = tokio::select! {
-            result = rx => {
-                match result {
-                    Ok(resp) => {
-                        log::info!(
-                            "[AskUserExecutor] Received user response: selected='{}', source='{}'",
-                            resp.selected_text, resp.source
-                        );
-                        resp
-                    }
-                    Err(_) => {
-                        log::warn!("[AskUserExecutor] Channel closed, using recommended option");
-                        AskUserResponse {
-                            tool_call_id: call.id.clone(),
-                            selected_text: options.get(recommended).cloned().unwrap_or_default(),
-                            selected_index: Some(recommended as i32),
-                            source: "channel_closed".to_string(),
-                        }
-                    }
-                }
-            }
-            _ = tokio::time::sleep(std::time::Duration::from_millis(ASK_USER_TIMEOUT_MS)) => {
+        // 4. 等待用户回答（永久等待，不设超时）
+        // 设计决策：LLM 不应替用户做决定。即使 LLM 传了 timeoutSeconds，
+        // 后端也忽略它，永久等待用户操作。前端可以显示视觉倒计时作为提示，
+        // 但不会自动选择。
+        if timeout_seconds.is_some() {
+            log::info!(
+                "[AskUserExecutor] LLM requested timeout={}s, ignoring (user decisions have no timeout)",
+                timeout_seconds.unwrap()
+            );
+        }
+        let answer = match rx.await {
+            Ok(resp) => {
                 log::info!(
-                    "[AskUserExecutor] Timeout ({}ms), auto-selecting recommended option: '{}'",
-                    ASK_USER_TIMEOUT_MS,
-                    options.get(recommended).unwrap_or(&String::new())
+                    "[AskUserExecutor] Received user response: selected={:?}, source='{}'",
+                    resp.selected_texts,
+                    resp.source
                 );
-                // 超时：清理回调
-                {
-                    let mut callbacks = PENDING_ASK_CALLBACKS.lock().unwrap_or_else(|p| p.into_inner());
-                    callbacks.remove(&call.id);
-                }
+                resp
+            }
+            Err(_) => {
+                log::warn!(
+                    "[AskUserExecutor] Channel closed (session ended), reporting no response"
+                );
                 AskUserResponse {
                     tool_call_id: call.id.clone(),
-                    selected_text: options.get(recommended).cloned().unwrap_or_default(),
-                    selected_index: Some(recommended as i32),
-                    source: "timeout".to_string(),
+                    selected_texts: vec![],
+                    selected_indices: vec![],
+                    custom_text: None,
+                    source: "channel_closed".to_string(),
                 }
             }
         };
@@ -200,11 +204,12 @@ impl ToolExecutor for AskUserExecutor {
         // 5. 构造输出
         let output = json!({
             "question": question,
-            "selected": answer.selected_text,
-            "selected_index": answer.selected_index,
+            "selected": answer.selected_texts,
+            "selected_indices": answer.selected_indices,
+            "custom_text": answer.custom_text,
             "source": answer.source,
             "options": options,
-            "recommended": recommended,
+            "multiple": multiple,
         });
 
         let result = ToolResultInfo::success(
@@ -224,8 +229,8 @@ impl ToolExecutor for AskUserExecutor {
         }
 
         log::info!(
-            "[AskUserExecutor] Completed: selected='{}', source='{}', duration={}ms",
-            answer.selected_text,
+            "[AskUserExecutor] Completed: selected={:?}, source='{}', duration={}ms",
+            answer.selected_texts,
             answer.source,
             duration_ms
         );

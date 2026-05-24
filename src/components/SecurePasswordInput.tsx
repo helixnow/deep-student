@@ -1,46 +1,37 @@
 import React, { useState, useCallback } from 'react';
-import { NotionButton } from '@/components/ui/NotionButton';
-import { Eye, EyeOff, Shield, Copy, Check } from 'lucide-react';
+import { Shield, Copy, Check } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { ApiKeyField } from '@/features/settings/components/ApiKeyField';
 
 interface SecurePasswordInputProps {
   value: string;
   onChange: (value: string) => void;
   placeholder?: string;
-  label?: string;
-  description?: string;
   className?: string;
   disabled?: boolean;
-  isSensitive?: boolean; // 是否为敏感键
-  showSecurityIndicator?: boolean;
+  /** 是否为敏感键：开启后显示加密徽章，并在隐藏状态下禁用复制 */
+  isSensitive?: boolean;
 }
 
 export const SecurePasswordInput: React.FC<SecurePasswordInputProps> = ({
   value,
   onChange,
   placeholder,
-  label,
-  description,
-  className = '',
+  className,
   disabled = false,
   isSensitive = false,
-  showSecurityIndicator = true,
 }) => {
   const { t } = useTranslation('common');
   const [showPassword, setShowPassword] = useState(false);
   const [copied, setCopied] = useState(false);
 
-  // 直接使用原始值，依赖 type="password" 进行浏览器原生遮蔽
-  // 🔧 修复：移除 bullet 字符替换，避免用户编辑时 onChange 返回 ● 字符导致 API key 被破坏
-  const displayValue = value;
+  const canReveal = value.trim().length > 0;
+  const copyBlockedBySensitivity = isSensitive && !showPassword;
+  const copyDisabled = disabled || copyBlockedBySensitivity || !value;
 
   const handleCopy = useCallback(async () => {
-    if (isSensitive && !showPassword) {
-      // 敏感键在隐藏状态下不允许复制
-      return;
-    }
-    
+    if (copyDisabled) return;
     try {
       await copyTextToClipboard(value);
       setCopied(true);
@@ -48,82 +39,53 @@ export const SecurePasswordInput: React.FC<SecurePasswordInputProps> = ({
     } catch (err: unknown) {
       console.warn('Failed to copy to clipboard:', err);
     }
-  }, [value, isSensitive, showPassword]);
+  }, [value, copyDisabled]);
 
-  const toggleVisibility = useCallback(() => {
-    setShowPassword(prev => !prev);
-  }, []);
+  const copyTitle = copyBlockedBySensitivity
+    ? t('securePassword.showToCopy')
+    : copied
+      ? t('securePassword.copied')
+      : t('actions.copy');
+
+  const copyButton = value ? (
+    // eslint-disable-next-line ds-components/no-native-button -- Input adornment needs exact height/edge control to align with the reveal toggle inside ApiKeyField shell.
+    <button
+      type="button"
+      onClick={handleCopy}
+      disabled={copyDisabled}
+      aria-label={t('actions.copy')}
+      title={copyTitle}
+      className="api-key-field__action"
+    >
+      {copied ? (
+        <Check className="api-key-field__icon text-green-600" />
+      ) : (
+        <Copy className="api-key-field__icon" />
+      )}
+    </button>
+  ) : null;
 
   return (
-    <div className={`relative ${className}`}>
-      {label && (
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          {label}
-          {isSensitive && showSecurityIndicator && (
-            <span title={t('securePassword.secureStorage')}>
-              <Shield className="w-3 h-3 text-green-600 inline ml-1" />
-            </span>
-          )}
-        </label>
-      )}
-      
-      <div className="relative">
-        <input
-          type={showPassword ? 'text' : 'password'}
-          value={displayValue}
-          onChange={(e) => onChange(e.target.value)}
-          placeholder={placeholder}
-          disabled={disabled}
-          className={`
-            w-full px-3 py-2 border border-gray-300 rounded-md
-            focus:outline-none focus:ring-2 focus:ring-blue-500 focus:border-blue-500
-            disabled:bg-gray-50 disabled:text-gray-500
-            ${isSensitive ? 'pr-20' : 'pr-10'}
-            font-mono text-sm
-          `}
-          autoComplete="new-password"
-          inputMode={showPassword ? 'text' : undefined}
-        />
-        
-        <div className="absolute inset-y-0 right-0 flex items-center space-x-1 pr-2">
-          {/* 复制按钮 */}
-          {value && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleCopy} disabled={disabled || (isSensitive && !showPassword)} className={`!p-1 ${(isSensitive && !showPassword) ? 'opacity-30 cursor-not-allowed' : 'hover:text-blue-600'}`} title={isSensitive && !showPassword ? t('securePassword.showToCopy') : copied ? t('securePassword.copied') : t('actions.copy')} aria-label="copy">
-              {copied ? (
-                <Check className="w-4 h-4 text-green-600" />
-              ) : (
-                <Copy className="w-4 h-4" />
-              )}
-            </NotionButton>
-          )}
-          
-          {/* 显示/隐藏按钮 */}
-          {value && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={toggleVisibility} disabled={disabled} className="!p-1 hover:text-blue-600" title={showPassword ? t('securePassword.hidePassword') : t('securePassword.showPassword')} aria-label="toggle visibility">
-              {showPassword ? (
-                <EyeOff className="w-4 h-4" />
-              ) : (
-                <Eye className="w-4 h-4" />
-              )}
-            </NotionButton>
-          )}
-        </div>
-      </div>
-      
-      {description && (
-        <p className="mt-1 text-xs text-gray-500">
-          {description}
-          {isSensitive && showSecurityIndicator && (
-            <span className="text-green-600 font-medium ml-1">
-              • {t('securePassword.secureStorage')}
-            </span>
-          )}
-        </p>
-      )}
-      
-      {isSensitive && showSecurityIndicator && (
+    <div className={className}>
+      <ApiKeyField
+        value={value}
+        onChange={(e) => onChange(e.target.value)}
+        placeholder={placeholder}
+        disabled={disabled}
+        revealed={showPassword}
+        canReveal={canReveal}
+        onToggle={() => setShowPassword((prev) => !prev)}
+        showLabel={t('securePassword.showPassword')}
+        hideLabel={t('securePassword.hidePassword')}
+        inputClassName="font-mono"
+        autoComplete="new-password"
+        inputMode={showPassword ? 'text' : undefined}
+        extraActions={copyButton}
+/>
+
+      {isSensitive && (
         <div className="mt-1 flex items-center text-xs text-green-600">
-          <Shield className="w-3 h-3 mr-1" />
+          <Shield size={12} className="mr-1" />
           <span>{t('securePassword.encryptedInSecureArea')}</span>
         </div>
       )}

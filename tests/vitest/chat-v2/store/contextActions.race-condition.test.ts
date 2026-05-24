@@ -5,9 +5,9 @@
  */
 
 import { describe, test, expect, vi } from 'vitest';
-import { createContextActions } from '@/chat-v2/core/store/contextActions';
-import type { ContextRef } from '@/chat-v2/context/types';
-import type { ChatStoreState } from '@/chat-v2/core/store/types';
+import { createContextActions } from '@/features/chat/core/store/contextActions';
+import type { ContextRef } from '@/features/chat/context/types';
+import type { ChatStoreState } from '@/features/chat/core/store/types';
 
 describe('contextActions - 数据竞争测试', () => {
   /**

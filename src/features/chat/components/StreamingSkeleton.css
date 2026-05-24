@@ -1,0 +1,40 @@
+/* StreamingSkeleton — shimmer loading state before first token */
+
+.stream-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 6px 0;
+  /* 占位骨架是装饰性元素，不应被文本选择涂色 */
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.stream-skeleton-line {
+  height: 13px;
+  border-radius: 6px;
+  background: linear-gradient(
+    90deg,
+    hsl(var(--muted) / 0.25) 0%,
+    hsl(var(--muted) / 0.55) 40%,
+    hsl(var(--muted) / 0.25) 80%
+  );
+  background-size: 250% 100%;
+  animation: stream-skeleton-shimmer 1.6s ease-in-out infinite;
+}
+
+@keyframes stream-skeleton-shimmer {
+  0% {
+    background-position: 250% 0;
+  }
+  100% {
+    background-position: -250% 0;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stream-skeleton-line {
+    animation: none;
+    opacity: 0.5;
+  }
+}

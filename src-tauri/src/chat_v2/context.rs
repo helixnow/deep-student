@@ -32,6 +32,8 @@ pub(crate) struct PipelineContext {
     pub(crate) assistant_message_id: String,
     /// 用户消息内容
     pub(crate) user_content: String,
+    /// 本轮运行时事实（用于注入 <runtime_facts>）
+    pub(crate) runtime_facts: String,
     /// 用户附件
     pub(crate) attachments: Vec<AttachmentInput>,
     /// 聊天历史（用于构建上下文）
@@ -105,6 +107,11 @@ pub(crate) struct PipelineContext {
     /// 🔒 安全修复：连续心跳次数追踪
     /// 防止工具通过持续返回 continue_execution 无限绕过递归限制
     pub(crate) heartbeat_count: u32,
+
+    /// 🆕 P1: 需要压缩标记。由 tool_loop 在 LLM 回复完成 / 工具结果累加后检查
+    /// provider usage 决定是否设置；外层 pipeline 循环读取并在下一次
+    /// LLM 调用前执行 compaction::run，完成后重置为 false。
+    pub(crate) needs_compaction: bool,
 }
 
 impl PipelineContext {
@@ -118,12 +125,14 @@ impl PipelineContext {
             .assistant_message_id
             .clone()
             .unwrap_or_else(|| format!("msg_{}", Uuid::new_v4()));
+        let runtime_facts = Self::build_runtime_facts_block(&request.content);
 
         Self {
             session_id: request.session_id,
             user_message_id,
             assistant_message_id,
             user_content: request.content,
+            runtime_facts,
             // ★ 2025-12-10 统一改造：附件不再通过 request.attachments 传递
             // 所有附件现在通过 user_context_refs 传递
             attachments: Vec::new(),
@@ -164,6 +173,7 @@ impl PipelineContext {
             workspace_injection_count: 0,
             cancellation_token: None,
             heartbeat_count: 0,
+            needs_compaction: false,
         }
     }
 
@@ -573,6 +583,7 @@ impl PipelineContext {
             "memory_search" => block_types::MEMORY.to_string(),
             "web_search" => block_types::WEB_SEARCH.to_string(),
             "arxiv_search" | "scholar_search" => block_types::ACADEMIC_SEARCH.to_string(),
+            "image_generate" => block_types::IMAGE_GEN.to_string(),
             "coordinator_sleep" => block_types::SLEEP.to_string(),
             "subagent_call" => block_types::SUBAGENT_EMBED.to_string(),
             "ask_user" => block_types::ASK_USER.to_string(),
@@ -611,62 +622,176 @@ impl PipelineContext {
         blocks
     }
 
+    pub(crate) fn build_user_query_block(user_content: &str) -> Option<String> {
+        if user_content.is_empty() {
+            None
+        } else {
+            Some(format!(
+                "<user_query>\n{}\n</user_query>",
+                escape_xml_content(user_content)
+            ))
+        }
+    }
+
+    pub(crate) fn wrap_user_message_text(
+        user_content: &str,
+        injected_context: Option<&str>,
+    ) -> String {
+        let mut combined_text = String::new();
+
+        if let Some(user_query) = Self::build_user_query_block(user_content) {
+            combined_text.push_str(&user_query);
+        }
+
+        if let Some(injected) = injected_context.filter(|text| !text.is_empty()) {
+            if !combined_text.is_empty() {
+                combined_text.push_str("\n\n");
+            }
+            combined_text.push_str(&format!(
+                "<injected_context>\n{}\n</injected_context>",
+                injected
+            ));
+        }
+
+        combined_text
+    }
+
+    fn is_time_sensitive_query(user_content: &str) -> bool {
+        let content = user_content.trim();
+        if content.is_empty() {
+            return false;
+        }
+
+        let lower = content.to_ascii_lowercase();
+        let excluded_terms = [
+            "时间复杂度",
+            "空间复杂度",
+            "time complexity",
+            "space complexity",
+        ];
+        if excluded_terms
+            .iter()
+            .any(|term| content.contains(term) || lower.contains(term))
+        {
+            return false;
+        }
+
+        let zh_keywords = [
+            "当前时间",
+            "现在几点",
+            "现在几号",
+            "现在是",
+            "今天",
+            "明天",
+            "昨天",
+            "后天",
+            "今晚",
+            "今早",
+            "日期",
+            "周几",
+            "星期几",
+            "时区",
+            "本周",
+            "下周",
+            "本月",
+            "今年",
+            "明年",
+            "截止",
+            "到期",
+            "过期",
+        ];
+        if zh_keywords.iter().any(|keyword| content.contains(keyword)) {
+            return true;
+        }
+
+        let en_keywords = [
+            "current time",
+            "what time",
+            "right now",
+            "current date",
+            "today",
+            "tomorrow",
+            "yesterday",
+            "timezone",
+            "this week",
+            "next week",
+            "this month",
+            "this year",
+            "deadline",
+            "due date",
+            "expires",
+            "expiration",
+        ];
+        en_keywords.iter().any(|keyword| lower.contains(keyword))
+    }
+
+    pub(crate) fn build_runtime_facts_block(user_content: &str) -> String {
+        let now = chrono::Local::now();
+        if Self::is_time_sensitive_query(user_content) {
+            format!(
+                "<runtime_facts>\n当前时间: {}\n时区: {}\n</runtime_facts>",
+                now.format("%Y-%m-%d %H:%M:%S"),
+                now.format("%:z")
+            )
+        } else {
+            format!(
+                "<runtime_facts>\n当前日期: {}\n时区: {}\n</runtime_facts>",
+                now.format("%Y-%m-%d"),
+                now.format("%:z")
+            )
+        }
+    }
+
+    pub(crate) fn build_injected_context_blocks(
+        runtime_facts: &str,
+        refs: &[SendContextRef],
+    ) -> Vec<ContentBlock> {
+        let mut blocks = vec![ContentBlock::text(runtime_facts.to_string())];
+        blocks.extend(Self::build_user_content_from_context_refs(refs));
+        blocks
+    }
+
+    pub(crate) fn collect_injected_context_text_and_images(
+        blocks: &[ContentBlock],
+    ) -> (String, Vec<String>) {
+        let mut context_text = String::new();
+        let mut context_images: Vec<String> = Vec::new();
+
+        for block in blocks {
+            match block {
+                ContentBlock::Text { text } => {
+                    if !context_text.is_empty() {
+                        context_text.push_str("\n\n");
+                    }
+                    context_text.push_str(text);
+                }
+                ContentBlock::Image { base64, .. } => {
+                    context_images.push(base64.clone());
+                }
+            }
+        }
+
+        (context_text, context_images)
+    }
+
     /// 获取合并后的用户内容（统一上下文注入系统）
     ///
     /// 将 user_context_refs 中的 formattedBlocks 与 user_content 合并。
     ///
     /// ## 组装顺序（用户输入优先）
     /// 1. `<user_query>` - 用户输入内容（用 XML 标签包裹，确保 LLM 注意力聚焦）
-    /// 2. `<injected_context>` - 注入的上下文内容（防止过长内容淹没用户输入）
+    /// 2. `<injected_context>` - 注入的上下文内容（包含 <runtime_facts> 和其他上下文）
     ///
     /// ## 返回
     /// - 合并后的用户内容文本
     /// - 从 formattedBlocks 中提取的图片 base64 列表
     pub(crate) fn get_combined_user_content(&self) -> (String, Vec<String>) {
-        let mut combined_text = String::new();
-        let mut context_images: Vec<String> = Vec::new();
-        let mut context_text = String::new();
-
-        // 1. 首先添加用户输入（用 XML 标签包裹，确保 LLM 注意力聚焦）
-        // 安全：转义用户输入中的 XML 特殊字符，防止通过 </user_query> 闭合标签篡改 prompt 结构
-        if !self.user_content.is_empty() {
-            combined_text.push_str(&format!(
-                "<user_query>\n{}\n</user_query>",
-                escape_xml_content(&self.user_content)
-            ));
-        }
-
-        // 2. 处理上下文引用的 formattedBlocks
-        if !self.user_context_refs.is_empty() {
-            let content_blocks =
-                Self::build_user_content_from_context_refs(&self.user_context_refs);
-
-            for block in content_blocks {
-                match block {
-                    ContentBlock::Text { text } => {
-                        if !context_text.is_empty() {
-                            context_text.push_str("\n\n");
-                        }
-                        context_text.push_str(&text);
-                    }
-                    ContentBlock::Image { base64, .. } => {
-                        // 图片类型的 ContentBlock 添加到图片列表
-                        context_images.push(base64);
-                    }
-                }
-            }
-
-            // 3. 将上下文内容追加到用户输入后面（用 XML 标签包裹）
-            if !context_text.is_empty() {
-                if !combined_text.is_empty() {
-                    combined_text.push_str("\n\n");
-                }
-                combined_text.push_str(&format!(
-                    "<injected_context>\n{}\n</injected_context>",
-                    context_text
-                ));
-            }
-        }
+        let injected_blocks =
+            Self::build_injected_context_blocks(&self.runtime_facts, &self.user_context_refs);
+        let (context_text, context_images) =
+            Self::collect_injected_context_text_and_images(&injected_blocks);
+        let combined_text =
+            Self::wrap_user_message_text(&self.user_content, Some(context_text.as_str()));
 
         log::debug!(
             "[ChatV2::pipeline] Combined user content: context_refs={}, context_images={}, total_len={}",
@@ -730,7 +855,7 @@ impl PipelineContext {
     /// ## 组装顺序
     /// 1. `<user_query>` 文本块（用户输入）
     /// 2. `<injected_context>` 开始标签
-    /// 3. 按原始顺序的 ContentBlock（图片和文本交替）
+    /// 3. `<runtime_facts>` + 按原始顺序的 ContentBlock（图片和文本交替）
     /// 4. `</injected_context>` 结束标签
     ///
     /// ## 返回
@@ -745,29 +870,17 @@ impl PipelineContext {
         let mut blocks: Vec<ContentBlock> = Vec::new();
 
         // 1. 用户输入在前（用 XML 标签包裹）
-        // 安全：转义用户输入中的 XML 特殊字符，防止通过 </user_query> 闭合标签篡改 prompt 结构
-        if !self.user_content.is_empty() {
-            blocks.push(ContentBlock::text(format!(
-                "<user_query>\n{}\n</user_query>",
-                escape_xml_content(&self.user_content)
-            )));
+        if let Some(user_query) = Self::build_user_query_block(&self.user_content) {
+            blocks.push(ContentBlock::text(user_query));
         }
 
         // 2. 处理上下文引用的 formattedBlocks（保持原始顺序）
-        if !self.user_context_refs.is_empty() {
-            let content_blocks =
-                Self::build_user_content_from_context_refs(&self.user_context_refs);
-
-            if !content_blocks.is_empty() {
-                // 添加开始标签
-                blocks.push(ContentBlock::text("<injected_context>".to_string()));
-
-                // 按原始顺序添加所有 ContentBlock
-                blocks.extend(content_blocks);
-
-                // 添加结束标签
-                blocks.push(ContentBlock::text("</injected_context>".to_string()));
-            }
+        let injected_blocks =
+            Self::build_injected_context_blocks(&self.runtime_facts, &self.user_context_refs);
+        if !injected_blocks.is_empty() {
+            blocks.push(ContentBlock::text("<injected_context>".to_string()));
+            blocks.extend(injected_blocks);
+            blocks.push(ContentBlock::text("</injected_context>".to_string()));
         }
 
         log::debug!(

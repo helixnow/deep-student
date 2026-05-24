@@ -12,10 +12,10 @@ import { Button } from '../../components/ui/shad/Button';
 import { Badge } from '../../components/ui/shad/Badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/shad/Card';
 import { Separator } from '../../components/ui/shad/Separator';
-import { Copy, Trash2, Brain, Database, Zap, RefreshCw, Radio } from 'lucide-react';
+import { Copy, Trash, Brain, Database, Lightning, ArrowClockwise, RadioButton } from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
-import { sessionManager } from '../../chat-v2/core/session';
-import { useStreamingSessions } from '../../chat-v2/hooks/useStreamingSessions';
+import { sessionManager } from '../../features/chat/core/session';
+import { useStreamingSessions } from '../../features/chat/hooks/useStreamingSessions';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 // =============================================================================
 // 类型定义
@@ -238,7 +238,7 @@ const ThinkingBlockDebugPlugin: React.FC<DebugPanelPluginProps> = () => {
       <Card>
         <CardHeader className="pb-2">
           <CardTitle className="flex items-center gap-2 text-lg">
-            <Brain className="w-5 h-5" />
+            <Brain size={20} />
             Thinking 块调试
           </CardTitle>
         </CardHeader>
@@ -252,7 +252,7 @@ const ThinkingBlockDebugPlugin: React.FC<DebugPanelPluginProps> = () => {
                 variant={autoFollow ? 'default' : 'outline'}
                 onClick={() => setAutoFollow(!autoFollow)}
               >
-                <Radio className={`w-4 h-4 mr-1 ${autoFollow ? 'animate-pulse' : ''}`} />
+                <RadioButton className={`w-4 h-4 mr-1 ${autoFollow ? 'animate-pulse' : ''}`} />
                 {autoFollow ? '自动跟随中' : '自动跟随'}
               </Button>
               {streamingSessions.length > 0 && (
@@ -288,20 +288,20 @@ const ThinkingBlockDebugPlugin: React.FC<DebugPanelPluginProps> = () => {
               </Button>
             ) : (
               <Button size="sm" disabled={!currentSessionId && streamingSessions.length === 0}>
-                <Zap className="w-4 h-4 mr-1" />
+                <Lightning size={16} className="mr-1" />
                 等待流式会话...
               </Button>
             )}
             <Button size="sm" variant="outline" onClick={loadBlocksFromDb}>
-              <Database className="w-4 h-4 mr-1" />
+              <Database size={16} className="mr-1" />
               从 DB 加载
             </Button>
             <Button size="sm" variant="outline" onClick={clearEvents}>
-              <Trash2 className="w-4 h-4 mr-1" />
+              <Trash size={16} className="mr-1" />
               清除
             </Button>
             <Button size="sm" variant="outline" onClick={copyLogs}>
-              <Copy className="w-4 h-4 mr-1" />
+              <Copy size={16} className="mr-1" />
               复制
             </Button>
           </div>

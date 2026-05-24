@@ -24,27 +24,27 @@ import {
   Copy,
   Pencil,
   ArrowRight,
-  Trash2,
-  ExternalLink,
-  PanelRight,
-  Undo2,
+  Trash,
+  ArrowSquareOut,
+  SidebarSimple,
+  ArrowCounterClockwise,
   Download,
   Upload,
   Lock,
-  MessageSquare,
-  Languages,
+  Chat,
+  Translate,
   Clock,
-  History,
-  MoreHorizontal,
-  ChevronDown,
-  Settings,
+  ClockCounterClockwise,
+  DotsThree,
+  CaretDown,
+  Gear,
   FileText,
   Folder,
   Plus,
-  Search,
+  MagnifyingGlass,
   Bell,
   User,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 
 const fontOptions = [
   { value: 'default', label: 'Ag', description: '默认' },
@@ -74,9 +74,9 @@ export function AppMenuDemo() {
               <AppMenu>
                 <AppMenuTrigger>
                   <button className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-primary text-primary-foreground hover:bg-primary/90 transition-colors">
-                    <MoreHorizontal className="w-4 h-4" />
+                    <DotsThree size={16} />
                     <span>打开菜单</span>
-                    <ChevronDown className="w-4 h-4" />
+                    <CaretDown size={16} />
                   </button>
                 </AppMenuTrigger>
                 <AppMenuContent width={260}>
@@ -96,7 +96,7 @@ export function AppMenuDemo() {
                     <AppMenuItem icon={<ArrowRight />} shortcut="⌘⇧P">
                       {t('app_menu.actions.move_to', '移动到')}
                     </AppMenuItem>
-                    <AppMenuItem icon={<Trash2 />} destructive>
+                    <AppMenuItem icon={<Trash />} destructive>
                       {t('app_menu.actions.move_to_trash', '移至垃圾箱')}
                     </AppMenuItem>
                   </AppMenuGroup>
@@ -104,10 +104,10 @@ export function AppMenuDemo() {
                   <AppMenuSeparator />
 
                   <AppMenuGroup>
-                    <AppMenuItem icon={<ExternalLink />} shortcut="⌘⇧↵">
+                    <AppMenuItem icon={<ArrowSquareOut />} shortcut="⌘⇧↵">
                       {t('app_menu.actions.open_in_new_tab', '在新选项卡中打开')}
                     </AppMenuItem>
-                    <AppMenuItem icon={<PanelRight />} shortcut="⌥Click">
+                    <AppMenuItem icon={<SidebarSimple />} shortcut="⌥Click">
                       {t('app_menu.actions.open_in_sidebar', '在侧边预览中打开')}
                     </AppMenuItem>
                   </AppMenuGroup>
@@ -128,10 +128,10 @@ export function AppMenuDemo() {
             <div className="p-6 border border-border rounded-lg bg-card">
               <AppMenu>
                 <AppMenuTrigger>
-                  <button className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary text-secondary-foreground hover:bg-accent transition-colors">
-                    <Settings className="w-4 h-4" />
+                  <button className="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-secondary text-secondary-foreground hover:bg-[var(--interactive-hover)] transition-colors">
+                    <Gear size={16} />
                     <span>页面设置</span>
-                    <ChevronDown className="w-4 h-4" />
+                    <CaretDown size={16} />
                   </button>
                 </AppMenuTrigger>
                 <AppMenuContent
@@ -146,7 +146,7 @@ export function AppMenuDemo() {
                     options={fontOptions}
                     value={font}
                     onValueChange={setFont}
-                  />
+/>
 
                   <AppMenuSeparator />
 
@@ -160,7 +160,7 @@ export function AppMenuDemo() {
                     <AppMenuItem icon={<ArrowRight />} shortcut="⌘⇧P">
                       {t('app_menu.actions.move_to', '移动到')}
                     </AppMenuItem>
-                    <AppMenuItem icon={<Trash2 />} destructive>
+                    <AppMenuItem icon={<Trash />} destructive>
                       {t('app_menu.actions.move_to_trash', '移至垃圾箱')}
                     </AppMenuItem>
                   </AppMenuGroup>
@@ -182,7 +182,7 @@ export function AppMenuDemo() {
                     >
                       {t('app_menu.switch.full_width', '全宽')}
                     </AppMenuSwitchItem>
-                    <AppMenuItem icon={<Settings />}>
+                    <AppMenuItem icon={<Gear />}>
                       {t('app_menu.actions.customize_page', '自定义页面')}
                     </AppMenuItem>
                   </AppMenuGroup>
@@ -197,11 +197,11 @@ export function AppMenuDemo() {
                     >
                       {lockPage ? t('app_menu.actions.unlock_page', '解锁页面') : t('app_menu.actions.lock_page', '锁定页面')}
                     </AppMenuSwitchItem>
-                    <AppMenuItem icon={<MessageSquare />}>
+                    <AppMenuItem icon={<Chat />}>
                       {t('app_menu.actions.edit_suggestions', '编辑建议')}
                     </AppMenuItem>
                     <AppMenuSub>
-                      <AppMenuSubTrigger icon={<Languages />}>
+                      <AppMenuSubTrigger icon={<Translate />}>
                         {t('app_menu.actions.translate', '翻译')}
                       </AppMenuSubTrigger>
                       <AppMenuSubContent>
@@ -212,7 +212,7 @@ export function AppMenuDemo() {
                         <AppMenuItem>Español</AppMenuItem>
                       </AppMenuSubContent>
                     </AppMenuSub>
-                    <AppMenuItem icon={<Undo2 />} shortcut="⌘Z">
+                    <AppMenuItem icon={<ArrowCounterClockwise />} shortcut="⌘Z">
                       {t('app_menu.actions.undo', '撤消')}
                     </AppMenuItem>
                   </AppMenuGroup>
@@ -234,7 +234,7 @@ export function AppMenuDemo() {
                     <AppMenuItem icon={<Clock />}>
                       {t('app_menu.actions.view_history', '所有更新和数据分析')}
                     </AppMenuItem>
-                    <AppMenuItem icon={<History />} disabled>
+                    <AppMenuItem icon={<ClockCounterClockwise />} disabled>
                       {t('app_menu.actions.version_history', '版本历史')}
                     </AppMenuItem>
                   </AppMenuGroup>
@@ -248,7 +248,7 @@ export function AppMenuDemo() {
             <h2 className="text-lg font-semibold">{t('app_menu.demo.context_demo', '右键菜单演示')}</h2>
             <AppMenu mode="context">
               <AppMenuTrigger>
-                <div className="p-12 border-2 border-dashed border-border rounded-lg bg-muted/30 flex items-center justify-center text-muted-foreground hover:border-primary/50 hover:bg-muted/50 transition-colors cursor-context-menu">
+                <div className="p-12 border-2 border-dashed border-border rounded-lg bg-muted/30 flex items-center justify-center text-muted-foreground hover:border-primary/50 hover:bg-[var(--interactive-hover)] transition-colors cursor-context-menu">
                   <span>{t('app_menu.demo.context_hint', '右键点击此区域')}</span>
                 </div>
               </AppMenuTrigger>
@@ -265,7 +265,7 @@ export function AppMenuDemo() {
                   <AppMenuItem icon={<Pencil />}>
                     重命名
                   </AppMenuItem>
-                  <AppMenuItem icon={<Trash2 />} destructive>
+                  <AppMenuItem icon={<Trash />} destructive>
                     删除
                   </AppMenuItem>
                 </AppMenuGroup>
@@ -278,39 +278,39 @@ export function AppMenuDemo() {
             <h2 className="text-lg font-semibold">{t('app_menu.demo.features.title', '组件特性')}</h2>
             <div className="p-6 border border-border rounded-lg bg-card space-y-3">
               <div className="flex items-center gap-3">
-                <Search className="w-4 h-4 text-primary" />
+                <MagnifyingGlass size={16} className="text-primary" />
                 <span className="text-sm">{t('app_menu.demo.features.search', '可选搜索框')}</span>
               </div>
               <div className="flex items-center gap-3">
-                <Star className="w-4 h-4 text-primary" />
+                <Star size={16} className="text-primary" />
                 <span className="text-sm">{t('app_menu.demo.features.icons', '图标支持')}</span>
               </div>
               <div className="flex items-center gap-3">
-                <Bell className="w-4 h-4 text-primary" />
+                <Bell size={16} className="text-primary" />
                 <span className="text-sm">{t('app_menu.demo.features.shortcuts', '快捷键显示')}</span>
               </div>
               <div className="flex items-center gap-3">
-                <Folder className="w-4 h-4 text-primary" />
+                <Folder size={16} className="text-primary" />
                 <span className="text-sm">{t('app_menu.demo.features.groups', '分组和分隔线')}</span>
               </div>
               <div className="flex items-center gap-3">
-                <ArrowRight className="w-4 h-4 text-primary" />
+                <ArrowRight size={16} className="text-primary" />
                 <span className="text-sm">{t('app_menu.demo.features.submenu', '子菜单支持')}</span>
               </div>
               <div className="flex items-center gap-3">
-                <Settings className="w-4 h-4 text-primary" />
+                <Gear size={16} className="text-primary" />
                 <span className="text-sm">{t('app_menu.demo.features.switch', '开关控件')}</span>
               </div>
               <div className="flex items-center gap-3">
-                <FileText className="w-4 h-4 text-primary" />
+                <FileText size={16} className="text-primary" />
                 <span className="text-sm">{t('app_menu.demo.features.options', '选项组（类似字体选择器）')}</span>
               </div>
               <div className="flex items-center gap-3">
-                <User className="w-4 h-4 text-primary" />
+                <User size={16} className="text-primary" />
                 <span className="text-sm">{t('app_menu.demo.features.footer', '底部元信息区域')}</span>
               </div>
               <div className="flex items-center gap-3">
-                <Clock className="w-4 h-4 text-primary" />
+                <Clock size={16} className="text-primary" />
                 <span className="text-sm">{t('app_menu.demo.features.dark_light', '暗色/亮色主题自适应')}</span>
               </div>
             </div>
@@ -329,7 +329,7 @@ export function AppMenuDemo() {
   AppMenuGroup,
   AppMenuSeparator
 } from '@/components/ui/app-menu';
-import { Star, Copy, Trash2 } from 'lucide-react';
+
 
 function MyComponent() {
   return (
@@ -347,7 +347,7 @@ function MyComponent() {
           </AppMenuItem>
         </AppMenuGroup>
         <AppMenuSeparator />
-        <AppMenuItem icon={<Trash2 />} destructive>
+        <AppMenuItem icon={<Trash />} destructive>
           删除
         </AppMenuItem>
       </AppMenuContent>

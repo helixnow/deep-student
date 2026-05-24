@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { createPortal } from 'react-dom';
-import { X, ZoomIn, ZoomOut, RotateCw, Home, ChevronLeft, ChevronRight, Type, Crop, Check, RotateCcw, Download } from 'lucide-react';
+import { X, MagnifyingGlassPlus, MagnifyingGlassMinus, ArrowClockwise, House, CaretLeft, CaretRight, TextT, Crop, Check, ArrowCounterClockwise, Download } from '@phosphor-icons/react';
 import { useFocusTrap } from '../hooks/useFocusTrap';
 import { useTranslation } from 'react-i18next';
 import { debugLog } from '../debug-panel/debugMasterSwitch';
@@ -441,7 +441,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                       width: Math.abs(cropRect.endX - cropRect.startX),
                       height: Math.abs(cropRect.endY - cropRect.startY),
                     }}
-                  />
+/>
                 )}
                 {/* 裁剪模式提示 & 操作 */}
                 <div className="absolute top-3 left-1/2 -translate-x-1/2 flex items-center gap-2 px-3 py-1.5 rounded-full bg-black/70 text-white text-xs backdrop-blur-sm z-30">
@@ -450,7 +450,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                     <NotionButton
                       variant="ghost"
                       size="sm"
-                      className="!h-6 !px-2 text-white hover:bg-white/20"
+                      className="!h-6 !px-2 text-white hover:bg-[var(--overlay-control-hover)]"
                       onClick={(e) => { e.stopPropagation(); executeCrop(); }}
                     >
                       <Check size={14} className="mr-1" />
@@ -460,7 +460,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                   <NotionButton
                     variant="ghost"
                     size="sm"
-                    className="!h-6 !px-2 text-white hover:bg-white/20"
+                    className="!h-6 !px-2 text-white hover:bg-[var(--overlay-control-hover)]"
                     onClick={(e) => { e.stopPropagation(); setIsCropMode(false); setCropRect(null); }}
                   >
                     <X size={14} className="mr-1" />
@@ -498,7 +498,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                   srcPrefix: currentImage?.substring(0, 100),
                 });
               }}
-            />
+/>
           </div>
 
           {/* OCR 文字面板 */}
@@ -506,7 +506,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
             <div className="w-[320px] flex-shrink-0 flex flex-col border-l border-[hsl(var(--border)/0.5)] bg-[hsl(var(--card)/0.95)] backdrop-blur-md">
               <div className="flex items-center justify-between px-3 py-2 border-b border-[hsl(var(--border)/0.4)]">
                 <div className="flex items-center gap-1.5 text-sm font-medium text-foreground">
-                  <Type size={14} />
+                  <TextT size={14} />
                   <span>{t('common:imageViewer.ocr_text', 'OCR 文字')}</span>
                 </div>
                 <NotionButton
@@ -527,7 +527,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
                   </pre>
                 ) : (
                   <div className="flex flex-col items-center justify-center py-12 text-muted-foreground text-sm gap-2">
-                    <Type size={24} className="opacity-30" />
+                    <TextT size={24} className="opacity-30" />
                     <span>{t('common:imageViewer.no_ocr_text', '暂无 OCR 文字')}</span>
                   </div>
                 )}
@@ -540,10 +540,10 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
         {images.length > 1 && !isCropMode && (
           <>
             <NotionButton variant="ghost" size="icon" iconOnly onClick={() => goTo(internalIndex - 1)} className="modern-viewer-icon-button absolute left-4 top-1/2 -translate-y-1/2 !rounded-full !p-3 z-10" disabled={internalIndex === 0} title={t('common:imageViewer.previous')} aria-label="prev">
-              <ChevronLeft size={24} />
+              <CaretLeft size={24} />
             </NotionButton>
             <NotionButton variant="ghost" size="icon" iconOnly onClick={() => goTo(internalIndex + 1)} className="modern-viewer-icon-button absolute right-4 top-1/2 -translate-y-1/2 !rounded-full !p-3 z-10" disabled={internalIndex === images.length - 1} title={t('common:imageViewer.next_title')} aria-label="next">
-              <ChevronRight size={24} />
+              <CaretRight size={24} />
             </NotionButton>
           </>
         )}
@@ -593,23 +593,23 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
           </span>
           <div className="modern-viewer-divider" />
           <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setScale(prev => Math.max(prev / 1.2, 0.1))} className="modern-viewer-icon-button" title={t('common:imageViewer.zoom_out')} aria-label="zoom out">
-            <ZoomOut size={16} />
+            <MagnifyingGlassMinus size={16} />
           </NotionButton>
           <span className="modern-viewer-zoom-readout">
             {Math.round(scale * 100)}%
           </span>
           <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setScale(prev => Math.min(prev * 1.2, 5))} className="modern-viewer-icon-button" title={t('common:imageViewer.zoom_in')} aria-label="zoom in">
-            <ZoomIn size={16} />
+            <MagnifyingGlassPlus size={16} />
           </NotionButton>
           <div className="modern-viewer-divider" />
           <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setRotation(prev => (prev - 90 + 360) % 360)} className="modern-viewer-icon-button" title={t('common:imageViewer.rotate_ccw', '逆时针旋转')} aria-label="rotate ccw">
-            <RotateCcw size={16} />
+            <ArrowCounterClockwise size={16} />
           </NotionButton>
           <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setRotation(prev => (prev + 90) % 360)} className="modern-viewer-icon-button" title={t('common:imageViewer.rotate_title')} aria-label="rotate">
-            <RotateCw size={16} />
+            <ArrowClockwise size={16} />
           </NotionButton>
           <NotionButton variant="ghost" size="icon" iconOnly onClick={() => { setScale(1); setRotation(0); setPosition({ x: 0, y: 0 }); }} className="modern-viewer-icon-button" title={t('common:imageViewer.reset_title')} aria-label="reset">
-            <Home size={16} />
+            <House size={16} />
           </NotionButton>
           <div className="modern-viewer-divider" />
           {/* 裁剪 */}
@@ -645,7 +645,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
               title={t('common:imageViewer.ocr_text', 'OCR 文字')}
               aria-label="ocr text"
             >
-              <Type size={16} />
+              <TextT size={16} />
             </NotionButton>
           )}
           {/* 下载 */}
@@ -659,7 +659,7 @@ export const ImageViewer: React.FC<ImageViewerProps> = ({
               checked={isBlurEnabled}
               onCheckedChange={(checked) => setIsBlurEnabled(Boolean(checked))}
               aria-label={blurToggleTitle}
-            />
+/>
           </div>
           <div className="modern-viewer-divider" />
           <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="modern-viewer-icon-button modern-viewer-icon-button--danger" title={t('common:imageViewer.close')} aria-label="close">

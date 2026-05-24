@@ -15,7 +15,7 @@ import {
   ATTACHMENT_DOCUMENT_TYPES,
   ATTACHMENT_MAX_SIZE,
   ATTACHMENT_MAX_COUNT,
-} from '../chat-v2/core/constants';
+} from '../features/chat/core/constants';
 
 export interface AttachmentSettings {
   maxImageSize: number; // 最大图片大小（字节）

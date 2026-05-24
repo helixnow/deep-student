@@ -1,11 +1,12 @@
 import React from 'react';
 import { describe, expect, it } from 'vitest';
-import { render, waitFor } from '@testing-library/react';
+import { render } from '@testing-library/react';
+
 import { ShadowDomPreview } from '@/components/ShadowDomPreview';
 
 describe('ShadowDomPreview (iframe) sanitization', () => {
-  it('strips unsafe CSS (@import, javascript: in url())', async () => {
-    const htmlContent = `<div>hello</div>`;
+  it('strips unsafe CSS from template previews while preserving safe declarations', () => {
+    const htmlContent = '<div>hello</div>';
     const cssContent = `
       @import url("https://evil.test/style.css");
       .bad { background: url("javascript:alert(1)"); }
@@ -16,21 +17,16 @@ describe('ShadowDomPreview (iframe) sanitization', () => {
       <ShadowDomPreview htmlContent={htmlContent} cssContent={cssContent} />
     );
 
-    const iframe = container.querySelector('iframe') as HTMLIFrameElement;
+    const iframe = container.querySelector('iframe');
     expect(iframe).not.toBeNull();
+    const srcdoc = iframe?.getAttribute('srcdoc') || '';
 
-    await waitFor(() => {
-      const doc = iframe.contentDocument;
-      expect(doc).not.toBeNull();
-      const styles = doc!.querySelectorAll('style');
-      const allCss = Array.from(styles).map(s => s.textContent).join('');
-      expect(allCss).not.toContain('@import');
-      expect(allCss).not.toContain('javascript:');
-      expect(allCss).toContain('color: red');
-    });
+    expect(srcdoc).not.toContain('@import');
+    expect(srcdoc).not.toContain('javascript:');
+    expect(srcdoc).toContain('color: red');
   });
 
-  it('allows script tags to execute inside iframe for template interactivity', async () => {
+  it('strips user script tags from template preview markup but keeps internal resize helper', () => {
     const htmlContent = `
       <div id="target">before</div>
       <script>document.getElementById('target').textContent = 'after';</script>
@@ -40,24 +36,22 @@ describe('ShadowDomPreview (iframe) sanitization', () => {
       <ShadowDomPreview htmlContent={htmlContent} cssContent="" />
     );
 
-    const iframe = container.querySelector('iframe') as HTMLIFrameElement;
+    const iframe = container.querySelector('iframe');
     expect(iframe).not.toBeNull();
+    const srcdoc = iframe?.getAttribute('srcdoc') || '';
 
-    await waitFor(() => {
-      const doc = iframe.contentDocument;
-      expect(doc).not.toBeNull();
-      const target = doc!.getElementById('target');
-      expect(target?.textContent).toBe('after');
-    });
+    expect(srcdoc).toContain('<div>before</div>');
+    expect(srcdoc).not.toContain("document.getElementById('target').textContent = 'after'");
+    expect(srcdoc).toContain('sdp-resize');
   });
 
-  it('renders content inside iframe with sandbox allowing scripts', () => {
+  it('renders content inside iframe with sandbox allowing scripts for internal helpers', () => {
     const { container } = render(
       <ShadowDomPreview htmlContent="<p>test</p>" cssContent="" />
     );
 
-    const iframe = container.querySelector('iframe') as HTMLIFrameElement;
+    const iframe = container.querySelector('iframe');
     expect(iframe).not.toBeNull();
-    expect(iframe.getAttribute('sandbox')).toContain('allow-scripts');
+    expect(iframe?.getAttribute('sandbox')).toContain('allow-scripts');
   });
 });

@@ -1,0 +1,154 @@
+/**
+ * Native-feel: text selection whitelist
+ * --------------------------------------
+ * Phase A of native-feel migration (2026-05-14).
+ *
+ * Strategy: globally disable text selection in tailwind.css @layer base, then
+ * EXPLICITLY restore `user-select: text` for genuine *content* areas — the
+ * places a user actually wants to copy from. Everything else (chrome: sidebar,
+ * topbar, menus, badges, timestamps, model labels, button text) stays
+ * un-selectable, matching VS Code / Linear / Notion / Obsidian behaviour.
+ *
+ * Add `data-selectable="true"` (or `class="select-text"`) to escape this on a
+ * case-by-case basis; remove the corresponding `select-none` className/CSS
+ * from chrome that no longer needs it (now handled by the global default).
+ *
+ * Design doc: docs/plans/2026-05-14-native-feel-migration-design.md
+ */
+
+/* ---------------------------------------------------------------- */
+/* 1. Form controls and contenteditable always editable / selectable */
+/* ---------------------------------------------------------------- */
+input,
+textarea,
+select,
+[contenteditable="true"],
+[contenteditable=""],
+[contenteditable="plaintext-only"] {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* ---------------------------------------------------------------- */
+/* 2. Chat message bodies — already used in current codebase         */
+/* ---------------------------------------------------------------- */
+.message-selectable-area,
+.message-selectable-area *,
+.message-content,
+.message-content *,
+.markdown-content,
+.markdown-content * {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* ---------------------------------------------------------------- */
+/* 3. Markdown renderers, prose typography, math                     */
+/* ---------------------------------------------------------------- */
+.prose,
+.prose *,
+.markdown-body,
+.markdown-body *,
+.katex,
+.katex *,
+.katex-display,
+.katex-display * {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* ---------------------------------------------------------------- */
+/* 4. Code surfaces — pre / code / code-block / CodeMirror           */
+/* ---------------------------------------------------------------- */
+pre,
+pre *,
+code,
+code *,
+.code-block,
+.code-block *,
+.code-block-wrapper,
+.code-block-wrapper *,
+.cm-editor,
+.cm-editor *,
+.cm-content,
+.cm-line {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* ---------------------------------------------------------------- */
+/* 5. Notes editor (Milkdown / Crepe / ProseMirror)                  */
+/* ---------------------------------------------------------------- */
+.crepe-editor-wrapper,
+.crepe-editor-wrapper *,
+.ProseMirror,
+.ProseMirror *,
+.milkdown,
+.milkdown * {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* ---------------------------------------------------------------- */
+/* 6. PDF text layers (react-pdf)                                    */
+/* ---------------------------------------------------------------- */
+.react-pdf__Page__textContent,
+.react-pdf__Page__textContent * {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* ---------------------------------------------------------------- */
+/* 7. Generic escape hatch                                           */
+/* ---------------------------------------------------------------- */
+[data-selectable="true"],
+[data-selectable="true"] * {
+  -webkit-user-select: text;
+  user-select: text;
+}
+
+/* ---------------------------------------------------------------- */
+/* 8. Form label + descriptive text inside inputs (do not stretch)   */
+/* Keep small auxiliary controls (e.g. switch labels) un-selectable. */
+/* ---------------------------------------------------------------- */
+
+/* ---------------------------------------------------------------- */
+/* 9. Tailwind helpers — re-export semantic classes                  */
+/* These intentionally mirror Tailwind's own .select-text/.select-none
+   so they keep working alongside the global default.                */
+/* ---------------------------------------------------------------- */
+.select-text,
+.select-text * {
+  -webkit-user-select: text !important;
+  user-select: text !important;
+}
+
+.select-none,
+.select-none * {
+  -webkit-user-select: none !important;
+  user-select: none !important;
+}
+
+/* ---------------------------------------------------------------- */
+/* 10. ::selection — use the application accent so highlights look   */
+/* native to Deep Student rather than browser default blue.          */
+/* ---------------------------------------------------------------- */
+::selection {
+  background-color: hsl(var(--primary) / 0.28);
+  color: inherit;
+}
+
+::-moz-selection {
+  background-color: hsl(var(--primary) / 0.28);
+  color: inherit;
+}
+
+:root.dark ::selection {
+  background-color: hsl(var(--primary) / 0.34);
+  color: inherit;
+}
+
+:root.dark ::-moz-selection {
+  background-color: hsl(var(--primary) / 0.34);
+  color: inherit;
+}

@@ -10,7 +10,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
-import type { ChatStore, ChatParams } from '@/chat-v2/core/types';
+import type { ChatStore, ChatParams } from '@/features/chat/core/types';
 import { createStore } from 'zustand/vanilla';
 import type { StoreApi } from 'zustand';
 
@@ -39,7 +39,7 @@ vi.mock('react-i18next', () => ({
 }));
 
 // 导入组件
-import { ChatParamsPanel, type ModelConfig } from '@/chat-v2/components/ChatParamsPanel';
+import { ChatParamsPanel, type ModelConfig } from '@/features/chat/components/ChatParamsPanel';
 
 // ============================================================================
 // 测试数据

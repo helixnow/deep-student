@@ -21,7 +21,7 @@ import {
   Legend,
   Tooltip,
 } from 'recharts';
-import { Brain, Target, TrendingUp, RefreshCw, BookOpen } from 'lucide-react';
+import { Brain, Crosshair, TrendUp, ArrowsClockwise, BookOpen } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -122,7 +122,7 @@ const KnowledgeItem: React.FC<KnowledgeItemProps> = ({ item, index }) => {
 
   return (
     <div
-      className="flex items-center gap-3 p-3 rounded-lg hover:bg-muted/50 transition-colors"
+      className="flex items-center gap-3 p-3 rounded-lg hover:bg-[var(--interactive-hover)] transition-colors"
       style={{ animationDelay: `${index * 50}ms` }}
     >
       {/* 序号 */}
@@ -149,7 +149,7 @@ const KnowledgeItem: React.FC<KnowledgeItemProps> = ({ item, index }) => {
           <div
             className="h-full rounded-full bg-primary transition-all duration-500"
             style={{ width: `${item.mastery_rate}%` }}
-          />
+/>
         </div>
       </div>
     </div>
@@ -164,7 +164,7 @@ const RadarSkeleton: React.FC = () => (
   <div className="space-y-4">
     <div className="flex items-center justify-between">
       <Skeleton className="h-5 w-28" />
-      <Skeleton className="h-8 w-8" />
+      <Skeleton className="w-8 h-8" />
     </div>
     <Skeleton className="h-64 w-full rounded-lg" />
     <div className="space-y-2">
@@ -184,7 +184,7 @@ const EmptyState: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => {
 
   return (
     <div className="flex flex-col items-center justify-center h-64 text-center">
-      <Brain className="w-12 h-12 text-muted-foreground/30 mb-3" />
+      <Brain size={48} className="text-muted-foreground/30 mb-3" weight="light" />
       <p className="text-muted-foreground mb-4">
         {t('knowledgeRadar.noData')}
       </p>
@@ -193,7 +193,7 @@ const EmptyState: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => {
       </p>
       {onRefresh && (
         <NotionButton variant="ghost" size="sm" onClick={onRefresh}>
-          <RefreshCw className="w-4 h-4 mr-2" />
+          <ArrowsClockwise size={16} className="mr-2" />
           {t('knowledgeRadar.refreshData')}
         </NotionButton>
       )}
@@ -284,17 +284,16 @@ export const KnowledgeRadar: React.FC<KnowledgeRadarProps> = ({
       {/* 标题栏 */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <Brain className="w-5 h-5 text-purple-500" />
+          <Brain size={20} className="text-purple-500" />
           <h3 className="font-semibold">{t('knowledgeRadar.title')}</h3>
         </div>
         
         <NotionButton
           variant="ghost"
           size="icon"
-          className="h-8 w-8"
-          onClick={handleRefresh}
+ className="w-8 h-8"           onClick={handleRefresh}
         >
-          <RefreshCw className="w-4 h-4" />
+          <ArrowsClockwise size={16} />
         </NotionButton>
       </div>
 
@@ -337,14 +336,14 @@ export const KnowledgeRadar: React.FC<KnowledgeRadarProps> = ({
               <PolarGrid
                 stroke="hsl(var(--border))"
                 strokeDasharray="3 3"
-              />
+/>
               <PolarAngleAxis
                 dataKey="tag"
                 tick={{
                   fill: 'hsl(var(--muted-foreground))',
                   fontSize: 11,
                 }}
-              />
+/>
               <PolarRadiusAxis
                 angle={90}
                 domain={[0, 100]}
@@ -353,7 +352,7 @@ export const KnowledgeRadar: React.FC<KnowledgeRadarProps> = ({
                   fontSize: 10,
                 }}
                 tickCount={5}
-              />
+/>
               
               {/* 掌握度 */}
               <Radar
@@ -363,7 +362,7 @@ export const KnowledgeRadar: React.FC<KnowledgeRadarProps> = ({
                 fill="hsl(var(--primary))"
                 fillOpacity={0.3}
                 strokeWidth={2}
-              />
+/>
               
               {/* 正确率 */}
               <Radar
@@ -374,7 +373,7 @@ export const KnowledgeRadar: React.FC<KnowledgeRadarProps> = ({
                 fillOpacity={0.2}
                 strokeWidth={2}
                 strokeDasharray="5 5"
-              />
+/>
               
               <Legend
                 verticalAlign="bottom"
@@ -384,7 +383,7 @@ export const KnowledgeRadar: React.FC<KnowledgeRadarProps> = ({
                 formatter={(value) => (
                   <span className="text-xs text-muted-foreground">{value}</span>
                 )}
-              />
+/>
               
               <Tooltip content={<CustomTooltip />} />
             </RadarChart>
@@ -396,7 +395,7 @@ export const KnowledgeRadar: React.FC<KnowledgeRadarProps> = ({
       {showDetailList && hasData && (
         <div className="border-t border-border/50 pt-4">
           <div className="flex items-center gap-2 mb-3">
-            <BookOpen className="w-4 h-4 text-muted-foreground" />
+            <BookOpen size={16} className="text-muted-foreground" />
             <span className="text-sm font-medium">{t('knowledgeRadar.details')}</span>
           </div>
           <div className="space-y-1 max-h-64 overflow-y-auto">

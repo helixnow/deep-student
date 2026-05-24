@@ -1,18 +1,5 @@
 /* 现代化按钮样式 - 参考API配置页面设计 */
 
-/* CSS变量定义 */
-:root {
-  --btn-primary-bg: #eff6ff;
-  --btn-primary-color: #3b82f6;
-  --btn-primary-border: #dbeafe;
-  --btn-primary-hover-bg: #3b82f6;
-  --btn-primary-hover-color: white;
-  --btn-border-radius: 8px;
-  --btn-transition: all 0.2s ease;
-  --btn-shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.1);
-  --btn-shadow-md: 0 4px 6px rgba(0, 0, 0, 0.1);
-}
-
 /* 现代化主按钮样式 */
 .btn.btn-primary {
   display: inline-flex;
@@ -20,36 +7,38 @@
   justify-content: center;
   gap: 0.375rem;
   padding: 0.5rem 1rem;
-  background: var(--btn-primary-bg);
-  color: var(--btn-primary-color);
-  border: 1px solid var(--btn-primary-border);
-  border-radius: var(--btn-border-radius);
+  background: var(--button-primary-surface);
+  color: var(--button-primary-foreground);
+  border: 1px solid var(--button-primary-border);
+  border-radius: var(--radius-shell-control);
   font-size: 0.8125rem;
   font-weight: 500;
   cursor: pointer;
-  transition: var(--btn-transition);
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    color 150ms ease,
+    box-shadow 150ms ease;
   white-space: nowrap;
   text-decoration: none;
-  box-shadow: var(--btn-shadow-sm);
+  box-shadow: var(--shadow-shell-soft);
 }
 
 .btn.btn-primary:hover:not(:disabled) {
-  background: var(--btn-primary-hover-bg);
-  color: var(--btn-primary-hover-color);
-  transform: translateY(-1px);
-  box-shadow: var(--btn-shadow-md);
+  background: var(--button-primary-hover);
+  color: var(--button-primary-foreground);
+  box-shadow: var(--shadow-shell-pressed);
 }
 
 .btn.btn-primary:active:not(:disabled) {
-  transform: translateY(0);
-  box-shadow: var(--btn-shadow-sm);
+  background: var(--button-primary-active);
+  box-shadow: var(--shadow-shell-soft);
 }
 
 .btn.btn-primary:disabled {
   opacity: 0.5;
   cursor: not-allowed;
-  transform: none !important;
-  box-shadow: var(--btn-shadow-sm) !important;
+  box-shadow: var(--shadow-shell-soft) !important;
 }
 
 /* 文件上传按钮特殊样式 */
@@ -58,10 +47,9 @@ label.btn.btn-primary {
 }
 
 label.btn.btn-primary:hover:not(:disabled) {
-  background: var(--btn-primary-hover-bg);
-  color: var(--btn-primary-hover-color);
-  transform: translateY(-1px);
-  box-shadow: var(--btn-shadow-md);
+  background: var(--button-primary-hover);
+  color: var(--button-primary-foreground);
+  box-shadow: var(--shadow-shell-pressed);
 }
 
 /* 查询按钮特殊样式 */
@@ -104,14 +92,14 @@ label.btn.btn-primary:hover:not(:disabled) {
   width: 16px;
   height: 16px;
   margin: -8px 0 0 -8px;
-  border: 2px solid var(--btn-primary-color);
+  border: 2px solid var(--button-primary-foreground);
   border-top-color: transparent;
   border-radius: 50%;
   animation: btn-spin 1s linear infinite;
 }
 
 .btn.btn-primary.loading:hover::after {
-  border-color: hsl(var(--primary-foreground));
+  border-color: var(--button-primary-foreground);
   border-top-color: transparent;
 }
 

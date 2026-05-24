@@ -15,28 +15,28 @@
   justify-content: space-between;
   gap: 0.5rem;
   padding: 0.75rem 1rem;
-  border: 2px solid #e2e8f0;
+  border: 2px solid hsl(var(--border));
   border-radius: 10px;
-  background: #f9fafb;
+  background: hsl(var(--muted));
   font-weight: 500;
-  color: #2d3748;
+  color: hsl(var(--foreground));
   cursor: pointer;
   transition: all 0.2s ease;
 }
 
 .select-trigger:hover {
-  border-color: #3b82f6;
+  border-color: hsl(var(--primary));
 }
 
 .select-trigger:focus-visible {
   outline: none;
-  border-color: #3b82f6;
-  box-shadow: 0 0 0 3px rgba(102, 126, 234, 0.15);
+  border-color: hsl(var(--primary));
+  box-shadow: 0 0 0 3px hsl(var(--primary) / 0.15);
 }
 
 .select-trigger .arrow {
   font-size: 0.75rem;
-  color: #3b82f6;
+  color: hsl(var(--primary));
   transition: transform 0.2s ease;
 }
 
@@ -51,10 +51,10 @@
   width: 100%;
   max-height: 240px;
   overflow-y: auto;
-  background: #ffffff;
-  border: 2px solid #e2e8f0;
+  background: var(--surface-elevated);
+  border: 2px solid hsl(var(--border));
   border-radius: 12px;
-  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.08);
+  box-shadow: 0 8px 24px hsl(var(--shadow-base) / 0.08);
   z-index: 1000;
   padding: 0.25rem 0;
   animation: fadeInScale 0.15s ease;
@@ -79,17 +79,17 @@
 }
 
 .options-list li:hover {
-  background: #f0f4ff;
-  color: #4c51bf;
+  background: hsl(var(--primary) / 0.08);
+  color: hsl(var(--primary));
 }
 
 .options-list li.selected {
-  background: #3b82f6;
-  color: #ffffff;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
 }
 
 .modern-select.disabled .select-trigger {
-  background: #edf2f7;
+  background: hsl(var(--muted));
   cursor: not-allowed;
   opacity: 0.6;
-} 
+}

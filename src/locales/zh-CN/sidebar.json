@@ -3,7 +3,11 @@
     "flat_analysis": "扁平分析",
     "stereoscopic_analysis": "立体分析",
     "anki_tools": "Anki工具",
-    "system_tools": "系统工具"
+    "system_tools": "系统工具",
+    "pinned": "置顶",
+    "topics": "课题",
+    "conversations": "对话",
+    "emptyGroup": "暂无对话"
   },
   "theme": "主题",
   "navigation": {
@@ -27,11 +31,23 @@
     "canvas_board": "白板",
     "learning_hub": "学习资源",
     "extensions": "扩展功能",
-    "chat_v2": "智能对话",
+    "chat_v2": "新会话",
     "skills_management": "技能管理"
   },
   "aria": {
-    "sidebar_navigation": "主导航"
+    "sidebar_navigation": "主导航",
+    "workspace_primary_entry": "工作区主入口",
+    "pinned_sessions": "置顶会话",
+    "topic_sessions": "课题",
+    "conversation_sessions": "对话"
+  },
+  "actions": {
+    "collapse_all_topics": "收起所有课题",
+    "expand_all_topics": "展开所有课题",
+    "create_topic": "新建课题",
+    "create_conversation": "新建对话",
+    "expand_group_sessions": "展开显示",
+    "collapse_group_sessions": "折叠显示"
   },
   "expand": "展开侧边栏",
   "collapse": "收起侧边栏",
@@ -45,4 +61,3 @@
     "auto": "自动模式"
   }
 }
-

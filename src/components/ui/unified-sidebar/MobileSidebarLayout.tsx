@@ -8,10 +8,14 @@
  * - 统一的样式和间距
  */
 import { NotionButton } from '@/components/ui/NotionButton';
+import {
+  shellIconButtonClassName,
+  shellNavButtonClassName,
+} from '@/components/ui/buttonPrimitiveContract';
 
 import React, { type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
-import { X } from 'lucide-react';
+import { X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 
 export interface MobileSidebarLayoutProps {
@@ -54,7 +58,7 @@ export const MobileSidebarLayout: React.FC<MobileSidebarLayoutProps> = ({
 }) => {
   const { t } = useTranslation(['common']);
   return (
-    <div className={cn('flex flex-col h-full bg-background', className)}>
+    <div className={cn('font-sidebar-study-ui flex flex-col h-full bg-background', className)}>
       {/* 头部 */}
       {!hideHeader && (
         <div
@@ -64,8 +68,8 @@ export const MobileSidebarLayout: React.FC<MobileSidebarLayoutProps> = ({
           )}
         >
           {/* 关闭按钮 */}
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="!w-8 !h-8 !rounded-full hover:bg-accent/80 active:bg-accent -ml-1" aria-label={t('common:sidebar.close')}>
-            <X className="w-5 h-5 text-muted-foreground" />
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className={cn(shellIconButtonClassName, '-ml-1')} aria-label={t('common:sidebar.close')}>
+            <X size={20} weight="regular" />
           </NotionButton>
 
           {/* 标题区域 */}
@@ -135,7 +139,7 @@ export const MobileSidebarSection: React.FC<MobileSidebarSectionProps> = ({
   return (
     <div className={cn('px-3 py-2', className)}>
       {title && (
-        <h4 className="text-xs font-medium text-muted-foreground uppercase tracking-wider px-2 py-2">
+        <h4 className="text-xs font-normal text-muted-foreground/60 px-2 py-2">
           {title}
         </h4>
       )}
@@ -180,13 +184,14 @@ export const MobileSidebarItem: React.FC<MobileSidebarItemProps> = ({
 }) => {
   return (
     <NotionButton
-      variant="ghost" size="sm"
+      variant="nav"
+      size="sm"
       onClick={onClick}
       disabled={disabled}
       className={cn(
-        '!w-full !justify-start !px-3 !py-2.5 !h-auto !rounded-lg !text-left',
-        'hover:bg-accent/50 active:bg-accent',
-        selected && 'bg-accent text-accent-foreground',
+        shellNavButtonClassName,
+        '!w-full !justify-start !px-3 !py-2.5 !rounded-lg !text-left',
+        selected && 'bg-[var(--sidebar-study-selected)] text-[color:var(--shell-navigation-foreground)]',
         disabled && 'opacity-50 cursor-not-allowed',
         className
       )}

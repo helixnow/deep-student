@@ -8,7 +8,7 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import type { ContextRef } from '@/chat-v2/context/types';
+import type { ContextRef } from '@/features/chat/context/types';
 
 // Mock 状态
 let mockState: {
@@ -29,7 +29,7 @@ const mockSet = vi.fn((updater) => {
 const mockGet = vi.fn(() => mockState);
 
 // Mock registry
-vi.mock('@/chat-v2/context/registry', () => ({
+vi.mock('@/features/chat/context/registry', () => ({
   contextTypeRegistry: {
     collectToolsForTypes: vi.fn((typeIds: string[]) => {
       const toolsMap: Record<string, string[]> = {
@@ -47,7 +47,7 @@ vi.mock('@/chat-v2/context/registry', () => ({
 }));
 
 // 动态导入 createContextActions（在 mock 设置后）
-const { createContextActions } = await import('@/chat-v2/core/store/contextActions');
+const { createContextActions } = await import('@/features/chat/core/store/contextActions');
 
 describe('Context Actions', () => {
   let actions: ReturnType<typeof createContextActions>;

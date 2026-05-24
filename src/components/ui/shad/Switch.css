@@ -1,52 +1,86 @@
 /**
- * Shad Switch 组件样式
- * 使用 !important 确保 Android WebView 正确渲染
+ * Shad Switch 组件样式。
+ *
+ * 用非 layer 选择器承载核心视觉属性，规避以下两处 unlayered 通配重置的影响：
+ *   - src/App.css 里的 `* { margin:0; padding:0; box-sizing:border-box; }`
+ *   - src/DeepStudent.css 里重复的 `* { margin:0; padding:0; box-sizing:border-box; }`
+ *   - src/styles/tailwind.css `@layer base { * { border-color: ... } }`（layered，不影响）
+ *
+ * 这些通配符只会清掉 margin/padding/box-sizing/border-color，并不会覆盖我们在这里
+ * 设的 height/width/background-color/transform 等。所以本文件不需要 `!important`，
+ * 全部使用 token 颜色即可保证主题切换正确生效。
+ *
+ * 支持通过 data-size 切换尺寸：
+ *   - 默认:             track 24×44, thumb 20×20, 位移 20
+ *   - data-size="sm":   track 16×28, thumb 12×12, 位移 12
  */
 
-/* Switch 根元素 */
-[data-shad-switch] {
-  position: relative;
-  /* 固定尺寸 - 使用 !important 确保 Android WebView 正确渲染 */
-  width: 32px !important;
-  min-width: 32px !important;
-  max-width: 32px !important;
-  height: 18px !important;
-  min-height: 18px !important;
-  max-height: 18px !important;
-  padding: 2px !important;
+/* ---- Track (默认尺寸 24×44) ---- */
+[data-slot="switch"] {
+  height: 1.5rem;        /* 24 */
+  width: 2.75rem;        /* 44 */
+  padding: 2px;
+  border-radius: 9999px;
   border: none;
-  border-radius: 9px;
+  display: inline-flex;
+  align-items: center;
   cursor: pointer;
-  flex-shrink: 0 !important;
-  flex-grow: 0 !important;
-  box-sizing: border-box !important;
-  display: inline-flex !important;
-  align-items: center !important;
+  outline: none;
+  flex-shrink: 0;
+  transition: background-color 150ms;
+  background-color: hsl(var(--muted-foreground) / 0.2);
 }
 
-/* Switch Thumb */
-[data-shad-switch] > span {
-  position: relative;
+[data-slot="switch"][data-state="checked"] {
+  background-color: hsl(var(--primary));
+}
+
+[data-slot="switch"]:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+[data-slot="switch"]:focus-visible {
+  box-shadow: 0 0 0 2px hsl(var(--background)), 0 0 0 4px hsl(var(--ring, 215 72% 42% / 0.4));
+}
+
+/* ---- Thumb (默认 20×20) ---- */
+[data-slot="switch"] > span {
   display: block;
-  /* 固定尺寸 - 确保 Android WebView 正确渲染 */
-  width: 14px !important;
-  min-width: 14px !important;
-  max-width: 14px !important;
-  height: 14px !important;
-  min-height: 14px !important;
-  max-height: 14px !important;
-  border-radius: 50% !important;
-  flex-shrink: 0 !important;
-  flex-grow: 0 !important;
-  box-sizing: border-box !important;
+  height: 1.25rem;       /* 20 */
+  width: 1.25rem;        /* 20 */
+  border-radius: 9999px;
+  background-color: hsl(var(--background));
+  /* 单层轻阴影，避免 Material 双层阴影在小尺寸上显脏 */
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.08);
   pointer-events: none;
+  transition: transform 150ms;
+  transform: translateX(0);
 }
 
-/* Checked state - thumb position */
-[data-shad-switch][data-state="checked"] > span {
-  transform: translateX(14px) !important;
+[data-slot="switch"][data-state="checked"] > span {
+  transform: translateX(1.25rem);  /* 20 */
 }
 
-[data-shad-switch][data-state="unchecked"] > span {
-  transform: translateX(0px) !important;
+/* ---- Small 变体 (16×28)，服务密集列表场景 ---- */
+[data-slot="switch"][data-size="sm"] {
+  height: 1rem;          /* 16 */
+  width: 1.75rem;        /* 28 */
+  padding: 2px;
+}
+
+[data-slot="switch"][data-size="sm"] > span {
+  height: 0.75rem;       /* 12 */
+  width: 0.75rem;        /* 12 */
+  box-shadow: 0 1px 1.5px 0 rgb(0 0 0 / 0.08);
+}
+
+[data-slot="switch"][data-size="sm"][data-state="checked"] > span {
+  transform: translateX(0.75rem);  /* 12 */
+}
+
+/* ---- Dark mode ---- */
+[data-theme="dark"] [data-slot="switch"][data-state="unchecked"],
+.dark [data-slot="switch"][data-state="unchecked"] {
+  background-color: hsl(var(--muted-foreground) / 0.25);
 }

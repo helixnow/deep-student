@@ -14,6 +14,8 @@
     "quickAddPlaceholder": "添加待办事项...",
     "add": "添加",
     "search": "搜索",
+    "searchLists": "搜索列表...",
+    "newList": "新建列表",
     "newListPlaceholder": "新建列表名称...",
     "favorite": "收藏",
     "unfavorite": "取消收藏",
@@ -28,7 +30,9 @@
   },
   "empty": {
     "noItems": "暂无待办事项",
-    "hint": "今天也继续稳步推进。"
+    "hint": "今天也继续稳步推进。",
+    "noLists": "暂无列表",
+    "noMatchingLists": "没有匹配的列表"
   },
   "detail": {
     "title": "详情",
@@ -39,7 +43,8 @@
     "priority": "优先级",
     "dueDate": "截止日期",
     "dueTime": "时间",
-    "description": "描述"
+    "description": "描述",
+    "pomodoros": "番茄"
   },
   "status": {
     "completed": "已完成",

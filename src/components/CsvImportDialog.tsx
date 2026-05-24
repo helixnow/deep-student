@@ -24,16 +24,16 @@ import { Label } from '@/components/ui/shad/Label';
 import { Progress } from '@/components/ui/shad/Progress';
 import { Alert, AlertDescription } from '@/components/ui/shad/Alert';
 import {
-  FileSpreadsheet,
-  ChevronRight,
-  ChevronLeft,
-  Loader2,
-  CheckCircle2,
+  Table,
+  CaretRight,
+  CaretLeft,
+  CircleNotch,
+  CheckCircle,
   XCircle,
-  AlertTriangle,
-  RefreshCw,
+  Warning,
+  ArrowClockwise,
   Upload,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { fileManager, extractFileName } from '@/utils/fileManager';
 import { showGlobalNotification } from './UnifiedNotification';
@@ -462,7 +462,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
                   'w-8 h-0.5 rounded',
                   isCompleted ? 'bg-primary' : 'bg-border'
                 )}
-              />
+/>
             )}
             <div
               className={cn(
@@ -481,7 +481,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
                 )}
               >
                 {isCompleted ? (
-                  <CheckCircle2 className="w-4 h-4" />
+                  <CheckCircle size={16} />
                 ) : (
                   index + 1
                 )}
@@ -519,11 +519,11 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
           onClick={handleSelectFileClick}
         >
           {isLoadingPreview ? (
-            <Loader2 className="w-10 h-10 text-primary animate-spin" />
+            <CircleNotch size={40} className="text-primary animate-spin" />
           ) : (
             <>
               <div className="w-16 h-16 rounded-full bg-muted/50 flex items-center justify-center">
-                <FileSpreadsheet className="w-8 h-8 text-muted-foreground" />
+                <Table size={32} className="text-muted-foreground" />
               </div>
               <div className="text-center">
                 <p className="text-sm font-medium text-foreground">
@@ -541,7 +541,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
       {/* 错误提示 */}
       {importError && (
         <Alert variant="destructive">
-          <AlertTriangle className="w-4 h-4" />
+          <Warning size={16} />
           <AlertDescription>{importError}</AlertDescription>
         </Alert>
       )}
@@ -555,7 +555,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
         <>
           {/* 文件信息 */}
           <div className="flex items-center gap-4 p-3 rounded-lg bg-muted/30">
-            <FileSpreadsheet className="w-5 h-5 text-primary" />
+            <Table size={20} className="text-primary" />
             <div className="flex-1">
               <p className="text-sm font-medium">
                 {selectedFile ? extractFileName(selectedFile) : t('exam_sheet:csv.csv_file_fallback')}
@@ -577,7 +577,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
             fieldMapping={fieldMapping}
             onMappingChange={setFieldMapping}
             showPreview={true}
-          />
+/>
         </>
       )}
     </div>
@@ -597,7 +597,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
               'flex items-start gap-3 p-4 rounded-lg border cursor-pointer transition-colors bg-transparent',
               duplicateStrategy === strategyKey
                 ? 'border-primary bg-primary/5 ring-1 ring-primary/30'
-                : 'border-border/60 hover:bg-muted/30'
+                : 'border-border/60 hover:bg-[var(--interactive-hover)]'
             )}
             onClick={() => setDuplicateStrategy(strategyKey)}
           >
@@ -633,7 +633,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
                 className="inline-flex items-center gap-1 px-2 py-1 rounded bg-background text-xs"
               >
                 <span className="font-mono text-muted-foreground">{csvCol}</span>
-                <ChevronRight className="w-3 h-3 text-muted-foreground" />
+                <CaretRight size={12} className="text-muted-foreground" />
                 <span className="font-medium">
                   {t(`exam_sheet:export.fields.${target}`, target as string)}
                 </span>
@@ -661,15 +661,15 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
           <Progress value={(importProgress.current / importProgress.total) * 100} />
           <div className="flex items-center justify-center gap-6 text-sm text-muted-foreground">
             <span className="flex items-center gap-1">
-              <CheckCircle2 className="w-4 h-4 text-emerald-500" />
+              <CheckCircle size={16} className="text-emerald-500" />
               {importProgress.success}
             </span>
             <span className="flex items-center gap-1">
-              <AlertTriangle className="w-4 h-4 text-amber-500" />
+              <Warning size={16} className="text-amber-500" />
               {importProgress.skipped}
             </span>
             <span className="flex items-center gap-1">
-              <XCircle className="w-4 h-4 text-rose-500" />
+              <XCircle size={16} className="text-rose-500" />
               {importProgress.failed}
             </span>
           </div>
@@ -681,7 +681,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
               onClick={handleCancelImport}
               className="text-muted-foreground hover:text-destructive"
             >
-              <XCircle className="w-4 h-4 mr-1.5" />
+              <XCircle size={16} className="mr-1.5" />
               {t('exam_sheet:csv.cancel_import', '取消导入')}
             </NotionButton>
           </div>
@@ -691,7 +691,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
       {/* 用户取消导入后的提示 */}
       {isCancelled && !importResult && !importError && (
         <div className="flex items-center gap-3 p-4 rounded-lg bg-amber-500/10">
-          <AlertTriangle className="w-6 h-6 text-amber-500" />
+          <Warning size={24} className="text-amber-500" />
           <div>
             <p className="font-medium">{t('exam_sheet:csv.import_cancelled_title', '导入已取消')}</p>
             <p className="text-sm text-muted-foreground mt-0.5">
@@ -709,9 +709,9 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
             importResult.failed_count > 0 ? 'bg-amber-500/10' : 'bg-emerald-500/10'
           )}>
             {importResult.failed_count > 0 ? (
-              <AlertTriangle className="w-6 h-6 text-amber-500" />
+              <Warning size={24} className="text-amber-500" />
             ) : (
-              <CheckCircle2 className="w-6 h-6 text-emerald-500" />
+              <CheckCircle size={24} className="text-emerald-500" />
             )}
             <div>
               <p className="font-medium">
@@ -751,7 +751,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
       {/* 错误状态 */}
       {importError && !isImporting && !importResult && (
         <Alert variant="destructive">
-          <XCircle className="w-4 h-4" />
+          <XCircle size={16} />
           <AlertDescription>{importError}</AlertDescription>
         </Alert>
       )}
@@ -794,7 +794,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
         {/* 重试按钮（仅错误时显示） */}
         {importError && !isImporting && !importResult && (
           <NotionButton variant="ghost" onClick={handleRetry}>
-            <RefreshCw className="w-4 h-4 mr-2" />
+            <ArrowClockwise size={16} className="mr-2" />
             {t('common:retry', '重试')}
           </NotionButton>
         )}
@@ -802,7 +802,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
         {/* 上一步按钮 */}
         {!isFirstStep && !showResult && !isImporting && (
           <NotionButton variant="ghost" onClick={handlePrev}>
-            <ChevronLeft className="w-4 h-4 mr-1" />
+            <CaretLeft size={16} className="mr-1" />
             {t('common:prev', '上一步')}
           </NotionButton>
         )}
@@ -813,9 +813,9 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
             {currentStep === 'strategy' ? (
               <NotionButton onClick={handleStartImport} disabled={isImporting}>
                 {isImporting ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  <CircleNotch size={16} className="mr-2 animate-spin" />
                 ) : (
-                  <Upload className="w-4 h-4 mr-2" />
+                  <Upload size={16} className="mr-2" />
                 )}
                 {t('exam_sheet:csv.start_import', '开始导入')}
               </NotionButton>
@@ -825,7 +825,7 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
                 disabled={currentStep === 'mapping' && !isMappingValid}
               >
                 {t('common:next', '下一步')}
-                <ChevronRight className="w-4 h-4 ml-1" />
+                <CaretRight size={16} className="ml-1" />
               </NotionButton>
             )}
           </>
@@ -843,14 +843,14 @@ export const CsvImportDialog: React.FC<CsvImportDialogProps> = ({
     >
         <NotionDialogHeader>
           <NotionDialogTitle className="flex items-center gap-2">
-            <FileSpreadsheet className="w-5 h-5" />
+            <Table size={20} />
             {t('exam_sheet:csv.import_title', 'CSV 导入')}
           </NotionDialogTitle>
           <NotionDialogDescription>
             {t('exam_sheet:csv.import_description', '从 CSV 文件批量导入题目到题目集')}
           </NotionDialogDescription>
         </NotionDialogHeader>
-        <NotionDialogBody nativeScroll>
+        <NotionDialogBody>
 
         {/* 步骤指示器 */}
         {renderStepIndicator()}

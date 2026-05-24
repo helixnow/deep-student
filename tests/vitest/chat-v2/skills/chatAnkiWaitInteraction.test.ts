@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { chatAnkiSkill } from '@/chat-v2/skills/builtin';
+import { chatAnkiSkill } from '@/features/chat/skills/builtin';
 
 function getEmbeddedTool(name: string) {
   const tool = chatAnkiSkill.embeddedTools?.find((t) => t.name === name);

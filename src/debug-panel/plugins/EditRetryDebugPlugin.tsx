@@ -20,19 +20,19 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/sh
 import { Separator } from '../../components/ui/shad/Separator';
 import {
   Copy,
-  Trash2,
-  AlertCircle,
-  CheckCircle2,
-  AlertTriangle,
-  Edit3,
-  RefreshCw,
+  Trash,
+  WarningCircle,
+  CheckCircle,
+  Warning,
+  PencilSimple,
+  ArrowClockwise,
   Lock,
-  Unlock,
+  LockOpen,
   ArrowRight,
-  Filter,
+  Funnel,
   Eye,
-  EyeOff,
-} from 'lucide-react';
+  EyeSlash,
+} from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import {
   getChatV2Logs,
@@ -40,7 +40,7 @@ import {
   CHATV2_LOG_EVENT,
   CHATV2_LOGS_CLEARED,
   type ChatV2LogEntry,
-} from '../../chat-v2/debug/chatV2Logger';
+} from '../../features/chat/debug/chatV2Logger';
 
 // =============================================================================
 // 类型定义
@@ -128,13 +128,13 @@ function getFlowType(action: string): FlowType {
 function getSeverityIcon(severity: string) {
   switch (severity) {
     case 'error':
-      return <AlertCircle className="w-4 h-4 text-destructive" />;
+      return <WarningCircle size={16} className="text-destructive" />;
     case 'warning':
-      return <AlertTriangle className="w-4 h-4 text-yellow-500" />;
+      return <Warning size={16} className="text-yellow-500" />;
     case 'success':
-      return <CheckCircle2 className="w-4 h-4 text-green-500" />;
+      return <CheckCircle size={16} className="text-green-500" />;
     default:
-      return <ArrowRight className="w-4 h-4 text-muted-foreground" />;
+      return <ArrowRight size={16} className="text-muted-foreground" />;
   }
 }
 
@@ -281,7 +281,7 @@ const EditRetryDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       <Card className="m-2 flex-shrink-0">
         <CardHeader className="py-2 px-3">
           <CardTitle className="text-sm flex items-center gap-2">
-            <Edit3 className="w-4 h-4" />
+            <PencilSimple size={16} />
             编辑/重试流程调试
           </CardTitle>
         </CardHeader>
@@ -291,11 +291,11 @@ const EditRetryDebugPlugin: React.FC<DebugPanelPluginProps> = ({
               总计: {stats.total}
             </Badge>
             <Badge variant="outline" className="bg-blue-50 dark:bg-blue-950">
-              <Edit3 className="w-3 h-3 mr-1" />
+              <PencilSimple size={12} className="mr-1" />
               编辑: {stats.edit}
             </Badge>
             <Badge variant="outline" className="bg-green-50 dark:bg-green-950">
-              <RefreshCw className="w-3 h-3 mr-1" />
+              <ArrowClockwise size={12} className="mr-1" />
               重试: {stats.retry}
             </Badge>
             {stats.errors > 0 && (
@@ -315,7 +315,7 @@ const EditRetryDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       {/* 过滤器和操作 */}
       <div className="px-2 py-1 flex flex-wrap items-center gap-2 border-b flex-shrink-0">
         <div className="flex items-center gap-1">
-          <Filter className="w-3 h-3 text-muted-foreground" />
+          <Funnel size={12} className="text-muted-foreground" />
           <span className="text-xs text-muted-foreground">过滤:</span>
         </div>
         <div className="flex gap-1">
@@ -333,7 +333,7 @@ const EditRetryDebugPlugin: React.FC<DebugPanelPluginProps> = ({
             onClick={() => setFlowFilter('edit')}
             className="h-6 text-xs px-2"
           >
-            <Edit3 className="w-3 h-3 mr-1" />
+            <PencilSimple size={12} className="mr-1" />
             编辑
           </Button>
           <Button
@@ -342,7 +342,7 @@ const EditRetryDebugPlugin: React.FC<DebugPanelPluginProps> = ({
             onClick={() => setFlowFilter('retry')}
             className="h-6 text-xs px-2"
           >
-            <RefreshCw className="w-3 h-3 mr-1" />
+            <ArrowClockwise size={12} className="mr-1" />
             重试
           </Button>
         </div>
@@ -355,7 +355,7 @@ const EditRetryDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           onClick={() => setShowStateChanges(!showStateChanges)}
           className="h-6 text-xs px-2"
         >
-          {showStateChanges ? <Eye className="w-3 h-3 mr-1" /> : <EyeOff className="w-3 h-3 mr-1" />}
+          {showStateChanges ? <Eye size={12} className="mr-1" /> : <EyeSlash size={12} className="mr-1" />}
           状态
         </Button>
 
@@ -367,7 +367,7 @@ const EditRetryDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           onClick={() => setAutoScroll(!autoScroll)}
           className="h-6 text-xs px-2"
         >
-          {autoScroll ? <Lock className="w-3 h-3 mr-1" /> : <Unlock className="w-3 h-3 mr-1" />}
+          {autoScroll ? <Lock size={12} className="mr-1" /> : <LockOpen size={12} className="mr-1" />}
           {autoScroll ? '锁定' : '解锁'}
         </Button>
         <Button
@@ -376,7 +376,7 @@ const EditRetryDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           onClick={handleCopyLogs}
           className="h-6 text-xs px-2"
         >
-          <Copy className="w-3 h-3" />
+          <Copy size={12} />
         </Button>
         <Button
           size="sm"
@@ -384,7 +384,7 @@ const EditRetryDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           onClick={handleClearLogs}
           className="h-6 text-xs px-2"
         >
-          <Trash2 className="w-3 h-3" />
+          <Trash size={12} />
         </Button>
       </div>
 
@@ -392,7 +392,7 @@ const EditRetryDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       <div className="flex-1 overflow-y-auto p-2 space-y-1">
         {filteredLogs.length === 0 ? (
           <div className="text-center text-muted-foreground text-sm py-8">
-            <Edit3 className="w-8 h-8 mx-auto mb-2 opacity-50" />
+            <PencilSimple size={32} className="mx-auto mb-2 opacity-50" />
             <p>暂无编辑/重试相关日志</p>
             <p className="text-xs mt-1">尝试编辑消息或重试以触发日志</p>
           </div>
@@ -428,10 +428,10 @@ const EditRetryDebugPlugin: React.FC<DebugPanelPluginProps> = ({
                   </Badge>
 
                   {flowType === 'edit' && (
-                    <Edit3 className="w-3 h-3 text-blue-500" />
+                    <PencilSimple size={12} className="text-blue-500" />
                   )}
                   {flowType === 'retry' && (
-                    <RefreshCw className="w-3 h-3 text-green-500" />
+                    <ArrowClockwise size={12} className="text-green-500" />
                   )}
 
                   <span className="font-medium truncate flex-1">
@@ -480,7 +480,7 @@ const EditRetryDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         <Card className="m-2 border-destructive flex-shrink-0">
           <CardContent className="py-2 px-3">
             <div className="flex items-start gap-2 text-xs">
-              <AlertCircle className="w-4 h-4 text-destructive flex-shrink-0 mt-0.5" />
+              <WarningCircle size={16} className="text-destructive flex-shrink-0 mt-0.5" />
               <div>
                 <p className="font-medium text-destructive">检测到错误</p>
                 <p className="text-muted-foreground mt-1">

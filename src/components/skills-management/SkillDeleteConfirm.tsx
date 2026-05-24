@@ -4,10 +4,10 @@
 
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Trash2, AlertTriangle } from 'lucide-react';
+import { Trash, Warning } from '@phosphor-icons/react';
 import { NotionAlertDialog } from '../ui/NotionDialog';
-import type { SkillDefinition } from '@/chat-v2/skills/types';
-import { getLocalizedSkillDescription, getLocalizedSkillName } from '@/chat-v2/skills/utils';
+import type { SkillDefinition } from '@/features/chat/skills/types';
+import { getLocalizedSkillDescription, getLocalizedSkillName } from '@/features/chat/skills/utils';
 
 // ============================================================================
 // 类型定义
@@ -55,7 +55,7 @@ export const SkillDeleteConfirm: React.FC<SkillDeleteConfirmProps> = ({
     <NotionAlertDialog
       open={open}
       onOpenChange={onOpenChange}
-      icon={<AlertTriangle className="h-5 w-5 text-destructive" />}
+      icon={<Warning size={20} className="text-destructive" />}
       title={t('skills:management.delete', '删除技能')}
       description={t(
         'skills:management.delete_confirm',
@@ -71,7 +71,7 @@ export const SkillDeleteConfirm: React.FC<SkillDeleteConfirmProps> = ({
     >
       <div className="p-3 rounded-lg bg-muted/50 border border-border/50">
         <div className="flex items-center gap-2 text-sm">
-          <Trash2 size={14} className="text-muted-foreground" />
+          <Trash size={14} className="text-muted-foreground" />
           <span className="font-medium">{getLocalizedSkillName(skill.id, skill.name, t)}</span>
           <span className="text-xs text-muted-foreground">({skill.id})</span>
         </div>

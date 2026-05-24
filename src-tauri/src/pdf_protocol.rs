@@ -8,6 +8,10 @@ use std::path::PathBuf;
 
 const DEFAULT_CORS_ORIGIN: &str = "tauri://localhost";
 
+/// 无 Range 请求时的最大单次返回字节数（4MB）。
+/// 超过该阈值时改为返回 206 Partial Content，避免一次性把整个 PDF 读入内存。
+const PDF_PROTOCOL_NO_RANGE_CAP: u64 = 4 * 1024 * 1024;
+
 fn resolve_cors_origin(request: &tauri::http::Request<Vec<u8>>) -> String {
     let origin = request
         .headers()
@@ -223,20 +227,42 @@ pub fn handle_asset_protocol(
             }
         }
         None => {
-            // 无 Range 请求，返回整个文件
-            let mut buffer = Vec::with_capacity(file_size as usize);
-            file.read_to_end(&mut buffer)?;
+            // 无 Range 请求：小文件直接整体返回；大文件改用 206 + 4MB 截断，
+            // PDF.js 会基于响应中的 Content-Range/total 长度继续发起后续 Range 请求。
+            if file_size <= PDF_PROTOCOL_NO_RANGE_CAP {
+                let mut buffer = Vec::with_capacity(file_size as usize);
+                file.read_to_end(&mut buffer)?;
 
-            Ok(tauri::http::Response::builder()
-                .status(200)
-                .header("Content-Type", get_mime_type(&canonical_path))
-                .header("Content-Length", file_size.to_string())
-                .header("Accept-Ranges", "bytes")
-                .header("Vary", "Origin")
-                .header("Access-Control-Allow-Origin", resolve_cors_origin(request))
-                .header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
-                .header("Access-Control-Allow-Headers", "Range")
-                .body(buffer)?)
+                Ok(tauri::http::Response::builder()
+                    .status(200)
+                    .header("Content-Type", get_mime_type(&canonical_path))
+                    .header("Content-Length", file_size.to_string())
+                    .header("Accept-Ranges", "bytes")
+                    .header("Vary", "Origin")
+                    .header("Access-Control-Allow-Origin", resolve_cors_origin(request))
+                    .header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+                    .header("Access-Control-Allow-Headers", "Range")
+                    .body(buffer)?)
+            } else {
+                let cap = PDF_PROTOCOL_NO_RANGE_CAP;
+                let mut buffer = Vec::with_capacity(cap as usize);
+                file.take(cap).read_to_end(&mut buffer)?;
+
+                Ok(tauri::http::Response::builder()
+                    .status(206)
+                    .header("Content-Type", get_mime_type(&canonical_path))
+                    .header("Content-Length", cap.to_string())
+                    .header(
+                        "Content-Range",
+                        format!("bytes 0-{}/{}", cap - 1, file_size),
+                    )
+                    .header("Accept-Ranges", "bytes")
+                    .header("Vary", "Origin")
+                    .header("Access-Control-Allow-Origin", resolve_cors_origin(request))
+                    .header("Access-Control-Allow-Methods", "GET, HEAD, OPTIONS")
+                    .header("Access-Control-Allow-Headers", "Range")
+                    .body(buffer)?)
+            }
         }
     }
 }

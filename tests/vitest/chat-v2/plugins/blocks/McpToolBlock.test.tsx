@@ -11,7 +11,7 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
-import type { Block } from '@/chat-v2/core/types';
+import type { Block } from '@/features/chat/core/types';
 
 // Mock react-i18next
 vi.mock('react-i18next', () => ({
@@ -43,8 +43,8 @@ vi.mock('react-i18next', () => ({
 
 // 导入 block module（触发自动注册）
 // 注意：不要导入 blocks/index（会引入 Tauri-only 依赖，导致 Vitest 环境无法解析）
-import { McpToolBlockComponent } from '@/chat-v2/plugins/blocks/mcpTool';
-import { blockRegistry } from '@/chat-v2/registry';
+import { McpToolBlockComponent } from '@/features/chat/plugins/blocks/mcpTool';
+import { blockRegistry } from '@/features/chat/registry';
 
 // ============================================================================
 // 测试数据
@@ -264,7 +264,7 @@ describe('ImageGenBlock', () => {
   });
 
   it('should be registered in blockRegistry', async () => {
-    await import('@/chat-v2/plugins/blocks/imageGen');
+    await import('@/features/chat/plugins/blocks/imageGen');
     expect(blockRegistry.has('image_gen')).toBe(true);
     const plugin = blockRegistry.get('image_gen');
     expect(plugin?.type).toBe('image_gen');

@@ -95,7 +95,7 @@ vi.mock('@/dstu', () => ({
   createEmpty: vi.fn(),
   trashApi: { restoreItem: vi.fn(), permanentlyDelete: vi.fn(), emptyTrash: vi.fn() },
 }));
-vi.mock('@/chat-v2/context/vfsRefApi', () => ({ updatePathCacheV2: vi.fn() }));
+vi.mock('@/features/chat/context/vfsRefApi', () => ({ updatePathCacheV2: vi.fn() }));
 vi.mock('@/shared/result', () => ({ VfsError: class {}, VfsErrorCode: {}, err: vi.fn(), ok: vi.fn(), reportError: vi.fn() }));
 vi.mock('@/components/learning-hub/components/LearningHubContextMenu', () => ({ LearningHubContextMenu: () => null }));
 vi.mock('@/components/ui/NotionDialog', () => ({

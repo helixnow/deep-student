@@ -11,20 +11,22 @@ import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { MacTopSafeDragZone } from '@/components/layout/MacTopSafeDragZone';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContract';
 import { Input } from '@/components/ui/shad/Input';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { SidebarSheet } from './SidebarSheet';
 import { SidebarDrawer } from './SidebarDrawer';
 import {
-  ChevronLeft,
-  ChevronRight,
-  Search,
+  ArrowsClockwise,
+  CaretLeft,
+  CaretRight,
+  CircleNotch,
+  MagnifyingGlass,
+  PencilSimple,
   Plus,
-  RefreshCw,
-  Loader2,
-  LucideIcon,
+  Trash,
   X,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import type {
   UnifiedSidebarProps,
   UnifiedSidebarContextValue,
@@ -49,7 +51,7 @@ const SIDEBAR_STYLES = {
     header: { height: '40px', padding: 'px-2', gap: 'gap-0.5' },
     search: { iconSize: 'w-3.5 h-3.5', inputPadding: 'pl-8 pr-3 py-1.5 text-sm' },
     button: { padding: 'p-1.5', iconSize: 'w-4 h-4' },
-    item: { padding: 'gap-2.5 px-2 py-2 mx-1', iconSize: 'w-4 h-4', textSize: 'text-sm', indicator: 'w-[3px] h-4' },
+    item: { padding: 'gap-2.5 px-2 py-2 mx-1', iconSize: 'w-4 h-4', textSize: 'text-[13px]', indicator: 'w-[3px] h-4' },
     content: { viewportPadding: 'py-1', spacing: 'space-y-0.5' },
     footer: { padding: 'p-3' },
     actions: { gap: 'gap-0.5', opacity: 'opacity-0 group-hover:opacity-100', btnPadding: 'p-1', iconSize: 'w-3 h-3' },
@@ -66,10 +68,10 @@ const SIDEBAR_STYLES = {
   },
   /** 移动滑动模式样式（紧凑布局） */
   mobileSliding: {
-    header: { height: '40px', padding: 'px-2 py-1.5', gap: 'gap-0.5' },
+    header: { height: 'var(--touch-target-size)', padding: 'px-2 py-1.5', gap: 'gap-0.5' },
     search: { iconSize: 'w-3.5 h-3.5', inputPadding: 'pl-8 pr-3 py-1.5 text-sm' },
     button: { padding: 'p-1.5', iconSize: 'w-4 h-4' },
-    item: { padding: 'gap-2.5 px-3 py-2 mx-1', iconSize: 'w-4 h-4', textSize: 'text-sm', indicator: 'w-[3px] h-4' },
+    item: { padding: 'gap-2.5 px-3 py-2 mx-1', iconSize: 'w-4 h-4', textSize: 'text-[13px]', indicator: 'w-[3px] h-4' },
     content: { viewportPadding: 'py-1', spacing: 'space-y-0.5' },
     footer: { padding: 'p-2' },
     actions: { gap: 'gap-0.5', opacity: 'opacity-100', btnPadding: 'p-1', iconSize: 'w-3 h-3' },
@@ -200,13 +202,13 @@ export const UnifiedSidebar: React.FC<UnifiedSidebarProps> = ({
     const shouldFillContainer = isFullWidth || isDrawerOrSheet;
 
     return (
-      <div
+        <div
         className={cn(
-          'flex flex-col transition-all duration-200 pt-[5px]',
-          'bg-background',
+          'sidebar-shell-surface flex flex-col transition-[width,opacity] duration-200 pt-[5px] font-sidebar-study-ui',
+          'bg-[var(--sidebar-study-surface)]',
           // 全宽模式或 drawer/sheet 模式下，使用 w-full + h-full 填满容器
           shouldFillContainer ? 'w-full h-full overflow-hidden' : 'h-full flex-shrink-0',
-          effectiveMode === 'panel' && !isFullWidth && 'border-r border-border',
+          effectiveMode === 'panel' && !isFullWidth && 'border-r border-[color:var(--sidebar-study-border)]',
           className
         )}
         style={
@@ -302,10 +304,10 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
   // 折叠态：只显示折叠按钮（但 drawer/sheet 模式下显示完整头部）
   if (collapsed && !isMobileMode) {
     return (
-      <div className={cn('flex flex-col', className)}>
+      <div className={cn('sidebar-shell-header flex flex-col', className)}>
         <div className="flex items-center justify-center px-1" style={{ height: '40px' }}>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setCollapsed(false)} className="!p-1.5 hover:bg-accent text-muted-foreground hover:text-foreground" title={expandTitle || t('expand')} aria-label="expand">
-            <ChevronRight className="w-4 h-4" />
+          <NotionButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(false)} className="!p-1.5" title={expandTitle || t('expand')} aria-label="expand">
+            <CaretRight size={16} weight="regular" />
           </NotionButton>
         </div>
       </div>
@@ -313,17 +315,17 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
   }
 
   return (
-    <div className={cn('flex flex-col', className)}>
+    <div className={cn('sidebar-shell-header flex flex-col', className)}>
       {/* 移动端模式：显示关闭按钮行（但移动滑动模式下不显示，因为顶栏已有切换按钮） */}
       {isMobileMode && !isMobileSlidingMode && (
-        <div className="flex items-center gap-3 px-3 py-3 border-b border-border/50">
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={closeMobile} className="!w-9 !h-9 !rounded-full hover:bg-accent/80 active:bg-accent shrink-0" aria-label={t('close')}>
-            <X className="w-5 h-5 text-muted-foreground" />
+        <div className="flex items-center gap-3 px-3 py-3 border-b border-[color:var(--shell-navigation-border)]">
+          <NotionButton variant="utility" size="icon" iconOnly onClick={closeMobile} className={cn(shellIconButtonClassName, 'shrink-0')} aria-label={t('close')}>
+            <X size={20} weight="regular" />
           </NotionButton>
           {title && (
             <div className="flex items-center gap-2 flex-1 min-w-0">
-              {Icon && <Icon className="w-5 h-5 text-primary shrink-0" />}
-              <span className="font-medium text-base truncate">{title}</span>
+              {Icon && <Icon size={20} className="text-primary shrink-0" />}
+              <span className="text-base truncate">{title}</span>
             </div>
           )}
         </div>
@@ -338,30 +340,26 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
           {/* 搜索框或标题 */}
           {showSearch ? (
             <div className="flex-1 relative">
-              <Search className={cn(
+              <MagnifyingGlass className={cn(
                 'absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/60',
                 styles.search.iconSize
-              )} />
-              <input
+              )} weight="regular" />
+              <Input
                 type="text"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder={searchPlaceholder || t('search')}
                 className={cn(
-                  'w-full rounded-md',
-                  'bg-muted/50 border border-transparent',
-                  'placeholder:text-muted-foreground/50',
-                  'focus:outline-none focus:bg-background focus:border-border/50',
-                  'transition-all duration-150',
+                  'sidebar-shell-search w-full rounded-2xl bg-background/70 border border-transparent placeholder:text-muted-foreground/50 focus:outline-none focus:bg-background focus:border-[color:var(--sidebar-study-border)] transition-[background-color,border-color] duration-150',
                   styles.search.inputPadding
                 )}
-              />
+/>
             </div>
           ) : !isMobileMode && title ? (
             // 桌面端非移动模式下显示标题（移动端标题在上面的关闭按钮行）
             <div className="flex items-center gap-2 flex-1">
-              {Icon && <Icon className="w-4 h-4 text-primary" />}
-              <span className="font-medium text-sm">{title}</span>
+              {Icon && <Icon size={16} className="text-primary" />}
+              <span className="text-sm">{title}</span>
             </div>
           ) : (
             <div className="flex-1" />
@@ -372,14 +370,14 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
           {extraActions}
 
           {showRefresh && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={onRefreshClick} disabled={isRefreshing} className={cn('hover:bg-accent text-muted-foreground hover:text-foreground disabled:opacity-50', styles.button.padding)} title={refreshTitle || t('refresh')} aria-label="refresh">
-              <RefreshCw className={cn(styles.button.iconSize, isRefreshing && 'animate-spin')} />
+            <NotionButton variant="utility" size="icon" iconOnly onClick={onRefreshClick} disabled={isRefreshing} className={styles.button.padding} title={refreshTitle || t('refresh')} aria-label="refresh">
+              <ArrowsClockwise className={cn(styles.button.iconSize, isRefreshing && 'animate-spin')} weight="regular" />
             </NotionButton>
           )}
 
           {showCreate && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={onCreateClick} className={cn('hover:bg-accent text-muted-foreground hover:text-foreground', styles.button.padding)} title={createTitle || t('create')} aria-label="create">
-              <Plus className={styles.button.iconSize} />
+            <NotionButton variant="utility" size="icon" iconOnly onClick={onCreateClick} className={styles.button.padding} title={createTitle || t('create')} aria-label="create">
+              <Plus className={styles.button.iconSize} weight="regular" />
             </NotionButton>
           )}
 
@@ -387,8 +385,8 @@ export const UnifiedSidebarHeader: React.FC<UnifiedSidebarHeaderProps> = ({
 
           {/* 只在 panel 模式下显示折叠按钮，但在移动滑动模式下不显示（使用关闭按钮代替） */}
           {showCollapse && displayMode === 'panel' && !isMobileSlidingMode && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setCollapsed(true)} className="!p-1.5 hover:bg-accent text-muted-foreground hover:text-foreground" title={collapseTitle || t('collapse')} aria-label="collapse">
-              <ChevronLeft className="w-4 h-4" />
+            <NotionButton variant="nav" size="icon" iconOnly onClick={() => setCollapsed(true)} className="!p-1.5" title={collapseTitle || t('collapse')} aria-label="collapse">
+              <CaretLeft size={16} weight="regular" />
             </NotionButton>
           )}
         </div>
@@ -434,7 +432,7 @@ export const UnifiedSidebarContent: React.FC<UnifiedSidebarContentProps> = ({
   if (isLoading) {
     return (
       <div className={cn('flex items-center justify-center', isMobileMode ? 'py-12' : 'py-8')}>
-        <Loader2 className={cn('animate-spin text-muted-foreground', isMobileMode ? 'w-6 h-6' : 'w-5 h-5')} />
+        <CircleNotch className={cn('animate-spin text-muted-foreground', isMobileMode ? 'w-6 h-6' : 'w-5 h-5')} weight="regular" />
       </div>
     );
   }
@@ -555,14 +553,14 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
         <div
           className={cn('rounded-full flex-shrink-0', dotSize)}
           style={{ backgroundColor: colorDot }}
-        />
+/>
       );
     }
     if (icon) {
       if (React.isValidElement(icon)) {
         return icon;
       }
-      const IconComponent = icon as LucideIcon;
+      const IconComponent = icon as React.ElementType;
       return (
         <IconComponent
           className={cn(
@@ -570,7 +568,7 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
             styles.item.iconSize,
             isSelected ? 'text-foreground' : 'text-muted-foreground'
           )}
-        />
+/>
       );
     }
     return null;
@@ -583,12 +581,13 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
       role="button"
       tabIndex={isEditing ? -1 : 0}
       aria-pressed={isSelected}
+      data-selected={isSelected}
       className={cn(
-        'group relative flex items-center rounded-md cursor-pointer transition-colors duration-150',
+        'sidebar-shell-item group relative flex items-center rounded-2xl cursor-pointer transition-[background-color,color,box-shadow] duration-150',
         styles.item.padding,
         isSelected
-          ? 'bg-primary/15 text-foreground ring-1 ring-primary/20'
-          : 'text-muted-foreground hover:text-foreground hover:bg-foreground/[0.06]',
+          ? 'bg-[var(--sidebar-study-selected)] text-foreground'
+          : 'text-foreground/80 hover:text-foreground hover:bg-[var(--sidebar-study-hover)]',
         className
       )}
     >
@@ -621,7 +620,7 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
                 className={cn(
                   'line-clamp-2 break-words',
                   styles.item.textSize,
-                  isSelected ? 'font-bold' : 'font-semibold'
+                  isSelected ? 'font-normal hover:font-normal' : 'font-normal hover:font-normal'
                 )}
               >
                 {title}
@@ -653,19 +652,13 @@ export const UnifiedSidebarItem: React.FC<UnifiedSidebarItemProps> = ({
         <div className={cn('flex transition-opacity', styles.actions.gap, styles.actions.opacity)}>
           {extraActions}
           {showEdit && onEditClick && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={onEditClick} className={cn('hover:bg-muted text-muted-foreground hover:text-foreground', styles.actions.btnPadding)} aria-label="edit">
-              <svg className={styles.actions.iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7" />
-                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z" />
-              </svg>
+            <NotionButton variant="utility" size="icon" iconOnly onClick={onEditClick} className={styles.actions.btnPadding} aria-label="edit">
+              <PencilSimple className={styles.actions.iconSize} weight="regular" />
             </NotionButton>
           )}
           {showDelete && onDeleteClick && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={onDeleteClick} className={cn('hover:bg-destructive/20 text-muted-foreground hover:text-destructive', styles.actions.btnPadding)} aria-label="delete">
-              <svg className={styles.actions.iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                <polyline points="3,6 5,6 21,6" />
-                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
-              </svg>
+            <NotionButton variant="utility" size="icon" iconOnly onClick={onDeleteClick} className={styles.actions.btnPadding} aria-label="delete">
+              <Trash className={styles.actions.iconSize} weight="regular" />
             </NotionButton>
           )}
         </div>
@@ -694,7 +687,7 @@ export const UnifiedSidebarFooter: React.FC<UnifiedSidebarFooterProps> = ({
   }
 
   return (
-    <div className={cn('border-t border-border', styles.footer.padding, className)}>
+    <div className={cn('sidebar-shell-footer border-t border-[color:var(--shell-navigation-border)]', styles.footer.padding, className)}>
       {children}
     </div>
   );

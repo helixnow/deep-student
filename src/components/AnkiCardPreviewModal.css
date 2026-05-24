@@ -24,7 +24,7 @@
 .anki-preview-modal {
   background: hsl(var(--card));
   border-radius: 12px;
-  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.2);
+  box-shadow: 0 10px 40px hsl(var(--shadow-base) / 0.2);
   max-width: 800px;
   width: 90%; /* 限制宽度 */
   /* 减去标题栏高度与 overlay 内边距，避免被顶部压缩 */
@@ -54,7 +54,7 @@
   justify-content: space-between;
   align-items: center;
   padding: 20px;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid hsl(var(--border));
 }
 
 .preview-modal-header .header-left {
@@ -110,14 +110,14 @@
 
 .side-button:hover {
   background: hsl(var(--card));
-  border-color: #1976d2;
-  color: #1976d2;
+  border-color: hsl(var(--primary));
+  color: hsl(var(--primary));
 }
 
 .side-button.active {
-  background: #1976d2;
-  color: #fff;
-  border-color: #1976d2;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+  border-color: hsl(var(--primary));
 }
 
 /* 预览内容包装器 */
@@ -177,7 +177,7 @@
 /* 卡片信息 */
 .preview-card-info {
   padding: 20px;
-  border-top: 1px solid #eee;
+  border-top: 1px solid hsl(var(--border));
   background: hsl(var(--card));
 }
 
@@ -205,8 +205,8 @@
 }
 
 .tag-badge {
-  background: #e3f2fd;
-  color: #1976d2;
+  background: hsl(var(--primary) / 0.1);
+  color: hsl(var(--primary));
   padding: 4px 10px;
   border-radius: 12px;
   font-size: 12px;
@@ -216,8 +216,8 @@
 }
 
 .tag-badge.tag-green {
-  background: #e8f5e9;
-  color: #2e7d32;
+  background: hsl(var(--success) / 0.1);
+  color: hsl(var(--success));
 }
 
 .template-name {
@@ -290,8 +290,8 @@
 }
 
 .edit-button {
-  background: #1976d2;
-  color: white;
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
   border: none;
   padding: 8px 16px;
   border-radius: 8px;
@@ -304,15 +304,15 @@
 }
 
 .edit-button:hover {
-  background: #1565c0;
+  background: hsl(var(--primary) / 0.9);
 }
 
 .edit-button.save {
-  background: #2e7d32;
+  background: hsl(var(--success));
 }
 
 .edit-button.save:hover {
-  background: #1b5e20;
+  background: hsl(var(--success) / 0.85);
 }
 
 .preview-edit-container {
@@ -337,7 +337,7 @@
 .field-edit-input {
   width: 100%;
   padding: 10px;
-  border: 2px solid #e0e0e0;
+  border: 2px solid hsl(var(--border));
   border-radius: 6px;
   font-size: 14px;
   font-family: inherit;
@@ -347,14 +347,14 @@
 
 .field-edit-input:focus {
   outline: none;
-  border-color: #1976d2;
+  border-color: hsl(var(--primary));
 }
 
 /* JSON编辑器样式 */
 .json-edit-input {
   width: 100%;
   padding: 12px;
-  border: 2px solid #e0e0e0;
+  border: 2px solid hsl(var(--border));
   border-radius: 6px;
   font-size: 12px;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
@@ -369,26 +369,26 @@
 
 .json-edit-input:focus {
   outline: none;
-  border-color: #1976d2;
+  border-color: hsl(var(--primary));
   background: hsl(var(--card));
 }
 
 .json-edit-input.json-error {
-  border-color: #d32f2f;
-  background: #ffebee;
+  border-color: hsl(var(--destructive));
+  background: hsl(var(--destructive) / 0.05);
 }
 
 .json-edit-input.json-valid {
-  border-color: #2e7d32;
+  border-color: hsl(var(--success));
 }
 
 .json-error-message {
   margin-top: 8px;
   padding: 8px 12px;
-  background: #ffebee;
-  border: 1px solid #d32f2f;
+  background: hsl(var(--destructive) / 0.05);
+  border: 1px solid hsl(var(--destructive));
   border-radius: 4px;
-  color: #d32f2f;
+  color: hsl(var(--destructive));
   font-size: 12px;
   font-family: 'Monaco', 'Menlo', 'Ubuntu Mono', monospace;
 }
@@ -396,10 +396,10 @@
 .json-success-message {
   margin-top: 8px;
   padding: 8px 12px;
-  background: #e8f5e9;
-  border: 1px solid #2e7d32;
+  background: hsl(var(--success) / 0.08);
+  border: 1px solid hsl(var(--success));
   border-radius: 4px;
-  color: #2e7d32;
+  color: hsl(var(--success));
   font-size: 12px;
 }
 
@@ -444,12 +444,12 @@
 
 .tag-input:focus {
   outline: none;
-  border-color: #1976d2;
+  border-color: hsl(var(--primary));
 }
 
 .tag-add-button {
-  background: #2e7d32;
-  color: white;
+  background: hsl(var(--success));
+  color: hsl(var(--primary-foreground));
   border: none;
   padding: 4px 8px;
   border-radius: 6px;
@@ -460,7 +460,7 @@
 }
 
 .tag-add-button:hover {
-  background: #1b5e20;
+  background: hsl(var(--success) / 0.85);
 }
 
 /* 响应式设计 */

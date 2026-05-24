@@ -11,7 +11,7 @@
 // 当前禁用。设为 true 可启用多模态向量化索引（需配合 VL-Embedding 模型）。
 // 相关 UI 和逻辑通过此开关统一控制。
 // ============================================================================
-export const MULTIMODAL_INDEX_ENABLED = false;
+export const MULTIMODAL_INDEX_ENABLED = true;
 
 import { invoke } from '@tauri-apps/api/core';
 import {

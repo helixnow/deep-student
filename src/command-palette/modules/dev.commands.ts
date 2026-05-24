@@ -8,13 +8,13 @@ import {
   Bug,
   Database,
   Terminal,
-  FileJson,
+  FileJs,
   Cpu,
-  RefreshCw,
-  Trash2,
+  ArrowClockwise,
+  Trash,
   Eye,
   Code,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import type { Command } from '../registry/types';
 import { unifiedAlert, unifiedConfirm } from '@/utils/unifiedDialogs';
 
@@ -47,11 +47,23 @@ export const devCommands: Command[] = [
     priority: 99,
     execute: async () => {
       try {
-        const { invoke } = await import('@tauri-apps/api/core');
-        await invoke('open_devtools');
+        const { WebviewWindow } = await import('@tauri-apps/api/window');
+        const webview: any = WebviewWindow.getCurrent();
+        if (await (webview.isDevtoolsOpen?.() ?? Promise.resolve(false))) {
+          await webview.closeDevtools?.();
+        } else {
+          await webview.openDevtools?.();
+        }
       } catch {
-        // Web fallback - F12 会被浏览器捕获
-        console.log(`[Dev] ${i18next.t('command_palette:notifications.dev_open_devtools_hint', 'Please press F12 to open DevTools in the browser')}`);
+        // Fallback: try toggleDevtools
+        try {
+          const { WebviewWindow } = await import('@tauri-apps/api/window');
+          const webview: any = WebviewWindow.getCurrent();
+          await webview.toggleDevtools?.();
+        } catch {
+          // Web fallback - F12 会被浏览器捕获
+          console.log(`[Dev] ${i18next.t('command_palette:notifications.dev_open_devtools_hint', 'Please press F12 to open DevTools in the browser')}`);
+        }
       }
     },
   },
@@ -72,7 +84,7 @@ export const devCommands: Command[] = [
     get name() { return i18next.t('command_palette:commands.dev.export-state', 'Export App State'); },
     get description() { return i18next.t('command_palette:descriptions.dev.export-state', 'Export current app state as JSON'); },
     category: 'dev',
-    icon: FileJson,
+    icon: FileJs,
     get keywords() { return kw('dev.export-state'); },
     priority: 80,
     execute: () => {
@@ -96,7 +108,7 @@ export const devCommands: Command[] = [
     get name() { return i18next.t('command_palette:commands.dev.reload-app', 'Force Reload App'); },
     get description() { return i18next.t('command_palette:descriptions.dev.reload-app', 'Force reload the application'); },
     category: 'dev',
-    icon: RefreshCw,
+    icon: ArrowClockwise,
     get keywords() { return kw('dev.reload-app'); },
     priority: 60,
     execute: () => {
@@ -108,7 +120,7 @@ export const devCommands: Command[] = [
     get name() { return i18next.t('command_palette:commands.dev.clear-cache', 'Clear Cache'); },
     get description() { return i18next.t('command_palette:descriptions.dev.clear-cache', 'Clear localStorage and IndexedDB'); },
     category: 'dev',
-    icon: Trash2,
+    icon: Trash,
     get keywords() { return kw('dev.clear-cache'); },
     priority: 50,
     execute: async () => {

@@ -8,7 +8,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, AlertCircle, File, Download, Info, RefreshCw } from 'lucide-react';
+import { CircleNotch, WarningCircle, File, Download, Info, ArrowClockwise } from '@phosphor-icons/react';
 import type { EditorProps, CreateEditorProps } from '../editorTypes';
 import { pathUtils } from '../utils/pathUtils';
 import { dstu } from '../api';
@@ -137,7 +137,7 @@ export const FileViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
   if (isLoading) {
     return (
       <div className={cn('flex items-center justify-center h-full py-8', props.className)}>
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        <CircleNotch size={24} className="animate-spin text-muted-foreground" />
         <span className="ml-2 text-muted-foreground">{t('dstu:preview.loading')}</span>
       </div>
     );
@@ -148,19 +148,19 @@ export const FileViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
     const onClose = 'onClose' in props ? props.onClose : undefined;
     return (
       <div className={cn('flex flex-col items-center justify-center h-full py-8 gap-4', props.className)}>
-        <AlertCircle className="w-8 h-8 text-destructive" />
+        <WarningCircle size={32} className="text-destructive" />
         <span className="text-destructive text-center max-w-md">{error}</span>
         <div className="flex gap-2">
           <button
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
             onClick={() => void loadFileInfo()}
           >
-            <RefreshCw className="w-4 h-4" />
+            <ArrowClockwise size={16} />
             {t('common:actions.retry')}
           </button>
           {onClose && (
             <button
-              className="px-4 py-2 border rounded-md hover:bg-muted"
+              className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)]"
               onClick={onClose}
             >
               {t('common:actions.close')}
@@ -177,12 +177,12 @@ export const FileViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
       {/* 工具栏 */}
       <div className="flex-shrink-0 flex items-center justify-between px-4 py-2 bg-muted/50 border-b">
         <div className="flex items-center gap-2">
-          <File className="w-5 h-5 text-muted-foreground" />
+          <File size={20} className="text-muted-foreground" />
           <span className="text-sm font-medium">{fileInfo?.name}</span>
         </div>
         {'onClose' in props && props.onClose && (
           <button
-            className="px-3 py-1 text-sm border rounded-md hover:bg-muted"
+            className="px-3 py-1 text-sm border rounded-md hover:bg-[var(--interactive-hover)]"
             onClick={props.onClose}
           >
             {t('common:actions.close')}
@@ -193,7 +193,7 @@ export const FileViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
       {/* 文件信息 */}
       <div className="flex-1 flex items-center justify-center bg-muted/20 p-4">
         <div className="text-center max-w-md">
-          <File className="w-20 h-20 mx-auto mb-4 text-muted-foreground/50" />
+          <File size={80} className="mx-auto mb-4 text-muted-foreground/50" />
           <h3 className="text-lg font-medium mb-2">{fileInfo?.name}</h3>
           <p className="text-muted-foreground mb-4">
             {t('dstu:preview.noPreview')}
@@ -202,22 +202,22 @@ export const FileViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
           {/* 文件详情 */}
           <div className="text-left bg-background border rounded-lg p-4 space-y-2">
             <div className="flex items-center gap-2 text-sm">
-              <Info className="w-4 h-4 text-muted-foreground" />
+              <Info size={16} className="text-muted-foreground" />
               <span className="text-muted-foreground">{t('common:type')}:</span>
               <span>{fileInfo?.type}</span>
             </div>
             <div className="flex items-center gap-2 text-sm">
-              <Info className="w-4 h-4 text-muted-foreground" />
+              <Info size={16} className="text-muted-foreground" />
               <span className="text-muted-foreground">{t('common:size')}:</span>
               <span>{fileInfo ? formatFileSize(fileInfo.size) : '-'}</span>
             </div>
             <div className="flex items-center gap-2 text-sm">
-              <Info className="w-4 h-4 text-muted-foreground" />
+              <Info size={16} className="text-muted-foreground" />
               <span className="text-muted-foreground">{t('dstu:sort.createdAt')}:</span>
               <span>{fileInfo ? formatDate(fileInfo.createdAt) : '-'}</span>
             </div>
             <div className="flex items-center gap-2 text-sm">
-              <Info className="w-4 h-4 text-muted-foreground" />
+              <Info size={16} className="text-muted-foreground" />
               <span className="text-muted-foreground">{t('dstu:sort.updatedAt')}:</span>
               <span>{fileInfo ? formatDate(fileInfo.updatedAt) : '-'}</span>
             </div>
@@ -230,9 +230,9 @@ export const FileViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
             disabled={isDownloading || !fileInfo?.sourcePath}
           >
             {isDownloading ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <CircleNotch size={16} className="animate-spin" />
             ) : (
-              <Download className="w-4 h-4" />
+              <Download size={16} />
             )}
             {isDownloading ? t('common:downloading') : t('common:actions.download')}
           </button>

@@ -79,11 +79,11 @@ impl RequestAdapter for GenericOpenAIAdapter {
     }
 
     fn label(&self) -> &'static str {
-        "通用模型"
+        "OpenAI Compatible"
     }
 
     fn description(&self) -> &'static str {
-        "适用于大多数 OpenAI 兼容 API（如 GPT、通义千问等）"
+        "适用于大多数 OpenAI 兼容模型参数格式；具体请求协议由 OpenAI 协议决定"
     }
 
     fn apply_reasoning_config(

@@ -10,7 +10,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { Z_INDEX } from '@/config/zIndex';
-import { Upload, Settings } from 'lucide-react';
+import { Upload, Gear } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import type { ExportLevel } from '../types';
 
@@ -191,7 +191,7 @@ export function ExportPanel({
               margin: 0,
             }}
           >
-            <Settings size={18} />
+            <Gear size={18} />
             {t('anki_connect_title')}
           </h5>
 

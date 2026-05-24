@@ -16,8 +16,10 @@ import { Slot } from '@radix-ui/react-slot';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { cn } from '../../../lib/utils';
-import { ChevronRight, Search, Check } from 'lucide-react';
+import { Check as PhosphorCheck, CaretRight, MagnifyingGlass } from '@phosphor-icons/react';
 import { CustomScrollArea } from '../../custom-scroll-area';
+import { useOverlayCoordinator } from '../../shared/OverlayCoordinator';
+import { useNestedOverlayZ } from '../../shared/OverlayLayer';
 import './AppMenu.css';
 
 // ============ Context ============
@@ -27,6 +29,7 @@ interface AppMenuContextValue {
   setOpen: (open: boolean) => void;
   triggerRef: React.RefObject<HTMLDivElement>;
   contentRef: React.RefObject<HTMLDivElement>;
+  menuId: string;
   mode: 'dropdown' | 'context';
   position: { x: number; y: number };
   setPosition: (pos: { x: number; y: number }) => void;
@@ -43,21 +46,28 @@ export interface AppMenuProps {
   onOpenChange?: (open: boolean) => void;
   /** 菜单模式：dropdown (下拉) 或 context (右键) */
   mode?: 'dropdown' | 'context';
+  /** 根容器类名 */
+  className?: string;
   children: React.ReactNode;
 }
 
-export function AppMenu({ open, onOpenChange, mode = 'dropdown', children }: AppMenuProps) {
+export function AppMenu({ open, onOpenChange, mode = 'dropdown', className, children }: AppMenuProps) {
   const isControlled = open !== undefined;
   const [internalOpen, setInternalOpen] = React.useState(false);
   const [position, setPosition] = React.useState({ x: 0, y: 0 });
   const actualOpen = isControlled ? !!open : internalOpen;
+  const menuId = React.useId();
+  const { dismissTooltips, registerInteractiveOverlay } = useOverlayCoordinator();
 
   const setOpen = React.useCallback(
     (next: boolean) => {
+      if (next) {
+        dismissTooltips();
+      }
       if (!isControlled) setInternalOpen(next);
       onOpenChange?.(next);
     },
-    [isControlled, onOpenChange]
+    [dismissTooltips, isControlled, onOpenChange]
   );
 
   const handleKeyDown = React.useCallback(
@@ -74,8 +84,15 @@ export function AppMenu({ open, onOpenChange, mode = 'dropdown', children }: App
 
   React.useEffect(() => {
     if (!actualOpen) return;
+    return registerInteractiveOverlay();
+  }, [actualOpen, registerInteractiveOverlay]);
+
+  React.useEffect(() => {
+    if (!actualOpen) return;
     const handleClick = (event: MouseEvent) => {
       const target = event.target as Node;
+      const targetElement = target instanceof Element ? target : null;
+      if (targetElement?.closest(`[data-app-menu-id="${menuId}"]`)) return;
       if (containerRef.current && containerRef.current.contains(target)) return;
       if (contentRef.current && contentRef.current.contains(target)) return;
       setOpen(false);
@@ -89,8 +106,8 @@ export function AppMenu({ open, onOpenChange, mode = 'dropdown', children }: App
   }, [actualOpen, handleKeyDown, setOpen]);
 
   return (
-    <AppMenuContext.Provider value={{ open: actualOpen, setOpen, triggerRef: containerRef, contentRef, mode, position, setPosition }}>
-      <div ref={containerRef} className="app-menu-root relative inline-flex">
+    <AppMenuContext.Provider value={{ open: actualOpen, setOpen, triggerRef: containerRef, contentRef, menuId, mode, position, setPosition }}>
+      <div ref={containerRef} className={cn('app-menu-root relative inline-flex', className)}>
         {children}
       </div>
     </AppMenuContext.Provider>
@@ -99,24 +116,37 @@ export function AppMenu({ open, onOpenChange, mode = 'dropdown', children }: App
 
 // ============ Trigger ============
 
-export interface AppMenuTriggerProps {
+export interface AppMenuTriggerProps extends React.HTMLAttributes<HTMLElement> {
   asChild?: boolean;
   children: React.ReactNode;
 }
 
-export function AppMenuTrigger({ asChild, children }: AppMenuTriggerProps) {
+export const AppMenuTrigger = React.forwardRef<HTMLElement, AppMenuTriggerProps>(
+  ({ asChild, children, className, onClick, onContextMenu, ...rest }, ref) => {
   const ctx = React.useContext(AppMenuContext);
-  const Comp = asChild ? Slot : 'button';
+  const Comp = (asChild ? Slot : 'button') as React.ElementType;
   
   if (!ctx) return <>{children}</>;
 
   const handleClick = (e: React.MouseEvent) => {
+    onClick?.(e as React.MouseEvent<HTMLElement>);
+    if (e.defaultPrevented) return;
+
     if (ctx.mode === 'dropdown') {
       ctx.setOpen(!ctx.open);
+      return;
     }
+
+    // Context menus should only open from the native context-menu gesture.
+    // A regular left click can still bubble to the child trigger for selection,
+    // but it should never leave the menu open or reopen it.
+    ctx.setOpen(false);
   };
 
   const handleContextMenu = (e: React.MouseEvent) => {
+    onContextMenu?.(e as React.MouseEvent<HTMLElement>);
+    if (e.defaultPrevented && ctx.mode !== 'context') return;
+
     if (ctx.mode === 'context') {
       e.preventDefault();
       ctx.setPosition({ x: e.clientX, y: e.clientY });
@@ -126,17 +156,21 @@ export function AppMenuTrigger({ asChild, children }: AppMenuTriggerProps) {
 
   return (
     <Comp
+      ref={ref}
       type={asChild ? undefined : 'button'}
       aria-haspopup="menu"
       aria-expanded={ctx.open}
       onClick={handleClick}
       onContextMenu={handleContextMenu}
-      className="app-menu-trigger"
+      className={cn('app-menu-trigger', className)}
+      {...rest}
     >
       {children}
     </Comp>
   );
-}
+  }
+);
+AppMenuTrigger.displayName = 'AppMenuTrigger';
 
 // ============ Content ============
 
@@ -171,12 +205,19 @@ export function AppMenuContent({
 }: AppMenuContentProps) {
   const ctx = React.useContext(AppMenuContext);
   const { t } = useTranslation('app_menu');
+  // 嵌套层级感知：从最近的 <OverlayLayerProvider> 读取基准 z-index 并抬升一档；
+  // 没有 Provider 时退化为默认 popover 档（行为与未引入 Provider 前一致）。
+  const nestedZ = useNestedOverlayZ();
   const [position, setPosition] = React.useState<{ top: number; left: number; origin: 'top' | 'bottom' }>({ top: 0, left: 0, origin: 'top' });
   const [internalSearchValue, setInternalSearchValue] = React.useState('');
   const fallbackContentRef = React.useRef<HTMLDivElement | null>(null);
   const contentRef = ctx?.contentRef ?? fallbackContentRef;
+  const portalContainerRef = React.useRef<HTMLElement | null>(null);
   const searchInputRef = React.useRef<HTMLInputElement>(null);
   const isOpen = !!ctx?.open;
+  const [shouldRender, setShouldRender] = React.useState(isOpen);
+  const [isClosing, setIsClosing] = React.useState(false);
+  const closeTimeoutRef = React.useRef<number | null>(null);
   const resolvedSearchPlaceholder = searchPlaceholder || t('app_menu.search.placeholder');
 
   const actualSearchValue = searchValue !== undefined ? searchValue : internalSearchValue;
@@ -188,9 +229,44 @@ export function AppMenuContent({
     }
   };
 
+  React.useEffect(() => {
+    if (closeTimeoutRef.current !== null) {
+      window.clearTimeout(closeTimeoutRef.current);
+      closeTimeoutRef.current = null;
+    }
+
+    if (isOpen) {
+      setShouldRender(true);
+      setIsClosing(false);
+      return;
+    }
+
+    if (!shouldRender) return;
+
+    setIsClosing(true);
+    const closeMs = parseFloat(
+      window.getComputedStyle(document.documentElement).getPropertyValue('--dropdown-close-dur')
+    ) || 150;
+
+    closeTimeoutRef.current = window.setTimeout(() => {
+      setShouldRender(false);
+      setIsClosing(false);
+      closeTimeoutRef.current = null;
+    }, closeMs);
+
+    return () => {
+      if (closeTimeoutRef.current !== null) {
+        window.clearTimeout(closeTimeoutRef.current);
+        closeTimeoutRef.current = null;
+      }
+    };
+  }, [isOpen, shouldRender]);
+
   React.useLayoutEffect(() => {
     if (typeof document === 'undefined') return;
-    if (!isOpen) return;
+    const triggerEl = ctx?.triggerRef.current;
+    portalContainerRef.current = triggerEl?.closest('[data-overlay-container="true"]') as HTMLElement | null;
+    if (!shouldRender) return;
     
     const updatePosition = () => {
       const contentEl = contentRef.current;
@@ -239,9 +315,14 @@ export function AppMenuContent({
       const maxTop = window.innerHeight - contentRect.height - 8;
       top = Math.min(Math.max(8, top), maxTop < 8 ? 8 : maxTop);
 
-      setPosition({ top, left, origin });
+      setPosition((prev) => (
+        prev.top === top && prev.left === left && prev.origin === origin
+          ? prev
+          : { top, left, origin }
+      ));
     };
 
+    updatePosition();
     const rafId = requestAnimationFrame(updatePosition);
     window.addEventListener('resize', updatePosition);
     window.addEventListener('scroll', updatePosition, true);
@@ -250,7 +331,7 @@ export function AppMenuContent({
       window.removeEventListener('resize', updatePosition);
       window.removeEventListener('scroll', updatePosition, true);
     };
-  }, [align, ctx, isOpen]);
+  }, [align, ctx, shouldRender]);
 
   // 自动聚焦搜索框
   React.useEffect(() => {
@@ -259,17 +340,20 @@ export function AppMenuContent({
     }
   }, [isOpen, showSearch]);
 
-  if (!ctx || !isOpen) return null;
+  if (!ctx || !shouldRender) return null;
   if (typeof document === 'undefined') return null;
 
   return createPortal(
     <div
       ref={contentRef}
       role="menu"
+      data-app-menu-id={ctx.menuId}
       tabIndex={-1}
       className={cn(
         'app-menu-content',
         position.origin === 'bottom' ? 'app-menu-origin-bottom' : 'app-menu-origin-top',
+        isOpen && 'app-menu-open',
+        isClosing && 'app-menu-closing',
         className
       )}
       style={{
@@ -277,6 +361,10 @@ export function AppMenuContent({
         top: position.top,
         left: position.left,
         width: width,
+        // 嵌套层级感知：仅当外层包裹了 <OverlayLayerProvider> 时才覆盖 z-index；
+        // 否则保持 CSS（.app-menu-content 默认 110）行为不变，避免污染既有调用点。
+        // 调用方传入的 style.zIndex 优先级最高（兼容显式覆盖）。
+        ...(nestedZ !== null ? { zIndex: nestedZ } : {}),
         ...(maxHeight ? { maxHeight, display: 'flex', flexDirection: 'column' as const, overflow: 'hidden' } : {}),
         ...style,
       }}
@@ -284,7 +372,7 @@ export function AppMenuContent({
     >
       {showSearch && (
         <div className="app-menu-search" style={{ flexShrink: 0 }}>
-          <Search className="app-menu-search-icon" />
+          <MagnifyingGlass className="app-menu-search-icon" />
           <input
             ref={searchInputRef}
             type="text"
@@ -293,7 +381,7 @@ export function AppMenuContent({
             value={actualSearchValue}
             onChange={(e) => handleSearchChange(e.target.value)}
             onClick={(e) => e.stopPropagation()}
-          />
+/>
         </div>
       )}
       {maxHeight ? (
@@ -304,7 +392,7 @@ export function AppMenuContent({
         children
       )}
     </div>,
-    document.body
+    portalContainerRef.current ?? document.body
   );
 }
 
@@ -365,12 +453,12 @@ export const AppMenuItem = React.forwardRef<HTMLButtonElement, AppMenuItemProps>
         {...rest}
       >
         {icon && <span className="app-menu-item-icon">{icon}</span>}
+        <span className="app-menu-item-content">{children}</span>
         {checked !== undefined && (
           <span className="app-menu-item-check">
-            {checked && <Check className="w-4 h-4" />}
+            {checked && <PhosphorCheck size={16} weight="bold" />}
           </span>
         )}
-        <span className="app-menu-item-content">{children}</span>
         {suffix && <span className="app-menu-item-suffix">{suffix}</span>}
         {shortcut && <span className="app-menu-item-shortcut">{shortcut}</span>}
       </button>
@@ -383,24 +471,74 @@ AppMenuItem.displayName = 'AppMenuItem';
 
 export interface AppMenuSubProps {
   children: React.ReactNode;
+  openOnClick?: boolean;
 }
 
 interface AppMenuSubContextValue {
   open: boolean;
   setOpen: (open: boolean) => void;
+  triggerRef: React.RefObject<HTMLDivElement>;
+  contentRef: React.RefObject<HTMLDivElement>;
+  openOnClick: boolean;
+  openSub: () => void;
+  closeSub: () => void;
+  toggleSub: () => void;
+  scheduleClose: () => void;
 }
 
 const AppMenuSubContext = React.createContext<AppMenuSubContextValue | null>(null);
 
-export function AppMenuSub({ children }: AppMenuSubProps) {
+export function AppMenuSub({ children, openOnClick = false }: AppMenuSubProps) {
   const [open, setOpen] = React.useState(false);
+  const triggerRef = React.useRef<HTMLDivElement>(null);
+  const contentRef = React.useRef<HTMLDivElement>(null);
+  const closeTimerRef = React.useRef<number | null>(null);
+
+  const clearCloseTimer = React.useCallback(() => {
+    if (closeTimerRef.current !== null) {
+      window.clearTimeout(closeTimerRef.current);
+      closeTimerRef.current = null;
+    }
+  }, []);
+
+  const openSub = React.useCallback(() => {
+    clearCloseTimer();
+    setOpen(true);
+  }, [clearCloseTimer]);
+
+  const closeSub = React.useCallback(() => {
+    clearCloseTimer();
+    setOpen(false);
+  }, [clearCloseTimer]);
+
+  const toggleSub = React.useCallback(() => {
+    clearCloseTimer();
+    setOpen((prev) => !prev);
+  }, [clearCloseTimer]);
+
+  const scheduleClose = React.useCallback(() => {
+    if (openOnClick) return;
+    clearCloseTimer();
+    closeTimerRef.current = window.setTimeout(() => {
+      setOpen(false);
+      closeTimerRef.current = null;
+    }, 120);
+  }, [clearCloseTimer, openOnClick]);
+
+  React.useEffect(() => {
+    return () => {
+      clearCloseTimer();
+    };
+  }, [clearCloseTimer]);
   
   return (
-    <AppMenuSubContext.Provider value={{ open, setOpen }}>
+    <AppMenuSubContext.Provider value={{ open, setOpen, triggerRef, contentRef, openOnClick, openSub, closeSub, toggleSub, scheduleClose }}>
       <div 
         className="app-menu-sub"
-        onMouseEnter={() => setOpen(true)}
-        onMouseLeave={() => setOpen(false)}
+        onMouseEnter={openOnClick ? undefined : openSub}
+        onMouseLeave={openOnClick ? undefined : scheduleClose}
+        onFocus={openOnClick ? undefined : openSub}
+        onBlur={openOnClick ? undefined : scheduleClose}
       >
         {children}
       </div>
@@ -413,11 +551,12 @@ export interface AppMenuSubTriggerProps extends React.HTMLAttributes<HTMLDivElem
   disabled?: boolean;
 }
 
-export function AppMenuSubTrigger({ icon, children, disabled, className, ...rest }: AppMenuSubTriggerProps) {
+export function AppMenuSubTrigger({ icon, children, disabled, className, onClick, onKeyDown, onMouseEnter, ...rest }: AppMenuSubTriggerProps) {
   const subCtx = React.useContext(AppMenuSubContext);
   
   return (
     <div
+      ref={subCtx?.triggerRef}
       role="menuitem"
       aria-haspopup="menu"
       aria-expanded={subCtx?.open}
@@ -426,36 +565,117 @@ export function AppMenuSubTrigger({ icon, children, disabled, className, ...rest
         disabled && 'app-menu-item-disabled',
         className
       )}
+      onMouseEnter={(event) => {
+        onMouseEnter?.(event);
+        if (event.defaultPrevented) return;
+        if (!disabled) {
+          if (subCtx?.openOnClick) return;
+          subCtx?.openSub();
+        }
+      }}
+      onClick={(event) => {
+        onClick?.(event);
+        if (event.defaultPrevented || disabled || !subCtx?.openOnClick) return;
+        subCtx.toggleSub();
+      }}
+      onKeyDown={(event) => {
+        onKeyDown?.(event);
+        if (event.defaultPrevented || disabled || !subCtx?.openOnClick) return;
+        if (event.key === 'Enter' || event.key === ' ') {
+          event.preventDefault();
+          subCtx.toggleSub();
+        }
+        if (event.key === 'Escape') {
+          event.preventDefault();
+          subCtx.closeSub();
+        }
+      }}
       {...rest}
     >
       {icon && <span className="app-menu-item-icon">{icon}</span>}
       <span className="app-menu-item-content">{children}</span>
-      <ChevronRight className="app-menu-sub-arrow" />
+      <CaretRight className="app-menu-sub-arrow" />
     </div>
   );
 }
 
-export interface AppMenuSubContentProps extends React.HTMLAttributes<HTMLDivElement> {}
+export type AppMenuSubContentProps = React.HTMLAttributes<HTMLDivElement>;
 
 export function AppMenuSubContent({ className, children, ...rest }: AppMenuSubContentProps) {
   const subCtx = React.useContext(AppMenuSubContext);
-  
+  const rootMenuCtx = React.useContext(AppMenuContext);
+  const [position, setPosition] = React.useState<{ left: number; top: number } | null>(null);
+
+  React.useLayoutEffect(() => {
+    if (!subCtx?.open || typeof window === 'undefined') return;
+
+    const updatePosition = () => {
+      const triggerEl = subCtx.triggerRef.current;
+      const contentEl = subCtx.contentRef.current;
+      if (!triggerEl || !contentEl) return;
+
+      const triggerRect = triggerEl.getBoundingClientRect();
+      const contentRect = contentEl.getBoundingClientRect();
+      const viewportPadding = 8;
+      const gap = 6;
+
+      const fitsRight = triggerRect.right + gap + contentRect.width <= window.innerWidth - viewportPadding;
+      const preferredLeft = fitsRight
+        ? triggerRect.right + gap
+        : triggerRect.left - gap - contentRect.width;
+      const maxLeft = Math.max(viewportPadding, window.innerWidth - contentRect.width - viewportPadding);
+      const left = Math.min(Math.max(viewportPadding, preferredLeft), maxLeft);
+
+      const preferredTop = triggerRect.top - 4;
+      const maxTop = Math.max(viewportPadding, window.innerHeight - contentRect.height - viewportPadding);
+      const top = Math.min(Math.max(viewportPadding, preferredTop), maxTop);
+
+      setPosition((prev) => (
+        prev && prev.left === left && prev.top === top
+          ? prev
+          : { left, top }
+      ));
+    };
+
+    updatePosition();
+    const frame = window.requestAnimationFrame(updatePosition);
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+
+    return () => {
+      window.cancelAnimationFrame(frame);
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+    };
+  }, [subCtx]);
+
   if (!subCtx?.open) return null;
   
-  return (
+  return createPortal(
     <div
+      ref={subCtx.contentRef}
       role="menu"
+      data-app-menu-id={rootMenuCtx?.menuId}
       className={cn('app-menu-sub-content', className)}
+      onMouseEnter={subCtx.openOnClick ? undefined : subCtx.openSub}
+      onMouseLeave={subCtx.openOnClick ? undefined : subCtx.scheduleClose}
+      style={{
+        position: 'fixed',
+        left: position?.left ?? 8,
+        top: position?.top ?? 8,
+        visibility: position ? 'visible' : 'hidden',
+      }}
       {...rest}
     >
       {children}
-    </div>
+    </div>,
+    document.body
   );
 }
 
 // ============ Separator ============
 
-export interface AppMenuSeparatorProps extends React.HTMLAttributes<HTMLDivElement> {}
+export type AppMenuSeparatorProps = React.HTMLAttributes<HTMLDivElement>;
 
 export function AppMenuSeparator({ className, ...rest }: AppMenuSeparatorProps) {
   return <div className={cn('app-menu-separator', className)} role="separator" {...rest} />;
@@ -463,7 +683,7 @@ export function AppMenuSeparator({ className, ...rest }: AppMenuSeparatorProps) 
 
 // ============ Label ============
 
-export interface AppMenuLabelProps extends React.HTMLAttributes<HTMLDivElement> {}
+export type AppMenuLabelProps = React.HTMLAttributes<HTMLDivElement>;
 
 export const AppMenuLabel = React.forwardRef<HTMLDivElement, AppMenuLabelProps>(
   ({ className, ...rest }, ref) => (
@@ -471,14 +691,14 @@ export const AppMenuLabel = React.forwardRef<HTMLDivElement, AppMenuLabelProps>(
       ref={ref}
       className={cn('app-menu-label', className)}
       {...rest}
-    />
+/>
   )
 );
 AppMenuLabel.displayName = 'AppMenuLabel';
 
 // ============ Footer ============
 
-export interface AppMenuFooterProps extends React.HTMLAttributes<HTMLDivElement> {}
+export type AppMenuFooterProps = React.HTMLAttributes<HTMLDivElement>;
 
 export function AppMenuFooter({ className, children, ...rest }: AppMenuFooterProps) {
   return (
@@ -604,7 +824,7 @@ export function AppMenuCheckboxItem({
               strokeWidth="2"
               strokeLinecap="round"
               strokeLinejoin="round"
-            />
+/>
           </svg>
         )}
       </span>
@@ -660,7 +880,7 @@ export function AppMenuOptionGroup({
 
 // ============ Keyboard Shortcut Display ============
 
-export interface AppMenuShortcutProps extends React.HTMLAttributes<HTMLSpanElement> {}
+export type AppMenuShortcutProps = React.HTMLAttributes<HTMLSpanElement>;
 
 export function AppMenuShortcut({ className, ...rest }: AppMenuShortcutProps) {
   return (

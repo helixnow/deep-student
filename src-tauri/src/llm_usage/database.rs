@@ -18,7 +18,7 @@ const DATABASE_FILENAME: &str = "llm_usage.db";
 /// 当前数据库 Schema 版本
 /// 当前 Schema 版本（对应 Refinery 迁移的最新版本）
 /// 注意：此常量仅用于统计信息显示，实际版本以 refinery_schema_history 表为准
-pub const CURRENT_SCHEMA_VERSION: u32 = 20260201;
+pub const CURRENT_SCHEMA_VERSION: u32 = 20260202;
 
 /// LLM Usage Schema 版本（公开导出用于测试）
 pub const LLM_USAGE_SCHEMA_VERSION: u32 = CURRENT_SCHEMA_VERSION;
@@ -120,6 +120,8 @@ impl LlmUsageDatabase {
             pool: RwLock::new(pool),
             db_path,
         };
+
+        db.ensure_schema()?;
 
         info!(
             "[LlmUsage::Database] LLM Usage database initialized successfully: {}",
@@ -318,6 +320,8 @@ impl LlmUsageDatabase {
             *pool_guard = new_pool;
         }
 
+        self.ensure_schema()?;
+
         info!(
             "[LlmUsage::Database] Connection pool reinitialized successfully: {}",
             self.db_path.display()
@@ -364,6 +368,30 @@ impl LlmUsageDatabase {
             total_cost_estimate: total_cost,
             schema_version: CURRENT_SCHEMA_VERSION,
         })
+    }
+
+    fn ensure_schema(&self) -> LlmUsageResult<()> {
+        #[cfg(feature = "data_governance")]
+        {
+            mod llm_usage_migrations {
+                refinery::embed_migrations!("migrations/llm_usage");
+            }
+
+            let mut conn = self.get_conn()?;
+            llm_usage_migrations::migrations::runner()
+                .set_grouped(false)
+                .set_abort_divergent(false)
+                .set_abort_missing(false)
+                .run(&mut *conn)
+                .map_err(|error| {
+                    LlmUsageError::Migration(format!(
+                        "Failed to initialize llm_usage schema: {}",
+                        error
+                    ))
+                })?;
+        }
+
+        Ok(())
     }
 }
 

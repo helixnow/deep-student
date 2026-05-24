@@ -2,15 +2,15 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
   BookOpen, 
-  Trash2, 
-  MoreVertical, 
+  Trash, 
+  DotsThreeVertical, 
   Calendar, 
   FileText,
-  RotateCcw,
-  Ban,
+  ArrowCounterClockwise,
+  Prohibit,
   Star,
   Clock
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Card, CardContent } from './ui/shad/Card';
 import {
@@ -78,7 +78,7 @@ export const TextbookCard: React.FC<TextbookCardProps> = ({
   if (viewMode === 'grid') {
     return (
       <Card 
-        className="group relative overflow-hidden border bg-card text-card-foreground shadow-sm transition-all hover:shadow-md hover:-translate-y-1 cursor-pointer"
+        className="group relative overflow-hidden border bg-card text-card-foreground shadow-sm transition-[background-color,border-color,color,box-shadow,transform] hover:shadow-md hover:-translate-y-1 cursor-pointer"
         onClick={() => !isTrashed && onOpen(book)}
       >
         <div className="aspect-[3/4] w-full overflow-hidden bg-muted relative">
@@ -87,17 +87,17 @@ export const TextbookCard: React.FC<TextbookCardProps> = ({
               src={coverUrl} 
               alt={book.name} 
               className="h-full w-full object-cover transition-transform duration-300 group-hover:scale-105" 
-            />
+/>
           ) : (
             <div className="h-full w-full flex items-center justify-center bg-muted/50">
-              <BookOpen className="h-12 w-12 text-muted-foreground/20" />
+              <BookOpen size={48} className="text-muted-foreground/20" />
             </div>
           )}
           
           {/* 收藏标记 */}
           {book.isFavorite && (
             <div className="absolute top-2 right-2 p-1 rounded-full bg-yellow-400/90 shadow-sm">
-              <Star className="h-3.5 w-3.5 fill-white text-white" />
+              <Star size={14} className="fill-white text-white" />
             </div>
           )}
           
@@ -119,11 +119,11 @@ export const TextbookCard: React.FC<TextbookCardProps> = ({
               </h3>
               <div className="mt-1.5 flex flex-col gap-0.5 text-xs text-muted-foreground">
                 <span className="flex items-center gap-1">
-                  <FileText className="h-3 w-3" />
+                  <FileText size={12} />
                   {formatSize(book.size)}
                 </span>
                 <span className="flex items-center gap-1">
-                  <Calendar className="h-3 w-3" />
+                  <Calendar size={12} />
                   {formatDate(book.addedAt)}
                 </span>
               </div>
@@ -132,14 +132,14 @@ export const TextbookCard: React.FC<TextbookCardProps> = ({
             <div onClick={(e) => e.stopPropagation()}>
               <AppMenu>
                 <AppMenuTrigger asChild>
-                  <NotionButton variant="ghost" iconOnly size="sm" className="h-8 w-8 -mr-2 text-muted-foreground hover:text-foreground">
-                    <MoreVertical className="h-4 w-4" />
+                  <NotionButton variant="ghost" iconOnly size="sm" className="w-8 h-8 -mr-2 text-muted-foreground hover:text-foreground">
+                    <DotsThreeVertical size={16} />
                   </NotionButton>
                 </AppMenuTrigger>
                 <AppMenuContent align="end" width={160}>
                   {!isTrashed ? (
                     <>
-                      <AppMenuItem icon={<BookOpen className="h-4 w-4" />} onClick={() => onOpen(book)}>
+                      <AppMenuItem icon={<BookOpen size={16} />} onClick={() => onOpen(book)}>
                         {t('common:textbook.open')}
                       </AppMenuItem>
                       {onToggleFavorite && (
@@ -149,7 +149,7 @@ export const TextbookCard: React.FC<TextbookCardProps> = ({
                       )}
                       <AppMenuSeparator />
                       <AppMenuItem 
-                        icon={<Trash2 className="h-4 w-4" />}
+                        icon={<Trash size={16} />}
                         destructive
                         onClick={() => onDelete(book)}
                       >
@@ -158,12 +158,12 @@ export const TextbookCard: React.FC<TextbookCardProps> = ({
                     </>
                   ) : (
                     <>
-                      <AppMenuItem icon={<RotateCcw className="h-4 w-4" />} onClick={() => onRecover(book)}>
+                      <AppMenuItem icon={<ArrowCounterClockwise size={16} />} onClick={() => onRecover(book)}>
                         {t('common:textbook.recover')}
                       </AppMenuItem>
                       <AppMenuSeparator />
                       <AppMenuItem 
-                        icon={<Ban className="h-4 w-4" />}
+                        icon={<Prohibit size={16} />}
                         destructive
                         onClick={() => onDeletePermanent(book)}
                       >
@@ -183,7 +183,7 @@ export const TextbookCard: React.FC<TextbookCardProps> = ({
   // List View
   return (
     <Card 
-      className="group flex flex-row items-center p-3 gap-4 overflow-hidden border bg-card text-card-foreground shadow-sm transition-all hover:shadow-md cursor-pointer"
+      className="group flex flex-row items-center p-3 gap-4 overflow-hidden border bg-card text-card-foreground shadow-sm transition-[background-color,border-color,color,box-shadow,transform] hover:shadow-md cursor-pointer"
       onClick={() => !isTrashed && onOpen(book)}
     >
       <div className="h-20 w-16 flex-shrink-0 overflow-hidden rounded-md bg-muted relative border">
@@ -192,10 +192,10 @@ export const TextbookCard: React.FC<TextbookCardProps> = ({
             src={coverUrl} 
             alt={book.name} 
             className="h-full w-full object-cover" 
-          />
+/>
         ) : (
           <div className="h-full w-full flex items-center justify-center bg-muted/50">
-            <BookOpen className="h-6 w-6 text-muted-foreground/20" />
+            <BookOpen size={24} className="text-muted-foreground/20" />
           </div>
         )}
       </div>
@@ -206,16 +206,16 @@ export const TextbookCard: React.FC<TextbookCardProps> = ({
             {book.name}
           </h3>
           {book.isFavorite && (
-            <Star className="h-4 w-4 flex-shrink-0 fill-yellow-400 text-yellow-400" />
+            <Star size={16} className="flex-shrink-0 fill-yellow-400 text-yellow-400" />
           )}
         </div>
         <div className="flex items-center gap-4 text-xs text-muted-foreground">
           <span className="flex items-center gap-1">
-            <FileText className="h-3.5 w-3.5" />
+            <FileText size={14} />
             {formatSize(book.size)}
           </span>
           <span className="flex items-center gap-1">
-            <Calendar className="h-3.5 w-3.5" />
+            <Calendar size={14} />
             {formatDate(book.addedAt)}
           </span>
         </div>
@@ -229,12 +229,12 @@ export const TextbookCard: React.FC<TextbookCardProps> = ({
             </NotionButton>
             <AppMenu>
               <AppMenuTrigger asChild>
-                <NotionButton variant="ghost" iconOnly size="sm" className="h-8 w-8 text-muted-foreground hover:text-foreground">
-                  <MoreVertical className="h-4 w-4" />
+                <NotionButton variant="ghost" iconOnly size="sm" className="w-8 h-8 text-muted-foreground hover:text-foreground">
+                  <DotsThreeVertical size={16} />
                 </NotionButton>
               </AppMenuTrigger>
               <AppMenuContent align="end" width={160}>
-                <AppMenuItem icon={<BookOpen className="h-4 w-4" />} onClick={() => onOpen(book)} className="sm:hidden">
+                <AppMenuItem icon={<BookOpen size={16} />} onClick={() => onOpen(book)} className="sm:hidden">
                   {t('common:textbook.open')}
                 </AppMenuItem>
                 {onToggleFavorite && (
@@ -244,7 +244,7 @@ export const TextbookCard: React.FC<TextbookCardProps> = ({
                 )}
                 <AppMenuSeparator />
                 <AppMenuItem 
-                  icon={<Trash2 className="h-4 w-4" />}
+                  icon={<Trash size={16} />}
                   destructive
                   onClick={() => onDelete(book)}
                 >
@@ -259,7 +259,7 @@ export const TextbookCard: React.FC<TextbookCardProps> = ({
               {t('common:textbook.recover')}
             </NotionButton>
             <NotionButton size="sm" variant="ghost" className="text-destructive hover:text-destructive hover:bg-destructive/10" onClick={() => onDeletePermanent(book)}>
-              <Trash2 className="h-4 w-4" />
+              <Trash size={16} />
             </NotionButton>
           </>
         )}

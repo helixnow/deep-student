@@ -21,19 +21,19 @@ import {
   Play,
   Clock,
   CheckCircle,
-  AlertTriangle,
+  Warning as Warning,
   Calendar,
   Target,
-  TrendingUp,
-  RotateCcw,
-  ChevronRight,
-  Loader2,
+  TrendUp as TrendingUp,
+  ArrowCounterClockwise as ArrowCounterClockwise,
+  CaretRight as CaretRight,
+  CircleNotch as CircleNotch,
   BookOpen,
-  Flame,
-  Zap,
-  Award,
-  RefreshCw,
-} from 'lucide-react';
+  Fire as Flame,
+  Lightning as Lightning,
+  Trophy as Award,
+  ArrowsClockwise as ArrowClockwise,
+} from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import {
   useReviewPlanStore,
@@ -81,7 +81,7 @@ const StatCard: React.FC<StatCardProps> = ({
       'group relative flex flex-col gap-2 p-4 rounded-xl',
       'bg-gradient-to-br from-background to-muted/30',
       'border border-border/50 hover:border-border',
-      'transition-all duration-300 hover:shadow-md',
+      'transition-[background-color,border-color,color,box-shadow] duration-300 hover:shadow-md',
       className
     )}
   >
@@ -156,9 +156,9 @@ const ReviewQueueItem: React.FC<ReviewQueueItemProps> = ({
       onClick={onClick}
       className={cn(
         'group flex items-center gap-3 p-3 rounded-lg',
-        'bg-muted/20 hover:bg-muted/40',
+        'bg-muted/20 hover:bg-[var(--interactive-hover)]',
         'border border-transparent hover:border-border/50',
-        'cursor-pointer transition-all duration-200',
+        'cursor-pointer transition-[background-color,border-color,color,box-shadow] duration-200',
         isOverdue && 'border-red-500/30 bg-red-500/5'
       )}
     >
@@ -168,7 +168,7 @@ const ReviewQueueItem: React.FC<ReviewQueueItemProps> = ({
           'flex-shrink-0 w-2 h-8 rounded-full',
           isOverdue ? 'bg-red-500' : plan.is_difficult ? 'bg-amber-500' : 'bg-emerald-500'
         )}
-      />
+/>
 
       {/* 题目信息 */}
       <div className="flex-1 min-w-0">
@@ -194,7 +194,7 @@ const ReviewQueueItem: React.FC<ReviewQueueItemProps> = ({
       </div>
 
       {/* 箭头 */}
-      <ChevronRight className="flex-shrink-0 w-4 h-4 text-muted-foreground group-hover:text-foreground transition-colors" />
+      <CaretRight size={16} className="flex-shrink-0 text-muted-foreground group-hover:text-foreground transition-colors" />
     </div>
   );
 };
@@ -335,7 +335,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
             onClick={onViewCalendar}
             className="gap-1.5"
           >
-            <Calendar className="w-4 h-4" />
+            <Calendar size={16} />
             {t('review:calendar')}
           </NotionButton>
           <NotionButton
@@ -343,11 +343,10 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
             size="icon"
             onClick={handleRefresh}
             disabled={isRefreshing}
-            className="h-8 w-8"
-          >
-            <RefreshCw
+ className="w-8 h-8"           >
+            <ArrowClockwise
               className={cn('w-4 h-4', isRefreshing && 'animate-spin')}
-            />
+/>
           </NotionButton>
         </div>
       </div>
@@ -355,7 +354,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
       {/* 统计卡片 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
         <StatCard
-          icon={<Clock className="w-5 h-5" />}
+          icon={<Clock size={20} />}
           label={t('review:stats.dueToday')}
           value={todayCount}
           description={
@@ -366,9 +365,9 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
               : undefined
           }
           color={overdueCount > 0 ? 'text-red-500' : 'text-sky-500'}
-        />
+/>
         <StatCard
-          icon={<Flame className="w-5 h-5" />}
+          icon={<Flame size={20} />}
           label={t('review:stats.totalDue')}
           value={dueReviews.length}
           description={
@@ -379,23 +378,23 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
               : undefined
           }
           color="text-amber-500"
-        />
+/>
         <StatCard
-          icon={<Award className="w-5 h-5" />}
+          icon={<Award size={20} />}
           label={t('review:stats.mastered')}
           value={stats?.graduated_count || 0}
           description={`${progressPercent}% ${t('review:stats.ofTotal')}`}
           color="text-emerald-500"
-        />
+/>
         <StatCard
-          icon={<TrendingUp className="w-5 h-5" />}
+          icon={<TrendingUp size={20} />}
           label={t('review:stats.accuracy')}
           value={`${Math.round((stats?.avg_correct_rate || 0) * 100)}%`}
           description={`${stats?.total_reviews || 0} ${t(
             'review:stats.totalReviews'
           )}`}
           color="text-purple-500"
-        />
+/>
       </div>
 
       {/* 今日复习卡片 */}
@@ -403,7 +402,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
         <div className="flex items-center justify-between mb-4">
           <div className="flex items-center gap-3">
             <div className="p-2.5 rounded-xl bg-primary/10">
-              <Target className="w-6 h-6 text-primary" />
+              <Target size={24} className="text-primary" />
             </div>
             <div>
               <h3 className="font-semibold text-foreground">
@@ -425,7 +424,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
               onClick={handleStartReview}
               className="gap-2 bg-primary hover:bg-primary/90 shadow-lg shadow-primary/25"
             >
-              <Play className="w-5 h-5" />
+              <Play size={20} />
               {t('review:startReview')}
             </NotionButton>
           )}
@@ -486,7 +485,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
                 plan={plan}
                 question={questionMap.get(plan.question_id)}
                 isOverdue={plan.next_review_date < today}
-              />
+/>
             ))}
             {dueReviews.length > 20 && (
               <div className="text-center py-2">
@@ -505,7 +504,7 @@ export const ReviewPlanView: React.FC<ReviewPlanViewProps> = ({
       {dueReviews.length === 0 && !isLoading && (
         <div className="flex flex-col items-center justify-center py-12 text-center">
           <div className="p-4 rounded-full bg-emerald-500/10 mb-4">
-            <CheckCircle className="w-12 h-12 text-emerald-500" />
+            <CheckCircle size={48} className="text-emerald-500" />
           </div>
           <h3 className="text-lg font-medium text-foreground mb-1">
             {t('review:empty.title')}

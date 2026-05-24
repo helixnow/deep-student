@@ -89,10 +89,13 @@ pub use commands_asset::{
 
 // Re-exports - 同步命令（commands_sync.rs）
 pub use commands_sync::{
-    data_governance_detect_conflicts, data_governance_export_sync_data,
+    data_governance_count_record_conflicts, data_governance_detect_conflicts,
+    data_governance_detect_prune_gap, data_governance_export_sync_data,
     data_governance_get_sync_status, data_governance_import_sync_data,
-    data_governance_resolve_conflicts, data_governance_run_sync,
-    data_governance_run_sync_with_progress,
+    data_governance_list_record_conflicts, data_governance_mark_asset_deleted,
+    data_governance_mark_blob_deleted, data_governance_purge_resolved_conflicts,
+    data_governance_resolve_conflicts, data_governance_resolve_record_conflict,
+    data_governance_run_sync, data_governance_run_sync_with_progress,
 };
 
 // Re-exports - 同步进度相关

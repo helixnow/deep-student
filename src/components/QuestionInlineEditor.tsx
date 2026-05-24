@@ -17,15 +17,15 @@ import { Textarea } from '@/components/ui/shad/Textarea';
 import { Badge } from '@/components/ui/shad/Badge';
 import { AppSelect } from '@/components/ui/app-menu';
 import {
-  Save,
+  FloppyDisk,
   X,
-  Loader2,
+  CircleNotch,
   Plus,
-  Trash2,
-  AlertCircle,
-  ImagePlus,
+  Trash,
+  WarningCircle,
+  Image,
   Image as ImageIcon,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { invoke } from '@tauri-apps/api/core';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import type { Question, QuestionType, Difficulty, QuestionImage } from '@/api/questionBankApi';
@@ -417,7 +417,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
         {/* 错误提示 */}
         {error && (
           <div className="flex items-center gap-2 p-2.5 rounded-md bg-destructive/10 text-destructive text-sm">
-            <AlertCircle className="w-4 h-4 flex-shrink-0" />
+            <WarningCircle size={16} className="flex-shrink-0" />
             <span>{error}</span>
           </div>
         )}
@@ -435,7 +435,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
             placeholder={t('exam_sheet:questionBank.edit.contentPlaceholder')}
             className="text-sm"
             autoFocus
-          />
+/>
         </div>
 
         {/* 题型 + 难度 横排 */}
@@ -447,7 +447,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               onValueChange={(v) => handleFieldChange('questionType', v as QuestionType)}
               options={questionTypeKeys.map((opt) => ({ value: opt.value, label: t(opt.labelKey) }))}
               variant="outline"
-            />
+/>
           </div>
           <div className="space-y-1.5">
             <Label className="text-xs">{t('exam_sheet:questionBank.edit.difficulty')}</Label>
@@ -460,7 +460,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                 ...difficultyKeys.map((opt) => ({ value: opt.value, label: t(opt.labelKey) })),
               ]}
               variant="outline"
-            />
+/>
           </div>
         </div>
 
@@ -470,7 +470,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
             <div className="flex items-center justify-between">
               <Label className="text-xs">{t('exam_sheet:questionBank.edit.options')}</Label>
               <NotionButton variant="ghost" size="sm" onClick={handleAddOption} disabled={editData.options.length >= MAX_OPTIONS} className="h-5 text-[10px] px-1.5">
-                <Plus className="w-2.5 h-2.5 mr-0.5" />
+                <Plus size={10} className="mr-0.5" />
                 {t('common:actions.add')}
               </NotionButton>
             </div>
@@ -478,14 +478,14 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               {editData.options.map((opt, index) => (
                 <div key={index} className="group flex items-center gap-1 rounded-md border border-border/40 bg-muted/10 px-2 h-7">
                   <span className="text-xs font-medium text-muted-foreground w-4 flex-shrink-0">{opt.key}</span>
-                  <input
+                  <Input
                     value={opt.content}
                     onChange={(e) => handleOptionChange(index, 'content', e.target.value)}
                     className="flex-1 min-w-0 bg-transparent text-xs outline-none placeholder:text-muted-foreground/50"
                     placeholder={`${opt.key} ...`}
-                  />
+/>
                   <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleRemoveOption(index)} className="flex-shrink-0 !w-4 !h-4 !p-0 opacity-0 group-hover:opacity-100 text-muted-foreground hover:text-destructive" aria-label="remove">
-                    <X className="w-2.5 h-2.5" />
+                    <X size={10} />
                   </NotionButton>
                 </div>
               ))}
@@ -506,7 +506,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               rows={2}
               placeholder={t('exam_sheet:questionBank.edit.answerPlaceholder')}
               className="text-sm"
-            />
+/>
           </div>
           <div className="space-y-1.5">
             <Label htmlFor="inline-edit-explanation" className="text-xs">
@@ -519,7 +519,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               rows={2}
               placeholder={t('exam_sheet:questionBank.edit.explanationPlaceholder')}
               className="text-sm"
-            />
+/>
           </div>
         </div>
 
@@ -533,9 +533,9 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               onKeyDown={(e) => e.key === 'Enter' && (e.preventDefault(), handleAddTag())}
               placeholder={t('exam_sheet:questionBank.edit.tagPlaceholder')}
               className="flex-1 text-sm h-8"
-            />
-            <NotionButton variant="ghost" size="sm" onClick={handleAddTag} className="h-8 w-8" iconOnly>
-              <Plus className="w-3.5 h-3.5" />
+/>
+            <NotionButton variant="ghost" size="sm" onClick={handleAddTag} className="w-8 h-8" iconOnly>
+              <Plus size={14} />
             </NotionButton>
           </div>
           {editData.tags.length > 0 && (
@@ -548,7 +548,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                   onClick={() => handleRemoveTag(tag)}
                 >
                   {tag}
-                  <X className="w-2.5 h-2.5 ml-0.5" />
+                  <X size={10} className="ml-0.5" />
                 </Badge>
               ))}
             </div>
@@ -559,7 +559,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
         <div className="space-y-1.5">
           <div className="flex items-center justify-between">
             <Label className="flex items-center gap-1 text-xs">
-              <ImageIcon className="w-3.5 h-3.5 text-muted-foreground" />
+              <ImageIcon size={14} className="text-muted-foreground" />
               {t('exam_sheet:questionBank.edit.images', '题目图片')}
               {editData.images.length > 0 && (
                 <span className="text-[10px] text-muted-foreground">({editData.images.length}/{MAX_IMAGES})</span>
@@ -573,9 +573,9 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
               className="h-6 text-xs"
             >
               {isUploadingImage ? (
-                <Loader2 className="w-3 h-3 mr-1 animate-spin" />
+                <CircleNotch size={12} className="mr-1 animate-spin" />
               ) : (
-                <ImagePlus className="w-3 h-3 mr-1" />
+                <Image size={12} className="mr-1" />
               )}
               {t('exam_sheet:questionBank.edit.addImage', '添加')}
             </NotionButton>
@@ -591,7 +591,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                   e.target.value = '';
                 }
               }}
-            />
+/>
           </div>
 
           {editData.images.length > 0 && (
@@ -605,11 +605,11 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                     <img src={imagePreviewUrls[img.id]} alt={img.name} className="w-full h-full object-cover" />
                   ) : imagePreviewUrls[img.id] === 'error' ? (
                     <div className="w-full h-full flex items-center justify-center">
-                      <AlertCircle className="w-4 h-4 text-muted-foreground" />
+                      <WarningCircle size={16} className="text-muted-foreground" />
                     </div>
                   ) : (
                     <div className="w-full h-full flex items-center justify-center">
-                      <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />
+                      <CircleNotch size={16} className="animate-spin text-muted-foreground" />
                     </div>
                   )}
                   <div className="absolute inset-0 bg-black/0 group-hover:bg-black/30 transition-colors flex items-center justify-center">
@@ -618,9 +618,9 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
                       size="sm"
                       iconOnly
                       onClick={() => handleRemoveImage(img.id)}
-                      className="opacity-0 group-hover:opacity-100 transition-opacity text-white hover:text-white hover:bg-white/20 h-6 w-6"
+ className="w-6 h-6 opacity-0 group-hover:opacity-100 transition-opacity text-white hover:text-white hover:bg-[var(--overlay-control-hover)]"
                     >
-                      <Trash2 className="w-3 h-3" />
+                      <Trash size={12} />
                     </NotionButton>
                   </div>
                 </div>
@@ -629,8 +629,8 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
           )}
 
           {editData.images.length === 0 && (
-            <NotionButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isUploadingImage} className="w-full !h-auto !p-4 !rounded-md border border-dashed border-border/50 hover:border-border bg-muted/10 hover:bg-muted/20 flex-col items-center justify-center gap-2">
-              <ImagePlus className="w-4 h-4 text-muted-foreground" />
+            <NotionButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isUploadingImage} className="w-full !h-auto !p-4 !rounded-md border border-dashed border-border/50 hover:border-border bg-muted/10 hover:bg-[var(--interactive-hover)] flex-col items-center justify-center gap-2">
+              <Image size={16} className="text-muted-foreground" />
               <span className="text-xs text-muted-foreground">
                 {t('exam_sheet:questionBank.edit.imagePlaceholder', '点击添加题目图片')}
               </span>
@@ -650,7 +650,7 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
             rows={2}
             placeholder={t('exam_sheet:questionBank.edit.notePlaceholder')}
             className="text-sm"
-          />
+/>
         </div>
       </div>
 
@@ -661,9 +661,9 @@ export const QuestionInlineEditor: React.FC<QuestionInlineEditorProps> = ({
         </NotionButton>
         <NotionButton size="sm" onClick={handleSave} disabled={isSaving}>
           {isSaving ? (
-            <Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+            <CircleNotch size={14} className="mr-1.5 animate-spin" />
           ) : (
-            <Save className="w-3.5 h-3.5 mr-1.5" />
+            <FloppyDisk size={14} className="mr-1.5" />
           )}
           {mode === 'create'
             ? t('exam_sheet:questionBank.create.submit')

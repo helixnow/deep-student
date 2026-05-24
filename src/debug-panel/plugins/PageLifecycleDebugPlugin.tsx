@@ -14,17 +14,17 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/sh
 import { Separator } from '../../components/ui/shad/Separator';
 import { CustomScrollArea } from '../../components/custom-scroll-area';
 import { 
-  Trash2, 
+  Trash, 
   Copy, 
-  CheckCircle2, 
-  AlertTriangle,
+  CheckCircle, 
+  Warning,
   Eye,
-  EyeOff,
-  RefreshCw,
+  EyeSlash,
+  ArrowClockwise,
   FileText,
-  Filter,
+  Funnel,
   Download,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { 
   pageLifecycleTracker, 
@@ -96,11 +96,11 @@ const PageStateCard: React.FC<{
           {state.mounted ? (
             state.visible ? (
               <Badge className="bg-green-100 text-green-800 dark:bg-green-900 dark:text-green-200">
-                <Eye className="w-3 h-3 mr-1" />可见
+                <Eye size={12} className="mr-1" />可见
               </Badge>
             ) : (
               <Badge className="bg-blue-100 text-blue-800 dark:bg-blue-900 dark:text-blue-200">
-                <EyeOff className="w-3 h-3 mr-1" />保活
+                <EyeSlash size={12} className="mr-1" />保活
               </Badge>
             )
           ) : (
@@ -115,7 +115,7 @@ const PageStateCard: React.FC<{
           挂载次数: {state.mountCount}
         </span>
         {hasProblem && (
-          <AlertTriangle className="w-3 h-3 text-yellow-500" />
+          <Warning size={12} className="text-yellow-500" />
         )}
       </div>
     </div>
@@ -240,7 +240,7 @@ const PageLifecycleDebugPlugin: React.FC<DebugPanelPluginProps> = ({ isActive })
             onClick={handleClear}
             className="h-7 text-xs"
           >
-            <Trash2 className="w-3 h-3 mr-1" />
+            <Trash size={12} className="mr-1" />
             清空
           </Button>
           <Button
@@ -250,9 +250,9 @@ const PageLifecycleDebugPlugin: React.FC<DebugPanelPluginProps> = ({ isActive })
             className="h-7 text-xs"
           >
             {copied ? (
-              <CheckCircle2 className="w-3 h-3 mr-1 text-green-500" />
+              <CheckCircle size={12} className="mr-1 text-green-500" />
             ) : (
-              <Copy className="w-3 h-3 mr-1" />
+              <Copy size={12} className="mr-1" />
             )}
             复制报告
           </Button>
@@ -262,7 +262,7 @@ const PageLifecycleDebugPlugin: React.FC<DebugPanelPluginProps> = ({ isActive })
             onClick={handleExportLogs}
             className="h-7 text-xs"
           >
-            <Download className="w-3 h-3 mr-1" />
+            <Download size={12} className="mr-1" />
             导出JSON
           </Button>
         </div>
@@ -277,7 +277,7 @@ const PageLifecycleDebugPlugin: React.FC<DebugPanelPluginProps> = ({ isActive })
           <Card>
             <CardHeader className="py-2 px-3">
               <CardTitle className="text-sm flex items-center gap-2">
-                <FileText className="w-4 h-4" />
+                <FileText size={16} />
                 页面状态概览
               </CardTitle>
             </CardHeader>
@@ -298,7 +298,7 @@ const PageLifecycleDebugPlugin: React.FC<DebugPanelPluginProps> = ({ isActive })
 
           {/* 过滤器 */}
           <div className="flex items-center gap-2 text-xs">
-            <Filter className="w-3 h-3 text-muted-foreground" />
+            <Funnel size={12} className="text-muted-foreground" />
             <select
               value={filterEvent}
               onChange={(e) => setFilterEvent(e.target.value as PageLifecycleEvent | 'all')}

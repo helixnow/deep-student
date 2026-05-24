@@ -5,6 +5,14 @@
     "description": "Intelligent Mistake Analysis and Learning Management System",
     "version": "Version"
   },
+  "contextMenu": {
+    "cut": "Cut",
+    "copy": "Copy",
+    "paste": "Paste",
+    "selectAll": "Select All",
+    "find": "Find…",
+    "inspect": "Inspect Element"
+  },
   "retry": "Retry",
   "create": "Create",
   "clear": "Clear",
@@ -1016,6 +1024,7 @@
       "api_key_placeholder_local": "Auto-saved locally, no need to re-enter",
       "one_click_assign": "One-Click Assign",
       "clear_button": "Clear",
+      "clear_confirm_button": "Confirm Clear",
       "fetching_models": "Fetching...",
       "models_count": "Total {{count}} models",
       "select_model_placeholder": "Select a model from the list...",
@@ -1190,14 +1199,14 @@
     "cards_counter": "cards"
   },
   "api_config_modal": {
-    "general_model": "General Model",
+    "general_model": "OpenAI Compatible",
     "general_model_desc": "Suitable for most standard AI models (e.g., GPT, Claude, Tongyi Qianwen)",
     "google_gemini": "Google Gemini",
     "google_gemini_desc": "Google Gemini series models, supports multimodal and high-quality text generation",
     "anthropic_claude": "Anthropic Claude",
     "anthropic_claude_desc": "Anthropic Claude models with safety-focused design and strong reasoning ability",
-    "adapter_general": "General Model",
-    "adapter_general_desc": "For most OpenAI-compatible APIs (GPT, Qwen, etc.)",
+    "adapter_general": "OpenAI Compatible",
+    "adapter_general_desc": "For most OpenAI-compatible model parameter formats; the exact request shape is controlled by the OpenAI Protocol below",
     "adapter_google": "Google Gemini",
     "adapter_google_desc": "Gemini series, supports thinkingLevel/thinkingBudget",
     "adapter_anthropic": "Anthropic Claude",
@@ -1257,7 +1266,7 @@
     "deepseek_tool_notice_cta": "Keep thinking enabled anyway",
     "capabilities_title": "Model Capabilities",
     "embedding_model_title": "Embedding Model",
-    "embedding_model_hint": "Check this if the model is used for generating vector embeddings (e.g., text-embedding-ada-002, bge-m3)",
+    "embedding_model_hint": "Check this if the model is used for generating vector embeddings (e.g., text-embedding-3-small, text-embedding-3-large, bge-m3)",
     "reranker_model_title": "Reranker Model",
     "reranker_model_hint": "Check this if the model is used for search result reranking (e.g., bge-reranker-v2-m3)",
     "supports_tools_title": "Supports Tool Calling",
@@ -1291,7 +1300,7 @@
     "adapter": "Adapter",
     "adapters": {
       "google_gemini": "Google Gemini Adapter",
-      "general": "General Adapter"
+      "general": "OpenAI Compatible"
     },
     "status": "Status"
   },
@@ -1526,7 +1535,7 @@
       },
       "adapters": {
         "google_gemini": "Google Gemini",
-        "general": "General Model"
+        "general": "OpenAI Compatible"
       }
     },
     "model_assignment_section": {
@@ -1611,7 +1620,7 @@
       "reasoning_model": "Reasoning Model",
       "reasoning_desc": "Check this to indicate the model supports reasoning functionality",
       "embedding_model": "Embedding Model",
-      "embedding_desc": "Check this to indicate the model is used for generating vector embeddings (e.g. text-embedding-ada-002, bge-m3, etc.)",
+      "embedding_desc": "Check this to indicate the model is used for generating vector embeddings (e.g. text-embedding-3-small, text-embedding-3-large, bge-m3, etc.)",
       "reranker_model": "Reranker Model",
       "reranker_desc": "Check this to indicate the model is used for search result reranking (e.g. bge-reranker-v2-m3, etc.)",
       "model_adapter": "Model Adapter",
@@ -1619,7 +1628,7 @@
       "cancel": "Cancel",
       "save": "Save",
       "adapter_options": {
-        "general": "General Model",
+        "general": "OpenAI Compatible",
         "general_desc": "Suitable for most standard AI models",
         "google": "Google Gemini",
         "google_desc": "Google Gemini series models, supports multimodal and high-quality text generation"
@@ -2858,6 +2867,7 @@
     "card_title": "SiliconFlow API Key",
     "one_click_assign": "One-Click Assign",
     "clear_button": "Clear",
+    "clear_confirm_button": "Confirm Clear",
     "select_model_placeholder": "Please select a model...",
     "models_count": "{{count}} models total",
     "fetching_models": "Fetching...",
@@ -3777,7 +3787,7 @@
     "calculating": "Calculating..."
   },
   "adapter_options": {
-    "general": "General Model",
+    "general": "OpenAI Compatible",
     "general_desc": "Suitable for most standard AI models (e.g., GPT, Claude, Qwen, etc.)",
     "google": "Google Gemini",
     "google_desc": "Google Gemini series models, supporting multimodal and high-quality text generation"

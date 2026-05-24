@@ -1,7 +1,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
-import { Copy, Save, AlertTriangle, CheckCircle, XCircle, Filter, Upload, ExternalLink, FileText, Clipboard, MessageSquare } from 'lucide-react';
+import { Copy, FloppyDisk, Warning, CheckCircle, XCircle, Funnel, Upload, ArrowSquareOut, FileText, Clipboard, Chat } from '@phosphor-icons/react';
 import { showGlobalNotification } from '../../components/UnifiedNotification';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
@@ -50,7 +50,7 @@ const LEVEL_COLORS: Record<LogLevel, string> = {
 const LEVEL_ICONS: Record<LogLevel, React.FC<any>> = {
   debug: Upload,
   info: CheckCircle,
-  warning: AlertTriangle,
+  warning: Warning,
   error: XCircle,
 };
 
@@ -90,13 +90,13 @@ const ZONE_MAPPING: Record<string, ZoneInfo> = {
   'smart-input-landing': {
     name: '聊天输入框（首页）',
     description: '上传图片/文档到分析页面',
-    icon: MessageSquare,
+    icon: Chat,
     tabName: 'analysis',
   },
   'smart-input-docked': {
     name: '聊天输入框（对话中）',
     description: '上传图片/文档继续对话',
-    icon: MessageSquare,
+    icon: Chat,
     tabName: 'analysis',
   },
 };
@@ -117,7 +117,7 @@ const getZoneInfo = (zoneId: string): ZoneInfo => {
     return {
       name: displayName,
       description: '上传图片/文档到分析对话',
-      icon: MessageSquare,
+      icon: Chat,
       tabName: 'analysis',
     };
   }
@@ -300,7 +300,7 @@ const UnifiedDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, 
     <div className="p-4 space-y-4">
       <div className="flex items-center justify-between gap-4">
         <h2 className="text-lg font-semibold flex items-center gap-2">
-          <Upload className="h-5 w-5" />
+          <Upload size={20} />
           统一拖拽组件调试
         </h2>
         <div className="flex items-center gap-2">
@@ -309,7 +309,7 @@ const UnifiedDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, 
             className={`px-3 py-1 text-sm rounded ${errorsOnly ? 'bg-red-500 text-white' : 'bg-gray-200 text-gray-700'}`}
             title="仅显示错误和警告"
           >
-            <Filter className="h-4 w-4" />
+            <Funnel size={16} />
           </button>
           <button
             onClick={copyAllLogs}
@@ -317,7 +317,7 @@ const UnifiedDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, 
             disabled={filteredLogs.length === 0}
             title="复制所有日志到剪贴板"
           >
-            <Clipboard className="h-4 w-4" />
+            <Clipboard size={16} />
           </button>
           <button
             onClick={exportLogs}
@@ -325,7 +325,7 @@ const UnifiedDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, 
             disabled={logs.length === 0}
             title="导出日志为JSON文件"
           >
-            <Save className="h-4 w-4" />
+            <FloppyDisk size={16} />
           </button>
           <button
             onClick={clearLogs}
@@ -360,7 +360,7 @@ const UnifiedDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, 
       {/* 快速跳转区域 - 始终显示所有已知区域 */}
       <div className="border rounded-lg p-3 bg-gradient-to-r from-blue-50 to-indigo-50">
         <div className="text-sm font-medium text-gray-700 mb-2 flex items-center gap-2">
-          <ExternalLink className="h-4 w-4" />
+          <ArrowSquareOut size={16} />
           快速跳转到拖拽区域
           <span className="text-xs text-gray-500 ml-auto">
             ({allKnownZones.length} 个区域可用)
@@ -413,7 +413,7 @@ const UnifiedDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, 
                     )}
                   </div>
                 </div>
-                <ExternalLink className="h-4 w-4 text-gray-300 group-hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
+                <ArrowSquareOut size={16} className="text-gray-300 group-hover:text-blue-500 opacity-0 group-hover:opacity-100 transition-opacity" />
               </button>
             );
           })}
@@ -492,7 +492,7 @@ const UnifiedDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, 
                   <div key={log.id} className="p-3 hover:bg-gray-50">
                     <div className="flex items-start gap-3">
                       <Icon 
-                        className="h-5 w-5 mt-0.5 flex-shrink-0" 
+                        size={20} className="mt-0.5 flex-shrink-0" 
                         style={{ color: LEVEL_COLORS[log.level] }}
                       />
                       
@@ -536,7 +536,7 @@ const UnifiedDragDropDebugPlugin: React.FC<DebugPanelPluginProps> = ({ visible, 
                         className="p-1 text-gray-400 hover:text-gray-600"
                         title="复制日志"
                       >
-                        <Copy className="h-4 w-4" />
+                        <Copy size={16} />
                       </button>
                     </div>
                   </div>

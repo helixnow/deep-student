@@ -3,8 +3,8 @@ import { describe, expect, it } from 'vitest';
 import {
   blocksToSourceBundle,
   extractSourcesFromSharedContext,
-} from '@/chat-v2/components/panels/sourceAdapter';
-import type { Block } from '@/chat-v2/core/types/block';
+} from '@/features/chat/components/panels/sourceAdapter';
+import type { Block } from '@/features/chat/core/types/block';
 
 function makeMemoryBlock(toolOutput: unknown): Block {
   return {

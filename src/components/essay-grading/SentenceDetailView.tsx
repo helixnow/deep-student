@@ -6,7 +6,8 @@ import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import type { StreamingMarker } from '@/essay-grading/streamingMarkerParser';
-import { AlertTriangle, ArrowRight, Trash2, PenLine, Sparkles, Copy, Check, type LucideIcon } from 'lucide-react';
+import { Warning, ArrowRight, Trash, Pen, Sparkle, Copy, Check } from '@phosphor-icons/react';
+import type { Icon } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { useState } from 'react';
@@ -35,11 +36,11 @@ const ERROR_BADGE_STYLES: Record<string, string> = {
 const DEFAULT_BADGE_STYLE = 'bg-muted/30 text-muted-foreground border-border/40';
 
 /** 非 err 标记类型 → badge 配置 */
-const MARKER_BADGE_CONFIG: Partial<Record<StreamingMarker['type'], { icon: LucideIcon; i18nKey: string; style: string }>> = {
-  del: { icon: Trash2, i18nKey: 'essay_grading:markers.delete', style: 'bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800' },
-  replace: { icon: PenLine, i18nKey: 'essay_grading:markers.replace', style: 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800' },
-  ins: { icon: Sparkles, i18nKey: 'essay_grading:markers.insert', style: 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800' },
-  note: { icon: AlertTriangle, i18nKey: 'essay_grading:markers.note', style: 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800' },
+const MARKER_BADGE_CONFIG: Partial<Record<StreamingMarker['type'], { icon: Icon; i18nKey: string; style: string }>> = {
+  del: { icon: Trash, i18nKey: 'essay_grading:markers.delete', style: 'bg-red-50 dark:bg-red-950/30 text-red-600 dark:text-red-400 border-red-200 dark:border-red-800' },
+  replace: { icon: Pen, i18nKey: 'essay_grading:markers.replace', style: 'bg-amber-50 dark:bg-amber-950/30 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-800' },
+  ins: { icon: Sparkle, i18nKey: 'essay_grading:markers.insert', style: 'bg-emerald-50 dark:bg-emerald-950/30 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800' },
+  note: { icon: Warning, i18nKey: 'essay_grading:markers.note', style: 'bg-blue-50 dark:bg-blue-950/30 text-blue-600 dark:text-blue-400 border-blue-200 dark:border-blue-800' },
 };
 
 /** 渲染标记卡片的内容区 */
@@ -58,7 +59,7 @@ const MarkerContent: React.FC<{ marker: StreamingMarker }> = ({ marker }) => {
       return (
         <div className="flex items-start gap-2 text-sm group/content">
           <span className="text-red-500/80 line-through">{marker.oldText}</span>
-          <ArrowRight className="w-4 h-4 text-muted-foreground/40 shrink-0 mt-0.5" />
+          <ArrowRight size={16} className="text-muted-foreground/40 shrink-0 mt-0.5" />
           <span className="text-emerald-600 dark:text-emerald-400 font-medium">{marker.newText}</span>
           {marker.newText && (
             <CommonTooltip content={copied ? t('common:copied') : t('common:copy')}>
@@ -67,9 +68,9 @@ const MarkerContent: React.FC<{ marker: StreamingMarker }> = ({ marker }) => {
                 size="icon"
                 iconOnly
                 onClick={() => handleCopy(marker.newText!)}
-                className="h-5 w-5 ml-auto opacity-0 group-hover/content:opacity-100 transition-opacity text-emerald-600/60 hover:text-emerald-600 hover:bg-emerald-100/50 dark:hover:bg-emerald-900/30"
+ className="w-5 h-5 ml-auto opacity-0 group-hover/content:opacity-100 transition-opacity text-emerald-600/60 hover:text-emerald-600 hover:bg-emerald-100/50 dark:hover:bg-emerald-900/30"
               >
-                {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+                {copied ? <Check size={12} /> : <Copy size={12} />}
               </NotionButton>
             </CommonTooltip>
           )}
@@ -87,9 +88,9 @@ const MarkerContent: React.FC<{ marker: StreamingMarker }> = ({ marker }) => {
               size="icon"
               iconOnly
               onClick={() => handleCopy(marker.content)}
-              className="h-5 w-5 ml-auto opacity-0 group-hover/content:opacity-100 transition-opacity text-emerald-600/60 hover:text-emerald-600 hover:bg-emerald-100/50 dark:hover:bg-emerald-900/30"
+ className="w-5 h-5 ml-auto opacity-0 group-hover/content:opacity-100 transition-opacity text-emerald-600/60 hover:text-emerald-600 hover:bg-emerald-100/50 dark:hover:bg-emerald-900/30"
             >
-              {copied ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
+              {copied ? <Check size={12} /> : <Copy size={12} />}
             </NotionButton>
           </CommonTooltip>
         </div>
@@ -151,7 +152,7 @@ export const SentenceDetailView: React.FC<SentenceDetailViewProps> = ({ markers,
               const Icon = cfg.icon;
               return (
                 <span className={cn('flex items-center gap-1 px-2 py-0.5 text-xs font-medium rounded border', cfg.style)}>
-                  <Icon className="w-3 h-3" />
+                  <Icon size={12} />
                   {t(cfg.i18nKey)}
                 </span>
               );

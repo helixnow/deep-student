@@ -1,0 +1,421 @@
+import React, { useState, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Shield as PhosphorShield } from '@phosphor-icons/react';
+import { Globe, GithubLogo, Bug, ArrowSquareOut, ArrowClockwise, Download } from '@phosphor-icons/react';
+import { OpenSourceAcknowledgementsSection } from './OpenSourceAcknowledgementsSection';
+import { SiliconFlowLogo } from '@/components/ui/SiliconFlowLogo';
+import { DeepStudentLogo } from '@/components/ui/DeepStudentLogo';
+import { NotionButton } from '@/components/ui/NotionButton';
+import { Input } from '@/components/ui/shad/Input';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
+import { SettingSection } from './SettingsCommon';
+import { PrivacyPolicyDialog } from '@/components/legal/PrivacyPolicyDialog';
+import VERSION_INFO from '@/version';
+import { useAppUpdater, getUpdateChannel, setUpdateChannel, type UpdateChannel, getUpdateFrequency, setUpdateFrequency, type UpdateFrequency, getUpdateFrequencyDays, setUpdateFrequencyDays, getNoRemind, setNoRemind } from '@/hooks/useAppUpdater';
+import ReactMarkdown from 'react-markdown';
+
+const GroupTitle = ({ title }: { title: string }) => (
+  <div className="px-1 mb-3 mt-0">
+    <h3 className="text-base font-semibold text-foreground">{title}</h3>
+  </div>
+);
+
+const SettingRow = ({
+  title,
+  description,
+  children,
+}: {
+  title: string;
+  description?: string;
+  children: React.ReactNode;
+}) => (
+  <div className="group flex flex-col sm:flex-row sm:items-start gap-2 py-2.5 px-1 rounded overflow-hidden">
+    <div className="flex-1 min-w-0 pt-1.5 sm:min-w-[200px]">
+      <h3 className="text-sm text-foreground/90 leading-tight">{title}</h3>
+      {description && (
+        <p className="text-[11px] text-muted-foreground/70 leading-relaxed mt-0.5 line-clamp-2">
+          {description}
+        </p>
+      )}
+    </div>
+    <div className="min-w-0 max-w-full">
+      {children}
+    </div>
+  </div>
+);
+
+const aboutActionRowClassName =
+  'flex w-full items-center gap-3 rounded-[var(--button-radius)] px-2 py-2.5 text-left outline-none transition-[background-color] duration-150 ease-out hover:bg-[color:var(--sidebar-quiet-hover)] focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] motion-reduce:transition-none';
+
+const aboutActionIconClassName =
+  'h-4 w-4 flex-shrink-0 text-muted-foreground/70';
+
+const aboutActionLabelClassName =
+  'min-w-0 flex-1 text-sm text-foreground/90';
+
+const aboutActionTrailingIconClassName =
+  'ml-auto h-3 w-3 flex-shrink-0 text-muted-foreground/40';
+
+type AboutActionRowProps = {
+  icon: React.FC<{ className?: string }>;
+  label: string;
+  trailingIcon?: React.FC<{ className?: string }>;
+} & (
+  | {
+      href: string;
+      onClick?: never;
+    }
+  | {
+      href?: never;
+      onClick: () => void;
+    }
+);
+
+const AboutActionRow = ({
+  icon: Icon,
+  label,
+  href,
+  onClick,
+  trailingIcon: TrailingIcon,
+}: AboutActionRowProps) => {
+  const content = (
+    <>
+      <Icon className={aboutActionIconClassName} />
+      <span className={aboutActionLabelClassName}>{label}</span>
+      {TrailingIcon && <TrailingIcon className={aboutActionTrailingIconClassName} />}
+    </>
+  );
+
+  if (href) {
+    return (
+      <a
+        data-about-action-row
+        href={href}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={aboutActionRowClassName}
+      >
+        {content}
+      </a>
+    );
+  }
+
+  return (
+    // eslint-disable-next-line ds-components/no-native-button -- This row primitive needs anchor/button parity while keeping native button semantics.
+    <button
+      data-about-action-row
+      type="button"
+      onClick={onClick}
+      className={aboutActionRowClassName}
+    >
+      {content}
+    </button>
+  );
+};
+
+export const AboutTab: React.FC = () => {
+  const { t } = useTranslation(['common', 'settings']);
+  const [showPrivacyPolicy, setShowPrivacyPolicy] = useState(false);
+  const updater = useAppUpdater();
+  const [channel, setChannel] = useState<UpdateChannel>(getUpdateChannel);
+  const [frequency, setFrequencyState] = useState<UpdateFrequency>(getUpdateFrequency);
+  const [frequencyDays, setFrequencyDaysState] = useState<number>(getUpdateFrequencyDays);
+  const [noRemind, setNoRemindState] = useState<boolean>(getNoRemind);
+
+  const handleChannelChange = useCallback((val: UpdateChannel) => {
+    setUpdateChannel(val);
+    setChannel(val);
+  }, []);
+
+  const handleFrequencyChange = useCallback((freq: UpdateFrequency) => {
+    setUpdateFrequency(freq);
+    setFrequencyState(freq);
+    if (freq !== 'never') {
+      setNoRemindState(false);
+    }
+  }, []);
+
+  const handleFrequencyDaysChange = useCallback((days: number) => {
+    const clamped = Math.max(1, Math.round(days));
+    setUpdateFrequencyDays(clamped);
+    setFrequencyDaysState(clamped);
+  }, []);
+
+  const handleResetNoRemind = useCallback(() => {
+    setNoRemind(false);
+    setNoRemindState(false);
+    handleFrequencyChange('every_launch');
+  }, [handleFrequencyChange]);
+
+  return (
+    <div className="space-y-1 pb-10 text-left animate-in fade-in duration-500">
+      <SettingSection title="" hideHeader className="overflow-hidden">
+        <div className="flex flex-col sm:flex-row gap-6 py-6">
+          <div className="flex flex-col items-center justify-center sm:w-1/3 gap-5">
+            <DeepStudentLogo className="w-44 max-w-full" />
+            <div className="text-center">
+              <p className="text-xs text-muted-foreground/70 mt-0.5">{VERSION_INFO.FULL_VERSION}</p>
+            </div>
+          </div>
+          <div className="sm:w-2/3">
+            <GroupTitle title={t('acknowledgements.developer.title', '开发信息')} />
+            <div className="space-y-px">
+              <SettingRow title={t('acknowledgements.developer.fields.developer', '开发者')}>
+                <span className="text-sm text-foreground/90">DeepStudent Team</span>
+              </SettingRow>
+            <SettingRow title={t('acknowledgements.developer.fields.version', '版本')}>
+              <div className="flex items-center gap-2">
+                <span className="text-sm font-mono text-foreground/90 whitespace-nowrap">
+                  {VERSION_INFO.FULL_VERSION}
+                  <span className="text-muted-foreground/50 ml-1.5 text-xs">{VERSION_INFO.GIT_HASH}</span>
+                </span>
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => updater.checkForUpdate(false)}
+                  disabled={updater.checking}
+                  className="h-6 px-2 text-xs flex-shrink-0 whitespace-nowrap"
+                >
+                  <ArrowClockwise size={12} className={`mr-1 ${updater.checking ? 'animate-spin' : ''}`} />
+                  {updater.checking
+                    ? t('about.update.checking', '检查中...')
+                    : t('about.update.check', '检查更新')}
+                </NotionButton>
+              </div>
+            </SettingRow>
+
+            <SettingRow
+              title={t('about.update.channel', '更新渠道')}
+              description={channel === 'experimental'
+                ? t('about.update.channelExpDesc', '接收实验版更新，可能包含未充分测试的功能')
+                : t('about.update.channelStableDesc', '仅接收经过验证的稳定版更新')}
+            >
+              <Select value={channel} onValueChange={(val) => handleChannelChange(val as UpdateChannel)}>
+                <SelectTrigger className="h-6 px-1.5 text-xs w-auto min-h-0">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="stable">{t('about.update.channelStable', '稳定版')}</SelectItem>
+                  <SelectItem value="experimental">{t('about.update.channelExp', '实验版')}</SelectItem>
+                </SelectContent>
+              </Select>
+            </SettingRow>
+
+            <SettingRow
+              title={t('about.update.frequency', '自动检查更新')}
+              description={noRemind
+                ? t('about.update.frequencyNoRemindDesc', '已关闭自动更新提醒，点击重新开启')
+                : frequency === 'never'
+                  ? t('about.update.frequencyNeverDesc', '不会自动检查更新，可手动检查')
+                  : frequency === 'every_n_days'
+                    ? t('about.update.frequencyDaysDesc', '每 {{days}} 天自动检查一次', { days: frequencyDays })
+                    : t('about.update.frequencyLaunchDesc', '每次启动时自动检查')}
+            >
+              <div className="flex items-center gap-1.5">
+                {noRemind ? (
+                  <NotionButton
+                    variant="ghost"
+                    size="sm"
+                    onClick={handleResetNoRemind}
+                    className="h-6 px-2 text-xs text-primary"
+                  >
+                    {t('about.update.frequencyReEnable', '重新开启')}
+                  </NotionButton>
+                ) : (
+                  <>
+                    <Select value={frequency} onValueChange={(val) => handleFrequencyChange(val as UpdateFrequency)}>
+                      <SelectTrigger className="h-6 px-1.5 text-xs w-auto min-h-0">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="every_launch">{t('about.update.freqEveryLaunch', '每次启动')}</SelectItem>
+                        <SelectItem value="every_n_days">{t('about.update.freqEveryNDays', '每 N 天')}</SelectItem>
+                        <SelectItem value="never">{t('about.update.freqNever', '永不')}</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    {frequency === 'every_n_days' && (
+                      <Input
+                        type="number"
+                        min={1}
+                        max={365}
+                        value={frequencyDays}
+                        onChange={(e) => handleFrequencyDaysChange(Number(e.target.value))}
+                        className="h-6 w-14 px-1.5 text-xs text-center min-h-0"
+                      />
+                    )}
+                  </>
+                )}
+              </div>
+            </SettingRow>
+
+            {/* 已是最新版本提示 */}
+            {updater.upToDate && !updater.available && (
+              <div className="mx-1 p-2 rounded-lg bg-green-500/5 border border-green-500/20">
+                <p className="text-xs text-green-600 dark:text-green-400">
+                  ✓ {t('about.update.upToDate', '已是最新版本')}
+                </p>
+              </div>
+            )}
+
+            {/* 更新可用提示 */}
+            {updater.available && updater.info && (
+              <div className="mx-1 p-3 rounded-lg bg-primary/5 border border-primary/20 overflow-hidden">
+                <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                  <div className="min-w-0 flex-1">
+                    <p className="text-sm font-medium text-foreground">
+                      {t('about.update.available', '发现新版本')}: v{updater.info.version}
+                    </p>
+                    {updater.info.body && (() => {
+                      const md = updater.info!.body!
+                        .replace(/ (#{1,3} )/g, '\n\n$1')
+                        .replace(/ \* /g, '\n* ');
+                      return (
+                      <div className="text-xs text-muted-foreground mt-1 overflow-hidden release-notes-md">
+                        <ReactMarkdown
+                          components={{
+                            h1: ({ children }) => <h4 className="text-xs font-semibold text-foreground/90 mt-2 first:mt-0">{children}</h4>,
+                            h2: ({ children }) => <h4 className="text-xs font-semibold text-foreground/90 mt-2 first:mt-0">{children}</h4>,
+                            h3: ({ children }) => <h5 className="text-xs font-medium text-foreground/80 mt-1.5 first:mt-0">{children}</h5>,
+                            p: ({ children }) => <p className="mt-0.5 break-words" style={{ overflowWrap: 'anywhere' }}>{children}</p>,
+                            ul: ({ children }) => <ul className="mt-0.5 ml-3 list-disc space-y-0.5">{children}</ul>,
+                            li: ({ children }) => <li className="break-words" style={{ overflowWrap: 'anywhere' }}>{children}</li>,
+                            a: ({ href, children }) => <a href={href} target="_blank" rel="noopener noreferrer" className="text-primary hover:underline" style={{ overflowWrap: 'anywhere' }}>{children}</a>,
+                            strong: ({ children }) => <strong className="font-semibold text-foreground/90">{children}</strong>,
+                            code: ({ children }) => <code className="px-1 py-0.5 rounded bg-muted text-[11px]">{children}</code>,
+                          }}
+                        >{md}</ReactMarkdown>
+                      </div>);
+                    })()}
+                  </div>
+                  {updater.isMobile ? (
+                    <div className="w-full sm:w-auto sm:ml-3 flex-shrink-0 flex flex-col gap-1.5">
+                      {updater.info?.apkUrl && (
+                        <a
+                          href={updater.info.apkUrl}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="inline-flex items-center gap-1 text-sm text-primary hover:underline"
+                        >
+                          <Download size={14} />
+                          {t('about.update.mirrorDownload', '镜像下载')}
+                        </a>
+                      )}
+                      <a
+                        href={`https://github.com/helixnow/deep-student/releases/latest`}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="inline-flex items-center gap-1 text-sm text-muted-foreground hover:text-primary hover:underline"
+                      >
+                        <GithubLogo size={14} />
+                        {t('about.update.githubDownload', 'GitHub 下载')}
+                      </a>
+                    </div>
+                  ) : (
+                    <NotionButton
+                      size="sm"
+                      onClick={() => updater.downloadAndInstall()}
+                      disabled={updater.downloading}
+                      className="ml-3 flex-shrink-0"
+                    >
+                      <Download size={14} className={`mr-1 ${updater.downloading ? 'animate-bounce' : ''}`} />
+                      {updater.downloading
+                        ? t('about.update.downloading', '下载中...')
+                        : t('about.update.install', '下载更新')}
+                    </NotionButton>
+                  )}
+                </div>
+                {!updater.isMobile && updater.downloading && updater.progress > 0 && (
+                  <div className="mt-2 h-1.5 rounded-full bg-muted overflow-hidden">
+                    <div className="h-full rounded-full bg-primary transition-all duration-300" style={{ width: `${updater.progress}%` }} />
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 更新错误提示 */}
+            {updater.error && (
+              <div className={`mx-1 p-2 rounded-lg border ${
+                updater.error.phase === 'relaunch'
+                  ? 'bg-amber-500/5 border-amber-500/20'
+                  : 'bg-destructive/5 border-destructive/20'
+              }`}>
+                <p className={`text-xs ${
+                  updater.error.phase === 'relaunch' ? 'text-amber-600 dark:text-amber-400' : 'text-destructive'
+                }`}>
+                  {updater.error.phase === 'check' && `${t('about.update.error.check', '检查更新失败')}：`}
+                  {updater.error.phase === 'download' && `${t('about.update.error.download', '下载失败')}：`}
+                  {updater.error.phase === 'install' && `${t('about.update.error.install', '安装失败')}：`}
+                  {updater.error.phase === 'unavailable' && t('about.update.error.unavailable', '更新已不可用，请稍后重试')}
+                  {updater.error.phase !== 'relaunch' && updater.error.phase !== 'unavailable' && updater.error.message}
+                  {updater.error.phase === 'relaunch' && t('about.update.error.relaunch', '更新已安装，请手动重启应用以完成更新')}
+                </p>
+              </div>
+            )}
+            <SettingRow title={t('acknowledgements.developer.fields.license', '许可证')}>
+              <span className="text-sm text-foreground/90">AGPL-3.0-or-later</span>
+            </SettingRow>
+            <SettingRow title={t('acknowledgements.developer.fields.platforms', '平台支持')}>
+              <span className="text-sm text-foreground/90">
+                {t('acknowledgements.developer.values.platforms', 'Windows / macOS / iPadOS / Android')}
+              </span>
+            </SettingRow>
+            </div>
+          </div>
+        </div>
+
+        <div className="mt-8">
+          <GroupTitle title={t('acknowledgements.links.title', '官方链接')} />
+          <div className="space-y-px">
+            {[
+              { icon: Globe, label: t('acknowledgements.links.website', '访问官网'), href: 'https://www.deepstudent.cn' },
+              { icon: GithubLogo, label: t('acknowledgements.links.github', 'GitHub'), href: 'https://github.com/helixnow/deep-student' },
+              { icon: Bug, label: t('acknowledgements.links.issues', 'Issue 反馈'), href: 'https://github.com/helixnow/deep-student/issues' },
+            ].map((item) => (
+              <AboutActionRow
+                key={item.href}
+                icon={item.icon}
+                label={item.label}
+                href={item.href}
+                trailingIcon={ArrowSquareOut}
+              />
+            ))}
+            <AboutActionRow
+              icon={PhosphorShield}
+              label={t('legal.settingsSection.viewPrivacyPolicy', '查看隐私政策')}
+              onClick={() => setShowPrivacyPolicy(true)}
+            />
+          </div>
+        </div>
+
+        <div className="mt-8">
+          <GroupTitle title={t('acknowledgements.partners.title', '技术合作伙伴致谢')} />
+          <div className="flex items-start justify-between gap-4 px-1 py-1.5">
+            <div className="min-w-0 flex-1 max-w-3xl">
+              <h4 className="text-sm font-medium text-foreground/90">
+                {t('acknowledgements.partners.cards.siliconflow.title', 'SiliconFlow')}
+              </h4>
+              <p className="mt-2 text-[12.5px] leading-relaxed text-muted-foreground/70">
+                {t('acknowledgements.partners.cards.siliconflow.description', '提供多模态与推理模型服务，保障 DeepStudent 在国产算力生态中的高效稳定运行。')}
+              </p>
+            </div>
+            <SiliconFlowLogo
+              alt={t('acknowledgements.partners.cards.siliconflow.alt', 'Powered by SiliconFlow')}
+              className="mt-0.5 h-6 w-auto shrink-0 opacity-65"
+            />
+          </div>
+        </div>
+
+        <div className="mt-8">
+          <OpenSourceAcknowledgementsSection />
+        </div>
+
+      </SettingSection>
+
+      {/* 隐私政策弹窗 */}
+      <PrivacyPolicyDialog open={showPrivacyPolicy} onOpenChange={setShowPrivacyPolicy} />
+
+    </div>
+  );
+};
+
+export default AboutTab;

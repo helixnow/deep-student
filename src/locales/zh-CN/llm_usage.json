@@ -60,16 +60,19 @@
     "vfs_indexing": "文件索引",
     "embedding": "向量嵌入",
     "reranker": "重排序",
+    "voice_input": "语音输入",
     "other": "其他"
   },
   "recent": {
     "title": "最近调用",
     "time": "时间",
     "model": "模型",
+    "provider": "供应商",
     "caller": "模块",
     "tokens": "Token",
     "duration": "耗时",
-    "status": "状态"
+    "status": "状态",
+    "unknownProvider": "未知"
   },
   "status": {
     "success": "成功",

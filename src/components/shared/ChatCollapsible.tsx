@@ -1,7 +1,7 @@
 import React from 'react';
 import { cn } from '../../utils/cn';
 import { Card } from '../ui/shad/Card';
-import { ChevronRight } from 'lucide-react';
+import { CaretRight } from '@phosphor-icons/react';
 
 interface ChatCollapsibleProps extends Omit<React.HTMLAttributes<HTMLDivElement>, 'title'> {
   open: boolean;
@@ -71,10 +71,10 @@ export const ChatCollapsible: React.FC<ChatCollapsibleProps> = ({
         }}
       >
         <div className="flex items-center gap-2 min-w-0">
-          <ChevronRight
+          <CaretRight
             className={cn('h-4 w-4 text-muted-foreground transition-transform', open && 'rotate-90')}
             aria-hidden
-          />
+/>
           <div className="flex items-center gap-2 min-w-0">
             <div className="text-[13px] font-semibold text-foreground truncate">{title}</div>
             {subtitle && (

@@ -11,9 +11,9 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent } from '@testing-library/react';
 import React from 'react';
-import type { Block } from '@/chat-v2/core/types';
-import type { AnkiCardsBlockData } from '@/chat-v2/plugins/blocks/ankiCardsBlock';
-import { blockRegistry } from '@/chat-v2/registry';
+import type { Block } from '@/features/chat/core/types';
+import type { AnkiCardsBlockData } from '@/features/chat/plugins/blocks/ankiCardsBlock';
+import { blockRegistry } from '@/features/chat/registry';
 
 // Mock i18n（仅覆盖本组件使用的 key）
 vi.mock('react-i18next', () => ({
@@ -41,7 +41,7 @@ const mockImportCardsViaAnkiConnect = vi.fn(async () => undefined);
 const mockLogChatAnkiEvent = vi.fn();
 const mockInvoke = vi.fn(async () => undefined);
 
-vi.mock('@/chat-v2/anki', () => ({
+vi.mock('@/features/chat/anki', () => ({
   dispatchOpenAnkiPanelEvent: (...args: unknown[]) => mockDispatchOpenAnkiPanelEvent(...args),
   saveCardsToLibrary: (...args: unknown[]) => mockSaveCardsToLibrary(...args),
   exportCardsAsApkg: (...args: unknown[]) => mockExportCardsAsApkg(...args),
@@ -65,7 +65,7 @@ vi.mock('@tauri-apps/api/core', () => ({
 }));
 
 // 在 mocks 之后导入（触发注册）
-import { AnkiCardsBlock } from '@/chat-v2/plugins/blocks/ankiCardsBlock';
+import { AnkiCardsBlock } from '@/features/chat/plugins/blocks/ankiCardsBlock';
 
 function createBlock(overrides?: Partial<Block>): Block {
   return {
@@ -97,7 +97,7 @@ describe('AnkiCardsBlock', () => {
   });
 
   it('should be registered in blockRegistry', async () => {
-    await import('@/chat-v2/plugins/blocks/ankiCardsBlock');
+    await import('@/features/chat/plugins/blocks/ankiCardsBlock');
     expect(blockRegistry.has('anki_cards')).toBe(true);
     expect(blockRegistry.get('anki_cards')?.onAbort).toBe('keep-content');
   });

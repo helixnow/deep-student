@@ -6,7 +6,8 @@ export type ApiCapabilityType =
   | 'function_calling'
   | 'web_search'
   | 'embedding'
-  | 'rerank';
+  | 'rerank'
+  | 'audio_transcription';
 
 export interface ApiCapabilityOverride {
   type: ApiCapabilityType;
@@ -27,6 +28,7 @@ export interface InferredApiCapabilities {
   webSearch: boolean;
   embedding: boolean;
   rerank: boolean;
+  audioTranscription: boolean;
   imageModel: boolean;
   supportsReasoningEffort: boolean;
   supportsThinkingTokens: boolean;
@@ -46,8 +48,13 @@ const getOverride = (descriptor: ApiModelDescriptor, type: ApiCapabilityType): b
 
 const EMBEDDING_REGEX = /(?:^text-|embed|bge-|e5-|llm2vec|retrieval|uae-|gte-|jina-clip|jina-embeddings|voyage-)/i;
 const RERANK_REGEX = /(?:rerank|re-rank|re-ranker|re-ranking|retrieval|retriever)/i;
+const AUDIO_TRANSCRIPTION_REGEX =
+  /(?:^|[/_-])(?:asr|stt)(?:$|[/_-])|transcrib(?:e|er|ing|ption)|whisper|sensevoice|telespeechasr|speech(?:[-_/]to[-_/]text|[-_/]?asr)|gpt-4o(?:-mini)?-transcribe|qwen3-asr|scribe(?:[-_/]v?\d+)?/i;
+const AUDIO_TRANSCRIPTION_EXCLUDED_REGEX = /tts|text-to-speech|speech(?:[-_/]synthesis|[-_/]generation)/i;
 
 const IMAGE_MODEL_REGEX = /flux|diffusion|stabilityai|sd-|dall|cogview|janus|midjourney|mj-|image|gpt-image/i;
+const MIMO_CHAT_REGEX = /^mimo-v2(?:\.5)?(?:-(?:pro|flash))?$|^mimo-v2-omni$/i;
+const MIMO_MULTIMODAL_REGEX = /^mimo-v2\.5$|^mimo-v2-omni$/i;
 
 const IMAGE_MODEL_ID_SET = new Set(
   [
@@ -70,7 +77,7 @@ const IMAGE_MODEL_ID_SET = new Set(
 // 推理模型正则：o系列、gpt-5系列（除gpt-5-chat）、gpt-oss、codex-mini、各厂商推理模型
 // Grok 系列：3-mini, 4, 4-fast, 4.1, 4-1-fast, code-fast 都是推理模型（排除 -non-reasoning 变体）
 // Mistral Magistral 系列：magistral-small/medium 是推理模型
-const REASONING_REGEX = /^(?!.*-non-reasoning\b)(?:o\d+(?:-[\w-]+)?|gpt-5(?!-chat)[\w.-]*|gpt-oss|codex-mini|.*\b(?:reasoning|reasoner|thinking)\b.*|.*-[rR]\d+.*|.*\bqwq(?:-[\w-]+)?\b.*|.*\bhunyuan-t1(?:-[\w-]+)?\b.*|.*\bglm-zero-preview\b.*|.*\bgrok-(?:3-mini|4(?:[.-]1)?(?:-fast)?|code-fast)(?:-[\w-]+)?\b.*|.*\bmagistral(?:-[\w-]+)?\b.*)$/i;
+const REASONING_REGEX = /^(?!.*-non-reasoning\b)(?:o\d+(?:-[\w-]+)?|gpt-5(?!-chat)[\w.-]*|gpt-oss|codex-mini|.*\b(?:reasoning|reasoner|thinking)\b.*|.*-[rR]\d+.*|.*\bqwq(?:-[\w-]+)?\b.*|.*\bhunyuan-t1(?:-[\w-]+)?\b.*|.*\bglm-zero-preview\b.*|.*\bgrok-(?:3-mini|4(?:[.-]1)?(?:-fast)?|code-fast)(?:-[\w-]+)?\b.*|.*\bmagistral(?:-[\w-]+)?\b.*|.*\bnemotron-3-(?:nano|super|ultra)\b.*)$/i;
 
 const VISION_ALLOWED_PATTERNS: (string | RegExp)[] = [
   // OCR 专用模型（DeepSeek-OCR、PaddleOCR-VL 等）
@@ -175,7 +182,7 @@ const VISION_EXCLUDED_REGEXES: RegExp[] = [
 
 // 函数调用支持白名单：OpenAI GPT系列、o系列、各厂商主流模型
 // 2026-02: 添加 doubao-seed-2.0, MiniMax-M2.5, GLM-5, grok-4.1 支持
-const FUNCTION_CALLING_WHITELIST_REGEX = /(gpt-4o-mini|gpt-4o|gpt-4\.1|gpt-4\.5|gpt-4(?!-\d)|gpt-oss|gpt-5|o[134]\b|o3-pro|codex-mini|computer-use|claude|qwen3?|hunyuan|deepseek|glm-(?:4(?:\.[5-7])?|5(?:\.\d+)?)|learnlm|gemini(?!.*embedding)|grok-[34]|doubao-seed-(?:1(?:\.[68]|-[68])|2(?:\.0|-0))|kimi-(?:k2(?:\.5|-5)?|latest|vl)|ling-[\w-]+|ring-[\w-]+|minimax-m2(?:\.\d)?|devstral)/i;
+const FUNCTION_CALLING_WHITELIST_REGEX = /(gpt-4o-mini|gpt-4o|gpt-4\.1|gpt-4\.5|gpt-4(?!-\d)|gpt-oss|gpt-5|o[134]\b|o3-pro|codex-mini|computer-use|claude|qwen3?|hunyuan|deepseek|glm-(?:4(?:\.[5-7])?|5(?:\.\d+)?)|learnlm|gemini(?!.*embedding)|grok-[34]|doubao-seed-(?:1(?:\.[68]|-[68])|2(?:\.0|-0))|kimi-(?:k2(?:\.5|-5)?|latest|vl)|ling-[\w-]+|ring-[\w-]+|minimax-m2(?:\.\d)?|devstral|nemotron-3-(?:nano|super|ultra)|mimo-v2(?:\.5)?(?:-(?:pro|flash))?|mimo-v2-omni)/i;
 
 const FUNCTION_CALLING_EXCLUDED_REGEXES: RegExp[] = [
   /\baqa\b/i,
@@ -189,6 +196,7 @@ const FUNCTION_CALLING_EXCLUDED_REGEXES: RegExp[] = [
   /glm-(?:4(?:\.[0-4])?v)/i, // 仅排除 GLM-4.4V 及以下（4.5V+ 原生支持工具调用）
   /hunyuan-mt/i, // 排除 Hunyuan-MT 翻译系列，不支持工具调用
   /deepseek-v3\.2-speciale/i, // DeepSeek V3.2-Speciale 不支持工具调用
+  /mimo-v2(?:\.5)?-tts/i, // MiMo TTS 系列不支持工具调用
 ];
 
 // Web Search 支持白名单
@@ -276,10 +284,15 @@ const GEMINI_3_THINKING_REGEX = /gemini-3/i;
 const PERPLEXITY_REASONING_REGEX = /sonar-reasoning-pro/i;
 
 // DeepSeek 混合推理模型：V3.1+ 支持 thinking_mode 动态切换
-// - deepseek-chat 对应非思考模式，deepseek-reasoner 对应思考模式
+// - DeepSeek V4 使用 thinking.type + official reasoning_effort
+// - deepseek-chat 对应非思考模式，deepseek-reasoner 对应思考模式（V4 Flash 兼容别名）
 // - V3.2-Speciale 不支持工具调用
-// 注意：R1 不支持混合推理，多轮对话时 reasoning_content 被忽略
+// 注意：DeepSeek 官方文档要求区分“同一问题内的 tool loop 回传 reasoning_content”
+// 与“下一次用户问题开始时删除旧 reasoning_content”
+const DEEPSEEK_V4_REGEX = /deepseek-v4/i;
+const DEEPSEEK_LEGACY_ALIAS_REGEX = /^deepseek-(?:chat|reasoner)$/i;
 const DEEPSEEK_HYBRID_REGEXES: RegExp[] = [
+  DEEPSEEK_V4_REGEX,
   /deepseek-v3[.-]\d/i,
   /deepseek-chat(?!-v2)/i, // deepseek-chat (V3.2) 但排除 v2 系列
   /deepseek-reasoner/i, // deepseek-reasoner (V3.2)
@@ -300,6 +313,12 @@ const CONTEXT_WINDOW_RULES: Array<{ pattern: RegExp; window: number }> = [
   { pattern: /gemini-(?:2\.[05]|3)/i, window: 1_000_000 },
   // Gemini 别名（flash-latest/pro-latest 等指向 2.5+ 系列）
   { pattern: /gemini-(?:flash-latest|pro-latest|flash-lite-latest)/i, window: 1_000_000 },
+  // DeepSeek V4 官方模型及兼容别名：1M context
+  { pattern: /deepseek-v4|^deepseek-(?:chat|reasoner)$/i, window: 1_000_000 },
+  // NVIDIA Nemotron 3 系列：NIM/API Catalog 暴露 1M 级上下文窗口
+  { pattern: /nemotron-3-(?:nano|super|ultra)/i, window: 1_000_000 },
+  // Xiaomi MiMo V2.5 Pro / V2 Pro / V2.5：官方 1M context
+  { pattern: /(?:^|\s)(?:mimo-v2\.5-pro|mimo-v2-pro|mimo-v2\.5)(?:\s|$)/i, window: 1_000_000 },
 
   // --- 2M 级 ---
   // Grok 4.1 Fast / Grok 4 Fast：2,000,000 tokens（xAI 官方 2025-11）
@@ -326,6 +345,8 @@ const CONTEXT_WINDOW_RULES: Array<{ pattern: RegExp; window: number }> = [
   { pattern: /qwen3?-max|qwen-long/i, window: 256_000 },
   // Doubao 256K 变体 + Seed 系列：256K tokens（火山引擎官方）
   { pattern: /doubao.*256k|doubao-seed/i, window: 256_000 },
+  // Xiaomi MiMo V2 Flash / Omni：官方 256K context
+  { pattern: /(?:^|\s)(?:mimo-v2(?:\.5)?-flash|mimo-v2-omni)(?:\s|$)/i, window: 256_000 },
   // Mistral Large 3：256K tokens（Mistral 官方 2025-12，675B MoE）
   { pattern: /mistral-large-3/i, window: 256_000 },
 
@@ -410,6 +431,8 @@ const hasRegistryOptionalParam = (fields: string[] | undefined, target: string):
 export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredApiCapabilities {
   const id = toLower(descriptor.id);
   const name = toLower(descriptor.name);
+  const providerScope = toLower(descriptor.providerScope);
+  const isSiliconFlowScope = providerScope === 'siliconflow';
   const modelRecord = findModelRecordById(descriptor.id, { providerScope: descriptor.providerScope });
   const modelCapabilities = modelRecord?.capabilities;
   const modelOptionalParams = modelRecord?.param_format?.optional_fields;
@@ -419,6 +442,16 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
 
   const rerankOverride = getOverride(descriptor, 'rerank');
   const rerank = rerankOverride !== undefined ? rerankOverride : RERANK_REGEX.test(id) || (name ? RERANK_REGEX.test(name) : false);
+
+  const audioTranscriptionOverride = getOverride(descriptor, 'audio_transcription');
+  const audioTranscription =
+    audioTranscriptionOverride !== undefined
+      ? audioTranscriptionOverride
+      : !embedding &&
+        !rerank &&
+        !AUDIO_TRANSCRIPTION_EXCLUDED_REGEX.test(id) &&
+        !(name ? AUDIO_TRANSCRIPTION_EXCLUDED_REGEX.test(name) : false) &&
+        (AUDIO_TRANSCRIPTION_REGEX.test(id) || (name ? AUDIO_TRANSCRIPTION_REGEX.test(name) : false));
 
   const imageModelById = IMAGE_MODEL_ID_SET.has(id);
   const imageModel = imageModelById || IMAGE_MODEL_REGEX.test(id) || (name ? IMAGE_MODEL_REGEX.test(name) : false);
@@ -430,7 +463,7 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
   } else if (modelCapabilities) {
     reasoning = modelCapabilities.reasoning;
   } else if (!embedding && !rerank && !imageModel) {
-    reasoning = REASONING_REGEX.test(id) || (name ? REASONING_REGEX.test(name) : false);
+    reasoning = REASONING_REGEX.test(id) || MIMO_CHAT_REGEX.test(id) || (name ? REASONING_REGEX.test(name) || MIMO_CHAT_REGEX.test(name) : false);
   }
 
   const visionOverride = getOverride(descriptor, 'vision');
@@ -440,7 +473,7 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
   } else if (modelCapabilities) {
     vision = modelCapabilities.vision;
   } else if (!embedding && !rerank) {
-    const allowed = matchesPatternList(id, VISION_ALLOWED_PATTERNS) || (name ? matchesPatternList(name, VISION_ALLOWED_PATTERNS) : false);
+    const allowed = matchesPatternList(id, VISION_ALLOWED_PATTERNS) || MIMO_MULTIMODAL_REGEX.test(id) || (name ? matchesPatternList(name, VISION_ALLOWED_PATTERNS) || MIMO_MULTIMODAL_REGEX.test(name) : false);
     const excluded = matchesRegexList(id, VISION_EXCLUDED_REGEXES) || (name ? matchesRegexList(name, VISION_EXCLUDED_REGEXES) : false);
     vision = allowed && !excluded;
   }
@@ -480,29 +513,38 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
 
   const isPerplexityReasoningBudget = id.includes('sonar-deep-research');
 
-  const isRegistryReasoningEffort = modelCapabilities && hasRegistryOptionalParam(modelOptionalParams, 'reasoning_effort');
+  const isDeepSeekV4 = DEEPSEEK_V4_REGEX.test(id) || (name ? DEEPSEEK_V4_REGEX.test(name) : false);
+  const isDeepSeekLegacyAlias = DEEPSEEK_LEGACY_ALIAS_REGEX.test(id);
+  // DeepSeek V4 exposes high/max effort semantics across official DeepSeek and
+  // SiliconFlow-hosted V4 ids; V3.2 remains thinking-budget based.
+  const isDeepSeekV4EffortCapable = isDeepSeekV4 || isDeepSeekLegacyAlias;
+
+  const isRegistryReasoningEffort = !!(modelCapabilities && hasRegistryOptionalParam(modelOptionalParams, 'reasoning_effort'));
   const isRegistryReasoningTokens =
-    modelCapabilities && (
+    !!(modelCapabilities && (
       hasRegistryOptionalParam(modelOptionalParams, 'include_thoughts') ||
       hasRegistryOptionalParam(modelOptionalParams, 'thinking_budget') ||
       hasRegistryOptionalParam(modelOptionalParams, 'thinkingConfig') ||
       hasRegistryOptionalParam(modelOptionalParams, 'enable_thinking')
-    );
-  const isRegistryHybridReasoning = modelCapabilities && hasRegistryOptionalParam(modelOptionalParams, 'reasoning_mode');
+    ));
+  const isRegistryHybridReasoning = !!(modelCapabilities && hasRegistryOptionalParam(modelOptionalParams, 'reasoning_mode'));
 
   const supportsReasoningEffort = !embedding && !rerank && !imageModel && (
-    isOpenaiReasoningBudget || isGrokReasoningBudget || isPerplexityReasoningBudget || isRegistryReasoningEffort
+    isOpenaiReasoningBudget || isGrokReasoningBudget || isPerplexityReasoningBudget || isDeepSeekV4EffortCapable || isRegistryReasoningEffort
   );
 
   const isGeminiThinking =
     GEMINI_THINKING_REGEX.test(id) &&
     !GEMINI_IMAGE_EXCLUDE_REGEX.test(id);
 
+  // Vendor-prefixed Qwen3 models (e.g., Qwen/Qwen3-8B from SiliconFlow) also support thinking
+  const isVendorQwen3 = /^qwen\/qwen3[-.]/i.test(id);
+
   let isQwenTokenModel = false;
   let isQwenThinkingModel = false;
   if (!id.includes('coder')) {
-    // Qwen3 系列支持 thinking/non-thinking 模式切换
-    if (id.startsWith('qwen3')) {
+    // Qwen3 系列支持 thinking/non-thinking 模式切换 (包括 vendor-prefixed 如 Qwen/Qwen3-8B)
+    if (id.startsWith('qwen3') || isVendorQwen3) {
       // qwen3-max-preview 支持 thinking 模式
       if (id.includes('preview')) {
         isQwenTokenModel = true;
@@ -566,16 +608,21 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
       isPerplexityReasoning ||
       isRegistryReasoningTokens);
 
+  const isMimoHybridReasoning = MIMO_CHAT_REGEX.test(id) || (name ? MIMO_CHAT_REGEX.test(name) : false);
+
   const supportsHybridReasoning =
     !embedding &&
     !rerank &&
     !imageModel &&
-    (DEEPSEEK_HYBRID_REGEXES.some(regex => regex.test(id)) || isRegistryHybridReasoning);
+    (DEEPSEEK_HYBRID_REGEXES.some(regex => regex.test(id)) || isMimoHybridReasoning || isRegistryHybridReasoning);
 
   // 上下文窗口推断：使用 id + name 拼接作为指纹，提高匹配率
   const inferredWindow = inferContextWindow(`${id} ${name}`);
+  const shouldUseDeepSeekV4Context = isDeepSeekV4 || isDeepSeekV4EffortCapable;
   const contextWindow =
-    modelCapabilities && typeof modelCapabilities.max_context_tokens === 'number' && modelCapabilities.max_context_tokens > 0
+    shouldUseDeepSeekV4Context
+      ? 1_000_000
+      : modelCapabilities && typeof modelCapabilities.max_context_tokens === 'number' && modelCapabilities.max_context_tokens > 0
       ? modelCapabilities.max_context_tokens
       : inferredWindow;
 
@@ -586,6 +633,7 @@ export function inferApiCapabilities(descriptor: ApiModelDescriptor): InferredAp
     webSearch,
     embedding,
     rerank,
+    audioTranscription,
     imageModel,
     supportsReasoningEffort,
     supportsThinkingTokens,

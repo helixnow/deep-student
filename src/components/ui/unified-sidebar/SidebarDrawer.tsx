@@ -9,9 +9,10 @@
 
 import React, { useRef, useEffect, useState, useCallback, type ReactNode } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContract';
 import { useTranslation } from 'react-i18next';
 import { Sheet, SheetContent } from '@/components/ui/shad/Sheet';
-import { X } from 'lucide-react';
+import { X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import type { SidebarDrawerProps } from './types';
 
@@ -111,7 +112,7 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
       <SheetContent
         side={side}
         className={cn(
-          '!p-0 overflow-hidden flex flex-col [&>button]:hidden',
+          'sidebar-shell-drawer !p-0 overflow-hidden flex flex-col [&>button]:hidden',
           side === 'left' && 'data-[state=open]:slide-in-from-left data-[state=closed]:slide-out-to-left',
           side === 'right' && 'data-[state=open]:slide-in-from-right data-[state=closed]:slide-out-to-right',
           className
@@ -134,8 +135,8 @@ export const SidebarDrawer: React.FC<SidebarDrawerProps> = ({
           {showHeader && (
             <div className="flex items-center gap-3 px-4 py-3 shrink-0 border-b border-border/50">
               {/* 关闭按钮 */}
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onOpenChange(false)} className="!w-8 !h-8 !rounded-full hover:bg-accent/80 active:bg-accent -ml-1" aria-label={t('common:sidebar.close')}>
-                <X className="w-5 h-5 text-muted-foreground" />
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => onOpenChange(false)} className={cn(shellIconButtonClassName, '-ml-1')} aria-label={t('common:sidebar.close')}>
+                <X size={20} weight="regular" />
               </NotionButton>
 
               {/* 标题区域 */}

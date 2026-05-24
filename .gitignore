@@ -261,3 +261,22 @@ public/images/*
 
 # Private CI workflows (backup infrastructure)
 .github/workflows/backup.yml
+
+# GSD planning workflow artifacts
+.planning/
+study-ui/.planning/
+
+# Design assets
+design/
+
+# Generated outputs
+output/
+
+# Development notes
+note/
+
+# AI tool artifacts
+AGENTS.md
+UI-REVIEW.md
+FRONTEND_ANALYSIS.md
+.codex-page-state.png
