@@ -722,12 +722,6 @@ function PopupCompareSection() {
                   <NotionDialog
                     open={notionDialogOpen}
                     onOpenChange={setNotionDialogOpen}
-                    title="NotionDialog 标题"
-                    description="这是 NotionDialog 的描述文字。"
-                    actions={[
-                      { label: '取消', variant: 'ghost', onClick: () => setNotionDialogOpen(false) },
-                      { label: '确认', variant: 'primary', onClick: () => setNotionDialogOpen(false) },
-                    ]}
                   >
                     <p className="text-sm text-[color:var(--text-secondary)]">
                       内容区域示例。NotionDialog 是目标设计系统的模态框，封装了 portal + 动画 + 可滚动内容区。

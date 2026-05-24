@@ -10,6 +10,7 @@ import { useStore } from 'zustand';
 import {
   ListChecks,
   Check,
+  X,
   CircleNotch,
   SkipForward,
   CaretDown,
@@ -90,7 +91,7 @@ const StatusDot: React.FC<{ status: StepStatus; index: number }> = ({ status, in
     case 'failed':
       return (
         <span className="inline-flex items-center justify-center w-[18px] h-[18px] rounded-full flex-shrink-0 text-[color:hsl(var(--destructive))]">
-          <XIcon size={13} weight="bold" />
+          <X size={13} weight="bold" />
         </span>
       );
     case 'skipped':
