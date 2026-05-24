@@ -850,6 +850,7 @@ mod tests {
             assert!(names.contains("questions"));
             assert!(names.contains("chat_v2_sessions"));
             assert!(names.contains("chat_v2_messages"));
+            assert!(names.contains("todo_items"));
             assert!(names.contains("mistakes"));
             assert!(names.contains("llm_usage_logs"));
         }
