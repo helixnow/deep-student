@@ -10,6 +10,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.37](https://github.com/helixnow/deep-student/compare/v0.9.36...v0.9.37) (2026-05-24)
+
+
+### Bug Fixes
+
+* pin @lobehub/icons to 5.6.0 ([d04fb13](https://github.com/helixnow/deep-student/commit/d04fb132ec29b081b93057cf20d11d750b130ebf))
+* **rebuild:** add --legacy-peer-deps to npm ci ([449a0c2](https://github.com/helixnow/deep-student/commit/449a0c2a71cdc0411e18dddaa98c62a757513724))
+* **release:** add --legacy-peer-deps to npm ci ([e0bb680](https://github.com/helixnow/deep-student/commit/e0bb680f32b451127962713f83a6641a4bbef371))
+
 ## [0.9.36](https://github.com/helixnow/deep-student/compare/v0.9.35...v0.9.36) (2026-05-24)
 
 
