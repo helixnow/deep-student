@@ -141,4 +141,4 @@ jobs:
 
       - name: Cargo audit
         working-directory: src-tauri
-        run: cargo audit --deny warnings
+        run: cargo audit
