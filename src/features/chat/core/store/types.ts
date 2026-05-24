@@ -209,6 +209,9 @@ export interface ChatStoreState extends StoreCallbacks {
   /** 待处理的阻塞交互（工具审批/用户提问/工具限制） */
   pendingBlockingInteraction: BlockingInteraction | null;
 
+  /** 待处理的工具审批请求（兼容旧字段） */
+  pendingApprovalRequest: ChatStore['pendingApprovalRequest'];
+
   // Pending message queue (in-memory, per-session, not persisted)
   queuedMessages: QueuedMessage[];
   dequeuing: boolean;
@@ -292,6 +295,7 @@ export function createInitialState(sessionId: string, title?: string, descriptio
     pendingContextRefs: [], // 🆕 上下文引用初始为空数组
     pendingContextRefsDirty: false,
     pendingBlockingInteraction: null, // 🆕 阻塞交互初始为 null
+    pendingApprovalRequest: null, // 🆕 兼容旧字段初始为 null
     queuedMessages: [],
     dequeuing: false,
     activeSkillIds: [], // 🆕 Skills 系统：当前激活的 Skill ID 列表（支持多选）

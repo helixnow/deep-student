@@ -15,6 +15,7 @@ import {
   SkipForward,
   CaretDown,
   CaretUp,
+  X,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
