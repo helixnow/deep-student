@@ -6,7 +6,8 @@
 
 import { useMemo } from 'react';
 import type { StoreApi } from 'zustand';
-import { sessionManager, type CreateSessionOptions } from '../core/session';
+import type { CreateSessionOptions } from '../core/session';
+import { sessionManager } from '../core/session/sessionManager';
 import type { ChatStore } from '../core/types';
 
 // Re-export CreateSessionOptions for external use
