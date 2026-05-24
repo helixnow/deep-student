@@ -1,0 +1,17 @@
+[advisories]
+ignore = [
+    # aws-lc-sys (transitive via aws-sdk-s3): patched in >=0.39.0, but
+    # upgrading the transitive dep risks ABI breakage. Desktop app context
+    # does not expose these TLS/cert-parsing attack surfaces.
+    "RUSTSEC-2026-0044",  # X.509 Name Constraints bypass (aws-lc-sys <0.39.0)
+    "RUSTSEC-2026-0045",  # AES-CCM timing side-channel (aws-lc-sys <0.38.0)
+    "RUSTSEC-2026-0046",  # PKCS7 cert chain bypass (aws-lc-sys <0.38.0)
+]
+
+[output]
+quiet = false
+
+[yanked]
+# Yanked crates from transitive dependencies (lz4_flex via arrow/datafusion/lance)
+# are outside our control. We deny only actual RUSTSEC security advisories.
+enabled = false

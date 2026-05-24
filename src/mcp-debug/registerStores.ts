@@ -24,13 +24,13 @@ export async function registerAllStores(): Promise<void> {
     // Chat V2 相关
     {
       name: 'workspace',
-      module: () => import('../chat-v2/workspace/workspaceStore'),
+      module: () => import('../features/chat/workspace/workspaceStore'),
       exportName: 'useWorkspaceStore',
     },
     // 主要功能 stores
     {
       name: 'notesTree',
-      module: () => import('../stores/notesTreeStore'),
+      module: () => import('../features/notes/stores/notesTreeStore'),
       exportName: 'useNotesTreeStore',
     },
     {
@@ -50,7 +50,7 @@ export async function registerAllStores(): Promise<void> {
     },
     {
       name: 'pdfSettings',
-      module: () => import('../stores/pdfSettingsStore'),
+      module: () => import('../features/pdf/stores/pdfSettingsStore'),
       exportName: 'usePdfSettingsStore',
     },
     {
@@ -71,33 +71,33 @@ export async function registerAllStores(): Promise<void> {
     // MindMap 相关
     {
       name: 'mindmap',
-      module: () => import('../components/mindmap/store/mindmapStore'),
+      module: () => import('../features/mindmap/store/mindmapStore'),
       exportName: 'useMindMapStore',
     },
     {
       name: 'mindmapUI',
-      module: () => import('../components/mindmap/store/uiStore'),
+      module: () => import('../features/mindmap/store/uiStore'),
       exportName: 'useUIStore',
     },
     {
       name: 'mindmapHistory',
-      module: () => import('../components/mindmap/store/historyStore'),
+      module: () => import('../features/mindmap/store/historyStore'),
       exportName: 'useHistoryStore',
     },
     {
       name: 'mindmapDocument',
-      module: () => import('../components/mindmap/store/documentStore'),
+      module: () => import('../features/mindmap/store/documentStore'),
       exportName: 'useDocumentStore',
     },
     // Learning Hub
     {
       name: 'finder',
-      module: () => import('../components/learning-hub/stores/finderStore'),
+      module: () => import('../features/learning-hub/stores/finderStore'),
       exportName: 'useFinderStore',
     },
     {
       name: 'recent',
-      module: () => import('../components/learning-hub/stores/recentStore'),
+      module: () => import('../features/learning-hub/stores/recentStore'),
       exportName: 'useRecentStore',
     },
     // 研究相关

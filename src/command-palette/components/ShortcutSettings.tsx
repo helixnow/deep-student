@@ -1,24 +1,25 @@
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  Search,
-  RotateCcw,
-  AlertTriangle,
+  MagnifyingGlass,
+  ArrowCounterClockwise,
+  Warning,
   Keyboard,
   Download,
   Upload,
-  Trash2,
-} from 'lucide-react';
+  Trash,
+} from '@phosphor-icons/react';
 import { unifiedAlert, unifiedConfirm } from '@/utils/unifiedDialogs';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '@/components/ui/shad/Input';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
 import { commandRegistry } from '../registry/commandRegistry';
 import { shortcutManager, type ShortcutConflict } from '../registry/shortcutManager';
 import { formatShortcut, buildShortcutString } from '../registry/shortcutUtils';
 import { CATEGORY_CONFIG, type Command, type CommandCategory } from '../registry/types';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { SettingSection } from '@/components/settings/SettingsCommon';
+import { SettingSection } from '@/features/settings';
 
 interface ShortcutSettingsProps {
   className?: string;
@@ -230,7 +231,7 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
         <div>
           <div className="flex flex-col sm:flex-row gap-3 items-start sm:items-center mb-6">
             <div className="relative flex-1 w-full sm:max-w-xs">
-              <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
+              <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground/50" />
               <Input
                 placeholder={t('command_palette:search_shortcuts', '搜索快捷键...')}
                 value={searchQuery}
@@ -239,17 +240,21 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
               />
             </div>
 
-            <select
-              className="h-8 px-2.5 py-1 bg-transparent border border-border/50 rounded-md text-xs text-foreground/80 focus:outline-none focus:ring-1 focus:ring-primary/30 hover:bg-muted/30 transition-colors"
+            <Select
               value={selectedCategory}
-              onChange={(e) => setSelectedCategory(e.target.value as CommandCategory | 'all')}
+              onValueChange={(value) => setSelectedCategory(value as CommandCategory | 'all')}
             >
-              {categories.map((cat) => (
-                <option key={cat.value} value={cat.value}>
-                  {cat.label}
-                </option>
-              ))}
-            </select>
+              <SelectTrigger className="h-8 px-2.5 py-1 bg-transparent border border-border/50 rounded-md text-xs text-foreground/80 focus:outline-none focus:ring-1 focus:ring-primary/30 hover:bg-[var(--interactive-hover)] transition-colors">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {categories.map((cat) => (
+                  <SelectItem key={cat.value} value={cat.value}>
+                    {cat.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
 
             <div className="flex gap-1 ml-auto">
               <NotionButton variant="ghost" size="sm" onClick={exportConfig} className="gap-1.5">
@@ -261,7 +266,7 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
                 {t('common:actions.import', '导入')}
               </NotionButton>
               <NotionButton variant="ghost" size="sm" onClick={resetAllShortcuts} className="gap-1.5">
-                <RotateCcw size={12} />
+                <ArrowCounterClockwise size={12} />
                 {t('command_palette:reset_all', '全部重置')}
               </NotionButton>
             </div>
@@ -283,7 +288,7 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
                         'group flex items-center justify-between py-2.5 px-1 rounded transition-colors',
                         isEditing
                           ? 'bg-primary/5'
-                          : 'hover:bg-muted/30'
+                          : 'hover:bg-[var(--interactive-hover)]'
                       )}
                     >
                       <div className="flex items-center gap-2 min-w-0 flex-1">
@@ -312,7 +317,7 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
                                 </span>
                                 {editing.conflict && (
                                   <div className="flex items-center gap-1 text-[11px] text-amber-500 bg-amber-500/10 px-2 py-1 rounded">
-                                    <AlertTriangle size={11} />
+                                    <Warning size={11} />
                                     <span>{editing.conflict.commands.join(', ')}</span>
                                   </div>
                                 )}
@@ -355,7 +360,7 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
                                   onClick={() => resetShortcut(command.id)}
                                   title={t('command_palette:reset_shortcut', '重置')}
                                 >
-                                  <RotateCcw size={12} />
+                                  <ArrowCounterClockwise size={12} />
                                 </NotionButton>
                               )}
                               {effectiveShortcut && (
@@ -367,7 +372,7 @@ export function ShortcutSettings({ className }: ShortcutSettingsProps) {
                                   className="hover:text-destructive"
                                   title={t('command_palette:disable_shortcut', '禁用')}
                                 >
-                                  <Trash2 size={12} />
+                                   <Trash size={12} />
                                 </NotionButton>
                               )}
                             </div>

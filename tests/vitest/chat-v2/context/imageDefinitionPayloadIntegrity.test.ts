@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { imageDefinition, isImageContentBlock, isTextContentBlock, type Resource } from '@/chat-v2/context';
+import { imageDefinition, isImageContentBlock, isTextContentBlock, type Resource } from '@/features/chat/context';
 
 function makeImageResource(content: string, mimeType = 'image/png'): Resource {
   return {

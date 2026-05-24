@@ -9,7 +9,7 @@
 
 import React, { lazy, Suspense, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, AlertCircle } from 'lucide-react';
+import { CircleNotch, WarningCircle } from '@phosphor-icons/react';
 import type { EditorProps, CreateEditorProps } from '../editorTypes';
 import { pathUtils } from '../utils/pathUtils';
 import { createEmpty } from '../factory';
@@ -19,7 +19,7 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 // 懒加载 ExamContentView（DSTU 模式实现）
-const ExamContentView = lazy(() => import('@/components/learning-hub/apps/views/ExamContentView'));
+const ExamContentView = lazy(() => import('@/features/learning-hub/apps/views/ExamContentView'));
 
 /**
  * 题目集编辑器包装组件
@@ -77,7 +77,7 @@ export const ExamEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
       <div className={cn('flex flex-col items-center justify-center h-full py-8 gap-3', props.className)}>
         {createError ? (
           <>
-            <AlertCircle className="w-10 h-10 text-destructive/60" />
+            <WarningCircle size={40} className="text-destructive/60" />
             <span className="text-sm text-destructive text-center max-w-md">{createError}</span>
             {onClose && (
               <NotionButton variant="ghost" onClick={onClose}>
@@ -87,7 +87,7 @@ export const ExamEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
           </>
         ) : (
           <>
-            <Loader2 className="w-8 h-8 animate-spin text-muted-foreground" />
+            <CircleNotch size={32} className="animate-spin text-muted-foreground" />
             <span className="text-sm text-muted-foreground">
               {isCreating
                 ? t('dstu:actions.creatingResource', '正在创建资源...')
@@ -108,7 +108,7 @@ export const ExamEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
     const onCloseError = 'onClose' in props ? props.onClose : undefined;
     return (
       <div className={cn('flex flex-col items-center justify-center h-full py-8 gap-4', props.className)}>
-        <AlertCircle className="w-8 h-8 text-destructive" />
+        <WarningCircle size={32} className="text-destructive" />
         <span className="text-destructive text-center max-w-md">
           {t('exam_sheet:errors.noSession')}
         </span>
@@ -137,7 +137,7 @@ export const ExamEditorWrapper: React.FC<EditorProps | CreateEditorProps> = (pro
     <Suspense
       fallback={
         <div className={cn('flex items-center justify-center h-full py-8', props.className)}>
-          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          <CircleNotch size={24} className="animate-spin text-muted-foreground" />
           <span className="ml-2 text-muted-foreground">{t('dstu:preview.loading')}</span>
         </div>
       }

@@ -3,11 +3,11 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { eventRegistry } from '@/chat-v2/registry/eventRegistry';
-import type { ChatStore } from '@/chat-v2/core/types';
+import { eventRegistry } from '@/features/chat/registry/eventRegistry';
+import type { ChatStore } from '@/features/chat/core/types';
 
 // 导入插件（触发自动注册）
-import '@/chat-v2/plugins/events/content';
+import '@/features/chat/plugins/events/content';
 
 // ============================================================================
 // Mock Store 创建

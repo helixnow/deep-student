@@ -1,0 +1,35 @@
+{
+  "extends": ["stylelint-config-standard"],
+  "rules": {
+    "declaration-no-important": true,
+    "max-nesting-depth": 3,
+    "selector-max-specificity": "0,4,2",
+    "no-descending-specificity": null,
+    "at-rule-no-unknown": [true, {
+      "ignoreAtRules": ["theme", "custom-variant", "apply", "layer", "tailwind", "import"]
+    }],
+    "import-notation": null,
+    "function-no-unknown": [true, {
+      "ignoreFunctions": ["theme", "hsl", "color-mix", "oklch"]
+    }]
+  },
+  "overrides": [
+    {
+      "files": ["src/shared/styles/platform-compat.css", "src/shared/styles/vendor-overrides.css"],
+      "rules": {
+        "declaration-no-important": null
+      }
+    },
+    {
+      "files": ["src/styles/native-feel/**/*.css"],
+      "rules": {
+        "declaration-no-important": null,
+        "property-no-vendor-prefix": null,
+        "selector-no-vendor-prefix": null,
+        "selector-class-pattern": null,
+        "alpha-value-notation": null,
+        "comment-empty-line-before": null
+      }
+    }
+  ]
+}

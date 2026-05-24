@@ -1,10 +1,13 @@
-import React, { useState, useRef, useEffect, useId } from 'react';
+import React, { useCallback, useState, useRef, useEffect, useId } from 'react';
 import { createPortal } from 'react-dom';
 import { Z_INDEX } from '@/config/zIndex';
+import { useEventRegistry } from '@/hooks/useEventRegistry';
+import { useOverlayCoordinator } from './OverlayCoordinator';
 import './CommonTooltip.css';
 
 export type TooltipPosition = 'top' | 'bottom' | 'left' | 'right';
 export type TooltipTheme = 'dark' | 'light' | 'auto';
+export const DEFAULT_TOOLTIP_DELAY_MS = 500;
 
 export interface CommonTooltipProps {
   /** 提示内容 */
@@ -50,7 +53,7 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
   disabled = false,
   offset = 8,
   showArrow = true,
-  delay = 0,
+  delay = DEFAULT_TOOLTIP_DELAY_MS,
   maxWidth = 300,
   className = '',
   children,
@@ -61,9 +64,18 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
   const triggerRef = useRef<HTMLElement>(null);
   const tooltipRef = useRef<HTMLDivElement>(null);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
+  const { dismissTooltips, tooltipDismissVersion, tooltipsSuppressed } = useOverlayCoordinator();
+  const isTooltipDisabled = disabled || tooltipsSuppressed;
+
+  const clearShowTimer = useCallback(() => {
+    if (timerRef.current) {
+      clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
 
   // 计算tooltip位置
-  const calculatePosition = () => {
+  const calculatePosition = useCallback(() => {
     if (!triggerRef.current || !tooltipRef.current) return;
 
     const triggerRect = triggerRef.current.getBoundingClientRect();
@@ -111,15 +123,23 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
     }
 
     setTooltipPos({ top, left });
-  };
+  }, [offset, position]);
+
+  const dismissTooltip = useCallback(() => {
+    clearShowTimer();
+    setIsVisible(false);
+  }, [clearShowTimer]);
 
   // 鼠标进入
   const handleMouseEnter = () => {
-    if (disabled || !content) return;
+    if (isTooltipDisabled || !content) return;
 
+    clearShowTimer();
     if (delay > 0) {
       timerRef.current = setTimeout(() => {
+        if (isTooltipDisabled) return;
         setIsVisible(true);
+        timerRef.current = null;
       }, delay);
     } else {
       setIsVisible(true);
@@ -128,38 +148,67 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
 
   // 鼠标离开
   const handleMouseLeave = () => {
-    if (timerRef.current) {
-      clearTimeout(timerRef.current);
-      timerRef.current = null;
-    }
-    setIsVisible(false);
+    dismissTooltip();
   };
 
   // 当tooltip可见时计算位置
   useEffect(() => {
     if (isVisible) {
       calculatePosition();
-      
-      // 监听窗口大小变化和滚动
-      const handleUpdate = () => calculatePosition();
-      window.addEventListener('resize', handleUpdate);
-      window.addEventListener('scroll', handleUpdate, true);
-      
-      return () => {
-        window.removeEventListener('resize', handleUpdate);
-        window.removeEventListener('scroll', handleUpdate, true);
-      };
     }
-  }, [isVisible]);
+  }, [calculatePosition, isVisible]);
+
+  const handlePositionUpdate = useCallback(() => {
+    if (isVisible) {
+      calculatePosition();
+    }
+  }, [calculatePosition, isVisible]);
+
+  const handleDismiss = useCallback((event: Event) => {
+    if ((event as KeyboardEvent).key !== 'Escape') return;
+    dismissTooltip();
+  }, [dismissTooltip]);
+
+  const handleTriggerActivation = useCallback(() => {
+    dismissTooltips();
+    dismissTooltip();
+  }, [dismissTooltip, dismissTooltips]);
+
+  useEventRegistry(isVisible ? [
+    {
+      target: 'window',
+      type: 'resize',
+      listener: handlePositionUpdate as EventListener,
+    },
+    {
+      target: 'window',
+      type: 'scroll',
+      listener: handlePositionUpdate as EventListener,
+      options: true,
+    },
+    {
+      target: 'window',
+      type: 'keydown',
+      listener: handleDismiss as EventListener,
+    },
+  ] : [], [handleDismiss, handlePositionUpdate, isVisible]);
 
   // 清理定时器
   useEffect(() => {
     return () => {
-      if (timerRef.current) {
-        clearTimeout(timerRef.current);
-      }
+      clearShowTimer();
     };
-  }, []);
+  }, [clearShowTimer]);
+
+  useEffect(() => {
+    dismissTooltip();
+  }, [dismissTooltip, tooltipDismissVersion]);
+
+  useEffect(() => {
+    if (isTooltipDisabled) {
+      dismissTooltip();
+    }
+  }, [dismissTooltip, isTooltipDisabled]);
 
   // 克隆子元素并添加事件处理 + aria-describedby 关联
   const trigger = React.cloneElement(children, {
@@ -172,6 +221,20 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
     onMouseLeave: (e: React.MouseEvent) => {
       handleMouseLeave();
       children.props.onMouseLeave?.(e);
+    },
+    onPointerDown: (e: React.PointerEvent) => {
+      handleTriggerActivation();
+      children.props.onPointerDown?.(e);
+    },
+    onClick: (e: React.MouseEvent) => {
+      handleTriggerActivation();
+      children.props.onClick?.(e);
+    },
+    onKeyDown: (e: React.KeyboardEvent) => {
+      if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar' || e.key === 'ArrowDown') {
+        handleTriggerActivation();
+      }
+      children.props.onKeyDown?.(e);
     },
     // 键盘可访问性支持 (WCAG 2.1)
     onFocus: (e: React.FocusEvent) => {
@@ -216,4 +279,3 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
 };
 
 export default CommonTooltip;
-

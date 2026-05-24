@@ -1,5 +1,17 @@
-@import './thinking-scrollbar.css';
 @import './notion-animations.css';
+@import './transitions-dev.css';
+
+/* Native-feel whitelist: re-enable text selection on real content surfaces. */
+@import './native-feel/selection.css';
+
+/* Native-feel: cursor strategy (chrome=default, button=pointer, content=text). */
+@import './native-feel/cursors.css';
+
+/* Native-feel: macOS-style overlay scrollbars (hidden until hover). */
+@import './native-feel/scrollbars.css';
+
+/* Native-feel: focus rings, hover scale, and transition cadence. */
+@import './native-feel/interaction.css';
 
 @tailwind base;
 @tailwind components;
@@ -10,12 +22,41 @@
   * {
     border-color: hsl(var(--border));
   }
+
   html {
     font-size: calc(16px * var(--font-size-scale));
   }
+
   /* 全局字体：覆盖 Tailwind preflight 的默认字体 */
   body {
     font-family: var(--font-family);
+  }
+
+  /*
+   * Native-feel: chrome is not selectable by default.
+   * --------------------------------------------------
+   * VS Code / Linear / Notion all default chrome (sidebar, titlebar, menus,
+   * buttons, badges, timestamps) to user-select: none and explicitly opt
+   * content surfaces (editors, message bodies, code) back into text selection.
+   *
+   * The whitelist that re-enables `user-select: text` lives in
+   * src/styles/native-feel/selection.css (imported above so its rules sit at
+   * the top of the cascade, then the @layer base * { user-select: none }
+   * default below establishes the chrome baseline; specificity-equal selectors
+   * inside selection.css override the universal default by virtue of being
+   * outside @layer base — which has lower priority than non-layered rules in
+   * the cascade).
+   *
+   * Phase A — 2026-05-14 native-feel migration.
+   * Design doc: docs/plans/2026-05-14-native-feel-migration-design.md
+   */
+  *,
+  *::before,
+  *::after {
+    /* stylelint-disable-next-line property-no-vendor-prefix */
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
   }
 }
 

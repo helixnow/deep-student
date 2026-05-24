@@ -6,18 +6,48 @@ fn build_replay_skill_payload_snapshot(
     let snapshot = crate::chat_v2::types::ReplaySkillPayloadSnapshot {
         active_skill_ids: options.active_skill_ids.clone().unwrap_or_default(),
         skill_contents: options.skill_contents.clone().unwrap_or_default(),
+        skill_dependencies: options.skill_dependencies.clone().unwrap_or_default(),
         skill_embedded_tools: options.skill_embedded_tools.clone().unwrap_or_default(),
         mcp_tool_schemas: options.mcp_tool_schemas.clone().unwrap_or_default(),
         selected_mcp_servers: options.mcp_tools.clone().unwrap_or_default(),
-    };
+    }
+    .without_skill_contents();
 
-    let has_payload = !snapshot.active_skill_ids.is_empty()
-        || !snapshot.skill_contents.is_empty()
-        || !snapshot.skill_embedded_tools.is_empty()
-        || !snapshot.mcp_tool_schemas.is_empty()
-        || !snapshot.selected_mcp_servers.is_empty();
+    snapshot.has_replay_metadata().then_some(snapshot)
+}
 
-    has_payload.then_some(snapshot)
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_replay_skill_payload_snapshot_does_not_persist_skill_contents() {
+        let options = SendOptions {
+            active_skill_ids: Some(vec!["manual-a".to_string()]),
+            skill_contents: Some(std::collections::HashMap::from([(
+                "manual-a".to_string(),
+                "private instructions".to_string(),
+            )])),
+            ..Default::default()
+        };
+
+        let snapshot = build_replay_skill_payload_snapshot(&options).unwrap();
+        assert_eq!(snapshot.active_skill_ids, vec!["manual-a".to_string()]);
+        assert!(snapshot.skill_contents.is_empty());
+    }
+
+    #[test]
+    fn test_build_replay_skill_payload_snapshot_skips_content_only_payload() {
+        let options = SendOptions {
+            skill_contents: Some(std::collections::HashMap::from([(
+                "agentic-a".to_string(),
+                "private instructions".to_string(),
+            )])),
+            ..Default::default()
+        };
+
+        assert!(build_replay_skill_payload_snapshot(&options).is_none());
+    }
 }
 
 impl ChatV2Pipeline {
@@ -762,6 +792,8 @@ impl ChatV2Pipeline {
             "contextLimit": ctx.options.context_limit,
             "maxTokens": ctx.options.max_tokens,
             "enableThinking": ctx.options.enable_thinking,
+            "reasoningEffort": ctx.options.reasoning_effort,
+            "thinkingBudget": ctx.options.thinking_budget,
             "disableTools": ctx.options.disable_tools,
             "model2OverrideId": ctx.options.model2_override_id,
         });
@@ -915,28 +947,8 @@ impl ChatV2Pipeline {
         // 异步 fire-and-forget，不阻塞对话返回
         self.trigger_auto_memory_extraction(ctx);
 
-        // 🆕 自动标签提取：从对话内容提取关键词标签
-        self.trigger_auto_tag_extraction(ctx);
-    }
-
-    /// 触发对话后自动标签提取（fire-and-forget）
-    fn trigger_auto_tag_extraction(&self, ctx: &PipelineContext) {
-        let user_chars = ctx.user_content.chars().count();
-        let assistant_chars = ctx.final_content.chars().count();
-        if user_chars < 10 && assistant_chars < 20 {
-            return;
-        }
-
-        let session_id = ctx.session_id.clone();
-        let user_content = ctx.user_content.clone();
-        let final_content = ctx.final_content.clone();
-        let pipeline = self.clone();
-
-        tokio::spawn(async move {
-            pipeline
-                .generate_session_tags(&session_id, &user_content, &final_content)
-                .await;
-        });
+        // 注：自动标签提取已合并至 generate_session_metadata（首轮唯一调用），
+        // 不再单独触发，避免每轮 2 次 LLM 调用的浪费。
     }
 
     /// 触发对话后自动记忆提取（fire-and-forget）

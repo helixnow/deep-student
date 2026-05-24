@@ -11,11 +11,11 @@
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import React from 'react';
-import type { ChatStore, AttachmentMeta } from '@/chat-v2/core/types';
+import type { ChatStore, AttachmentMeta } from '@/features/chat/core/types';
 import { createStore } from 'zustand/vanilla';
 
 // Mock VFS / Resource layer（AttachmentUploader 依赖上传到 VFS 并创建资源引用）
-vi.mock('@/chat-v2/context/vfsRefApi', () => ({
+vi.mock('@/features/chat/context/vfsRefApi', () => ({
   vfsRefApi: {
     uploadAttachment: vi.fn(async () => ({
       sourceId: 'src_test',
@@ -25,7 +25,7 @@ vi.mock('@/chat-v2/context/vfsRefApi', () => ({
   },
 }));
 
-vi.mock('@/chat-v2/resources', () => ({
+vi.mock('@/features/chat/resources', () => ({
   resourceStoreApi: {
     createOrReuse: vi.fn(async () => ({
       resourceId: 'res_test',
@@ -62,7 +62,7 @@ vi.mock('react-i18next', () => ({
   },
 }));
 
-let AttachmentUploader: typeof import('@/chat-v2/components/AttachmentUploader').AttachmentUploader;
+let AttachmentUploader: typeof import('@/features/chat/components/AttachmentUploader').AttachmentUploader;
 
 // ============================================================================
 // Mock Store 创建
@@ -124,7 +124,7 @@ describe('AttachmentUploader', () => {
     // 在单 worker/单进程跑全量 suite 时，模块缓存可能被其他用例提前加载；
     // 这里强制重置模块并在 mocks 生效后再导入组件，避免偶发“真实实现被缓存”导致的用例不稳定。
     vi.resetModules();
-    ({ AttachmentUploader } = await import('@/chat-v2/components/AttachmentUploader'));
+    ({ AttachmentUploader } = await import('@/features/chat/components/AttachmentUploader'));
   });
 
   describe('rendering', () => {

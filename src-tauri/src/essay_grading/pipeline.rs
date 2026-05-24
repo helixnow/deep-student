@@ -16,7 +16,7 @@ const MAX_INPUT_CHARS: usize = 50000;
 /// ★ 从 4000 放宽到 8000，避免正常批改结果被截断导致丢失评分信息
 const MAX_PREVIOUS_RESULT_CHARS: usize = 8000;
 
-use crate::llm_manager::{ApiConfig, LLMManager};
+use crate::llm_manager::{build_provider_adapter, ApiConfig, LLMManager};
 use crate::models::AppError;
 use crate::providers::ProviderAdapter;
 // ★ VFS 统一存储（2025-12-07）
@@ -680,20 +680,21 @@ where
         };
 
         // 构造请求体
-        let request_body = json!({
+        let mut request_body = json!({
             "model": config.model,
             "messages": messages,
             "temperature": 0.7,
-            "max_tokens": config.max_output_tokens,
+            "max_tokens": crate::llm_manager::effective_max_tokens(
+                config.max_output_tokens,
+                config.max_tokens_limit,
+            ),
             "stream": true,
         });
 
+        crate::llm_manager::LLMManager::apply_reasoning_config(&mut request_body, config, None);
+
         // 选择适配器
-        let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(config);
 
         // 构造 HTTP 请求
         let preq = adapter

@@ -13,9 +13,10 @@
  */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { listen, type UnlistenFn } from '@tauri-apps/api/event';
-import { Copy, Trash2, Download, ChevronDown, ChevronRight, Search, X } from 'lucide-react';
+import { Copy, Trash, Download, CaretDown, CaretRight, MagnifyingGlass, X } from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { Switch } from '@/components/ui/shad/Switch';
 
 // ============================================================================
 // 类型
@@ -549,7 +550,7 @@ const ChatAnkiWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
 
         <div className="ml-auto flex items-center gap-1">
           <label className="inline-flex items-center gap-1 text-[10px] text-slate-400">
-            <input type="checkbox" checked={autoScroll} onChange={e => setAutoScroll(e.target.checked)} />
+            <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
             自动滚动
           </label>
 
@@ -590,7 +591,7 @@ const ChatAnkiWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           </select>
 
           <div className="relative">
-            <Search className="absolute left-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-600" />
+            <MagnifyingGlass className="absolute left-1.5 top-1/2 -translate-y-1/2 h-3 w-3 text-slate-600" />
             <input
               className="bg-slate-900 border border-slate-700 text-[10px] pl-5 pr-5 py-0.5 rounded w-[120px]"
               placeholder="搜索..."
@@ -603,7 +604,7 @@ const ChatAnkiWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
                 className="absolute right-1 top-1/2 -translate-y-1/2 text-slate-500 hover:text-slate-300"
                 onClick={() => setKeyword('')}
               >
-                <X className="h-3 w-3" />
+                <X size={12} />
               </button>
             )}
           </div>
@@ -614,7 +615,7 @@ const ChatAnkiWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
             onClick={handleCopy}
             title="复制全部日志到剪贴板"
           >
-            <Copy className="h-3 w-3" />
+            <Copy size={12} />
             {copyMsg || '复制'}
           </button>
           <button
@@ -623,14 +624,14 @@ const ChatAnkiWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
             onClick={handleDownload}
             title="下载日志文件"
           >
-            <Download className="h-3 w-3" />
+            <Download size={12} />
           </button>
           <button
             type="button"
             className="text-[10px] bg-slate-800 hover:bg-slate-700 border border-slate-700 rounded px-2 py-0.5 flex items-center gap-1"
             onClick={() => { clearLogs(); setLogs([]); }}
           >
-            <Trash2 className="h-3 w-3" />
+            <Trash size={12} />
             清空
           </button>
         </div>
@@ -663,7 +664,7 @@ const ChatAnkiWorkflowDebugPlugin: React.FC<DebugPanelPluginProps> = ({
                 {/* 展开箭头 */}
                 <span className="w-3 flex-shrink-0 text-slate-600">
                   {hasDetail ? (
-                    isExpanded ? <ChevronDown className="h-3 w-3" /> : <ChevronRight className="h-3 w-3" />
+                    isExpanded ? <CaretDown size={12} /> : <CaretRight size={12} />
                   ) : null}
                 </span>
                 {/* 时间 */}

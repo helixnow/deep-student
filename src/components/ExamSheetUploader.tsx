@@ -13,20 +13,20 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import {
-  Loader2,
+  CircleNotch,
   X,
-  ImagePlus,
+  Image,
   FileText,
-  AlertCircle,
-  CheckCircle2,
+  WarningCircle,
+  CheckCircle,
   File,
   Info,
-  Bot,
+  Robot,
   Upload,
   CheckSquare,
   Square,
-  Filter,
-} from 'lucide-react';
+  Funnel,
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Progress } from '@/components/ui/shad/Progress';
@@ -846,16 +846,16 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                     onChange={handleInputChange}
                     className="hidden"
                     disabled={isProcessing}
-                  />
+/>
 
                   <div className="flex flex-col items-center gap-4 text-center">
                     <div className="flex items-center gap-3">
                       <div className="w-14 h-14 rounded-2xl flex items-center justify-center transition-colors bg-muted">
-                        <ImagePlus className="w-7 h-7 transition-colors text-muted-foreground" />
+                        <Image size={28} className="transition-colors text-muted-foreground" />
                       </div>
                       <div className="text-2xl text-muted-foreground/30 font-light">/</div>
                       <div className="w-14 h-14 rounded-2xl flex items-center justify-center transition-colors bg-muted">
-                        <FileText className="w-7 h-7 transition-colors text-muted-foreground" />
+                        <FileText size={28} className="transition-colors text-muted-foreground" />
                       </div>
                     </div>
                     
@@ -892,9 +892,9 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                           src={fileInfo.previewUrl || ''}
                           alt={fileInfo.file.name}
                           className="w-full h-full object-cover"
-                        />
+/>
                         <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); handleRemoveFile(index); }} className="absolute top-1 right-1 !w-6 !h-6 !rounded-full bg-black/60 text-white opacity-0 group-hover:opacity-100" aria-label="remove">
-                          <X className="w-3 h-3" />
+                          <X size={12} />
                         </NotionButton>
                       </div>
                     ))}
@@ -949,7 +949,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
               {currentCategory === 'document' && selectedFiles.length > 0 && !isProcessing && (
                 <div className="space-y-3">
                   <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/50">
-                    <File className="w-5 h-5 text-muted-foreground" />
+                    <File size={20} className="text-muted-foreground" />
                     <div className="flex-1 min-w-0">
                       <div className="font-medium truncate">{selectedFiles[0].file.name}</div>
                       <div className="text-xs text-muted-foreground">
@@ -957,13 +957,13 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                       </div>
                     </div>
                     <NotionButton variant="ghost" size="sm" onClick={handleReset}>
-                      <X className="w-4 h-4 mr-1" />
+                      <X size={16} className="mr-1" />
                       {t('exam_sheet:uploader.remove')}
                     </NotionButton>
                   </div>
                   
                   <div className="flex items-center gap-2 p-3 rounded-lg bg-muted/30">
-                    <Bot className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                    <Robot size={16} className="text-muted-foreground flex-shrink-0" />
                     <span className="text-sm text-muted-foreground flex-shrink-0">{t('exam_sheet:uploader.parse_model')}</span>
                     <UnifiedModelSelector
                       models={availableModels}
@@ -974,7 +974,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                       emptyLabel={t('settings:placeholders.use_default_model', '使用默认模型')}
                       placeholder={t('settings:placeholders.use_default_model', '使用默认模型')}
                       className="flex-1"
-                    />
+/>
                   </div>
                 </div>
               )}
@@ -984,9 +984,9 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                 <div className="space-y-4 p-4 rounded-xl bg-card border border-border/50">
                   <div className="flex items-center gap-3">
                     {ocrStage === 'completed' ? (
-                      <CheckCircle2 className="w-5 h-5 text-emerald-500" />
+                      <CheckCircle size={20} className="text-emerald-500" />
                     ) : (
-                      <Loader2 className="w-5 h-5 animate-spin text-primary" />
+                      <CircleNotch size={20} className="animate-spin text-primary" />
                     )}
                     <span className="text-sm font-medium">{ocrStageText}</span>
                   </div>
@@ -1018,9 +1018,9 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
               {/* 进度头部 */}
               <div className="flex items-center gap-3 p-3 rounded-lg bg-muted/30 flex-shrink-0">
                 {llmProgress.percent === 100 ? (
-                  <CheckCircle2 className="w-5 h-5 text-emerald-500 flex-shrink-0" />
+                  <CheckCircle size={20} className="text-emerald-500 flex-shrink-0" />
                 ) : (
-                  <Loader2 className="w-5 h-5 text-primary animate-spin flex-shrink-0" />
+                  <CircleNotch size={20} className="text-primary animate-spin flex-shrink-0" />
                 )}
                 <div className="flex-1 min-w-0">
                   <div className="text-sm font-medium">{llmProgress.message}</div>
@@ -1042,7 +1042,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                         className="p-3 rounded-lg bg-card border border-border/50 animate-in fade-in slide-in-from-bottom-2 duration-300"
                       >
                         <div className="flex items-start gap-2">
-                          <span className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">
+                          <span className="w-6 h-6 flex-shrink-0 rounded-full bg-primary/10 text-primary text-xs font-bold flex items-center justify-center">
                             {idx + 1}
                           </span>
                           <div className="flex-1 min-w-0 space-y-1">
@@ -1075,7 +1075,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
               {/* 空状态 */}
               {parsedQuestions.length === 0 && llmProgress.percent > 5 && (
                 <div className="text-center py-8 text-muted-foreground text-sm">
-                  <Loader2 className="w-8 h-8 mx-auto mb-2 opacity-50 animate-spin" />
+                  <CircleNotch size={32} className="mx-auto mb-2 opacity-50 animate-spin" />
                   {t('exam_sheet:uploader.waiting_ai')}
                 </div>
               )}
@@ -1090,7 +1090,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
             <div className="space-y-4">
               <div className="text-center space-y-2">
                 <div className="w-16 h-16 mx-auto rounded-full bg-emerald-500/10 flex items-center justify-center">
-                  <CheckCircle2 className="w-8 h-8 text-emerald-500" />
+                  <CheckCircle size={32} className="text-emerald-500" />
                 </div>
                 <h3 className="text-lg font-semibold">{t('exam_sheet:uploader.import_complete_title')}</h3>
               </div>
@@ -1130,11 +1130,11 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                 <div className="rounded-xl border border-border/50 overflow-hidden">
                   {/* 筛选头部 */}
                   <div
-                    className="flex items-center justify-between px-4 py-2.5 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors"
+                    className="flex items-center justify-between px-4 py-2.5 bg-muted/30 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
                     onClick={() => setShowQuestionFilter(prev => !prev)}
                   >
                     <div className="flex items-center gap-2">
-                      <Filter className="w-4 h-4 text-muted-foreground" />
+                      <Funnel size={16} className="text-muted-foreground" />
                       <span className="text-sm font-medium">
                         {t('exam_sheet:uploader.filter_questions')}
                       </span>
@@ -1167,7 +1167,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                           className="!h-7 text-xs"
                           onClick={() => setExcludedCardIds(new Set())}
                         >
-                          <CheckSquare className="w-3.5 h-3.5 mr-1" />
+                          <CheckSquare size={14} className="mr-1" />
                           {t('common:select_all', '全选')}
                         </NotionButton>
                         <NotionButton
@@ -1176,7 +1176,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                           className="!h-7 text-xs"
                           onClick={() => setExcludedCardIds(new Set(allCards.map(c => c.card_id)))}
                         >
-                          <Square className="w-3.5 h-3.5 mr-1" />
+                          <Square size={14} className="mr-1" />
                           {t('common:deselect_all', '取消全选')}
                         </NotionButton>
                       </div>
@@ -1189,7 +1189,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                               key={card.card_id}
                               className={cn(
                                 'flex items-start gap-2.5 px-4 py-2.5 cursor-pointer transition-colors',
-                                isExcluded ? 'bg-muted/20 opacity-60' : 'hover:bg-muted/10'
+                                isExcluded ? 'bg-muted/20 opacity-60' : 'hover:bg-[var(--interactive-hover)]'
                               )}
                               onClick={() => {
                                 setExcludedCardIds(prev => {
@@ -1206,13 +1206,13 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                               {/* 勾选框 */}
                               <div className="flex-shrink-0 mt-0.5">
                                 {isExcluded ? (
-                                  <Square className="w-4 h-4 text-muted-foreground" />
+                                  <Square size={16} className="text-muted-foreground" />
                                 ) : (
-                                  <CheckSquare className="w-4 h-4 text-primary" />
+                                  <CheckSquare size={16} className="text-primary" />
                                 )}
                               </div>
                               {/* 序号 */}
-                              <span className="flex-shrink-0 w-5 h-5 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center mt-0.5">
+                              <span className="w-5 h-5 flex-shrink-0 rounded-full bg-primary/10 text-primary text-[10px] font-bold flex items-center justify-center mt-0.5">
                                 {idx + 1}
                               </span>
                               {/* 内容 */}
@@ -1246,7 +1246,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
               {importSummary.warnings.length > 0 && (
                 <div className="p-4 rounded-xl bg-amber-500/10 space-y-2">
                   <div className="flex items-center gap-2 text-amber-600">
-                    <Info className="w-4 h-4" />
+                    <Info size={16} />
                     <span className="text-sm font-medium">{t('exam_sheet:uploader.notes_title')}</span>
                   </div>
                   <ul className="text-sm text-amber-600/80 space-y-1">
@@ -1263,7 +1263,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
                   {t('exam_sheet:uploader.continue_import')}
                 </NotionButton>
                 <NotionButton onClick={() => void handleConfirmSummary()} className="flex-1" disabled={keptCount === 0 || isConfirming}>
-                  {isConfirming && <Loader2 className="w-4 h-4 mr-1 animate-spin" />}
+                  {isConfirming && <CircleNotch size={16} className="mr-1 animate-spin" />}
                   {excludedCardIds.size > 0
                     ? t('exam_sheet:uploader.view_questions_filtered', { count: keptCount })
                     : t('exam_sheet:uploader.view_questions')
@@ -1277,7 +1277,7 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
           {/* 错误显示 */}
           {(error || ocrError) && (
             <div className="flex items-start gap-3 p-4 rounded-xl bg-destructive/10 text-destructive">
-              <AlertCircle className="w-5 h-5 flex-shrink-0 mt-0.5" />
+              <WarningCircle size={20} className="flex-shrink-0 mt-0.5" />
               <div className="text-sm">{error || ocrError}</div>
             </div>
           )}
@@ -1297,17 +1297,17 @@ export const ExamSheetUploader: React.FC<ExamSheetUploaderProps> = ({
               >
                 {isProcessing ? (
                   <>
-                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <CircleNotch size={16} className="animate-spin" />
                     {t('exam_sheet:uploader.processing')}
                   </>
                 ) : currentCategory === 'image' ? (
                   <>
-                    <Upload className="w-4 h-4" />
+                    <Upload size={16} />
                     {t('exam_sheet:uploader.start_recognize')}
                   </>
                 ) : (
                   <>
-                    <FileText className="w-4 h-4" />
+                    <FileText size={16} />
                     {t('exam_sheet:uploader.parse_document')}
                   </>
                 )}

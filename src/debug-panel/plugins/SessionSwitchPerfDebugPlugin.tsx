@@ -14,25 +14,25 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/sh
 import { Separator } from '../../components/ui/shad/Separator';
 import { 
   Timer, 
-  Trash2, 
+  Trash, 
   Copy, 
-  AlertTriangle, 
-  CheckCircle2, 
+  Warning, 
+  CheckCircle, 
   Clock,
-  Zap,
+  Lightning,
   Database,
-  RefreshCw,
+  ArrowClockwise,
   ArrowRight,
-  TrendingUp,
-  BarChart3,
-} from 'lucide-react';
+  TrendUp,
+  ChartBar,
+} from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { 
   sessionSwitchPerf, 
   type PerfTrace, 
   type PerfStage,
   type PerfSummary,
-} from '../../chat-v2/debug/sessionSwitchPerf';
+} from '../../features/chat/debug/sessionSwitchPerf';
 
 // =============================================================================
 // 常量
@@ -76,7 +76,7 @@ const StageBar: React.FC<{
         {delta.toFixed(1)}ms
       </div>
       {isBottleneck && (
-        <AlertTriangle className="w-3 h-3 text-red-500 flex-shrink-0" />
+        <Warning size={12} className="text-red-500 flex-shrink-0" />
       )}
     </div>
   );
@@ -116,11 +116,11 @@ const TraceCard: React.FC<{
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-2">
             {isRunning ? (
-              <RefreshCw className="w-4 h-4 text-blue-500 animate-spin" />
+              <ArrowClockwise size={16} className="text-blue-500 animate-spin" />
             ) : hasBottleneck ? (
-              <AlertTriangle className="w-4 h-4 text-red-500" />
+              <Warning size={16} className="text-red-500" />
             ) : (
-              <CheckCircle2 className="w-4 h-4 text-green-500" />
+              <CheckCircle size={16} className="text-green-500" />
             )}
             <CardTitle className="text-sm font-mono truncate max-w-[180px]" title={trace.sessionId}>
               {trace.sessionId.slice(0, 20)}...
@@ -156,7 +156,7 @@ const TraceCard: React.FC<{
             <>
               <Separator className="my-2" />
               <div className="flex items-center gap-4 text-xs text-muted-foreground">
-                <Database className="w-3 h-3" />
+                <Database size={12} />
                 {trace.messageCount !== null && (
                   <span>{trace.messageCount} 条消息</span>
                 )}
@@ -186,7 +186,7 @@ const SummaryCard: React.FC<{ summary: PerfSummary }> = ({ summary }) => {
     <Card>
       <CardHeader className="py-2">
         <CardTitle className="text-sm flex items-center gap-2">
-          <BarChart3 className="w-4 h-4" />
+          <ChartBar size={16} />
           性能统计 ({summary.sampleCount} 次采样)
         </CardTitle>
       </CardHeader>
@@ -209,7 +209,7 @@ const SummaryCard: React.FC<{ summary: PerfSummary }> = ({ summary }) => {
 
         {/* 缓存命中率 */}
         <div className="flex items-center gap-2 text-xs">
-          <Zap className="w-3 h-3 text-purple-500" />
+          <Lightning size={12} className="text-purple-500" />
           <span>缓存命中率:</span>
           <span className="font-mono font-bold">
             {(summary.cacheHitRate * 100).toFixed(0)}%
@@ -329,7 +329,7 @@ const SessionSwitchPerfDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       {/* 工具栏 */}
       <div className="flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-2">
-          <Timer className="w-5 h-5 text-primary" />
+          <Timer size={20} className="text-primary" />
           <h3 className="text-lg font-semibold">会话切换性能监控</h3>
           <Badge variant={enabled ? 'default' : 'secondary'}>
             {enabled ? '监控中' : '已停止'}
@@ -349,15 +349,15 @@ const SessionSwitchPerfDebugPlugin: React.FC<DebugPanelPluginProps> = ({
             variant="outline" 
             onClick={() => setShowStats(!showStats)}
           >
-            <TrendingUp className="w-4 h-4 mr-1" />
+            <TrendUp size={16} className="mr-1" />
             {showStats ? '隐藏统计' : '显示统计'}
           </Button>
           <Button size="sm" variant="outline" onClick={handleCopyReport}>
-            <Copy className="w-4 h-4 mr-1" />
+            <Copy size={16} className="mr-1" />
             复制报告
           </Button>
           <Button size="sm" variant="destructive" onClick={handleClear}>
-            <Trash2 className="w-4 h-4 mr-1" />
+            <Trash size={16} className="mr-1" />
             清空
           </Button>
         </div>
@@ -405,7 +405,7 @@ const SessionSwitchPerfDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       <div className="flex-1 overflow-auto space-y-2">
         {allTraces.length === 0 ? (
           <div className="text-center text-muted-foreground py-8">
-            <Clock className="w-12 h-12 mx-auto mb-2 opacity-50" />
+            <Clock size={48} className="mx-auto mb-2 opacity-50" />
             <p>暂无追踪记录</p>
             <p className="text-xs">切换会话后将自动记录</p>
           </div>

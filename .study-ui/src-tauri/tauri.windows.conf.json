@@ -1,0 +1,26 @@
+{
+  "app": {
+    "windows": [
+      {
+        "label": "main",
+        "title": "Deep Student",
+        "width": 1112,
+        "height": 773,
+        "minWidth": 980,
+        "minHeight": 680,
+        "resizable": true,
+        "fullscreen": false,
+        "center": true,
+        "create": false,
+        "transparent": true,
+        "decorations": false,
+        "shadow": true,
+        "windowEffects": {
+          "effects": [
+            "mica"
+          ]
+        }
+      }
+    ]
+  }
+}

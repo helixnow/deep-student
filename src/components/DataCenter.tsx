@@ -1,5 +1,5 @@
 import React from 'react';
-import { Database } from 'lucide-react';
+import { Database } from '@phosphor-icons/react';
 import { HeaderTemplate } from './HeaderTemplate';
 import { DataImportExport } from './DataImportExport';
 import { CustomScrollArea } from './custom-scroll-area';
@@ -18,7 +18,7 @@ export const DataCenter: React.FC = () => {
         subtitle={t('data_center_subtitle')}
         showRefreshButton={false}
         showExportButton={false}
-      />
+/>
 
       <main className="flex-1 min-h-0">
         <CustomScrollArea className="h-full" viewportClassName="px-6 pb-6">

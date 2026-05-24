@@ -1,10 +1,13 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
-import { LucideIcon, RefreshCw, Download } from 'lucide-react';
+import { ArrowsClockwise, DownloadSimple } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 
+/** Generic icon component type compatible with both Phosphor and Lucide icons */
+type IconComponent = React.ComponentType<any>;
+
 interface HeaderAction {
-  icon: LucideIcon;
+  icon: IconComponent;
   label: string;
   onClick: () => void;
   disabled?: boolean;
@@ -12,7 +15,7 @@ interface HeaderAction {
 }
 
 interface HeaderTemplateProps {
-  icon: LucideIcon;
+  icon: IconComponent;
   iconColor?: string;
   iconSize?: number;
   title: string;
@@ -84,14 +87,14 @@ export const HeaderTemplate: React.FC<HeaderTemplateProps> = ({
               onClick={onRefresh}
               disabled={isRefreshing}
             >
-              <RefreshCw size={16} className={isRefreshing ? 'animate-spin' : ''} />
+              <ArrowsClockwise size={16} className={isRefreshing ? 'animate-spin' : ''} />
               {t('header.refresh')}
             </NotionButton>
           )}
 
           {showExportButton && onExport && (
             <NotionButton variant="ghost" size="sm" onClick={onExport}>
-              <Download size={16} />
+              <DownloadSimple size={16} />
               {t('header.export')}
             </NotionButton>
           )}

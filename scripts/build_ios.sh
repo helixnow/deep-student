@@ -128,8 +128,8 @@ say "✓ 导出方法: $EXPORT_METHOD"
 if [[ -z "${SKIP_ICON_GENERATION:-}" ]]; then
     say "生成 iOS 图标..."
     
-    if [[ ! -f "app-icon.png" ]]; then
-        warn "未找到 app-icon.png，将使用默认图标"
+    if [[ ! -f "public/app-icon.png" ]]; then
+        warn "未找到 public/app-icon.png，将使用现有图标"
     else
         # 生成图标
         npm run icons:ios || warn "图标生成失败，将使用现有图标"
@@ -509,4 +509,3 @@ say "   - Archive 已保存，可使用不同的导出方法重新导出"
 say "   - 要更改导出方法，设置 IOS_EXPORT_METHOD 环境变量"
 say "   - dSYM 文件已保存，用于崩溃日志符号化"
 say ""
-

@@ -5,11 +5,11 @@ import { Textarea } from '../ui/shad/Textarea';
 import { AppSelect } from '../ui/app-menu';
 import { CommonTooltip } from '../shared/CommonTooltip';
 import {
-    ArrowLeftRight,
-    RotateCcw,
-    Trash2,
-    Settings2,
-} from 'lucide-react';
+    ArrowsLeftRight,
+    ArrowCounterClockwise,
+    Trash,
+    GearSix,
+} from '@phosphor-icons/react';
 import UnifiedDragDropZone, { FILE_TYPES } from '../shared/UnifiedDragDropZone';
 
 interface SourcePanelProps {
@@ -82,16 +82,16 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                                 value: lang.code,
                                 label: t(lang.label),
                             }))}
-                        />
+/>
 
                         <NotionButton
                             variant="ghost"
                             size="icon"
                             onClick={onSwapLanguages}
                             disabled={isTranslating || srcLang === 'auto'}
-                            className="h-7 w-7 sm:h-8 sm:w-8 rounded-full hover:bg-muted/80 shrink-0"
+ className="sm:h-8 sm:w-8 rounded-full hover:bg-[var(--interactive-hover)] shrink-0"
                         >
-                            <ArrowLeftRight className="h-3.5 w-3.5 sm:h-4 sm:w-4 text-muted-foreground" />
+                            <ArrowsLeftRight size={14} className="sm:h-4 sm:w-4 text-muted-foreground" />
                         </NotionButton>
 
                         <AppSelect
@@ -104,7 +104,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                             options={LANGUAGES.filter(lang => lang.code !== 'auto').map((lang) => ({
                                 value: lang.code,
                                 label: t(lang.label),
-                            }))}/>
+                            }))} />
                     </div>
 
                     {/* 移动端：翻译按钮（无容器风格） */}
@@ -116,7 +116,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                                 onClick={onCancelTranslation}
                                 className="h-8 px-2 text-muted-foreground"
                             >
-                                <RotateCcw className="w-4 h-4 mr-1 animate-spin" />
+                                <ArrowCounterClockwise size={16} className="mr-1 animate-spin" />
                                 {t('common:cancel')}
                             </NotionButton>
                         ) : (
@@ -141,7 +141,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                                 onClick={() => setShowPromptEditor(true)}
                                 className="hidden sm:flex h-7 w-7 text-muted-foreground/60 hover:text-foreground"
                             >
-                                <Settings2 className="w-3.5 h-3.5" />
+                                <GearSix size={14} />
                             </NotionButton>
                         </CommonTooltip>
                     )}
@@ -165,7 +165,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                         placeholder={t('translation:source_section.placeholder')}
                         maxLength={sourceMaxChars}
                         className="flex-1 min-h-0 resize-none font-mono px-4 pt-6 pb-16 text-base leading-relaxed !border-0 !shadow-none !rounded-none !bg-transparent focus:!ring-0 focus:!ring-offset-0 focus-visible:!ring-0 focus-visible:!ring-offset-0 focus:!outline-none focus-visible:!outline-none selection:bg-primary/20 [scrollbar-width:none] [&::-webkit-scrollbar]:hidden"
-                    />
+/>
                 </UnifiedDragDropZone>
 
                 {/* Floating Bottom Controls (Source) - 仅桌面端显示 */}
@@ -187,9 +187,9 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                                 size="icon"
                                 onClick={onClear}
                                 disabled={!sourceText}
-                                className="h-6 w-6 text-muted-foreground hover:text-destructive"
+ className="w-6 h-6 text-muted-foreground hover:text-destructive"
                             >
-                                <Trash2 className="w-3.5 h-3.5" />
+                                <Trash size={14} />
                             </NotionButton>
                         </CommonTooltip>
                     </div>
@@ -204,7 +204,7 @@ export const SourcePanel = React.forwardRef<HTMLTextAreaElement, SourcePanelProp
                         onClick={onCancelTranslation}
                         className="min-w-[120px]"
                     >
-                        <RotateCcw className="w-3.5 h-3.5 mr-2 animate-spin" />
+                        <ArrowCounterClockwise size={14} className="mr-2 animate-spin" />
                         {t('common:cancel')}
                     </NotionButton>
                 ) : (

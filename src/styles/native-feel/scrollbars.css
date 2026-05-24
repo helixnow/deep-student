@@ -1,0 +1,124 @@
+/**
+ * Native-feel: macOS-style overlay scrollbars
+ * --------------------------------------------
+ * Phase C of native-feel migration (2026-05-14).
+ *
+ * Behaviour:
+ * - Scrollbars stay invisible by default (transparent thumb).
+ * - When the user hovers a scrollable container, the thumb fades in.
+ * - Mirrors macOS's overlay scrollbar style — content does not reflow on
+ *   hover because the thumb sits on top of the content area.
+ *
+ * Tokens:
+ *   --scrollbar-thumb        — visible thumb colour (defined in theme-colors.css)
+ *   --scrollbar-thumb-hover  — thumb hovered colour
+ *   --scrollbar-track        — preserved for inset / always-visible scrollbars
+ *
+ * Escape hatches:
+ *   .scroll-hidden  — completely no scrollbar (mobile / overlay panes)
+ *   .scroll-always  — always-visible thin scrollbar (e.g. forms with long lists)
+ *
+ * Design doc: docs/plans/2026-05-14-native-feel-migration-design.md
+ */
+
+/* ---------------------------------------------------------------- */
+/* Firefox: thin scrollbars, transparent until hover                 */
+/* ---------------------------------------------------------------- */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+}
+
+*:hover,
+*:focus-within {
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+/* OverlayScrollbars host — let the library manage its own styling */
+[data-overlayscrollbars-viewport] {
+  scrollbar-width: none;
+  scrollbar-color: auto;
+}
+
+/* ---------------------------------------------------------------- */
+/* WebKit: hidden by default, visible on container hover            */
+/* ---------------------------------------------------------------- */
+*::-webkit-scrollbar {
+  width: 10px;
+  height: 10px;
+  background: transparent;
+}
+
+*::-webkit-scrollbar-track {
+  background: transparent;
+  border: none;
+}
+
+*::-webkit-scrollbar-thumb {
+  background: transparent;
+  border-radius: 8px;
+  border: 2px solid transparent;
+  background-clip: padding-box;
+  transition: background-color 150ms ease;
+}
+
+*:hover::-webkit-scrollbar-thumb,
+*:focus-within::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-thumb:hover {
+  background-color: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
+*::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+/* OverlayScrollbars viewport: don't paint native scrollbars */
+[data-overlayscrollbars-viewport]::-webkit-scrollbar,
+[data-overlayscrollbars-viewport]::-webkit-scrollbar-thumb,
+[data-overlayscrollbars-viewport]::-webkit-scrollbar-track {
+  display: none;
+}
+
+/* ---------------------------------------------------------------- */
+/* Active state — darken thumb while user is actively scrolling     */
+/* ---------------------------------------------------------------- */
+*::-webkit-scrollbar-thumb:active {
+  background-color: var(--scrollbar-thumb-hover);
+  background-clip: padding-box;
+}
+
+/* ---------------------------------------------------------------- */
+/* Utility classes                                                   */
+/* ---------------------------------------------------------------- */
+.scroll-hidden {
+  scrollbar-width: none;
+}
+
+.scroll-hidden::-webkit-scrollbar {
+  display: none;
+}
+
+.scroll-always {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+}
+
+.scroll-always::-webkit-scrollbar-thumb {
+  background-color: var(--scrollbar-thumb);
+  background-clip: padding-box;
+}
+
+/* ---------------------------------------------------------------- */
+/* iOS / WebView fallback — touch devices keep momentum scrolling   */
+/* ---------------------------------------------------------------- */
+@supports (-webkit-touch-callout: none) {
+  *::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+}

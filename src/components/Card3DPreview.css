@@ -7,7 +7,7 @@
   --card-top-offset: 120px;
   --card-height-buffer: 60px;
   position: relative;
-  background: #ffffff; /* 纯白背景 */
+  background: hsl(var(--background)); /* 纯白背景 */
   border-radius: 0; /* 移除圆角，让背景完全占满 */
   overflow-x: hidden; /* 防止水平滚动条 */
   overflow-y: visible; /* 允许垂直内容溢出 */
@@ -25,7 +25,7 @@
   align-items: center;
   justify-content: center;
   height: 400px;
-  color: #6b7280;
+  color: hsl(var(--muted-foreground));
   font-size: 1.125rem;
 }
 
@@ -48,11 +48,11 @@
   width: 40px;
   height: 40px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.9);
+  background: hsl(var(--background) / 0.9);
   border: none;
   font-size: 18px;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px hsl(var(--shadow-base) / 0.1);
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
@@ -60,19 +60,19 @@
 }
 
 .control-btn:hover {
-  background: white;
+  background: var(--surface-elevated);
   transform: scale(1.05);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px hsl(var(--shadow-base) / 0.15);
 }
 
 .card-counter {
   padding: 8px 16px;
-  background: rgba(255, 255, 255, 0.9);
+  background: hsl(var(--background) / 0.9);
   border-radius: 20px;
   font-size: 14px;
   font-weight: 600;
-  color: #374151;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  color: hsl(var(--foreground));
+  box-shadow: 0 2px 8px hsl(var(--shadow-base) / 0.1);
 }
 
 /* 3D场景 */
@@ -165,7 +165,7 @@
   left: 0;
   right: 0;
   bottom: 0;
-  background: white;
+  background: var(--surface-elevated);
   transform: rotateY(180deg);
   overflow: auto;
 }
@@ -181,8 +181,8 @@
 
 /* 翻转按钮激活态 */
 .control-btn-active {
-  background: rgba(59, 130, 246, 0.15) !important;
-  border: 1px solid rgba(59, 130, 246, 0.4);
+  background: hsl(var(--primary) / 0.15) !important;
+  border: 1px solid hsl(var(--primary) / 0.4);
 }
 
 /* 内容包装器 - 独立高度上下文 */
@@ -213,7 +213,7 @@
   width: 80%;
   height: 20px;
   transform: translateX(-50%); /* 使用transform确保阴影居中 */
-  background: radial-gradient(ellipse at center, rgba(0,0,0,0.2) 0%, transparent 70%);
+  background: radial-gradient(ellipse at center, hsl(var(--shadow-base) / 0.2) 0%, transparent 70%);
   transition: all 0.5s cubic-bezier(0.23, 1, 0.32, 1);
   opacity: 0.5;
   pointer-events: none; /* 确保阴影不影响交互 */
@@ -242,22 +242,22 @@
   width: 48px;
   height: 48px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.9);
+  background: hsl(var(--background) / 0.9);
   border: none;
   font-size: 24px;
   cursor: pointer;
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 2px 8px hsl(var(--shadow-base) / 0.1);
   transition: all 0.2s ease;
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #374151;
+  color: hsl(var(--foreground));
 }
 
 .nav-btn:hover:not(:disabled) {
-  background: white;
+  background: var(--surface-elevated);
   transform: scale(1.1);
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  box-shadow: 0 4px 12px hsl(var(--shadow-base) / 0.15);
 }
 
 .nav-btn:disabled {
@@ -283,7 +283,7 @@
   width: 8px;
   height: 8px;
   border-radius: 50%;
-  background: rgba(255, 255, 255, 0.5);
+  background: hsl(var(--muted-foreground) / 0.3);
   border: none;
   cursor: pointer;
   transition: all 0.3s ease;
@@ -291,14 +291,14 @@
 }
 
 .nav-dot:hover {
-  background: rgba(255, 255, 255, 0.8);
+  background: hsl(var(--muted-foreground) / 0.6);
   transform: scale(1.2);
 }
 
 .nav-dot.active {
   width: 24px;
   border-radius: 4px;
-  background: white;
+  background: hsl(var(--foreground));
 }
 
 /* 说明文字 */
@@ -308,7 +308,7 @@
   left: 50%;
   transform: translateX(-50%);
   font-size: 12px;
-  color: #6b7280;
+  color: hsl(var(--muted-foreground));
   opacity: 0.8;
   z-index: 1000; /* 确保说明文字不被遮挡 */
   pointer-events: none; /* 不影响其他元素的交互 */
@@ -362,7 +362,7 @@
 
 /* 渲染错误提示 */
 .render-error {
-  color: #ef4444;
+  color: hsl(var(--destructive));
   text-align: center;
   padding: 20px;
   font-style: italic;
@@ -393,7 +393,7 @@
 /* 高分辨率屏幕优化 */
 @media (min-resolution: 2dppx) {
   .card-3d-shadow {
-    background: radial-gradient(ellipse at center, rgba(0,0,0,0.15) 0%, transparent 70%);
+    background: radial-gradient(ellipse at center, hsl(var(--shadow-base) / 0.15) 0%, transparent 70%);
   }
 }
 
@@ -427,7 +427,7 @@
 
 .chat-card3d-compact .card-3d-preview-empty {
   height: 200px;
-  color: var(--muted-foreground, #6b7280);
+  color: hsl(var(--muted-foreground));
 }
 
 .chat-card3d-compact .card-3d-controls {

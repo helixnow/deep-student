@@ -1,7 +1,7 @@
 import * as React from 'react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'framer-motion';
-import { X } from 'lucide-react';
+import { X } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Z_INDEX } from '@/config/zIndex';
 import { NotionButton, type NotionButtonVariant, type NotionButtonSize } from './NotionButton';
@@ -103,19 +103,25 @@ export function NotionDialog({
           className="fixed inset-0 bg-black/30 backdrop-blur-[2px]"
           variants={overlayVariants}
           onClick={() => closeOnOverlay && onOpenChange(false)}
-        />
+/>
         {/* 内容 */}
         <motion.div
           role="dialog"
           aria-modal="true"
           variants={contentVariants}
           className={cn(
-            'relative w-[92vw] rounded-xl border border-transparent ring-1 ring-border/40 bg-background text-foreground shadow-lg',
+            'relative w-[92vw] rounded-[var(--radius-shell-dialog)] border bg-background text-foreground',
             'flex flex-col overflow-hidden',
             maxWidth,
             className,
           )}
-          style={{ zIndex: Z_INDEX.modal + 1, maxHeight: 'min(85vh, 720px)' }}
+          style={{
+            zIndex: Z_INDEX.modal + 1,
+            maxHeight: 'min(85vh, 720px)',
+            background: 'var(--dialog-shell-surface)',
+            borderColor: 'var(--dialog-shell-border)',
+            boxShadow: 'var(--shadow-shell-floating)',
+          }}
           onClick={(e) => e.stopPropagation()}
         >
           {showClose && (
@@ -124,10 +130,10 @@ export function NotionDialog({
               size="sm"
               iconOnly
               aria-label="Close"
-              className="absolute top-2.5 right-2.5 z-10 h-6 w-6 text-muted-foreground/50 hover:text-foreground"
+ className="w-6 h-6 absolute top-2.5 right-2.5 z-10 text-muted-foreground/50 hover:text-foreground"
               onClick={() => onOpenChange(false)}
             >
-              <X className="h-4 w-4" />
+              <X size={16} />
             </NotionButton>
           )}
           {children}
@@ -141,9 +147,9 @@ export function NotionDialog({
 
 export function NotionDialogHeader({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div className={cn('flex-shrink-0 px-5 pt-5 pb-3 space-y-1', className)} {...props}>
-      {children}
-    </div>
+      <div className={cn('flex-shrink-0 px-5 pt-5 pb-3 space-y-1 border-b border-transparent', className)} style={{ borderColor: 'var(--dialog-shell-border)' }} {...props}>
+        {children}
+      </div>
   );
 }
 
@@ -164,29 +170,52 @@ export function NotionDialogDescription({ className, children, ...props }: React
 }
 
 export interface NotionDialogBodyProps extends React.HTMLAttributes<HTMLDivElement> {
-  /** 禁用自研滚动条，使用原生滚动，默认 false */
-  nativeScroll?: boolean;
+  /**
+   * 启用 OverlayScrollbars（自研滚动条）。默认 false — 使用原生滚动。
+   *
+   * **最佳实践**：弹窗内一律使用原生滚动。原因：
+   *  1. NotionDialog 入场动画是 scale + translateY，OverlayScrollbars 的
+   *     `defer` 初始化在动画期间会读到错误的几何尺寸，可能导致 scrollbar
+   *     不激活、内容被裁掉而无法滚动（见 PrivacyPolicyDialog 历史问题）。
+   *  2. Modal 是 portal + overflow-hidden 容器，再嵌一层拦截 wheel 的滚动
+   *     库容易出现事件吞掉、滚动锁失效等边界问题。
+   *  3. 原生滚动在 trackpad 惯性、PgDn / 箭头键、辅助技术上更可靠。
+   *
+   * 仅在弹窗内嵌入超长虚拟列表、需要 click-track 跳转等极少数场景下才考虑
+   * 开启此选项。
+   */
+  overlayScroll?: boolean;
 }
 
-export function NotionDialogBody({ className, children, nativeScroll = false, ...props }: NotionDialogBodyProps) {
-  if (nativeScroll) {
+export function NotionDialogBody({ className, children, overlayScroll = false, ...props }: NotionDialogBodyProps) {
+  if (overlayScroll) {
     return (
-      <div className={cn('flex-1 min-h-0 overflow-y-auto px-5', className)} {...props}>
+      <CustomScrollArea className={cn('flex-1 min-h-0', className)} viewportClassName="px-5" {...props}>
         {children}
-      </div>
+      </CustomScrollArea>
     );
   }
   return (
-    <CustomScrollArea className={cn('flex-1 min-h-0', className)} viewportClassName="px-5" {...props}>
+    <div
+      className={cn(
+        // 关键：min-h-0 让 flex 子元素能正确收缩，否则会撑爆父容器导致无法滚动
+        'flex-1 min-h-0 overflow-y-auto overscroll-contain px-5',
+        // macOS 风格细滚动条，与 OverlayScrollbars 视觉接近，零运行时成本
+        'scroll-area--native',
+        className,
+      )}
+      {...props}
+    >
       {children}
-    </CustomScrollArea>
+    </div>
   );
 }
 
 export function NotionDialogFooter({ className, children, ...props }: React.HTMLAttributes<HTMLDivElement>) {
   return (
-    <div
-      className={cn('flex-shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-border/40', className)}
+      <div
+      className={cn('flex-shrink-0 flex items-center justify-end gap-2 px-5 py-4 border-t border-transparent', className)}
+      style={{ borderColor: 'var(--dialog-shell-border)' }}
       {...props}
     >
       {children}
@@ -277,10 +306,15 @@ export function NotionAlertDialog({
           aria-modal="true"
           variants={alertContentVariants}
           className={cn(
-            'relative w-[92vw] max-w-md rounded-xl border border-transparent ring-1 ring-border/40 bg-background p-5 text-foreground shadow-lg',
+            'relative w-[92vw] max-w-md rounded-[var(--radius-shell-dialog)] border p-5 text-foreground',
             className,
           )}
-          style={{ zIndex: Z_INDEX.modal + 1 }}
+          style={{
+            zIndex: Z_INDEX.modal + 1,
+            background: 'var(--dialog-shell-surface)',
+            borderColor: 'var(--dialog-shell-border)',
+            boxShadow: 'var(--shadow-shell-floating)',
+          }}
           onClick={(e) => e.stopPropagation()}
         >
           {/* 标题行 */}
@@ -309,7 +343,7 @@ export function NotionAlertDialog({
               disabled={disabled || loading}
             >
               {loading && (
-                <svg className="animate-spin h-3.5 w-3.5 mr-1" viewBox="0 0 24 24" fill="none">
+                <svg className="w-3.5 h-3.5 animate-spin mr-1" viewBox="0 0 24 24" fill="none">
                   <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
                   <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
                 </svg>

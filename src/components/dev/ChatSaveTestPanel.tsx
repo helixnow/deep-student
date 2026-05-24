@@ -23,9 +23,9 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import React, { useState, useCallback, useRef, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { 
-  X, Play, RotateCcw, Copy, ChevronDown, ChevronRight,
-  CheckCircle2, AlertCircle, Info, AlertTriangle, Save
-} from 'lucide-react';
+  X, Play, ArrowCounterClockwise, Copy, CaretDown, CaretRight,
+  CheckCircle, WarningCircle, Info, Warning, FloppyDisk
+} from '@phosphor-icons/react';
 import { getErrorMessage } from '../../utils/errorUtils';
 import { TauriAPI } from '../../utils/tauriApi';
 import { Z_INDEX } from '@/config/zIndex';
@@ -1072,9 +1072,9 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
           <NotionButton variant="ghost" size="sm" onClick={() => toggleSection('scenario')} className="!w-full !justify-between !h-auto mb-3 text-sm font-medium text-[hsl(var(--foreground))]">
             <span>{t('dev:save_test.scenario_selector.title')}</span>
             {expandedSections.has('scenario') ? (
-              <ChevronDown size={16} />
+              <CaretDown size={16} />
             ) : (
-              <ChevronRight size={16} />
+              <CaretRight size={16} />
             )}
           </NotionButton>
           
@@ -1111,7 +1111,7 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
                         </div>
                       </div>
                       {isSelected && (
-                        <CheckCircle2 size={16} className="text-[hsl(var(--primary))] flex-shrink-0 mt-1" />
+                        <CheckCircle size={16} className="text-[hsl(var(--primary))] flex-shrink-0 mt-1" />
                       )}
                     </div>
                   </NotionButton>
@@ -1128,13 +1128,13 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
               <Play size={16} />
               {isRunning ? t('dev:save_test.buttons.running') : t('dev:save_test.buttons.start')}
             </NotionButton>
-            <NotionButton variant="default" size="sm" data-testid="btn-reset-test" onClick={resetTest} disabled={isRunning || isAutoTesting} className="!px-4 !py-2 bg-muted/50 text-[hsl(var(--foreground))] hover:bg-accent disabled:opacity-50">
-              <RotateCcw size={16} />
+            <NotionButton variant="default" size="sm" data-testid="btn-reset-test" onClick={resetTest} disabled={isRunning || isAutoTesting} className="!px-4 !py-2 bg-muted/50 text-[hsl(var(--foreground))] hover:bg-[var(--interactive-hover)] disabled:opacity-50">
+              <ArrowCounterClockwise size={16} />
             </NotionButton>
           </div>
           
           <NotionButton variant="primary" size="sm" data-testid="btn-auto-test" onClick={runAutoTest} disabled={isRunning || isAutoTesting || !currentMistakeId} className="!w-full !px-4 !py-2 bg-gradient-to-r from-[hsl(var(--success))] to-[hsl(var(--info))] text-white hover:opacity-90 disabled:opacity-50 font-medium">
-            <Save size={16} />
+            <FloppyDisk size={16} />
             {isAutoTesting ? `自动测试中... (${currentAutoTestIndex + 1}/${SCENARIO_CONFIGS.length})` : '全自动测试'}
           </NotionButton>
         </div>
@@ -1145,9 +1145,9 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
             <NotionButton variant="ghost" size="sm" onClick={() => toggleSection('steps')} className="!w-full !justify-between !h-auto mb-3 text-sm font-medium text-[hsl(var(--foreground))]">
               <span>{t('dev:save_test.steps_section.title')}</span>
               {expandedSections.has('steps') ? (
-                <ChevronDown size={16} />
+                <CaretDown size={16} />
               ) : (
-                <ChevronRight size={16} />
+                <CaretRight size={16} />
               )}
             </NotionButton>
             
@@ -1203,13 +1203,13 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
                         )}
                       </div>
                       {step.status === 'success' && (
-                        <CheckCircle2 size={16} className="text-[hsl(var(--success))] flex-shrink-0 mt-1" />
+                        <CheckCircle size={16} className="text-[hsl(var(--success))] flex-shrink-0 mt-1" />
                       )}
                       {step.status === 'failed' && (
-                        <AlertCircle size={16} className="text-[hsl(var(--danger))] flex-shrink-0 mt-1" />
+                        <WarningCircle size={16} className="text-[hsl(var(--danger))] flex-shrink-0 mt-1" />
                       )}
                       {step.status === 'skipped' && (
-                        <AlertTriangle size={16} className="text-[hsl(var(--warning))] flex-shrink-0 mt-1" />
+                        <Warning size={16} className="text-[hsl(var(--warning))] flex-shrink-0 mt-1" />
                       )}
                     </div>
                   </div>
@@ -1267,9 +1267,9 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
                 >
                   <div className="flex items-center justify-between">
                     <div className="flex items-center gap-2">
-                      {result.status === 'success' && <CheckCircle2 size={16} className="text-[hsl(var(--success))]" />}
-                      {result.status === 'failed' && <AlertCircle size={16} className="text-[hsl(var(--danger))]" />}
-                      {result.status === 'skipped' && <AlertTriangle size={16} className="text-[hsl(var(--warning))]" />}
+                      {result.status === 'success' && <CheckCircle size={16} className="text-[hsl(var(--success))]" />}
+                      {result.status === 'failed' && <WarningCircle size={16} className="text-[hsl(var(--danger))]" />}
+                      {result.status === 'skipped' && <Warning size={16} className="text-[hsl(var(--warning))]" />}
                       <span className="text-sm font-medium text-[hsl(var(--foreground))]">
                         {idx + 1}. {result.scenarioName}
                       </span>
@@ -1300,14 +1300,14 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
               <div className="flex items-center gap-2">
                 {testResult === 'success' ? (
                   <>
-                    <CheckCircle2 size={24} className="text-[hsl(var(--success))] flex-shrink-0" />
+                    <CheckCircle size={24} className="text-[hsl(var(--success))] flex-shrink-0" />
                     <span className="text-lg font-bold text-[hsl(var(--success))]">
                       {t('dev:save_test.results.success')}
                     </span>
                   </>
                 ) : (
                   <>
-                    <AlertCircle size={24} className="text-[hsl(var(--danger))] flex-shrink-0" />
+                    <WarningCircle size={24} className="text-[hsl(var(--danger))] flex-shrink-0" />
                     <span className="text-lg font-bold text-[hsl(var(--danger))]">
                       {t('dev:save_test.results.failed')}
                     </span>
@@ -1325,18 +1325,18 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
               <NotionButton variant="ghost" size="sm" onClick={() => toggleSection('logs')} className="!h-auto text-sm font-medium text-[hsl(var(--foreground))]">
                 <span>{t('dev:save_test.logs_section.title')} ({testLogs.length}/{MAX_LOGS})</span>
                 {expandedSections.has('logs') ? (
-                  <ChevronDown size={16} />
+                  <CaretDown size={16} />
                 ) : (
-                  <ChevronRight size={16} />
+                  <CaretRight size={16} />
                 )}
               </NotionButton>
               <div className="flex items-center gap-2">
-                <NotionButton variant="ghost" size="sm" data-testid="btn-copy-logs" onClick={copyLogs} className="!px-2 !py-1 !h-auto text-xs bg-muted/50 hover:bg-accent text-[hsl(var(--foreground))]">
+                <NotionButton variant="ghost" size="sm" data-testid="btn-copy-logs" onClick={copyLogs} className="!px-2 !py-1 !h-auto text-xs bg-muted/50 hover:bg-[var(--interactive-hover)] text-[hsl(var(--foreground))]">
                   <Copy size={12} />
                   {t('common:copy')}
                 </NotionButton>
                 <NotionButton variant="primary" size="sm" data-testid="btn-export-report" onClick={exportReport} className="!px-2 !py-1 !h-auto text-xs bg-[hsl(var(--primary))] hover:opacity-90 text-[hsl(var(--primary-foreground))]">
-                  <Save size={12} />
+                  <FloppyDisk size={12} />
                   导出JSON
                 </NotionButton>
               </div>
@@ -1383,9 +1383,9 @@ export const ChatSaveTestPanel: React.FC<ChatSaveTestPanelProps> = ({
           <NotionButton variant="ghost" size="sm" onClick={() => toggleSection('diagnostics')} className="!w-full !justify-between !h-auto mb-3 text-sm font-medium text-[hsl(var(--foreground))]">
             <span>诊断日志（聊天事件与保存链路） ({diagLogs.length}/500)</span>
             {expandedSections.has('diagnostics') ? (
-              <ChevronDown size={16} />
+              <CaretDown size={16} />
             ) : (
-              <ChevronRight size={16} />
+              <CaretRight size={16} />
             )}
           </NotionButton>
           {expandedSections.has('diagnostics') && (

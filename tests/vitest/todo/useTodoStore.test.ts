@@ -1,11 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { waitFor } from '@testing-library/react';
 
-import type { TodoItem } from '@/components/todo/types';
-import { useTodoStore } from '@/components/todo/useTodoStore';
-import * as api from '@/components/todo/api';
+import type { TodoItem } from '@/features/todo/types';
+import { useTodoStore } from '@/features/todo/stores/useTodoStore';
+import * as api from '@/features/todo/api';
 
-vi.mock('@/components/todo/api', () => ({
+vi.mock('@/features/todo/api', () => ({
   listTodoLists: vi.fn(),
   ensureInbox: vi.fn(),
   createTodoList: vi.fn(),

@@ -22,7 +22,7 @@ import {
   Legend,
   ResponsiveContainer,
 } from 'recharts';
-import { TrendingUp, Calendar, RefreshCw } from 'lucide-react';
+import { TrendUp, ArrowsClockwise } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -131,13 +131,13 @@ const EmptyState: React.FC<{ onRefresh?: () => void }> = ({ onRefresh }) => {
   
   return (
     <div className="flex flex-col items-center justify-center h-64 text-center">
-      <TrendingUp className="w-12 h-12 text-muted-foreground/30 mb-3" />
+      <TrendUp size={48} className="text-muted-foreground/30 mb-3" />
       <p className="text-muted-foreground mb-4">
         {t('trendChart.noRecord')}
       </p>
       {onRefresh && (
         <NotionButton variant="ghost" size="sm" onClick={onRefresh}>
-          <RefreshCw className="w-4 h-4 mr-2" />
+          <ArrowsClockwise size={16} className="mr-2" />
           {t('trendChart.refreshData')}
         </NotionButton>
       )}
@@ -236,7 +236,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
       {/* 标题栏 */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <TrendingUp className="w-5 h-5 text-primary" />
+          <TrendUp size={20} className="text-primary" />
           <h3 className="font-semibold">{t('trendChart.title')}</h3>
         </div>
         
@@ -266,10 +266,9 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
           <NotionButton
             variant="ghost"
             size="icon"
-            className="h-8 w-8"
-            onClick={handleRefresh}
+ className="w-8 h-8"             onClick={handleRefresh}
           >
-            <RefreshCw className="w-4 h-4" />
+            <ArrowsClockwise size={16} />
           </NotionButton>
         </div>
       </div>
@@ -320,7 +319,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
                 stroke="hsl(var(--border))"
                 opacity={0.5}
                 vertical={false}
-              />
+/>
               
               <XAxis
                 dataKey="date"
@@ -329,7 +328,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
                 axisLine={{ stroke: 'hsl(var(--border))' }}
                 tickLine={false}
                 interval="preserveStartEnd"
-              />
+/>
               
               {/* 左侧 Y 轴 - 做题数 */}
               <YAxis
@@ -338,7 +337,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
                 axisLine={false}
                 tickLine={false}
                 width={35}
-              />
+/>
               
               {/* 右侧 Y 轴 - 正确率 */}
               <YAxis
@@ -350,7 +349,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
                 tickLine={false}
                 width={35}
                 tickFormatter={(v) => `${v}%`}
-              />
+/>
               
               <Tooltip content={<CustomTooltip />} />
               
@@ -362,7 +361,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
                 formatter={(value) => (
                   <span className="text-xs text-muted-foreground">{value}</span>
                 )}
-              />
+/>
               
               {/* 做题数 - 柱状图 */}
               <Bar
@@ -372,7 +371,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
                 fill="url(#barGradient)"
                 radius={[4, 4, 0, 0]}
                 maxBarSize={40}
-              />
+/>
               
               {/* 正确率 - 折线图 */}
               <Line
@@ -384,7 +383,7 @@ export const LearningTrendChart: React.FC<LearningTrendChartProps> = ({
                 strokeWidth={2}
                 dot={{ fill: 'hsl(var(--success))', strokeWidth: 0, r: 3 }}
                 activeDot={{ r: 5, stroke: 'hsl(var(--success))', strokeWidth: 2 }}
-              />
+/>
             </ComposedChart>
           </ResponsiveContainer>
         </div>

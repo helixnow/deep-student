@@ -11,7 +11,7 @@
 
 import React, { useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Database, Loader2, CheckCircle2, AlertCircle, RefreshCw } from 'lucide-react';
+import { Database, CircleNotch, CheckCircle, WarningCircle, ArrowClockwise } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -160,13 +160,13 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
   const getIcon = () => {
     switch (status) {
       case 'indexing':
-        return <Loader2 className="h-4 w-4 animate-spin" />;
+        return <CircleNotch size={16} className="animate-spin" />;
       case 'success':
-        return <CheckCircle2 className="h-4 w-4 text-green-500" />;
+        return <CheckCircle size={16} className="text-green-500" />;
       case 'error':
-        return <AlertCircle className="h-4 w-4 text-red-500" />;
+        return <WarningCircle size={16} className="text-red-500" />;
       default:
-        return <Database className="h-4 w-4" />;
+        return <Database size={16} />;
     }
   };
 
@@ -220,9 +220,8 @@ export const MultimodalIndexButton: React.FC<MultimodalIndexButtonProps> = ({
             variant="ghost"
             size="icon"
             onClick={handleRebuild}
-            className="h-8 w-8"
-          >
-            <RefreshCw className="h-3.5 w-3.5" />
+ className="w-8 h-8"           >
+            <ArrowClockwise size={14} />
           </NotionButton>
         </CommonTooltip>
       )}

@@ -5,7 +5,7 @@
 
 import React from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { AlertTriangle, Info, X } from 'lucide-react';
+import { Warning, Info, X } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 
 interface AttachmentValidationNoticeProps {
@@ -37,7 +37,7 @@ export const AttachmentValidationNotice: React.FC<AttachmentValidationNoticeProp
     <div className={`rounded-lg border p-3 ${hasErrors ? 'bg-red-50 border-red-200' : 'bg-green-50 border-green-200'} ${className}`}>
       <div className="flex items-start gap-2">
         {hasErrors ? (
-          <AlertTriangle size={16} className="text-red-500 mt-0.5 flex-shrink-0" />
+          <Warning size={16} className="text-red-500 mt-0.5 flex-shrink-0" />
         ) : (
           <Info size={16} className="text-green-500 mt-0.5 flex-shrink-0" />
         )}

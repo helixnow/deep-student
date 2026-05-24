@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { ChatMessage } from '../types';
 import { getUnifiedSummaryPrompt } from '../utils/summaryPrompt';
-import { StreamingMarkdownRenderer } from '../chat-v2/components/renderers';
+import { StreamingMarkdownRenderer } from '../features/chat/components/renderers';
 import './SummaryBox.css';
 import ChatCollapsible from './shared/ChatCollapsible';
 import { Badge } from './ui/shad/Badge';

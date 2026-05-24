@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import type { CurrentView } from '@/types/navigation';
 import { createNavItems, type NavItem } from '@/config/navigation';
 import { useMobileLayoutSafe } from './MobileLayoutContext';
+import { getBottomTabBarHeight } from '@/config/mobileLayout';
 
 const BOTTOM_TABS: CurrentView[] = ['chat-v2', 'skills-management', 'learning-hub', 'task-dashboard', 'settings'];
 
@@ -21,6 +22,7 @@ export interface BottomTabBarProps {
   onViewChange: (view: CurrentView) => void;
   className?: string;
   showLabels?: boolean;
+  hidden?: boolean;
 }
 
 export const BottomTabBar: React.FC<BottomTabBarProps> = ({
@@ -28,11 +30,13 @@ export const BottomTabBar: React.FC<BottomTabBarProps> = ({
   onViewChange,
   className,
   showLabels = true,
+  hidden = false,
 }) => {
   const { t } = useTranslation(['sidebar', 'common']);
 
   const mobileLayout = useMobileLayoutSafe();
-  const isHidden = mobileLayout?.isFullscreenContent ?? false;
+  const isHidden = hidden || (mobileLayout?.isFullscreenContent ?? false);
+  const barHeight = getBottomTabBarHeight(showLabels);
 
   const allNavItems = useMemo(() => createNavItems(t), [t]);
 
@@ -60,18 +64,22 @@ export const BottomTabBar: React.FC<BottomTabBarProps> = ({
 
   return (
     <nav
+      data-mobile-shell="tabbar"
       className={cn(
         "fixed bottom-0 left-0 right-0 z-50",
         "flex flex-col",
-        "bg-background/95 backdrop-blur-lg",
-        "border-t border-border/40",
+        "border-t border-[color:var(--shell-chrome-border)]",
+        "bg-[color:var(--shell-titlebar-surface)]/95 backdrop-blur-md",
         "transition-transform duration-300 ease-out",
         isHidden && "translate-y-full",
         className
       )}
       style={{
         boxSizing: 'border-box',
-      }}
+        minHeight: 'var(--mobile-bottom-bar-total-height, 56px)',
+        ['--mobile-bottom-bar-height' as string]: `${barHeight}px`,
+        ['--mobile-bottom-bar-total-height' as string]: `calc(${barHeight}px + var(--mobile-safe-area-bottom, 0px))`,
+      } as React.CSSProperties}
       role="tablist"
       aria-label={t('common:navigation_label', 'Navigation')}
       aria-hidden={isHidden}
@@ -79,8 +87,8 @@ export const BottomTabBar: React.FC<BottomTabBarProps> = ({
       <div 
         className="flex items-center justify-around w-full"
         style={{
-          height: showLabels ? 56 : 48,
-          minHeight: showLabels ? 56 : 48,
+          height: 'var(--mobile-bottom-bar-height, 56px)',
+          minHeight: 'var(--mobile-bottom-bar-height, 56px)',
         }}
       >
         {tabItems.map(({ view, icon: Icon, name }) => {
@@ -100,25 +108,24 @@ export const BottomTabBar: React.FC<BottomTabBarProps> = ({
                 "flex-1 h-full",
                 showLabels ? "gap-1" : "gap-0.5",
                 "transition-colors duration-150",
-                "active:scale-95 active:opacity-80",
                 "touch-manipulation select-none",
                 isActive
-                  ? "text-primary"
-                  : "text-muted-foreground"
+                  ? "text-[color:var(--shell-navigation-foreground)]"
+                  : "text-[color:var(--shell-navigation-muted)]"
               )}
             >
               <Icon
                 className={cn(
-                  "transition-transform duration-150",
+                  "transition-colors duration-150",
                   showLabels ? "w-5 h-5" : "w-6 h-6",
-                  isActive && "scale-110"
+                  isActive && "text-[color:var(--shell-navigation-foreground)]"
                 )}
                 strokeWidth={isActive ? 2.5 : 2}
               />
               {showLabels && (
                 <span
                   className={cn(
-                    "text-[10px] font-medium truncate max-w-[56px]",
+                    "max-w-[56px] truncate text-[10px] font-medium",
                     isActive && "font-semibold"
                   )}
                 >
@@ -133,8 +140,8 @@ export const BottomTabBar: React.FC<BottomTabBarProps> = ({
       <div 
         className="w-full"
         style={{
-          height: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
-          minHeight: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
+          height: 'var(--mobile-safe-area-bottom, 0px)',
+          minHeight: 'var(--mobile-safe-area-bottom, 0px)',
         }}
       />
     </nav>

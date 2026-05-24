@@ -5,9 +5,9 @@
 
 import React, { useMemo, useState } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { X, Copy, ExternalLink, FileText, Download } from 'lucide-react';
+import { X, Copy, ArrowSquareOut, FileText, Download } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
-import { MarkdownRenderer } from '../chat-v2/components/renderers';
+import { MarkdownRenderer } from '../features/chat/components/renderers';
 import { CustomScrollArea } from './custom-scroll-area';
 import { fileManager } from '@/utils/fileManager';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
@@ -204,7 +204,7 @@ export const SourcePreviewPanel: React.FC<SourcePreviewPanelProps> = ({
           </NotionButton>
 
           <NotionButton variant="ghost" size="sm" onClick={handleOpenInKnowledgeBase} className="!px-3 !py-2 text-sm !rounded-lg border bg-[hsl(var(--info-bg))] text-[hsl(var(--info))] border-[hsl(var(--info)/0.4)] hover:brightness-95">
-            <ExternalLink size={14} />
+            <ArrowSquareOut size={14} />
             {t('source_preview.open_in_kb')}
           </NotionButton>
 

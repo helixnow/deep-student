@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef } from 'react';
-import { Type, Copy, Check, Trash2, Play, Pause } from 'lucide-react';
+import { TextT, Copy, Check, Trash, Play, Pause } from '@phosphor-icons/react';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 interface TypographyLogEntry {
@@ -256,7 +256,7 @@ export default function NotesTypographyDebugPlugin() {
       {/* Header */}
       <div className="flex items-center justify-between pb-2 border-b border-gray-300 dark:border-gray-700">
         <div className="flex items-center gap-2">
-          <Type size={16} className="text-indigo-600 dark:text-indigo-400" />
+          <TextT size={16} className="text-indigo-600 dark:text-indigo-400" />
           <h3 className="font-semibold text-sm">笔记排版样式调试</h3>
           <span className="text-gray-500">({state.logs.length} 条日志)</span>
         </div>
@@ -278,7 +278,7 @@ export default function NotesTypographyDebugPlugin() {
             className="px-2 py-1 text-xs bg-red-600 text-white rounded hover:bg-red-700 flex items-center gap-1"
             title="清空日志"
           >
-            <Trash2 size={12} />
+            <Trash size={12} />
             清空
           </button>
           <button

@@ -18,11 +18,13 @@ vi.mock('@tauri-apps/api/event', () => ({
 // Import after mocking
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import { ChatV2TauriAdapter } from '@/chat-v2/adapters/TauriAdapter';
-import type { ChatStore } from '@/chat-v2/core/types';
-import type { SessionEventPayload } from '@/chat-v2/adapters/types';
-import { skillRegistry } from '@/chat-v2/skills/registry';
-import type { SkillDefinition } from '@/chat-v2/skills/types';
+import { ChatV2TauriAdapter } from '@/features/chat/adapters/TauriAdapter';
+import { clearModelsCache, ensureModelsCacheLoaded } from '@/features/chat/hooks/useAvailableModels';
+import type { ChatStore } from '@/features/chat/core/types';
+import type { SessionEventPayload } from '@/features/chat/adapters/types';
+import { skillRegistry } from '@/features/chat/skills/registry';
+import { clearSessionSkills, syncLoadedSkillsFromBackend } from '@/features/chat/skills/progressiveDisclosure';
+import type { SkillDefinition } from '@/features/chat/skills/types';
 
 // ============================================================================
 // Mock Store
@@ -156,6 +158,7 @@ describe('ChatV2TauriAdapter', () => {
 
   beforeEach(() => {
     vi.clearAllMocks();
+    clearModelsCache();
 
     // Simulate Tauri runtime so adapter.setup() doesn't short-circuit.
     (window as any).__TAURI_INTERNALS__ = {};
@@ -171,6 +174,8 @@ describe('ChatV2TauriAdapter', () => {
 
   afterEach(async () => {
     await adapter.cleanup();
+    clearSessionSkills('test-session-id');
+    clearModelsCache();
     delete (window as any).__TAURI_INTERNALS__;
     delete (window as any).__TAURI_IPC__;
   });
@@ -256,6 +261,94 @@ describe('ChatV2TauriAdapter', () => {
       // Should try to abort
       expect(mockStore.abortStream).toHaveBeenCalled();
     });
+
+    it('should send the current session model override as the effective model', async () => {
+      vi.mocked(invoke).mockImplementation(async (command) => {
+        if (command === 'get_api_configurations') {
+          return [
+            {
+              id: 'base-model',
+              name: 'Base Model',
+              model: 'provider/base-model',
+              enabled: true,
+            },
+            {
+              id: 'override-model',
+              name: 'Override Model',
+              model: 'provider/override-model',
+              enabled: true,
+            },
+          ];
+        }
+        if (command === 'chat_v2_send_message') {
+          return 'assistant-msg-id';
+        }
+        return undefined;
+      });
+
+      (mockStore as any).chatParams = {
+        ...(mockStore as any).chatParams,
+        modelId: 'base-model',
+        modelDisplayName: 'provider/base-model',
+        model2OverrideId: 'override-model',
+      };
+
+      await adapter.sendMessage('Hello with override');
+
+      const backendCall = vi.mocked(invoke).mock.calls.find(([command]) => command === 'chat_v2_send_message');
+      expect(backendCall).toBeTruthy();
+
+      const request = (backendCall?.[1] as { request: { options: Record<string, unknown> } }).request;
+      expect(request.options.modelId).toBe('override-model');
+      expect(request.options.model2OverrideId).toBe('override-model');
+
+      expect(mockStore.setChatParams).toHaveBeenCalledWith({
+        modelId: 'base-model',
+        model2OverrideId: 'override-model',
+        modelDisplayName: 'provider/override-model',
+      });
+      expect(vi.mocked(mockStore.setChatParams).mock.invocationCallOrder[0])
+        .toBeLessThan(vi.mocked(mockStore.sendMessageWithIds).mock.invocationCallOrder[0]);
+    });
+
+    it('should disable thinking parameters when the effective model does not support reasoning', async () => {
+      vi.mocked(invoke).mockImplementation(async (command) => {
+        if (command === 'get_api_configurations') {
+          return [
+            {
+              id: 'plain-model',
+              name: 'Plain Model',
+              model: 'provider/plain-model',
+              enabled: true,
+              isReasoning: false,
+            },
+          ];
+        }
+        if (command === 'chat_v2_send_message') {
+          return 'assistant-msg-id';
+        }
+        return undefined;
+      });
+
+      (mockStore as any).chatParams = {
+        ...(mockStore as any).chatParams,
+        modelId: 'plain-model',
+        enableThinking: true,
+        reasoningEffort: 'high',
+        thinkingBudget: 8192,
+      };
+
+      await adapter.sendMessage('Hello without reasoning support');
+
+      const backendCall = vi.mocked(invoke).mock.calls.find(([command]) => command === 'chat_v2_send_message');
+      expect(backendCall).toBeTruthy();
+
+      const request = (backendCall?.[1] as { request: { options: Record<string, unknown> } }).request;
+      expect(request.options.modelId).toBe('plain-model');
+      expect(request.options.enableThinking).toBe(false);
+      expect(request.options.reasoningEffort).toBeUndefined();
+      expect(request.options.thinkingBudget).toBeUndefined();
+    });
   });
 
   describe('abortStream', () => {
@@ -303,6 +396,106 @@ describe('ChatV2TauriAdapter', () => {
         ragEnabled: true,
         webSearchEnabled: false,
       });
+    });
+
+    it('should pass DeepSeek V4 runtime reasoning effort without mutating model defaults', async () => {
+      await adapter.setup();
+
+      (mockStore as any).chatParams = {
+        ...(mockStore as any).chatParams,
+        enableThinking: true,
+        reasoningEffort: 'max',
+        thinkingBudget: undefined,
+      };
+
+      const options = (adapter as any).buildSendOptions();
+
+      expect(options).toMatchObject({
+        enableThinking: true,
+        reasoningEffort: 'max',
+      });
+      expect(options.thinkingBudget).toBeUndefined();
+    });
+
+    it('should pass SiliconFlow V3.2 runtime thinking budget preset', async () => {
+      await adapter.setup();
+
+      (mockStore as any).chatParams = {
+        ...(mockStore as any).chatParams,
+        enableThinking: true,
+        reasoningEffort: 'xhigh',
+        thinkingBudget: 32768,
+      };
+
+      const options = (adapter as any).buildSendOptions();
+
+      expect(options).toMatchObject({
+        enableThinking: true,
+        reasoningEffort: 'xhigh',
+        thinkingBudget: 32768,
+      });
+    });
+
+    it('should derive context limit from the current dialog model override', async () => {
+      vi.mocked(invoke).mockResolvedValueOnce([
+        {
+          id: 'wide-model',
+          name: 'Wide Model',
+          model: 'wide-model',
+          enabled: true,
+          contextWindow: 100_000,
+          maxOutputTokens: 4096,
+        },
+        {
+          id: 'compact-model',
+          name: 'Compact Model',
+          model: 'compact-model',
+          enabled: true,
+          contextWindow: 50_000,
+          maxOutputTokens: 4096,
+        },
+      ]);
+      await ensureModelsCacheLoaded(true);
+      await adapter.setup();
+
+      (mockStore as any).chatParams = {
+        ...(mockStore as any).chatParams,
+        modelId: 'wide-model',
+        model2OverrideId: 'compact-model',
+        contextLimit: undefined,
+        maxTokens: 4096,
+      };
+
+      const options = (adapter as any).buildSendOptions();
+
+      expect(options.contextLimit).toBe(41_904);
+    });
+
+    it('should use the current dialog model override for multimodal context handling', async () => {
+      vi.mocked(invoke).mockResolvedValue([
+        {
+          id: 'text-model',
+          name: 'Text Model',
+          model: 'provider/text-model',
+          enabled: true,
+          isMultimodal: false,
+        },
+        {
+          id: 'vision-model',
+          name: 'Vision Model',
+          model: 'provider/vision-model',
+          enabled: true,
+          isMultimodal: true,
+        },
+      ]);
+      await adapter.setup();
+
+      const isMultimodal = await (adapter as any).shouldResolveContextAsMultimodal({
+        modelId: 'text-model',
+        model2OverrideId: 'vision-model',
+      });
+
+      expect(isMultimodal).toBe(true);
     });
 
     it('should prefer structured skill state over local cache', async () => {
@@ -368,6 +561,62 @@ describe('ChatV2TauriAdapter', () => {
         );
       } finally {
         skillRegistry.unregister(skillId);
+      }
+    });
+
+    it('should include runtime loaded skills when structured skill state is stale', async () => {
+      await adapter.setup();
+
+      const skillId = 'runtime-loaded-skill';
+      const skill: SkillDefinition = {
+        id: skillId,
+        name: 'Runtime Loaded Skill',
+        description: 'Regression test skill loaded by backend tool result',
+        location: 'builtin',
+        sourcePath: 'builtin://runtime-loaded-skill',
+        content: 'runtime loaded instructions',
+        allowedTools: ['builtin-runtime_loaded_tool'],
+        embeddedTools: [
+          {
+            name: 'builtin-runtime_loaded_tool',
+            description: 'Runtime loaded tool schema',
+            inputSchema: {
+              type: 'object',
+              properties: {
+                query: { type: 'string' },
+              },
+              required: ['query'],
+            },
+          },
+        ],
+      };
+      skillRegistry.register(skill);
+
+      try {
+        (mockStore as any).skillStateJson = JSON.stringify({
+          manualPinnedSkillIds: [],
+          agenticSessionSkillIds: [],
+          branchLocalSkillIds: [],
+          version: 11,
+        });
+        syncLoadedSkillsFromBackend('test-session-id', [skillId], { replace: true });
+
+        const options = (adapter as any).buildSendOptions();
+
+        expect(options.skillContents).toMatchObject({
+          [skillId]: 'runtime loaded instructions',
+        });
+        expect(options.mcpToolSchemas).toEqual(
+          expect.arrayContaining([
+            expect.objectContaining({ name: 'builtin-runtime_loaded_tool' }),
+          ]),
+        );
+        expect(options.skillAllowedTools).toEqual(
+          expect.arrayContaining(['builtin-runtime_loaded_tool'])
+        );
+      } finally {
+        skillRegistry.unregister(skillId);
+        clearSessionSkills('test-session-id');
       }
     });
   });
@@ -461,6 +710,53 @@ describe('ChatV2TauriAdapter', () => {
 
       // 验证调用了 store.restoreFromBackend
       expect(mockStore.restoreFromBackend).toHaveBeenCalledWith(mockResponse);
+    });
+
+    it('should hydrate empty loaded sessions with the default chat model before the first send', async () => {
+      vi.clearAllMocks();
+
+      const mockResponse = {
+        session: {
+          id: 'test-session-id',
+          mode: 'general_chat',
+          persistStatus: 'active',
+          createdAt: '2024-01-01T00:00:00Z',
+          updatedAt: '2024-01-01T00:00:00Z',
+        },
+        messages: [],
+        blocks: [],
+      };
+
+      vi.mocked(mockStore.restoreFromBackend).mockImplementation(() => {
+        (mockStore as any).chatParams = {
+          ...(mockStore as any).chatParams,
+          modelId: '',
+          modelDisplayName: '',
+          model2OverrideId: null,
+        };
+      });
+
+      vi.mocked(invoke).mockImplementation((command: string) => {
+        if (command === 'chat_v2_load_session') {
+          return Promise.resolve(mockResponse);
+        }
+        if (command === 'get_api_configurations') {
+          return Promise.resolve([
+            { id: 'deepseek-default-id', name: 'DeepSeek Default', model: 'deepseek-v4-pro' },
+          ]);
+        }
+        if (command === 'get_model_assignments') {
+          return Promise.resolve({ model2_config_id: 'deepseek-default-id' });
+        }
+        return Promise.resolve(undefined);
+      });
+
+      await adapter.loadSession();
+
+      expect(mockStore.setChatParams).toHaveBeenCalledWith(expect.objectContaining({
+        modelId: 'deepseek-default-id',
+        model2OverrideId: null,
+      }));
     });
 
     it('should save session with session state', async () => {

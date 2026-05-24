@@ -4,7 +4,7 @@ use serde_json::json;
 use std::sync::Arc;
 
 use crate::database::Database;
-use crate::llm_manager::{ApiConfig, LLMManager};
+use crate::llm_manager::{build_provider_adapter, ApiConfig, LLMManager};
 use crate::models::AppError;
 use crate::providers::ProviderAdapter;
 // ★ VFS 统一存储（2025-12-07）
@@ -22,7 +22,7 @@ pub struct TranslationDeps {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-enum StreamStatus {
+pub(crate) enum StreamStatus {
     Completed,
     Cancelled,
 }
@@ -102,7 +102,7 @@ pub async fn run_translation(
 }
 
 /// 语言 code → 全名映射，确保 LLM 精确理解目标语言
-fn lang_full_name(code: &str) -> &str {
+pub(crate) fn lang_full_name(code: &str) -> &str {
     match code {
         "zh-CN" | "zh" => "Simplified Chinese (简体中文)",
         "zh-TW" => "Traditional Chinese (繁體中文)",
@@ -233,7 +233,7 @@ pub fn build_translation_prompts(
 }
 
 /// 流式翻译（核心逻辑）
-async fn stream_translate<F>(
+pub(crate) async fn stream_translate<F>(
     config: &ApiConfig,
     api_key: &str,
     system_prompt: &str,
@@ -259,20 +259,21 @@ where
         ];
 
         // 构造请求体
-        let request_body = json!({
+        let mut request_body = json!({
             "model": config.model,
             "messages": messages,
             "temperature": 0.3,
-            "max_tokens": config.max_output_tokens,
+            "max_tokens": crate::llm_manager::effective_max_tokens(
+                config.max_output_tokens,
+                config.max_tokens_limit,
+            ),
             "stream": true, // 关键：启用流式
         });
 
+        crate::llm_manager::LLMManager::apply_reasoning_config(&mut request_body, config, None);
+
         // 选择适配器
-        let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(config);
 
         // 构造 HTTP 请求
         let preq = adapter

@@ -1,0 +1,239 @@
+/**
+ * 思维导图资源选择器弹窗
+ *
+ * 允许用户从 VFS 中搜索/浏览资源并关联到思维导图节点。
+ * 轻量级实现，使用 dstu_list / dstu_search API。
+ */
+
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
+import { createPortal } from 'react-dom';
+import {
+  MagnifyingGlass,
+  X,
+  CircleNotch,
+  Check,
+} from '@phosphor-icons/react';
+import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { Input } from '@/components/ui/shad/Input';
+import { Z_INDEX } from '@/config/zIndex';
+import { getResourceIcon, type ResourceIconType } from '@/features/learning-hub/icons';
+import * as dstuApi from '@/dstu/api';
+import type { DstuNode } from '@/dstu/types';
+import type { MindMapNodeRef } from '../../types';
+
+// ============================================================================
+// 类型
+// ============================================================================
+
+export interface MindMapResourcePickerProps {
+  isOpen: boolean;
+  nodeId: string;
+  existingRefs?: MindMapNodeRef[];
+  onSelect: (ref: MindMapNodeRef) => void;
+  onClose: () => void;
+}
+
+
+// ============================================================================
+// 组件
+// ============================================================================
+
+export const MindMapResourcePicker: React.FC<MindMapResourcePickerProps> = ({
+  isOpen,
+  nodeId,
+  existingRefs,
+  onSelect,
+  onClose,
+}) => {
+  const { t } = useTranslation('mindmap');
+  const [query, setQuery] = useState('');
+  const [resources, setResources] = useState<DstuNode[]>([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const panelRef = useRef<HTMLDivElement>(null);
+
+  const existingIds = useMemo(() => new Set(existingRefs?.map(r => r.sourceId) ?? []), [existingRefs]);
+
+  // 加载根目录资源
+  const loadRootResources = useCallback(async () => {
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await dstuApi.list('/', { recursive: true });
+      if (result.ok) {
+        // 过滤掉文件夹，只保留资源
+        setResources(result.value.filter(n => n.type !== 'folder'));
+      } else {
+        setError(result.error.message);
+      }
+    } catch {
+      setError('Failed to load resources');
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  // 搜索资源
+  const searchResources = useCallback(async (q: string) => {
+    if (!q.trim()) {
+      loadRootResources();
+      return;
+    }
+    setLoading(true);
+    setError(null);
+    try {
+      const result = await dstuApi.search(q.trim());
+      if (result.ok) {
+        setResources(result.value.filter(n => n.type !== 'folder'));
+      } else {
+        setError(result.error.message);
+      }
+    } catch {
+      setError('Search failed');
+    } finally {
+      setLoading(false);
+    }
+  }, [loadRootResources]);
+
+  // 打开时加载资源 + 聚焦搜索框
+  useEffect(() => {
+    if (isOpen) {
+      loadRootResources();
+      requestAnimationFrame(() => inputRef.current?.focus());
+    } else {
+      setQuery('');
+      setResources([]);
+    }
+  }, [isOpen, loadRootResources]);
+
+  // 搜索防抖（仅在用户实际输入时触发，避免与初始加载重复）
+  useEffect(() => {
+    if (!isOpen || !query) return;
+    const timer = setTimeout(() => {
+      searchResources(query);
+    }, 300);
+    return () => clearTimeout(timer);
+  }, [query, isOpen, searchResources]);
+
+  // 点击外部关闭
+  useEffect(() => {
+    if (!isOpen) return;
+    const handleClick = (e: MouseEvent) => {
+      if (panelRef.current && !panelRef.current.contains(e.target as HTMLElement)) {
+        onClose();
+      }
+    };
+    const handleEscape = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') onClose();
+    };
+    // 延迟绑定，避免触发菜单关闭的同一事件立即关闭 picker
+    const timer = setTimeout(() => {
+      window.addEventListener('mousedown', handleClick);
+      window.addEventListener('keydown', handleEscape);
+    }, 50);
+    return () => {
+      clearTimeout(timer);
+      window.removeEventListener('mousedown', handleClick);
+      window.removeEventListener('keydown', handleEscape);
+    };
+  }, [isOpen]); // eslint-disable-line react-hooks/exhaustive-deps -- onClose 引用稳定性由 useCallback 在父组件保证
+
+  const handleSelect = useCallback((node: DstuNode) => {
+    const ref: MindMapNodeRef = {
+      sourceId: node.sourceId || node.id,
+      type: node.type,
+      name: node.name,
+      resourceHash: node.resourceHash,
+    };
+    onSelect(ref);
+  }, [onSelect]);
+
+  if (!isOpen) return null;
+
+  return createPortal(
+    <div
+      ref={panelRef}
+      className={cn(
+        'fixed w-[360px] max-h-[420px] flex flex-col',
+        'rounded-lg border border-transparent ring-1 ring-border/40 bg-popover shadow-lg',
+        'animate-in fade-in-0 zoom-in-95 duration-150',
+        'top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2',
+      )}
+      style={{ zIndex: Z_INDEX.contextMenu + 10 }}
+    >
+      {/* 标题栏 */}
+      <div className="flex items-center justify-between px-3 py-2 border-b border-border">
+        <span className="text-sm font-medium">{t('refs.pickerTitle', '关联资源')}</span>
+        <NotionButton variant="ghost" onClick={onClose} className="w-6 h-6 p-0">
+          <X className="w-4 h-4" />
+        </NotionButton>
+      </div>
+
+      {/* 搜索框 */}
+      <div className="px-3 py-2 border-b border-border">
+        <div className="relative">
+          <MagnifyingGlass className="absolute left-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground" />
+          <Input
+            ref={inputRef}
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            placeholder={t('refs.searchPlaceholder', '搜索资源...')}
+            className={cn(
+              'w-full pl-7 pr-2 py-1.5 text-sm rounded-md',
+              'bg-muted/50 border border-border/50',
+              'focus:outline-none focus:ring-1 focus:ring-primary/50',
+              'placeholder:text-muted-foreground/60',
+            )}
+          />
+        </div>
+      </div>
+
+      {/* 资源列表 */}
+      <CustomScrollArea className="flex-1 min-h-0" viewportClassName="p-1" hideTrackWhenIdle>
+        {loading ? (
+          <div className="flex items-center justify-center py-8 text-muted-foreground">
+            <CircleNotch className="w-5 h-5 animate-spin mr-2" />
+            <span className="text-sm">{t('refs.loading', '加载中...')}</span>
+          </div>
+        ) : error ? (
+          <div className="text-center py-8 text-sm text-destructive">{error}</div>
+        ) : resources.length === 0 ? (
+          <div className="text-center py-8 text-sm text-muted-foreground">
+            {query ? t('refs.noResults', '未找到匹配资源') : t('refs.empty', '暂无资源')}
+          </div>
+        ) : (
+          resources.map((node) => {
+            const IconComp = getResourceIcon(node.type as ResourceIconType);
+            const isAdded = existingIds.has(node.sourceId || node.id);
+
+            return (
+              <NotionButton
+                key={node.id}
+                variant="ghost" size="sm"
+                disabled={isAdded}
+                onClick={() => handleSelect(node)}
+                className={cn(
+                  '!w-full !justify-start !px-2 !py-1.5 !h-auto !rounded-md !text-left',
+                  isAdded
+                    ? 'opacity-50 cursor-not-allowed'
+                    : 'hover:bg-[var(--interactive-hover)] cursor-pointer',
+                )}
+              >
+                <IconComp size={20} className="shrink-0" />
+                <span className="flex-1 min-w-0 text-sm truncate">{node.name}</span>
+                {isAdded && (
+                  <Check className="w-3.5 h-3.5 text-primary shrink-0" />
+                )}
+              </NotionButton>
+            );
+          })
+        )}
+      </CustomScrollArea>
+    </div>,
+    window.document.body
+  );
+};

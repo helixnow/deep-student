@@ -3,7 +3,6 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 import { guardedListen } from '../utils/guardedListen';
 import { useTranslation } from 'react-i18next';
-import { debounce } from 'lodash';
 
 const getCurrentWindowPoly = () => {
   try {
@@ -104,14 +103,34 @@ export const WindowControls: React.FC = () => {
   };
 
   return (
-    <div className="window-controls">
-      <NotionButton variant="ghost" size="icon" iconOnly className="window-button minimize" onClick={handleMinimize} onMouseDown={(e) => e.stopPropagation()} title={t('window_controls.minimize')} aria-label="minimize">
+    <div data-shell-window-controls>
+      <NotionButton
+        variant="ghost"
+        size="icon"
+        iconOnly
+        data-shell-window-button="minimize"
+        className="desktop-shell-toolbar-button"
+        onClick={handleMinimize}
+        onMouseDown={(e) => e.stopPropagation()}
+        title={t('window_controls.minimize')}
+        aria-label={t('window_controls.minimize')}
+      >
         <svg width="12" height="12" viewBox="0 0 12 12">
           <path d="M2 6h8" stroke="currentColor" strokeWidth="1" />
         </svg>
       </NotionButton>
       
-      <NotionButton variant="ghost" size="icon" iconOnly className="window-button maximize" onClick={handleMaximize} onMouseDown={(e) => e.stopPropagation()} title={isMaximized ? t('window_controls.restore') : t('window_controls.maximize')} aria-label="maximize">
+      <NotionButton
+        variant="ghost"
+        size="icon"
+        iconOnly
+        data-shell-window-button="maximize"
+        className="desktop-shell-toolbar-button"
+        onClick={handleMaximize}
+        onMouseDown={(e) => e.stopPropagation()}
+        title={isMaximized ? t('window_controls.restore') : t('window_controls.maximize')}
+        aria-label={isMaximized ? t('window_controls.restore') : t('window_controls.maximize')}
+      >
         {isMaximized ? (
           <svg width="12" height="12" viewBox="0 0 12 12">
             <path d="M3 3h6v6H3V3z M1 1h6v2H3v4H1V1z" stroke="currentColor" strokeWidth="1" fill="none" />
@@ -123,7 +142,17 @@ export const WindowControls: React.FC = () => {
         )}
       </NotionButton>
       
-      <NotionButton variant="ghost" size="icon" iconOnly className="window-button close" onClick={handleClose} onMouseDown={(e) => e.stopPropagation()} title={t('window_controls.close')} aria-label="close">
+      <NotionButton
+        variant="ghost"
+        size="icon"
+        iconOnly
+        data-shell-window-button="close"
+        className="desktop-shell-toolbar-button"
+        onClick={handleClose}
+        onMouseDown={(e) => e.stopPropagation()}
+        title={t('window_controls.close')}
+        aria-label={t('window_controls.close')}
+      >
         <svg width="12" height="12" viewBox="0 0 12 12">
           <path d="M3 3l6 6M9 3l-6 6" stroke="currentColor" strokeWidth="1" />
         </svg>

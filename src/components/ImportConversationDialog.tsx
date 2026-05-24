@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Upload, FileText, AlertCircle, CheckCircle2, X } from 'lucide-react';
+import { Upload, FileText, WarningCircle, CheckCircle, X } from '@phosphor-icons/react';
 import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogDescription, NotionDialogBody, NotionDialogFooter } from './ui/NotionDialog';
 import { NotionButton } from './ui/NotionButton';
 import { Input } from './ui/shad/Input';
@@ -110,14 +110,14 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
     <NotionDialog open={open} onOpenChange={handleClose} maxWidth="max-w-[480px]">
         <NotionDialogHeader>
           <NotionDialogTitle className="flex items-center gap-2">
-            <Upload className="h-5 w-5" />
+            <Upload size={20} />
             {t('import.dialog_title')}
           </NotionDialogTitle>
           <NotionDialogDescription>
             {t('import.format_hint')}
           </NotionDialogDescription>
         </NotionDialogHeader>
-        <NotionDialogBody nativeScroll>
+        <NotionDialogBody>
         <div className="space-y-4">
           {/* 文件选择 */}
           <div className="space-y-2">
@@ -130,7 +130,7 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
                 readOnly
                 placeholder={t('import.file_placeholder')}
                 className="flex-1"
-              />
+/>
               <NotionButton
                 type="button"
                 variant="default"
@@ -138,7 +138,7 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
                 onClick={handleSelectFile}
                 disabled={importing}
               >
-                <FileText className="mr-1 h-4 w-4" />
+                <FileText size={16} className="mr-1" />
                 {t('import.choose_file')}
               </NotionButton>
             </div>
@@ -147,7 +147,7 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
           {/* 错误信息 */}
           {error && (
             <div className="rounded-lg border border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30 p-3 flex items-start gap-2">
-              <AlertCircle className="h-5 w-5 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+              <WarningCircle size={20} className="text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
               <div className="flex-1 text-sm text-red-600 dark:text-red-400">
                 {error}
               </div>
@@ -158,7 +158,7 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
           {warnings.length > 0 && (
             <div className="rounded-lg border border-amber-200 bg-amber-50 dark:border-amber-800 dark:bg-amber-950/30 p-3">
               <div className="flex items-center gap-2 mb-2">
-                <AlertCircle className="h-4 w-4 text-amber-600 dark:text-amber-400" />
+                <WarningCircle size={16} className="text-amber-600 dark:text-amber-400" />
                 <span className="text-sm font-medium text-amber-900 dark:text-amber-100">
                   {t('import.warnings_title')}
                 </span>
@@ -174,7 +174,7 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
           {/* 成功信息 */}
           {importResult && (
             <div className="rounded-lg border border-green-200 bg-green-50 dark:border-green-800 dark:bg-green-950/30 p-3 flex items-start gap-2">
-              <CheckCircle2 className="h-5 w-5 text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
+              <CheckCircle size={20} className="text-green-600 dark:text-green-400 flex-shrink-0 mt-0.5" />
               <div className="flex-1">
                 <div className="text-sm font-medium text-green-900 dark:text-green-100">
                   {importResult.message}
@@ -198,7 +198,7 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
           >
             {importResult ? (
               <>
-                <X className="mr-1 h-4 w-4" />
+                <X size={16} className="mr-1" />
                 {t('import.close_button')}
               </>
             ) : (
@@ -227,7 +227,7 @@ export const ImportConversationDialog: React.FC<ImportConversationDialogProps> =
               onClick={handleImport}
               disabled={!selectedFile || importing}
             >
-              <Upload className="mr-1 h-4 w-4" />
+              <Upload size={16} className="mr-1" />
               {importing ? t('import.importing') : t('import.import_button')}
             </NotionButton>
           )}

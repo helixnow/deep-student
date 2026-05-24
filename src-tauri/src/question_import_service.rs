@@ -29,7 +29,7 @@ use crate::models::{
     AppError, ExamCardPreview, ExamSheetPreviewPage, ExamSheetPreviewResult, QuestionStatus,
     SourceType,
 };
-use crate::page_rasterizer::{PageRasterizer, PageSlice};
+use crate::page_rasterizer::{PageRasterizer, PageSlice, RasterizerResult};
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::repos::{
     CreateQuestionParams, QuestionFilters, QuestionImage, VfsBlobRepo, VfsExamRepo, VfsQuestionRepo,
@@ -285,7 +285,7 @@ impl QuestionImportService {
     /// 非流式导入入口
     pub async fn import_document(
         &self,
-        vfs_db: &VfsDatabase,
+        vfs_db: &Arc<VfsDatabase>,
         request: ImportRequest,
     ) -> Result<ImportResult, AppError> {
         self.import_document_stream(vfs_db, request, None).await
@@ -294,7 +294,7 @@ impl QuestionImportService {
     /// Visual-First 统一导入管线（流式）
     pub async fn import_document_stream(
         &self,
-        vfs_db: &VfsDatabase,
+        vfs_db: &Arc<VfsDatabase>,
         request: ImportRequest,
         progress_tx: Option<UnboundedSender<QuestionImportProgress>>,
     ) -> Result<ImportResult, AppError> {
@@ -954,7 +954,7 @@ impl QuestionImportService {
     /// DOCX 转换失败时返回 `Err(ImportResult)` 表示已通过文本模式完成导入。
     async fn stage1_rasterize(
         &self,
-        vfs_db: &VfsDatabase,
+        vfs_db: &Arc<VfsDatabase>,
         request: &ImportRequest,
         progress_tx: Option<&UnboundedSender<QuestionImportProgress>>,
     ) -> Result<Vec<PageSlice>, AppError> {
@@ -967,19 +967,25 @@ impl QuestionImportService {
             });
         }
 
-        let result = match format {
-            "pdf" => PageRasterizer::rasterize_pdf(&request.content, vfs_db),
-            "docx" => PageRasterizer::rasterize_docx(&request.content, vfs_db),
-            fmt if is_image_format(fmt) => {
-                PageRasterizer::rasterize_images(&request.content, vfs_db)
-            }
-            _ => {
-                return Err(AppError::validation(format!(
+        // CPU 密集渲染必须在 spawn_blocking 中执行，避免阻塞 Tokio worker。
+        let content = request.content.clone();
+        let format_owned = format.to_string();
+        let vfs_db_arc = vfs_db.clone();
+
+        let result: RasterizerResult =
+            tokio::task::spawn_blocking(move || match format_owned.as_str() {
+                "pdf" => PageRasterizer::rasterize_pdf(&content, &vfs_db_arc),
+                "docx" => PageRasterizer::rasterize_docx(&content, &vfs_db_arc),
+                fmt if is_image_format(fmt) => {
+                    PageRasterizer::rasterize_images(&content, &vfs_db_arc)
+                }
+                _ => Err(AppError::validation(format!(
                     "不支持的导入格式: {}",
-                    format
-                )));
-            }
-        }?;
+                    format_owned
+                ))),
+            })
+            .await
+            .map_err(|e| AppError::internal(format!("渲染任务调度失败: {}", e)))??;
 
         if let Some(ref tx) = progress_tx {
             let _ = tx.send(QuestionImportProgress::RenderingPages {

@@ -328,6 +328,9 @@ impl VfsBlobRepo {
     }
 
     /// 清理无引用的 Blob（删除文件和记录）
+    ///
+    /// 删除成功后会在 `__blob_deletion_queue` 记录删除意图，
+    /// 供后续云同步把删除传播到其他设备（tombstone 机制）。
     pub fn cleanup_blob_with_conn(
         conn: &Connection,
         blobs_dir: &Path,
@@ -347,19 +350,37 @@ impl VfsBlobRepo {
             return Ok(false);
         }
 
-        // 获取文件路径
-        if let Some(blob) = Self::get_blob_with_conn(conn, hash)? {
+        // 获取文件路径（为 tombstone 队列保留）
+        let (relative_path, file_size) = if let Some(blob) = Self::get_blob_with_conn(conn, hash)? {
+            let rel = blob.relative_path.clone();
             let file_path = blobs_dir.join(&blob.relative_path);
+            let size = fs::metadata(&file_path).ok().map(|m| m.len() as i64);
             if file_path.exists() {
                 fs::remove_file(&file_path).map_err(|e| {
                     error!("[VFS::BlobRepo] Failed to delete blob file: {}", e);
                     VfsError::Io(format!("Failed to delete blob file: {}", e))
                 })?;
             }
-        }
+            (Some(rel), size)
+        } else {
+            (None, None)
+        };
 
         // 删除数据库记录
         conn.execute("DELETE FROM blobs WHERE hash = ?1", params![hash])?;
+
+        // 入删除传播队列（尽力，失败不阻塞 blob 清理）
+        // `__blob_deletion_queue` 在 V20260312 迁移中创建。老数据库没有此表时忽略错误。
+        if let Err(e) = conn.execute(
+            "INSERT OR REPLACE INTO __blob_deletion_queue (hash, relative_path, size, deleted_at, retry_count)
+             VALUES (?1, ?2, ?3, datetime('now'), 0)",
+            params![hash, relative_path, file_size],
+        ) {
+            warn!(
+                "[VFS::BlobRepo] Failed to enqueue blob deletion (may be old schema): {}",
+                e
+            );
+        }
 
         info!("[VFS::BlobRepo] Cleaned up blob: {}", hash);
         Ok(true)
@@ -372,6 +393,8 @@ impl VfsBlobRepo {
     }
 
     /// 清理所有无引用的 Blob（使用现有连接）
+    ///
+    /// 每个被删除的 blob 也会入 `__blob_deletion_queue` 供云同步传播。
     pub fn cleanup_unreferenced_with_conn(conn: &Connection, blobs_dir: &Path) -> VfsResult<u32> {
         // 获取所有无引用的 Blob
         let mut stmt = conn.prepare("SELECT hash, relative_path FROM blobs WHERE ref_count = 0")?;
@@ -386,6 +409,7 @@ impl VfsBlobRepo {
         for (hash, relative_path) in blobs {
             // 删除文件
             let file_path = blobs_dir.join(&relative_path);
+            let file_size = fs::metadata(&file_path).ok().map(|m| m.len() as i64);
             if file_path.exists() {
                 if let Err(e) = fs::remove_file(&file_path) {
                     error!("[VFS::BlobRepo] Failed to delete blob file {}: {}", hash, e);
@@ -395,6 +419,19 @@ impl VfsBlobRepo {
 
             // 删除记录
             conn.execute("DELETE FROM blobs WHERE hash = ?1", params![hash])?;
+
+            // 入删除队列（老 schema 下失败不阻塞）
+            if let Err(e) = conn.execute(
+                "INSERT OR REPLACE INTO __blob_deletion_queue (hash, relative_path, size, deleted_at, retry_count)
+                 VALUES (?1, ?2, ?3, datetime('now'), 0)",
+                params![hash, relative_path, file_size],
+            ) {
+                warn!(
+                    "[VFS::BlobRepo] Failed to enqueue blob deletion (may be old schema): {}",
+                    e
+                );
+            }
+
             cleaned += 1;
         }
 

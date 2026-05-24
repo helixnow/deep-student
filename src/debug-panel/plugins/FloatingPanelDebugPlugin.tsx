@@ -3,10 +3,11 @@
  * 用于诊断 UnifiedSmartInputBar 中外部面板（RAG、MCP、对话控制等）的定位问题
  */
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { Copy, RefreshCw, ChevronDown, ChevronRight, Eye, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Copy, ArrowClockwise, CaretDown, CaretRight, Eye, WarningCircle, CheckCircle } from '@phosphor-icons/react';
 import { Button } from '../../components/ui/shad/Button';
 import { ScrollArea } from '../../components/ui/shad/ScrollArea';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { Switch } from '@/components/ui/shad/Switch';
 
 interface CSSRuleInfo {
   selector: string;
@@ -422,9 +423,9 @@ const FloatingPanelDebugPlugin: React.FC = () => {
     <div key={idx} className="border border-border/50 rounded p-2 mb-2 text-xs bg-card/50">
       <div className="font-medium text-foreground flex items-center gap-2">
         {info.isPositioned ? (
-          <CheckCircle2 size={12} className="text-success" />
+          <CheckCircle size={12} className="text-success" />
         ) : (
-          <AlertCircle size={12} className="text-muted-foreground" />
+          <WarningCircle size={12} className="text-muted-foreground" />
         )}
         {info.element}
       </div>
@@ -524,7 +525,7 @@ const FloatingPanelDebugPlugin: React.FC = () => {
           }}
         >
           <div className="flex items-center gap-2">
-            {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
+            {isExpanded ? <CaretDown size={14} /> : <CaretRight size={14} />}
             <span className="text-xs font-medium">{snapshot.trigger}</span>
             <span className="text-[10px] text-muted-foreground">{formatTime(snapshot.timestamp)}</span>
           </div>
@@ -562,7 +563,7 @@ const FloatingPanelDebugPlugin: React.FC = () => {
             {snapshot.issues.length > 0 && (
               <div className="bg-warning/10 border border-warning/30 rounded p-2">
                 <div className="font-medium mb-1 flex items-center gap-1">
-                  <AlertCircle size={12} className="text-warning" />
+                  <WarningCircle size={12} className="text-warning" />
                   检测到的问题
                 </div>
                 {snapshot.issues.map((issue, i) => (
@@ -609,17 +610,13 @@ const FloatingPanelDebugPlugin: React.FC = () => {
             onClick={() => captureSnapshot('手动捕获')}
             disabled={!enabled}
           >
-            <RefreshCw size={14} className="mr-1" />
+            <ArrowClockwise size={14} className="mr-1" />
             捕获快照
           </Button>
         </div>
         <div className="flex items-center gap-2">
           <label className="flex items-center gap-1 text-xs">
-            <input
-              type="checkbox"
-              checked={autoCapture}
-              onChange={(e) => setAutoCapture(e.target.checked)}
-            />
+            <Switch size="sm" checked={autoCapture} onCheckedChange={setAutoCapture} />
             自动捕获
           </label>
           <Button

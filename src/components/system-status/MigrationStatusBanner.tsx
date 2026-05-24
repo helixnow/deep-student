@@ -1,6 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Copy, Database, X, XCircle } from 'lucide-react';
+import { Warning, Copy, Database, X, XCircle } from '@phosphor-icons/react';
 
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
@@ -92,7 +92,7 @@ export const MigrationStatusBanner: React.FC = () => {
         border: 'border-amber-200/60 dark:border-amber-500/30',
         iconBg: 'bg-amber-500/10 dark:bg-amber-500/15',
         iconColor: 'text-amber-500 dark:text-amber-400',
-        Icon: AlertTriangle,
+        Icon: Warning,
       };
     }
     return {
@@ -157,8 +157,8 @@ export const MigrationStatusBanner: React.FC = () => {
           </div>
 
           {/* 关闭按钮 */}
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={dismiss} className={cn('shrink-0 !p-1', 'text-muted-foreground/60 hover:text-foreground hover:bg-muted/60')} aria-label="dismiss">
-            <X className="h-3.5 w-3.5" />
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={dismiss} className={cn('shrink-0 !p-1', 'text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label="dismiss">
+            <X size={14} />
           </NotionButton>
         </div>
 
@@ -216,7 +216,7 @@ const CopyDiagnosticButton: React.FC = () => {
       className="h-7 px-2.5 text-xs"
       onClick={handleCopy}
     >
-      <Copy className="h-3 w-3 mr-1" />
+      <Copy size={12} className="mr-1" />
       {copied
         ? t('data:governance.copied', '已复制')
         : copyFailed

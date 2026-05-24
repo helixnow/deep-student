@@ -1,0 +1,166 @@
+/**
+ * Native-feel: interaction polish
+ * --------------------------------
+ * Phase D4 of native-feel migration (2026-05-14).
+ *
+ * Three goals, all visible to users:
+ *
+ * 1. Unified focus ring. macOS / Windows native apps draw a single accent
+ *    outline on focus, not the Bootstrap-blue `outline:none + box-shadow:0 0
+ *    0 3px rgba(0,123,255,0.1)` glow that scattered across this codebase.
+ *    We apply `:focus-visible { outline: 2px solid hsl(var(--ring)); }` to
+ *    common interactive elements via :where() to keep specificity low so
+ *    component styles can still override when needed.
+ *
+ * 2. No hover scale. macOS buttons do not grow on hover; they shift colour /
+ *    opacity. We disable `transform: scale(...)` on hover for buttons and
+ *    button-role elements globally. Components that genuinely want to grow
+ *    (logo easter egg, image cropper handles) opt back in via
+ *    `[data-allow-hover-scale]`.
+ *
+ * 3. Explicit transitions. `transition: all 0.2s ease` triggers off-thread
+ *    reflows on every property change. We set a default that animates the
+ *    properties that actually change on hover (background, color, border,
+ *    opacity, box-shadow) at 150ms. Components that need motion / layout
+ *    transitions still set their own.
+ *
+ * Design doc: docs/plans/2026-05-14-native-feel-migration-design.md
+ */
+
+/* ---------------------------------------------------------------- */
+/* 1. Unified focus ring                                             */
+/* ---------------------------------------------------------------- */
+:where(button, a, [role="button"], [role="menuitem"], [role="tab"], [role="option"], [tabindex]):focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 2px;
+}
+
+:where(input, textarea, select, [contenteditable="true"], [contenteditable=""]):focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 0;
+}
+
+/* Browsers default `outline-style` to `none` for some user-agent UI; force
+ * `auto` keyword so high-contrast mode picks it up. */
+:where(button, a, [role="button"]):focus-visible {
+  outline-style: solid;
+}
+
+/* ---------------------------------------------------------------- */
+/* 2. No hover scale on buttons                                      */
+/* ---------------------------------------------------------------- */
+/* `:where(...)` has zero specificity, but component CSS commonly uses
+ * `.foo-button:hover { transform: scale(1.05) }`. We need to win against
+ * that single-class specificity, hence the `!important`. Components that
+ * genuinely want a hover scale opt back in via `[data-allow-hover-scale]`. */
+:where(button, a, [role="button"]):hover:not([data-allow-hover-scale]) {
+  transform: none !important;
+}
+
+/* Active state: subtle press-down feedback, native to macOS HIG. */
+:where(button, [role="button"]):active:not([disabled], [data-allow-hover-scale]) {
+  transform: translateY(0.5px);
+}
+
+/* ---------------------------------------------------------------- */
+/* 3. Default transitions — explicit properties, native cadence     */
+/* ---------------------------------------------------------------- */
+:where(button, a, [role="button"], [role="menuitem"], [role="tab"], [role="option"]) {
+  transition:
+    background-color 150ms ease,
+    color 150ms ease,
+    border-color 150ms ease,
+    opacity 150ms ease,
+    box-shadow 150ms ease;
+}
+
+/* Form fields: focus animation tightly coupled to outline appearance. */
+:where(input, textarea, select):not([type="range"], [type="checkbox"], [type="radio"]) {
+  transition:
+    background-color 150ms ease,
+    border-color 150ms ease,
+    box-shadow 150ms ease;
+}
+
+/* ---------------------------------------------------------------- */
+/* 4. Reduce-motion respect                                          */
+/* ---------------------------------------------------------------- */
+@media (prefers-reduced-motion: reduce) {
+  :where(button, a, [role="button"], [role="menuitem"], [role="tab"], [role="option"]),
+  :where(input, textarea, select) {
+    transition: none;
+  }
+
+  :where(button, [role="button"]):active {
+    transform: none;
+  }
+}
+
+/* ---------------------------------------------------------------- */
+/* 5. Touch device hover safety                                      */
+/* ---------------------------------------------------------------- */
+/*
+ * Touch devices (phones, tablets without hover-capable pointer)
+ * emulate :hover on first tap, causing "sticky hover": the hover
+ * state persists until the user taps elsewhere. This section:
+ *
+ *   a) Neutralises scale transforms that only make sense with a
+ *      precise pointer (cards, icons, avatars).
+ *   b) Force-shows group-hover opacity-hidden action buttons so
+ *      they are reachable without a mouse.
+ *   c) Constrains :hover background changes to interactive
+ *      elements only — container :hover backgrounds stick on
+ *      touch and create visual confusion.
+ */
+@media (hover: none) and (pointer: coarse) {
+
+  /*
+   * No hover scale on ANY element.  On touch there is no
+   * "hover preview" that benefits from a subtle grow; scale
+   * only makes distortion and jank.
+   */
+  *:hover {
+    transform: none !important;
+  }
+
+  /*
+   * Group-hover opacity-hidden actions must be visible on
+   * touch so users can edit, delete and drag without a mouse.
+   *
+   * Tailwind generates classes like `group-hover:opacity-100`
+   * and `group-hover/main:opacity-100`.  This attribute selector
+   * catches both forms.
+   */
+  [class*="group-hover:opacity-100"] {
+    opacity: 1 !important;
+  }
+
+  /* Sibling text-reveal patterns (e.g. "show on group hover") */
+  [class*="group-hover:text-foreground"],
+  [class*="group-hover:text-muted-foreground"] {
+    opacity: 1 !important;
+  }
+
+  /*
+   * Container :hover that is purely decorative (message
+   * bubbles, table rows, mindmap outline nodes).  On touch
+   * these stick open and look broken.  We reset them to their
+   * default appearance and let the component's own :active
+   * (or JS-based selection) provide feedback instead.
+   */
+  .chat-v2 .message-content:hover {
+    background: inherit;
+  }
+
+  .chat-v2 .thinking-container:hover {
+    transform: none;
+  }
+
+  .chat-v2 .summary-box:hover,
+  .chat-v2 .knowledge-point:hover,
+  .chat-v2 .error-analysis:hover,
+  .chat-v2 .suggestion-card:hover {
+    transform: none;
+    border-color: inherit;
+  }
+}

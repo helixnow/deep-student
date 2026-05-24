@@ -5,7 +5,7 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import type { PolishItem } from '@/essay-grading/streamingMarkerParser';
-import { ArrowRight, Sparkles, Copy, Check } from 'lucide-react';
+import { ArrowRight, Sparkle, Copy, Check } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
@@ -36,7 +36,7 @@ export const PolishSectionView: React.FC<PolishSectionViewProps> = ({ items, cla
   return (
     <div className={cn('space-y-4', className)}>
       <div className="flex items-center gap-2 text-xs text-muted-foreground/60 px-1">
-        <Sparkles className="w-3.5 h-3.5" />
+        <Sparkle size={14} />
         <span>{t('essay_grading:sections.polish_desc')}</span>
       </div>
       {items.map((item, index) => (
@@ -53,7 +53,7 @@ export const PolishSectionView: React.FC<PolishSectionViewProps> = ({ items, cla
           <div className="px-4 py-3 bg-emerald-50/30 dark:bg-emerald-950/10 relative">
             <div className="flex items-center justify-between mb-1">
               <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400">
-                <ArrowRight className="w-3 h-3" />
+                <ArrowRight size={12} />
                 <span>{t('essay_grading:sections.polished')}</span>
               </div>
               <CommonTooltip content={copiedIndex === index ? t('common:copied') : t('common:copy')}>
@@ -62,12 +62,12 @@ export const PolishSectionView: React.FC<PolishSectionViewProps> = ({ items, cla
                   size="icon"
                   iconOnly
                   onClick={() => handleCopy(item.polished, index)}
-                  className="h-6 w-6 text-emerald-600/60 hover:text-emerald-600 hover:bg-emerald-100/50 dark:hover:bg-emerald-900/30"
+ className="w-6 h-6 text-emerald-600/60 hover:text-emerald-600 hover:bg-emerald-100/50 dark:hover:bg-emerald-900/30"
                 >
                   {copiedIndex === index ? (
-                    <Check className="w-3.5 h-3.5" />
+                    <Check size={14} />
                   ) : (
-                    <Copy className="w-3.5 h-3.5" />
+                    <Copy size={14} />
                   )}
                 </NotionButton>
               </CommonTooltip>

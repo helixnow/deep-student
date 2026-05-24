@@ -10,8 +10,8 @@
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
 import i18n from 'i18next';
-import { createChatStore } from '@/chat-v2/core/store/createChatStore';
-import type { ChatStore } from '@/chat-v2/core/types';
+import { createChatStore } from '@/features/chat/core/store/createChatStore';
+import type { ChatStore } from '@/features/chat/core/types';
 import type { StoreApi } from 'zustand';
 
 describe('ChatStore Actions', () => {

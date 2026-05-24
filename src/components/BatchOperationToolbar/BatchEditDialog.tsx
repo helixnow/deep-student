@@ -2,8 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { AnkiCard } from '../../types';
 import { useTranslation } from 'react-i18next';
-import { X, ChevronLeft, ChevronRight } from 'lucide-react';
+import { X, CaretLeft, CaretRight } from '@phosphor-icons/react';
 import './BatchEditDialog.css';
+import { Input } from '@/components/ui/shad/Input';
+import { Textarea } from '@/components/ui/shad/Textarea';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '@/components/ui/shad/Select';
+import { Switch } from '@/components/ui/shad/Switch';
 
 interface BatchEditDialogProps {
   cards: AnkiCard[];
@@ -177,35 +181,38 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
             {/* 正面编辑 */}
             <div className="edit-section">
               <label className="section-header">
-                <input
-                  type="checkbox"
+                <Switch
                   checked={changes.front!.enabled}
-                  onChange={(e) => setChanges({
+                  onCheckedChange={(checked) => setChanges({
                     ...changes,
-                    front: { ...changes.front!, enabled: e.target.checked }
+                    front: { ...changes.front!, enabled: checked }
                   })}
-                />
+/>
                 <span>{t('edit_front_content')}</span>
               </label>
               
               {changes.front!.enabled && (
                 <div className="section-content">
-                  <select
+                  <Select
                     value={changes.front!.mode}
-                    onChange={(e) => setChanges({
+                    onValueChange={(value) => setChanges({
                       ...changes,
-                      front: { ...changes.front!, mode: e.target.value as any }
+                      front: { ...changes.front!, mode: value as any }
                     })}
-                    className="mode-select"
                   >
-                    <option value="replace">{t('replace_all')}</option>
-                    <option value="append">{t('append_to_end')}</option>
-                    <option value="prepend">{t('prepend_to_start')}</option>
-                    <option value="regex">{t('regex_replace')}</option>
-                  </select>
+                    <SelectTrigger className="mode-select">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="replace">{t('replace_all')}</SelectItem>
+                      <SelectItem value="append">{t('append_to_end')}</SelectItem>
+                      <SelectItem value="prepend">{t('prepend_to_start')}</SelectItem>
+                      <SelectItem value="regex">{t('regex_replace')}</SelectItem>
+                    </SelectContent>
+                  </Select>
                   
                   {changes.front!.mode === 'regex' && (
-                    <input
+                    <Input
                       type="text"
                       placeholder={t('regex_pattern_placeholder')}
                       value={changes.front!.pattern || ''}
@@ -214,10 +221,10 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
                         front: { ...changes.front!, pattern: e.target.value }
                       })}
                       className="pattern-input"
-                    />
+/>
                   )}
                   
-                  <textarea
+                  <Textarea
                     placeholder={changes.front!.mode === 'regex' ? t('replace_with') : t('content')}
                     value={changes.front!.value}
                     onChange={(e) => setChanges({
@@ -226,7 +233,7 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
                     })}
                     rows={3}
                     className="content-textarea"
-                  />
+/>
                 </div>
               )}
             </div>
@@ -234,35 +241,38 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
             {/* 背面编辑 */}
             <div className="edit-section">
               <label className="section-header">
-                <input
-                  type="checkbox"
+                <Switch
                   checked={changes.back!.enabled}
-                  onChange={(e) => setChanges({
+                  onCheckedChange={(checked) => setChanges({
                     ...changes,
-                    back: { ...changes.back!, enabled: e.target.checked }
+                    back: { ...changes.back!, enabled: checked }
                   })}
-                />
+/>
                 <span>{t('edit_back_content')}</span>
               </label>
               
               {changes.back!.enabled && (
                 <div className="section-content">
-                  <select
+                  <Select
                     value={changes.back!.mode}
-                    onChange={(e) => setChanges({
+                    onValueChange={(value) => setChanges({
                       ...changes,
-                      back: { ...changes.back!, mode: e.target.value as any }
+                      back: { ...changes.back!, mode: value as any }
                     })}
-                    className="mode-select"
                   >
-                    <option value="replace">{t('replace_all')}</option>
-                    <option value="append">{t('append_to_end')}</option>
-                    <option value="prepend">{t('prepend_to_start')}</option>
-                    <option value="regex">{t('regex_replace')}</option>
-                  </select>
+                    <SelectTrigger className="mode-select">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="replace">{t('replace_all')}</SelectItem>
+                      <SelectItem value="append">{t('append_to_end')}</SelectItem>
+                      <SelectItem value="prepend">{t('prepend_to_start')}</SelectItem>
+                      <SelectItem value="regex">{t('regex_replace')}</SelectItem>
+                    </SelectContent>
+                  </Select>
                   
                   {changes.back!.mode === 'regex' && (
-                    <input
+                    <Input
                       type="text"
                       placeholder={t('regex_pattern_placeholder')}
                       value={changes.back!.pattern || ''}
@@ -271,10 +281,10 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
                         back: { ...changes.back!, pattern: e.target.value }
                       })}
                       className="pattern-input"
-                    />
+/>
                   )}
                   
-                  <textarea
+                  <Textarea
                     placeholder={changes.back!.mode === 'regex' ? t('replace_with') : t('content')}
                     value={changes.back!.value}
                     onChange={(e) => setChanges({
@@ -283,7 +293,7 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
                     })}
                     rows={3}
                     className="content-textarea"
-                  />
+/>
                 </div>
               )}
             </div>
@@ -291,34 +301,37 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
             {/* 标签编辑 */}
             <div className="edit-section">
               <label className="section-header">
-                <input
-                  type="checkbox"
+                <Switch
                   checked={changes.tags!.enabled}
-                  onChange={(e) => setChanges({
+                  onCheckedChange={(checked) => setChanges({
                     ...changes,
-                    tags: { ...changes.tags!, enabled: e.target.checked }
+                    tags: { ...changes.tags!, enabled: checked }
                   })}
-                />
+/>
                 <span>{t('edit_tags')}</span>
               </label>
               
               {changes.tags!.enabled && (
                 <div className="section-content">
-                  <select
+                  <Select
                     value={changes.tags!.mode}
-                    onChange={(e) => setChanges({
+                    onValueChange={(value) => setChanges({
                       ...changes,
-                      tags: { ...changes.tags!, mode: e.target.value as any }
+                      tags: { ...changes.tags!, mode: value as any }
                     })}
-                    className="mode-select"
                   >
-                    <option value="add">{t('add_tags')}</option>
-                    <option value="remove">{t('remove_tags')}</option>
-                    <option value="replace">{t('replace_all_tags')}</option>
-                  </select>
+                    <SelectTrigger className="mode-select">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="add">{t('add_tags')}</SelectItem>
+                      <SelectItem value="remove">{t('remove_tags')}</SelectItem>
+                      <SelectItem value="replace">{t('replace_all_tags')}</SelectItem>
+                    </SelectContent>
+                  </Select>
                   
                   <div className="tag-input-container">
-                    <input
+                    <Input
                       type="text"
                       placeholder={t('enter_tag_press_enter')}
                       value={tagInput}
@@ -330,7 +343,7 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
                         }
                       }}
                       className="tag-input"
-                    />
+/>
                     
                     <div className="selected-tags">
                       {changes.tags!.value.map((tag, index) => (
@@ -356,11 +369,11 @@ const BatchEditDialog: React.FC<BatchEditDialogProps> = ({ cards, onSave, onClos
                 {cards.length > 1 && (
                   <div className="preview-nav">
                     <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setPreviewIndex(Math.max(0, previewIndex - 1))} disabled={previewIndex === 0} className="nav-btn" aria-label="prev">
-                      <ChevronLeft size={16} />
+                      <CaretLeft size={16} />
                     </NotionButton>
                     <span className="nav-info">{previewIndex + 1} / {cards.length}</span>
                     <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setPreviewIndex(Math.min(cards.length - 1, previewIndex + 1))} disabled={previewIndex === cards.length - 1} className="nav-btn" aria-label="next">
-                      <ChevronRight size={16} />
+                      <CaretRight size={16} />
                     </NotionButton>
                   </div>
                 )}

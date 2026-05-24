@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { AlertTriangle, RefreshCw, X, RotateCcw, Trash2, Download, Wifi } from 'lucide-react';
+import { Warning, ArrowClockwise, X, ArrowCounterClockwise, Trash, Download, WifiHigh } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { getErrorMessage } from '../utils/errorUtils';
 import i18n from '../i18n';
@@ -84,7 +84,7 @@ const getActionStyles = (variant: RecoveryAction['variant'] = 'secondary') => {
     case 'danger':
       return 'bg-red-600 hover:bg-red-700 text-white';
     default:
-      return 'bg-gray-600 hover:bg-gray-700 text-white';
+      return 'bg-gray-600 hover:bg-[var(--interactive-hover)] text-white';
   }
 };
 
@@ -120,7 +120,7 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
       {errors.length > 1 && (
         <div className="flex justify-end">
           <NotionButton variant="ghost" size="sm" onClick={onClearAll} className="text-xs text-gray-500 hover:text-gray-700">
-            <Trash2 size={12} />
+            <Trash size={12} />
             {t('messages.errorHandler.clearAll', { count: errors.length })}
           </NotionButton>
         </div>
@@ -140,7 +140,7 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
             <div className="p-4">
               <div className="flex items-start justify-between gap-3">
                 <div className="flex items-start gap-3 flex-1">
-                  <AlertTriangle className={`${styles.iconColor} flex-shrink-0 mt-0.5`} size={20} />
+                  <Warning className={`${styles.iconColor} flex-shrink-0 mt-0.5`} size={20} />
                   <div className="flex-1 min-w-0">
                     <h4 className={`font-medium ${styles.titleColor}`}>
                       {error.title}
@@ -158,10 +158,10 @@ const UnifiedErrorHandler: React.FC<UnifiedErrorHandlerProps> = ({
                   {/* 展开/收起按钮 */}
                   {(error.details || error.context) && (
                     <NotionButton variant="ghost" size="icon" iconOnly onClick={() => toggleExpanded(error.id)} className="!p-1 text-gray-400 hover:text-gray-600" title={isExpanded ? t('messages.errorHandler.collapseDetails') : t('messages.errorHandler.expandDetails')} aria-label={isExpanded ? t('messages.errorHandler.collapseDetails') : t('messages.errorHandler.expandDetails')}>
-                      <RotateCcw 
+                      <ArrowCounterClockwise 
                         size={14} 
                         className={`transform transition-transform ${isExpanded ? 'rotate-180' : ''}`}
-                      />
+/>
                     </NotionButton>
                   )}
                   
@@ -277,7 +277,7 @@ export const createUnifiedError = (
             {
               type: 'retry' as const,
               label: i18n.t('common:actions.retry'),
-              icon: React.createElement(RefreshCw, { size: 14 }),
+              icon: React.createElement(ArrowClockwise, { size: 14 }),
               action: () => { window.location.reload(); },
               variant: 'primary' as const,
             },
@@ -291,7 +291,7 @@ export const createUnifiedError = (
             {
               type: 'retry' as const,
               label: i18n.t('common:actions.check_network'),
-              icon: React.createElement(Wifi, { size: 14 }),
+              icon: React.createElement(WifiHigh, { size: 14 }),
               action: () => { window.location.reload(); },
               variant: 'primary' as const,
             },

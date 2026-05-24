@@ -18,8 +18,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { cn } from '@/lib/utils';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { CustomScrollArea } from '@/components/custom-scroll-area';
-import { ChevronRight } from 'lucide-react';
+import { CaretRight } from '@phosphor-icons/react';
 import { Z_INDEX } from '@/config/zIndex';
 
 // ============================================================================
@@ -126,13 +125,14 @@ const ToggleBlock: React.FC<ToggleBlockProps> = ({
       {/* Toggle 触发行 —— Notion 风格：无边框，hover 浅色背景 */}
       <NotionButton variant="ghost" size="sm" onClick={() => setIsOpen(!isOpen)} className={cn('!w-full !justify-start !px-2 !py-1.5 !h-auto -mx-2 !rounded-[4px] !text-left', 'text-[14px] font-medium text-foreground/90', 'hover:bg-foreground/[0.04] active:bg-foreground/[0.06]')}>
         {/* 展开箭头 —— Notion 三角形风格 */}
-        <ChevronRight
+        <CaretRight
           className={cn(
             'h-[18px] w-[18px] text-foreground/40 flex-shrink-0',
             'transition-transform duration-150 ease-out',
             isOpen && 'rotate-90'
           )}
-        />
+          weight="regular"
+/>
         <span className="flex-1 min-w-0 truncate">{title}</span>
       </NotionButton>
 
@@ -172,28 +172,44 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
 
   const isVisible = preview ? (open ?? false) : true;
 
+  // 退场动画延迟卸载：先播放 200ms 退场动画，再真正卸载
+  const [shouldRender, setShouldRender] = useState(false);
+
   // 动画状态
   const [mounted, setMounted] = useState(false);
   useEffect(() => {
     if (isVisible) {
+      setShouldRender(true);
       // 下一帧触发入场动画
       requestAnimationFrame(() => setMounted(true));
     } else {
       setMounted(false);
+      const timer = setTimeout(() => setShouldRender(false), 200);
+      return () => clearTimeout(timer);
     }
   }, [isVisible]);
 
   // ESC 关闭（仅预览模式）
   useEffect(() => {
-    if (!preview || !isVisible) return;
+    if (!preview || !shouldRender) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') onClose?.();
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [preview, isVisible, onClose]);
+  }, [preview, shouldRender, onClose]);
 
-  if (!isVisible) return null;
+  // 锁定 body 滚动，防止弹窗打开时页面背后可滚动
+  useEffect(() => {
+    if (!shouldRender) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prev;
+    };
+  }, [shouldRender]);
+
+  if (!shouldRender) return null;
 
   const handleOverlayClick = (e: React.MouseEvent) => {
     if (preview && e.target === e.currentTarget) {
@@ -218,13 +234,13 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
           'transition-opacity duration-200',
           mounted ? 'opacity-100' : 'opacity-0',
         )}
-      />
+/>
 
       {/* 面板 */}
       <div
         ref={panelRef}
         className={cn(
-          'relative flex flex-col',
+          'relative flex flex-col overflow-hidden',
           'w-[94vw] max-w-[520px] max-h-[80vh]',
           'bg-background',
           // Notion 风格：极其干净的阴影，几乎无边框
@@ -252,7 +268,10 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
         <div className="mx-6 h-px bg-foreground/[0.06]" />
 
         {/* 内容区 */}
-        <CustomScrollArea className="flex-1 min-h-0" viewportClassName="px-6 py-4">
+        <div
+          className="flex-1 min-h-0 overflow-y-auto overscroll-contain px-6 py-4 scroll-area--native"
+          onWheel={(e) => e.stopPropagation()}
+        >
           <div className="space-y-0.5">
             {/* 用户协议 */}
             <ToggleBlock
@@ -265,23 +284,23 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
                 <AgreementItem
                   title={t('legal.userAgreement.agreementContent.aiFeatures')}
                   content={t('legal.userAgreement.agreementContent.aiFeaturesDesc')}
-                />
+/>
                 <AgreementItem
                   title={t('legal.userAgreement.agreementContent.dataProcessing')}
                   content={t('legal.userAgreement.agreementContent.dataProcessingDesc')}
-                />
+/>
                 <AgreementItem
                   title={t('legal.userAgreement.agreementContent.userRights')}
                   content={t('legal.userAgreement.agreementContent.userRightsDesc')}
-                />
+/>
                 <AgreementItem
                   title={t('legal.userAgreement.agreementContent.intellectualProperty')}
                   content={t('legal.userAgreement.agreementContent.intellectualPropertyDesc')}
-                />
+/>
                 <AgreementItem
                   title={t('legal.userAgreement.agreementContent.crossBorderData')}
                   content={t('legal.userAgreement.agreementContent.crossBorderDataDesc')}
-                />
+/>
               </div>
             </ToggleBlock>
 
@@ -296,22 +315,22 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
                   color="emerald"
                   title={t('legal.privacyPolicy.sections.localStorage.title')}
                   content={t('legal.privacyPolicy.sections.localStorage.content')}
-                />
+/>
                 <PolicyItem
                   color="blue"
                   title={t('legal.privacyPolicy.sections.llmApi.title')}
                   content={t('legal.privacyPolicy.sections.llmApi.content')}
-                />
+/>
                 <PolicyItem
                   color="orange"
                   title={t('legal.privacyPolicy.sections.errorReporting.title')}
                   content={t('legal.privacyPolicy.sections.errorReporting.content')}
-                />
+/>
                 <PolicyItem
                   color="gray"
                   title={t('legal.privacyPolicy.sections.noTracking.title')}
                   content={t('legal.privacyPolicy.sections.noTracking.content')}
-                />
+/>
               </div>
             </ToggleBlock>
 
@@ -333,7 +352,7 @@ export const UserAgreementDialog: React.FC<UserAgreementDialogProps> = ({
               </p>
             </ToggleBlock>
           </div>
-        </CustomScrollArea>
+        </div>
 
         {/* 分隔线 */}
         <div className="mx-6 h-px bg-foreground/[0.06]" />

@@ -337,19 +337,15 @@ pub trait Transport: Send + Sync {
 // ==================== Stdio传输实现 ====================
 
 pub struct StdioTransport {
-    stdin_rx: Arc<Mutex<mpsc::UnboundedReceiver<String>>>,
-    stdout_tx: Arc<Mutex<mpsc::UnboundedSender<String>>>,
+    stdin_rx: Arc<Mutex<mpsc::Receiver<String>>>,
+    stdout_tx: Arc<Mutex<mpsc::Sender<String>>>,
     connected: Arc<AtomicBool>,
 }
 
 impl StdioTransport {
-    pub fn new() -> (
-        Self,
-        mpsc::UnboundedSender<String>,
-        mpsc::UnboundedReceiver<String>,
-    ) {
-        let (stdin_tx, stdin_rx) = mpsc::unbounded_channel();
-        let (stdout_tx, stdout_rx) = mpsc::unbounded_channel();
+    pub fn new() -> (Self, mpsc::Sender<String>, mpsc::Receiver<String>) {
+        let (stdin_tx, stdin_rx) = mpsc::channel(64);
+        let (stdout_tx, stdout_rx) = mpsc::channel(64);
 
         let transport = Self {
             stdin_rx: Arc::new(Mutex::new(stdin_rx)),
@@ -366,6 +362,7 @@ impl Transport for StdioTransport {
     async fn send(&self, message: &str) -> McpResult<()> {
         let tx = self.stdout_tx.lock().await;
         tx.send(message.to_string())
+            .await
             .map_err(|e| McpError::TransportError(e.to_string()))?;
         Ok(())
     }
@@ -395,8 +392,8 @@ impl Transport for StdioTransport {
 
 pub struct WebSocketTransport {
     url: String,
-    outbound_tx: Arc<Mutex<Option<mpsc::UnboundedSender<String>>>>,
-    inbound_rx: Arc<Mutex<Option<mpsc::UnboundedReceiver<String>>>>,
+    outbound_tx: Arc<Mutex<Option<mpsc::Sender<String>>>>,
+    inbound_rx: Arc<Mutex<Option<mpsc::Receiver<String>>>>,
     connected: Arc<AtomicBool>,
     manager_handle: Arc<Mutex<Option<tokio::task::JoinHandle<()>>>>,
 }
@@ -416,8 +413,8 @@ impl WebSocketTransport {
         use tokio_tungstenite::connect_async;
         use tokio_tungstenite::tungstenite::protocol::Message;
         let url = self.url.clone();
-        let (outbound_tx, mut outbound_rx) = mpsc::unbounded_channel::<String>();
-        let (inbound_tx, inbound_rx) = mpsc::unbounded_channel::<String>();
+        let (outbound_tx, mut outbound_rx) = mpsc::channel::<String>(64);
+        let (inbound_tx, inbound_rx) = mpsc::channel::<String>(64);
 
         *self.outbound_tx.lock().await = Some(outbound_tx);
         *self.inbound_rx.lock().await = Some(inbound_rx);
@@ -451,10 +448,18 @@ impl WebSocketTransport {
                                 // Inbound WS frames
                                 inbound = read.next() => {
                                     match inbound {
-                                        Some(Ok(Message::Text(txt))) => { let _ = inbound_tx.send(txt); }
+                                        Some(Ok(Message::Text(txt))) => {
+                                            if let Err(e) = inbound_tx.try_send(txt) {
+                                                tracing::warn!("MCP WS inbound channel full, dropping text frame: {}", e);
+                                            }
+                                        }
                                         Some(Ok(Message::Binary(bin))) => {
                                             // Assume UTF-8 JSON if server sends binary
-                                            if let Ok(txt) = String::from_utf8(bin) { let _ = inbound_tx.send(txt); }
+                                            if let Ok(txt) = String::from_utf8(bin) {
+                                                if let Err(e) = inbound_tx.try_send(txt) {
+                                                    tracing::warn!("MCP WS inbound channel full, dropping binary frame: {}", e);
+                                                }
+                                            }
                                         }
                                         Some(Ok(Message::Ping(p))) => {
                                             // Respond with Pong
@@ -497,6 +502,7 @@ impl Transport for WebSocketTransport {
         let tx_guard = self.outbound_tx.lock().await;
         if let Some(tx) = tx_guard.as_ref() {
             tx.send(message.to_string())
+                .await
                 .map_err(|e| McpError::TransportError(e.to_string()))?;
             Ok(())
         } else {

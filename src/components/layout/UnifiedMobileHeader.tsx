@@ -8,8 +8,9 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { ChevronLeft, Menu } from 'lucide-react';
+import { CaretLeft, List } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContract';
 import { useMobileHeaderContextSafe } from './MobileHeaderContext';
 import { isAndroid } from '@/utils/platform';
 
@@ -31,6 +32,10 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
   const ctx = useMobileHeaderContextSafe();
   const config = ctx?.config ?? { title: '', titleNode: undefined, subtitle: undefined, rightActions: undefined, showMenu: false, onMenuClick: undefined, showBackArrow: false, suppressGlobalBackButton: false };
 
+  if (config.hidden) {
+    return null;
+  }
+
   // 决定左侧显示什么按钮：
   // 1. showBackArrow 优先 - 显示返回箭头（使用 onMenuClick 回调）
   // 2. showMenu - 显示菜单图标
@@ -43,33 +48,31 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
     <header
       // Android WebView 上 data-tauri-drag-region 会干扰触摸点击事件，因此不设置
       {...(!isAndroid() ? { 'data-tauri-drag-region': true } : {})}
+      data-mobile-shell="header"
       className={cn(
         // 基础布局
-        "flex items-center gap-2 px-3 w-full flex-shrink-0",
+        "flex w-full flex-shrink-0 items-center gap-2 px-3",
         // 样式
-        "bg-background/95 backdrop-blur-lg",
+        "border-b border-[color:var(--shell-chrome-border)] bg-[color:var(--shell-titlebar-surface)]/95 backdrop-blur-md",
         className
       )}
       style={{
-        // 使用 CSS 变量应用顶部边距，默认回退到 30px（移动端默认值）
-        paddingTop: 'var(--topbar-safe-area, 30px)',
-        // 高度 = 基础高度 56px + 顶部安全区域
-        height: 'calc(56px + var(--topbar-safe-area, 30px))',
-        minHeight: 'calc(56px + var(--topbar-safe-area, 30px))',
+        paddingTop: 'var(--mobile-safe-area-top, 0px)',
+        height: 'var(--mobile-header-total-height, 56px)',
+        minHeight: 'var(--mobile-header-total-height, 56px)',
       }}
     >
       {/* 左侧：返回箭头、菜单按钮或全局返回按钮 */}
-      <div className="flex items-center w-10">
+      <div className="flex min-w-[var(--touch-target-size)] items-center lg:min-w-10">
         {showBackArrowButton && (
           <NotionButton
             variant="ghost"
             size="icon"
             onClick={config.onMenuClick}
-            className="h-9 w-9 -ml-1"
-            style={{ minWidth: 36, minHeight: 36 }}
+            className={cn(shellIconButtonClassName, '-ml-1')}
             aria-label={t('common:mobile_header.back')}
           >
-            <ChevronLeft style={{ width: 20, height: 20, minWidth: 20, minHeight: 20 }} />
+            <CaretLeft size={20} weight="regular" />
           </NotionButton>
         )}
         {showMenuButton && (
@@ -77,11 +80,10 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
             variant="ghost"
             size="icon"
             onClick={config.onMenuClick}
-            className="h-9 w-9 -ml-1"
-            style={{ minWidth: 36, minHeight: 36 }}
-            aria-label={t('common:mobile_header.open_menu')}
+            className={shellIconButtonClassName}
+            aria-label="展开侧边栏"
           >
-            <Menu style={{ width: 20, height: 20, minWidth: 20, minHeight: 20 }} />
+            <List size={21} weight="regular" />
           </NotionButton>
         )}
         {showBackButton && (
@@ -89,11 +91,10 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
             variant="ghost"
             size="icon"
             onClick={onBack}
-            className="h-9 w-9 -ml-1"
-            style={{ minWidth: 36, minHeight: 36 }}
+            className={cn(shellIconButtonClassName, '-ml-1')}
             aria-label={t('common:mobile_header.back')}
           >
-            <ChevronLeft style={{ width: 20, height: 20, minWidth: 20, minHeight: 20 }} />
+            <CaretLeft size={20} weight="regular" />
           </NotionButton>
         )}
       </div>
@@ -104,19 +105,19 @@ export const UnifiedMobileHeader: React.FC<UnifiedMobileHeaderProps> = ({
         {config.titleNode ? (
           config.titleNode
         ) : config.title ? (
-          <h1 className="text-base font-semibold truncate max-w-full">
+          <h1 className="max-w-full truncate text-[15px] font-semibold text-[color:var(--shell-navigation-foreground)]">
             {config.title}
           </h1>
         ) : null}
         {config.subtitle && (
-          <p className="text-xs text-muted-foreground truncate max-w-full">
+          <p className="max-w-full truncate text-[11px] text-[color:var(--shell-navigation-muted)]">
             {config.subtitle}
           </p>
         )}
       </div>
 
       {/* 右侧：操作按钮 */}
-      <div className="flex items-center gap-1 min-w-[40px] justify-end">
+      <div className="flex min-w-[var(--touch-target-size)] items-center justify-end gap-1">
         {config.rightActions}
       </div>
     </header>

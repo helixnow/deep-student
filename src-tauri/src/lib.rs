@@ -20,6 +20,7 @@ pub mod debug_log_service; // 调试日志持久化服务（JSON 文件 + 多级
 pub mod debug_logger;
 
 pub mod anr_watchdog; // ANR 看门狗（Android 主线程卡顿检测）
+pub mod background_tasks; // 全局后台任务追踪器（Audit 2 R-2.6：统一管理 fire-and-forget 任务并支持优雅关闭）
 pub mod backup_common;
 pub mod backup_config;
 pub mod chat_v2; // Chat V2 - 新版聊天后端模块（基于 Block 架构）
@@ -85,11 +86,16 @@ pub mod vector_store;
 pub mod vendors;
 pub mod vfs; // VFS 虚拟文件系统（统一资源存储） // DSTU 访达协议层（VFS 的文件系统语义接口）
 pub mod vlm_grounding_service;
+pub mod voice_input;
 pub mod workflow_error_handler; // SM-2 间隔重复算法 // 题目集同步冲突策略服务
 
 // 数据治理模块（条件编译，需启用 data_governance feature）
 #[cfg(feature = "data_governance")]
 pub mod data_governance;
+
+// macOS 原生菜单栏（Phase D2 of native-feel migration, 2026-05-14）
+#[cfg(target_os = "macos")]
+pub mod menu;
 
 // Add required imports for AppState initialization
 use std::collections::HashMap;
@@ -783,6 +789,11 @@ pub fn run() {
             // macOS 窗口圆角设置
             #[cfg(target_os = "macos")]
             {
+                // 安装 macOS 原生菜单栏（Phase D2 of native-feel migration, 2026-05-14）
+                if let Err(e) = crate::menu::install_menu(&app_handle) {
+                    error!("[setup] 安装 macOS 菜单栏失败: {}", e);
+                }
+
                 use tauri::Manager;
                 if let Some(window) = app.get_webview_window("main") {
                     // 设置 macOS 特定的窗口属性
@@ -871,6 +882,7 @@ pub fn run() {
             crate::commands::delete_setting,
             crate::commands::get_settings_by_prefix,
             crate::commands::delete_settings_by_prefix,
+            crate::voice_input::voice_input_transcribe,
             // 调试日志管理
             crate::commands::get_debug_logs_info,
             crate::commands::clear_debug_logs,
@@ -971,6 +983,8 @@ pub fn run() {
             crate::commands::parse_document_from_base64,
             // Translation Commands
             crate::translation::translate_text_stream,
+            crate::translation::chat_popover::stream_chat_translation_aligned,
+            crate::translation::chat_popover::stream_chat_translation_plain,
             crate::commands::ocr_extract_text,
             // Essay Grading Commands
             crate::essay_grading::essay_grading_stream,
@@ -1208,6 +1222,7 @@ pub fn run() {
             // 工具审批命令（敏感工具用户确认）
             ,crate::chat_v2::handlers::approval_handlers::chat_v2_tool_approval_respond
             ,crate::chat_v2::handlers::approval_handlers::chat_v2_tool_approval_cancel
+            ,crate::chat_v2::handlers::approval_handlers::chat_v2_clear_approval_history
             // 🆕 用户提问命令（轻量级问答交互）
             ,crate::chat_v2::handlers::ask_user_handlers::chat_v2_ask_user_respond
             // Canvas 工具前端回调命令（完全前端模式）
@@ -1633,6 +1648,16 @@ pub fn run() {
             ,crate::data_governance::commands_sync::data_governance_run_sync_with_progress
             ,crate::data_governance::commands_sync::data_governance_export_sync_data
             ,crate::data_governance::commands_sync::data_governance_import_sync_data
+            // Tombstone 删除传播
+            ,crate::data_governance::commands_sync::data_governance_mark_blob_deleted
+            ,crate::data_governance::commands_sync::data_governance_mark_asset_deleted
+            // 记录级冲突
+            ,crate::data_governance::commands_sync::data_governance_list_record_conflicts
+            ,crate::data_governance::commands_sync::data_governance_count_record_conflicts
+            ,crate::data_governance::commands_sync::data_governance_resolve_record_conflict
+            ,crate::data_governance::commands_sync::data_governance_purge_resolved_conflicts
+            // Prune 断层检测
+            ,crate::data_governance::commands_sync::data_governance_detect_prune_gap
             // 任务恢复命令（断点续传支持）
             ,crate::data_governance::commands_backup::data_governance_resume_backup_job
             ,crate::data_governance::commands_backup::data_governance_list_resumable_jobs
@@ -1676,8 +1701,13 @@ pub fn run() {
                 }
             }
         })
-        .run(tauri::generate_context!())
-        .expect("Failed to run Tauri application");
+        .build(tauri::generate_context!())
+        .expect("Failed to build Tauri application")
+        .run(|_app_handle, event| {
+            if let tauri::RunEvent::ExitRequested { .. } = event {
+                tauri::async_runtime::block_on(crate::background_tasks::shutdown());
+            }
+        });
 }
 
 // Helper to build the global application state

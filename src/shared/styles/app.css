@@ -1,0 +1,1061 @@
+/* 全局样式 */
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+}
+
+/* 全局字体应用 */
+body {
+  font-family: var(--font-family);
+}
+
+:where(:root) {
+  --shell-titlebar-height: var(--desktop-titlebar-height, 40px);
+  --shell-navigation-width: var(--sidebar-width, 272px);
+  --shell-workspace-edge-radius: 24px;
+  --shell-layout-gap: var(--space-shell-layout-gap);
+  --shell-panel-radius: var(--radius-shell-panel);
+  --shell-toolbar-radius: var(--radius-shell-toolbar);
+  --shell-nav-row-radius: var(--radius-shell-row);
+  --shell-control-size: var(--size-shell-control);
+  --shell-window-control-size: var(--size-shell-window-control);
+  --shell-window-control-gap: var(--space-shell-control-gap);
+  --shell-window-control-radius: var(--radius-shell-window-control);
+  --shell-section-gap: var(--space-shell-section-gap);
+}
+
+[data-shell-role="app-shell"] {
+  /*
+   * 默认背景 = 工作区背景，保证侧栏折叠时底层颜色正确。
+   * 侧栏可见时会被下面的 `[data-sidebar-visible="true"]` 规则覆盖为
+   * `--shell-navigation-surface`，与侧栏同色同源，确保工作区左上/左下凹角
+   * 透出的颜色与侧栏始终一致，主题切换时不会出现中间色差。
+   */
+  background: var(--shell-backdrop);
+}
+
+[data-shell-role="app-shell"][data-sidebar-visible="true"] {
+  background: var(--shell-navigation-surface);
+}
+
+.desktop-shell-titlebar {
+  background: var(--shell-navigation-surface);
+  border-bottom: none;
+}
+
+.desktop-shell-header-cell {
+  min-width: 0;
+  min-height: var(--shell-titlebar-height);
+  background: transparent;
+}
+
+.desktop-shell-header-hotzone {
+  cursor: pointer;
+}
+
+.desktop-shell-header-hotzone:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: -2px;
+}
+
+.desktop-shell-header-cell--nav {
+  background: var(--shell-navigation-surface);
+  border-right: 0;
+}
+
+.desktop-shell-header-cell--workspace {
+  background: var(--shell-workspace-panel);
+  border: 0;
+  box-shadow: none;
+}
+
+.desktop-shell-header-cell--workspace[data-sidebar-visible="true"] {
+  border-top-left-radius: var(--shell-workspace-edge-radius);
+}
+
+.desktop-shell-toolbar-group {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 0;
+  border-radius: 0;
+  border: 0;
+  background: transparent;
+  box-shadow: none;
+}
+
+.desktop-shell-toolbar-button {
+  height: var(--shell-control-size) !important;
+  width: var(--shell-control-size) !important;
+  border-radius: var(--shell-nav-row-radius) !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: var(--shell-navigation-foreground) !important;
+  box-shadow: none !important;
+}
+
+.desktop-shell-toolbar-button:hover,
+.desktop-shell-toolbar-button:focus-visible {
+  background: var(--shell-control-hover) !important;
+  color: var(--shell-navigation-foreground) !important;
+}
+
+.desktop-shell-toolbar-button:active {
+  background: var(--shell-control-active) !important;
+}
+
+.desktop-shell-accessory-group {
+  flex-shrink: 0;
+  color: var(--shell-navigation-muted);
+}
+
+.desktop-shell-accessory-button {
+  color: var(--shell-navigation-muted) !important;
+}
+
+.desktop-shell-accessory-group .desktop-shell-accessory-button:hover,
+.desktop-shell-accessory-group .desktop-shell-accessory-button:focus-visible {
+  color: var(--shell-navigation-foreground) !important;
+}
+
+.desktop-shell-update-badge {
+  display: inline-flex;
+  height: 24px;
+  align-items: center;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  background: hsl(var(--primary));
+  padding-inline: 8px;
+  color: hsl(var(--primary-foreground));
+  font-size: 12px;
+  line-height: 1;
+  font-weight: 500;
+}
+
+.desktop-shell-nav-section-label {
+  font-size: 12px;
+  line-height: 16px;
+  font-weight: 400;
+  letter-spacing: 0;
+  color: var(--shell-navigation-section-label);
+}
+
+.settings-nav-item-label {
+  color: var(--shell-navigation-foreground);
+}
+
+[data-theme="dark"] .settings-nav-item-label {
+  color: var(--shell-navigation-foreground);
+}
+
+.desktop-shell-sidebar-row,
+.desktop-shell-nav-row,
+.desktop-shell-thread-row {
+  min-height: 32px !important;
+  justify-content: flex-start !important;
+  border-radius: var(--shell-nav-row-radius) !important;
+  border: 1px solid transparent !important;
+  background: transparent !important;
+  color: var(--shell-navigation-row-foreground) !important;
+  box-shadow: none !important;
+  font-size: 14px !important;
+  font-weight: 400 !important;
+}
+
+.desktop-shell-thread-row {
+  color: var(--shell-navigation-thread-foreground) !important;
+}
+
+.desktop-shell-sidebar-row-title {
+  color: var(--shell-navigation-foreground);
+}
+
+.desktop-shell-sidebar-row:hover:not(.desktop-shell-sidebar-row--active),
+.desktop-shell-sidebar-row:focus-visible:not(.desktop-shell-sidebar-row--active),
+.desktop-shell-nav-row:hover:not(.desktop-shell-nav-row--active),
+.desktop-shell-nav-row:focus-visible:not(.desktop-shell-nav-row--active),
+.desktop-shell-thread-row:hover:not(.desktop-shell-thread-row--active),
+.desktop-shell-thread-row:focus-visible:not(.desktop-shell-thread-row--active) {
+  background: var(--interactive-hover) !important;
+  color: var(--shell-navigation-foreground) !important;
+}
+
+.desktop-shell-sidebar-row--active,
+.desktop-shell-nav-row--active {
+  background: var(--interactive-selected) !important;
+  color: var(--shell-navigation-foreground) !important;
+  font-weight: 400 !important;
+}
+
+.desktop-shell-thread-row--active {
+  background: var(--interactive-selected) !important;
+  color: var(--shell-navigation-foreground) !important;
+  font-weight: 400 !important;
+}
+
+/* ─── Scroll-fade: generic edge-fade utility ─── */
+.scroll-fade-shell {
+  --scroll-fade-size: 28px;
+  --scroll-fade-surface: var(--background);
+  position: relative;
+  isolation: isolate;
+}
+
+.scroll-fade {
+  position: absolute;
+  left: 0;
+  right: 0;
+  z-index: 45;
+  height: var(--scroll-fade-size, 28px);
+  pointer-events: none;
+}
+
+.scroll-fade--top {
+  top: 0;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--scroll-fade-surface) 96%, transparent) 0%,
+    color-mix(in srgb, var(--scroll-fade-surface) 70%, transparent) 38%,
+    transparent 100%
+  );
+}
+
+.scroll-fade--bottom {
+  bottom: 0;
+  background: linear-gradient(
+    to top,
+    color-mix(in srgb, var(--scroll-fade-surface) 96%, transparent) 0%,
+    color-mix(in srgb, var(--scroll-fade-surface) 72%, transparent) 38%,
+    transparent 100%
+  );
+}
+
+/* ─── Sidebar scroll-fade (mask-image approach) ─── */
+.desktop-shell-sidebar-session-scroll-shell {
+  --desktop-shell-sidebar-session-fade-size: 28px;
+  position: relative;
+  isolation: isolate;
+}
+
+.desktop-shell-sidebar-session-scroll-viewport {
+  mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black var(--desktop-shell-sidebar-session-fade-size),
+    black calc(100% - var(--desktop-shell-sidebar-session-fade-size)),
+    transparent 100%
+  );
+  -webkit-mask-image: linear-gradient(
+    to bottom,
+    transparent 0%,
+    black var(--desktop-shell-sidebar-session-fade-size),
+    black calc(100% - var(--desktop-shell-sidebar-session-fade-size)),
+    transparent 100%
+  );
+}
+
+.desktop-shell-header-title {
+  min-width: 0;
+  font-size: 14px;
+  line-height: 1.25;
+  font-weight: 500;
+  color: var(--shell-navigation-foreground);
+}
+
+.desktop-shell-workspace {
+  background: var(--shell-workspace-panel);
+  box-shadow: none;
+}
+
+.desktop-shell-workspace[data-sidebar-visible="true"] {
+  border-bottom-left-radius: var(--shell-workspace-edge-radius);
+  overflow: hidden;
+}
+
+.desktop-shell-view-layer {
+  isolation: isolate;
+}
+
+.sidebar-shell-surface {
+  background: var(--shell-navigation-surface);
+  border-right: 1px solid var(--shell-seam);
+  box-shadow: 14px 0 28px -24px hsl(var(--foreground) / 0.4);
+}
+
+:root.dark .sidebar-shell-surface {
+  box-shadow: none;
+}
+
+.sidebar-shell-header {
+  border-bottom: 1px solid transparent;
+  border-color: var(--shell-navigation-border);
+}
+
+.sidebar-shell-search {
+  background: var(--input-shell-surface) !important;
+  border-color: var(--input-shell-border) !important;
+}
+
+.sidebar-shell-item {
+  border: 1px solid transparent;
+  border-radius: var(--radius-shell-row);
+}
+
+.sidebar-shell-item:hover,
+.sidebar-shell-item:focus-visible {
+  background: var(--interactive-hover);
+}
+
+.sidebar-shell-item[data-selected="true"] {
+  background: var(--interactive-selected);
+  color: var(--sidebar-quiet-active-foreground);
+}
+
+.sidebar-shell-footer {
+  border-color: var(--shell-navigation-border);
+}
+
+.sidebar-shell-sheet,
+.sidebar-shell-drawer {
+  background: var(--dialog-shell-surface) !important;
+  border-color: var(--dialog-shell-border) !important;
+  box-shadow: var(--shadow-shell-floating) !important;
+}
+
+.study-shell-page {
+  background: transparent;
+}
+
+.study-shell-pane {
+  background: var(--shell-workspace-panel);
+  border: 1px solid var(--shell-workspace-border);
+  box-shadow: var(--shadow-shell-soft);
+}
+
+.study-shell-pane--flush-top {
+  border-top: 0;
+  border-left: 0;
+  border-right: 0;
+  border-top-left-radius: 0;
+  border-top-right-radius: 0;
+  box-shadow: none;
+}
+
+.study-shell-panel {
+  background: var(--shell-inspector-panel);
+  border: 1px solid var(--shell-inspector-border);
+  box-shadow: var(--shadow-shell-soft);
+}
+
+.study-shell-sidebar-frame {
+  background: var(--shell-navigation-surface);
+  border-right: 1px solid var(--shell-seam);
+  box-shadow: 14px 0 28px -24px hsl(var(--foreground) / 0.4);
+}
+
+.study-shell-toolbar {
+  background: var(--shell-toolbar-surface);
+  border-bottom: 1px solid var(--shell-inspector-border);
+}
+
+.study-shell-toolbar--seamless {
+  background: transparent;
+  border-bottom: 0;
+}
+
+.study-shell-toolbar--floating {
+  background: var(--shell-toolbar-floating-surface);
+}
+
+.study-shell-secondary-card {
+  background: var(--surface-panel-strong);
+  border: 1px solid var(--shell-workspace-border);
+  border-radius: var(--radius-shell-panel);
+  box-shadow: var(--shadow-shell-soft);
+  transition: border-color 150ms ease, background-color 150ms ease, box-shadow 150ms ease;
+}
+
+.study-shell-secondary-card:hover {
+  border-color: var(--shell-navigation-border);
+  background: var(--shell-workspace-panel);
+}
+
+.study-shell-secondary-card[data-selected="true"] {
+  border-color: var(--button-primary-border);
+  box-shadow: var(--shadow-shell-panel);
+}
+
+.study-shell-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  min-height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  border: 1px solid var(--button-utility-border);
+  background: var(--button-utility-surface);
+  color: var(--text-secondary);
+  font-size: 11px;
+  line-height: 1;
+  font-weight: 500;
+}
+
+.study-shell-badge--primary {
+  border-color: var(--button-primary-border);
+  background: var(--button-primary-surface);
+  color: var(--button-primary-foreground);
+}
+
+.study-shell-badge--success {
+  border-color: color-mix(in hsl, hsl(var(--success)) 28%, transparent 72%);
+  background: color-mix(in hsl, hsl(var(--success)) 10%, var(--surface-elevated) 90%);
+  color: hsl(var(--success));
+}
+
+.study-shell-badge--warning {
+  border-color: color-mix(in hsl, hsl(var(--warning)) 28%, transparent 72%);
+  background: color-mix(in hsl, hsl(var(--warning)) 10%, var(--surface-elevated) 90%);
+  color: hsl(var(--warning));
+}
+
+.study-shell-badge--danger {
+  border-color: var(--button-danger-border);
+  background: var(--button-danger-surface);
+  color: var(--button-danger-foreground);
+}
+
+/*
+ * SegmentedControl — flat, restrained.
+ *
+ * Thumb is a direct child of root, positioned absolutely. Only translates
+ * on X; width/height snap instantly. No hover, no press animation, no
+ * color transitions. The only motion is the thumb sliding.
+ */
+
+.study-shell-segmented {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.study-shell-segmented-thumb {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  border-radius: var(--radius-shell-control);
+  background: var(--button-utility-surface);
+  border: 1px solid var(--button-utility-border);
+  pointer-events: none;
+}
+
+.study-shell-segmented[data-size="compact"] .study-shell-segmented-thumb {
+  border-radius: calc(var(--radius-shell-control) - 2px);
+}
+
+.study-shell-segmented-button {
+  position: relative;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 0;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  user-select: none;
+  -webkit-tap-highlight-color: transparent;
+}
+
+.study-shell-segmented-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.study-shell-segmented-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.study-shell-segmented-button:focus-visible {
+  outline: 2px solid hsl(var(--ring));
+  outline-offset: 1px;
+}
+
+.study-shell-empty-state {
+  display: flex;
+  min-height: 240px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 32px 20px;
+  text-align: center;
+  border: 1px dashed var(--shell-workspace-border);
+  border-radius: var(--radius-shell-panel);
+  background: color-mix(in hsl, var(--surface-panel-strong) 86%, var(--surface-root) 14%);
+}
+
+.study-shell-empty-state__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 48px;
+  height: 48px;
+  margin-bottom: 16px;
+  border-radius: 999px;
+  background: var(--button-utility-surface);
+  color: var(--text-muted);
+}
+
+.study-shell-empty-state__title {
+  font-size: 16px;
+  line-height: 1.3;
+  font-weight: 600;
+  color: var(--text-primary);
+}
+
+.study-shell-empty-state__description {
+  margin-top: 6px;
+  max-width: 320px;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+}
+
+/* ============================================
+   全局移动端溢出控制
+   ============================================ */
+html, body, #root {
+  max-width: 100vw;
+  overflow-x: hidden;
+}
+
+@media (max-width: 768px) {
+  /* 移动端全局溢出控制 - 仅在根级别应用 */
+  html, body, #root {
+    overflow-x: hidden;
+    width: 100%;
+    max-width: 100vw;
+  }
+
+  /* 移动端表单元素宽度限制 */
+  input,
+  select,
+  textarea {
+    max-width: 100%;
+  }
+}
+
+/*
+ * Global scrollbar styling moved to src/styles/native-feel/scrollbars.css
+ * (Phase C of native-feel migration, 2026-05-14). The previous rules here
+ * always-visible chunky 8px web scrollbars across the app; the new file
+ * implements macOS-style overlay scrollbars (hidden until hover/focus).
+ */
+
+html {
+  background-color: transparent !important;
+  background: transparent !important;
+  height: 100%;
+  overflow: hidden;
+}
+
+body {
+  background-color: transparent !important;
+  background: transparent !important;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  /* 让 body 占满视口，但实际内容高度由容器按标题栏扣减 */
+  height: 100vh;
+  /* Windows下使用系统窗口装饰，不应有圆角 */
+  /* 在macOS等平台会通过media query覆盖 */
+  border-radius: 0;
+}
+
+#root {
+  background-color: var(--surface-root);
+  overflow: hidden;
+  /* 交由 .app 进行高度扣减，root 保持视口高 */
+  height: 100vh;
+  width: 100vw;
+  /* Windows下使用系统窗口装饰，不应有圆角 */
+  border-radius: 0;
+  position: relative;
+  box-shadow: 0 0 0 1px var(--border-soft);
+  max-height: 100vh;
+}
+
+.app {
+  /* Windows下使用系统窗口装饰，不应有圆角 */
+  border-radius: 0;
+  overflow: hidden;
+  background-color: var(--surface-elevated);
+  /* 保持视口高度，页面内部通过 absolute top/bottom 扣除标题栏空间 */
+  height: 100vh;
+  max-height: 100vh;
+}
+
+.sidebar {
+  /* Windows下使用系统窗口装饰，不应有圆角 */
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+}
+
+main {
+  /* Windows下使用系统窗口装饰，不应有圆角 */
+  border-top-right-radius: 0;
+  border-bottom-right-radius: 0;
+  overflow: hidden;
+  height: 100vh;
+  max-height: 100vh;
+}
+/* 设置页面样式 */
+.settings {
+  background: var(--shell-workspace-panel);
+  border-radius: 0;
+  /* 滚动由内部 CustomScrollArea 处理，外层禁止溢出 */
+  overflow: hidden;
+  border: 0;
+  box-shadow: none;
+}
+
+/* 暗色模式下：卡片与背景色接近，增强边界与圆角可见性 */
+.dark .settings {
+  /* 暗色下也不使用阴影，防止产生渐变带 */
+  box-shadow: none;
+  border: 0;
+  border-radius: 0;
+}
+/* 现代图片查看器样式 */
+.modern-image-viewer-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: hsl(var(--background) / 0.45);
+  /* 保留整体背景模糊强度，增强沉浸感，适配亮暗主题 */
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  z-index: 10000;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0; /* 去除外边距，容器贴边 */
+  animation: fade-in 0.2s ease-out;
+}
+
+.modern-image-viewer-overlay.blur-disabled {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  background: transparent !important;
+}
+
+.dark .modern-image-viewer-overlay.blur-disabled {
+  background: transparent !important;
+}
+
+/* 让所有聊天编辑模态使用统一遮罩风格 */
+.edit-modal-overlay {
+  position: fixed;
+  inset: 0 !important;
+  background: transparent !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10000;
+}
+
+/* 统一其他自定义遮罩类为现代预览器风格 */
+:where(
+  .modal-overlay,
+  .tag-selector-modal,
+  .create-tag-modal,
+  .scm__overlay,
+  .anki-preview-modal-overlay,
+  .template-manager-backdrop,
+  .tag-tree-modal-backdrop,
+  .image-viewer-overlay
+) {
+  position: fixed !important;
+  top: 0 !important;
+  left: 0 !important;
+  right: 0 !important;
+  bottom: 0 !important;
+  padding: 0 !important;
+  background: transparent !important;
+  backdrop-filter: blur(12px) !important;
+  -webkit-backdrop-filter: blur(12px) !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  z-index: 10000 !important;
+}
+
+
+.modern-image-viewer-container {
+  position: relative;
+  width: 100vw;  /* 全屏铺满 */
+  height: 100vh; /* 全屏铺满 */
+  /* 玻璃态质感：依赖主题变量实现亮暗自适应 */
+  background: hsl(var(--card) / 0.62);
+  backdrop-filter: blur(28px);
+  -webkit-backdrop-filter: blur(28px);
+  border-radius: 0; /* 去掉圆角，避免角落出现遮罩背景 */
+  box-shadow: 0 32px 88px -40px hsl(var(--foreground) / 0.28);
+  border: 1px solid hsl(var(--border) / 0.55);
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.modern-image-viewer-container.blur-disabled {
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.dark .modern-image-viewer-container.blur-disabled {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+}
+
+.modern-viewer-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  height: 36px;
+  padding: 0 8px;
+  background: hsl(var(--card));
+  border-top: 1px solid hsl(var(--border) / 0.5);
+  color: hsl(var(--foreground));
+  flex-shrink: 0;
+}
+
+.modern-viewer-divider {
+  width: 1px;
+  height: 16px;
+  background: hsl(var(--border) / 0.4);
+  margin: 0 2px;
+  flex-shrink: 0;
+}
+
+.modern-viewer-footer {
+  background: hsl(var(--popover) / 0.85);
+  border-top: 1px solid hsl(var(--border) / 0.5);
+  color: hsl(var(--muted-foreground));
+}
+
+.modern-viewer-content {
+  background: hsl(var(--card) / 0.55);
+}
+
+.modern-viewer-muted-card {
+  background: hsl(var(--muted) / 0.65);
+  border: 1px solid hsl(var(--border) / 0.45);
+  color: hsl(var(--muted-foreground));
+}
+
+.modern-viewer-icon-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 26px;
+  height: 26px;
+  padding: 3px;
+  border-radius: 6px;
+  border: none;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+  transition: color .15s ease, background .15s ease;
+}
+
+.modern-viewer-icon-button:hover:not([disabled]) {
+  color: hsl(var(--foreground));
+  background: hsl(var(--accent));
+}
+
+.modern-viewer-icon-button:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+
+.modern-viewer-icon-button--primary {
+  color: hsl(var(--primary));
+}
+
+.modern-viewer-icon-button--primary:hover:not([disabled]) {
+  background: hsl(var(--primary) / 0.15);
+  color: hsl(var(--primary));
+}
+
+.modern-viewer-icon-button--success {
+  color: hsl(142 71% 45%);
+}
+
+.modern-viewer-icon-button--danger {
+  color: hsl(var(--destructive));
+}
+
+.modern-viewer-icon-button--danger:hover:not([disabled]) {
+  background: hsl(var(--destructive) / 0.15);
+  color: hsl(var(--destructive));
+}
+
+.modern-viewer-zoom-readout {
+  min-width: 3rem;
+  text-align: center;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  color: hsl(var(--muted-foreground));
+  line-height: 1;
+}
+
+.modern-viewer-hint {
+  background: hsl(var(--foreground) / 0.85);
+  color: hsl(var(--background));
+  box-shadow: 0 12px 28px -18px hsl(var(--foreground) / 0.4);
+}
+
+.modern-viewer-loading-backdrop {
+  background: hsl(var(--background) / 0.78);
+}
+
+.modern-viewer-warning-card {
+  background: hsl(var(--warning) / 0.18);
+  border: 1px solid hsl(var(--warning) / 0.45);
+  color: hsl(var(--warning-foreground));
+}
+
+.modern-viewer-warning-card .modern-viewer-warning-icon {
+  color: hsl(var(--warning));
+}
+
+.modern-viewer-safe-hint {
+  background: hsl(var(--success) / 0.18);
+  border: 1px solid hsl(var(--success) / 0.35);
+  color: hsl(var(--success));
+}
+
+@keyframes fade-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* 数学公式错误样式 */
+.math-error {
+  color: hsl(var(--destructive));
+  background: hsl(var(--destructive) / 0.12);
+  padding: 0.2rem 0.4rem;
+  border-radius: 6px;
+  font-family: monospace;
+  border: 1px solid hsl(var(--destructive) / 0.22);
+  display: inline-block;
+}
+
+/* 增强KaTeX样式 */
+.katex {
+  font-size: 1.1em;
+  /* 使用 KaTeX 官方字体族，避免被全局等宽或无衬线覆盖 */
+  font-family: KaTeX_Main, KaTeX_Math, 'Times New Roman', Times, STIXGeneral, 'STIX Two Math', 'Noto Serif Math', serif;
+}
+
+.katex-display {
+  margin: 0.5em 0;
+  text-align: center;
+}
+
+.katex-error {
+  color: hsl(var(--destructive)) !important;
+  border: 1px solid hsl(var(--destructive) / 0.22);
+  background: hsl(var(--destructive) / 0.12);
+  padding: 0.1em 0.3em;
+  border-radius: 0.375rem;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+}
+.app-content {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  position: relative;
+  background-color: hsl(var(--card)); /* 统一改为纯白 */
+  /* 移除左侧圆角，避免与侧边栏圆角重叠 */
+  border-top-left-radius: 0;
+  border-bottom-left-radius: 0;
+  /* 移除左边框，避免覆盖侧边栏圆角遮罩 */
+  border-left: none;
+  /* 溢出裁剪，确保子元素不会超出圆角 */
+  overflow: hidden;
+}
+
+/* 暗色：主内容背景与侧边栏一致，使用主题变量 */
+/* 注意：亮色模式下 app-content 使用 --sidebar-bg 以确保圆角外侧区域颜色一致 */
+/* 暂时移除背景色定义，让背景色继承父元素，测试效果 */
+/* .dark .app-content {
+  background-color: hsl(var(--background) / 0.98);
+} */
+
+.dark .content-body {
+  background: var(--shell-workspace-surface);
+  /* 暗色模式同样保持无左描边，避免侧边栏交界处出现竖线 */
+  border-left: none;
+  border-top: none;
+}
+
+/* 暗色模式下的顶栏边框 */
+.dark .content-header {
+  border-bottom: 1px solid hsl(var(--background) / 0.1);
+}
+
+/* 移除内容层遮罩，统一改由侧边栏提供永久遮罩 */
+
+.content-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0.5rem; /* 全局略微收紧 */
+  background: hsl(var(--background)); /* 与侧边栏一致 */
+  z-index: 10;
+  /* 底部细边框 - 亮色模式深灰，暗色模式浅灰，增强对比度 */
+  border-bottom: 1px solid hsl(var(--border) / 0.5);
+}
+
+/* 虚拟标题栏模式：更紧凑的内边距 */
+.content-header.virtual-titlebar {
+  padding: 0 4px;
+}
+
+/* 历史导航按钮样式，贴合现有风格（进一步压缩尺寸与间距） */
+.content-header .nav-history-button {
+  width: 26px;
+  height: 26px;
+  border: none;
+  background: transparent; /* 去掉背景 */
+  border-radius: 6px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.2s ease, color 0.2s ease, transform 0.2s ease;
+  color: hsl(var(--muted-foreground));
+  margin-right: 0.15rem;
+}
+
+.content-header .nav-history-button:hover:not(:disabled) {
+  background: hsl(var(--accent) / 0.1); /* 半透明背景 */
+  color: hsl(var(--accent-foreground));
+}
+
+.content-header .nav-history-button:disabled {
+  opacity: 0.3;
+  cursor: not-allowed;
+}
+
+.content-body {
+  flex: 1;
+  /* 彻底禁用content-body的滚动条，因为所有page-container都是绝对定位 */
+  overflow: hidden !important;
+  padding: 0;
+  position: relative;
+  min-height: 0;
+  /* 移除 max-height 和 height，让 flex: 1 自动计算 */
+  /* max-height: 100%; */
+  /* height: 100%; */
+  background: hsl(var(--background));
+  /* 移除左边框，避免覆盖侧边栏圆角遮罩 */
+  border-left: none;
+  /* 为固定定位的 content-header 留出空间（桌面端 40px，由内联样式动态控制） */
+  margin-top: 0;
+  border-top: none;
+  /* 确保内容区域可以正确显示，避免被裁剪 */
+  contain: layout style;
+}
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes chatMessageEnter {
+    from {
+      opacity: 0;
+      transform: translateY(8px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  @keyframes attachmentRowEnter {
+    from {
+      opacity: 0;
+      transform: translateY(4px);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0);
+    }
+  }
+
+  .chat-message-wrapper {
+    animation: chatMessageEnter 0.24s ease-out;
+  }
+
+  .attachment-row {
+    animation: attachmentRowEnter 0.18s ease-out;
+  }
+}
+/* OverlayScrollbars print preservation (milestone v1.1). Ensure printing expands
+   overlay-scroll containers so content is never clipped at print time. */
+@media print {
+  [data-overlayscrollbars-viewport] {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+}
+
+/* Native scrollbar styling for the ScrollArea primitive's `nativeScrollbars`
+   fallback path (used on iOS WebView to preserve rubber-band + inertia).
+   Moved from study-ui so DeepStudent can own this style end-to-end. */
+.scroll-area--native {
+  scrollbar-width: thin;
+  scrollbar-color: var(--scrollbar-thumb) transparent;
+  scrollbar-gutter: stable;
+}
+
+.scroll-area--native::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+.scroll-area--native::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb);
+  border-radius: 999px;
+}
+
+.scroll-area--native::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover);
+}
+
+.scroll-area--native::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.content-body.settings-view {
+  border-top: none;
+  border-top-left-radius: 0;
+}
+
+.dark .content-body.settings-view {
+  border-left: none;
+  border-top: none;
+}

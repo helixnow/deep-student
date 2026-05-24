@@ -18,15 +18,15 @@
     "windows": [
       {
         "title": "Deep Student",
-        "width": 1000,
-        "height": 760,
-        "minWidth": 100,
-        "minHeight": 100,
+        "width": 1112,
+        "height": 773,
+        "minWidth": 980,
+        "minHeight": 680,
         "resizable": true,
         "fullscreen": false,
         "center": true,
         "decorations": false,
-        "transparent": false,
+        "transparent": true,
         "skipTaskbar": false,
         "alwaysOnTop": false,
         "visible": true,
@@ -74,7 +74,7 @@
     "macOS": {
       "signingIdentity": "-",
       "hardenedRuntime": true,
-      "entitlements": null
+      "entitlements": "./Entitlements.plist"
     },
     "windows": {
       "nsis": {
@@ -88,7 +88,7 @@
       }
     },
     "android": {
-      "versionCode": 13516
+      "versionCode": 13844
     }
   },
   "plugins": {

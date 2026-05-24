@@ -6,18 +6,18 @@ import { AppSelect } from '../ui/app-menu';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { NotionAlertDialog } from '../ui/NotionDialog';
 import {
-  Trash2,
-  Bot,
+  Trash,
+  Robot,
   GraduationCap,
-  Loader2,
-  PenTool,
-  ImagePlus,
-  ChevronLeft,
-  ChevronRight,
+  CircleNotch,
+  PenNib,
+  Image,
+  CaretLeft,
+  CaretRight,
   X,
   FileText,
-  ChevronDown,
-} from 'lucide-react';
+  CaretDown,
+} from '@phosphor-icons/react';
 import UnifiedDragDropZone, { FILE_TYPES } from '../shared/UnifiedDragDropZone';
 import { UnifiedModelSelector } from '../shared/UnifiedModelSelector';
 import type { GradingMode, ModelInfo } from '@/essay-grading/essayGradingApi';
@@ -89,8 +89,8 @@ const CancelConfirmButton: React.FC<{ onCancel: () => void }> = ({ onCancel }) =
 
   return (
     <>
-      <NotionButton variant="ghost" size="sm" onClick={() => setShowConfirm(true)} className="text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50">
-        <Loader2 className="w-3.5 h-3.5 animate-spin" />
+      <NotionButton variant="ghost" size="sm" onClick={() => setShowConfirm(true)} className="text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]">
+        <CircleNotch size={14} className="animate-spin" />
         {t('common:cancel')}
       </NotionButton>
       <NotionAlertDialog
@@ -102,7 +102,7 @@ const CancelConfirmButton: React.FC<{ onCancel: () => void }> = ({ onCancel }) =
         cancelText={t('common:cancel')}
         confirmVariant="primary"
         onConfirm={() => { setShowConfirm(false); onCancel(); }}
-      />
+/>
     </>
   );
 };
@@ -212,15 +212,15 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
               onValueChange={setModeId}
               variant="ghost"
               size="sm"
-              triggerIcon={<GraduationCap className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />}
-              className="max-w-full text-sm text-foreground/80 hover:text-foreground hover:bg-muted/50 transition-colors"
+              triggerIcon={<GraduationCap size={14} className="shrink-0 text-muted-foreground" />}
+              className="max-w-full text-sm text-foreground/80 hover:text-foreground hover:bg-[var(--interactive-hover)] transition-colors"
               placeholder={t('essay_grading:mode.select')}
               options={modes.map((mode) => ({
                 value: mode.id,
                 label: mode.name,
                 description: t('essay_grading:mode.max_score', { score: mode.total_max_score }),
               }))}
-            />
+/>
           </div>
         )}
         
@@ -230,8 +230,8 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
         {/* 右侧：操作按钮组 - 不收缩 */}
         <div className="flex items-center gap-1 shrink-0">
           <CommonTooltip content={t('essay_grading:import_images.hint', { max: ocrMaxFiles })}>
-            <NotionButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isGrading} aria-label={t('common:aria.upload_image')} className="hidden sm:flex h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-muted/50 disabled:opacity-40">
-              <ImagePlus className="w-3.5 h-3.5" />
+            <NotionButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} disabled={isGrading} aria-label={t('common:aria.upload_image')} className="hidden sm:flex h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-40">
+              <Image size={14} />
               <span className="text-xs hidden xl:inline">{t('essay_grading:import_images.button')}</span>
             </NotionButton>
           </CommonTooltip>
@@ -239,8 +239,8 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
           {/* 非移动端：设置按钮（始终显示图标，大屏显示文字） */}
           {onOpenSettings && (
             <CommonTooltip content={t('essay_grading:settings.title')}>
-              <NotionButton variant="ghost" size="sm" onClick={onOpenSettings} className="h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-muted/50">
-                <PenTool className="w-3.5 h-3.5" />
+              <NotionButton variant="ghost" size="sm" onClick={onOpenSettings} className="h-7 px-2 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]">
+                <PenNib size={14} />
                 <span className="text-xs hidden xl:inline">{t('essay_grading:settings.title')}</span>
               </NotionButton>
             </CommonTooltip>
@@ -255,8 +255,8 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
 
           {roundNavigation && roundNavigation.total > 1 && (
             <div className="hidden sm:flex items-center gap-1">
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onPrev} disabled={roundNavigation.currentIndex <= 0} aria-label={t('common:aria.previous_round')} className="!h-6 !w-6 text-muted-foreground/50 hover:text-foreground hover:bg-muted/50 disabled:opacity-30">
-                <ChevronLeft className="w-3.5 h-3.5" />
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onPrev} disabled={roundNavigation.currentIndex <= 0} aria-label={t('common:aria.previous_round')} className="!h-6 !w-6 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30">
+                <CaretLeft size={14} />
               </NotionButton>
               <div className="flex items-center gap-0.5">
                 {Array.from({ length: roundNavigation.total }, (_, i) => (
@@ -268,11 +268,11 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                         ? "bg-primary"
                         : "bg-muted-foreground/20"
                     )}
-                  />
+/>
                 ))}
               </div>
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onNext} disabled={roundNavigation.currentIndex >= roundNavigation.total - 1} aria-label={t('common:aria.next_round')} className="!h-6 !w-6 text-muted-foreground/50 hover:text-foreground hover:bg-muted/50 disabled:opacity-30">
-                <ChevronRight className="w-3.5 h-3.5" />
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={roundNavigation.onNext} disabled={roundNavigation.currentIndex >= roundNavigation.total - 1} aria-label={t('common:aria.next_round')} className="!h-6 !w-6 text-muted-foreground/50 hover:text-foreground hover:bg-[var(--interactive-hover)] disabled:opacity-30">
+                <CaretRight size={14} />
               </NotionButton>
             </div>
           )}
@@ -287,13 +287,13 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
               {t('essay_grading:stats.punctuation_total')}: {textStats.punctuationTotal.toLocaleString()}
             </span>
             {safeInputText && !isGrading && (
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={onClear} aria-label={t('common:aria.clear_content')} className="!h-7 !w-7 text-muted-foreground/60 hover:text-foreground hover:bg-muted/50">
-                <Trash2 className="w-3.5 h-3.5" />
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={onClear} aria-label={t('common:aria.clear_content')} className="!h-7 !w-7 text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]">
+                <Trash size={14} />
               </NotionButton>
             )}
             {isGrading ? (
-              <NotionButton variant="ghost" size="sm" onClick={onCancelGrading} aria-label={t('common:aria.cancel_grading')} className="h-7 px-2 text-sm text-muted-foreground hover:text-foreground hover:bg-muted/50">
-                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              <NotionButton variant="ghost" size="sm" onClick={onCancelGrading} aria-label={t('common:aria.cancel_grading')} className="h-7 px-2 text-sm text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]">
+                <CircleNotch size={14} className="animate-spin" />
               </NotionButton>
             ) : (
               <NotionButton
@@ -330,16 +330,16 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                         : "border-border/40"
                   )}
                   title={img.fileName}
-                />
+/>
                 {/* OCR 状态指示器 */}
                 {(img.ocrStatus === 'pending' || img.ocrStatus === 'processing') && (
                   <div className="absolute inset-0 flex items-center justify-center bg-black/30 rounded">
-                    <Loader2 className="w-4 h-4 text-white animate-spin" />
+                    <CircleNotch size={16} className="text-white animate-spin" />
                   </div>
                 )}
                 {img.ocrStatus === 'retrying' && (
                   <div className="absolute inset-0 flex flex-col items-center justify-center bg-black/30 rounded">
-                    <Loader2 className="w-3.5 h-3.5 text-yellow-300 animate-spin" />
+                    <CircleNotch size={14} className="text-yellow-300 animate-spin" />
                     <span className="text-[7px] text-yellow-300 mt-0.5">Retry</span>
                   </div>
                 )}
@@ -356,10 +356,10 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                 {!isGrading && onRemoveImage && (
                   <button
                     onClick={() => onRemoveImage(img.id)}
-                    className="absolute -top-1 -right-1 w-4 h-4 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-opacity"
+ className="w-4 h-4 absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-opacity"
                     aria-label={t('common:delete')}
                   >
-                    <X className="w-2.5 h-2.5" />
+                    <X size={10} />
                   </button>
                 )}
               </div>
@@ -377,11 +377,11 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
               'flex items-center gap-2 w-full px-4 py-2 text-xs transition-colors',
               showTopicSection
                 ? 'text-foreground bg-muted/25'
-                : 'text-muted-foreground/70 hover:text-foreground hover:bg-muted/20'
+                : 'text-muted-foreground/70 hover:text-foreground hover:bg-[var(--interactive-hover)]'
             )}
           >
-            <span className="inline-flex items-center justify-center w-4 h-4 rounded bg-muted/60">
-              <FileText className="w-3 h-3" />
+            <span className="w-4 h-4 inline-flex items-center justify-center rounded bg-muted/60">
+              <FileText size={12} />
             </span>
             <span className="font-medium">{t('essay_grading:topic.toggle_label')}</span>
             {hasTopicContent && (
@@ -389,7 +389,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                 {topicImageCount > 0 ? `${topicImageCount} 图` : '已填写'}
               </span>
             )}
-            <ChevronDown className={cn('w-3.5 h-3.5 ml-auto transition-transform', showTopicSection && 'rotate-180')} />
+            <CaretDown className={cn('w-3.5 h-3.5 ml-auto transition-transform', showTopicSection && 'rotate-180')} />
           </button>
           {showTopicSection && (
             <div className="px-3 pb-3">
@@ -400,7 +400,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                 placeholder={t('essay_grading:topic.placeholder')}
                 className="w-full min-h-[72px] max-h-[144px] resize-y text-sm leading-relaxed !border-border/35 !bg-background/80 focus:!ring-1 focus:!ring-primary/20"
                 disabled={isGrading}
-              />
+/>
               {/* 题目参考图片 */}
               <div className="flex items-center gap-2 flex-wrap">
                 {topicImages && topicImages.map((img) => (
@@ -410,14 +410,14 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                       alt={img.fileName}
                       className="w-11 h-11 object-cover rounded-md border border-border/40 bg-background"
                       title={img.fileName}
-                    />
+/>
                     {!isGrading && onRemoveTopicImage && (
                       <button
                         onClick={() => onRemoveTopicImage(img.id)}
-                        className="absolute -top-1 -right-1 w-4 h-4 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-opacity"
+ className="w-4 h-4 absolute -top-1 -right-1 bg-destructive text-destructive-foreground rounded-full flex items-center justify-center opacity-0 group-hover/thumb:opacity-100 transition-opacity"
                         aria-label={t('common:delete')}
                       >
-                        <X className="w-2.5 h-2.5" />
+                        <X size={10} />
                       </button>
                     )}
                   </div>
@@ -425,10 +425,10 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                 {onTopicFilesDropped && !isGrading && (
                   <button
                     onClick={() => topicFileInputRef.current?.click()}
-                    className="w-11 h-11 rounded-md border border-dashed border-border/60 bg-background/60 flex items-center justify-center text-muted-foreground/55 hover:text-foreground hover:border-foreground/35 hover:bg-muted/20 transition-colors"
+                    className="w-11 h-11 rounded-md border border-dashed border-border/60 bg-background/60 flex items-center justify-center text-muted-foreground/55 hover:text-foreground hover:border-foreground/35 hover:bg-[var(--interactive-hover)] transition-colors"
                     aria-label={t('essay_grading:topic.add_image')}
                   >
-                    <ImagePlus className="w-4 h-4" />
+                    <Image size={16} />
                   </button>
                 )}
               </div>
@@ -455,8 +455,8 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
                   <h3 className="text-sm font-medium text-foreground/70">{t('essay_grading:empty_state.title')}</h3>
                   <p className="text-xs text-muted-foreground/50 mt-1 max-w-[240px]">{t('essay_grading:empty_state.description')}</p>
                 </div>
-                <NotionButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} className="text-xs text-muted-foreground/70 hover:text-foreground hover:bg-muted/50 border border-border/30">
-                  <ImagePlus className="w-3.5 h-3.5" />
+                <NotionButton variant="ghost" size="sm" onClick={() => fileInputRef.current?.click()} className="text-xs text-muted-foreground/70 hover:text-foreground hover:bg-[var(--interactive-hover)] border border-border/30">
+                  <Image size={14} />
                   {t('essay_grading:empty_state.ocr_hint')}
                 </NotionButton>
               </div>
@@ -477,7 +477,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
               }}
               placeholder={t('essay_grading:input_section.placeholder')}
               className="w-full min-h-full resize-none overflow-hidden px-5 py-5 text-[15px] leading-[1.8] !border-0 !shadow-none !rounded-none !bg-transparent focus:!ring-0 focus:!ring-offset-0 focus-visible:!ring-0 focus-visible:!ring-offset-0 focus:!outline-none focus-visible:!outline-none selection:bg-primary/15 placeholder:text-muted-foreground/40"
-            />
+/>
           </CustomScrollArea>
         </UnifiedDragDropZone>
 
@@ -506,7 +506,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
             {safeInputText && (
               <CommonTooltip content={t('essay_grading:actions.clear')}>
                 <NotionButton variant="ghost" size="icon" iconOnly onClick={onClear} aria-label={t('common:aria.clear_content')} className="!h-6 !w-6 text-muted-foreground/50 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30">
-                  <Trash2 className="w-3.5 h-3.5" />
+                  <Trash size={14} />
                 </NotionButton>
               </CommonTooltip>
             )}
@@ -524,10 +524,10 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
               value={modelId || defaultModel?.id || ''}
               onChange={setModelId}
               disabled={isGrading}
-              triggerIcon={<Bot className="w-3.5 h-3.5 shrink-0 text-muted-foreground" />}
+              triggerIcon={<Robot size={14} className="shrink-0 text-muted-foreground" />}
               placeholder={t('essay_grading:model.select')}
               side="top"
-            />
+/>
           </div>
         )}
         
@@ -539,7 +539,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
           {isGrading ? (
             <CancelConfirmButton
               onCancel={onCancelGrading}
-            />
+/>
           ) : (
             <NotionButton
               variant="primary"
@@ -566,7 +566,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
           }
           e.target.value = '';
         }}
-      />
+/>
       {/* 题目参考材料图片上传输入 */}
       {onTopicFilesDropped && (
         <input
@@ -582,7 +582,7 @@ export const InputPanel = React.forwardRef<HTMLTextAreaElement, InputPanelProps>
             }
             e.target.value = '';
           }}
-        />
+/>
       )}
     </div>
   );

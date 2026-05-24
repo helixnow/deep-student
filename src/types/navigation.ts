@@ -10,11 +10,13 @@
 
 export type CurrentView =
   | 'chat-v2'           // Chat V2 正式入口（主入口）
+  | 'sandbox-workbench' // Sandbox 工作台（HTML / Preview workbench）
   | 'settings'
   | 'dashboard'
   | 'data-management'
   | 'task-dashboard'     // 制卡任务管理页面
   | 'template-management'
+  | 'ui-lab'            // UI 样式调试与 primitive 校对页面
   | 'template-json-preview'
   | 'crepe-demo'
   | 'pdf-reader'
@@ -22,7 +24,8 @@ export type CurrentView =
   | 'skills-management' // 技能管理页面
   | 'todo'              // 待办事项独立页面
   | 'chat-v2-test'      // Chat V2 集成测试页面（开发用）
-  | 'tree-test';          // 树形拖拽测试（开发用）
+  | 'tree-test'          // 树形拖拽测试（开发用）
+  | 'llm-playground';    // LLM 输出模拟游乐场（开发用）
 
 /**
  * 导航历史项：包含视图、参数和状态恢复函数

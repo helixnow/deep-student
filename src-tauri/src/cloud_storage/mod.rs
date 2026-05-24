@@ -195,7 +195,33 @@ pub async fn cloud_sync_upload(
     app_version: Option<String>,
     note: Option<String>,
 ) -> Result<UploadResult> {
-    let file_size = std::fs::metadata(&zip_path).map(|m| m.len()).unwrap_or(0);
+    // 如果配置了加密密码，先把 ZIP 加密到临时文件再上传
+    // 临时文件在 ZIP 附近创建，上传成功后删除
+    let mut encrypted_temp: Option<std::path::PathBuf> = None;
+    let actual_upload_path: std::path::PathBuf = if let Some(pwd) = config
+        .encryption_password
+        .as_deref()
+        .filter(|s| !s.is_empty())
+    {
+        tracing::info!("[CloudSync] 端到端加密已启用，加密上传...");
+        let plaintext = std::fs::read(&zip_path)
+            .map_err(|e| AppError::file_system(format!("读取 ZIP 失败: {}", e)))?;
+        let ciphertext = crate::crypto::backup_crypto::encrypt_backup(&plaintext, pwd)
+            .map_err(|e| AppError::internal(format!("加密备份失败: {}", e)))?;
+        // 写临时加密文件（同目录，确保同一文件系统 → 快）
+        let original = std::path::Path::new(&zip_path);
+        let temp_path = original.with_extension("zip.dsbk");
+        std::fs::write(&temp_path, &ciphertext)
+            .map_err(|e| AppError::file_system(format!("写入加密文件失败: {}", e)))?;
+        encrypted_temp = Some(temp_path.clone());
+        temp_path
+    } else {
+        std::path::Path::new(&zip_path).to_path_buf()
+    };
+
+    let file_size = std::fs::metadata(&actual_upload_path)
+        .map(|m| m.len())
+        .unwrap_or(0);
 
     let storage = create_storage(&config).await?;
     let manager = CloudSyncManager::new(storage, get_device_id());
@@ -232,14 +258,16 @@ pub async fn cloud_sync_upload(
         );
     });
 
-    let result = manager
-        .upload_with_progress(
-            std::path::Path::new(&zip_path),
-            app_version,
-            note,
-            Some(progress_cb),
-        )
-        .await?;
+    let upload_result = manager
+        .upload_with_progress(&actual_upload_path, app_version, note, Some(progress_cb))
+        .await;
+
+    // 无论成功失败都清理临时加密文件
+    if let Some(temp) = encrypted_temp {
+        let _ = std::fs::remove_file(&temp);
+    }
+
+    let result = upload_result?;
 
     emit_sync_progress(
         &app_handle,
@@ -308,6 +336,40 @@ pub async fn cloud_sync_download(
             Some(progress_cb),
         )
         .await?;
+
+    // 如果文件被加密（DSBK 魔数）则解密；未加密则原样保留
+    // 支持"用户上传时加密，下载设备未配置密码"的场景：返回明确错误
+    let downloaded_path = std::path::Path::new(&result.local_path);
+    let head = {
+        let mut buf = vec![0u8; 4];
+        if let Ok(mut f) = std::fs::File::open(downloaded_path) {
+            use std::io::Read;
+            let _ = f.read(&mut buf);
+        }
+        buf
+    };
+    let is_encrypted = crate::crypto::backup_crypto::is_encrypted_backup(&head);
+    if is_encrypted {
+        let pwd = config
+            .encryption_password
+            .as_deref()
+            .filter(|s| !s.is_empty());
+        let pwd = pwd.ok_or_else(|| {
+            AppError::configuration(
+                "云端备份已加密，但未提供解密密码。请在云存储配置里填写相同的加密密码后重试。"
+                    .to_string(),
+            )
+        })?;
+        tracing::info!("[CloudSync] 检测到加密备份，开始解密...");
+        let ciphertext = std::fs::read(downloaded_path)
+            .map_err(|e| AppError::file_system(format!("读取加密备份失败: {}", e)))?;
+        let plaintext =
+            crate::crypto::backup_crypto::decrypt_backup(&ciphertext, pwd).map_err(|e| {
+                AppError::validation(format!("解密备份失败（密码错或数据损坏）: {}", e))
+            })?;
+        std::fs::write(downloaded_path, &plaintext)
+            .map_err(|e| AppError::file_system(format!("写入解密后 ZIP 失败: {}", e)))?;
+    }
 
     emit_sync_progress(
         &app_handle,

@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import React from 'react';
 
-import type { Block } from '@/chat-v2/core/types';
+import type { Block } from '@/features/chat/core/types';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -25,7 +25,7 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-import { MemoryBlock } from '@/chat-v2/plugins/blocks/memory';
+import { MemoryBlock } from '@/features/chat/plugins/blocks/memory';
 
 function createMemoryBlock(overrides?: Partial<Block>): Block {
   return {

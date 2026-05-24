@@ -100,9 +100,9 @@ export const TooltipExamples: React.FC = () => {
             </button>
           </CommonTooltip>
 
-          <CommonTooltip content="500ms后显示" delay={500}>
+          <CommonTooltip content="默认500ms后显示">
             <button className="px-4 py-2 bg-orange-500 text-white rounded">
-              延迟500ms
+              默认延迟
             </button>
           </CommonTooltip>
         </div>
@@ -216,4 +216,3 @@ export const TooltipExamples: React.FC = () => {
 };
 
 export default TooltipExamples;
-

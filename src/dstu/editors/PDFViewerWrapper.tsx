@@ -9,7 +9,7 @@
 
 import React, { lazy, Suspense, useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Loader2, AlertCircle, RefreshCw } from 'lucide-react';
+import { CircleNotch, WarningCircle, ArrowClockwise } from '@phosphor-icons/react';
 import type { EditorProps, CreateEditorProps } from '../editorTypes';
 import { pathUtils } from '../utils/pathUtils';
 import { dstu } from '../api';
@@ -18,7 +18,7 @@ import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 
 // 懒加载 TextbookContentView（DSTU 原生实现）
-const TextbookContentView = lazy(() => import('@/components/learning-hub/apps/views/TextbookContentView'));
+const TextbookContentView = lazy(() => import('@/features/learning-hub/apps/views/TextbookContentView'));
 
 /**
  * PDF 查看器包装组件
@@ -77,7 +77,7 @@ export const PDFViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (prop
   if (isLoading) {
     return (
       <div className={cn('flex items-center justify-center h-full py-8', props.className)}>
-        <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+        <CircleNotch size={24} className="animate-spin text-muted-foreground" />
         <span className="ml-2 text-muted-foreground">{t('dstu:preview.loading')}</span>
       </div>
     );
@@ -88,7 +88,7 @@ export const PDFViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (prop
     const onClose = 'onClose' in props ? props.onClose : undefined;
     return (
       <div className={cn('flex flex-col items-center justify-center h-full py-8 gap-4', props.className)}>
-        <AlertCircle className="w-8 h-8 text-destructive" />
+        <WarningCircle size={32} className="text-destructive" />
         <span className="text-destructive text-center max-w-md">
           {error || t('textbook:errors.noFile')}
         </span>
@@ -97,12 +97,12 @@ export const PDFViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (prop
             className="inline-flex items-center gap-2 px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90"
             onClick={() => void loadPdf()}
           >
-            <RefreshCw className="w-4 h-4" />
+            <ArrowClockwise size={16} />
             {t('common:actions.retry')}
           </button>
           {onClose && (
             <button
-              className="px-4 py-2 border rounded-md hover:bg-muted"
+              className="px-4 py-2 border rounded-md hover:bg-[var(--interactive-hover)]"
               onClick={onClose}
             >
               {t('common:actions.close')}
@@ -120,7 +120,7 @@ export const PDFViewerWrapper: React.FC<EditorProps | CreateEditorProps> = (prop
     <Suspense
       fallback={
         <div className={cn('flex items-center justify-center h-full py-8', props.className)}>
-          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          <CircleNotch size={24} className="animate-spin text-muted-foreground" />
           <span className="ml-2 text-muted-foreground">{t('dstu:preview.loading')}</span>
         </div>
       }

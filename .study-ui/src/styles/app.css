@@ -1,0 +1,502 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+:root {
+  --app-font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Microsoft YaHei", sans-serif;
+  --app-font-scale: 1;
+  --app-interface-scale: 1;
+  --app-selection: rgba(10, 132, 255, 0.28);
+  --background: #FFFFFF;
+  --foreground: oklch(0.272 0.012 264.2);
+  --card: #FCFCFA;
+  --card-foreground: oklch(0.272 0.012 264.2);
+  --popover: #FCFCFA;
+  --popover-foreground: oklch(0.272 0.012 264.2);
+  --primary: oklch(0.52 0.16 257.8);
+  --primary-foreground: #FAFBFF;
+  --secondary: #F9F9F9;
+  --secondary-foreground: oklch(0.338 0.018 264.3);
+  --muted: #F1F1EE;
+  --muted-foreground: oklch(0.548 0.013 264.2);
+  --accent: #EFEFEA;
+  --accent-foreground: oklch(0.31 0.02 264.3);
+  --interactive-hover: #EBEAE5;
+  --interactive-selected: #DDDCD4;
+  --sidebar-hover: #F9F9F9;
+  --destructive: oklch(0.61 0.21 27.4);
+  --destructive-foreground: #FFFFFF;
+  --border: oklch(0.83 0.006 264.2 / 0.08);
+  --input: #F3F3EF;
+  --ring: oklch(0.67 0.115 255.8 / 0.34);
+  --overlay: rgba(248, 248, 244, 0.78);
+  --sidebar: #F3F3F3;
+  --sidebar-foreground: oklch(0.29 0.014 264.2);
+  --sidebar-muted: oklch(0.546 0.012 264.2);
+  --sidebar-border: oklch(0.83 0.006 264.2 / 0.08);
+  --sidebar-accent: #EFEFEA;
+  --sidebar-accent-foreground: oklch(0.328 0.018 264.2);
+  --scrollbar-thumb: oklch(0.58 0.012 264.1 / 0.18);
+  --scrollbar-thumb-hover: oklch(0.5 0.013 264.1 / 0.28);
+  --shell-backdrop: #ECECE7;
+  --shell-panel: #FFFFFF;
+  --shell-panel-strong: #FCFCFA;
+  --shell-rim: oklch(0.83 0.006 264.2 / 0.08);
+  --shell-float: #FCFCFA;
+  --shell-glow: transparent;
+  --shell-grid: transparent;
+  --shell-titlebar: #F8F8F4;
+  --shell-surface: #ECEFE8;
+  --corner-shadow: rgba(15, 23, 42, 0.24);
+  --radius-control: 0.5rem;
+  --radius-panel: 0.75rem;
+  --radius-section: 1rem;
+  --radius-page: 1.5rem;
+  --font-step-11: 0.6875rem;
+  --font-step-12: 0.75rem;
+  --font-step-14: 0.875rem;
+  --font-step-16: 1rem;
+  --font-step-18: 1.125rem;
+  --font-step-20: 1.25rem;
+  --font-step-24: 1.5rem;
+  --shadow-surface: 0 16px 32px rgba(15, 23, 42, 0.05);
+  --shadow-popover: 0 18px 36px rgba(15, 23, 42, 0.08);
+  --composer-focus-shadow-color: rgb(from var(--interactive-hover) r g b / 0.92);
+  --shadow-composer-focus: 0 6px 14px var(--composer-focus-shadow-color);
+  --safe-area-top: env(safe-area-inset-top, 0px);
+  --safe-area-right: env(safe-area-inset-right, 0px);
+  --safe-area-bottom: env(safe-area-inset-bottom, 0px);
+  --safe-area-left: env(safe-area-inset-left, 0px);
+  --layout-safe-area-top: var(--safe-area-top);
+  --layout-safe-area-right: var(--safe-area-right);
+  --layout-safe-area-bottom: var(--safe-area-bottom);
+  --layout-safe-area-left: var(--safe-area-left);
+  --layout-viewport-height: calc(100dvh - var(--layout-safe-area-top) - var(--layout-safe-area-bottom));
+  --page-gutter-inline: 2rem;
+  --page-gutter-block: 1.5rem;
+  --sidebar-mode: docked;
+  --sidebar-width: 17rem;
+  --layout-nav-width: var(--sidebar-width);
+  --workspace-max-width: 44rem;
+  --composer-max-width: 44rem;
+  --composer-min-height: 5rem;
+  --composer-bottom-offset: calc(1rem + var(--layout-safe-area-bottom));
+  --composer-border: #E9E9E9;
+  --composer-divider: color-mix(in oklab, var(--border) 100%, transparent);
+  --control-height-compact: 2rem;
+  --control-height-touch: 2.75rem;
+  --touch-target-size: var(--control-height-compact);
+  --button-height: 2rem;
+  --button-height-sm: 1.875rem;
+  --button-height-lg: 2.25rem;
+  --button-icon-size: 2rem;
+  --button-padding-x: 0.875rem;
+  --button-padding-x-sm: 0.75rem;
+  --button-padding-x-lg: 1rem;
+  --button-radius: 9px;
+  --button-prominent-bg: color-mix(in oklab, var(--primary) 90%, var(--background) 10%);
+  --button-prominent-hover-bg: color-mix(in oklab, var(--primary) 94%, var(--foreground) 6%);
+  --button-prominent-active-bg: color-mix(in oklab, var(--primary) 84%, var(--foreground) 16%);
+  --button-prominent-border: color-mix(in oklab, var(--primary) 34%, var(--border) 66%);
+  --button-tonal-bg: color-mix(in oklab, var(--secondary) 82%, var(--background) 18%);
+  --button-tonal-hover-bg: color-mix(in oklab, var(--muted) 78%, var(--background) 22%);
+  --button-tonal-active-bg: color-mix(in oklab, var(--accent) 82%, var(--background) 18%);
+  --button-tonal-border: color-mix(in oklab, var(--border) 78%, var(--foreground) 6%);
+  --button-outline-bg: color-mix(in oklab, var(--background) 92%, var(--secondary) 8%);
+  --button-outline-hover-bg: color-mix(in oklab, var(--interactive-hover) 84%, var(--background) 16%);
+  --button-outline-active-bg: color-mix(in oklab, var(--interactive-selected) 78%, var(--background) 22%);
+  --button-outline-border: color-mix(in oklab, var(--border) 82%, var(--foreground) 8%);
+  --button-plain-bg: transparent;
+  --button-plain-border: transparent;
+  --button-plain-hover-bg: color-mix(in oklab, var(--interactive-hover) 88%, var(--background) 12%);
+  --button-plain-active-bg: color-mix(in oklab, var(--interactive-selected) 80%, var(--background) 20%);
+  --button-destructive-bg: color-mix(in oklab, var(--destructive) 94%, var(--background) 6%);
+  --button-destructive-hover-bg: color-mix(in oklab, var(--destructive) 90%, var(--foreground) 10%);
+  --button-destructive-active-bg: color-mix(in oklab, var(--destructive) 82%, var(--foreground) 18%);
+  --button-destructive-border: color-mix(in oklab, var(--destructive) 30%, var(--border) 70%);
+}
+
+[data-form-factor="phone"] {
+  --page-gutter-inline: 1rem;
+  --page-gutter-block: 0.875rem;
+  --workspace-max-width: 100%;
+  --composer-max-width: calc(100vw - (var(--page-gutter-inline) * 2) - var(--layout-safe-area-left) - var(--layout-safe-area-right));
+  --composer-bottom-offset: calc(max(1.5rem, var(--layout-safe-area-bottom)) + 0.5rem);
+  --touch-target-size: var(--control-height-touch);
+}
+
+[data-form-factor="tablet"] {
+  --page-gutter-inline: 1.5rem;
+  --page-gutter-block: 1.25rem;
+  --workspace-max-width: 48rem;
+  --composer-max-width: min(44rem, calc(100vw - (var(--page-gutter-inline) * 2) - var(--layout-safe-area-left) - var(--layout-safe-area-right)));
+  --composer-bottom-offset: calc(1rem + var(--layout-safe-area-bottom));
+  --touch-target-size: var(--control-height-touch);
+}
+
+[data-form-factor="desktop"] {
+  --page-gutter-inline: 2rem;
+  --page-gutter-block: 1.5rem;
+  --workspace-max-width: 44rem;
+  --composer-max-width: 44rem;
+  --composer-bottom-offset: calc(1rem + var(--layout-safe-area-bottom));
+  --touch-target-size: var(--control-height-compact);
+}
+
+[data-sidebar-mode="drawer"] {
+  --sidebar-mode: drawer;
+  --sidebar-width: min(92vw, 19rem);
+  --layout-nav-width: var(--sidebar-width);
+}
+
+[data-sidebar-mode="docked"] {
+  --sidebar-mode: docked;
+  --sidebar-width: 17rem;
+  --layout-nav-width: var(--sidebar-width);
+}
+
+[data-density="touch"] {
+  --touch-target-size: var(--control-height-touch);
+}
+
+[data-theme="dark"] {
+  --app-selection: rgba(115, 174, 255, 0.28);
+  --background: #181818;
+  --foreground: #F5F5F5;
+  --card: #20201E;
+  --card-foreground: #F5F5F5;
+  --popover: #20201E;
+  --popover-foreground: #F5F5F5;
+  --primary: oklch(0.78 0.09 255.4);
+  --primary-foreground: #101827;
+  --secondary: #232321;
+  --secondary-foreground: #F5F5F5;
+  --muted: #232321;
+  --muted-foreground: #9A9A9A;
+  --accent: #262624;
+  --accent-foreground: #F5F5F5;
+  --interactive-hover: rgba(255, 255, 255, 0.08);
+  --interactive-selected: rgba(255, 255, 255, 0.14);
+  --sidebar-hover: #2A2A2A;
+  --destructive: oklch(0.68 0.19 27.9);
+  --destructive-foreground: #FFFFFF;
+  --border: oklch(0.7 0.008 264.2 / 0.12);
+  --input: #242422;
+  --ring: oklch(0.74 0.1 255.4 / 0.3);
+  --overlay: rgba(27, 27, 25, 0.84);
+  --sidebar: #000000;
+  --sidebar-foreground: #FFFFFF;
+  --sidebar-muted: rgba(255, 255, 255, 0.5);
+  --sidebar-border: oklch(0.7 0.008 264.2 / 0.12);
+  --sidebar-accent: #20201E;
+  --sidebar-accent-foreground: #FFFFFF;
+  --scrollbar-thumb: rgba(255, 255, 255, 0.18);
+  --scrollbar-thumb-hover: rgba(255, 255, 255, 0.28);
+  --shell-backdrop: #141413;
+  --shell-panel: #1D1D1B;
+  --shell-panel-strong: #222220;
+  --shell-rim: oklch(0.7 0.008 264.2 / 0.12);
+  --shell-float: #232321;
+  --shell-glow: transparent;
+  --shell-grid: transparent;
+  --shell-titlebar: #1D1D1B;
+  --shell-surface: #171917;
+  --corner-shadow: rgba(0, 0, 0, 0.5);
+  --button-prominent-bg: color-mix(in oklab, var(--primary) 74%, var(--background) 26%);
+  --button-prominent-hover-bg: color-mix(in oklab, var(--primary) 78%, var(--background) 22%);
+  --button-prominent-active-bg: color-mix(in oklab, var(--primary) 68%, var(--background) 32%);
+  --button-prominent-border: color-mix(in oklab, var(--primary) 40%, var(--border) 60%);
+  --button-tonal-bg: color-mix(in oklab, var(--secondary) 88%, var(--background) 12%);
+  --button-tonal-hover-bg: color-mix(in oklab, var(--interactive-hover) 84%, var(--background) 16%);
+  --button-tonal-active-bg: color-mix(in oklab, var(--interactive-selected) 78%, var(--background) 22%);
+  --button-tonal-border: color-mix(in oklab, var(--border) 76%, var(--foreground) 10%);
+  --button-outline-bg: color-mix(in oklab, var(--background) 72%, var(--secondary) 28%);
+  --button-outline-hover-bg: color-mix(in oklab, var(--interactive-hover) 84%, var(--background) 16%);
+  --button-outline-active-bg: color-mix(in oklab, var(--interactive-selected) 80%, var(--background) 20%);
+  --button-outline-border: color-mix(in oklab, var(--border) 74%, var(--foreground) 14%);
+  --button-plain-hover-bg: color-mix(in oklab, var(--interactive-hover) 92%, var(--background) 8%);
+  --button-plain-active-bg: color-mix(in oklab, var(--interactive-selected) 86%, var(--background) 14%);
+  --button-destructive-bg: color-mix(in oklab, var(--destructive) 76%, var(--background) 24%);
+  --button-destructive-hover-bg: color-mix(in oklab, var(--destructive) 80%, var(--background) 20%);
+  --button-destructive-active-bg: color-mix(in oklab, var(--destructive) 70%, var(--background) 30%);
+  --button-destructive-border: color-mix(in oklab, var(--destructive) 36%, var(--border) 64%);
+  --shadow-composer-focus: none;
+  --composer-border: rgba(255, 255, 255, 0.08);
+  --composer-divider: transparent;
+}
+
+[data-window-background="translucent"] {
+  --background: #F7F7F4;
+  --secondary: #F1F1EE;
+  --muted: #ECECE7;
+  --accent: #EBEBE6;
+  --sidebar: #F2F2EE;
+  --sidebar-hover: #EBEBE6;
+  --sidebar-accent: #ECECE7;
+  --shell-backdrop: #E8E9E4;
+  --shell-panel: #F2F3EF;
+  --shell-panel-strong: #FBFBF8;
+  --shell-float: #FEFEFC;
+  --shell-titlebar: #ECEDE8;
+  --shell-surface: #ECEDE8;
+}
+
+[data-platform="windows"][data-window-background="translucent"] {
+  --background: #F5F6F8;
+  --secondary: #EFF1F4;
+  --muted: #E9EDF2;
+  --accent: #E7EBF1;
+  --sidebar: #EEF1F5;
+  --sidebar-hover: #E7EBF1;
+  --sidebar-accent: #E9EDF2;
+  --shell-backdrop: #E7EBF1;
+  --shell-panel: #F2F4F8;
+  --shell-panel-strong: #FAFBFD;
+  --shell-float: #FFFFFF;
+  --shell-titlebar: #F2F4F8;
+  --shell-surface: #E9EDF3;
+}
+
+[data-theme="dark"][data-window-background="translucent"] {
+  --background: #1A1C1A;
+  --secondary: #202320;
+  --muted: #1E211E;
+  --accent: #212421;
+  --sidebar: #171917;
+  --sidebar-hover: #202320;
+  --sidebar-accent: #1E211E;
+  --shell-backdrop: #141614;
+  --shell-panel: #1A1D1A;
+  --shell-panel-strong: #1F211F;
+  --shell-float: #222522;
+  --shell-titlebar: #181B18;
+  --shell-surface: #161816;
+}
+
+[data-theme="dark"][data-platform="windows"][data-window-background="translucent"] {
+  --background: #171A1F;
+  --secondary: #1D2127;
+  --muted: #1A1F25;
+  --accent: #20252D;
+  --sidebar: #161A20;
+  --sidebar-hover: #20252D;
+  --sidebar-accent: #1B2027;
+  --shell-backdrop: #13171C;
+  --shell-panel: #1A1F26;
+  --shell-panel-strong: #20262E;
+  --shell-float: #232A33;
+  --shell-titlebar: #181D24;
+  --shell-surface: #15191F;
+}
+
+[data-window-background="opaque"] {
+  --sidebar: #F3F3F3;
+  --shell-backdrop: #F9F9F9;
+  --shell-panel: #FFFFFF;
+  --shell-panel-strong: #FFFFFF;
+  --shell-float: #FFFFFF;
+  --shell-titlebar: #FFFFFF;
+  --shell-surface: #F3F3F3;
+}
+
+[data-theme="dark"][data-window-background="opaque"] {
+  --sidebar: #000000;
+  --shell-backdrop: #181818;
+  --shell-panel: #181818;
+  --shell-panel-strong: #181818;
+  --shell-float: #181818;
+  --shell-titlebar: #181818;
+  --shell-surface: #000000;
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  [data-window-background="translucent"] {
+    --shell-backdrop: color-mix(in oklab, var(--shell-backdrop) 72%, var(--background) 28%);
+    --shell-panel: color-mix(in oklab, var(--shell-panel) 82%, var(--background) 18%);
+    --shell-panel-strong: color-mix(in oklab, var(--shell-panel-strong) 88%, var(--background) 12%);
+    --shell-titlebar: color-mix(in oklab, var(--shell-titlebar) 84%, var(--background) 16%);
+    --shell-float: color-mix(in oklab, var(--shell-float) 90%, var(--background) 10%);
+    --overlay: color-mix(in oklab, var(--overlay) 78%, var(--background) 22%);
+  }
+
+  html[data-window-background="translucent"],
+  html[data-window-background="translucent"] body,
+  html[data-window-background="translucent"] #root {
+    background: var(--shell-backdrop);
+  }
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-interactive-hover: var(--interactive-hover);
+  --color-interactive-selected: var(--interactive-selected);
+  --color-sidebar-hover: var(--sidebar-hover);
+  --color-destructive: var(--destructive);
+  --color-destructive-foreground: var(--destructive-foreground);
+  --color-border: var(--border);
+  --color-composer-border: var(--composer-border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+  --color-overlay: var(--overlay);
+  --color-sidebar: var(--sidebar);
+  --color-sidebar-foreground: var(--sidebar-foreground);
+  --color-sidebar-muted: var(--sidebar-muted);
+  --color-sidebar-border: var(--sidebar-border);
+  --color-sidebar-accent: var(--sidebar-accent);
+  --color-sidebar-accent-foreground: var(--sidebar-accent-foreground);
+  --color-shell-backdrop: var(--shell-backdrop);
+  --color-shell-panel: var(--shell-panel);
+  --color-shell-panel-strong: var(--shell-panel-strong);
+  --color-shell-rim: var(--shell-rim);
+  --color-shell-float: var(--shell-float);
+  --color-shell-glow: var(--shell-glow);
+  --color-shell-grid: var(--shell-grid);
+  --color-shell-titlebar: var(--shell-titlebar);
+  --color-shell-surface: var(--shell-surface);
+}
+
+@media (prefers-reduced-transparency: reduce) {
+  :root {
+    --shell-backdrop: color-mix(in oklab, var(--background) 92%, var(--secondary) 8%);
+    --shell-panel: color-mix(in oklab, var(--background) 96%, var(--secondary) 4%);
+    --shell-panel-strong: color-mix(in oklab, var(--background) 98%, var(--card) 2%);
+    --shell-titlebar: color-mix(in oklab, var(--background) 95%, var(--secondary) 5%);
+    --shell-float: color-mix(in oklab, var(--background) 97%, var(--card) 3%);
+    --overlay: color-mix(in oklab, var(--background) 82%, var(--foreground) 18%);
+  }
+
+  html[data-window-background="translucent"],
+  html[data-window-background="translucent"] body,
+  html[data-window-background="translucent"] #root {
+    background: var(--shell-backdrop);
+  }
+}
+
+@layer base {
+  /* Suppress all transitions until the app is ready to prevent
+     visible color flashes while native vibrancy initializes. */
+  html:not([data-ready]) * {
+    transition-duration: 0s !important;
+  }
+
+  * {
+    box-sizing: border-box;
+    border-color: var(--border);
+  }
+
+  html,
+  body,
+  #root {
+    min-height: 100%;
+  }
+
+  html {
+    background: var(--background);
+    color: var(--foreground);
+    font-size: calc(16px * var(--app-font-scale));
+  }
+
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    overflow: hidden;
+    background: var(--background);
+    color: var(--foreground);
+    font-family: var(--app-font-family);
+    text-rendering: optimizeLegibility;
+  }
+
+  [data-font-smoothing="macos-native"] body {
+    -webkit-font-smoothing: auto;
+    -moz-osx-font-smoothing: auto;
+  }
+
+  [data-font-smoothing="macos-grayscale"] body {
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  html[data-window-background="translucent"],
+  html[data-window-background="translucent"] body,
+  html[data-window-background="translucent"] #root {
+    background: transparent;
+  }
+
+  html[data-window-background="opaque"],
+  html[data-window-background="opaque"] body,
+  html[data-window-background="opaque"] #root {
+    background: var(--background);
+  }
+
+  ::selection {
+    background: var(--app-selection);
+    color: var(--foreground);
+  }
+}
+
+@layer utilities {
+  .settings-nav-item-label {
+    color: var(--color-sidebar-foreground);
+  }
+
+  [data-theme="dark"] .settings-nav-item-label {
+    color: var(--color-sidebar-foreground);
+  }
+
+  :root {
+    /* OverlayScrollbars → project color bridge (v1.1) */
+    --os-handle-bg: var(--scrollbar-thumb);
+    --os-handle-bg-hover: var(--scrollbar-thumb-hover);
+    --os-handle-bg-active: var(--scrollbar-thumb-hover);
+    --os-size: 6px;
+    --os-padding-perpendicular: 2px;
+    --os-padding-axis: 2px;
+    --os-handle-min-size: 36px;
+    --os-handle-border-radius: 999px;
+    --scrollbar-overlay-z: 20;
+  }
+
+  .scroll-area--native {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scrollbar-thumb) transparent;
+    scrollbar-gutter: stable;
+  }
+
+  .scroll-area--native::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+
+  .scroll-area--native::-webkit-scrollbar-thumb {
+    background: var(--scrollbar-thumb);
+    border-radius: 999px;
+  }
+
+  .scroll-area--native::-webkit-scrollbar-thumb:hover {
+    background: var(--scrollbar-thumb-hover);
+  }
+
+  .scroll-area--native::-webkit-scrollbar-track {
+    background: transparent;
+  }
+}
+
+@media print {
+  [data-overlayscrollbars-viewport] {
+    overflow: visible !important;
+    height: auto !important;
+    max-height: none !important;
+  }
+}

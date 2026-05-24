@@ -6,7 +6,7 @@
 import React, { useMemo, useCallback } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useTranslation } from 'react-i18next';
-import { Check, ChevronDown } from 'lucide-react';
+import { Check, CaretDown } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import {
   AppMenu,
@@ -57,6 +57,10 @@ export interface AppSelectProps {
   triggerIcon?: React.ReactNode;
   /** 下拉菜单展开/收起回调 */
   onOpenChange?: (open: boolean) => void;
+  /** 下拉面板的额外内联样式（如在高 z-index popover 中需要覆盖 z-index） */
+  popoverStyle?: React.CSSProperties;
+  /** 下拉面板的额外类名 */
+  popoverClassName?: string;
 }
 
 /**
@@ -110,6 +114,8 @@ export function AppSelect({
   size = 'default',
   triggerIcon,
   onOpenChange,
+  popoverStyle,
+  popoverClassName,
 }: AppSelectProps) {
   const { t } = useTranslation('app_menu');
 
@@ -164,8 +170,8 @@ export function AppSelect({
   // 变体样式
   const variantClasses = {
     default: 'bg-primary text-primary-foreground hover:bg-primary/90',
-    outline: 'border border-input bg-background hover:bg-accent hover:text-accent-foreground',
-    ghost: 'hover:bg-accent hover:text-accent-foreground',
+    outline: 'border border-input bg-background hover:bg-[var(--interactive-hover)] hover:text-accent-foreground',
+    ghost: 'hover:bg-[var(--interactive-hover)] hover:text-accent-foreground',
   };
 
   // 渲染选项
@@ -213,11 +219,11 @@ export function AppSelect({
               {selectedLabel || resolvedPlaceholder}
             </span>
           </span>
-          <ChevronDown className="h-4 w-4 shrink-0 opacity-50" />
+          <CaretDown size={16} className="shrink-0 opacity-50" />
         </NotionButton>
       </AppMenuTrigger>
 
-      <AppMenuContent align={align} width={width} maxHeight={360}>
+      <AppMenuContent align={align} width={width} maxHeight={360} className={popoverClassName} style={popoverStyle}>
         {/* 分组模式 */}
         {groups ? (
           groups.map((group, groupIndex) => (

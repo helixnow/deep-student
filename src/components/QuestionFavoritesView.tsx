@@ -20,14 +20,13 @@ import {
 } from '@/components/ui/shad/Card';
 import {
   Star,
-  Loader2,
-  ChevronRight,
-  StarOff,
+  CircleNotch,
+  CaretRight,
   CheckCircle,
   XCircle,
-  AlertCircle,
-  History,
-} from 'lucide-react';
+  WarningCircle,
+  ClockCounterClockwise,
+} from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import type { Question as ApiQuestion, QuestionStatus } from '@/api/questionBankApi';
@@ -145,7 +144,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
   const renderQuestionCard = (question: ApiQuestion) => (
     <Card
       key={question.id}
-      className="cursor-pointer hover:bg-muted/50 transition-colors"
+      className="cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
       onClick={() => onSelectQuestion?.(question)}
     >
       <CardHeader className="p-3 pb-2">
@@ -162,19 +161,19 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
           <NotionButton
             variant="ghost"
             size="icon"
-            className="h-8 w-8 flex-shrink-0"
+ className="w-8 h-8 flex-shrink-0"
             title={t('exam_sheet:questionBank.history.title', '历史记录')}
             onClick={(e) => {
               e.stopPropagation();
               onViewHistory?.(question.id);
             }}
           >
-            <History className="w-4 h-4 text-muted-foreground" />
+            <ClockCounterClockwise size={16} className="text-muted-foreground" />
           </NotionButton>
           <NotionButton
             variant="ghost"
             size="icon"
-            className="h-8 w-8 flex-shrink-0"
+ className="w-8 h-8 flex-shrink-0"
             disabled={!onToggleFavorite || actionLoading === question.id}
             onClick={(e) => {
               e.stopPropagation();
@@ -182,9 +181,9 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
             }}
           >
             {actionLoading === question.id ? (
-              <Loader2 className="w-4 h-4 animate-spin" />
+              <CircleNotch size={16} className="animate-spin" />
             ) : (
-              <StarOff className="w-4 h-4 text-yellow-500" />
+              <Star size={16} className="text-yellow-500" />
             )}
           </NotionButton>
         </div>
@@ -196,13 +195,13 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
               {t(statusLabelKeys[question.status])}
             </Badge>
             {question.isCorrect === true && (
-              <CheckCircle className="w-3.5 h-3.5 text-success" />
+              <CheckCircle size={14} className="text-success" />
             )}
             {question.isCorrect === false && (
-              <XCircle className="w-3.5 h-3.5 text-red-500" />
+              <XCircle size={14} className="text-red-500" />
             )}
           </div>
-          <ChevronRight className="w-4 h-4 text-muted-foreground" />
+          <CaretRight size={16} className="text-muted-foreground" />
         </div>
       </CardContent>
     </Card>
@@ -211,7 +210,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
   return (
     <div className="h-full flex flex-col p-3">
       <div className="flex items-center gap-2 mb-3">
-        <Star className="w-4 h-4" />
+        <Star size={16} />
         <span className="text-sm font-medium">
           {t('exam_sheet:questionBank.favorites.title', '收藏')}
         </span>
@@ -223,11 +222,11 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
       </div>
       {isLoading ? (
         <div className="flex items-center justify-center py-12">
-          <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+          <CircleNotch size={24} className="animate-spin text-muted-foreground" />
         </div>
       ) : error ? (
         <div className="flex flex-col items-center justify-center py-12 text-center">
-          <AlertCircle className="w-10 h-10 text-destructive/70 mb-3" />
+          <WarningCircle size={40} className="text-destructive/70 mb-3" />
           <p className="text-sm text-muted-foreground">
             {t('exam_sheet:questionBank.favorites.loadFailed', '收藏加载失败')}
           </p>
@@ -237,7 +236,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
         </div>
       ) : favorites.length === 0 ? (
         <div className="flex flex-col items-center justify-center py-12 text-center">
-          <Star className="w-12 h-12 text-muted-foreground/50 mb-3" />
+          <Star size={48} className="text-muted-foreground/50 mb-3" />
           <p className="text-sm text-muted-foreground">
             {t('exam_sheet:questionBank.favorites.empty', '暂无收藏题目')}
           </p>
@@ -250,7 +249,7 @@ export const QuestionFavoritesView: React.FC<QuestionFavoritesViewProps> = ({
           <div className="space-y-2 pr-2">
             {totalCount > PAGE_SIZE && (
               <div className="flex items-center gap-1.5 px-2 py-1.5 mb-1 rounded-md bg-warning/10 text-warning">
-                <AlertCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                <WarningCircle size={14} className="flex-shrink-0" />
                 <span className="text-xs">
                   {t(
                     'exam_sheet:questionBank.favorites.truncated',

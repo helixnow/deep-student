@@ -205,9 +205,8 @@ impl VfsMultimodalService {
         let total_pages = pages.len() as i32;
         let skipped_pages = failed_pages.len() as i32;
         let embed_progress_tx = if progress_tx.is_some() {
-            let (tx, mut rx) = mpsc::unbounded_channel::<
-                crate::multimodal::embedding_service::EmbeddingProgress,
-            >();
+            let (tx, mut rx) =
+                mpsc::channel::<crate::multimodal::embedding_service::EmbeddingProgress>(64);
             let progress_tx = progress_tx.clone();
             let source_type = resource_type.to_string();
             let source_id = resource_id.to_string();

@@ -16,19 +16,7 @@ use std::collections::VecDeque;
 use std::sync::{Arc, Mutex, OnceLock};
 use tauri::Manager;
 
-#[derive(Debug, Clone)]
-struct PendingUsageRecord {
-    caller_type: CallerType,
-    model_id: String,
-    prompt_tokens: u32,
-    completion_tokens: u32,
-    reasoning_tokens: Option<u32>,
-    cached_tokens: Option<u32>,
-    session_id: Option<String>,
-    duration_ms: Option<u64>,
-    success: bool,
-    error_message: Option<String>,
-}
+type PendingUsageRecord = UsageRecord;
 
 const MAX_PENDING_USAGE_RECORDS: usize = 1000;
 
@@ -65,23 +53,53 @@ fn flush_pending(collector: &Arc<UsageCollector>) -> usize {
     };
 
     for record in &drained {
-        collector.record_from_api_response_extended(
-            record.caller_type.clone(),
-            &record.model_id,
-            record.prompt_tokens,
-            record.completion_tokens,
-            record.reasoning_tokens,
-            record.cached_tokens,
-            record.session_id.clone(),
-            None,
-            record.duration_ms,
-            None,
-            record.success,
-            record.error_message.clone(),
-        );
+        collector.record(record.clone());
     }
 
     drained.len()
+}
+
+pub fn record_usage_record(record: UsageRecord) {
+    match crate::get_global_app_handle() {
+        Some(app_handle) => match app_handle.try_state::<Arc<UsageCollector>>() {
+            Some(collector) => {
+                let flushed = flush_pending(&collector);
+                if flushed > 0 {
+                    log::info!(
+                        "[LLM Usage] Flushed {} pending usage records before writing current record",
+                        flushed
+                    );
+                }
+
+                collector.record(record);
+                log::debug!("[LLM Usage] 使用量记录成功");
+            }
+            None => {
+                let model_id = record.model_id.clone();
+                let prompt_tokens = record.prompt_tokens;
+                let completion_tokens = record.completion_tokens;
+                enqueue_pending(record);
+                log::warn!(
+                    "[LLM Usage] UsageCollector 未初始化，已缓存记录: model={}, tokens={}+{}",
+                    model_id,
+                    prompt_tokens,
+                    completion_tokens
+                );
+            }
+        },
+        None => {
+            let model_id = record.model_id.clone();
+            let prompt_tokens = record.prompt_tokens;
+            let completion_tokens = record.completion_tokens;
+            enqueue_pending(record);
+            log::warn!(
+                "[LLM Usage] app_handle 不可用，已缓存记录: model={}, tokens={}+{}",
+                model_id,
+                prompt_tokens,
+                completion_tokens
+            );
+        }
+    }
 }
 
 /// 记录 LLM 使用量到数据库
@@ -109,66 +127,30 @@ pub fn record_llm_usage(
         success
     );
 
-    let record = PendingUsageRecord {
+    let mut record = UsageRecord::new(
         caller_type,
-        model_id: model_id.to_string(),
+        model_id.to_string(),
         prompt_tokens,
         completion_tokens,
-        reasoning_tokens,
-        cached_tokens,
-        session_id,
-        duration_ms,
-        success,
-        error_message,
-    };
+    );
 
-    match crate::get_global_app_handle() {
-        Some(app_handle) => match app_handle.try_state::<Arc<UsageCollector>>() {
-            Some(collector) => {
-                let flushed = flush_pending(&collector);
-                if flushed > 0 {
-                    log::info!(
-                        "[LLM Usage] Flushed {} pending usage records before writing current record",
-                        flushed
-                    );
-                }
-
-                collector.record_from_api_response_extended(
-                    record.caller_type,
-                    &record.model_id,
-                    record.prompt_tokens,
-                    record.completion_tokens,
-                    record.reasoning_tokens,
-                    record.cached_tokens,
-                    record.session_id,
-                    None,
-                    record.duration_ms,
-                    None,
-                    record.success,
-                    record.error_message,
-                );
-                log::debug!("[LLM Usage] 使用量记录成功");
-            }
-            None => {
-                enqueue_pending(record);
-                log::warn!(
-                    "[LLM Usage] UsageCollector 未初始化，已缓存记录: model={}, tokens={}+{}",
-                    model_id,
-                    prompt_tokens,
-                    completion_tokens
-                );
-            }
-        },
-        None => {
-            enqueue_pending(record);
-            log::warn!(
-                "[LLM Usage] app_handle 不可用，已缓存记录: model={}, tokens={}+{}",
-                model_id,
-                prompt_tokens,
-                completion_tokens
-            );
-        }
+    if let Some(tokens) = reasoning_tokens {
+        record = record.with_reasoning_tokens(tokens);
     }
+    if let Some(tokens) = cached_tokens {
+        record = record.with_cached_tokens(tokens);
+    }
+    if let Some(sid) = session_id {
+        record = record.with_caller_id(sid);
+    }
+    if let Some(duration) = duration_ms {
+        record = record.with_duration(duration);
+    }
+    if !success {
+        record = record.with_error(error_message.unwrap_or_else(|| "Unknown error".to_string()));
+    }
+
+    record_usage_record(record);
 }
 
 #[cfg(test)]
@@ -188,16 +170,23 @@ mod tests {
 
         for i in 0..(MAX_PENDING_USAGE_RECORDS + 10) {
             enqueue_pending(PendingUsageRecord {
+                id: UsageRecord::generate_id(),
                 caller_type: CallerType::ChatV2,
+                caller_id: None,
                 model_id: format!("m-{}", i),
+                config_id: None,
+                provider_id: None,
                 prompt_tokens: 1,
                 completion_tokens: 1,
+                total_tokens: 2,
                 reasoning_tokens: None,
                 cached_tokens: None,
-                session_id: None,
+                estimated_cost_usd: None,
                 duration_ms: None,
                 success: true,
                 error_message: None,
+                created_at: chrono::Utc::now(),
+                workspace_id: None,
             });
         }
 

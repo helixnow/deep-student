@@ -5,13 +5,13 @@
  */
 
 import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
-import { modeRegistry } from '@/chat-v2/registry/modeRegistry';
-import type { ChatStore } from '@/chat-v2/core/types';
-import type { TextbookModeState } from '@/chat-v2/plugins/modes/textbook';
+import { modeRegistry } from '@/features/chat/registry/modeRegistry';
+import type { ChatStore } from '@/features/chat/core/types';
+import type { TextbookModeState } from '@/features/chat/plugins/modes/textbook';
 import {
   createInitialTextbookModeState,
   reloadTextbook,
-} from '@/chat-v2/plugins/modes/textbook';
+} from '@/features/chat/plugins/modes/textbook';
 
 // ============================================================================
 // Mock Store 工厂
@@ -136,7 +136,7 @@ describe('TextbookModePlugin', () => {
   describe('registry', () => {
     it('should NOT register textbook as a standalone mode', async () => {
       // textbook.ts 已明确声明：textbook 不再作为独立模式注册
-      await import('@/chat-v2/plugins/modes/textbook');
+      await import('@/features/chat/plugins/modes/textbook');
       expect(modeRegistry.has('textbook')).toBe(false);
     });
   });
@@ -188,7 +188,7 @@ describe('TextbookModePlugin', () => {
 
   describe('setCurrentPage', () => {
     it('should set currentPage via updateModeState', async () => {
-      const { setCurrentPage } = await import('@/chat-v2/plugins/modes/textbook');
+      const { setCurrentPage } = await import('@/features/chat/plugins/modes/textbook');
 
       const mockStore = createMockStore();
       const modeState = mockStore.modeState as unknown as TextbookModeState;
@@ -201,7 +201,7 @@ describe('TextbookModePlugin', () => {
     });
 
     it('should clamp page number to valid range', async () => {
-      const { setCurrentPage } = await import('@/chat-v2/plugins/modes/textbook');
+      const { setCurrentPage } = await import('@/features/chat/plugins/modes/textbook');
 
       const mockStore = createMockStore();
       const modeState = mockStore.modeState as unknown as TextbookModeState;
@@ -216,7 +216,7 @@ describe('TextbookModePlugin', () => {
     });
 
     it('should not set page below 1', async () => {
-      const { setCurrentPage } = await import('@/chat-v2/plugins/modes/textbook');
+      const { setCurrentPage } = await import('@/features/chat/plugins/modes/textbook');
 
       const mockStore = createMockStore();
       const modeState = mockStore.modeState as unknown as TextbookModeState;
@@ -230,7 +230,7 @@ describe('TextbookModePlugin', () => {
 
   describe('helper functions', () => {
     it('goToPreviousPage should decrease page number', async () => {
-      const { goToPreviousPage } = await import('@/chat-v2/plugins/modes/textbook');
+      const { goToPreviousPage } = await import('@/features/chat/plugins/modes/textbook');
 
       const mockStore = createMockStore();
       const modeState = mockStore.modeState as unknown as TextbookModeState;
@@ -243,7 +243,7 @@ describe('TextbookModePlugin', () => {
     });
 
     it('goToNextPage should increase page number', async () => {
-      const { goToNextPage } = await import('@/chat-v2/plugins/modes/textbook');
+      const { goToNextPage } = await import('@/features/chat/plugins/modes/textbook');
 
       const mockStore = createMockStore();
       const modeState = mockStore.modeState as unknown as TextbookModeState;
@@ -256,7 +256,7 @@ describe('TextbookModePlugin', () => {
     });
 
     it('getCurrentPageImageUrl should return correct URL', async () => {
-      const { getCurrentPageImageUrl } = await import('@/chat-v2/plugins/modes/textbook');
+      const { getCurrentPageImageUrl } = await import('@/features/chat/plugins/modes/textbook');
 
       const mockStore = createMockStore();
       const modeState = mockStore.modeState as unknown as TextbookModeState;
@@ -271,7 +271,7 @@ describe('TextbookModePlugin', () => {
     });
 
     it('isTextbookLoaded should return correct status', async () => {
-      const { isTextbookLoaded } = await import('@/chat-v2/plugins/modes/textbook');
+      const { isTextbookLoaded } = await import('@/features/chat/plugins/modes/textbook');
 
       const mockStore = createMockStore();
       const modeState = mockStore.modeState as unknown as TextbookModeState;

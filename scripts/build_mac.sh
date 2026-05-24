@@ -34,8 +34,8 @@ cd "$REPO_ROOT"
 
 if [[ -z "${SKIP_BUILD:-}" ]]; then
   if [[ -z "${SKIP_ICON_GENERATION:-}" ]]; then
-    if [[ ! -f "app-icon.png" ]]; then
-      warn "未找到 app-icon.png，将使用现有图标"
+    if [[ ! -f "public/app-icon.png" ]]; then
+      warn "未找到 public/app-icon.png，将使用现有图标"
     else
       say "Generating icons (tauri icon)..."
       npm run icons || warn "图标生成失败，将使用现有图标"

@@ -15,20 +15,20 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Badge } from '@/components/ui/shad/Badge';
 import {
-  ListOrdered,
+  ListNumbers,
   Shuffle,
-  RotateCcw,
+  ArrowCounterClockwise,
   Tag,
   Clock,
   FileText,
   Target,
-  FileDown,
-  Loader2,
+  DownloadSimple,
+  CircleNotch,
   BookOpen,
-  ChevronLeft,
+  CaretLeft,
   Play,
-  Sparkles,
-} from 'lucide-react';
+  Sparkle,
+} from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useQuestionBankStore } from '@/stores/questionBankStore';
@@ -106,7 +106,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
   const modes: ModeCardConfig[] = useMemo(() => [
     {
       key: 'sequential',
-      icon: ListOrdered,
+      icon: ListNumbers,
       label: t('practice:modes.sequential.label'),
       desc: t('practice:modes.sequential.desc'),
       colorText: 'text-slate-600 dark:text-slate-400',
@@ -124,7 +124,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
     },
     {
       key: 'review_first',
-      icon: RotateCcw,
+      icon: ArrowCounterClockwise,
       label: t('practice:modes.reviewFirst.label'),
       desc: t('practice:modes.reviewFirst.desc'),
       colorText: 'text-amber-600 dark:text-amber-400',
@@ -133,7 +133,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
     },
     {
       key: 'review_only',
-      icon: RotateCcw,
+      icon: ArrowCounterClockwise,
       label: t('practice:modes.reviewOnly.label'),
       desc: t('practice:modes.reviewOnly.desc'),
       colorText: 'text-amber-600 dark:text-amber-400',
@@ -178,7 +178,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
     },
     {
       key: 'paper',
-      icon: FileDown,
+      icon: DownloadSimple,
       label: t('practice:modes.paper.label'),
       desc: t('practice:modes.paper.desc'),
       colorText: 'text-orange-600 dark:text-orange-400',
@@ -202,7 +202,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
     return (
       <div className={cn('flex flex-col items-center justify-center h-full gap-4 px-6', className)}>
         <div className="p-4 rounded-2xl bg-muted/50">
-          <BookOpen className="w-10 h-10 text-muted-foreground" />
+          <BookOpen size={40} className="text-muted-foreground" />
         </div>
         <div className="text-center">
           <h3 className="text-lg font-semibold mb-1">
@@ -222,7 +222,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
       {stats && (
         <div className="flex items-center gap-6 px-1">
           <div className="flex items-center gap-2">
-            <div className="relative w-10 h-10">
+            <div className="w-10 h-10 relative">
               <svg className="w-full h-full transform -rotate-90" viewBox="0 0 40 40">
                 <circle cx="20" cy="20" r="16" fill="none" stroke="currentColor" strokeWidth="3" className="text-muted/30" />
                 <circle
@@ -231,7 +231,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                   strokeDasharray={`${stats.total > 0 ? (stats.mastered / stats.total) * 100.5 : 0} 100.5`}
                   className="text-emerald-500"
                   strokeLinecap="round"
-                />
+/>
               </svg>
               <div className="absolute inset-0 flex items-center justify-center">
                 <span className="text-[10px] font-semibold tabular-nums">
@@ -263,7 +263,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
       {/* 选择练习模式 */}
       <div>
         <h3 className="text-sm font-medium text-muted-foreground mb-3 flex items-center gap-1.5">
-          <Play className="w-3.5 h-3.5" />
+          <Play size={14} />
           {t('exam_sheet:questionBank.practice.chooseMode')}
         </h3>
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -276,8 +276,8 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                 onClick={() => handleModeClick(key, isAdvanced)}
                 className={cn(
                   '!h-auto !p-4 !rounded-xl !text-left !justify-start !items-start flex-col',
-                  'border border-transparent hover:border-border/60 hover:bg-muted/30',
-                  'hover:shadow-[var(--shadow-notion)]',
+                  !isActive && 'border border-transparent hover:border-border/60 hover:bg-[var(--interactive-hover)]',
+                  !isActive && 'hover:shadow-[var(--shadow-notion)]',
                   isActive && 'ring-2 ring-primary/50 bg-primary/5 border-primary/30'
                 )}
               >
@@ -296,7 +296,7 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                 )}
                 {/* 高级模式标识 */}
                 {isAdvanced && !isActive && (
-                  <Sparkles className="absolute top-3 right-3 w-3 h-3 text-muted-foreground/40" />
+                  <Sparkle size={12} className="absolute top-3 right-3 text-muted-foreground/40" />
                 )}
               </NotionButton>
             );
@@ -317,14 +317,14 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
               onClick={() => setActiveAdvanced(null)}
               className="h-7 px-2 text-xs"
             >
-              <ChevronLeft className="w-3.5 h-3.5 mr-1" />
+              <CaretLeft size={14} className="mr-1" />
               {t('common:actions.back')}
             </NotionButton>
           </div>
           <Suspense
             fallback={
               <div className="flex items-center justify-center py-12">
-                <Loader2 className="w-6 h-6 animate-spin text-muted-foreground" />
+                <CircleNotch size={24} className="animate-spin text-muted-foreground" />
               </div>
             }
           >
@@ -338,26 +338,26 @@ export const PracticeLauncher: React.FC<PracticeLauncherProps> = ({
                 onSubmit={() => {
                   setActiveAdvanced(null);
                 }}
-              />
+/>
             )}
             {activeAdvanced === 'mock_exam' && (
               <MockExamMode
                 examId={examId}
                 onStart={() => onStartPractice('mock_exam')}
-              />
+/>
             )}
             {activeAdvanced === 'daily' && (
               <DailyPracticeMode
                 examId={examId}
                 onStart={() => onStartPractice('daily')}
-              />
+/>
             )}
             {activeAdvanced === 'paper' && (
               <PaperGenerator
                 examId={examId}
                 availableTags={allTags}
                 onGenerate={() => onStartPractice('paper')}
-              />
+/>
             )}
           </Suspense>
         </div>

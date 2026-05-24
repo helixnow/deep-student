@@ -5,7 +5,7 @@ import { Input } from '../ui/shad/Input';
 import { Badge } from '../ui/shad/Badge';
 import { CustomScrollArea } from '../custom-scroll-area';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
-import { History, Search, Star, Trash2, Clock, Layers } from 'lucide-react';
+import { ClockCounterClockwise, MagnifyingGlass, Star, Trash, Clock, Stack } from '@phosphor-icons/react';
 import type { EssaySessionItem } from '@/dstu/adapters/essayDstuAdapter';
 
 interface GradingHistoryProps {
@@ -53,10 +53,10 @@ export const GradingHistory: React.FC<GradingHistoryProps> = ({
 
   return (
     <div className="h-full flex flex-col bg-background">
-      {/* History Toolbar */}
+      {/* ClockCounterClockwise Toolbar */}
       <div className="flex items-center justify-between px-4 h-12 border-b bg-background/50 backdrop-blur z-10 shrink-0">
         <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
-          <History className="w-4 h-4" />
+          <ClockCounterClockwise size={16} />
           {t('essay_grading:tabs.history')}
           <Badge variant="secondary" className="ml-2 h-5 px-1.5 text-[10px] font-normal">
             {historyTotal}
@@ -81,18 +81,18 @@ export const GradingHistory: React.FC<GradingHistoryProps> = ({
 
           {/* 搜索框 */}
           <div className="relative w-56">
-            <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+            <MagnifyingGlass size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-muted-foreground" />
             <Input
               value={historySearch}
               onChange={(e) => setHistorySearch(e.target.value)}
               placeholder={t('essay_grading:history.search_placeholder')}
-              className="pl-8 h-8 text-xs bg-muted/30 border-transparent hover:bg-muted/50 focus:bg-background focus:border-primary/50 transition-all shadow-none rounded-md"
-            />
+              className="pl-8 h-8 text-xs bg-muted/30 border-transparent hover:bg-[var(--interactive-hover)] focus:bg-background focus:border-primary/50 transition-all shadow-none rounded-md"
+/>
           </div>
         </div>
       </div>
 
-      {/* History List */}
+      {/* ClockCounterClockwise List */}
       <div className="flex-1 overflow-hidden relative">
         <CustomScrollArea className="h-full" viewportClassName="h-full" trackOffsetTop={0} trackOffsetBottom={0} trackOffsetRight={0}>
           <div className="flex flex-col">
@@ -100,9 +100,9 @@ export const GradingHistory: React.FC<GradingHistoryProps> = ({
               <div className="flex flex-col items-center justify-center py-32 text-center">
                 <div className="w-16 h-16 rounded-full bg-muted/30 flex items-center justify-center mb-4">
                   {showFavoritesOnly ? (
-                    <Star className="w-8 h-8 text-muted-foreground/40" />
+                    <Star size={32} className="text-muted-foreground/40" />
                   ) : (
-                    <History className="w-8 h-8 text-muted-foreground/40" />
+                    <ClockCounterClockwise size={32} className="text-muted-foreground/40" />
                   )}
                 </div>
                 <h3 className="text-base font-medium text-foreground mb-1">
@@ -117,7 +117,7 @@ export const GradingHistory: React.FC<GradingHistoryProps> = ({
                 {filteredHistory.map((item) => (
                   <div
                     key={item.id}
-                    className="group relative border-b hover:bg-muted/30 transition-colors cursor-pointer"
+                    className="group relative border-b hover:bg-[var(--interactive-hover)] transition-colors cursor-pointer"
                     onClick={() => onRestoreHistory(item)}
                   >
                     <div className="px-6 py-4">
@@ -131,7 +131,7 @@ export const GradingHistory: React.FC<GradingHistoryProps> = ({
                             {getEssayTypeLabel(item.essay_type)}
                           </Badge>
                           <div className="flex items-center gap-1 text-[10px] text-muted-foreground">
-                            <Layers className="w-3 h-3" />
+                            <Stack size={12} />
                             {t('essay_grading:history.rounds_count', { count: item.total_rounds })}
                           </div>
                         </div>
@@ -162,7 +162,7 @@ export const GradingHistory: React.FC<GradingHistoryProps> = ({
                               }}
                               className="h-7 w-7 rounded-md text-muted-foreground hover:text-destructive hover:bg-destructive/10"
                             >
-                              <Trash2 className="w-3.5 h-3.5" />
+                              <Trash size={14} />
                             </NotionButton>
                           </CommonTooltip>
                         </div>
@@ -170,14 +170,14 @@ export const GradingHistory: React.FC<GradingHistoryProps> = ({
                         {/* Favorite Badge (Always visible if favorited) */}
                         {item.is_favorite && (
                           <div className="absolute top-4 right-4 group-hover:opacity-0 transition-opacity duration-200">
-                            <Star className="w-3.5 h-3.5 text-yellow-500 fill-current" />
+                            <Star size={14} className="text-yellow-500 fill-current" />
                           </div>
                         )}
                       </div>
 
                       {/* Time and Preview */}
                       <div className="flex items-center gap-2 text-[10px] text-muted-foreground/70 mb-2">
-                        <Clock className="w-3 h-3" />
+                        <Clock size={12} />
                         {new Date(item.updated_at).toLocaleString()}
                       </div>
 

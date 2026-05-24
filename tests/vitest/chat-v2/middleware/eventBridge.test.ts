@@ -11,10 +11,10 @@ import {
   createEndEvent,
   createErrorEvent,
   type BackendEvent,
-} from '@/chat-v2/core/middleware/eventBridge';
-import { chunkBuffer } from '@/chat-v2/core/middleware/chunkBuffer';
-import { eventRegistry } from '@/chat-v2/registry/eventRegistry';
-import type { ChatStore } from '@/chat-v2/core/types';
+} from '@/features/chat/core/middleware/eventBridge';
+import { chunkBuffer } from '@/features/chat/core/middleware/chunkBuffer';
+import { eventRegistry } from '@/features/chat/registry/eventRegistry';
+import type { ChatStore } from '@/features/chat/core/types';
 
 // ============================================================================
 // Mock Store 创建

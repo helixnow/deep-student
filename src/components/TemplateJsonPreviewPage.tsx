@@ -1,7 +1,7 @@
 import React, { useCallback, useEffect, useMemo, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import i18n from '@/i18n';
-import { ArrowLeft, CheckCircle2, Code2, Eye, RefreshCw, XCircle } from 'lucide-react';
+import { ArrowLeft, CheckCircle, CodeBlock, Eye, ArrowClockwise, XCircle } from '@phosphor-icons/react';
 import { CustomAnkiTemplate } from '../types';
 import { templateManager } from '../data/ankiTemplates';
 import { getErrorMessage } from '../utils/errorUtils';
@@ -71,10 +71,10 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
     rightActions: (
       <>
         <NotionButton variant="ghost" size="sm" onClick={() => loadTemplatesRef.current()} disabled={isLoadingTemplates}>
-          {isLoadingTemplates ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+          {isLoadingTemplates ? <ArrowClockwise size={16} className="animate-spin" /> : <ArrowClockwise size={16} />}
         </NotionButton>
         <NotionButton variant="ghost" size="sm" onClick={() => handleParseRef.current()}>
-          <Eye className="h-4 w-4" />
+          <Eye size={16} />
         </NotionButton>
       </>
     ),
@@ -308,7 +308,7 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
         <div className="template-json-preview-header">
           <div className="left">
             <NotionButton variant="ghost" size="sm" onClick={onBack} className="gap-2">
-              <ArrowLeft className="h-4 w-4" />
+              <ArrowLeft size={16} />
               {t('json_preview.back')}
             </NotionButton>
             <div className="titles">
@@ -318,11 +318,11 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
           </div>
           <div className="actions">
             <NotionButton variant="default" size="sm" onClick={loadTemplates} disabled={isLoadingTemplates} className="gap-1.5">
-              {isLoadingTemplates ? <RefreshCw className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
+              {isLoadingTemplates ? <ArrowClockwise size={16} className="animate-spin" /> : <ArrowClockwise size={16} />}
               <span>{t('json_preview.reload_templates')}</span>
             </NotionButton>
             <NotionButton variant="primary" size="sm" onClick={handleParse} className="gap-1.5">
-              <Eye className="h-4 w-4" />
+              <Eye size={16} />
               <span>{t('json_preview.parse_button')}</span>
             </NotionButton>
           </div>
@@ -335,7 +335,7 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
             <div className="panel">
               <div className="panel-header">
                 <div className="title-group">
-                  <Code2 className="h-4 w-4 text-indigo-500" />
+                  <CodeBlock size={16} className="text-indigo-500" />
                   <span>{t('json_preview.input_title')}</span>
                 </div>
                 <Badge variant="secondary">{t('json_preview.supports_multiple')}</Badge>
@@ -347,7 +347,7 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
                 language="json"
                 height="400px"
                 className="json-editor-wrapper"
-              />
+/>
               <div className="panel-footer">
                 <div className="legend">
                   <Badge variant="default">{t('json_preview.example_label')}</Badge>
@@ -360,11 +360,11 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
                     onClick={() => setInputValue(SAMPLE_JSON)}
                     className="gap-1.5"
                   >
-                    <RefreshCw className="h-4 w-4" />
+                    <ArrowClockwise size={16} />
                     <span>{t('json_preview.reset')}</span>
                   </NotionButton>
                   <NotionButton variant="primary" size="sm" onClick={handleParse} className="gap-1.5">
-                    <Eye className="h-4 w-4" />
+                    <Eye size={16} />
                     <span>{t('json_preview.parse_button')}</span>
                   </NotionButton>
                 </div>
@@ -382,7 +382,7 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
             <div className="panel sticky">
               <div className="panel-header">
                 <div className="title-group">
-                  <Eye className="h-4 w-4 text-emerald-500" />
+                  <Eye size={16} className="text-emerald-500" />
                   <span>{t('json_preview.preview_title')}</span>
                 </div>
                 <Badge variant="outline">
@@ -426,7 +426,7 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
                         <div className="preview-grid">
                           <div className="preview-block">
                             <div className="preview-block-title">
-                              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                              <CheckCircle size={16} className="text-emerald-500" />
                               <span>{t('front_label')}</span>
                             </div>
                             {entry.template ? (
@@ -438,7 +438,7 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
                                   false
                                 )}
                                 cssContent={entry.template.css_style || ''}
-                              />
+/>
                             ) : (
                               <Alert variant="destructive" className="mt-2">
                                 <AlertDescription>{t('json_preview.template_not_found', { id: entry.templateId || '-' })}</AlertDescription>
@@ -447,7 +447,7 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
                           </div>
                           <div className="preview-block">
                             <div className="preview-block-title">
-                              <CheckCircle2 className="h-4 w-4 text-emerald-500" />
+                              <CheckCircle size={16} className="text-emerald-500" />
                               <span>{t('back_label')}</span>
                             </div>
                             {entry.template ? (
@@ -459,7 +459,7 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
                                   true
                                 )}
                                 cssContent={entry.template.css_style || ''}
-                              />
+/>
                             ) : null}
                           </div>
                         </div>
@@ -486,7 +486,7 @@ const TemplateJsonPreviewPage: React.FC<TemplateJsonPreviewPageProps> = ({ onBac
               height: 'calc(var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px)) + 64px)',
               flexShrink: 0,
             }}
-          />
+/>
         )}
       </CustomScrollArea>
     </div>

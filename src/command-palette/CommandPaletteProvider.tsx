@@ -232,12 +232,14 @@ export function CommandPaletteProvider({
       // 命令面板打开时由 CommandPalette 组件自行处理
       if (isOpen) return;
 
-      // ── 输入框中：仅放行带 Cmd/Ctrl 修饰键的快捷键 ──
-      // 纯字符 / 特殊键（F1、Delete 等）在输入框中不应触发命令
+      // ── 输入框中：仅放行带 Cmd/Ctrl 修饰键的快捷键或功能键 ──
+      // 纯字符在输入框中不应触发命令
       // Cmd+S / Cmd+N 等带修饰键的应正常解析（标准文本编辑快捷键
       // Cmd+A/C/V/X/Z 不在命令系统中注册，会 fall-through 为浏览器默认行为）
+      // F1-F12 功能键始终放行（如 F12 打开 DevTools）
       if (isInput) {
-        if (!(e.metaKey || e.ctrlKey)) return;
+        const isFunctionKey = e.key.match(/^F\d{1,2}$/);
+        if (!(e.metaKey || e.ctrlKey) && !isFunctionKey) return;
       }
 
       // ── 解析快捷键并执行 ──

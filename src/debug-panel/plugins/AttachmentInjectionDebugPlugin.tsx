@@ -18,19 +18,19 @@ import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/sh
 import { ScrollArea } from '../../components/ui/shad/ScrollArea';
 import {
   Upload,
-  Trash2,
+  Trash,
   Copy,
-  AlertTriangle,
-  CheckCircle2,
+  Warning,
+  CheckCircle,
   XCircle,
   FileImage,
   FileText,
   ArrowRight,
-  RefreshCw,
+  ArrowClockwise,
   Database,
-  Layers,
-  Server,
-} from 'lucide-react';
+  Stack,
+  HardDrives,
+} from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import {
   getChatV2Logs,
@@ -38,17 +38,17 @@ import {
   CHATV2_LOG_EVENT,
   CHATV2_LOGS_CLEARED,
   type ChatV2LogEntry,
-} from '../../chat-v2/debug/chatV2Logger';
+} from '../../features/chat/debug/chatV2Logger';
 
 // =============================================================================
 // 常量
 // =============================================================================
 
 const STAGE_ICONS: Record<string, React.ReactNode> = {
-  ui: <Upload className="w-3 h-3" />,
-  store: <Layers className="w-3 h-3" />,
-  adapter: <Database className="w-3 h-3" />,
-  backend: <Server className="w-3 h-3" />,
+  ui: <Upload size={12} />,
+  store: <Stack size={12} />,
+  adapter: <Database size={12} />,
+  backend: <HardDrives size={12} />,
 };
 
 const STAGE_COLORS: Record<string, string> = {
@@ -59,11 +59,11 @@ const STAGE_COLORS: Record<string, string> = {
 };
 
 const SEVERITY_ICONS: Record<string, React.ReactNode> = {
-  success: <CheckCircle2 className="w-3 h-3 text-green-500" />,
-  error: <XCircle className="w-3 h-3 text-red-500" />,
-  warning: <AlertTriangle className="w-3 h-3 text-yellow-500" />,
-  info: <ArrowRight className="w-3 h-3 text-blue-500" />,
-  debug: <RefreshCw className="w-3 h-3 text-gray-500" />,
+  success: <CheckCircle size={12} className="text-green-500" />,
+  error: <XCircle size={12} className="text-red-500" />,
+  warning: <Warning size={12} className="text-yellow-500" />,
+  info: <ArrowRight size={12} className="text-blue-500" />,
+  debug: <ArrowClockwise size={12} className="text-gray-500" />,
 };
 
 // =============================================================================
@@ -98,7 +98,7 @@ const LogEntry: React.FC<{
   isExpanded: boolean;
   onToggle: () => void;
 }> = ({ log, isExpanded, onToggle }) => {
-  const stageIcon = STAGE_ICONS[log.stage] || <ArrowRight className="w-3 h-3" />;
+  const stageIcon = STAGE_ICONS[log.stage] || <ArrowRight size={12} />;
   const stageColor = STAGE_COLORS[log.stage] || 'bg-gray-100 text-gray-800';
   const severityIcon = SEVERITY_ICONS[log.severity] || SEVERITY_ICONS.info;
 
@@ -239,21 +239,21 @@ const AttachmentInjectionDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       {/* 标题栏 */}
       <div className="flex items-center justify-between p-3 border-b">
         <div className="flex items-center gap-2">
-          <FileImage className="w-5 h-5 text-primary" />
+          <FileImage size={20} className="text-primary" />
           <h3 className="font-semibold">附件注入调试</h3>
           <Badge variant="outline">{logs.length} 条日志</Badge>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={loadLogs}>
-            <RefreshCw className="w-4 h-4 mr-1" />
+            <ArrowClockwise size={16} className="mr-1" />
             刷新
           </Button>
           <Button variant="outline" size="sm" onClick={handleCopy} disabled={logs.length === 0}>
-            <Copy className="w-4 h-4 mr-1" />
+            <Copy size={16} className="mr-1" />
             复制
           </Button>
           <Button variant="outline" size="sm" onClick={handleClear} disabled={logs.length === 0}>
-            <Trash2 className="w-4 h-4 mr-1" />
+            <Trash size={16} className="mr-1" />
             清空
           </Button>
         </div>
@@ -302,7 +302,7 @@ const AttachmentInjectionDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       <ScrollArea className="flex-1 p-3">
         {filteredLogs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-40 text-muted-foreground">
-            <FileText className="w-12 h-12 mb-2 opacity-30" />
+            <FileText size={48} className="mb-2 opacity-30" />
             <p>暂无附件日志</p>
             <p className="text-xs mt-1">上传附件后将在此显示调试信息</p>
           </div>
@@ -322,11 +322,11 @@ const AttachmentInjectionDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       <div className="p-3 border-t bg-muted/30">
         <div className="flex items-center justify-center gap-2 text-xs text-muted-foreground">
           <Badge className={STAGE_COLORS.ui}>UI: 上传</Badge>
-          <ArrowRight className="w-3 h-3" />
+          <ArrowRight size={12} />
           <Badge className={STAGE_COLORS.store}>Store: 引用</Badge>
-          <ArrowRight className="w-3 h-3" />
+          <ArrowRight size={12} />
           <Badge className={STAGE_COLORS.adapter}>Adapter: 构建</Badge>
-          <ArrowRight className="w-3 h-3" />
+          <ArrowRight size={12} />
           <Badge className={STAGE_COLORS.backend}>Backend: 解析</Badge>
         </div>
       </div>

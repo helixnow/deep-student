@@ -12,7 +12,105 @@
     "feature_models": "功能增强模型",
     "rag_models": "RAG 与知识库",
     "search_engines": "搜索引擎配置",
-    "appearance": "界面外观"
+    "appearance": "界面外观",
+    "voice_input": "语音输入"
+  },
+  "voice_input": {
+    "title": "听写",
+    "description": "这里负责听写快捷键、词典、历史记录与运行时诊断。ASR 模型分配在“设置 > 模型”，提供方密钥在“设置 > 模型服务 / APIs”，使用统计在“统计”页查看。",
+    "description_short": "快捷键、词典与听写记录",
+    "loading": "加载中…",
+    "load_failed": "听写设置加载失败。",
+    "save_failed": "听写设置保存失败。",
+    "not_configured": "未配置",
+    "shortcut_title": "听写快捷键",
+    "shortcut_description": "选择 DeepStudent 内全局快捷键的行为方式。听写内容仍然只会插入到当前已支持的输入框，并且不会自动发送。",
+    "trigger_mode_title": "触发方式",
+    "trigger_mode_description": "按住快捷键讲话，或按一次切换。听写结果只插入到光标处，不会自动发送。",
+    "diagnostics_title": "诊断",
+    "hotkey": "快捷键",
+    "max_duration_ms": "最长录音（毫秒）",
+    "hold_mode_title": "按住听写快捷键",
+    "hold_mode_description": "在 DeepStudent 内任意已支持输入区域按住快捷键开始听写，松开后停止。",
+    "hold_mode_short": "按住",
+    "toggle_mode_title": "按一次开始，再按一次停止",
+    "toggle_mode_description": "使用同一个快捷键切换听写状态，适合更长的免按住听写。",
+    "toggle_mode_short": "切换",
+    "mode_active": "当前启用",
+    "mode_select": "使用此模式",
+    "quick_actions_title": "设置与恢复",
+    "quick_actions_description": "当听写没有按预期工作时，可以直接跳到模型分配、API 凭据和使用统计。",
+    "dictionary_title": "自定义词典",
+    "dictionary_description": "希望优先识别的词或短语，每行一个。",
+    "dictionary_placeholder": "Photosynthesis\nAnkylosing spondylitis\nDeepStudent",
+    "dictionary_count": "{{count}} 条",
+    "dictionary_hint": "提供方支持时自动并入 ASR 提示词。",
+    "history_title": "最近听写",
+    "history_description": "最近的转写结果保留在这里，便于找回误投的文本。",
+    "history_empty": "这里会显示最近的听写内容。",
+    "history_copy": "复制",
+    "history_clear": "清空",
+    "history_copy_success": "已复制。",
+    "history_copy_failed": "无法复制这条记录。",
+    "history_clear_success": "已清空最近听写记录。",
+    "history_clear_failed": "清空失败。",
+    "request_access": "申请麦克风权限",
+    "permission_request_success": "麦克风已可用。",
+    "permission_request_denied": "麦克风权限被拒绝，请在系统设置里允许后重试。",
+    "permission_request_missing_runtime": "当前运行时未暴露 getUserMedia，无法启动采集。",
+    "permission_request_missing_backend": "权限已允许，但缺少可用的录音后端。",
+    "permission_request_no_device": "未检测到麦克风。",
+    "permission_request_busy": "麦克风被其他应用占用，请关闭后重试。",
+    "permission_request_insecure_context": "权限已允许，但运行时未暴露安全录音上下文。",
+    "permission_request_failed": "当前环境下无法激活麦克风。",
+    "refresh_support": "重新检测",
+    "assigned_model": "ASR 模型",
+    "assigned_model_hint": "模型在“设置 > 模型”统一管理。",
+    "assigned_provider": "提供方",
+    "assigned_model_id": "模型 ID",
+    "assignment_required_title": "未分配 ASR 模型",
+    "assignment_required_message": "请先到“设置 > 模型”里完成 ASR 模型分配。",
+    "assignment_missing_title": "当前分配的 ASR 模型无效",
+    "assignment_missing_message": "已保存的分配不再指向有效的语音转写模型，请重新选择。",
+    "assignment_disabled_title": "当前分配的 ASR 模型已禁用",
+    "assignment_disabled_message": "启用该模型，或在“设置 > 模型”里改选其他 ASR 模型。",
+    "assignment_provider_unavailable_title": "当前提供方暂不可用",
+    "assignment_provider_unavailable_message": "当前只支持 SiliconFlow 转写，请改选 SiliconFlow 的 ASR 模型。",
+    "open_model_settings": "模型",
+    "open_api_settings": "APIs",
+    "open_usage_statistics": "统计",
+    "runtime_hint": "若仍无法录音，通常是：应用未声明麦克风能力、运行时未暴露 getUserMedia、或系统权限被拦截。",
+    "permission_states": {
+      "granted": "已允许",
+      "prompt": "未请求",
+      "denied": "已拒绝",
+      "unsupported": "不可用",
+      "unknown": "未知"
+    },
+    "diagnostics": {
+      "permission": "权限",
+      "capture_api": "采集接口",
+      "recorder_backend": "录音后端",
+      "secure_context": "安全上下文",
+      "available": "可用",
+      "missing": "缺失",
+      "unavailable": "不可用",
+      "unknown": "未知"
+    },
+    "labels": {
+      "coming_soon": "即将支持",
+      "provider_unavailable_reason": "这个 ASR 模型会显示在目录里，但当前运行时实际只能用 SiliconFlow 做转写。",
+      "disabled_model_reason": "请先启用这个 ASR 模型，再把它分配给语音输入。"
+    },
+    "status": {
+      "checking": "正在检测麦克风支持状态…",
+      "ready": "可以录音",
+      "ready_fallback": "可以录音（PCM/WAV 兜底）",
+      "permission_denied": "麦克风权限被拒绝",
+      "insecure_context": "当前运行时没有暴露安全录音上下文",
+      "missing_get_user_media": "当前运行时没有暴露 getUserMedia",
+      "unavailable": "录音后端不可用"
+    }
   },
   "api": {
     "title": "API配置",
@@ -55,6 +153,26 @@
         "reasoning": "推理"
       },
       "subtitle": "配置您的AI模型接口连接与基础信息",
+      "protocol_label": "OpenAI 协议",
+      "protocol_hint": "这里明确选择 OpenAI Chat 还是 OpenAI Responses；供应商仅提供默认值。",
+      "protocols": {
+        "openai_chat_completions": {
+          "label": "OpenAI Chat",
+          "description": "使用 /chat/completions，请求体基于 messages。适合大多数 OpenAI 兼容供应商。"
+        },
+        "openai_responses": {
+          "label": "OpenAI Responses",
+          "description": "使用 /responses，适合 OpenAI 新接口与原生 Responses 语义。"
+        },
+        "google_generate_content": {
+          "label": "Google GenerateContent",
+          "description": "Gemini 原生接口。"
+        },
+        "anthropic_messages": {
+          "label": "Anthropic Messages",
+          "description": "Claude 原生 Messages 接口。"
+        }
+      },
       "model_name_hint": "请输入准确的模型名称，这将用于API调用",
       "reasoning": {
         "title": "推理 / 思维链设置",
@@ -64,10 +182,16 @@
         "effort": {
           "none": "none（默认）",
           "minimal": "minimal（最低）",
-          "low": "low（较低）",
-          "medium": "medium（中等）",
-          "high": "high（较高）",
-          "xhigh": "xhigh（最高）"
+          "low": "low（低）",
+          "medium": "medium（中）",
+          "high": "high（高）",
+          "xhigh": "xhigh（极高）",
+          "max": "max（最高）"
+        },
+        "verbosity": {
+          "low": "低",
+          "medium": "中",
+          "high": "高"
         },
         "enable_thinking": "Enable Thinking 模式",
         "enable_thinking_hint": "向 API 发送 enable_thinking 标志，部分模型支持。",
@@ -95,7 +219,7 @@
         "qwen_hint": "注意：SiliconFlow 的 Qwen 模型可能限制为 4096 令牌",
         "max_tokens_limit": "API Max Tokens 限制",
         "max_tokens_limit_placeholder": "留空表示无限制",
-        "max_tokens_limit_hint": "某些 API（如 DeepSeek）有 max_tokens 上限（如 8192），超过会返回 400 错误。留空表示不限制。",
+        "max_tokens_limit_hint": "某些 API 会对 max_tokens 施加官方文档上限。例如 DeepSeek V4 Thinking Mode 当前文档给出的请求上限是 64K，超过可能返回 400 错误。留空表示不限制。",
         "context_window": "上下文窗口大小",
         "context_window_placeholder": "留空则使用自动推断值",
         "context_window_hint": "模型的上下文窗口大小（tokens）。留空将根据模型名称自动推断。当前推断值：",
@@ -122,7 +246,14 @@
         "description": "DeepSeek V3.2 使用 thinking.type 格式控制思维链",
         "enable_thinking": "启用思维模式",
         "enable_thinking_hint": "启用后模型会输出 reasoning_content 思考过程",
-        "v31_warning": "DeepSeek V3.1 使用工具时会自动禁用思维模式"
+        "v31_warning": "DeepSeek V3.1 使用工具时会自动禁用思维模式",
+        "depth": {
+          "low": "低",
+          "medium": "中",
+          "high": "高",
+          "xhigh": "极高",
+          "max": "最高"
+        }
       },
       "qwen": {
         "title": "通义千问推理配置",
@@ -183,11 +314,15 @@
         },
         "embedding": {
           "title": "嵌入模型",
-          "description": "勾选此项表示该模型用于生成向量嵌入（如text-embedding-ada-002、bge-m3等）"
+          "description": "勾选此项表示该模型用于生成向量嵌入（如 text-embedding-3-small、text-embedding-3-large、bge-m3 等）"
         },
         "reranker": {
           "title": "重排序模型",
           "description": "勾选此项表示该模型用于搜索结果重排序（如bge-reranker-v2-m3等）"
+        },
+        "image_generation": {
+          "title": "生图模型",
+          "description": "勾选此项表示该模型可通过 OpenAI 兼容 Image API 生成图片"
         },
         "tools": {
           "title": "支持工具调用",
@@ -218,11 +353,16 @@
     "base_url": "接口地址",
     "api_key": "API 密钥",
     "api_key_saved": "已保存",
-    "api_key_placeholder": "输入 API 密钥（自动保存）",
+    "api_key_saving": "正在保存…",
+    "api_key_placeholder": "输入 API 密钥",
+    "api_key_manual_save_hint": "粘贴或输入后，点击保存",
     "api_key_save_failed": "保存 API 密钥失败",
     "api_key_cleared": "API 密钥已清除",
     "api_key_clear_failed": "清除 API 密钥失败",
+    "api_key_securely_stored": "已安全保存，下次无需重新输入",
+    "api_key_unsaved": "有未保存的更改",
     "clear_api_key": "清除",
+    "clear_api_key_confirm": "确认清除",
     "clear_api_key_title": "清除 API 密钥",
     "show_api_key": "显示 API 密钥",
     "hide_api_key": "隐藏 API 密钥",
@@ -249,7 +389,8 @@
     "select_vendor_to_edit": "选择要编辑的供应商",
     "select_model_to_edit": "选择要编辑的模型",
     "reorder_failed": "重新排序失败",
-    "api_key_configured": "API Key 已配置"
+    "api_key_configured": "API Key 已配置",
+    "fetch_models_button": "获取模型列表"
   },
   "vendor_model_fetcher": {
     "fetch_button": "获取模型列表",
@@ -274,21 +415,39 @@
     "add_selected": "添加 {{count}} 个模型",
     "adding": "正在添加…",
     "add_success": "成功添加 {{count}} 个模型",
-    "add_failed": "添加模型失败: {{error}}"
+    "add_failed": "添加模型失败: {{error}}",
+    "dialog_title": "从 API 获取可用模型",
+    "dialog_description": "{{vendor}}：选择要添加到模型列表的项"
   },
   "vendor_modal": {
-    "title_new": "新建供应商",
+    "title_new": "添加供应商",
     "title_edit": "编辑供应商",
     "subtitle": "配置供应商的 API 凭据和基础参数",
-    "name_label": "名称",
+    "name_label": "供应商名称",
     "name_placeholder": "请输入供应商名称",
-    "provider_label": "提供商类型",
+    "provider_label": "供应商类型",
+    "protocol_label": "API 协议",
+    "protocols": {
+      "openai_chat_completions": "OpenAI Chat Completions",
+      "openai_responses": "OpenAI Responses",
+      "google_generate_content": "Google GenerateContent",
+      "anthropic_messages": "Anthropic Messages"
+    },
     "providers": {
       "openai": "OpenAI",
       "anthropic": "Anthropic",
       "google": "Google",
       "general": "通用适配器",
       "siliconflow": "硅基流动",
+      "deepseek": "DeepSeek",
+      "qwen": "通义千问",
+      "zhipu": "智谱",
+      "doubao": "豆包",
+      "minimax": "MiniMax",
+      "moonshot": "Moonshot",
+      "nvidia": "NVIDIA",
+      "mimo": "小米 MiMo",
+      "ollama": "Ollama",
       "custom": "自定义"
     },
     "base_url_label": "接口地址",
@@ -330,39 +489,39 @@
   },
   "theme": {
     "title": "主题设置",
-    "description": "切换外观模式与主题色调，适配不同的环境与阅读需求",
+    "description": "切换外观模式与精修主题，适配不同的环境与阅读需求",
+    "row_title": "外观 / 主题",
+    "row_description": "使用浅色、深色，或匹配系统设置",
     "mode_label": "选择主题模式",
-    "palette_label": "主题调色板",
-    "palette_hint": "选择您喜欢的主题色，将应用于按钮、链接和交互元素。",
+    "font_smoothing_title": "macOS 原生字体平滑",
+    "font_smoothing_description": "在 macOS 下优先跟随系统默认字体平滑策略，不再全局强制 antialiased。关闭后回退为兼容旧版观感的灰度平滑。",
+    "pointer_cursor_title": "使用指针光标",
+    "pointer_cursor_description": "悬停交互元素时切换为指针光标。",
+    "accent_label": "强调色",
+    "accent_hint": "只调整按钮、链接和选中态的颜色。背景、卡片和文本保持稳定。",
+    "system_default": "系统默认",
+    "system_default_hint": "匹配系统外观设置",
+    "system_status": "当前系统：{{mode}}",
     "modes": {
       "auto": "跟随系统",
       "light": "亮色",
       "dark": "暗色"
     },
-    "palettes": {
-      "default_name": "极光蓝",
-      "default_desc": "深邃蓝调配色，平衡互动与状态反馈",
-      "purple_name": "薰衣紫",
-      "purple_desc": "优雅紫色调，营造沉稳专注氛围",
-      "green_name": "森林绿",
-      "green_desc": "自然绿色调，舒缓护眼",
-      "orange_name": "日落橙",
-      "orange_desc": "温暖橙色调，活力充沛",
-      "pink_name": "玫瑰粉",
-      "pink_desc": "柔和粉色调，温馨浪漫",
-      "teal_name": "青碧色",
-      "teal_desc": "清新青色调，现代简约",
-      "muted_name": "柔和色调",
-      "muted_desc": "低饱和度配色，减轻视觉疲劳，适合长时间使用",
-      "paper_name": "纸纹质感",
-      "paper_desc": "仿纸质背景与柔和墨水色，长时间阅读更舒适",
-      "custom_name": "自选色",
-      "custom_desc": "选择任意颜色作为主题色，系统将自动生成完整配色方案"
+    "accent": {
+      "default": "静海蓝",
+      "purple": "墨藤紫",
+      "green": "林影绿",
+      "orange": "琥珀橙",
+      "pink": "胭脂红",
+      "teal": "青岩蓝",
+      "muted": "石墨",
+      "paper": "陶棕",
+      "custom": "自选色"
     },
     "status": {
       "current": "当前：{{mode}}主题",
       "auto_follow": "（跟随系统{{system}}设置）",
-      "palette": "已启用：{{palette}}"
+      "accent": "强调色：{{accent}}"
     }
   },
   "zoom": {
@@ -440,6 +599,8 @@
     "statistics": "数据统计",
     "data_manage": "数据管理",
     "data_governance": "数据治理",
+    "general": "常规",
+    "appearance": "外观",
     "app": "应用设置",
     "theme": "主题设置",
     "params": "参数调整",
@@ -568,6 +729,10 @@
     "openSource": {
       "title": "开源项目致谢",
       "description": "DeepStudent 依托以下成熟的开源生态快速发展，感谢所有社区长期的维护与创新。",
+      "openDialog": "查看致谢名单",
+      "closeDialog": "关闭",
+      "expand": "展开 {{category}}",
+      "collapse": "收起 {{category}}",
       "categories": {
         "coreStack": "核心框架与构建",
         "uiAndInteraction": "界面与交互",
@@ -815,6 +980,10 @@
       "auto": "自动",
       "light": "亮色",
       "dark": "暗色"
+    },
+    "study_ui_descriptions": {
+      "general": "管理语言、交互习惯、输入方式和个人偏好。",
+      "appearance": "自定义主题、字体、缩放和界面视觉风格。"
     }
   },
   "api_config": {
@@ -1114,6 +1283,8 @@
     "select_summary_model": "总结模型已废弃",
     "select_fast_model": "请选择智能非推理模型...",
     "select_exam_sheet_ocr": "请选择OCR引擎...",
+    "no_voice_input_asr": "暂无可用的 ASR 模型",
+    "no_image_generation_model": "暂无可用的生图模型",
     "default_value": "默认 {{value}}",
     "preset_name_required": "预设名称（必填）",
     "preset_note_optional": "用途备注（可选）",
@@ -1139,7 +1310,12 @@
     "summary_title": "总结生成模型（已废弃）",
     "exam_sheet_ocr_title": "OCR引擎",
     "translation_model_title": "翻译专用模型（文本翻译）",
+    "translation_display_mode_title": "聊天翻译显示模式",
+    "translation_display_mode_aligned": "短语对照",
+    "translation_display_mode_streaming": "流式译文",
     "qbank_ai_grading_model_title": "题库AI批改模型（评判 + 解析）",
+    "voice_input_asr_title": "语音输入 ASR 模型",
+    "image_generation_model_title": "生图模型",
     "vl_reranker_title": "多模态重排序模型（可选）",
     "config_check_title": "配置状态检查",
     "server_list_title": "服务器列表",
@@ -1230,6 +1406,8 @@
     "saved": "已保存",
     "restart_hint": "部分设置需重启应用后生效",
     "translation_saved": "翻译模型配置已保存",
+    "voice_input_asr_saved": "语音输入 ASR 模型配置已保存",
+    "image_generation_saved": "生图模型配置已保存",
     "qbank_ai_grading_saved": "题库AI批改模型配置已保存",
     "translation_save_failed": "保存翻译模型配置失败: {{error}}",
     "learning_mode_saved": "学习模式偏好已更新",
@@ -1258,7 +1436,9 @@
     "translation_configured": "翻译模型：已配置",
     "qbank_ai_grading_configured": "题库AI批改模型：已配置",
     "question_parsing_configured": "题目解析模型：已配置",
-    "memory_decision_configured": "记忆决策模型：已配置"
+    "memory_decision_configured": "记忆决策模型：已配置",
+    "voice_input_asr_configured": "语音输入 ASR 模型：已配置",
+    "image_generation_configured": "生图模型：已配置"
   },
   "status_labels": {
     "summary_model": "总结生成模型（已废弃）",
@@ -1266,6 +1446,8 @@
     "exam_sheet_ocr": "OCR引擎",
     "translation_model": "翻译专用模型",
     "qbank_ai_grading_model": "题库AI批改模型",
+    "voice_input_asr_model": "语音输入 ASR 模型",
+    "image_generation_model": "生图模型",
     "basic_config_complete": "基础功能配置完成，可以开始使用智能对话功能！",
     "unnamed_tool": "未命名工具",
     "unnamed_prompt": "未命名提示",
@@ -1288,7 +1470,10 @@
     "summary_desc": "已废弃：总结模型不再使用",
     "exam_sheet_ocr_desc": "专门用于题目集识别的OCR处理，推荐使用DeepSeek-OCR等专业OCR模型。",
     "translation_desc": "专门用于文本翻译功能，建议使用理解和语言转换能力强的模型。如果未选择，将使用\"对话模型\"。",
+    "translation_display_mode_desc": "聊天里选中文字翻译时的显示方式：短语对照展示原文与译文的逐段对应；流式译文只输出译文，边译边显示。",
     "qbank_ai_grading_desc": "用于题库中的 AI 评判与 AI 解析。若未配置，将回退使用\"对话模型\"。",
+    "voice_input_asr_desc": "用于输入层语音转文字。这里会展示所有具备 ASR 能力的模型，暂不支持的提供方会标记为“即将支持”；转写成功后只插入文本，不会自动发送。",
+    "image_generation_desc": "用于 Chat V2 内置生图工具。请选择支持 OpenAI 兼容 /images/generations 的模型，生成结果会保存到 VFS。",
     "vl_reranker_desc": "用于对多模态 RAG 检索结果进行重排序，提高图文混合检索的相关性（可选配置）"
   },
   "common_labels": {
@@ -1752,21 +1937,22 @@
     "label": "MCP 服务器 JSON 配置"
   },
   "memory": {
-    "title": "记忆系统",
-    "description": "配置 AI 记忆存储位置。记忆文件将作为普通笔记存储在指定文件夹中。",
-    "selectFolder": "选择记忆文件夹...",
+    "title": "记忆",
+    "description": "管理 AI 记忆功能与存储位置。记忆以笔记形式存储，支持自动分类。",
+    "selectFolder": "选择存储文件夹...",
     "createFolder": "新建文件夹",
     "defaultFolderName": "我的记忆",
-    "configured": "✓ 记忆系统已配置",
-    "notConfigured": "⚠ 请选择或创建记忆文件夹",
-    "rootFolder": "记忆根文件夹",
+    "configured": "✓ 已配置",
+    "notConfigured": "⚠ 尚未选择存储文件夹",
+    "disabled": "已停用",
+    "rootFolder": "存储位置",
     "noFolders": "暂无文件夹",
     "createSuccess": "记忆文件夹创建成功",
     "setSuccess": "记忆根文件夹设置成功",
-    "privacyMode": "隐私模式",
-    "privacyModeDesc": "开启后，记忆写入与检索会跳过外部 LLM 的改写/重排，以降低敏感信息外发风险。",
-    "privacyModeEnabled": "记忆隐私模式已开启",
-    "privacyModeDisabled": "记忆隐私模式已关闭"
+    "memoryEnabled": "启用",
+    "memoryEnabledDesc": "开启后 AI 会自动提取并调用关于你的信息来个性化对话体验。关闭后不再提取、检索或注入用户记忆。",
+    "memoryEnabledToast": "记忆功能已开启",
+    "memoryDisabledToast": "记忆功能已关闭"
   },
   "data_governance": {
     "backup_tiers": {

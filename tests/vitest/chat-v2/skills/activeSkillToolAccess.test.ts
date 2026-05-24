@@ -6,10 +6,10 @@ vi.mock('i18next', () => ({
   },
 }));
 
-import { createSkillActions } from '@/chat-v2/core/store/skillActions';
-import type { ChatStoreState, GetState, SetState } from '@/chat-v2/core/store/types';
-import { skillRegistry } from '@/chat-v2/skills/registry';
-import { clearSessionSkills, getLoadedToolSchemas } from '@/chat-v2/skills/progressiveDisclosure';
+import { createSkillActions } from '@/features/chat/core/store/skillActions';
+import type { ChatStoreState, GetState, SetState } from '@/features/chat/core/store/types';
+import { skillRegistry } from '@/features/chat/skills/registry';
+import { clearSessionSkills, getLoadedToolSchemas } from '@/features/chat/skills/progressiveDisclosure';
 
 const SESSION_ID = 'session-active-skill-tools';
 

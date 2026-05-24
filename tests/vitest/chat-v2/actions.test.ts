@@ -6,12 +6,12 @@
 
 import { describe, it, expect, beforeEach } from 'vitest';
 import i18n from 'i18next';
-import { createChatStore } from '@/chat-v2/core/store/createChatStore';
+import { createChatStore } from '@/features/chat/core/store/createChatStore';
 import type { StoreApi } from 'zustand';
-import type { ChatStore } from '@/chat-v2/core/types';
+import type { ChatStore } from '@/features/chat/core/types';
 
 // 导入块插件以完成 blockRegistry 注册（abortStream 等行为依赖 onAbort 配置）
-import '@/chat-v2/plugins/blocks';
+import '@/features/chat/plugins/blocks';
 
 // ============================================================================
 // 测试辅助
@@ -430,6 +430,32 @@ describe('Store Actions', () => {
       expect(getState().activeBlockIds.size).toBe(0);
     });
 
+    it('should clear activeBlockIds immediately while abort callback is pending', async () => {
+      const state = getState();
+      let resolveAbort!: () => void;
+      state.setAbortCallback(() => new Promise<void>((resolve) => {
+        resolveAbort = resolve;
+      }));
+      await state.sendMessage('Test');
+
+      const assistantMessageId = getState().messageOrder[1];
+      const blockId = state.createBlock(assistantMessageId, 'content');
+      state.updateBlockContent(blockId, 'Partial content');
+
+      expect(getState().activeBlockIds.has(blockId)).toBe(true);
+
+      const abortPromise = state.abortStream();
+
+      expect(getState().sessionStatus).toBe('aborting');
+      expect(getState().activeBlockIds.size).toBe(0);
+
+      resolveAbort();
+      await abortPromise;
+
+      expect(getState().sessionStatus).toBe('idle');
+      expect(getState().blocks.get(blockId)?.status).toBe('success');
+    });
+
     it('should keep content for streaming blocks', async () => {
       const state = getState();
       await state.sendMessage('Test');
@@ -604,6 +630,16 @@ describe('Store Actions', () => {
 
       state.setPanelState('rag', false);
       expect(getState().panelStates.rag).toBe(false);
+    });
+
+    it('setPanelState should keep composer panels mutually exclusive when opening', () => {
+      const state = getState();
+
+      state.setPanelState('model', true);
+      state.setPanelState('mcp', true);
+
+      expect(getState().panelStates.model).toBe(false);
+      expect(getState().panelStates.mcp).toBe(true);
     });
   });
 

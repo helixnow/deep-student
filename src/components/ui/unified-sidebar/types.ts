@@ -4,8 +4,9 @@
  * 包含所有与 UnifiedSidebar 相关的类型定义
  */
 
-import { ReactNode } from 'react';
-import { LucideIcon } from 'lucide-react';
+import { ElementType, ReactNode } from 'react';
+
+export type SidebarIcon = ElementType;
 
 // ============================================================================
 // 显示模式相关类型
@@ -118,7 +119,7 @@ export interface UnifiedSidebarHeaderProps {
   /** 标题 */
   title?: string;
   /** 标题图标 */
-  icon?: LucideIcon;
+  icon?: SidebarIcon;
   /** 是否显示搜索框 */
   showSearch?: boolean;
   /** 搜索框占位符 */
@@ -168,7 +169,7 @@ export interface UnifiedSidebarContentProps {
   /** 是否为空 */
   isEmpty?: boolean;
   /** 空状态图标 */
-  emptyIcon?: LucideIcon;
+  emptyIcon?: SidebarIcon;
   /** 空状态标题 */
   emptyTitle?: string;
   /** 空状态描述 */
@@ -194,7 +195,7 @@ export interface UnifiedSidebarItemProps {
   /** 点击回调 */
   onClick?: () => void;
   /** 图标 */
-  icon?: LucideIcon | ReactNode;
+  icon?: SidebarIcon | ReactNode;
   /** 颜色标记（如圆点颜色） */
   colorDot?: string;
   /** 标题 */

@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useEffect, useRef, useState } from 'react';
 import { Textarea } from '../components/ui/shad/Textarea';
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from './ui/tooltip';
+import { CommonTooltip, type TooltipPosition } from '@/components/shared/CommonTooltip';
 import { cn } from './lib/cn';
 
 type PromptInputContextType = {
@@ -51,29 +51,27 @@ export function PromptInput({
   };
 
   return (
-    <TooltipProvider>
-      <PromptInputContext.Provider
-        value={{
-          isLoading,
-          value: value ?? internalValue,
-          setValue: onValueChange ?? handleChange,
-          maxHeight,
-          onSubmit,
-          disabled,
-          textareaRef,
-        }}
+    <PromptInputContext.Provider
+      value={{
+        isLoading,
+        value: value ?? internalValue,
+        setValue: onValueChange ?? handleChange,
+        maxHeight,
+        onSubmit,
+        disabled,
+        textareaRef,
+      }}
+    >
+      <div
+        className={cn(
+          'border-input bg-white/90 dark:bg-slate-900/50 backdrop-blur-md cursor-text rounded-3xl border p-2 shadow-[0_20px_40px_hsl(var(--foreground)_/_0.06)]',
+          className,
+        )}
+        onClick={() => textareaRef.current?.focus()}
       >
-        <div
-          className={cn(
-            'border-input bg-white/90 dark:bg-slate-900/50 backdrop-blur-md cursor-text rounded-3xl border p-2 shadow-[0_20px_40px_hsl(var(--foreground)_/_0.06)]',
-            className,
-          )}
-          onClick={() => textareaRef.current?.focus()}
-        >
-          {children}
-        </div>
-      </PromptInputContext.Provider>
-    </TooltipProvider>
+        {children}
+      </div>
+    </PromptInputContext.Provider>
   );
 }
 
@@ -139,18 +137,31 @@ export function PromptInputActions({ children, className, ...props }: PromptInpu
 export type PromptInputActionProps = {
   className?: string;
   tooltip: React.ReactNode;
-  children: React.ReactNode;
-  side?: 'top' | 'bottom' | 'left' | 'right';
-} & React.ComponentProps<typeof Tooltip>;
+  children: React.ReactElement;
+  side?: TooltipPosition;
+} & Omit<
+  React.ComponentProps<typeof CommonTooltip>,
+  'children' | 'content' | 'position' | 'className'
+>;
 
 export function PromptInputAction({ tooltip, children, className, side, ...props }: PromptInputActionProps) {
   const { disabled } = usePromptInput();
+  const action = React.cloneElement(children, {
+    onClick: (event: React.MouseEvent) => {
+      event.stopPropagation();
+      children.props.onClick?.(event);
+    },
+  } as any);
+
   return (
-    <Tooltip {...props}>
-      {/* @ts-expect-error - TooltipTrigger asChild 类型问题 */}
-      <TooltipTrigger asChild onClick={(e: any) => e.stopPropagation()}>{children}</TooltipTrigger>
-      {/* @ts-expect-error - TooltipContent side 类型问题 */}
-      <TooltipContent className={className} side={side}>{!disabled && tooltip}</TooltipContent>
-    </Tooltip>
+    <CommonTooltip
+      {...props}
+      content={tooltip}
+      position={side}
+      className={className}
+      disabled={disabled || props.disabled || !tooltip}
+    >
+      {action}
+    </CommonTooltip>
   );
 }

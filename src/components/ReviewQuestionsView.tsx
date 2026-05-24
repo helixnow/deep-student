@@ -9,19 +9,19 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import {
   Check,
   X,
-  ChevronRight,
-  Trash2,
-  RefreshCw,
+  CaretRight as CaretRight,
+  Trash as Trash,
+  ArrowsClockwise as ArrowClockwise,
   BookOpen,
-  Zap,
-  History,
-  ArrowUpDown,
-  ChevronDown,
+  Lightning as Lightning,
+  ClockCounterClockwise as ClockCounterClockwise,
+  ArrowsDownUp as ArrowsDownUp,
+  CaretDown as CaretDown,
   Target,
   Clock,
-  Award,
-  AlertTriangle,
-} from 'lucide-react';
+  Trophy as Award,
+  Warning as Warning,
+} from '@phosphor-icons/react';
 import { Badge } from '@/components/ui/shad/Badge';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useTranslation, Trans } from 'react-i18next';
@@ -85,7 +85,7 @@ const ReviewStatsCard: React.FC<{
       <div className="flex items-center gap-6">
         {/* 待复习数 */}
         <div className="flex items-center gap-2">
-          <div className="relative w-10 h-10">
+          <div className="w-10 h-10 relative">
             <svg className="w-full h-full transform -rotate-90" viewBox="0 0 40 40">
               <circle cx="20" cy="20" r="16" fill="none" stroke="currentColor" strokeWidth="3" className="text-muted/20" />
               <circle
@@ -94,7 +94,7 @@ const ReviewStatsCard: React.FC<{
                 strokeDasharray={`${(1 - progressPercent / 100) * 100.5} 100.5`}
                 className="text-amber-500"
                 strokeLinecap="round"
-              />
+/>
             </svg>
             <div className="absolute inset-0 flex items-center justify-center">
               <span className="text-xs font-semibold text-amber-600">{reviewCount}</span>
@@ -189,8 +189,8 @@ const ReviewQuestionCard: React.FC<{
   return (
     <div
       className={cn(
-        'group flex items-center gap-3 px-3 py-2.5 rounded-lg transition-all cursor-pointer',
-        'hover:bg-muted/40',
+        'group flex items-center gap-3 px-3 py-2.5 rounded-lg transition-colors cursor-pointer',
+        !isSelected && 'hover:bg-[var(--interactive-hover)]',
         isSelected && 'bg-amber-500/5'
       )}
       onClick={onClick}
@@ -209,7 +209,7 @@ const ReviewQuestionCard: React.FC<{
             ? 'bg-amber-500 border-amber-500' 
             : 'border-muted-foreground/30 hover:border-amber-500'
         )}>
-          {isSelected && <Check className="w-2.5 h-2.5 text-white" />}
+          {isSelected && <Check size={10} className="text-white" />}
         </div>
       </div>
 
@@ -237,7 +237,7 @@ const ReviewQuestionCard: React.FC<{
         <span className="hidden sm:inline">{lastAttemptText}</span>
       </div>
 
-      <ChevronRight className="w-4 h-4 text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-all flex-shrink-0" />
+      <CaretRight size={16} className="text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-colors flex-shrink-0" />
     </div>
   );
 };
@@ -358,7 +358,7 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
           reviewQuestions={reviewQuestions}
           totalQuestions={questions.length}
           stats={stats}
-        />
+/>
       </div>
 
       {/* 操作栏 - 更紧凑 */}
@@ -366,24 +366,24 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
         <div className="flex items-center justify-between gap-3">
           {/* 左侧：开始复习按钮 */}
           <NotionButton variant="ghost" size="sm" onClick={onStartReview} className="text-sm font-medium text-amber-600 hover:bg-amber-500/10">
-            <Zap className="w-3.5 h-3.5" />
+            <Lightning size={14} />
             {t('review:questions.startReview', { count: reviewQuestions.length })}
           </NotionButton>
 
           {/* 右侧：批量操作 */}
           <div className="flex items-center gap-1.5">
-            <NotionButton variant="ghost" size="sm" onClick={toggleSelectAll} className="!px-2 !py-1 !h-auto text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50">
+            <NotionButton variant="ghost" size="sm" onClick={toggleSelectAll} className="!px-2 !py-1 !h-auto text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]">
               {selectedIds.size === reviewQuestions.length ? t('review:questions.cancel') : t('review:questions.selectAll')}
             </NotionButton>
             
             {selectedIds.size > 0 && (
               <>
                 <NotionButton variant="ghost" size="sm" onClick={handleResetProgress} disabled={isOperating || !onResetProgress} className="!px-2 !py-1 !h-auto text-xs text-sky-600 hover:bg-sky-500/10 disabled:opacity-50">
-                  <RefreshCw className={cn('w-3 h-3', isOperating && 'animate-spin')} />
+                  <ArrowClockwise className={cn('w-3 h-3', isOperating && 'animate-spin')} />
                   {t('review:questions.reset')}
                 </NotionButton>
                 <NotionButton variant="ghost" size="sm" onClick={handleDelete} disabled={isOperating || !onDelete} className="!px-2 !py-1 !h-auto text-xs text-rose-600 hover:bg-rose-500/10 disabled:opacity-50">
-                  <Trash2 className="w-3 h-3" />
+                  <Trash size={12} />
                   {t('review:questions.delete')}
                 </NotionButton>
               </>
@@ -395,7 +395,7 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
       {/* 再掌握流程提示 - 更紧凑 */}
       <div className="flex-shrink-0 px-4 py-1.5">
         <div className="flex items-center gap-2 px-3 py-2 rounded-lg bg-muted/30 text-xs text-muted-foreground">
-          <AlertTriangle className="w-3.5 h-3.5 text-sky-500 flex-shrink-0" />
+          <Warning size={14} className="text-sky-500 flex-shrink-0" />
           <span>
             <Trans i18nKey="review:questions.masteryTip" components={{ highlight: <span className="font-medium text-sky-600" /> }} />
           </span>
@@ -413,7 +413,7 @@ export const ReviewQuestionsView: React.FC<ReviewQuestionsViewProps> = ({
               isSelected={selectedIds.has(q.id)}
               onSelect={(selected) => toggleSelect(q.id, selected)}
               onClick={() => handleQuestionClick(q.id)}
-            />
+/>
           ))}
         </div>
       </CustomScrollArea>

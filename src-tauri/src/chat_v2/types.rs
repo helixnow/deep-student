@@ -4,9 +4,10 @@
 //! 所有类型必须与前端 `src/chat-v2/core/types/` 目录中的定义完全对齐。
 
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::Value;
 use std::collections::HashMap;
+use uuid; // P1: CompactionRecord::generate_id
 
 // 导入资源库类型（统一上下文注入系统）
 use super::resource_types::{ContextSnapshot, SendContextRef};
@@ -99,6 +100,8 @@ pub mod block_types {
     // 后端扩展（前端暂无，可通过 string 扩展）
     pub const OCR_RESULT: &str = "ocr_result";
     pub const SUMMARY: &str = "summary";
+    /// 🆕 P1: 上下文压缩摘要块（每次 compaction 生成一条）
+    pub const COMPACTION_SUMMARY: &str = "compaction_summary";
 
     // 🆕 用户提问块
     pub const ASK_USER: &str = "ask_user";
@@ -354,6 +357,13 @@ pub struct ChatSession {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub summary_hash: Option<String>,
 
+    /// 标题锁定标志
+    ///
+    /// 业界最佳实践：用户手动改名后置 true，自动摘要永不覆盖。
+    /// 默认 false，允许 LLM 在首轮对话后自动生成标题。
+    #[serde(default)]
+    pub title_locked: bool,
+
     /// 持久化状态
     pub persist_status: PersistStatus,
 
@@ -413,6 +423,7 @@ impl ChatSession {
             title: None,
             description: None,
             summary_hash: None,
+            title_locked: false,
             persist_status: PersistStatus::Active,
             created_at: now,
             updated_at: now,
@@ -716,11 +727,31 @@ pub struct ReplaySkillPayloadSnapshot {
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub skill_contents: std::collections::HashMap<String, String>,
     #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
+    pub skill_dependencies: std::collections::HashMap<String, Vec<String>>,
+    #[serde(default, skip_serializing_if = "std::collections::HashMap::is_empty")]
     pub skill_embedded_tools: std::collections::HashMap<String, Vec<McpToolSchema>>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub mcp_tool_schemas: Vec<McpToolSchema>,
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     pub selected_mcp_servers: Vec<String>,
+}
+
+impl ReplaySkillPayloadSnapshot {
+    /// Skill bodies are transient request data and must not be persisted in
+    /// message metadata. Keep the lightweight replay affordances, but drop the
+    /// full instruction text before writing a snapshot to history.
+    pub fn without_skill_contents(mut self) -> Self {
+        self.skill_contents.clear();
+        self
+    }
+
+    pub fn has_replay_metadata(&self) -> bool {
+        !self.active_skill_ids.is_empty()
+            || !self.skill_dependencies.is_empty()
+            || !self.skill_embedded_tools.is_empty()
+            || !self.mcp_tool_schemas.is_empty()
+            || !self.selected_mcp_servers.is_empty()
+    }
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize, Default, PartialEq, Eq)]
@@ -823,18 +854,6 @@ impl SessionSkillState {
         next
     }
 
-    pub fn promoted_branch_local_skills(&self) -> Self {
-        let mut next = self.clone();
-        next.agentic_session_skill_ids
-            .extend(next.branch_local_skill_ids.clone());
-        next.agentic_session_skill_ids.sort();
-        next.agentic_session_skill_ids.dedup();
-        next.branch_local_skill_ids.clear();
-        next.version = next.version.saturating_add(1);
-        next.legacy_migrated = Some(false);
-        next
-    }
-
     pub fn without_branch_local_skills(&self) -> Self {
         let mut next = self.clone();
         if !next.branch_local_skill_ids.is_empty() {
@@ -857,6 +876,30 @@ pub struct VariantMeta {
     pub skill_runtime_before: Option<ReplaySkillPayloadSnapshot>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skill_runtime_after: Option<ReplaySkillPayloadSnapshot>,
+}
+
+impl VariantMeta {
+    pub fn without_skill_runtime_contents(&self) -> Self {
+        let mut next = self.clone();
+        next.skill_runtime_before = next
+            .skill_runtime_before
+            .map(ReplaySkillPayloadSnapshot::without_skill_contents);
+        next.skill_runtime_after = next
+            .skill_runtime_after
+            .map(ReplaySkillPayloadSnapshot::without_skill_contents);
+        next
+    }
+}
+
+impl Variant {
+    pub fn without_skill_runtime_contents(&self) -> Self {
+        let mut next = self.clone();
+        next.meta = next
+            .meta
+            .as_ref()
+            .map(VariantMeta::without_skill_runtime_contents);
+        next
+    }
 }
 
 /// 共享上下文 - 检索结果，所有变体共享，只读
@@ -1247,6 +1290,19 @@ impl Default for MessageMeta {
             skill_runtime_after: None,
             replay_source: None,
         }
+    }
+}
+
+impl MessageMeta {
+    pub fn without_skill_runtime_contents(&self) -> Self {
+        let mut next = self.clone();
+        next.skill_runtime_before = next
+            .skill_runtime_before
+            .map(ReplaySkillPayloadSnapshot::without_skill_contents);
+        next.skill_runtime_after = next
+            .skill_runtime_after
+            .map(ReplaySkillPayloadSnapshot::without_skill_contents);
+        next
     }
 }
 
@@ -1830,6 +1886,14 @@ pub struct SendOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enable_thinking: Option<bool>,
 
+    /// 本次发送的运行时推理强度覆盖；不修改模型默认配置
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
+
+    /// 本次发送的运行时 thinking budget 覆盖
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking_budget: Option<i32>,
+
     /// 历史重放模式
     #[serde(skip_serializing_if = "Option::is_none")]
     pub replay_mode: Option<ReplayMode>,
@@ -2003,6 +2067,16 @@ pub struct SendOptions {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub skill_contents: Option<std::collections::HashMap<String, String>>,
 
+    /// 回放技能内容映射（skillId -> historical content）
+    /// retry/regenerate 原始回放优先使用此快照，避免读取最新技能文件导致漂移
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub replay_skill_contents: Option<std::collections::HashMap<String, String>>,
+
+    /// 技能依赖图（skillId -> dependency skill IDs）
+    /// transient builder 和 load_skills 共享，依赖必须先于父技能注入
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub skill_dependencies: Option<std::collections::HashMap<String, Vec<String>>>,
+
     /// 技能嵌入工具映射（skillId -> embeddedTools）
     /// 前端发送时填充所有已注册技能的 embeddedTools
     /// 后端 load_skills 执行后从此字段获取工具 Schema 并动态追加到 tools 数组
@@ -2065,8 +2139,20 @@ pub struct SessionSettings {
     pub title: Option<String>,
 
     /// 扩展元数据
-    #[serde(skip_serializing_if = "Option::is_none")]
-    pub metadata: Option<Value>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "deserialize_optional_value"
+    )]
+    pub metadata: Option<Option<Value>>,
+}
+
+fn deserialize_optional_value<'de, D, T>(deserializer: D) -> Result<Option<Option<T>>, D::Error>
+where
+    D: Deserializer<'de>,
+    T: Deserialize<'de>,
+{
+    Option::<T>::deserialize(deserializer).map(Some)
 }
 
 // ============================================================================
@@ -2201,6 +2287,14 @@ pub struct ChatParams {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub enable_thinking: Option<bool>,
 
+    /// Chat 运行时推理强度覆盖
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub reasoning_effort: Option<String>,
+
+    /// Chat 运行时 thinking budget 覆盖
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub thinking_budget: Option<i32>,
+
     /// 禁用工具调用
     #[serde(skip_serializing_if = "Option::is_none")]
     pub disable_tools: Option<bool>,
@@ -2287,6 +2381,8 @@ impl Default for ChatParams {
             // 🔧 2026-02-07: 对齐前端默认值 (32768 / enableThinking=true)
             max_tokens: Some(32768),
             enable_thinking: Some(true),
+            reasoning_effort: None,
+            thinking_budget: None,
             disable_tools: Some(false),
             model2_override_id: None,
             rag_top_k: None,
@@ -2358,13 +2454,78 @@ impl Default for PanelStates {
 }
 
 // ============================================================================
+// 🆕 P1: 上下文压缩记录（锚定摘要 + 尾部保真）
+// ============================================================================
+
+/// 一次 compaction 操作的持久化记录
+///
+/// 一个会话可以积累多条记录（按 created_at 排序）；
+/// 只有 `chat_v2_sessions.last_compaction_id` 指向的那条是"当前活跃视图"。
+///
+/// ## 视图语义
+/// - `tail_start_time_created` 及之后的消息：逐字保留
+/// - 之前的消息：在 LLM 视图中**隐藏**，仅用户点击"展开原文"时可见
+/// - 在 tail 起点前插入一条 system 伪消息承载 summary 文本
+///
+/// ## 签名保真
+/// tail_start 必须对齐 turn 边界（某个 user turn 的起点），且不能切穿
+/// 持有活跃 `thought_signature` / `anthropic.signature` 的 assistant turn。
+/// 选取逻辑在 `pipeline::compaction::select_tail`。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct CompactionRecord {
+    pub id: String,
+    pub session_id: String,
+    /// 承载摘要文本的 assistant 消息 ID
+    pub summary_message_id: String,
+    /// 首条逐字保留消息的 ID
+    pub tail_start_message_id: String,
+    /// 首条逐字保留消息的创建时间（ms epoch），用于 SQL 层过滤
+    pub tail_start_time_created: i64,
+    /// 'auto' | 'manual' | 'overflow'
+    pub reason: String,
+    pub is_auto: bool,
+    pub is_overflow: bool,
+    pub tokens_before: Option<u32>,
+    pub tokens_after: Option<u32>,
+    /// 触发压缩的对话主模型 ID（审计用）
+    pub model_id: Option<String>,
+    /// 创建时间戳（ms epoch）
+    pub created_at: i64,
+}
+
+impl CompactionRecord {
+    pub fn generate_id() -> String {
+        format!("cmp_{}", uuid::Uuid::new_v4())
+    }
+}
+
+// ============================================================================
 // 单元测试
 // ============================================================================
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json;
+    use serde_json::{self, json};
+
+    #[test]
+    fn test_send_options_preserves_runtime_reasoning_overrides() {
+        let options: SendOptions = serde_json::from_value(json!({
+            "enableThinking": true,
+            "reasoningEffort": "max",
+            "thinkingBudget": 32768
+        }))
+        .unwrap();
+
+        assert_eq!(options.enable_thinking, Some(true));
+        assert_eq!(options.reasoning_effort.as_deref(), Some("max"));
+        assert_eq!(options.thinking_budget, Some(32768));
+
+        let serialized = serde_json::to_value(&options).unwrap();
+        assert_eq!(serialized.get("reasoningEffort"), Some(&json!("max")));
+        assert_eq!(serialized.get("thinkingBudget"), Some(&json!(32768)));
+    }
 
     #[test]
     fn test_message_block_serialization() {
@@ -3427,29 +3588,6 @@ mod tests {
     }
 
     #[test]
-    fn test_session_skill_state_promoted_branch_local_skills() {
-        let state = SessionSkillState {
-            manual_pinned_skill_ids: vec!["manual-a".to_string()],
-            agentic_session_skill_ids: vec!["agentic-a".to_string()],
-            branch_local_skill_ids: vec!["branch-a".to_string()],
-            version: 3,
-            ..Default::default()
-        };
-
-        let promoted = state.promoted_branch_local_skills();
-        assert_eq!(
-            promoted.manual_pinned_skill_ids,
-            vec!["manual-a".to_string()]
-        );
-        assert_eq!(
-            promoted.agentic_session_skill_ids,
-            vec!["agentic-a".to_string(), "branch-a".to_string()]
-        );
-        assert!(promoted.branch_local_skill_ids.is_empty());
-        assert_eq!(promoted.version, 4);
-    }
-
-    #[test]
     fn test_session_skill_state_without_branch_local_skills() {
         let state = SessionSkillState {
             manual_pinned_skill_ids: vec!["manual-a".to_string()],
@@ -3465,5 +3603,68 @@ mod tests {
         );
         assert!(trimmed.branch_local_skill_ids.is_empty());
         assert_eq!(trimmed.version, 4);
+    }
+
+    #[test]
+    fn test_replay_skill_payload_snapshot_without_skill_contents_keeps_light_metadata() {
+        let snapshot = ReplaySkillPayloadSnapshot {
+            active_skill_ids: vec!["manual-a".to_string()],
+            skill_contents: std::collections::HashMap::from([(
+                "manual-a".to_string(),
+                "private instructions".to_string(),
+            )]),
+            skill_dependencies: std::collections::HashMap::from([(
+                "manual-a".to_string(),
+                vec!["dep-a".to_string()],
+            )]),
+            ..Default::default()
+        };
+
+        let redacted = snapshot.without_skill_contents();
+        assert!(redacted.skill_contents.is_empty());
+        assert_eq!(redacted.active_skill_ids, vec!["manual-a".to_string()]);
+        assert_eq!(
+            redacted
+                .skill_dependencies
+                .get("manual-a")
+                .cloned()
+                .unwrap(),
+            vec!["dep-a".to_string()]
+        );
+        assert!(redacted.has_replay_metadata());
+    }
+
+    #[test]
+    fn test_message_and_variant_meta_without_skill_runtime_contents_strip_private_text() {
+        let runtime = ReplaySkillPayloadSnapshot {
+            active_skill_ids: vec!["manual-a".to_string()],
+            skill_contents: std::collections::HashMap::from([(
+                "manual-a".to_string(),
+                "private instructions".to_string(),
+            )]),
+            ..Default::default()
+        };
+        let meta = MessageMeta {
+            skill_runtime_after: Some(runtime.clone()),
+            ..Default::default()
+        };
+        let variant_meta = VariantMeta {
+            skill_runtime_after: Some(runtime),
+            ..Default::default()
+        };
+
+        let redacted_meta = meta.without_skill_runtime_contents();
+        let redacted_variant_meta = variant_meta.without_skill_runtime_contents();
+
+        assert!(redacted_meta
+            .skill_runtime_after
+            .unwrap()
+            .skill_contents
+            .is_empty());
+        assert!(redacted_variant_meta
+            .skill_runtime_after
+            .unwrap()
+            .skill_contents
+            .is_empty());
     }
 }

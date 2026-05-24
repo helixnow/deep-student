@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { ScrollText, Copy, Check, Trash2, Play, Pause, AlertTriangle } from 'lucide-react';
+import { Scroll, Copy, Check, Trash, Play, Pause, Warning } from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import {
@@ -87,7 +87,7 @@ export default function NotesOutlineDebugPlugin({ isActive }: DebugPanelPluginPr
   return (
     <div className="flex flex-col gap-3 h-full overflow-hidden">
       <div className="flex items-center gap-2">
-        <ScrollText className="w-4 h-4 text-primary" />
+        <Scroll size={16} className="text-primary" />
         <span className="text-sm font-semibold">大纲滚动调试</span>
         <div className="ml-auto flex items-center gap-2 text-xs">
           <button
@@ -95,9 +95,9 @@ export default function NotesOutlineDebugPlugin({ isActive }: DebugPanelPluginPr
             onClick={() => setPaused(p => !p)}
           >
             {paused ? (
-              <span className="flex items-center gap-1"><Play className="w-3 h-3" /> 继续</span>
+              <span className="flex items-center gap-1"><Play size={12} /> 继续</span>
             ) : (
-              <span className="flex items-center gap-1"><Pause className="w-3 h-3" /> 暂停</span>
+              <span className="flex items-center gap-1"><Pause size={12} /> 暂停</span>
             )}
           </button>
           <button
@@ -105,11 +105,11 @@ export default function NotesOutlineDebugPlugin({ isActive }: DebugPanelPluginPr
             onClick={copyAll}
           >
             <span className="flex items-center gap-1">
-              {copied ? <Check className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}复制日志
+              {copied ? <Check size={12} className="text-green-500" /> : <Copy size={12} />}复制日志
             </span>
           </button>
           <button className="px-2 py-1 rounded bg-muted hover:bg-muted/70" onClick={clearAll}>
-            <span className="flex items-center gap-1"><Trash2 className="w-3 h-3" /> 清空</span>
+            <span className="flex items-center gap-1"><Trash size={12} /> 清空</span>
           </button>
         </div>
       </div>
@@ -161,7 +161,7 @@ export default function NotesOutlineDebugPlugin({ isActive }: DebugPanelPluginPr
                 )}
                 {log.level === 'warn' && (
                   <div className="flex items-center gap-1 text-amber-500 text-[10px]">
-                    <AlertTriangle className="w-3 h-3" /> Warning
+                    <Warning size={12} /> Warning
                   </div>
                 )}
               </div>

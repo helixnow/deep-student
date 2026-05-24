@@ -1,6 +1,9 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "bundle": {
+    "macOS": {
+      "entitlements": "./Entitlements.plist"
+    },
     "resources": {
       "resources/pdfium/libpdfium.dylib": "./"
     }
@@ -17,7 +20,7 @@
         "fullscreen": false,
         "center": true,
         "decorations": true,
-        "transparent": false,
+        "transparent": true,
         "skipTaskbar": false,
         "alwaysOnTop": false,
         "visible": true,

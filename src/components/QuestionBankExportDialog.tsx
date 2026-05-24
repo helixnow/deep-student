@@ -22,14 +22,14 @@ import {
 } from '@/components/ui/shad/Collapsible';
 import {
   Download,
-  FileJson,
+  FileJs,
   FileText,
-  FileSpreadsheet,
-  Loader2,
-  CheckCircle2,
-  ChevronDown,
-  Settings2,
-} from 'lucide-react';
+  Table,
+  CircleNotch,
+  CheckCircle,
+  CaretDown,
+  GearSix,
+} from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { fileManager } from '@/utils/fileManager';
 import { showGlobalNotification } from './UnifiedNotification';
@@ -84,9 +84,9 @@ const CSV_ENCODING_OPTIONS: Array<{ value: CsvEncoding; label: string }> = [
 ];
 
 const formatIcons: Record<ExportFormat, React.ReactNode> = {
-  json: <FileJson className="w-5 h-5" />,
-  txt: <FileText className="w-5 h-5" />,
-  csv: <FileSpreadsheet className="w-5 h-5" />,
+  json: <FileJs size={20} />,
+  txt: <FileText size={20} />,
+  csv: <Table size={20} />,
 };
 
 const formatLabels: Record<ExportFormat, string> = {
@@ -433,7 +433,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
     <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-md">
         <NotionDialogHeader>
           <NotionDialogTitle className="flex items-center gap-2">
-            <Download className="w-5 h-5" />
+            <Download size={20} />
             {t('exam_sheet:questionBank.export.title', '导出题目')}
           </NotionDialogTitle>
           <NotionDialogDescription>
@@ -442,7 +442,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
             })}
           </NotionDialogDescription>
         </NotionDialogHeader>
-        <NotionDialogBody nativeScroll>
+        <NotionDialogBody>
 
         <div className="space-y-6 py-4">
           {/* 格式选择 */}
@@ -456,7 +456,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                     'flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors',
                     format === f
                       ? 'border-primary bg-primary/5'
-                      : 'border-border hover:bg-muted/50'
+                      : 'border-border hover:bg-[var(--interactive-hover)]'
                   )}
                   onClick={() => setFormat(f)}
                 >
@@ -494,7 +494,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                     id="include-answer"
                     checked={options.includeAnswer}
                     onCheckedChange={(c) => handleOptionChange('includeAnswer', !!c)}
-                  />
+/>
                   <Label htmlFor="include-answer" className="cursor-pointer text-sm">
                     {t('exam_sheet:questionBank.export.includeAnswer', '包含答案')}
                   </Label>
@@ -504,7 +504,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                     id="include-explanation"
                     checked={options.includeExplanation}
                     onCheckedChange={(c) => handleOptionChange('includeExplanation', !!c)}
-                  />
+/>
                   <Label htmlFor="include-explanation" className="cursor-pointer text-sm">
                     {t('exam_sheet:questionBank.export.includeExplanation', '包含解析')}
                   </Label>
@@ -514,7 +514,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                     id="include-status"
                     checked={options.includeStatus}
                     onCheckedChange={(c) => handleOptionChange('includeStatus', !!c)}
-                  />
+/>
                   <Label htmlFor="include-status" className="cursor-pointer text-sm">
                     {t('exam_sheet:questionBank.export.includeStatus', '包含学习状态')}
                   </Label>
@@ -524,7 +524,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                     id="include-stats"
                     checked={options.includeStats}
                     onCheckedChange={(c) => handleOptionChange('includeStats', !!c)}
-                  />
+/>
                   <Label htmlFor="include-stats" className="cursor-pointer text-sm">
                     {t('exam_sheet:questionBank.export.includeStats', '包含答题统计')}
                   </Label>
@@ -543,7 +543,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                   <AppSelect value={csvEncoding} onValueChange={(v) => setCsvEncoding(v as CsvEncoding)}
                     options={CSV_ENCODING_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label, description: t(`exam_sheet:questionBank.export.encodingDesc.${opt.value}`) }))}
                     variant="outline"
-                  />
+/>
                 </div>
 
                 {/* 包含答题记录 */}
@@ -552,7 +552,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                     id="csv-include-answer-records"
                     checked={csvIncludeAnswerRecords}
                     onCheckedChange={(c) => handleIncludeAnswerRecordsChange(!!c)}
-                  />
+/>
                   <Label htmlFor="csv-include-answer-records" className="cursor-pointer text-sm">
                     {t('exam_sheet:questionBank.export.includeAnswerRecords', '包含答题记录')}
                   </Label>
@@ -563,9 +563,9 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                   <CollapsibleTrigger
                     className="flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground transition-colors"
                   >
-                    <Settings2 className="w-4 h-4" />
+                    <GearSix size={16} />
                     <span>{t('exam_sheet:questionBank.export.advancedFields', '字段选择')}</span>
-                    <ChevronDown className={cn(
+                    <CaretDown className={cn(
                       'w-4 h-4 transition-transform',
                       showCsvAdvanced && 'rotate-180'
                     )} />
@@ -597,7 +597,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                               checked={csvFields.has(field.key)}
                               onCheckedChange={(c) => handleCsvFieldToggle(field.key, !!c)}
                               disabled={field.key === 'content'} // content 是必需的
-                            />
+/>
                             <Label
                               htmlFor={`csv-field-${field.key}`}
                               className={cn(
@@ -627,7 +627,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                     id="include-answer"
                     checked={options.includeAnswer}
                     onCheckedChange={(c) => handleOptionChange('includeAnswer', !!c)}
-                  />
+/>
                   <Label htmlFor="include-answer" className="cursor-pointer text-sm">
                     {t('exam_sheet:questionBank.export.includeAnswer', '包含答案')}
                   </Label>
@@ -637,7 +637,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                     id="include-explanation"
                     checked={options.includeExplanation}
                     onCheckedChange={(c) => handleOptionChange('includeExplanation', !!c)}
-                  />
+/>
                   <Label htmlFor="include-explanation" className="cursor-pointer text-sm">
                     {t('exam_sheet:questionBank.export.includeExplanation', '包含解析')}
                   </Label>
@@ -647,7 +647,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                     id="include-status"
                     checked={options.includeStatus}
                     onCheckedChange={(c) => handleOptionChange('includeStatus', !!c)}
-                  />
+/>
                   <Label htmlFor="include-status" className="cursor-pointer text-sm">
                     {t('exam_sheet:questionBank.export.includeStatus', '包含学习状态')}
                   </Label>
@@ -657,7 +657,7 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
                     id="include-stats"
                     checked={options.includeStats}
                     onCheckedChange={(c) => handleOptionChange('includeStats', !!c)}
-                  />
+/>
                   <Label htmlFor="include-stats" className="cursor-pointer text-sm">
                     {t('exam_sheet:questionBank.export.includeStats', '包含答题统计')}
                   </Label>
@@ -674,11 +674,11 @@ export const QuestionBankExportDialog: React.FC<QuestionBankExportDialogProps> =
           </NotionButton>
           <NotionButton onClick={handleExport} disabled={isExporting || questions.length === 0}>
             {isExporting ? (
-              <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+              <CircleNotch size={16} className="mr-2 animate-spin" />
             ) : exportSuccess ? (
-              <CheckCircle2 className="w-4 h-4 mr-2 text-green-500" />
+              <CheckCircle size={16} className="mr-2 text-green-500" />
             ) : (
-              <Download className="w-4 h-4 mr-2" />
+              <Download size={16} className="mr-2" />
             )}
             {exportSuccess
               ? t('exam_sheet:questionBank.export.success', '导出成功')

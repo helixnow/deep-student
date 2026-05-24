@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 describe('SiliconFlow one-click assignment mapping', () => {
   it('includes qbank grading mapping key in preset assignments', () => {
     const source = readFileSync(
-      '/Volumes/cipan/deep-student/src/components/settings/SiliconFlowSection.tsx',
+      '/Volumes/cipan/deep-student/src/features/settings/components/SiliconFlowSection.tsx',
       'utf-8'
     );
 

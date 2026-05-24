@@ -7,13 +7,13 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import {
-  MessageSquare,
-  MessagesSquare,
-  Calendar,
+  ChatCircle,
+  Chats,
+  CalendarBlank,
   Clock,
   Archive,
-  Activity,
-} from 'lucide-react';
+  Pulse,
+} from '@phosphor-icons/react';
 import { cn } from '../lib/utils';
 import { Skeleton } from './ui/shad/Skeleton';
 import { useChatV2Stats } from '../hooks/useChatV2Stats';
@@ -88,37 +88,37 @@ export const ChatV2StatsSection: React.FC<ChatV2StatsProps> = ({ className, stat
     <div className={cn('w-full', className)}>
       {/* 统计属性列表 */}
       <div className={statsOnly ? 'space-y-0' : 'space-y-0 mb-8'}>
-        <PropRow icon={<MessageSquare className="h-3.5 w-3.5" />} label={t('chat_stats.total_sessions')}>
+        <PropRow icon={<ChatCircle size={14} />} label={t('chat_stats.total_sessions')}>
           <span className="font-semibold tabular-nums">{stats.totalSessions.toLocaleString()}</span>
           <span className="text-muted-foreground/50 ml-1 text-[12px]">
             {t('chat_stats.total_sessions_desc')}
           </span>
         </PropRow>
-        <PropRow icon={<Activity className="h-3.5 w-3.5" />} label={t('chat_stats.active_sessions')}>
+        <PropRow icon={<Pulse size={14} />} label={t('chat_stats.active_sessions')}>
           <span className="font-semibold tabular-nums">{stats.activeSessions.toLocaleString()}</span>
           <span className="text-muted-foreground/50 ml-1 text-[12px]">
             {t('chat_stats.active_sessions_desc')}
           </span>
         </PropRow>
-        <PropRow icon={<Archive className="h-3.5 w-3.5" />} label={t('chat_stats.archived_sessions')}>
+        <PropRow icon={<Archive size={14} />} label={t('chat_stats.archived_sessions')}>
           <span className="tabular-nums">{stats.archivedSessions.toLocaleString()}</span>
           <span className="text-muted-foreground/50 ml-1 text-[12px]">
             {t('chat_stats.archived_sessions_desc')}
           </span>
         </PropRow>
-        <PropRow icon={<MessagesSquare className="h-3.5 w-3.5" />} label={t('chat_stats.total_messages')}>
+        <PropRow icon={<Chats size={14} />} label={t('chat_stats.total_messages')}>
           <span className="font-semibold tabular-nums">{stats.totalMessages.toLocaleString()}</span>
           <span className="text-muted-foreground/50 ml-1 text-[12px]">
             {t('chat_stats.total_messages_desc', { user: stats.userMessages, ai: stats.assistantMessages })}
           </span>
         </PropRow>
-        <PropRow icon={<Calendar className="h-3.5 w-3.5" />} label={t('chat_stats.recent_sessions')}>
+        <PropRow icon={<CalendarBlank size={14} />} label={t('chat_stats.recent_sessions')}>
           <span className="tabular-nums">{stats.recentSessions.toLocaleString()}</span>
           <span className="text-muted-foreground/50 ml-1 text-[12px]">
             {t('chat_stats.recent_sessions_desc')}
           </span>
         </PropRow>
-        <PropRow icon={<Clock className="h-3.5 w-3.5" />} label={t('chat_stats.avg_messages')}>
+        <PropRow icon={<Clock size={14} />} label={t('chat_stats.avg_messages')}>
           <span className="tabular-nums">{stats.avgMessagesPerSession}</span>
           <span className="text-muted-foreground/50 ml-1 text-[12px]">
             {t('chat_stats.avg_messages_desc')}

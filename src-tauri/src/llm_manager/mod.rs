@@ -35,6 +35,8 @@ struct RegistryCapabilityFlags {
     vision: bool,
     function_calling: bool,
     reasoning: bool,
+    #[serde(default)]
+    max_context_tokens: Option<u32>,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -59,11 +61,29 @@ struct RegistryDocument {
     records: Vec<RegistrySeriesRecord>,
 }
 
+#[derive(Debug, Clone, Deserialize)]
+struct ProviderProtocolRegistryRecord {
+    provider_type: String,
+    #[serde(default)]
+    allowed_protocols: Vec<String>,
+    default_protocol: String,
+    #[serde(default)]
+    official: bool,
+    #[serde(default)]
+    supports_openai_responses: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ProviderProtocolRegistryDocument {
+    providers: Vec<ProviderProtocolRegistryRecord>,
+}
+
 #[derive(Debug, Clone, Default)]
 struct CapabilityOverrides {
     is_multimodal: bool,
     supports_tools: bool,
     supports_reasoning: bool,
+    context_window: Option<u32>,
 }
 
 static MODEL_CAPABILITY_REGISTRY: LazyLock<Vec<RegistryModelRecord>> = LazyLock::new(|| {
@@ -85,6 +105,22 @@ static MODEL_CAPABILITY_REGISTRY: LazyLock<Vec<RegistryModelRecord>> = LazyLock:
     })
 });
 
+static PROVIDER_PROTOCOL_REGISTRY: LazyLock<Vec<ProviderProtocolRegistryRecord>> = LazyLock::new(
+    || {
+        serde_json::from_str::<ProviderProtocolRegistryDocument>(include_str!(
+            "../../../scripts/provider-protocol-registry.json"
+        ))
+        .map(|doc| doc.providers)
+        .unwrap_or_else(|err| {
+            eprintln!(
+                "[LLMManager] failed to parse provider protocol registry, falling back to empty: {}",
+                err
+            );
+            Vec::new()
+        })
+    },
+);
+
 /// 增量 JSON 数组解析器 - 用于流式解析 LLM 输出的 JSON 数组
 /// 当检测到完整的 JSON 对象时立即返回，无需等待整个数组完成
 pub(crate) struct IncrementalJsonArrayParser {
@@ -98,6 +134,21 @@ pub(crate) struct IncrementalJsonArrayParser {
 #[cfg(test)]
 mod tests {
     use super::*;
+    #[cfg(unix)]
+    use std::os::unix::fs::PermissionsExt;
+    use tempfile::TempDir;
+
+    fn deepseek_sampling_body(model: &str) -> Value {
+        json!({
+            "model": model,
+            "messages": [],
+            "temperature": 0.7,
+            "top_p": 0.9,
+            "presence_penalty": 0.3,
+            "frequency_penalty": 0.4,
+            "logprobs": true
+        })
+    }
 
     fn profile(
         id: &str,
@@ -114,6 +165,181 @@ mod tests {
             supports_tools,
             is_builtin,
             ..ModelProfile::default()
+        }
+    }
+
+    fn create_test_llm_manager(temp_dir: &TempDir) -> LLMManager {
+        let db_path = temp_dir.path().join("test.db");
+        let conn = rusqlite::Connection::open(&db_path).expect("open test db");
+        conn.execute(
+            "CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            )",
+            [],
+        )
+        .expect("create settings table");
+        let db = Arc::new(Database::new(&db_path).expect("create test database"));
+        let file_manager =
+            Arc::new(FileManager::new(temp_dir.path().to_path_buf()).expect("create file manager"));
+        LLMManager::new(db, file_manager).expect("create llm manager")
+    }
+
+    fn builtin_vendor_config(api_key: &str) -> VendorConfig {
+        VendorConfig {
+            id: "builtin-openai".to_string(),
+            name: "OpenAI".to_string(),
+            provider_type: "openai".to_string(),
+            api_protocol: Some(resolve_preferred_protocol_for_provider(
+                Some("openai"),
+                Some("openai"),
+                "https://api.openai.com/v1",
+                None,
+            )),
+            supports_openai_responses: Some(provider_supports_openai_responses(
+                Some("openai"),
+                "https://api.openai.com/v1",
+                None,
+            )),
+            base_url: "https://api.openai.com/v1".to_string(),
+            api_key: api_key.to_string(),
+            headers: HashMap::new(),
+            rate_limit_per_minute: None,
+            default_timeout_ms: None,
+            notes: None,
+            is_builtin: true,
+            is_read_only: false,
+            sort_order: None,
+            max_tokens_limit: None,
+            website_url: None,
+        }
+    }
+
+    fn tool_call_message(id: &str, reasoning: Option<&str>) -> ChatMessage {
+        ChatMessage {
+            role: "assistant".to_string(),
+            content: String::new(),
+            timestamp: chrono::Utc::now(),
+            thinking_content: reasoning.map(str::to_string),
+            thought_signature: None,
+            rag_sources: None,
+            memory_sources: None,
+            graph_sources: None,
+            web_search_sources: None,
+            image_paths: None,
+            image_base64: None,
+            doc_attachments: None,
+            multimodal_content: None,
+            tool_call: Some(crate::models::ToolCall {
+                id: id.to_string(),
+                tool_name: "builtin_test".to_string(),
+                args_json: json!({}),
+            }),
+            tool_result: None,
+            overrides: None,
+            relations: None,
+            persistent_stable_id: None,
+            metadata: None,
+        }
+    }
+
+    #[test]
+    fn vendor_config_default_uses_registry_backed_openai_defaults() {
+        let vendor = VendorConfig::default();
+
+        assert_eq!(vendor.provider_type, "openai");
+        assert_eq!(vendor.api_protocol.as_deref(), Some("openai_responses"));
+        assert_eq!(vendor.supports_openai_responses, Some(true));
+    }
+
+    #[test]
+    fn resolve_preferred_protocol_for_provider_uses_registry_defaults_for_native_vendors() {
+        assert_eq!(
+            resolve_preferred_protocol_for_provider(
+                Some("anthropic"),
+                Some("anthropic"),
+                "https://api.anthropic.com/v1",
+                None,
+            ),
+            "anthropic_messages"
+        );
+        assert_eq!(
+            resolve_preferred_protocol_for_provider(
+                Some("gemini"),
+                Some("google"),
+                "https://generativelanguage.googleapis.com",
+                None,
+            ),
+            "google_generate_content"
+        );
+        assert_eq!(
+            resolve_preferred_protocol_for_provider(
+                Some("siliconflow"),
+                Some("general"),
+                "https://api.siliconflow.cn/v1",
+                None,
+            ),
+            "openai_chat_completions"
+        );
+    }
+
+    #[test]
+    fn provider_protocol_registry_contract_is_well_formed() {
+        let raw = include_str!("../../../scripts/provider-protocol-registry.json");
+        let registry: ProviderProtocolRegistryDocument =
+            serde_json::from_str(raw).expect("provider protocol registry should parse");
+
+        assert!(!registry.providers.is_empty());
+
+        for provider in registry.providers {
+            assert!(!provider.provider_type.is_empty());
+            assert!(!provider.allowed_protocols.is_empty());
+            assert!(!provider.default_protocol.is_empty());
+            assert!(provider
+                .allowed_protocols
+                .iter()
+                .any(|protocol| protocol == &provider.default_protocol));
+        }
+    }
+
+    #[test]
+    fn provider_protocol_registry_contract_preserves_shared_routing_expectations() {
+        let openai = get_provider_protocol_record(Some("openai")).expect("openai provider");
+        assert_eq!(openai.default_protocol, "openai_responses");
+        assert!(openai.supports_openai_responses);
+        assert!(openai
+            .allowed_protocols
+            .iter()
+            .any(|protocol| protocol == "openai_responses"));
+
+        let anthropic =
+            get_provider_protocol_record(Some("anthropic")).expect("anthropic provider");
+        assert_eq!(anthropic.allowed_protocols, vec!["anthropic_messages"]);
+
+        let gemini = get_provider_protocol_record(Some("gemini")).expect("gemini provider");
+        assert_eq!(gemini.allowed_protocols, vec!["google_generate_content"]);
+
+        let custom = get_provider_protocol_record(Some("custom")).expect("custom provider");
+        assert_eq!(custom.default_protocol, "openai_chat_completions");
+        assert!(!provider_supports_openai_responses(
+            Some("custom"),
+            "https://proxy.example.com/v1",
+            None,
+        ));
+    }
+
+    #[test]
+    fn merge_consecutive_tool_calls_preserves_empty_reasoning_content() {
+        let history = vec![tool_call_message("call_empty_reasoning", Some(""))];
+
+        let merged = LLMManager::merge_consecutive_tool_calls(&history);
+
+        match merged.first() {
+            Some(MergedChatMessage::MergedToolCalls {
+                thinking_content, ..
+            }) => assert_eq!(thinking_content.as_deref(), Some("")),
+            _ => panic!("expected merged tool call message"),
         }
     }
 
@@ -214,6 +440,183 @@ mod tests {
         assert!(profiles[0].is_builtin);
     }
 
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn save_vendor_configs_returns_error_when_builtin_secret_clear_fails() {
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        let vendor = builtin_vendor_config("sk-test-openai");
+
+        manager
+            .save_vendor_configs(&[vendor.clone()])
+            .await
+            .expect("save builtin vendor secret");
+
+        let secure_dir = temp_dir.path().join(".secure");
+        let secure_file = secure_dir.join("builtin-openai.api_key.enc");
+        assert!(
+            secure_file.exists(),
+            "expected builtin vendor key to be written to secure storage"
+        );
+
+        let original_permissions = std::fs::metadata(&secure_dir)
+            .expect("read secure dir metadata")
+            .permissions();
+        let mut read_only_permissions = original_permissions.clone();
+        read_only_permissions.set_mode(0o555);
+        std::fs::set_permissions(&secure_dir, read_only_permissions)
+            .expect("make secure dir read-only");
+
+        let result = manager
+            .save_vendor_configs(&[builtin_vendor_config("")])
+            .await;
+
+        std::fs::set_permissions(&secure_dir, original_permissions)
+            .expect("restore secure dir permissions");
+
+        assert!(
+            result.is_err(),
+            "expected builtin vendor clear to surface secure-store deletion errors"
+        );
+    }
+
+    #[test]
+    fn apply_reasoning_config_removes_official_v4_thinking_ignored_sampling_params() {
+        let mut body = deepseek_sampling_body("deepseek-v4-pro");
+        let config = ApiConfig {
+            provider_type: Some("deepseek".to_string()),
+            provider_scope: Some("deepseek".to_string()),
+            model_adapter: "deepseek".to_string(),
+            model: "deepseek-v4-pro".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            supports_reasoning: true,
+            is_reasoning: true,
+            thinking_enabled: true,
+            enable_thinking: Some(true),
+            ..Default::default()
+        };
+
+        LLMManager::apply_reasoning_config(&mut body, &config, None);
+
+        let map = body
+            .as_object()
+            .expect("request body should stay an object");
+        for key in [
+            "temperature",
+            "top_p",
+            "presence_penalty",
+            "frequency_penalty",
+            "logprobs",
+        ] {
+            assert!(!map.contains_key(key), "{key} should be removed");
+        }
+        assert_eq!(
+            map.get("thinking").and_then(|value| value.get("type")),
+            Some(&json!("enabled"))
+        );
+    }
+
+    #[test]
+    fn apply_reasoning_config_removes_future_siliconflow_v4_thinking_ignored_sampling_params() {
+        let mut body = deepseek_sampling_body("deepseek-ai/DeepSeek-V4-Pro");
+        let config = ApiConfig {
+            provider_type: Some("siliconflow".to_string()),
+            provider_scope: Some("deepseek".to_string()),
+            model_adapter: "deepseek".to_string(),
+            model: "deepseek-ai/DeepSeek-V4-Pro".to_string(),
+            base_url: "https://api.siliconflow.cn/v1".to_string(),
+            supports_reasoning: true,
+            is_reasoning: true,
+            thinking_enabled: true,
+            enable_thinking: Some(true),
+            reasoning_effort: Some("max".to_string()),
+            thinking_budget: Some(4096),
+            ..Default::default()
+        };
+
+        LLMManager::apply_reasoning_config(&mut body, &config, None);
+
+        let map = body
+            .as_object()
+            .expect("request body should stay an object");
+        for key in [
+            "temperature",
+            "top_p",
+            "presence_penalty",
+            "frequency_penalty",
+            "logprobs",
+        ] {
+            assert!(!map.contains_key(key), "{key} should be removed");
+        }
+        assert_eq!(map.get("enable_thinking"), Some(&json!(true)));
+        assert_eq!(map.get("reasoning_effort"), Some(&json!("max")));
+        assert!(!map.contains_key("thinking_budget"));
+        assert!(!map.contains_key("thinking"));
+    }
+
+    #[test]
+    fn apply_reasoning_config_maps_siliconflow_v32_depth_to_budget() {
+        let mut body = deepseek_sampling_body("deepseek-ai/DeepSeek-V3.2");
+        let config = ApiConfig {
+            provider_type: Some("siliconflow".to_string()),
+            provider_scope: Some("deepseek".to_string()),
+            model_adapter: "deepseek".to_string(),
+            model: "deepseek-ai/DeepSeek-V3.2".to_string(),
+            base_url: "https://api.siliconflow.cn/v1".to_string(),
+            supports_reasoning: true,
+            is_reasoning: true,
+            thinking_enabled: true,
+            enable_thinking: Some(true),
+            reasoning_effort: Some("xhigh".to_string()),
+            ..Default::default()
+        };
+
+        LLMManager::apply_reasoning_config(&mut body, &config, None);
+
+        let map = body
+            .as_object()
+            .expect("request body should stay an object");
+        assert_eq!(map.get("enable_thinking"), Some(&json!(true)));
+        assert_eq!(map.get("thinking_budget"), Some(&json!(32768)));
+        assert!(!map.contains_key("reasoning_effort"));
+    }
+
+    #[test]
+    fn apply_reasoning_config_keeps_siliconflow_v32_sampling_params() {
+        let mut body = deepseek_sampling_body("deepseek-ai/DeepSeek-V3.2");
+        let config = ApiConfig {
+            provider_type: Some("siliconflow".to_string()),
+            provider_scope: Some("deepseek".to_string()),
+            model_adapter: "deepseek".to_string(),
+            model: "deepseek-ai/DeepSeek-V3.2".to_string(),
+            base_url: "https://api.siliconflow.cn/v1".to_string(),
+            supports_reasoning: true,
+            is_reasoning: true,
+            thinking_enabled: true,
+            enable_thinking: Some(true),
+            thinking_budget: Some(4096),
+            ..Default::default()
+        };
+
+        LLMManager::apply_reasoning_config(&mut body, &config, None);
+
+        let map = body
+            .as_object()
+            .expect("request body should stay an object");
+        for key in [
+            "temperature",
+            "top_p",
+            "presence_penalty",
+            "frequency_penalty",
+        ] {
+            assert!(map.contains_key(key), "{key} should be preserved");
+        }
+        assert_eq!(map.get("enable_thinking"), Some(&json!(true)));
+        assert_eq!(map.get("thinking_budget"), Some(&json!(4096)));
+        assert!(!map.contains_key("thinking"));
+        assert!(!map.contains_key("reasoning_effort"));
+    }
+
     #[test]
     fn merge_builtin_profile_user_aware_without_snapshot_syncs_capability_fields() {
         let mut profiles = vec![profile(
@@ -240,6 +643,183 @@ mod tests {
         // 能力字段从内置定义同步
         assert!(merged.supports_tools);
         assert!(merged.is_builtin);
+    }
+
+    #[tokio::test]
+    async fn get_model_profiles_drops_hidden_flag_for_new_builtin_model_without_history() {
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+
+        manager
+            .db
+            .save_setting("vendor_configs", "[]")
+            .expect("seed vendor configs");
+        manager
+            .db
+            .save_setting("model_profiles", "[]")
+            .expect("seed model profiles");
+        manager
+            .db
+            .save_setting(
+                HIDDEN_BUILTIN_MODEL_PROFILES_KEY,
+                r#"["builtin-gemini-3-flash"]"#,
+            )
+            .expect("seed hidden builtin ids");
+        manager
+            .db
+            .save_setting(BUILTIN_MODEL_PROFILES_SNAPSHOT_KEY, "[]")
+            .expect("seed builtin snapshot");
+        manager
+            .db
+            .save_setting("builtin_caps_migration_v2", "done")
+            .expect("skip caps migration");
+
+        let profiles = manager
+            .get_model_profiles()
+            .await
+            .expect("load model profiles");
+
+        assert!(profiles.iter().any(|profile| {
+            profile.id == "builtin-gemini-3-flash" && profile.model == "gemini-3.5-flash"
+        }));
+
+        let hidden_ids = manager.read_hidden_builtin_model_profile_ids();
+        assert!(
+            !hidden_ids.contains("builtin-gemini-3-flash"),
+            "new builtin model should not stay hidden without prior snapshot/user history"
+        );
+    }
+
+    #[tokio::test]
+    async fn get_model_profiles_drops_hidden_flag_when_builtin_slot_points_to_new_model() {
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+
+        manager
+            .db
+            .save_setting("vendor_configs", "[]")
+            .expect("seed vendor configs");
+        manager
+            .db
+            .save_setting("model_profiles", "[]")
+            .expect("seed model profiles");
+        manager
+            .db
+            .save_setting(
+                HIDDEN_BUILTIN_MODEL_PROFILES_KEY,
+                r#"["builtin-gemini-3-flash"]"#,
+            )
+            .expect("seed hidden builtin ids");
+        manager
+            .save_builtin_profile_snapshot(&[profile(
+                "builtin-gemini-3-flash",
+                "Gemini 3 Flash (均衡)",
+                "gemini-3-flash-preview",
+                true,
+                true,
+            )])
+            .expect("seed legacy builtin snapshot");
+        manager
+            .db
+            .save_setting("builtin_caps_migration_v2", "done")
+            .expect("skip caps migration");
+
+        let profiles = manager
+            .get_model_profiles()
+            .await
+            .expect("load model profiles");
+
+        assert!(profiles.iter().any(|profile| {
+            profile.id == "builtin-gemini-3-flash" && profile.model == "gemini-3.5-flash"
+        }));
+
+        let hidden_ids = manager.read_hidden_builtin_model_profile_ids();
+        assert!(
+            !hidden_ids.contains("builtin-gemini-3-flash"),
+            "repurposed builtin slot should be treated as a new model and unhidden"
+        );
+    }
+
+    #[tokio::test]
+    async fn save_model_profiles_does_not_hide_new_builtin_models() {
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+
+        manager
+            .db
+            .save_setting("vendor_configs", "[]")
+            .expect("seed vendor configs");
+        manager
+            .db
+            .save_setting("model_profiles", "[]")
+            .expect("seed model profiles");
+
+        let known_builtin = profile(
+            "builtin-gemini-3-pro",
+            "Gemini 3.1 Pro Preview (旗舰)",
+            "gemini-3.1-pro-preview",
+            true,
+            true,
+        );
+
+        manager
+            .save_builtin_profile_snapshot(&[known_builtin.clone()])
+            .expect("seed builtin snapshot");
+
+        manager
+            .save_model_profiles(&[known_builtin])
+            .await
+            .expect("save user-visible builtin profiles");
+
+        let hidden_ids = manager.read_hidden_builtin_model_profile_ids();
+        assert!(
+            !hidden_ids.contains("builtin-gemini-3-flash"),
+            "new builtin model should not be inferred as hidden when absent from older saved profile sets"
+        );
+    }
+
+    #[tokio::test]
+    async fn save_model_profiles_does_not_hide_retargeted_builtin_slot() {
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+
+        manager
+            .db
+            .save_setting("vendor_configs", "[]")
+            .expect("seed vendor configs");
+        manager
+            .db
+            .save_setting("model_profiles", "[]")
+            .expect("seed model profiles");
+
+        manager
+            .save_builtin_profile_snapshot(&[profile(
+                "builtin-gemini-3-flash",
+                "Gemini 3 Flash (均衡)",
+                "gemini-3-flash-preview",
+                true,
+                true,
+            )])
+            .expect("seed legacy builtin snapshot");
+
+        let known_builtin = profile(
+            "builtin-gemini-3-pro",
+            "Gemini 3.1 Pro Preview (旗舰)",
+            "gemini-3.1-pro-preview",
+            true,
+            true,
+        );
+
+        manager
+            .save_model_profiles(&[known_builtin])
+            .await
+            .expect("save user-visible builtin profiles");
+
+        let hidden_ids = manager.read_hidden_builtin_model_profile_ids();
+        assert!(
+            !hidden_ids.contains("builtin-gemini-3-flash"),
+            "legacy preview snapshot should not cause the retargeted 3.5 flash slot to be hidden"
+        );
     }
 
     #[test]
@@ -312,7 +892,7 @@ mod tests {
             ("doubao-seed-2-0-pro-260215", Some("doubao")),
             ("gpt-5-mini", Some("openai")),
             ("o3-mini", Some("openai")),
-            ("gemini-3-pro-preview", Some("gemini")),
+            ("gemini-3.5-flash", Some("gemini")),
         ] {
             let inferred = LLMManager::resolve_capability_overrides(model, scope);
             assert!(
@@ -607,6 +1187,10 @@ pub struct ApiConfig {
     pub provider_type: Option<String>,
     #[serde(default)]
     pub provider_scope: Option<String>,
+    #[serde(default)]
+    pub api_protocol: Option<String>,
+    #[serde(default)]
+    pub supports_openai_responses: Option<bool>,
     pub api_key: String,
     pub base_url: String,
     pub model: String,
@@ -614,6 +1198,8 @@ pub struct ApiConfig {
     pub is_reasoning: bool,
     pub is_embedding: bool,
     pub is_reranker: bool,
+    #[serde(default)]
+    pub is_image_generation: bool,
     pub enabled: bool,
     #[serde(default = "default_model_adapter")]
     pub model_adapter: String, // 新增：模型适配器类型
@@ -678,6 +1264,9 @@ pub struct ApiConfig {
     /// 供应商级别的 max_tokens 限制（API 最大允许值）
     #[serde(default)]
     pub max_tokens_limit: Option<u32>,
+    /// 模型上下文窗口大小（tokens），用于前端/Chat V2 预算，不作为 API 参数发送
+    #[serde(default, alias = "context_window")]
+    pub context_window: Option<u32>,
 }
 
 impl Default for ApiConfig {
@@ -689,6 +1278,8 @@ impl Default for ApiConfig {
             vendor_name: None,
             provider_type: None,
             provider_scope: None,
+            api_protocol: None,
+            supports_openai_responses: None,
             api_key: String::new(),
             base_url: String::new(),
             model: String::new(),
@@ -696,6 +1287,7 @@ impl Default for ApiConfig {
             is_reasoning: false,
             is_embedding: false,
             is_reranker: false,
+            is_image_generation: false,
             enabled: false,
             model_adapter: default_model_adapter(),
             max_output_tokens: default_max_output_tokens(),
@@ -722,6 +1314,7 @@ impl Default for ApiConfig {
             verbosity: None,
             is_favorite: false,
             max_tokens_limit: None,
+            context_window: None,
         }
     }
 }
@@ -732,6 +1325,10 @@ pub struct VendorConfig {
     pub id: String,
     pub name: String,
     pub provider_type: String,
+    #[serde(default)]
+    pub api_protocol: Option<String>,
+    #[serde(default)]
+    pub supports_openai_responses: Option<bool>,
     pub base_url: String,
     pub api_key: String,
     #[serde(default)]
@@ -762,6 +1359,17 @@ impl Default for VendorConfig {
             id: Uuid::new_v4().to_string(),
             name: "New Vendor".to_string(),
             provider_type: "openai".to_string(),
+            api_protocol: Some(resolve_preferred_protocol_for_provider(
+                Some("openai"),
+                Some("openai"),
+                "",
+                None,
+            )),
+            supports_openai_responses: Some(provider_supports_openai_responses(
+                Some("openai"),
+                "",
+                None,
+            )),
             base_url: String::new(),
             api_key: String::new(),
             headers: HashMap::new(),
@@ -786,6 +1394,8 @@ pub struct ModelProfile {
     pub model: String,
     #[serde(default)]
     pub provider_scope: Option<String>,
+    #[serde(default)]
+    pub api_protocol: Option<String>,
     #[serde(default = "default_model_adapter")]
     pub model_adapter: String,
     #[serde(default)]
@@ -796,6 +1406,8 @@ pub struct ModelProfile {
     pub is_embedding: bool,
     #[serde(default)]
     pub is_reranker: bool,
+    #[serde(default)]
+    pub is_image_generation: bool,
     #[serde(default)]
     pub supports_tools: bool,
     #[serde(default)]
@@ -842,6 +1454,9 @@ pub struct ModelProfile {
     /// 模型级别的 max_tokens 限制（优先于供应商级别）
     #[serde(default)]
     pub max_tokens_limit: Option<u32>,
+    /// 模型上下文窗口大小（tokens），用于前端/Chat V2 预算，不作为 API 参数发送
+    #[serde(default, alias = "context_window")]
+    pub context_window: Option<u32>,
 }
 
 impl Default for ModelProfile {
@@ -852,11 +1467,13 @@ impl Default for ModelProfile {
             label: "New Model".to_string(),
             model: String::new(),
             provider_scope: None,
+            api_protocol: None,
             model_adapter: default_model_adapter(),
             is_multimodal: false,
             is_reasoning: false,
             is_embedding: false,
             is_reranker: false,
+            is_image_generation: false,
             supports_tools: false,
             supports_reasoning: false,
             status: default_profile_status(),
@@ -878,6 +1495,7 @@ impl Default for ModelProfile {
             verbosity: None,
             is_favorite: false,
             max_tokens_limit: None,
+            context_window: None,
         }
     }
 }
@@ -914,12 +1532,198 @@ fn default_profile_enabled() -> bool {
     true
 }
 
+fn looks_like_image_generation_model_id(model: &str) -> bool {
+    let model = model.to_lowercase();
+    ["gpt-image", "dall-e", "imagen", "flux"]
+        .iter()
+        .any(|needle| model.contains(needle))
+}
+
+fn normalize_provider_protocol_registry_value(value: Option<&str>) -> String {
+    value.unwrap_or_default().trim().to_lowercase()
+}
+
+fn normalize_base_url_for_provider_protocol_registry(base_url: &str) -> String {
+    base_url.trim().trim_end_matches('/').to_lowercase()
+}
+
+fn get_provider_protocol_record(
+    provider_type: Option<&str>,
+) -> Option<&'static ProviderProtocolRegistryRecord> {
+    let normalized = normalize_provider_protocol_registry_value(provider_type);
+    if normalized.is_empty() {
+        return None;
+    }
+    PROVIDER_PROTOCOL_REGISTRY
+        .iter()
+        .find(|record| record.provider_type == normalized)
+}
+
+fn provider_allowed_protocols(provider_type: Option<&str>) -> Vec<String> {
+    get_provider_protocol_record(provider_type)
+        .map(|record| record.allowed_protocols.clone())
+        .filter(|protocols| !protocols.is_empty())
+        .unwrap_or_else(|| {
+            vec![
+                "openai_chat_completions".to_string(),
+                "openai_responses".to_string(),
+            ]
+        })
+}
+
+fn resolves_to_official_openai(provider_type: Option<&str>, base_url: &str) -> bool {
+    normalize_provider_protocol_registry_value(provider_type) == "openai"
+        || normalize_base_url_for_provider_protocol_registry(base_url).contains("api.openai.com")
+}
+
+pub(crate) fn provider_supports_openai_responses(
+    provider_type: Option<&str>,
+    base_url: &str,
+    supports_openai_responses: Option<bool>,
+) -> bool {
+    if supports_openai_responses == Some(true) {
+        return true;
+    }
+    if resolves_to_official_openai(provider_type, base_url) {
+        return true;
+    }
+    get_provider_protocol_record(provider_type)
+        .map(|record| record.supports_openai_responses)
+        .unwrap_or(false)
+}
+
+pub(crate) fn resolve_preferred_protocol_for_provider(
+    provider_type: Option<&str>,
+    adapter: Option<&str>,
+    base_url: &str,
+    supports_openai_responses: Option<bool>,
+) -> String {
+    match normalize_provider_protocol_registry_value(adapter).as_str() {
+        "anthropic" => return "anthropic_messages".to_string(),
+        "google" => return "google_generate_content".to_string(),
+        _ => {}
+    }
+
+    let allowed = provider_allowed_protocols(provider_type);
+    if provider_supports_openai_responses(provider_type, base_url, supports_openai_responses)
+        && allowed
+            .iter()
+            .any(|protocol| protocol == "openai_responses")
+    {
+        return "openai_responses".to_string();
+    }
+
+    if let Some(record) = get_provider_protocol_record(provider_type) {
+        if allowed
+            .iter()
+            .any(|protocol| protocol == &record.default_protocol)
+        {
+            return record.default_protocol.clone();
+        }
+    }
+
+    allowed
+        .into_iter()
+        .next()
+        .unwrap_or_else(|| "openai_chat_completions".to_string())
+}
+
 #[inline]
 pub(crate) fn effective_max_tokens(max_output_tokens: u32, max_tokens_limit: Option<u32>) -> u32 {
     match max_tokens_limit {
         Some(limit) => max_output_tokens.min(limit),
         None => max_output_tokens,
     }
+}
+
+#[inline]
+pub(crate) fn should_use_openai_responses_for_config(config: &ApiConfig) -> bool {
+    if let Some(protocol) = config.api_protocol.as_deref() {
+        return matches!(protocol, "openai_responses");
+    }
+    if config.model_adapter != "general" {
+        return false;
+    }
+
+    resolve_preferred_protocol_for_provider(
+        config.provider_type.as_deref(),
+        Some(config.model_adapter.as_str()),
+        &config.base_url,
+        config.supports_openai_responses,
+    ) == "openai_responses"
+}
+
+pub(crate) fn build_provider_adapter(config: &ApiConfig) -> Box<dyn ProviderAdapter> {
+    if should_use_openai_responses_for_config(config) {
+        Box::new(crate::providers::OpenAIResponsesAdapter)
+    } else {
+        match config.model_adapter.as_str() {
+            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
+            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
+            _ => Box::new(crate::providers::OpenAIAdapter),
+        }
+    }
+}
+
+pub(crate) fn normalize_nonstream_response_to_openai(
+    config: &ApiConfig,
+    response_json: &Value,
+) -> Result<Value> {
+    if config.model_adapter == "google" {
+        if let Some(safety_msg) = LLMManager::extract_gemini_safety_error(response_json) {
+            return Err(AppError::llm(safety_msg));
+        }
+        return crate::adapters::gemini_openai_converter::convert_gemini_nonstream_response_to_openai(
+            response_json,
+            &config.model,
+        )
+        .map_err(|e| AppError::llm(format!("Gemini响应转换失败: {}", e)));
+    }
+
+    if matches!(config.model_adapter.as_str(), "anthropic" | "claude") {
+        return crate::providers::convert_anthropic_response_to_openai(
+            response_json,
+            &config.model,
+        )
+        .ok_or_else(|| AppError::llm("解析Anthropic响应失败".to_string()));
+    }
+
+    if should_use_openai_responses_for_config(config) {
+        let mut text_segments: Vec<String> = Vec::new();
+        if let Some(output) = response_json.get("output").and_then(|v| v.as_array()) {
+            for item in output {
+                if let Some(content_arr) = item.get("content").and_then(|v| v.as_array()) {
+                    for entry in content_arr {
+                        let entry_type = entry.get("type").and_then(|v| v.as_str()).unwrap_or("");
+                        if matches!(entry_type, "output_text" | "text") {
+                            if let Some(text) = entry.get("text").and_then(|v| v.as_str()) {
+                                if !text.is_empty() {
+                                    text_segments.push(text.to_string());
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        if text_segments.is_empty() {
+            if let Some(output_text) = response_json.get("output_text").and_then(|v| v.as_str()) {
+                if !output_text.is_empty() {
+                    text_segments.push(output_text.to_string());
+                }
+            }
+        }
+        return Ok(json!({
+            "choices": [{
+                "message": {
+                    "content": text_segments.join("")
+                }
+            }],
+            "usage": response_json.get("usage").cloned()
+        }));
+    }
+
+    Ok(response_json.clone())
 }
 
 #[derive(Debug, Clone)]
@@ -1035,6 +1839,7 @@ impl LLMManager {
                 is_multimodal: model.is_multimodal,
                 supports_tools: model.supports_tools,
                 supports_reasoning: model.is_reasoning,
+                context_window: builtin_vendors::deepseek_context_window(model.model),
             });
             break;
         }
@@ -1155,6 +1960,7 @@ impl LLMManager {
             is_multimodal: record.capabilities.vision,
             supports_tools: record.capabilities.function_calling,
             supports_reasoning: record.capabilities.reasoning,
+            context_window: record.capabilities.max_context_tokens,
         })
     }
 
@@ -1172,6 +1978,7 @@ impl LLMManager {
             is_multimodal: registry.is_multimodal || builtin.is_multimodal,
             supports_tools: registry.supports_tools || builtin.supports_tools,
             supports_reasoning: registry.supports_reasoning || builtin.supports_reasoning,
+            context_window: registry.context_window.or(builtin.context_window),
         }
     }
 
@@ -1232,6 +2039,7 @@ impl LLMManager {
             update_if_untouched!(verbosity);
             update_if_untouched!(is_favorite);
             update_if_untouched!(max_tokens_limit);
+            update_if_untouched!(context_window);
             return;
         }
         profiles.push(builtin_profile);
@@ -1299,6 +2107,54 @@ impl LLMManager {
         self.db
             .save_setting(HIDDEN_BUILTIN_MODEL_PROFILES_KEY, &json)
             .map_err(|e| AppError::database(format!("保存隐藏内置模型列表失败: {}", e)))
+    }
+
+    fn reconcile_hidden_builtin_model_profile_ids(
+        &self,
+        builtin_profiles: &[ModelProfile],
+        user_profiles: &[ModelProfile],
+        hidden_builtin_ids: &mut HashSet<String>,
+        snapshot_map: &HashMap<String, ModelProfile>,
+    ) -> Result<bool> {
+        let builtin_id_set: HashSet<&str> =
+            builtin_profiles.iter().map(|profile| profile.id.as_str()).collect();
+        let builtin_profile_map: HashMap<&str, &ModelProfile> = builtin_profiles
+            .iter()
+            .map(|profile| (profile.id.as_str(), profile))
+            .collect();
+        let known_user_builtin_models: HashMap<&str, &str> = user_profiles
+            .iter()
+            .filter_map(|profile| {
+                builtin_id_set
+                    .contains(profile.id.as_str())
+                    .then_some((profile.id.as_str(), profile.model.as_str()))
+            })
+            .collect();
+
+        let original = hidden_builtin_ids.clone();
+        hidden_builtin_ids.retain(|id| {
+            let Some(current_builtin) = builtin_profile_map.get(id.as_str()) else {
+                return false;
+            };
+
+            let snapshot_matches = snapshot_map
+                .get(id)
+                .map(|snapshot| snapshot.model == current_builtin.model)
+                .unwrap_or(false);
+            let user_model_matches = known_user_builtin_models
+                .get(id.as_str())
+                .map(|model| *model == current_builtin.model.as_str())
+                .unwrap_or(false);
+
+            snapshot_matches || user_model_matches
+        });
+
+        if *hidden_builtin_ids != original {
+            self.save_hidden_builtin_model_profile_ids(hidden_builtin_ids)?;
+            return Ok(true);
+        }
+
+        Ok(false)
     }
 
     pub fn new(db: Arc<Database>, file_manager: Arc<FileManager>) -> Result<Self> {
@@ -1401,7 +2257,11 @@ impl LLMManager {
     ///
     /// ## 子适配器架构
     /// 详见 `adapters` 模块文档
-    fn apply_reasoning_config(body: &mut Value, config: &ApiConfig, enable_thinking: Option<bool>) {
+    pub(crate) fn apply_reasoning_config(
+        body: &mut Value,
+        config: &ApiConfig,
+        enable_thinking: Option<bool>,
+    ) {
         let Value::Object(map) = body else {
             return;
         };
@@ -1418,6 +2278,8 @@ impl LLMManager {
         if adapter.should_remove_sampling_params(config) {
             map.remove("temperature");
             map.remove("top_p");
+            map.remove("presence_penalty");
+            map.remove("frequency_penalty");
             map.remove("logprobs");
         }
 
@@ -1470,7 +2332,7 @@ impl LLMManager {
     /// 输出：[MergedToolCalls([tc1, tc2], thinking1), tool(tr1), tool(tr2), MergedToolCalls([tc3], thinking2), tool(tr3)]
     ///
     /// ## 🔧 多轮工具调用边界检测
-    /// 当遇到新的 reasoning_content（非空）时，表示开始了新一轮的工具调用，
+    /// 当遇到新的 reasoning_content（包括空字符串）时，表示开始了新一轮的工具调用，
     /// 需要刷新当前的 pending 组并开始新组，以保持每轮工具调用的边界。
     /// 这确保了多轮工具调用的思维链都能被正确保留和回传。
     fn merge_consecutive_tool_calls(history: &[ChatMessage]) -> Vec<MergedChatMessage> {
@@ -1485,13 +2347,9 @@ impl LLMManager {
         for msg in history {
             if msg.role == "assistant" && msg.tool_call.is_some() {
                 if let Some(tc) = &msg.tool_call {
-                    // 🔧 多轮边界检测：如果遇到新的 reasoning_content（非空），
+                    // 🔧 多轮边界检测：如果遇到新的 reasoning_content（包括空字符串），
                     // 且已经有待处理的工具调用，则先刷新当前组
-                    let has_new_reasoning = msg
-                        .thinking_content
-                        .as_ref()
-                        .map(|s| !s.is_empty())
-                        .unwrap_or(false);
+                    let has_new_reasoning = msg.thinking_content.is_some();
 
                     if has_new_reasoning && !pending_tool_calls.is_empty() {
                         // 刷新当前组（这是前一轮的工具调用）
@@ -1513,7 +2371,7 @@ impl LLMManager {
                     // 收集工具调用
                     pending_tool_calls.push(tc.clone());
 
-                    // 保留当前轮次的思维链（只保留第一个非空的）
+                    // 保留当前轮次的思维链（只保留第一个出现的字段，空字符串也必须回传）
                     if current_thinking_content.is_none() && has_new_reasoning {
                         current_thinking_content = msg.thinking_content.clone();
                     }
@@ -2303,19 +3161,34 @@ impl LLMManager {
                     // no-op：保留安全存储中的值
                 } else if trimmed.is_empty() {
                     // 用户明确清空：删除安全存储中的密钥
-                    let _ = self.db.delete_secret(&secret_key);
+                    self.db.delete_secret(&secret_key).map_err(|e| {
+                        AppError::database(format!(
+                            "Failed to clear builtin vendor API key for {}: {}",
+                            cfg.id, e
+                        ))
+                    })?;
                     // 兼容旧的 SiliconFlow 存储格式
                     if cfg.id == "builtin-siliconflow" {
-                        let _ = self.db.delete_secret("siliconflow.api_key");
+                        self.db.delete_secret("siliconflow.api_key").map_err(|e| {
+                            AppError::database(format!(
+                                "Failed to clear SiliconFlow compatibility key: {}",
+                                e
+                            ))
+                        })?;
                     }
                 } else {
                     self.db.save_secret(&secret_key, trimmed).map_err(|e| {
                         AppError::database(format!("Failed to save builtin vendor API key: {}", e))
                     })?;
                     if cfg.id == "builtin-siliconflow" {
-                        self.db.save_secret("siliconflow.api_key", trimmed).map_err(|e| {
-                            AppError::database(format!("Failed to save SiliconFlow compatibility key: {}", e))
-                        })?;
+                        self.db
+                            .save_secret("siliconflow.api_key", trimmed)
+                            .map_err(|e| {
+                                AppError::database(format!(
+                                    "Failed to save SiliconFlow compatibility key: {}",
+                                    e
+                                ))
+                            })?;
                     }
                 }
                 clone.api_key = String::new();
@@ -2344,10 +3217,7 @@ impl LLMManager {
     pub async fn get_model_profiles(&self) -> Result<Vec<ModelProfile>> {
         self.bootstrap_vendor_model_config().await?;
         let mut profiles = self.read_user_model_profiles().await?;
-        let hidden_builtin_ids = self.read_hidden_builtin_model_profile_ids();
-        if !hidden_builtin_ids.is_empty() {
-            profiles.retain(|profile| !hidden_builtin_ids.contains(&profile.id));
-        }
+        let mut hidden_builtin_ids = self.read_hidden_builtin_model_profile_ids();
 
         // 一次性迁移：直接将内置模型的能力字段写入用户存储的 model_profiles。
         // 背景：早期版本在无快照时保守地保留了用户数据（含错误的 supports_tools=false），
@@ -2403,6 +3273,22 @@ impl LLMManager {
 
         let snapshot_map = self.read_builtin_profile_snapshot_map();
         if let Ok((_, builtin_profiles)) = self.load_builtin_vendor_profiles() {
+            if self
+                .reconcile_hidden_builtin_model_profile_ids(
+                    &builtin_profiles,
+                    &profiles,
+                    &mut hidden_builtin_ids,
+                    &snapshot_map,
+                )
+                .is_err()
+            {
+                warn!("[VendorModel] 修正隐藏内置模型列表失败，继续使用现有值");
+            }
+
+            if !hidden_builtin_ids.is_empty() {
+                profiles.retain(|profile| !hidden_builtin_ids.contains(&profile.id));
+            }
+
             for builtin_profile in &builtin_profiles {
                 if hidden_builtin_ids.contains(&builtin_profile.id) {
                     continue;
@@ -2445,14 +3331,40 @@ impl LLMManager {
                 .iter()
                 .map(|profile| profile.id.clone())
                 .collect();
+            let builtin_model_map: HashMap<&str, &str> = builtin_profiles
+                .iter()
+                .map(|profile| (profile.id.as_str(), profile.model.as_str()))
+                .collect();
             let incoming_builtin_ids: HashSet<String> = profiles
                 .iter()
                 .map(|profile| profile.id.clone())
                 .filter(|id| builtin_id_set.contains(id))
                 .collect();
 
-            if !incoming_builtin_ids.is_empty() {
-                let hidden_builtin_ids: HashSet<String> = builtin_id_set
+            let existing_profiles = self.read_user_model_profiles().await.unwrap_or_default();
+            let snapshot_map = self.read_builtin_profile_snapshot_map();
+            let previously_known_builtin_ids: HashSet<String> = builtin_id_set
+                .iter()
+                .filter(|id| {
+                    let Some(current_model) = builtin_model_map.get(id.as_str()) else {
+                        return false;
+                    };
+
+                    let snapshot_matches = snapshot_map
+                        .get(*id)
+                        .map(|snapshot| snapshot.model.as_str() == *current_model)
+                        .unwrap_or(false);
+                    let existing_matches = existing_profiles.iter().any(|profile| {
+                        profile.id == **id && profile.model.as_str() == *current_model
+                    });
+
+                    snapshot_matches || existing_matches
+                })
+                .cloned()
+                .collect();
+
+            if !previously_known_builtin_ids.is_empty() || !incoming_builtin_ids.is_empty() {
+                let hidden_builtin_ids: HashSet<String> = previously_known_builtin_ids
                     .difference(&incoming_builtin_ids)
                     .cloned()
                     .collect();
@@ -2529,6 +3441,18 @@ impl LLMManager {
             vendor_name: Some(vendor.name.clone()),
             provider_type: Some(vendor.provider_type.clone()),
             provider_scope,
+            api_protocol: profile
+                .api_protocol
+                .clone()
+                .or_else(|| vendor.api_protocol.clone())
+                .or_else(|| {
+                    Some(resolve_preferred_protocol_for_provider(
+                        Some(vendor.provider_type.as_str()),
+                        Some(profile.model_adapter.as_str()),
+                        &vendor.base_url,
+                        vendor.supports_openai_responses,
+                    ))
+                }),
             api_key,
             base_url: vendor.base_url.clone(),
             model: profile.model.clone(),
@@ -2536,6 +3460,8 @@ impl LLMManager {
             is_reasoning: profile.is_reasoning,
             is_embedding: profile.is_embedding,
             is_reranker: profile.is_reranker,
+            is_image_generation: profile.is_image_generation
+                || looks_like_image_generation_model_id(&profile.model),
             enabled: profile.enabled && profile.status.to_lowercase() != "disabled" && has_api_key,
             model_adapter: profile.model_adapter.clone(),
             max_output_tokens: profile.max_output_tokens,
@@ -2568,6 +3494,10 @@ impl LLMManager {
             is_favorite: profile.is_favorite,
             // 模型粒度自管理 max_tokens_limit，不从供应商继承
             max_tokens_limit: profile.max_tokens_limit,
+            context_window: profile
+                .context_window
+                .or(capability_overrides.context_window),
+            supports_openai_responses: vendor.supports_openai_responses,
         };
 
         Ok(ResolvedModelConfig {
@@ -2610,6 +3540,8 @@ impl LLMManager {
                     } else {
                         cfg.model_adapter.clone()
                     },
+                    api_protocol: cfg.api_protocol.clone(),
+                    supports_openai_responses: cfg.supports_openai_responses,
                     base_url: cfg.base_url.clone(),
                     api_key: cfg.api_key.clone(),
                     headers: cfg.headers.clone().unwrap_or_default(),
@@ -2632,11 +3564,13 @@ impl LLMManager {
                     .provider_scope
                     .clone()
                     .or_else(|| cfg.provider_type.clone()),
+                api_protocol: cfg.api_protocol.clone(),
                 model_adapter: cfg.model_adapter.clone(),
                 is_multimodal: cfg.is_multimodal,
                 is_reasoning: cfg.is_reasoning,
                 is_embedding: cfg.is_embedding,
                 is_reranker: cfg.is_reranker,
+                is_image_generation: cfg.is_image_generation,
                 supports_tools: cfg.supports_tools,
                 supports_reasoning: cfg.supports_reasoning || cfg.is_reasoning,
                 status: if cfg.enabled {
@@ -2658,6 +3592,7 @@ impl LLMManager {
                 is_builtin: true,
                 is_favorite: cfg.is_favorite,
                 max_tokens_limit: cfg.max_tokens_limit,
+                context_window: cfg.context_window,
                 repetition_penalty: cfg.repetition_penalty,
                 reasoning_split: cfg.reasoning_split,
                 effort: cfg.effort.clone(),
@@ -2709,6 +3644,21 @@ impl LLMManager {
                 .map(|old| ApiConfig {
                     id: old.id,
                     name: old.name,
+                    vendor_id: None,
+                    vendor_name: None,
+                    provider_type: None,
+                    provider_scope: None,
+                    api_protocol: Some(resolve_preferred_protocol_for_provider(
+                        None,
+                        Some(default_model_adapter().as_str()),
+                        &old.base_url,
+                        None,
+                    )),
+                    supports_openai_responses: Some(provider_supports_openai_responses(
+                        None,
+                        &old.base_url,
+                        None,
+                    )),
                     api_key: old.api_key,
                     base_url: old.base_url,
                     model: old.model,
@@ -2716,6 +3666,7 @@ impl LLMManager {
                     is_reasoning: old.is_reasoning,
                     is_embedding: false,
                     is_reranker: false,
+                    is_image_generation: false,
                     enabled: old.enabled,
                     model_adapter: default_model_adapter(),
                     max_output_tokens: default_max_output_tokens(),
@@ -2732,10 +3683,6 @@ impl LLMManager {
                     thinking_budget: None,
                     include_thoughts: false,
                     supports_reasoning: old.is_reasoning,
-                    vendor_id: None,
-                    vendor_name: None,
-                    provider_type: None,
-                    provider_scope: None,
                     headers: None,
                     top_p_override: None,
                     frequency_penalty_override: None,
@@ -2746,6 +3693,7 @@ impl LLMManager {
                     verbosity: None,
                     is_favorite: false,
                     max_tokens_limit: None,
+                    context_window: None,
                 })
                 .collect());
         }
@@ -2758,6 +3706,21 @@ impl LLMManager {
             .map(|old| ApiConfig {
                 id: old.id,
                 name: old.name,
+                vendor_id: None,
+                vendor_name: None,
+                provider_type: None,
+                provider_scope: None,
+                api_protocol: Some(resolve_preferred_protocol_for_provider(
+                    None,
+                    Some(default_model_adapter().as_str()),
+                    &old.base_url,
+                    None,
+                )),
+                supports_openai_responses: Some(provider_supports_openai_responses(
+                    None,
+                    &old.base_url,
+                    None,
+                )),
                 api_key: old.api_key,
                 base_url: old.base_url,
                 model: old.model,
@@ -2765,6 +3728,7 @@ impl LLMManager {
                 is_reasoning: false,
                 is_embedding: false,
                 is_reranker: false,
+                is_image_generation: false,
                 enabled: old.enabled,
                 model_adapter: default_model_adapter(),
                 max_output_tokens: default_max_output_tokens(),
@@ -2781,16 +3745,13 @@ impl LLMManager {
                 thinking_budget: None,
                 include_thoughts: false,
                 supports_reasoning: false,
-                vendor_id: None,
-                vendor_name: None,
-                provider_type: None,
-                provider_scope: None,
                 headers: None,
                 top_p_override: None,
                 frequency_penalty_override: None,
                 presence_penalty_override: None,
                 is_favorite: false,
                 max_tokens_limit: None,
+                context_window: None,
                 repetition_penalty: None,
                 reasoning_split: None,
                 effort: None,
@@ -2836,6 +3797,8 @@ impl LLMManager {
                         .filter(|name| !name.is_empty())
                         .unwrap_or_else(|| cfg.name.clone()),
                     provider_type,
+                    api_protocol: cfg.api_protocol.clone(),
+                    supports_openai_responses: cfg.supports_openai_responses,
                     base_url: cfg.base_url.clone(),
                     api_key: cfg.api_key.clone(),
                     headers: cfg.headers.clone().unwrap_or_default(),
@@ -2857,11 +3820,14 @@ impl LLMManager {
                 label: cfg.name.clone(),
                 model: cfg.model.clone(),
                 provider_scope,
+                api_protocol: cfg.api_protocol.clone(),
                 model_adapter: cfg.model_adapter.clone(),
                 is_multimodal: cfg.is_multimodal || capability_overrides.is_multimodal,
                 is_reasoning: cfg.is_reasoning,
                 is_embedding: cfg.is_embedding,
                 is_reranker: cfg.is_reranker,
+                is_image_generation: cfg.is_image_generation
+                    || looks_like_image_generation_model_id(&cfg.model),
                 supports_tools: cfg.supports_tools || capability_overrides.supports_tools,
                 supports_reasoning: cfg.supports_reasoning
                     || cfg.is_reasoning
@@ -2885,6 +3851,7 @@ impl LLMManager {
                 is_builtin: cfg.is_builtin,
                 is_favorite: cfg.is_favorite,
                 max_tokens_limit: cfg.max_tokens_limit,
+                context_window: cfg.context_window.or(capability_overrides.context_window),
                 repetition_penalty: cfg.repetition_penalty,
                 reasoning_split: cfg.reasoning_split,
                 effort: cfg.effort.clone(),
@@ -4359,9 +5326,25 @@ impl LLMManager {
         }
         if let Some(first_msg) = messages.get_mut(0) {
             if first_msg["role"] == "system" {
-                let current_content = first_msg["content"].as_str().unwrap_or("");
-                first_msg["content"] =
-                    json!(format!("{}\n\n{}", current_content, inject_content.trim()));
+                match &first_msg["content"] {
+                    // 字符串格式：直接拼接
+                    Value::String(s) => {
+                        let new_content = format!("{}\n\n{}", s, inject_content.trim());
+                        first_msg["content"] = json!(new_content);
+                    }
+                    // 数组格式（如 OpenAI content array）：追加一个 text block
+                    Value::Array(arr) => {
+                        let mut new_arr = arr.clone();
+                        new_arr.push(json!({
+                            "type": "text",
+                            "text": inject_content.trim()
+                        }));
+                        first_msg["content"] = json!(new_arr);
+                    }
+                    _ => {
+                        first_msg["content"] = json!(inject_content.trim());
+                    }
+                }
                 debug!("[Inject] 已将注入文本追加到现有系统消息");
                 return;
             }
@@ -4440,12 +5423,14 @@ impl LLMManager {
             }),
         ];
 
-        let request_body = json!({
+        let mut request_body = json!({
             "model": model_id,
             "messages": messages,
             "temperature": 0.3,
             "max_tokens": 4096
         });
+
+        Self::apply_reasoning_config(&mut request_body, &api_config, None);
 
         // 发送请求
         let response = self
@@ -4524,13 +5509,15 @@ impl LLMManager {
             }),
         ];
 
-        let request_body = json!({
+        let mut request_body = json!({
             "model": model_id,
             "messages": messages,
             "temperature": 0.3,
             "max_tokens": 8192,
             "stream": true
         });
+
+        Self::apply_reasoning_config(&mut request_body, &api_config, None);
 
         let response = self
             .client
@@ -4667,12 +5654,14 @@ impl LLMManager {
             }),
         ];
 
-        let request_body = json!({
+        let mut request_body = json!({
             "model": model_id,
             "messages": messages,
             "temperature": 0.3,
             "max_tokens": 4096
         });
+
+        Self::apply_reasoning_config(&mut request_body, &api_config, None);
 
         let response = self
             .client

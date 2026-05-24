@@ -17,8 +17,10 @@ impl LlmUsageRepo {
         let status = if record.success { "success" } else { "error" };
         let timestamp = record.created_at.to_rfc3339();
 
-        // 从 model_id 推断 provider
-        let provider = Self::infer_provider(&record.model_id);
+        let provider = record
+            .provider_id
+            .clone()
+            .unwrap_or_else(|| Self::infer_provider(&record.model_id).to_string());
 
         conn.execute(
             r#"
@@ -117,7 +119,10 @@ impl LlmUsageRepo {
     fn insert_usage_in_tx(tx: &Transaction, record: &UsageRecord) -> LlmUsageResult<()> {
         let status = if record.success { "success" } else { "error" };
         let timestamp = record.created_at.to_rfc3339();
-        let provider = Self::infer_provider(&record.model_id);
+        let provider = record
+            .provider_id
+            .clone()
+            .unwrap_or_else(|| Self::infer_provider(&record.model_id).to_string());
 
         tx.execute(
             r#"
@@ -369,7 +374,7 @@ impl LlmUsageRepo {
         let mut stmt = conn.prepare(
             r#"
             SELECT
-                id, timestamp, model, api_config_id,
+                id, timestamp, provider, model, api_config_id,
                 prompt_tokens, completion_tokens, total_tokens,
                 reasoning_tokens, cached_tokens,
                 duration_ms, caller_type, session_id, status, error_message, cost_estimate
@@ -380,8 +385,8 @@ impl LlmUsageRepo {
         )?;
 
         let rows = stmt.query_map(params![limit], |row| {
-            let caller_type_str: String = row.get(10)?;
-            let status: String = row.get(12)?;
+            let caller_type_str: String = row.get(11)?;
+            let status: String = row.get(13)?;
             let timestamp_str: String = row.get(1)?;
             let created_at = chrono::DateTime::parse_from_rfc3339(&timestamp_str)
                 .map(|dt| dt.with_timezone(&Utc))
@@ -397,18 +402,19 @@ impl LlmUsageRepo {
             Ok(UsageRecord {
                 id: row.get(0)?,
                 caller_type: CallerType::from_str(&caller_type_str),
-                caller_id: row.get(11)?,
-                model_id: row.get(2)?,
-                config_id: row.get(3)?,
-                prompt_tokens: row.get(4)?,
-                completion_tokens: row.get(5)?,
-                total_tokens: row.get(6)?,
-                reasoning_tokens: row.get(7)?,
-                cached_tokens: row.get(8)?,
-                estimated_cost_usd: row.get(14)?,
-                duration_ms: row.get(9)?,
+                caller_id: row.get(12)?,
+                model_id: row.get(3)?,
+                config_id: row.get(4)?,
+                provider_id: row.get(2)?,
+                prompt_tokens: row.get(5)?,
+                completion_tokens: row.get(6)?,
+                total_tokens: row.get(7)?,
+                reasoning_tokens: row.get(8)?,
+                cached_tokens: row.get(9)?,
+                estimated_cost_usd: row.get(15)?,
+                duration_ms: row.get(10)?,
                 success: status == "success",
-                error_message: row.get(13)?,
+                error_message: row.get(14)?,
                 created_at,
                 workspace_id: None,
             })
@@ -525,5 +531,30 @@ mod tests {
         let summary = LlmUsageRepo::get_usage_summary(&conn, None, None).unwrap();
         assert_eq!(summary.total_requests, 1);
         assert_eq!(summary.total_tokens, 150);
+    }
+
+    #[test]
+    fn test_insert_usage_prefers_explicit_provider_id() {
+        let conn = setup_test_db();
+
+        let record = UsageRecord::new(
+            CallerType::VoiceInput,
+            "TeleAI/TeleSpeechASR".to_string(),
+            0,
+            0,
+        )
+        .with_provider_id("siliconflow".to_string());
+
+        LlmUsageRepo::insert_usage(&conn, &record).unwrap();
+
+        let provider: String = conn
+            .query_row(
+                "SELECT provider FROM llm_usage_logs WHERE id = ?1",
+                [&record.id],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(provider, "siliconflow");
     }
 }

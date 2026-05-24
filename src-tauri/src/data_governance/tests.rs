@@ -1041,25 +1041,29 @@ mod integration_tests {
     /// 测试迁移集合属性
     #[test]
     fn test_migration_set_properties() {
-        // 验证各迁移集合的基本属性（使用动态计数，避免新增迁移后硬编码断裂）
+        // 验证各迁移集合的基本属性
         assert_eq!(VFS_MIGRATION_SET.database_name, "vfs");
-        assert!(
-            VFS_MIGRATION_SET.count() >= 9,
-            "VFS should have at least 9 migrations"
+        assert_eq!(
+            VFS_MIGRATION_SET.count(),
+            28,
+            "VFS migration count mismatch"
         );
-        assert!(
-            VFS_MIGRATION_SET.latest_version() >= 20260207,
-            "VFS latest should be >= 20260207"
+        assert_eq!(
+            VFS_MIGRATION_SET.latest_version(),
+            20260312,
+            "VFS latest version mismatch"
         );
 
         assert_eq!(CHAT_V2_MIGRATION_SET.database_name, "chat_v2");
-        assert!(
-            CHAT_V2_MIGRATION_SET.count() >= 7,
-            "ChatV2 should have at least 7 migrations"
+        assert_eq!(
+            CHAT_V2_MIGRATION_SET.count(),
+            14,
+            "ChatV2 migration count mismatch"
         );
-        assert!(
-            CHAT_V2_MIGRATION_SET.latest_version() >= 20260207,
-            "ChatV2 latest should be >= 20260207"
+        assert_eq!(
+            CHAT_V2_MIGRATION_SET.latest_version(),
+            20260516,
+            "ChatV2 latest version mismatch"
         );
 
         assert_eq!(MISTAKES_MIGRATIONS.database_name, "mistakes");

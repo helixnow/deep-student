@@ -12,7 +12,98 @@
     "feature_models": "Feature Models",
     "rag_models": "RAG & Knowledge Base",
     "search_engines": "Search Engine Configuration",
-    "appearance": "Appearance"
+    "appearance": "Appearance",
+    "voice_input": "Voice Input"
+  },
+  "voice_input": {
+    "title": "Dictation",
+    "description": "This is where dictation shortcut behavior, vocabulary hints, history, and runtime diagnostics live. ASR model assignment belongs to Settings > Models, provider credentials belong to Settings > APIs, and usage is tracked in Statistics.",
+    "loading": "Loading voice input settings…",
+    "load_failed": "Failed to load voice input settings.",
+    "save_failed": "Failed to save voice input settings.",
+    "shortcut_title": "Dictation Shortcut",
+    "shortcut_description": "Choose how the app-wide shortcut behaves inside DeepStudent. Dictation still inserts into the active supported input and never auto-sends.",
+    "hotkey": "Hotkey",
+    "max_duration_ms": "Max Duration (ms)",
+    "hold_mode_title": "Press and hold the dictation shortcut",
+    "hold_mode_description": "Hold the shortcut anywhere inside a supported DeepStudent input to dictate, then release to stop.",
+    "toggle_mode_title": "Tap once to start, tap once to stop",
+    "toggle_mode_description": "Use the same shortcut as a toggle when you want hands-free dictation inside DeepStudent.",
+    "mode_active": "Active",
+    "mode_select": "Use This Mode",
+    "quick_actions_title": "Setup & Recovery",
+    "quick_actions_description": "Jump straight to model assignment, provider credentials, and usage analytics when dictation needs attention.",
+    "dictionary_title": "Dictation Vocabulary",
+    "dictionary_description": "Add words or short phrases that dictation should prefer to recognize. Use one item per line.",
+    "dictionary_placeholder": "Photosynthesis\nAnkylosing spondylitis\nDeepStudent",
+    "dictionary_count": "{{count}} phrase hints",
+    "dictionary_hint": "These hints are merged into the ASR prompt when supported.",
+    "history_title": "Recent Dictation History",
+    "history_description": "Recent transcripts stay here so you can recover them if the text lands in the wrong place or focus changes unexpectedly.",
+    "history_empty": "Your recent dictation transcripts will appear here.",
+    "history_copy": "Copy",
+    "history_clear": "Clear",
+    "history_copy_success": "Dictation text copied.",
+    "history_copy_failed": "Unable to copy this dictation entry.",
+    "history_clear_success": "Recent dictation history cleared.",
+    "history_clear_failed": "Unable to clear recent dictation history.",
+    "request_access": "Request microphone access",
+    "permission_request_success": "Microphone access is ready. You can start voice input now.",
+    "permission_request_denied": "Microphone access was denied. Allow it in the system dialog or OS settings.",
+    "permission_request_missing_runtime": "This runtime is not exposing getUserMedia, so microphone capture cannot start yet.",
+    "permission_request_missing_backend": "Microphone access is granted, but this runtime still lacks a usable recording backend.",
+    "permission_request_no_device": "No microphone was found. Connect or enable a microphone first.",
+    "permission_request_busy": "The microphone is busy in another app. Close the other app and try again.",
+    "permission_request_insecure_context": "Microphone access is granted, but this runtime is not exposing a secure recording context yet.",
+    "permission_request_failed": "Unable to activate microphone access in this environment.",
+    "refresh_support": "Refresh Support",
+    "assigned_model": "Assigned ASR Model",
+    "assigned_model_hint": "Model selection is managed in Settings > Models. This page only controls recording behavior and diagnostics.",
+    "assigned_provider": "Provider",
+    "assigned_model_id": "Model ID",
+    "assignment_required_title": "Choose a voice input ASR model first",
+    "assignment_required_message": "Voice input is enabled at the app layer, but it still needs a model assignment in Settings > Models before recordings can be transcribed.",
+    "assignment_missing_title": "The assigned ASR model needs attention",
+    "assignment_missing_message": "The saved assignment no longer points to a valid voice-capable model. Reassign it in Settings > Models.",
+    "assignment_disabled_title": "The assigned ASR model is disabled",
+    "assignment_disabled_message": "Enable the assigned model or pick another ASR model in Settings > Models before using voice input.",
+    "assignment_provider_unavailable_title": "The assigned provider is not usable yet",
+    "assignment_provider_unavailable_message": "This runtime currently supports SiliconFlow transcription only. Pick a SiliconFlow ASR model for now, or keep the current assignment as a placeholder for future streaming providers.",
+    "open_model_settings": "Open Model Assignments",
+    "open_api_settings": "Open API Settings",
+    "open_usage_statistics": "Open Usage Statistics",
+    "runtime_hint": "If recording support is unavailable, the app build is still missing platform microphone capability, the runtime is not exposing getUserMedia, or OS permission is blocked.",
+    "permission_states": {
+      "granted": "Granted",
+      "prompt": "Not requested yet",
+      "denied": "Denied",
+      "unsupported": "Unavailable",
+      "unknown": "Unknown"
+    },
+    "diagnostics": {
+      "permission": "Permission",
+      "capture_api": "Capture API",
+      "recorder_backend": "Recorder Backend",
+      "secure_context": "Secure Context",
+      "available": "Available",
+      "missing": "Missing",
+      "unavailable": "Unavailable",
+      "unknown": "Unknown"
+    },
+    "labels": {
+      "coming_soon": "Coming soon",
+      "provider_unavailable_reason": "Visible in the ASR catalog, but the current runtime can only transcribe with SiliconFlow.",
+      "disabled_model_reason": "Enable this ASR model before assigning it to voice input."
+    },
+    "status": {
+      "checking": "Checking microphone support…",
+      "ready": "Ready to record",
+      "ready_fallback": "Ready with PCM/WAV fallback",
+      "permission_denied": "Microphone permission denied",
+      "insecure_context": "Runtime is not exposing a secure recording context",
+      "missing_get_user_media": "Runtime does not expose getUserMedia",
+      "unavailable": "Recording backend unavailable"
+    }
   },
   "api": {
     "title": "API Configuration",
@@ -55,6 +146,26 @@
         "reasoning": "Reasoning"
       },
       "subtitle": "Configure your AI model endpoints and base settings",
+      "protocol_label": "OpenAI Protocol",
+      "protocol_hint": "Choose explicitly between OpenAI Chat and OpenAI Responses; the provider only supplies a default.",
+      "protocols": {
+        "openai_chat_completions": {
+          "label": "OpenAI Chat",
+          "description": "Uses /chat/completions with a messages-based payload. Best for most OpenAI-compatible providers."
+        },
+        "openai_responses": {
+          "label": "OpenAI Responses",
+          "description": "Uses /responses for newer OpenAI response semantics and native Responses behavior."
+        },
+        "google_generate_content": {
+          "label": "Google GenerateContent",
+          "description": "Native Gemini endpoint."
+        },
+        "anthropic_messages": {
+          "label": "Anthropic Messages",
+          "description": "Native Claude Messages endpoint."
+        }
+      },
       "model_name_hint": "Provide the exact model identifier used for API calls",
       "reasoning": {
         "title": "Reasoning / Chain-of-thought settings",
@@ -67,7 +178,13 @@
           "low": "low",
           "medium": "medium",
           "high": "high",
-          "xhigh": "xhigh (extra high)"
+          "xhigh": "xhigh (extra high)",
+          "max": "max"
+        },
+        "verbosity": {
+          "low": "Low",
+          "medium": "Medium",
+          "high": "High"
         },
         "enable_thinking": "Enable Thinking mode",
         "enable_thinking_hint": "Send the enable_thinking flag when this model supports it.",
@@ -95,7 +212,7 @@
         "qwen_hint": "Heads-up: SiliconFlow's Qwen models may be limited to 4096 tokens",
         "max_tokens_limit": "API Max Tokens Limit",
         "max_tokens_limit_placeholder": "Leave empty for no limit",
-        "max_tokens_limit_hint": "Some APIs (e.g., DeepSeek) have a max_tokens cap (e.g., 8192). Exceeding it returns a 400 error. Leave empty for no limit.",
+        "max_tokens_limit_hint": "Some APIs enforce documented max_tokens caps. For example, DeepSeek V4 Thinking Mode currently documents a 64K request cap; exceeding it can return a 400 error. Leave empty for no limit.",
         "context_window": "Context Window Size",
         "context_window_placeholder": "Leave empty to use auto-inferred value",
         "context_window_hint": "The model's context window size (tokens). Leave empty to auto-infer from model name. Current inferred value:",
@@ -122,7 +239,14 @@
         "description": "DeepSeek V3.2 uses thinking.type format to control chain-of-thought",
         "enable_thinking": "Enable Thinking Mode",
         "enable_thinking_hint": "When enabled, the model outputs reasoning_content with its thought process",
-        "v31_warning": "DeepSeek V3.1 automatically disables thinking mode when using tools"
+        "v31_warning": "DeepSeek V3.1 automatically disables thinking mode when using tools",
+        "depth": {
+          "low": "Low",
+          "medium": "Medium",
+          "high": "High",
+          "xhigh": "Extra High",
+          "max": "Max"
+        }
       },
       "qwen": {
         "title": "Qwen Reasoning Configuration",
@@ -183,11 +307,15 @@
         },
         "embedding": {
           "title": "Embedding model",
-          "description": "Marks the model as suitable for vector embeddings (e.g. text-embedding-ada-002, bge-m3)."
+          "description": "Marks the model as suitable for vector embeddings (e.g. text-embedding-3-small, text-embedding-3-large, bge-m3)."
         },
         "reranker": {
           "title": "Reranker model",
           "description": "Marks the model for search result reranking (e.g. bge-reranker-v2-m3)."
+        },
+        "image_generation": {
+          "title": "Image generation model",
+          "description": "Marks the model as able to generate images through an OpenAI-compatible Image API."
         },
         "tools": {
           "title": "Tool-calling support",
@@ -218,11 +346,16 @@
     "base_url": "Base URL",
     "api_key": "API Key",
     "api_key_saved": "Saved",
-    "api_key_placeholder": "Enter API key (auto-save)",
+    "api_key_saving": "Saving…",
+    "api_key_placeholder": "Enter API key",
+    "api_key_manual_save_hint": "Paste or type your API key, then click Save",
     "api_key_save_failed": "Failed to save API key",
     "api_key_cleared": "API key cleared",
     "api_key_clear_failed": "Failed to clear API key",
+    "api_key_securely_stored": "Stored securely. You won't need to enter it again next time",
+    "api_key_unsaved": "You have unsaved changes",
     "clear_api_key": "Clear",
+    "clear_api_key_confirm": "Confirm Clear",
     "clear_api_key_title": "Clear API Key",
     "show_api_key": "Show API Key",
     "hide_api_key": "Hide API Key",
@@ -249,7 +382,8 @@
     "select_vendor_to_edit": "Select a provider to edit",
     "select_model_to_edit": "Select a model to edit",
     "reorder_failed": "Reorder failed",
-    "api_key_configured": "API Key configured"
+    "api_key_configured": "API Key configured",
+    "fetch_models_button": "Fetch Models"
   },
   "vendor_model_fetcher": {
     "fetch_button": "Fetch Model List",
@@ -274,21 +408,39 @@
     "add_selected": "Add {{count}} models",
     "adding": "Adding…",
     "add_success": "Successfully added {{count}} models",
-    "add_failed": "Failed to add models: {{error}}"
+    "add_failed": "Failed to add models: {{error}}",
+    "dialog_title": "Fetch available models from API",
+    "dialog_description": "{{vendor}}: pick items to add to your model list"
   },
   "vendor_modal": {
-    "title_new": "New Provider",
+    "title_new": "Add Provider",
     "title_edit": "Edit Provider",
     "subtitle": "Configure provider API credentials and base parameters",
-    "name_label": "Name",
+    "name_label": "Provider Name",
     "name_placeholder": "Enter provider name",
     "provider_label": "Provider Type",
+    "protocol_label": "API Protocol",
+    "protocols": {
+      "openai_chat_completions": "OpenAI Chat Completions",
+      "openai_responses": "OpenAI Responses",
+      "google_generate_content": "Google GenerateContent",
+      "anthropic_messages": "Anthropic Messages"
+    },
     "providers": {
       "openai": "OpenAI",
       "anthropic": "Anthropic",
       "google": "Google",
       "general": "General Adapter",
       "siliconflow": "SiliconFlow",
+      "deepseek": "DeepSeek",
+      "qwen": "Qwen",
+      "zhipu": "Zhipu",
+      "doubao": "Doubao",
+      "minimax": "MiniMax",
+      "moonshot": "Moonshot",
+      "nvidia": "NVIDIA",
+      "mimo": "Xiaomi MiMo",
+      "ollama": "Ollama",
       "custom": "Custom"
     },
     "base_url_label": "Base URL",
@@ -330,39 +482,39 @@
   },
   "theme": {
     "title": "Theme Settings",
-    "description": "Switch appearance modes and curated palettes tailored for different environments",
+    "description": "Switch appearance modes and refined palettes tailored for different environments",
+    "row_title": "Appearance / Theme",
+    "row_description": "Use light, dark, or match the system setting",
     "mode_label": "Select theme mode",
-    "palette_label": "Theme Palette",
-    "palette_hint": "Choose your preferred theme color for buttons, links, and interactive elements.",
+    "font_smoothing_title": "macOS Native Font Smoothing",
+    "font_smoothing_description": "Prefer the macOS system font smoothing behavior instead of forcing antialiased text globally. Turn this off to restore the previous grayscale smoothing look.",
+    "pointer_cursor_title": "Use Pointer Cursor",
+    "pointer_cursor_description": "Switch to a pointer cursor when hovering interactive elements.",
+    "accent_label": "Accent color",
+    "accent_hint": "Only tunes buttons, links, and selected states. Background, cards, and text stay stable.",
+    "system_default": "System Default",
+    "system_default_hint": "Match the system appearance setting",
+    "system_status": "Current system: {{mode}}",
     "modes": {
       "auto": "Follow system",
       "light": "Light",
       "dark": "Dark"
     },
-    "palettes": {
-      "default_name": "Aurora Blue",
-      "default_desc": "Deep blue tones, balanced interaction and status feedback",
-      "purple_name": "Lavender Purple",
-      "purple_desc": "Elegant purple tones for calm and focused atmosphere",
-      "green_name": "Forest Green",
-      "green_desc": "Natural green tones, soothing and eye-friendly",
-      "orange_name": "Sunset Orange",
-      "orange_desc": "Warm orange tones, vibrant and energetic",
-      "pink_name": "Rose Pink",
-      "pink_desc": "Soft pink tones, warm and romantic",
-      "teal_name": "Teal Cyan",
-      "teal_desc": "Fresh teal tones, modern and minimal",
-      "muted_name": "Soft Tones",
-      "muted_desc": "Low saturation colors, reduces eye strain for extended use",
-      "paper_name": "Paper Texture",
-      "paper_desc": "Paper-like background with soft ink colors, comfortable for long reading",
-      "custom_name": "Custom",
-      "custom_desc": "Pick any color as your theme accent, the system will generate a full palette automatically"
+    "accent": {
+      "default": "Still Blue",
+      "purple": "Ink Violet",
+      "green": "Forest Ink",
+      "orange": "Amber",
+      "pink": "Carmine",
+      "teal": "Stone Teal",
+      "muted": "Graphite",
+      "paper": "Clay Brown",
+      "custom": "Custom"
     },
     "status": {
       "current": "Current: {{mode}} theme",
       "auto_follow": " (following system {{system}} preference)",
-      "palette": "Active palette: {{palette}}"
+      "accent": "Accent: {{accent}}"
     }
   },
   "zoom": {
@@ -440,6 +592,8 @@
     "statistics": "Statistics",
     "data_manage": "Data Management",
     "data_governance": "Data Governance",
+    "general": "General",
+    "appearance": "Appearance",
     "app": "App Settings",
     "theme": "Theme",
     "params": "Parameters",
@@ -568,6 +722,10 @@
     "openSource": {
       "title": "Open Source Acknowledgements",
       "description": "DeepStudent grows thanks to the open-source communities listed below. Thank you for keeping the ecosystem moving forward.",
+      "openDialog": "View acknowledgements",
+      "closeDialog": "Close",
+      "expand": "Expand {{category}}",
+      "collapse": "Collapse {{category}}",
       "categories": {
         "coreStack": "Core Framework & Build Stack",
         "uiAndInteraction": "UI & Interaction",
@@ -815,6 +973,10 @@
       "auto": "Auto",
       "light": "Light",
       "dark": "Dark"
+    },
+    "study_ui_descriptions": {
+      "general": "Manage language, interaction habits, input methods, and personal preferences.",
+      "appearance": "Customize themes, fonts, zoom, and the app's visual style."
     }
   },
   "api_config": {
@@ -1114,6 +1276,8 @@
     "select_summary_model": "Summary model is deprecated",
     "select_fast_model": "Please select intelligent non-reasoning model...",
     "select_exam_sheet_ocr": "Please select an OCR engine...",
+    "no_voice_input_asr": "No ASR model available",
+    "no_image_generation_model": "No image generation model available",
     "default_value": "Default {{value}}",
     "preset_name_required": "Preset name (required)",
     "preset_note_optional": "Usage note (optional)",
@@ -1139,7 +1303,12 @@
     "summary_title": "Summary Generation Model (Deprecated)",
     "exam_sheet_ocr_title": "OCR Engine",
     "translation_model_title": "Translation Specialized Model (text translation)",
+    "translation_display_mode_title": "Chat translation display mode",
+    "translation_display_mode_aligned": "Aligned phrases",
+    "translation_display_mode_streaming": "Streaming target",
     "qbank_ai_grading_model_title": "Question Bank AI Grading Model (grading + analysis)",
+    "voice_input_asr_title": "Voice Input ASR Model",
+    "image_generation_model_title": "Image Generation Model",
     "vl_reranker_title": "Multimodal Reranker Model (Optional)",
     "config_check_title": "Configuration Status Check",
     "server_list_title": "Server List",
@@ -1230,6 +1399,8 @@
     "saved": "Saved",
     "restart_hint": "Some settings require an app restart to take effect",
     "translation_saved": "Translation model configuration saved",
+    "voice_input_asr_saved": "Voice input ASR model configuration saved",
+    "image_generation_saved": "Image generation model configuration saved",
     "qbank_ai_grading_saved": "Question bank AI grading model configuration saved",
     "translation_save_failed": "Failed to save translation model configuration: {{error}}",
     "learning_mode_saved": "Learning mode preference updated",
@@ -1258,7 +1429,9 @@
     "translation_configured": "Translation Model: Configured",
     "qbank_ai_grading_configured": "Question Bank AI Grading Model: Configured",
     "question_parsing_configured": "Question Parsing Model: Configured",
-    "memory_decision_configured": "Memory Decision Model: Configured"
+    "memory_decision_configured": "Memory Decision Model: Configured",
+    "voice_input_asr_configured": "Voice Input ASR Model: Configured",
+    "image_generation_configured": "Image Generation Model: Configured"
   },
   "status_labels": {
     "summary_model": "Summary Generation Model (Deprecated)",
@@ -1266,6 +1439,8 @@
     "exam_sheet_ocr": "OCR Engine",
     "translation_model": "Translation Specialized Model",
     "qbank_ai_grading_model": "Question Bank AI Grading Model",
+    "voice_input_asr_model": "Voice Input ASR Model",
+    "image_generation_model": "Image Generation Model",
     "basic_config_complete": "Basic configuration complete, you can start using mistake analysis features!",
     "unnamed_tool": "Unnamed Tool",
     "unnamed_prompt": "Unnamed Prompt",
@@ -1288,7 +1463,10 @@
     "summary_desc": "Deprecated. Summary model is no longer used.",
     "exam_sheet_ocr_desc": "Dedicated for OCR processing in question set recognition, recommend using professional OCR models such as DeepSeek-OCR.",
     "translation_desc": "Specialized for text translation features, recommend models with strong understanding and language conversion capabilities. If not selected, will use \"Second Model\".",
+    "translation_display_mode_desc": "How translations of selected chat text are presented. Aligned shows phrase-by-phrase source/target pairs; Streaming outputs only the translation, token by token.",
     "qbank_ai_grading_desc": "Used for AI grading and AI analysis in question banks. If not configured, it falls back to \"Second Model\".",
+    "voice_input_asr_desc": "Used for speech-to-text in the input layer. All ASR-capable models stay visible here; unsupported providers are shown as coming soon, and transcripts are inserted without auto-send.",
+    "image_generation_desc": "Used by the built-in Chat V2 image generation tool. Pick a model that supports the OpenAI-compatible /images/generations API. Results are saved to VFS.",
     "vl_reranker_desc": "Used to rerank multimodal RAG retrieval results, improving relevance for mixed image-text retrieval (optional configuration)"
   },
   "common_labels": {
@@ -1752,21 +1930,22 @@
     "label": "MCP Server JSON Config"
   },
   "memory": {
-    "title": "Memory System",
-    "description": "Configure AI memory storage location. Memory files will be stored as regular notes in the specified folder.",
-    "selectFolder": "Select memory folder...",
+    "title": "Memory",
+    "description": "Manage AI memory and storage. Memories are stored as notes with automatic categorization.",
+    "selectFolder": "Select storage folder...",
     "createFolder": "Create Folder",
     "defaultFolderName": "My Memories",
-    "configured": "✓ Memory system configured",
-    "notConfigured": "⚠ Please select or create a memory folder",
-    "rootFolder": "Memory Root Folder",
+    "configured": "✓ Configured",
+    "notConfigured": "⚠ No storage folder selected",
+    "disabled": "Disabled",
+    "rootFolder": "Storage",
     "noFolders": "No folders available",
     "createSuccess": "Memory folder created successfully",
     "setSuccess": "Memory root folder set successfully",
-    "privacyMode": "Privacy mode",
-    "privacyModeDesc": "When enabled, memory write and retrieval skip external LLM rewrite/rerank to reduce sensitive data exposure.",
-    "privacyModeEnabled": "Memory privacy mode enabled",
-    "privacyModeDisabled": "Memory privacy mode disabled"
+    "memoryEnabled": "Enable",
+    "memoryEnabledDesc": "When enabled, AI automatically extracts and uses information about you to personalize conversations. When disabled, memory extraction, retrieval, and injection are all stopped.",
+    "memoryEnabledToast": "Memory enabled",
+    "memoryDisabledToast": "Memory disabled"
   },
   "data_governance": {
     "backup_tiers": {

@@ -30,8 +30,8 @@ import {
   // 类型
   type Resource,
   type ContextRef,
-} from '@/chat-v2/resources';
-import { ResourceSizeLimitError } from '@/chat-v2/resources/api';
+} from '@/features/chat/resources';
+import { ResourceSizeLimitError } from '@/features/chat/resources/api';
 
 // ============================================================================
 // Hash 计算测试

@@ -21,11 +21,15 @@ mod ernie;
 mod gemini;
 mod generic_openai;
 mod grok;
+mod mimo;
 mod minimax;
 mod mistral;
 mod moonshot;
 mod qwen;
 pub mod zhipu;
+
+#[cfg(test)]
+mod streaming_harness;
 
 pub use anthropic::AnthropicAdapter;
 pub use deepseek::DeepSeekAdapter;
@@ -34,6 +38,7 @@ pub use ernie::ErnieAdapter;
 pub use gemini::GeminiAdapter;
 pub use generic_openai::GenericOpenAIAdapter;
 pub use grok::GrokAdapter;
+pub use mimo::MimoAdapter;
 pub use minimax::MiniMaxAdapter;
 pub use mistral::MistralAdapter;
 pub use moonshot::MoonshotAdapter;
@@ -97,7 +102,7 @@ pub trait RequestAdapter: Send + Sync {
         enable_thinking: Option<bool>,
     ) -> bool;
 
-    /// 是否应该移除采样参数（temperature, top_p, logprobs）
+    /// 是否应该移除采样参数（temperature, top_p, presence_penalty, frequency_penalty, logprobs）
     ///
     /// 某些推理模型（如 OpenAI o 系列）不支持这些参数
     fn should_remove_sampling_params(&self, config: &ApiConfig) -> bool {
@@ -200,8 +205,10 @@ static ADAPTER_REGISTRY: LazyLock<HashMap<&'static str, Box<dyn RequestAdapter>>
         m.insert("openai", Box::new(GenericOpenAIAdapter));
         m.insert("general", Box::new(GenericOpenAIAdapter));
         m.insert("siliconflow", Box::new(GenericOpenAIAdapter)); // SiliconFlow 使用通用适配器
+        m.insert("nvidia", Box::new(GenericOpenAIAdapter)); // NVIDIA NIM hosted API 使用 OpenAI-compatible 路径
 
         // 国产模型供应商（专用适配器）
+        m.insert("mimo", Box::new(MimoAdapter));
         m.insert("minimax", Box::new(MiniMaxAdapter));
         m.insert("deepseek", Box::new(DeepSeekAdapter));
         m.insert("qwen", Box::new(QwenAdapter));
@@ -308,6 +315,7 @@ pub fn list_adapter_infos() -> Vec<AdapterInfo> {
         "moonshot",
         "grok",
         "minimax",
+        "mimo",
     ];
 
     let mut seen = HashSet::new();
@@ -394,5 +402,44 @@ mod tests {
     fn test_get_ernie_adapter_by_baidu_alias() {
         let adapter = get_adapter(Some("baidu"), None, "openai");
         assert_eq!(adapter.id(), "ernie");
+    }
+
+    #[test]
+    fn test_nvidia_provider_prefers_generic_adapter_over_model_family_adapter() {
+        let adapter = get_adapter(Some("nvidia"), Some("nvidia"), "deepseek");
+        assert_eq!(adapter.id(), "general");
+    }
+
+    #[test]
+    fn test_mimo_provider_uses_mimo_adapter() {
+        let adapter = get_adapter(Some("mimo"), Some("mimo"), "general");
+        assert_eq!(adapter.id(), "mimo");
+    }
+
+    #[test]
+    fn test_mimo_adapter_maps_thinking_to_mimo_thinking_object() {
+        let adapter = get_adapter(Some("mimo"), Some("mimo"), "mimo");
+        let config = crate::llm_manager::ApiConfig {
+            model: "mimo-v2.5-pro".to_string(),
+            provider_type: Some("mimo".to_string()),
+            provider_scope: Some("mimo".to_string()),
+            supports_reasoning: true,
+            thinking_enabled: true,
+            enable_thinking: Some(true),
+            include_thoughts: true,
+            ..Default::default()
+        };
+        let mut body = serde_json::Map::new();
+        body.insert("temperature".to_string(), serde_json::json!(1.0));
+
+        adapter.apply_reasoning_config(&mut body, &config, None);
+
+        assert_eq!(
+            body.get("thinking").and_then(|value| value.get("type")),
+            Some(&serde_json::json!("enabled"))
+        );
+        assert!(!body.contains_key("enable_thinking"));
+        assert!(!body.contains_key("thinking_budget"));
+        assert_eq!(body.get("temperature"), Some(&serde_json::json!(1.0)));
     }
 }

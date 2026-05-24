@@ -5,7 +5,8 @@
 use crate::models::{AppError, ChatMessage, StandardModel2Output, StreamChunk};
 use crate::providers::ProviderAdapter;
 use crate::reasoning_policy::{
-    get_passback_policy, requires_reasoning_passback, ReasoningPassbackPolicy,
+    get_passback_policy, requires_reasoning_passback, should_passback_plain_assistant_reasoning,
+    ReasoningPassbackPolicy,
 };
 use crate::utils::chat_timing;
 use futures_util::StreamExt;
@@ -17,7 +18,9 @@ use url::Url;
 use uuid::Uuid;
 
 use super::{
-    adapters::get_adapter, parser, ApiConfig, ImagePayload, LLMManager, MergedChatMessage, Result,
+    adapters::get_adapter, build_provider_adapter, normalize_nonstream_response_to_openai, parser,
+    should_use_openai_responses_for_config, ApiConfig, ImagePayload, LLMManager, MergedChatMessage,
+    Result,
 };
 
 #[inline]
@@ -41,12 +44,134 @@ fn remove_thinking_fields_for_tool_compat(body: &mut Value) {
 }
 
 /// 计算有效的 max_tokens，应用供应商级别的限制
-/// DeepSeek 等供应商有 max_tokens 上限（如 8192），超出会返回 400 错误
+/// 某些供应商会为请求层 max_tokens 设置上限，超出会返回 400 错误
 #[inline]
 fn effective_max_tokens(max_output_tokens: u32, max_tokens_limit: Option<u32>) -> u32 {
     match max_tokens_limit {
         Some(limit) => max_output_tokens.min(limit),
         None => max_output_tokens,
+    }
+}
+
+fn is_mimo_config(config: &ApiConfig) -> bool {
+    config
+        .provider_scope
+        .as_deref()
+        .map(|value| value.eq_ignore_ascii_case("mimo"))
+        .unwrap_or(false)
+        || config
+            .provider_type
+            .as_deref()
+            .map(|value| value.eq_ignore_ascii_case("mimo"))
+            .unwrap_or(false)
+        || config.model_adapter.eq_ignore_ascii_case("mimo")
+        || config.base_url.to_lowercase().contains("xiaomimimo.com")
+        || config.model.to_lowercase().starts_with("mimo-v")
+}
+
+fn apply_generation_token_limit(body: &mut Value, config: &ApiConfig, max_tokens: u32) {
+    if is_mimo_config(config) {
+        body["max_completion_tokens"] = json!(max_tokens);
+        if let Some(map) = body.as_object_mut() {
+            map.remove("max_tokens");
+        }
+    } else if config.is_reasoning {
+        body["max_completion_tokens"] = json!(max_tokens);
+    } else {
+        body["max_tokens"] = json!(max_tokens);
+        if let Some(map) = body.as_object_mut() {
+            map.remove("max_completion_tokens");
+        }
+    }
+}
+
+fn apply_max_tokens_or_mimo_completion_limit(
+    body: &mut Value,
+    config: &ApiConfig,
+    max_tokens: u32,
+) {
+    if is_mimo_config(config) {
+        body["max_completion_tokens"] = json!(max_tokens);
+        if let Some(map) = body.as_object_mut() {
+            map.remove("max_tokens");
+        }
+    } else {
+        body["max_tokens"] = json!(max_tokens);
+        if let Some(map) = body.as_object_mut() {
+            map.remove("max_completion_tokens");
+        }
+    }
+}
+
+fn apply_generation_params(body: &mut Value, config: &ApiConfig) {
+    let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
+    apply_generation_token_limit(body, config, max_tokens);
+
+    if !config.is_reasoning || is_mimo_config(config) {
+        body["temperature"] = json!(config.temperature);
+        if let Some(top_p) = config.top_p_override {
+            body["top_p"] = json!(top_p);
+        }
+        if let Some(frequency_penalty) = config.frequency_penalty_override {
+            body["frequency_penalty"] = json!(frequency_penalty);
+        }
+        if let Some(presence_penalty) = config.presence_penalty_override {
+            body["presence_penalty"] = json!(presence_penalty);
+        }
+    }
+}
+
+fn attach_reasoning_passback_payload(
+    assistant_msg: &mut Value,
+    config: &ApiConfig,
+    thinking: &str,
+) {
+    match get_passback_policy(config) {
+        ReasoningPassbackPolicy::DeepSeekStyle => {
+            assistant_msg["reasoning_content"] = json!(thinking);
+        }
+        ReasoningPassbackPolicy::ReasoningDetails => {
+            assistant_msg["reasoning_details"] = json!([{
+                "type": "thinking",
+                "text": thinking
+            }]);
+        }
+        ReasoningPassbackPolicy::NoPassback => {}
+    }
+}
+
+fn is_mimo_endpoint(model: &str, base_url: &str) -> bool {
+    model.to_lowercase().starts_with("mimo-v") || base_url.to_lowercase().contains("xiaomimimo.com")
+}
+
+fn build_test_chat_request_body(model: &str, base_url: &str) -> Value {
+    if is_mimo_endpoint(model, base_url) {
+        json!({
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Hi"
+                }
+            ],
+            "max_completion_tokens": 32,
+            "temperature": 1.0,
+            "thinking": {
+                "type": "disabled"
+            }
+        })
+    } else {
+        json!({
+            "model": model,
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "Hi"
+                }
+            ],
+            "max_tokens": 5,
+            "temperature": 0.1
+        })
     }
 }
 
@@ -57,6 +182,7 @@ pub(crate) fn sanitize_request_body_for_audit(body: &serde_json::Value) -> serde
         crate::debug_log_service::DebugFilterLevel::Standard,
     );
     redact_user_profile_blocks_in_value(&mut sanitized);
+    redact_skill_instruction_blocks_in_value(&mut sanitized);
     sanitized
 }
 
@@ -106,6 +232,63 @@ fn redact_user_profile_blocks_in_text(text: &str) -> String {
     out
 }
 
+fn redact_skill_instruction_blocks_in_value(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::String(s) => {
+            *s = redact_skill_instruction_blocks_in_text(s);
+        }
+        serde_json::Value::Array(items) => {
+            for v in items {
+                redact_skill_instruction_blocks_in_value(v);
+            }
+        }
+        serde_json::Value::Object(map) => {
+            for (_, v) in map {
+                redact_skill_instruction_blocks_in_value(v);
+            }
+        }
+        _ => {}
+    }
+}
+
+fn redact_skill_instruction_blocks_in_text(text: &str) -> String {
+    const START_PREFIX: &str = "<skill_instructions";
+    const TAG_END: &str = ">";
+    const END: &str = "</skill_instructions>";
+    if !text.contains(START_PREFIX) {
+        return text.to_string();
+    }
+
+    let mut out = String::with_capacity(text.len());
+    let mut rest = text;
+    loop {
+        let Some(start_idx) = rest.find(START_PREFIX) else {
+            out.push_str(rest);
+            break;
+        };
+        out.push_str(&rest[..start_idx]);
+
+        let after_start = &rest[start_idx..];
+        let Some(start_tag_end_rel) = after_start.find(TAG_END) else {
+            out.push_str("[REDACTED:skill_instructions]");
+            break;
+        };
+        let start_tag = &after_start[..start_tag_end_rel + TAG_END.len()];
+        let after_tag = &after_start[start_tag_end_rel + TAG_END.len()..];
+
+        if let Some(end_rel) = after_tag.find(END) {
+            out.push_str(start_tag);
+            out.push_str("[REDACTED]");
+            out.push_str(END);
+            rest = &after_tag[end_rel + END.len()..];
+        } else {
+            out.push_str("[REDACTED:skill_instructions]");
+            break;
+        }
+    }
+    out
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -139,12 +322,32 @@ mod tests {
     }
 
     #[test]
-    fn test_should_use_openai_responses_for_o4_reasoning_models() {
+    fn test_sanitize_request_body_for_audit_redacts_skill_instructions() {
+        let body = json!({
+            "messages": [
+                {
+                    "role": "user",
+                    "content": "prefix <skill_instructions id=\"secret-skill\">private skill text</skill_instructions> suffix"
+                }
+            ]
+        });
+        let sanitized = sanitize_request_body_for_audit(&body);
+        let content = sanitized["messages"][0]["content"]
+            .as_str()
+            .unwrap_or_default();
+        assert!(content
+            .contains("<skill_instructions id=\"secret-skill\">[REDACTED]</skill_instructions>"));
+        assert!(!content.contains("private skill text"));
+    }
+
+    #[test]
+    fn test_should_use_openai_responses_for_declared_openai_compatible_responses_support() {
         let config = ApiConfig {
             model_adapter: "general".to_string(),
-            model: "o4-mini".to_string(),
-            is_reasoning: true,
-            supports_reasoning: true,
+            model: "gpt-4o-mini".to_string(),
+            supports_openai_responses: Some(true),
+            is_reasoning: false,
+            supports_reasoning: false,
             ..Default::default()
         };
 
@@ -163,17 +366,219 @@ mod tests {
 
         assert!(!should_use_openai_responses_for_config(&config));
     }
+
+    #[test]
+    fn test_explicit_openai_responses_protocol_overrides_legacy_heuristics() {
+        let config = ApiConfig {
+            model_adapter: "general".to_string(),
+            api_protocol: Some("openai_responses".to_string()),
+            model: "gpt-4o-mini".to_string(),
+            is_reasoning: false,
+            supports_reasoning: false,
+            ..Default::default()
+        };
+
+        assert!(should_use_openai_responses_for_config(&config));
+    }
+
+    #[test]
+    fn test_explicit_chat_completions_protocol_blocks_responses_for_reasoning_models() {
+        let config = ApiConfig {
+            model_adapter: "general".to_string(),
+            api_protocol: Some("openai_chat_completions".to_string()),
+            model: "o4-mini".to_string(),
+            is_reasoning: true,
+            supports_reasoning: true,
+            ..Default::default()
+        };
+
+        assert!(!should_use_openai_responses_for_config(&config));
+    }
+
+    #[test]
+    fn test_official_openai_defaults_to_responses_without_explicit_protocol() {
+        let config = ApiConfig {
+            model_adapter: "general".to_string(),
+            provider_type: Some("openai".to_string()),
+            base_url: "https://api.openai.com/v1".to_string(),
+            model: "gpt-4o-mini".to_string(),
+            is_reasoning: false,
+            supports_reasoning: false,
+            ..Default::default()
+        };
+
+        assert!(should_use_openai_responses_for_config(&config));
+    }
+
+    #[test]
+    fn test_third_party_declared_responses_support_defaults_to_responses_without_explicit_protocol()
+    {
+        let config = ApiConfig {
+            model_adapter: "general".to_string(),
+            provider_type: Some("custom".to_string()),
+            base_url: "https://proxy.example.com/v1".to_string(),
+            supports_openai_responses: Some(true),
+            model: "gpt-4o-mini".to_string(),
+            is_reasoning: false,
+            supports_reasoning: false,
+            ..Default::default()
+        };
+
+        assert!(should_use_openai_responses_for_config(&config));
+    }
+
+    #[test]
+    fn test_generic_third_party_gpt4_stays_on_chat_completions_without_explicit_protocol() {
+        let config = ApiConfig {
+            model_adapter: "general".to_string(),
+            provider_type: Some("custom".to_string()),
+            base_url: "https://proxy.example.com/v1".to_string(),
+            model: "gpt-4o-mini".to_string(),
+            is_reasoning: false,
+            supports_reasoning: false,
+            ..Default::default()
+        };
+
+        assert!(!should_use_openai_responses_for_config(&config));
+    }
+
+    #[test]
+    fn test_deepseek_tool_passback_preserves_empty_reasoning_content() {
+        let config = ApiConfig {
+            provider_type: Some("deepseek".to_string()),
+            model_adapter: "deepseek".to_string(),
+            model: "deepseek-v4-pro".to_string(),
+            base_url: "https://api.deepseek.com/v1".to_string(),
+            supports_reasoning: true,
+            is_reasoning: true,
+            ..Default::default()
+        };
+        let mut assistant_msg = json!({
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [{
+                "id": "call_empty_reasoning",
+                "type": "function",
+                "function": {
+                    "name": "builtin_test",
+                    "arguments": "{}"
+                }
+            }]
+        });
+
+        attach_reasoning_passback_payload(&mut assistant_msg, &config, "");
+
+        assert_eq!(assistant_msg.get("reasoning_content"), Some(&json!("")));
+    }
+
+    #[test]
+    fn test_runtime_reasoning_overrides_replace_saved_profile_depth() {
+        let mut config = ApiConfig {
+            reasoning_effort: Some("high".to_string()),
+            thinking_budget: Some(8192),
+            ..Default::default()
+        };
+
+        apply_runtime_reasoning_overrides(&mut config, Some("max".to_string()), Some(32768));
+
+        assert_eq!(config.reasoning_effort.as_deref(), Some("max"));
+        assert_eq!(config.thinking_budget, Some(32768));
+    }
+
+    #[test]
+    fn mimo_reasoning_generation_params_use_completion_tokens_and_sampling() {
+        let config = ApiConfig {
+            model: "mimo-v2.5-pro".to_string(),
+            provider_type: Some("mimo".to_string()),
+            provider_scope: Some("mimo".to_string()),
+            model_adapter: "mimo".to_string(),
+            is_reasoning: true,
+            supports_reasoning: true,
+            max_output_tokens: 131_072,
+            temperature: 1.0,
+            top_p_override: Some(0.95),
+            ..Default::default()
+        };
+        let mut body = json!({
+            "model": config.model,
+            "messages": [],
+            "stream": true
+        });
+
+        apply_generation_params(&mut body, &config);
+
+        assert_eq!(body.get("max_completion_tokens"), Some(&json!(131_072)));
+        assert!(!body.as_object().unwrap().contains_key("max_tokens"));
+        assert_eq!(body.get("temperature"), Some(&json!(1.0)));
+        let top_p = body.get("top_p").and_then(|value| value.as_f64()).unwrap();
+        assert!((top_p - 0.95).abs() < 0.000_001);
+    }
+
+    #[test]
+    fn non_mimo_reasoning_generation_params_preserve_adapter_max_tokens() {
+        let config = ApiConfig {
+            model: "kimi-k2-thinking".to_string(),
+            provider_type: Some("moonshot".to_string()),
+            provider_scope: Some("moonshot".to_string()),
+            model_adapter: "moonshot".to_string(),
+            is_reasoning: true,
+            max_output_tokens: 4096,
+            ..Default::default()
+        };
+        let mut body = json!({
+            "model": config.model,
+            "messages": [],
+            "max_tokens": 32_000
+        });
+
+        apply_generation_params(&mut body, &config);
+
+        assert_eq!(body.get("max_completion_tokens"), Some(&json!(4096)));
+        assert_eq!(body.get("max_tokens"), Some(&json!(32_000)));
+    }
+
+    #[test]
+    fn legacy_max_token_paths_switch_to_completion_tokens_for_mimo_only() {
+        let config = ApiConfig {
+            model: "mimo-v2.5".to_string(),
+            provider_type: Some("mimo".to_string()),
+            provider_scope: Some("mimo".to_string()),
+            model_adapter: "mimo".to_string(),
+            ..Default::default()
+        };
+        let mut body = json!({
+            "model": config.model,
+            "messages": [],
+            "max_tokens": 8000
+        });
+
+        apply_max_tokens_or_mimo_completion_limit(&mut body, &config, 4096);
+
+        assert_eq!(body.get("max_completion_tokens"), Some(&json!(4096)));
+        assert!(!body.as_object().unwrap().contains_key("max_tokens"));
+    }
+
+    #[test]
+    fn mimo_connection_test_body_uses_chat_completions_token_field() {
+        let body = build_test_chat_request_body("mimo-v2.5-pro", "https://api.xiaomimimo.com/v1");
+
+        assert_eq!(body.get("max_completion_tokens"), Some(&json!(32)));
+        assert!(!body.as_object().unwrap().contains_key("max_tokens"));
+        assert_eq!(body.pointer("/thinking/type"), Some(&json!("disabled")));
+    }
 }
 
-fn should_use_openai_responses_for_config(config: &ApiConfig) -> bool {
-    if config.model_adapter != "general" {
-        return false;
+fn apply_runtime_reasoning_overrides(
+    config: &mut ApiConfig,
+    reasoning_effort_override: Option<String>,
+    thinking_budget_override: Option<i32>,
+) {
+    if let Some(effort) = reasoning_effort_override {
+        config.reasoning_effort = Some(effort);
     }
-    if !(config.is_reasoning || config.supports_reasoning) {
-        return false;
+    if let Some(budget) = thinking_budget_override {
+        config.thinking_budget = Some(budget);
     }
-    let lower = config.model.to_lowercase();
-    lower.contains("o1") || lower.contains("o3") || lower.contains("o4") || lower.contains("gpt-5")
 }
 
 /// 输出审计日志（info 级别）+ 可选文件持久化（用于无 window 的非流式路径）
@@ -197,7 +602,9 @@ pub(crate) fn log_llm_request_audit(
     }
 
     if let Some(c) = persist_config {
-        crate::debug_log_service::write_debug_log_entry(&c.log_dir, tag, model, url, "", body);
+        crate::debug_log_service::write_debug_log_entry(
+            &c.log_dir, tag, model, url, "", &sanitized,
+        );
     }
 }
 
@@ -212,7 +619,7 @@ pub(crate) struct DebugPersistConfig {
 ///
 /// 1. 输出 info 级别审计日志（始终 standard 级别）
 /// 2. 如果 stream_event 以 `chat_v2_event_` 开头，推送给前端
-/// 3. 如果 persist_config 存在（Some），将完整请求体写入 JSON 文件
+/// 3. 如果 persist_config 存在（Some），将脱敏请求体写入 JSON 文件
 pub(crate) fn log_and_emit_llm_request(
     tag: &str,
     window: &tauri::Window,
@@ -237,7 +644,7 @@ pub(crate) fn log_and_emit_llm_request(
         ),
     }
 
-    // 2. 文件持久化（完整未脱敏请求体）
+    // 2. 文件持久化（脱敏请求体，避免 transient skill instructions 落盘）
     let log_file_path = persist_config
         .and_then(|c| {
             crate::debug_log_service::write_debug_log_entry(
@@ -246,7 +653,7 @@ pub(crate) fn log_and_emit_llm_request(
                 model,
                 url,
                 stream_event,
-                body,
+                &sanitized,
             )
         })
         .map(|p| p.to_string_lossy().to_string());
@@ -268,6 +675,20 @@ pub(crate) fn log_and_emit_llm_request(
 
     if let Err(e) = window.emit("chat_v2_llm_request_body", &payload) {
         warn!("[LLM_AUDIT] Failed to emit llm_request_body event: {}", e);
+    }
+}
+
+/// 🔧 CR-R2-01 修复：`call_raw_prompt_with_config` 的可选项，让
+/// compaction / summary 等 Markdown 场景能关掉 GPT 的 `response_format: json_object` 强制。
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct RawPromptOptions {
+    /// gpt-* 模型是否强制 JSON 模式（默认 true，保持旧有 model2 / title 调用的语义）
+    pub force_json: bool,
+}
+
+impl Default for RawPromptOptions {
+    fn default() -> Self {
+        Self { force_json: true }
     }
 }
 
@@ -313,6 +734,8 @@ impl LLMManager {
         frequency_penalty_override: Option<f32>,
         presence_penalty_override: Option<f32>,
         max_output_tokens_override: Option<u32>,
+        reasoning_effort_override: Option<String>,
+        thinking_budget_override: Option<i32>,
     ) -> Result<StandardModel2Output> {
         info!(
             "调用统一模型二接口(流式): 科目={}, 思维链={}, override_model={:?}",
@@ -331,7 +754,7 @@ impl LLMManager {
             Some(tc) if tc == "tag_generation" => "tag_generation",
             _ => "default",
         };
-        let (config, _cot_by_model) = self
+        let (mut config, _cot_by_model) = self
             .select_model_for(
                 task_key,
                 model_override_id.clone(),
@@ -342,6 +765,11 @@ impl LLMManager {
                 max_output_tokens_override,
             )
             .await?;
+        apply_runtime_reasoning_overrides(
+            &mut config,
+            reasoning_effort_override,
+            thinking_budget_override,
+        );
 
         // P1修复：图片上下文严格控制 - 图片由消息级字段提供，禁用会话级回退
         let images_used_source = "per_message_only".to_string();
@@ -383,7 +811,13 @@ impl LLMManager {
 
         // 🔧 P3修复：统一使用 system role，不再区分推理/非推理模型
         // 所有内容由 prompt_builder 统一管理，直接放入 system message
-        messages.push(json!({ "role": "system", "content": system_content }));
+        // 使用 content array 格式以支持 OpenAI/DeepSeek prompt caching
+        messages.push(json!({
+            "role": "system",
+            "content": [
+                {"type": "text", "text": system_content, "cache_control": {"type": "ephemeral"}}
+            ]
+        }));
 
         // 🔧 P1修复：预处理消息，合并连续的工具调用
         // OpenAI 协议期望：一个 assistant 消息包含 tool_calls 数组，然后跟着多个 tool 消息
@@ -425,7 +859,8 @@ impl LLMManager {
                     };
 
                     // 🔧 使用适配器系统处理工具调用消息格式
-                    let has_thinking = thinking_content
+                    let has_thinking_payload = thinking_content.is_some();
+                    let has_non_empty_thinking = thinking_content
                         .as_ref()
                         .map(|s| !s.is_empty())
                         .unwrap_or(false);
@@ -437,7 +872,7 @@ impl LLMManager {
 
                     // 尝试使用适配器的自定义格式
                     let tool_calls_json: Vec<Value> = tool_calls_arr.clone();
-                    if has_thinking {
+                    if has_non_empty_thinking {
                         if let Some(formatted_content) = adapter
                             .format_tool_call_message(&tool_calls_json, thinking_content.as_deref())
                         {
@@ -464,18 +899,11 @@ impl LLMManager {
                             });
 
                             if let Some(ref thinking) = thinking_content {
-                                match policy {
-                                    ReasoningPassbackPolicy::DeepSeekStyle => {
-                                        assistant_msg["reasoning_content"] = json!(thinking);
-                                    }
-                                    ReasoningPassbackPolicy::ReasoningDetails => {
-                                        assistant_msg["reasoning_details"] = json!([{
-                                            "type": "thinking",
-                                            "text": thinking
-                                        }]);
-                                    }
-                                    ReasoningPassbackPolicy::NoPassback => {}
-                                }
+                                attach_reasoning_passback_payload(
+                                    &mut assistant_msg,
+                                    &config,
+                                    thinking,
+                                );
                             }
 
                             inject_thought_signature(&mut assistant_msg);
@@ -501,6 +929,30 @@ impl LLMManager {
                                 tool_calls.len()
                             );
                         }
+                    } else if has_thinking_payload && requires_reasoning_passback(&config) {
+                        let policy = get_passback_policy(&config);
+                        let mut assistant_msg = json!({
+                            "role": "assistant",
+                            "content": content,
+                            "tool_calls": tool_calls_arr
+                        });
+
+                        if let Some(ref thinking) = thinking_content {
+                            attach_reasoning_passback_payload(
+                                &mut assistant_msg,
+                                &config,
+                                thinking,
+                            );
+                        }
+
+                        inject_thought_signature(&mut assistant_msg);
+                        messages.push(assistant_msg);
+
+                        debug!(
+                            "[LLMManager] Reasoning model: {} tool_calls with empty/present thinking payload (policy={:?})",
+                            tool_calls.len(),
+                            policy
+                        );
                     } else {
                         // 无思维链
                         let mut msg = json!({
@@ -686,7 +1138,8 @@ impl LLMManager {
                                     "content": content_blocks
                                 }));
                             }
-                        } else if has_thinking && requires_reasoning_passback(&config) {
+                        } else if has_thinking && should_passback_plain_assistant_reasoning(&config)
+                        {
                             // 🔧 思维链回传策略（文档 29 第 7 节）
                             // 使用统一的 reasoning_policy 模块判断是否需要回传
                             let policy = get_passback_policy(&config);
@@ -747,8 +1200,14 @@ impl LLMManager {
             }
         }
 
-        // 🔧 防御性合并：连续 user 消息合并，避免部分 API（Anthropic/ERNIE）报错
-        Self::merge_consecutive_user_messages(&mut messages);
+        // 瞬态技能指令必须保持独立 user message，不能与当前用户输入合并。
+        let has_transient_skill_messages = chat_history
+            .iter()
+            .any(crate::chat_v2::pipeline::is_transient_skill_message);
+        if !has_transient_skill_messages {
+            // 🔧 防御性合并：连续 user 消息合并，避免部分 API（Anthropic/ERNIE）报错
+            Self::merge_consecutive_user_messages(&mut messages);
+        }
 
         // 近似输入token统计（用于用量/事件）
         let _approx_tokens_in = {
@@ -1064,97 +1523,52 @@ impl LLMManager {
 
         // 简化：不再在此处估算输入token
 
-        // 根据模型适配器类型和是否为推理模型设置不同的参数
-        if cfg!(debug_assertions) {
-            // debug removed: adapter type & reasoning flag
+        apply_generation_params(&mut request_body, &config);
+        if !config.is_reasoning && enable_chain_of_thought {
+            warn!(
+                "前端为非推理模型 {} 请求了思维链。通常这由Prompt控制，而非特定API参数。",
+                config.model
+            );
         }
-
-        if config.is_reasoning {
-            // 使用配置化的 max_tokens_limit 限制 max_completion_tokens
-            let max_tokens = match config.max_tokens_limit {
-                Some(limit) => config.max_output_tokens.min(limit),
-                None => config.max_output_tokens,
-            };
-            match config.model_adapter.as_str() {
-                _ => {
-                    request_body["max_completion_tokens"] = json!(max_tokens);
-                }
-            }
-        } else {
-            // 非推理模型走通用参数
-            // 使用配置化的 max_tokens_limit 限制 max_tokens
-            let max_tokens = match config.max_tokens_limit {
-                Some(limit) => config.max_output_tokens.min(limit),
-                None => config.max_output_tokens,
-            };
-            request_body["max_tokens"] = json!(max_tokens);
-            request_body["temperature"] = json!(config.temperature);
-            // 关键：如果模型是非推理模型，即使前端请求了思维链，
-            // 也不要向API发送特定于思维链的参数，除非该模型明确支持。
-            // 对于通用模型，通常不需要为"思维链"传递特殊参数，模型会自然地按指令回复。
-            // 如果 enable_chain_of_thought 对非推理模型意味着不同的处理（例如，更详细的回复），
-            // 这里的逻辑可能需要调整，但通常是Prompt工程的一部分，而不是API参数。
-            if enable_chain_of_thought {
-                warn!(
-                    "前端为非推理模型 {} 请求了思维链。通常这由Prompt控制，而非特定API参数。",
-                    config.model
-                );
-            }
-        }
-        // 🆕 检测合成的 load_skills 工具交互是否出现在请求消息中
+        // 审计：瞬态技能消息数量 + 真实 load_skills 调用数量
         {
-            let synthetic_count = messages
+            let transient_skill_count = chat_history
+                .iter()
+                .filter(|m| crate::chat_v2::pipeline::is_transient_skill_message(m))
+                .count();
+            let real_load_skills_call_count = messages
                 .iter()
                 .filter(|m| {
-                    // 检测 assistant 消息中包含 load_skills tool_call
-                    if let Some(tool_calls) = m.get("tool_calls").and_then(|v| v.as_array()) {
-                        tool_calls.iter().any(|tc| {
-                            tc.get("function")
-                                .and_then(|f| f.get("name"))
-                                .and_then(|n| n.as_str())
-                                .map_or(false, |name| name == "load_skills")
+                    m.get("tool_calls")
+                        .and_then(|v| v.as_array())
+                        .is_some_and(|tool_calls| {
+                            tool_calls.iter().any(|tc| {
+                                tc.get("function")
+                                    .and_then(|f| f.get("name"))
+                                    .and_then(|n| n.as_str())
+                                    .map_or(false, |name| name == "load_skills")
+                            })
                         })
-                    } else if m.get("role").and_then(|r| r.as_str()) == Some("tool") {
-                        // 检测 tool 消息中包含 skill_loaded 标记
-                        m.get("content")
-                            .and_then(|c| c.as_str())
-                            .map_or(false, |c| c.contains("<skill_loaded"))
-                    } else {
-                        false
-                    }
                 })
                 .count();
-            if synthetic_count > 0 {
+            if transient_skill_count > 0 || real_load_skills_call_count > 0 {
                 info!(
-                    "[LLM_AUDIT] 请求体包含 {} 条合成 load_skills 工具消息（总消息数: {}）",
-                    synthetic_count,
+                    "[LLM_AUDIT] 请求体包含 {} 条瞬态技能消息，{} 次真实 load_skills 调用（总消息数: {}）",
+                    transient_skill_count,
+                    real_load_skills_call_count,
                     messages.len()
                 );
             }
         }
 
-        // 输出完整请求体用于调试（隐藏图片内容保护隐私）
-        let debug_body = {
-            let mut debug = request_body.clone();
-            if let Some(messages) = debug["messages"].as_array_mut() {
-                for message in messages {
-                    if let Some(content) = message["content"].as_array_mut() {
-                        for part in content {
-                            if part["type"] == "image_url" {
-                                part["image_url"]["url"] = json!("data:image/jpeg;base64,[hidden]");
-                            }
-                        }
-                    }
-                }
-            }
-            debug
-        };
-        debug!("[LLM_REVIEW_DEBUG] ==> 完整请求体开始 <==");
+        // 输出脱敏请求体用于调试（隐藏图片与 transient skill instructions）
+        let debug_body = sanitize_request_body_for_audit(&request_body);
+        debug!("[LLM_REVIEW_DEBUG] ==> 脱敏请求体开始 <==");
         debug!(
             "{}",
             serde_json::to_string_pretty(&debug_body).unwrap_or_default()
         );
-        debug!("[LLM_REVIEW_DEBUG] ==> 完整请求体结束 <==");
+        debug!("[LLM_REVIEW_DEBUG] ==> 脱敏请求体结束 <==");
 
         // 记录请求体大小与起始时间（简化）
         let request_json_str = serde_json::to_string(&request_body).unwrap_or_default();
@@ -1162,15 +1576,7 @@ impl LLMManager {
         let start_instant = std::time::Instant::now();
 
         // Provider 适配：构建请求
-        let adapter: Box<dyn ProviderAdapter> = if self.should_use_openai_responses(&config) {
-            Box::new(crate::providers::OpenAIResponsesAdapter)
-        } else {
-            match config.model_adapter.as_str() {
-                "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-                "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-                _ => Box::new(crate::providers::OpenAIAdapter),
-            }
-        };
+        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
         let preq = adapter
             .build_request(
                 &config.base_url,
@@ -2394,8 +2800,13 @@ impl LLMManager {
         // 注意：history.rs 输出的是交叉模式 assistant→tool→assistant→tool，
         // 所以此函数在正常流程中是 no-op，仅作为防御性保护。
         Self::merge_consecutive_assistant_tool_calls(&mut messages);
-        // 🔧 防御性合并：连续 user 消息合并
-        Self::merge_consecutive_user_messages(&mut messages);
+        if !chat_history
+            .iter()
+            .any(crate::chat_v2::pipeline::is_transient_skill_message)
+        {
+            // 🔧 防御性合并：连续 user 消息合并
+            Self::merge_consecutive_user_messages(&mut messages);
+        }
 
         let mut request_body = json!({
             "model": config.model,
@@ -2538,31 +2949,25 @@ impl LLMManager {
         // 降级注入可能调整 messages，确保请求体使用最新消息集合
         request_body["messages"] = serde_json::Value::Array(messages.clone());
 
-        // 根据模型适配器添加特定参数（应用供应商级别的 max_tokens 限制）
-        let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
-        request_body["max_tokens"] = json!(max_tokens);
-        request_body["temperature"] = json!(config.temperature);
+        apply_generation_params(&mut request_body, &config);
 
         // 记录请求体大小与起始时间
         let request_json_str = serde_json::to_string(&request_body).unwrap_or_default();
         let request_bytes = request_json_str.len();
         let start_instant = std::time::Instant::now();
 
-        // 输出完整请求体用于调试
-        debug!("[LLM_CONTINUE_DEBUG] ==> 完整请求体开始 <==");
+        // 输出脱敏请求体用于调试
+        let debug_body = sanitize_request_body_for_audit(&request_body);
+        debug!("[LLM_CONTINUE_DEBUG] ==> 脱敏请求体开始 <==");
         debug!(
             "{}",
-            serde_json::to_string_pretty(&request_body).unwrap_or_default()
+            serde_json::to_string_pretty(&debug_body).unwrap_or_default()
         );
-        debug!("[LLM_CONTINUE_DEBUG] ==> 完整请求体结束 <==");
+        debug!("[LLM_CONTINUE_DEBUG] ==> 脱敏请求体结束 <==");
 
         debug!("发送请求到: {}", config.base_url);
         // 使用 ProviderAdapter 统一构建请求（避免覆盖分支硬编码/chat/completions）
-        let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
         let preq = adapter
             .build_request(
                 &config.base_url,
@@ -3389,8 +3794,13 @@ impl LLMManager {
 
         // 🔧 防御性合并：连续 assistant tool_calls（正常流程中是 no-op）
         Self::merge_consecutive_assistant_tool_calls(&mut messages);
-        // 🔧 防御性合并：连续 user 消息合并
-        Self::merge_consecutive_user_messages(&mut messages);
+        if !chat_history
+            .iter()
+            .any(crate::chat_v2::pipeline::is_transient_skill_message)
+        {
+            // 🔧 防御性合并：连续 user 消息合并
+            Self::merge_consecutive_user_messages(&mut messages);
+        }
 
         let mut request_body = json!({
             "model": config.model,
@@ -3400,31 +3810,10 @@ impl LLMManager {
 
         Self::apply_reasoning_config(&mut request_body, &config, None);
 
-        // 根据模型适配器类型设置不同的参数
-        if cfg!(debug_assertions) {
-            // debug removed
-        }
-
-        // 应用供应商级别的 max_tokens 限制
-        let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
-        if config.is_reasoning {
-            request_body["max_completion_tokens"] = json!(max_tokens);
-            debug!("应用推理模型参数: max_completion_tokens={}", max_tokens);
-        } else {
-            request_body["max_tokens"] = json!(max_tokens);
-            request_body["temperature"] = json!(config.temperature);
-        }
+        apply_generation_params(&mut request_body, &config);
 
         // 使用 ProviderAdapter 构建请求，确保 Gemini 模型走转换后的URL/Headers/Body
-        let adapter: Box<dyn ProviderAdapter> = if self.should_use_openai_responses(&config) {
-            Box::new(crate::providers::OpenAIResponsesAdapter)
-        } else {
-            match config.model_adapter.as_str() {
-                "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-                "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-                _ => Box::new(crate::providers::OpenAIAdapter),
-            }
-        };
+        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
         let preq = adapter
             .build_request(
                 &config.base_url,
@@ -3496,57 +3885,7 @@ impl LLMManager {
         let response_json: Value = serde_json::from_str(&response_text)
             .map_err(|e| AppError::llm(format!("解析模型二响应失败: {}", e)))?;
 
-        // Gemini 非流式响应统一转换为 OpenAI 形状
-        let openai_like_json = if config.model_adapter == "google" {
-            // 非流式：先检测安全阻断
-            if let Some(safety_msg) = Self::extract_gemini_safety_error(&response_json) {
-                return Err(AppError::llm(safety_msg));
-            }
-            match crate::adapters::gemini_openai_converter::convert_gemini_nonstream_response_to_openai(&response_json, &config.model) {
-                Ok(v) => v,
-                Err(e) => return Err(AppError::llm(format!("Gemini响应转换失败: {}", e))),
-            }
-        } else if matches!(config.model_adapter.as_str(), "anthropic" | "claude") {
-            crate::providers::convert_anthropic_response_to_openai(&response_json, &config.model)
-                .ok_or_else(|| AppError::llm("解析Anthropic响应失败".to_string()))?
-        } else if self.should_use_openai_responses(&config) {
-            let mut text_segments: Vec<String> = Vec::new();
-            if let Some(output) = response_json.get("output").and_then(|v| v.as_array()) {
-                for item in output {
-                    if let Some(content_arr) = item.get("content").and_then(|v| v.as_array()) {
-                        for entry in content_arr {
-                            let entry_type =
-                                entry.get("type").and_then(|v| v.as_str()).unwrap_or("");
-                            if matches!(entry_type, "output_text" | "text") {
-                                if let Some(text) = entry.get("text").and_then(|v| v.as_str()) {
-                                    if !text.is_empty() {
-                                        text_segments.push(text.to_string());
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-            if text_segments.is_empty() {
-                if let Some(output_text) = response_json.get("output_text").and_then(|v| v.as_str())
-                {
-                    if !output_text.is_empty() {
-                        text_segments.push(output_text.to_string());
-                    }
-                }
-            }
-            json!({
-                "choices": [{
-                    "message": {
-                        "content": text_segments.join("")
-                    }
-                }],
-                "usage": response_json.get("usage").cloned()
-            })
-        } else {
-            response_json.clone()
-        };
+        let openai_like_json = normalize_nonstream_response_to_openai(&config, &response_json)?;
 
         let content = openai_like_json["choices"][0]["message"]["content"]
             .as_str()
@@ -3642,11 +3981,7 @@ impl LLMManager {
             "stream": false
         });
 
-        let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
 
         let preq = adapter
             .build_request(
@@ -3712,20 +4047,7 @@ impl LLMManager {
         let response_json: Value = serde_json::from_str(&response_text)
             .map_err(|e| AppError::llm(format!("解析聊天元数据响应失败: {}", e)))?;
 
-        let openai_like_json = if config.model_adapter == "google" {
-            if let Some(safety_msg) = Self::extract_gemini_safety_error(&response_json) {
-                return Err(AppError::llm(safety_msg));
-            }
-            match crate::adapters::gemini_openai_converter::convert_gemini_nonstream_response_to_openai(&response_json, &config.model) {
-                Ok(v) => v,
-                Err(e) => return Err(AppError::llm(format!("Gemini响应转换失败: {}", e))),
-            }
-        } else if matches!(config.model_adapter.as_str(), "anthropic" | "claude") {
-            crate::providers::convert_anthropic_response_to_openai(&response_json, &config.model)
-                .ok_or_else(|| AppError::llm("解析Anthropic响应失败".to_string()))?
-        } else {
-            response_json.clone()
-        };
+        let openai_like_json = normalize_nonstream_response_to_openai(&config, &response_json)?;
 
         let content = openai_like_json["choices"][0]["message"]["content"]
             .as_str()
@@ -4001,17 +4323,7 @@ impl LLMManager {
 
         // 尝试不同的模型进行测试
         for model in test_models {
-            let request_body = json!({
-                "model": model,
-                "messages": [
-                    {
-                        "role": "user",
-                        "content": "Hi"
-                    }
-                ],
-                "max_tokens": 5,
-                "temperature": 0.1
-            });
+            let request_body = build_test_chat_request_body(&model, base_url);
 
             debug!("尝试模型: {}", model);
 
@@ -4183,6 +4495,46 @@ impl LLMManager {
             .await
     }
 
+    /// 🆕 P1: 使用指定 config_id（或显示名称）对应的 ApiConfig 发起 raw prompt 调用
+    ///
+    /// 用于 compaction：和主对话同模型生成摘要，保持语言/风格一致。
+    /// 回退链：匹配 config_id → 匹配 model 显示名 → Model2 默认配置。
+    ///
+    /// 🔧 CR-R2-01 修复：compaction 需要 Markdown 输出，禁用 JSON 强制模式，
+    /// 否则 gpt-* 模型会把 Markdown 摘要编成 JSON，破坏锚定链。
+    pub async fn call_with_config_id_raw_prompt(
+        &self,
+        config_id: &str,
+        user_prompt: &str,
+    ) -> Result<StandardModel2Output> {
+        let configs = self.get_api_configs().await?;
+        let resolved = configs
+            .iter()
+            .find(|c| c.id == config_id)
+            .or_else(|| configs.iter().find(|c| c.model == config_id))
+            .cloned();
+
+        let config = match resolved {
+            Some(c) => c,
+            None => {
+                warn!(
+                    "[compaction] config_id/model '{}' 未找到，回退到 Model2 默认配置",
+                    config_id
+                );
+                self.get_model2_config().await?
+            }
+        };
+
+        // 🔧 CR-R2-01：force_json=false，让 gpt-* 模型按 Markdown 输出
+        self.call_raw_prompt_with_config_opts(
+            config,
+            user_prompt,
+            None,
+            RawPromptOptions { force_json: false },
+        )
+        .await
+    }
+
     /// 使用记忆决策模型调用（回退链：memory_decision_model → model2）
     pub async fn call_memory_decision_raw_prompt(
         &self,
@@ -4209,6 +4561,25 @@ impl LLMManager {
         config: ApiConfig,
         user_prompt: &str,
         image_payloads: Option<Vec<ImagePayload>>,
+    ) -> Result<StandardModel2Output> {
+        // 旧入口保留默认行为：GPT 启用 JSON 严格模式
+        self.call_raw_prompt_with_config_opts(
+            config,
+            user_prompt,
+            image_payloads,
+            RawPromptOptions { force_json: true },
+        )
+        .await
+    }
+
+    /// 带选项的 raw prompt 调用。`force_json=false` 供 compaction 等需要 Markdown
+    /// 输出的调用方使用（CR-R2-01 修复）。
+    async fn call_raw_prompt_with_config_opts(
+        &self,
+        config: ApiConfig,
+        user_prompt: &str,
+        image_payloads: Option<Vec<ImagePayload>>,
+        opts: RawPromptOptions,
     ) -> Result<StandardModel2Output> {
         // 构造最简消息，仅包含用户指令
         let mut content_parts = vec![json!({
@@ -4256,20 +4627,18 @@ impl LLMManager {
             "temperature": config.temperature
         });
 
-        // `max_total_tokens` 作为兼容字段保留给 Gemini 适配器；同时针对不同模型类型传递官方推荐的上限参数。
-        // 应用供应商级别的 max_tokens 限制
-        let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit);
-        request_body["max_total_tokens"] = json!(max_tokens);
-        if config.is_reasoning {
-            request_body["max_completion_tokens"] = json!(max_tokens);
-        } else {
-            request_body["max_tokens"] = json!(max_tokens);
+        Self::apply_reasoning_config(&mut request_body, &config, None);
+        apply_generation_params(&mut request_body, &config);
+        if let Some(max_tokens) = request_body
+            .get("max_completion_tokens")
+            .or_else(|| request_body.get("max_tokens"))
+            .cloned()
+        {
+            request_body["max_total_tokens"] = max_tokens;
         }
 
-        Self::apply_reasoning_config(&mut request_body, &config, None);
-
-        // 如果是 OpenAI GPT 模型，启用 JSON strict 模式
-        if config.model.starts_with("gpt-") {
+        // 如果是 OpenAI GPT 模型 且调用方允许（compaction 等 Markdown 场景会关掉）
+        if opts.force_json && config.model.starts_with("gpt-") {
             request_body["response_format"] = json!({"type": "json_object"});
         }
 
@@ -4290,11 +4659,7 @@ impl LLMManager {
         }
 
         // 4. 通过 ProviderAdapter 构造 HTTP 请求
-        let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
         let preq = adapter
             .build_request(
                 &config.base_url,
@@ -4463,7 +4828,7 @@ impl LLMManager {
             .min(ocr_adapter.recommended_max_tokens(ocr_mode))
             .max(2048)
             .min(8000);
-        request_body["max_tokens"] = json!(max_tokens);
+        apply_max_tokens_or_mimo_completion_limit(&mut request_body, &config, max_tokens);
 
         if let Some(extra) = ocr_adapter.get_extra_request_params() {
             if let Some(obj) = request_body.as_object_mut() {
@@ -4506,11 +4871,7 @@ impl LLMManager {
         );
 
         // 4. 通过 ProviderAdapter 构造 HTTP 请求
-        let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
         let preq = adapter
             .build_request(
                 &config.base_url,
@@ -4618,19 +4979,15 @@ impl LLMManager {
         let max_tokens = effective_max_tokens(config.max_output_tokens, config.max_tokens_limit)
             .max(2048)
             .min(8000);
-        let request_body = json!({
+        let mut request_body = json!({
             "model": config.model,
             "messages": messages,
             "temperature": 0.0,
-            "max_tokens": max_tokens,
             "stream": false,
         });
+        apply_max_tokens_or_mimo_completion_limit(&mut request_body, &config, max_tokens);
 
-        let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
 
         let preq = adapter
             .build_request(&config.base_url, &api_key, &config.model, &request_body)
@@ -4839,10 +5196,10 @@ impl LLMManager {
                     "content": final_prompt
                 }
             ],
-            "max_tokens": max_tokens,
             "temperature": temperature
         });
 
+        apply_max_tokens_or_mimo_completion_limit(&mut request_body, &config, max_tokens);
         Self::apply_reasoning_config(&mut request_body, &config, None);
 
         // 如果支持JSON模式，添加response_format
@@ -4853,11 +5210,7 @@ impl LLMManager {
         debug!("发送 Anki 制卡请求到: {} (经适配器)", config.base_url);
 
         // 5. 通过 ProviderAdapter 发送HTTP请求（支持 Gemini 中转）
-        let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(&config);
         let preq = adapter
             .build_request(
                 &config.base_url,

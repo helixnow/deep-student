@@ -1,0 +1,20 @@
+/* 设置页面 textarea 自定义滚动条样式 */
+.settings-textarea-scrollbar::-webkit-scrollbar {
+  width: 8px !important;
+  height: 8px !important;
+  display: block !important;
+}
+
+.settings-textarea-scrollbar::-webkit-scrollbar-track {
+  background: var(--scrollbar-track, hsl(var(--muted) / 0.3)) !important;
+  border-radius: 4px;
+}
+
+.settings-textarea-scrollbar::-webkit-scrollbar-thumb {
+  background: var(--scrollbar-thumb, hsl(var(--muted-foreground) / 0.3)) !important;
+  border-radius: 4px;
+}
+
+.settings-textarea-scrollbar::-webkit-scrollbar-thumb:hover {
+  background: var(--scrollbar-thumb-hover, hsl(var(--muted-foreground) / 0.5)) !important;
+}

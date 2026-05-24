@@ -60,16 +60,19 @@
     "vfs_indexing": "File Indexing",
     "embedding": "Embedding",
     "reranker": "Reranker",
+    "voice_input": "Voice Input",
     "other": "Other"
   },
   "recent": {
     "title": "Recent Calls",
     "time": "Time",
     "model": "Model",
+    "provider": "Provider",
     "caller": "Module",
     "tokens": "Tokens",
     "duration": "Duration",
-    "status": "Status"
+    "status": "Status",
+    "unknownProvider": "Unknown"
   },
   "status": {
     "success": "Success",

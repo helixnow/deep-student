@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { TauriAPI } from '../utils/tauriApi';
-import { BarChart3, Settings, AlertTriangle, FileText, Search, BookOpen, Tag, PieChart, RefreshCw } from 'lucide-react';
+import { ChartBar, Gear, Warning, FileText, MagnifyingGlass, BookOpen, Tag, ChartPie, ArrowsClockwise } from '@phosphor-icons/react';
 import { useTranslation } from 'react-i18next';
 import { HeaderTemplate } from './HeaderTemplate';
 import { formatErrorMessage, logError } from '../utils/errorUtils';
@@ -91,7 +91,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBack }) => {
   return (
     <div className="h-[calc(100vh-var(--desktop-titlebar-height,40px))] flex flex-col bg-background">
       <HeaderTemplate
-        icon={BarChart3}
+        icon={ChartBar}
         title={t('title')}
         subtitle={t('description')}
         onRefresh={loadStatistics}
@@ -99,13 +99,13 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBack }) => {
         refreshingText={t('loading_statistics')}
         customActions={[
           {
-            icon: Settings,
+            icon: Gear,
             label: debugMode ? t('close_debug') : t('open_debug'),
             onClick: () => setDebugMode(!debugMode),
             className: debugMode ? 'active' : ''
           }
         ]}
-      />
+/>
 
       <CustomScrollArea className="flex-1 min-h-0" viewportClassName="p-4 sm:px-8 sm:pb-8">
         <div className="max-w-5xl mx-auto">
@@ -113,7 +113,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBack }) => {
           {debugMode && (
             <div className="bg-background rounded-xl border border-border p-6 mb-6 shadow-sm overflow-hidden">
               <h3 className="flex items-center gap-2 text-lg font-medium text-foreground mb-4">
-                <Settings size={20} />
+                <Gear size={20} />
                 {t('debug_info')}
               </h3>
               <div className="grid gap-2 text-sm">
@@ -137,14 +137,14 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBack }) => {
           {loading ? (
             <div className="bg-background rounded-xl border border-border p-16 text-center shadow-sm">
               <div className="mb-4 inline-block">
-                <RefreshCw size={48} className="text-primary animate-spin" />
+                <ArrowsClockwise size={48} className="text-primary animate-spin" />
               </div>
               <div className="text-lg text-muted-foreground">{t('loading_statistics')}</div>
             </div>
           ) : error && !stats ? (
             <div className="bg-background rounded-xl border border-red-200 dark:border-red-900 p-16 text-center shadow-sm bg-gradient-to-b from-red-50 to-background dark:from-red-950/30">
               <div className="mb-4">
-                <AlertTriangle size={48} className="text-red-500 mx-auto" />
+                <Warning size={48} className="text-red-500 mx-auto" />
               </div>
               <div className="text-lg font-medium text-red-600 dark:text-red-400 mb-2">
                 {t('loading_failed')}
@@ -162,15 +162,15 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBack }) => {
                   value={stats?.totalMistakes || 0}
                   label={t('total_mistakes')}
                   index={0}
-                />
+/>
                 <StatCard
-                  icon={Search}
+                  icon={MagnifyingGlass}
                   iconColor="hsl(var(--success))"
                   iconBgColor="hsl(var(--success) / 0.1)"
                   value={stats?.totalReviews || 0}
                   label={t('total_reviews')}
                   index={1}
-                />
+/>
                 <StatCard
                   icon={BookOpen}
                   iconColor="hsl(var(--warning))"
@@ -178,7 +178,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBack }) => {
                   value={0}
                   label={t('total_subjects')}
                   index={2}
-                />
+/>
                 <StatCard
                   icon={Tag}
                   iconColor="hsl(var(--info))"
@@ -186,7 +186,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBack }) => {
                   value={Object.keys(stats?.tagStats || {}).length}
                   label={t('total_tags')}
                   index={3}
-                />
+/>
               </div>
 
               {/* Detailed Statistics */}
@@ -197,7 +197,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBack }) => {
                     <div className="bg-background rounded-xl border border-border p-6 shadow-sm">
                       <h3 className="mb-6 flex items-center gap-2 text-lg font-semibold text-foreground">
                         <div className="w-8 h-8 bg-emerald-100 dark:bg-emerald-900/30 rounded-md flex items-center justify-center">
-                          <PieChart size={16} className="text-emerald-600 dark:text-emerald-400" />
+                          <ChartPie size={16} className="text-emerald-600 dark:text-emerald-400" />
                         </div>
                         {t('type_distribution')}
                       </h3>
@@ -213,7 +213,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBack }) => {
                                 style={{
                                   width: `${stats.totalMistakes > 0 ? (count / stats.totalMistakes) * 100 : 0}%`
                                 }}
-                              />
+/>
                             </div>
                             <div className="min-w-[40px] text-right text-sm font-semibold text-foreground">
                               {count}
@@ -227,7 +227,7 @@ export const Dashboard: React.FC<DashboardProps> = ({ onBack }) => {
               ) : (
                 <div className="bg-background rounded-xl border border-border p-16 text-center shadow-sm">
                   <div className="mb-4">
-                    <BarChart3 size={48} className="text-muted-foreground mx-auto" />
+                    <ChartBar size={48} className="text-muted-foreground mx-auto" />
                   </div>
                   <h3 className="text-xl font-semibold text-foreground mb-2">
                     {t('no_data')}

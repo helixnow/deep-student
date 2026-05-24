@@ -1,0 +1,5 @@
+# Legacy safety-net stylesheets — preserved verbatim from pre-migration
+# App.css and DeepStudent.css. Do not lint; they will be retired in chunks
+# once the decomposed feature files reach visual parity with the originals.
+src/shared/styles/_legacy-app.css
+src/shared/styles/_legacy-deepstudent.css

@@ -17,25 +17,25 @@ import { Input } from '@/components/ui/shad/Input';
 import { NotionAlertDialog } from '@/components/ui/NotionDialog';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import {
-  Search,
+  MagnifyingGlass,
   Check,
   X,
-  ChevronRight,
-  Grid3X3,
+  CaretRight,
+  GridNine,
   List,
   Star,
   Play,
   Pencil,
-  Trash2,
-  RefreshCw,
+  Trash,
+  ArrowClockwise,
   CheckSquare,
   ListChecks,
-  Edit3,
-  AlertTriangle,
+  PencilSimple,
+  Warning,
   Image as ImageIcon,
   Plus,
-} from 'lucide-react';
-import { ExamIcon } from '@/components/learning-hub/icons/ResourceIcons';
+} from '@phosphor-icons/react';
+import { ExamIcon } from '@/features/learning-hub/icons/ResourceIcons';
 import { useTranslation } from 'react-i18next';
 import type { Question, QuestionBankStats, QuestionStatus, Difficulty } from '@/api/questionBankApi';
 import { QuestionInlineEditor } from './QuestionInlineEditor';
@@ -92,7 +92,7 @@ const StatsSummary: React.FC<{ stats: QuestionBankStats; onStartPractice?: () =>
       <div className="flex items-center gap-6">
         {/* 进度环和掌握数 */}
         <div className="flex items-center gap-2">
-          <div className="relative w-10 h-10">
+          <div className="w-10 h-10 relative">
             <svg className="w-full h-full transform -rotate-90" viewBox="0 0 40 40">
               <circle cx="20" cy="20" r="16" fill="none" stroke="currentColor" strokeWidth="3" className="text-muted/30" />
               <circle
@@ -101,7 +101,7 @@ const StatsSummary: React.FC<{ stats: QuestionBankStats; onStartPractice?: () =>
                 strokeDasharray={`${progressPercent * 1.005} 100.5`}
                 className="text-emerald-500"
                 strokeLinecap="round"
-              />
+/>
             </svg>
             <div className="absolute inset-0 flex items-center justify-center">
               <span className="text-[10px] font-semibold tabular-nums">{Math.round(progressPercent)}%</span>
@@ -131,7 +131,7 @@ const StatsSummary: React.FC<{ stats: QuestionBankStats; onStartPractice?: () =>
       {/* 开始做题按钮 */}
       {onStartPractice && (
         <NotionButton variant="ghost" size="sm" onClick={onStartPractice} className="text-primary hover:bg-primary/10">
-          <Play className="w-3.5 h-3.5" />
+          <Play size={14} />
           {t('questionBank.startPractice')}
         </NotionButton>
       )}
@@ -165,8 +165,8 @@ const QuestionGridCard: React.FC<{
       onClick={isEditMode ? () => onSelect?.(!isSelected) : onClick}
       onKeyDown={(e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); (isEditMode ? () => onSelect?.(!isSelected) : onClick)?.(); } }}
       className={cn(
-        'group relative flex flex-col p-4 rounded-lg text-left transition-all duration-200 cursor-pointer',
-        'border border-transparent hover:border-border/60 hover:bg-muted/30',
+        'group relative flex flex-col p-4 rounded-lg text-left transition-[background-color,border-color,color,box-shadow] duration-200 cursor-pointer',
+        'border border-transparent hover:border-border/60 hover:bg-[var(--interactive-hover)]',
         'hover:shadow-[var(--shadow-notion)]',
         status === 'mastered' && 'bg-emerald-500/[0.03]',
         status === 'review' && 'bg-amber-500/[0.03]',
@@ -179,7 +179,7 @@ const QuestionGridCard: React.FC<{
             'w-4 h-4 rounded border flex items-center justify-center transition-colors',
             isSelected ? 'bg-primary border-primary text-primary-foreground' : 'border-muted-foreground/40'
           )}>
-            {isSelected && <Check className="w-3 h-3" />}
+            {isSelected && <Check size={12} />}
           </div>
         ) : (
           <span className="text-sm font-medium text-muted-foreground">
@@ -187,19 +187,19 @@ const QuestionGridCard: React.FC<{
           </span>
         )}
         <div className="flex items-center gap-1.5">
-          {question.isFavorite && <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />}
+          {question.isFavorite && <Star size={14} className="fill-amber-400 text-amber-400" />}
           {hasAttempt && (
             <div className={cn(
               'w-4 h-4 rounded-full flex items-center justify-center',
               isCorrect ? 'bg-emerald-500/20 text-emerald-600' : 'bg-rose-500/20 text-rose-600'
             )}>
-              {isCorrect ? <Check className="w-2.5 h-2.5" /> : <X className="w-2.5 h-2.5" />}
+              {isCorrect ? <Check size={10} /> : <X size={10} />}
             </div>
           )}
           {/* 编辑按钮 - 非编辑模式下显示 */}
           {!isEditMode && onEdit && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleEditClick} className="!w-5 !h-5 !p-0 opacity-0 group-hover:opacity-100 hover:bg-muted/60 text-muted-foreground hover:text-foreground" title={t('questionBank.editQuestion')} aria-label="edit">
-              <Edit3 className="w-3 h-3" />
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={handleEditClick} className="!w-5 !h-5 !p-0 opacity-0 group-hover:opacity-100 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground" title={t('questionBank.editQuestion')} aria-label="edit">
+              <PencilSimple size={12} />
             </NotionButton>
           )}
         </div>
@@ -207,7 +207,7 @@ const QuestionGridCard: React.FC<{
       
       {question.images && question.images.length > 0 && (
         <div className="flex items-center gap-1 mb-1.5 text-xs text-muted-foreground">
-          <ImageIcon className="w-3 h-3" />
+          <ImageIcon size={12} />
           <span>{question.images.length}</span>
         </div>
       )}
@@ -226,7 +226,7 @@ const QuestionGridCard: React.FC<{
         </span>
       </div>
       
-      <ChevronRight className="absolute right-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-all" />
+      <CaretRight size={16} className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-[background-color,border-color,color,box-shadow]" />
     </div>
   );
 };
@@ -256,7 +256,7 @@ const QuestionListRow: React.FC<{
       onClick={isEditMode ? () => onSelect?.(!isSelected) : onClick}
       className={cn(
         'group w-full !justify-start gap-4 !px-3 !py-3 !h-auto !rounded-lg',
-        'hover:bg-muted/40',
+        !isSelected && 'hover:bg-[var(--interactive-hover)]',
         isSelected && 'bg-primary/5'
       )}
     >
@@ -265,7 +265,7 @@ const QuestionListRow: React.FC<{
           'w-4 h-4 rounded border flex items-center justify-center transition-colors flex-shrink-0',
           isSelected ? 'bg-primary border-primary text-primary-foreground' : 'border-muted-foreground/40'
         )}>
-          {isSelected && <Check className="w-3 h-3" />}
+          {isSelected && <Check size={12} />}
         </div>
       ) : (
         <span className="text-sm font-medium text-muted-foreground w-8 flex-shrink-0">
@@ -276,31 +276,31 @@ const QuestionListRow: React.FC<{
       <div className={cn('w-1.5 h-1.5 rounded-full flex-shrink-0', STATUS_CONFIG[status].bg)} />
       
       {question.images && question.images.length > 0 && (
-        <ImageIcon className="w-3.5 h-3.5 flex-shrink-0 text-muted-foreground" />
+        <ImageIcon size={14} className="flex-shrink-0 text-muted-foreground" />
       )}
       <span className="flex-1 text-sm truncate text-foreground/80">
         {question.content || question.ocrText || t('questionBank.noContent')}
       </span>
       
       <div className="flex items-center gap-2 flex-shrink-0">
-        {question.isFavorite && <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />}
+        {question.isFavorite && <Star size={14} className="fill-amber-400 text-amber-400" />}
         {hasAttempt && (
           <div className={cn(
             'w-4 h-4 rounded-full flex items-center justify-center',
             isCorrect ? 'bg-emerald-500/20 text-emerald-600' : 'bg-rose-500/20 text-rose-600'
           )}>
-            {isCorrect ? <Check className="w-2.5 h-2.5" /> : <X className="w-2.5 h-2.5" />}
+            {isCorrect ? <Check size={10} /> : <X size={10} />}
           </div>
         )}
         {/* 编辑按钮 - 非编辑模式下显示 */}
         {!isEditMode && onEdit && (
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleEditClick} className="!w-6 !h-6 !p-0 opacity-0 group-hover:opacity-100 hover:bg-muted/60 text-muted-foreground hover:text-foreground" title={t('questionBank.editQuestion')} aria-label="edit">
-            <Edit3 className="w-3.5 h-3.5" />
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleEditClick} className="!w-6 !h-6 !p-0 opacity-0 group-hover:opacity-100 hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground" title={t('questionBank.editQuestion')} aria-label="edit">
+            <PencilSimple size={14} />
           </NotionButton>
         )}
       </div>
       
-      <ChevronRight className="w-4 h-4 text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-all flex-shrink-0" />
+      <CaretRight size={16} className="text-muted-foreground/0 group-hover:text-muted-foreground/60 transition-[background-color,border-color,color,box-shadow] flex-shrink-0" />
     </NotionButton>
   );
 };
@@ -523,13 +523,13 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
       <div className="flex-shrink-0 px-3 sm:px-4 py-3">
         <div className="flex items-center gap-2">
           <div className="relative flex-1 min-w-0">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground/60" />
+            <MagnifyingGlass size={16} className="absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground/60" />
             <Input
               value={searchQuery}
               onChange={(e) => handleFilterChange(e.target.value, statusFilter, difficultyFilter)}
               placeholder={t('practice:questionBank.searchPlaceholder')}
               className="pl-9 h-8 sm:h-9 bg-muted/30 border-transparent focus:border-border focus:bg-muted/20 focus-visible:ring-0 focus-visible:ring-offset-0 transition-colors text-sm"
-            />
+/>
           </div>
           
           <div className="flex items-center p-0.5 rounded-md bg-muted/30 flex-shrink-0">
@@ -539,7 +539,7 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
               onClick={() => setViewType('grid')}
               className={cn('h-7 w-7 p-0', viewType === 'grid' && 'bg-background shadow-sm')}
             >
-              <Grid3X3 className="w-3.5 h-3.5" />
+              <GridNine size={14} />
             </NotionButton>
             <NotionButton
               variant="ghost"
@@ -547,26 +547,26 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
               onClick={() => setViewType('list')}
               className={cn('h-7 w-7 p-0', viewType === 'list' && 'bg-background shadow-sm')}
             >
-              <List className="w-3.5 h-3.5" />
+              <List size={14} />
             </NotionButton>
           </div>
           
           {/* 收藏和书签按钮 */}
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleFilterChange(searchQuery, statusFilter, difficultyFilter, !showFavoriteOnly)} className={cn('!h-7 !w-7 !p-1.5 flex-shrink-0', showFavoriteOnly ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50')} aria-label="favorites">
+          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => handleFilterChange(searchQuery, statusFilter, difficultyFilter, !showFavoriteOnly)} className={cn('!h-7 !w-7 !p-1.5 flex-shrink-0', showFavoriteOnly ? 'bg-amber-500/20 text-amber-600 dark:text-amber-400' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label="favorites">
             <Star className={cn('w-4 h-4', showFavoriteOnly && 'fill-current')} />
           </NotionButton>
 
           {/* 手动添加题目按钮 */}
           {examId && onCreateQuestion && (
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setExpandedEditId(prev => prev === '__new__' ? null : '__new__')} className={cn('!h-7 !w-7 !p-1.5 flex-shrink-0', expandedEditId === '__new__' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50')} aria-label="add question">
-              <Plus className="w-4 h-4" />
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setExpandedEditId(prev => prev === '__new__' ? null : '__new__')} className={cn('!h-7 !w-7 !p-1.5 flex-shrink-0', expandedEditId === '__new__' ? 'bg-primary/20 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')} aria-label="add question">
+              <Plus size={16} />
             </NotionButton>
           )}
 
           {/* 编辑模式按钮 */}
           {hasBatchOperations && !isEditMode && (
-            <NotionButton variant="ghost" size="sm" onClick={() => setIsEditMode(true)} className="!h-7 !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 flex-shrink-0" aria-label="batch manage">
-              <ListChecks className="w-3.5 h-3.5 mr-1" />
+            <NotionButton variant="ghost" size="sm" onClick={() => setIsEditMode(true)} className="!h-7 !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] flex-shrink-0" aria-label="batch manage">
+              <ListChecks size={14} className="mr-1" />
               <span className="hidden sm:inline">{t('common:manage')}</span>
             </NotionButton>
           )}
@@ -576,8 +576,8 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
         {isEditMode && (
           <div className="flex items-center justify-between gap-2 mt-3 px-1 py-2 rounded-lg bg-muted/30">
             <div className="flex items-center gap-2 min-w-0">
-              <NotionButton variant="ghost" size="sm" onClick={toggleSelectAll} className="!h-auto !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50">
-                <CheckSquare className="w-3.5 h-3.5" />
+              <NotionButton variant="ghost" size="sm" onClick={toggleSelectAll} className="!h-auto !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]">
+                <CheckSquare size={14} />
                 <span className="hidden sm:inline">{selectedIds.size === filteredQuestions.length ? t('practice:questionBank.deselectAll') : t('practice:questionBank.selectAll')}</span>
               </NotionButton>
               <span className="text-xs text-muted-foreground whitespace-nowrap">
@@ -587,19 +587,19 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
             <div className="flex items-center gap-1 flex-shrink-0">
               {onResetProgress && (
                 <NotionButton variant="ghost" size="sm" onClick={handleBatchResetClick} disabled={isOperating || selectedIds.size === 0} className="!h-auto !px-2 !py-1 text-xs text-sky-600 hover:bg-sky-500/10">
-                  <RefreshCw className={cn('w-3 h-3', isOperating && 'animate-spin')} />
+                  <ArrowClockwise className={cn('w-3 h-3', isOperating && 'animate-spin')} />
                   <span className="hidden sm:inline">{t('practice:questionBank.reset')}</span>
                 </NotionButton>
               )}
               {onDelete && (
                 <NotionButton variant="ghost" size="sm" onClick={handleBatchDeleteClick} disabled={isOperating || selectedIds.size === 0} className="!h-auto !px-2 !py-1 text-xs text-rose-600 hover:bg-rose-500/10">
-                  <Trash2 className="w-3 h-3" />
+                  <Trash size={12} />
                   <span className="hidden sm:inline">{t('common:delete')}</span>
                 </NotionButton>
               )}
               <div className="w-px h-3 bg-border/60 mx-1" />
-              <NotionButton variant="ghost" size="sm" onClick={exitEditMode} className="!h-auto !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 gap-1">
-                <X className="w-3 h-3" />
+              <NotionButton variant="ghost" size="sm" onClick={exitEditMode} className="!h-auto !px-2 !py-1 text-xs text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)] gap-1">
+                <X size={12} />
                 <span className="hidden sm:inline">{t('common:cancel')}</span>
               </NotionButton>
             </div>
@@ -608,11 +608,11 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
         
         {/* 筛选 Tab */}
         <div className="flex flex-wrap items-center gap-1.5 mt-3">
-          <NotionButton variant="ghost" size="sm" onClick={() => handleFilterChange(searchQuery, 'all', difficultyFilter, showFavoriteOnly)} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'all' ? 'bg-foreground text-background font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50')}>
+          <NotionButton variant="ghost" size="sm" onClick={() => handleFilterChange(searchQuery, 'all', difficultyFilter, showFavoriteOnly)} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'all' ? 'bg-foreground text-background font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
             {t('practice:questionBank.all')} {questions.length}
           </NotionButton>
           {stats && stats.newCount > 0 && (
-            <NotionButton variant="ghost" size="sm" onClick={() => handleFilterChange(searchQuery, 'new', difficultyFilter, showFavoriteOnly)} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'new' ? 'bg-foreground text-background font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-muted/50')}>
+            <NotionButton variant="ghost" size="sm" onClick={() => handleFilterChange(searchQuery, 'new', difficultyFilter, showFavoriteOnly)} className={cn('!h-auto !px-2 !py-1 !rounded-md text-xs', statusFilter === 'new' ? 'bg-foreground text-background font-medium' : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]')}>
               {t('practice:questionBank.newQuestions')} {stats.newCount}
             </NotionButton>
           )}
@@ -657,13 +657,13 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                 setExpandedEditId(null);
               }}
               onCancel={() => setExpandedEditId(null)}
-            />
+/>
           </div>
         )}
 
         {filteredQuestions.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
-            <Search className="w-8 h-8 mb-3 opacity-40" />
+            <MagnifyingGlass size={32} className="mb-3 opacity-40" />
             <p className="text-sm">{t('practice:questionBank.noMatch')}</p>
           </div>
         ) : viewType === 'grid' ? (
@@ -678,14 +678,14 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                   isEditMode={isEditMode}
                   isSelected={selectedIds.has(q.id)}
                   onSelect={(selected) => toggleSelect(q.id, selected)}
-                />
+/>
                 {expandedEditId === q.id && (
                   <div className="col-span-2">
                     <QuestionInlineEditor
                       question={q}
                       onSave={handleSaveQuestion}
                       onCancel={() => setExpandedEditId(null)}
-                    />
+/>
                   </div>
                 )}
               </React.Fragment>
@@ -703,13 +703,13 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
                   isEditMode={isEditMode}
                   isSelected={selectedIds.has(q.id)}
                   onSelect={(selected) => toggleSelect(q.id, selected)}
-                />
+/>
                 {expandedEditId === q.id && (
                   <QuestionInlineEditor
                     question={q}
                     onSave={handleSaveQuestion}
                     onCancel={() => setExpandedEditId(null)}
-                  />
+/>
                 )}
               </React.Fragment>
             ))}
@@ -721,27 +721,27 @@ export const QuestionBankListView: React.FC<QuestionBankListViewProps> = ({
       <NotionAlertDialog
         open={deleteConfirmOpen}
         onOpenChange={setDeleteConfirmOpen}
-        icon={<AlertTriangle className="w-5 h-5 text-rose-500" />}
+        icon={<Warning size={20} className="text-rose-500" />}
         title={t('practice:questionBank.confirmDeleteTitle')}
         description={t('practice:questionBank.confirmDeleteDesc', { count: selectedIds.size })}
         confirmText={t('common:delete')}
         cancelText={t('common:cancel')}
         confirmVariant="danger"
         onConfirm={handleBatchDeleteConfirm}
-      />
+/>
       
       {/* 重置进度确认对话框 */}
       <NotionAlertDialog
         open={resetConfirmOpen}
         onOpenChange={setResetConfirmOpen}
-        icon={<AlertTriangle className="w-5 h-5 text-amber-500" />}
+        icon={<Warning size={20} className="text-amber-500" />}
         title={t('practice:questionBank.confirmResetTitle')}
         description={t('practice:questionBank.confirmResetDescDetail', { count: selectedIds.size })}
         confirmText={t('practice:questionBank.resetProgress')}
         cancelText={t('common:cancel')}
         confirmVariant="warning"
         onConfirm={handleBatchResetConfirm}
-      />
+/>
     </div>
   );
 };

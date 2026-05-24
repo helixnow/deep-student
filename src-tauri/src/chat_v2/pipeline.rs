@@ -17,13 +17,13 @@
 //! - 工具递归：最多递归 5 次
 //! - 数据持久化：每个阶段完成后立即保存
 
-pub(crate) use std::collections::HashMap;
+pub(crate) use std::collections::{HashMap, HashSet};
 pub(crate) use std::sync::Arc;
 pub(crate) use std::time::Instant;
 
 pub(crate) use serde_json::{json, Value};
 pub(crate) use sha2::{Digest, Sha256};
-pub(crate) use tauri::{Emitter, Window};
+pub(crate) use tauri::Window;
 pub(crate) use tokio::time::{timeout, Duration};
 pub(crate) use tokio_util::sync::CancellationToken;
 pub(crate) use uuid::Uuid;
@@ -36,9 +36,9 @@ pub(crate) use super::tools::builtin_retrieval_executor::BUILTIN_NAMESPACE;
 pub(crate) use super::tools::{
     AcademicSearchExecutor, AttemptCompletionExecutor, BuiltinResourceExecutor,
     BuiltinRetrievalExecutor, CanvasToolExecutor, ChatAnkiToolExecutor, ExecutionContext,
-    FetchExecutor, GeneralToolExecutor, KnowledgeExecutor, MemoryToolExecutor, SkillsExecutor,
-    TemplateDesignerExecutor, ToolExecutor, ToolExecutorRegistry, ToolSensitivity,
-    UserTodoExecutor, WorkspaceToolExecutor,
+    FetchExecutor, GeneralToolExecutor, ImageGenerationExecutor, KnowledgeExecutor,
+    MemoryToolExecutor, SkillsExecutor, TemplateDesignerExecutor, ToolExecutorRegistry,
+    ToolSensitivity, UserTodoExecutor, WorkspaceToolExecutor,
 };
 pub(crate) use crate::database::Database as MainDatabase;
 pub(crate) use crate::models::{
@@ -72,6 +72,7 @@ pub(crate) use super::user_message_builder::{build_user_message, UserMessagePara
 pub(crate) use super::workspace::WorkspaceCoordinator;
 pub(crate) use std::sync::Mutex;
 
+pub mod compaction; // 🆕 P1: 上下文压缩 agent（锚定摘要 + 尾部保真）
 pub mod constants;
 pub mod helpers;
 pub mod history;
@@ -85,6 +86,7 @@ pub mod token_resources;
 pub mod tool_loop;
 pub mod variant_adapter;
 
+pub use compaction::*;
 pub use constants::*;
 pub use helpers::*;
 pub use history::*;
@@ -133,6 +135,9 @@ pub struct ChatV2Pipeline {
     question_bank_service: Option<Arc<crate::question_bank_service::QuestionBankService>>,
     /// 🆕 PDF 处理服务（用于论文保存后触发 OCR/压缩 Pipeline）
     pdf_processing_service: Option<Arc<crate::vfs::pdf_processing_service::PdfProcessingService>>,
+    /// 🆕 P1 / R2-MED 修复：session 级 compaction 互斥，防止多个 execute_internal
+    /// 同时触发 compaction 产生重复 LLM 调用 + 孤儿记录
+    compaction_locks: Arc<Mutex<HashSet<String>>>,
 }
 
 impl ChatV2Pipeline {
@@ -171,6 +176,7 @@ impl ChatV2Pipeline {
             workspace_coordinator: None,
             question_bank_service: None,
             pdf_processing_service: None,
+            compaction_locks: Arc::new(Mutex::new(HashSet::new())),
         }
     }
 
@@ -230,13 +236,14 @@ impl ChatV2Pipeline {
         registry.register(Arc::new(super::tools::qbank_executor::QBankExecutor::new()));
         registry.register(Arc::new(MemoryToolExecutor::new()));
         registry.register(Arc::new(UserTodoExecutor::new()));
-        registry.register(Arc::new(super::tools::SkillsExecutor::new())); // 🆕 Skills 工具执行器（渐进披露架构）
+        registry.register(Arc::new(SkillsExecutor::new())); // 🆕 Skills 工具执行器（渐进披露架构）
         registry.register(Arc::new(TemplateDesignerExecutor::new())); // 🆕 模板设计师工具执行器
         registry.register(Arc::new(super::tools::AskUserExecutor::new())); // 🆕 用户提问工具执行器
         registry.register(Arc::new(super::tools::SessionToolExecutor::new())); // 🆕 会话管理工具执行器
         registry.register(Arc::new(super::tools::DocxToolExecutor::new())); // 🆕 DOCX 文档读写工具执行器
         registry.register(Arc::new(super::tools::PptxToolExecutor::new())); // 🆕 PPTX 演示文稿读写工具执行器
         registry.register(Arc::new(super::tools::XlsxToolExecutor::new())); // 🆕 XLSX 电子表格读写工具执行器
+        registry.register(Arc::new(ImageGenerationExecutor::new())); // 🆕 内置图片生成工具执行器
 
         if let Some(coordinator) = workspace_coordinator {
             registry.register(Arc::new(WorkspaceToolExecutor::new(coordinator.clone())));
@@ -279,6 +286,7 @@ impl ChatV2Pipeline {
             "memory_search" => block_types::MEMORY.to_string(),
             "web_search" => block_types::WEB_SEARCH.to_string(),
             "graph_search" => block_types::GRAPH.to_string(),
+            "image_generate" => block_types::IMAGE_GEN.to_string(),
             "ask_user" => block_types::ASK_USER.to_string(),
             _ => block_types::MCP_TOOL.to_string(),
         }
@@ -581,12 +589,13 @@ impl ChatV2Pipeline {
                     ctx.elapsed_ms()
                 );
 
-                // 🔧 自动生成会话摘要（每轮对话后）
-                // 通过内容哈希防止重复生成
+                // 🔧 自动生成会话元数据（首轮唯一）
+                // 业界最佳实践：只在首轮对话后生成一次 title + description + tags，
+                // 用户改名后 title_locked 会阻止覆盖。
                 let user_content_for_summary = ctx.user_content.clone();
                 let assistant_content_for_summary = ctx.final_content.clone();
                 if self
-                    .should_generate_summary(
+                    .should_generate_session_metadata(
                         &session_id,
                         &user_content_for_summary,
                         &assistant_content_for_summary,
@@ -597,11 +606,10 @@ impl ChatV2Pipeline {
                     let sid = session_id.clone();
                     let emitter_clone = emitter.clone();
 
-                    // 🆕 P1修复：使用 TaskTracker 追踪异步任务，确保优雅关闭
-                    // 异步执行摘要生成，不阻塞返回
+                    // 异步执行元数据生成，不阻塞返回
                     let summary_future = async move {
                         pipeline
-                            .generate_summary(
+                            .generate_session_metadata(
                                 &sid,
                                 &user_content_for_summary,
                                 &assistant_content_for_summary,
@@ -610,11 +618,11 @@ impl ChatV2Pipeline {
                             .await;
                     };
 
-                    // 🔧 P1修复：优先使用 spawn_tracked 追踪摘要任务
+                    // 优先使用 spawn_tracked 追踪元数据任务
                     if let Some(ref state) = chat_v2_state {
                         state.spawn_tracked(summary_future);
                     } else {
-                        log::warn!("[ChatV2::pipeline] spawn_tracked unavailable, using untracked tokio::spawn for summary task");
+                        log::warn!("[ChatV2::pipeline] spawn_tracked unavailable, using untracked tokio::spawn for metadata task");
                         tokio::spawn(summary_future);
                     }
                 }
@@ -817,6 +825,18 @@ impl ChatV2Pipeline {
 
         // 阶段 6：保存结果
         self.save_results(ctx).await?;
+
+        // 阶段 7：🆕 P1 压缩 — 本轮 LLM 若命中阈值，现在落盘 compaction 记录，
+        // 下一次 load_chat_history 就会应用视图（隐藏旧消息 + 注入摘要）
+        if ctx.needs_compaction {
+            if let Err(e) = self.run_compaction(ctx).await {
+                log::warn!(
+                    "[ChatV2::pipeline] run_compaction failed (non-fatal): {}",
+                    e
+                );
+                ctx.needs_compaction = false;
+            }
+        }
 
         Ok(())
     }

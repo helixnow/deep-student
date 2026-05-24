@@ -84,6 +84,8 @@ pub mod event_types {
     // ========== 系统提示事件 ==========
     /// 工具递归限制提示（达到最大递归次数时）
     pub const TOOL_LIMIT: &str = "tool_limit";
+    /// 技能瞬态注入审计（hidden transient skill messages）
+    pub const SKILL_INJECTION_AUDIT: &str = "skill_injection_audit";
 }
 
 // ============================================================
@@ -94,6 +96,8 @@ pub mod event_types {
 pub mod session_event_type {
     /// 流式生成开始
     pub const STREAM_START: &str = "stream_start";
+    /// 流式生成重连/重试
+    pub const STREAM_RECONNECT: &str = "stream_reconnect";
     /// 流式生成完成
     pub const STREAM_COMPLETE: &str = "stream_complete";
     /// 流式生成错误
@@ -106,9 +110,10 @@ pub mod session_event_type {
     pub const SAVE_ERROR: &str = "save_error";
     /// 变体删除
     pub const VARIANT_DELETED: &str = "variant_deleted";
-    /// 标题更新（自动生成标题后通知前端）
-    pub const TITLE_UPDATED: &str = "title_updated";
     /// 摘要更新（包含标题和简介）
+    ///
+    /// 注：原 `title_updated` 事件已废弃 —— 自动生成路径从未发射，
+    /// 所有标题/简介更新统一走 `summary_updated`。
     pub const SUMMARY_UPDATED: &str = "summary_updated";
 }
 
@@ -445,6 +450,14 @@ pub struct SessionEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub model_id: Option<String>,
 
+    /// 重连/重试进度（stream_reconnect 事件时提供）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_attempt: Option<u32>,
+
+    /// 最大重连/重试次数（stream_reconnect 事件时提供）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub retry_max: Option<u32>,
+
     /// 错误信息（error 事件时提供）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub error: Option<String>,
@@ -460,7 +473,7 @@ pub struct SessionEvent {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub usage: Option<TokenUsage>,
 
-    /// 标题（title_updated/summary_updated 事件时提供）
+    /// 标题（summary_updated 事件时提供）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub title: Option<String>,
 
@@ -480,6 +493,33 @@ impl SessionEvent {
             skill_state_version: None,
             replay_mode: None,
             model_id: model_id.map(|s| s.to_string()),
+            retry_attempt: None,
+            retry_max: None,
+            error: None,
+            duration_ms: None,
+            timestamp: chrono::Utc::now().timestamp_millis(),
+            usage: None,
+            title: None,
+            description: None,
+        }
+    }
+
+    /// 创建流式重连/重试事件
+    pub fn stream_reconnect(
+        session_id: &str,
+        message_id: &str,
+        retry_attempt: u32,
+        retry_max: u32,
+    ) -> Self {
+        Self {
+            session_id: session_id.to_string(),
+            event_type: session_event_type::STREAM_RECONNECT.to_string(),
+            message_id: Some(message_id.to_string()),
+            skill_state_version: None,
+            replay_mode: None,
+            model_id: None,
+            retry_attempt: Some(retry_attempt),
+            retry_max: Some(retry_max),
             error: None,
             duration_ms: None,
             timestamp: chrono::Utc::now().timestamp_millis(),
@@ -498,6 +538,8 @@ impl SessionEvent {
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
+            retry_attempt: None,
+            retry_max: None,
             error: None,
             duration_ms: Some(duration_ms),
             timestamp: chrono::Utc::now().timestamp_millis(),
@@ -527,6 +569,8 @@ impl SessionEvent {
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
+            retry_attempt: None,
+            retry_max: None,
             error: None,
             duration_ms: Some(duration_ms),
             timestamp: chrono::Utc::now().timestamp_millis(),
@@ -545,6 +589,8 @@ impl SessionEvent {
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
+            retry_attempt: None,
+            retry_max: None,
             error: Some(error.to_string()),
             duration_ms: None,
             timestamp: chrono::Utc::now().timestamp_millis(),
@@ -563,6 +609,8 @@ impl SessionEvent {
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
+            retry_attempt: None,
+            retry_max: None,
             error: None,
             duration_ms: None,
             timestamp: chrono::Utc::now().timestamp_millis(),
@@ -581,6 +629,8 @@ impl SessionEvent {
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
+            retry_attempt: None,
+            retry_max: None,
             error: None,
             duration_ms: None,
             timestamp: chrono::Utc::now().timestamp_millis(),
@@ -599,29 +649,13 @@ impl SessionEvent {
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
+            retry_attempt: None,
+            retry_max: None,
             error: Some(error.to_string()),
             duration_ms: None,
             timestamp: chrono::Utc::now().timestamp_millis(),
             usage: None,
             title: None,
-            description: None,
-        }
-    }
-
-    /// 创建标题更新事件（仅标题，向后兼容）
-    pub fn title_updated(session_id: &str, title: &str) -> Self {
-        Self {
-            session_id: session_id.to_string(),
-            event_type: session_event_type::TITLE_UPDATED.to_string(),
-            message_id: None,
-            skill_state_version: None,
-            replay_mode: None,
-            model_id: None,
-            error: None,
-            duration_ms: None,
-            timestamp: chrono::Utc::now().timestamp_millis(),
-            usage: None,
-            title: Some(title.to_string()),
             description: None,
         }
     }
@@ -635,6 +669,8 @@ impl SessionEvent {
             skill_state_version: None,
             replay_mode: None,
             model_id: None,
+            retry_attempt: None,
+            retry_max: None,
             error: None,
             duration_ms: None,
             timestamp: chrono::Utc::now().timestamp_millis(),
@@ -954,6 +990,37 @@ impl ChatV2EventEmitter {
         self.emit(event);
     }
 
+    pub fn emit_skill_injection_audit(
+        &self,
+        message_id: &str,
+        payload: Value,
+        variant_id: Option<&str>,
+        skill_state_version: Option<u64>,
+        round_id: Option<&str>,
+    ) {
+        let seq = self.next_sequence_id();
+        let event = BackendEvent {
+            sequence_id: seq,
+            session_id: Some(self.session_id.clone()),
+            r#type: event_types::SKILL_INJECTION_AUDIT.to_string(),
+            phase: event_phase::END.to_string(),
+            message_id: Some(message_id.to_string()),
+            block_id: None,
+            block_type: None,
+            chunk: None,
+            result: Some(payload),
+            error: None,
+            payload: None,
+            skill_state_version,
+            round_id: round_id.map(|s| s.to_string()),
+            variant_id: variant_id.map(|s| s.to_string()),
+            model_id: None,
+            status: None,
+            usage: None,
+        };
+        self.emit(event);
+    }
+
     /// 发射 error 事件
     ///
     /// ## 参数
@@ -1175,6 +1242,13 @@ impl ChatV2EventEmitter {
         self.emit_session(event);
     }
 
+    /// 发射流式重连/重试事件
+    pub fn emit_stream_reconnect(&self, message_id: &str, retry_attempt: u32, retry_max: u32) {
+        let event =
+            SessionEvent::stream_reconnect(&self.session_id, message_id, retry_attempt, retry_max);
+        self.emit_session(event);
+    }
+
     /// 发射流式完成事件
     pub fn emit_stream_complete(&self, message_id: &str, duration_ms: u64) {
         let event = SessionEvent::stream_complete(&self.session_id, message_id, duration_ms);
@@ -1223,15 +1297,6 @@ impl ChatV2EventEmitter {
     /// 发射保存错误事件
     pub fn emit_save_error(&self, error: &str) {
         let event = SessionEvent::save_error(&self.session_id, error);
-        self.emit_session(event);
-    }
-
-    /// 发射标题更新事件
-    ///
-    /// ## 参数
-    /// - `title`: 新的会话标题
-    pub fn emit_title_updated(&self, title: &str) {
-        let event = SessionEvent::title_updated(&self.session_id, title);
         self.emit_session(event);
     }
 
@@ -1479,6 +1544,8 @@ mod tests {
             skill_state_version: None,
             replay_mode: None,
             model_id: None, // stream_complete 事件不需要 model_id
+            retry_attempt: None,
+            retry_max: None,
             error: None,
             duration_ms: Some(1500),
             timestamp: 1701619200000,

@@ -5,7 +5,7 @@
 
 import React, { useState, useRef } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { ArrowLeft, Copy, Check } from 'lucide-react';
+import { ArrowLeft, Copy, Check } from '@phosphor-icons/react';
 import { CrepeEditor, type CrepeEditorApi } from '../crepe';
 import { useMobileHeader } from '../layout';
 import { useBreakpoint } from '../../hooks/useBreakpoint';
@@ -23,7 +23,7 @@ export const CrepeDemoPage: React.FC<{ onBack?: () => void }> = ({ onBack }) => 
     subtitle: '现代化 Markdown 编辑器',
     rightActions: (
       <NotionButton variant="ghost" size="sm" onClick={() => handleCopyMarkdownRef.current()}>
-        {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+        {copied ? <Check size={16} /> : <Copy size={16} />}
       </NotionButton>
     ),
   }, [copied]);
@@ -98,7 +98,7 @@ greeting('Crepe');
           <div className="flex items-center gap-4">
             {onBack && (
               <NotionButton variant="ghost" iconOnly size="sm" onClick={onBack}>
-                <ArrowLeft className="w-5 h-5" />
+                <ArrowLeft size={20} />
               </NotionButton>
             )}
             <div>
@@ -107,7 +107,7 @@ greeting('Crepe');
             </div>
           </div>
           <NotionButton variant="ghost" size="sm" onClick={handleCopyMarkdown}>
-            {copied ? <Check className="w-4 h-4 mr-2" /> : <Copy className="w-4 h-4 mr-2" />}
+            {copied ? <Check size={16} className="mr-2" /> : <Copy size={16} className="mr-2" />}
             {copied ? '已复制' : '复制 Markdown'}
           </NotionButton>
         </div>
@@ -124,7 +124,7 @@ greeting('Crepe');
                 editorApiRef.current = api;
               }}
               className="min-h-[500px]"
-            />
+/>
           </div>
         </div>
 

@@ -5,6 +5,14 @@
     "description": "AI驱动的智能学习管理系统",
     "version": "版本"
   },
+  "contextMenu": {
+    "cut": "剪切",
+    "copy": "复制",
+    "paste": "粘贴",
+    "selectAll": "全选",
+    "find": "查找…",
+    "inspect": "检查元素"
+  },
   "model_name_required": "请先设置模型名称",
   "none": "无",
   "noSubject": "未指定科目",
@@ -1306,6 +1314,7 @@
       "api_key_placeholder_local": "本地自动保存，无需重复输入",
       "one_click_assign": "一键分配",
       "clear_button": "清除",
+      "clear_confirm_button": "确认清除",
       "fetching_models": "获取中…",
       "models_count": "共 {{count}} 个模型",
       "select_model_placeholder": "从列表中选择一个模型...",
@@ -1462,14 +1471,14 @@
     }
   },
   "api_config_modal": {
-    "general_model": "通用模型",
+    "general_model": "OpenAI Compatible",
     "general_model_desc": "适用于大多数标准智能体模型（如 GPT、Claude、通义千问 等）",
     "google_gemini": "Google Gemini",
     "google_gemini_desc": "Google Gemini 系列模型，支持多模态输入与高质量文本生成",
     "anthropic_claude": "Anthropic Claude",
     "anthropic_claude_desc": "Anthropic Claude 系列模型，强调安全性并具备出色推理能力",
-    "adapter_general": "通用模型",
-    "adapter_general_desc": "适用于大多数 OpenAI 兼容 API（如 GPT、通义千问等）",
+    "adapter_general": "OpenAI Compatible",
+    "adapter_general_desc": "适用于大多数 OpenAI 兼容模型参数格式；具体请求协议由下方 OpenAI 协议决定",
     "adapter_google": "Google Gemini",
     "adapter_google_desc": "Gemini 系列，支持 thinkingLevel/thinkingBudget 参数",
     "adapter_anthropic": "Anthropic Claude",
@@ -1529,7 +1538,7 @@
     "deepseek_tool_notice_cta": "仍然强制保留思维链",
     "capabilities_title": "模型能力",
     "embedding_model_title": "嵌入模型",
-    "embedding_model_hint": "勾选此项表示该模型用于生成向量嵌入（如 text-embedding-ada-002、bge-m3 等）",
+    "embedding_model_hint": "勾选此项表示该模型用于生成向量嵌入（如 text-embedding-3-small、text-embedding-3-large、bge-m3 等）",
     "reranker_model_title": "重排序模型",
     "reranker_model_hint": "勾选此项表示该模型用于搜索结果重排序（如 bge-reranker-v2-m3 等）",
     "supports_tools_title": "支持工具调用",
@@ -1563,7 +1572,7 @@
     "adapter": "适配器",
     "adapters": {
       "google_gemini": "Google Gemini 适配器",
-      "general": "通用适配器"
+      "general": "OpenAI Compatible"
     },
     "status": "状态"
   },
@@ -1829,6 +1838,7 @@
   "siliconflow.card_title": "SiliconFlow API密钥",
   "siliconflow.one_click_assign": "一键分配",
   "siliconflow.clear_button": "清除",
+  "siliconflow.clear_confirm_button": "确认清除",
   "siliconflow.select_model_placeholder": "请选择模型...",
   "siliconflow.models_count": "共 {{count}} 个模型",
   "siliconflow.fetching_models": "获取中...",
@@ -1877,7 +1887,7 @@
   "settings.chat_stream.save_error_auto_cancel": "保存自动取消设置失败：{{error}}",
   "settings.chat_stream.invalid_timeout": "请输入大于或等于 0 的秒数",
   "adapter_options": {
-    "general": "通用模型",
+    "general": "OpenAI Compatible",
     "general_desc": "适用于大多数标准AI模型（如GPT、Claude、通义千问等）",
     "google": "Google Gemini",
     "google_desc": "Google Gemini系列模型，支持多模态和高质量文本生成"
@@ -2616,7 +2626,7 @@
       },
       "adapters": {
         "google_gemini": "Google Gemini",
-        "general": "通用模型"
+        "general": "OpenAI Compatible"
       }
     },
     "model_assignment_section": {
@@ -2701,7 +2711,7 @@
       "reasoning_model": "Reasoning Model",
       "reasoning_desc": "Check this to indicate the model supports reasoning functionality",
       "embedding_model": "Embedding Model",
-      "embedding_desc": "Check this to indicate the model is used for generating vector embeddings (e.g. text-embedding-ada-002, bge-m3, etc.)",
+      "embedding_desc": "Check this to indicate the model is used for generating vector embeddings (e.g. text-embedding-3-small, text-embedding-3-large, bge-m3, etc.)",
       "reranker_model": "Reranker Model",
       "reranker_desc": "Check this to indicate the model is used for search result reranking (e.g. bge-reranker-v2-m3, etc.)",
       "model_adapter": "Model Adapter",
@@ -2709,7 +2719,7 @@
       "cancel": "Cancel",
       "save": "Save",
       "adapter_options": {
-        "general": "General Model",
+        "general": "OpenAI Compatible",
         "general_desc": "Suitable for most standard AI models",
         "google": "Google Gemini",
         "google_desc": "Google Gemini series models, supports multimodal and high-quality text generation"

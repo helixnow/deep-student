@@ -3,18 +3,18 @@ import { useTranslation } from 'react-i18next';
 import {
   ArrowLeft,
   BookOpen,
-  Target,
-  TrendingUp,
-  Download,
+  Crosshair,
+  TrendUp,
+  DownloadSimple,
   FileText,
   Tag,
-  Activity,
-  AlertCircle,
+  Pulse,
+  WarningCircle,
   ArrowUpRight,
   ArrowDownRight,
-  Loader2,
+  SpinnerGap,
   Image,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from './ui/shad/Card';
 import { Badge } from './ui/shad/Badge';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -254,7 +254,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2">
               <div
-                className="h-8 w-8 rounded-md flex items-center justify-center"
+ className="w-8 h-8 rounded-md flex items-center justify-center"
                 style={{ background: palette.iconBg }}
               >
                 <Icon size={20} color={palette.iconColor} />
@@ -294,7 +294,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
     if (loading && !data) {
       return (
         <div className="sota-loading">
-          <Loader2 size={48} className="sota-spinner" />
+          <SpinnerGap size={48} className="sota-spinner" />
           <p>{t('loading_stats')}</p>
         </div>
       );
@@ -303,7 +303,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
     if (error && !data) {
       return (
         <div className="sota-error">
-          <AlertCircle size={48} color={DESIGN.colors.danger} />
+          <WarningCircle size={48} color={DESIGN.colors.danger} />
           <p>{t('load_failed')}: {error.message}</p>
           <NotionButton onClick={refresh} className="mt-2">{tCommon('actions.retry')}</NotionButton>
         </div>
@@ -340,7 +340,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
               {t('auto_refresh_label')} {isRefreshing ? t('auto_refresh_in_progress') : t('auto_refresh_interval')}
             </Badge>
             <NotionButton variant="ghost" size="sm" onClick={exportData} disabled={!data} className="flex items-center gap-1">
-              <Download size={16} /> {t('export_stats_button')}
+              <DownloadSimple size={16} /> {t('export_stats_button')}
             </NotionButton>
           </div>
         </div>
@@ -355,13 +355,13 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
             icon={FileText}
             variant="primary"
             trend={enhancedStats?.recent_growth}
-          />
+/>
           {/* ★ 文档31清理：subject_stats 已废弃，科目统计功能即将推出 */}
           <Card className="overflow-hidden opacity-60">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="h-8 w-8 rounded-md flex items-center justify-center" style={{ background: STAT_VARIANTS.secondary.iconBg }}>
+                  <div className="w-8 h-8 rounded-md flex items-center justify-center" style={{ background: STAT_VARIANTS.secondary.iconBg }}>
                     <BookOpen size={20} color={STAT_VARIANTS.secondary.iconColor} />
                   </div>
                   <CardTitle className="text-base">{t('stats_cards.subjects_count')}</CardTitle>
@@ -380,22 +380,22 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
             subtitle={t('stats_cards.tags_count_subtitle')}
             icon={Tag}
             variant="info"
-          />
+/>
           <StatCard
             title={t('stats_cards.recent_additions')}
             value={recentAdditions}
             subtitle={t('stats_cards.recent_additions_subtitle')}
-            icon={TrendingUp}
+            icon={TrendUp}
             variant="success"
-          />
+/>
 
           <StatCard
             title={t('stats_cards.data_quality')}
             value={qualityScore}
             subtitle={t('stats_cards.data_quality_subtitle')}
-            icon={Activity}
+            icon={Pulse}
             variant="secondary"
-          />
+/>
 
           <StatCard
             title={t('stats_cards.resource_files')}
@@ -403,15 +403,15 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
             subtitle={imageStorageDisplay ? t('stats_cards.resource_files_subtitle_with_size', { size: imageStorageDisplay }) : t('stats_cards.resource_files_subtitle')}
             icon={Image}
             variant="info"
-          />
+/>
 
           {/* 已移除：统一回顾统计，功能即将推出 */}
           <Card className="overflow-hidden opacity-60">
             <CardHeader className="pb-2">
               <div className="flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <div className="h-8 w-8 rounded-md flex items-center justify-center" style={{ background: STAT_VARIANTS.success.iconBg }}>
-                    <Target size={20} color={STAT_VARIANTS.success.iconColor} />
+                  <div className="w-8 h-8 rounded-md flex items-center justify-center" style={{ background: STAT_VARIANTS.success.iconBg }}>
+                    <Crosshair size={20} color={STAT_VARIANTS.success.iconColor} />
                   </div>
                   <CardTitle className="text-base">{t('stats_cards.review_sessions')}</CardTitle>
                 </div>
@@ -431,7 +431,7 @@ export const SOTADashboard: React.FC<SOTADashboardProps> = ({ onBack, embedded =
             {chartData.monthlyTrend.length > 0 && (
               <div className="sota-chart-card">
                 <h3>
-                  <TrendingUp size={20} />
+                  <TrendUp size={20} />
                   {t('charts.data_trend')}
                 </h3>
                 <ResponsiveContainer width="100%" height={300}>

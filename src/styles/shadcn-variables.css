@@ -1,6 +1,57 @@
 /* shadcn 设计令牌变量 */
 :root {
   --radius: 0.5rem;
+  --radius-shell-panel: 18px;
+  --radius-shell-toolbar: 16px;
+  --radius-shell-row: 14px;
+  --radius-shell-control: 12px;
+  --radius-shell-window-control: 10px;
+  --radius-shell-dialog: 22px;
+
+  /* ──────────────────────────────────────────────────────────────────────
+   * Chat thread layout
+   *
+   * --chat-thread-max-w 是聊天线程内容区（消息列、输入栏、空态、
+   * 滚动按钮、LLM 输出块）共享的最大宽度契约 —— 单一来源 (single
+   * source of truth)，避免在多个组件里复制粘贴 `max-w-[44rem]`。
+   *
+   * 所有消费方应使用 Tailwind utility `max-w-thread` 或直接读取
+   * `var(--chat-thread-max-w)`，不要硬编码具体值。
+   * ────────────────────────────────────────────────────────────────────── */
+  --chat-thread-max-w: 44rem;
+
+  /* Chat content surface tokens */
+  --chat-block-radius: 12px;
+  --chat-block-surface: hsl(var(--card));
+  --chat-block-surface-muted: hsl(var(--muted) / 0.55);
+  --chat-code-inline-bg: hsl(var(--muted) / 0.72);
+  --chat-code-block-surface: hsl(var(--muted) / 0.34);
+  --chat-block-border: hsl(var(--border));
+  --chat-table-header-surface: hsl(var(--muted));
+
+  --size-shell-control: 32px;
+  --size-shell-window-control: 34px;
+  --size-shell-touch-target: 36px;
+  --size-shell-touch-target-lg: 40px;
+  --control-height-compact: 32px;
+  --control-height-touch: 44px;
+  --touch-target-size: var(--control-height-touch);
+
+  --space-shell-layout-gap: 14px;
+  --space-shell-section-gap: 18px;
+  --space-shell-control-gap: 2px;
+  --button-height: 2rem;
+  --button-height-sm: 1.875rem;
+  --button-height-lg: 2.25rem;
+  --button-icon-size: 2rem;
+  --button-padding-x: 0.875rem;
+  --button-padding-x-sm: 0.75rem;
+  --button-padding-x-lg: 1rem;
+  --button-radius: 9px;
+  --button-plain-border: transparent;
+  --button-plain-bg: transparent;
+  --button-plain-hover-bg: var(--button-utility-hover);
+  --button-plain-active-bg: var(--button-utility-active);
   
   /* =========================================
      字体系统 (Notion-inspired)
@@ -11,6 +62,12 @@
   
   /* 中文优化字体栈 */
   --font-family-cn: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+
+  /* study-ui 全局应用字体栈 */
+  --app-font-family: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Microsoft YaHei", sans-serif;
+
+  /* study-ui 风格的侧边栏字体栈，仅用于局部侧边栏范围 */
+  --font-family-sidebar-study-ui: "PingFang SC", -apple-system, BlinkMacSystemFont, "SF Pro Text", "Microsoft YaHei", sans-serif;
   
   /* 等宽字体 */
   --font-mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, "Liberation Mono", monospace;
@@ -25,7 +82,10 @@
   --font-size-xl: calc(18px * var(--font-size-scale));
   --font-size-2xl: calc(20px * var(--font-size-scale));
   --font-size-3xl: calc(24px * var(--font-size-scale));
-  
+
+  /* 思维链字号（用户可缩放） */
+  --chat-thinking-font-size: var(--font-size-sm);
+
   /* 字重 */
   --font-weight-normal: 400;
   --font-weight-medium: 500;
@@ -48,26 +108,34 @@
    基础灰度系统 (所有调色板共享)
    ========================================= */
 
-/* 亮色模式基础灰度 */
+/* 亮色模式基础灰度（纯中性灰，不带色相）
+   -----------------------------------------------------------
+   历史：曾在 study-ui 迁移期间把 hue 设为 60°（暖米色）以模拟
+   macOS vibrancy；该方向已撤销（参见 2026-05 token 去色提交），
+   所有基础灰度回到 hue 0 / saturation 0 的中性轨道。
+   shell 层（theme-colors.css 的 --shell-* / --sidebar-*）
+   通过 hsl(var(--background)) / hsl(var(--muted)) 等派生，
+   不得重新引入色相。
+   ----------------------------------------------------------- */
 :root {
-  --titlebar-background: 220 6% 96%;
-  --nav-background: 220 6% 88%;
-  --background: 220 6% 92%;
-  --foreground: 220 10% 18%;
-  --card: 220 6% 94%;
-  --card-foreground: 220 10% 18%;
-  --popover: 220 6% 96%;
-  --popover-foreground: 220 10% 18%;
-  --secondary: 220 6% 89%;
-  --secondary-foreground: 220 10% 18%;
-  --muted: 220 6% 89%;
+  --titlebar-background: 0 0% 96%;
+  --nav-background: 0 0% 95%;
+  --background: 0 0% 100%;
+  --foreground: 220 9% 18%;
+  --card: 0 0% 99%;
+  --card-foreground: 220 9% 18%;
+  --popover: 0 0% 99%;
+  --popover-foreground: 220 9% 18%;
+  --secondary: 0 0% 98%;
+  --secondary-foreground: 220 9% 18%;
+  --muted: 0 0% 94%;
   --muted-foreground: 220 6% 42%;
-  --accent: 220 6% 85%;
-  --accent-foreground: 220 10% 18%;
+  --accent: 0 0% 93%;
+  --accent-foreground: 220 9% 18%;
   --destructive: 0 65% 51%;
   --destructive-foreground: 0 0% 100%;
-  --border: 220 6% 82%;
-  --input: 220 6% 85%;
+  --border: 0 0% 88%;
+  --input: 0 0% 95%;
 
   /* 语义状态色 */
   --success: 152 60% 36%;
@@ -87,26 +155,26 @@
   --status-completed: 217 70% 50%;
 }
 
-/* 暗色模式基础灰度 */
+/* 暗色模式基础灰度（纯中性灰，不带色相） */
 :root.dark {
-  --titlebar-background: 220 5% 22%;
-  --nav-background: 220 5% 11%;
-  --background: 220 5% 14%;
-  --foreground: 220 5% 82%;
-  --card: 220 5% 17%;
-  --card-foreground: 220 5% 82%;
-  --popover: 220 5% 18%;
-  --popover-foreground: 220 5% 82%;
-  --secondary: 220 5% 20%;
-  --secondary-foreground: 220 5% 82%;
-  --muted: 220 5% 20%;
-  --muted-foreground: 220 5% 55%;
-  --accent: 220 5% 23%;
-  --accent-foreground: 220 5% 82%;
+  --titlebar-background: 0 0% 11%;
+  --nav-background: 0 0% 0%;
+  --background: 0 0% 9%;
+  --foreground: 0 0% 96%;
+  --card: 0 0% 12%;
+  --card-foreground: 0 0% 96%;
+  --popover: 0 0% 12%;
+  --popover-foreground: 0 0% 96%;
+  --secondary: 0 0% 14%;
+  --secondary-foreground: 0 0% 96%;
+  --muted: 0 0% 14%;
+  --muted-foreground: 0 0% 60%;
+  --accent: 0 0% 15%;
+  --accent-foreground: 0 0% 96%;
   --destructive: 0 55% 45%;
   --destructive-foreground: 0 0% 100%;
-  --border: 220 5% 23%;
-  --input: 220 5% 20%;
+  --border: 0 0% 18%;
+  --input: 0 0% 14%;
 
   /* 语义状态色 */
   --success: 152 55% 42%;
@@ -127,577 +195,158 @@
 }
 
 /* =========================================
-   1. 极光蓝 (default) - 默认主题色
-   灰度系统继承 :root 基础定义 (hue 220)
+   Accent palettes (Phase 3.1)
+   设计原则：
+   - 每个预设只覆写 accent 相关 token（--primary / --primary-foreground /
+     --ring / --brand-primary / --brand-primary-dark / --primary-color）。
+   - 中性色 / 背景 / 边框 / 输入框 / 状态色不被 palette 影响。
+   - 切换任何预设后，--background / --card / --muted / --border / --input
+     的值必须与基础灰度（:root 和 :root.dark）完全一致。
    ========================================= */
+
+/* 1. 静海蓝 (default) —— 作用于 :root 不带 attribute 时 */
 :root,
 :root[data-theme-palette='default'] {
-  --primary: 217 91% 40%;
+  --primary: 215 72% 42%;
   --primary-foreground: 0 0% 100%;
-  --ring: 217 91% 40%;
+  --ring: 214 62% 50%;
   --brand-primary: var(--primary);
-  --brand-secondary: var(--secondary);
-  --brand-accent: var(--accent);
-  --brand-primary-dark: 217 91% 25%;
+  --brand-primary-dark: 215 72% 32%;
   --primary-color: hsl(var(--primary));
 }
 :root.dark,
 :root.dark[data-theme-palette='default'] {
-  --primary: 217 91% 50%;
-  --primary-foreground: 0 0% 100%;
-  --ring: 217 91% 50%;
+  --primary: 214 64% 72%;
+  --primary-foreground: 220 30% 10%;
+  --ring: 214 58% 68%;
   --brand-primary: var(--primary);
-  --brand-secondary: var(--secondary);
-  --brand-accent: var(--accent);
-  --brand-primary-dark: 217 91% 75%;
+  --brand-primary-dark: 214 64% 82%;
   --primary-color: hsl(var(--primary));
 }
 
-/* =========================================
-   2. 薰衣紫 (purple)
-   ========================================= */
+/* 2. 墨藤紫 (purple) */
 :root[data-theme-palette='purple'] {
-  --titlebar-background: 262 6% 96%;
-  --nav-background: 262 6% 88%;
-  --background: 262 6% 92%;
-  --foreground: 262 10% 18%;
-  --card: 262 6% 94%;
-  --card-foreground: 262 10% 18%;
-  --popover: 262 6% 96%;
-  --popover-foreground: 262 10% 18%;
-  --secondary: 262 6% 89%;
-  --secondary-foreground: 262 10% 18%;
-  --muted: 262 6% 89%;
-  --muted-foreground: 262 6% 42%;
-  --accent: 262 6% 85%;
-  --accent-foreground: 262 10% 18%;
-  --destructive: 0 65% 51%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 262 6% 82%;
-  --input: 262 6% 85%;
-  --primary: 262 83% 58%;
+  --primary: 262 52% 42%;
   --primary-foreground: 0 0% 100%;
-  --ring: 262 83% 58%;
-  --success: 152 60% 36%;
-  --success-foreground: 0 0% 100%;
-  --warning: 38 70% 45%;
-  --warning-foreground: 0 0% 100%;
-  --info: 262 50% 55%;
-  --info-foreground: 0 0% 100%;
-  --danger: 0 55% 50%;
-  --danger-foreground: 0 0% 100%;
+  --ring: 262 45% 48%;
   --brand-primary: var(--primary);
-  --brand-secondary: var(--secondary);
-  --brand-accent: var(--accent);
-  --brand-primary-dark: 262 83% 30%;
+  --brand-primary-dark: 262 54% 30%;
   --primary-color: hsl(var(--primary));
 }
 :root.dark[data-theme-palette='purple'] {
-  --titlebar-background: 262 5% 22%;
-  --nav-background: 262 5% 11%;
-  --background: 262 5% 14%;
-  --foreground: 262 5% 82%;
-  --card: 262 5% 17%;
-  --card-foreground: 262 5% 82%;
-  --popover: 262 5% 18%;
-  --popover-foreground: 262 5% 82%;
-  --secondary: 262 5% 20%;
-  --secondary-foreground: 262 5% 82%;
-  --muted: 262 5% 20%;
-  --muted-foreground: 262 5% 55%;
-  --accent: 262 5% 23%;
-  --accent-foreground: 262 5% 82%;
-  --destructive: 0 55% 45%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 262 5% 23%;
-  --input: 262 5% 20%;
-  --primary: 262 83% 65%;
-  --primary-foreground: 0 0% 100%;
-  --ring: 262 83% 65%;
-  --success: 152 55% 42%;
-  --success-foreground: 144 100% 10%;
-  --warning: 38 65% 50%;
-  --warning-foreground: 40 100% 10%;
-  --info: 262 55% 62%;
-  --info-foreground: 262 100% 10%;
-  --danger: 0 50% 48%;
-  --danger-foreground: 0 0% 98%;
+  --primary: 262 52% 74%;
+  --primary-foreground: 262 28% 12%;
+  --ring: 262 44% 66%;
   --brand-primary: var(--primary);
-  --brand-secondary: var(--secondary);
-  --brand-accent: var(--accent);
-  --brand-primary-dark: 262 83% 80%;
+  --brand-primary-dark: 262 52% 84%;
   --primary-color: hsl(var(--primary));
 }
 
-/* =========================================
-   3. 森林绿 (green)
-   ========================================= */
+/* 3. 林影绿 (green) */
 :root[data-theme-palette='green'] {
-  --titlebar-background: 142 6% 96%;
-  --nav-background: 142 6% 88%;
-  --background: 142 6% 92%;
-  --foreground: 142 10% 18%;
-  --card: 142 6% 94%;
-  --card-foreground: 142 10% 18%;
-  --popover: 142 6% 96%;
-  --popover-foreground: 142 10% 18%;
-  --secondary: 142 6% 89%;
-  --secondary-foreground: 142 10% 18%;
-  --muted: 142 6% 89%;
-  --muted-foreground: 142 6% 42%;
-  --accent: 142 6% 85%;
-  --accent-foreground: 142 10% 18%;
-  --destructive: 0 65% 51%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 142 6% 82%;
-  --input: 142 6% 85%;
-  --primary: 142 71% 35%;
+  --primary: 154 45% 31%;
   --primary-foreground: 0 0% 100%;
-  --ring: 142 71% 35%;
-  --success: 152 60% 36%;
-  --success-foreground: 0 0% 100%;
-  --warning: 38 70% 45%;
-  --warning-foreground: 0 0% 100%;
-  --info: 190 60% 42%;
-  --info-foreground: 0 0% 100%;
-  --danger: 0 55% 50%;
-  --danger-foreground: 0 0% 100%;
+  --ring: 154 42% 38%;
   --brand-primary: var(--primary);
-  --brand-secondary: var(--secondary);
-  --brand-accent: var(--accent);
-  --brand-primary-dark: 142 71% 20%;
+  --brand-primary-dark: 154 48% 23%;
   --primary-color: hsl(var(--primary));
 }
 :root.dark[data-theme-palette='green'] {
-  --titlebar-background: 142 5% 22%;
-  --nav-background: 142 5% 11%;
-  --background: 142 5% 14%;
-  --foreground: 142 5% 82%;
-  --card: 142 5% 17%;
-  --card-foreground: 142 5% 82%;
-  --popover: 142 5% 18%;
-  --popover-foreground: 142 5% 82%;
-  --secondary: 142 5% 20%;
-  --secondary-foreground: 142 5% 82%;
-  --muted: 142 5% 20%;
-  --muted-foreground: 142 5% 55%;
-  --accent: 142 5% 23%;
-  --accent-foreground: 142 5% 82%;
-  --destructive: 0 55% 45%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 142 5% 23%;
-  --input: 142 5% 20%;
-  --primary: 142 71% 45%;
-  --primary-foreground: 0 0% 100%;
-  --ring: 142 71% 45%;
-  --success: 152 55% 42%;
-  --success-foreground: 144 100% 10%;
-  --warning: 38 65% 50%;
-  --warning-foreground: 40 100% 10%;
-  --info: 190 55% 50%;
-  --info-foreground: 190 100% 10%;
-  --danger: 0 50% 48%;
-  --danger-foreground: 0 0% 98%;
+  --primary: 154 42% 68%;
+  --primary-foreground: 154 30% 10%;
+  --ring: 154 38% 62%;
   --brand-primary: var(--primary);
-  --brand-secondary: var(--secondary);
-  --brand-accent: var(--accent);
-  --brand-primary-dark: 142 71% 72%;
+  --brand-primary-dark: 154 42% 78%;
   --primary-color: hsl(var(--primary));
 }
 
-/* =========================================
-   4. 日落橙 (orange)
-   ========================================= */
+/* 4. 琥珀橙 (orange) */
 :root[data-theme-palette='orange'] {
-  --titlebar-background: 28 8% 96%;
-  --nav-background: 28 8% 88%;
-  --background: 28 8% 92%;
-  --foreground: 24 10% 18%;
-  --card: 28 8% 94%;
-  --card-foreground: 24 10% 18%;
-  --popover: 28 8% 96%;
-  --popover-foreground: 24 10% 18%;
-  --secondary: 28 8% 89%;
-  --secondary-foreground: 24 10% 18%;
-  --muted: 28 8% 89%;
-  --muted-foreground: 24 6% 42%;
-  --accent: 28 8% 85%;
-  --accent-foreground: 24 10% 18%;
-  --destructive: 0 65% 51%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 28 6% 82%;
-  --input: 28 6% 85%;
-  --primary: 24 95% 50%;
+  --primary: 24 78% 35%;
   --primary-foreground: 0 0% 100%;
-  --ring: 24 95% 50%;
-  --success: 152 60% 36%;
-  --success-foreground: 0 0% 100%;
-  --warning: 42 75% 48%;
-  --warning-foreground: 0 0% 100%;
-  --info: 217 70% 50%;
-  --info-foreground: 0 0% 100%;
-  --danger: 0 55% 50%;
-  --danger-foreground: 0 0% 100%;
+  --ring: 24 70% 42%;
   --brand-primary: var(--primary);
-  --brand-secondary: var(--secondary);
-  --brand-accent: var(--accent);
-  --brand-primary-dark: 24 95% 30%;
+  --brand-primary-dark: 24 76% 25%;
   --primary-color: hsl(var(--primary));
 }
 :root.dark[data-theme-palette='orange'] {
-  --titlebar-background: 24 5% 22%;
-  --nav-background: 24 5% 11%;
-  --background: 24 5% 14%;
-  --foreground: 28 5% 82%;
-  --card: 24 5% 17%;
-  --card-foreground: 28 5% 82%;
-  --popover: 24 5% 18%;
-  --popover-foreground: 28 5% 82%;
-  --secondary: 24 5% 20%;
-  --secondary-foreground: 28 5% 82%;
-  --muted: 24 5% 20%;
-  --muted-foreground: 24 5% 55%;
-  --accent: 24 5% 23%;
-  --accent-foreground: 28 5% 82%;
-  --destructive: 0 55% 45%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 24 5% 23%;
-  --input: 24 5% 20%;
-  --primary: 24 95% 55%;
-  --primary-foreground: 0 0% 100%;
-  --ring: 24 95% 55%;
-  --success: 152 55% 42%;
-  --success-foreground: 144 100% 10%;
-  --warning: 42 70% 55%;
-  --warning-foreground: 40 100% 10%;
-  --info: 217 65% 55%;
-  --info-foreground: 210 100% 10%;
-  --danger: 0 50% 48%;
-  --danger-foreground: 0 0% 98%;
+  --primary: 32 72% 70%;
+  --primary-foreground: 28 32% 10%;
+  --ring: 32 66% 64%;
   --brand-primary: var(--primary);
-  --brand-secondary: var(--secondary);
-  --brand-accent: var(--accent);
-  --brand-primary-dark: 24 95% 75%;
+  --brand-primary-dark: 32 72% 80%;
   --primary-color: hsl(var(--primary));
 }
 
-/* =========================================
-   5. 玫瑰粉 (pink)
-   ========================================= */
+/* 5. 胭脂红 (pink) */
 :root[data-theme-palette='pink'] {
-  --titlebar-background: 340 6% 96%;
-  --nav-background: 340 6% 88%;
-  --background: 340 6% 92%;
-  --foreground: 340 10% 18%;
-  --card: 340 6% 94%;
-  --card-foreground: 340 10% 18%;
-  --popover: 340 6% 96%;
-  --popover-foreground: 340 10% 18%;
-  --secondary: 340 6% 89%;
-  --secondary-foreground: 340 10% 18%;
-  --muted: 340 6% 89%;
-  --muted-foreground: 340 6% 42%;
-  --accent: 340 6% 85%;
-  --accent-foreground: 340 10% 18%;
-  --destructive: 0 65% 51%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 340 6% 82%;
-  --input: 340 6% 85%;
-  --primary: 340 82% 52%;
+  --primary: 342 58% 39%;
   --primary-foreground: 0 0% 100%;
-  --ring: 340 82% 52%;
-  --success: 152 60% 36%;
-  --success-foreground: 0 0% 100%;
-  --warning: 38 70% 45%;
-  --warning-foreground: 0 0% 100%;
-  --info: 320 50% 50%;
-  --info-foreground: 0 0% 100%;
-  --danger: 0 55% 50%;
-  --danger-foreground: 0 0% 100%;
+  --ring: 342 52% 46%;
   --brand-primary: var(--primary);
-  --brand-secondary: var(--secondary);
-  --brand-accent: var(--accent);
-  --brand-primary-dark: 340 82% 30%;
+  --brand-primary-dark: 342 58% 28%;
   --primary-color: hsl(var(--primary));
 }
 :root.dark[data-theme-palette='pink'] {
-  --titlebar-background: 340 5% 22%;
-  --nav-background: 340 5% 11%;
-  --background: 340 5% 14%;
-  --foreground: 340 5% 82%;
-  --card: 340 5% 17%;
-  --card-foreground: 340 5% 82%;
-  --popover: 340 5% 18%;
-  --popover-foreground: 340 5% 82%;
-  --secondary: 340 5% 20%;
-  --secondary-foreground: 340 5% 82%;
-  --muted: 340 5% 20%;
-  --muted-foreground: 340 5% 55%;
-  --accent: 340 5% 23%;
-  --accent-foreground: 340 5% 82%;
-  --destructive: 0 55% 45%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 340 5% 23%;
-  --input: 340 5% 20%;
-  --primary: 340 82% 60%;
-  --primary-foreground: 0 0% 100%;
-  --ring: 340 82% 60%;
-  --success: 152 55% 42%;
-  --success-foreground: 144 100% 10%;
-  --warning: 38 65% 50%;
-  --warning-foreground: 40 100% 10%;
-  --info: 320 55% 58%;
-  --info-foreground: 320 100% 10%;
-  --danger: 0 50% 48%;
-  --danger-foreground: 0 0% 98%;
+  --primary: 340 58% 72%;
+  --primary-foreground: 340 30% 10%;
+  --ring: 340 48% 66%;
   --brand-primary: var(--primary);
-  --brand-secondary: var(--secondary);
-  --brand-accent: var(--accent);
-  --brand-primary-dark: 340 82% 78%;
+  --brand-primary-dark: 340 58% 82%;
   --primary-color: hsl(var(--primary));
 }
 
-/* =========================================
-   6. 青碧色 (teal)
-   ========================================= */
+/* 6. 青岩蓝 (teal) */
 :root[data-theme-palette='teal'] {
-  --titlebar-background: 180 6% 96%;
-  --nav-background: 180 6% 88%;
-  --background: 180 6% 92%;
-  --foreground: 180 10% 18%;
-  --card: 180 6% 94%;
-  --card-foreground: 180 10% 18%;
-  --popover: 180 6% 96%;
-  --popover-foreground: 180 10% 18%;
-  --secondary: 180 6% 89%;
-  --secondary-foreground: 180 10% 18%;
-  --muted: 180 6% 89%;
-  --muted-foreground: 180 6% 42%;
-  --accent: 180 6% 85%;
-  --accent-foreground: 180 10% 18%;
-  --destructive: 0 65% 51%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 180 6% 82%;
-  --input: 180 6% 85%;
-  --primary: 180 70% 35%;
+  --primary: 184 54% 30%;
   --primary-foreground: 0 0% 100%;
-  --ring: 180 70% 35%;
-  --success: 152 60% 36%;
-  --success-foreground: 0 0% 100%;
-  --warning: 38 70% 45%;
-  --warning-foreground: 0 0% 100%;
-  --info: 195 65% 46%;
-  --info-foreground: 0 0% 100%;
-  --danger: 0 55% 50%;
-  --danger-foreground: 0 0% 100%;
+  --ring: 184 48% 38%;
   --brand-primary: var(--primary);
-  --brand-secondary: var(--secondary);
-  --brand-accent: var(--accent);
-  --brand-primary-dark: 180 70% 20%;
+  --brand-primary-dark: 184 56% 22%;
   --primary-color: hsl(var(--primary));
 }
 :root.dark[data-theme-palette='teal'] {
-  --titlebar-background: 180 5% 22%;
-  --nav-background: 180 5% 11%;
-  --background: 180 5% 14%;
-  --foreground: 180 5% 82%;
-  --card: 180 5% 17%;
-  --card-foreground: 180 5% 82%;
-  --popover: 180 5% 18%;
-  --popover-foreground: 180 5% 82%;
-  --secondary: 180 5% 20%;
-  --secondary-foreground: 180 5% 82%;
-  --muted: 180 5% 20%;
-  --muted-foreground: 180 5% 55%;
-  --accent: 180 5% 23%;
-  --accent-foreground: 180 5% 82%;
-  --destructive: 0 55% 45%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 180 5% 23%;
-  --input: 180 5% 20%;
-  --primary: 180 70% 45%;
-  --primary-foreground: 0 0% 100%;
-  --ring: 180 70% 45%;
-  --success: 152 55% 42%;
-  --success-foreground: 144 100% 10%;
-  --warning: 38 65% 50%;
-  --warning-foreground: 40 100% 10%;
-  --info: 195 60% 55%;
-  --info-foreground: 195 100% 10%;
-  --danger: 0 50% 48%;
-  --danger-foreground: 0 0% 98%;
+  --primary: 184 48% 68%;
+  --primary-foreground: 190 34% 10%;
+  --ring: 184 44% 62%;
   --brand-primary: var(--primary);
-  --brand-secondary: var(--secondary);
-  --brand-accent: var(--accent);
-  --brand-primary-dark: 180 70% 72%;
+  --brand-primary-dark: 184 48% 78%;
   --primary-color: hsl(var(--primary));
 }
 
-/* =========================================
-   7. 柔和色调 (muted) - 低饱和度护眼
-   ========================================= */
+/* 7. 雾灰 (muted) —— 只作为石墨蓝 accent，不再覆写中性色 */
 :root[data-theme-palette='muted'] {
-  /* 降低整体饱和度的灰度系统 */
-  --titlebar-background: 220 8% 95%;
-  --nav-background: 220 8% 90%;
-  --background: 220 8% 93%;
-  --foreground: 220 8% 25%;
-  --card: 220 8% 95%;
-  --card-foreground: 220 8% 25%;
-  --popover: 220 8% 96%;
-  --popover-foreground: 220 8% 25%;
-  --secondary: 220 8% 90%;
-  --secondary-foreground: 220 8% 25%;
-  --muted: 220 8% 90%;
-  --muted-foreground: 220 6% 45%;
-  --accent: 220 8% 88%;
-  --accent-foreground: 220 8% 25%;
-  --destructive: 0 45% 55%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 220 8% 82%;
-  --input: 220 8% 85%;
-  /* 低饱和度主色调 */
-  --primary: 220 25% 50%;
+  --primary: 220 30% 38%;
   --primary-foreground: 0 0% 100%;
-  --ring: 220 25% 50%;
-  /* 柔和的语义状态色 */
-  --success: 152 35% 45%;
-  --success-foreground: 0 0% 100%;
-  --warning: 38 45% 52%;
-  --warning-foreground: 0 0% 100%;
-  --info: 217 40% 55%;
-  --info-foreground: 0 0% 100%;
-  --danger: 0 40% 55%;
-  --danger-foreground: 0 0% 100%;
-  /* Brand */
+  --ring: 220 28% 44%;
   --brand-primary: var(--primary);
-  --brand-secondary: var(--secondary);
-  --brand-accent: var(--accent);
-  --brand-primary-dark: 220 25% 35%;
+  --brand-primary-dark: 220 30% 28%;
   --primary-color: hsl(var(--primary));
 }
 :root.dark[data-theme-palette='muted'] {
-  /* 暗色模式低饱和度 */
-  --titlebar-background: 220 6% 20%;
-  --nav-background: 220 6% 10%;
-  --background: 220 6% 12%;
-  --foreground: 220 6% 78%;
-  --card: 220 6% 15%;
-  --card-foreground: 220 6% 78%;
-  --popover: 220 6% 16%;
-  --popover-foreground: 220 6% 78%;
-  --secondary: 220 6% 18%;
-  --secondary-foreground: 220 6% 78%;
-  --muted: 220 6% 18%;
-  --muted-foreground: 220 5% 52%;
-  --accent: 220 6% 20%;
-  --accent-foreground: 220 6% 78%;
-  --destructive: 0 40% 45%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 220 6% 22%;
-  --input: 220 6% 18%;
-  /* 低饱和度主色调 */
-  --primary: 220 30% 58%;
-  --primary-foreground: 0 0% 100%;
-  --ring: 220 30% 58%;
-  /* 柔和的语义状态色 */
-  --success: 152 40% 48%;
-  --success-foreground: 144 100% 10%;
-  --warning: 38 45% 55%;
-  --warning-foreground: 40 100% 10%;
-  --info: 217 45% 58%;
-  --info-foreground: 210 100% 10%;
-  --danger: 0 40% 50%;
-  --danger-foreground: 0 0% 98%;
-  /* Brand */
+  --primary: 220 24% 70%;
+  --primary-foreground: 220 28% 10%;
+  --ring: 220 24% 64%;
   --brand-primary: var(--primary);
-  --brand-secondary: var(--secondary);
-  --brand-accent: var(--accent);
-  --brand-primary-dark: 220 30% 78%;
+  --brand-primary-dark: 220 24% 80%;
   --primary-color: hsl(var(--primary));
 }
 
-/* =========================================
-   8. 纸纹质感 (paper) - 特殊用途
-   ========================================= */
+/* 8. 米纸 (paper) —— 只作为暖棕 accent，不再把界面染成纸色 */
 :root[data-theme-palette='paper'] {
-  /* 覆盖基础灰度为暖色调 */
-  --titlebar-background: 36 25% 97%;
-  --nav-background: 36 25% 92%;
-  --background: 36 29% 94%;
-  --foreground: 24 10% 25%;
-  --card: 36 29% 92%;
-  --card-foreground: 24 10% 25%;
-  --popover: 36 29% 94%;
-  --popover-foreground: 24 10% 25%;
-  --secondary: 36 20% 88%;
-  --secondary-foreground: 24 10% 25%;
-  --muted: 36 20% 88%;
-  --muted-foreground: 24 5% 45%;
-  --accent: 32 25% 88%;
-  --accent-foreground: 24 10% 25%;
-  --destructive: 10 60% 50%;
-  --destructive-foreground: 36 29% 94%;
-  --border: 36 15% 82%;
-  --input: 36 15% 82%;
-  /* 主色调 */
-  --primary: 24 10% 25%;
+  --primary: 24 35% 32%;
   --primary-foreground: 36 29% 94%;
-  --ring: 24 10% 25%;
-  /* 语义状态色 */
-  --success: 142 40% 40%;
-  --success-foreground: 36 29% 94%;
-  --warning: 35 60% 50%;
-  --warning-foreground: 36 29% 94%;
-  --info: 210 50% 50%;
-  --info-foreground: 36 29% 94%;
-  --danger: 10 60% 50%;
-  --danger-foreground: 36 29% 94%;
-  /* Brand */
+  --ring: 24 30% 40%;
   --brand-primary: var(--primary);
-  --brand-secondary: var(--secondary);
-  --brand-accent: var(--accent);
-  --brand-primary-dark: 24 10% 25%;
+  --brand-primary-dark: 24 38% 22%;
   --primary-color: hsl(var(--primary));
 }
 :root.dark[data-theme-palette='paper'] {
-  /* 暖棕色暗色模式 */
-  --titlebar-background: 20 8% 22%;
-  --nav-background: 20 12% 5%;
-  --background: 20 10% 8%;
-  --foreground: 36 15% 82%;
-  --card: 24 8% 11%;
-  --card-foreground: 36 15% 82%;
-  --popover: 20 8% 12%;
-  --popover-foreground: 36 15% 82%;
-  --secondary: 20 6% 14%;
-  --secondary-foreground: 36 15% 82%;
-  --muted: 20 6% 14%;
-  --muted-foreground: 24 8% 55%;
-  --accent: 20 6% 17%;
-  --accent-foreground: 36 15% 82%;
-  --destructive: 0 62.8% 45%;
-  --destructive-foreground: 0 0% 100%;
-  --border: 20 6% 17%;
-  --input: 20 6% 14%;
-  /* 主色调 */
   --primary: 36 40% 70%;
-  --primary-foreground: 20 10% 8%;
-  --ring: 36 40% 70%;
-  /* 语义状态色 */
-  --success: 142 50% 50%;
-  --success-foreground: 20 14.3% 4.1%;
-  --warning: 35 70% 60%;
-  --warning-foreground: 20 14.3% 4.1%;
-  --info: 210 60% 60%;
-  --info-foreground: 20 14.3% 4.1%;
-  --danger: 0 62.8% 30.6%;
-  --danger-foreground: 36 29% 90%;
-  /* Brand */
+  --primary-foreground: 20 20% 12%;
+  --ring: 36 40% 62%;
   --brand-primary: var(--primary);
-  --brand-secondary: var(--secondary);
-  --brand-accent: var(--accent);
-  --brand-primary-dark: 36 29% 90%;
+  --brand-primary-dark: 36 40% 80%;
   --primary-color: hsl(var(--primary));
 }
 
@@ -716,6 +365,7 @@
 .sidebar-icon:hover {
   color: hsl(var(--foreground));
   background-color: hsl(var(--accent));
+  transition: color 150ms ease, background-color 150ms ease;
 }
 
 /* Font adjustments */

@@ -8,6 +8,7 @@
  */
 import { useState, useCallback, useEffect, useRef } from 'react';
 import { isMobilePlatform } from '../utils/platform';
+import { openLink } from '../utils/urlOpener';
 
 /**
  * 获取一个不受 CORS 限制的 fetch 函数。
@@ -151,7 +152,7 @@ function isNewerVersion(latest: string, current: string): boolean {
   return false;
 }
 
-interface UpdateInfo {
+export interface UpdateInfo {
   version: string;
   date?: string;
   body?: string;
@@ -189,6 +190,16 @@ interface UpdateState {
   error: UpdateError | null;
   /** 是否为启动时自动检查触发（用于弹窗判断） */
   isStartupCheck: boolean;
+}
+
+export interface AppUpdaterController extends UpdateState {
+  isMobile: boolean;
+  checkForUpdate: (silent?: boolean, startup?: boolean) => Promise<boolean>;
+  downloadAndInstall: () => Promise<void>;
+  dismiss: () => void;
+  skipVersion: (version: string) => void;
+  setNeverRemind: () => void;
+  performUpdateAction: () => Promise<void>;
 }
 
 const initialState: UpdateState = {
@@ -233,7 +244,7 @@ function classifyDownloadInstallError(err: any): UpdateErrorPhase {
   return 'install';
 }
 
-export function useAppUpdater() {
+export function useAppUpdater(): AppUpdaterController {
   const [state, setState] = useState<UpdateState>(initialState);
   const pendingUpdateRef = useRef<any>(null);
   const downloadingRef = useRef(false);
@@ -516,6 +527,18 @@ export function useAppUpdater() {
     }
   }, [mobile]);
 
+  const performUpdateAction = useCallback(async () => {
+    if (!state.available || !state.info) return;
+
+    if (mobile) {
+      const fallbackUrl = 'https://github.com/helixnow/deep-student/releases/latest';
+      await openLink(state.info.apkUrl || fallbackUrl);
+      return;
+    }
+
+    await downloadAndInstall();
+  }, [downloadAndInstall, mobile, state.available, state.info]);
+
   /** 关闭更新提示 */
   const dismiss = useCallback(() => {
     setState(initialState);
@@ -551,6 +574,7 @@ export function useAppUpdater() {
     isMobile: mobile,
     checkForUpdate,
     downloadAndInstall,
+    performUpdateAction,
     dismiss,
     skipVersion,
     setNeverRemind,

@@ -1,0 +1,14 @@
+/* ThinkingIndicator — 静态"正在思考"文字提示 */
+
+.thinking-indicator {
+  display: flex;
+  align-items: center;
+  padding: 8px 0;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.thinking-indicator-text {
+  color: hsl(var(--muted-foreground) / 0.6);
+  font-size: 14px;
+}

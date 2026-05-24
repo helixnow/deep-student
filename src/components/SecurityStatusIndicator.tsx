@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { Shield, AlertTriangle, CheckCircle, RefreshCw, Settings } from 'lucide-react';
+import { Shield, Warning, CheckCircle, ArrowClockwise, Gear } from '@phosphor-icons/react';
 import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 
@@ -62,7 +62,7 @@ export const SecurityStatusIndicator: React.FC<SecurityStatusIndicatorProps> = (
   if (loading) {
     return (
       <div className={`flex items-center space-x-2 p-3 bg-gray-50 rounded-lg ${className}`}>
-        <RefreshCw className="w-4 h-4 animate-spin text-gray-500" />
+        <ArrowClockwise size={16} className="animate-spin text-gray-500" />
         <span className="text-sm text-gray-600">{t('securityStatus.checking', '检查安全状态...')}</span>
       </div>
     );
@@ -71,7 +71,7 @@ export const SecurityStatusIndicator: React.FC<SecurityStatusIndicatorProps> = (
   if (!status) {
     return (
       <div className={`flex items-center space-x-2 p-3 bg-red-50 rounded-lg ${className}`}>
-        <AlertTriangle className="w-4 h-4 text-red-500" />
+        <Warning size={16} className="text-red-500" />
         <span className="text-sm text-red-600">{t('securityStatus.unavailable', '无法获取安全状态')}</span>
       </div>
     );
@@ -79,12 +79,12 @@ export const SecurityStatusIndicator: React.FC<SecurityStatusIndicatorProps> = (
 
   const getStatusIcon = () => {
     if (!status.keychain_available) {
-      return <AlertTriangle className="w-4 h-4 text-yellow-500" />;
+      return <Warning size={16} className="text-yellow-500" />;
     }
     if (status.migration_completed) {
-      return <CheckCircle className="w-4 h-4 text-green-500" />;
+      return <CheckCircle size={16} className="text-green-500" />;
     }
-    return <Shield className="w-4 h-4 text-blue-500" />;
+    return <Shield size={16} className="text-blue-500" />;
   };
 
   const getStatusColor = () => {
@@ -110,8 +110,8 @@ export const SecurityStatusIndicator: React.FC<SecurityStatusIndicatorProps> = (
             <h3 className={`text-sm font-medium ${textClass}`}>
               {t('securityStatus.title', '安全存储状态')}
             </h3>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={loadSecurityStatus} disabled={loading} className="!p-1 hover:bg-white/50" title={t('securityStatus.refresh', '刷新状态')} aria-label="refresh">
-              <RefreshCw className={`w-3 h-3 ${loading ? 'animate-spin' : ''} ${textClass}`} />
+            <NotionButton variant="ghost" size="icon" iconOnly onClick={loadSecurityStatus} disabled={loading} className="!p-1 hover:bg-[var(--overlay-control-hover)]" title={t('securityStatus.refresh', '刷新状态')} aria-label="refresh">
+              <ArrowClockwise className={`w-3 h-3 ${loading ? 'animate-spin' : ''} ${textClass}`} />
             </NotionButton>
           </div>
           

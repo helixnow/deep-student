@@ -12,7 +12,7 @@ import {
   formatMention,
   shouldShowAutoComplete,
   type ModelInfo,
-} from '@/chat-v2/utils/parseModelMentions';
+} from '@/features/chat/utils/parseModelMentions';
 
 // ============================================================================
 // 测试数据

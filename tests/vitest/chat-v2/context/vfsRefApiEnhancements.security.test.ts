@@ -5,7 +5,7 @@
  */
 
 import { describe, test, expect } from 'vitest';
-import { makeCacheKey, sanitizeSourceId, sanitizeHash } from '@/chat-v2/context/vfsRefApiEnhancements';
+import { makeCacheKey, sanitizeSourceId, sanitizeHash } from '@/features/chat/context/vfsRefApiEnhancements';
 
 describe('缓存键注入攻击防护 (P2修复)', () => {
   describe('sanitizeSourceId', () => {

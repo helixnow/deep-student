@@ -181,16 +181,60 @@ impl ChatV2Pipeline {
         ctx.current_adapter = Some(adapter.clone());
 
         // ============================================================
-        // 构建聊天历史（包含之前的工具结果 + 当前用户消息）
+        // 构建聊天历史（真实历史 + 瞬态技能消息 + 当前用户消息 + 当前轮工具结果）
         // ============================================================
         let mut messages = ctx.chat_history.clone();
 
-        // 🔴 关键修复：添加当前用户消息到消息列表
-        // 之前这里缺失，导致 LLM 看不到用户当前发送的问题
-        let current_user_message = self.build_current_user_message(ctx);
-        messages.push(current_user_message);
+        let skill_state = self.load_effective_session_skill_state(&ctx.session_id, &ctx.options);
+        let empty_skill_contents = std::collections::HashMap::new();
+        let skill_contents = ctx
+            .options
+            .replay_skill_contents
+            .as_ref()
+            .or(ctx.options.skill_contents.as_ref())
+            .unwrap_or(&empty_skill_contents);
+        let transient_skill_messages = build_transient_skill_messages_with_audit(
+            &skill_state,
+            skill_contents,
+            ctx.options.skill_dependencies.as_ref(),
+            ctx.options
+                .context_limit
+                .map(|v| (v as usize).min(DEFAULT_MAX_HISTORY_TOKENS)),
+        );
+        let skill_audit = transient_skill_messages.audit.clone();
+        let injected_skill_count = skill_audit.injected_skill_ids.len();
+        let round_id = format!("tool-round-{}", recursion_depth);
+        let insertion_index = messages.len();
+        insert_transient_skill_messages(
+            &mut messages,
+            insertion_index,
+            transient_skill_messages.messages,
+        );
+        emitter.emit_skill_injection_audit(
+            &ctx.assistant_message_id,
+            json!({
+                "injectedSkillIds": skill_audit.injected_skill_ids.clone(),
+                "droppedSkillIds": skill_audit.dropped_skill_ids.clone(),
+                "missingSkillIds": skill_audit.missing_skill_ids.clone(),
+                "estimatedTokens": skill_audit.estimated_tokens,
+                "skillStateVersion": skill_audit.skill_state_version,
+            }),
+            None,
+            Some(skill_audit.skill_state_version),
+            Some(round_id.as_str()),
+        );
+
+        if ctx.options.is_continue != Some(true) {
+            // 🔴 关键修复：添加当前用户消息到消息列表
+            // 之前这里缺失，导致 LLM 看不到用户当前发送的问题
+            let current_user_message = self.build_current_user_message(ctx);
+            messages.push(current_user_message);
+        }
         log::debug!(
-            "[ChatV2::pipeline] Added current user message: content_len={}, has_images={}, has_docs={}",
+            "[ChatV2::pipeline] Built LLM messages: history={}, transient_skills={}, current_user={}, content_len={}, has_images={}, has_docs={}",
+            ctx.chat_history.len(),
+            injected_skill_count,
+            ctx.options.is_continue != Some(true),
             ctx.user_content.len(),
             ctx.attachments.iter().any(|a| a.mime_type.starts_with("image/")),
             ctx.attachments.iter().any(|a| !a.mime_type.starts_with("image/"))
@@ -611,10 +655,32 @@ impl ChatV2Pipeline {
             frequency_penalty_override,
             presence_penalty_override,
             max_tokens_override,
+            ctx.options.reasoning_effort.clone(),
+            ctx.options.thinking_budget,
         );
 
-        const LLM_MAX_RETRIES: u32 = 2;
+        const LLM_MAX_RETRIES: u32 = 5;
         const LLM_RETRY_DELAY_MS: u64 = 1000;
+        let timeout_error = || {
+            crate::models::AppError::llm(format!(
+                "LLM stream call timed out after {}s",
+                LLM_STREAM_TIMEOUT_SECS
+            ))
+        };
+        let is_retryable_llm_error = |err_str: &str| {
+            let lower = err_str.to_ascii_lowercase();
+            lower.contains("connection")
+                || lower.contains("timeout")
+                || lower.contains("timed out")
+                || lower.contains("reset")
+                || lower.contains("broken pipe")
+                || lower.contains("connect")
+                || lower.contains("temporarily unavailable")
+                || lower.contains("status: 429")
+                || lower.contains("status: 502")
+                || lower.contains("status: 503")
+                || lower.contains("status: 504")
+        };
 
         let mut call_result =
             match timeout(Duration::from_secs(LLM_STREAM_TIMEOUT_SECS), llm_future).await {
@@ -625,96 +691,101 @@ impl ChatV2Pipeline {
                         LLM_STREAM_TIMEOUT_SECS,
                         ctx.session_id
                     );
-                    return Err(ChatV2Error::Timeout(format!(
-                        "LLM stream call timed out after {}s",
-                        LLM_STREAM_TIMEOUT_SECS
-                    )));
+                    Err(timeout_error())
                 }
             };
 
         // 瞬时网络错误自动重试（最多 LLM_MAX_RETRIES 次）
         if call_result.is_err() {
-            let err_str = format!("{:?}", call_result.as_ref().err().unwrap());
-            let is_transient = err_str.contains("connection")
-                || err_str.contains("timeout")
-                || err_str.contains("reset")
-                || err_str.contains("broken pipe")
-                || err_str.contains("connect")
-                || err_str.contains("temporarily unavailable")
-                || err_str.contains("status: 429")
-                || err_str.contains("status: 502")
-                || err_str.contains("status: 503")
-                || err_str.contains("status: 504");
-
-            if is_transient
-                && !ctx
+            for retry in 1..=LLM_MAX_RETRIES {
+                if ctx
                     .cancellation_token
                     .as_ref()
                     .map(|t| t.is_cancelled())
                     .unwrap_or(false)
-            {
-                for retry in 1..=LLM_MAX_RETRIES {
-                    let delay = LLM_RETRY_DELAY_MS * (1 << (retry - 1));
-                    log::warn!(
-                        "[ChatV2::pipeline] Transient LLM error, retry {}/{} after {}ms: {}",
-                        retry,
-                        LLM_MAX_RETRIES,
-                        delay,
-                        err_str
-                    );
-                    tokio::time::sleep(Duration::from_millis(delay)).await;
+                {
+                    break;
+                }
 
-                    if ctx
-                        .cancellation_token
-                        .as_ref()
-                        .map(|t| t.is_cancelled())
-                        .unwrap_or(false)
-                    {
-                        break;
+                let err_str = format!("{:?}", call_result.as_ref().err().unwrap());
+                if !is_retryable_llm_error(&err_str) {
+                    break;
+                }
+
+                let delay = LLM_RETRY_DELAY_MS * (1_u64 << (retry - 1));
+                log::warn!(
+                    "[ChatV2::pipeline] Transient LLM error, retry {}/{} after {}ms: {}",
+                    retry,
+                    LLM_MAX_RETRIES,
+                    delay,
+                    err_str
+                );
+                emitter.emit_stream_reconnect(&ctx.assistant_message_id, retry, LLM_MAX_RETRIES);
+                tokio::time::sleep(Duration::from_millis(delay)).await;
+
+                if ctx
+                    .cancellation_token
+                    .as_ref()
+                    .map(|t| t.is_cancelled())
+                    .unwrap_or(false)
+                {
+                    break;
+                }
+
+                // 重新注册 hooks 以清理首次失败调用的累积状态
+                self.llm_manager
+                    .unregister_stream_hooks(&stream_event)
+                    .await;
+                self.llm_manager
+                    .register_stream_hooks(&stream_event, adapter.clone())
+                    .await;
+
+                let retry_future = self.llm_manager.call_unified_model_2_stream(
+                    &llm_context,
+                    &messages,
+                    "",
+                    true,
+                    enable_thinking,
+                    Some("chat_v2"),
+                    emitter.window(),
+                    &stream_event,
+                    Some(ctx.assistant_message_id.as_str()),
+                    None,
+                    disable_tools,
+                    max_input_tokens_override,
+                    model_override.clone(),
+                    temp_override,
+                    system_prompt_override.clone(),
+                    top_p_override,
+                    frequency_penalty_override,
+                    presence_penalty_override,
+                    max_tokens_override,
+                    ctx.options.reasoning_effort.clone(),
+                    ctx.options.thinking_budget,
+                );
+
+                call_result = match timeout(
+                    Duration::from_secs(LLM_STREAM_TIMEOUT_SECS),
+                    retry_future,
+                )
+                .await
+                {
+                    Ok(result) => result,
+                    Err(_) => {
+                        log::error!(
+                                "[ChatV2::pipeline] LLM stream retry timeout after {}s, session={}, retry={}/{}",
+                                LLM_STREAM_TIMEOUT_SECS,
+                                ctx.session_id,
+                                retry,
+                                LLM_MAX_RETRIES
+                            );
+                        Err(timeout_error())
                     }
+                };
 
-                    // 重新注册 hooks 以清理首次失败调用的累积状态
-                    self.llm_manager
-                        .unregister_stream_hooks(&stream_event)
-                        .await;
-                    self.llm_manager
-                        .register_stream_hooks(&stream_event, adapter.clone())
-                        .await;
-
-                    let retry_future = self.llm_manager.call_unified_model_2_stream(
-                        &llm_context,
-                        &messages,
-                        "",
-                        true,
-                        enable_thinking,
-                        Some("chat_v2"),
-                        emitter.window(),
-                        &stream_event,
-                        Some(ctx.assistant_message_id.as_str()),
-                        None,
-                        disable_tools,
-                        max_input_tokens_override,
-                        model_override.clone(),
-                        temp_override,
-                        system_prompt_override.clone(),
-                        top_p_override,
-                        frequency_penalty_override,
-                        presence_penalty_override,
-                        max_tokens_override,
-                    );
-
-                    call_result =
-                        match timeout(Duration::from_secs(LLM_STREAM_TIMEOUT_SECS), retry_future)
-                            .await
-                        {
-                            Ok(result) => result,
-                            Err(_) => continue,
-                        };
-
-                    if call_result.is_ok() {
-                        log::info!("[ChatV2::pipeline] LLM retry {} succeeded", retry);
-                        break;
-                    }
+                if call_result.is_ok() {
+                    log::info!("[ChatV2::pipeline] LLM retry {} succeeded", retry);
+                    break;
                 }
             }
         }
@@ -780,6 +851,15 @@ impl ChatV2Pipeline {
                     ctx.token_usage.source
                 );
 
+                // 🆕 P1: 检查点 A — LLM 回复后读取真实 usage，决定是否需要压缩
+                // 压缩本身延迟到 execute_internal 结尾执行，避免打断工具递归
+                if !ctx.needs_compaction {
+                    let cfg = self.resolve_active_api_config(ctx).await;
+                    if super::compaction::should_compact(ctx, cfg.as_ref()) {
+                        ctx.needs_compaction = true;
+                    }
+                }
+
                 // 记录 LLM 使用量到数据库
                 // 🔧 修复：优先使用解析后的模型显示名称，避免显示配置 ID
                 let model_for_usage = ctx
@@ -825,7 +905,11 @@ impl ChatV2Pipeline {
                     Some(e.to_string()),
                 );
 
-                return Err(ChatV2Error::Llm(e.to_string()));
+                let error_message = e.to_string();
+                if error_message.to_ascii_lowercase().contains("timed out") {
+                    return Err(ChatV2Error::Timeout(error_message));
+                }
+                return Err(ChatV2Error::Llm(error_message));
             }
         }
 
@@ -892,6 +976,7 @@ impl ChatV2Pipeline {
             // 并行执行所有工具调用
             let canvas_note_id = ctx.options.canvas_note_id.clone();
             let skill_contents = ctx.options.skill_contents.clone();
+            let skill_embedded_tools = ctx.options.skill_embedded_tools.clone();
             let active_skill_ids = ctx.options.active_skill_ids.clone();
             let rag_top_k = ctx.options.rag_top_k;
             let rag_enable_reranking = ctx.options.rag_enable_reranking;
@@ -912,6 +997,7 @@ impl ChatV2Pipeline {
                     Some(round_id.as_str()),
                     &canvas_note_id,
                     &skill_contents,
+                    &skill_embedded_tools,
                     &active_skill_ids,
                     cancel_token,
                     rag_top_k,
@@ -942,7 +1028,7 @@ impl ChatV2Pipeline {
                     if let Some(skill_ids) = tool_result
                         .output
                         .get("result")
-                        .and_then(|r| r.get("skill_ids"))
+                        .and_then(|r| r.get("loaded_skill_ids").or_else(|| r.get("skill_ids")))
                         .and_then(|ids| ids.as_array())
                     {
                         let loaded_skill_ids: Vec<String> = skill_ids
@@ -1068,6 +1154,7 @@ impl ChatV2Pipeline {
             // 一轮 LLM 调用可能产生多个工具调用，但只有一个思维链
             // 🔧 Gemini 3 修复：同时附加 thought_signature（工具调用必需）
             let cached_thought_sig = adapter.get_thought_signature();
+            let tool_results_count = tool_results.len();
             let tool_results_with_reasoning: Vec<_> = tool_results
                 .into_iter()
                 .enumerate()
@@ -1082,6 +1169,26 @@ impl ChatV2Pipeline {
                 })
                 .collect();
             ctx.add_tool_results(tool_results_with_reasoning);
+
+            // 🆕 P1: 检查点 B — 工具结果累加后，预估下一轮 prompt 是否会溢出
+            if !ctx.needs_compaction {
+                let cfg = self.resolve_active_api_config(ctx).await;
+                let tool_delta: u32 = ctx
+                    .tool_results
+                    .iter()
+                    .rev()
+                    .take(tool_results_count)
+                    .map(|r| {
+                        super::compaction::estimate_json_tokens(
+                            &r.output,
+                            ctx.options.model_id.as_deref(),
+                        )
+                    })
+                    .sum();
+                if super::compaction::should_compact_after_tool(ctx, cfg.as_ref(), tool_delta) {
+                    ctx.needs_compaction = true;
+                }
+            }
 
             // ============================================================
             // 🆕 P15 修复：工具执行后中间保存点
@@ -1203,7 +1310,7 @@ impl ChatV2Pipeline {
     /// - `session_id`: 会话 ID（用于工具状态隔离，如 TodoList）
     /// - `message_id`: 消息 ID（用于关联块）
     /// - `canvas_note_id`: Canvas 笔记 ID，用于 Canvas 工具默认值
-    /// - `skill_allowed_tools`: 🆕 P1-C Skill 工具白名单（如果设置，只允许执行白名单中的工具）
+    /// - `skill_embedded_tools`: 当前技能注入出的工具定义快照
     ///
     /// ## 返回
     /// 工具调用结果列表
@@ -1325,7 +1432,10 @@ impl ChatV2Pipeline {
         round_id: Option<&str>,
         canvas_note_id: &Option<String>,
         skill_contents: &Option<std::collections::HashMap<String, String>>,
-        active_skill_ids: &Option<Vec<String>>,
+        skill_embedded_tools: &Option<
+            std::collections::HashMap<String, Vec<super::super::types::McpToolSchema>>,
+        >,
+        _active_skill_ids: &Option<Vec<String>>,
         cancellation_token: Option<&CancellationToken>,
         rag_top_k: Option<u32>,
         rag_enable_reranking: Option<bool>,
@@ -1478,7 +1588,8 @@ impl ChatV2Pipeline {
                     round_id,
                     canvas_note_id,
                     skill_contents,
-                    active_skill_ids,
+                    skill_embedded_tools,
+                    _active_skill_ids,
                     cancellation_token.cloned(),
                     rag_top_k,
                     rag_enable_reranking,
@@ -1682,7 +1793,10 @@ impl ChatV2Pipeline {
         round_id: Option<&str>,
         canvas_note_id: &Option<String>,
         skill_contents: &Option<std::collections::HashMap<String, String>>,
-        active_skill_ids: &Option<Vec<String>>,
+        skill_embedded_tools: &Option<
+            std::collections::HashMap<String, Vec<super::super::types::McpToolSchema>>,
+        >,
+        _active_skill_ids: &Option<Vec<String>>,
         cancellation_token: Option<CancellationToken>,
         rag_top_k: Option<u32>,
         rag_enable_reranking: Option<bool>,
@@ -1794,14 +1908,24 @@ impl ChatV2Pipeline {
 
         if effective_sensitivity != Some(ToolSensitivity::Low) {
             if let Some(approval_manager) = &self.approval_manager {
-                // 🔧 P1-51: 优先检查数据库中的持久化审批设置
+                // 🔧 P1-51 + M-081 修复：优先查询数据库持久化设置
+                // 统一入口 `approval_scope::make_setting_key`（v2 优先，未知工具 fallback v1）
+                // 同时读取旧版 v1 键作为向后兼容（如果 v2 未命中）
                 let persisted_approval: Option<bool> = self.main_db.as_ref().and_then(|db| {
-                    let setting_key =
-                        approval_scope_setting_key(&tool_call.name, &tool_call.arguments);
-                    db.get_setting(&setting_key)
-                        .ok()
-                        .flatten()
-                        .map(|v| v == "allow")
+                    use crate::chat_v2::approval_scope;
+
+                    // v2 查询（若为已知工具）
+                    if let Some(v2_key) =
+                        approval_scope::make_setting_key_v2(&tool_call.name, &tool_call.arguments)
+                    {
+                        if let Ok(Some(v)) = db.get_setting(&v2_key) {
+                            return Some(v == "allow");
+                        }
+                    }
+                    // v1 回退查询（保证旧"记住选择"仍生效）
+                    let v1_key =
+                        approval_scope::make_setting_key_v1(&tool_call.name, &tool_call.arguments);
+                    db.get_setting(&v1_key).ok().flatten().map(|v| v == "allow")
                 });
 
                 // 使用持久化设置或内存缓存
@@ -1893,6 +2017,7 @@ impl ChatV2Pipeline {
 
         // 🆕 渐进披露：传递 skill_contents
         ctx.skill_contents = skill_contents.clone();
+        ctx.skill_embedded_tools = skill_embedded_tools.clone();
 
         // 🆕 取消支持：传递取消令牌
         if let Some(token) = cancellation_token {

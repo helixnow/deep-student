@@ -11,10 +11,11 @@ import { NotionButton } from '@/components/ui/NotionButton';
 import { Input } from '../ui/shad/Input';
 import { Label } from '../ui/shad/Label';
 import { Textarea } from '../ui/shad/Textarea';
+import { Select, SelectTrigger, SelectValue, SelectContent, SelectItem } from '../ui/shad/Select';
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '../ui/shad/Collapsible';
-import { Plus, Trash2, ChevronDown, ChevronRight, Wrench, AlertCircle } from 'lucide-react';
+import { Plus, Trash, CaretDown, CaretRight, Wrench, WarningCircle } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
-import type { ToolSchema, ToolInputSchema, JsonSchemaProperty } from '@/chat-v2/skills/types';
+import type { ToolSchema, ToolInputSchema, JsonSchemaProperty } from '@/features/chat/skills/types';
 
 interface EmbeddedToolsEditorProps {
   tools: ToolSchema[];
@@ -65,7 +66,7 @@ const AutoResizeTextarea: React.FC<AutoResizeTextareaProps> = ({
       onChange={onChange}
       className={cn('overflow-hidden', className)}
       {...props}
-    />
+/>
   );
 };
 
@@ -231,7 +232,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
               >
                 <div
                   className={cn(
-                    'flex items-center justify-between p-3 hover:bg-muted/30 transition-colors rounded-t-lg',
+                    'flex items-center justify-between p-3 hover:bg-[var(--interactive-hover)] transition-colors rounded-t-lg',
                     !isExpanded && 'rounded-b-lg'
                   )}
                 >
@@ -239,15 +240,15 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                     className="flex items-center gap-2 min-w-0 flex-1"
                   >
                     {isExpanded ? (
-                      <ChevronDown size={14} className="text-muted-foreground flex-shrink-0" />
+                      <CaretDown size={14} className="text-muted-foreground flex-shrink-0" />
                     ) : (
-                      <ChevronRight size={14} className="text-muted-foreground flex-shrink-0" />
+                      <CaretRight size={14} className="text-muted-foreground flex-shrink-0" />
                     )}
                     <span className="font-mono text-sm truncate">
                       {tool.name || t('skills:editor.unnamed_tool', '未命名工具')}
                     </span>
                     {hasError && (
-                      <AlertCircle size={12} className="text-amber-500 flex-shrink-0" />
+                      <WarningCircle size={12} className="text-amber-500 flex-shrink-0" />
                     )}
                   </CollapsibleTrigger>
                   <div className="flex items-center gap-2">
@@ -263,9 +264,9 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                         removeTool(toolIndex);
                       }}
                       disabled={disabled}
-                      className="h-6 w-6 text-muted-foreground hover:text-destructive"
+ className="w-6 h-6 text-muted-foreground hover:text-destructive"
                     >
-                      <Trash2 size={12} />
+                      <Trash size={12} />
                     </NotionButton>
                   </div>
                 </div>
@@ -285,7 +286,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                           'h-8 text-sm font-mono bg-muted/30 border-transparent',
                           !tool.name && 'border-amber-500/50'
                         )}
-                      />
+/>
                     </div>
 
                     <div className="space-y-1.5">
@@ -302,7 +303,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                           'text-sm bg-muted/30 border-transparent resize-none',
                           !tool.description && 'border-amber-500/50'
                         )}
-                      />
+/>
                     </div>
 
                     <div className="space-y-2">
@@ -343,28 +344,32 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                                     placeholder={t('skills:editor.param_name', '参数名')}
                                     disabled={disabled}
                                     className="h-7 text-xs font-mono bg-background/50"
-                                  />
+/>
                                   <Input
                                     value={prop.description || ''}
                                     onChange={(e) => updateProperty(toolIndex, propName, propName, { description: (e.target as HTMLInputElement).value })}
                                     placeholder={t('skills:editor.param_description', '参数描述')}
                                     disabled={disabled}
                                     className="h-7 text-xs bg-background/50"
-                                  />
+/>
                                 </div>
-                                <select
+                                <Select
                                   value={prop.type || 'string'}
-                                  onChange={(e) => updateProperty(toolIndex, propName, propName, { type: e.target.value as JsonSchemaProperty['type'] })}
+                                  onValueChange={(value) => updateProperty(toolIndex, propName, propName, { type: value as JsonSchemaProperty['type'] })}
                                   disabled={disabled}
-                                  className="h-7 text-xs bg-background/50 border border-border/40 rounded-md px-2"
                                 >
-                                  <option value="string">string</option>
-                                  <option value="number">number</option>
-                                  <option value="integer">integer</option>
-                                  <option value="boolean">boolean</option>
-                                  <option value="array">array</option>
-                                  <option value="object">object</option>
-                                </select>
+                                  <SelectTrigger className="h-7 text-xs bg-background/50 border border-border/40 rounded-md px-2">
+                                    <SelectValue />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    <SelectItem value="string">string</SelectItem>
+                                    <SelectItem value="number">number</SelectItem>
+                                    <SelectItem value="integer">integer</SelectItem>
+                                    <SelectItem value="boolean">boolean</SelectItem>
+                                    <SelectItem value="array">array</SelectItem>
+                                    <SelectItem value="object">object</SelectItem>
+                                  </SelectContent>
+                                </Select>
                                 <NotionButton
                                   type="button"
                                   variant={isRequired ? 'default' : 'outline'}
@@ -384,7 +389,7 @@ export const EmbeddedToolsEditor: React.FC<EmbeddedToolsEditorProps> = ({
                                   disabled={disabled}
                                   className="h-7 w-7 text-muted-foreground hover:text-destructive"
                                 >
-                                  <Trash2 size={12} />
+                                  <Trash size={12} />
                                 </NotionButton>
                               </div>
                             );

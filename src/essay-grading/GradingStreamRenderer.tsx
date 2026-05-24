@@ -9,14 +9,14 @@
 
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { StreamingMarkdownRenderer } from '../chat-v2/components/renderers';
+import { StreamingMarkdownRenderer } from '../features/chat/components/renderers';
 import { StreamingAnnotatedText } from '../components/essay-grading/StreamingAnnotatedText';
 import { hasInlineMarkers, hasScoreMarker, parseStreamingContent, removeScoreTag, removeSectionTags } from './streamingMarkerParser';
 import { ScoreCard } from '../components/essay-grading/ScoreCard';
 import { SentenceDetailView } from '../components/essay-grading/SentenceDetailView';
 import { PolishSectionView } from '../components/essay-grading/PolishSectionView';
 import { ModelEssayView } from '../components/essay-grading/ModelEssayView';
-import { Loader2, ChevronDown, ChevronUp, FileText, ListChecks, Sparkles, BookOpen } from 'lucide-react';
+import { CircleNotch, CaretDown, CaretUp, FileText, ListChecks, Sparkle, BookOpen } from '@phosphor-icons/react';
 import { CustomScrollArea } from '../components/custom-scroll-area';
 import { cn } from '@/lib/utils';
 
@@ -95,10 +95,10 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
   // Tab 定义
   const tabs = useMemo(() => {
     const list: { id: SectionTab; label: string; icon: React.ReactNode; show: boolean }[] = [
-      { id: 'overview', label: t('essay_grading:sections.tab_overview'), icon: <FileText className="w-3.5 h-3.5" />, show: true },
-      { id: 'details', label: t('essay_grading:sections.tab_details'), icon: <ListChecks className="w-3.5 h-3.5" />, show: hasDetails },
-      { id: 'polish', label: t('essay_grading:sections.tab_polish'), icon: <Sparkles className="w-3.5 h-3.5" />, show: hasPolish },
-      { id: 'model_essay', label: t('essay_grading:sections.tab_model_essay'), icon: <BookOpen className="w-3.5 h-3.5" />, show: hasModelEssay },
+      { id: 'overview', label: t('essay_grading:sections.tab_overview'), icon: <FileText size={14} />, show: true },
+      { id: 'details', label: t('essay_grading:sections.tab_details'), icon: <ListChecks size={14} />, show: hasDetails },
+      { id: 'polish', label: t('essay_grading:sections.tab_polish'), icon: <Sparkle size={14} />, show: hasPolish },
+      { id: 'model_essay', label: t('essay_grading:sections.tab_model_essay'), icon: <BookOpen size={14} />, show: hasModelEssay },
     ];
     return list.filter(tab => tab.show);
   }, [t, hasDetails, hasPolish, hasModelEssay]);
@@ -116,7 +116,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
       {!hideToolbar && !hideStreamingIndicator && isStreaming && (
         <div className="flex items-center gap-2 px-5 py-2 border-b border-border/20">
           <div className="flex items-center gap-2 text-xs text-muted-foreground/70">
-            <Loader2 className="h-3 w-3 animate-spin" />
+            <CircleNotch size={12} className="animate-spin" />
             <span>{t('essay_grading:progress.grading')}...</span>
           </div>
         </div>
@@ -133,7 +133,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
                 "flex items-center gap-1.5 px-3 py-1.5 text-xs rounded-md transition-colors whitespace-nowrap",
                 activeTab === tab.id
                   ? "bg-primary/10 text-primary font-medium"
-                  : "text-muted-foreground/60 hover:text-foreground hover:bg-muted/50"
+                  : "text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]"
               )}
             >
               {tab.icon}
@@ -154,7 +154,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
                   "px-2.5 py-1 text-xs rounded-full transition-colors",
                   markerFilter === filter
                     ? "bg-primary/10 text-primary font-medium"
-                    : "text-muted-foreground/60 hover:text-foreground hover:bg-muted/50"
+                    : "text-muted-foreground/60 hover:text-foreground hover:bg-[var(--interactive-hover)]"
                 )}
               >
                 {t(`essay_grading:legend.filter_${filter}`)}
@@ -167,7 +167,7 @@ export const GradingStreamRenderer: React.FC<GradingStreamRendererProps> = ({
             className="flex items-center gap-1 text-xs text-muted-foreground/60 hover:text-foreground transition-colors"
           >
             {showLegend ? t('essay_grading:legend.collapse') : t('essay_grading:legend.expand')}
-            {showLegend ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+            {showLegend ? <CaretUp size={12} /> : <CaretDown size={12} />}
           </button>
         </div>
       )}

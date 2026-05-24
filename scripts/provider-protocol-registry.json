@@ -1,0 +1,172 @@
+{
+  "schema_version": "1.0",
+  "updated_at": "2026-05-20",
+  "purpose": "统一维护供应商协议能力、默认协议与 OpenAI-compatible Responses 支持声明，供前后端共享默认路由决策。",
+  "providers": [
+    {
+      "provider_type": "openai",
+      "allowed_protocols": [
+        "openai_chat_completions",
+        "openai_responses"
+      ],
+      "default_protocol": "openai_responses",
+      "official": true,
+      "supports_openai_responses": true
+    },
+    {
+      "provider_type": "anthropic",
+      "allowed_protocols": [
+        "anthropic_messages"
+      ],
+      "default_protocol": "anthropic_messages",
+      "official": true
+    },
+    {
+      "provider_type": "google",
+      "allowed_protocols": [
+        "google_generate_content"
+      ],
+      "default_protocol": "google_generate_content",
+      "official": true
+    },
+    {
+      "provider_type": "gemini",
+      "allowed_protocols": [
+        "google_generate_content"
+      ],
+      "default_protocol": "google_generate_content",
+      "official": true
+    },
+    {
+      "provider_type": "deepseek",
+      "allowed_protocols": [
+        "openai_chat_completions",
+        "openai_responses"
+      ],
+      "default_protocol": "openai_chat_completions",
+      "official": true,
+      "supports_openai_responses": false
+    },
+    {
+      "provider_type": "siliconflow",
+      "allowed_protocols": [
+        "openai_chat_completions",
+        "openai_responses"
+      ],
+      "default_protocol": "openai_chat_completions",
+      "official": false,
+      "supports_openai_responses": false
+    },
+    {
+      "provider_type": "qwen",
+      "allowed_protocols": [
+        "openai_chat_completions",
+        "openai_responses"
+      ],
+      "default_protocol": "openai_chat_completions",
+      "official": true,
+      "supports_openai_responses": false
+    },
+    {
+      "provider_type": "zhipu",
+      "allowed_protocols": [
+        "openai_chat_completions",
+        "openai_responses"
+      ],
+      "default_protocol": "openai_chat_completions",
+      "official": true,
+      "supports_openai_responses": false
+    },
+    {
+      "provider_type": "doubao",
+      "allowed_protocols": [
+        "openai_chat_completions",
+        "openai_responses"
+      ],
+      "default_protocol": "openai_chat_completions",
+      "official": true,
+      "supports_openai_responses": false
+    },
+    {
+      "provider_type": "minimax",
+      "allowed_protocols": [
+        "openai_chat_completions",
+        "openai_responses",
+        "anthropic_messages"
+      ],
+      "default_protocol": "openai_chat_completions",
+      "official": true,
+      "supports_openai_responses": false
+    },
+    {
+      "provider_type": "moonshot",
+      "allowed_protocols": [
+        "openai_chat_completions",
+        "openai_responses"
+      ],
+      "default_protocol": "openai_chat_completions",
+      "official": true,
+      "supports_openai_responses": false
+    },
+    {
+      "provider_type": "nvidia",
+      "allowed_protocols": [
+        "openai_chat_completions",
+        "openai_responses"
+      ],
+      "default_protocol": "openai_chat_completions",
+      "official": true,
+      "supports_openai_responses": false
+    },
+    {
+      "provider_type": "mimo",
+      "allowed_protocols": [
+        "openai_chat_completions",
+        "openai_responses"
+      ],
+      "default_protocol": "openai_chat_completions",
+      "official": true,
+      "supports_openai_responses": false
+    },
+    {
+      "provider_type": "openrouter",
+      "allowed_protocols": [
+        "openai_chat_completions",
+        "openai_responses"
+      ],
+      "default_protocol": "openai_chat_completions",
+      "official": false,
+      "supports_openai_responses": false
+    },
+    {
+      "provider_type": "ollama",
+      "allowed_protocols": [
+        "openai_chat_completions",
+        "openai_responses"
+      ],
+      "default_protocol": "openai_chat_completions",
+      "official": false,
+      "supports_openai_responses": false
+    },
+    {
+      "provider_type": "custom",
+      "allowed_protocols": [
+        "openai_chat_completions",
+        "openai_responses"
+      ],
+      "default_protocol": "openai_chat_completions",
+      "official": false,
+      "supports_openai_responses": false
+    },
+    {
+      "provider_type": "general",
+      "allowed_protocols": [
+        "openai_chat_completions",
+        "openai_responses"
+      ],
+      "default_protocol": "openai_chat_completions",
+      "official": false,
+      "supports_openai_responses": false
+    }
+  ]
+}

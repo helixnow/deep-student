@@ -11,7 +11,7 @@ use rusqlite::{params, OptionalExtension};
 use serde_json::json;
 use std::sync::Arc;
 
-use crate::llm_manager::{ApiConfig, LLMManager};
+use crate::llm_manager::{build_provider_adapter, ApiConfig, LLMManager};
 use crate::models::AppError;
 use crate::providers::ProviderAdapter;
 use crate::vfs::database::VfsDatabase;
@@ -469,19 +469,21 @@ where
             json!({ "role": "user", "content": user_prompt }),
         ];
 
-        let request_body = json!({
+        let mut request_body = json!({
             "model": config.model,
             "messages": messages,
             "temperature": 0.3,
-            "max_tokens": config.max_output_tokens.min(8192),
+            "max_tokens": crate::llm_manager::effective_max_tokens(
+                config.max_output_tokens,
+                config.max_tokens_limit,
+            )
+            .min(8192),
             "stream": true,
         });
 
-        let adapter: Box<dyn ProviderAdapter> = match config.model_adapter.as_str() {
-            "google" | "gemini" => Box::new(crate::providers::GeminiAdapter::new()),
-            "anthropic" | "claude" => Box::new(crate::providers::AnthropicAdapter::new()),
-            _ => Box::new(crate::providers::OpenAIAdapter),
-        };
+        crate::llm_manager::LLMManager::apply_reasoning_config(&mut request_body, config, None);
+
+        let adapter: Box<dyn ProviderAdapter> = build_provider_adapter(config);
 
         let preq = adapter
             .build_request(&config.base_url, api_key, &config.model, &request_body)

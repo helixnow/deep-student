@@ -6,12 +6,12 @@ import {
   CHATV2_LOG_EVENT,
   CHATV2_LOGS_CLEARED,
   type ChatV2LogEntry,
-} from "../../chat-v2/debug/chatV2Logger";
+} from "../../features/chat/debug/chatV2Logger";
 import { Badge } from "../../components/ui/shad/Badge";
 import { Button } from "../../components/ui/shad/Button";
 import { Card, CardContent } from "../../components/ui/shad/Card";
 import { ScrollArea } from "../../components/ui/shad/ScrollArea";
-import { AlertTriangle, CheckCircle2, Copy, FileSearch, RefreshCw, Trash2 } from "lucide-react";
+import { Warning, CheckCircle, Copy, MagnifyingGlass, ArrowClockwise, Trash } from "@phosphor-icons/react";
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 type RequestAuditPayload = {
@@ -180,19 +180,19 @@ const AttachmentOcrRequestAuditPlugin: React.FC<DebugPanelPluginProps> = ({ visi
     <div className="h-full flex flex-col">
       <div className="flex items-center justify-between p-3 border-b">
         <div className="flex items-center gap-2">
-          <FileSearch className="w-5 h-5 text-primary" />
+          <MagnifyingGlass size={20} className="text-primary" />
           <h3 className="font-semibold">附件/OCR 请求体审计</h3>
           <Badge variant="outline">F:{frontendAudits.length} / B:{backendAudits.length}</Badge>
         </div>
         <div className="flex items-center gap-2">
           <Button variant="outline" size="sm" onClick={loadLogs}>
-            <RefreshCw className="w-4 h-4" />
+            <ArrowClockwise size={16} />
           </Button>
           <Button variant="outline" size="sm" onClick={onCopy}>
-            <Copy className="w-4 h-4" />
+            <Copy size={16} />
           </Button>
           <Button variant="outline" size="sm" onClick={onClear}>
-            <Trash2 className="w-4 h-4" />
+            <Trash size={16} />
           </Button>
         </div>
       </div>
@@ -235,12 +235,12 @@ const AttachmentOcrRequestAuditPlugin: React.FC<DebugPanelPluginProps> = ({ visi
       <div className="px-3 pt-2 text-sm flex items-center gap-2">
         {requestParityOk ? (
           <>
-            <CheckCircle2 className="w-4 h-4 text-green-500" />
+            <CheckCircle size={16} className="text-green-500" />
             <span>前后端请求体摘要一致（ref/text/image 计数）</span>
           </>
         ) : (
           <>
-            <AlertTriangle className="w-4 h-4 text-yellow-500" />
+            <Warning size={16} className="text-yellow-500" />
             <span>前后端请求体摘要存在差异，建议展开日志检查</span>
           </>
         )}

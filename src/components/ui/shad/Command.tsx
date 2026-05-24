@@ -1,6 +1,6 @@
 import * as React from 'react';
 import { Command as CommandPrimitive } from 'cmdk';
-import { Search } from 'lucide-react';
+import { MagnifyingGlass } from '@phosphor-icons/react';
 import { cn } from '../../../utils/cn';
 import { NotionDialog } from '../NotionDialog';
 
@@ -15,7 +15,7 @@ const Command = React.forwardRef<
       className
     )}
     {...props}
-  />
+/>
 ));
 Command.displayName = CommandPrimitive.displayName;
 
@@ -34,7 +34,7 @@ const CommandInput = React.forwardRef<
   React.ComponentPropsWithoutRef<typeof CommandPrimitive.Input>
 >(({ className, ...props }, ref) => (
   <div className="flex items-center border-b border-border/40 px-3" cmdk-input-wrapper="">
-    <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+    <MagnifyingGlass size={16} className="mr-2 shrink-0 opacity-50" />
     <CommandPrimitive.Input
       ref={ref}
       className={cn(
@@ -42,7 +42,7 @@ const CommandInput = React.forwardRef<
         className
       )}
       {...props}
-    />
+/>
   </div>
 ));
 
@@ -56,7 +56,7 @@ const CommandList = React.forwardRef<
     ref={ref}
     className={cn('max-h-[450px] overflow-y-auto overflow-x-hidden', className)}
     {...props}
-  />
+/>
 ));
 
 CommandList.displayName = CommandPrimitive.List.displayName;
@@ -69,7 +69,7 @@ const CommandEmpty = React.forwardRef<
     ref={ref}
     className="py-6 text-center text-sm"
     {...props}
-  />
+/>
 ));
 
 CommandEmpty.displayName = CommandPrimitive.Empty.displayName;
@@ -85,7 +85,7 @@ const CommandGroup = React.forwardRef<
       className
     )}
     {...props}
-  />
+/>
 ));
 
 CommandGroup.displayName = CommandPrimitive.Group.displayName;
@@ -98,7 +98,7 @@ const CommandSeparator = React.forwardRef<
     ref={ref}
     className={cn('-mx-1 h-px bg-border', className)}
     {...props}
-  />
+/>
 ));
 CommandSeparator.displayName = CommandPrimitive.Separator.displayName;
 
@@ -109,11 +109,11 @@ const CommandItem = React.forwardRef<
   <CommandPrimitive.Item
     ref={ref}
     className={cn(
-      'relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-muted/50 hover:text-foreground data-[selected=true]:bg-muted/50 data-[selected=true]:text-foreground data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50',
+      'relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-[var(--interactive-hover)] hover:text-foreground data-[selected=true]:bg-muted/50 data-[selected=true]:text-foreground data-[disabled=true]:pointer-events-none data-[disabled=true]:opacity-50',
       className
     )}
     {...props}
-  />
+/>
 ));
 
 CommandItem.displayName = CommandPrimitive.Item.displayName;
@@ -129,7 +129,7 @@ const CommandShortcut = ({
         className
       )}
       {...props}
-    />
+/>
   );
 };
 CommandShortcut.displayName = 'CommandShortcut';

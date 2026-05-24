@@ -21,8 +21,9 @@
  * 支持一键复制全部日志。
  */
 import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
-import { Copy, Trash2, Download, Search, ChevronDown, ChevronRight, AlertTriangle, CheckCircle, XCircle, Clock, Zap, Activity, Eye } from 'lucide-react';
+import { Copy, Trash, Download, MagnifyingGlass, CaretDown, CaretRight, Warning, CheckCircle, XCircle, Clock, Lightning, Pulse, Eye } from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
+import { Switch } from '@/components/ui/shad/Switch';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
 // ============================================================================
@@ -355,10 +356,10 @@ const LEVEL_COLORS: Record<ExamSheetLogLevel, string> = {
 };
 
 const LEVEL_ICONS: Record<ExamSheetLogLevel, React.FC<any>> = {
-  debug: Activity,
-  info: Zap,
+  debug: Pulse,
+  info: Lightning,
   success: CheckCircle,
-  warn: AlertTriangle,
+  warn: Warning,
   error: XCircle,
 };
 
@@ -543,7 +544,7 @@ const ExamSheetProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         {stats.anomalies > 0 && <span style={{ color: '#f97316', fontWeight: 600 }}>🔀 {stats.anomalies} 异常</span>}
         <div style={{ flex: 1 }} />
         <label style={{ display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer', color: '#6b7280' }}>
-          <input type="checkbox" checked={autoScroll} onChange={(e) => setAutoScroll(e.target.checked)} />
+          <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
           自动滚动
         </label>
         <button onClick={handleCopy} title="复制日志" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: copyFeedback ? '#10b981' : '#6b7280' }}>
@@ -553,13 +554,13 @@ const ExamSheetProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           <Download size={14} />
         </button>
         <button onClick={handleClear} title="清空" style={{ background: 'none', border: 'none', cursor: 'pointer', padding: '2px 4px', color: '#6b7280' }}>
-          <Trash2 size={14} />
+          <Trash size={14} />
         </button>
       </div>
 
       {/* 过滤栏 */}
       <div style={{ padding: '4px 8px', borderBottom: '1px solid var(--border)', display: 'flex', gap: 6, alignItems: 'center', flexWrap: 'wrap' }}>
-        <Search size={12} style={{ color: '#6b7280' }} />
+        <MagnifyingGlass size={12} style={{ color: '#6b7280' }} />
         <input
           type="text"
           value={filter}
@@ -593,7 +594,7 @@ const ExamSheetProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           </div>
         ) : (
           filteredLogs.map((entry) => {
-            const LevelIcon = LEVEL_ICONS[entry.level] || Activity;
+            const LevelIcon = LEVEL_ICONS[entry.level] || Pulse;
             const isExpanded = expandedIds.has(entry.id);
             const hasDetail = entry.detail != null;
             return (
@@ -617,7 +618,7 @@ const ExamSheetProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
                   onClick={() => hasDetail && toggleExpand(entry.id)}
                 >
                   {hasDetail ? (
-                    isExpanded ? <ChevronDown size={12} style={{ marginTop: 1, flexShrink: 0, color: '#6b7280' }} /> : <ChevronRight size={12} style={{ marginTop: 1, flexShrink: 0, color: '#6b7280' }} />
+                    isExpanded ? <CaretDown size={12} style={{ marginTop: 1, flexShrink: 0, color: '#6b7280' }} /> : <CaretRight size={12} style={{ marginTop: 1, flexShrink: 0, color: '#6b7280' }} />
                   ) : (
                     <span style={{ width: 12, flexShrink: 0 }} />
                   )}

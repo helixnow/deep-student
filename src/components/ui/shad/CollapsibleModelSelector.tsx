@@ -1,12 +1,13 @@
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
-import { ChevronDown, ChevronUp, Check, Search } from 'lucide-react';
+import { CaretDown, CaretUp, Check, MagnifyingGlass } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { ProviderIcon, isGenericProviderIconPath } from '../ProviderIcon';
 import { Input } from './Input';
 import { CustomScrollArea } from '../../custom-scroll-area';
 import { cn } from '../../../lib/utils';
 
-export type CollapsibleModelOption = { value: string; label: string; icon?: string };
+export type CollapsibleModelOption = { value: string; label: string; icon?: string; iconModelId?: string };
 
 export interface CollapsibleModelSelectorProps {
   value: string;
@@ -60,6 +61,28 @@ export function CollapsibleModelSelector({
     setQuery('');
   };
 
+  const renderOptionIcon = (option: CollapsibleModelOption) => {
+    if (option.iconModelId) {
+      return <ProviderIcon modelId={option.iconModelId} size={16} showTooltip={false} variant="color" />;
+    }
+
+    if (option.icon) {
+      if (isGenericProviderIconPath(option.icon)) {
+        return <ProviderIcon modelId="" size={16} showTooltip={false} variant="color" />;
+      }
+
+      return (
+        <img
+          src={option.icon}
+          alt=""
+ className="w-4 h-4 flex-shrink-0 rounded object-contain"
+/>
+      );
+    }
+
+    return null;
+  };
+
   const toggleExpanded = () => {
     if (!disabled) {
       setExpanded(prev => !prev);
@@ -74,25 +97,18 @@ export function CollapsibleModelSelector({
       <NotionButton
         type="button"
         variant="ghost"
-        className={cn('w-full justify-between border border-border/30 hover:bg-muted/30', buttonClassName)}
+        className={cn('w-full justify-between border border-border/30 hover:bg-[var(--interactive-hover)]', buttonClassName)}
         disabled={disabled}
         onClick={toggleExpanded}
       >
         <span className="flex items-center gap-2 truncate text-left">
-          {selectedOption?.icon && (
-            <img 
-              src={selectedOption.icon} 
-              alt="" 
-              className="h-4 w-4 flex-shrink-0 rounded object-contain"
-              style={{ opacity: selectedOption.icon.includes('generic.svg') ? 0.5 : 1 }}
-            />
-          )}
+          {selectedOption && renderOptionIcon(selectedOption)}
           <span className="truncate">{buttonLabel}</span>
         </span>
         {expanded ? (
-          <ChevronUp className="h-4 w-4 opacity-70" />
+          <CaretUp size={16} className="opacity-70" />
         ) : (
-          <ChevronDown className="h-4 w-4 opacity-70" />
+          <CaretDown size={16} className="opacity-70" />
         )}
       </NotionButton>
 
@@ -107,7 +123,7 @@ export function CollapsibleModelSelector({
             <div className="p-3 border-b border-border/60">
               <div className="relative">
                 <span className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-muted-foreground">
-                  <Search className="h-4 w-4" />
+                  <MagnifyingGlass size={16} />
                 </span>
                 <Input
                   autoFocus={expanded}
@@ -115,7 +131,7 @@ export function CollapsibleModelSelector({
                   onChange={(e) => setQuery(e.target.value)}
                   placeholder={resolvedSearchPlaceholder}
                   className="pl-8"
-                />
+/>
               </div>
               {totalCount !== undefined && (
                 <div className="mt-2 flex items-center justify-between text-xs text-muted-foreground">
@@ -144,7 +160,7 @@ export function CollapsibleModelSelector({
                             type="button"
                             className={cn(
                               'w-full flex items-center justify-between rounded-md px-2 py-2 text-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-primary/30',
-                              'hover:bg-accent/70 hover:text-accent-foreground',
+                              'hover:bg-[var(--interactive-hover)] hover:text-accent-foreground',
                               selected
                                 ? 'bg-accent text-accent-foreground'
                                 : 'text-foreground'
@@ -152,17 +168,10 @@ export function CollapsibleModelSelector({
                             onClick={() => handleSelect(o.value)}
                           >
                             <span className="flex items-center gap-2 truncate text-left min-w-0">
-                              {o.icon && (
-                                <img 
-                                  src={o.icon} 
-                                  alt="" 
-                                  className="h-4 w-4 flex-shrink-0 rounded object-contain"
-                                  style={{ opacity: o.icon.includes('generic.svg') ? 0.5 : 1 }}
-                                />
-                              )}
+                              {renderOptionIcon(o)}
                               <span className="truncate">{o.label}</span>
                             </span>
-                            {selected && <Check className="h-4 w-4 text-accent-foreground flex-shrink-0" />}
+                            {selected && <Check size={16} className="text-accent-foreground flex-shrink-0" />}
                           </button>
                         </li>
                       );

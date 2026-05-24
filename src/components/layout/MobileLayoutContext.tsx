@@ -37,10 +37,10 @@ interface MobileLayoutState {
   isFullscreenContent: boolean;
 
   /** 进入全屏内容模式 */
-  enterFullscreen: () => void;
+  enterFullscreen: (claimId?: string) => void;
 
   /** 退出全屏内容模式 */
-  exitFullscreen: () => void;
+  exitFullscreen: (claimId?: string) => void;
 }
 
 const MobileLayoutContext = createContext<MobileLayoutState | null>(null);
@@ -66,7 +66,7 @@ export const MobileLayoutProvider: React.FC<MobileLayoutProviderProps> = ({ chil
   const { isSmallScreen } = useBreakpoint();
 
   const [openSidebar, setOpenSidebar] = useState<SidebarType>(null);
-  const [isFullscreenContent, setIsFullscreenContent] = useState(false);
+  const [fullscreenClaims, setFullscreenClaims] = useState<Set<string>>(() => new Set());
 
   const openSidebarPanel = useCallback((type: Exclude<SidebarType, null>) => {
     setOpenSidebar(type);
@@ -80,13 +80,25 @@ export const MobileLayoutProvider: React.FC<MobileLayoutProviderProps> = ({ chil
     setOpenSidebar(prev => prev === type ? null : type);
   }, []);
 
-  const enterFullscreen = useCallback(() => {
-    setIsFullscreenContent(true);
+  const enterFullscreen = useCallback((claimId = 'default') => {
+    setFullscreenClaims(prev => {
+      if (prev.has(claimId)) return prev;
+      const next = new Set(prev);
+      next.add(claimId);
+      return next;
+    });
   }, []);
 
-  const exitFullscreen = useCallback(() => {
-    setIsFullscreenContent(false);
+  const exitFullscreen = useCallback((claimId = 'default') => {
+    setFullscreenClaims(prev => {
+      if (!prev.has(claimId)) return prev;
+      const next = new Set(prev);
+      next.delete(claimId);
+      return next;
+    });
   }, []);
+
+  const isFullscreenContent = fullscreenClaims.size > 0;
 
   const value = useMemo<MobileLayoutState>(() => ({
     isMobile: isSmallScreen,

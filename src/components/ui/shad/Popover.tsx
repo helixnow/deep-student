@@ -3,6 +3,7 @@ import { Slot } from '@radix-ui/react-slot';
 import { createPortal } from 'react-dom';
 import { cn } from '../../../lib/utils';
 import { Z_INDEX } from '@/config/zIndex';
+import { useOverlayCoordinator } from '../../shared/OverlayCoordinator';
 
 interface PopoverContextValue {
   open: boolean;
@@ -23,16 +24,25 @@ export function Popover({ open, onOpenChange, children }: PopoverProps) {
   const isControlled = open !== undefined;
   const [internalOpen, setInternalOpen] = React.useState(false);
   const actualOpen = isControlled ? !!open : internalOpen;
+  const { dismissTooltips, registerInteractiveOverlay } = useOverlayCoordinator();
   const setOpen = React.useCallback(
     (next: boolean) => {
+      if (next) {
+        dismissTooltips();
+      }
       if (!isControlled) setInternalOpen(next);
       onOpenChange?.(next);
     },
-    [isControlled, onOpenChange]
+    [dismissTooltips, isControlled, onOpenChange]
   );
 
   const containerRef = React.useRef<HTMLDivElement | null>(null);
   const contentRef = React.useRef<HTMLDivElement | null>(null);
+
+  React.useEffect(() => {
+    if (!actualOpen) return;
+    return registerInteractiveOverlay();
+  }, [actualOpen, registerInteractiveOverlay]);
 
   React.useEffect(() => {
     if (!actualOpen) return;
@@ -62,25 +72,34 @@ export function Popover({ open, onOpenChange, children }: PopoverProps) {
   );
 }
 
-interface PopoverTriggerProps {
+interface PopoverTriggerProps extends React.HTMLAttributes<HTMLElement> {
   asChild?: boolean;
   children: React.ReactNode;
 }
 
-export function PopoverTrigger({ asChild, children }: PopoverTriggerProps) {
+export const PopoverTrigger = React.forwardRef<HTMLElement, PopoverTriggerProps>(
+  ({ asChild, children, onClick, ...rest }, ref) => {
   const ctx = React.useContext(PopoverContext);
   if (!ctx) return <>{children}</>;
-  const Comp = asChild ? Slot : 'button';
+  const Comp = (asChild ? Slot : 'button') as React.ElementType;
   return (
     <Comp
+      ref={ref}
       type={asChild ? undefined : 'button'}
       aria-expanded={ctx.open}
-      onClick={() => ctx.setOpen(!ctx.open)}
+      onClick={(event: React.MouseEvent<HTMLElement>) => {
+        onClick?.(event);
+        if (event.defaultPrevented) return;
+        ctx.setOpen(!ctx.open);
+      }}
+      {...rest}
     >
       {children}
     </Comp>
   );
-}
+  }
+);
+PopoverTrigger.displayName = 'PopoverTrigger';
 
 interface PopoverContentProps extends React.HTMLAttributes<HTMLDivElement> {
   align?: 'start' | 'center' | 'end';

@@ -2,14 +2,17 @@
  * MobileSlidingLayout - 移动端推拉式三屏滑动布局
  *
  * DeepSeek 风格：侧边栏、主视图、右侧面板连为一体，滑动时整体平移
- * 无遮罩层，更接近原生 App 体验
+ * 可选主内容遮罩，用于贴近 study-ui 抽屉式侧边栏
  * 支持触摸和鼠标拖拽
  *
  * 三屏布局：左侧栏 ← 中间主视图 → 右侧面板
  */
 
-import React, { useRef, useState, useCallback, useEffect, type ReactNode } from 'react';
+import React, { useRef, useState, useCallback, useEffect, useId, type ReactNode } from 'react';
 import { cn } from '@/lib/utils';
+import { Z_INDEX } from '@/config/zIndex';
+import { useMobileLayoutSafe } from './MobileLayoutContext';
+import { MobileSidebarNavigation } from './MobileSidebarNavigation';
 
 /** 三屏位置枚举 */
 export type ScreenPosition = 'left' | 'center' | 'right';
@@ -59,6 +62,10 @@ interface MobileSlidingLayoutProps {
   className?: string;
   /** 右侧面板是否可用（只有可用时才能滑动到右侧） */
   rightPanelEnabled?: boolean;
+  /** 是否自动注入移动端应用导航 */
+  showSidebarAppNavigation?: boolean;
+  /** 侧边栏打开时是否给主内容加遮罩 */
+  showContentOverlay?: boolean;
 }
 
 export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
@@ -75,6 +82,8 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
   threshold = 0.3,
   className,
   rightPanelEnabled = false,
+  showSidebarAppNavigation = true,
+  showContentOverlay = false,
 }) => {
   // 判断是否为三屏模式
   const isThreeScreenMode = rightPanel !== undefined && onScreenPositionChange !== undefined;
@@ -100,6 +109,13 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
   const [isDragging, setIsDragging] = useState(false);
   const [currentTranslate, setCurrentTranslate] = useState(0);
   const [containerWidth, setContainerWidth] = useState(0);
+  const [isActiveViewLayer, setIsActiveViewLayer] = useState(true);
+  const mobileLayout = useMobileLayoutSafe();
+  const isMobileLayout = mobileLayout?.isMobile ?? false;
+  const enterFullscreen = mobileLayout?.enterFullscreen;
+  const exitFullscreen = mobileLayout?.exitFullscreen;
+  const fullscreenClaimId = useId();
+  const hasSidebar = sidebar !== null && sidebar !== undefined;
 
   // 监听容器宽度变化
   useEffect(() => {
@@ -121,6 +137,52 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
       resizeObserver.disconnect();
     };
   }, []);
+
+  // The app keeps visited views mounted. Only the visible layer should be allowed
+  // to hide the global bottom tab bar when one of its side panels is open.
+  useEffect(() => {
+    const container = containerRef.current;
+    if (!container) return;
+
+    const viewLayer = container.closest('[data-view-layer-shell]');
+    if (!viewLayer) {
+      setIsActiveViewLayer(true);
+      return;
+    }
+
+    const updateActiveState = () => {
+      const style = window.getComputedStyle(viewLayer);
+      setIsActiveViewLayer(
+        style.visibility !== 'hidden' &&
+        style.pointerEvents !== 'none' &&
+        style.opacity !== '0'
+      );
+    };
+
+    updateActiveState();
+    const observer = new MutationObserver(updateActiveState);
+    observer.observe(viewLayer, { attributes: true, attributeFilter: ['class', 'style'] });
+
+    return () => observer.disconnect();
+  }, []);
+
+  useEffect(() => {
+    const shouldHideBottomTab = Boolean(
+      isMobileLayout &&
+      isActiveViewLayer &&
+      (screenPosition !== 'center' || isDragging)
+    );
+
+    if (shouldHideBottomTab) {
+      enterFullscreen?.(fullscreenClaimId);
+    } else {
+      exitFullscreen?.(fullscreenClaimId);
+    }
+
+    return () => {
+      exitFullscreen?.(fullscreenClaimId);
+    };
+  }, [enterFullscreen, exitFullscreen, fullscreenClaimId, isActiveViewLayer, isDragging, isMobileLayout, screenPosition]);
 
   // 计算实际侧边栏宽度
   const sidebarWidth = sidebarWidthProp === 'auto'
@@ -253,6 +315,15 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
     setIsDragging(false);
   }, [sidebarWidth, sidebarOpen, threshold, onSidebarOpenChange, isThreeScreenMode, onScreenPositionChange, screenPosition, rightPanelEnabled]);
 
+  const closeSidebarAfterAppNavigation = useCallback(() => {
+    if (isThreeScreenMode && onScreenPositionChange) {
+      onScreenPositionChange('center');
+      return;
+    }
+
+    onSidebarOpenChange?.(false);
+  }, [isThreeScreenMode, onScreenPositionChange, onSidebarOpenChange]);
+
   // 绑定原生事件（支持 passive: false）
   useEffect(() => {
     const container = containerRef.current;
@@ -329,6 +400,10 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
 
   // 计算最终的 transform 值
   const translateX = isDragging ? currentTranslate : baseTranslate;
+  const sidebarRevealProgress = showContentOverlay && hasSidebar
+    ? Math.max(0, Math.min(1, (translateX + sidebarWidth) / Math.max(sidebarWidth, 1)))
+    : 0;
+  const isSidebarOverlayInteractive = sidebarRevealProgress > 0.98 && screenPosition === 'left' && !isDragging;
 
   // 计算容器总宽度
   const totalWidth = isThreeScreenMode
@@ -338,8 +413,12 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
   return (
     <div
       ref={containerRef}
-      className={cn('h-full overflow-hidden select-none', className)}
-      style={{ touchAction: 'pan-y pinch-zoom', cursor: isDragging ? 'grabbing' : 'default' }}
+      className={cn('relative h-full overflow-hidden select-none', className)}
+      style={{
+        touchAction: 'pan-y pinch-zoom',
+        cursor: isDragging ? 'grabbing' : 'default',
+        zIndex: Z_INDEX.drawer,
+      }}
     >
       <div
         className="flex h-full"
@@ -351,17 +430,37 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
       >
         {/* 侧边栏 */}
         <div
-          className="h-full flex-shrink-0 bg-background"
+          className="relative z-[2] flex h-full min-h-0 flex-shrink-0 flex-col bg-background"
           style={{ width: sidebarWidth }}
         >
-          {sidebar}
+          <div className="min-h-0 flex-1 overflow-hidden">
+            {sidebar}
+          </div>
+          {hasSidebar && isMobileLayout && showSidebarAppNavigation && (
+            <MobileSidebarNavigation onNavigate={closeSidebarAfterAppNavigation} />
+          )}
         </div>
 
         {/* 主内容区域 - 宽度等于外层容器宽度（视口宽度） */}
         <div
-          className="h-full flex-shrink-0 bg-background overflow-x-hidden"
+          className="relative z-[1] h-full flex-shrink-0 overflow-x-hidden bg-background"
           style={{ width: containerWidth || '100vw' }}
         >
+          {showContentOverlay && hasSidebar && (
+            <button
+              type="button"
+              aria-label="关闭侧边栏"
+              aria-hidden={sidebarRevealProgress <= 0.02}
+              tabIndex={isSidebarOverlayInteractive ? 0 : -1}
+              onClick={closeSidebarAfterAppNavigation}
+              data-mobile-sidebar-mask
+              className="absolute inset-0 z-[60] appearance-none border-0 bg-[color:var(--overlay)] p-0 backdrop-blur-[2px] transition-opacity duration-300 ease-out motion-reduce:transition-none"
+              style={{
+                opacity: sidebarRevealProgress,
+                pointerEvents: isSidebarOverlayInteractive ? 'auto' : 'none',
+              }}
+            />
+          )}
           {children}
         </div>
 

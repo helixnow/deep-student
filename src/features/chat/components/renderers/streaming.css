@@ -1,0 +1,17 @@
+/* Streaming rendering styles — extracted from App.css */
+/* Used by: StreamingMarkdownRenderer.tsx, EnhancedMarkdownRenderer.tsx */
+
+.streaming-markdown {
+  position: relative;
+}
+
+/* 流式消息特殊样式 */
+/* 统一修复：流式期间不改变背景/边框/动画，与静态完全一致 */
+.message.streaming .message-content {
+  border-left: none !important;
+  background: inherit !important;
+  animation: none !important;
+}
+
+/* 保留占位的空动画，避免外部引用报错 */
+@keyframes streamingPulse { from { opacity: 1; } to { opacity: 1; } }

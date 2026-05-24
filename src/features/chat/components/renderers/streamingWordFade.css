@@ -1,0 +1,48 @@
+/* ─── Per-word fade-in for streaming content ─────────────────────────────── */
+/* Used by: rehypeAnimateWords.ts                                            */
+/*                                                                            */
+/* 设计要点（Lobe 风格）：                                                     */
+/* 1. 不用 stagger（--sd-i × delay）。                                          */
+/*    旧实现按全局词索引递增，N=1000 时延迟会累积到 30s，                       */
+/*    并且每次新增 batch 都会触发"已显示词重新跑动画"的视觉重放。              */
+/* 2. 单词级 fade-in 用 CSS animation + animation-fill-mode: backwards。         */
+/*    React 复用已挂载节点（通过 hash key 稳定）—— 已显示词不会重跑动画；       */
+/*    新增节点在挂载瞬间播放一次 250ms 的入场动画。                             */
+/* 3. 仅做 opacity 变化，不加 blur/translate。                                  */
+/*    长文/复杂排版下 blur+translate 会显著拖累 GPU 合成成本。                  */
+
+@keyframes sd-word-fade {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.sd-word {
+  display: inline;
+  animation: sd-word-fade 240ms ease-out both;
+}
+
+/* 代码块、数学公式、SVG 内不做逐词动画（已渲染完整结构，逐词反而显得乱） */
+pre .sd-word,
+code .sd-word,
+.katex .sd-word,
+.katex-display .sd-word,
+annotation .sd-word,
+svg .sd-word {
+  animation: none;
+  opacity: 1;
+}
+
+/* 已完成块（非流式中）跳过动画，避免静态重渲染时闪入 */
+.blocked-markdown [data-streaming='false'] .sd-word,
+.streaming-markdown[data-streaming='false'] .sd-word {
+  animation: none;
+  opacity: 1;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sd-word {
+    animation: none;
+    opacity: 1;
+  }
+}
+

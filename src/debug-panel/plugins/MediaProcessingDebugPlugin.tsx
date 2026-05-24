@@ -33,25 +33,25 @@ import { listen, type UnlistenFn } from '@tauri-apps/api/event';
 import {
   FileImage,
   FileText,
-  CheckCircle2,
+  CheckCircle,
   XCircle,
-  Loader2,
-  Trash2,
+  CircleNotch,
+  Trash,
   Clock,
-  Zap,
+  Lightning,
   Eye,
-  EyeOff,
-  MousePointer,
-  Send,
-} from 'lucide-react';
+  EyeSlash,
+  Cursor,
+  PaperPlaneRight,
+} from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
-import { usePdfProcessingStore, type PdfProcessingStatus, type MediaType } from '../../stores/pdfProcessingStore';
+import { usePdfProcessingStore, type PdfProcessingStatus, type MediaType } from '@/features/pdf/stores/pdfProcessingStore';
 import { NotionButton } from '../../components/ui/NotionButton';
 import {
   CHATV2_LOG_EVENT,
   CHATV2_LOGS_CLEARED,
   type ChatV2LogEntry,
-} from '../../chat-v2/debug/chatV2Logger';
+} from '../../features/chat/debug/chatV2Logger';
 
 // =============================================================================
 // 类型定义
@@ -121,11 +121,11 @@ const STAGE_COLORS: Record<string, string> = {
 };
 
 const EVENT_TYPE_ICONS: Record<string, React.ReactNode> = {
-  progress: <Loader2 className="w-3 h-3 text-blue-500 animate-spin" />,
-  completed: <CheckCircle2 className="w-3 h-3 text-green-500" />,
-  error: <XCircle className="w-3 h-3 text-red-500" />,
-  mode_change: <MousePointer className="w-3 h-3 text-purple-500" />,
-  inject: <Send className="w-3 h-3 text-teal-500" />,
+  progress: <CircleNotch size={12} className="text-blue-500 animate-spin" />,
+  completed: <CheckCircle size={12} className="text-green-500" />,
+  error: <XCircle size={12} className="text-red-500" />,
+  mode_change: <Cursor size={12} className="text-purple-500" />,
+  inject: <PaperPlaneRight size={12} className="text-teal-500" />,
 };
 
 const MAX_EVENTS = 200;
@@ -178,9 +178,9 @@ const EventEntry: React.FC<{
         {/* 媒体类型 */}
         <Badge variant="outline" className="text-[10px] px-1.5 py-0">
           {event.mediaType === 'pdf' ? (
-            <FileText className="w-3 h-3 mr-1" />
+            <FileText size={12} className="mr-1" />
           ) : (
-            <FileImage className="w-3 h-3 mr-1" />
+            <FileImage size={12} className="mr-1" />
           )}
           {event.mediaType}
         </Badge>
@@ -639,12 +639,12 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
             size="sm"
             onClick={() => setIsPaused(!isPaused)}
           >
-            {isPaused ? <Eye className="w-4 h-4 mr-1" /> : <EyeOff className="w-4 h-4 mr-1" />}
+            {isPaused ? <Eye size={16} className="mr-1" /> : <EyeSlash size={16} className="mr-1" />}
             {isPaused ? '恢复' : '暂停'}
           </NotionButton>
 
           <NotionButton variant="ghost" size="sm" onClick={clearEvents}>
-            <Trash2 className="w-4 h-4 mr-1" />
+            <Trash size={16} className="mr-1" />
             清空
           </NotionButton>
 
@@ -653,7 +653,7 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
             size="sm"
             onClick={() => setShowStore(!showStore)}
           >
-            <Zap className="w-4 h-4 mr-1" />
+            <Lightning size={16} className="mr-1" />
             Store
           </NotionButton>
         </div>
@@ -671,7 +671,7 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
             size="sm"
             onClick={() => setFilter('pdf')}
           >
-            <FileText className="w-3 h-3 mr-1" />
+            <FileText size={12} className="mr-1" />
             PDF
           </NotionButton>
           <NotionButton
@@ -679,7 +679,7 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
             size="sm"
             onClick={() => setFilter('image')}
           >
-            <FileImage className="w-3 h-3 mr-1" />
+            <FileImage size={12} className="mr-1" />
             图片
           </NotionButton>
         </div>
@@ -722,7 +722,7 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         <Card className="flex-shrink-0 max-h-[200px] overflow-hidden">
           <CardHeader className="py-2 px-3">
             <CardTitle className="text-sm flex items-center gap-2">
-              <Zap className="w-4 h-4" />
+              <Lightning size={16} />
               pdfProcessingStore 状态 ({storeEntries.length})
             </CardTitle>
           </CardHeader>
@@ -740,7 +740,7 @@ const MediaProcessingDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       <Card className="flex-1 overflow-hidden flex flex-col">
         <CardHeader className="py-2 px-3 flex-shrink-0">
           <CardTitle className="text-sm flex items-center gap-2">
-            <Clock className="w-4 h-4" />
+            <Clock size={16} />
             事件流 ({filteredEvents.length})
             {isPaused && (
               <Badge variant="outline" className="text-[10px] px-1.5 py-0 border-yellow-500/50 text-yellow-600">

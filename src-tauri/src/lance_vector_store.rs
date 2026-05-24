@@ -463,7 +463,7 @@ impl LanceVectorStore {
                 return None;
             }
         };
-        tauri::async_runtime::block_on(async move {
+        let fut = async move {
             let db = lancedb::connect(&path).execute().await.ok()?;
             let mut total: usize = 0;
             for name in Self::candidate_kb_table_names_for_scan() {
@@ -476,7 +476,20 @@ impl LanceVectorStore {
                 }
             }
             Some(total)
-        })
+        };
+        match tokio::runtime::Handle::try_current() {
+            Ok(handle) => tokio::task::block_in_place(|| handle.block_on(fut)),
+            Err(_) => {
+                let rt = match tokio::runtime::Runtime::new() {
+                    Ok(rt) => rt,
+                    Err(err) => {
+                        error!("⚠️ [Lance统计] 创建临时 Tokio 运行时失败: {}", err);
+                        return None;
+                    }
+                };
+                rt.block_on(fut)
+            }
+        }
     }
 
     #[cfg(feature = "lance")]
@@ -3241,59 +3254,67 @@ impl LanceVectorStore {
             .map(|(idx, id)| (id.clone(), idx))
             .collect();
 
-        let rows_map: HashMap<String, LanceChunkRow> =
-            tauri::async_runtime::block_on(async move {
-                use futures_util::TryStreamExt;
-                let mut collected: HashMap<String, LanceChunkRow> = HashMap::new();
-                let db = lancedb::connect(&path)
-                    .execute()
-                    .await
-                    .map_err(|e| AppError::database(format!("连接 LanceDB 失败: {}", e)))?;
-                let mut remaining: HashMap<String, usize> = wanted.clone();
+        let fut = async move {
+            use futures_util::TryStreamExt;
+            let mut collected: HashMap<String, LanceChunkRow> = HashMap::new();
+            let db = lancedb::connect(&path)
+                .execute()
+                .await
+                .map_err(|e| AppError::database(format!("连接 LanceDB 失败: {}", e)))?;
+            let mut remaining: HashMap<String, usize> = wanted.clone();
 
-                for dim in Self::candidate_dim_values() {
-                    if remaining.is_empty() {
-                        break;
-                    }
-                    let table_name = format!("{}{}", KB_V2_TABLE_PREFIX, dim);
-                    let tbl = match db.open_table(&table_name).execute().await {
-                        Ok(tbl) => tbl,
-                        Err(_) => continue,
-                    };
-                    let keys: Vec<String> = remaining.keys().cloned().collect();
-                    for batch_ids in keys.chunks(900) {
-                        let in_list = batch_ids
-                            .iter()
-                            .map(|s| format!("'{}'", s.replace("'", "''")))
-                            .collect::<Vec<_>>()
-                            .join(",");
-                        let filter = format!("chunk_id IN ({})", in_list);
-                        let mut stream = tbl
-                            .query()
-                            .only_if(filter.as_str())
-                            .execute()
-                            .await
-                            .map_err(|e| AppError::database(e.to_string()))?;
-                        while let Some(batch) = stream
-                            .try_next()
-                            .await
-                            .map_err(|e| AppError::database(e.to_string()))?
-                        {
-                            for row in Self::extract_chunk_rows_from_batch(&batch)? {
-                                remaining.remove(&row.chunk_id);
-                                collected.insert(row.chunk_id.clone(), row);
-                            }
-                            if remaining.is_empty() {
-                                break;
-                            }
+            for dim in Self::candidate_dim_values() {
+                if remaining.is_empty() {
+                    break;
+                }
+                let table_name = format!("{}{}", KB_V2_TABLE_PREFIX, dim);
+                let tbl = match db.open_table(&table_name).execute().await {
+                    Ok(tbl) => tbl,
+                    Err(_) => continue,
+                };
+                let keys: Vec<String> = remaining.keys().cloned().collect();
+                for batch_ids in keys.chunks(900) {
+                    let in_list = batch_ids
+                        .iter()
+                        .map(|s| format!("'{}'", s.replace("'", "''")))
+                        .collect::<Vec<_>>()
+                        .join(",");
+                    let filter = format!("chunk_id IN ({})", in_list);
+                    let mut stream = tbl
+                        .query()
+                        .only_if(filter.as_str())
+                        .execute()
+                        .await
+                        .map_err(|e| AppError::database(e.to_string()))?;
+                    while let Some(batch) = stream
+                        .try_next()
+                        .await
+                        .map_err(|e| AppError::database(e.to_string()))?
+                    {
+                        for row in Self::extract_chunk_rows_from_batch(&batch)? {
+                            remaining.remove(&row.chunk_id);
+                            collected.insert(row.chunk_id.clone(), row);
                         }
                         if remaining.is_empty() {
                             break;
                         }
                     }
+                    if remaining.is_empty() {
+                        break;
+                    }
                 }
-                Ok::<_, AppError>(collected)
-            })?;
+            }
+            Ok::<_, AppError>(collected)
+        };
+
+        let rows_map: HashMap<String, LanceChunkRow> = match tokio::runtime::Handle::try_current() {
+            Ok(handle) => tokio::task::block_in_place(|| handle.block_on(fut))?,
+            Err(_) => {
+                let rt = tokio::runtime::Runtime::new()
+                    .map_err(|e| AppError::database(format!("创建临时 Tokio 运行时失败: {}", e)))?;
+                rt.block_on(fut)?
+            }
+        };
 
         let mut out = Vec::with_capacity(ids.len());
         for id in ids {

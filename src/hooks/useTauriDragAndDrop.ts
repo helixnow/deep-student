@@ -5,7 +5,7 @@ import { showGlobalNotification } from '../components/UnifiedNotification';
 import {
   ATTACHMENT_IMAGE_EXTENSIONS,
   ATTACHMENT_DOCUMENT_EXTENSIONS,
-} from '@/chat-v2/core/constants';
+} from '@/features/chat/core/constants';
 import i18n from '@/i18n';
 
 // 扩展名到 MIME 类型映射表（与 UnifiedDragDropZone EXTENSION_TO_MIME 保持一致）
@@ -54,6 +54,12 @@ export function ensureGlobalDragHandlers() {
 let _lastNativeDropTs = 0;
 export function markNativeDrop() { _lastNativeDropTs = Date.now(); }
 export function isNativeDropRecent() { return Date.now() - _lastNativeDropTs < 500; }
+
+function hasFileDragPayload(dataTransfer?: Pick<DataTransfer, 'types' | 'files'> | null): boolean {
+  if (!dataTransfer) return false;
+  if (Array.from(dataTransfer.types ?? []).includes('Files')) return true;
+  return Array.from(dataTransfer.files ?? []).length > 0;
+}
 
 // 调试事件发射器（与 UnifiedDragDropZone 保持一致）
 const emitDebugEvent = (
@@ -382,8 +388,11 @@ export const useTauriDragAndDrop = ({
           
           switch (event.payload.type) {
             case 'enter':
+              if (!paths?.length) {
+                return;
+              }
               // 如果设置了 feedbackExtensions，只对匹配的文件显示反馈
-              if (feedbackExtensions && paths && !matchesFeedbackExtensions(paths)) {
+              if (feedbackExtensions && !matchesFeedbackExtensions(paths)) {
                 return;
               }
               setIsDragging(true);
@@ -515,6 +524,7 @@ export const useTauriDragAndDrop = ({
 
   const dropZoneProps = {
     onDragEnter: (e: React.DragEvent) => {
+      if (!hasFileDragPayload(e.dataTransfer)) return;
       e.preventDefault();
       e.stopPropagation();
       if (isEnabled) {
@@ -535,11 +545,13 @@ export const useTauriDragAndDrop = ({
       }
     },
     onDragOver: (e: React.DragEvent) => {
+      if (!hasFileDragPayload(e.dataTransfer)) return;
       e.preventDefault();
       e.stopPropagation();
       if (isEnabled) e.dataTransfer.dropEffect = 'copy';
     },
     onDrop: (e: React.DragEvent) => {
+      if (!hasFileDragPayload(e.dataTransfer)) return;
       e.preventDefault();
       e.stopPropagation();
       setIsDragging(false);

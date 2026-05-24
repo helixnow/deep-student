@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { Textarea } from '../ui/shad/Textarea';
+import { Input } from '../ui/shad/Input';
 import { AppSelect } from '../ui/app-menu';
 import { Switch } from '../ui/shad/Switch';
 import { Label } from '../ui/shad/Label';
-import { Save, RotateCcw, Plus, X, BookOpen } from 'lucide-react';
+import { FloppyDisk, ArrowCounterClockwise, Plus, X, BookOpen } from '@phosphor-icons/react';
 import { CustomScrollArea } from '../custom-scroll-area';
 
 interface PromptPanelProps {
@@ -69,7 +70,7 @@ const GlossaryEditor: React.FC<{
     <div className="space-y-2">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-1.5">
-          <BookOpen className="w-3.5 h-3.5 text-muted-foreground" />
+          <BookOpen size={14} className="text-muted-foreground" />
           <span className="text-sm font-medium text-muted-foreground">
             {t('translation:prompt_editor.glossary_title')}
           </span>
@@ -86,29 +87,29 @@ const GlossaryEditor: React.FC<{
 
       {/* 新增行 */}
       <div className="flex items-center gap-2 min-w-0">
-        <input
+        <Input
           value={newSrc}
           onChange={(e) => setNewSrc(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={t('translation:prompt_editor.glossary_source')}
           className="flex-1 min-w-0 h-8 px-2.5 text-sm bg-muted/30 border border-transparent rounded-md focus:border-primary/50 focus:bg-background focus:outline-none transition-colors placeholder:text-muted-foreground/40"
-        />
+/>
         <span className="text-muted-foreground/40 text-xs shrink-0">→</span>
-        <input
+        <Input
           value={newTgt}
           onChange={(e) => setNewTgt(e.target.value)}
           onKeyDown={handleKeyDown}
           placeholder={t('translation:prompt_editor.glossary_target')}
           className="flex-1 min-w-0 h-8 px-2.5 text-sm bg-muted/30 border border-transparent rounded-md focus:border-primary/50 focus:bg-background focus:outline-none transition-colors placeholder:text-muted-foreground/40"
-        />
+/>
         <NotionButton
           variant="ghost"
           size="icon"
           onClick={handleAdd}
           disabled={!newSrc.trim() || !newTgt.trim()}
-          className="h-8 w-8 shrink-0 text-primary hover:bg-primary/10"
+ className="w-8 h-8 shrink-0 text-primary hover:bg-primary/10"
         >
-          <Plus className="w-4 h-4" />
+          <Plus size={16} />
         </NotionButton>
       </div>
 
@@ -122,7 +123,7 @@ const GlossaryEditor: React.FC<{
           {glossary.map(([src, tgt], index) => (
             <div
               key={`${src}::${tgt}::${index}`}
-              className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-muted/20 hover:bg-muted/40 transition-colors group"
+              className="flex items-center gap-2 px-2.5 py-1.5 rounded-md bg-muted/20 hover:bg-[var(--interactive-hover)] transition-colors group"
             >
               <span className="flex-1 text-sm truncate font-mono">{src}</span>
               <span className="text-muted-foreground/40 text-xs shrink-0">→</span>
@@ -131,9 +132,9 @@ const GlossaryEditor: React.FC<{
                 variant="ghost"
                 size="icon"
                 onClick={() => handleRemove(index)}
-                className="h-6 w-6 opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/10 hover:text-destructive transition-all shrink-0"
+ className="w-6 h-6 opacity-0 group-hover:opacity-100 p-0.5 rounded hover:bg-destructive/10 hover:text-destructive transition-colors shrink-0"
               >
-                <X className="w-3.5 h-3.5" />
+                <X size={14} />
               </NotionButton>
             </div>
           ))}
@@ -189,7 +190,7 @@ const PromptEditorContent: React.FC<{
                 value: d.value,
                 label: t(d.labelKey),
               }))}
-            />
+/>
           </div>
         )}
         <div className="flex items-center gap-2">
@@ -206,7 +207,7 @@ const PromptEditorContent: React.FC<{
               { value: 'formal', label: t('translation:prompt_editor.formality_formal') },
               { value: 'casual', label: t('translation:prompt_editor.formality_casual') },
             ]}
-          />
+/>
         </div>
       </div>
 
@@ -225,7 +226,7 @@ const PromptEditorContent: React.FC<{
           onChange={(e) => setCustomPrompt(e.target.value)}
           placeholder={t('translation:prompt_editor.placeholder')}
           className="flex-1 min-h-[100px] resize-none w-full"
-        />
+/>
       </div>
 
       <div className="flex gap-2 justify-end">
@@ -234,7 +235,7 @@ const PromptEditorContent: React.FC<{
           size="sm"
           onClick={onRestoreDefaultPrompt}
         >
-          <RotateCcw className="w-4 h-4 mr-2" />
+          <ArrowCounterClockwise size={16} className="mr-2" />
           {t('translation:prompt_editor.restore_default')}
         </NotionButton>
         <NotionButton
@@ -242,7 +243,7 @@ const PromptEditorContent: React.FC<{
           size="sm"
           onClick={onSavePrompt}
         >
-          <Save className="w-4 h-4 mr-2" />
+          <FloppyDisk size={16} className="mr-2" />
           {t('translation:prompt_editor.save')}
         </NotionButton>
       </div>
@@ -289,7 +290,7 @@ export const PromptPanel: React.FC<PromptPanelProps> = ({
                   checked={isAutoTranslate}
                   onCheckedChange={setIsAutoTranslate}
                   className="data-[state=checked]:bg-primary"
-                />
+/>
               </div>
             )}
 
@@ -303,7 +304,7 @@ export const PromptPanel: React.FC<PromptPanelProps> = ({
                   checked={isSyncScroll}
                   onCheckedChange={setIsSyncScroll}
                   className="data-[state=checked]:bg-primary"
-                />
+/>
               </div>
             )}
           </div>
@@ -327,7 +328,7 @@ export const PromptPanel: React.FC<PromptPanelProps> = ({
             glossary={glossary}
             setGlossary={setGlossary}
             className="h-full"
-          />
+/>
         </CustomScrollArea>
       </div>
     );
@@ -347,7 +348,7 @@ export const PromptPanel: React.FC<PromptPanelProps> = ({
           onClick={() => setIsOpen(false)}
           className="h-7 w-7 text-muted-foreground/60 hover:text-foreground"
         >
-          <X className="w-4 h-4" />
+          <X size={16} />
         </NotionButton>
       </div>
 
@@ -370,7 +371,7 @@ export const PromptPanel: React.FC<PromptPanelProps> = ({
                   checked={isAutoTranslate}
                   onCheckedChange={setIsAutoTranslate}
                   className="data-[state=checked]:bg-primary"
-                />
+/>
               </div>
             )}
 
@@ -384,7 +385,7 @@ export const PromptPanel: React.FC<PromptPanelProps> = ({
                   checked={isSyncScroll}
                   onCheckedChange={setIsSyncScroll}
                   className="data-[state=checked]:bg-primary"
-                />
+/>
               </div>
             )}
           </div>
@@ -404,7 +405,7 @@ export const PromptPanel: React.FC<PromptPanelProps> = ({
           setDomain={setDomain}
           glossary={glossary}
           setGlossary={setGlossary}
-        />
+/>
       </CustomScrollArea>
     </div>
   );

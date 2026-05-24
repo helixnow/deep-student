@@ -55,8 +55,8 @@ fi
 
 if [[ -z "${SKIP_ICON_GENERATION:-}" ]]; then
   echo "\n[3.5/6] Generating icons..."
-  if [[ ! -f "app-icon.png" ]]; then
-    echo "[warn] app-icon.png not found, using existing icons"
+  if [[ ! -f "public/app-icon.png" ]]; then
+    echo "[warn] public/app-icon.png not found, using existing icons"
   else
     npm run icons || echo "[warn] Icon generation failed, using existing icons"
   fi
@@ -103,7 +103,7 @@ if npm run | grep -q "build:ios"; then
   npm run build:ios
 else
   # Fallback to direct CLI
-  npx --yes @tauri-apps/cli@latest icon --output src-tauri/icons_ios_current app-icon.png || true
+  npx --yes @tauri-apps/cli@latest icon --output src-tauri/icons_ios_current public/app-icon.png || true
   $TAURI_CLI ios build --ci
 fi
 

@@ -4,7 +4,7 @@
 
 ## ✨ 特性
 
-- 🚀 **立即显示** - 鼠标悬停立即显示提示，无延迟（可配置）
+- 🚀 **意图延迟** - 默认悬停 500ms 后显示，避免误触和浮层冲突（可配置）
 - 🎨 **多主题支持** - 深色、浅色、自动跟随系统
 - 📍 **多位置支持** - 上、下、左、右四个方向
 - 🎯 **智能定位** - 自动边界检测，防止超出视口
@@ -70,7 +70,7 @@ import CommonTooltip from '@/components/shared/CommonTooltip';
 | `disabled` | `boolean` | `false` | 是否禁用提示 |
 | `offset` | `number` | `8` | 气泡与触发元素的距离（px） |
 | `showArrow` | `boolean` | `true` | 是否显示箭头 |
-| `delay` | `number` | `0` | 延迟显示时间（ms），0为立即显示 |
+| `delay` | `number` | `500` | 延迟显示时间（ms），0为立即显示 |
 | `maxWidth` | `number \| string` | `300` | 最大宽度 |
 | `className` | `string` | `''` | 自定义CSS类名 |
 | `children` | `React.ReactElement` | *必填* | 触发元素（必须是单个元素） |
@@ -208,6 +208,9 @@ const isMobile = window.innerWidth < 768;
 </CommonTooltip>
 ```
 
+### 5. 菜单/弹层优先
+`CommonTooltip` 会接入 `OverlayCoordinatorProvider`。当 `AppMenu` 或共享 `Popover` 打开时，当前 tooltip 会立即关闭，并且在交互浮层关闭前不会显示新的 tooltip。打开菜单、弹层的 trigger 不需要手工加 `disabled={menuOpen}`。
+
 ## 🔍 注意事项
 
 1. **单个子元素**：`children` 必须是单个React元素，不能是文本或多个元素
@@ -260,4 +263,3 @@ export interface CommonTooltipProps {
 ## 📄 许可
 
 MIT License
-

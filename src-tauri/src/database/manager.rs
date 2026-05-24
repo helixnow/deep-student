@@ -1249,12 +1249,12 @@ impl DatabaseManager {
                 )
                 .unwrap_or_else(|_| 0); // 如果列已存在则忽略错误
 
-                println!("数学工作流图片路径字段添加成功");
-                println!("数据库迁移 v17 -> v18 完成");
+                tracing::info!("数学工作流图片路径字段添加成功");
+                tracing::info!("数据库迁移 v17 -> v18 完成");
             }
             19 => {
                 // 添加文档附件字段到聊天消息表
-                println!("开始数据库迁移 v18 -> v19: 添加文档附件支持...");
+                tracing::info!("开始数据库迁移 v18 -> v19: 添加文档附件支持...");
 
                 // 为 chat_messages 表添加文档附件字段
                 conn.execute(
@@ -1262,7 +1262,7 @@ impl DatabaseManager {
                     [],
                 )
                 .unwrap_or_else(|e| {
-                    println!(
+                    tracing::info!(
                         "chat_messages 表添加 doc_attachments 字段时出现错误（可能已存在）: {}",
                         e
                     );
@@ -1274,16 +1274,16 @@ impl DatabaseManager {
                     "ALTER TABLE review_chat_messages ADD COLUMN doc_attachments TEXT NULL",
                     [],
                 ).unwrap_or_else(|e| {
-                    println!("review_chat_messages 表添加 doc_attachments 字段时出现错误（可能已存在）: {}", e);
+                    tracing::info!("review_chat_messages 表添加 doc_attachments 字段时出现错误（可能已存在）: {}", e);
                     0
                 });
 
-                println!("文档附件字段添加成功");
-                println!("数据库迁移 v18 -> v19 完成");
+                tracing::info!("文档附件字段添加成功");
+                tracing::info!("数据库迁移 v18 -> v19 完成");
             }
             20 => {
                 // 为 review_chat_messages 表添加图片字段，与 chat_messages 对齐
-                println!("执行数据库迁移到版本20：为review_chat_messages表添加多模态支持");
+                tracing::info!("执行数据库迁移到版本20：为review_chat_messages表添加多模态支持");
 
                 // 添加 image_paths 字段
                 conn.execute(
@@ -1291,7 +1291,7 @@ impl DatabaseManager {
                     [],
                 )
                 .unwrap_or_else(|e| {
-                    println!(
+                    tracing::info!(
                         "review_chat_messages 表添加 image_paths 字段时出现错误（可能已存在）: {}",
                         e
                     );
@@ -1304,19 +1304,19 @@ impl DatabaseManager {
                     [],
                 )
                 .unwrap_or_else(|e| {
-                    println!(
+                    tracing::info!(
                         "review_chat_messages 表添加 image_base64 字段时出现错误（可能已存在）: {}",
                         e
                     );
                     0
                 });
 
-                println!("review_chat_messages表多模态字段添加成功");
-                println!("数据库迁移 v19 -> v20 完成");
+                tracing::info!("review_chat_messages表多模态字段添加成功");
+                tracing::info!("数据库迁移 v19 -> v20 完成");
             }
             21 => {
                 // 添加 web_search_sources 字段到消息表，与 rag_sources 和 memory_sources 对齐
-                println!("开始数据库迁移 v20 -> v21: 添加外部搜索来源持久化支持...");
+                tracing::info!("开始数据库迁移 v20 -> v21: 添加外部搜索来源持久化支持...");
 
                 // 添加 chat_messages.web_search_sources 字段
                 conn.execute(
@@ -1324,7 +1324,7 @@ impl DatabaseManager {
                     [],
                 )
                 .unwrap_or_else(|e| {
-                    println!(
+                    tracing::info!(
                         "chat_messages 表添加 web_search_sources 字段时出现错误（可能已存在）: {}",
                         e
                     );
@@ -1336,16 +1336,16 @@ impl DatabaseManager {
                     "ALTER TABLE review_chat_messages ADD COLUMN web_search_sources TEXT NULL",
                     [],
                 ).unwrap_or_else(|e| {
-                    println!("review_chat_messages 表添加 web_search_sources 字段时出现错误（可能已存在）: {}", e);
+                    tracing::info!("review_chat_messages 表添加 web_search_sources 字段时出现错误（可能已存在）: {}", e);
                     0
                 });
 
-                println!("外部搜索来源字段添加成功");
-                println!("数据库迁移 v20 -> v21 完成");
+                tracing::info!("外部搜索来源字段添加成功");
+                tracing::info!("数据库迁移 v20 -> v21 完成");
             }
             22 => {
                 // 回合化：为缺失 turn 字段的历史消息进行最小配对回填
-                println!(
+                tracing::info!(
                     "开始数据库迁移 v21 -> v22: 填充 turn_id/turn_seq/message_kind/lifecycle …"
                 );
                 // 仅处理 role in ('user','assistant') 且 turn_id 为空的记录
@@ -1387,7 +1387,7 @@ impl DatabaseManager {
                             )?;
                             } else {
                                 // 不为孤立的 assistant 生成新 turn，保留其 turn_id 为空，读取层将忽略显示
-                                println!(
+                                tracing::info!(
                                     "v22迁移：检测到孤立assistant(id={})，已保留为未配对形态",
                                     row_id
                                 );
@@ -1402,11 +1402,11 @@ impl DatabaseManager {
                     [],
                 )?;
                 conn.execute("CREATE INDEX IF NOT EXISTS idx_chat_turn_pair ON chat_messages(mistake_id, turn_id)", [])?;
-                println!("数据库迁移 v21 -> v22 完成");
+                tracing::info!("数据库迁移 v21 -> v22 完成");
             }
             23 => {
                 // 历史工具行合并：把 role='tool' 行的调用/结果/引文合并回最近的 assistant
-                println!("开始数据库迁移 v22 -> v23: 合并历史工具消息到 assistant …");
+                tracing::info!("开始数据库迁移 v22 -> v23: 合并历史工具消息到 assistant …");
                 // 收集所有存在工具行的 mistake_id
                 let mut distinct_stmt = conn
                     .prepare("SELECT DISTINCT mistake_id FROM chat_messages WHERE role = 'tool'")?;
@@ -1604,7 +1604,7 @@ impl DatabaseManager {
                             )?;
                         } else {
                             // 无法定位到 assistant，保留工具行供人工处理
-                            println!(
+                            tracing::info!(
                                 "v23迁移：未找到可合并目标assistant，保留工具行: id={}",
                                 tool_id
                             );
@@ -1619,11 +1619,11 @@ impl DatabaseManager {
                     [],
                 )?;
 
-                println!("数据库迁移 v22 -> v23 完成");
+                tracing::info!("数据库迁移 v22 -> v23 完成");
             }
             24 => {
                 // 放宽 document_tasks.status 以支持 'Paused'
-                println!("开始数据库迁移 v23 -> v24: 更新 document_tasks.status CHECK 约束加入 'Paused'...");
+                tracing::info!("开始数据库迁移 v23 -> v24: 更新 document_tasks.status CHECK 约束加入 'Paused'...");
 
                 // 首先清理可能存在的残留旧表（处理迁移中断的情况）
                 let old_table_exists: bool = conn.query_row(
@@ -1633,7 +1633,7 @@ impl DatabaseManager {
                 ).unwrap_or(false);
 
                 if old_table_exists {
-                    println!("检测到残留的 document_tasks_old 表，正在清理...");
+                    tracing::info!("检测到残留的 document_tasks_old 表，正在清理...");
                     // 尝试恢复数据
                     let has_document_tasks = conn.query_row(
                         "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='document_tasks'",
@@ -1643,7 +1643,7 @@ impl DatabaseManager {
 
                     if !has_document_tasks {
                         // 如果 document_tasks 不存在，从 old 表恢复
-                        println!("🔧 恢复 document_tasks 表...");
+                        tracing::info!("🔧 恢复 document_tasks 表...");
                         conn.execute(
                             "ALTER TABLE document_tasks_old RENAME TO document_tasks",
                             [],
@@ -1665,7 +1665,7 @@ impl DatabaseManager {
                     Some(def) => !def.contains("'Paused'"),
                     None => {
                         // 表不存在，需要创建
-                        println!("document_tasks 表不存在，将创建新表");
+                        tracing::info!("document_tasks 表不存在，将创建新表");
                         true
                     }
                 };
@@ -1742,7 +1742,7 @@ impl DatabaseManager {
                     ).unwrap_or(false);
 
                     if anki_cards_needs_fix {
-                        println!("🔧 修复 anki_cards 表的外键引用...");
+                        tracing::info!("🔧 修复 anki_cards 表的外键引用...");
 
                         // 使用嵌套 SAVEPOINT（不能用 conn.transaction()，外层已有事务）
                         conn.execute_batch("SAVEPOINT v24_anki_fix")?;
@@ -1875,12 +1875,12 @@ impl DatabaseManager {
                         conn.execute("DROP TABLE anki_cards_old", [])?;
 
                         conn.execute_batch("RELEASE SAVEPOINT v24_anki_fix")?;
-                        println!("anki_cards 表外键引用已修复");
+                        tracing::info!("anki_cards 表外键引用已修复");
                     }
 
-                    println!("v24: document_tasks 已重建并支持 'Paused'");
+                    tracing::info!("v24: document_tasks 已重建并支持 'Paused'");
                 } else {
-                    println!("v24: document_tasks 已包含 'Paused'，无需重建");
+                    tracing::info!("v24: document_tasks 已包含 'Paused'，无需重建");
 
                     // 即使不需要重建 document_tasks，也要检查 anki_cards 表的外键引用
                     let anki_cards_needs_fix: bool = conn.query_row(
@@ -1893,7 +1893,7 @@ impl DatabaseManager {
                     ).unwrap_or(false);
 
                     if anki_cards_needs_fix {
-                        println!("🔧 修复 anki_cards 表的外键引用...");
+                        tracing::info!("🔧 修复 anki_cards 表的外键引用...");
 
                         // 使用嵌套 SAVEPOINT（不能用 conn.transaction()，外层已有事务）
                         conn.execute_batch("SAVEPOINT v24_anki_fix_else")?;
@@ -1951,14 +1951,14 @@ impl DatabaseManager {
                         conn.execute("DROP TABLE anki_cards_old", [])?;
 
                         conn.execute_batch("RELEASE SAVEPOINT v24_anki_fix_else")?;
-                        println!("anki_cards 表外键引用已修复");
+                        tracing::info!("anki_cards 表外键引用已修复");
                     }
                 }
-                println!("数据库迁移 v23 -> v24 完成");
+                tracing::info!("数据库迁移 v23 -> v24 完成");
             }
             25 => {
                 // 修复已经在v24但anki_cards表仍然引用document_tasks_old的问题
-                println!("开始数据库迁移 v24 -> v25: 修复 anki_cards 表外键引用...");
+                tracing::info!("开始数据库迁移 v24 -> v25: 修复 anki_cards 表外键引用...");
 
                 // 检查 anki_cards 表的外键引用
                 let anki_cards_needs_fix: bool = conn
@@ -1973,7 +1973,9 @@ impl DatabaseManager {
                     .unwrap_or(false);
 
                 if anki_cards_needs_fix {
-                    println!("🔧 检测到 anki_cards 表仍然引用 document_tasks_old，开始修复...");
+                    tracing::info!(
+                        "🔧 检测到 anki_cards 表仍然引用 document_tasks_old，开始修复..."
+                    );
 
                     // 使用嵌套 SAVEPOINT（不能用 conn.transaction()，外层已有事务）
                     conn.execute_batch("SAVEPOINT v25_anki_fix")?;
@@ -2057,15 +2059,15 @@ impl DatabaseManager {
                     conn.execute("DROP TABLE anki_cards_old", [])?;
 
                     conn.execute_batch("RELEASE SAVEPOINT v25_anki_fix")?;
-                    println!("anki_cards 表外键引用已修复");
+                    tracing::info!("anki_cards 表外键引用已修复");
                 } else {
-                    println!("anki_cards 表外键引用正确，无需修复");
+                    tracing::info!("anki_cards 表外键引用正确，无需修复");
                 }
 
-                println!("数据库迁移 v24 -> v25 完成");
+                tracing::info!("数据库迁移 v24 -> v25 完成");
             }
             26 => {
-                println!("开始数据库迁移 v25 -> v26: 为 mistakes 表添加 OCR 笔记字段...");
+                tracing::info!("开始数据库迁移 v25 -> v26: 为 mistakes 表添加 OCR 笔记字段...");
 
                 let has_column: bool = conn
                     .query_row(
@@ -2077,15 +2079,15 @@ impl DatabaseManager {
 
                 if !has_column {
                     conn.execute("ALTER TABLE mistakes ADD COLUMN ocr_note TEXT", [])?;
-                    println!("已为 mistakes 表添加 ocr_note 列");
+                    tracing::info!("已为 mistakes 表添加 ocr_note 列");
                 } else {
-                    println!("mistakes 表已包含 ocr_note 列，跳过添加");
+                    tracing::info!("mistakes 表已包含 ocr_note 列，跳过添加");
                 }
 
-                println!("数据库迁移 v25 -> v26 完成");
+                tracing::info!("数据库迁移 v25 -> v26 完成");
             }
             27 => {
-                println!("开始数据库迁移 v26 -> v27: 添加题目集识别关联字段...");
+                tracing::info!("开始数据库迁移 v26 -> v27: 添加题目集识别关联字段...");
 
                 let has_column: bool = conn
                     .query_row(
@@ -2097,15 +2099,17 @@ impl DatabaseManager {
 
                 if !has_column {
                     conn.execute("ALTER TABLE mistakes ADD COLUMN exam_sheet TEXT", [])?;
-                    println!("已为 mistakes 表添加 exam_sheet 列");
+                    tracing::info!("已为 mistakes 表添加 exam_sheet 列");
                 } else {
-                    println!("mistakes 表已包含 exam_sheet 列，跳过添加");
+                    tracing::info!("mistakes 表已包含 exam_sheet 列，跳过添加");
                 }
 
-                println!("数据库迁移 v26 -> v27 完成");
+                tracing::info!("数据库迁移 v26 -> v27 完成");
             }
             28 => {
-                println!("开始数据库迁移 v27 -> v28: 为 mistakes 表添加 last_accessed_at 字段...");
+                tracing::info!(
+                    "开始数据库迁移 v27 -> v28: 为 mistakes 表添加 last_accessed_at 字段..."
+                );
 
                 let has_column: bool = conn
                     .query_row(
@@ -2124,15 +2128,15 @@ impl DatabaseManager {
                         "UPDATE mistakes SET last_accessed_at = updated_at WHERE last_accessed_at IS NULL OR last_accessed_at = '1970-01-01T00:00:00Z'",
                         [],
                     )?;
-                    println!("已为 mistakes 表添加 last_accessed_at 列");
+                    tracing::info!("已为 mistakes 表添加 last_accessed_at 列");
                 } else {
-                    println!("mistakes 表已包含 last_accessed_at 列，跳过添加");
+                    tracing::info!("mistakes 表已包含 last_accessed_at 列，跳过添加");
                 }
 
-                println!("数据库迁移 v27 -> v28 完成");
+                tracing::info!("数据库迁移 v27 -> v28 完成");
             }
             29 => {
-                println!("开始数据库迁移 v28 -> v29: 添加 stable_id 列用于消息增量保存...");
+                tracing::info!("开始数据库迁移 v28 -> v29: 添加 stable_id 列用于消息增量保存...");
 
                 let has_column: bool = conn
                     .query_row(
@@ -2144,9 +2148,9 @@ impl DatabaseManager {
 
                 if !has_column {
                     conn.execute("ALTER TABLE chat_messages ADD COLUMN stable_id TEXT", [])?;
-                    println!("已为 chat_messages 表添加 stable_id 列");
+                    tracing::info!("已为 chat_messages 表添加 stable_id 列");
                 } else {
-                    println!("chat_messages 表已包含 stable_id 列，跳过添加");
+                    tracing::info!("chat_messages 表已包含 stable_id 列，跳过添加");
                 }
 
                 // 创建部分唯一索引（仅对非空 stable_id）
@@ -2155,7 +2159,7 @@ impl DatabaseManager {
                      WHERE stable_id IS NOT NULL AND stable_id <> ''",
                     [],
                 )?;
-                println!("已创建 chat_messages(mistake_id, stable_id) 部分唯一索引");
+                tracing::info!("已创建 chat_messages(mistake_id, stable_id) 部分唯一索引");
 
                 // 创建普通索引加速查询
                 conn.execute(
@@ -2164,14 +2168,16 @@ impl DatabaseManager {
                     [],
                 )?;
 
-                println!("数据库迁移 v28 -> v29 完成");
+                tracing::info!("数据库迁移 v28 -> v29 完成");
             }
             30 => {
-                println!("开始数据库迁移 v29 -> v30: 预留版本");
-                println!("数据库迁移 v29 -> v30 完成");
+                tracing::info!("开始数据库迁移 v29 -> v30: 预留版本");
+                tracing::info!("数据库迁移 v29 -> v30 完成");
             }
             31 => {
-                println!("开始数据库迁移 v30 -> v31: 确保 stable_id 列与索引存在（幂等补齐）...");
+                tracing::info!(
+                    "开始数据库迁移 v30 -> v31: 确保 stable_id 列与索引存在（幂等补齐）..."
+                );
 
                 // 幂等检查并添加 stable_id 列
                 let has_column: bool = conn
@@ -2184,9 +2190,9 @@ impl DatabaseManager {
 
                 if !has_column {
                     conn.execute("ALTER TABLE chat_messages ADD COLUMN stable_id TEXT", [])?;
-                    println!("已为 chat_messages 表添加 stable_id 列");
+                    tracing::info!("已为 chat_messages 表添加 stable_id 列");
                 } else {
-                    println!("chat_messages 表已包含 stable_id 列，跳过添加");
+                    tracing::info!("chat_messages 表已包含 stable_id 列，跳过添加");
                 }
 
                 // 幂等创建唯一索引
@@ -2203,10 +2209,10 @@ impl DatabaseManager {
                     [],
                 )?;
 
-                println!("数据库迁移 v30 -> v31 完成");
+                tracing::info!("数据库迁移 v30 -> v31 完成");
             }
             32 => {
-                println!("开始数据库迁移 v31 -> v32: 添加模板 AI 会话表...");
+                tracing::info!("开始数据库迁移 v31 -> v32: 添加模板 AI 会话表...");
 
                 // 创建 template_ai_sessions 表
                 conn.execute(
@@ -2250,10 +2256,10 @@ impl DatabaseManager {
                     [],
                 )?;
 
-                println!("数据库迁移 v31 -> v32 完成");
+                tracing::info!("数据库迁移 v31 -> v32 完成");
             }
             33 => {
-                println!("开始数据库迁移 v32 -> v33: 模板 AI 会话表新增模型/风格字段...");
+                tracing::info!("开始数据库迁移 v32 -> v33: 模板 AI 会话表新增模型/风格字段...");
                 if let Err(e) = conn.execute(
                     "ALTER TABLE template_ai_sessions ADD COLUMN model_override_id TEXT",
                     [],
@@ -2278,10 +2284,10 @@ impl DatabaseManager {
                         .into());
                     }
                 }
-                println!("数据库迁移 v32 -> v33 完成");
+                tracing::info!("数据库迁移 v32 -> v33 完成");
             }
             34 => {
-                println!("开始数据库迁移 v33 -> v34: 创建 temp_sessions 表与索引...");
+                tracing::info!("开始数据库迁移 v33 -> v34: 创建 temp_sessions 表与索引...");
                 conn.execute_batch(
                     "CREATE TABLE IF NOT EXISTS temp_sessions (
                         temp_id TEXT PRIMARY KEY,
@@ -2294,10 +2300,10 @@ impl DatabaseManager {
                     CREATE INDEX IF NOT EXISTS idx_temp_sessions_state ON temp_sessions(stream_state);
                     CREATE INDEX IF NOT EXISTS idx_temp_sessions_updated_at ON temp_sessions(updated_at);",
                 )?;
-                println!("数据库迁移 v33 -> v34 完成");
+                tracing::info!("数据库迁移 v33 -> v34 完成");
             }
             35 => {
-                println!(
+                tracing::info!(
                     "开始数据库迁移 v34 -> v35: 为 mistakes 表添加 autosave_signature 字段..."
                 );
 
@@ -2314,15 +2320,15 @@ impl DatabaseManager {
                         "ALTER TABLE mistakes ADD COLUMN autosave_signature TEXT",
                         [],
                     )?;
-                    println!("已添加 autosave_signature 列");
+                    tracing::info!("已添加 autosave_signature 列");
                 } else {
-                    println!("mistakes 表已包含 autosave_signature 列，跳过添加");
+                    tracing::info!("mistakes 表已包含 autosave_signature 列，跳过添加");
                 }
 
-                println!("数据库迁移 v34 -> v35 完成");
+                tracing::info!("数据库迁移 v34 -> v35 完成");
             }
             36 => {
-                println!("开始数据库迁移 v35 -> v36: 清理 temp_sessions 表废弃快照字段...");
+                tracing::info!("开始数据库迁移 v35 -> v36: 清理 temp_sessions 表废弃快照字段...");
 
                 // SQLite 不支持直接删除列，需要重建表
                 conn.execute_batch(
@@ -2343,10 +2349,12 @@ impl DatabaseManager {
                     CREATE INDEX IF NOT EXISTS idx_temp_sessions_updated_at ON temp_sessions(updated_at);",
                 )?;
 
-                println!("数据库迁移 v35 -> v36 完成（已删除 stream_snapshot、last_snapshot_hash、last_snapshot_at 字段）");
+                tracing::info!("数据库迁移 v35 -> v36 完成（已删除 stream_snapshot、last_snapshot_hash、last_snapshot_at 字段）");
             }
             37 => {
-                println!("开始数据库迁移 v36 -> v37: 为 translations 表添加收藏和评分字段...");
+                tracing::info!(
+                    "开始数据库迁移 v36 -> v37: 为 translations 表添加收藏和评分字段..."
+                );
 
                 // 添加 is_favorite 字段（默认 0 = 未收藏）
                 conn.execute(
@@ -2368,10 +2376,10 @@ impl DatabaseManager {
                     [],
                 )?;
 
-                println!("数据库迁移 v36 -> v37 完成（translations 表新增 is_favorite, quality_rating 字段）");
+                tracing::info!("数据库迁移 v36 -> v37 完成（translations 表新增 is_favorite, quality_rating 字段）");
             }
             38 => {
-                println!("开始数据库迁移 v37 -> v38: 为 exam_sheet_sessions 表添加 resource_id 和 content_hash 字段...");
+                tracing::info!("开始数据库迁移 v37 -> v38: 为 exam_sheet_sessions 表添加 resource_id 和 content_hash 字段...");
 
                 // 检查并添加 resource_id 字段
                 let has_resource_id: bool = conn
@@ -2387,9 +2395,9 @@ impl DatabaseManager {
                         "ALTER TABLE exam_sheet_sessions ADD COLUMN resource_id TEXT",
                         [],
                     )?;
-                    println!("已为 exam_sheet_sessions 表添加 resource_id 列");
+                    tracing::info!("已为 exam_sheet_sessions 表添加 resource_id 列");
                 } else {
-                    println!("exam_sheet_sessions 表已包含 resource_id 列，跳过添加");
+                    tracing::info!("exam_sheet_sessions 表已包含 resource_id 列，跳过添加");
                 }
 
                 // 检查并添加 content_hash 字段
@@ -2406,9 +2414,9 @@ impl DatabaseManager {
                         "ALTER TABLE exam_sheet_sessions ADD COLUMN content_hash TEXT",
                         [],
                     )?;
-                    println!("已为 exam_sheet_sessions 表添加 content_hash 列");
+                    tracing::info!("已为 exam_sheet_sessions 表添加 content_hash 列");
                 } else {
-                    println!("exam_sheet_sessions 表已包含 content_hash 列，跳过添加");
+                    tracing::info!("exam_sheet_sessions 表已包含 content_hash 列，跳过添加");
                 }
 
                 // 为 resource_id 添加索引，便于查询已同步的题目集会话
@@ -2417,11 +2425,11 @@ impl DatabaseManager {
                     [],
                 )?;
 
-                println!("数据库迁移 v37 -> v38 完成（exam_sheet_sessions 表新增 resource_id, content_hash 字段）");
+                tracing::info!("数据库迁移 v37 -> v38 完成（exam_sheet_sessions 表新增 resource_id, content_hash 字段）");
             }
             39 => {
                 // Version 39: 彻底删除 subject 相关字段
-                println!("📦 开始数据库迁移 v38 -> v39: 彻底删除 subject 字段");
+                tracing::info!("📦 开始数据库迁移 v38 -> v39: 彻底删除 subject 字段");
 
                 // 1. 重建 document_tasks 表（删除 subject_name 字段）
                 let has_subject_name: bool = conn
@@ -2462,7 +2470,7 @@ impl DatabaseManager {
                     conn.execute("DROP TABLE document_tasks_old_v39", [])?;
                     conn.execute("CREATE INDEX IF NOT EXISTS idx_document_tasks_document_id ON document_tasks(document_id)", [])?;
                     conn.execute("CREATE INDEX IF NOT EXISTS idx_document_tasks_status ON document_tasks(status)", [])?;
-                    println!("document_tasks 表已删除 subject_name 字段");
+                    tracing::info!("document_tasks 表已删除 subject_name 字段");
                 }
 
                 // 2. 重建 review_analyses 表（删除 subject 字段）
@@ -2502,14 +2510,14 @@ impl DatabaseManager {
                         [],
                     )?;
                     conn.execute("DROP TABLE review_analyses_old_v39", [])?;
-                    println!("review_analyses 表已删除 subject 字段");
+                    tracing::info!("review_analyses 表已删除 subject 字段");
                 }
 
-                println!("数据库迁移 v38 -> v39 完成（subject 字段已彻底删除）");
+                tracing::info!("数据库迁移 v38 -> v39 完成（subject 字段已彻底删除）");
             }
             40 => {
                 // Version 40: embedding_dimension_registry
-                println!("📦 数据库迁移 v39 -> v40: 创建 embedding_dimension_registry");
+                tracing::info!("📦 数据库迁移 v39 -> v40: 创建 embedding_dimension_registry");
 
                 conn.execute_batch(
                     r#"
@@ -2526,13 +2534,13 @@ impl DatabaseManager {
                     CREATE INDEX IF NOT EXISTS idx_emb_dim_reg_prefix ON embedding_dimension_registry(table_prefix);
                     "#,
                 )?;
-                println!("embedding_dimension_registry 表已创建");
+                tracing::info!("embedding_dimension_registry 表已创建");
 
-                println!("数据库迁移 v39 -> v40 完成");
+                tracing::info!("数据库迁移 v39 -> v40 完成");
             }
             41 => {
                 // Version 41: 原为 mm_page_embeddings.indexing_mode，已废弃
-                println!("📦 数据库迁移 v40 -> v41: 跳过（mm_page_embeddings 已废弃）");
+                tracing::info!("📦 数据库迁移 v40 -> v41: 跳过（mm_page_embeddings 已废弃）");
             }
             _ => {
                 // 未知版本，跳过
@@ -2545,7 +2553,7 @@ impl DatabaseManager {
     /// 将内置模板迁移到数据库 - 已禁用，改为统一导入路径
     #[allow(dead_code)]
     fn migrate_builtin_templates_to_db(&self, _conn: &SqlitePooledConnection) -> Result<()> {
-        println!("跳过旧的内置模板迁移（使用 JSON 导入机制）");
+        tracing::info!("跳过旧的内置模板迁移（使用 JSON 导入机制）");
         return Ok(());
     }
 }

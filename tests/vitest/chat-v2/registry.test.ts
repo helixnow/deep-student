@@ -5,11 +5,11 @@
  */
 
 import { describe, it, expect, beforeEach, vi } from 'vitest';
-import { Registry } from '@/chat-v2/registry/Registry';
-import { modeRegistry, type ModePlugin, type ModeConfig } from '@/chat-v2/registry/modeRegistry';
-import { blockRegistry, type BlockRendererPlugin } from '@/chat-v2/registry/blockRegistry';
-import { eventRegistry, type EventHandler, type EventStartPayload } from '@/chat-v2/registry/eventRegistry';
-import type { ChatStore } from '@/chat-v2/core/types';
+import { Registry } from '@/features/chat/registry/Registry';
+import { modeRegistry, type ModePlugin, type ModeConfig } from '@/features/chat/registry/modeRegistry';
+import { blockRegistry, type BlockRendererPlugin } from '@/features/chat/registry/blockRegistry';
+import { eventRegistry, type EventHandler, type EventStartPayload } from '@/features/chat/registry/eventRegistry';
+import type { ChatStore } from '@/features/chat/core/types';
 
 // ============================================================================
 // Registry 基类测试

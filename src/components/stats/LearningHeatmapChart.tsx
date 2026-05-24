@@ -13,7 +13,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import HeatMap from '@uiw/react-heat-map';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
-import { Flame, Calendar, ChevronLeft, ChevronRight, RefreshCw } from 'lucide-react';
+import { Fire, CalendarBlank, CaretLeft, CaretRight, ArrowsClockwise } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -331,7 +331,7 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
       {/* 标题栏 */}
       <div className="flex items-center justify-between mb-4">
         <div className="flex items-center gap-2">
-          <Flame className="w-5 h-5 text-orange-500" />
+          <Fire size={20} className="text-orange-500" />
           <h3 className="font-semibold">{t('heatmapChart.title')}</h3>
         </div>
         
@@ -344,7 +344,7 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
               className="h-7 w-7"
               onClick={handlePrevYear}
             >
-              <ChevronLeft className="w-4 h-4" />
+              <CaretLeft size={16} />
             </NotionButton>
             <span className="text-sm font-medium min-w-[50px] text-center">
               {selectedYear}
@@ -356,7 +356,7 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
               onClick={handleNextYear}
               disabled={selectedYear >= new Date().getFullYear()}
             >
-              <ChevronRight className="w-4 h-4" />
+              <CaretRight size={16} />
             </NotionButton>
           </div>
           
@@ -364,10 +364,9 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
           <NotionButton
             variant="ghost"
             size="icon"
-            className="h-8 w-8"
-            onClick={handleRefresh}
+ className="w-8 h-8"             onClick={handleRefresh}
           >
-            <RefreshCw className="w-4 h-4" />
+            <ArrowsClockwise size={16} />
           </NotionButton>
         </div>
       </div>
@@ -375,23 +374,23 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
       {/* 统计卡片 */}
       <div className="grid grid-cols-3 gap-3 mb-4">
         <StatsCard
-          icon={<Flame className="w-4 h-4" />}
+          icon={<Fire size={16} />}
           label={t('heatmapChart.totalQuestions')}
           value={stats.totalCount}
           variant="total"
-        />
+/>
         <StatsCard
-          icon={<Calendar className="w-4 h-4" />}
+          icon={<CalendarBlank size={16} />}
           label={t('heatmapChart.activeDays')}
           value={stats.activeDays}
           variant="active"
-        />
+/>
         <StatsCard
-          icon={<Flame className="w-4 h-4" />}
+          icon={<Fire size={16} />}
           label={t('heatmapChart.streak')}
           value={t('heatmapChart.streakDays', { count: stats.currentStreak })}
           variant="streak"
-        />
+/>
       </div>
 
       {/* 热力图 — overflow-hidden + direction:rtl 保留最新日期，截断最旧 */}
@@ -436,11 +435,11 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
                     isToday && 'stroke-emerald-500 stroke-2'
                   )}
                   onClick={() => onDateClick?.(dateStr, activityData)}
-                />
+/>
               </CommonTooltip>
             );
           }}
-        />
+/>
         </div>
       </div>
 
@@ -451,9 +450,9 @@ export const LearningHeatmapChart: React.FC<LearningHeatmapChartProps> = ({
           {panelColors.map((color, index) => (
             <div
               key={index}
-              className="w-3 h-3 rounded-sm transition-transform hover:scale-125"
+ className="w-3 h-3 rounded-sm transition-transform hover:scale-125"
               style={{ backgroundColor: color }}
-            />
+/>
           ))}
         </div>
         <span className="text-xs text-muted-foreground">{t('heatmapChart.legendMore')}</span>

@@ -1,7 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
-import { TodoMainPanel } from '@/components/todo/TodoMainPanel';
-import { useTodoStore } from '@/components/todo/useTodoStore';
+import { TodoMainPanel } from '@/features/todo/components/TodoMainPanel';
+import { useTodoStore } from '@/features/todo/stores/useTodoStore';
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
@@ -12,7 +12,7 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
-vi.mock('@/components/pomodoro/PomodoroPanel', () => ({
+vi.mock('@/features/pomodoro/components/PomodoroPanel', () => ({
   PomodoroPanel: () => null,
 }));
 

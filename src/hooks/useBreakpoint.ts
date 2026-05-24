@@ -1,18 +1,6 @@
 import { useMemo } from 'react';
 import { useMediaQuery } from './useMediaQuery';
-
-/**
- * 标准断点定义（与Tailwind保持一致）
- */
-export const BREAKPOINTS = {
-  sm: 640,   // 手机横屏/小平板
-  md: 768,   // 平板竖屏
-  lg: 1024,  // 平板横屏/小笔记本
-  xl: 1280,  // 笔记本
-  '2xl': 1536, // 大屏幕
-} as const;
-
-export type BreakpointKey = keyof typeof BREAKPOINTS;
+import { BREAKPOINTS } from '@/config/breakpoints';
 export type Breakpoint = 'mobile' | 'tablet' | 'laptop' | 'desktop' | 'wide';
 
 /**
@@ -98,4 +86,3 @@ export function useIsTablet(): boolean {
 }
 
 export default useBreakpoint;
-

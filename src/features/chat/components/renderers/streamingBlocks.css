@@ -1,0 +1,108 @@
+/* streamingBlocks.css — Block-level incremental streaming styles */
+/* Used by: StreamingBlockRenderer.tsx */
+
+/*
+ * 行业最优解（2026，对齐 ChatGPT / Claude.ai）
+ *
+ * 设计原则：
+ * 1. 文本节奏由 API 原速决定，flowtoken AnimatedMarkdown sep="diff" 负责增量动画
+ * 2. 块出现就是出现，不做 blur / translate / stagger 入场动画
+ * 3. flowtoken 活跃块不做任何外层 opacity 动画，避免与 token 级动画冲突
+ * 4. 全新块（非活跃）保留极轻 opacity 入场以区分"新块"
+ * 5. 数学/代码：流式期间保持原文渲染，闭合时由 KaTeX/Prism 自然接管
+ */
+
+.streaming-block-renderer {
+  position: relative;
+}
+
+.streaming-blocks {
+  display: flex;
+  flex-direction: column;
+}
+
+/* ─── Block base ─────────────────────────────────────────────────────────── */
+
+.stream-block {
+  position: relative;
+  opacity: 1;
+}
+
+/* flowtoken 片段已经有自己的 token 级动效，外层不做任何入场淡入 */
+.stream-block[data-flowtoken="true"] {
+  animation: none;
+  opacity: 1;
+}
+
+/* 全新非活跃块轻微入场，不与活跃块动画冲突 */
+.stream-block[data-new="true"]:not([data-active="true"]) {
+  animation: stream-block-fade-in 160ms cubic-bezier(0.16, 1, 0.3, 1) both;
+}
+
+@keyframes stream-block-fade-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+/* ─── Active block: deferred code highlighting ──────────────────────────── */
+/*
+ * 流式期间代码块用单色，避免每帧 Prism 重高亮的抖动；
+ * 完成后 200ms 过渡到正式高亮。这是 ChatGPT/Claude 的通用做法。
+ */
+
+.stream-block[data-active="true"][data-block-type="code"] .code-block code {
+  color: hsl(var(--foreground)) !important;
+}
+
+.stream-block[data-active="true"][data-block-type="code"] .code-block code .token,
+.stream-block[data-active="true"][data-block-type="code"] .code-block code span[style] {
+  color: inherit !important;
+}
+
+.stream-block[data-complete="true"][data-block-type="code"] .code-block code {
+  transition: color 200ms ease-out;
+}
+
+/* ─── Streaming state: no extra visual noise ─────────────────────────────── */
+
+.streaming-block-renderer[data-streaming="true"] {
+  border-left: none;
+  background: inherit;
+}
+
+/* ─── Chain of thought ───────────────────────────────────────────────────── */
+
+.streaming-block-renderer .chain-of-thought {
+  margin-bottom: 0.75rem;
+  padding: 0.75rem;
+  border-radius: var(--radius-shell-toolbar);
+  border: 1px solid hsl(var(--border) / 0.3);
+  border-left: 2px solid var(--brand-primary);
+  background: hsl(var(--card));
+}
+
+.streaming-block-renderer .chain-header {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-bottom: 0.5rem;
+  font-size: 0.85em;
+  font-weight: 500;
+  color: hsl(var(--muted-foreground));
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.streaming-block-renderer .thinking-content {
+  font-size: 0.9em;
+  color: hsl(var(--muted-foreground));
+}
+
+/* ─── Reduced motion ─────────────────────────────────────────────────────── */
+
+@media (prefers-reduced-motion: reduce) {
+  .stream-block[data-new="true"] {
+    animation: none;
+    opacity: 1;
+  }
+}

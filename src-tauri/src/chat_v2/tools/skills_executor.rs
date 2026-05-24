@@ -5,15 +5,15 @@
 //! ## 设计说明
 //!
 //! `load_skills` 是一个特殊的元工具，用于按需加载技能组。
-//! 后端执行器负责验证参数并从 skill_contents 获取技能内容返回给 LLM，
+//! 后端执行器负责验证参数并更新会话技能状态。
 //! 前端同时调用 `loadSkillsToSession` 完成工具注入。
 //!
 //! ## 工作流程
 //!
 //! 1. LLM 调用 `load_skills(skills: ["knowledge-retrieval", ...])`
-//! 2. 后端执行器验证参数，从 ctx.skill_contents 获取内容，返回 `{ status: "success", skill_ids: [...] }`
+//! 2. 后端执行器验证参数，返回轻量元数据
 //! 3. 前端收到结果后，调用 `loadSkillsToSession` 加载 Skills 并动态注入工具
-//! 4. 后端在后续轮次中动态追加已加载技能的工具 Schema
+//! 4. 后端在后续轮次中通过 transient hidden user message 注入技能正文
 
 use async_trait::async_trait;
 use serde::{Deserialize, Serialize};
@@ -22,9 +22,7 @@ use serde_json::json;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
 use crate::chat_v2::event_types;
 use crate::chat_v2::repo::ChatV2Repo;
-use crate::chat_v2::types::{
-    ReplaySkillPayloadSnapshot, SessionSkillState, ToolCall, ToolResultInfo,
-};
+use crate::chat_v2::types::{ReplaySkillPayloadSnapshot, ToolCall, ToolResultInfo};
 
 /// load_skills 工具名称
 pub const LOAD_SKILLS_TOOL_NAME: &str = "load_skills";
@@ -88,20 +86,16 @@ where
 /// load_skills 输出结果
 #[derive(Debug, Serialize)]
 struct LoadSkillsOutput {
-    /// 状态：delegated 表示需要前端处理
+    /// 状态
     status: String,
-    /// 请求加载的技能 ID 列表
-    skill_ids: Vec<String>,
-    /// 消息
-    message: String,
     /// 后端权威的会话级已加载 Skills
     loaded_skill_ids: Vec<String>,
-    /// 后端权威的会话级激活 Skills
-    active_skill_ids: Vec<String>,
+    /// 本次加载后可用的工具名称
+    loaded_tool_names: Vec<String>,
     /// Skill 状态版本
     skill_state_version: u64,
-    /// 后端权威 Skill 状态
-    skill_state: SessionSkillState,
+    /// 轻量提示
+    message: String,
 }
 
 /// Skills 工具执行器
@@ -209,20 +203,12 @@ impl ToolExecutor for SkillsExecutor {
                     ));
                 }
 
-                // 🔧 核心修复：从 skill_contents 获取技能的完整内容并返回给 LLM
-                // 这样 LLM 就能看到技能的 MD 文件内容（包含工具定义）
-                let mut skill_content_parts: Vec<String> = Vec::new();
                 let mut loaded_skills: Vec<String> = Vec::new();
                 let mut not_found_skills: Vec<String> = Vec::new();
 
                 if let Some(ref skill_contents) = ctx.skill_contents {
                     for skill_id in &parsed_input.skills {
-                        if let Some(content) = skill_contents.get(skill_id) {
-                            skill_content_parts.push(format!(
-                                "<skill_loaded id=\"{}\">\n<instructions>\n{}\n</instructions>\n</skill_loaded>",
-                                skill_id,
-                                content
-                            ));
+                        if skill_contents.contains_key(skill_id) {
                             loaded_skills.push(skill_id.clone());
                         } else {
                             not_found_skills.push(skill_id.clone());
@@ -233,29 +219,21 @@ impl ToolExecutor for SkillsExecutor {
                     not_found_skills = parsed_input.skills.clone();
                 }
 
-                // 构建完整的输出内容
-                let mut output_parts = skill_content_parts;
-
-                if !not_found_skills.is_empty() {
-                    output_parts.push(format!(
-                        "<warning>以下技能未找到: {}</warning>",
-                        not_found_skills.join(", ")
-                    ));
-                }
-
-                if !loaded_skills.is_empty() {
-                    output_parts.push(format!(
-                        "\n共加载 {} 个技能。这些工具现在可以使用了。",
-                        loaded_skills.len()
-                    ));
-                }
-
-                let full_content = output_parts.join("\n");
-
                 let mut session_loaded_skill_ids = loaded_skills.clone();
-                let mut session_active_skill_ids = Vec::new();
                 let mut skill_state_version = 0_u64;
-                let mut authoritative_skill_state = SessionSkillState::default();
+                let mut loaded_tool_names: Vec<String> = loaded_skills
+                    .iter()
+                    .flat_map(|skill_id| {
+                        ctx.skill_embedded_tools
+                            .as_ref()
+                            .and_then(|map| map.get(skill_id))
+                            .into_iter()
+                            .flatten()
+                            .map(|tool| tool.name.clone())
+                    })
+                    .collect();
+                loaded_tool_names.sort();
+                loaded_tool_names.dedup();
 
                 if let Some(ref chat_v2_db) = ctx.chat_v2_db {
                     match ChatV2Repo::load_session_state_v2(chat_v2_db, &ctx.session_id) {
@@ -284,9 +262,7 @@ impl ToolExecutor for SkillsExecutor {
                             };
                             let next_snapshot = next_skill_state.snapshot();
                             session_loaded_skill_ids = next_skill_state.resolved_loaded_skill_ids();
-                            session_active_skill_ids = next_skill_state.resolved_active_skill_ids();
                             skill_state_version = next_skill_state.version;
-                            authoritative_skill_state = next_skill_state.clone();
                             if let Err(err) = ChatV2Repo::update_session_skill_state_v2(
                                 chat_v2_db,
                                 &ctx.session_id,
@@ -311,22 +287,36 @@ impl ToolExecutor for SkillsExecutor {
                                         })
                                         .unwrap_or_default();
                                     let next_runtime = ReplaySkillPayloadSnapshot {
-                                        active_skill_ids: {
-                                            let mut merged = session_active_skill_ids.clone();
-                                            merged.extend(session_loaded_skill_ids.clone());
-                                            merged.sort();
-                                            merged.dedup();
-                                            merged
+                                        active_skill_ids: next_skill_state
+                                            .resolved_active_skill_ids(),
+                                        skill_contents: if previous_runtime
+                                            .skill_contents
+                                            .is_empty()
+                                        {
+                                            ctx.skill_contents.clone().unwrap_or_default()
+                                        } else {
+                                            previous_runtime.skill_contents.clone()
                                         },
-                                        skill_contents: previous_runtime.skill_contents.clone(),
-                                        skill_embedded_tools: previous_runtime
-                                            .skill_embedded_tools
+                                        skill_dependencies: previous_runtime
+                                            .skill_dependencies
                                             .clone(),
+                                        skill_embedded_tools: if previous_runtime
+                                            .skill_embedded_tools
+                                            .is_empty()
+                                        {
+                                            ctx.skill_embedded_tools.clone().unwrap_or_default()
+                                        } else {
+                                            previous_runtime.skill_embedded_tools.clone()
+                                        },
                                         mcp_tool_schemas: previous_runtime.mcp_tool_schemas.clone(),
                                         selected_mcp_servers: previous_runtime
                                             .selected_mcp_servers
                                             .clone(),
                                     };
+                                    let previous_runtime_for_meta =
+                                        previous_runtime.clone().without_skill_contents();
+                                    let next_runtime_for_meta =
+                                        next_runtime.clone().without_skill_contents();
                                     if let Some(ref variant_id) = ctx.variant_id {
                                         if let Some(ref mut variants) = message.variants {
                                             if let Some(variant) = variants
@@ -340,9 +330,9 @@ impl ToolExecutor for SkillsExecutor {
                                                 variant_meta.skill_snapshot_after =
                                                     Some(next_snapshot.clone());
                                                 variant_meta.skill_runtime_before =
-                                                    Some(previous_runtime.clone());
+                                                    Some(previous_runtime_for_meta.clone());
                                                 variant_meta.skill_runtime_after =
-                                                    Some(next_runtime.clone());
+                                                    Some(next_runtime_for_meta.clone());
                                                 variant.meta = Some(variant_meta);
                                             }
                                         }
@@ -351,8 +341,8 @@ impl ToolExecutor for SkillsExecutor {
                                     let mut meta = message.meta.unwrap_or_default();
                                     meta.skill_snapshot_before = Some(previous_snapshot);
                                     meta.skill_snapshot_after = Some(next_snapshot);
-                                    meta.skill_runtime_before = Some(previous_runtime);
-                                    meta.skill_runtime_after = Some(next_runtime);
+                                    meta.skill_runtime_before = Some(previous_runtime_for_meta);
+                                    meta.skill_runtime_after = Some(next_runtime_for_meta);
                                     meta.replay_source = Some("current".to_string());
                                     message.meta = Some(meta);
                                     if let Err(err) =
@@ -385,21 +375,33 @@ impl ToolExecutor for SkillsExecutor {
                     }
                 }
 
+                let message = if loaded_skills.is_empty() {
+                    if not_found_skills.is_empty() {
+                        "No new skills were loaded.".to_string()
+                    } else {
+                        format!("No skills loaded. Missing: {}", not_found_skills.join(", "))
+                    }
+                } else if not_found_skills.is_empty() {
+                    "Skills loaded. Instructions will be provided in the next message.".to_string()
+                } else {
+                    format!(
+                        "Skills loaded. Instructions will be provided in the next message. Missing: {}",
+                        not_found_skills.join(", ")
+                    )
+                };
+
                 // 构建输出结构
                 let output = LoadSkillsOutput {
                     status: "success".to_string(),
-                    skill_ids: loaded_skills.clone(),
-                    message: full_content.clone(),
                     loaded_skill_ids: session_loaded_skill_ids,
-                    active_skill_ids: session_active_skill_ids,
+                    loaded_tool_names,
                     skill_state_version,
-                    skill_state: authoritative_skill_state,
+                    message,
                 };
 
                 let duration_ms = start_time.elapsed().as_millis() as u64;
                 let result_json = json!({
                     "result": output,
-                    "content": full_content, // 🆕 直接暴露完整内容，方便 LLM 读取
                     "durationMs": duration_ms,
                 });
 

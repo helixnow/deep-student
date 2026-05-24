@@ -1,0 +1,246 @@
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import { Folder, CaretRight, House, CircleNotch, FolderOpen as FolderInputIcon } from '@phosphor-icons/react';
+import { NotionDialog, NotionDialogHeader, NotionDialogTitle, NotionDialogBody, NotionDialogFooter } from '@/components/ui/NotionDialog';
+import { cn } from '@/lib/utils';
+import { NotionButton } from '@/components/ui/NotionButton';
+import { folderApi } from '@/dstu';
+import type { FolderTreeNode } from '@/dstu/types/folder';
+import { isErr } from '@/shared/result';
+import { CustomScrollArea } from '@/components/custom-scroll-area';
+
+interface FolderPickerDialogProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  /** 当前选中项的 ID 列表（用于排除不能移动到自身或子文件夹的情况） */
+  excludeFolderIds?: string[];
+  onConfirm: (targetFolderId: string | null) => void;
+  title?: string;
+}
+
+interface FolderNodeProps {
+  node: FolderTreeNode;
+  level: number;
+  selectedId: string | null;
+  excludeIds: Set<string>;
+  expandedIds: Set<string>;
+  onSelect: (id: string | null) => void;
+  onToggleExpand: (id: string) => void;
+}
+
+function FolderNode({
+  node,
+  level,
+  selectedId,
+  excludeIds,
+  expandedIds,
+  onSelect,
+  onToggleExpand,
+}: FolderNodeProps) {
+  const isExcluded = excludeIds.has(node.folder.id);
+  const isSelected = selectedId === node.folder.id;
+  const isExpanded = expandedIds.has(node.folder.id);
+  const hasChildren = node.children.length > 0;
+  const contentRef = useRef<HTMLDivElement>(null);
+  const [height, setHeight] = useState<number | 'auto'>(isExpanded ? 'auto' : 0);
+
+  useEffect(() => {
+    if (contentRef.current) {
+      if (isExpanded) {
+        const h = contentRef.current.scrollHeight;
+        setHeight(h);
+        const timer = setTimeout(() => setHeight('auto'), 200);
+        return () => clearTimeout(timer);
+      } else {
+        setHeight(contentRef.current.scrollHeight);
+        requestAnimationFrame(() => setHeight(0));
+      }
+    }
+  }, [isExpanded]);
+
+  return (
+    <div>
+      <div
+        className={cn(
+          'flex items-center gap-1.5 py-2 px-2 rounded-md cursor-pointer',
+          'transition-all duration-150 ease-out',
+          'active:scale-[0.99]',
+          isSelected && !isExcluded && 'bg-primary/10 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.2)]',
+          !isSelected && !isExcluded && 'hover:bg-[var(--interactive-hover)]',
+          isExcluded && 'opacity-40 cursor-not-allowed'
+        )}
+        style={{ paddingLeft: `${level * 16 + 12}px` }}
+        onClick={() => !isExcluded && onSelect(node.folder.id)}
+      >
+        {hasChildren ? (
+          <NotionButton variant="ghost" size="icon" iconOnly className="!h-5 !w-5 !p-0.5" onClick={(e) => { e.stopPropagation(); onToggleExpand(node.folder.id); }} aria-label="toggle">
+            <CaretRight 
+              className={cn(
+                'transition-transform duration-200 ease-out',
+                isExpanded && 'rotate-90'
+              )}
+              size={14}
+            />
+          </NotionButton>
+        ) : (
+          <span className="w-4" />
+        )}
+        <Folder size={16} className={cn(
+          'shrink-0 transition-colors duration-150',
+          isSelected ? 'text-primary' : 'text-amber-500'
+        )} />
+        <span className="text-sm truncate flex-1">{node.folder.title}</span>
+      </div>
+      {hasChildren && (
+        <div
+          ref={contentRef}
+          className="overflow-hidden transition-[height] duration-200 ease-out"
+          style={{ height: typeof height === 'number' ? `${height}px` : height }}
+        >
+          {node.children.map((child, index) => (
+            <div
+              key={child.folder.id}
+              className="animate-in fade-in-0 slide-in-from-left-1"
+              style={{ animationDelay: `${index * 30}ms`, animationFillMode: 'both' }}
+            >
+              <FolderNode
+                node={child}
+                level={level + 1}
+                selectedId={selectedId}
+                excludeIds={excludeIds}
+                expandedIds={expandedIds}
+                onSelect={onSelect}
+                onToggleExpand={onToggleExpand}
+              />
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+export function FolderPickerDialog({
+  open,
+  onOpenChange,
+  excludeFolderIds = [],
+  onConfirm,
+  title,
+}: FolderPickerDialogProps) {
+  const { t } = useTranslation('learningHub');
+  const [folderTree, setFolderTree] = useState<FolderTreeNode[]>([]);
+  const [isLoading, setIsLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [expandedIds, setExpandedIds] = useState<Set<string>>(new Set());
+
+  const excludeSet = useMemo(() => new Set(excludeFolderIds), [excludeFolderIds]);
+
+  const loadFolderTree = useCallback(async () => {
+    setIsLoading(true);
+    setError(null);
+    const treeResult = await folderApi.getFolderTree();
+    if (!isErr(treeResult)) {
+      setFolderTree(treeResult.value);
+      // 默认展开第一层
+      const firstLevelIds = new Set(treeResult.value.map((n) => n.folder.id));
+      setExpandedIds(firstLevelIds);
+    } else {
+      setError(treeResult.error.toUserMessage());
+    }
+    setIsLoading(false);
+  }, []);
+
+  useEffect(() => {
+    if (open) {
+      loadFolderTree();
+      setSelectedId(null);
+    }
+  }, [open, loadFolderTree]);
+
+  const handleToggleExpand = useCallback((id: string) => {
+    setExpandedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) {
+        next.delete(id);
+      } else {
+        next.add(id);
+      }
+      return next;
+    });
+  }, []);
+
+  const handleConfirm = () => {
+    onConfirm(selectedId);
+    onOpenChange(false);
+  };
+
+  return (
+    <NotionDialog open={open} onOpenChange={onOpenChange} maxWidth="max-w-md">
+        <NotionDialogHeader>
+          <NotionDialogTitle className="flex items-center gap-2">
+            <FolderInputIcon size={16} className="text-muted-foreground" />
+            {title || t('finder.folderPicker.title')}
+          </NotionDialogTitle>
+        </NotionDialogHeader>
+
+        {/* 内容区 */}
+        <div className="h-[320px] overflow-hidden mb-3">
+          <CustomScrollArea className="h-full" fullHeight>
+            {isLoading ? (
+              <div className="flex items-center justify-center h-32 px-5">
+                <CircleNotch size={20} className="animate-spin text-muted-foreground" />
+              </div>
+            ) : error ? (
+              <div className="flex items-center justify-center h-32 px-5 text-sm text-destructive">
+                {error}
+              </div>
+            ) : (
+                <div className="py-1 px-5">
+                {/* 根目录选项 */}
+                <div
+                  className={cn(
+                    'flex items-center gap-2 py-2 px-3 rounded-md cursor-pointer',
+                    'transition-all duration-150 ease-out active:scale-[0.99]',
+                    selectedId === null && 'bg-primary/10 text-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.2)]',
+                    selectedId !== null && 'hover:bg-[var(--interactive-hover)]'
+                  )}
+                  onClick={() => setSelectedId(null)}
+                >
+                  <House size={16} className={cn(
+                    'transition-colors duration-150',
+                    selectedId === null ? 'text-primary' : 'text-muted-foreground'
+                  )} />
+                  <span className="text-sm font-medium">
+                    {t('finder.folderPicker.root')}
+                  </span>
+                </div>
+                {/* 文件夹树 */}
+                {folderTree.map((node) => (
+                  <FolderNode
+                    key={node.folder.id}
+                    node={node}
+                    level={0}
+                    selectedId={selectedId}
+                    excludeIds={excludeSet}
+                    expandedIds={expandedIds}
+                    onSelect={setSelectedId}
+                    onToggleExpand={handleToggleExpand}
+                  />
+                ))}
+              </div>
+            )}
+          </CustomScrollArea>
+        </div>
+
+        <NotionDialogFooter>
+          <NotionButton variant="ghost" size="sm" onClick={() => onOpenChange(false)}>
+            {t('common:cancel')}
+          </NotionButton>
+          <NotionButton variant="primary" size="sm" onClick={handleConfirm} disabled={isLoading}>
+            {t('finder.folderPicker.confirm')}
+          </NotionButton>
+        </NotionDialogFooter>
+    </NotionDialog>
+  );
+}

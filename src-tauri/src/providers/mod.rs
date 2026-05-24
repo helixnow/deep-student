@@ -396,16 +396,29 @@ impl OpenAIResponsesAdapter {
 
         if let Some(reasoning) = body.get("reasoning") {
             let mut reasoning_cfg = reasoning.clone();
+            if reasoning_cfg.get("effort").is_none() {
+                if let Some(effort) = body.get("reasoning_effort") {
+                    reasoning_cfg["effort"] = effort.clone();
+                }
+            }
             if reasoning_cfg.get("summary").is_none() {
                 reasoning_cfg["summary"] = json!("auto");
             }
             payload["reasoning"] = reasoning_cfg;
         } else {
             let lower = model.to_lowercase();
-            if lower.contains("o1") || lower.contains("o3") || lower.contains("gpt-5") {
-                payload["reasoning"] = json!({
+            if lower.contains("o1")
+                || lower.contains("o3")
+                || lower.contains("gpt-5")
+                || body.get("reasoning_effort").is_some()
+            {
+                let mut reasoning_cfg = json!({
                     "summary": "auto"
                 });
+                if let Some(effort) = body.get("reasoning_effort") {
+                    reasoning_cfg["effort"] = effort.clone();
+                }
+                payload["reasoning"] = reasoning_cfg;
             }
         }
 
@@ -425,6 +438,17 @@ impl OpenAIResponsesAdapter {
             payload["text"] = json!({
                 "format": response_format.clone()
             });
+        }
+
+        if let Some(verbosity) = body.get("verbosity") {
+            let text_cfg = payload
+                .get("text")
+                .and_then(|value| value.as_object())
+                .cloned()
+                .unwrap_or_default();
+            let mut merged = serde_json::Map::from_iter(text_cfg.into_iter());
+            merged.insert("verbosity".to_string(), verbosity.clone());
+            payload["text"] = Value::Object(merged);
         }
 
         if let Some(tools) = body.get("tools").and_then(|v| v.as_array()) {
@@ -813,6 +837,9 @@ impl AnthropicAdapter {
             response_format: None,
             thinking,
             output_config,
+            cache_control: Some(CacheControl {
+                cache_type: "ephemeral".to_string(),
+            }),
         }
     }
 }
@@ -841,7 +868,7 @@ impl ProviderAdapter for AnthropicAdapter {
         let body_value = serde_json::to_value(&request)
             .map_err(|e| ProviderError::BuildFailed(format!("构建 Anthropic 请求体失败: {}", e)))?;
 
-        let mut beta_features: Vec<&'static str> = Vec::new();
+        let mut beta_features: Vec<&'static str> = vec!["prompt-caching-2024-07-31"];
         let has_tools = body
             .get("tools")
             .and_then(|v| v.as_array())
@@ -1068,6 +1095,11 @@ struct AnthropicRequest {
     /// 参考: https://platform.claude.com/docs/en/build-with-claude/effort
     #[serde(skip_serializing_if = "Option::is_none")]
     output_config: Option<Value>,
+    /// Anthropic Prompt Caching — automatic mode (top-level)
+    /// 启用后系统自动管理缓存断点，命中后缓存读取成本降低 90%
+    /// 参考: https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
+    #[serde(skip_serializing_if = "Option::is_none")]
+    cache_control: Option<CacheControl>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1102,6 +1134,17 @@ enum AnthropicContentBlock {
         #[serde(skip_serializing_if = "Option::is_none")]
         is_error: Option<bool>,
     },
+}
+
+/// Prompt Caching — cache_control 标记
+/// Anthropic 和 OpenAI 使用相同的 `{"type": "ephemeral"}` 格式
+/// 参考:
+///   - https://docs.anthropic.com/en/docs/build-with-claude/prompt-caching
+///   - https://platform.openai.com/docs/guides/prompt-caching
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct CacheControl {
+    #[serde(rename = "type")]
+    cache_type: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -1540,7 +1583,17 @@ fn build_usage_event(usage: &Value) -> Option<Value> {
         .get("cache_read_input_tokens")
         .and_then(|v| v.as_i64())
         .unwrap_or(0) as i32;
-    let cached_tokens = cache_creation_input_tokens + cache_read_input_tokens;
+    let openai_cached = usage
+        .get("prompt_tokens_details")
+        .and_then(|d| d.get("cached_tokens"))
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0) as i32;
+    let deepseek_cached = usage
+        .get("prompt_cache_hit_tokens")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0) as i32;
+    let cached_tokens =
+        cache_creation_input_tokens + cache_read_input_tokens + openai_cached + deepseek_cached;
 
     Some(json!({
         "input_tokens": input_tokens,
@@ -1816,6 +1869,18 @@ mod tests {
     }
 
     #[test]
+    fn openai_adapter_parse_stream_preserves_empty_reasoning_content() {
+        let adapter = OpenAIAdapter;
+
+        let events =
+            adapter.parse_stream(r#"data: {"choices":[{"delta":{"reasoning_content":""}}]}"#);
+
+        assert!(
+            matches!(events.first(), Some(StreamEvent::ReasoningChunk(reasoning)) if reasoning.is_empty())
+        );
+    }
+
+    #[test]
     fn openai_responses_adapter_converts_messages_and_reasoning() {
         let body = json!({
             "messages": [
@@ -1847,6 +1912,21 @@ mod tests {
         assert_eq!(input[0]["role"], json!("user"));
         assert_eq!(input[0]["content"][0]["type"], json!("input_text"));
         assert_eq!(input[0]["content"][1]["type"], json!("input_image"));
+    }
+
+    #[test]
+    fn openai_responses_adapter_maps_reasoning_effort_and_verbosity() {
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "reasoning_effort": "high",
+            "verbosity": "low"
+        });
+
+        let payload = OpenAIResponsesAdapter::convert_to_responses_format("gpt-5", &body);
+
+        assert_eq!(payload["reasoning"]["effort"], json!("high"));
+        assert_eq!(payload["reasoning"]["summary"], json!("auto"));
+        assert_eq!(payload["text"]["verbosity"], json!("low"));
     }
 
     #[test]

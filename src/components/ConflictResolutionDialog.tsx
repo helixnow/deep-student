@@ -21,8 +21,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/shad/T
 import { Alert, AlertDescription } from '@/components/ui/shad/Alert';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import {
-  AlertCircle,
-  AlertTriangle,
+  WarningCircle,
+  Warning,
   Database,
   Cloud,
   HardDrive,
@@ -31,18 +31,18 @@ import {
   Check,
   X,
   Clock,
-  ChevronRight,
-  ChevronDown,
-  RefreshCw,
-  Loader2,
-  FileWarning,
-  ArrowUpCircle,
-  ArrowDownCircle,
-  Settings2,
-  Zap,
+  CaretRight,
+  CaretDown,
+  ArrowClockwise,
+  CircleNotch,
+  FileX,
+  ArrowCircleUp,
+  ArrowCircleDown,
+  GearSix,
+  Lightning,
   Eye,
-  Edit3,
-} from 'lucide-react';
+  PencilSimple,
+} from '@phosphor-icons/react';
 
 // ============================================================================
 // 类型定义
@@ -145,7 +145,7 @@ function getConflictTypeInfo(
         label: t('conflict_type.schema_mismatch', 'Schema 版本不匹配'),
         description: t('conflict_type.schema_mismatch_desc', '本地和云端的数据库结构版本不同，需要进行迁移'),
         color: 'bg-red-500',
-        icon: <FileWarning className="h-4 w-4" />,
+        icon: <FileX size={16} />,
         severity: 'high',
       };
     case 'DataConflict':
@@ -153,7 +153,7 @@ function getConflictTypeInfo(
         label: t('conflict_type.data_conflict', '数据版本冲突'),
         description: t('conflict_type.data_conflict_desc', '本地和云端都有数据修改，存在冲突'),
         color: 'bg-amber-500',
-        icon: <AlertTriangle className="h-4 w-4" />,
+        icon: <Warning size={16} />,
         severity: 'medium',
       };
     case 'ChecksumMismatch':
@@ -161,7 +161,7 @@ function getConflictTypeInfo(
         label: t('conflict_type.checksum_mismatch', '校验和不匹配'),
         description: t('conflict_type.checksum_mismatch_desc', '数据版本相同但内容不一致，可能存在数据损坏'),
         color: 'bg-orange-500',
-        icon: <AlertCircle className="h-4 w-4" />,
+        icon: <WarningCircle size={16} />,
         severity: 'high',
       };
     case 'LocalOnly':
@@ -169,7 +169,7 @@ function getConflictTypeInfo(
         label: t('conflict_type.local_only', '仅本地存在'),
         description: t('conflict_type.local_only_desc', '此数据库仅存在于本地，云端没有'),
         color: 'bg-blue-500',
-        icon: <HardDrive className="h-4 w-4" />,
+        icon: <HardDrive size={16} />,
         severity: 'low',
       };
     case 'CloudOnly':
@@ -177,7 +177,7 @@ function getConflictTypeInfo(
         label: t('conflict_type.cloud_only', '仅云端存在'),
         description: t('conflict_type.cloud_only_desc', '此数据库仅存在于云端，本地没有'),
         color: 'bg-purple-500',
-        icon: <Cloud className="h-4 w-4" />,
+        icon: <Cloud size={16} />,
         severity: 'low',
       };
     default:
@@ -185,7 +185,7 @@ function getConflictTypeInfo(
         label: type,
         description: t('conflict_type.unknown_desc', '未知冲突类型'),
         color: 'bg-gray-500',
-        icon: <AlertCircle className="h-4 w-4" />,
+        icon: <WarningCircle size={16} />,
         severity: 'medium',
       };
   }
@@ -206,25 +206,25 @@ function getStrategyInfo(
       return {
         label: t('strategy_info.keep_local', '保留本地'),
         description: t('strategy_info.keep_local_desc', '使用本地数据覆盖云端，本地修改将推送到云端'),
-        icon: <HardDrive className="h-4 w-4" />,
+        icon: <HardDrive size={16} />,
       };
     case 'use_cloud':
       return {
         label: t('strategy_info.use_cloud', '使用云端'),
         description: t('strategy_info.use_cloud_desc', '使用云端数据覆盖本地，云端修改将同步到本地'),
-        icon: <Cloud className="h-4 w-4" />,
+        icon: <Cloud size={16} />,
       };
     case 'keep_latest':
       return {
         label: t('strategy_info.keep_latest', '保留最新'),
         description: t('strategy_info.keep_latest_desc', '根据更新时间自动选择较新的版本'),
-        icon: <Clock className="h-4 w-4" />,
+        icon: <Clock size={16} />,
       };
     case 'manual':
       return {
         label: t('strategy_info.manual', '手动处理'),
         description: t('strategy_info.manual_desc', '逐个查看和选择每条冲突记录的解决方式'),
-        icon: <Edit3 className="h-4 w-4" />,
+        icon: <PencilSimple size={16} />,
       };
   }
 }
@@ -303,14 +303,14 @@ function ConflictSummaryHeader({ conflicts }: ConflictSummaryHeaderProps) {
     <div className="flex items-center justify-between p-4 bg-muted/30 rounded-lg border">
       <div className="flex items-center gap-4">
         <div className="flex items-center gap-2">
-          <AlertCircle className="h-5 w-5 text-amber-500" />
+          <WarningCircle size={20} className="text-amber-500" />
           <span className="font-medium">
             {t('conflict_count', '发现 {{count}} 个冲突', { count: totalConflicts })}
           </span>
         </div>
         <div className="w-px h-6 bg-border" />
         <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Database className="h-4 w-4" />
+          <Database size={16} />
           <span>
             {t('database_conflicts', '数据库级: {{count}}', {
               count: conflicts.database_conflicts.length,
@@ -319,7 +319,7 @@ function ConflictSummaryHeader({ conflicts }: ConflictSummaryHeaderProps) {
         </div>
         {recordConflictDisplayCount > 0 && (
           <div className="flex items-center gap-2 text-sm text-muted-foreground">
-            <FileWarning className="h-4 w-4" />
+            <FileX size={16} />
             <span>
               {t('record_conflicts', '记录级: {{count}}', {
                 count: recordConflictDisplayCount,
@@ -361,16 +361,16 @@ function DatabaseConflictCard({
     <Card className="overflow-hidden">
       {/* 卡片头部 */}
       <div
-        className="flex items-center gap-3 p-4 cursor-pointer hover:bg-muted/50 transition-colors"
+        className="flex items-center gap-3 p-4 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
         onClick={onToggleExpand}
       >
         {isExpanded ? (
-          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          <CaretDown size={16} className="text-muted-foreground" />
         ) : (
-          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          <CaretRight size={16} className="text-muted-foreground" />
         )}
 
-        <Database className="h-5 w-5 text-muted-foreground" />
+        <Database size={20} className="text-muted-foreground" />
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -388,12 +388,12 @@ function DatabaseConflictCard({
             <Badge variant="secondary" className="bg-green-100 text-green-800">
               {newerSide === 'local' ? (
                 <>
-                  <HardDrive className="h-3 w-3 mr-1" />
+                  <HardDrive size={12} className="mr-1" />
                   {t('local_newer', '本地较新')}
                 </>
               ) : (
                 <>
-                  <Cloud className="h-3 w-3 mr-1" />
+                  <Cloud size={12} className="mr-1" />
                   {t('cloud_newer', '云端较新')}
                 </>
               )}
@@ -412,7 +412,7 @@ function DatabaseConflictCard({
               className={`p-3 rounded-lg border-2 ${newerSide === 'local' ? 'border-green-500 bg-green-50/50' : 'border-muted'}`}
             >
               <div className="flex items-center gap-2 mb-2">
-                <HardDrive className="h-4 w-4" />
+                <HardDrive size={16} />
                 <span className="font-medium text-sm">{t('local_version', '本地版本')}</span>
                 {newerSide === 'local' && (
                   <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs">
@@ -453,7 +453,7 @@ function DatabaseConflictCard({
               className={`p-3 rounded-lg border-2 ${newerSide === 'cloud' ? 'border-green-500 bg-green-50/50' : 'border-muted'}`}
             >
               <div className="flex items-center gap-2 mb-2">
-                <Cloud className="h-4 w-4" />
+                <Cloud size={16} />
                 <span className="font-medium text-sm">{t('cloud_version', '云端版本')}</span>
                 {newerSide === 'cloud' && (
                   <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs">
@@ -542,11 +542,11 @@ function JsonDiffViewer({ localData, cloudData, title }: JsonDiffViewerProps) {
       <div className="rounded-lg border overflow-hidden">
         <div className="grid grid-cols-2 bg-muted/50 text-xs font-medium">
           <div className="p-2 flex items-center gap-2 border-r">
-            <HardDrive className="h-3 w-3" />
+            <HardDrive size={12} />
             {t('local_data', '本地数据')}
           </div>
           <div className="p-2 flex items-center gap-2">
-            <Cloud className="h-3 w-3" />
+            <Cloud size={12} />
             {t('cloud_data', '云端数据')}
           </div>
         </div>
@@ -634,16 +634,16 @@ function RecordConflictCard({
   return (
     <Card className="overflow-hidden">
       <div
-        className="flex items-center gap-3 p-4 cursor-pointer hover:bg-muted/50 transition-colors"
+        className="flex items-center gap-3 p-4 cursor-pointer hover:bg-[var(--interactive-hover)] transition-colors"
         onClick={onToggleExpand}
       >
         {isExpanded ? (
-          <ChevronDown className="h-4 w-4 text-muted-foreground" />
+          <CaretDown size={16} className="text-muted-foreground" />
         ) : (
-          <ChevronRight className="h-4 w-4 text-muted-foreground" />
+          <CaretRight size={16} className="text-muted-foreground" />
         )}
 
-        <FileWarning className="h-5 w-5 text-amber-500" />
+        <FileX size={20} className="text-amber-500" />
 
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-2">
@@ -667,12 +667,12 @@ function RecordConflictCard({
           <Badge variant="secondary" className="bg-green-100 text-green-800 text-xs">
             {newerSide === 'local' ? (
               <>
-                <HardDrive className="h-3 w-3 mr-1" />
+                <HardDrive size={12} className="mr-1" />
                 {t('local_newer', '本地较新')}
               </>
             ) : (
               <>
-                <Cloud className="h-3 w-3 mr-1" />
+                <Cloud size={12} className="mr-1" />
                 {t('cloud_newer', '云端较新')}
               </>
             )}
@@ -687,12 +687,12 @@ function RecordConflictCard({
             {/* 版本时间对比 */}
             <div className="grid grid-cols-2 gap-4 text-xs">
               <div className="flex items-center gap-2">
-                <Clock className="h-3 w-3 text-muted-foreground" />
+                <Clock size={12} className="text-muted-foreground" />
                 <span className="text-muted-foreground">{t('local_time', '本地更新')}:</span>
                 <span>{formatTime(conflict.local_updated_at)}</span>
               </div>
               <div className="flex items-center gap-2">
-                <Clock className="h-3 w-3 text-muted-foreground" />
+                <Clock size={12} className="text-muted-foreground" />
                 <span className="text-muted-foreground">{t('cloud_time', '云端更新')}:</span>
                 <span>{formatTime(conflict.cloud_updated_at)}</span>
               </div>
@@ -703,7 +703,7 @@ function RecordConflictCard({
               localData={conflict.local_data}
               cloudData={conflict.cloud_data}
               title={t('data_diff', '数据差异')}
-            />
+/>
           </div>
         </CardContent>
       )}
@@ -737,7 +737,7 @@ function StrategySelection({
 
       {needsMigration && (
         <Alert variant="warning">
-          <AlertTriangle className="h-4 w-4" />
+          <Warning size={16} />
           <AlertDescription>
             {t(
               'migration_required',
@@ -774,7 +774,7 @@ function StrategySelection({
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="font-medium text-sm">{info.label}</span>
-                      {isSelected && <Check className="h-4 w-4 text-primary" />}
+                      {isSelected && <Check size={16} className="text-primary" />}
                     </div>
                     <p className="text-xs text-muted-foreground mt-1">{info.description}</p>
                   </div>
@@ -846,7 +846,7 @@ export function ConflictResolutionDialog({
     <NotionDialog open={open} onOpenChange={(open) => !open && onClose()} maxWidth="max-w-4xl">
         <NotionDialogHeader>
           <NotionDialogTitle className="flex items-center gap-2">
-            <AlertCircle className="h-5 w-5 text-amber-500" />
+            <WarningCircle size={20} className="text-amber-500" />
             {t('conflict_resolution', '同步冲突解决')}
             {hasConflicts && (
               <Badge variant="secondary" className="ml-2">
@@ -863,7 +863,7 @@ export function ConflictResolutionDialog({
               : t('no_conflicts', '没有检测到数据冲突。')}
           </NotionDialogDescription>
         </NotionDialogHeader>
-        <NotionDialogBody nativeScroll>
+        <NotionDialogBody>
 
         {hasConflicts ? (
           <div className="flex-1 min-h-0 flex flex-col gap-4">
@@ -874,7 +874,7 @@ export function ConflictResolutionDialog({
             <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1 min-h-0 flex flex-col">
               <TabsList>
                 <TabsTrigger value="database" className="flex items-center gap-2">
-                  <Database className="h-4 w-4" />
+                  <Database size={16} />
                   {t('database_level', '数据库级')}
                   {conflicts.database_conflicts.length > 0 && (
                     <Badge variant="secondary" className="ml-1 h-5 px-1.5">
@@ -883,7 +883,7 @@ export function ConflictResolutionDialog({
                   )}
                 </TabsTrigger>
                 <TabsTrigger value="record" className="flex items-center gap-2">
-                  <FileWarning className="h-4 w-4" />
+                  <FileX size={16} />
                   {t('record_level', '记录级')}
                   {recordConflictDisplayCount > 0 && (
                     <Badge variant="secondary" className="ml-1 h-5 px-1.5">
@@ -892,7 +892,7 @@ export function ConflictResolutionDialog({
                   )}
                 </TabsTrigger>
                 <TabsTrigger value="strategy" className="flex items-center gap-2">
-                  <Settings2 className="h-4 w-4" />
+                  <GearSix size={16} />
                   {t('strategy', '策略选择')}
                 </TabsTrigger>
               </TabsList>
@@ -908,12 +908,12 @@ export function ConflictResolutionDialog({
                           conflict={conflict}
                           isExpanded={expandedDbIds.has(conflict.database_name)}
                           onToggleExpand={() => toggleDbExpand(conflict.database_name)}
-                        />
+/>
                       ))}
                     </div>
                   ) : (
                     <Alert>
-                      <Check className="h-4 w-4" />
+                      <Check size={16} />
                       <AlertDescription>
                         {t('no_database_conflicts', '没有数据库级冲突')}
                       </AlertDescription>
@@ -935,13 +935,13 @@ export function ConflictResolutionDialog({
                             conflict={conflict}
                             isExpanded={expandedRecordIds.has(recordKey)}
                             onToggleExpand={() => toggleRecordExpand(recordKey)}
-                          />
+/>
                         );
                       })}
                     </div>
                   ) : recordConflictDisplayCount > 0 ? (
                     <Alert>
-                      <AlertTriangle className="h-4 w-4" />
+                      <Warning size={16} />
                       <AlertDescription>
                         {t(
                           'record_conflicts_count_only',
@@ -952,7 +952,7 @@ export function ConflictResolutionDialog({
                     </Alert>
                   ) : (
                     <Alert>
-                      <Check className="h-4 w-4" />
+                      <Check size={16} />
                       <AlertDescription>
                         {t('no_record_conflicts', '没有记录级冲突')}
                       </AlertDescription>
@@ -970,7 +970,7 @@ export function ConflictResolutionDialog({
                       onStrategyChange={setSelectedStrategy}
                       needsMigration={conflicts.needs_migration}
                       disabled={isResolving}
-                    />
+/>
                   </div>
                 </CustomScrollArea>
               </TabsContent>
@@ -978,7 +978,7 @@ export function ConflictResolutionDialog({
           </div>
         ) : (
           <Alert>
-            <Check className="h-4 w-4" />
+            <Check size={16} />
             <AlertDescription>
               {t('sync_ready', '数据已同步，没有需要处理的冲突。')}
             </AlertDescription>
@@ -1006,12 +1006,12 @@ export function ConflictResolutionDialog({
               <NotionButton onClick={handleResolve} disabled={isResolving}>
                 {isResolving ? (
                   <>
-                    <Loader2 className="h-4 w-4 animate-spin mr-2" />
+                    <CircleNotch size={16} className="animate-spin mr-2" />
                     {t('resolving', '处理中...')}
                   </>
                 ) : (
                   <>
-                    <Zap className="h-4 w-4 mr-2" />
+                    <Lightning size={16} className="mr-2" />
                     {t('apply_strategy', '应用策略')}
                   </>
                 )}

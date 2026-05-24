@@ -27,6 +27,8 @@ import '@milkdown/crepe/theme/common/style.css';
 import '@milkdown/crepe/theme/frame.css';
 import '@milkdown/crepe/theme/frame-dark.css';
 
+import 'katex/contrib/mhchem';
+
 // 本地模块
 import type { CrepeEditorProps, CrepeEditorApi } from './types';
 import { createImageBlockConfig, createImageUploader, pickImageWithTauriDialog } from './features/imageUpload';

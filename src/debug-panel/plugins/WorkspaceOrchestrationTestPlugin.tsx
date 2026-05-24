@@ -9,20 +9,21 @@ import { Button } from '../../components/ui/shad/Button';
 import { Badge } from '../../components/ui/shad/Badge';
 import { Card, CardContent, CardHeader, CardTitle } from '../../components/ui/shad/Card';
 import { ScrollArea } from '../../components/ui/shad/ScrollArea';
+import { Checkbox } from '@/components/ui/shad/Checkbox';
 import {
   Play,
   Square,
   Download,
   Copy,
-  Trash2,
-  Loader2,
-  CheckCircle2,
+  Trash,
+  CircleNotch,
+  CheckCircle,
   XCircle,
-  RefreshCw,
-  ChevronDown,
-  ChevronRight,
-  Workflow,
-} from 'lucide-react';
+  ArrowClockwise,
+  CaretDown,
+  CaretRight,
+  FlowArrow,
+} from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
 import {
   ALL_SCENARIOS,
@@ -38,7 +39,7 @@ import {
   type OverallStatus,
   type WorkspaceOrchestrationTestConfig,
   type LogEntry,
-} from '../../chat-v2/debug/workspaceOrchestrationTestPlugin';
+} from '../../features/chat/debug/workspaceOrchestrationTestPlugin';
 
 function fmtTime(ts: string) {
   const d = new Date(ts);
@@ -52,10 +53,10 @@ function fmtDuration(ms: number) {
 
 function scenarioStatusIcon(s: ScenarioResult['status']) {
   switch (s) {
-    case 'passed': return <CheckCircle2 className="w-4 h-4 text-green-500" />;
-    case 'failed': return <XCircle className="w-4 h-4 text-red-500" />;
-    case 'skipped': return <RefreshCw className="w-4 h-4 text-gray-400" />;
-    default: return <Loader2 className="w-4 h-4 animate-spin text-blue-500" />;
+    case 'passed': return <CheckCircle size={16} className="text-green-500" />;
+    case 'failed': return <XCircle size={16} className="text-red-500" />;
+    case 'skipped': return <ArrowClockwise size={16} className="text-gray-400" />;
+    default: return <CircleNotch size={16} className="animate-spin text-blue-500" />;
   }
 }
 
@@ -217,9 +218,9 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
       <Card>
         <CardHeader className="py-3">
           <CardTitle className="flex items-center gap-2 text-base">
-            <Workflow className="w-5 h-5" />
+            <FlowArrow size={20} />
             多 Agent 编排自动测试
-            {status === 'running' && <Loader2 className="w-4 h-4 animate-spin text-blue-500" />}
+            {status === 'running' && <CircleNotch size={16} className="animate-spin text-blue-500" />}
             {status === 'completed' && (
               <Badge variant={failed > 0 ? 'destructive' : 'default'}>
                 ✅{passed} ❌{failed} ⏭️{skipped}
@@ -237,12 +238,10 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
                   className="flex items-center gap-2 text-xs cursor-pointer hover:bg-muted/30 rounded px-1.5 py-1"
                   title={SCENARIO_DESCRIPTIONS[s]}
                 >
-                  <input
-                    type="checkbox"
+                  <Checkbox
                     checked={!skipScenarios.has(s)}
-                    onChange={() => toggleScenario(s)}
+                    onCheckedChange={() => toggleScenario(s)}
                     disabled={status === 'running'}
-                    className="rounded"
                   />
                   <span className={skipScenarios.has(s) ? 'text-muted-foreground line-through' : ''}>
                     {SCENARIO_LABELS[s]}
@@ -258,7 +257,7 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
               className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground"
               onClick={() => setShowAdvanced(!showAdvanced)}
             >
-              {showAdvanced ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+              {showAdvanced ? <CaretDown size={12} /> : <CaretRight size={12} />}
               高级配置
             </button>
             {showAdvanced && (
@@ -335,21 +334,21 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
           <div className="flex items-center justify-end gap-2">
             {status === 'running' ? (
               <Button size="sm" variant="destructive" onClick={handleAbort}>
-                <Square className="w-4 h-4 mr-1" /> 中止
+                <Square size={16} className="mr-1" /> 中止
               </Button>
             ) : (
               <Button size="sm" onClick={handleStart} disabled={!canStart}>
-                <Play className="w-4 h-4 mr-1" /> 开始测试 ({activeScenarios.length} 场景)
+                <Play size={16} className="mr-1" /> 开始测试 ({activeScenarios.length} 场景)
               </Button>
             )}
             <Button size="sm" variant="outline" onClick={handleDownload} disabled={results.length === 0} title="下载报告">
-              <Download className="w-4 h-4" />
+              <Download size={16} />
             </Button>
             <Button size="sm" variant="outline" onClick={handleCopyLogs} disabled={liveLogs.length === 0} title="复制日志">
-              <Copy className="w-4 h-4" />
+              <Copy size={16} />
             </Button>
             <Button size="sm" variant="outline" onClick={handleCleanup} disabled={isCleaning || status === 'running'} title="清理 [OrchTest] 工作区">
-              {isCleaning ? <Loader2 className="w-4 h-4 animate-spin" /> : <Trash2 className="w-4 h-4" />}
+              {isCleaning ? <CircleNotch size={16} className="animate-spin" /> : <Trash size={16} />}
             </Button>
           </div>
 
@@ -392,7 +391,7 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
           <div className="px-3 pb-3 space-y-1">
             {results.length === 0 && status !== 'running' ? (
               <div className="text-center text-muted-foreground py-8">
-                <Workflow className="w-8 h-8 mx-auto mb-2 opacity-30" />
+                <FlowArrow size={32} className="mx-auto mb-2 opacity-30" />
                 <p className="text-sm">点击「开始测试」运行编排自动化场景</p>
               </div>
             ) : (
@@ -401,7 +400,7 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
                 return (
                   <div key={r.scenario} className={`border rounded-lg overflow-hidden ${r.status === 'failed' ? 'border-red-300 dark:border-red-700' : 'border-border'}`}>
                     <div className="flex items-center gap-2 p-2 cursor-pointer hover:bg-muted/50 text-sm" onClick={() => setExpandedScenario(expanded ? null : r.scenario)}>
-                      {expanded ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                      {expanded ? <CaretDown size={12} /> : <CaretRight size={12} />}
                       {scenarioStatusIcon(r.status)}
                       <span className="font-medium flex-1">{SCENARIO_LABELS[r.scenario]}</span>
                       <span className="text-[10px] text-muted-foreground">{r.startTime ? fmtTime(r.startTime) : ''}</span>
@@ -431,7 +430,7 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
                             <div className="text-xs font-medium text-muted-foreground">验证检查:</div>
                             {r.verification.checks.map((c, i) => (
                               <div key={i} className={`text-xs flex items-start gap-1 ${c.passed ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
-                                {c.passed ? <CheckCircle2 className="w-3 h-3 mt-0.5 flex-shrink-0" /> : <XCircle className="w-3 h-3 mt-0.5 flex-shrink-0" />}
+                                {c.passed ? <CheckCircle size={12} className="mt-0.5 flex-shrink-0" /> : <XCircle size={12} className="mt-0.5 flex-shrink-0" />}
                                 <span><strong>{c.name}</strong>: {c.detail}</span>
                               </div>
                             ))}
@@ -467,7 +466,7 @@ const WorkspaceOrchestrationTestPlugin: React.FC<DebugPanelPluginProps> = ({
           <div className="px-3 py-1 border-b flex items-center justify-between">
             <span className="text-xs font-medium text-muted-foreground">实时日志</span>
             <Button size="sm" variant="ghost" className="h-5 px-1" onClick={() => setLiveLogs([])}>
-              <Trash2 className="w-3 h-3" />
+              <Trash size={12} />
             </Button>
           </div>
           <ScrollArea className="h-[calc(100%-28px)]" ref={logScrollRef}>

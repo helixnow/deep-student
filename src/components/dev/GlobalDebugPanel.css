@@ -1,7 +1,5 @@
 .dstu-debug-toggle {
   position: fixed !important;
-  right: 16px !important;
-  bottom: 16px !important;
   z-index: 2147483600 !important;
   width: 44px !important;
   height: 44px !important;
@@ -13,21 +11,29 @@
   display: inline-flex !important;
   align-items: center !important;
   justify-content: center !important;
-  box-shadow: 0 12px 32px rgba(15, 23, 42, 0.22) !important;
+  box-shadow: 0 12px 32px hsl(var(--shadow-base) / 0.22) !important;
   transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), 
               box-shadow 0.2s cubic-bezier(0.4, 0, 0.2, 1), 
               border-color 0.2s cubic-bezier(0.4, 0, 0.2, 1),
               opacity 0.2s cubic-bezier(0.4, 0, 0.2, 1) !important;
-  cursor: pointer !important;
+  cursor: grab !important;
   opacity: 1 !important;
   visibility: visible !important;
   pointer-events: auto !important;
+  -webkit-app-region: no-drag !important;
+}
+
+.dstu-debug-toggle--dragging {
+  cursor: grabbing !important;
+  transform: scale(1.08) !important;
+  box-shadow: 0 20px 40px hsl(var(--shadow-base) / 0.3) !important;
+  transition: none !important;
 }
 
 .dstu-debug-toggle:hover,
 .dstu-debug-toggle:focus-visible {
   transform: translateY(-2px);
-  box-shadow: 0 16px 36px rgba(15, 23, 42, 0.26);
+  box-shadow: 0 16px 36px hsl(var(--shadow-base) / 0.26);
   outline: none;
 }
 
@@ -37,7 +43,7 @@
 
 .dstu-debug-toggle--open {
   border-color: hsl(var(--primary));
-  box-shadow: 0 18px 36px rgba(37, 99, 235, 0.22);
+  box-shadow: 0 18px 36px hsl(var(--primary) / 0.22);
   background: hsl(var(--primary) / 0.1);
 }
 
@@ -49,11 +55,11 @@
   0%,
   100% {
     transform: translateY(0);
-    box-shadow: 0 12px 32px rgba(15, 23, 42, 0.22);
+    box-shadow: 0 12px 32px hsl(var(--shadow-base) / 0.22);
   }
   50% {
     transform: translateY(-3px);
-    box-shadow: 0 18px 42px rgba(37, 99, 235, 0.28);
+    box-shadow: 0 18px 42px hsl(var(--primary) / 0.28);
   }
 }
 
@@ -101,7 +107,7 @@
   border: 1px solid hsl(var(--border));
   border-radius: 10px;
   padding: 8px 12px;
-  box-shadow: 0 18px 32px rgba(15, 23, 42, 0.24);
+  box-shadow: 0 18px 32px hsl(var(--shadow-base) / 0.24);
   font-size: 12px;
   line-height: 1.5;
 }
@@ -117,7 +123,7 @@
   border-width: 0 1px 1px 0;
   transform: rotate(45deg);
   background: hsl(var(--popover));
-  box-shadow: 4px 4px 8px rgba(15, 23, 42, 0.18);
+  box-shadow: 4px 4px 8px hsl(var(--shadow-base) / 0.18);
 }
 
 .dstu-debug-toggle__tooltip-label {

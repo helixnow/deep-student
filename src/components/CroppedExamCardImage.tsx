@@ -11,10 +11,10 @@
 
 import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { cn } from '@/lib/utils';
-import { getBlobAsDataUrl } from '@/chat-v2/context/blobApi';
+import { getBlobAsDataUrl } from '@/features/chat/context/blobApi';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { Skeleton } from '@/components/ui/shad/Skeleton';
-import { AlertCircle, ImageOff } from 'lucide-react';
+import { WarningCircle, ImageBroken } from '@phosphor-icons/react';
 import i18n from '@/i18n';
 
 // ============================================================================
@@ -191,7 +191,7 @@ export const CroppedExamCardImage: React.FC<CroppedExamCardImageProps> = ({
         <Skeleton 
           className="w-full rounded-lg" 
           style={{ height: typeof maxHeight === 'number' ? maxHeight : maxHeight }}
-        />
+/>
       </div>
     );
   }
@@ -206,7 +206,7 @@ export const CroppedExamCardImage: React.FC<CroppedExamCardImageProps> = ({
         )}
         style={{ minHeight: 100 }}
       >
-        <AlertCircle className="h-5 w-5" />
+        <WarningCircle size={20} />
         <span>{error}</span>
       </div>
     );
@@ -222,7 +222,7 @@ export const CroppedExamCardImage: React.FC<CroppedExamCardImageProps> = ({
         )}
         style={{ minHeight: 100 }}
       >
-        <ImageOff className="h-5 w-5" />
+        <ImageBroken size={20} />
         <span>{i18n.t('exam_sheet:image.no_image')}</span>
       </div>
     );
@@ -236,7 +236,7 @@ export const CroppedExamCardImage: React.FC<CroppedExamCardImageProps> = ({
       className={cn('rounded-lg object-contain', className, onClick && 'cursor-pointer')}
       style={{ maxHeight: typeof maxHeight === 'number' ? `${maxHeight}px` : maxHeight }}
       onClick={onClick}
-    />
+/>
   );
 };
 

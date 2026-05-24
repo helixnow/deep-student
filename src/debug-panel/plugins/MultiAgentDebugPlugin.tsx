@@ -19,32 +19,32 @@ import { Textarea } from '../../components/ui/shad/Textarea';
 import { ScrollArea } from '../../components/ui/shad/ScrollArea';
 import {
   Copy,
-  Trash2,
+  Trash,
   Play,
   Users,
-  MessageSquare,
+  Chat,
   Folder,
-  RefreshCw,
-  CheckCircle2,
-  AlertCircle,
+  ArrowClockwise,
+  CheckCircle,
+  WarningCircle,
   Clock,
-  Loader2,
-  Send,
-  Bot,
+  CircleNotch,
+  PaperPlaneRight,
+  Robot,
   User,
   FileText,
   Plus,
-} from 'lucide-react';
+} from '@phosphor-icons/react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
-import { useWorkspaceStore } from '../../chat-v2/workspace/workspaceStore';
-import { WORKSPACE_EVENTS } from '../../chat-v2/workspace/events';
+import { useWorkspaceStore } from '../../features/chat/workspace/workspaceStore';
+import { WORKSPACE_EVENTS } from '../../features/chat/workspace/events';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import type {
   WorkspaceMessage,
   WorkspaceAgent,
-} from '../../chat-v2/workspace/types';
-import { sessionManager } from '../../chat-v2/core/session/sessionManager';
-import type { BackendEvent } from '../../chat-v2/core/middleware/eventBridge';
+} from '../../features/chat/workspace/types';
+import { sessionManager } from '../../features/chat/core/session/sessionManager';
+import type { BackendEvent } from '../../features/chat/core/middleware/eventBridge';
 import { debugLog } from '../debugMasterSwitch';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 
@@ -486,7 +486,7 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
     logMultiAgent('system', 'REFRESH_START', { workspaceId: currentWorkspaceId }, 'info');
 
     try {
-      const { listAgents, listMessages } = await import('../../chat-v2/workspace/api');
+      const { listAgents, listMessages } = await import('../../features/chat/workspace/api');
       const [agentsData, messagesData] = await Promise.all([
         listAgents(currentSessionId, currentWorkspaceId),
         listMessages(currentSessionId, currentWorkspaceId),
@@ -567,13 +567,13 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
   const getSeverityIcon = (severity: MultiAgentLogEntry['severity']) => {
     switch (severity) {
       case 'error':
-        return <AlertCircle className="w-4 h-4 text-red-500" />;
+        return <WarningCircle size={16} className="text-red-500" />;
       case 'warning':
-        return <AlertCircle className="w-4 h-4 text-yellow-500" />;
+        return <WarningCircle size={16} className="text-yellow-500" />;
       case 'success':
-        return <CheckCircle2 className="w-4 h-4 text-green-500" />;
+        return <CheckCircle size={16} className="text-green-500" />;
       default:
-        return <Clock className="w-4 h-4 text-blue-500" />;
+        return <Clock size={16} className="text-blue-500" />;
     }
   };
 
@@ -582,7 +582,7 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       {/* 标题和工具栏 */}
       <div className="flex items-center justify-between flex-shrink-0">
         <div className="flex items-center gap-2">
-          <Users className="w-5 h-5 text-primary" />
+          <Users size={20} className="text-primary" />
           <h3 className="text-lg font-semibold">多 Agent 调试</h3>
           {currentWorkspaceId && (
             <Badge variant="outline" className="text-xs">
@@ -592,14 +592,14 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         </div>
         <div className="flex items-center gap-2">
           <Button size="sm" variant="outline" onClick={handleRefresh} disabled={!currentWorkspaceId}>
-            <RefreshCw className="w-4 h-4" />
+            <ArrowClockwise size={16} />
           </Button>
           <Button size="sm" variant="outline" onClick={handleCopyLogs}>
-            <Copy className="w-4 h-4 mr-1" />
+            <Copy size={16} className="mr-1" />
             复制日志
           </Button>
           <Button size="sm" variant="destructive" onClick={handleClearLogs}>
-            <Trash2 className="w-4 h-4" />
+            <Trash size={16} />
           </Button>
         </div>
       </div>
@@ -611,7 +611,7 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           variant={activeTab === 'monitor' ? 'default' : 'ghost'}
           onClick={() => setActiveTab('monitor')}
         >
-          <Folder className="w-4 h-4 mr-1" />
+          <Folder size={16} className="mr-1" />
           监控
         </Button>
         <Button
@@ -619,7 +619,7 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           variant={activeTab === 'prompts' ? 'default' : 'ghost'}
           onClick={() => setActiveTab('prompts')}
         >
-          <Play className="w-4 h-4 mr-1" />
+          <Play size={16} className="mr-1" />
           调试
         </Button>
         <Button
@@ -627,7 +627,7 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           variant={activeTab === 'logs' ? 'default' : 'ghost'}
           onClick={() => setActiveTab('logs')}
         >
-          <FileText className="w-4 h-4 mr-1" />
+          <FileText size={16} className="mr-1" />
           日志 ({logs.length})
         </Button>
       </div>
@@ -641,7 +641,7 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           <Card>
             <CardHeader className="py-2">
               <CardTitle className="text-sm flex items-center gap-2">
-                <Folder className="w-4 h-4" />
+                <Folder size={16} />
                 工作区状态
               </CardTitle>
             </CardHeader>
@@ -665,7 +665,7 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
                 </div>
               ) : (
                 <div className="text-center text-muted-foreground py-4">
-                  <Folder className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <Folder size={32} className="mx-auto mb-2 opacity-50" />
                   <p>暂无活跃工作区</p>
                   <p className="text-xs">使用"调试"面板创建工作区</p>
                 </div>
@@ -677,7 +677,7 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           <Card>
             <CardHeader className="py-2">
               <CardTitle className="text-sm flex items-center gap-2">
-                <Bot className="w-4 h-4" />
+                <Robot size={16} />
                 Agent 列表 ({agents.length})
               </CardTitle>
             </CardHeader>
@@ -691,9 +691,9 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
                     >
                       <div className="flex items-center gap-2">
                         {agent.role === 'coordinator' ? (
-                          <User className="w-4 h-4 text-purple-500" />
+                          <User size={16} className="text-purple-500" />
                         ) : (
-                          <Bot className="w-4 h-4 text-blue-500" />
+                          <Robot size={16} className="text-blue-500" />
                         )}
                         <div>
                           <div className="font-medium">
@@ -712,7 +712,7 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
                 </div>
               ) : (
                 <div className="text-center text-muted-foreground py-4">
-                  <Bot className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <Robot size={32} className="mx-auto mb-2 opacity-50" />
                   <p>暂无 Agent</p>
                 </div>
               )}
@@ -723,7 +723,7 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
           <Card>
             <CardHeader className="py-2">
               <CardTitle className="text-sm flex items-center gap-2">
-                <MessageSquare className="w-4 h-4" />
+                <Chat size={16} />
                 最近消息 ({messages.length})
               </CardTitle>
             </CardHeader>
@@ -757,7 +757,7 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
                 </ScrollArea>
               ) : (
                 <div className="text-center text-muted-foreground py-4">
-                  <MessageSquare className="w-8 h-8 mx-auto mb-2 opacity-50" />
+                  <Chat size={32} className="mx-auto mb-2 opacity-50" />
                   <p>暂无消息</p>
                 </div>
               )}
@@ -793,9 +793,9 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
                     disabled={isExecuting}
                   >
                     {isExecuting ? (
-                      <Loader2 className="w-4 h-4 animate-spin" />
+                      <CircleNotch size={16} className="animate-spin" />
                     ) : (
-                      <Play className="w-4 h-4" />
+                      <Play size={16} />
                     )}
                   </Button>
                 </div>
@@ -821,9 +821,9 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
                 disabled={isExecuting || !customPrompt.trim()}
               >
                 {isExecuting ? (
-                  <Loader2 className="w-4 h-4 mr-2 animate-spin" />
+                  <CircleNotch size={16} className="mr-2 animate-spin" />
                 ) : (
-                  <Send className="w-4 h-4 mr-2" />
+                  <PaperPlaneRight size={16} className="mr-2" />
                 )}
                 发送到聊天
               </Button>
@@ -851,7 +851,7 @@ const MultiAgentDebugPlugin: React.FC<DebugPanelPluginProps> = ({
         <div className="flex-1 overflow-auto border rounded-md p-2 space-y-2 bg-muted/30">
           {logs.length === 0 ? (
             <div className="text-center text-muted-foreground py-8">
-              <FileText className="w-12 h-12 mx-auto mb-2 opacity-50" />
+              <FileText size={48} className="mx-auto mb-2 opacity-50" />
               <p>暂无日志</p>
               <p className="text-xs">执行调试操作后日志将显示在这里</p>
             </div>

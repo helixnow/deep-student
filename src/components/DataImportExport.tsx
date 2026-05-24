@@ -8,12 +8,12 @@ import { invoke } from '@tauri-apps/api/core';
 import { useTranslation } from 'react-i18next';
 import { CustomScrollArea } from './custom-scroll-area';
 import {
-  Upload, Download, AlertTriangle, Trash2, HardDrive, Clock, RefreshCw,
-  FileArchive, X, Save, FileText, BarChart3, BookOpen, Brain, Database,
-  Target, TrendingUp, Tag, Activity, Zap, AlertCircle, ArrowUpRight,
-  ArrowDownRight, Loader2, Play, RotateCcw, Image, Info, Cloud, FlaskConical,
-  CheckCircle2, XCircle, Square
-} from 'lucide-react';
+  Upload, DownloadSimple, Warning, Trash, HardDrive, Clock, ArrowsClockwise,
+  FileZip, X, FloppyDisk, FileText, ChartBar, BookOpen, Brain, Database,
+  Crosshair, TrendUp, Tag, Pulse, Lightning, WarningCircle, ArrowUpRight,
+  ArrowDownRight, SpinnerGap, Play, ArrowCounterClockwise, Image, Info, Cloud, Flask,
+  CheckCircle, XCircle, Square
+} from '@phosphor-icons/react';
 import { cn } from '../lib/utils';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from './ui/shad/Card';
 import { Alert, AlertDescription } from './ui/shad/Alert';
@@ -31,8 +31,8 @@ import { Badge } from './ui/shad/Badge';
 import { Tabs, TabsList, TabsTrigger } from './ui/shad/Tabs';
 import { Input } from './ui/shad/Input';
 import { ImportConversationDialog } from './ImportConversationDialog';
-import { SyncSettingsSection } from './settings/SyncSettingsSection';
-import { SettingSection } from './settings/SettingsCommon';
+import { SyncSettingsSection } from '@/features/settings/components/SyncSettingsSection';
+import { SettingSection } from '@/features/settings/components/SettingsCommon';
 import { HeaderTemplate } from './HeaderTemplate';
 import { useAllStatistics } from '../hooks/useStatisticsData';
 import { useViewVisibility } from '@/hooks/useViewVisibility';
@@ -125,7 +125,7 @@ const BackupListItem: React.FC<{
     <div
       className={cn(
         'group flex items-center justify-between rounded-lg border border-transparent bg-transparent p-4 transition-colors',
-        'hover:bg-muted/60'
+        'hover:bg-[var(--interactive-hover)]'
       )}
     >
       <div className="flex-1">
@@ -139,7 +139,7 @@ const BackupListItem: React.FC<{
         </div>
         <div className="mt-1.5 flex items-center gap-4 text-xs text-muted-foreground">
           <span className="flex items-center gap-1">
-            <Clock className="h-3 w-3 text-muted-foreground" />
+            <Clock size={12} className="text-muted-foreground" />
             {new Date(backup.created_at).toLocaleString()}
           </span>
           <span>{formatFileSize(backup.size)}</span>
@@ -154,7 +154,7 @@ const BackupListItem: React.FC<{
             title={t('data:backup_list.save_button')}
             className="h-9 px-3"
           >
-            <Save className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
+            <FloppyDisk className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
             {t('data:backup_list.save_button')}
           </NotionButton>
         )}
@@ -164,7 +164,7 @@ const BackupListItem: React.FC<{
           onClick={() => onRestore(backup.backup_id)}
           className="h-9 px-3"
         >
-          <Download className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
+          <DownloadSimple className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
           {t('data:backup_list.restore_button')}
         </NotionButton>
       </div>
@@ -207,7 +207,7 @@ const StatCard = ({
       {/* 顶部：图标 + 标题 + 趋势 */}
       <div className="flex items-center gap-2 mb-3">
         <div>
-          <Icon className="h-4 w-4 text-muted-foreground" />
+          <Icon size={16} className="text-muted-foreground" />
         </div>
         <span className="text-sm text-muted-foreground flex-1">{title}</span>
         {trend !== undefined && trend !== 0 && (
@@ -1633,14 +1633,14 @@ ${resolvedPath}`);
       <div className={`data-management-container ${embedded ? 'embedded' : ''}`}>
         {!embedded && (
           <HeaderTemplate
-            icon={FileArchive}
+            icon={FileZip}
             title={t('data:header.title')}
             subtitle={t('data:header.subtitle')}
             onExport={handleExport}
             onRefresh={loadBackupList}
             isRefreshing={isLoadingBackups}
             refreshingText={t('data:header.refreshing_text')}
-          />
+/>
         )}
         
         <div className="data-management-content">
@@ -1683,7 +1683,7 @@ ${resolvedPath}`);
                     {t('data:auto_refresh_label')} {isRefreshing ? t('data:auto_refresh_in_progress') : t('data:auto_refresh_interval')}
                   </Badge>
                   <NotionButton variant="ghost" size="sm" onClick={exportStatsData} disabled={!statsData} className="flex items-center gap-1">
-                    <Download className={DATA_CENTER_ICON_SM_CLASS} /> {t('data:export_stats_button')}
+                    <DownloadSimple className={DATA_CENTER_ICON_SM_CLASS} /> {t('data:export_stats_button')}
                   </NotionButton>
                 </div>
               </div>
@@ -1718,7 +1718,7 @@ ${resolvedPath}`);
             <CardHeader>
               <div className={cn(DATA_CENTER_ICON_CONTAINER_CLASS, 'h-10 w-10 mb-1')}>
                 {isExporting ? (
-                  <RefreshCw className={cn(DATA_CENTER_ICON_CLASS, 'animate-spin')} />
+                  <ArrowsClockwise className={cn(DATA_CENTER_ICON_CLASS, 'animate-spin')} />
                 ) : (
                   <Upload className={DATA_CENTER_ICON_CLASS} />
                 )}
@@ -1737,7 +1737,7 @@ ${resolvedPath}`);
                     checked={exportBackupTiers.includes(option.id)}
                     onCheckedChange={() => toggleExportTier(option.id)}
                     disabled={isExporting}
-                  />
+/>
                   <div className="min-w-0">
                     <p className="text-sm font-medium">{option.label}</p>
                     <p className="text-xs text-muted-foreground">{option.desc}</p>
@@ -1774,7 +1774,7 @@ ${resolvedPath}`);
                           ? exportJob.progress
                           : 100
                       }
-                    />
+/>
                     {exportJob.message && (
                       <p className="text-xs text-muted-foreground">{exportJob.message}</p>
                     )}
@@ -1813,7 +1813,7 @@ ${resolvedPath}`);
           <Card className="overflow-hidden border-transparent ring-1 ring-border/40 shadow-sm">
             <CardHeader>
               <div className={cn(DATA_CENTER_ICON_CONTAINER_CLASS, 'h-10 w-10 mb-1')}>
-                <Download className={DATA_CENTER_ICON_CLASS} />
+                <DownloadSimple className={DATA_CENTER_ICON_CLASS} />
               </div>
               <CardTitle className="text-base">{t('data:actions.import_title')}</CardTitle>
               <CardDescription>{t('data:actions.import_description')}</CardDescription>
@@ -1821,7 +1821,7 @@ ${resolvedPath}`);
             <CardFooter>
               <NotionButton variant="ghost" size="sm" onClick={handleImportZipBackup} disabled={isExporting}>
                 {isExporting && restoreProgress ? (
-                  <><Loader2 className="mr-1.5 h-4 w-4 animate-spin" />{t('data:governance.restore_in_progress')}</>
+                  <><SpinnerGap size={16} className="mr-1.5 animate-spin" />{t('data:governance.restore_in_progress')}</>
                 ) : (
                   t('data:actions.import_button')
                 )}
@@ -1864,7 +1864,7 @@ ${resolvedPath}`);
                   window.dispatchEvent(event);
                 }}
               >
-                <Upload className="mr-1.5 h-4 w-4" />
+                <Upload size={16} className="mr-1.5" />
                 {t('chat_host:actions.import_chat')}
               </NotionButton>
             </CardFooter>
@@ -1891,7 +1891,7 @@ ${resolvedPath}`);
                   window.dispatchEvent(event);
                 }}
               >
-                <Cloud className="mr-1.5 h-4 w-4" />
+                <Cloud size={16} className="mr-1.5" />
                 {t('common:actions.open')}
               </NotionButton>
             </CardFooter>
@@ -1902,13 +1902,13 @@ ${resolvedPath}`);
             <CardHeader>
               <div className={cn(DATA_CENTER_ICON_CONTAINER_CLASS, 'h-10 w-10 mb-1')}>
                 {backupTestRunning ? (
-                  <Loader2 className={cn(DATA_CENTER_ICON_CLASS, 'animate-spin')} />
+                  <SpinnerGap className={cn(DATA_CENTER_ICON_CLASS, 'animate-spin')} />
                 ) : backupTestResult.status === 'success' ? (
-                          <CheckCircle2 className={cn(DATA_CENTER_ICON_CLASS, 'text-success')} />
+                          <CheckCircle className={cn(DATA_CENTER_ICON_CLASS, 'text-success')} />
                         ) : backupTestResult.status === 'failed' ? (
                           <XCircle className={cn(DATA_CENTER_ICON_CLASS, 'text-destructive')} />
                 ) : (
-                  <FlaskConical className={DATA_CENTER_ICON_CLASS} />
+                  <Flask className={DATA_CENTER_ICON_CLASS} />
                 )}
               </div>
               <CardTitle className="text-base">{t('data:backup_test.title')}</CardTitle>
@@ -1931,7 +1931,7 @@ ${resolvedPath}`);
               {/* 测试结果 */}
               {backupTestResult.status === 'success' && (
                   <Alert className="mb-4 border-success/30 bg-success/10">
-                    <CheckCircle2 className="h-4 w-4 text-success" />
+                    <CheckCircle size={16} className="text-success" />
                     <AlertDescription className="text-success">
                     {t('data:backup_test.result_passed', { score: backupTestResult.integrityScore?.toFixed(1), duration: ((backupTestResult.duration || 0) / 1000).toFixed(2) })}
                   </AlertDescription>
@@ -1940,7 +1940,7 @@ ${resolvedPath}`);
 
               {backupTestResult.status === 'failed' && (
                 <Alert variant="destructive" className="mb-4">
-                  <XCircle className="h-4 w-4" />
+                  <XCircle size={16} />
                   <AlertDescription>
                     {t('data:backup_test.result_failed_detail', { error: backupTestResult.error })}
                   </AlertDescription>
@@ -1967,7 +1967,7 @@ ${resolvedPath}`);
             <CardFooter className="flex gap-2">
               {backupTestRunning ? (
                 <NotionButton variant="danger" size="sm" onClick={stopBackupTest}>
-                  <Square className="mr-1.5 h-4 w-4" />
+                  <Square size={16} className="mr-1.5" />
                   {t('data:backup_test.stop_button')}
                 </NotionButton>
               ) : (
@@ -1977,12 +1977,12 @@ ${resolvedPath}`);
                       size="sm"
                       onClick={runBackupSystemTest}
                     >
-                    <Play className="mr-1.5 h-4 w-4" />
+                    <Play size={16} className="mr-1.5" />
                     {t('data:backup_test.run_button')}
                   </NotionButton>
                   {backupTestResult.status !== 'idle' && (
                     <NotionButton variant="ghost" size="sm" onClick={resetBackupTest}>
-                      <RotateCcw className="mr-1.5 h-4 w-4" />
+                      <ArrowCounterClockwise size={16} className="mr-1.5" />
                       {t('data:backup_test.reset_button')}
                     </NotionButton>
                   )}
@@ -2028,7 +2028,7 @@ ${resolvedPath}`);
                   <CustomScrollArea className="backup-list-container flex max-h-[300px] flex-col gap-2" viewportClassName="pb-1 pr-2 pt-1">
                     {isLoadingBackups ? (
                       <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed border-border/60 px-4 py-8 text-sm text-muted-foreground">
-                        <RefreshCw className={cn(DATA_CENTER_ICON_LG_CLASS, 'animate-spin')} />
+                        <ArrowsClockwise className={cn(DATA_CENTER_ICON_LG_CLASS, 'animate-spin')} />
                         <p>{t('data:loading_backups')}</p>
                       </div>
                     ) : backupList.length === 0 ? (
@@ -2043,7 +2043,7 @@ ${resolvedPath}`);
                           backup={backup}
                           onRestore={handleImportFromList}
                           onSave={handleSaveBackup}
-                        />
+/>
                       ))
                     )}
                   </CustomScrollArea>
@@ -2059,7 +2059,7 @@ ${resolvedPath}`);
                 <div className="space-y-6">
                   <div className="space-y-4">
                     <h3 className="flex items-center gap-2 text-base font-medium text-foreground">
-                      <AlertTriangle className={DATA_CENTER_ICON_SM_CLASS} />
+                      <Warning className={DATA_CENTER_ICON_SM_CLASS} />
                       {t('data:usage_tips_title')}
                     </h3>
                     <div className="space-y-3">
@@ -2106,7 +2106,7 @@ ${resolvedPath}`);
                     )}
                     <div className="mt-4 flex flex-col gap-3 sm:flex-row">
                       <NotionButton variant="default" onClick={loadDataSpaceInfo} className="sm:w-auto">
-                        <RefreshCw className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
+                        <ArrowsClockwise className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
                         {t('data:data_space.refresh_button')}
                       </NotionButton>
                       <NotionButton
@@ -2143,7 +2143,7 @@ ${resolvedPath}`);
                       <h3 className="text-base font-medium text-foreground">{t('data:clear_section.title')}</h3>
                       <p className="mt-1 text-sm text-muted-foreground">{t('data:clear_section.description')}</p>
                       <NotionButton variant="danger" onClick={handleClearAllData} className="mt-4">
-                        <Trash2 className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
+                        <Trash className={cn(DATA_CENTER_ICON_SM_CLASS, 'mr-1')} />
                         {t('data:clear_section.button')}
                       </NotionButton>
                     </div>
@@ -2165,7 +2165,7 @@ ${resolvedPath}`);
               <>
                 <NotionDialogHeader>
                   <NotionDialogTitle className="flex items-center gap-3">
-                    <AlertTriangle className={DATA_CENTER_ICON_LG_CLASS} />
+                    <Warning className={DATA_CENTER_ICON_LG_CLASS} />
                     {t('data:clear_dialog.step0_title')}
                   </NotionDialogTitle>
                   <NotionDialogDescription>
@@ -2203,12 +2203,12 @@ ${resolvedPath}`);
               <>
                 <NotionDialogHeader>
                   <NotionDialogTitle className="flex items-center gap-3">
-                    <Trash2 className={DATA_CENTER_ICON_LG_CLASS} />
+                    <Trash className={DATA_CENTER_ICON_LG_CLASS} />
                     {t('data:clear_dialog.step2_title')}
                   </NotionDialogTitle>
                   <NotionDialogDescription>{t('data:clear_dialog.step2_description')}</NotionDialogDescription>
                 </NotionDialogHeader>
-                <NotionDialogBody nativeScroll>
+                <NotionDialogBody>
                   <p className="text-base font-semibold text-foreground bg-muted p-3 rounded-md text-center mb-4">
                     {t('data:clear_dialog.step2_confirm_text')}
                   </p>
@@ -2217,7 +2217,7 @@ ${resolvedPath}`);
                     value={confirmText}
                     onChange={handleConfirmTextChange}
                     placeholder={t('data:clear_dialog.step2_placeholder')}
-                  />
+/>
                 </NotionDialogBody>
                 <NotionDialogFooter>
                   <NotionButton variant="ghost" size="sm" onClick={() => setShowClearDataDialog(false)}>{t('data:clear_dialog.step2_cancel')}</NotionButton>

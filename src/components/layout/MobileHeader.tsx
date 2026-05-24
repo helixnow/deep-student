@@ -8,8 +8,9 @@
 import React, { type ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
-import { ChevronLeft, Menu } from 'lucide-react';
+import { CaretLeft, List } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { shellIconButtonClassName } from '@/components/ui/buttonPrimitiveContract';
 
 export interface MobileHeaderProps {
   /** 标题 */
@@ -68,11 +69,10 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
             variant="ghost"
             size="icon"
             onClick={onBack}
-            className="h-9 w-9 -ml-1"
-            style={{ minWidth: 36, minHeight: 36 }}
+            className={cn(shellIconButtonClassName, '-ml-1')}
             aria-label={t('common:mobile_header.back')}
           >
-            <ChevronLeft style={{ width: 20, height: 20, minWidth: 20, minHeight: 20 }} />
+            <CaretLeft size={20} weight="regular" />
           </NotionButton>
         )}
 
@@ -81,11 +81,10 @@ export const MobileHeader: React.FC<MobileHeaderProps> = ({
             variant="ghost"
             size="icon"
             onClick={onMenuClick}
-            className="h-9 w-9 -ml-1"
-            style={{ minWidth: 36, minHeight: 36 }}
-            aria-label={t('common:mobile_header.menu')}
+            className={shellIconButtonClassName}
+            aria-label="展开侧边栏"
           >
-            <Menu style={{ width: 20, height: 20, minWidth: 20, minHeight: 20 }} />
+            <List size={21} weight="regular" />
           </NotionButton>
         )}
       </div>

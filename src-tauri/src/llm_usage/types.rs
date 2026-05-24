@@ -35,6 +35,8 @@ pub enum CallerType {
     Embedding,
     /// 重排序（Reranker）
     Reranker,
+    /// 语音输入（ASR / Speech-to-Text）
+    VoiceInput,
     /// 其他/自定义调用方
     Other(String),
 }
@@ -57,6 +59,7 @@ impl std::fmt::Display for CallerType {
             CallerType::VfsIndexing => write!(f, "vfs_indexing"),
             CallerType::Embedding => write!(f, "embedding"),
             CallerType::Reranker => write!(f, "reranker"),
+            CallerType::VoiceInput => write!(f, "voice_input"),
             CallerType::Other(s) => write!(f, "other:{}", s),
         }
     }
@@ -81,6 +84,7 @@ impl CallerType {
             "vfs_indexing" => CallerType::VfsIndexing,
             "embedding" => CallerType::Embedding,
             "reranker" => CallerType::Reranker,
+            "voice_input" => CallerType::VoiceInput,
             other => {
                 if let Some(custom) = other.strip_prefix("other:") {
                     CallerType::Other(custom.to_string())
@@ -103,6 +107,7 @@ impl CallerType {
             CallerType::VfsIndexing => "文件索引",
             CallerType::Embedding => "文本嵌入",
             CallerType::Reranker => "重排序",
+            CallerType::VoiceInput => "语音输入",
             CallerType::Other(_) => "其他",
         }
     }
@@ -135,6 +140,10 @@ pub struct UsageRecord {
     /// API 配置 ID（关联 api_configs 表）
     #[serde(skip_serializing_if = "Option::is_none")]
     pub config_id: Option<String>,
+
+    /// 供应商 ID（例如 openai、siliconflow）
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub provider_id: Option<String>,
 
     /// 输入 Token 数量（Prompt Tokens）
     pub prompt_tokens: u32,
@@ -201,6 +210,7 @@ impl UsageRecord {
             caller_id: None,
             model_id,
             config_id: None,
+            provider_id: None,
             prompt_tokens,
             completion_tokens,
             total_tokens: prompt_tokens + completion_tokens,
@@ -224,6 +234,12 @@ impl UsageRecord {
     /// Builder 方法：设置 API 配置 ID
     pub fn with_config_id(mut self, config_id: String) -> Self {
         self.config_id = Some(config_id);
+        self
+    }
+
+    /// Builder 方法：设置供应商 ID
+    pub fn with_provider_id(mut self, provider_id: String) -> Self {
+        self.provider_id = Some(provider_id);
         self
     }
 
@@ -752,6 +768,7 @@ mod tests {
     fn test_caller_type_display() {
         assert_eq!(CallerType::ChatV2.to_string(), "chat_v2");
         assert_eq!(CallerType::Translation.to_string(), "translation");
+        assert_eq!(CallerType::VoiceInput.to_string(), "voice_input");
         assert_eq!(
             CallerType::Other("custom".to_string()).to_string(),
             "other:custom"
@@ -762,6 +779,7 @@ mod tests {
     fn test_caller_type_from_str() {
         assert_eq!(CallerType::from_str("chat_v2"), CallerType::ChatV2);
         assert_eq!(CallerType::from_str("translation"), CallerType::Translation);
+        assert_eq!(CallerType::from_str("voice_input"), CallerType::VoiceInput);
         assert_eq!(
             CallerType::from_str("other:custom"),
             CallerType::Other("custom".to_string())

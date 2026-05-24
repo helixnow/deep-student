@@ -3,8 +3,8 @@ import {
   areAttachmentInjectModesReady,
   downgradeInjectModesForNonMultimodal,
   getMissingInjectModesForAttachment,
-} from '@/chat-v2/components/input-bar/injectModeUtils';
-import type { AttachmentMeta } from '@/chat-v2/core/types/common';
+} from '@/features/chat/components/input-bar/injectModeUtils';
+import type { AttachmentMeta } from '@/features/chat/core/types/common';
 
 function createAttachment(overrides: Partial<AttachmentMeta>): AttachmentMeta {
   return {

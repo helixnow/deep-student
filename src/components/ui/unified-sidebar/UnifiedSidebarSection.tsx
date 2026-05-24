@@ -1,7 +1,8 @@
 import React, { useState, useContext } from 'react';
 import { AnimatePresence, motion } from 'framer-motion';
-import { ChevronRight } from 'lucide-react';
+import { CaretRight } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
+import { getSidebarStudyRowClassName } from '@/features/chat/pages/sessionSidebarStyles';
 import { UnifiedSidebarContext } from './UnifiedSidebar';
 
 export interface UnifiedSidebarSectionProps {
@@ -35,6 +36,8 @@ export interface UnifiedSidebarSectionProps {
   grouped?: boolean;
   /** 拖拽手柄属性，应用到头部使整个头部可拖拽 */
   dragHandleProps?: React.HTMLAttributes<HTMLDivElement> | null;
+  /** 头部右键菜单 */
+  onHeaderContextMenu?: React.MouseEventHandler<HTMLDivElement>;
 }
 
 export const UnifiedSidebarSection: React.FC<UnifiedSidebarSectionProps> = ({
@@ -52,6 +55,7 @@ export const UnifiedSidebarSection: React.FC<UnifiedSidebarSectionProps> = ({
   quickAction,
   grouped = false,
   dragHandleProps,
+  onHeaderContextMenu,
 }) => {
   // 使用可选上下文 - 允许在 UnifiedSidebar 外部独立使用
   const ctx = useContext(UnifiedSidebarContext);
@@ -76,15 +80,16 @@ export const UnifiedSidebarSection: React.FC<UnifiedSidebarSectionProps> = ({
       <div className={cn('mb-1', containerClasses, className)}>
         <div
           {...(dragHandleProps ?? {})}
-          className={cn(
-            'flex items-center justify-between px-3 py-1.5 rounded-md transition-colors',
-            collapsible && 'cursor-pointer hover:bg-accent/50'
-          )}
+          className={getSidebarStudyRowClassName({
+            variant: 'section',
+            clickable: collapsible,
+          })}
           onClick={() => collapsible && setIsOpen(!isOpen)}
+          onContextMenu={onHeaderContextMenu}
         >
           <div className="flex items-center gap-2">
             {Icon && <Icon className="w-4 h-4 text-muted-foreground" />}
-            <span className={cn('font-semibold text-foreground/90', isMobileMode ? 'text-sm' : 'text-[13px]')}>
+            <span className={cn('font-normal text-foreground/90', isMobileMode ? 'text-sm' : 'text-[13px]')}>
               {title}
             </span>
             {count !== undefined && (
@@ -124,8 +129,8 @@ export const UnifiedSidebarSection: React.FC<UnifiedSidebarSectionProps> = ({
     <div className={cn('mb-1', containerClasses, className)}>
       <div
         className={cn(
-          'flex items-center justify-between px-3 py-1.5 rounded-md transition-colors',
-          collapsible && 'cursor-pointer hover:bg-accent/50'
+          'flex items-center justify-between px-3 py-1.5 rounded-2xl transition-colors',
+          collapsible && 'cursor-pointer hover:bg-[var(--sidebar-study-hover)]'
         )}
         onClick={() => collapsible && setIsOpen(!isOpen)}
       >
@@ -133,7 +138,7 @@ export const UnifiedSidebarSection: React.FC<UnifiedSidebarSectionProps> = ({
           {Icon && <Icon className="w-3 h-3 text-muted-foreground" />}
           <span
             className={cn(
-              'font-semibold text-muted-foreground/60 uppercase tracking-wider',
+              'font-normal text-muted-foreground/60',
               isMobileMode ? 'text-xs' : 'text-[11px]'
             )}
           >
@@ -146,12 +151,12 @@ export const UnifiedSidebarSection: React.FC<UnifiedSidebarSectionProps> = ({
         <div className="flex items-center gap-1">
           {actions}
           {collapsible && (
-            <ChevronRight
+            <CaretRight
               className={cn(
                 'w-3 h-3 text-muted-foreground/50 transition-transform duration-200',
                 isOpen && 'rotate-90'
               )}
-            />
+/>
           )}
         </div>
       </div>

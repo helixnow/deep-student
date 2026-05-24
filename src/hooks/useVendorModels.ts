@@ -16,6 +16,9 @@ const DEFAULT_ASSIGNMENTS: ModelAssignments = {
   vl_embedding_model_config_id: null,
   vl_reranker_model_config_id: null,
   memory_decision_model_config_id: null,
+  voice_input_asr_model_config_id: null,
+  image_generation_model_config_id: null,
+  translation_display_mode: null,
 };
 
 const normalizeAssignments = (input?: Partial<ModelAssignments>): ModelAssignments => ({
@@ -79,6 +82,7 @@ const buildResolvedConfigs = (vendors: VendorConfig[], profiles: ModelProfile[])
         isReasoning: Boolean(profile.isReasoning),
         isEmbedding: Boolean(profile.isEmbedding),
         isReranker: Boolean(profile.isReranker),
+        isImageGeneration: Boolean(profile.isImageGeneration),
         enabled: profileEnabled,
         modelAdapter: profile.modelAdapter,
         maxOutputTokens: profile.maxOutputTokens ?? 0,
@@ -96,6 +100,7 @@ const buildResolvedConfigs = (vendors: VendorConfig[], profiles: ModelProfile[])
         topK: profile.topK,
         supportsReasoning: profile.supportsReasoning ?? profile.isReasoning,
         headers: vendor.headers,
+        contextWindow: profile.contextWindow,
       } as ApiConfig;
     })
     .filter((cfg): cfg is ApiConfig => Boolean(cfg));

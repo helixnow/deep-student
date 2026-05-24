@@ -20,14 +20,14 @@ import {
   Legend,
 } from 'recharts';
 import {
-  Zap,
-  Activity,
+  Lightning,
+  Pulse,
   CheckCircle,
   Clock,
-  TrendingUp,
+  TrendUp,
   Cpu,
-  RefreshCw,
-} from 'lucide-react';
+  ArrowsClockwise,
+} from '@phosphor-icons/react';
 import { cn } from '../../lib/utils';
 import { Skeleton } from '../ui/shad/Skeleton';
 import { NotionButton } from '@/components/ui/NotionButton';
@@ -70,6 +70,24 @@ const formatModelName = (modelId: string, t: (key: string) => string): string =>
   }
   
   return modelId;
+};
+
+const formatPercentage = (numerator: number, denominator: number): string | null => {
+  if (!Number.isFinite(numerator) || !Number.isFinite(denominator) || denominator <= 0) {
+    return null;
+  }
+
+  const percentage = (numerator / denominator) * 100;
+
+  if (percentage <= 0) {
+    return '0';
+  }
+
+  if (percentage < 0.1) {
+    return '<0.1';
+  }
+
+  return percentage.toFixed(1);
 };
 
 // ============================================================================
@@ -155,7 +173,7 @@ const CombinedTrend: React.FC<CombinedTrendProps> = ({ tokenData, sessionData })
     return (
       <div>
         <div className="flex items-center gap-2 mb-4">
-          <TrendingUp className="w-4 h-4 text-muted-foreground/70" />
+        <TrendUp size={16} className="text-muted-foreground/70" />
           <h3 className="font-medium text-sm text-foreground/80">{t('activity_trend')}</h3>
         </div>
         <div className="h-[220px] flex items-center justify-center text-muted-foreground/40 text-xs">
@@ -168,7 +186,7 @@ const CombinedTrend: React.FC<CombinedTrendProps> = ({ tokenData, sessionData })
   return (
     <div>
       <div className="flex items-center gap-2 mb-6 pl-1">
-        <TrendingUp className="w-4 h-4 text-muted-foreground/70" />
+        <TrendUp size={16} className="text-muted-foreground/70" />
         <h3 className="font-medium text-sm text-foreground/80">{t('activity_trend')}</h3>
       </div>
       <div className="w-full h-[220px]">
@@ -191,7 +209,7 @@ const CombinedTrend: React.FC<CombinedTrendProps> = ({ tokenData, sessionData })
               axisLine={false}
               tickLine={false}
               dy={10}
-            />
+/>
             {/* 左侧 Y 轴：Token 数 */}
             <YAxis
               yAxisId="tokens"
@@ -199,7 +217,7 @@ const CombinedTrend: React.FC<CombinedTrendProps> = ({ tokenData, sessionData })
               axisLine={false}
               tickLine={false}
               tickFormatter={(v) => v >= 1000 ? `${(v / 1000).toFixed(0)}k` : v}
-            />
+/>
             {/* 右侧 Y 轴：会话数 */}
             <YAxis
               yAxisId="sessions"
@@ -207,7 +225,7 @@ const CombinedTrend: React.FC<CombinedTrendProps> = ({ tokenData, sessionData })
               tick={{ fill: 'hsl(160, 60%, 50%)', fontSize: 10, opacity: 0.8 }}
               axisLine={false}
               tickLine={false}
-            />
+/>
             <Tooltip
               contentStyle={{
                 background: 'hsl(var(--popover))',
@@ -226,7 +244,7 @@ const CombinedTrend: React.FC<CombinedTrendProps> = ({ tokenData, sessionData })
                 return [value, t('trends.title')];
               }}
               cursor={{ stroke: 'hsl(var(--muted-foreground))', strokeWidth: 1, strokeDasharray: '3 3', opacity: 0.3 }}
-            />
+/>
             <Legend
               verticalAlign="top"
               align="right"
@@ -234,7 +252,7 @@ const CombinedTrend: React.FC<CombinedTrendProps> = ({ tokenData, sessionData })
               iconSize={8}
               wrapperStyle={{ fontSize: '11px', paddingBottom: '8px' }}
               formatter={(value) => <span className="text-muted-foreground/80">{value}</span>}
-            />
+/>
             <Area
               yAxisId="tokens"
               type="monotone"
@@ -245,7 +263,7 @@ const CombinedTrend: React.FC<CombinedTrendProps> = ({ tokenData, sessionData })
               fill="url(#tokenTrendGradient)"
               activeDot={{ r: 4, strokeWidth: 0, fill: 'hsl(var(--primary))' }}
               isAnimationActive={false}
-            />
+/>
             <Area
               yAxisId="sessions"
               type="monotone"
@@ -256,7 +274,7 @@ const CombinedTrend: React.FC<CombinedTrendProps> = ({ tokenData, sessionData })
               fill="url(#sessionTrendGradient)"
               activeDot={{ r: 4, strokeWidth: 0, fill: 'hsl(160, 60%, 50%)' }}
               isAnimationActive={false}
-            />
+/>
           </AreaChart>
         </ResponsiveContainer>
       </div>
@@ -278,7 +296,7 @@ const ModelDistribution: React.FC<ModelDistributionProps> = ({ data }) => {
     return (
       <div>
         <div className="flex items-center gap-2 mb-4">
-          <Cpu className="w-4 h-4 text-muted-foreground/70" />
+          <Cpu size={16} className="text-muted-foreground/70" />
           <h3 className="font-medium text-sm text-foreground/80">{t('model_distribution')}</h3>
         </div>
         <div className="h-[220px] flex items-center justify-center text-muted-foreground/40 text-xs">
@@ -294,11 +312,11 @@ const ModelDistribution: React.FC<ModelDistributionProps> = ({ data }) => {
     const displayName = formatModelName(m.modelId, t);
     const existing = mergedData.get(displayName);
     if (existing) {
-      existing.value += Number(m.totalTokens);
+      existing.value += Number(m.requestCount);
       existing.originalIds.push(m.modelId);
     } else {
       mergedData.set(displayName, {
-        value: Number(m.totalTokens),
+        value: Number(m.requestCount),
         originalIds: [m.modelId],
       });
     }
@@ -311,14 +329,14 @@ const ModelDistribution: React.FC<ModelDistributionProps> = ({ data }) => {
     .map(([name, item], i) => ({
       name,
       value: item.value,
-      percent: total > 0 ? ((item.value / total) * 100).toFixed(1) : '0',
+      percent: formatPercentage(item.value, total),
       fill: CHART_COLORS[i % CHART_COLORS.length],
     }));
 
   return (
     <div>
       <div className="flex items-center gap-2 mb-6 pl-1">
-        <Cpu className="w-4 h-4 text-muted-foreground/70" />
+        <Cpu size={16} className="text-muted-foreground/70" />
         <h3 className="font-medium text-sm text-foreground/80">{t('model_distribution')}</h3>
       </div>
       <div className="flex items-center">
@@ -355,10 +373,10 @@ const ModelDistribution: React.FC<ModelDistributionProps> = ({ data }) => {
                 labelStyle={{ display: 'none' }}
                 itemStyle={{ color: 'hsl(var(--foreground))', fontWeight: 500 }}
                 formatter={(value: number, name: string) => [
-                  `${value.toLocaleString()} (${pieData.find(d => d.name === name)?.percent}%)`, 
+                  `${value.toLocaleString()} (${pieData.find(d => d.name === name)?.percent ?? '-'}%)`, 
                   name
                 ]}
-              />
+/>
             </PieChart>
           </ResponsiveContainer>
         </div>
@@ -370,12 +388,12 @@ const ModelDistribution: React.FC<ModelDistributionProps> = ({ data }) => {
                 <div
                   className="w-2 h-2 rounded-full shrink-0 opacity-80"
                   style={{ backgroundColor: item.fill }}
-                />
+/>
                 <span className="text-xs font-medium text-foreground/80 truncate" title={item.name}>
                   {item.name}
                 </span>
               </div>
-              <span className="text-[10px] text-muted-foreground pl-4">{item.percent}%</span>
+              <span className="text-[10px] text-muted-foreground pl-4">{item.percent ? `${item.percent}%` : '-'}</span>
             </div>
           ))}
         </div>
@@ -398,7 +416,7 @@ const CallerDistribution: React.FC<CallerDistributionProps> = ({ data }) => {
     return (
       <div>
         <div className="flex items-center gap-2 mb-4">
-          <Activity className="w-4 h-4 text-muted-foreground/70" />
+          <Pulse size={16} className="text-muted-foreground/70" />
           <h3 className="font-medium text-sm text-foreground/80">{t('module_stats')}</h3>
         </div>
         <div className="h-[220px] flex items-center justify-center text-muted-foreground/40 text-xs">
@@ -409,18 +427,18 @@ const CallerDistribution: React.FC<CallerDistributionProps> = ({ data }) => {
   }
 
   // 计算总量和百分比
-  const total = data.reduce((sum, c) => sum + Number(c.totalTokens), 0);
+  const total = data.reduce((sum, c) => sum + Number(c.requestCount), 0);
   const pieData = data.map((c, i) => ({
     name: c.displayName || getCallerDisplayName(c.callerType, t),
-    value: Number(c.totalTokens),
-    percent: total > 0 ? ((Number(c.totalTokens) / total) * 100).toFixed(1) : '0',
+    value: Number(c.requestCount),
+    percent: formatPercentage(Number(c.requestCount), total),
     fill: CHART_COLORS[i % CHART_COLORS.length],
   }));
 
   return (
     <div>
       <div className="flex items-center gap-2 mb-6 pl-1">
-        <Activity className="w-4 h-4 text-muted-foreground/70" />
+        <Pulse size={16} className="text-muted-foreground/70" />
         <h3 className="font-medium text-sm text-foreground/80">{t('module_stats')}</h3>
       </div>
       <div className="flex items-center">
@@ -457,10 +475,10 @@ const CallerDistribution: React.FC<CallerDistributionProps> = ({ data }) => {
                 labelStyle={{ display: 'none' }}
                 itemStyle={{ color: 'hsl(var(--foreground))', fontWeight: 500 }}
                 formatter={(value: number, name: string) => [
-                  `${value.toLocaleString()} (${pieData.find(d => d.name === name)?.percent}%)`, 
+                  `${value.toLocaleString()} (${pieData.find(d => d.name === name)?.percent ?? '-'}%)`, 
                   name
                 ]}
-              />
+/>
             </PieChart>
           </ResponsiveContainer>
         </div>
@@ -472,12 +490,12 @@ const CallerDistribution: React.FC<CallerDistributionProps> = ({ data }) => {
                 <div
                   className="w-2 h-2 rounded-full shrink-0 opacity-80"
                   style={{ backgroundColor: item.fill }}
-                />
+/>
                 <span className="text-xs font-medium text-foreground/80 truncate" title={item.name}>
                   {item.name}
                 </span>
               </div>
-               <span className="text-[10px] text-muted-foreground pl-4">{item.percent}%</span>
+               <span className="text-[10px] text-muted-foreground pl-4">{item.percent ? `${item.percent}%` : '-'}</span>
             </div>
           ))}
         </div>
@@ -584,7 +602,7 @@ export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
       <div className={cn('w-full', className)}>
         <div className="flex items-center justify-end mb-4">
           <NotionButton variant="ghost" size="sm" onClick={loadData}>
-            <RefreshCw className="w-3.5 h-3.5 mr-2" />
+            <ArrowsClockwise size={14} className="mr-2" />
             {t('actions.retry')}
           </NotionButton>
         </div>
@@ -596,9 +614,10 @@ export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
     );
   }
 
-  const successRate = summary && summary.totalRequests > 0
-    ? ((summary.successRequests / summary.totalRequests) * 100).toFixed(1)
-    : '0';
+  const successRate = formatPercentage(
+    Number(summary?.successRequests || 0),
+    Number(summary?.totalRequests || 0)
+  );
 
   return (
     <div className={cn('w-full', className)}>
@@ -606,7 +625,7 @@ export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
       {!statsOnly && (
         <div className="flex justify-end mb-4">
           <NotionButton variant="ghost" size="sm" onClick={loadData} className="text-muted-foreground hover:text-foreground h-8 px-2">
-            <RefreshCw className="w-3.5 h-3.5" />
+            <ArrowsClockwise size={14} />
           </NotionButton>
         </div>
       )}
@@ -614,13 +633,13 @@ export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
       {/* 统计属性列表 */}
       {!chartsOnly && (
         <div className={statsOnly ? 'space-y-0' : 'space-y-0 mb-8'}>
-          <PropRow icon={<Activity className="h-3.5 w-3.5" />} label={t('summary.totalCalls')}>
+          <PropRow icon={<Pulse size={14} />} label={t('summary.totalCalls')}>
             <span className="font-semibold tabular-nums">{formatNumber(Number(summary?.totalRequests || 0))}</span>
             <span className="text-muted-foreground/50 ml-1 text-[12px]">
               {t('summary.cumulativeRequests')}
             </span>
           </PropRow>
-          <PropRow icon={<Zap className="h-3.5 w-3.5" />} label={t('summary.totalTokens')}>
+          <PropRow icon={<Lightning size={14} />} label={t('summary.totalTokens')}>
             <span className="font-semibold tabular-nums">{formatNumber(Number(summary?.totalTokens || 0))}</span>
             <span className="text-muted-foreground/50 ml-1 text-[12px]">
               {t('summary.tokenBreakdown', {
@@ -629,13 +648,13 @@ export const LlmUsageStatsSection: React.FC<LlmUsageStatsSectionProps> = ({
               })}
             </span>
           </PropRow>
-          <PropRow icon={<CheckCircle className="h-3.5 w-3.5" />} label={t('summary.successRate')}>
-            <span className="font-semibold tabular-nums">{successRate}%</span>
+          <PropRow icon={<CheckCircle size={14} />} label={t('summary.successRate')}>
+            <span className="font-semibold tabular-nums">{successRate ? `${successRate}%` : '-'}</span>
             <span className="text-muted-foreground/50 ml-1 text-[12px]">
               {summary?.successRequests || 0} / {summary?.totalRequests || 0}
             </span>
           </PropRow>
-          <PropRow icon={<Clock className="h-3.5 w-3.5" />} label={t('summary.avgDuration')}>
+          <PropRow icon={<Clock size={14} />} label={t('summary.avgDuration')}>
             <span className="tabular-nums">{formatDuration(summary?.avgDurationMs)}</span>
             <span className="text-muted-foreground/50 ml-1 text-[12px]">
               {t('summary.perRequestAvg')}

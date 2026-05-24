@@ -31,7 +31,7 @@ import type {
 import { getDstuLogger } from './logger';
 import { fileToBase64 } from './encoding';
 // [FIX-D001] Use static top-level import to avoid race conditions in dynamic imports
-import { invalidateResourceCache } from '@/chat-v2/context/vfsRefApiEnhancements';
+import { invalidateResourceCache } from '@/features/chat/context/vfsRefApiEnhancements';
 
 // ============================================================================
 // 日志前缀

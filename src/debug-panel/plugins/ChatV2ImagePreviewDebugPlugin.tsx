@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import type { DebugPanelPluginProps } from '../DebugPanelHost';
-import { Copy, Trash2, Play, Pause, Camera, AlertCircle, CheckCircle, XCircle, RefreshCw } from 'lucide-react';
+import { Copy, Trash, Play, Pause, Camera, WarningCircle, CheckCircle, XCircle, ArrowClockwise } from '@phosphor-icons/react';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
+import { Switch } from '@/components/ui/shad/Switch';
 
 /**
  * Chat V2 图片预览调试插件
@@ -185,7 +186,7 @@ const ChatV2ImagePreviewDebugPlugin: React.FC<DebugPanelPluginProps> = ({
   const getLevelIcon = (level: ChatV2ImageLog['level']) => {
     switch (level) {
       case 'error': return <XCircle size={14} className="text-red-500" />;
-      case 'warn': return <AlertCircle size={14} className="text-yellow-500" />;
+      case 'warn': return <WarningCircle size={14} className="text-yellow-500" />;
       case 'success': return <CheckCircle size={14} className="text-green-500" />;
       default: return null;
     }
@@ -218,7 +219,7 @@ const ChatV2ImagePreviewDebugPlugin: React.FC<DebugPanelPluginProps> = ({
             onClick={checkContainer}
             className="px-2 py-1 rounded bg-cyan-600/30 text-cyan-300 hover:bg-cyan-600/50 flex items-center gap-1"
           >
-            <RefreshCw size={12} />
+            <ArrowClockwise size={12} />
             检查容器
           </button>
           <button
@@ -233,7 +234,7 @@ const ChatV2ImagePreviewDebugPlugin: React.FC<DebugPanelPluginProps> = ({
             onClick={clearLogs}
             className="px-2 py-1 rounded bg-slate-700 hover:bg-slate-600 flex items-center gap-1"
           >
-            <Trash2 size={12} />
+            <Trash size={12} />
             清空
           </button>
         </div>
@@ -281,12 +282,7 @@ const ChatV2ImagePreviewDebugPlugin: React.FC<DebugPanelPluginProps> = ({
       {/* 自动滚动开关 */}
       <div className="flex items-center justify-end px-3 py-1 border-b border-slate-700 bg-slate-800/20">
         <label className="flex items-center gap-1 text-[10px] text-slate-400">
-          <input
-            type="checkbox"
-            checked={autoScroll}
-            onChange={e => setAutoScroll(e.target.checked)}
-            className="w-3 h-3"
-          />
+          <Switch size="sm" checked={autoScroll} onCheckedChange={setAutoScroll} />
           自动滚动
         </label>
       </div>

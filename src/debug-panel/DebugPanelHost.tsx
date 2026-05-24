@@ -2,6 +2,7 @@ import React from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { Minus, ArrowsOut } from '@phosphor-icons/react';
 // ★ 图谱模块已废弃 - IrecAutoNotePlugin 已移除
 // import IrecAutoNotePlugin from './plugins/IrecAutoNotePlugin';
 // ★ ExamSheetWorkbench 已废弃（2026-02 清理）- ExamSheetLifecyclePlugin 已移除
@@ -27,7 +28,8 @@ import NotesTypographyDebugPlugin from './plugins/NotesTypographyDebugPlugin';
 import NotesOutlineDebugPlugin from './plugins/NotesOutlineDebugPlugin';
 import CrepeEditorDebugPlugin from './plugins/CrepeEditorDebugPlugin';
 import CrepeDragDropDebugPlugin from './plugins/CrepeDragDropDebugPlugin';
-import ScrollAreaDebugPlugin from './plugins/ScrollAreaDebugPlugin';
+
+
 import CrepeImageUploadDebugPlugin from './plugins/CrepeImageUploadDebugPlugin';
 import EssayGradingTooltipDebugPlugin from './plugins/EssayGradingTooltipDebugPlugin';
 import { DEBUG_PANEL_PLUGIN_IDS } from '../config/debugPanel';
@@ -39,7 +41,9 @@ import MultiAgentDebugPlugin from './plugins/MultiAgentDebugPlugin';
 import SubagentTestPlugin from './plugins/SubagentTestPlugin';
 import SubagentMessageFlowDebugPlugin from './plugins/SubagentMessageFlowDebugPlugin';
 import ThinkingBlockDebugPlugin from './plugins/ThinkingBlockDebugPlugin';
+import MarkdownStreamingProfilerPlugin from './plugins/MarkdownStreamingProfilerPlugin';
 import { debugMasterSwitch } from './debugMasterSwitch';
+import { useUILabToggle } from '../utils/uiLabToggle';
 import DstuDebugPlugin from './plugins/DstuDebugPlugin';
 import AttachmentInjectionDebugPlugin from './plugins/AttachmentInjectionDebugPlugin';
 import AttachmentOcrRequestAuditPlugin from './plugins/AttachmentOcrRequestAuditPlugin';
@@ -204,6 +208,15 @@ const PLUGINS: DebugPanelPluginEntry[] = [
     Component: ThinkingBlockDebugPlugin,
     labelDefault: 'Thinking 块调试',
     descriptionDefault: '监听 thinking 块流式生成和数据库保存流程，诊断刷新后 thinking 丢失问题。',
+    groupId: 'chat-timeline',
+  },
+  {
+    id: 'markdown-streaming-profiler',
+    labelKey: 'debug_panel.plugin_markdown_streaming_profiler',
+    descriptionKey: 'debug_panel.plugin_markdown_streaming_profiler_desc',
+    Component: MarkdownStreamingProfilerPlugin,
+    labelDefault: 'Markdown 流式 Profiler',
+    descriptionDefault: '观察 Markdown smoothing 的 target/display 事件、lag 与 preset，调试 LLM 输出观感。',
     groupId: 'chat-timeline',
   },
   {
@@ -437,15 +450,6 @@ const PLUGINS: DebugPanelPluginEntry[] = [
     groupId: 'notes-editor',
   },
   {
-    id: 'scroll-area-debug',
-    labelKey: 'debug_panel.plugin_scroll_area_debug',
-    descriptionKey: 'debug_panel.plugin_scroll_area_debug_desc',
-    Component: ScrollAreaDebugPlugin,
-    labelDefault: '滚动区域调试',
-    descriptionDefault: '全面监控 CustomScrollArea 与 ProseMirror 选区的交互：MutationObserver/ResizeObserver 触发、滚动条状态变化、选区变化、DOM 尺寸变化等。用于诊断选中文本时滚动条闪烁问题。',
-    groupId: 'notes-editor',
-  },
-  {
     id: 'crepe-image-upload-debug',
     labelKey: 'debug_panel.plugin_crepe_image_upload_debug',
     descriptionKey: 'debug_panel.plugin_crepe_image_upload_debug_desc',
@@ -557,6 +561,7 @@ const STORAGE_KEYS = {
 const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, currentStreamId }) => {
   const { t } = useTranslation('common');
   const [portalEl, setPortalEl] = React.useState<HTMLElement | null>(null);
+  const [collapsed, setCollapsed] = React.useState(false);
   const [pos, setPos] = React.useState<{ x: number; y: number }>(() => {
     try {
       const stored = localStorage.getItem(STORAGE_KEYS.POSITION);
@@ -615,7 +620,9 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
           return new Set(parsed.filter((id): id is string => typeof id === 'string'));
         }
       }
-    } catch {}
+    } catch {
+      // localStorage 不可用或激活数据损坏，重置为空
+    }
     return new Set();
   });
 
@@ -633,6 +640,8 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
   const handleToggleMasterSwitch = React.useCallback(() => {
     debugMasterSwitch.toggle();
   }, []);
+
+  const [uiLabEnabled, toggleUILab] = useUILabToggle();
 
   const toggleFavorite = React.useCallback((pluginId: string) => {
     setFavoriteIds(prev => {
@@ -658,7 +667,9 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
       next.add(pluginId);
       try {
         localStorage.setItem(ACTIVATED_STORAGE_KEY, JSON.stringify(Array.from(next)));
-      } catch {}
+      } catch {
+        // localStorage 写入失败时，插件激活状态仍在内存中生效
+      }
       return next;
     });
   }, []);
@@ -728,12 +739,16 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
       if (dragging) {
         try {
           localStorage.setItem(STORAGE_KEYS.POSITION, JSON.stringify(pos));
-        } catch {}
+        } catch {
+          // 拖拽位置保存失败时，下次打开使用默认位置
+        }
       }
       if (resizing) {
         try {
           localStorage.setItem(STORAGE_KEYS.SIZE, JSON.stringify(size));
-        } catch {}
+        } catch {
+          // 面板尺寸保存失败时，下次打开使用默认尺寸
+        }
       }
       setDragging(false);
       setResizing(false);
@@ -833,69 +848,138 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
       style={{ 
         left: pos.x, 
         top: pos.y, 
-        width: size.w, 
-        height: size.h,
-        opacity: visible ? 1 : 0,
-        pointerEvents: visible ? 'auto' : 'none',
-        transition: 'opacity 0.2s ease-in-out',
-        // 当不可见时，降低 z-index，避免遮挡悬浮球
-        zIndex: visible ? 2147483647 : 2147483500
+        width: collapsed ? 'auto' : size.w, 
+        height: collapsed ? 'auto' : size.h,
+        display: visible ? 'block' : 'none',
+        zIndex: 2147483647,
+        transition: 'width 0.2s ease, height 0.2s ease',
       }}
     >
-      <div className="dstu-dbg flex flex-col h-full bg-[hsl(var(--card)/0.97)] backdrop-blur-xl border border-[hsl(var(--border))] rounded-xl shadow-2xl shadow-[hsl(var(--foreground)/0.1)]">
+      <div className={`dstu-dbg flex flex-col ${collapsed ? '' : 'h-full'} bg-[hsl(var(--card)/0.97)] backdrop-blur-xl border border-[hsl(var(--border))] rounded-xl shadow-2xl shadow-[hsl(var(--foreground)/0.1)]`}>
         <div
-          className="dbg-header flex items-center justify-between px-3 py-2 border-b border-[hsl(var(--border))] cursor-move bg-[hsl(var(--muted)/0.3)] rounded-t-xl"
+          className={`dbg-header flex items-center justify-between px-3 py-2 ${collapsed ? '' : 'border-b border-[hsl(var(--border))]'} cursor-move bg-[hsl(var(--muted)/0.3)] rounded-t-xl ${collapsed ? 'rounded-b-xl' : ''}`}
           onMouseDown={ev => {
             setDragging(true);
             dragStart.current = { dx: ev.clientX - pos.x, dy: ev.clientY - pos.y };
           }}
           onDoubleClick={() => {
-            setPos({ x: 12, y: 12 });
-            setSize({ w: Math.min(720, Math.floor(window.innerWidth * 0.92)), h: Math.floor(window.innerHeight * 0.5) });
+            if (collapsed) {
+              setCollapsed(false);
+            } else {
+              setPos({ x: 12, y: 12 });
+              setSize({ w: Math.min(720, Math.floor(window.innerWidth * 0.92)), h: Math.floor(window.innerHeight * 0.5) });
+            }
           }}
         >
           <div className="flex items-center gap-2">
             <div className="text-xs font-semibold text-[hsl(var(--foreground))] tracking-tight">Analysis Panel</div>
-            <div className="inline-flex gap-1.5 ml-1 flex-wrap" onMouseDown={ev => ev.stopPropagation()}>
-              <NotionButton
-                onClick={() => setActivePluginId(HOME_PLUGIN_ID)}
-                variant={isHome ? 'primary' : 'ghost'}
-                size="sm"
-                className="text-[10px] h-6 px-2"
-              >
-                {t('debug_panel.home')}
-              </NotionButton>
-            </div>
+            {!collapsed && (
+              <div className="inline-flex gap-1.5 ml-1 flex-wrap" onMouseDown={ev => ev.stopPropagation()}>
+                <NotionButton
+                  onClick={() => setActivePluginId(HOME_PLUGIN_ID)}
+                  variant={isHome ? 'primary' : 'ghost'}
+                  size="sm"
+                  className="text-[10px] h-6 px-2"
+                >
+                  {t('debug_panel.home')}
+                </NotionButton>
+                <NotionButton
+                  onClick={() => {
+                    window.dispatchEvent(new CustomEvent('NAVIGATE_TO_VIEW', { detail: { view: 'llm-playground' } }));
+                  }}
+                  variant="ghost"
+                  size="sm"
+                  className="text-[10px] h-6 px-2"
+                  title="LLM 输出模拟游乐场"
+                >
+                  LLM Playground
+                </NotionButton>
+                <NotionButton
+                  onClick={async () => {
+                    try {
+                      const { WebviewWindow } = await import('@tauri-apps/api/window');
+                      const webview: any = WebviewWindow.getCurrent();
+                      if (await (webview.isDevtoolsOpen?.() ?? Promise.resolve(false))) {
+                        await webview.closeDevtools?.();
+                      } else {
+                        await webview.openDevtools?.();
+                      }
+                    } catch {
+                      try {
+                        const { WebviewWindow } = await import('@tauri-apps/api/window');
+                        const webview: any = WebviewWindow.getCurrent();
+                        await webview.toggleDevtools?.();
+                      } catch { /* not available */ }
+                    }
+                  }}
+                  variant="ghost"
+                  size="sm"
+                  className="text-[10px] h-6 px-2"
+                  title="打开/关闭 WebView DevTools (F12)"
+                >
+                  DevTools
+                </NotionButton>
+              </div>
+            )}
           </div>
           <div className="flex items-center gap-1.5" onMouseDown={ev => ev.stopPropagation()}>
-            {/* 调试日志总开关 */}
-            <NotionButton
-              onClick={handleToggleMasterSwitch}
-              variant={masterSwitchEnabled ? 'success' : 'ghost'}
-              size="sm"
-              className="text-[10px] h-6 px-2"
-              title={masterSwitchEnabled 
-                ? t('debug_panel.master_switch_on', '日志输出已开启，点击关闭') 
-                : t('debug_panel.master_switch_off', '日志输出已关闭，点击开启')
-              }
-            >
-              {masterSwitchEnabled 
-                ? t('debug_panel.logs_on', '日志开') 
-                : t('debug_panel.logs_off', '日志关')
-              }
-            </NotionButton>
-            <NotionButton
-              onClick={onClose}
-              variant="ghost"
-              size="sm"
-              className="text-[10px] h-6 px-2"
-              title={t('debug_panel.minimize', '最小化')}
-            >
-              {t('debug_panel.minimize', '最小化')}
-            </NotionButton>
+            {!collapsed && (
+              <>
+              <NotionButton
+                onClick={handleToggleMasterSwitch}
+                variant={masterSwitchEnabled ? 'success' : 'ghost'}
+                size="sm"
+                className="text-[10px] h-6 px-2"
+                title={masterSwitchEnabled 
+                  ? t('debug_panel.master_switch_on', '日志输出已开启，点击关闭') 
+                  : t('debug_panel.master_switch_off', '日志输出已关闭，点击开启')
+                }
+              >
+                {masterSwitchEnabled 
+                  ? t('debug_panel.logs_on', '日志开') 
+                  : t('debug_panel.logs_off', '日志关')
+                }
+              </NotionButton>
+              <NotionButton
+                onClick={toggleUILab}
+                variant={uiLabEnabled ? 'warning' : 'ghost'}
+                size="sm"
+                className="text-[10px] h-6 px-2"
+                title={uiLabEnabled
+                  ? '样式调试已开启，点击关闭'
+                  : '样式调试已关闭，点击开启'
+                }
+              >
+                {uiLabEnabled ? 'UI Lab 开' : 'UI Lab 关'}
+              </NotionButton>
+              </>
+            )}
+            {collapsed ? (
+              <NotionButton
+                onClick={() => setCollapsed(false)}
+                variant="ghost"
+                size="sm"
+                className="text-[10px] h-6 px-2"
+                title={t('debug_panel.expand', '展开')}
+              >
+                <ArrowsOut size={12} />
+              </NotionButton>
+            ) : (
+              <NotionButton
+                onClick={() => setCollapsed(true)}
+                variant="ghost"
+                size="sm"
+                className="text-[10px] h-6 px-2"
+                title={t('debug_panel.minimize', '最小化')}
+              >
+                <Minus size={12} />
+              </NotionButton>
+            )}
           </div>
         </div>
-        <div className="flex-1 flex flex-col overflow-auto" onMouseDown={ev => ev.stopPropagation()}>
+        {!collapsed && (
+          <>
+            <div className="flex-1 flex flex-col overflow-auto" onMouseDown={ev => ev.stopPropagation()}>
           {isHome ? (
             <div className="flex-1 flex flex-col p-3 gap-3 bg-[hsl(var(--background))]">
               {!masterSwitchEnabled && (
@@ -962,7 +1046,7 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
                             activatePlugin(plugin.id);
                             setActivePluginId(plugin.id);
                           }}
-                          className="group relative rounded-xl border border-transparent ring-1 ring-border/40 p-3.5 bg-card hover:bg-card/80 flex flex-col gap-3 shadow-sm hover:shadow-md transition-all duration-200 cursor-pointer"
+                          className="group relative rounded-xl border border-transparent ring-1 ring-border/40 p-3.5 bg-card hover:bg-card/80 flex flex-col gap-3 shadow-sm hover:shadow-md transition-[background-color,border-color,color,box-shadow] duration-200 cursor-pointer"
                         >
                           <button
                             type="button"
@@ -1072,6 +1156,8 @@ const DebugPanelHost: React.FC<DebugPanelHostProps> = ({ visible, onClose, curre
           }}
           title="拖动以调整大小"
         />
+          </>
+        )}
       </div>
     </div>
   );

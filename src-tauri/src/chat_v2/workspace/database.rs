@@ -143,11 +143,27 @@ fn migrate_schema(conn: &Connection) -> Result<(), String> {
             "ALTER TABLE subagent_task ADD COLUMN result_summary TEXT",
             [],
         );
-        conn.execute(
-            "UPDATE subagent_task SET initial_task = task_content WHERE initial_task IS NULL",
-            [],
-        )
-        .map_err(|e| format!("Migration V2 failed while backfilling initial_task: {}", e))?;
+        let has_task_content: bool = conn
+            .prepare("PRAGMA table_info(subagent_task)")
+            .and_then(|mut stmt| {
+                let rows = stmt.query_map([], |row| row.get::<_, String>(1))?;
+                let mut found = false;
+                for col in rows.flatten() {
+                    if col == "task_content" {
+                        found = true;
+                        break;
+                    }
+                }
+                Ok(found)
+            })
+            .unwrap_or(false);
+        if has_task_content {
+            conn.execute(
+                "UPDATE subagent_task SET initial_task = task_content WHERE initial_task IS NULL",
+                [],
+            )
+            .map_err(|e| format!("Migration V2 failed while backfilling initial_task: {}", e))?;
+        }
         conn.execute(
             "CREATE INDEX IF NOT EXISTS idx_subagent_task_workspace ON subagent_task(workspace_id, status)",
             [],

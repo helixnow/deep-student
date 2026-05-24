@@ -1,7 +1,7 @@
 import * as React from "react"
 import { useTranslation } from "react-i18next"
 import { Slot } from "@radix-ui/react-slot"
-import { ChevronRight, MoreHorizontal } from "lucide-react"
+import { CaretRight, DotsThree } from "@phosphor-icons/react"
 
 import { cn } from "@/lib/utils"
 
@@ -84,7 +84,7 @@ const BreadcrumbSeparator = ({
     className={cn("[&>svg]:size-3.5", className)}
     {...props}
   >
-    {children ?? <ChevronRight />}
+    {children ?? <CaretRight />}
   </li>
 )
 BreadcrumbSeparator.displayName = "BreadcrumbSeparator"
@@ -101,7 +101,7 @@ const BreadcrumbEllipsis = ({
       className={cn("flex h-9 w-9 items-center justify-center", className)}
       {...props}
     >
-      <MoreHorizontal className="h-4 w-4" />
+      <DotsThree size={16} />
       <span className="sr-only">{t('more')}</span>
     </span>
   )

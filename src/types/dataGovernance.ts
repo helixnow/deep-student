@@ -616,7 +616,7 @@ export interface BackedUpAsset {
 // ==================== UI 相关类型 ====================
 
 /** Dashboard Tab 类型 */
-export type DashboardTab = 'overview' | 'backup' | 'sync' | 'audit' | 'cache' | 'debug';
+export type DashboardTab = 'overview' | 'archive' | 'backup' | 'sync' | 'audit' | 'cache' | 'debug';
 
 /**
  * 数据库 ID 类型（治理范围内的数据库）
@@ -707,6 +707,8 @@ export interface CloudStorageConfig {
   s3?: S3Config;
   /** 根目录路径（所有操作都在此目录下） */
   root?: string;
+  /** 端到端加密密码（可选）。非空时备份上传前会用 AES-256-GCM + Argon2id 加密。 */
+  encryptionPassword?: string;
 }
 
 /** 同步执行响应 */

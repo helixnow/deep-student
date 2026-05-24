@@ -16,7 +16,7 @@ import {
   clearAllCaches,
   makeCacheKey,
   resolveCache,
-} from '@/chat-v2/context/vfsRefApiEnhancements';
+} from '@/features/chat/context/vfsRefApiEnhancements';
 import {
   ResourceStateManager,
   resourceStateManager,

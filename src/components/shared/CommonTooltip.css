@@ -28,23 +28,23 @@
   white-space: pre-wrap;
   word-wrap: break-word;
   box-shadow: 
-    0 4px 12px rgba(0, 0, 0, 0.08),
-    0 2px 4px rgba(0, 0, 0, 0.04);
+    0 4px 12px hsl(var(--shadow-base) / 0.08),
+    0 2px 4px hsl(var(--shadow-base) / 0.04);
   backdrop-filter: blur(20px) saturate(180%);
   -webkit-backdrop-filter: blur(20px) saturate(180%);
 }
 
-/* 深色主题（默认） - 使用侧边栏颜色 */
+/* 深色主题（默认） */
 .common-tooltip--dark .common-tooltip__content,
 .common-tooltip--auto .common-tooltip__content {
-  background: hsl(var(--nav-background));
-  color: hsl(var(--foreground));
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
   border: 1px solid hsl(var(--border) / 0.4);
 }
 
 .common-tooltip--dark .common-tooltip__arrow,
 .common-tooltip--auto .common-tooltip__arrow {
-  background: hsl(var(--nav-background));
+  background: hsl(var(--popover));
 }
 
 /* 浅色主题 */
@@ -127,29 +127,30 @@
   border-bottom-color: hsl(var(--border));
 }
 
-/* 暗色模式适配 - 保持与侧边栏一致 */
-@media (prefers-color-scheme: dark) {
-  .common-tooltip--auto .common-tooltip__content {
-    background: hsl(var(--nav-background));
-    color: hsl(var(--foreground));
-    border-color: hsl(var(--border) / 0.4);
-  }
-  
-  .common-tooltip--auto .common-tooltip__arrow {
-    background: hsl(var(--nav-background));
-  }
+/* 暗色模式适配 - 使用 .dark 类选择器与项目主题系统一致 */
+:root.dark .common-tooltip--auto .common-tooltip__content,
+.dark .common-tooltip--auto .common-tooltip__content {
+  background: hsl(var(--popover));
+  color: hsl(var(--popover-foreground));
+  border-color: hsl(var(--border) / 0.4);
 }
 
-@media (prefers-color-scheme: light) {
-  .common-tooltip--auto .common-tooltip__content {
-    background: hsl(var(--nav-background));
-    color: hsl(var(--foreground));
-    border-color: hsl(var(--border) / 0.4);
-  }
-  
-  .common-tooltip--auto .common-tooltip__arrow {
-    background: hsl(var(--nav-background));
-  }
+:root.dark .common-tooltip--auto .common-tooltip__arrow,
+.dark .common-tooltip--auto .common-tooltip__arrow {
+  background: hsl(var(--popover));
+}
+
+:root:not(.dark) .common-tooltip--auto .common-tooltip__content {
+  background: linear-gradient(135deg,
+    hsl(var(--popover)) 0%,
+    hsl(var(--card)) 100%
+  );
+  color: hsl(var(--popover-foreground));
+  border-color: hsl(var(--border) / 0.4);
+}
+
+:root:not(.dark) .common-tooltip--auto .common-tooltip__arrow {
+  background: hsl(var(--popover));
 }
 
 /* 响应式调整 */
@@ -175,7 +176,7 @@
   max-height: min(400px, 80vh);
   overflow-y: auto;
   scrollbar-width: thin;
-  scrollbar-color: rgba(255, 255, 255, 0.3) transparent;
+  scrollbar-color: hsl(var(--foreground) / 0.3) transparent;
 }
 
 .common-tooltip__content::-webkit-scrollbar {
@@ -187,11 +188,11 @@
 }
 
 .common-tooltip__content::-webkit-scrollbar-thumb {
-  background: rgba(255, 255, 255, 0.3);
+  background: hsl(var(--foreground) / 0.3);
   border-radius: 2px;
 }
 
 .common-tooltip__content::-webkit-scrollbar-thumb:hover {
-  background: rgba(255, 255, 255, 0.5);
+  background: hsl(var(--foreground) / 0.5);
 }
 

@@ -115,6 +115,22 @@ module.exports = {
 				lg: 'var(--radius)',
 				md: 'calc(var(--radius) - 2px)',
 				sm: 'calc(var(--radius) - 4px)',
+				shell: 'var(--radius-shell-panel)',
+				toolbar: 'var(--radius-shell-toolbar)',
+				row: 'var(--radius-shell-row)',
+				control: 'var(--radius-shell-control)',
+				dialog: 'var(--radius-shell-dialog)',
+			},
+			boxShadow: {
+				shell: 'var(--shadow-shell-panel)',
+				floating: 'var(--shadow-shell-floating)',
+				pressed: 'var(--shadow-shell-pressed)',
+				soft: 'var(--shadow-shell-soft)',
+			},
+			// 聊天线程内容区最大宽度（消息列、输入栏、空态、滚动按钮共享）
+			// Token 定义见 src/styles/shadcn-variables.css `--chat-thread-max-w`
+			maxWidth: {
+				thread: 'var(--chat-thread-max-w)',
 			},
 			keyframes: {
 				sweep: {

@@ -641,6 +641,78 @@ async fn execute_restore_with_progress(
         backup_id, databases_restored, restored_assets, duration_ms, inactive_dir.display()
     );
 
+    // ============ 阶段 4a: 重建同步基线 ============
+    // ZIP 备份恢复的数据对当前设备而言是"全新快照"，其中 __change_log 可能
+    // 完全缺失、也可能混杂了源设备的历史 sync_version。无论哪种情况，如果
+    // 不重建基线，下一次增量同步会把恢复的整库视为"本地新变更"重新上传，
+    // 直接回滚掉云端上其他设备在此之后产生的新数据——典型的"恢复即覆盖"事故。
+    //
+    // 策略：在恢复后的 inactive_dir 中，对每个恢复过的业务数据库执行：
+    //   - 清空 __change_log
+    //   - 把所有业务表的 sync_version 提升到 local_version
+    //   - 清空 __sync_conflicts
+    // 这样设备重启切换插槽后，getPendingChanges 只会拾取恢复后真正发生的新变更。
+    let mut baseline_reset_details: Vec<String> = Vec::new();
+    for db_id_str in &databases_restored {
+        let db_id = match db_id_str.as_str() {
+            "vfs" => DatabaseId::Vfs,
+            "chat_v2" => DatabaseId::ChatV2,
+            "mistakes" => DatabaseId::Mistakes,
+            "llm_usage" => DatabaseId::LlmUsage,
+            _ => continue,
+        };
+        let db_path =
+            super::backup::BackupManager::resolve_database_path_in_dir(&inactive_dir, &db_id);
+        if !db_path.exists() {
+            continue;
+        }
+        match rusqlite::Connection::open(&db_path) {
+            Ok(conn) => {
+                let tx_res = (|| -> Result<(usize, usize), String> {
+                    conn.execute("BEGIN IMMEDIATE", [])
+                        .map_err(|e| e.to_string())?;
+                    let result = super::sync::SyncManager::reset_sync_baseline_after_restore(&conn)
+                        .map_err(|e| format!("{}", e));
+                    match result {
+                        Ok(stats) => {
+                            conn.execute("COMMIT", []).map_err(|e| e.to_string())?;
+                            Ok(stats)
+                        }
+                        Err(e) => {
+                            let _ = conn.execute("ROLLBACK", []);
+                            Err(e)
+                        }
+                    }
+                })();
+                match tx_res {
+                    Ok((truncated, reset)) => {
+                        baseline_reset_details.push(format!(
+                            "{}:changes={},records={}",
+                            db_id_str, truncated, reset
+                        ));
+                        info!(
+                            "[data_governance] {} 同步基线已重建: 清理 change_log={}, 重置 sync_version={}",
+                            db_id_str, truncated, reset
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            "[data_governance] {} 同步基线重建失败（非致命，但下次同步可能覆盖云端）: {}",
+                            db_id_str, e
+                        );
+                    }
+                }
+            }
+            Err(e) => {
+                warn!(
+                    "[data_governance] 无法打开恢复后的数据库 {}: {}（跳过基线重建）",
+                    db_path.display(),
+                    e
+                );
+            }
+        }
+    }
+
     // 标记下次重启时切换到恢复目标插槽
     let switch_warning: Option<String> = if let Some(slot) = inactive_slot {
         if let Some(mgr) = crate::data_space::get_data_space_manager() {

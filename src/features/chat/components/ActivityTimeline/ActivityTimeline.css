@@ -1,0 +1,63 @@
+/**
+ * ActivityTimeline 时间线组件样式
+ * 使用 !important 确保 Android WebView 正确渲染
+ */
+
+/* 时间线节点圆点 - 固定 8px 尺寸 */
+.timeline-node-dot {
+  width: 8px !important;
+  min-width: 8px !important;
+  max-width: 8px !important;
+  height: 8px !important;
+  min-height: 8px !important;
+  max-height: 8px !important;
+  flex-shrink: 0 !important;
+  flex-grow: 0 !important;
+  box-sizing: border-box !important;
+}
+
+/* 可点击的时间线节点圆点按钮 */
+button.timeline-node-dot {
+  padding: 0 !important;
+  border: none;
+}
+
+.thinking-summary-sticky {
+  position: sticky;
+  isolation: isolate;
+  overflow: visible;
+}
+
+.thinking-summary-sticky::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -2;
+  background: var(--surface-panel-strong);
+}
+
+.thinking-summary-sticky::after {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: -16px;
+  height: 28px;
+  pointer-events: none;
+  z-index: -1;
+  background: linear-gradient(
+    to bottom,
+    color-mix(in srgb, var(--surface-panel-strong) 96%, transparent) 0%,
+    color-mix(in srgb, var(--surface-panel-strong) 72%, transparent) 38%,
+    transparent 100%
+  );
+}
+
+.thinking-summary-row {
+  background: var(--surface-panel-strong);
+}
+
+.thinking-summary-trigger:hover,
+.thinking-summary-trigger:focus-visible {
+  background: transparent;
+}
