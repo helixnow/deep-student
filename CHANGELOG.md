@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.38](https://github.com/helixnow/deep-student/compare/v0.9.37...v0.9.38) (2026-05-24)
+
+
+### Bug Fixes
+
+* add @lobehub/ui and antd dependencies ([c2f43f8](https://github.com/helixnow/deep-student/commit/c2f43f8bfd16624491b2ba4d9bc892ffc9515142))
+
 ## [0.9.37](https://github.com/helixnow/deep-student/compare/v0.9.36...v0.9.37) (2026-05-24)
 
 
