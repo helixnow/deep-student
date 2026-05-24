@@ -1,0 +1,10 @@
+[advisories]
+ignore = []
+
+[output]
+quiet = false
+
+[yanked]
+# Yanked crates from transitive dependencies (lz4_flex via arrow/datafusion/lance)
+# are outside our control. We deny only actual RUSTSEC security advisories.
+enabled = false
