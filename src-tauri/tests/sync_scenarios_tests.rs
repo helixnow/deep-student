@@ -957,12 +957,27 @@ fn scenario_28_large_batch_partial_failure_rolls_back_all() {
 
 #[test]
 fn scenario_29_millis_sync_version_normalized() {
-    // 混有毫秒时间戳的 sync_version 应被 apply_downloaded_changes 的上层归一化
-    // 这里验证 has_prune_gap 在参数已为秒时表现正确
-    let ms = 1_700_000_000_000u64; // 毫秒级
-    assert!(ms > 100_000_000_000, "阈值 1e11 分界");
-    // normalize_version_to_seconds 被定义为私有，但语义可以通过 has_prune_gap 间接验证
-    // 这里仅表明约定：上层调用前必须调用 normalize，否则会误判为"未来版本"
+    let conn = new_test_db();
+    insert_note(&conn, "n1", "test1", "", "2024-01-01T00:00:00Z");
+    // Mark change log entry with a millisecond-precision sync_version (> 1e12)
+    let raw_millis: i64 = 1704067200000; // 2024-01-01 in ms
+    conn.execute(
+        "UPDATE __change_log SET sync_version = ?1 WHERE record_id = 'n1'",
+        params![raw_millis],
+    )
+    .unwrap();
+
+    // get_database_sync_state should normalize millis to seconds internally
+    let state = SyncManager::get_database_sync_state(&conn, "vfs").unwrap();
+    assert!(state.data_version > 0);
+    // Normalized version should be in seconds range (~1.7e9), not millis range (~1.7e12)
+    assert!(
+        state.data_version < 10_000_000_000,
+        "data_version should be normalized to seconds, got {}",
+        state.data_version
+    );
+    // 1704067200000 ms → 1704067200 seconds
+    assert_eq!(state.data_version, 1704067200);
 }
 
 #[test]
@@ -1901,12 +1916,15 @@ async fn scenario_59_tombstone_then_recreate_with_same_hash() {
         .await
         .unwrap()
         .is_some();
-    // 接受任意结果，但记录当前行为
-    println!(
-        "scenario_59 行为: blob_still_there={}, cloud_still_there={}",
-        blob_still_there, cloud_still_there
+    // Tombstone 机制应删除重新创建的同 hash blob（已知行为）
+    assert!(
+        !blob_still_there,
+        "recreated same-hash blob should be deleted by tombstone"
     );
-    // 确保不 panic，不死循环
+    assert!(
+        !cloud_still_there,
+        "recreated same-hash blob should not exist in cloud"
+    );
 }
 
 #[test]

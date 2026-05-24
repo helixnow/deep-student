@@ -10,7 +10,7 @@ import type { StoreApi } from 'zustand';
 import type { ChatStore } from '../core/types';
 import { useChatSession, type CreateSessionOptions } from './useChatSession';
 import { useTauriAdapter, type UseTauriAdapterResult } from './useTauriAdapter';
-import { sessionManager } from '../core/session';
+import { sessionManager } from '../core/session/sessionManager';
 
 // ============================================================================
 // 返回类型

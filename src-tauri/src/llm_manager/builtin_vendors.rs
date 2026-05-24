@@ -8,9 +8,9 @@
 //! - 模型的 is_builtin=false 表示用户可以自由编辑和删除模型配置
 
 use super::{ModelProfile, VendorConfig};
+use serde::Deserialize;
 use std::collections::HashMap;
 use std::sync::LazyLock;
-use serde::Deserialize;
 
 /// 内置供应商定义
 pub struct BuiltinVendor {
@@ -81,7 +81,10 @@ static GEMINI_BUILTIN_REGISTRY: LazyLock<GeminiBuiltinRegistryDocument> = LazyLo
         "../../../scripts/gemini-model-registry.json"
     ))
     .unwrap_or_else(|err| {
-        panic!("[BuiltinGemini] failed to parse Gemini model registry: {}", err);
+        panic!(
+            "[BuiltinGemini] failed to parse Gemini model registry: {}",
+            err
+        );
     })
 });
 
@@ -1294,8 +1297,12 @@ mod tests {
         let profiles = load_builtin_models(&[]);
 
         assert!(vendors.iter().any(|vendor| vendor.id == "builtin-gemini"));
-        assert!(profiles.iter().any(|profile| profile.id == "builtin-gemini-3-flash"));
-        assert!(profiles.iter().any(|profile| profile.model == "gemini-3.5-flash"));
+        assert!(profiles
+            .iter()
+            .any(|profile| profile.id == "builtin-gemini-3-flash"));
+        assert!(profiles
+            .iter()
+            .any(|profile| profile.model == "gemini-3.5-flash"));
     }
 
     #[test]

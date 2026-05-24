@@ -512,16 +512,80 @@ fn chaos_three_devices_converge() {
 
 #[test]
 fn chaos_no_runaway_conflict_accumulation() {
-    // 运行 1000 步，检查 chaos 中冲突条目数量 <= 总操作数
-    let (sig_a, sig_b, a_ops, b_ops) = run_chaos_session(999, 1000, 0.2);
-    let _ = (sig_a, sig_b);
-    // 这里不强断言冲突数量，但操作数上限给出
-    assert!(
-        a_ops + b_ops <= 1000,
-        "操作计数合理: a={}, b={}",
-        a_ops,
-        b_ops
+    let conn_a = new_db("dev_a");
+    let conn_b = new_db("dev_b");
+
+    // Initial data on both devices
+    for i in 0..50 {
+        local_insert_or_update(&conn_a, &format!("n{}", i), "init", i as i64, 1_700_000_000);
+    }
+    // Sync initial data from A to B
+    let initial = drain_pending_changes(&conn_a, "dev_a");
+    SyncManager::apply_downloaded_changes(&conn_b, &initial, None).unwrap();
+
+    // 5 rounds of concurrent edits on different subsets, syncing each round
+    for round in 0..5 {
+        // Device A edits items 0-24
+        for i in 0..25 {
+            local_insert_or_update(
+                &conn_a,
+                &format!("n{}", i),
+                &format!("devA_r{}", round),
+                (round * 100 + i) as i64,
+                1_700_000_010 + (round as i64) * 100 + i,
+            );
+        }
+        // Device B edits items 25-49
+        for i in 25..50 {
+            local_insert_or_update(
+                &conn_b,
+                &format!("n{}", i),
+                &format!("devB_r{}", round),
+                (round * 100 + i) as i64,
+                1_700_000_020 + (round as i64) * 100 + i,
+            );
+        }
+        // Sync A -> B
+        let a_pending = drain_pending_changes(&conn_a, "dev_a");
+        let _ = SyncManager::apply_downloaded_changes(&conn_b, &a_pending, None);
+        // Sync B -> A
+        let b_pending = drain_pending_changes(&conn_b, "dev_b");
+        let _ = SyncManager::apply_downloaded_changes(&conn_a, &b_pending, None);
+    }
+
+    // After full sync, neither device should have runaway pending accumulation
+    let pending_a: i64 = conn_a
+        .query_row(
+            "SELECT COUNT(*) FROM __change_log WHERE sync_version = 0 AND table_name != '__meta'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    let pending_b: i64 = conn_b
+        .query_row(
+            "SELECT COUNT(*) FROM __change_log WHERE sync_version = 0 AND table_name != '__meta'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(
+        pending_a, 0,
+        "Device A: no runaway pending accumulation after sync"
     );
+    assert_eq!(
+        pending_b, 0,
+        "Device B: no runaway pending accumulation after sync"
+    );
+
+    // Both devices should have all 50 items
+    let count_a: i64 = conn_a
+        .query_row("SELECT COUNT(*) FROM items", [], |r| r.get(0))
+        .unwrap();
+    let count_b: i64 = conn_b
+        .query_row("SELECT COUNT(*) FROM items", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(count_a, 50);
+    assert_eq!(count_b, 50);
 }
 
 // ============================================================================

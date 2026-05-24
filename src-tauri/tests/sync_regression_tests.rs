@@ -32,7 +32,6 @@ fn new_db() -> Connection {
             counter INTEGER NOT NULL DEFAULT 0,
             device_id TEXT,
             local_version INTEGER DEFAULT 0,
-            sync_version INTEGER DEFAULT 0,
             updated_at TEXT NOT NULL,
             deleted_at TEXT
         );
@@ -341,12 +340,15 @@ fn r09_reset_baseline_is_idempotent() {
     SyncManager::reset_sync_baseline_after_restore(&conn).unwrap();
     SyncManager::reset_sync_baseline_after_restore(&conn).unwrap();
 
-    let sv: i64 = conn
-        .query_row("SELECT sync_version FROM items WHERE id='n1'", [], |r| {
+    let lv: i64 = conn
+        .query_row("SELECT local_version FROM items WHERE id='n1'", [], |r| {
             r.get(0)
         })
         .unwrap();
-    assert_eq!(sv, 3);
+    assert_eq!(
+        lv, 5,
+        "local_version should increment by 1 on each reset call (3→4→5)"
+    );
     let cnt: i64 = conn
         .query_row("SELECT COUNT(*) FROM __change_log", [], |r| r.get(0))
         .unwrap();

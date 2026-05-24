@@ -575,10 +575,9 @@ fn real_65_fts_trigger_fires_but_batch_stays_transactional() {
     );
 }
 
-/// 66. resource.ref_count 并发递增 —— LWW 会丢失一次计数（已知问题）
-/// 这个测试明确记录：**当前实现无法正确合并计数器**
+/// 66. resource.ref_count 并发递增 —— delta 合并应累计两端增量
 #[test]
-fn real_66_ref_count_concurrent_increment_loses_data() {
+fn real_66_ref_count_concurrent_increment_merges_data() {
     let conn_a = new_real_vfs_schema();
     let conn_b = new_real_vfs_schema();
     insert_resource(&conn_a, "res1", "h1", 1);
@@ -610,6 +609,9 @@ fn real_66_ref_count_concurrent_increment_loses_data() {
             "id": "res1", "hash": "h1", "type": "note", "storage_mode": "inline",
             "ref_count": 2, "created_at": 1_i64,
             "updated_at": now_ms() + 1000,
+            "__sync_field_deltas": {
+                "ref_count": 1
+            },
         })),
         changed_at: "2026-05-01T10:00:00Z".into(),
         change_log_id: None,
@@ -626,15 +628,12 @@ fn real_66_ref_count_concurrent_increment_loses_data() {
     )
     .unwrap();
 
-    // A 的最终 ref_count 是 2，而不是 3（正确的并发计数应该是 1 + 2 = 3）
     let ref_count: i64 = conn_a
         .query_row("SELECT ref_count FROM resources WHERE id='res1'", [], |r| {
             r.get(0)
         })
         .unwrap();
-    // 记录已知行为：LWW 无法正确合并计数器
-    // 如果未来引入 CRDT Counter 类型，这个断言需要改为 == 3
-    assert_eq!(ref_count, 2, "已知限制：LWW 策略下并发 +1 会丢失一次");
+    assert_eq!(ref_count, 3);
     // 冲突表应该记录了这次竞争，用户可以手动决策
     assert!(conflict.conflicts_saved > 0, "竞争应该产生冲突记录");
 }

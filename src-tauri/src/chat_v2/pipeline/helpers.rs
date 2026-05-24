@@ -47,10 +47,9 @@ fn history_unit_token_estimate(msg: &LegacyChatMessage) -> usize {
 
 fn is_pinned_history_message(msg: &LegacyChatMessage) -> bool {
     is_transient_llm_only_message(msg)
-        || msg
-            .metadata
-            .as_ref()
-            .is_some_and(|metadata| metadata.get("kind").and_then(Value::as_str) == Some("compaction_summary"))
+        || msg.metadata.as_ref().is_some_and(|metadata| {
+            metadata.get("kind").and_then(Value::as_str) == Some("compaction_summary")
+        })
 }
 
 fn group_history_units(history: &[LegacyChatMessage]) -> Vec<HistoryUnit> {
@@ -65,7 +64,8 @@ fn group_history_units(history: &[LegacyChatMessage]) -> Vec<HistoryUnit> {
             let prev = &history[end - 1];
             let current = &history[end];
             let prev_is_tool_related = prev.tool_call.is_some() || prev.tool_result.is_some();
-            let current_is_tool_related = current.tool_call.is_some() || current.tool_result.is_some();
+            let current_is_tool_related =
+                current.tool_call.is_some() || current.tool_result.is_some();
             if !prev_is_tool_related || !current_is_tool_related {
                 break;
             }
@@ -586,7 +586,8 @@ pub(crate) fn trim_history_by_token_budget(
     let mut total_tokens: usize = units.iter().map(|u| u.token_estimate).sum();
 
     let original_len = history.len();
-    let mut removable_units: Vec<HistoryUnit> = units.into_iter().filter(|u| !u.is_pinned).collect();
+    let mut removable_units: Vec<HistoryUnit> =
+        units.into_iter().filter(|u| !u.is_pinned).collect();
 
     while total_tokens > max_tokens && removable_units.len() > 2 {
         let Some(unit) = removable_units.first().cloned() else {
@@ -725,7 +726,10 @@ mod tests {
             make_empty_message("user", "latest user turn".to_string()),
         ];
 
-        trim_history_by_token_budget(&mut history, estimate_token_count("latest assistant replylatest user turn"));
+        trim_history_by_token_budget(
+            &mut history,
+            estimate_token_count("latest assistant replylatest user turn"),
+        );
 
         assert_eq!(history.len(), 2);
         assert_eq!(history[0].content, "latest assistant reply");
@@ -760,10 +764,15 @@ mod tests {
             make_empty_message("user", "turn 2 user".to_string()),
         ];
 
-        trim_history_by_token_budget(&mut history, estimate_token_count("turn 2 assistantturn 2 user"));
+        trim_history_by_token_budget(
+            &mut history,
+            estimate_token_count("turn 2 assistantturn 2 user"),
+        );
 
         assert_eq!(history.len(), 2);
-        assert!(history.iter().all(|msg| msg.tool_call.is_none() && msg.tool_result.is_none()));
+        assert!(history
+            .iter()
+            .all(|msg| msg.tool_call.is_none() && msg.tool_result.is_none()));
         assert_eq!(history[0].content, "turn 2 assistant");
         assert_eq!(history[1].content, "turn 2 user");
     }
