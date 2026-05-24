@@ -9,7 +9,7 @@
 -- - 增量同步复合索引与部分索引
 --
 -- 已在前续迁移中覆盖的表（无需重复处理）：
---   resources, notes, questions, review_plans, folders, exam_sheets
+--   resources, notes, questions, review_plans, folders
 --
 -- 目标表：files, translations, essays, essay_sessions, mindmaps,
 --         folder_items, answer_submissions, todo_lists, todo_items,

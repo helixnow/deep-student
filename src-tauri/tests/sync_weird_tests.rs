@@ -267,7 +267,10 @@ fn w08_empty_record_id() {
     );
     let r = SyncManager::apply_downloaded_changes(&conn, &[c], None);
     // SENTINEL_TEST: verifies edge case doesn't cause panic/crash
-    assert!(r.is_ok() || r.is_err(), "should not panic on empty record_id");
+    assert!(
+        r.is_ok() || r.is_err(),
+        "should not panic on empty record_id"
+    );
     // If accepted (SQLite allows empty string PKs), verify data is stored correctly
     if r.is_ok() {
         let stored = get_title(&conn, "");

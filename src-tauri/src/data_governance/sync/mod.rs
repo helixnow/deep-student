@@ -84,10 +84,9 @@ pub fn parse_flexible_timestamp_public(s: &str) -> Option<chrono::DateTime<chron
     None
 }
 
-use rusqlite::{params, Connection, OptionalExtension, Row};
+use rusqlite::{params, types::Type, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
-use std::collections::HashMap;
-use classification::{sync_classification_registry, SyncCategory, TableClassification};
+use std::collections::{HashMap, HashSet};
 
 /// 记录并跳过迭代中的错误，避免静默丢弃
 fn log_and_skip_err<T, E: std::fmt::Display>(result: Result<T, E>) -> Option<T> {
@@ -98,6 +97,15 @@ fn log_and_skip_err<T, E: std::fmt::Display>(result: Result<T, E>) -> Option<T> 
             None
         }
     }
+}
+
+type IdAliasMap = HashMap<(String, String), String>;
+
+#[derive(Debug, Clone)]
+struct ForeignKeyColumn {
+    child_column: String,
+    parent_table: String,
+    parent_column: String,
 }
 
 /// 带指数退避的异步重试工具
@@ -1715,8 +1723,14 @@ impl SyncManager {
         table_filter: Option<&str>,
         limit: Option<usize>,
     ) -> Result<PendingChanges, SyncError> {
-        let mut sql = String::from(
-            "SELECT id, table_name, record_id, operation, changed_at, sync_version
+        let has_field_deltas = Self::table_has_column(conn, "__change_log", "field_deltas_json");
+        let mut sql =
+            String::from("SELECT id, table_name, record_id, operation, changed_at, sync_version");
+        if has_field_deltas {
+            sql.push_str(", field_deltas_json");
+        }
+        sql.push_str(
+            "
              FROM __change_log
              WHERE sync_version = 0",
         );
@@ -2137,7 +2151,8 @@ impl SyncManager {
 
         for record_id in records_to_pull {
             if let Some(data) = cloud_data.get(record_id) {
-                match Self::apply_single_record(conn, table_name, record_id, data, id_column) {
+                match Self::apply_single_record(conn, table_name, record_id, data, id_column, None)
+                {
                     Ok(()) => {
                         updated += 1;
                         tracing::debug!(
@@ -2177,28 +2192,6 @@ impl SyncManager {
     /// （如 `resources.hash`、`review_plans.question_id`、`files.sha256`、
     /// `folder_items(folder_id,item_type,item_id)`），需使用对应的冲突目标来正确合并数据，
     /// 而非在插入新 `id` 时遭遇 UNIQUE 约束违反。
-    fn get_upsert_conflict_target(table_name: &str, _data: &serde_json::Value) -> String {
-        match table_name {
-            "resources" | "chat_v2_resources" => {
-                "ON CONFLICT(id)".to_string()
-            }
-            "review_plans" => {
-                "ON CONFLICT(question_id) WHERE question_id IS NOT NULL".to_string()
-            }
-            "files" => {
-                "ON CONFLICT(sha256)".to_string()
-            }
-            "folder_items" => {
-                "ON CONFLICT(folder_id, item_type, item_id) WHERE deleted_at IS NULL".to_string()
-            }
-            "llm_usage_daily" => {
-                "ON CONFLICT(date, caller_type, model, provider)".to_string()
-            }
-            _ => {
-                "ON CONFLICT(id)".to_string()
-            }
-        }
-    }
 
     /// 生成业务键冲突时的回落 UPSERT SQL。
     ///
@@ -2208,7 +2201,118 @@ impl SyncManager {
     /// - `resources`：从 id 回落至 hash（合并相同内容记录）
     /// - `files`：从 id 回落至 sha256
     /// - `folder_items`：从 id 回落至 (folder_id, item_type, item_id)
+    fn registry_business_unique_columns(
+        database_name: Option<&str>,
+        table_name: &str,
+    ) -> Vec<String> {
+        if let Some(database) = database_name {
+            return classification::TableClassification::get_business_unique_keys(
+                database, table_name,
+            );
+        }
+
+        let mut distinct = classification::sync_classification_registry()
+            .into_iter()
+            .filter(|c| c.table_name == table_name)
+            .filter(|c| !c.business_unique_keys.trim().is_empty())
+            .map(|c| c.business_unique_keys.trim().to_string())
+            .collect::<Vec<_>>();
+        distinct.sort();
+        distinct.dedup();
+
+        if distinct.len() == 1 {
+            distinct[0]
+                .split(',')
+                .map(|s| s.trim().to_string())
+                .filter(|s| !s.is_empty())
+                .collect()
+        } else {
+            Vec::new()
+        }
+    }
+
+    fn unique_index_column_groups(
+        conn: &Connection,
+        table_name: &str,
+    ) -> Result<Vec<Vec<String>>, SyncError> {
+        Self::ensure_table_allowed_and_exists(conn, table_name)?;
+        let table_ident = Self::quote_identifier(table_name)?;
+        let sql = format!("PRAGMA index_list({})", table_ident);
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| SyncError::Database(format!("查询唯一索引失败: {}", e)))?;
+
+        let index_names: Vec<String> = stmt
+            .query_map([], |row| {
+                let name: String = row.get(1)?;
+                let unique: i64 = row.get(2)?;
+                Ok((name, unique))
+            })
+            .map_err(|e| SyncError::Database(format!("读取唯一索引失败: {}", e)))?
+            .filter_map(log_and_skip_err)
+            .filter_map(|(name, unique)| if unique != 0 { Some(name) } else { None })
+            .collect();
+
+        let mut groups = Vec::new();
+        for index_name in index_names {
+            let index_ident = Self::quote_identifier(&index_name)?;
+            let index_sql = format!("PRAGMA index_info({})", index_ident);
+            let mut index_stmt = conn
+                .prepare(&index_sql)
+                .map_err(|e| SyncError::Database(format!("查询唯一索引列失败: {}", e)))?;
+            let cols: Vec<String> = index_stmt
+                .query_map([], |row| {
+                    let cid: i64 = row.get(1)?;
+                    let name: Option<String> = row.get(2)?;
+                    Ok((cid, name))
+                })
+                .map_err(|e| SyncError::Database(format!("读取唯一索引列失败: {}", e)))?
+                .filter_map(log_and_skip_err)
+                .filter_map(|(cid, name)| if cid >= 0 { name } else { None })
+                .collect();
+            if !cols.is_empty() && !groups.iter().any(|g| g == &cols) {
+                groups.push(cols);
+            }
+        }
+
+        Ok(groups)
+    }
+
+    fn business_unique_key_groups(
+        conn: &Connection,
+        database_name: Option<&str>,
+        table_name: &str,
+    ) -> Result<Vec<Vec<String>>, SyncError> {
+        let registered = Self::registry_business_unique_columns(database_name, table_name);
+        if registered.is_empty() {
+            return Ok(Vec::new());
+        }
+
+        let registered_set: HashSet<&str> = registered.iter().map(|s| s.as_str()).collect();
+        let table_columns = Self::get_table_columns(conn, table_name)?;
+        let table_column_set: HashSet<&str> = table_columns.iter().map(|s| s.as_str()).collect();
+
+        let mut groups: Vec<Vec<String>> = Self::unique_index_column_groups(conn, table_name)?
+            .into_iter()
+            .filter(|cols| cols.iter().all(|c| registered_set.contains(c.as_str())))
+            .collect();
+
+        if groups.is_empty()
+            && registered
+                .iter()
+                .all(|col| table_column_set.contains(col.as_str()))
+        {
+            groups.push(registered);
+        }
+
+        groups.sort();
+        groups.dedup();
+        Ok(groups)
+    }
+
     fn get_fallback_upsert_sql(
+        conn: &Connection,
+        database_name: Option<&str>,
         table_name: &str,
         table_ident: &str,
         columns: &str,
@@ -2216,44 +2320,27 @@ impl SyncManager {
         columns_list: &[&str],
         id_column: &str,
     ) -> Result<String, SyncError> {
-        let (conflict_target, conflict_cols) = match table_name {
-            "review_plans" => (
-                format!("ON CONFLICT({})", Self::quote_identifier(id_column)?),
-                vec![id_column],
-            ),
-            "resources" | "chat_v2_resources" => (
-                "ON CONFLICT(hash)".to_string(),
-                vec!["hash"],
-            ),
-            "files" => (
-                "ON CONFLICT(sha256)".to_string(),
-                vec!["sha256"],
-            ),
-            "folder_items" => (
-                "ON CONFLICT(folder_id, item_type, item_id) WHERE deleted_at IS NULL".to_string(),
-                vec!["folder_id", "item_type", "item_id"],
-            ),
-            "llm_usage_daily" => (
-                "ON CONFLICT(date, caller_type, model, provider)".to_string(),
-                vec!["date", "caller_type", "model", "provider"],
-            ),
-            "chat_v2_attachments" => (
-                "ON CONFLICT(content_hash) WHERE content_hash IS NOT NULL".to_string(),
-                vec!["content_hash"],
-            ),
-            _ => {
-                return Err(SyncError::Database(format!(
-                    "表 {} 不支持业务键回落，id 冲突需要人工处理",
-                    table_name
-                )));
-            }
-        };
+        let business_key_groups =
+            Self::business_unique_key_groups(conn, database_name, table_name)?;
+        if business_key_groups.is_empty() {
+            return Err(SyncError::Database(format!(
+                "表 {} 没有已注册且可验证的业务唯一键，id 冲突需要人工处理",
+                table_name
+            )));
+        }
+
+        let mut protected_cols: HashSet<String> =
+            business_key_groups.into_iter().flatten().collect();
+        protected_cols.insert(id_column.to_string());
 
         let update_set = columns_list
             .iter()
-            .filter(|c| !conflict_cols.contains(c))
+            .filter(|c| {
+                let raw = c.trim_matches('"').replace("\"\"", "\"");
+                !protected_cols.contains(&raw)
+            })
             .map(|c| {
-                let quoted = Self::quote_identifier(c).unwrap_or_else(|_| format!("\"{}\"", c));
+                let quoted = (*c).to_string();
                 format!(
                     "{}=COALESCE(excluded.{}, {}.{})",
                     quoted, quoted, table_ident, quoted
@@ -2269,8 +2356,8 @@ impl SyncManager {
         };
 
         Ok(format!(
-            "INSERT INTO {} ({}) VALUES ({}) {} {}",
-            table_ident, columns, placeholders, conflict_target, action
+            "INSERT INTO {} ({}) VALUES ({}) ON CONFLICT {}",
+            table_ident, columns, placeholders, action
         ))
     }
 
@@ -2286,20 +2373,118 @@ impl SyncManager {
     /// - **`deleted_at` 的显式 null**：表示"复活一条软删除记录"的明确意图，
     ///   在 UPSERT 之后执行一条独立 `UPDATE SET deleted_at = NULL`。
     ///   这对应 scenarios_tests 中"Delete 后又 Insert 同 id" 的幂等性需求。
+
+    /// 返回某表需要字段级合并的列清单（在 UPSERT 之前抓取原始本地值用）。
+    /// 仅在本地行原先就存在时调用（INSERT 新行没有"原始本地值"这一说）。
+    fn field_merge_column_picklist(table_name: &str) -> Vec<&'static str> {
+        match table_name {
+            "resources" | "chat_v2_resources" => vec!["ref_count", "metadata_json"],
+            "questions" => vec![
+                "attempt_count",
+                "correct_count",
+                "user_note",
+                "ai_feedback",
+                "is_favorite",
+                "is_bookmarked",
+                "tags",
+                "images_json",
+                "options_json",
+                "ai_score",
+            ],
+            "notes" => vec!["tags", "is_favorite"],
+            "files" => vec!["tags_json", "is_favorite", "bookmarks_json", "preview_json"],
+            "review_plans" => vec![
+                "total_reviews",
+                "total_correct",
+                "ease_factor",
+                "interval_days",
+                "consecutive_failures",
+            ],
+            "todo_items" => vec!["estimated_pomodoros", "completed_pomodoros", "tags_json"],
+            "chat_v2_sessions" => vec!["metadata_json"],
+            "chat_v2_messages" => vec![
+                "block_ids_json",
+                "meta_json",
+                "variants_json",
+                "shared_context_json",
+                "attachments_json",
+            ],
+            "chat_v2_blocks" => vec!["citations_json", "tool_input_json", "tool_output_json"],
+            "chat_v2_session_groups" => vec!["default_skill_ids_json", "pinned_resource_ids_json"],
+            "essays" => vec!["grading_result_json", "dimension_scores_json"],
+            "mindmaps" => vec!["settings"],
+            "exam_sheets" => vec!["metadata_json", "preview_json"],
+            "translations" => vec!["metadata_json"],
+            "mistakes" => vec![
+                "tags",
+                "question_images",
+                "analysis_images",
+                "chat_metadata",
+            ],
+            "chat_messages" => vec![
+                "rag_sources",
+                "memory_sources",
+                "graph_sources",
+                "web_search_sources",
+                "image_paths",
+                "image_base64",
+                "doc_attachments",
+                "tool_call",
+                "tool_result",
+                "overrides",
+                "relations",
+                "metadata",
+            ],
+            "review_analyses" => vec!["tags", "mistake_ids", "temp_session_data"],
+            "review_chat_messages" => vec![
+                "rag_sources",
+                "memory_sources",
+                "graph_sources",
+                "web_search_sources",
+                "image_paths",
+                "image_base64",
+                "doc_attachments",
+                "tool_call",
+                "tool_result",
+                "overrides",
+                "relations",
+                "metadata",
+            ],
+            "anki_cards" => vec!["tags_json", "images_json", "extra_fields_json"],
+            _ => vec![],
+        }
+    }
+
+    /// 应用单条下载变更到本地数据库。
     fn apply_single_record(
         conn: &Connection,
         table_name: &str,
         record_id: &str,
         data: &serde_json::Value,
         id_column: &str,
+        database_name: Option<&str>,
     ) -> Result<(), SyncError> {
         Self::ensure_table_allowed_and_exists(conn, table_name)?;
 
         let table_ident = Self::quote_identifier(table_name)?;
 
-        let obj = data.as_object().ok_or_else(|| {
-            SyncError::Database(format!("记录数据不是有效的 JSON 对象: {}", record_id))
-        })?;
+        let mut obj = data
+            .as_object()
+            .ok_or_else(|| {
+                SyncError::Database(format!("记录数据不是有效的 JSON 对象: {}", record_id))
+            })?
+            .clone();
+
+        let field_deltas = match obj.remove(SYNC_FIELD_DELTAS_KEY) {
+            Some(serde_json::Value::Object(map)) => Some(map),
+            Some(serde_json::Value::Null) | None => None,
+            Some(other) => {
+                return Err(SyncError::Database(format!(
+                    "字段增量元数据格式错误: {} = {}",
+                    SYNC_FIELD_DELTAS_KEY, other
+                )))
+            }
+        };
 
         if obj.is_empty() {
             return Err(SyncError::Database(format!("记录数据为空: {}", record_id)));
@@ -2335,8 +2520,50 @@ impl SyncManager {
             && Self::table_has_column(conn, table_name, "deleted_at");
 
         // build_insert_parts 已经跳过所有 null，因此 deleted_at=null 不会参与 INSERT/COALESCE
-        let (columns, placeholders, values) = Self::build_insert_parts(obj)?;
+        let (columns, placeholders, values) = Self::build_insert_parts(&obj)?;
         let columns_list: Vec<&str> = columns.split(", ").collect();
+
+        // 字段级合并准备：在 UPSERT 改写本地值之前，先读取字段级合并列的“原始本地值”。
+        // 否则 UPSERT 的 COALESCE 语义会把远端值直接写进本地，local_val 读取到的
+        // 就是“刚被改写后的值”（即 == remote_val），merge_field 永远检测不到冲突。
+        let local_before: std::collections::HashMap<String, serde_json::Value> = {
+            let id_col_ident = Self::quote_identifier(id_column)?;
+            let picklist = Self::field_merge_column_picklist(table_name);
+            let picklist: Vec<&'static str> = picklist
+                .into_iter()
+                .filter(|col| Self::table_has_column(conn, table_name, col))
+                .collect();
+            let mut m = std::collections::HashMap::new();
+            if picklist.is_empty() {
+                m
+            } else {
+                let cols_sql: Vec<String> = picklist
+                    .iter()
+                    .map(|c| Self::quote_identifier(c))
+                    .collect::<Result<Vec<_>, _>>()?;
+                let read_sql = format!(
+                    "SELECT {} FROM {} WHERE {} = ?1",
+                    cols_sql.join(","),
+                    table_ident,
+                    id_col_ident
+                );
+                if let Ok(mut stmt) = conn.prepare(&read_sql) {
+                    if let Ok(Some(row)) = stmt
+                        .query_row(params![record_id], |row| -> rusqlite::Result<_> {
+                            let mut map = std::collections::HashMap::new();
+                            for (i, col) in picklist.iter().enumerate() {
+                                map.insert(col.to_string(), Self::sqlite_value_to_json(row, i));
+                            }
+                            Ok(map)
+                        })
+                        .optional()
+                    {
+                        m = row;
+                    }
+                }
+                m
+            }
+        };
 
         let upsert_sql = if table_name == "llm_usage_daily" {
             let pk_cols = ["\"date\"", "\"caller_type\"", "\"model\"", "\"provider\""];
@@ -2476,6 +2703,8 @@ impl SyncManager {
                 }
 
                 let fallback_sql = Self::get_fallback_upsert_sql(
+                    conn,
+                    database_name,
                     table_name,
                     &table_ident,
                     &columns,
@@ -2485,9 +2714,7 @@ impl SyncManager {
                 )?;
 
                 conn.execute("SAVEPOINT sp_upsert_fallback", [])
-                    .map_err(|e| {
-                        SyncError::Database(format!("创建 SAVEPOINT 失败: {}", e))
-                    })?;
+                    .map_err(|e| SyncError::Database(format!("创建 SAVEPOINT 失败: {}", e)))?;
                 match conn.execute(&fallback_sql, params_refs.as_slice()) {
                     Ok(_) => {
                         conn.execute("RELEASE SAVEPOINT sp_upsert_fallback", [])
@@ -2521,55 +2748,59 @@ impl SyncManager {
                 .map_err(|e| SyncError::Database(format!("复活软删记录失败: {}", e)))?;
         }
 
-        // 应用字段级合并策略（针对特定列的 domain-aware 合并逻辑）
-        // 在 UPSERT 之后运行，补充 COALESCE 无法处理的计数器、标签合集、布尔 OR 等语义
-        {
-            let table_specific_columns = match table_name {
-                "resources" | "chat_v2_resources" => vec!["ref_count", "metadata_json"],
-                "questions" => vec![
-                    "attempt_count", "correct_count", "user_note", "ai_feedback",
-                    "is_favorite", "is_bookmarked", "tags", "images_json",
-                    "options_json", "ai_score",
-                ],
-                "notes" => vec!["tags", "is_favorite"],
-                "review_plans" => vec!["total_reviews", "total_correct", "ease_factor", "interval_days", "consecutive_failures"],
-                "todo_items" => vec!["estimated_pomodoros", "completed_pomodoros", "tags_json"],
-                "chat_v2_sessions" => vec!["metadata_json"],
-                "chat_v2_messages" => vec!["meta_json", "variants_json", "shared_context_json", "attachments_json"],
-                "chat_v2_blocks" => vec!["citations_json", "tool_input_json", "tool_output_json"],
-                "essays" => vec!["grading_result_json", "dimension_scores_json"],
-                "mindmaps" => vec!["settings"],
-                "exam_sheets" => vec!["metadata_json", "preview_json"],
-                "translations" => vec!["metadata_json"],
-                "mistakes" => vec!["tags", "question_images", "analysis_images", "chat_metadata"],
-                "review_analyses" => vec!["tags", "mistake_ids"],
-                "anki_cards" => vec!["tags_json", "images_json", "extra_fields_json"],
-                _ => vec![],
-            };
-
+        // 字段级合并策略（在 UPSERT 之后、使用 UPSERT 前保存的原始本地值）
+        // COALESCE UPSERT 已经把远端有值的列写入了本地。此步骤用 UPSERT 之前抓取的
+        // 本地值 (local_before) 与远端值做 domain-aware 合并，弥补 COALESCE 无法表达
+        // 的计数器、标签合集、布尔 OR、JSON deep merge 等语义。
+        if !local_before.is_empty() {
             let id_col_ident = Self::quote_identifier(id_column)?;
-
-            for col_name in &table_specific_columns {
-                if !Self::table_has_column(conn, table_name, col_name) {
-                    continue;
-                }
-                let remote_val = match obj.get(*col_name) {
+            for (col_name, original_local) in &local_before {
+                let remote_val = match obj.get(col_name.as_str()) {
                     Some(v) if !v.is_null() => v,
                     _ => continue,
                 };
-
-                let read_sql = format!(
-                    "SELECT \"{}\" FROM {} WHERE {} = ?1",
-                    col_name, table_ident, id_col_ident
-                );
-                let local_val: Option<serde_json::Value> = conn
-                    .query_row(&read_sql, params![record_id], |row| {
-                        Ok(Self::sqlite_value_to_json(row, 0))
-                    })
-                    .ok();
-
                 let (merged_val, was_merged, _conflict) =
-                    field_merge::merge_field(table_name, col_name, local_val.as_ref(), Some(remote_val));
+                    if let Some(deltas) = field_deltas.as_ref() {
+                        if field_merge::supports_counter_delta(table_name, col_name) {
+                            if let Some(delta_value) = deltas.get(col_name) {
+                                let local_count = original_local.as_i64().ok_or_else(|| {
+                                    SyncError::Database(format!(
+                                        "counter 字段不是整数: {}.{} = {}",
+                                        table_name, col_name, original_local
+                                    ))
+                                })?;
+                                let delta = delta_value.as_i64().ok_or_else(|| {
+                                    SyncError::Database(format!(
+                                        "counter delta 不是整数: {}.{} = {}",
+                                        table_name, col_name, delta_value
+                                    ))
+                                })?;
+                                let merged = local_count.saturating_add(delta).max(0);
+                                (serde_json::Value::Number(merged.into()), delta != 0, false)
+                            } else {
+                                field_merge::merge_field(
+                                    table_name,
+                                    col_name,
+                                    Some(original_local),
+                                    Some(remote_val),
+                                )
+                            }
+                        } else {
+                            field_merge::merge_field(
+                                table_name,
+                                col_name,
+                                Some(original_local),
+                                Some(remote_val),
+                            )
+                        }
+                    } else {
+                        field_merge::merge_field(
+                            table_name,
+                            col_name,
+                            Some(original_local),
+                            Some(remote_val),
+                        )
+                    };
 
                 if was_merged {
                     let merge_sql = format!(
@@ -2751,6 +2982,309 @@ impl SyncManager {
         Ok(violations)
     }
 
+    fn foreign_key_columns(
+        conn: &Connection,
+        table_name: &str,
+    ) -> Result<Vec<ForeignKeyColumn>, SyncError> {
+        Self::ensure_table_allowed_and_exists(conn, table_name)?;
+        let table_ident = Self::quote_identifier(table_name)?;
+        let sql = format!("PRAGMA foreign_key_list({})", table_ident);
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| SyncError::Database(format!("查询外键失败: {}", e)))?;
+
+        let columns = stmt
+            .query_map([], |row| {
+                Ok(ForeignKeyColumn {
+                    parent_table: row.get(2)?,
+                    child_column: row.get(3)?,
+                    parent_column: row.get(4)?,
+                })
+            })
+            .map_err(|e| SyncError::Database(format!("读取外键失败: {}", e)))?
+            .filter_map(log_and_skip_err)
+            .collect();
+
+        Ok(columns)
+    }
+
+    fn primary_key_columns(conn: &Connection, table_name: &str) -> Result<Vec<String>, SyncError> {
+        Self::ensure_table_allowed_and_exists(conn, table_name)?;
+        let table_ident = Self::quote_identifier(table_name)?;
+        let sql = format!("PRAGMA table_info({})", table_ident);
+        let mut stmt = conn
+            .prepare(&sql)
+            .map_err(|e| SyncError::Database(format!("查询主键列失败: {}", e)))?;
+
+        let mut columns = stmt
+            .query_map([], |row| {
+                let name: String = row.get(1)?;
+                let pk_order: i64 = row.get(5)?;
+                Ok((pk_order, name))
+            })
+            .map_err(|e| SyncError::Database(format!("读取主键列失败: {}", e)))?
+            .filter_map(log_and_skip_err)
+            .filter(|(pk_order, _)| *pk_order > 0)
+            .collect::<Vec<_>>();
+
+        columns.sort_by_key(|(pk_order, _)| *pk_order);
+        Ok(columns.into_iter().map(|(_, name)| name).collect())
+    }
+
+    fn json_value_to_alias_key(value: &serde_json::Value) -> Option<String> {
+        match value {
+            serde_json::Value::String(s) => Some(s.clone()),
+            serde_json::Value::Number(n) => Some(n.to_string()),
+            serde_json::Value::Bool(b) => Some(b.to_string()),
+            _ => None,
+        }
+    }
+
+    fn json_value_to_sql_param(value: &serde_json::Value) -> Option<Box<dyn rusqlite::ToSql>> {
+        match value {
+            serde_json::Value::Null => None,
+            serde_json::Value::Bool(b) => Some(Box::new(*b)),
+            serde_json::Value::Number(n) => {
+                if let Some(i) = n.as_i64() {
+                    Some(Box::new(i))
+                } else if let Some(f) = n.as_f64() {
+                    Some(Box::new(f))
+                } else {
+                    Some(Box::new(n.to_string()))
+                }
+            }
+            serde_json::Value::String(s) => Some(Box::new(s.clone())),
+            serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
+                Some(Box::new(serde_json::to_string(value).unwrap_or_default()))
+            }
+        }
+    }
+
+    fn resolve_alias(
+        aliases: &IdAliasMap,
+        table_name: &str,
+        record_id: &str,
+    ) -> Result<String, SyncError> {
+        let mut current = record_id.to_string();
+        let mut seen = HashSet::new();
+        loop {
+            if !seen.insert(current.clone()) {
+                return Err(SyncError::Database(format!(
+                    "ID 别名存在循环: {}.{}",
+                    table_name, record_id
+                )));
+            }
+            match aliases.get(&(table_name.to_string(), current.clone())) {
+                Some(next) => current = next.clone(),
+                None => return Ok(current),
+            }
+        }
+    }
+
+    fn insert_alias(
+        aliases: &mut IdAliasMap,
+        table_name: &str,
+        remote_id: &str,
+        canonical_id: &str,
+    ) -> Result<bool, SyncError> {
+        if remote_id == canonical_id {
+            return Ok(false);
+        }
+
+        let key = (table_name.to_string(), remote_id.to_string());
+        if let Some(existing) = aliases.get(&key) {
+            if existing == canonical_id {
+                return Ok(false);
+            }
+            return Err(SyncError::Database(format!(
+                "ID 别名冲突: {}.{} -> {} / {}",
+                table_name, remote_id, existing, canonical_id
+            )));
+        }
+
+        aliases.insert(key, canonical_id.to_string());
+        Ok(true)
+    }
+
+    fn remap_foreign_keys_in_object(
+        conn: &Connection,
+        table_name: &str,
+        obj: &mut serde_json::Map<String, serde_json::Value>,
+        aliases: &IdAliasMap,
+    ) -> Result<(), SyncError> {
+        for fk in Self::foreign_key_columns(conn, table_name)? {
+            let parent_pk = Self::primary_key_columns(conn, &fk.parent_table)?;
+            if parent_pk.len() != 1 || parent_pk[0] != fk.parent_column {
+                continue;
+            }
+
+            let current = match obj.get(&fk.child_column) {
+                Some(value) => match Self::json_value_to_alias_key(value) {
+                    Some(v) => v,
+                    None => continue,
+                },
+                None => continue,
+            };
+            let canonical = Self::resolve_alias(aliases, &fk.parent_table, &current)?;
+            if canonical != current {
+                obj.insert(fk.child_column, serde_json::Value::String(canonical));
+            }
+        }
+        Ok(())
+    }
+
+    fn find_canonical_id_by_business_key(
+        conn: &Connection,
+        database_name: Option<&str>,
+        table_name: &str,
+        id_column: &str,
+        obj: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Option<String>, SyncError> {
+        let key_groups = Self::business_unique_key_groups(conn, database_name, table_name)?;
+        if key_groups.is_empty() {
+            return Ok(None);
+        }
+
+        let table_ident = Self::quote_identifier(table_name)?;
+        let id_col_ident = Self::quote_identifier(id_column)?;
+
+        for group in key_groups {
+            let mut where_parts = Vec::new();
+            let mut values: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
+            for col in &group {
+                let value = match obj.get(col) {
+                    Some(value) if !value.is_null() => value,
+                    _ => {
+                        values.clear();
+                        break;
+                    }
+                };
+                let Some(sql_value) = Self::json_value_to_sql_param(value) else {
+                    values.clear();
+                    break;
+                };
+                where_parts.push(format!("{} = ?", Self::quote_identifier(col)?));
+                values.push(sql_value);
+            }
+            if values.len() != group.len() {
+                continue;
+            }
+
+            let sql = format!(
+                "SELECT {} FROM {} WHERE {} LIMIT 1",
+                id_col_ident,
+                table_ident,
+                where_parts.join(" AND ")
+            );
+            let params_refs: Vec<&dyn rusqlite::ToSql> =
+                values.iter().map(|v| v.as_ref()).collect();
+            let canonical = conn
+                .query_row(&sql, params_refs.as_slice(), |row| {
+                    Ok(Self::json_value_to_alias_key(&Self::sqlite_value_to_json(
+                        row, 0,
+                    )))
+                })
+                .optional()
+                .map_err(|e| SyncError::Database(format!("查询业务键 canonical id 失败: {}", e)))?
+                .flatten();
+
+            if canonical.is_some() {
+                return Ok(canonical);
+            }
+        }
+
+        Ok(None)
+    }
+
+    fn build_download_id_aliases(
+        conn: &Connection,
+        changes: &[SyncChangeWithData],
+        id_column_map: Option<&HashMap<String, String>>,
+    ) -> Result<IdAliasMap, SyncError> {
+        let mut aliases = IdAliasMap::new();
+
+        loop {
+            let before = aliases.len();
+            for change in changes {
+                if !matches!(
+                    change.operation,
+                    ChangeOperation::Insert | ChangeOperation::Update
+                ) {
+                    continue;
+                }
+                let Some(data) = &change.data else {
+                    continue;
+                };
+                let Some(source_obj) = data.as_object() else {
+                    continue;
+                };
+
+                Self::ensure_table_allowed_and_exists(conn, &change.table_name)?;
+                let id_column = id_column_map
+                    .and_then(|m| m.get(&change.table_name))
+                    .map(|s| s.as_str())
+                    .unwrap_or("id");
+
+                let mut obj = source_obj.clone();
+                Self::remap_foreign_keys_in_object(conn, &change.table_name, &mut obj, &aliases)?;
+
+                let remote_id =
+                    Self::resolve_alias(&aliases, &change.table_name, &change.record_id)?;
+                let Some(canonical_id) = Self::find_canonical_id_by_business_key(
+                    conn,
+                    change.database_name.as_deref(),
+                    &change.table_name,
+                    id_column,
+                    &obj,
+                )?
+                else {
+                    continue;
+                };
+
+                Self::insert_alias(&mut aliases, &change.table_name, &remote_id, &canonical_id)?;
+                Self::insert_alias(
+                    &mut aliases,
+                    &change.table_name,
+                    &change.record_id,
+                    &canonical_id,
+                )?;
+            }
+
+            if aliases.len() == before {
+                break;
+            }
+        }
+
+        Ok(aliases)
+    }
+
+    fn remap_change_with_aliases(
+        conn: &Connection,
+        change: &SyncChangeWithData,
+        id_column: &str,
+        aliases: &IdAliasMap,
+    ) -> Result<SyncChangeWithData, SyncError> {
+        let mut remapped = change.clone();
+        let canonical_record_id =
+            Self::resolve_alias(aliases, &change.table_name, &change.record_id)?;
+
+        if canonical_record_id != change.record_id {
+            remapped.record_id = canonical_record_id.clone();
+        }
+
+        if let Some(serde_json::Value::Object(obj)) = remapped.data.as_mut() {
+            if canonical_record_id != change.record_id && obj.contains_key(id_column) {
+                obj.insert(
+                    id_column.to_string(),
+                    serde_json::Value::String(canonical_record_id),
+                );
+            }
+            Self::remap_foreign_keys_in_object(conn, &change.table_name, obj, aliases)?;
+        }
+
+        Ok(remapped)
+    }
+
     /// 应用下载的变更到数据库
     ///
     /// 批量应用从云端下载的变更，支持事务处理。
@@ -2790,11 +3324,15 @@ impl SyncManager {
             .map_err(|e| SyncError::Database(format!("开始事务失败: {}", e)))?;
 
         let apply_result: Result<(), SyncError> = (|| {
+            let id_aliases = Self::build_download_id_aliases(conn, changes, id_column_map)?;
+
             for change in changes {
                 let id_column = id_column_map
                     .and_then(|m| m.get(&change.table_name))
                     .map(|s| s.as_str())
                     .unwrap_or("id");
+                let change_to_apply =
+                    Self::remap_change_with_aliases(conn, change, id_column, &id_aliases)?;
 
                 let suppress = change.suppress_change_log.unwrap_or(false);
 
@@ -2807,7 +3345,7 @@ impl SyncManager {
                     None
                 };
 
-                let applied = Self::apply_single_change(conn, change, id_column)?;
+                let applied = Self::apply_single_change(conn, &change_to_apply, id_column)?;
                 if applied {
                     result.success_count += 1;
                     result
@@ -2832,7 +3370,12 @@ impl SyncManager {
                         "UPDATE __change_log SET sync_version = ?1 \
                          WHERE id > ?2 AND sync_version = 0 \
                          AND table_name = ?3 AND record_id = ?4",
-                        params![sync_version, max_id, &change.table_name, &change.record_id,],
+                        params![
+                            sync_version,
+                            max_id,
+                            &change_to_apply.table_name,
+                            &change_to_apply.record_id,
+                        ],
                     );
                 }
             }
@@ -3415,6 +3958,7 @@ impl SyncManager {
                     &change.record_id,
                     data,
                     id_column,
+                    change.database_name.as_deref(),
                 )?;
                 Ok(true)
             }
@@ -3911,7 +4455,8 @@ impl SyncManager {
             .filter_map(|r: Result<String, _>| r.ok())
             .filter(|table_name| {
                 // Exclude FTS5 shadow tables when the FTS virtual table is in DerivedRebuild
-                if let Some(base) = table_name.strip_suffix("_content")
+                if let Some(base) = table_name
+                    .strip_suffix("_content")
                     .or_else(|| table_name.strip_suffix("_docsize"))
                     .or_else(|| table_name.strip_suffix("_config"))
                     .or_else(|| table_name.strip_suffix("_idx"))
@@ -4151,6 +4696,13 @@ impl SyncChangeWithData {
 
     /// 从 ChangeLogEntry 创建并附加数据
     pub fn from_entry_with_data(entry: &ChangeLogEntry, data: Option<serde_json::Value>) -> Self {
+        let mut data = data;
+        if let Some(field_deltas) = entry.field_deltas_json.as_ref() {
+            if let Some(serde_json::Value::Object(obj)) = data.as_mut() {
+                obj.insert(SYNC_FIELD_DELTAS_KEY.to_string(), field_deltas.clone());
+            }
+        }
+
         Self {
             table_name: entry.table_name.clone(),
             record_id: entry.record_id.clone(),
@@ -4230,6 +4782,9 @@ pub struct ChangeLogEntry {
     pub changed_at: String,
     /// 同步版本（0 表示未同步）
     pub sync_version: i64,
+    /// 字段增量元数据（用于 counter merge 等需要 old/new 的场景）
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub field_deltas_json: Option<serde_json::Value>,
 }
 
 impl ChangeLogEntry {
@@ -4246,6 +4801,16 @@ impl ChangeLogEntry {
             operation,
             changed_at: row.get(4)?,
             sync_version: row.get(5)?,
+            field_deltas_json: if row.as_ref().column_count() > 6 {
+                match row.get::<_, Option<String>>(6)? {
+                    Some(raw) => Some(serde_json::from_str(&raw).map_err(|e| {
+                        rusqlite::Error::FromSqlConversionFailure(6, Type::Text, Box::new(e))
+                    })?),
+                    None => None,
+                }
+            } else {
+                None
+            },
         })
     }
 }
@@ -4271,6 +4836,8 @@ pub struct SyncChangesPayload {
 fn default_format_version() -> u32 {
     2
 }
+
+const SYNC_FIELD_DELTAS_KEY: &str = "__sync_field_deltas";
 
 /// 待同步变更集合
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -5216,6 +5783,7 @@ impl SyncManager {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json::json;
 
     fn create_test_manifest(
         device_id: &str,
@@ -5546,6 +6114,54 @@ mod tests {
         assert_eq!(pending.total_count, 3);
         assert_eq!(pending.changes_by_table.get("messages"), Some(&2));
         assert_eq!(pending.changes_by_table.get("sessions"), Some(&1));
+    }
+
+    #[test]
+    fn test_get_pending_changes_with_field_deltas_json() {
+        let conn = create_test_db();
+        conn.execute(
+            "ALTER TABLE __change_log ADD COLUMN field_deltas_json TEXT",
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO __change_log (table_name, record_id, operation, field_deltas_json, sync_version)
+             VALUES ('resources', 'res-1', 'UPDATE', '{\"ref_count\":1}', 0)",
+            [],
+        )
+        .unwrap();
+
+        let pending = SyncManager::get_pending_changes(&conn, None, None).unwrap();
+        assert_eq!(pending.total_count, 1);
+        assert_eq!(
+            pending.entries[0].field_deltas_json,
+            Some(json!({"ref_count": 1}))
+        );
+    }
+
+    #[test]
+    fn test_from_entry_with_data_injects_field_deltas_metadata() {
+        let entry = ChangeLogEntry {
+            id: 1,
+            table_name: "resources".to_string(),
+            record_id: "res-1".to_string(),
+            operation: ChangeOperation::Update,
+            changed_at: "2024-01-01T10:00:00Z".to_string(),
+            sync_version: 0,
+            field_deltas_json: Some(json!({"ref_count": 1})),
+        };
+
+        let change = SyncChangeWithData::from_entry_with_data(
+            &entry,
+            Some(json!({
+                "id": "res-1",
+                "ref_count": 2,
+                "updated_at": "2024-01-01T10:00:00Z"
+            })),
+        );
+
+        let data = change.data.expect("data should be present");
+        assert_eq!(data["__sync_field_deltas"], json!({"ref_count": 1}));
     }
 
     #[test]
@@ -5920,6 +6536,7 @@ mod tests {
                 operation: ChangeOperation::Insert,
                 changed_at: "2024-01-01T10:00:00Z".to_string(),
                 sync_version: 0,
+                field_deltas_json: None,
             },
             ChangeLogEntry {
                 id: 2,
@@ -5928,6 +6545,7 @@ mod tests {
                 operation: ChangeOperation::Insert,
                 changed_at: "2024-01-01T11:00:00Z".to_string(),
                 sync_version: 0,
+                field_deltas_json: None,
             },
             ChangeLogEntry {
                 id: 3,
@@ -5936,6 +6554,7 @@ mod tests {
                 operation: ChangeOperation::Update,
                 changed_at: "2024-01-01T12:00:00Z".to_string(),
                 sync_version: 0,
+                field_deltas_json: None,
             },
         ];
 
@@ -5961,6 +6580,7 @@ mod tests {
                 operation: ChangeOperation::Insert,
                 changed_at: "2024-01-01T10:00:00Z".to_string(),
                 sync_version: 0,
+                field_deltas_json: None,
             },
             ChangeLogEntry {
                 id: 5,
@@ -5969,6 +6589,7 @@ mod tests {
                 operation: ChangeOperation::Update,
                 changed_at: "2024-01-01T11:00:00Z".to_string(),
                 sync_version: 0,
+                field_deltas_json: None,
             },
         ];
 
@@ -5988,6 +6609,7 @@ mod tests {
                 operation: ChangeOperation::Insert,
                 changed_at: "2024-01-01T12:00:00Z".to_string(),
                 sync_version: 0,
+                field_deltas_json: None,
             },
             ChangeLogEntry {
                 id: 2,
@@ -5996,6 +6618,7 @@ mod tests {
                 operation: ChangeOperation::Update,
                 changed_at: "2024-01-01T08:00:00Z".to_string(),
                 sync_version: 0,
+                field_deltas_json: None,
             },
             ChangeLogEntry {
                 id: 3,
@@ -6004,6 +6627,7 @@ mod tests {
                 operation: ChangeOperation::Delete,
                 changed_at: "2024-01-01T15:00:00Z".to_string(),
                 sync_version: 0,
+                field_deltas_json: None,
             },
         ];
 
@@ -6481,6 +7105,143 @@ mod tests {
             "transaction should rollback previously applied records"
         );
         assert_eq!(child_records_count, 0);
+    }
+
+    fn create_resource_alias_test_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            PRAGMA foreign_keys = ON;
+            CREATE TABLE resources (
+                id TEXT PRIMARY KEY,
+                hash TEXT NOT NULL UNIQUE,
+                body TEXT,
+                updated_at TEXT
+            );
+            CREATE TABLE resource_notes (
+                id TEXT PRIMARY KEY,
+                resource_id TEXT NOT NULL,
+                note TEXT,
+                updated_at TEXT,
+                FOREIGN KEY(resource_id) REFERENCES resources(id)
+            );
+            INSERT INTO resources (id, hash, body, updated_at)
+            VALUES ('local-res', 'same-business-hash', 'local body', '2024-01-01T00:00:00Z');
+            "#,
+        )
+        .unwrap();
+        conn
+    }
+
+    fn resource_alias_parent_change() -> SyncChangeWithData {
+        SyncChangeWithData {
+            table_name: "resources".to_string(),
+            record_id: "remote-res".to_string(),
+            operation: ChangeOperation::Insert,
+            data: Some(serde_json::json!({
+                "id": "remote-res",
+                "hash": "same-business-hash",
+                "body": "cloud body",
+                "updated_at": "2024-01-02T00:00:00Z"
+            })),
+            changed_at: "2024-01-02T00:00:00Z".to_string(),
+            change_log_id: None,
+            database_name: Some("vfs".to_string()),
+            suppress_change_log: None,
+        }
+    }
+
+    fn resource_alias_child_change() -> SyncChangeWithData {
+        SyncChangeWithData {
+            table_name: "resource_notes".to_string(),
+            record_id: "note-remote".to_string(),
+            operation: ChangeOperation::Insert,
+            data: Some(serde_json::json!({
+                "id": "note-remote",
+                "resource_id": "remote-res",
+                "note": "child uses remote id",
+                "updated_at": "2024-01-02T00:00:01Z"
+            })),
+            changed_at: "2024-01-02T00:00:01Z".to_string(),
+            change_log_id: None,
+            database_name: Some("vfs".to_string()),
+            suppress_change_log: None,
+        }
+    }
+
+    fn assert_resource_alias_result(conn: &Connection) {
+        let resource_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM resources", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(
+            resource_count, 1,
+            "business-key conflict should reuse local row"
+        );
+
+        let remote_count: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM resources WHERE id = 'remote-res'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(
+            remote_count, 0,
+            "remote id should be an alias, not a new row"
+        );
+
+        let body: String = conn
+            .query_row(
+                "SELECT body FROM resources WHERE id = 'local-res'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(body, "cloud body");
+
+        let child_fk: String = conn
+            .query_row(
+                "SELECT resource_id FROM resource_notes WHERE id = 'note-remote'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(child_fk, "local-res", "child FK should be remapped");
+
+        let violations = SyncManager::collect_foreign_key_violations(conn, 20).unwrap();
+        assert!(
+            violations.is_empty(),
+            "foreign keys should pass: {:?}",
+            violations
+        );
+    }
+
+    #[test]
+    fn test_business_key_alias_remaps_child_fk_when_child_arrives_first() {
+        let conn = create_resource_alias_test_db();
+        let changes = vec![
+            resource_alias_child_change(),
+            resource_alias_parent_change(),
+        ];
+
+        let result = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
+
+        assert_eq!(result.success_count, 2);
+        assert_resource_alias_result(&conn);
+    }
+
+    #[test]
+    fn test_business_key_alias_reuses_canonical_id_when_parent_arrives_first() {
+        let conn = create_resource_alias_test_db();
+        let changes = vec![
+            resource_alias_parent_change(),
+            resource_alias_child_change(),
+        ];
+
+        let result = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
+
+        assert_eq!(result.success_count, 2);
+        assert_resource_alias_result(&conn);
     }
 
     #[test]

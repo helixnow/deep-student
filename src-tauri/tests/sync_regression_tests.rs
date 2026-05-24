@@ -345,7 +345,10 @@ fn r09_reset_baseline_is_idempotent() {
             r.get(0)
         })
         .unwrap();
-    assert_eq!(lv, 5, "local_version should increment by 1 on each reset call (3→4→5)");
+    assert_eq!(
+        lv, 5,
+        "local_version should increment by 1 on each reset call (3→4→5)"
+    );
     let cnt: i64 = conn
         .query_row("SELECT COUNT(*) FROM __change_log", [], |r| r.get(0))
         .unwrap();
