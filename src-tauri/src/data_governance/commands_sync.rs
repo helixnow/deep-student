@@ -19,8 +19,7 @@ use crate::cloud_storage::{create_storage, CloudStorage, CloudStorageConfig};
 use super::commands::{check_maintenance_mode, try_save_audit_log, SYNC_LOCK_TIMEOUT_SECS};
 use super::commands_backup::{
     apply_downloaded_changes_to_databases, build_id_column_map, get_active_data_dir,
-    get_app_data_dir, resolve_database_path, validate_backup_id, validate_user_path,
-    ApplyToDbsResult,
+    get_app_data_dir, resolve_database_path, validate_user_path,
 };
 
 /// 便捷函数：获取各表主键列名映射
@@ -912,6 +911,7 @@ pub async fn data_governance_run_sync(
                 operation: e.operation,
                 changed_at: e.changed_at.clone(),
                 sync_version: 0,
+                field_deltas_json: None,
             })
             .collect(),
     );
@@ -2028,6 +2028,7 @@ pub async fn data_governance_run_sync_with_progress(
                 operation: e.operation,
                 changed_at: e.changed_at.clone(),
                 sync_version: 0,
+                field_deltas_json: None,
             })
             .collect(),
     );

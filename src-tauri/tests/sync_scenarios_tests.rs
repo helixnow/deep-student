@@ -1917,8 +1917,14 @@ async fn scenario_59_tombstone_then_recreate_with_same_hash() {
         .unwrap()
         .is_some();
     // Tombstone 机制应删除重新创建的同 hash blob（已知行为）
-    assert!(!blob_still_there, "recreated same-hash blob should be deleted by tombstone");
-    assert!(!cloud_still_there, "recreated same-hash blob should not exist in cloud");
+    assert!(
+        !blob_still_there,
+        "recreated same-hash blob should be deleted by tombstone"
+    );
+    assert!(
+        !cloud_still_there,
+        "recreated same-hash blob should not exist in cloud"
+    );
 }
 
 #[test]

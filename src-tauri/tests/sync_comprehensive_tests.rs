@@ -34,11 +34,25 @@ mod tests {
         #[test]
         fn test_row_sync_tables_have_valid_config() {
             let tables = TableClassification::row_sync_tables();
-            assert!(!tables.is_empty(), "Should have at least some RowSync tables");
+            assert!(
+                !tables.is_empty(),
+                "Should have at least some RowSync tables"
+            );
             for t in &tables {
-                assert!(!t.primary_key.is_empty(), "Table {} has no PK", t.table_name);
-                let valid_pk = t.primary_key.chars().all(|c| c.is_alphanumeric() || c == '_' || c == ',');
-                assert!(valid_pk, "Table {} has invalid PK chars: '{}'", t.table_name, t.primary_key);
+                assert!(
+                    !t.primary_key.is_empty(),
+                    "Table {} has no PK",
+                    t.table_name
+                );
+                let valid_pk = t
+                    .primary_key
+                    .chars()
+                    .all(|c| c.is_alphanumeric() || c == '_' || c == ',');
+                assert!(
+                    valid_pk,
+                    "Table {} has invalid PK chars: '{}'",
+                    t.table_name, t.primary_key
+                );
             }
         }
 
@@ -86,8 +100,13 @@ mod tests {
 
         #[test]
         fn test_user_tables_not_excluded() {
-            assert!(!TableClassification::is_excluded_from_checksum("vfs", "resources"));
-            assert!(!TableClassification::is_excluded_from_checksum("vfs", "notes"));
+            assert!(!TableClassification::is_excluded_from_checksum(
+                "vfs",
+                "resources"
+            ));
+            assert!(!TableClassification::is_excluded_from_checksum(
+                "vfs", "notes"
+            ));
             assert!(!TableClassification::is_excluded_from_checksum(
                 "chat_v2",
                 "chat_v2_sessions"
@@ -105,9 +124,12 @@ mod tests {
 
         #[test]
         fn test_chat_v2_attachments_has_content_hash_key() {
-            let keys = TableClassification::get_business_unique_keys("chat_v2", "chat_v2_attachments");
-            assert!(keys.contains(&"content_hash".to_string()),
-                "chat_v2_attachments should have content_hash as business unique key");
+            let keys =
+                TableClassification::get_business_unique_keys("chat_v2", "chat_v2_attachments");
+            assert!(
+                keys.contains(&"content_hash".to_string()),
+                "chat_v2_attachments should have content_hash as business unique key"
+            );
         }
     }
 
@@ -141,8 +163,9 @@ mod tests {
                     version INTEGER PRIMARY KEY,
                     applied_on TEXT
                 );
-                INSERT INTO refinery_schema_history VALUES (1, datetime('now'));"
-            ).unwrap();
+                INSERT INTO refinery_schema_history VALUES (1, datetime('now'));",
+            )
+            .unwrap();
             conn
         }
 
@@ -151,8 +174,14 @@ mod tests {
             let conn = create_test_db();
             let state = SyncManager::get_database_sync_state(&conn, "vfs").unwrap();
             assert_eq!(state.schema_version, 1, "Should detect refinery version 1");
-            assert_eq!(state.data_version, 0, "Empty change_log should give data_version 0");
-            assert!(!state.checksum.is_empty(), "Checksum should not be empty even for empty DB");
+            assert_eq!(
+                state.data_version, 0,
+                "Empty change_log should give data_version 0"
+            );
+            assert!(
+                !state.checksum.is_empty(),
+                "Checksum should not be empty even for empty DB"
+            );
         }
 
         #[test]
@@ -170,7 +199,8 @@ mod tests {
                 "INSERT INTO __change_log (table_name, record_id, operation, sync_version)
                  VALUES ('test_table', 'r1', 'INSERT', 42)",
                 [],
-            ).unwrap();
+            )
+            .unwrap();
             let state = SyncManager::get_database_sync_state(&conn, "vfs").unwrap();
             assert_eq!(state.data_version, 42);
         }
@@ -216,15 +246,19 @@ mod tests {
                     detected_at TEXT DEFAULT (datetime('now')),
                     resolved_at TEXT,
                     resolution TEXT
-                );"
-            ).unwrap();
+                );",
+            )
+            .unwrap();
 
             let result = SyncManager::reset_sync_baseline_after_restore(&conn);
             assert!(result.is_ok());
             let (truncated, reset_count) = result.unwrap();
 
             assert!(truncated > 0, "__change_log should be emptied");
-            assert!(reset_count > 0, "reset_count should be > 0 after baseline reset");
+            assert!(
+                reset_count > 0,
+                "reset_count should be > 0 after baseline reset"
+            );
 
             let new_version: i64 = conn
                 .query_row(
@@ -233,7 +267,10 @@ mod tests {
                     |row| row.get(0),
                 )
                 .unwrap();
-            assert_eq!(new_version, 6, "local_version should be incremented from 5 to 6");
+            assert_eq!(
+                new_version, 6,
+                "local_version should be incremented from 5 to 6"
+            );
         }
 
         #[test]
@@ -267,8 +304,9 @@ mod tests {
                     side TEXT, data_json TEXT, data_hash TEXT DEFAULT '',
                     detected_at TEXT DEFAULT (datetime('now')),
                     resolved_at TEXT, resolution TEXT
-                );"
-            ).unwrap();
+                );",
+            )
+            .unwrap();
 
             let result = SyncManager::reset_sync_baseline_after_restore(&conn);
             assert!(result.is_ok());
@@ -317,16 +355,24 @@ mod tests {
                     side TEXT, data_json TEXT, data_hash TEXT DEFAULT '',
                     detected_at TEXT DEFAULT (datetime('now')),
                     resolved_at TEXT, resolution TEXT
-                 );"
-            ).unwrap();
+                 );",
+            )
+            .unwrap();
 
             let result = SyncManager::reset_sync_baseline_after_restore(&conn);
             assert!(result.is_ok());
             let (_truncated, reset_count) = result.unwrap();
-            assert_eq!(reset_count, 0, "tables without local_version should be skipped");
+            assert_eq!(
+                reset_count, 0,
+                "tables without local_version should be skipped"
+            );
 
             let exists: i64 = conn
-                .query_row("SELECT COUNT(*) FROM no_sync WHERE id = 'ns_1'", [], |row| row.get(0))
+                .query_row(
+                    "SELECT COUNT(*) FROM no_sync WHERE id = 'ns_1'",
+                    [],
+                    |row| row.get(0),
+                )
                 .unwrap();
             assert_eq!(exists, 1, "table without sync fields must survive intact");
         }
@@ -345,8 +391,9 @@ mod tests {
                     side TEXT, data_json TEXT, data_hash TEXT DEFAULT '',
                     detected_at TEXT DEFAULT (datetime('now')),
                     resolved_at TEXT, resolution TEXT
-                );"
-            ).unwrap();
+                );",
+            )
+            .unwrap();
 
             let result = SyncManager::reset_sync_baseline_after_restore(&conn);
             assert!(result.is_ok());
@@ -396,15 +443,22 @@ mod tests {
             let (result, merged, _) =
                 merge_field("blobs", "ref_count", Some(&json!(10)), Some(&json!(3)));
             assert_eq!(result, 10);
-            assert!(merged, "Values differ (10 vs 3), should be reported as merged");
+            assert!(
+                merged,
+                "Values differ (10 vs 3), should be reported as merged"
+            );
         }
 
         // --- Set union (exercised via "notes"."tags") ---
 
         #[test]
         fn test_tag_union_with_overlap() {
-            let (result, merged, _) =
-                merge_field("notes", "tags", Some(&json!(["a", "b", "c"])), Some(&json!(["b", "c", "d"])));
+            let (result, merged, _) = merge_field(
+                "notes",
+                "tags",
+                Some(&json!(["a", "b", "c"])),
+                Some(&json!(["b", "c", "d"])),
+            );
             let arr = result.as_array().unwrap();
             assert_eq!(arr.len(), 4);
             assert!(merged);
@@ -412,8 +466,12 @@ mod tests {
 
         #[test]
         fn test_tag_union_disjoint() {
-            let (result, merged, _) =
-                merge_field("notes", "tags", Some(&json!(["x", "y"])), Some(&json!(["a", "b"])));
+            let (result, merged, _) = merge_field(
+                "notes",
+                "tags",
+                Some(&json!(["x", "y"])),
+                Some(&json!(["a", "b"])),
+            );
             let arr = result.as_array().unwrap();
             assert_eq!(arr.len(), 4);
             assert!(merged);
@@ -421,8 +479,12 @@ mod tests {
 
         #[test]
         fn test_tag_union_identical() {
-            let (_result, merged, _) =
-                merge_field("notes", "tags", Some(&json!(["a", "b"])), Some(&json!(["a", "b"])));
+            let (_result, merged, _) = merge_field(
+                "notes",
+                "tags",
+                Some(&json!(["a", "b"])),
+                Some(&json!(["a", "b"])),
+            );
             assert!(!merged);
         }
 
@@ -438,16 +500,27 @@ mod tests {
 
         #[test]
         fn test_max_value() {
-            let (result, merged, _) =
-                merge_field("questions", "attempt_count", Some(&json!(10)), Some(&json!(7)));
+            let (result, merged, _) = merge_field(
+                "questions",
+                "attempt_count",
+                Some(&json!(10)),
+                Some(&json!(7)),
+            );
             assert_eq!(result, 10);
-            assert!(merged, "Values differ (10 vs 7), should be reported as merged");
+            assert!(
+                merged,
+                "Values differ (10 vs 7), should be reported as merged"
+            );
         }
 
         #[test]
         fn test_max_value_reverse() {
-            let (result, merged, _) =
-                merge_field("questions", "attempt_count", Some(&json!(3)), Some(&json!(15)));
+            let (result, merged, _) = merge_field(
+                "questions",
+                "attempt_count",
+                Some(&json!(3)),
+                Some(&json!(15)),
+            );
             assert_eq!(result, 15);
             assert!(merged);
         }
@@ -456,16 +529,24 @@ mod tests {
 
         #[test]
         fn test_sum_value() {
-            let (result, merged, _) =
-                merge_field("todo_items", "estimated_pomodoros", Some(&json!(3)), Some(&json!(4)));
+            let (result, merged, _) = merge_field(
+                "todo_items",
+                "estimated_pomodoros",
+                Some(&json!(3)),
+                Some(&json!(4)),
+            );
             assert_eq!(result, 7);
             assert!(merged);
         }
 
         #[test]
         fn test_sum_value_zero_remote() {
-            let (result, merged, _) =
-                merge_field("todo_items", "estimated_pomodoros", Some(&json!(5)), Some(&json!(0)));
+            let (result, merged, _) = merge_field(
+                "todo_items",
+                "estimated_pomodoros",
+                Some(&json!(5)),
+                Some(&json!(0)),
+            );
             assert_eq!(result, 5);
             assert!(!merged);
         }
@@ -474,16 +555,24 @@ mod tests {
 
         #[test]
         fn test_boolean_or_true_wins() {
-            let (result, merged, _) =
-                merge_field("notes", "is_favorite", Some(&json!(false)), Some(&json!(true)));
+            let (result, merged, _) = merge_field(
+                "notes",
+                "is_favorite",
+                Some(&json!(false)),
+                Some(&json!(true)),
+            );
             assert_eq!(result, true);
             assert!(merged);
         }
 
         #[test]
         fn test_boolean_or_both_false() {
-            let (result, merged, _) =
-                merge_field("notes", "is_favorite", Some(&json!(false)), Some(&json!(false)));
+            let (result, merged, _) = merge_field(
+                "notes",
+                "is_favorite",
+                Some(&json!(false)),
+                Some(&json!(false)),
+            );
             assert_eq!(result, false);
             assert!(!merged);
         }
@@ -492,8 +581,12 @@ mod tests {
 
         #[test]
         fn test_string_concat_basic() {
-            let (result, merged, _) =
-                merge_field("questions", "user_note", Some(&json!("Hello")), Some(&json!("World")));
+            let (result, merged, _) = merge_field(
+                "questions",
+                "user_note",
+                Some(&json!("Hello")),
+                Some(&json!("World")),
+            );
             assert!(result.as_str().unwrap().contains("Hello"));
             assert!(result.as_str().unwrap().contains("World"));
             assert!(merged);
@@ -501,17 +594,24 @@ mod tests {
 
         #[test]
         fn test_string_concat_empty_local() {
-            let (result, merged, _) =
-                merge_field("questions", "user_note", Some(&json!("")), Some(&json!("World")));
+            let (result, merged, _) = merge_field(
+                "questions",
+                "user_note",
+                Some(&json!("")),
+                Some(&json!("World")),
+            );
             assert_eq!(result, "World");
             assert!(!merged);
         }
 
         #[test]
         fn test_string_concat_contains_remote() {
-            let (result, merged, _) =
-                merge_field("questions", "user_note",
-                    Some(&json!("Hello World")), Some(&json!("Hello")));
+            let (result, merged, _) = merge_field(
+                "questions",
+                "user_note",
+                Some(&json!("Hello World")),
+                Some(&json!("Hello")),
+            );
             assert_eq!(result, "Hello World");
             assert!(!merged);
         }
@@ -520,10 +620,12 @@ mod tests {
 
         #[test]
         fn test_json_deep_merge_nested() {
-            let (result, changed, _) =
-                merge_field("resources", "metadata_json",
-                    Some(&json!({"a": 1, "b": {"x": 10}})),
-                    Some(&json!({"b": {"y": 20}, "c": 30})));
+            let (result, changed, _) = merge_field(
+                "resources",
+                "metadata_json",
+                Some(&json!({"a": 1, "b": {"x": 10}})),
+                Some(&json!({"b": {"y": 20}, "c": 30})),
+            );
             assert_eq!(result["a"], 1);
             assert_eq!(result["b"]["x"], 10);
             assert_eq!(result["b"]["y"], 20);
@@ -533,19 +635,23 @@ mod tests {
 
         #[test]
         fn test_json_deep_merge_no_change() {
-            let (_result, changed, _) =
-                merge_field("resources", "metadata_json",
-                    Some(&json!({"a": 1})),
-                    Some(&json!({"a": 1})));
+            let (_result, changed, _) = merge_field(
+                "resources",
+                "metadata_json",
+                Some(&json!({"a": 1})),
+                Some(&json!({"a": 1})),
+            );
             assert!(!changed);
         }
 
         #[test]
         fn test_json_deep_merge_overwrite_primitive() {
-            let (result, changed, _) =
-                merge_field("resources", "metadata_json",
-                    Some(&json!({"a": 1})),
-                    Some(&json!({"a": 2})));
+            let (result, changed, _) = merge_field(
+                "resources",
+                "metadata_json",
+                Some(&json!({"a": 1})),
+                Some(&json!({"a": 2})),
+            );
             assert_eq!(result["a"], 2);
             assert!(changed);
         }
@@ -555,8 +661,7 @@ mod tests {
         #[test]
         fn test_merge_field_identical() {
             let val = json!("same");
-            let (result, merged, conflict) =
-                merge_field("notes", "title", Some(&val), Some(&val));
+            let (result, merged, conflict) = merge_field("notes", "title", Some(&val), Some(&val));
             assert_eq!(result, "same");
             assert!(!merged);
             assert!(!conflict);
@@ -564,48 +669,65 @@ mod tests {
 
         #[test]
         fn test_merge_field_generic_conflict() {
-            let (result, _, conflict) =
-                merge_field("unknown_table", "unknown_col", Some(&json!("A")), Some(&json!("B")));
+            let (result, _, conflict) = merge_field(
+                "unknown_table",
+                "unknown_col",
+                Some(&json!("A")),
+                Some(&json!("B")),
+            );
             assert_eq!(result, "B");
             assert!(conflict);
         }
 
         #[test]
         fn test_merge_field_none_values() {
-            let (result, _, _) =
-                merge_field("notes", "title", None, Some(&json!("hello")));
+            let (result, _, _) = merge_field("notes", "title", None, Some(&json!("hello")));
             assert_eq!(result, "hello");
 
-            let (result, _, _) =
-                merge_field("notes", "title", Some(&json!("hello")), None);
+            let (result, _, _) = merge_field("notes", "title", Some(&json!("hello")), None);
             assert_eq!(result, "hello");
 
-            let (result, _, _) =
-                merge_field("notes", "title", None, None);
+            let (result, _, _) = merge_field("notes", "title", None, None);
             assert_eq!(result, Value::Null);
         }
 
         #[test]
         fn test_merge_field_ease_factor_avg() {
-            let (result, merged, _) = merge_field("review_plans", "ease_factor",
-                Some(&json!(2.5)), Some(&json!(2.8)));
+            let (result, merged, _) = merge_field(
+                "review_plans",
+                "ease_factor",
+                Some(&json!(2.5)),
+                Some(&json!(2.8)),
+            );
             let val = result.as_f64().unwrap();
-            assert!((val - 2.65).abs() < 0.01, "ease_factor should be averaged: got {}", val);
+            assert!(
+                (val - 2.65).abs() < 0.01,
+                "ease_factor should be averaged: got {}",
+                val
+            );
             assert!(merged);
         }
 
         #[test]
         fn test_merge_field_interval_days_max() {
-            let (result, merged, _) = merge_field("review_plans", "interval_days",
-                Some(&json!(3)), Some(&json!(7)));
+            let (result, merged, _) = merge_field(
+                "review_plans",
+                "interval_days",
+                Some(&json!(3)),
+                Some(&json!(7)),
+            );
             assert_eq!(result, 7);
             assert!(merged);
         }
 
         #[test]
         fn test_merge_field_default_skill_ids() {
-            let (result, merged, _) = merge_field("chat_v2_session_groups", "default_skill_ids_json",
-                Some(&json!(["skill_a", "skill_b"])), Some(&json!(["skill_b", "skill_c"])));
+            let (result, merged, _) = merge_field(
+                "chat_v2_session_groups",
+                "default_skill_ids_json",
+                Some(&json!(["skill_a", "skill_b"])),
+                Some(&json!(["skill_b", "skill_c"])),
+            );
             let arr = result.as_array().unwrap();
             assert_eq!(arr.len(), 3);
             assert!(merged);
@@ -621,7 +743,10 @@ mod tests {
         #[test]
         fn test_gap_detected_when_since_far_behind() {
             let result = SyncManager::has_prune_gap(100, Some(500));
-            assert!(result, "Should detect gap when since_version (100) < min_available (500)");
+            assert!(
+                result,
+                "Should detect gap when since_version (100) < min_available (500)"
+            );
         }
 
         #[test]
@@ -639,7 +764,10 @@ mod tests {
         #[test]
         fn test_gap_not_detected_at_zero() {
             let result = SyncManager::has_prune_gap(0, Some(500));
-            assert!(!result, "Version 0 means no sync history, should not be a gap");
+            assert!(
+                !result,
+                "Version 0 means no sync history, should not be a gap"
+            );
         }
 
         #[test]
@@ -675,15 +803,24 @@ mod tests {
             let mut seen = std::collections::HashSet::new();
             for t in &tables {
                 let key = format!("{}.{}", t.database, t.table_name);
-                assert!(seen.insert(key.clone()), "Duplicate classification: {}.{}", t.database, t.table_name);
+                assert!(
+                    seen.insert(key.clone()),
+                    "Duplicate classification: {}.{}",
+                    t.database,
+                    t.table_name
+                );
             }
         }
 
         #[test]
         fn test_every_classification_has_merge_notes() {
             for c in &sync_classification_registry() {
-                assert!(!c.merge_notes.is_empty(),
-                    "Table {}.{} has empty merge_notes field", c.database, c.table_name);
+                assert!(
+                    !c.merge_notes.is_empty(),
+                    "Table {}.{} has empty merge_notes field",
+                    c.database,
+                    c.table_name
+                );
             }
         }
 
@@ -721,22 +858,36 @@ mod tests {
         fn test_row_sync_tables_have_trigger_count() {
             let row_sync_tables = TableClassification::row_sync_tables();
 
-            let mut db_counts: std::collections::HashMap<&str, usize> = std::collections::HashMap::new();
+            let mut db_counts: std::collections::HashMap<&str, usize> =
+                std::collections::HashMap::new();
             for t in &row_sync_tables {
                 *db_counts.entry(t.database).or_default() += 1;
             }
 
-            assert!(db_counts.get("vfs").unwrap_or(&0) >= &15,
-                "VFS should have at least 15 RowSync tables, found {}", db_counts.get("vfs").unwrap_or(&0));
+            assert!(
+                db_counts.get("vfs").unwrap_or(&0) >= &15,
+                "VFS should have at least 15 RowSync tables, found {}",
+                db_counts.get("vfs").unwrap_or(&0)
+            );
 
-            assert!(db_counts.get("chat_v2").unwrap_or(&0) >= &7,
-                "chat_v2 should have at least 7 RowSync tables, found {}", db_counts.get("chat_v2").unwrap_or(&0));
+            assert!(
+                db_counts.get("chat_v2").unwrap_or(&0) >= &7,
+                "chat_v2 should have at least 7 RowSync tables, found {}",
+                db_counts.get("chat_v2").unwrap_or(&0)
+            );
 
-            assert!(db_counts.get("mistakes").unwrap_or(&0) >= &6,
-                "mistakes should have at least 6 RowSync tables, found {}", db_counts.get("mistakes").unwrap_or(&0));
+            assert!(
+                db_counts.get("mistakes").unwrap_or(&0) >= &6,
+                "mistakes should have at least 6 RowSync tables, found {}",
+                db_counts.get("mistakes").unwrap_or(&0)
+            );
 
-            assert_eq!(db_counts.get("llm_usage").unwrap_or(&0), &1,
-                "llm_usage should have exactly 1 RowSync table (logs), found {}", db_counts.get("llm_usage").unwrap_or(&0));
+            assert_eq!(
+                db_counts.get("llm_usage").unwrap_or(&0),
+                &1,
+                "llm_usage should have exactly 1 RowSync table (logs), found {}",
+                db_counts.get("llm_usage").unwrap_or(&0)
+            );
         }
     }
 
@@ -765,12 +916,21 @@ mod tests {
                 "vfs_embedding_dims",
             ];
             for name in &expected {
-                let found = tables_with_composite_pk.iter().any(|c| c.table_name == *name);
+                let found = tables_with_composite_pk
+                    .iter()
+                    .any(|c| c.table_name == *name);
                 assert!(found, "Missing composite PK: {}", name);
             }
-            let found_names: Vec<_> = tables_with_composite_pk.iter().map(|c| c.table_name).collect();
-            assert_eq!(tables_with_composite_pk.len(), expected.len(),
-                "All composite PK tables should be accounted for. Found: {:?}", found_names);
+            let found_names: Vec<_> = tables_with_composite_pk
+                .iter()
+                .map(|c| c.table_name)
+                .collect();
+            assert_eq!(
+                tables_with_composite_pk.len(),
+                expected.len(),
+                "All composite PK tables should be accounted for. Found: {:?}",
+                found_names
+            );
         }
 
         #[test]
@@ -803,7 +963,10 @@ mod tests {
             let found = registry
                 .iter()
                 .any(|c| c.table_name == "refinery_schema_history");
-            assert!(!found, "refinery_schema_history is migration framework, not user data");
+            assert!(
+                !found,
+                "refinery_schema_history is migration framework, not user data"
+            );
         }
 
         #[test]
@@ -813,7 +976,10 @@ mod tests {
                 .iter()
                 .filter(|c| c.category == SyncCategory::Deprecated)
                 .collect();
-            assert!(!deprecated.is_empty(), "Should have at least one deprecated table");
+            assert!(
+                !deprecated.is_empty(),
+                "Should have at least one deprecated table"
+            );
             // notes_versions is the known deprecated table
             let has_notes_versions = deprecated.iter().any(|c| c.table_name == "notes_versions");
             assert!(has_notes_versions);
@@ -848,8 +1014,9 @@ mod tests {
                     operation TEXT NOT NULL,
                     changed_at TEXT NOT NULL DEFAULT (datetime('now')),
                     sync_version INTEGER DEFAULT 0
-                );"
-            ).unwrap();
+                );",
+            )
+            .unwrap();
 
             // Device A creates plan rp_a for question q1
             conn.execute(
@@ -871,14 +1038,23 @@ mod tests {
                     id = (CASE WHEN excluded.id > id THEN excluded.id ELSE id END)",
                 [],
             );
-            assert!(upsert_result.is_ok(), "UPSERT should handle the question_id conflict");
+            assert!(
+                upsert_result.is_ok(),
+                "UPSERT should handle the question_id conflict"
+            );
 
-            let count: i64 = conn.query_row(
-                "SELECT COUNT(*) FROM review_plans WHERE question_id = 'q1'",
-                [], |r| r.get(0)
-            ).unwrap();
+            let count: i64 = conn
+                .query_row(
+                    "SELECT COUNT(*) FROM review_plans WHERE question_id = 'q1'",
+                    [],
+                    |r| r.get(0),
+                )
+                .unwrap();
 
-            assert_eq!(count, 1, "Only one review plan should exist for q1 after UPSERT");
+            assert_eq!(
+                count, 1,
+                "Only one review plan should exist for q1 after UPSERT"
+            );
         }
     }
 }

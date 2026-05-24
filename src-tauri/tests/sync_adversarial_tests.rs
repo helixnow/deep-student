@@ -462,8 +462,7 @@ fn adv_09_field_level_merge_loss_documented() {
         "2024-01-03T00:00:00Z",
     );
 
-    let result =
-        SyncManager::apply_downloaded_changes(&conn, &[change_b], None).unwrap();
+    let result = SyncManager::apply_downloaded_changes(&conn, &[change_b], None).unwrap();
     assert!(result.success_count >= 1);
 
     // KNOWN_LIMITATION: Current LWW behavior overwrites entire row.

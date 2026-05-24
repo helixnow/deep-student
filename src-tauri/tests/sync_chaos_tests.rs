@@ -517,13 +517,7 @@ fn chaos_no_runaway_conflict_accumulation() {
 
     // Initial data on both devices
     for i in 0..50 {
-        local_insert_or_update(
-            &conn_a,
-            &format!("n{}", i),
-            "init",
-            i as i64,
-            1_700_000_000,
-        );
+        local_insert_or_update(&conn_a, &format!("n{}", i), "init", i as i64, 1_700_000_000);
     }
     // Sync initial data from A to B
     let initial = drain_pending_changes(&conn_a, "dev_a");

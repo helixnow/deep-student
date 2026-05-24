@@ -876,9 +876,8 @@ mod tests {
             ))
             .build();
 
-        assert!(prompt.contains(
-            "1. 完成 &lt;todo id=\"math\"&gt;数学错题&lt;/todo&gt;\n2. 复习 &amp; 总结"
-        ));
+        assert!(prompt
+            .contains("1. 完成 &lt;todo id=\"math\"&gt;数学错题&lt;/todo&gt;\n2. 复习 &amp; 总结"));
         assert!(!prompt.contains("<todo id=\"math\">数学错题</todo>"));
     }
 }
