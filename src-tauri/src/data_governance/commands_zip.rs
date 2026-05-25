@@ -26,6 +26,45 @@ use super::commands_backup::{
     BackupJobStartResponse,
 };
 
+/// 将本地临时 ZIP 文件复制到虚拟 URI 目标（Android content:// 等），完成后清理临时文件。
+fn copy_temp_zip_to_virtual_uri(window: &tauri::Window, local_path: &str, virtual_uri: &str) {
+    let local = std::path::Path::new(local_path);
+    if !local.exists() {
+        // ZIP 导出失败或被取消，临时文件不存在，无需复制
+        warn!(
+            "[data_governance] 临时 ZIP 文件不存在，跳过复制到虚拟 URI: {}",
+            local_path
+        );
+        return;
+    }
+
+    info!(
+        "[data_governance] 正在将 ZIP 复制到虚拟 URI: {} -> {}",
+        local_path, virtual_uri
+    );
+    match crate::unified_file_manager::copy_file(window, local_path, virtual_uri) {
+        Ok(bytes) => {
+            info!(
+                "[data_governance] ZIP 已成功复制到虚拟 URI ({} 字节): {}",
+                bytes, virtual_uri
+            );
+        }
+        Err(e) => {
+            error!(
+                "[data_governance] 复制 ZIP 到虚拟 URI 失败: {} -> {} ({})",
+                local_path, virtual_uri, e
+            );
+        }
+    }
+    // 清理本地临时文件
+    if let Err(e) = std::fs::remove_file(local_path) {
+        warn!(
+            "[data_governance] 清理临时 ZIP 文件失败: {} ({})",
+            local_path, e
+        );
+    }
+}
+
 /// 一步完成「备份 + 导出 ZIP」（后台任务模式）
 ///
 /// 默认行为：完整备份（数据库 + 资产）后直接导出到指定 ZIP 路径。
@@ -33,6 +72,7 @@ use super::commands_backup::{
 #[tauri::command]
 pub async fn data_governance_backup_and_export_zip(
     app: tauri::AppHandle,
+    window: tauri::Window,
     backup_job_state: State<'_, BackupJobManagerState>,
     output_path: String,
     compression_level: Option<u32>,
@@ -42,24 +82,33 @@ pub async fn data_governance_backup_and_export_zip(
     include_assets: Option<bool>,
     asset_types: Option<Vec<String>>,
 ) -> Result<BackupJobStartResponse, String> {
-    if crate::unified_file_manager::is_virtual_uri(&output_path) {
-        return Err(
-            "当前 ZIP 导出暂不支持直接写入虚拟 URI（如 content://）。请先导出到本地路径后再分享/复制。"
-                .to_string(),
-        );
-    }
-
     let app_data_dir = get_app_data_dir(&app)?;
-    let user_output = PathBuf::from(&output_path);
-    validate_user_path(&user_output, &app_data_dir)?;
+
+    // Android content:// 等虚拟 URI：先导出到本地临时文件，完成后再复制到目标 URI
+    let (local_output_path, target_virtual_uri) =
+        if crate::unified_file_manager::is_virtual_uri(&output_path) {
+            let temp_dir = app_data_dir.join("temp_zip_export");
+            std::fs::create_dir_all(&temp_dir)
+                .map_err(|e| format!("创建 ZIP 临时导出目录失败: {}", e))?;
+            let temp_path = temp_dir.join(format!("backup_export_{}.zip", uuid::Uuid::new_v4()));
+            (
+                temp_path.to_string_lossy().to_string(),
+                Some(output_path.clone()),
+            )
+        } else {
+            let user_output = PathBuf::from(&output_path);
+            validate_user_path(&user_output, &app_data_dir)?;
+            (output_path.clone(), None)
+        };
 
     let compression_level = compression_level.unwrap_or(6).min(9);
     let add_to_backup_list = add_to_backup_list.unwrap_or(true);
     let use_tiered = use_tiered.unwrap_or(false);
 
     info!(
-        "[data_governance] 启动后台备份并导出 ZIP 任务: output_path={}, compression={}, add_to_backup_list={}, use_tiered={}",
-        sanitize_path_for_user(&user_output),
+        "[data_governance] 启动后台备份并导出 ZIP 任务: output_path={}, virtual_target={:?}, compression={}, add_to_backup_list={}, use_tiered={}",
+        sanitize_path_for_user(&PathBuf::from(&local_output_path)),
+        target_virtual_uri.is_some(),
         compression_level,
         add_to_backup_list,
         use_tiered
@@ -74,7 +123,7 @@ pub async fn data_governance_backup_and_export_zip(
         execute_backup_and_export_zip_with_progress(
             app_clone,
             job_ctx,
-            output_path,
+            local_output_path.clone(),
             compression_level,
             add_to_backup_list,
             use_tiered,
@@ -83,6 +132,11 @@ pub async fn data_governance_backup_and_export_zip(
             asset_types,
         )
         .await;
+
+        // 如果目标是虚拟 URI，将本地临时 ZIP 复制到目标 URI 后清理
+        if let Some(virtual_uri) = target_virtual_uri {
+            copy_temp_zip_to_virtual_uri(&window, &local_output_path, &virtual_uri);
+        }
     });
 
     Ok(BackupJobStartResponse {
@@ -402,6 +456,7 @@ async fn execute_backup_and_export_zip_with_progress(
 #[tauri::command]
 pub async fn data_governance_export_zip(
     app: tauri::AppHandle,
+    window: tauri::Window,
     backup_job_state: State<'_, BackupJobManagerState>,
     backup_id: String,
     output_path: Option<String>,
@@ -410,22 +465,31 @@ pub async fn data_governance_export_zip(
 ) -> Result<BackupJobStartResponse, String> {
     let validated_backup_id = validate_backup_id(&backup_id)?;
 
-    // P0-4: 对用户指定的 output_path 进行安全校验
-    if let Some(ref p) = output_path {
-        if crate::unified_file_manager::is_virtual_uri(p) {
-            return Err(
-                "当前 ZIP 导出暂不支持直接写入虚拟 URI（如 content://）。请先导出到本地路径后再分享/复制。"
-                    .to_string(),
-            );
+    // Android content:// 等虚拟 URI：先导出到本地临时文件，完成后再复制到目标 URI
+    let (local_output_path, target_virtual_uri) = match &output_path {
+        Some(p) if crate::unified_file_manager::is_virtual_uri(p) => {
+            let app_data_dir = get_app_data_dir(&app)?;
+            let temp_dir = app_data_dir.join("temp_zip_export");
+            std::fs::create_dir_all(&temp_dir)
+                .map_err(|e| format!("创建 ZIP 临时导出目录失败: {}", e))?;
+            let temp_path = temp_dir.join(format!("zip_export_{}.zip", uuid::Uuid::new_v4()));
+            (
+                Some(temp_path.to_string_lossy().to_string()),
+                Some(p.clone()),
+            )
         }
-        let app_data_dir = get_app_data_dir(&app)?;
-        let user_output = std::path::PathBuf::from(p);
-        validate_user_path(&user_output, &app_data_dir)?;
-    }
+        Some(p) => {
+            let app_data_dir = get_app_data_dir(&app)?;
+            let user_output = std::path::PathBuf::from(p);
+            validate_user_path(&user_output, &app_data_dir)?;
+            (Some(p.clone()), None)
+        }
+        None => (None, None),
+    };
 
     info!(
-        "[data_governance] 启动后台 ZIP 导出任务: backup_id={}, output_path={:?}",
-        validated_backup_id, output_path
+        "[data_governance] 启动后台 ZIP 导出任务: backup_id={}, output_path={:?}, virtual_target={:?}",
+        validated_backup_id, local_output_path, target_virtual_uri.is_some()
     );
 
     // 使用全局单例备份任务管理器
@@ -454,23 +518,31 @@ pub async fn data_governance_export_zip(
                 "backup_id": validated_backup_id.clone(),
                 "compression_level": compression_level,
                 "include_checksums": include_checksums,
-                "output_path": output_path.clone(),
+                "output_path": local_output_path.clone(),
                 "subtype": "zip_export",
             })),
         );
     }
 
     // 在后台执行 ZIP 导出
+    let local_output_for_copy = local_output_path.clone();
     tauri::async_runtime::spawn(async move {
         execute_zip_export_with_progress(
             app,
             job_ctx,
             validated_backup_id,
-            output_path,
+            local_output_path,
             compression_level,
             include_checksums,
         )
         .await;
+
+        // 如果目标是虚拟 URI，将本地临时 ZIP 复制到目标 URI 后清理
+        if let Some(virtual_uri) = target_virtual_uri {
+            if let Some(local_path) = local_output_for_copy {
+                copy_temp_zip_to_virtual_uri(&window, &local_path, &virtual_uri);
+            }
+        }
     });
 
     Ok(BackupJobStartResponse {
