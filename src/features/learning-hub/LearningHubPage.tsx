@@ -29,6 +29,7 @@ import type { ResourceListItem, ResourceType } from './types';
 import { cn } from '@/lib/utils';
 import { DotsSixVertical, SquaresFour, Gear } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { useDesktopShellSidebarPortal } from '@/app/shell/DesktopShellSidebarPortal';
 import { useUIStore } from '@/stores/uiStore';
 import { useMobileHeader } from '@/components/layout';
 import { MobileBreadcrumb } from './components/MobileBreadcrumb';
@@ -106,6 +107,7 @@ export const LearningHubPage: React.FC = () => {
 
   // ========== 响应式布局 ==========
   const { isSmallScreen } = useBreakpoint();
+  const desktopShellSidebarTarget = useDesktopShellSidebarPortal('learning-hub');
 
   // ========== ★ 标签页状态 ==========
   const [tabs, setTabs] = useState<OpenTab[]>([]);
@@ -1018,6 +1020,7 @@ export const LearningHubPage: React.FC = () => {
               activeFileId={activeTab?.resourceId}
               hasOpenApp={hasOpenApp}
               onCloseApp={handleCloseApp}
+              quickAccessPortalTarget={desktopShellSidebarTarget}
             />
           </div>
         </Panel>

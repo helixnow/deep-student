@@ -55,14 +55,6 @@
   }
 }
 
-/* 列表视图 */
-.templates-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-  padding-bottom: 100px;
-}
-
 /* ============================================
    模板卡片 - Notion 风格
    ============================================ */
@@ -250,64 +242,6 @@
 }
 
 /* ============================================
-   列表视图卡片 - 水平布局，按钮在左侧 header 内
-   ============================================ */
-.template-shell-card.list-view {
-  display: flex;
-  flex-direction: row;
-  align-items: stretch;
-}
-
-.template-shell-card.list-view .template-shell-card-header {
-  flex: 0 0 200px;
-  border-bottom: none;
-  border-right: 1px solid var(--shell-workspace-border);
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between; /* 标题在上，按钮在下 */
-  padding: 12px;
-}
-
-.template-shell-card.list-view .template-shell-preview-container {
-  flex: 1;
-  display: flex;
-  flex-direction: row;
-  padding: 12px;
-}
-
-.template-shell-card.list-view .template-shell-preview-section {
-  flex: 1;
-}
-
-.template-shell-card.list-view .template-shell-preview-content {
-  min-height: 120px;
-  height: auto;
-}
-
-.template-shell-card.list-view .template-shell-card-info {
-  display: none;
-}
-
-/* 列表视图：操作按钮放在 header 内底部 */
-.template-shell-card.list-view .template-shell-card-actions {
-  display: flex;
-  flex-direction: row;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 4px;
-  padding: 0;
-  border: none;
-  margin-top: 12px;
-  background: transparent;
-}
-
-.template-shell-card.list-view .template-shell-action-buttons {
-  display: flex;
-  flex-direction: row;
-  gap: 2px;
-}
-
-/* ============================================
    加载和空状态
    ============================================ */
 .loading-container {
@@ -474,12 +408,6 @@
   gap: 0;
 }
 
-.template-browser.mobile-layout .templates-list {
-  gap: 0;
-  /* 为 BottomTabBar 留出空间 */
-  padding-bottom: 100px;
-}
-
 /* 移动端卡片：无圆角，无左右边框，紧贴边缘 */
 .template-browser.mobile-layout .template-shell-card {
   border-radius: 0;
@@ -554,37 +482,6 @@
   .template-shell-action-buttons {
     width: 100%;
     justify-content: space-around;
-  }
-
-  /* 列表视图在移动端变回垂直布局 */
-  .template-shell-card.list-view {
-    flex-direction: column;
-  }
-
-  .template-shell-card.list-view .template-shell-card-header {
-    flex: none;
-    border-right: none;
-    border-bottom: 1px solid var(--shell-workspace-border);
-  }
-
-  .template-shell-card.list-view .template-shell-preview-container {
-    flex-direction: column;
-  }
-
-  .template-shell-card.list-view .template-shell-card-actions {
-    flex-direction: row;
-    border-left: none;
-    border-top: 1px solid var(--shell-workspace-border);
-    padding: 10px 12px;
-  }
-
-  .template-shell-card.list-view .template-shell-action-buttons {
-    flex-direction: row;
-  }
-
-  .notion-template-card.list-view .notion-primary-btn {
-    width: auto;
-    flex: 1;
   }
 
   /* 减小提示和空状态的内边距 */
