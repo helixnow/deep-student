@@ -12,7 +12,7 @@
 --   mistakes, anki_cards, review_analyses
 --
 -- 目标表：chat_messages, review_chat_messages, review_sessions,
---         review_session_mistakes
+--         review_session_mistakes, document_tasks
 --
 -- 注意：chat_messages / review_chat_messages 使用 AUTOINCREMENT 主键，
 -- 触发器写入 __change_log 时会将其转为 TEXT（SQLite 自动转换），
@@ -79,6 +79,22 @@ CREATE INDEX IF NOT EXISTS idx_review_session_mistakes_local_version ON review_s
 CREATE INDEX IF NOT EXISTS idx_review_session_mistakes_deleted_at ON review_session_mistakes(deleted_at);
 CREATE INDEX IF NOT EXISTS idx_review_session_mistakes_device_id ON review_session_mistakes(device_id);
 CREATE INDEX IF NOT EXISTS idx_review_session_mistakes_sync_updated_at ON review_session_mistakes(updated_at);
+
+-- ============================================================================
+-- 5. document_tasks 表 (已有 updated_at, 无 deleted_at / device_id / local_version)
+-- ============================================================================
+-- anki_cards.task_id 外键指向 document_tasks.id，因此 document_tasks 必须与
+-- anki_cards 一起参与 RowSync，才能在新设备回放时保持外键完整。
+
+ALTER TABLE document_tasks ADD COLUMN device_id TEXT;
+ALTER TABLE document_tasks ADD COLUMN local_version INTEGER DEFAULT 0;
+ALTER TABLE document_tasks ADD COLUMN deleted_at TEXT;
+
+-- 同步查询索引
+CREATE INDEX IF NOT EXISTS idx_document_tasks_local_version ON document_tasks(local_version);
+CREATE INDEX IF NOT EXISTS idx_document_tasks_deleted_at ON document_tasks(deleted_at);
+CREATE INDEX IF NOT EXISTS idx_document_tasks_device_id ON document_tasks(device_id);
+CREATE INDEX IF NOT EXISTS idx_document_tasks_sync_updated_at ON document_tasks(updated_at);
 
 -- ============================================================================
 -- 变更日志触发器
@@ -172,6 +188,28 @@ BEGIN
     VALUES ('review_session_mistakes', OLD.session_id || ':' || OLD.mistake_id, 'DELETE');
 END;
 
+-- document_tasks 表触发器
+CREATE TRIGGER IF NOT EXISTS trg__change_log_document_tasks_insert
+AFTER INSERT ON document_tasks
+BEGIN
+    INSERT INTO __change_log (table_name, record_id, operation)
+    VALUES ('document_tasks', NEW.id, 'INSERT');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg__change_log_document_tasks_update
+AFTER UPDATE ON document_tasks
+BEGIN
+    INSERT INTO __change_log (table_name, record_id, operation)
+    VALUES ('document_tasks', NEW.id, 'UPDATE');
+END;
+
+CREATE TRIGGER IF NOT EXISTS trg__change_log_document_tasks_delete
+AFTER DELETE ON document_tasks
+BEGIN
+    INSERT INTO __change_log (table_name, record_id, operation)
+    VALUES ('document_tasks', OLD.id, 'DELETE');
+END;
+
 -- ============================================================================
 -- 复合索引：支持增量同步查询
 -- ============================================================================
@@ -181,9 +219,11 @@ CREATE INDEX IF NOT EXISTS idx_chat_messages_device_version ON chat_messages(dev
 CREATE INDEX IF NOT EXISTS idx_review_chat_messages_device_version ON review_chat_messages(device_id, local_version);
 CREATE INDEX IF NOT EXISTS idx_review_sessions_device_version ON review_sessions(device_id, local_version);
 CREATE INDEX IF NOT EXISTS idx_review_session_mistakes_device_version ON review_session_mistakes(device_id, local_version);
+CREATE INDEX IF NOT EXISTS idx_document_tasks_device_version ON document_tasks(device_id, local_version);
 
 -- 按更新时间查询未删除记录（用于云端增量拉取）
 CREATE INDEX IF NOT EXISTS idx_chat_messages_updated_not_deleted ON chat_messages(updated_at) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_review_chat_messages_updated_not_deleted ON review_chat_messages(updated_at) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_review_sessions_updated_not_deleted ON review_sessions(updated_at) WHERE deleted_at IS NULL;
 CREATE INDEX IF NOT EXISTS idx_review_session_mistakes_updated_not_deleted ON review_session_mistakes(updated_at) WHERE deleted_at IS NULL;
+CREATE INDEX IF NOT EXISTS idx_document_tasks_updated_not_deleted ON document_tasks(updated_at) WHERE deleted_at IS NULL;

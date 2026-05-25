@@ -76,21 +76,73 @@ impl WebDavStorage {
         format!("Basic {}", general_purpose::STANDARD.encode(raw))
     }
 
+    /// 将相对 key 组合成 WebDAV 根目录下的远程路径
+    fn remote_path(&self, key: &str) -> String {
+        Self::join_paths(&self.root, key)
+    }
+
+    /// 拼接两个路径片段，去掉首尾斜杠，避免重复分隔符
+    fn join_paths(base: &str, child: &str) -> String {
+        let base = base.trim_matches('/');
+        let preserve_trailing_slash = child.ends_with('/') && !child.trim_matches('/').is_empty();
+        let child = child.trim_matches('/');
+
+        match (base.is_empty(), child.is_empty()) {
+            (true, true) => String::new(),
+            (true, false) => {
+                if preserve_trailing_slash {
+                    format!("{child}/")
+                } else {
+                    child.to_string()
+                }
+            }
+            (false, true) => base.to_string(),
+            (false, false) => {
+                if preserve_trailing_slash {
+                    format!("{base}/{child}/")
+                } else {
+                    format!("{base}/{child}")
+                }
+            }
+        }
+    }
+
+    /// 构建完整 URL
+    fn build_path_url(&self, path: &str) -> Result<Url> {
+        let mut url = self.base_url.clone();
+        let base_segments = url
+            .path()
+            .trim_matches('/')
+            .split('/')
+            .filter(|segment| !segment.is_empty())
+            .map(ToOwned::to_owned)
+            .collect::<Vec<_>>();
+        let remote_segments = path
+            .trim_matches('/')
+            .split('/')
+            .filter(|segment| !segment.is_empty())
+            .map(ToOwned::to_owned)
+            .collect::<Vec<_>>();
+        let preserve_trailing_slash = path.ends_with('/') && !remote_segments.is_empty();
+
+        url.set_path("");
+        {
+            let mut segments = url.path_segments_mut().map_err(|_| {
+                AppError::configuration("WebDAV endpoint 不能作为层级路径处理".to_string())
+            })?;
+            for segment in base_segments.iter().chain(remote_segments.iter()) {
+                segments.push(segment);
+            }
+            if preserve_trailing_slash {
+                segments.push("");
+            }
+        }
+        Ok(url)
+    }
+
     /// 构建完整 URL
     fn build_url(&self, key: &str) -> Result<Url> {
-        let mut url = self.base_url.clone();
-        let mut path = url.path().trim_end_matches('/').to_string();
-        if !path.ends_with('/') {
-            path.push('/');
-        }
-        path.push_str(&self.root);
-        if !path.ends_with('/') {
-            path.push('/');
-        }
-        let key_part = key.trim_start_matches('/');
-        path.push_str(key_part);
-        url.set_path(&path);
-        Ok(url)
+        self.build_path_url(&self.remote_path(key))
     }
 
     fn mkcol_method() -> Result<Method> {
@@ -104,13 +156,13 @@ impl WebDavStorage {
     }
 
     /// 发送 HTTP 请求（带重试）
-    async fn request(
+    async fn request_with_path(
         &self,
         method: Method,
-        key: &str,
+        path: &str,
         body: Option<Vec<u8>>,
     ) -> Result<reqwest::Response> {
-        let url = self.build_url(key)?;
+        let url = self.build_path_url(path)?;
         let max_retries = 3;
         let mut last_error = None;
 
@@ -151,6 +203,16 @@ impl WebDavStorage {
         )))
     }
 
+    async fn request(
+        &self,
+        method: Method,
+        key: &str,
+        body: Option<Vec<u8>>,
+    ) -> Result<reqwest::Response> {
+        self.request_with_path(method, &self.remote_path(key), body)
+            .await
+    }
+
     /// 确保目录存在（递归创建）
     async fn ensure_directory(&self, path: &str) -> Result<()> {
         let parts: Vec<&str> = path
@@ -168,7 +230,7 @@ impl WebDavStorage {
 
             // MKCOL 创建目录
             let res = self
-                .request(Self::mkcol_method()?, &format!("{}/", current), None)
+                .request_with_path(Self::mkcol_method()?, &format!("{}/", current), None)
                 .await?;
 
             // 405 METHOD_NOT_ALLOWED 或 409 CONFLICT 表示目录已存在，可以忽略
@@ -357,18 +419,8 @@ impl CloudStorage for WebDavStorage {
     }
 
     async fn check_connection(&self) -> Result<()> {
-        // 尝试 MKCOL 创建根目录
-        let res = self.request(Self::mkcol_method()?, "", None).await?;
-
-        if matches!(
-            res.status(),
-            StatusCode::OK
-                | StatusCode::CREATED
-                | StatusCode::METHOD_NOT_ALLOWED
-                | StatusCode::CONFLICT
-        ) {
-            return Ok(());
-        }
+        // 先确保同步根目录存在，再做连接探测
+        self.ensure_directory(&self.root).await?;
 
         // 回退：GET 根目录
         let res = self.request(Method::GET, "", None).await?;
@@ -389,11 +441,13 @@ impl CloudStorage for WebDavStorage {
         local_path: &Path,
         progress: Option<UploadProgressCallback>,
     ) -> Result<String> {
+        self.ensure_directory(&self.root).await?;
         // 确保父目录存在
         if let Some(parent) = key.rfind('/') {
             let parent_path = &key[..parent];
             if !parent_path.is_empty() {
-                self.ensure_directory(parent_path).await?;
+                self.ensure_directory(&self.remote_path(parent_path))
+                    .await?;
             }
         }
 
@@ -483,31 +537,38 @@ impl CloudStorage for WebDavStorage {
             )));
         }
 
-        if let Some(parent) = local_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| AppError::file_system(format!("创建目录失败 {:?}: {}", parent, e)))?;
-        }
-        let mut file = tokio::fs::File::create(local_path)
-            .await
-            .map_err(|e| AppError::file_system(format!("创建文件失败: {e}")))?;
+        let parent = local_path.parent().unwrap_or_else(|| Path::new("."));
+        std::fs::create_dir_all(parent)
+            .map_err(|e| AppError::file_system(format!("创建目录失败 {:?}: {}", parent, e)))?;
+        let _temp_file = tempfile::Builder::new()
+            .prefix(".download-")
+            .tempfile_in(parent)
+            .map_err(|e| AppError::file_system(format!("创建临时下载文件失败: {e}")))?;
+        let temp_path = _temp_file.path().to_path_buf();
 
         let mut hasher = Sha256::new();
         let mut downloaded = 0u64;
-        let mut stream = res.bytes_stream();
-        while let Some(chunk) = stream.next().await {
-            let bytes = chunk.map_err(|e| AppError::network(format!("读取响应体失败: {e}")))?;
-            file.write_all(&bytes)
+        {
+            let mut file = tokio::fs::File::create(&temp_path)
                 .await
-                .map_err(|e| AppError::file_system(format!("写入文件失败: {e}")))?;
-            hasher.update(&bytes);
-            downloaded += bytes.len() as u64;
-            if let Some(cb) = progress.as_ref() {
-                cb(downloaded, total_size);
+                .map_err(|e| AppError::file_system(format!("创建文件失败: {e}")))?;
+
+            let mut stream = res.bytes_stream();
+            while let Some(chunk) = stream.next().await {
+                let bytes = chunk.map_err(|e| AppError::network(format!("读取响应体失败: {e}")))?;
+                file.write_all(&bytes)
+                    .await
+                    .map_err(|e| AppError::file_system(format!("写入文件失败: {e}")))?;
+                hasher.update(&bytes);
+                downloaded += bytes.len() as u64;
+                if let Some(cb) = progress.as_ref() {
+                    cb(downloaded, total_size);
+                }
             }
+            file.flush()
+                .await
+                .map_err(|e| AppError::file_system(format!("刷新文件失败: {e}")))?;
         }
-        file.flush()
-            .await
-            .map_err(|e| AppError::file_system(format!("刷新文件失败: {e}")))?;
 
         let checksum = format!("{:x}", hasher.finalize());
         if let Some(expected) = expected_checksum {
@@ -518,15 +579,20 @@ impl CloudStorage for WebDavStorage {
                 )));
             }
         }
+        tokio::fs::rename(&temp_path, local_path)
+            .await
+            .map_err(|e| AppError::file_system(format!("保存下载文件失败: {e}")))?;
         Ok(checksum)
     }
 
     async fn put(&self, key: &str, data: &[u8]) -> Result<()> {
+        self.ensure_directory(&self.root).await?;
         // 确保父目录存在
         if let Some(parent) = key.rfind('/') {
             let parent_path = &key[..parent];
             if !parent_path.is_empty() {
-                self.ensure_directory(parent_path).await?;
+                self.ensure_directory(&self.remote_path(parent_path))
+                    .await?;
             }
         }
 
@@ -694,5 +760,63 @@ impl CloudStorage for WebDavStorage {
 
         let files = self.parse_propfind_response(&xml, "");
         Ok(files.into_iter().next())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_storage() -> WebDavStorage {
+        WebDavStorage::new(
+            WebDavConfig {
+                endpoint: "http://localhost:8080/".to_string(),
+                username: "webdav".to_string(),
+                password: "webdav123".to_string(),
+            },
+            "deep-student-sync-contract/webdav/uuid".to_string(),
+        )
+        .expect("create test storage")
+    }
+
+    #[test]
+    fn build_url_adds_root_once() {
+        let storage = test_storage();
+        let url = storage
+            .build_url("objects/basic/hello.txt")
+            .expect("build url");
+        assert_eq!(
+            url.as_str(),
+            "http://localhost:8080/deep-student-sync-contract/webdav/uuid/objects/basic/hello.txt"
+        );
+    }
+
+    #[test]
+    fn build_path_url_uses_raw_server_path() {
+        let storage = test_storage();
+        let url = storage
+            .build_path_url("deep-student-sync-contract/webdav/uuid/")
+            .expect("build raw path url");
+        assert_eq!(
+            url.as_str(),
+            "http://localhost:8080/deep-student-sync-contract/webdav/uuid/"
+        );
+    }
+
+    #[test]
+    fn remote_path_joins_once() {
+        let storage = test_storage();
+        assert_eq!(
+            storage.remote_path("objects/basic/hello.txt"),
+            "deep-student-sync-contract/webdav/uuid/objects/basic/hello.txt"
+        );
+        assert_eq!(
+            storage.remote_path("objects/"),
+            "deep-student-sync-contract/webdav/uuid/objects/"
+        );
+        assert_eq!(
+            storage.build_url("objects/").unwrap().path(),
+            "/deep-student-sync-contract/webdav/uuid/objects/"
+        );
     }
 }

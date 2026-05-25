@@ -45,7 +45,6 @@ impl S3Storage {
             "cloud_storage",
         );
 
-        // 构建 S3 配置
         let mut s3_config_builder = aws_sdk_s3::Config::builder()
             .credentials_provider(credentials)
             .endpoint_url(&config.endpoint)
@@ -61,7 +60,6 @@ impl S3Storage {
                 s3_config_builder.region(aws_sdk_s3::config::Region::new("us-east-1"));
         }
 
-        // path-style 访问（MinIO、某些 S3 兼容服务需要）
         if config.path_style {
             s3_config_builder = s3_config_builder.force_path_style(true);
         }
@@ -186,10 +184,18 @@ impl CloudStorage for S3Storage {
             let mut buffer = vec![0u8; CHUNK_SIZE];
 
             loop {
-                let bytes_read = file
-                    .read(&mut buffer)
-                    .await
-                    .map_err(|e| AppError::file_system(format!("读取文件失败: {e}")))?;
+                let mut bytes_read = 0usize;
+                while bytes_read < CHUNK_SIZE {
+                    let n = file
+                        .read(&mut buffer[bytes_read..])
+                        .await
+                        .map_err(|e| AppError::file_system(format!("读取文件失败: {e}")))?;
+                    if n == 0 {
+                        break;
+                    }
+                    bytes_read += n;
+                }
+
                 if bytes_read == 0 {
                     break;
                 }
@@ -242,7 +248,7 @@ impl CloudStorage for S3Storage {
                 .multipart_upload(completed)
                 .send()
                 .await
-                .map_err(|e| AppError::network(format!("S3 完成分块上传失败: {e}")))?;
+                .map_err(|e| AppError::network(format!("S3 完成分块上传失败: {e:?}")))?;
 
             Ok(format!("{:x}", hasher.finalize()))
         }
@@ -284,10 +290,14 @@ impl CloudStorage for S3Storage {
             cb(0, total_size);
         }
 
-        if let Some(parent) = local_path.parent() {
-            std::fs::create_dir_all(parent)
-                .map_err(|e| AppError::file_system(format!("创建目录失败 {:?}: {}", parent, e)))?;
-        }
+        let parent = local_path.parent().unwrap_or_else(|| Path::new("."));
+        std::fs::create_dir_all(parent)
+            .map_err(|e| AppError::file_system(format!("创建目录失败 {:?}: {}", parent, e)))?;
+        let _temp_file = tempfile::Builder::new()
+            .prefix(".download-")
+            .tempfile_in(parent)
+            .map_err(|e| AppError::file_system(format!("创建临时下载文件失败: {e}")))?;
+        let temp_path = _temp_file.path().to_path_buf();
 
         let full_key = self.full_key(key);
         let output = self
@@ -300,35 +310,37 @@ impl CloudStorage for S3Storage {
             .map_err(|e| AppError::network(format!("S3 下载失败: {e}")))?;
 
         let mut reader = output.body.into_async_read();
-        let mut file = tokio::fs::File::create(local_path)
-            .await
-            .map_err(|e| AppError::file_system(format!("创建文件失败: {e}")))?;
         let mut hasher = Sha256::new();
         let mut downloaded = 0u64;
         let mut buffer = vec![0u8; 64 * 1024];
 
-        loop {
-            let bytes_read = reader
-                .read(&mut buffer)
+        {
+            let mut file = tokio::fs::File::create(&temp_path)
                 .await
-                .map_err(|e| AppError::network(format!("读取 S3 响应失败: {e}")))?;
-            if bytes_read == 0 {
-                break;
-            }
-            let chunk = &buffer[..bytes_read];
-            file.write_all(chunk)
-                .await
-                .map_err(|e| AppError::file_system(format!("写入文件失败: {e}")))?;
-            hasher.update(chunk);
-            downloaded += bytes_read as u64;
-            if let Some(cb) = progress.as_ref() {
-                cb(downloaded, total_size);
-            }
-        }
+                .map_err(|e| AppError::file_system(format!("创建文件失败: {e}")))?;
 
-        file.flush()
-            .await
-            .map_err(|e| AppError::file_system(format!("刷新文件失败: {e}")))?;
+            loop {
+                let bytes_read = reader
+                    .read(&mut buffer)
+                    .await
+                    .map_err(|e| AppError::network(format!("读取 S3 响应失败: {e}")))?;
+                if bytes_read == 0 {
+                    break;
+                }
+                let chunk = &buffer[..bytes_read];
+                file.write_all(chunk)
+                    .await
+                    .map_err(|e| AppError::file_system(format!("写入文件失败: {e}")))?;
+                hasher.update(chunk);
+                downloaded += bytes_read as u64;
+                if let Some(cb) = progress.as_ref() {
+                    cb(downloaded, total_size);
+                }
+            }
+            file.flush()
+                .await
+                .map_err(|e| AppError::file_system(format!("刷新文件失败: {e}")))?;
+        }
 
         let checksum = format!("{:x}", hasher.finalize());
         if let Some(expected) = expected_checksum {
@@ -339,6 +351,9 @@ impl CloudStorage for S3Storage {
                 )));
             }
         }
+        tokio::fs::rename(&temp_path, local_path)
+            .await
+            .map_err(|e| AppError::file_system(format!("保存下载文件失败: {e}")))?;
         Ok(checksum)
     }
 
