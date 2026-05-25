@@ -2839,20 +2839,6 @@ impl SyncManager {
             }
         }
 
-        // 复活意图：清空 deleted_at
-        //
-        // **优化**：只在本地 deleted_at 实际非 NULL 时才运行 UPDATE。
-        // 否则 trg_upd 触发器会产生无谓的 __change_log 条目（虽被回声抑制但仍污染日志表）。
-        if revive_record && table_name != "llm_usage_daily" {
-            let id_col_ident = Self::quote_identifier(id_column)?;
-            let null_sql = format!(
-                "UPDATE {} SET \"deleted_at\" = NULL WHERE {} = ?1 AND \"deleted_at\" IS NOT NULL",
-                table_ident, id_col_ident
-            );
-            conn.execute(&null_sql, params![record_id])
-                .map_err(|e| SyncError::Database(format!("复活软删记录失败: {}", e)))?;
-        }
-
         Ok(())
     }
 

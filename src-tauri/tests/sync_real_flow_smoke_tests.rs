@@ -13,11 +13,11 @@ use chrono::Utc;
 use deep_student_lib::cloud_storage::{CloudStorage, FileInfo};
 use deep_student_lib::data_governance::migration::MigrationCoordinator;
 use deep_student_lib::data_governance::sync::{
-    classification::{sync_classification_registry, SyncCategory, TableClassification},
     MergeStrategy, SyncChangeWithData, SyncError, SyncManager,
+    classification::{SyncCategory, TableClassification, sync_classification_registry},
 };
 use deep_student_lib::models::AppError;
-use rusqlite::{params, types::ValueRef, Connection};
+use rusqlite::{Connection, params, types::ValueRef};
 use serde_json::{Map, Number, Value};
 use tempfile::TempDir;
 
@@ -1090,6 +1090,47 @@ fn pending_record_ids_for_table(conn: &Connection, table_name: &str) -> BTreeSet
         .collect()
 }
 
+fn pending_table_names(conn: &Connection) -> BTreeSet<String> {
+    let mut stmt = conn
+        .prepare(
+            "SELECT DISTINCT table_name FROM __change_log
+             WHERE sync_version = 0
+             ORDER BY table_name",
+        )
+        .expect("prepare pending table names query");
+
+    stmt.query_map([], |row| row.get::<_, String>(0))
+        .expect("query pending table names")
+        .map(|row| row.expect("read pending table name"))
+        .collect()
+}
+
+fn concrete_non_row_sync_tables(database_name: &str) -> BTreeSet<&'static str> {
+    sync_classification_registry()
+        .into_iter()
+        .filter(|entry| entry.database == database_name)
+        .filter(|entry| entry.primary_key != "(virtual)")
+        .filter(|entry| {
+            !matches!(
+                entry.category,
+                SyncCategory::RowSync | SyncCategory::Deprecated
+            )
+        })
+        .map(|entry| entry.table_name)
+        .collect()
+}
+
+fn assert_non_row_sync_fixture_coverage(
+    database_name: &str,
+    inserted_tables: BTreeSet<&'static str>,
+) {
+    let expected = concrete_non_row_sync_tables(database_name);
+    assert_eq!(
+        inserted_tables, expected,
+        "{database_name} non-RowSync fixture must cover every concrete classified table"
+    );
+}
+
 fn change_log_trigger_count(conn: &Connection, table_name: &str) -> i64 {
     conn.query_row(
         "SELECT COUNT(*) FROM sqlite_master
@@ -1100,6 +1141,364 @@ fn change_log_trigger_count(conn: &Connection, table_name: &str) -> i64 {
         |row| row.get(0),
     )
     .unwrap_or_else(|e| panic!("count change-log triggers for {table_name}: {e}"))
+}
+
+fn insert_vfs_non_row_sync_rows(conn: &Connection) -> BTreeSet<&'static str> {
+    let ms = 1_714_000_000_000i64;
+    let ts = "2024-04-24T00:00:00Z";
+
+    conn.execute(
+        "INSERT INTO blobs (hash, relative_path, size, mime_type, ref_count, created_at)
+         VALUES ('blob_non_row_hash', 'bl/ob/blob_non_row_hash', 4096, 'application/pdf', 1, ?1)",
+        params![ms],
+    )
+    .expect("insert vfs FileSync blob row");
+    conn.execute(
+        "INSERT INTO path_cache (item_type, item_id, full_path, folder_path, updated_at)
+         VALUES ('note', 'note_all', '/All rows folder/All rows note', '/All rows folder', ?1)",
+        params![ts],
+    )
+    .expect("insert vfs path cache row");
+    conn.execute(
+        "INSERT INTO question_bank_stats (
+            exam_id, total_count, new_count, total_attempts, total_correct, correct_rate, updated_at
+         ) VALUES ('exam_all', 1, 1, 2, 1, 0.5, ?1)",
+        params![ts],
+    )
+    .expect("insert vfs question bank stats row");
+    conn.execute(
+        "INSERT INTO review_stats (
+            exam_id, total_plans, new_count, due_today, total_reviews, total_correct,
+            avg_correct_rate, avg_ease_factor, updated_at
+         ) VALUES ('exam_all', 1, 1, 1, 2, 1, 0.5, 2.4, ?1)",
+        params![ts],
+    )
+    .expect("insert vfs review stats row");
+    conn.execute(
+        "INSERT INTO vfs_index_units (
+            id, resource_id, unit_index, image_blob_hash, image_mime_type, text_content,
+            text_source, content_hash, text_required, text_state, text_indexed_at,
+            text_chunk_count, text_embedding_dim, mm_required, mm_state, created_at, updated_at
+         ) VALUES (
+            'idx_unit_non_row', 'res_all_file', 0, 'blob_non_row_hash',
+            'application/pdf', 'indexed text', 'ocr', 'idx_content_non_row',
+            1, 'indexed', ?1, 1, 1536, 0, 'disabled', ?1, ?1
+         )",
+        params![ms],
+    )
+    .expect("insert vfs index unit row");
+    conn.execute(
+        "INSERT INTO vfs_index_segments (
+            id, unit_id, segment_index, modality, embedding_dim, lance_row_id,
+            content_text, content_hash, start_pos, end_pos, metadata_json, created_at, updated_at
+         ) VALUES (
+            'idx_seg_non_row', 'idx_unit_non_row', 0, 'text', 1536, 'lance_non_row',
+            'indexed text', 'idx_seg_hash_non_row', 0, 12, '{}', ?1, ?1
+         )",
+        params![ms],
+    )
+    .expect("insert vfs index segment row");
+    conn.execute(
+        "INSERT INTO vfs_embedding_dims (
+            dimension, modality, lance_table_name, record_count, created_at,
+            last_used_at, model_config_id, model_name
+         ) VALUES (1536, 'text', 'vfs_text_1536', 1, ?1, ?1, 'emb_cfg', 'text-embedding')",
+        params![ms],
+    )
+    .expect("insert vfs embedding dimension row");
+    conn.execute(
+        "INSERT INTO question_history (
+            id, question_id, field_name, old_value, new_value, operator, reason, created_at
+         ) VALUES ('qh_non_row', 'q_all', 'status', 'new', 'review', 'user', 'fixture', ?1)",
+        params![ts],
+    )
+    .expect("insert vfs question history row");
+    conn.execute(
+        "INSERT INTO question_sync_conflicts (
+            id, question_id, exam_id, conflict_type, local_snapshot, remote_snapshot,
+            status, created_at
+         ) VALUES (
+            'qsc_non_row', 'q_all', 'exam_all', 'modify_modify', '{}', '{}',
+            'pending', ?1
+         )",
+        params![ts],
+    )
+    .expect("insert vfs question sync conflict row");
+    conn.execute(
+        "INSERT INTO question_sync_logs (
+            id, exam_id, direction, sync_type, result, synced_count, conflict_count,
+            error_count, details_json, started_at, completed_at
+         ) VALUES (
+            'qsl_non_row', 'exam_all', 'pull', 'incremental', 'success',
+            1, 0, 0, '{}', ?1, ?1
+         )",
+        params![ts],
+    )
+    .expect("insert vfs question sync log row");
+    conn.execute(
+        "INSERT INTO review_history (
+            id, plan_id, question_id, quality, passed, ease_factor_before,
+            ease_factor_after, interval_before, interval_after, repetitions_before,
+            repetitions_after, reviewed_at, user_answer, time_spent_seconds
+         ) VALUES (
+            'rh_non_row', 'rp_all', 'q_all', 4, 1, 2.5, 2.6, 1, 3, 0, 1,
+            ?1, '4', 30
+         )",
+        params![ts],
+    )
+    .expect("insert vfs review history row");
+    conn.execute(
+        "INSERT INTO memory_audit_log (
+            source, operation, success, note_id, title, content_preview, folder,
+            event, confidence, reason, session_id, duration_ms, extra_json
+         ) VALUES (
+            'manual', 'write', 1, 'note_all', 'memory title', 'preview',
+            '/memory', 'ADD', 0.9, 'fixture', 'sess_all', 12, '{}'
+         )",
+        [],
+    )
+    .expect("insert vfs memory audit row");
+    conn.execute(
+        "INSERT INTO memory_write_idempotency (
+            idempotency_key, note_id, event, is_new, confidence, reason,
+            resource_id, downgraded, created_at
+         ) VALUES (
+            'idem_non_row', 'note_all', 'ADD', 1, 0.9, 'fixture',
+            'res_all_note', 0, ?1
+         )",
+        params![ms],
+    )
+    .expect("insert vfs memory idempotency row");
+    conn.execute(
+        "INSERT INTO mindmap_versions (
+            version_id, mindmap_id, resource_id, title, label, source, created_at
+         ) VALUES (
+            'mv_non_row', 'mm_all', 'res_all_mindmap', 'All rows mindmap',
+            'v1', 'manual', ?1
+         )",
+        params![ts],
+    )
+    .expect("insert vfs mindmap version row");
+    conn.execute(
+        "UPDATE memory_config SET value = 'fld_all', updated_at = ?1
+         WHERE key = 'memory_root_folder_id'",
+        params![ts],
+    )
+    .expect("update vfs memory config row");
+    conn.execute(
+        "UPDATE vfs_indexing_config SET value = 'false', updated_at = ?1
+         WHERE key = 'indexing.enabled'",
+        params![ms],
+    )
+    .expect("update vfs indexing config row");
+
+    BTreeSet::from([
+        "blobs",
+        "path_cache",
+        "question_bank_stats",
+        "review_stats",
+        "vfs_index_units",
+        "vfs_index_segments",
+        "vfs_embedding_dims",
+        "question_history",
+        "question_sync_conflicts",
+        "question_sync_logs",
+        "review_history",
+        "memory_audit_log",
+        "memory_write_idempotency",
+        "mindmap_versions",
+        "memory_config",
+        "vfs_indexing_config",
+    ])
+}
+
+fn insert_chat_non_row_sync_rows(conn: &Connection) -> BTreeSet<&'static str> {
+    let ms = 1_714_000_000_000i64;
+    let ts = "2024-04-24T00:00:00Z";
+
+    conn.execute(
+        "INSERT INTO chat_v2_session_state (
+            session_id, chat_params_json, features_json, mode_state_json, input_value,
+            panel_states_json, updated_at, model_id, temperature, context_limit,
+            max_tokens, enable_thinking, disable_tools, attachments_json,
+            rag_enabled, rag_library_ids_json, rag_top_k, graph_rag_enabled,
+            memory_enabled, web_search_enabled, anki_enabled, anki_template_id,
+            anki_options_json, pending_context_refs_json, loaded_skill_ids_json,
+            active_skill_id, active_skill_ids_json, skill_state_json
+         ) VALUES (
+            'sess_all', '{}', '{}', '{}', 'draft', '{}', ?1, 'model-a',
+            0.2, 4096, 1024, 1, 0, '[]', 1, '[]', 5, 1, 1, 0, 0,
+            NULL, '{}', '[]', '[]', NULL, '[]', '{}'
+         )",
+        params![ts],
+    )
+    .expect("insert chat session state row");
+    conn.execute(
+        "INSERT INTO chat_v2_todo_lists (
+            session_id, message_id, variant_id, todo_list_id, title, steps_json,
+            is_all_done, created_at, updated_at
+         ) VALUES (
+            'sess_all', 'msg_all', NULL, 'chat_todo_non_row', 'Agent plan',
+            '[{\"title\":\"step\"}]', 0, ?1, ?1
+         )",
+        params![ms],
+    )
+    .expect("insert chat todo list row");
+    conn.execute(
+        "INSERT INTO chat_v2_session_tags (session_id, tag, tag_type, created_at)
+         VALUES ('sess_all', 'auto-tag', 'auto', ?1)",
+        params![ts],
+    )
+    .expect("insert chat session tag row");
+    conn.execute(
+        "INSERT INTO sleep_block (
+            id, workspace_id, coordinator_session_id, awaiting_agents, wake_condition,
+            status, timeout_at, created_at, awakened_at, awakened_by,
+            awaken_message, message_id, block_id
+         ) VALUES (
+            'sleep_non_row', 'ws_all', 'sess_all', '[]',
+            '{\"type\":\"result_message\"}', 'sleeping', NULL, ?1, NULL,
+            NULL, NULL, 'msg_all', 'blk_all'
+         )",
+        params![ts],
+    )
+    .expect("insert chat sleep block row");
+    conn.execute(
+        "INSERT INTO subagent_task (
+            id, workspace_id, agent_session_id, skill_id, status, task_content,
+            last_active_at, needs_recovery, created_at, initial_task, started_at,
+            completed_at, result_summary
+         ) VALUES (
+            'subtask_non_row', 'ws_all', 'agent_sess_non_row', 'skill_non_row',
+            'running', 'task', ?1, 1, ?1, 'task', ?1, NULL, NULL
+         )",
+        params![ts],
+    )
+    .expect("insert chat subagent task row");
+    conn.execute(
+        "INSERT INTO chat_v2_compactions (
+            id, session_id, summary_message_id, tail_start_message_id,
+            tail_start_time_created, reason, is_auto, is_overflow,
+            tokens_before, tokens_after, model_id, created_at
+         ) VALUES (
+            'compact_non_row', 'sess_all', 'msg_all', 'msg_all', ?1,
+            'manual', 0, 0, 8000, 1200, 'model-a', ?1
+         )",
+        params![ms],
+    )
+    .expect("insert chat compaction row");
+
+    BTreeSet::from([
+        "chat_v2_session_state",
+        "chat_v2_todo_lists",
+        "chat_v2_session_tags",
+        "sleep_block",
+        "subagent_task",
+        "chat_v2_compactions",
+    ])
+}
+
+fn insert_mistakes_non_row_sync_rows(conn: &Connection) -> BTreeSet<&'static str> {
+    let ts = "2024-04-24T00:00:00Z";
+
+    conn.execute(
+        "INSERT INTO temp_sessions (
+            temp_id, session_data, stream_state, created_at, updated_at, last_error
+         ) VALUES ('temp_non_row', '{}', 'in_progress', ?1, ?1, NULL)",
+        params![ts],
+    )
+    .expect("insert mistakes temp session row");
+    conn.execute(
+        "INSERT INTO document_control_states (
+            document_id, state, pending_tasks_json, running_tasks_json,
+            completed_tasks_json, failed_tasks_json, created_at, updated_at
+         ) VALUES ('doc_non_row', 'running', '[]', '{}', '[]', '{}', ?1, ?1)",
+        params![ts],
+    )
+    .expect("insert mistakes document control state row");
+    conn.execute(
+        "INSERT INTO search_logs (
+            id, search_type, query, result_count, execution_time_ms,
+            mistake_ids_json, error_message, user_feedback, created_at
+         ) VALUES (
+            'search_non_row', 'semantic', 'algebra', 1, 25,
+            '[\"mistake_all\"]', NULL, 'useful', ?1
+         )",
+        params![ts],
+    )
+    .expect("insert mistakes search log row");
+    conn.execute(
+        "INSERT INTO exam_sheet_sessions (
+            id, exam_name, created_at, updated_at, temp_id, status,
+            metadata_json, preview_json, linked_mistake_ids
+         ) VALUES (
+            'exam_sess_non_row', 'Runtime exam', ?1, ?1, 'tmp_exam_non_row',
+            'processing', '{}', '{}', '[\"mistake_all\"]'
+         )",
+        params![ts],
+    )
+    .expect("insert mistakes exam sheet session row");
+    conn.execute(
+        "INSERT INTO migration_progress (
+            category, status, last_cursor, total_processed, last_error, created_at, updated_at
+         ) VALUES ('legacy_import', 'running', 'cursor-1', 3, NULL, ?1, ?1)",
+        params![ts],
+    )
+    .expect("insert mistakes migration progress row");
+    conn.execute(
+        "INSERT INTO vectorized_data (
+            id, mistake_id, text_content, embedding_json, created_at
+         ) VALUES ('vec_non_row', 'mistake_all', 'vector text', '[0.1,0.2]', ?1)",
+        params![ts],
+    )
+    .expect("insert mistakes vectorized data row");
+    conn.execute(
+        "INSERT INTO settings (key, value, updated_at)
+         VALUES ('sync.fixture.setting', 'enabled', ?1)",
+        params![ts],
+    )
+    .expect("insert mistakes setting row");
+    conn.execute(
+        "INSERT INTO rag_configurations (
+            id, chunk_size, chunk_overlap, chunking_strategy, min_chunk_size,
+            default_top_k, default_rerank_enabled, created_at, updated_at
+         ) VALUES ('rag_non_row', 512, 64, 'fixed_size', 20, 8, 1, ?1, ?1)",
+        params![ts],
+    )
+    .expect("insert mistakes rag configuration row");
+    conn.execute(
+        "INSERT INTO custom_anki_templates (
+            id, name, description, author, version, preview_front, preview_back,
+            note_type, fields_json, generation_prompt, front_template,
+            back_template, css_style, field_extraction_rules_json,
+            created_at, updated_at, is_active, is_built_in, preview_data_json
+         ) VALUES (
+            'tmpl_non_row', 'Template non row', 'desc', 'tester', '1.0.0',
+            'front', 'back', 'Basic', '[\"Front\",\"Back\"]', 'prompt',
+            '{{Front}}', '{{Back}}', '.card{}', '{}', ?1, ?1, 1, 0, '{}'
+         )",
+        params![ts],
+    )
+    .expect("insert mistakes custom anki template row");
+    conn.execute(
+        "INSERT INTO rag_sub_libraries (id, name, description, created_at, updated_at)
+         VALUES ('rag_sub_non_row', 'RAG sub non row', 'desc', ?1, ?1)",
+        params![ts],
+    )
+    .expect("insert mistakes rag sub library row");
+
+    BTreeSet::from([
+        "temp_sessions",
+        "document_control_states",
+        "search_logs",
+        "exam_sheet_sessions",
+        "migration_progress",
+        "vectorized_data",
+        "settings",
+        "rag_configurations",
+        "custom_anki_templates",
+        "rag_sub_libraries",
+    ])
 }
 
 fn local_manifest(
@@ -1935,6 +2334,74 @@ fn real_legacy_non_row_sync_pending_entries_are_filtered_for_all_databases() {
     clear_change_log(&usage);
     insert_llm_usage_all_row_sync_bundle(&usage);
     assert_only_row_sync_pending_after_filter(&usage, "llm_usage");
+}
+
+#[test]
+fn real_non_row_sync_tables_with_real_rows_never_enter_incremental_upload() {
+    let workspace = migrate_workspace();
+
+    let vfs = workspace.open("vfs");
+    clear_change_log(&vfs);
+    insert_vfs_all_row_sync_bundle(&vfs);
+    clear_change_log(&vfs);
+    let inserted_vfs_tables = insert_vfs_non_row_sync_rows(&vfs);
+    assert_non_row_sync_fixture_coverage("vfs", inserted_vfs_tables);
+    assert_eq!(
+        pending_table_names(&vfs),
+        BTreeSet::new(),
+        "vfs non-RowSync writes must not enter __change_log"
+    );
+
+    let chat = workspace.open("chat_v2");
+    clear_change_log(&chat);
+    insert_chat_all_row_sync_bundle(&chat);
+    clear_change_log(&chat);
+    let inserted_chat_tables = insert_chat_non_row_sync_rows(&chat);
+    assert_non_row_sync_fixture_coverage("chat_v2", inserted_chat_tables);
+    assert_eq!(
+        pending_table_names(&chat),
+        BTreeSet::new(),
+        "chat_v2 non-RowSync writes must not enter __change_log"
+    );
+
+    let mistakes = workspace.open("mistakes");
+    clear_change_log(&mistakes);
+    insert_mistakes_all_row_sync_bundle(&mistakes);
+    clear_change_log(&mistakes);
+    let inserted_mistakes_tables = insert_mistakes_non_row_sync_rows(&mistakes);
+    assert_non_row_sync_fixture_coverage("mistakes", inserted_mistakes_tables);
+    assert_eq!(
+        pending_table_names(&mistakes),
+        BTreeSet::new(),
+        "mistakes non-RowSync writes must not enter __change_log"
+    );
+
+    let usage = workspace.open("llm_usage");
+    clear_change_log(&usage);
+    insert_llm_usage_daily_non_row(&usage);
+    assert_non_row_sync_fixture_coverage("llm_usage", BTreeSet::from(["llm_usage_daily"]));
+    assert_eq!(
+        pending_table_names(&usage),
+        BTreeSet::new(),
+        "llm_usage non-RowSync writes must not enter __change_log"
+    );
+}
+
+fn insert_llm_usage_daily_non_row(conn: &Connection) {
+    conn.execute(
+        "INSERT INTO llm_usage_daily (
+            date, caller_type, model, provider, request_count, success_count,
+            error_count, total_prompt_tokens, total_completion_tokens, total_tokens,
+            total_reasoning_tokens, total_cached_tokens, total_cost_estimate,
+            avg_duration_ms, total_duration_ms, created_at, updated_at
+         ) VALUES (
+            '2024-04-24', 'chat_v2', 'gpt-4o-mini', 'openai', 2, 2,
+            0, 100, 50, 150, 10, 5, 0.0123, 600.0, 1200,
+            '2024-04-24T00:00:00Z', '2024-04-24T00:00:00Z'
+         )",
+        [],
+    )
+    .expect("insert llm_usage daily aggregate row");
 }
 
 #[test]

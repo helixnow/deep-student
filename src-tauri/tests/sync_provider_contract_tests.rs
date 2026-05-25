@@ -7,13 +7,13 @@
 //! `DS_SYNC_TEST_DOCKER=1 cargo test --test sync_provider_contract_tests -- --ignored`
 
 use deep_student_lib::cloud_storage::{
-    create_storage, CloudStorage, CloudStorageConfig, CloudSyncManager, S3Config, StorageProvider,
-    WebDavConfig,
+    CloudStorage, CloudStorageConfig, CloudSyncManager, S3Config, StorageProvider, WebDavConfig,
+    create_storage,
 };
 use deep_student_lib::crypto::backup_crypto;
 use deep_student_lib::data_governance::migration::MigrationCoordinator;
 use deep_student_lib::data_governance::sync::{MergeStrategy, SyncChangeWithData, SyncManager};
-use rusqlite::{params, Connection};
+use rusqlite::{Connection, params};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -652,6 +652,377 @@ async fn run_sync_manager_roundtrip_contract(storage: Box<dyn CloudStorage>) {
     assert_eq!(pending_count(&target_vfs), 0, "replay must not create echo");
 }
 
+fn assert_bytes_do_not_contain(haystack: &[u8], needle: &str) {
+    let needle_bytes = needle.as_bytes();
+    assert!(
+        !haystack
+            .windows(needle_bytes.len())
+            .any(|window| window == needle_bytes),
+        "encrypted payload must not contain plaintext marker: {needle}"
+    );
+}
+
+async fn run_encrypted_data_governance_payload_contract(storage: Box<dyn CloudStorage>) {
+    storage
+        .check_connection()
+        .await
+        .expect("provider connection should work");
+
+    let source = migrate_workspace();
+    let target = migrate_workspace();
+    let source_vfs = source.open("vfs");
+    let target_vfs = target.open("vfs");
+    clear_change_log(&source_vfs);
+    clear_change_log(&target_vfs);
+
+    let (_res_id, note_id, hash, title) = insert_vfs_note_bundle(&source_vfs, "encrypted");
+    let password = "data-governance-provider-contract-password";
+    let source_device_id = format!("device-src-{}", Uuid::new_v4());
+    let target_device_id = format!("device-dst-{}", Uuid::new_v4());
+    let wrong_password_device_id = format!("device-wrong-{}", Uuid::new_v4());
+    let plaintext_device_id = format!("device-plain-{}", Uuid::new_v4());
+
+    let source_manager =
+        SyncManager::with_encryption(source_device_id.clone(), Some(password.to_string()));
+    let target_manager = SyncManager::with_encryption(target_device_id, Some(password.to_string()));
+
+    upload_vfs_changes_and_manifest(storage.as_ref(), &source_manager, &source_vfs).await;
+
+    let manifest_key = format!("data_governance/manifests/{source_device_id}.json");
+    let manifest_bytes = storage
+        .get(&manifest_key)
+        .await
+        .expect("download encrypted data governance manifest")
+        .expect("encrypted manifest should exist");
+    assert!(
+        backup_crypto::is_encrypted_backup(&manifest_bytes),
+        "data governance manifest should be encrypted"
+    );
+    for marker in [&source_device_id, &title, &hash] {
+        assert_bytes_do_not_contain(&manifest_bytes, marker);
+    }
+
+    let change_files = storage
+        .list(&format!("data_governance/changes/{source_device_id}/"))
+        .await
+        .expect("list encrypted data governance changes");
+    assert_eq!(
+        change_files.len(),
+        1,
+        "one encrypted enriched change file should be uploaded"
+    );
+    let change_key = change_files[0].key.clone();
+    let change_bytes = storage
+        .get(&change_key)
+        .await
+        .expect("download encrypted data governance changes")
+        .expect("encrypted change file should exist");
+    assert!(
+        backup_crypto::is_encrypted_backup(&change_bytes),
+        "data governance change file should be encrypted"
+    );
+    for marker in [&source_device_id, &title, &hash] {
+        assert_bytes_do_not_contain(&change_bytes, marker);
+    }
+
+    let target_manifest = local_manifest(&target_manager, &target_vfs);
+    let (download_result, downloaded_changes) = target_manager
+        .execute_download(
+            storage.as_ref(),
+            &target_manifest,
+            MergeStrategy::KeepLatest,
+        )
+        .await
+        .expect("download encrypted provider changes");
+    assert!(
+        download_result.success,
+        "encrypted download should succeed: {download_result:?}"
+    );
+    assert!(
+        downloaded_changes.len() >= 2,
+        "expected encrypted resource and note changes"
+    );
+    let applied = SyncManager::apply_downloaded_changes(&target_vfs, &downloaded_changes, None)
+        .expect("apply encrypted downloaded changes");
+    assert_eq!(
+        applied.failure_count, 0,
+        "encrypted apply failures: {:?}",
+        applied.failures
+    );
+    let actual_title: String = target_vfs
+        .query_row(
+            "SELECT title FROM notes WHERE id = ?1",
+            params![note_id],
+            |row| row.get(0),
+        )
+        .expect("target encrypted note should exist");
+    assert_eq!(actual_title, title);
+    assert_eq!(
+        pending_count(&target_vfs),
+        0,
+        "encrypted replay must not create echo"
+    );
+
+    let wrong_password_manager = SyncManager::with_encryption(
+        wrong_password_device_id,
+        Some("wrong-data-governance-password".to_string()),
+    );
+    let wrong_password_download = wrong_password_manager
+        .download_changes(storage.as_ref(), 0, None)
+        .await
+        .expect("wrong password should report decode failures without failing the batch");
+    assert!(
+        wrong_password_download.changes.is_empty(),
+        "wrong password must not return decrypted changes"
+    );
+    assert_eq!(
+        wrong_password_download.decode_failures,
+        vec![change_key.clone()],
+        "wrong password should identify the encrypted change file"
+    );
+
+    let plaintext_manager = SyncManager::new(plaintext_device_id);
+    let plaintext_download = plaintext_manager
+        .download_changes(storage.as_ref(), 0, None)
+        .await
+        .expect("missing password should report decode failures without failing the batch");
+    assert!(
+        plaintext_download.changes.is_empty(),
+        "missing password must not return encrypted changes as plaintext"
+    );
+    assert_eq!(
+        plaintext_download.decode_failures,
+        vec![change_key],
+        "missing password should identify the encrypted change file"
+    );
+}
+
+async fn run_mixed_plaintext_and_encrypted_change_contract(storage: Box<dyn CloudStorage>) {
+    storage
+        .check_connection()
+        .await
+        .expect("provider connection should work");
+
+    let plaintext_source = migrate_workspace();
+    let encrypted_source = migrate_workspace();
+    let target = migrate_workspace();
+    let plaintext_vfs = plaintext_source.open("vfs");
+    let encrypted_vfs = encrypted_source.open("vfs");
+    let target_vfs = target.open("vfs");
+    clear_change_log(&plaintext_vfs);
+    clear_change_log(&encrypted_vfs);
+    clear_change_log(&target_vfs);
+
+    let (plain_res_id, plain_note_id, _plain_hash, plain_title) =
+        insert_vfs_note_bundle(&plaintext_vfs, "mixed_plaintext");
+    let (_encrypted_res_id, encrypted_note_id, encrypted_hash, encrypted_title) =
+        insert_vfs_note_bundle(&encrypted_vfs, "mixed_encrypted");
+
+    let password = "mixed-data-governance-password";
+    let plaintext_device_id = format!("device-plain-{}", Uuid::new_v4());
+    let encrypted_device_id = format!("device-encrypted-{}", Uuid::new_v4());
+    let target_device_id = format!("device-target-{}", Uuid::new_v4());
+    let unauthenticated_device_id = format!("device-no-password-{}", Uuid::new_v4());
+
+    let plaintext_manager = SyncManager::new(plaintext_device_id.clone());
+    let encrypted_manager =
+        SyncManager::with_encryption(encrypted_device_id.clone(), Some(password.to_string()));
+    let target_manager = SyncManager::with_encryption(target_device_id, Some(password.to_string()));
+
+    let (plain_changes, _plain_change_ids) = enriched_vfs_changes(&plaintext_vfs);
+    plaintext_manager
+        .upload_enriched_changes(storage.as_ref(), &plain_changes, None)
+        .await
+        .expect("upload plaintext compatibility changes");
+
+    let (encrypted_changes, _encrypted_change_ids) = enriched_vfs_changes(&encrypted_vfs);
+    encrypted_manager
+        .upload_enriched_changes(storage.as_ref(), &encrypted_changes, None)
+        .await
+        .expect("upload encrypted compatibility changes");
+
+    let plain_files = storage
+        .list(&format!("data_governance/changes/{plaintext_device_id}/"))
+        .await
+        .expect("list plaintext compatibility changes");
+    assert_eq!(plain_files.len(), 1);
+    let plain_bytes = storage
+        .get(&plain_files[0].key)
+        .await
+        .expect("download plaintext compatibility change")
+        .expect("plaintext compatibility change should exist");
+    assert!(
+        !backup_crypto::is_encrypted_backup(&plain_bytes),
+        "legacy plaintext data-governance change should remain plaintext"
+    );
+
+    let encrypted_files = storage
+        .list(&format!("data_governance/changes/{encrypted_device_id}/"))
+        .await
+        .expect("list encrypted compatibility changes");
+    assert_eq!(encrypted_files.len(), 1);
+    let encrypted_key = encrypted_files[0].key.clone();
+    let encrypted_bytes = storage
+        .get(&encrypted_key)
+        .await
+        .expect("download encrypted compatibility change")
+        .expect("encrypted compatibility change should exist");
+    assert!(
+        backup_crypto::is_encrypted_backup(&encrypted_bytes),
+        "new data-governance change should be encrypted"
+    );
+    for marker in [&encrypted_device_id, &encrypted_hash, &encrypted_title] {
+        assert_bytes_do_not_contain(&encrypted_bytes, marker);
+    }
+
+    let authenticated_download = target_manager
+        .download_changes(storage.as_ref(), 0, None)
+        .await
+        .expect("download mixed plaintext and encrypted changes with password");
+    assert!(
+        authenticated_download.decode_failures.is_empty(),
+        "password-equipped clients should decode both plaintext and encrypted changes"
+    );
+    assert_eq!(
+        authenticated_download.changes.len(),
+        plain_changes.len() + encrypted_changes.len(),
+        "authenticated target should receive every mixed-format change"
+    );
+    let applied =
+        SyncManager::apply_downloaded_changes(&target_vfs, &authenticated_download.changes, None)
+            .expect("apply mixed-format provider changes");
+    assert_eq!(
+        applied.failure_count, 0,
+        "mixed-format apply failures: {:?}",
+        applied.failures
+    );
+    for (note_id, expected_title) in [
+        (plain_note_id.as_str(), plain_title.as_str()),
+        (encrypted_note_id.as_str(), encrypted_title.as_str()),
+    ] {
+        let actual_title: String = target_vfs
+            .query_row(
+                "SELECT title FROM notes WHERE id = ?1",
+                params![note_id],
+                |row| row.get(0),
+            )
+            .unwrap_or_else(|e| panic!("target note {note_id} should exist: {e}"));
+        assert_eq!(actual_title, expected_title);
+    }
+    assert_eq!(
+        pending_count(&target_vfs),
+        0,
+        "mixed-format replay must not create echo changes"
+    );
+
+    let unauthenticated_manager = SyncManager::new(unauthenticated_device_id);
+    let unauthenticated_download = unauthenticated_manager
+        .download_changes(storage.as_ref(), 0, None)
+        .await
+        .expect("download mixed changes without password");
+    assert_eq!(
+        unauthenticated_download.decode_failures,
+        vec![encrypted_key],
+        "clients without the new password should report only encrypted change files"
+    );
+    assert_eq!(
+        unauthenticated_download.changes.len(),
+        plain_changes.len(),
+        "clients without a password should still read legacy plaintext changes"
+    );
+    assert!(
+        unauthenticated_download
+            .changes
+            .iter()
+            .all(|change| change.record_id == plain_note_id || change.record_id == plain_res_id),
+        "unauthenticated download must not expose encrypted records"
+    );
+}
+
+async fn run_duplicate_enriched_change_files_are_idempotent_contract(
+    storage: Box<dyn CloudStorage>,
+) {
+    storage
+        .check_connection()
+        .await
+        .expect("provider connection should work");
+
+    let source = migrate_workspace();
+    let target = migrate_workspace();
+    let source_vfs = source.open("vfs");
+    let target_vfs = target.open("vfs");
+    clear_change_log(&source_vfs);
+    clear_change_log(&target_vfs);
+
+    let (res_id, note_id, hash, title) = insert_vfs_note_bundle(&source_vfs, "duplicate_retry");
+    let source_device_id = format!("device-retry-{}", Uuid::new_v4());
+    let source_manager = SyncManager::new(source_device_id.clone());
+    let target_manager = SyncManager::new(format!("device-target-{}", Uuid::new_v4()));
+    let (changes, _change_ids) = enriched_vfs_changes(&source_vfs);
+
+    source_manager
+        .upload_enriched_changes(storage.as_ref(), &changes, None)
+        .await
+        .expect("upload first retry copy");
+    source_manager
+        .upload_enriched_changes(storage.as_ref(), &changes, None)
+        .await
+        .expect("upload second retry copy");
+
+    let retry_files = storage
+        .list(&format!("data_governance/changes/{source_device_id}/"))
+        .await
+        .expect("list duplicate retry change files");
+    assert_eq!(
+        retry_files.len(),
+        2,
+        "retry uploads should be visible as two immutable change files"
+    );
+
+    let downloaded = target_manager
+        .download_changes(storage.as_ref(), 0, None)
+        .await
+        .expect("download duplicate retry changes");
+    assert!(
+        downloaded.decode_failures.is_empty(),
+        "duplicate retry files should decode cleanly"
+    );
+    assert_eq!(
+        downloaded.changes.len(),
+        changes.len() * retry_files.len(),
+        "target should see both retry files before idempotent apply"
+    );
+
+    let applied = SyncManager::apply_downloaded_changes(&target_vfs, &downloaded.changes, None)
+        .expect("apply duplicate retry changes");
+    assert_eq!(
+        applied.failure_count, 0,
+        "duplicate retry apply failures: {:?}",
+        applied.failures
+    );
+    let resource_count: i64 = target_vfs
+        .query_row(
+            "SELECT COUNT(*) FROM resources WHERE id = ?1 AND hash = ?2",
+            params![res_id, hash],
+            |row| row.get(0),
+        )
+        .expect("count retried resource rows");
+    assert_eq!(resource_count, 1);
+    let note_count: i64 = target_vfs
+        .query_row(
+            "SELECT COUNT(*) FROM notes WHERE id = ?1 AND title = ?2",
+            params![note_id, title],
+            |row| row.get(0),
+        )
+        .expect("count retried note rows");
+    assert_eq!(note_count, 1);
+    assert_eq!(
+        pending_count(&target_vfs),
+        0,
+        "duplicate retry replay must not create echo changes"
+    );
+}
+
 async fn run_corrupt_change_file_contract(storage: Box<dyn CloudStorage>) {
     storage
         .check_connection()
@@ -770,16 +1141,20 @@ async fn run_prune_old_changes_contract(storage: Box<dyn CloudStorage>) {
         .expect("prune old provider changes");
     assert_eq!(deleted, 2);
     assert!(storage.get(&old_own).await.expect("read old own").is_none());
-    assert!(storage
-        .get(&old_other)
-        .await
-        .expect("read old other")
-        .is_none());
-    assert!(storage
-        .get(&recent_own)
-        .await
-        .expect("read recent own")
-        .is_some());
+    assert!(
+        storage
+            .get(&old_other)
+            .await
+            .expect("read old other")
+            .is_none()
+    );
+    assert!(
+        storage
+            .get(&recent_own)
+            .await
+            .expect("read recent own")
+            .is_some()
+    );
 }
 
 async fn run_workspace_database_file_sync_contract(storage: Box<dyn CloudStorage>) {
@@ -1361,6 +1736,27 @@ async fn webdav_sync_manager_roundtrip_contract() {
 
 #[tokio::test]
 #[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn webdav_encrypted_data_governance_payload_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_encrypted_data_governance_payload_contract(webdav_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn webdav_mixed_plaintext_and_encrypted_change_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_mixed_plaintext_and_encrypted_change_contract(webdav_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn webdav_duplicate_enriched_change_files_are_idempotent_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_duplicate_enriched_change_files_are_idempotent_contract(webdav_storage().await).await;
+}
+
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
 async fn webdav_corrupt_change_file_contract() {
     assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
     run_corrupt_change_file_contract(webdav_storage().await).await;
@@ -1479,6 +1875,30 @@ async fn s3_file_checksum_mismatch_preserves_local_target_contract() {
 async fn s3_sync_manager_roundtrip_contract() {
     assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
     run_sync_manager_roundtrip_contract(s3_storage().await).await;
+}
+
+#[cfg(feature = "cloud_storage_s3")]
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn s3_encrypted_data_governance_payload_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_encrypted_data_governance_payload_contract(s3_storage().await).await;
+}
+
+#[cfg(feature = "cloud_storage_s3")]
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn s3_mixed_plaintext_and_encrypted_change_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_mixed_plaintext_and_encrypted_change_contract(s3_storage().await).await;
+}
+
+#[cfg(feature = "cloud_storage_s3")]
+#[tokio::test]
+#[ignore = "requires scripts/dev/docker-compose.sync-test.yml and DS_SYNC_TEST_DOCKER=1"]
+async fn s3_duplicate_enriched_change_files_are_idempotent_contract() {
+    assert!(docker_contract_enabled(), "set DS_SYNC_TEST_DOCKER=1");
+    run_duplicate_enriched_change_files_are_idempotent_contract(s3_storage().await).await;
 }
 
 #[cfg(feature = "cloud_storage_s3")]
