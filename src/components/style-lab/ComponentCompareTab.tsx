@@ -804,7 +804,7 @@ function PopupCompareSection() {
       {/* 迁移建议 */}
       <ul className="text-[11px] text-[color:var(--text-muted)] space-y-1 list-disc pl-4">
         <li>Popover：业务代码统一使用 shad Popover；无 Radix 遗留，点击触发 + portal 定位 + 碰撞检测。</li>
-        <li>Dialog：新代码优先消费 NotionDialog（封装了 actions、scrollable、icon header 等高阶 API）；shad Dialog 保留用于需精细控制 content 的场景。</li>
+        <li>Dialog：新代码优先消费 NotionDialog（封装了 header/body/footer 和可滚动内容区）；shad Dialog 保留用于需精细控制 content 的场景。</li>
         <li>Sheet：统一使用 shad Sheet；无遗留路径，四方向滑出 + Radix 原语。</li>
         <li>三者共享 <code>OverlayCoordinator</code> 避免 z-index 冲突；弹窗嵌套时由 coordinator 统一管理层级。</li>
       </ul>

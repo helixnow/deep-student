@@ -42,7 +42,7 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: '20'
+          node-version: '22'
           cache: 'npm'
 
       - name: Setup Rust
@@ -82,7 +82,7 @@ jobs:
       # 安装依赖
       # ============================================
       - name: Install npm dependencies (root)
-        run: npm ci
+        run: npm ci --legacy-peer-deps
 
       - name: Install npm dependencies (e2e-tests)
         run: npm ci
