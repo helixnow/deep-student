@@ -4006,7 +4006,6 @@ fn s114_large_attachment_metadata_100_attachments() {
 }
 
 #[test]
-#[ignore = "Full DB population needs comprehensive FK ordering"]
 fn s115_full_database_population_all_tables_sync() {
     clear_sync_log();
     let device_a = SyncDevice::new("A", "device_a_001");

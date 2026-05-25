@@ -8,8 +8,8 @@ services:
     image: minio/minio:latest
     container_name: ds-minio
     ports:
-      - "9000:9000"   # S3 API
-      - "9001:9001"   # MinIO Console (Web UI)
+      - "127.0.0.1:9000:9000"   # S3 API
+      - "127.0.0.1:9001:9001"   # MinIO Console (Web UI)
     environment:
       MINIO_ROOT_USER: minioadmin
       MINIO_ROOT_PASSWORD: minioadmin123
@@ -42,7 +42,7 @@ services:
     image: bytemark/webdav:latest
     container_name: ds-webdav
     ports:
-      - "8080:80"
+      - "127.0.0.1:8080:80"
     environment:
       AUTH_TYPE: Basic
       USERNAME: webdav

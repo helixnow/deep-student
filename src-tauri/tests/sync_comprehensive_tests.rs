@@ -123,12 +123,12 @@ mod tests {
         }
 
         #[test]
-        fn test_chat_v2_attachments_has_content_hash_key() {
+        fn test_chat_v2_attachments_content_hash_is_not_business_unique_key() {
             let keys =
                 TableClassification::get_business_unique_keys("chat_v2", "chat_v2_attachments");
             assert!(
-                keys.contains(&"content_hash".to_string()),
-                "chat_v2_attachments should have content_hash as business unique key"
+                !keys.contains(&"content_hash".to_string()),
+                "chat_v2_attachments.content_hash is not UNIQUE in the real schema and must not drive id remapping"
             );
         }
     }

@@ -12,7 +12,10 @@ use super::backup::{
     BackupSelection, TieredAssetConfig, ZipExportOptions,
 };
 use super::schema_registry::DatabaseId;
-use super::sync::{ChangeOperation, MergeStrategy, SyncChangeWithData, SyncManager};
+use super::sync::{
+    classification::{sync_classification_registry, SyncCategory},
+    ChangeOperation, MergeStrategy, SyncChangeWithData, SyncManager,
+};
 use crate::backup_common::BACKUP_GLOBAL_LIMITER;
 use crate::backup_job_manager::{
     BackupJobContext, BackupJobKind, BackupJobManagerState, BackupJobParams, BackupJobPhase,
@@ -155,11 +158,26 @@ pub(super) fn infer_database_from_table(table_name: &str) -> Option<&'static str
 
 /// 构建各表主键列名映射
 ///
-/// 大部分表使用 "id" 作为主键。
-/// 复合主键（如 llm_usage_daily）在上层按特殊 record_id 解析处理，
-/// 此处无需额外映射。
+/// 仅收集 RowSync 表里单列主键且主键名不是 `id` 的条目。
+/// 复合主键由同步层按真实主键列解析，不走这里。
 pub(super) fn build_id_column_map() -> std::collections::HashMap<String, String> {
-    std::collections::HashMap::new()
+    let mut map = std::collections::HashMap::new();
+    for entry in sync_classification_registry() {
+        if entry.category != SyncCategory::RowSync {
+            continue;
+        }
+
+        let primary_key = entry.primary_key.trim();
+        if primary_key.is_empty() || primary_key == "(virtual)" || primary_key.contains(',') {
+            continue;
+        }
+
+        if primary_key != "id" {
+            map.insert(entry.table_name.to_string(), primary_key.to_string());
+        }
+    }
+
+    map
 }
 
 fn parse_sync_timestamp(input: &str) -> Option<chrono::DateTime<chrono::Utc>> {

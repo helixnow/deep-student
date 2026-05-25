@@ -85,6 +85,20 @@ pub const V20260209_ANKI_CARD_DEDUP_UNIQUE: MigrationDef = MigrationDef::new(
 .with_expected_indexes(MISTAKES_V20260209_DEDUP_INDEXES)
 .idempotent();
 
+/// V20260523: 为剩余 Mistakes 表添加同步字段和变更日志触发器
+pub const V20260523_ADD_MISSING_SYNC_COVERAGE: MigrationDef = MigrationDef::new(
+    20260523,
+    "add_missing_sync_coverage",
+    include_str!("../../../migrations/mistakes/V20260523__add_missing_sync_coverage.sql"),
+);
+
+/// V20260524: 为 __change_log 增加字段增量元数据
+pub const V20260524_ADD_CHANGE_LOG_FIELD_DELTAS: MigrationDef = MigrationDef::new(
+    20260524,
+    "add_change_log_field_deltas",
+    include_str!("../../../migrations/mistakes/V20260524__add_change_log_field_deltas.sql"),
+);
+
 /// V20260201 同步字段索引
 const MISTAKES_V20260201_SYNC_INDEXES: &[&str] = &[
     // mistakes 表同步索引
@@ -209,6 +223,8 @@ pub const MISTAKES_MIGRATIONS: MigrationSet = MigrationSet {
         V20260207_TEMPLATE_PREVIEW_DATA,
         V20260208_HOT_QUERY_INDEXES,
         V20260209_ANKI_CARD_DEDUP_UNIQUE,
+        V20260523_ADD_MISSING_SYNC_COVERAGE,
+        V20260524_ADD_CHANGE_LOG_FIELD_DELTAS,
     ],
 };
 

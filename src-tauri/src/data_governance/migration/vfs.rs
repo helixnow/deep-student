@@ -49,7 +49,8 @@ use super::definitions::{MigrationDef, MigrationSet};
 /// V20260130: VFS 初始化迁移
 ///
 /// 由 36 个历史迁移文件合并而成的完整 Schema。
-/// 包含 27 个表、1 个视图、1 个 FTS5 虚拟表。
+/// SQL 包含 26 个常规表、1 个视图、1 个 FTS5 虚拟表。
+/// 迁移验证清单排除后续 V20260214 删除的 `notes_versions`。
 ///
 /// Refinery 文件: V20260130__init.sql -> refinery_version = 20260130
 pub const V20260130_INIT: MigrationDef = MigrationDef::new(
@@ -125,7 +126,7 @@ const VFS_V20260201_SYNC_INDEXES: &[&str] = &[
 // 验证配置
 // ============================================================================
 
-/// V001 预期的 26 个表（不含 FTS5 虚拟表 questions_fts）
+/// V001 预期的 25 个最终保留表（不含 FTS5 虚拟表 questions_fts）
 const VFS_V001_TABLES: &[&str] = &[
     // 核心资源表
     "resources",
@@ -504,6 +505,29 @@ pub const V20260312_ADD_BLOB_DELETION_QUEUE: MigrationDef = MigrationDef::new(
 .with_expected_indexes(&["idx__blob_deletion_queue_retry"])
 .idempotent();
 
+/// V20260523: 为剩余 VFS 表添加同步字段和变更日志触发器
+pub const V20260523_ADD_MISSING_SYNC_COVERAGE: MigrationDef = MigrationDef::new(
+    20260523,
+    "add_missing_sync_coverage",
+    include_str!("../../../migrations/vfs/V20260523__add_missing_sync_coverage.sql"),
+);
+
+/// V20260524: 为 __change_log 增加字段增量元数据
+pub const V20260524_ADD_CHANGE_LOG_FIELD_DELTAS: MigrationDef = MigrationDef::new(
+    20260524,
+    "add_change_log_field_deltas",
+    include_str!("../../../migrations/vfs/V20260524__add_change_log_field_deltas.sql"),
+);
+
+/// V20260525: 修复旧版 questions 变更日志中的 record_id
+pub const V20260525_REPAIR_LEGACY_QUESTIONS_CHANGE_LOG_RECORD_IDS: MigrationDef = MigrationDef::new(
+    20260525,
+    "repair_legacy_questions_change_log_record_ids",
+    include_str!(
+        "../../../migrations/vfs/V20260525__repair_legacy_questions_change_log_record_ids.sql"
+    ),
+);
+
 /// VFS 数据库所有迁移定义
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -534,6 +558,9 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260310_ADD_POMODORO,
     V20260311_TODO_CONSTRAINTS,
     V20260312_ADD_BLOB_DELETION_QUEUE,
+    V20260523_ADD_MISSING_SYNC_COVERAGE,
+    V20260524_ADD_CHANGE_LOG_FIELD_DELTAS,
+    V20260525_REPAIR_LEGACY_QUESTIONS_CHANGE_LOG_RECORD_IDS,
 ];
 
 /// VFS 迁移集合
@@ -561,6 +588,7 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
     "folder_items",
     "path_cache",
     "mindmaps",
+    "mindmap_versions",
     "questions",
     "question_history",
     "question_bank_stats",
@@ -591,8 +619,8 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
 /// VFS 数据库中的视图
 pub const VFS_VIEW_NAMES: &[&str] = &["trash_view"];
 
-/// VFS 数据库表总数（不含视图和虚拟表）
-pub const VFS_TABLE_COUNT: usize = 32;
+/// VFS 数据库当前保留表总数（不含视图、虚拟表、已废弃表）
+pub const VFS_TABLE_COUNT: usize = 33;
 
 /// VFS 数据库视图总数
 pub const VFS_VIEW_COUNT: usize = 1;
@@ -627,7 +655,9 @@ mod tests {
         // + V20260306 (canonicalize_folder_item_mounts) + V20260308 (add_todo_tables)
         // + V20260309 (decouple_todo_from_vfs) + V20260310 (add_pomodoro)
         // + V20260311 (todo_constraints) + V20260312 (add_blob_deletion_queue)
-        assert_eq!(VFS_MIGRATION_SET.count(), 28);
+        // + V20260523 (missing_sync_coverage) + V20260524 (field_deltas)
+        // + V20260525 (repair_legacy_questions_change_log_record_ids)
+        assert_eq!(VFS_MIGRATION_SET.count(), 31);
     }
 
     #[test]
@@ -635,8 +665,8 @@ mod tests {
         assert_eq!(V20260130_INIT.refinery_version, 20260130);
         assert_eq!(V20260130_INIT.name, "init");
         assert!(V20260130_INIT.idempotent);
-        // V001 init 迁移创建 26 个常规表（answer_submissions 在 V20260210 中创建）
-        assert_eq!(V20260130_INIT.expected_tables.len(), 26);
+        // V001 init 迁移的最终保留表清单排除 V20260214 删除的 notes_versions
+        assert_eq!(V20260130_INIT.expected_tables.len(), 25);
         // 验证 FTS5 虚拟表和视图的 smoke test 查询已配置
         assert_eq!(
             V20260130_INIT.expected_queries.len(),
@@ -646,14 +676,24 @@ mod tests {
 
     #[test]
     fn test_v001_expected_tables_count() {
-        // 验证表数量正确
-        assert_eq!(VFS_V001_TABLES.len(), 26); // init schema only
+        // 验证迁移后仍保留的表数量正确
+        assert_eq!(VFS_V001_TABLES.len(), 25);
     }
 
     #[test]
     fn test_v001_sql_not_empty() {
         assert!(!V20260130_INIT.sql.is_empty());
         assert!(V20260130_INIT.sql.contains("CREATE TABLE"));
+    }
+
+    #[test]
+    fn test_notes_versions_create_then_drop_is_declared() {
+        assert!(V20260130_INIT
+            .sql
+            .contains("CREATE TABLE IF NOT EXISTS notes_versions"));
+        assert!(V20260214_DROP_NOTES_VERSIONS
+            .sql
+            .contains("DROP TABLE IF EXISTS notes_versions"));
     }
 
     #[test]
@@ -702,9 +742,9 @@ mod tests {
         assert!(migration.is_some());
         assert_eq!(migration.unwrap().refinery_version, 20260130);
 
-        let migration = VFS_MIGRATION_SET.get(20260312);
+        let migration = VFS_MIGRATION_SET.get(20260525);
         assert!(migration.is_some());
-        assert_eq!(migration.unwrap().refinery_version, 20260312);
+        assert_eq!(migration.unwrap().refinery_version, 20260525);
 
         // 不存在的版本
         assert!(VFS_MIGRATION_SET.get(1).is_none());
@@ -712,6 +752,6 @@ mod tests {
 
     #[test]
     fn test_latest_version() {
-        assert_eq!(VFS_MIGRATION_SET.latest_version(), 20260312);
+        assert_eq!(VFS_MIGRATION_SET.latest_version(), 20260525);
     }
 }
