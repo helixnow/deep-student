@@ -1916,9 +1916,9 @@ impl SyncManager {
         // UPDATE 会重新向 __change_log 写一批新条目——如果先清 __change_log 再 UPDATE，
         // 清理就白做了。
 
-        // 1. 找出所有装配了同步字段的业务表，递增 local_version
-        //    Migration V20260201 只为业务表添加 device_id + local_version，
-        //    sync_version 列只存在于 __change_log 中。
+        // 1. 找出所有装配了同步字段的业务表，将 sync_version 对齐到 local_version。
+        //    这样恢复后的数据会被视为"当前设备上的已同步快照"，不会把备份里原有记录
+        //    误判为新的本地修改再次推送。
         let mut table_stmt = conn
             .prepare(
                 "SELECT name FROM sqlite_master
@@ -1937,7 +1937,7 @@ impl SyncManager {
 
         let mut reset_count = 0usize;
         for table in table_names {
-            // 检查表是否有 local_version 列（业务表无 sync_version）
+            // 仅处理同时具备 local_version / sync_version 的业务表。
             let col_names: Vec<String> = match conn.prepare(&format!(
                 "SELECT name FROM pragma_table_info('{}')",
                 table.replace('\'', "''")
@@ -1949,7 +1949,9 @@ impl SyncManager {
                 Err(_) => continue,
             };
 
-            if !col_names.iter().any(|c| c == "local_version") {
+            let has_local_version = col_names.iter().any(|c| c == "local_version");
+            let has_sync_version = col_names.iter().any(|c| c == "sync_version");
+            if !has_local_version || !has_sync_version {
                 continue;
             }
 
@@ -1958,10 +1960,11 @@ impl SyncManager {
                 continue;
             }
 
-            // 递增 local_version，使 ZIP 恢复后的记录在下次同步时
-            // 被识别为"本地已修改"，从而上传为新基线
             let sql = format!(
-                "UPDATE \"{}\" SET local_version = local_version + 1 WHERE local_version IS NOT NULL",
+                "UPDATE \"{}\" \
+                 SET sync_version = local_version \
+                 WHERE local_version IS NOT NULL \
+                   AND (sync_version IS NULL OR sync_version != local_version)",
                 table
             );
             match conn.execute(&sql, []) {
