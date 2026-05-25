@@ -147,9 +147,7 @@
     "remark-math": "^6.0.0",
     "uuid": "^11.1.0",
     "yaml": "^2.8.2",
-    "zustand": "^5.0.6",
-    "@lobehub/ui": "^5.0.0",
-    "antd": "^6.1.1"
+    "zustand": "^5.0.6"
   },
   "pnpm": {
     "overrides": {

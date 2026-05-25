@@ -15,7 +15,7 @@
 import { useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
-import { sessionManager } from '@/features/chat/core/session';
+import { sessionManager } from '@/features/chat/core/session/sessionManager';
 import { resourceStoreApi } from '@/features/chat/resources';
 import { getResourceRefsV2 } from '@/features/chat/context/vfsRefApi';
 import type { VfsContextRefData, VfsResourceType } from '@/features/chat/context/types';

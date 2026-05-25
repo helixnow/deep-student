@@ -38,7 +38,7 @@ import { type PreviewType, type SourceDatabase, getSourceDbPreviewType } from ".
 import { useReferenceValidation, type UseReferenceValidationReturn } from "./hooks/useReferenceValidation";
 // Learning Hub - 引用到对话 (Prompt 9)
 import type { ContextRef } from "@/features/chat/resources/types";
-import { sessionManager } from "@/features/chat/core/session";
+import { sessionManager } from "@/features/chat/core/session/sessionManager";
 import { NOTE_TYPE_ID } from "@/features/chat/context/definitions/note";
 import { TEXTBOOK_TYPE_ID } from "@/features/chat/context/definitions/textbook";
 import { EXAM_TYPE_ID } from "@/features/chat/context/definitions/exam";

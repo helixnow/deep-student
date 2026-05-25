@@ -19,11 +19,10 @@ use crate::cloud_storage::{create_storage, CloudStorage, CloudStorageConfig};
 use super::commands::{check_maintenance_mode, try_save_audit_log, SYNC_LOCK_TIMEOUT_SECS};
 use super::commands_backup::{
     apply_downloaded_changes_to_databases, build_id_column_map, get_active_data_dir,
-    get_app_data_dir, resolve_database_path, validate_backup_id, validate_user_path,
-    ApplyToDbsResult,
+    get_app_data_dir, resolve_database_path, validate_user_path,
 };
 
-/// 便捷函数：获取各表主键列名映射（questions → exam_id 等）
+/// 便捷函数：获取各表主键列名映射
 fn id_column_map() -> HashMap<String, String> {
     build_id_column_map()
 }
@@ -912,6 +911,7 @@ pub async fn data_governance_run_sync(
                 operation: e.operation,
                 changed_at: e.changed_at.clone(),
                 sync_version: 0,
+                field_deltas_json: None,
             })
             .collect(),
     );
@@ -984,6 +984,25 @@ pub async fn data_governance_run_sync(
             ))
         }
         SyncDirection::Download => {
+            // [P0 Fix] Backend enforce prune gap detection
+            let min_available = SyncManager::get_min_available_change_version(storage.as_ref())
+                .await
+                .map_err(|e| format!("查询云端变更版本失败: {}", e))?;
+            let since_version = local_manifest
+                .databases
+                .values()
+                .map(|s| s.data_version)
+                .min()
+                .unwrap_or(0);
+            if SyncManager::has_prune_gap(since_version, min_available) {
+                return Err(format!(
+                    "检测到云端变更断层：本设备本地版本为 {}，云端最早可用版本为 {}。\
+                     部分变更可能已被清理，请先通过 ZIP 完整恢复后重新同步。",
+                    since_version,
+                    min_available.map_or("无".to_string(), |v| v.to_string())
+                ));
+            }
+
             let (exec_result, downloaded_changes) = manager
                 .execute_download(storage.as_ref(), &local_manifest, merge_strategy)
                 .await
@@ -1014,6 +1033,25 @@ pub async fn data_governance_run_sync(
             Ok((exec_result, total_skipped))
         }
         SyncDirection::Bidirectional => {
+            // [P0 Fix] Backend enforce prune gap detection
+            let min_available = SyncManager::get_min_available_change_version(storage.as_ref())
+                .await
+                .map_err(|e| format!("查询云端变更版本失败: {}", e))?;
+            let since_version = local_manifest
+                .databases
+                .values()
+                .map(|s| s.data_version)
+                .min()
+                .unwrap_or(0);
+            if SyncManager::has_prune_gap(since_version, min_available) {
+                return Err(format!(
+                    "检测到云端变更断层：本设备本地版本为 {}，云端最早可用版本为 {}。\
+                     部分变更可能已被清理，请先通过 ZIP 完整恢复后重新同步。",
+                    since_version,
+                    min_available.map_or("无".to_string(), |v| v.to_string())
+                ));
+            }
+
             // execute_bidirectional 只负责下载，上传由此处统一执行
             let (exec_result, change_ids, downloaded_changes) = manager
                 .execute_bidirectional(
@@ -1990,6 +2028,7 @@ pub async fn data_governance_run_sync_with_progress(
                 operation: e.operation,
                 changed_at: e.changed_at.clone(),
                 sync_version: 0,
+                field_deltas_json: None,
             })
             .collect(),
     );
@@ -3065,8 +3104,8 @@ pub async fn data_governance_detect_prune_gap(
 
     let active_dir = get_active_data_dir(&app)?;
 
-    // 本地最大 data_version
-    let mut since_version: u64 = 0;
+    // 与实际下载口径一致：取各库 data_version 的最小值作为起点
+    let mut since_version: Option<u64> = None;
     for db_id in _DatabaseId::all_ordered() {
         let db_path =
             crate::data_governance::commands_backup::resolve_database_path(&db_id, &active_dir);
@@ -3075,9 +3114,10 @@ pub async fn data_governance_detect_prune_gap(
         }
         if let Ok(conn) = rusqlite::Connection::open(&db_path) {
             if let Ok(state) = SyncManager::get_database_sync_state(&conn, db_id.as_str()) {
-                if state.data_version > since_version {
-                    since_version = state.data_version;
-                }
+                since_version = Some(match since_version {
+                    Some(current) => current.min(state.data_version),
+                    None => state.data_version,
+                });
             }
         }
     }
@@ -3090,6 +3130,7 @@ pub async fn data_governance_detect_prune_gap(
         .await
         .map_err(|e| format!("查询云端变更版本失败: {}", e))?;
 
+    let since_version = since_version.unwrap_or(0);
     let has_gap = SyncManager::has_prune_gap(since_version, min_available);
 
     Ok(PruneGapResponse {
