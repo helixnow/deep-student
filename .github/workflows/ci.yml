@@ -78,9 +78,23 @@ jobs:
   # 所有 sync_* 测试都用内存 SQLite + MockCloudStorage，零外部依赖。
   # ============================================
   sync-tests:
-    name: Sync Regression Tests
+    name: Sync Regression (${{ matrix.test-target }})
     runs-on: ubuntu-latest
-    timeout-minutes: 45
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        test-target:
+          - sync_scenarios_tests
+          - sync_adversarial_tests
+          - sync_chaos_tests
+          - sync_integration_deep_tests
+          - sync_pathological_tests
+          - sync_proptest
+          - sync_real_business_tables_tests
+          - sync_real_schema_tests
+          - sync_regression_tests
+          - sync_weird_tests
     env:
       CARGO_INCREMENTAL: 0
       # proptest 在 CI 里用随机种子；固定一下便于 reproduce
@@ -106,21 +120,37 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
 
-      - name: Run sync regression suite
+      - name: Run sync regression target
         working-directory: src-tauri
-        # 列出具体的测试目标，避免把其他慢速 / 需要外部资源的测试一起跑
+        # 单 runner 只跑一个 sync test target，避免 10 个重型测试二进制串在同一 job
+        # 里编译/链接/执行时被 hosted runner 杀掉，同时能精确定位是哪一个目标失败。
+        run: cargo test --test ${{ matrix.test-target }}
+
+  sync-module-unit-tests:
+    name: Sync Module Unit Tests
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      CARGO_INCREMENTAL: 0
+    steps:
+      - name: Free disk space
         run: |
-          cargo test \
-            --test sync_scenarios_tests \
-            --test sync_adversarial_tests \
-            --test sync_chaos_tests \
-            --test sync_integration_deep_tests \
-            --test sync_pathological_tests \
-            --test sync_proptest \
-            --test sync_real_business_tables_tests \
-            --test sync_real_schema_tests \
-            --test sync_regression_tests \
-            --test sync_weird_tests
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc /opt/hostedtoolcache/CodeQL
+          sudo docker image prune --all --force
+
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          key: sync-tests
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libappindicator3-dev librsvg2-dev patchelf protobuf-compiler
 
       - name: Run sync module unit tests (in-module #[cfg(test)])
         working-directory: src-tauri
