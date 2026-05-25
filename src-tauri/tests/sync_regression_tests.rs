@@ -333,22 +333,40 @@ fn r08_reset_baseline_excludes_system_tables() {
 #[test]
 fn r09_reset_baseline_is_idempotent() {
     let conn = new_db();
-    insert_item(&conn, "n1", "hello", "2024-01-01T00:00:00Z");
-    conn.execute("UPDATE items SET local_version = 3 WHERE id='n1'", [])
-        .unwrap();
+    conn.execute_batch(
+        r#"
+        CREATE TABLE synced_items (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL DEFAULT '',
+            local_version INTEGER DEFAULT 0,
+            sync_version INTEGER DEFAULT 0,
+            updated_at TEXT NOT NULL
+        );
+        INSERT INTO synced_items (id, title, local_version, sync_version, updated_at)
+        VALUES ('n1', 'hello', 3, 1, '2024-01-01T00:00:00Z');
+        INSERT INTO __change_log (table_name, record_id, operation, changed_at, sync_version)
+        VALUES ('synced_items', 'n1', 'UPDATE', '2024-01-01T00:00:00Z', 0);
+        "#,
+    )
+    .unwrap();
 
-    SyncManager::reset_sync_baseline_after_restore(&conn).unwrap();
-    SyncManager::reset_sync_baseline_after_restore(&conn).unwrap();
+    let first = SyncManager::reset_sync_baseline_after_restore(&conn).unwrap();
+    let second = SyncManager::reset_sync_baseline_after_restore(&conn).unwrap();
 
-    let lv: i64 = conn
-        .query_row("SELECT local_version FROM items WHERE id='n1'", [], |r| {
-            r.get(0)
-        })
+    let (lv, sv): (i64, i64) = conn
+        .query_row(
+            "SELECT local_version, sync_version FROM synced_items WHERE id='n1'",
+            [],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )
         .unwrap();
     assert_eq!(
-        lv, 5,
-        "local_version should increment by 1 on each reset call (3→4→5)"
+        (lv, sv),
+        (3, 3),
+        "reset 应把 sync_version 对齐到 local_version，而不是制造新的本地漂移"
     );
+    assert_eq!(first, (1, 1), "首次 reset 应清空旧 change_log 并对齐 1 条业务记录");
+    assert_eq!(second, (0, 0), "再次 reset 不应继续产生任何变化");
     let cnt: i64 = conn
         .query_row("SELECT COUNT(*) FROM __change_log", [], |r| r.get(0))
         .unwrap();
