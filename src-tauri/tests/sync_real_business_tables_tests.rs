@@ -314,9 +314,9 @@ fn b01_resources_integer_millis_updated_at_lww() {
     );
 }
 
-/// B02：resources.ref_count 并发递增 —— 典型的"字段级合并丢失"场景
+/// B02：resources.ref_count 并发递增 —— delta 合并应累加两端增量
 #[test]
-fn b02_resources_refcount_race_loses_increment() {
+fn b02_resources_refcount_race_merges_increment() {
     let conn = new_vfs_resources_db();
 
     // 初始 ref_count=1
@@ -348,6 +348,9 @@ fn b02_resources_refcount_race_loses_increment() {
             "ref_count": 2,
             "created_at": 1000,
             "updated_at": 3000,
+            "__sync_field_deltas": {
+                "ref_count": 1
+            },
         })),
         database_name: None,
         suppress_change_log: None,
@@ -355,20 +358,12 @@ fn b02_resources_refcount_race_loses_increment() {
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
 
     // 预期：ref_count 应该是 3（两端各 +1）
-    // 现实：行级 LWW 会保留云端的 2，丢失本地的 +1
     let ref_count: i64 = conn
         .query_row("SELECT ref_count FROM resources WHERE id='res'", [], |r| {
             r.get(0)
         })
         .unwrap();
-
-    // 这是**已知的架构局限**，记录当前行为以防回归
-    // 字段级合并/CRDT counter 是未来增强方向
-    assert!(
-        ref_count == 2 || ref_count == 3,
-        "ref_count 是 {}（行级 LWW 下至少是 2）",
-        ref_count
-    );
+    assert_eq!(ref_count, 3);
 }
 
 /// B03：resources 软删除（deleted_at 是 INTEGER ms）的 tombstone 传播
@@ -479,15 +474,11 @@ fn b05_resources_hash_unique_conflict() {
         database_name: None,
         suppress_change_log: None,
     };
-    // 当前实现：UNIQUE 冲突会 fail 整批事务（原子性保证）。
-    // 记录此行为；更细粒度的"单条跳过"是 P2 改进方向。
+    // 当前实现会通过 business unique key 回落把相同 hash 的记录合并到既有行。
     let result = SyncManager::apply_downloaded_changes(&conn, &[change], None);
-    assert!(
-        result.is_err(),
-        "当前实现：UNIQUE(hash) 冲突导致整批事务回滚"
-    );
+    assert!(result.is_ok());
 
-    // 验证本地数据未被污染
+    // 验证本地数据未被污染，且仍然只有一条资源记录。
     let cnt: i64 = conn
         .query_row("SELECT COUNT(*) FROM resources", [], |r| r.get(0))
         .unwrap();
@@ -541,9 +532,15 @@ fn b06_notes_tags_merge_loses_orthogonal_tags() {
         .query_row("SELECT tags FROM notes WHERE id='n1'", [], |r| r.get(0))
         .unwrap();
 
-    // 记录当前行为：LWW 保留更晚的 cloud-tag，local-tag 被丢失
-    // 未来 CRDT 字段级合并可改进
-    assert_eq!(tags, r#"["cloud-tag"]"#, "行级 LWW 下保留更晚端");
+    // field_merge 模块通过 merge_tag_set 做标签合集，
+    // local-tag + cloud-tag → ["cloud-tag", "local-tag"]（合集）
+    let has_local = tags.contains("local-tag");
+    let has_cloud = tags.contains("cloud-tag");
+    assert!(has_cloud, "cloud-tag 应被保留");
+    assert!(
+        has_local,
+        "field_merge 应将本地和云端标签做合集，不应丢失 local-tag"
+    );
 }
 
 /// B07：notes.is_favorite 布尔切换 + 其他字段同时改动（row-level LWW 正常）
@@ -716,7 +713,7 @@ fn b10_messages_dual_timestamp_lww_uses_updated_at() {
     );
 }
 
-/// B11：chat_v2_messages.block_ids_json 是有序 JSON 数组，行级 LWW 会覆盖整个顺序
+/// B11：chat_v2_messages.block_ids_json 使用有序并集，保留本地顺序后追加远端新项
 #[test]
 fn b11_messages_block_ids_json_ordering() {
     let conn = new_chat_messages_db();
@@ -754,7 +751,7 @@ fn b11_messages_block_ids_json_ordering() {
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(b, r#"["blk2","blk1","blk3"]"#);
+    assert_eq!(b, r#"["blk1","blk2","blk3"]"#);
 }
 
 /// B12：chat_v2_messages.parent_id 链（编辑/重试分支）—— DAG 结构的同步

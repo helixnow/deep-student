@@ -5,7 +5,7 @@
  */
 
 import { useState, useEffect, useCallback } from 'react';
-import { sessionManager } from '../core/session';
+import { sessionManager } from '../core/session/sessionManager';
 import type { SessionManagerEvent } from '../core/session/types';
 
 // ============================================================================

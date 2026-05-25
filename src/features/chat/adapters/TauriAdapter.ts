@@ -34,7 +34,7 @@ import { chunkBuffer } from '../core/middleware/chunkBuffer';
 import { modeRegistry } from '../registry';
 // 🔧 优化：sessionManager 仅用于获取元数据，不再用于获取 Store 状态
 // 构造函数现在接收 storeApi 参数，消除了循环依赖的核心问题
-import { sessionManager } from '../core/session';
+import { sessionManager } from '../core/session/sessionManager';
 import { sessionSwitchPerf } from '../debug/sessionSwitchPerf';
 import { getTestModeConfig } from '@/utils/testMode';
 import type {

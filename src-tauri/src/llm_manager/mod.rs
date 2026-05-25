@@ -2116,8 +2116,10 @@ impl LLMManager {
         hidden_builtin_ids: &mut HashSet<String>,
         snapshot_map: &HashMap<String, ModelProfile>,
     ) -> Result<bool> {
-        let builtin_id_set: HashSet<&str> =
-            builtin_profiles.iter().map(|profile| profile.id.as_str()).collect();
+        let builtin_id_set: HashSet<&str> = builtin_profiles
+            .iter()
+            .map(|profile| profile.id.as_str())
+            .collect();
         let builtin_profile_map: HashMap<&str, &ModelProfile> = builtin_profiles
             .iter()
             .map(|profile| (profile.id.as_str(), profile))
