@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.39](https://github.com/helixnow/deep-student/compare/v0.9.38...v0.9.39) (2026-05-25)
+
+
+### Bug Fixes
+
+* **ci:** split sync regression targets across jobs ([#80](https://github.com/helixnow/deep-student/issues/80)) ([ed7efb2](https://github.com/helixnow/deep-student/commit/ed7efb25c5cf18728693fd88535ea4d5d23064a2))
+
 ## [0.9.38](https://github.com/helixnow/deep-student/compare/v0.9.37...v0.9.38) (2026-05-24)
 
 
