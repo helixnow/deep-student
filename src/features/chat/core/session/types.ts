@@ -165,7 +165,8 @@ export type SessionManagerEventType =
   | 'current-session-changed'
   | 'session-destroyed'
   | 'session-evicted'
-  | 'streaming-change';
+  | 'streaming-change'
+  | 'blocking-interaction-change';
 
 /**
  * SessionManager 事件
@@ -175,6 +176,8 @@ export interface SessionManagerEvent {
   sessionId: string;
   /** streaming-change 事件时，表示是否正在流式 */
   isStreaming?: boolean;
+  /** blocking-interaction-change 事件时，表示是否正在等待用户继续操作 */
+  hasBlockingInteraction?: boolean;
 }
 
 /**

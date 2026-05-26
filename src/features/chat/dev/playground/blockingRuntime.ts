@@ -35,7 +35,7 @@ export type PlaygroundBlockingInteraction =
 
 export interface PlaygroundAskUserTemplate {
   question: string;
-  options: Array<string | { label?: string; value?: string; text?: string }>;
+  options: Array<string | { label?: string; value?: string; text?: string; reason?: string }>;
   multiple?: boolean;
   allowCustom?: boolean;
   timeoutSeconds?: number | null;
@@ -56,21 +56,34 @@ export interface PlaygroundToolLimitTemplate {
 
 function normalizeAskUserOptions(
   options: PlaygroundAskUserTemplate['options'],
-): string[] {
+): PlaygroundAskUserTemplate['options'] {
   return options
     .map((option) => {
       if (typeof option === 'string') return option;
       if (!option || typeof option !== 'object') return String(option ?? '');
-      if (typeof option.label === 'string') return option.label;
-      if (typeof option.value === 'string') return option.value;
-      if (typeof option.text === 'string') return option.text;
-      try {
-        return JSON.stringify(option);
-      } catch {
-        return String(option);
+      const label =
+        typeof option.label === 'string'
+          ? option.label
+          : typeof option.value === 'string'
+            ? option.value
+            : typeof option.text === 'string'
+              ? option.text
+              : null;
+
+      if (!label) {
+        try {
+          return JSON.stringify(option);
+        } catch {
+          return String(option);
+        }
       }
+
+      return {
+        label,
+        reason: typeof option.reason === 'string' ? option.reason : undefined,
+      };
     })
-    .filter((option) => option.length > 0);
+    .filter((option) => (typeof option === 'string' ? option.length > 0 : Boolean(option.label)));
 }
 
 function clearMatchingBlockingInteraction(

@@ -560,6 +560,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
                   messageId={messageId}
                   store={store}
                   isFirst={messageIndex === 0}
+                  isLatest={messageIndex === messageOrder.length - 1}
                 />
               );
               if (isUserMessage) {
@@ -620,6 +621,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
                       messageId={messageId}
                       store={store}
                       isFirst={virtualRow.index === 0}
+                      isLatest={virtualRow.index === messageOrder.length - 1}
                     />
                   </motion.div>
                 ) : (
@@ -627,6 +629,7 @@ const MessageListInner: React.FC<MessageListProps> = ({
                     messageId={messageId}
                     store={store}
                     isFirst={virtualRow.index === 0}
+                    isLatest={virtualRow.index === messageOrder.length - 1}
                   />
                 )}
               </div>
@@ -647,8 +650,8 @@ const MessageListInner: React.FC<MessageListProps> = ({
           aria-hidden={!showScrollToBottom}
           style={{
             ['--panel-translate-y' as string]: '12px',
-            ['--panel-open-dur' as string]: '180ms',
-            ['--panel-close-dur' as string]: '140ms',
+            ['--panel-open-dur' as string]: '300ms',
+            ['--panel-close-dur' as string]: '220ms',
           }}
         >
           <button

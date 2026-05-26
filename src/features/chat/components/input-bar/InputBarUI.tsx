@@ -1071,6 +1071,13 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const tooltipDisabled = isMobile;
   const attachmentCount = attachments.length;
   const compactThinkingStateLabel = getCompactThinkingLabel(thinkingStateLabel);
+  const selectedThinkingDepthOption =
+    !thinkingUnsupported && enableThinking && thinkingDepthValue && thinkingDepthOptions?.length
+      ? thinkingDepthOptions.find((o) => o.value === thinkingDepthValue)
+      : undefined;
+  const resolvedThinkingTriggerLabel = selectedThinkingDepthOption
+    ? selectedThinkingDepthOption.defaultLabel
+    : compactThinkingStateLabel;
   const runtimeModelTitle = t('chatV2:inputBar.runtimeModelTitle', '模型');
   const chooseRuntimeModelLabel = t('chatV2:inputBar.chooseRuntimeModel', '选择模型');
   const runtimeModelSearchPlaceholder = t('app_menu.search.placeholder', '搜索名称或模型 ID...');
@@ -1102,7 +1109,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const hasRuntimeModelMenu = runtimeModelOptions.length > 0 || !!renderModelPanel;
   const hasThinkingRuntimeMenu = hasThinkingDepthMenu || hasThinkingUnsupportedMenu || hasRuntimeModelMenu;
   const hasThinkingToggleMenu = !!(!thinkingUnsupported && compactThinkingStateLabel && (onSetThinkingDepth || onToggleThinking));
-  const thinkingRuntimeTriggerLabel = compactThinkingStateLabel || runtimeModelLabel || runtimeModelTitle;
+  const thinkingRuntimeTriggerLabel = resolvedThinkingTriggerLabel || runtimeModelLabel || runtimeModelTitle;
   const [runtimeModelSearch, setRuntimeModelSearch] = useState('');
   const normalizedRuntimeModelSearch = runtimeModelSearch.trim().toLowerCase();
   const groupedRuntimeModelOptions = useMemo(() => {
@@ -2511,10 +2518,10 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                         title={thinkingRuntimeTitle}
                         aria-label={
                           thinkingUnsupported
-                            ? t('chatV2:inputBar.thinkingUnsupported', '不支持推理')
+                            ? 'Reasoning unsupported'
                             : hasThinkingDepthMenu
-                            ? t('chatV2:inputBar.thinkingDepthMenu', '选择推理深度')
-                            : t('chatV2:inputBar.thinking', '推理模式')
+                            ? 'Choose reasoning depth'
+                            : 'Reasoning'
                         }
                       >
                         {runtimeModelIconId ? (
@@ -2549,7 +2556,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                               checked={!!enableThinking && thinkingDepthValue === option.value}
                               onClick={() => onSetThinkingDepth(option.value)}
                             >
-                              {t(option.labelKey, option.defaultLabel)}
+                              {option.defaultLabel}
                             </AppMenuItem>
                           ))}
                           <AppMenuSeparator />

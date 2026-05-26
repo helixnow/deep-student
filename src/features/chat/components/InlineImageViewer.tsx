@@ -1,11 +1,11 @@
 /**
  * Chat V2 - 内联图片查看器
  *
- * 与全局 ImageViewer 不同，此组件只覆盖聊天主区域而非整个应用
- * 通过查找最近的 .chat-v2 容器并计算其边界来实现
+ * 作为聊天域的轻量图片查看器，但预览层本身应占满整个视口，
+ * 避免被聊天分栏限制在局部区域内。
  */
 
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
@@ -24,6 +24,8 @@ import {
 } from '@phosphor-icons/react';
 import { fileManager } from '@/utils/fileManager';
 import { useViewStore } from '@/stores/viewStore';
+import { isAndroid } from '@/utils/platform';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 
 // ============================================================================
 // 类型定义
@@ -47,19 +49,15 @@ interface InlineImageViewerProps {
 }
 
 // ============================================================================
-// 辅助 Hook：获取 .chat-v2 容器
+// 辅助 Hook：获取全屏 portal 容器
 // ============================================================================
 
-function useChatV2Container(trackBounds: boolean) {
+function useImageViewerPortal() {
   const [container, setContainer] = useState<HTMLElement | null>(null);
-  const [bounds, setBounds] = useState<DOMRect | null>(null);
-  const [boundsReady, setBoundsReady] = useState(false);
 
   useEffect(() => {
-    // ★ 查找或创建 modal 容器，避免层叠上下文问题
     let modalRoot = document.getElementById('image-viewer-root');
     if (!modalRoot) {
-      // 创建一个挂载在 body 下的容器
       modalRoot = document.createElement('div');
       modalRoot.id = 'image-viewer-root';
       modalRoot.style.cssText = 'position: fixed; top: 0; left: 0; width: 100%; height: 100%; pointer-events: none; z-index: 99999;';
@@ -68,30 +66,7 @@ function useChatV2Container(trackBounds: boolean) {
     setContainer(modalRoot);
   }, []);
 
-  useEffect(() => {
-    if (!trackBounds) return;
-
-    let rafId = 0;
-    const updateBounds = () => {
-      const chatContainer = document.querySelector('.chat-v2') as HTMLElement | null;
-      setBoundsReady(true);
-      if (!chatContainer) {
-        setBounds(null);
-      } else {
-        setBounds(chatContainer.getBoundingClientRect());
-      }
-      rafId = window.requestAnimationFrame(updateBounds);
-    };
-
-    updateBounds();
-    return () => {
-      window.cancelAnimationFrame(rafId);
-      setBounds(null);
-      setBoundsReady(false);
-    };
-  }, [trackBounds]);
-
-  return { container, bounds, boundsReady };
+  return { container };
 }
 
 // ============================================================================
@@ -110,21 +85,46 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
   const { t } = useTranslation(['common', 'chatV2']);
   const currentView = useViewStore((s) => s.currentView);
 
-  // 获取 modal 容器和 .chat-v2 边界用于定位
-  const { container, bounds, boundsReady } = useChatV2Container(isOpen);
+  // 获取全屏 portal 容器
+  const { container } = useImageViewerPortal();
 
   // 状态
   const [scale, setScale] = useState(1);
   const [rotation, setRotation] = useState(0);
-  const [position, setPosition] = useState({ x: 0, y: 0 });
-  const [isDragging, setIsDragging] = useState(false);
+  const canNavigatePrev = images.length > 1 && currentIndex > 0 && typeof onPrev === 'function';
+  const canNavigateNext = images.length > 1 && currentIndex < images.length - 1 && typeof onNext === 'function';
+
+  const handleResetView = useCallback(() => {
+    setScale(1);
+    setRotation(0);
+  }, []);
+
+  const stopSurfaceGesture = useCallback((e: React.PointerEvent<HTMLElement>) => {
+    e.stopPropagation();
+  }, []);
+
+  const handleTopDragMouseDown = useCallback((e: React.MouseEvent<HTMLElement>) => {
+    if (isAndroid()) {
+      return;
+    }
+
+    const target = (e.target as HTMLElement).closest('[data-no-drag]');
+    if (target) {
+      return;
+    }
+
+    e.preventDefault();
+    try {
+      void getCurrentWindow().startDragging();
+    } catch (error) {
+      console.warn('[InlineImageViewer] Failed to start window dragging:', error);
+    }
+  }, []);
 
   // 重置状态当图片改变时
   useEffect(() => {
-    setScale(1);
-    setRotation(0);
-    setPosition({ x: 0, y: 0 });
-  }, [currentIndex]);
+    handleResetView();
+  }, [currentIndex, handleResetView]);
 
   // 键盘事件处理
   useEffect(() => {
@@ -136,10 +136,14 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
           onClose();
           break;
         case 'ArrowLeft':
-          onPrev?.();
+          if (canNavigatePrev) {
+            onPrev?.();
+          }
           break;
         case 'ArrowRight':
-          onNext?.();
+          if (canNavigateNext) {
+            onNext?.();
+          }
           break;
         case '+':
         case '=':
@@ -153,23 +157,14 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
           setRotation((prev) => (prev + 90) % 360);
           break;
         case '0':
-          setScale(1);
-          setRotation(0);
-          setPosition({ x: 0, y: 0 });
+          handleResetView();
           break;
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [isOpen, onClose, onNext, onPrev]);
-
-  // 聊天容器消失（切页/切视图）时自动关闭，避免预览残留在新页面
-  useEffect(() => {
-    if (isOpen && boundsReady && !bounds) {
-      onClose();
-    }
-  }, [isOpen, boundsReady, bounds, onClose]);
+  }, [isOpen, onClose, onNext, onPrev, canNavigateNext, canNavigatePrev, handleResetView]);
 
   // 全局视图切换离开 chat-v2 时，强制关闭预览
   useEffect(() => {
@@ -178,42 +173,15 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
     }
   }, [isOpen, currentView, onClose]);
 
-  // 鼠标拖拽
-  const handleMouseDown = useCallback(
-    (e: React.MouseEvent) => {
-      e.preventDefault();
-      setIsDragging(true);
-
-      const startPos = {
-        x: e.clientX - position.x,
-        y: e.clientY - position.y,
-      };
-
-      const handleGlobalMouseMove = (e: MouseEvent) => {
-        setPosition({
-          x: e.clientX - startPos.x,
-          y: e.clientY - startPos.y,
-        });
-      };
-
-      const handleGlobalMouseUp = () => {
-        setIsDragging(false);
-        document.removeEventListener('mousemove', handleGlobalMouseMove);
-        document.removeEventListener('mouseup', handleGlobalMouseUp);
-      };
-
-      document.addEventListener('mousemove', handleGlobalMouseMove);
-      document.addEventListener('mouseup', handleGlobalMouseUp);
-    },
-    [position]
-  );
-
-  // 滚轮缩放
-  const handleWheel = useCallback((e: React.WheelEvent) => {
-    e.preventDefault();
-    const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    setScale((prev) => Math.max(0.1, Math.min(5, prev * delta)));
-  }, []);
+  // 打开时锁定页面滚动，避免背景跟随滚动
+  useEffect(() => {
+    if (!isOpen) return;
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    return () => {
+      document.body.style.overflow = prevOverflow;
+    };
+  }, [isOpen]);
 
   // 下载图片
   const handleDownload = useCallback(async () => {
@@ -250,32 +218,23 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
     return null;
   }
 
-  // 聊天容器不可用时不渲染，等待 effect 关闭
-  if (!bounds) {
-    return null;
-  }
-
   const currentImage = images[currentIndex] ?? '';
-
-  // 使用 Portal 渲染到独立容器，使用 bounds 精确定位到 .chat-v2 区域
-  const overlayStyle: React.CSSProperties = {
-    position: 'fixed',
-    top: bounds.top,
-    left: bounds.left,
-    width: bounds.width,
-    height: bounds.height,
-    pointerEvents: 'auto',
-  };
+  const topHotzoneHeightClassName = 'h-[96px] sm:h-[112px]';
+  const stageTopPaddingClassName = 'pt-[96px] sm:pt-[112px]';
 
   const overlay = (
     <div
       className={cn(
         'bg-black/40 dark:bg-black/50 backdrop-blur-sm',
-        'flex flex-col',
+        'relative flex flex-col',
         'shadow-lg ring-1 ring-border/40',
         className
       )}
-      style={overlayStyle}
+      style={{
+        position: 'fixed',
+        inset: 0,
+        pointerEvents: 'auto',
+      }}
       onClick={(e) => {
         // 点击背景关闭
         if (e.target === e.currentTarget) {
@@ -283,123 +242,116 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
         }
       }}
     >
-      {/* 工具栏 */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-black/30 border-b border-white/10 flex-shrink-0">
-        {/* 左侧：图片计数 */}
-        <div className="flex items-center gap-3">
-          <span className="text-white/90 text-sm font-medium">
-            {currentIndex + 1} / {images.length}
-          </span>
-        </div>
-
-        {/* 中间：缩放控制 */}
-        <div className="flex items-center gap-1.5">
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setScale((prev) => Math.max(prev / 1.2, 0.1))} className="bg-white/10 hover:bg-[var(--overlay-control-hover)] text-white/80 hover:text-white" aria-label={t('common:imageViewer.zoomOut')} title={t('common:imageViewer.zoomOut')}>
-            <MagnifyingGlassMinus size={16} />
-          </NotionButton>
-          <span className="px-2 py-1 rounded-md text-xs font-medium min-w-[45px] text-center bg-white/10 text-white/80">
-            {Math.round(scale * 100)}%
-          </span>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setScale((prev) => Math.min(prev * 1.2, 5))} className="bg-white/10 hover:bg-[var(--overlay-control-hover)] text-white/80 hover:text-white" aria-label={t('common:imageViewer.zoomIn')} title={t('common:imageViewer.zoomIn')}>
-            <MagnifyingGlassPlus size={16} />
-          </NotionButton>
-          <div className="w-px h-4 bg-white/20 mx-1" />
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => setRotation((prev) => (prev + 90) % 360)} className="bg-white/10 hover:bg-[var(--overlay-control-hover)] text-white/80 hover:text-white" aria-label={t('common:imageViewer.rotate')} title={t('common:imageViewer.rotate')}>
-            <ArrowClockwise size={16} />
-          </NotionButton>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={() => { setScale(1); setRotation(0); setPosition({ x: 0, y: 0 }); }} className="bg-white/10 hover:bg-[var(--overlay-control-hover)] text-white/80 hover:text-white" aria-label={t('common:imageViewer.reset')} title={t('common:imageViewer.reset')}>
-            <House size={16} />
-          </NotionButton>
-        </div>
-
-        {/* 右侧：操作按钮 */}
-        <div className="flex items-center gap-1.5">
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleDownload} className="bg-white/10 hover:bg-[var(--overlay-control-hover)] text-white/80 hover:text-white" aria-label={t('chatV2:blocks.imageGen.download')} title={t('chatV2:blocks.imageGen.download')}>
-            <Download size={16} />
-          </NotionButton>
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={handleOpenInNewTab} className="bg-white/10 hover:bg-[var(--overlay-control-hover)] text-white/80 hover:text-white" aria-label={t('chatV2:blocks.imageGen.openInNewTab')} title={t('chatV2:blocks.imageGen.openInNewTab')}>
-            <ArrowSquareOut size={16} />
-          </NotionButton>
-          <div className="w-px h-4 bg-white/20 mx-1" />
-          <NotionButton variant="ghost" size="icon" iconOnly onClick={onClose} className="hover:bg-red-500/20 text-white/80 hover:text-red-400" aria-label={t('chatV2:blocks.imageGen.close')} title={t('chatV2:blocks.imageGen.close')}>
-            <X size={16} />
+      {/* 顶部热区：保留更宽松的点击/触摸安全区，仅放关闭按钮 */}
+      <div
+        {...(!isAndroid() ? { 'data-tauri-drag-region': true } : {})}
+        className="pointer-events-none absolute inset-x-0 top-0 z-20 bg-gradient-to-b from-black/55 via-black/20 to-transparent"
+        style={{ paddingTop: 'max(env(safe-area-inset-top, 0px), var(--safe-area-inset-top-fallback, 0px))' }}
+        onMouseDown={handleTopDragMouseDown}
+      >
+        <div
+          className={cn(topHotzoneHeightClassName, 'flex items-start justify-end px-3 py-3 sm:px-4 sm:py-4')}
+        >
+          <NotionButton variant="ghost" size="icon" iconOnly data-no-drag onPointerDown={stopSurfaceGesture} onClick={onClose} className="pointer-events-auto h-11 w-11 !rounded-full border border-[color:var(--shell-workspace-border)] bg-[color:var(--shell-toolbar-floating-surface)] text-[color:var(--text-secondary)] shadow-[var(--shadow-shell-soft)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)] sm:h-12 sm:w-12" aria-label={t('chatV2:blocks.imageGen.close')} title={t('chatV2:blocks.imageGen.close')}>
+            <X size={18} />
           </NotionButton>
         </div>
       </div>
 
       {/* 图片容器 */}
       <div
-        className="flex-1 flex items-center justify-center overflow-hidden relative"
-        onMouseDown={handleMouseDown}
-        onWheel={handleWheel}
+        className={cn(
+          'relative flex flex-1 items-center justify-center overflow-hidden px-4 sm:px-8',
+          stageTopPaddingClassName,
+          'pb-24 sm:pb-28'
+        )}
+        onClick={(e) => {
+          if (e.target === e.currentTarget) {
+            onClose();
+          }
+        }}
+        onWheel={(e) => {
+          e.preventDefault();
+        }}
       >
         <img
           src={currentImage}
           alt={t('chatV2:imageViewer.imageAlt', { index: currentIndex + 1 })}
-          className="max-w-[90%] max-h-[90%] object-contain select-none"
+          className="max-h-full max-w-full object-contain select-none"
           style={{
-            transform: `translate(${position.x}px, ${position.y}px) scale(${scale}) rotate(${rotation}deg)`,
-            cursor: isDragging ? 'grabbing' : 'grab',
+            transform: `scale(${scale}) rotate(${rotation}deg)`,
           }}
           draggable={false}
         />
 
-        {/* 导航按钮 */}
-        {images.length > 1 && (
-          <>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onPrev?.(); }} disabled={currentIndex === 0} className={cn('absolute left-4 top-1/2 -translate-y-1/2 !rounded-full bg-black/40 hover:bg-[var(--overlay-control-hover-strong)] border border-white/10 shadow-lg backdrop-blur-sm text-white/80 hover:text-white', currentIndex === 0 && 'opacity-40')} aria-label={t('common:imageViewer.prev')} title={t('common:imageViewer.prev')}>
-              <CaretLeft size={24} />
-            </NotionButton>
-            <NotionButton variant="ghost" size="icon" iconOnly onClick={(e) => { e.stopPropagation(); onNext?.(); }} disabled={currentIndex === images.length - 1} className={cn('absolute right-4 top-1/2 -translate-y-1/2 !rounded-full bg-black/40 hover:bg-[var(--overlay-control-hover-strong)] border border-white/10 shadow-lg backdrop-blur-sm text-white/80 hover:text-white', currentIndex === images.length - 1 && 'opacity-40')} aria-label={t('common:imageViewer.next')} title={t('common:imageViewer.next')}>
-              <CaretRight size={24} />
-            </NotionButton>
-          </>
-        )}
       </div>
 
-      {/* 缩略图栏（多图时显示） */}
-      {images.length > 1 && (
-        <div className="flex items-center justify-center gap-2 p-2.5 bg-black/30 border-t border-white/10 flex-shrink-0 overflow-x-auto">
-          {images.map((image, index) => (
-            <div
-              key={index}
-              onClick={() => {
-                const delta = index - currentIndex;
-                if (delta > 0 && onNext) {
-                  for (let i = 0; i < delta; i++) onNext();
-                } else if (delta < 0 && onPrev) {
-                  for (let i = 0; i < Math.abs(delta); i++) onPrev();
-                }
-              }}
-              className={cn(
-                'w-11 h-11 rounded-md overflow-hidden cursor-pointer transition-all flex-shrink-0',
-                'border-2',
-                index === currentIndex
-                  ? 'border-white ring-2 ring-white/30 opacity-100 scale-105'
-                  : 'border-white/30 opacity-60 hover:opacity-90 hover:border-white/50'
-              )}
-            >
-              <img
-                src={image}
-                alt={t('chatV2:imageViewer.thumbnailAlt', { index: index + 1 })}
-                className="w-full h-full object-cover"
-              />
-            </div>
-          ))}
+      {/* 独立侧边导航轨道：避免把切页按钮挂在拖拽舞台内导致 hover / 合成层抖动 */}
+      <div className="pointer-events-none absolute inset-y-0 left-0 right-0 z-20">
+        <div className="pointer-events-none flex h-full items-center justify-between px-3 sm:px-5">
+          <div className="pointer-events-none flex h-full w-16 items-center justify-start sm:w-20">
+            {canNavigatePrev && (
+              <NotionButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={(e) => { e.stopPropagation(); onPrev?.(); }} className="pointer-events-auto h-12 w-12 !rounded-full border border-[color:var(--shell-workspace-border)] bg-[color:var(--shell-toolbar-floating-surface)] text-[color:var(--text-secondary)] shadow-[var(--shadow-shell-soft)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)] sm:h-14 sm:w-14" aria-label={t('common:imageViewer.prev')} title={t('common:imageViewer.prev')}>
+                <CaretLeft size={24} weight="bold" />
+              </NotionButton>
+            )}
+          </div>
+          <div className="pointer-events-none flex h-full w-16 items-center justify-end sm:w-20">
+            {canNavigateNext && (
+              <NotionButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={(e) => { e.stopPropagation(); onNext?.(); }} className="pointer-events-auto h-12 w-12 !rounded-full border border-[color:var(--shell-workspace-border)] bg-[color:var(--shell-toolbar-floating-surface)] text-[color:var(--text-secondary)] shadow-[var(--shadow-shell-soft)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)] sm:h-14 sm:w-14" aria-label={t('common:imageViewer.next')} title={t('common:imageViewer.next')}>
+                <CaretRight size={24} weight="bold" />
+              </NotionButton>
+            )}
+          </div>
         </div>
-      )}
+      </div>
 
-      {/* 快捷键提示 */}
-      <div className="absolute bottom-14 right-4 rounded-lg p-2 bg-black/50 border border-white/10 text-white/60 text-xs space-y-0.5 shadow-md backdrop-blur-sm">
-        <div>ESC: {t('chatV2:blocks.imageGen.close')}</div>
-        <div>←→: {t('common:imageViewer.switch')}</div>
-        <div>+/-: {t('common:imageViewer.zoomInOut')}</div>
-        <div>R: {t('common:imageViewer.rotate')}</div>
+      {/* 底部操作托盘：保持尽量简洁 */}
+      <div className="pointer-events-none absolute inset-x-0 bottom-0 z-20 bg-gradient-to-t from-black/42 via-black/14 to-transparent">
+        <div
+          className="pointer-events-none flex items-center justify-center px-3 pb-3 pt-10 sm:px-4 sm:pb-4 sm:pt-12"
+          style={{ paddingBottom: 'max(0.75rem, env(safe-area-inset-bottom, 0px))' }}
+        >
+          <div className="pointer-events-none flex w-full justify-center overflow-x-auto">
+            <div
+              className="pointer-events-auto inline-flex min-w-max items-center gap-1 rounded-full border px-2 py-2 shadow-[var(--shadow-shell-soft)]"
+              style={{
+                background: 'color-mix(in hsl, var(--surface-panel-strong) 72%, transparent)',
+                borderColor: 'var(--shell-workspace-border)',
+                color: 'var(--text-secondary)',
+              }}
+            >
+              <NotionButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={() => setScale((prev) => Math.max(prev / 1.2, 0.1))} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('common:imageViewer.zoomOut')} title={t('common:imageViewer.zoomOut')}>
+                <MagnifyingGlassMinus size={16} />
+              </NotionButton>
+              <span className="min-w-[44px] px-2 py-1 text-center text-[11px] font-medium tracking-[0.02em] text-[color:var(--text-secondary)]">
+                {Math.round(scale * 100)}%
+              </span>
+              <NotionButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={() => setScale((prev) => Math.min(prev * 1.2, 5))} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('common:imageViewer.zoomIn')} title={t('common:imageViewer.zoomIn')}>
+                <MagnifyingGlassPlus size={16} />
+              </NotionButton>
+              <div className="mx-1 h-4 w-px bg-[color:var(--shell-workspace-border)]" />
+              <NotionButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={() => setRotation((prev) => (prev + 90) % 360)} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('common:imageViewer.rotate')} title={t('common:imageViewer.rotate')}>
+                <ArrowClockwise size={16} />
+              </NotionButton>
+              <NotionButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={handleResetView} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('common:imageViewer.reset')} title={t('common:imageViewer.reset')}>
+                <House size={16} />
+              </NotionButton>
+              <div className="mx-1 h-4 w-px bg-[color:var(--shell-workspace-border)]" />
+              <NotionButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={handleDownload} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('chatV2:blocks.imageGen.download')} title={t('chatV2:blocks.imageGen.download')}>
+                <Download size={16} />
+              </NotionButton>
+              <NotionButton variant="ghost" size="icon" iconOnly onPointerDown={stopSurfaceGesture} onClick={handleOpenInNewTab} className="h-9 w-9 !rounded-full border border-transparent bg-transparent text-[color:var(--text-secondary)] hover:bg-[color:var(--button-plain-hover-bg)] hover:text-[color:var(--text-primary)]" aria-label={t('chatV2:blocks.imageGen.openInNewTab')} title={t('chatV2:blocks.imageGen.openInNewTab')}>
+                <ArrowSquareOut size={16} />
+              </NotionButton>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
 
-  // 使用 Portal 渲染到 .chat-v2 容器，只覆盖主聊天区域
+  // 使用 Portal 渲染到全屏容器
   return createPortal(overlay, container);
 };
 

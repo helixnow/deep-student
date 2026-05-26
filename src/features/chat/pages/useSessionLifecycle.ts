@@ -386,6 +386,7 @@ export function useSessionLifecycle(deps: UseSessionLifecycleDeps) {
     loadSessions,
     loadMoreSessions,
     deleteSession,
+    getOrCreateHiddenDraftSession,
     toggleChatControl,
     handleViewAgentSession,
   };
