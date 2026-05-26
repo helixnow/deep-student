@@ -2944,7 +2944,7 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                             let prompt = build_import_prompt(&params.goal);
                             let output = params
                                 .llm_manager
-                                .call_model2_raw_prompt(&prompt, Some(image_payloads.payloads))
+                                .call_model2_raw_prompt(&prompt, Some(image_payloads.payloads), crate::llm_usage::CallerType::Anki)
                                 .await
                                 .map_err(|e| e.to_string())?;
                             let combined = merge_with_extra(output.assistant_message);
@@ -3008,7 +3008,7 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                     let prompt = build_vlm_light_prompt(&params.goal);
                     let output = params
                         .llm_manager
-                        .call_model2_raw_prompt(&prompt, Some(image_payloads.payloads))
+                        .call_model2_raw_prompt(&prompt, Some(image_payloads.payloads), crate::llm_usage::CallerType::Anki)
                         .await
                         .map_err(|e| e.to_string())?;
 
@@ -3065,7 +3065,7 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                     let prompt = build_import_prompt(&params.goal);
                     let output = params
                         .llm_manager
-                        .call_model2_raw_prompt(&prompt, Some(image_payloads.payloads))
+                        .call_model2_raw_prompt(&prompt, Some(image_payloads.payloads), crate::llm_usage::CallerType::Anki)
                         .await
                         .map_err(|e| e.to_string())?;
                     let combined = merge_with_extra(output.assistant_message);

@@ -13,11 +13,11 @@ use chrono::Utc;
 use deep_student_lib::cloud_storage::{CloudStorage, FileInfo};
 use deep_student_lib::data_governance::migration::MigrationCoordinator;
 use deep_student_lib::data_governance::sync::{
+    classification::{sync_classification_registry, SyncCategory, TableClassification},
     MergeStrategy, SyncChangeWithData, SyncError, SyncManager,
-    classification::{SyncCategory, TableClassification, sync_classification_registry},
 };
 use deep_student_lib::models::AppError;
-use rusqlite::{Connection, params, types::ValueRef};
+use rusqlite::{params, types::ValueRef, Connection};
 use serde_json::{Map, Number, Value};
 use tempfile::TempDir;
 
