@@ -67,7 +67,7 @@ export const MessageInlineEdit: React.FC<MessageInlineEditProps> = ({
           onClick={onConfirm}
           disabled={isSubmitting}
         >
-          {t('chatV2:messageItem.actions.editAndResend', '编辑并重发')}
+          {t('chatV2:messageItem.actions.send', '发送')}
         </NotionButton>
       </div>
     </div>

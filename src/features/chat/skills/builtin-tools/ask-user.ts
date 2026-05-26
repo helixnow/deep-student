@@ -42,13 +42,11 @@ export const askUserSkill: SkillDefinition = {
 1. 提供 2-6 个明确的选项
 2. **推荐选项必须放在 options 数组第一位（索引 0），并在标签末尾标注 "(Recommended)"**
 3. 问题要简洁明确，选项要互斥（单选时）或可组合（多选时）且覆盖常见场景
-4. 默认无超时，会无限等待用户回答。仅在非关键性问题上可设置 timeoutSeconds
-5. 超时行为（仅当设置了 timeoutSeconds 时生效）：
-   - 单选模式：自动选择第一个选项（即推荐选项）
-   - 多选模式：自动提交已勾选的项；若无勾选则自动选择第一个选项
-6. 不要在一次对话中过度提问（建议不超过 2-3 次）
-7. 仅在确实需要用户输入时才提问，避免不必要的打扰
-8. 当选项已经足够覆盖所有合理场景时，设置 allowCustom: false 隐藏自由输入框
+4. 默认无超时，会无限等待用户回答；当前实现不会根据 timeoutSeconds 自动替用户作答
+5. 不要在一次对话中过度提问（建议不超过 2-3 次）
+6. 仅在确实需要用户输入时才提问，避免不必要的打扰
+7. 当选项已经足够覆盖所有合理场景时，设置 allowCustom: false 隐藏自由输入框
+8. 如需解释每个选项背后的原因，可把 options 写成对象数组并附带 reason 字段；前端会在 hover 时显示该说明
 `,
   embeddedTools: [
     {
@@ -64,11 +62,29 @@ export const askUserSkill: SkillDefinition = {
           },
           options: {
             type: 'array',
-            items: { type: 'string' },
+            items: {
+              oneOf: [
+                { type: 'string' },
+                {
+                  type: 'object',
+                  properties: {
+                    label: {
+                      type: 'string',
+                      description: '用户可见的选项文本',
+                    },
+                    reason: {
+                      type: 'string',
+                      description: '可选，解释为什么提供这个选项；前端会在 hover 时展示',
+                    },
+                  },
+                  required: ['label'],
+                },
+              ],
+            },
             minItems: 2,
             maxItems: 6,
             description:
-              '【必填】2-6 个选项。推荐选项必须放在第一位（索引 0），并在标签末尾标注 "(Recommended)"',
+              '【必填】2-6 个选项。可传字符串数组，或传 { label, reason? } 对象数组。推荐选项必须放在第一位（索引 0），并在标签末尾标注 "(Recommended)"',
           },
           multiple: {
             type: 'boolean',

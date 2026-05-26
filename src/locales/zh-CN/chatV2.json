@@ -89,7 +89,7 @@
       "emptyContent": "内容不能为空",
       "editDialogTitle": "编辑消息",
       "editPlaceholder": "输入新内容...",
-      "editAndResend": "编辑并重发",
+      "send": "发送",
       "delete": "删除",
       "deleteConfirmTitle": "确认删除",
       "deleteConfirmDesc": "确定要删除这条消息吗？此操作无法撤销。",
@@ -111,6 +111,12 @@
       "branch": "从此处分支",
       "branchSuccess": "已创建分支会话",
       "branchFailed": "分支失败"
+    },
+    "failure": {
+      "retry": "重试",
+      "viewErrorDetails": "错误详情",
+      "hideErrorDetails": "收起错误详情",
+      "genericError": "本次回复生成失败"
     },
     "modelRetry": {
       "clickToRetry": "点击选择模型重试",
@@ -1464,11 +1470,13 @@
     "sourceUserClick": "用户选择",
     "sourceCustomInput": "自定义输入",
     "sourceMixed": "混合选择",
-    "sourceTimeout": "超时自动选择",
+    "sourceNoResponse": "未收到回答",
     "sourceChannelClosed": "连接中断",
     "preparing": "正在准备提问...",
     "selected": "已选择",
+    "noResponse": "（未收到回答）",
     "recommended": "推荐",
+    "optionReasonLabel": "查看该选项原因",
     "confirmSelection": "确认选择",
     "customPlaceholder": "或输入自定义回答..."
   },

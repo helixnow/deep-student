@@ -27,6 +27,7 @@ export interface JsonSchemaProperty {
   items?: JsonSchemaProperty;
   properties?: Record<string, JsonSchemaProperty>;
   required?: string[];
+  additionalProperties?: boolean;
   /** JSON Schema 数值约束 */
   minimum?: number;
   maximum?: number;

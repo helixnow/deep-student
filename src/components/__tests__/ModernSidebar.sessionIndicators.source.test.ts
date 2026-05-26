@@ -18,16 +18,32 @@ describe('ModernSidebar session indicators', () => {
     )?.[0] ?? '';
 
     expect(modernSidebarSource).toContain('useSessionSidebarIndicators');
+    expect(modernSidebarSource).toContain('blockingSessionIds');
     expect(rightSlotBranch).toContain('isSessionStreaming ? (');
     expect(rightSlotBranch).toContain('<SidebarStreamingIndicator />');
+    expect(rightSlotBranch).toContain('hasBlockingInteraction ? (');
+    expect(rightSlotBranch).toContain('<SidebarBlockingContinueBadge');
     expect(rightSlotBranch).toContain('hasUnreadAssistantReply ? (');
     expect(rightSlotBranch).toContain('<SidebarUnreadReplyDot />');
     expect(rightSlotBranch.indexOf('isSessionStreaming ?')).toBeLessThan(
+      rightSlotBranch.indexOf('hasBlockingInteraction ?')
+    );
+    expect(rightSlotBranch.indexOf('hasBlockingInteraction ?')).toBeLessThan(
       rightSlotBranch.indexOf('hasUnreadAssistantReply ?')
     );
     expect(rightSlotBranch.indexOf('hasUnreadAssistantReply ?')).toBeLessThan(
       rightSlotBranch.indexOf('isHovered ?')
     );
+  });
+
+  it('renders the blocking indicator as a compact continue badge', () => {
+    const indicatorSource = modernSidebarSource.match(
+      /function SidebarBlockingContinueBadge\(\{ label \}: \{ label: string \}\) \{[\s\S]*?function SidebarUnreadReplyDot/
+    )?.[0] ?? '';
+
+    expect(indicatorSource).toContain('data-testid="sidebar-blocking-indicator"');
+    expect(indicatorSource).toContain('rounded-full');
+    expect(indicatorSource).toContain('label');
   });
 
   it('renders the streaming indicator as a rotating rounded ring and clears unread state on open', () => {

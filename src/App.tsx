@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 // 🚀 性能优化：Settings, Dashboard, SOTADashboard 改为懒加载
-import { ArrowLeft, CaretLeft, CaretRight, Terminal, Warning, X } from '@phosphor-icons/react';
+import { ArrowLeft, CaretLeft, CaretRight, CircleNotch, Terminal, Warning, X } from '@phosphor-icons/react';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { cn } from '@/lib/utils';
@@ -61,8 +61,6 @@ import { CustomScrollArea } from './components/custom-scroll-area';
 import { getErrorMessage } from './utils/errorUtils';
 import { useAppInitialization } from './hooks/useAppInitialization';
 import { useAppUpdater } from './hooks/useAppUpdater';
-import type { AppUpdaterController } from './hooks/useAppUpdater';
-import { UpdateNotificationDialog } from '@/features/settings';
 import { UserAgreementDialog, useUserAgreement } from './components/legal/UserAgreementDialog';
 import { useMigrationStatusListener } from './hooks/useMigrationStatusListener';
 import useTheme from './hooks/useTheme';
@@ -147,34 +145,6 @@ function applyPointerCursorPreference(enabled: boolean) {
   }
 
   document.documentElement.dataset.pointerCursor = enabled ? 'true' : 'false';
-}
-
-/**
- * 启动时自动更新检查弹窗
- * 仅在启动静默检查发现新版本时显示。
- */
-function StartupUpdateNotification({ updater }: { updater: AppUpdaterController }) {
-  // 仅在启动检查发现更新时显示弹窗
-  const shouldShow = updater.isStartupCheck && updater.available && !!updater.info;
-
-  if (!shouldShow) return null;
-
-  return (
-    <UpdateNotificationDialog
-      open={shouldShow}
-      version={updater.info!.version}
-      body={updater.info!.body}
-      date={updater.info!.date}
-      isMobile={updater.isMobile}
-      apkUrl={updater.info!.apkUrl}
-      downloading={updater.downloading}
-      progress={updater.progress}
-      onUpdate={() => updater.downloadAndInstall()}
-      onDismiss={() => updater.dismiss()}
-      onSkipVersion={(v) => updater.skipVersion(v)}
-      onNeverRemind={() => updater.setNeverRemind()}
-    />
-  );
 }
 
 const HEADER_HOTZONE_INTERACTIVE_SELECTOR = [
@@ -328,7 +298,7 @@ function SidebarUpdateBadge({
       disabled={downloading}
       aria-label={downloading ? '下载中...' : '点击更新'}
     >
-      {downloading ? '下载中' : '更新'}
+      {downloading ? <CircleNotch size={12} className="animate-spin" aria-hidden="true" /> : '更新'}
     </button>
   );
 }
@@ -375,7 +345,7 @@ function DesktopSidebarAccessory({
           )}
         >
           <SidebarUpdateBadge
-            visible={updateVisible}
+            visible={updateVisible && !collapsed}
             onClick={onUpdate}
             downloading={updateDownloading}
           />
@@ -777,7 +747,11 @@ function App() {
         event?.detail?.pointerCursor ||
         event?.detail?.settingKey === POINTER_CURSOR_SETTING_KEY
       ) {
-        void loadPointerCursorSetting();
+        const enabled =
+          typeof event?.detail?.value === 'boolean'
+            ? event.detail.value
+            : String(event?.detail?.value ?? '').trim() !== 'false';
+        applyPointerCursorPreference(enabled);
       }
     };
 
@@ -2661,9 +2635,6 @@ function App() {
       {/* 全局通知容器 */}
       <NotificationContainer />
 
-      {/* 启动时自动更新检查弹窗 */}
-      <StartupUpdateNotification updater={updater} />
-      
       {/* 云存储配置弹窗 - 移到全局位置避免被 renderViewLayer 的 visibility 影响 */}
       <NotionDialog open={showCloudStorageSettings} onOpenChange={setShowCloudStorageSettings} maxWidth="max-w-[560px]">
         <NotionDialogBody>

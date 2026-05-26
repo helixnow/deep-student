@@ -19,4 +19,20 @@ describe("App sidebar update badge source", () => {
       /<DesktopSidebarAccessory[\s\S]*updateVisible=\{!updater\.checking && updater\.available && !!updater\.info\}[\s\S]*onUpdate=\{\(\) => void updater\.performUpdateAction\(\)\}[\s\S]*updateDownloading=\{updater\.downloading\}/u,
     );
   });
+
+  it("hides the update badge immediately once the desktop sidebar collapses", () => {
+    const source = readFileSync(appPath, "utf8");
+
+    assert.match(
+      source,
+      /<SidebarUpdateBadge[\s\S]*visible=\{updateVisible && !collapsed\}[\s\S]*onClick=\{onUpdate\}[\s\S]*downloading=\{updateDownloading\}/u,
+    );
+  });
+
+  it("uses an icon-only loading state instead of the 下载中 label", () => {
+    const source = readFileSync(appPath, "utf8");
+
+    assert.doesNotMatch(source, /\{downloading \? '下载中' : '更新'\}/u);
+    assert.match(source, /downloading\s*\?\s*<CircleNotch[\s\S]*animate-spin/u);
+  });
 });

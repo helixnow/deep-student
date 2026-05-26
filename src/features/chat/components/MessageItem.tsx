@@ -17,6 +17,7 @@ import { BlockRendererWithStore } from './BlockRenderer';
 import { ContextRefsDisplay, hasContextRefs } from './ContextRefsDisplay';
 import type { ContextRef } from '../context/types';
 import { useVariantUI } from '../hooks/useVariantUI';
+import { useBlocksByIds } from '../hooks/useChatStore';
 import { useImagePreviewsFromRefs } from '../hooks/useImagePreviewsFromRefs';
 import { useFilePreviewsFromRefs } from '../hooks/useFilePreviewsFromRefs';
 import { ParallelVariantView } from './Variant';
@@ -39,7 +40,6 @@ import { copyDebugInfoToClipboard } from '../debug/exportSessionDebug';
 // 🆕 开发者选项：显示请求体 + 过滤配置
 import { useDevShowRawRequest, useCopyFilterConfig, type CopyFilterConfig } from '../hooks/useDevShowRawRequest';
 // 🆕 AI 内容标识（合规）
-import { AiContentLabel } from '@/components/shared/AiContentLabel';
 import { PulseDot } from '@/components/ui/PulseDot';
 import { ThreadContentShell } from './ui/ThreadContentShell';
 import { ThinkingIndicator } from './ThinkingIndicator';
@@ -489,6 +489,8 @@ export interface MessageItemProps {
   showActions?: boolean;
   /** 是否是第一条消息（用于添加顶部间距） */
   isFirst?: boolean;
+  /** 是否是最新一条消息（用于默认展开操作区） */
+  isLatest?: boolean;
 }
 
 // ============================================================================
@@ -509,6 +511,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   className,
   showActions = true,
   isFirst = false,
+  isLatest = false,
 }) => {
   // 📊 细粒度打点：MessageItem render
   sessionSwitchPerf.mark('mi_render', { messageId });
@@ -536,42 +539,10 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     retryAllVariants,
   } = useVariantUI({ store, messageId });
 
-  // 🚀 P1 性能优化：移除订阅整个 blocks Map
-  // 改为：
-  // 1. 渲染时使用 BlockRendererWithStore，每个块独立订阅
-  // 2. 操作回调（copy/edit）中使用 store.getState().blocks 即时获取
-  
-  // 🔧 辅助函数：获取当前显示块列表（用于操作回调，不订阅）
-  const getDisplayBlocks = useCallback((): Block[] => {
-    const blocksMap = store.getState().blocks;
-    return displayBlockIds
-      .map((id) => blocksMap.get(id))
-      .filter((b): b is Block => b !== undefined);
-  }, [store, displayBlockIds]);
-
-  // 🚀 性能优化：hasSources 改用即时计算（在需要时调用）
-  // 避免订阅整个 blocks Map
-  const checkHasSources = useCallback((): boolean => {
-    const blocks = getDisplayBlocks();
-    return hasSourcesInBlocks(blocks);
-  }, [getDisplayBlocks]);
-  
-  // hasSources 状态（初始值为 false，在 useEffect 中更新）
-  // 使用 ref 追踪，避免无限循环
-  const [hasSources, setHasSources] = useState(false);
-  const prevDisplayBlockIdsRef = useRef<string[]>([]);
-  
-  // 当 displayBlockIds 变化时更新 hasSources
-  useEffect(() => {
-    // 只在 displayBlockIds 真正变化时更新
-    if (
-      displayBlockIds.length !== prevDisplayBlockIdsRef.current.length ||
-      !displayBlockIds.every((id, i) => id === prevDisplayBlockIdsRef.current[i])
-    ) {
-      prevDisplayBlockIdsRef.current = displayBlockIds;
-      setHasSources(checkHasSources());
-    }
-  }, [displayBlockIds, checkHasSources]);
+  // 订阅当前消息实际显示的块，确保晚到的 content 更新会触发消息级重新分段渲染。
+  const displayBlocks = useBlocksByIds(store, displayBlockIds);
+  const getDisplayBlocks = useCallback((): Block[] => displayBlocks, [displayBlocks]);
+  const hasSources = useMemo(() => hasSourcesInBlocks(displayBlocks), [displayBlocks]);
 
 
   // 🔧 P1修复：使用响应式订阅替代直接调用 getState()
@@ -721,6 +692,40 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     return text;
   }, [getDisplayBlocks]);
 
+  const assistantBlocks = useMemo(() => {
+    if (isUser) return [] as Block[];
+    return displayBlocks;
+  }, [displayBlocks, isUser]);
+
+  const hasConsumableAssistantContent = useMemo(() => {
+    if (isUser) return false;
+    return extractMessageContent().length > 0;
+  }, [extractMessageContent, isUser, sessionStatus, message?.id, activeVariant?.id]);
+
+  const assistantFailureDetails = useMemo(() => {
+    if (isUser) return null;
+
+    const metaError = message?._meta?.terminalError?.trim();
+    if (metaError) return metaError;
+
+    const variantError = activeVariant?.error?.trim();
+    if (variantError) return variantError;
+
+    const blockError = assistantBlocks.find((block) => typeof block.error === 'string' && block.error.trim().length > 0)?.error?.trim();
+    return blockError || null;
+  }, [activeVariant?.error, assistantBlocks, isUser, message?._meta?.terminalError]);
+
+  const hasZeroOutputFailure = useMemo(() => {
+    if (isUser || isMultiVariant) return false;
+    const hasAssistantFailure = Boolean(message?._meta?.terminalError) || assistantBlocks.some((block) => block.status === 'error');
+    return hasAssistantFailure && !hasConsumableAssistantContent;
+  }, [assistantBlocks, hasConsumableAssistantContent, isMultiVariant, isUser, message?._meta?.terminalError]);
+
+  const showAssistantFooterAlways = !isUser && isLatest;
+  const assistantFooterClassName = showAssistantFooterAlways
+    ? 'mt-3'
+    : 'mt-3 md:opacity-0 md:group-hover:opacity-100 md:group-focus-within:opacity-100 transition-opacity';
+
   // 🆕 从内容中提取笔记标题（剥离 XML 标签，防止 <thinking> 作为标题）
   const extractNoteTitle = useCallback((content: string): string => {
     const headingMatch = content.match(/^#\s+(.+)$/m);
@@ -751,6 +756,14 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
   const [multiCopied, setMultiCopied] = useState(false);
   const [isRetryingAllVariants, setIsRetryingAllVariants] = useState(false);
   const [isDeletingMultiMessage, setIsDeletingMultiMessage] = useState(false);
+  const [isRetryingFailure, setIsRetryingFailure] = useState(false);
+  const [showFailureDetails, setShowFailureDetails] = useState(false);
+
+  useEffect(() => {
+    if (!hasZeroOutputFailure) {
+      setShowFailureDetails(false);
+    }
+  }, [hasZeroOutputFailure, messageId]);
 
   const handleMultiVariantCopy = useCallback(async () => {
     if (multiCopied) return;
@@ -850,6 +863,16 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     }
   }, [message, messageId, isLocked, store, t]);
 
+  const handleRetryFromFailureBar = useCallback(async () => {
+    if (isRetryingFailure || isLocked) return;
+    setIsRetryingFailure(true);
+    try {
+      await handleRetry();
+    } finally {
+      setIsRetryingFailure(false);
+    }
+  }, [handleRetry, isLocked, isRetryingFailure]);
+
   // 重新发送用户消息
   const handleResend = useCallback(async () => {
     if (!message || isLocked) return;
@@ -943,17 +966,6 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
     const blocks = getDisplayBlocks();
     const contentBlock = blocks.find((b) => b.type === 'content');
     const originalText = contentBlock?.content || '';
-
-    if (editText === originalText) {
-      // 🔧 调试日志：内容未修改
-      logChatV2('message', 'ui', 'handleConfirmEdit_content_unchanged', {
-        messageId,
-      }, 'warning', { messageId });
-      // 🔧 修复：内容未修改时给用户反馈
-      showGlobalNotification('info', t('messageItem.actions.contentUnchanged'));
-      setIsInlineEditing(false);
-      return;
-    }
 
     if (!editText.trim()) {
       // 🔧 调试日志：内容为空
@@ -1232,7 +1244,7 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
 
                     // 助手消息：需要分组渲染（时间线块 vs 普通块）
                     // 🔧 即时获取 blocks 用于分组判断（不触发订阅）
-                    const blocks = getDisplayBlocks();
+                    const blocks = displayBlocks;
 
                     // 🆕 等待首次响应：displayBlockIds 为空且正在流式生成
                     if (blocks.length === 0 && sessionStatus === 'streaming') {
@@ -1406,14 +1418,46 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
             </div>
           )}
 
+          {showActions && !isInlineEditing && !isWaitingForContent && hasZeroOutputFailure && (
+            <div className="mt-3 rounded-lg border border-destructive/20 bg-destructive/5 p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={handleRetryFromFailureBar}
+                  disabled={isLocked || isRetryingFailure}
+                  className="text-destructive hover:bg-destructive/10 hover:text-destructive"
+                >
+                  <ArrowCounterClockwise className={cn('w-4 h-4', isRetryingFailure && 'animate-spin')} />
+                  {t('messageItem.failure.retry')}
+                </NotionButton>
+                <NotionButton
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => setShowFailureDetails((prev) => !prev)}
+                  className="text-muted-foreground hover:text-foreground"
+                >
+                  {showFailureDetails
+                    ? t('messageItem.failure.hideErrorDetails')
+                    : t('messageItem.failure.viewErrorDetails')}
+                </NotionButton>
+              </div>
+              {showFailureDetails && (
+                <pre className="mt-3 whitespace-pre-wrap break-words rounded-md bg-background/80 p-3 text-xs leading-relaxed text-muted-foreground">
+                  {assistantFailureDetails || t('messageItem.failure.genericError')}
+                </pre>
+              )}
+            </div>
+          )}
+
           {/* Token 统计 + 操作按钮（等待状态时隐藏） */}
           {/* 🔧 统一：多变体也在底部显示汇总 Token 统计 */}
-          {showActions && !isInlineEditing && !isWaitingForContent && (
+          {showActions && !isInlineEditing && !isWaitingForContent && !hasZeroOutputFailure && (
             <div className={cn(
-              'mt-3 md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100 transition-opacity',
+              isUser ? 'mt-3' : assistantFooterClassName,
               isMultiVariant && 'max-w-thread mx-auto',
             )}>
-              {/* 第一行：移动端 = 时间/AI标识(左) + 精简操作(右)；桌面端 = 模型名+操作按钮+时间(左) + AI标识+Token(右) */}
+              {/* 第一行：移动端 = 时间(左) + 精简操作(右)；桌面端 = 模型名+操作按钮+时间(左) + Token(右) */}
               <div
                 className={cn(
                   'flex items-center gap-1.5',
@@ -1431,7 +1475,6 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         {formatMessageTime(message.timestamp)}
                       </span>
                     )}
-                    <AiContentLabel variant="badge" />
                   </div>
                 )}
 
@@ -1464,8 +1507,9 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         isLocked={isLocked}
                         canEdit={canEdit}
                         canDelete={canDelete}
+                        alwaysExpanded={showAssistantFooterAlways}
+                        anchorCopyToEnd={isUser}
                         onCopy={handleCopy}
-                        onCopyDebug={showRawRequest ? handleCopyDebug : undefined}
                         onRetry={!isUser && !isMultiVariant ? handleRetry : undefined}
                         onResend={isUser ? handleResend : undefined}
                         onEdit={isUser ? handleEdit : undefined}
@@ -1543,8 +1587,8 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                         isLocked={isLocked}
                         canEdit={canEdit}
                         canDelete={canDelete}
+                        alwaysExpanded={showAssistantFooterAlways}
                         onCopy={handleCopy}
-                        onCopyDebug={showRawRequest ? handleCopyDebug : undefined}
                         onRetry={!isUser && !isMultiVariant ? handleRetry : undefined}
                         onResend={isUser ? handleResend : undefined}
                         onEdit={isUser ? handleEdit : undefined}
@@ -1566,10 +1610,9 @@ const MessageItemInner: React.FC<MessageItemProps> = ({
                   </div>
                 )}
 
-                {/* 💻 桌面端右侧：AI 标识 + Token 统计 */}
+                {/* 💻 桌面端右侧：Token 统计 */}
                 {!isSmallScreen && (
                   <div className="flex items-center gap-2 flex-shrink-0">
-                    {!isUser && <AiContentLabel variant="badge" className="scale-90 origin-right" />}
                     {!isUser && !hasMultipleVariants && singleVariantUsage && (
                       <TokenUsageDisplay usage={singleVariantUsage} compact />
                     )}
@@ -1646,7 +1689,8 @@ export const MessageItem = React.memo(MessageItemInner, (prevProps, nextProps) =
     prevProps.store === nextProps.store &&
     prevProps.showActions === nextProps.showActions &&
     prevProps.className === nextProps.className &&
-    prevProps.isFirst === nextProps.isFirst
+    prevProps.isFirst === nextProps.isFirst &&
+    prevProps.isLatest === nextProps.isLatest
   );
 });
 
