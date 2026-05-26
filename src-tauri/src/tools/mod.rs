@@ -126,6 +126,19 @@ impl ToolRegistry {
         }
     }
 
+    fn resolve_frontend_mcp_tool_name(&self, tool_name: &str) -> Option<String> {
+        let decoded = crate::canonical_tools::decode_tool_name_from_api(tool_name)?;
+        let tool_name_without_mcp_prefix = decoded.strip_prefix("mcp_").unwrap_or(decoded.as_str());
+        let stripped = if let Some(ref prefix) = self.mcp_namespace_prefix {
+            tool_name_without_mcp_prefix
+                .strip_prefix(prefix)
+                .unwrap_or(tool_name_without_mcp_prefix)
+        } else {
+            tool_name_without_mcp_prefix
+        };
+        Some(stripped.to_string())
+    }
+
     /// 调用工具并返回详细错误信息
     pub async fn call_tool_with_details(
         &self,
@@ -226,22 +239,19 @@ impl ToolRegistry {
 
         // 2. 本地工具未命中，统一通过前端 MCP SDK 桥接
         if let Some(window) = ctx.window {
-            // 🔧 修复：去除 mcp_ 前缀，因为这是 pipeline 添加的内部标识
-            // 前端 MCP 服务器的 namespace 不包含 mcp_ 前缀
-            let tool_name_without_mcp_prefix = if tool_name.starts_with("mcp_") {
-                &tool_name[4..]
-            } else {
-                tool_name
-            };
-
-            let mcp_tool_name = if let Some(ref prefix) = self.mcp_namespace_prefix {
-                if tool_name_without_mcp_prefix.starts_with(prefix) {
-                    &tool_name_without_mcp_prefix[prefix.len()..]
-                } else {
-                    tool_name_without_mcp_prefix
-                }
-            } else {
-                tool_name_without_mcp_prefix
+            let Some(mcp_tool_name) = self.resolve_frontend_mcp_tool_name(tool_name) else {
+                let error_msg = format!("无效的外部工具名: {}", tool_name);
+                let error_details =
+                    crate::error_details::ErrorDetailsBuilder::tool_not_found(tool_name);
+                return (
+                    false,
+                    None,
+                    Some(error_msg),
+                    None,
+                    None,
+                    None,
+                    Some(error_details),
+                );
             };
             log::info!(
                 "Local tool '{}' not found, bridging to Frontend MCP (details) with name '{}'",
@@ -249,7 +259,7 @@ impl ToolRegistry {
                 mcp_tool_name
             );
             let (ok, data, err, mut usage, citations, inject_text) = self
-                .call_frontend_mcp_tool(mcp_tool_name, args, window)
+                .call_frontend_mcp_tool(&mcp_tool_name, args, window)
                 .await;
             if let Some(u) = usage.as_mut() {
                 if let Some(obj) = u.as_object_mut() {
@@ -261,21 +271,24 @@ impl ToolRegistry {
             let error_details = if let Some(ref error_msg) = err {
                 let lower = error_msg.to_lowercase();
                 let details = if lower.contains("tool not found") {
-                    crate::error_details::ErrorDetailsBuilder::tool_not_found(mcp_tool_name)
+                    crate::error_details::ErrorDetailsBuilder::tool_not_found(&mcp_tool_name)
                 } else if lower.contains("timeout") {
                     crate::error_details::ErrorDetailsBuilder::tool_timeout(
-                        mcp_tool_name,
+                        &mcp_tool_name,
                         self.default_timeout_ms,
                     )
                 } else if lower.contains("rate limit") {
-                    crate::error_details::ErrorDetailsBuilder::rate_limit_error(mcp_tool_name, None)
+                    crate::error_details::ErrorDetailsBuilder::rate_limit_error(
+                        &mcp_tool_name,
+                        None,
+                    )
                 } else if lower.contains("connection")
                     || lower.contains("transport")
                     || lower.contains("network")
                 {
                     crate::error_details::ErrorDetailsBuilder::network_error(error_msg)
                 } else {
-                    crate::error_details::ErrorDetailsBuilder::service_unavailable(mcp_tool_name)
+                    crate::error_details::ErrorDetailsBuilder::service_unavailable(&mcp_tool_name)
                 };
                 Some(details)
             } else {
@@ -343,22 +356,15 @@ impl ToolRegistry {
 
         // 2. 本地工具未命中，尝试 前端 MCP 桥接 回退
         if let Some(window) = ctx.window {
-            // 🔧 修复：去除 mcp_ 前缀，因为这是 pipeline 添加的内部标识
-            // 前端 MCP 服务器的 namespace 不包含 mcp_ 前缀
-            let tool_name_without_mcp_prefix = if tool_name.starts_with("mcp_") {
-                &tool_name[4..]
-            } else {
-                tool_name
-            };
-
-            let mcp_tool_name = if let Some(ref prefix) = self.mcp_namespace_prefix {
-                if tool_name_without_mcp_prefix.starts_with(prefix) {
-                    &tool_name_without_mcp_prefix[prefix.len()..]
-                } else {
-                    tool_name_without_mcp_prefix
-                }
-            } else {
-                tool_name_without_mcp_prefix
+            let Some(mcp_tool_name) = self.resolve_frontend_mcp_tool_name(tool_name) else {
+                return (
+                    false,
+                    None,
+                    Some(format!("无效的外部工具名: {}", tool_name)),
+                    None,
+                    None,
+                    None,
+                );
             };
             log::info!(
                 "Local tool '{}' not found, bridging to Frontend MCP with name '{}'",
@@ -366,7 +372,7 @@ impl ToolRegistry {
                 mcp_tool_name
             );
             return self
-                .call_frontend_mcp_tool(mcp_tool_name, args, window)
+                .call_frontend_mcp_tool(&mcp_tool_name, args, window)
                 .await;
         }
 
@@ -514,6 +520,36 @@ impl ToolRegistry {
     }
 
     // MCP 文本提取函数已移除（由前端 SDK 负责解析）
+}
+
+#[cfg(test)]
+mod tests {
+    use super::ToolRegistry;
+
+    #[test]
+    fn resolve_frontend_mcp_tool_name_decodes_canonical_legacy_namespaces() {
+        let registry =
+            ToolRegistry::new().with_mcp_namespace_prefix(Some("mcp.tools.".to_string()));
+        let encoded = crate::canonical_tools::encode_tool_name_for_api("mcp.tools.fetch:url")
+            .expect("name should encode");
+
+        assert_eq!(
+            registry.resolve_frontend_mcp_tool_name(&encoded),
+            Some("fetch:url".to_string())
+        );
+    }
+
+    #[test]
+    fn resolve_frontend_mcp_tool_name_decodes_chat_pipeline_internal_names() {
+        let registry = ToolRegistry::new();
+        let encoded = crate::canonical_tools::encode_tool_name_for_api("mcp_fetch:url")
+            .expect("name should encode");
+
+        assert_eq!(
+            registry.resolve_frontend_mcp_tool_name(&encoded),
+            Some("fetch:url".to_string())
+        );
+    }
 }
 
 // RAG 工具

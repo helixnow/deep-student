@@ -7,13 +7,13 @@
 //! `DS_SYNC_TEST_DOCKER=1 cargo test --test sync_provider_contract_tests -- --ignored`
 
 use deep_student_lib::cloud_storage::{
-    CloudStorage, CloudStorageConfig, CloudSyncManager, S3Config, StorageProvider, WebDavConfig,
-    create_storage,
+    create_storage, CloudStorage, CloudStorageConfig, CloudSyncManager, S3Config, StorageProvider,
+    WebDavConfig,
 };
 use deep_student_lib::crypto::backup_crypto;
 use deep_student_lib::data_governance::migration::MigrationCoordinator;
 use deep_student_lib::data_governance::sync::{MergeStrategy, SyncChangeWithData, SyncManager};
-use rusqlite::{Connection, params};
+use rusqlite::{params, Connection};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
 use std::path::{Path, PathBuf};
@@ -1141,20 +1141,16 @@ async fn run_prune_old_changes_contract(storage: Box<dyn CloudStorage>) {
         .expect("prune old provider changes");
     assert_eq!(deleted, 2);
     assert!(storage.get(&old_own).await.expect("read old own").is_none());
-    assert!(
-        storage
-            .get(&old_other)
-            .await
-            .expect("read old other")
-            .is_none()
-    );
-    assert!(
-        storage
-            .get(&recent_own)
-            .await
-            .expect("read recent own")
-            .is_some()
-    );
+    assert!(storage
+        .get(&old_other)
+        .await
+        .expect("read old other")
+        .is_none());
+    assert!(storage
+        .get(&recent_own)
+        .await
+        .expect("read recent own")
+        .is_some());
 }
 
 async fn run_workspace_database_file_sync_contract(storage: Box<dyn CloudStorage>) {

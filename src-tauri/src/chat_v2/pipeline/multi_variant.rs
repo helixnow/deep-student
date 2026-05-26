@@ -884,21 +884,15 @@ impl ChatV2Pipeline {
             if let Some(ref tool_schemas) = options.mcp_tool_schemas {
                 let mcp_tool_values: Vec<Value> = tool_schemas
                     .iter()
-                    .map(|tool| {
-                        let raw_tool_name = if tool.name.starts_with(BUILTIN_NAMESPACE) {
-                            tool.name.clone()
-                        } else {
-                            format!("mcp_{}", tool.name)
+                    .filter_map(|tool| {
+                        let Some(prepared) = prepare_external_tool_schema(tool, false) else {
+                            log::warn!(
+                                "[ChatV2::VariantPipeline] Skipping MCP tool with blank API name: raw='{}'",
+                                external_tool_raw_name(&tool.name)
+                            );
+                            return None;
                         };
-                        let api_tool_name = sanitize_tool_name_for_api(&raw_tool_name);
-                        json!({
-                            "type": "function",
-                            "function": {
-                                "name": api_tool_name,
-                                "description": tool.description.clone().unwrap_or_default(),
-                                "parameters": tool.input_schema.clone().unwrap_or(json!({}))
-                            }
-                        })
+                        Some(prepared.schema)
                     })
                     .collect();
 
@@ -1100,35 +1094,32 @@ impl ChatV2Pipeline {
             if let Some(ref tool_schemas) = options.mcp_tool_schemas {
                 let mcp_tool_values: Vec<Value> = tool_schemas
                     .iter()
-                    .map(|tool| {
-                        let raw_tool_name = if tool.name.starts_with(BUILTIN_NAMESPACE) {
-                            tool.name.clone()
-                        } else {
-                            format!("mcp_{}", tool.name)
+                    .filter_map(|tool| {
+                        let Some(prepared) = prepare_external_tool_schema(tool, true) else {
+                            log::warn!(
+                                "[ChatV2::VariantPipeline] Skipping MCP tool with blank API name: raw='{}'",
+                                external_tool_raw_name(&tool.name)
+                            );
+                            return None;
                         };
-                        let mut api_tool_name = sanitize_tool_name_for_api(&raw_tool_name);
-                        if let Some(server_id) = tool.server_id.as_deref() {
-                            api_tool_name = format!(
-                                "{}__srv_{}",
-                                api_tool_name,
-                                sanitize_tool_name_for_api(server_id)
+                        if tool
+                            .server_id
+                            .as_deref()
+                            .is_some_and(|server_id| server_id.trim().is_empty())
+                        {
+                            log::warn!(
+                                "[ChatV2::VariantPipeline] Ignoring blank MCP server id for tool '{}'",
+                                prepared.raw_tool_name
                             );
                         }
                         variant_tool_name_mapping.insert(
-                            api_tool_name.clone(),
+                            prepared.api_name.clone(),
                             super::tool_loop::ExternalToolRoute {
-                                raw_tool_name,
-                                preferred_server_id: tool.server_id.clone(),
+                                raw_tool_name: prepared.raw_tool_name,
+                                preferred_server_id: prepared.preferred_server_id,
                             },
                         );
-                        json!({
-                            "type": "function",
-                            "function": {
-                                "name": api_tool_name,
-                                "description": tool.description.clone().unwrap_or_default(),
-                                "parameters": tool.input_schema.clone().unwrap_or(json!({}))
-                            }
-                        })
+                        Some(prepared.schema)
                     })
                     .collect();
 
@@ -1383,23 +1374,17 @@ impl ChatV2Pipeline {
                                     );
                                     let refreshed_tools: Vec<Value> = mcp_schemas
                                         .iter()
-                                        .map(|tool| {
-                                            let raw_tool_name =
-                                                if tool.name.starts_with(BUILTIN_NAMESPACE) {
-                                                    tool.name.clone()
-                                                } else {
-                                                    format!("mcp_{}", tool.name)
-                                                };
-                                            let api_tool_name =
-                                                sanitize_tool_name_for_api(&raw_tool_name);
-                                            json!({
-                                                "type": "function",
-                                                "function": {
-                                                    "name": api_tool_name,
-                                                    "description": tool.description.clone().unwrap_or_default(),
-                                                    "parameters": tool.input_schema.clone().unwrap_or(json!({}))
-                                                }
-                                            })
+                                        .filter_map(|tool| {
+                                            let Some(prepared) =
+                                                prepare_external_tool_schema(tool, false)
+                                            else {
+                                                log::warn!(
+                                                    "[ChatV2::VariantPipeline] Skipping refreshed MCP tool with blank API name: raw='{}'",
+                                                    external_tool_raw_name(&tool.name)
+                                                );
+                                                return None;
+                                            };
+                                            Some(prepared.schema)
                                         })
                                         .collect();
                                     llm_context
