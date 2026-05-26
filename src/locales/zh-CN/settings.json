@@ -497,6 +497,8 @@
     "font_smoothing_description": "在 macOS 下优先跟随系统默认字体平滑策略，不再全局强制 antialiased。关闭后回退为兼容旧版观感的灰度平滑。",
     "pointer_cursor_title": "使用指针光标",
     "pointer_cursor_description": "悬停交互元素时切换为指针光标。",
+    "thinking_auto_collapse_title": "思维链自动折叠",
+    "thinking_auto_collapse_description": "思维链输出完成后自动折叠，保持对话界面更简洁。",
     "accent_label": "强调色",
     "accent_hint": "只调整按钮、链接和选中态的颜色。背景、卡片和文本保持稳定。",
     "system_default": "系统默认",

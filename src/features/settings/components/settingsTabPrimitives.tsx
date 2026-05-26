@@ -35,12 +35,14 @@ export const SwitchRow = ({
   checked,
   onCheckedChange,
   disabled,
+  loading,
 }: {
   title: string;
   description?: string;
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
   disabled?: boolean;
+  loading?: boolean;
 }) => {
   const switchLabelId = useId();
   const switchDescriptionId = `${switchLabelId}-description`;
@@ -55,13 +57,20 @@ export const SwitchRow = ({
           </p>
         )}
       </div>
-      <Switch
-        checked={checked}
-        onCheckedChange={onCheckedChange}
-        disabled={disabled}
-        aria-labelledby={switchLabelId}
-        aria-describedby={description ? switchDescriptionId : undefined}
-      />
+      {loading ? (
+        <div
+          aria-hidden="true"
+          className="h-6 w-11 shrink-0 rounded-full bg-muted/50 animate-pulse"
+        />
+      ) : (
+        <Switch
+          checked={checked}
+          onCheckedChange={onCheckedChange}
+          disabled={disabled}
+          aria-labelledby={switchLabelId}
+          aria-describedby={description ? switchDescriptionId : undefined}
+        />
+      )}
     </div>
   );
 };
