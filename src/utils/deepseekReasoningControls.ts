@@ -54,14 +54,14 @@ const OPENAI_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   { value: 'low', labelKey: 'settings:api.modal.reasoning.effort.low', defaultLabel: 'Low' },
   { value: 'medium', labelKey: 'settings:api.modal.reasoning.effort.medium', defaultLabel: 'Medium' },
   { value: 'high', labelKey: 'settings:api.modal.reasoning.effort.high', defaultLabel: 'High' },
-  { value: 'xhigh', labelKey: 'settings:api.modal.reasoning.effort.xhigh', defaultLabel: 'Extra High' },
+  { value: 'xhigh', labelKey: 'settings:api.modal.reasoning.effort.xhigh', defaultLabel: 'XHigh' },
 ];
 
 const V32_EFFORT_OPTIONS: DeepSeekReasoningOption[] = [
   { value: 'low', labelKey: 'settings:api.modal.deepseek.depth.low', defaultLabel: 'Low' },
   { value: 'medium', labelKey: 'settings:api.modal.deepseek.depth.medium', defaultLabel: 'Medium' },
   { value: 'high', labelKey: 'settings:api.modal.deepseek.depth.high', defaultLabel: 'High' },
-  { value: 'xhigh', labelKey: 'settings:api.modal.deepseek.depth.xhigh', defaultLabel: 'Extra High' },
+  { value: 'xhigh', labelKey: 'settings:api.modal.deepseek.depth.xhigh', defaultLabel: 'XHigh' },
 ];
 
 const normalize = (value: unknown): string => (typeof value === 'string' ? value.trim().toLowerCase() : '');

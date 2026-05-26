@@ -299,7 +299,19 @@
    - Edge highlight simulating Liquid Glass refraction
    - Vibrancy-inspired foreground adaptation
    - Respects prefers-reduced-transparency
+   - Smooth transitions for all glass-related properties to prevent flashing
    ========================================= */
+
+/* Smooth transitions for sidebar surface when translucency toggles */
+[data-shell-surface="navigation"],
+.sidebar-shell-surface,
+.desktop-shell-titlebar,
+.desktop-shell-header-cell--nav,
+[data-shell-role="app-shell"][data-sidebar-visible="true"] {
+  transition: background-color 400ms cubic-bezier(0.25, 0.0, 0.25, 1.0),
+              backdrop-filter 400ms cubic-bezier(0.25, 0.0, 0.25, 1.0),
+              -webkit-backdrop-filter 400ms cubic-bezier(0.25, 0.0, 0.25, 1.0);
+}
 
 /* Light mode: "regular" material thickness */
 :where(:root[data-sidebar-translucent="true"]) {
@@ -362,5 +374,16 @@
   }
   :root.dark[data-sidebar-translucent="true"] [data-shell-surface="navigation"]::before {
     display: none;
+  }
+}
+
+/* Accessibility: respect reduced motion preference — disable sidebar glass transitions */
+@media (prefers-reduced-motion: reduce) {
+  [data-shell-surface="navigation"],
+  .sidebar-shell-surface,
+  .desktop-shell-titlebar,
+  .desktop-shell-header-cell--nav,
+  [data-shell-role="app-shell"][data-sidebar-visible="true"] {
+    transition: none;
   }
 }

@@ -24,6 +24,7 @@ export interface McpToolConfig {
 }
 
 export interface SettingsExtra {
+  paramsLoaded?: boolean;
   chatSemanticFtsPrefilter?: boolean;
   rrf_k?: string;
   rrf_w_fts?: string;

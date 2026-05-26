@@ -26,10 +26,12 @@ const SENTRY_CONSENT_KEY = 'sentry_error_reporting_enabled';
 interface GeneralTabProps {
   voiceInputAssignedModel: VoiceInputAssignedModel;
   topbarTopMargin: string;
+  topbarTopMarginLoaded: boolean;
   setTopbarTopMargin: (value: string) => void;
   logTypeForOpen: string;
   setLogTypeForOpen: (value: string) => void;
   showRawRequest: boolean;
+  showRawRequestLoaded: boolean;
   setShowRawRequest: (value: boolean) => void;
   invoke: typeof tauriInvoke | null;
 }
@@ -37,22 +39,24 @@ interface GeneralTabProps {
 export const GeneralTab: React.FC<GeneralTabProps> = ({
   voiceInputAssignedModel,
   topbarTopMargin,
+  topbarTopMarginLoaded,
   setTopbarTopMargin,
   logTypeForOpen,
   setLogTypeForOpen,
   showRawRequest,
+  showRawRequestLoaded,
   setShowRawRequest,
   invoke,
 }) => {
   const { t, i18n } = useTranslation(['settings', 'common']);
-  const [sentryEnabled, setSentryEnabled] = useState(false);
+  const [sentryEnabled, setSentryEnabled] = useState<boolean | null>(null);
   const [showAgreementPreview, setShowAgreementPreview] = useState(false);
   const [debugLogEnabled, setDebugLogEnabled] = useState(() => debugMasterSwitch.isEnabled());
-  const [debugPersistLogs, setDebugPersistLogs] = useState(false);
+  const [debugPersistLogs, setDebugPersistLogs] = useState<boolean | null>(null);
   const [filterConfig, setFilterConfig] = useState<CopyFilterConfig>(getDefaultConfig);
   const [debugLogsInfo, setDebugLogsInfo] = useState<{ count: number; total_size_display: string } | null>(null);
   const [debugLogsClearing, setDebugLogsClearing] = useState(false);
-  const { mode, setMode } = useQueueSettings();
+  const { mode, loading: queueModeLoading, setMode } = useQueueSettings();
 
   useEffect(() => {
     (async () => {
@@ -161,11 +165,13 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 value={mode}
                 onValueChange={(nextMode) => { void setMode(nextMode); }}
                 size="compact"
+                className={queueModeLoading ? 'invisible' : undefined}
                 options={[
                   { value: 'queue', label: t('chatV2:queue.settings.modeQueue') },
                   { value: 'guide', label: t('chatV2:queue.settings.modeGuide') },
                 ]}
               />
+              {queueModeLoading && <div aria-hidden="true" className="h-7 w-[132px] animate-pulse rounded-[var(--radius-shell-control)] bg-muted/50" />}
             </SettingRow>
 
             <SettingRow
@@ -205,8 +211,10 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
               <Input
                 type="number"
                 value={topbarTopMargin}
+                disabled={!topbarTopMarginLoaded}
                 onChange={(e) => setTopbarTopMargin(e.target.value.trim())}
                 onBlur={async () => {
+                  if (!topbarTopMarginLoaded) return;
                   if (!invoke) return;
                   try {
                     const numValue = parseInt(topbarTopMargin, 10);
@@ -312,7 +320,9 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
             title={t('settings:developer.show_raw_request.title', '显示消息请求体')}
             description={t('settings:developer.show_raw_request.desc', '开启后，Chat V2 中每条助手消息下方将显示完整的 API 请求体，便于调试。')}
             checked={showRawRequest}
+            loading={!showRawRequestLoaded}
             onCheckedChange={async (newValue) => {
+              if (!showRawRequestLoaded) return;
               setShowRawRequest(newValue);
               if (!invoke) return;
               try {
@@ -440,8 +450,10 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
           <SwitchRow
             title={t('settings:developer.persist_logs.title')}
             description={t('settings:developer.persist_logs.desc')}
-            checked={debugPersistLogs}
+            checked={debugPersistLogs ?? false}
+            loading={debugPersistLogs === null}
             onCheckedChange={async (newValue) => {
+              if (debugPersistLogs === null) return;
               setDebugPersistLogs(newValue);
               try {
                 await tauriInvoke('save_setting', { key: 'debug.persist_logs', value: String(newValue) });
@@ -452,7 +464,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
             }}
           />
 
-          {debugPersistLogs && (
+          {debugPersistLogs === true && (
             <SettingRow
               title={t('settings:developer.debug_logs.title')}
               description={debugLogsInfo
@@ -506,8 +518,10 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
             <SwitchRow
               title={t('common:legal.settingsSection.sentryToggle.title', '匿名错误报告')}
               description={t('common:legal.settingsSection.sentryToggle.description', '允许发送匿名崩溃报告以帮助改善软件质量')}
-              checked={sentryEnabled}
+              checked={sentryEnabled ?? false}
+              loading={sentryEnabled === null}
               onCheckedChange={async (newValue) => {
+                if (sentryEnabled === null) return;
                 setSentryEnabled(newValue);
                 try {
                   await tauriInvoke('save_setting', {
