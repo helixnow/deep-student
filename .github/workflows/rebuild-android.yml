@@ -170,6 +170,18 @@ jobs:
       - name: Initialize Android project
         run: npx tauri android init
 
+      - name: Inject Android permissions
+        run: |
+          MANIFEST="src-tauri/gen/android/app/src/main/AndroidManifest.xml"
+          PERM='<uses-permission android:name="android.permission.RECORD_AUDIO" />'
+          if grep -qF "$PERM" "$MANIFEST"; then
+            echo "RECORD_AUDIO permission already present"
+          else
+            echo "Injecting RECORD_AUDIO permission..."
+            sed -i "/<manifest/a\\    $PERM" "$MANIFEST"
+            echo "RECORD_AUDIO permission injected"
+          fi
+
       - name: Copy custom Android icons
         run: |
           ICONS_SRC="src-tauri/icons/android"
