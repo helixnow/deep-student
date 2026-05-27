@@ -512,41 +512,32 @@ impl ChatV2Pipeline {
                         }
                         true
                     })
-                    .map(|tool| {
-                        // 🔧 P0-19 修复：builtin- 前缀的工具保持原名，MCP 工具添加 mcp_ 前缀
-                        // 原因：executor 检查 tool_name.starts_with("builtin-")，
-                        //       如果变成 "mcp_builtin-..." 则无法匹配
-                        let raw_tool_name = if tool.name.starts_with(BUILTIN_NAMESPACE) {
-                            tool.name.clone()
-                        } else {
-                            format!("mcp_{}", tool.name)
-                        };
-                        // 🔧 修复：OpenAI API 要求 function name 匹配 ^[a-zA-Z0-9_-]+$
-                        // MCP 工具名可能含 `:` 等特殊字符（如 namespace 分隔符）
-                        let mut api_tool_name = sanitize_tool_name_for_api(&raw_tool_name);
-                        if let Some(server_id) = tool.server_id.as_deref() {
-                            let candidate = format!(
-                                "{}__srv_{}",
-                                api_tool_name,
-                                sanitize_tool_name_for_api(server_id)
+                    .filter_map(|tool| {
+                        let Some(prepared) = prepare_external_tool_schema(tool, true) else {
+                            log::warn!(
+                                "[ChatV2::pipeline] Skipping MCP tool with blank API name: raw='{}'",
+                                external_tool_raw_name(&tool.name)
                             );
-                            api_tool_name = candidate;
+                            return None;
+                        };
+                        if tool
+                            .server_id
+                            .as_deref()
+                            .is_some_and(|server_id| server_id.trim().is_empty())
+                        {
+                            log::warn!(
+                                "[ChatV2::pipeline] Ignoring blank MCP server id for tool '{}'",
+                                prepared.raw_tool_name
+                            );
                         }
                         mcp_tool_name_mapping.insert(
-                            api_tool_name.clone(),
+                            prepared.api_name.clone(),
                             ExternalToolRoute {
-                                raw_tool_name,
-                                preferred_server_id: tool.server_id.clone(),
+                                raw_tool_name: prepared.raw_tool_name,
+                                preferred_server_id: prepared.preferred_server_id,
                             },
                         );
-                        json!({
-                            "type": "function",
-                            "function": {
-                                "name": api_tool_name,
-                                "description": tool.description.clone().unwrap_or_default(),
-                                "parameters": tool.input_schema.clone().unwrap_or(json!({}))
-                            }
-                        })
+                        Some(prepared.schema)
                     })
                     .collect();
 
@@ -872,8 +863,8 @@ impl ChatV2Pipeline {
                     model_for_usage,
                     round_usage.prompt_tokens,
                     round_usage.completion_tokens,
-                    None, // reasoning_tokens - adapter 层面已单独处理
-                    None, // cached_tokens
+                    round_usage.reasoning_tokens,
+                    round_usage.cached_tokens,
                     Some(ctx.session_id.clone()),
                     None, // duration_ms - 在 adapter 层面已记录
                     true,

@@ -4,25 +4,59 @@
  * 渲染 AI 的思维链/推理过程。
  * 视觉层级：左品牌色 accent bar + 卡片容器，与普通消息块拉开差距。
  * 动画：CSS opacity 过渡 + contain:layout 隔离布局重算。
+ *
+ * 自动折叠逻辑：
+ * - 通过 document.documentElement 上的 data-auto-collapse-thinking 属性读取开关状态
+ * - 监听 systemSettingsChanged 事件，设置变化时用 useReducer 强制重渲染
+ * - 手动操作过折叠/展开的块不受自动逻辑影响
  */
 
-import React, { useCallback, useEffect, useId, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useReducer, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/utils/cn';
 import { Brain, CaretDown } from '@phosphor-icons/react';
 import { blockRegistry, type BlockComponentProps } from '../../registry';
 import { StreamingBlockRenderer } from '../../components/renderers';
 
+function readAutoCollapseSetting(): boolean {
+  if (typeof document === 'undefined') return true;
+  return document.documentElement.getAttribute('data-auto-collapse-thinking') !== 'false';
+}
+
 const ThinkingBlock: React.FC<BlockComponentProps> = React.memo(({ block, isStreaming }) => {
   const { t } = useTranslation('chatV2');
   const contentId = useId();
-  const [isExpanded, setIsExpanded] = useState(isStreaming ?? false);
+
+  const [, forceRerender] = useReducer((x: number) => x + 1, 0);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.settingKey === 'thinking.auto_collapse') {
+        forceRerender();
+      }
+    };
+    window.addEventListener('systemSettingsChanged', handler);
+    return () => window.removeEventListener('systemSettingsChanged', handler);
+  }, []);
+
+  const autoCollapseEnabled = readAutoCollapseSetting();
+
+  const [isExpanded, setIsExpanded] = useState(() => {
+    if (isStreaming) return true;
+    return !readAutoCollapseSetting();
+  });
   const isManuallyControlled = useRef(false);
 
   useEffect(() => {
     if (isManuallyControlled.current) return;
-    setIsExpanded(!!isStreaming);
-  }, [isStreaming]);
+
+    if (isStreaming) {
+      setIsExpanded(true);
+    } else if (autoCollapseEnabled) {
+      setIsExpanded(false);
+    }
+  }, [isStreaming, autoCollapseEnabled]);
 
   const toggleExpanded = useCallback(() => {
     isManuallyControlled.current = true;

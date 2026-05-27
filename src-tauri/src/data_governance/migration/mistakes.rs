@@ -85,6 +85,22 @@ pub const V20260209_ANKI_CARD_DEDUP_UNIQUE: MigrationDef = MigrationDef::new(
 .with_expected_indexes(MISTAKES_V20260209_DEDUP_INDEXES)
 .idempotent();
 
+/// V20260523: 为剩余 Mistakes 表添加同步字段和变更日志触发器
+pub const V20260523_ADD_MISSING_SYNC_COVERAGE: MigrationDef = MigrationDef::new(
+    20260523,
+    "add_missing_sync_coverage",
+    include_str!("../../../migrations/mistakes/V20260523__add_missing_sync_coverage.sql"),
+)
+.idempotent();
+
+/// V20260524: 为 __change_log 增加字段增量元数据
+pub const V20260524_ADD_CHANGE_LOG_FIELD_DELTAS: MigrationDef = MigrationDef::new(
+    20260524,
+    "add_change_log_field_deltas",
+    include_str!("../../../migrations/mistakes/V20260524__add_change_log_field_deltas.sql"),
+)
+.idempotent();
+
 /// V20260201 同步字段索引
 const MISTAKES_V20260201_SYNC_INDEXES: &[&str] = &[
     // mistakes 表同步索引
@@ -209,6 +225,8 @@ pub const MISTAKES_MIGRATIONS: MigrationSet = MigrationSet {
         V20260207_TEMPLATE_PREVIEW_DATA,
         V20260208_HOT_QUERY_INDEXES,
         V20260209_ANKI_CARD_DEDUP_UNIQUE,
+        V20260523_ADD_MISSING_SYNC_COVERAGE,
+        V20260524_ADD_CHANGE_LOG_FIELD_DELTAS,
     ],
 };
 
@@ -333,6 +351,27 @@ mod tests {
         assert!(
             MISTAKES_MIGRATIONS.get(1).is_none(),
             "Nonexistent version should return None"
+        );
+    }
+
+    #[test]
+    fn test_recent_sync_migrations_are_registered() {
+        let sync_coverage = MISTAKES_MIGRATIONS
+            .get(20260523)
+            .expect("V20260523 should exist");
+        assert_eq!(sync_coverage.name, "add_missing_sync_coverage");
+        assert!(sync_coverage.idempotent);
+
+        let field_deltas = MISTAKES_MIGRATIONS
+            .get(20260524)
+            .expect("V20260524 should exist");
+        assert_eq!(field_deltas.name, "add_change_log_field_deltas");
+        assert!(field_deltas.idempotent);
+
+        assert_eq!(
+            MISTAKES_MIGRATIONS.latest_version(),
+            20260524,
+            "Latest version should track the newest published mistakes migration"
         );
     }
 }

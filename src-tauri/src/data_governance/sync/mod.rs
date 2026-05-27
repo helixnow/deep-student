@@ -1770,6 +1770,31 @@ impl SyncManager {
         Ok(PendingChanges::from_entries(entries))
     }
 
+    /// 按同步分类过滤待上传变更。
+    ///
+    /// `get_pending_changes` 是底层 change-log 读取函数，仍然允许 synthetic schema
+    /// 和旧测试库直接读取任意表；真实云同步上传路径必须调用本函数，只发布
+    /// registry 中声明为 RowSync 的表，避免派生表、运行态表和备份表被误上传。
+    pub fn filter_pending_changes_for_database(
+        pending: PendingChanges,
+        database_name: &str,
+    ) -> PendingChanges {
+        let row_sync_tables: HashSet<&'static str> =
+            classification::TableClassification::row_sync_tables()
+                .into_iter()
+                .filter(|entry| entry.database == database_name)
+                .map(|entry| entry.table_name)
+                .collect();
+
+        PendingChanges::from_entries(
+            pending
+                .entries
+                .into_iter()
+                .filter(|entry| row_sync_tables.contains(entry.table_name.as_str()))
+                .collect(),
+        )
+    }
+
     /// 标记变更已同步
     ///
     /// 更新 __change_log 表中指定记录的 sync_version 字段。
@@ -1987,6 +2012,7 @@ impl SyncManager {
 
         // 3. 清除未解决的冲突记录（若表存在）
         let _ = conn.execute("DELETE FROM __sync_conflicts", []);
+        let _ = conn.execute("DELETE FROM __sync_id_aliases", []);
 
         tracing::info!(
             "[sync] reset_sync_baseline_after_restore: cleaned __change_log {} rows, touched {} business records for re-upload",
@@ -2154,8 +2180,7 @@ impl SyncManager {
 
         for record_id in records_to_pull {
             if let Some(data) = cloud_data.get(record_id) {
-                match Self::apply_single_record(conn, table_name, record_id, data, id_column, None)
-                {
+                match Self::apply_single_record(conn, table_name, record_id, data, None) {
                     Ok(()) => {
                         updated += 1;
                         tracing::debug!(
@@ -2292,21 +2317,11 @@ impl SyncManager {
         }
 
         let registered_set: HashSet<&str> = registered.iter().map(|s| s.as_str()).collect();
-        let table_columns = Self::get_table_columns(conn, table_name)?;
-        let table_column_set: HashSet<&str> = table_columns.iter().map(|s| s.as_str()).collect();
 
         let mut groups: Vec<Vec<String>> = Self::unique_index_column_groups(conn, table_name)?
             .into_iter()
             .filter(|cols| cols.iter().all(|c| registered_set.contains(c.as_str())))
             .collect();
-
-        if groups.is_empty()
-            && registered
-                .iter()
-                .all(|col| table_column_set.contains(col.as_str()))
-        {
-            groups.push(registered);
-        }
 
         groups.sort();
         groups.dedup();
@@ -2321,7 +2336,7 @@ impl SyncManager {
         columns: &str,
         placeholders: &str,
         columns_list: &[&str],
-        id_column: &str,
+        pk_columns: &[String],
     ) -> Result<String, SyncError> {
         let business_key_groups =
             Self::business_unique_key_groups(conn, database_name, table_name)?;
@@ -2334,7 +2349,9 @@ impl SyncManager {
 
         let mut protected_cols: HashSet<String> =
             business_key_groups.into_iter().flatten().collect();
-        protected_cols.insert(id_column.to_string());
+        for pk in pk_columns {
+            protected_cols.insert(pk.to_string());
+        }
 
         let update_set = columns_list
             .iter()
@@ -2464,7 +2481,6 @@ impl SyncManager {
         table_name: &str,
         record_id: &str,
         data: &serde_json::Value,
-        id_column: &str,
         database_name: Option<&str>,
     ) -> Result<(), SyncError> {
         Self::ensure_table_allowed_and_exists(conn, table_name)?;
@@ -2493,34 +2509,41 @@ impl SyncManager {
             return Err(SyncError::Database(format!("记录数据为空: {}", record_id)));
         }
 
-        // [安全校验] payload 里的主键必须与 record_id 一致，避免恶意或损坏的 change
-        // 用不匹配的 payload 覆盖另一条记录。
-        // 对 llm_usage_daily 跳过（复合主键，没有单一 id 字段）。
-        if table_name != "llm_usage_daily" {
-            if let Some(payload_id) = obj.get(id_column) {
-                let payload_id_str = match payload_id {
-                    serde_json::Value::String(s) => s.clone(),
-                    serde_json::Value::Number(n) => n.to_string(),
-                    serde_json::Value::Null => {
-                        return Err(SyncError::Database(format!(
-                            "payload 主键 '{}' 为 null: record_id={}",
-                            id_column, record_id
-                        )))
-                    }
-                    other => other.to_string(),
-                };
-                if payload_id_str != record_id {
-                    return Err(SyncError::Database(format!(
-                        "payload 主键不一致: record_id='{}', payload['{}']='{}'。这可能是云端数据损坏或重放攻击，已拒绝。",
-                        record_id, id_column, payload_id_str
-                    )));
-                }
-            }
-        }
-
         // 只把 deleted_at 的显式 null 作为"复活意图"处理，其他 null 字段走 COALESCE
         let revive_record = matches!(obj.get("deleted_at"), Some(serde_json::Value::Null))
             && Self::table_has_column(conn, table_name, "deleted_at");
+
+        let pk_columns = Self::primary_key_columns(conn, table_name)?;
+        let pk_values = Self::parse_record_key_values(table_name, record_id, &pk_columns)?;
+        let pk_predicate = Self::build_primary_key_predicate(&pk_columns)?;
+
+        // [安全校验] payload 里的主键必须与 record_id 一致，避免恶意或损坏的 change
+        // 用不匹配的 payload 覆盖另一条记录。
+        let payload_key_values: Option<Vec<String>> = if pk_columns.len() == 1 {
+            obj.get(&pk_columns[0]).map(|value| {
+                vec![Self::json_value_to_alias_key(value).unwrap_or_else(|| value.to_string())]
+            })
+        } else if pk_columns.iter().all(|col| obj.contains_key(col)) {
+            let mut values = Vec::with_capacity(pk_columns.len());
+            for col in &pk_columns {
+                let value = obj.get(col).expect("checked contains_key above");
+                values.push(
+                    Self::json_value_to_alias_key(value).unwrap_or_else(|| value.to_string()),
+                );
+            }
+            Some(values)
+        } else {
+            None
+        };
+        if let Some(payload_values) = payload_key_values {
+            if payload_values != pk_values {
+                return Err(SyncError::Database(format!(
+                    "payload 主键不一致: record_id='{}', payload_pk='{}'。这可能是云端数据损坏或重放攻击，已拒绝。",
+                    record_id,
+                    payload_values.join(":")
+                )));
+            }
+        }
 
         // build_insert_parts 已经跳过所有 null，因此 deleted_at=null 不会参与 INSERT/COALESCE
         let (columns, placeholders, values) = Self::build_insert_parts(&obj)?;
@@ -2530,7 +2553,6 @@ impl SyncManager {
         // 否则 UPSERT 的 COALESCE 语义会把远端值直接写进本地，local_val 读取到的
         // 就是“刚被改写后的值”（即 == remote_val），merge_field 永远检测不到冲突。
         let local_before: std::collections::HashMap<String, serde_json::Value> = {
-            let id_col_ident = Self::quote_identifier(id_column)?;
             let picklist = Self::field_merge_column_picklist(table_name);
             let picklist: Vec<&'static str> = picklist
                 .into_iter()
@@ -2545,14 +2567,18 @@ impl SyncManager {
                     .map(|c| Self::quote_identifier(c))
                     .collect::<Result<Vec<_>, _>>()?;
                 let read_sql = format!(
-                    "SELECT {} FROM {} WHERE {} = ?1",
+                    "SELECT {} FROM {} WHERE {}",
                     cols_sql.join(","),
                     table_ident,
-                    id_col_ident
+                    pk_predicate
                 );
                 if let Ok(mut stmt) = conn.prepare(&read_sql) {
+                    let params_refs: Vec<&dyn rusqlite::ToSql> = pk_values
+                        .iter()
+                        .map(|v| v as &dyn rusqlite::ToSql)
+                        .collect();
                     if let Ok(Some(row)) = stmt
-                        .query_row(params![record_id], |row| -> rusqlite::Result<_> {
+                        .query_row(params_refs.as_slice(), |row| -> rusqlite::Result<_> {
                             let mut map = std::collections::HashMap::new();
                             for (i, col) in picklist.iter().enumerate() {
                                 map.insert(col.to_string(), Self::sqlite_value_to_json(row, i));
@@ -2568,27 +2594,8 @@ impl SyncManager {
             }
         };
 
-        let upsert_sql = if table_name == "llm_usage_daily" {
-            let pk_cols = ["\"date\"", "\"caller_type\"", "\"model\"", "\"provider\""];
-            let update_set = columns_list
-                .iter()
-                .filter(|c| !pk_cols.contains(&c.as_ref()))
-                .map(|c| format!("{}=COALESCE(excluded.{}, {}.{})", c, c, table_ident, c))
-                .collect::<Vec<_>>()
-                .join(", ");
-            if update_set.is_empty() {
-                format!(
-                    "INSERT INTO {} ({}) VALUES ({}) ON CONFLICT(date, caller_type, model, provider) DO NOTHING",
-                    table_ident, columns, placeholders
-                )
-            } else {
-                format!(
-                    "INSERT INTO {} ({}) VALUES ({}) ON CONFLICT(date, caller_type, model, provider) DO UPDATE SET {}",
-                    table_ident, columns, placeholders, update_set
-                )
-            }
-        } else if table_name == "review_plans" {
-            let pk_ident = Self::quote_identifier(id_column)?;
+        let upsert_sql = if table_name == "review_plans" {
+            let pk_ident = Self::quote_identifier("id")?;
             let update_set = columns_list
                 .iter()
                 .filter(|c| **c != pk_ident.as_str())
@@ -2605,7 +2612,7 @@ impl SyncManager {
                 table_ident, columns, placeholders, action
             )
         } else if table_name == "resources" {
-            let pk_ident = Self::quote_identifier(id_column)?;
+            let pk_ident = Self::quote_identifier("id")?;
             let update_set = columns_list
                 .iter()
                 .filter(|c| **c != pk_ident.as_str())
@@ -2622,7 +2629,7 @@ impl SyncManager {
                 table_ident, columns, placeholders, action
             )
         } else if table_name == "files" {
-            let pk_ident = Self::quote_identifier(id_column)?;
+            let pk_ident = Self::quote_identifier("id")?;
             let update_set = columns_list
                 .iter()
                 .filter(|c| **c != pk_ident.as_str())
@@ -2639,7 +2646,7 @@ impl SyncManager {
                 table_ident, columns, placeholders, action
             )
         } else if table_name == "folder_items" {
-            let pk_ident = Self::quote_identifier(id_column)?;
+            let pk_ident = Self::quote_identifier("id")?;
             let update_set = columns_list
                 .iter()
                 .filter(|c| **c != pk_ident.as_str())
@@ -2655,28 +2662,17 @@ impl SyncManager {
                 "INSERT INTO {} ({}) VALUES ({}) ON CONFLICT(folder_id, item_type, item_id) WHERE deleted_at IS NULL {}",
                 table_ident, columns, placeholders, action
             )
-        } else if table_name == "chat_v2_attachments" {
-            let pk_ident = Self::quote_identifier(id_column)?;
-            let update_set = columns_list
-                .iter()
-                .filter(|c| **c != pk_ident.as_str())
-                .map(|c| format!("{}=COALESCE(excluded.{}, {}.{})", c, c, table_ident, c))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let action = if update_set.is_empty() {
-                "DO NOTHING".to_string()
-            } else {
-                format!("DO UPDATE SET {}", update_set)
-            };
-            format!(
-                "INSERT INTO {} ({}) VALUES ({}) ON CONFLICT(content_hash) WHERE content_hash IS NOT NULL {}",
-                table_ident, columns, placeholders, action
-            )
         } else {
-            let pk_ident = Self::quote_identifier(id_column)?;
+            let pk_ident_list = pk_columns
+                .iter()
+                .map(|c| Self::quote_identifier(c))
+                .collect::<Result<Vec<_>, _>>()?;
             let update_set = columns_list
                 .iter()
-                .filter(|c| **c != pk_ident.as_str())
+                .filter(|c| {
+                    let raw = c.trim_matches('"').replace("\"\"", "\"");
+                    !pk_columns.iter().any(|pk| pk == &raw)
+                })
                 .map(|c| format!("{}=COALESCE(excluded.{}, {}.{})", c, c, table_ident, c))
                 .collect::<Vec<_>>()
                 .join(", ");
@@ -2689,7 +2685,11 @@ impl SyncManager {
 
             format!(
                 "INSERT INTO {} ({}) VALUES ({}) ON CONFLICT({}) {}",
-                table_ident, columns, placeholders, pk_ident, action
+                table_ident,
+                columns,
+                placeholders,
+                pk_ident_list.join(", "),
+                action
             )
         };
 
@@ -2713,7 +2713,7 @@ impl SyncManager {
                     &columns,
                     &placeholders,
                     &columns_list,
-                    id_column,
+                    &pk_columns,
                 )?;
 
                 conn.execute("SAVEPOINT sp_upsert_fallback", [])
@@ -2741,13 +2741,16 @@ impl SyncManager {
         //
         // **优化**：只在本地 deleted_at 实际非 NULL 时才运行 UPDATE。
         // 否则 trg_upd 触发器会产生无谓的 __change_log 条目（虽被回声抑制但仍污染日志表）。
-        if revive_record && table_name != "llm_usage_daily" {
-            let id_col_ident = Self::quote_identifier(id_column)?;
+        if revive_record {
             let null_sql = format!(
-                "UPDATE {} SET \"deleted_at\" = NULL WHERE {} = ?1 AND \"deleted_at\" IS NOT NULL",
-                table_ident, id_col_ident
+                "UPDATE {} SET \"deleted_at\" = NULL WHERE {} AND \"deleted_at\" IS NOT NULL",
+                table_ident, pk_predicate
             );
-            conn.execute(&null_sql, params![record_id])
+            let pk_params: Vec<&dyn rusqlite::ToSql> = pk_values
+                .iter()
+                .map(|v| v as &dyn rusqlite::ToSql)
+                .collect();
+            conn.execute(&null_sql, pk_params.as_slice())
                 .map_err(|e| SyncError::Database(format!("复活软删记录失败: {}", e)))?;
         }
 
@@ -2756,7 +2759,6 @@ impl SyncManager {
         // 本地值 (local_before) 与远端值做 domain-aware 合并，弥补 COALESCE 无法表达
         // 的计数器、标签合集、布尔 OR、JSON deep merge 等语义。
         if !local_before.is_empty() {
-            let id_col_ident = Self::quote_identifier(id_column)?;
             for (col_name, original_local) in &local_before {
                 let remote_val = match obj.get(col_name.as_str()) {
                     Some(v) if !v.is_null() => v,
@@ -2806,48 +2808,38 @@ impl SyncManager {
                     };
 
                 if was_merged {
+                    let merge_pk_predicate =
+                        Self::build_primary_key_predicate_from(&pk_columns, 2)?;
+                    let col_ident = Self::quote_identifier(col_name)?;
                     let merge_sql = format!(
-                        "UPDATE {} SET \"{}\" = ?1 WHERE {} = ?2",
-                        table_ident, col_name, id_col_ident
+                        "UPDATE {} SET {} = ?1 WHERE {}",
+                        table_ident, col_ident, merge_pk_predicate
                     );
-                    let _ = match &merged_val {
-                        serde_json::Value::Number(n) => {
-                            if let Some(i) = n.as_i64() {
-                                conn.execute(&merge_sql, params![i, record_id])
-                            } else if let Some(f) = n.as_f64() {
-                                conn.execute(&merge_sql, params![f, record_id])
-                            } else {
-                                Ok(0)
-                            }
-                        }
-                        serde_json::Value::String(s) => {
-                            conn.execute(&merge_sql, params![s.as_str(), record_id])
-                        }
-                        serde_json::Value::Bool(b) => {
-                            conn.execute(&merge_sql, params![*b, record_id])
-                        }
-                        serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
-                            let json_str = serde_json::to_string(&merged_val).unwrap_or_default();
-                            conn.execute(&merge_sql, params![json_str, record_id])
-                        }
-                        _ => Ok(0),
+                    let Some(sql_value) = Self::json_value_to_sql_param(&merged_val) else {
+                        continue;
                     };
+                    let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![sql_value];
+                    for value in &pk_values {
+                        params_vec.push(Box::new(value.clone()));
+                    }
+                    let params_refs: Vec<&dyn rusqlite::ToSql> =
+                        params_vec.iter().map(|v| v.as_ref()).collect();
+                    let affected =
+                        conn.execute(&merge_sql, params_refs.as_slice())
+                            .map_err(|e| {
+                                SyncError::Database(format!(
+                                    "字段级合并写入失败: {}.{} {}",
+                                    table_name, col_name, e
+                                ))
+                            })?;
+                    if affected == 0 {
+                        return Err(SyncError::Database(format!(
+                            "字段级合并未命中目标记录: {}.{} record_id={}",
+                            table_name, col_name, record_id
+                        )));
+                    }
                 }
             }
-        }
-
-        // 复活意图：清空 deleted_at
-        //
-        // **优化**：只在本地 deleted_at 实际非 NULL 时才运行 UPDATE。
-        // 否则 trg_upd 触发器会产生无谓的 __change_log 条目（虽被回声抑制但仍污染日志表）。
-        if revive_record && table_name != "llm_usage_daily" {
-            let id_col_ident = Self::quote_identifier(id_column)?;
-            let null_sql = format!(
-                "UPDATE {} SET \"deleted_at\" = NULL WHERE {} = ?1 AND \"deleted_at\" IS NOT NULL",
-                table_ident, id_col_ident
-            );
-            conn.execute(&null_sql, params![record_id])
-                .map_err(|e| SyncError::Database(format!("复活软删记录失败: {}", e)))?;
         }
 
         Ok(())
@@ -3123,6 +3115,62 @@ impl SyncManager {
         Ok(true)
     }
 
+    fn ensure_id_alias_table(conn: &Connection) -> Result<(), SyncError> {
+        conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS __sync_id_aliases (
+                table_name TEXT NOT NULL,
+                remote_id TEXT NOT NULL,
+                canonical_id TEXT NOT NULL,
+                created_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                PRIMARY KEY (table_name, remote_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx__sync_id_aliases_canonical
+                ON __sync_id_aliases(table_name, canonical_id);
+            "#,
+        )
+        .map_err(|e| SyncError::Database(format!("创建 __sync_id_aliases 失败: {}", e)))
+    }
+
+    fn load_id_aliases(conn: &Connection) -> Result<IdAliasMap, SyncError> {
+        Self::ensure_id_alias_table(conn)?;
+        let mut stmt = conn
+            .prepare("SELECT table_name, remote_id, canonical_id FROM __sync_id_aliases")
+            .map_err(|e| SyncError::Database(format!("读取 __sync_id_aliases 失败: {}", e)))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, String>(1)?,
+                    row.get::<_, String>(2)?,
+                ))
+            })
+            .map_err(|e| SyncError::Database(format!("扫描 __sync_id_aliases 失败: {}", e)))?;
+
+        let mut aliases = IdAliasMap::new();
+        for row in rows {
+            let (table_name, remote_id, canonical_id) =
+                row.map_err(|e| SyncError::Database(format!("读取 ID 别名失败: {}", e)))?;
+            Self::insert_alias(&mut aliases, &table_name, &remote_id, &canonical_id)?;
+        }
+        Ok(aliases)
+    }
+
+    fn persist_id_aliases(conn: &Connection, aliases: &IdAliasMap) -> Result<(), SyncError> {
+        Self::ensure_id_alias_table(conn)?;
+        for ((table_name, remote_id), canonical_id) in aliases {
+            conn.execute(
+                "INSERT INTO __sync_id_aliases (table_name, remote_id, canonical_id)
+                 VALUES (?1, ?2, ?3)
+                 ON CONFLICT(table_name, remote_id) DO UPDATE SET
+                    canonical_id = excluded.canonical_id",
+                params![table_name, remote_id, canonical_id],
+            )
+            .map_err(|e| SyncError::Database(format!("写入 ID 别名失败: {}", e)))?;
+        }
+        Ok(())
+    }
+
     fn remap_foreign_keys_in_object(
         conn: &Connection,
         table_name: &str,
@@ -3218,7 +3266,7 @@ impl SyncManager {
         changes: &[SyncChangeWithData],
         id_column_map: Option<&HashMap<String, String>>,
     ) -> Result<IdAliasMap, SyncError> {
-        let mut aliases = IdAliasMap::new();
+        let mut aliases = Self::load_id_aliases(conn)?;
 
         loop {
             let before = aliases.len();
@@ -3396,6 +3444,8 @@ impl SyncManager {
                     );
                 }
             }
+
+            Self::persist_id_aliases(conn, &id_aliases)?;
 
             // 强校验：必须没有任何外键违规
             let violations = Self::collect_foreign_key_violations(conn, 20)?;
@@ -3805,6 +3855,15 @@ impl SyncManager {
                 Self::ensure_table_allowed_and_exists(conn, &change.table_name)?;
                 let table_ident = Self::quote_identifier(&change.table_name)?;
                 let has_tombstone = Self::table_has_column(conn, &change.table_name, "deleted_at");
+                let pk_columns = Self::primary_key_columns(conn, &change.table_name)?;
+                let pk_values = Self::parse_record_key_values(
+                    &change.table_name,
+                    &change.record_id,
+                    &pk_columns,
+                )?;
+                let pk_predicate = Self::build_primary_key_predicate(&pk_columns)?;
+                let pk_predicate_after_set_value =
+                    Self::build_primary_key_predicate_from(&pk_columns, 2)?;
 
                 // [LWW + HLC drift 保护 - DELETE]
                 // 1. 如果云端 changed_at 超出 wall clock "未来 60 秒" → 视为可疑漂移，跳过
@@ -3826,27 +3885,25 @@ impl SyncManager {
 
                         // ─── LWW check ───
                         if Self::table_has_column(conn, &change.table_name, "updated_at") {
-                            let id_col = Self::quote_identifier(id_column)?;
-                            let sql = format!(
-                                "SELECT \"updated_at\" FROM {} WHERE {} = ?1",
-                                table_ident, id_col
-                            );
-                            let local_ts_opt: Option<chrono::DateTime<chrono::Utc>> = conn
-                                .query_row(&sql, params![&change.record_id], |row| {
-                                    if let Ok(s) = row.get::<_, String>(0) {
-                                        return Ok(parse_flexible_timestamp_public(&s));
-                                    }
-                                    if let Ok(ms) = row.get::<_, i64>(0) {
-                                        return Ok(
-                                            chrono::DateTime::<chrono::Utc>::from_timestamp_millis(
-                                                ms,
-                                            ),
-                                        );
-                                    }
-                                    Ok(None)
+                            let local_ts_opt = Self::get_record_data(
+                                conn,
+                                &change.table_name,
+                                &change.record_id,
+                                id_column,
+                            )
+                            .ok()
+                            .flatten()
+                            .and_then(|row| {
+                                row.get("updated_at").and_then(|v| {
+                                    v.as_i64()
+                                        .and_then(
+                                            chrono::DateTime::<chrono::Utc>::from_timestamp_millis,
+                                        )
+                                        .or_else(|| {
+                                            v.as_str().and_then(parse_flexible_timestamp_public)
+                                        })
                                 })
-                                .ok()
-                                .flatten();
+                            });
 
                             if let Some(local_ts) = local_ts_opt {
                                 if local_ts > cloud_ts {
@@ -3863,18 +3920,7 @@ impl SyncManager {
                     }
                 }
 
-                let affected = if change.table_name == "llm_usage_daily" {
-                    let (date, caller_type, model, provider) =
-                        Self::parse_llm_usage_daily_record_id(&change.record_id)?;
-                    // llm_usage_daily 为统计聚合表，无 tombstone，直接物理删除
-                    let sql = format!(
-                        "DELETE FROM {} WHERE date = ?1 AND caller_type = ?2 AND model = ?3 AND provider = ?4",
-                        table_ident
-                    );
-                    conn.execute(&sql, params![date, caller_type, model, provider])
-                        .map_err(|e| SyncError::Database(format!("删除记录失败: {}", e)))?
-                } else if has_tombstone {
-                    let id_col_ident = Self::quote_identifier(id_column)?;
+                let affected = if has_tombstone {
                     // [修复] deleted_at 列可能是 TEXT（ISO 字符串）或 INTEGER（毫秒时间戳）。
                     // 检测列的声明类型后用匹配的值写入，避免把 '2026-05-01T...' 写到 INTEGER 列
                     // 导致后续 `row.get::<_, i64>(...)` panic。
@@ -3885,8 +3931,8 @@ impl SyncManager {
                         Self::get_column_declared_type(conn, &change.table_name, "deleted_at")
                             .unwrap_or_else(|| "TEXT".to_string());
                     let sql = format!(
-                        "UPDATE {} SET \"deleted_at\" = ?1 WHERE {} = ?2 AND \"deleted_at\" IS NULL",
-                        table_ident, id_col_ident
+                        "UPDATE {} SET \"deleted_at\" = ?1 WHERE {} AND \"deleted_at\" IS NULL",
+                        table_ident, pk_predicate_after_set_value
                     );
                     let upper = col_type.to_uppercase();
                     if upper.contains("INT") {
@@ -3894,20 +3940,35 @@ impl SyncManager {
                         let ts_ms = chrono::DateTime::parse_from_rfc3339(&change.changed_at)
                             .map(|dt| dt.timestamp_millis())
                             .unwrap_or_else(|_| chrono::Utc::now().timestamp_millis());
-                        conn.execute(&sql, params![ts_ms, &change.record_id])
+                        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(ts_ms)];
+                        for value in &pk_values {
+                            params_vec.push(Box::new(value.clone()));
+                        }
+                        let params_refs: Vec<&dyn rusqlite::ToSql> =
+                            params_vec.iter().map(|v| v.as_ref()).collect();
+                        conn.execute(&sql, params_refs.as_slice())
                             .map_err(|e| SyncError::Database(format!("软删除记录失败: {}", e)))?
                     } else {
                         // 规范化为 RFC3339 字符串（保留 changed_at 来源但统一格式）
                         let ts = chrono::DateTime::parse_from_rfc3339(&change.changed_at)
                             .map(|dt| dt.with_timezone(&chrono::Utc).to_rfc3339())
                             .unwrap_or_else(|_| change.changed_at.clone());
-                        conn.execute(&sql, params![ts, &change.record_id])
+                        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = vec![Box::new(ts)];
+                        for value in &pk_values {
+                            params_vec.push(Box::new(value.clone()));
+                        }
+                        let params_refs: Vec<&dyn rusqlite::ToSql> =
+                            params_vec.iter().map(|v| v.as_ref()).collect();
+                        conn.execute(&sql, params_refs.as_slice())
                             .map_err(|e| SyncError::Database(format!("软删除记录失败: {}", e)))?
                     }
                 } else {
-                    let id_col_ident = Self::quote_identifier(id_column)?;
-                    let sql = format!("DELETE FROM {} WHERE {} = ?1", table_ident, id_col_ident);
-                    conn.execute(&sql, params![&change.record_id])
+                    let sql = format!("DELETE FROM {} WHERE {}", table_ident, pk_predicate);
+                    let params_refs: Vec<&dyn rusqlite::ToSql> = pk_values
+                        .iter()
+                        .map(|v| v as &dyn rusqlite::ToSql)
+                        .collect();
+                    conn.execute(&sql, params_refs.as_slice())
                         .map_err(|e| SyncError::Database(format!("删除记录失败: {}", e)))?
                 };
 
@@ -3974,7 +4035,6 @@ impl SyncManager {
                     &change.table_name,
                     &change.record_id,
                     data,
-                    id_column,
                     change.database_name.as_deref(),
                 )?;
                 Ok(true)
@@ -4086,31 +4146,20 @@ impl SyncManager {
         if !Self::table_has_column(conn, table_name, "updated_at") {
             return false;
         }
-        let table_ident = match Self::quote_identifier(table_name) {
-            Ok(s) => s,
-            Err(_) => return false,
-        };
-        let id_col = match Self::quote_identifier(id_column) {
-            Ok(s) => s,
-            Err(_) => return false,
-        };
-        let sql = format!(
-            "SELECT \"updated_at\" FROM {} WHERE {} = ?1",
-            table_ident, id_col
-        );
-        let local_ts_opt: Option<chrono::DateTime<chrono::Utc>> = conn
-            .query_row(&sql, params![record_id], |row| {
-                // updated_at 可能是 TEXT 或 INTEGER（ms）
-                if let Ok(s) = row.get::<_, String>(0) {
-                    return Ok(parse_flexible_timestamp_public(&s));
-                }
-                if let Ok(ms) = row.get::<_, i64>(0) {
-                    return Ok(chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms));
-                }
-                Ok(None)
-            })
+        let local_ts_opt = Self::get_record_data(conn, table_name, record_id, id_column)
             .ok()
-            .flatten();
+            .flatten()
+            .and_then(|row| {
+                row.get("updated_at").and_then(|updated_at| {
+                    if let Some(s) = updated_at.as_str() {
+                        parse_flexible_timestamp_public(s)
+                    } else if let Some(ms) = updated_at.as_i64() {
+                        chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)
+                    } else {
+                        None
+                    }
+                })
+            });
 
         // 本地不存在 → 不跳过（需要 INSERT）
         let local_ts = match local_ts_opt {
@@ -4152,7 +4201,7 @@ impl SyncManager {
         conn: &Connection,
         table_name: &str,
         record_id: &str,
-        id_column: &str,
+        _id_column: &str,
         columns: &[String],
     ) -> Result<Option<serde_json::Value>, SyncError> {
         Self::ensure_table_allowed_and_exists(conn, table_name)?;
@@ -4162,26 +4211,13 @@ impl SyncManager {
             .map(|c| Self::quote_identifier(c))
             .collect::<Result<Vec<_>, _>>()?
             .join(", ");
-        let (sql, values): (String, Vec<String>) = if table_name == "llm_usage_daily" {
-            let (date, caller_type, model, provider) =
-                Self::parse_llm_usage_daily_record_id(record_id)?;
-            (
-                format!(
-                    "SELECT {} FROM {} WHERE date = ?1 AND caller_type = ?2 AND model = ?3 AND provider = ?4",
-                    columns_str, table_ident
-                ),
-                vec![date, caller_type, model, provider],
-            )
-        } else {
-            let id_col_ident = Self::quote_identifier(id_column)?;
-            (
-                format!(
-                    "SELECT {} FROM {} WHERE {} = ?1",
-                    columns_str, table_ident, id_col_ident
-                ),
-                vec![record_id.to_string()],
-            )
-        };
+        let pk_columns = Self::primary_key_columns(conn, table_name)?;
+        let values = Self::parse_record_key_values(table_name, record_id, &pk_columns)?;
+        let predicate = Self::build_primary_key_predicate(&pk_columns)?;
+        let sql = format!(
+            "SELECT {} FROM {} WHERE {}",
+            columns_str, table_ident, predicate
+        );
 
         let mut result: Option<serde_json::Value> = conn
             .query_row(&sql, rusqlite::params_from_iter(values.iter()), |row| {
@@ -4304,6 +4340,92 @@ impl SyncManager {
             "llm_usage_daily 记录ID格式无效: {}",
             record_id
         )))
+    }
+
+    fn parse_record_key_values(
+        table_name: &str,
+        record_id: &str,
+        pk_columns: &[String],
+    ) -> Result<Vec<String>, SyncError> {
+        if pk_columns.is_empty() {
+            return Err(SyncError::Database(format!(
+                "表 {} 没有可用主键列",
+                table_name
+            )));
+        }
+
+        if pk_columns.len() == 1 {
+            return Ok(vec![record_id.to_string()]);
+        }
+
+        if table_name == "llm_usage_daily" {
+            if let Ok((date, caller_type, model, provider)) =
+                Self::parse_llm_usage_daily_record_id(record_id)
+            {
+                return Ok(vec![date, caller_type, model, provider]);
+            }
+        }
+
+        if let Ok(value) = serde_json::from_str::<serde_json::Value>(record_id) {
+            if let Some(obj) = value.as_object() {
+                let mut values = Vec::with_capacity(pk_columns.len());
+                for col in pk_columns {
+                    let Some(raw) = obj.get(col) else {
+                        return Err(SyncError::Database(format!(
+                            "复合主键 record_id 缺少字段: {}.{} -> {}",
+                            table_name, col, record_id
+                        )));
+                    };
+                    let value =
+                        Self::json_value_to_alias_key(raw).unwrap_or_else(|| raw.to_string());
+                    values.push(value);
+                }
+                return Ok(values);
+            }
+
+            if let Some(arr) = value.as_array() {
+                if arr.len() == pk_columns.len() {
+                    let mut values = Vec::with_capacity(pk_columns.len());
+                    for raw in arr {
+                        values.push(
+                            Self::json_value_to_alias_key(raw).unwrap_or_else(|| raw.to_string()),
+                        );
+                    }
+                    return Ok(values);
+                }
+            }
+        }
+
+        let parts: Vec<&str> = record_id.split(':').collect();
+        if parts.len() == pk_columns.len() {
+            return Ok(parts.into_iter().map(|s| s.to_string()).collect());
+        }
+
+        Err(SyncError::Database(format!(
+            "复合主键 record_id 无法解析: {}.{} = {}",
+            table_name,
+            pk_columns.join(","),
+            record_id
+        )))
+    }
+
+    fn build_primary_key_predicate(pk_columns: &[String]) -> Result<String, SyncError> {
+        Self::build_primary_key_predicate_from(pk_columns, 1)
+    }
+
+    fn build_primary_key_predicate_from(
+        pk_columns: &[String],
+        first_index: usize,
+    ) -> Result<String, SyncError> {
+        let mut parts = Vec::with_capacity(pk_columns.len());
+        for (idx, col) in pk_columns.iter().enumerate() {
+            parts.push(format!(
+                "{} = ?{}",
+                Self::quote_identifier(col)?,
+                first_index + idx
+            ));
+        }
+        Ok(parts.join(" AND "))
     }
 
     /// 将 SQLite 行值转换为 JSON
@@ -5327,11 +5449,8 @@ impl SyncManager {
             let mut last_err = String::new();
             let mut ok = false;
             for attempt in 0..Self::BLOB_MAX_RETRIES {
-                // 注意：blob hash 是文件名 stem，不是 SHA256，不能作为 expected_checksum。
-                // 下载后通过文件大小校验完整性。
-                match storage.get_file(&key, &dest, None, None).await {
+                match storage.get_file(&key, &dest, Some(hash), None).await {
                     Ok(_) => {
-                        // [P2 Fix] 下载后校验文件大小，防止截断/损坏
                         let actual_size = std::fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
                         if cloud_entry.size > 0 && actual_size != cloud_entry.size {
                             last_err = format!(

@@ -122,6 +122,35 @@ export function useMessageBlocks(store: ChatStoreApi, messageId: string): Block[
   );
 }
 
+/**
+ * 订阅指定 blockIds 对应的块列表
+ *
+ * 用于消息级渲染场景：只在当前显示的块内容变化时重渲染，
+ * 避免依赖 getState() 读取瞬时快照导致的漏渲染。
+ */
+export function useBlocksByIds(store: ChatStoreApi, blockIds: string[]): Block[] {
+  const prevBlocksRef = useRef<Block[]>([]);
+
+  return useStore(
+    store,
+    useCallback((s: ChatStore) => {
+      const nextBlocks = blockIds
+        .map((id) => s.blocks.get(id))
+        .filter((block): block is Block => block !== undefined);
+
+      if (
+        nextBlocks.length === prevBlocksRef.current.length &&
+        nextBlocks.every((block, index) => block === prevBlocksRef.current[index])
+      ) {
+        return prevBlocksRef.current;
+      }
+
+      prevBlocksRef.current = nextBlocks;
+      return nextBlocks;
+    }, [blockIds])
+  );
+}
+
 // ============================================================================
 // 块选择器
 // ============================================================================

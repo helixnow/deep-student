@@ -876,6 +876,9 @@ pub async fn data_governance_run_sync(
         }
 
         let pending = SyncManager::get_pending_changes(&conn, None, None)
+            .map(|pending| {
+                SyncManager::filter_pending_changes_for_database(pending, db_id.as_str())
+            })
             .map_err(|e| format!("获取数据库 {} 待同步变更失败: {}", db_id.as_str(), e))?;
 
         if pending.has_changes() {
@@ -1442,6 +1445,8 @@ pub async fn data_governance_export_sync_data(
 
                 // 获取待同步变更并补全完整数据
                 if let Ok(pending) = SyncManager::get_pending_changes(&conn, None, None) {
+                    let pending =
+                        SyncManager::filter_pending_changes_for_database(pending, db_id.as_str());
                     if pending.has_changes() {
                         match SyncManager::enrich_changes_with_data(
                             &conn,
@@ -1986,7 +1991,9 @@ pub async fn data_governance_run_sync_with_progress(
             continue;
         }
 
-        match SyncManager::get_pending_changes(&conn, None, None) {
+        match SyncManager::get_pending_changes(&conn, None, None).map(|pending| {
+            SyncManager::filter_pending_changes_for_database(pending, db_id.as_str())
+        }) {
             Ok(pending) if pending.has_changes() => {
                 match SyncManager::enrich_changes_with_data(
                     &conn,

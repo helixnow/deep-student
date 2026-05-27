@@ -18,7 +18,9 @@ use deep_student_lib::data_governance::sync::{
 use deep_student_lib::models::AppError;
 use rusqlite::{params, Connection};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::collections::BTreeMap;
+use std::path::Path;
 use std::sync::Mutex;
 use tempfile::TempDir;
 
@@ -27,6 +29,15 @@ use tempfile::TempDir;
 // ============================================================================
 
 type CloudResult<T> = Result<T, AppError>;
+
+fn write_content_addressed_blob(blobs_dir: &Path, payload: &[u8]) -> (String, String) {
+    let hash = format!("{:x}", Sha256::digest(payload));
+    let relative_path = format!("{}/{}.pdf", &hash[..2], hash);
+    let path = blobs_dir.join(&relative_path);
+    std::fs::create_dir_all(path.parent().expect("content-addressed blob has parent")).unwrap();
+    std::fs::write(&path, payload).unwrap();
+    (hash, relative_path)
+}
 
 #[derive(Default)]
 struct MockCloudStorageInner {
@@ -1159,17 +1170,14 @@ async fn scenario_37_sync_vfs_blobs_with_tombstones_respects_deletion() {
 
     let mgr_a = SyncManager::new("device_a".into());
 
-    // 设备 A 先上传一个 blob
-    let subdir = blobs_dir.join("ab");
-    std::fs::create_dir_all(&subdir).unwrap();
-    let blob_a = subdir.join("ab_hash1.pdf");
-    std::fs::write(&blob_a, b"content1").unwrap();
+    // 设备 A 先上传一个真实内容寻址 blob
+    let blob = write_content_addressed_blob(blobs_dir, b"content1");
 
     // 先走一次普通 sync，云端会有 blob
     let _ = mgr_a.sync_vfs_blobs(&storage, blobs_dir).await.unwrap();
     assert!(
         storage
-            .get("data_governance/blobs/ab/ab_hash1.pdf")
+            .get(&format!("data_governance/blobs/{}", blob.1))
             .await
             .unwrap()
             .is_some(),
@@ -1178,12 +1186,7 @@ async fn scenario_37_sync_vfs_blobs_with_tombstones_respects_deletion() {
 
     // 设备 A 现在标记这个 blob 已删除
     mgr_a
-        .mark_blob_deleted(
-            &storage,
-            "ab_hash1",
-            Some("ab/ab_hash1.pdf".into()),
-            Some(8),
-        )
+        .mark_blob_deleted(&storage, &blob.0, Some(blob.1.clone()), Some(8))
         .await
         .unwrap();
 
@@ -1197,11 +1200,11 @@ async fn scenario_37_sync_vfs_blobs_with_tombstones_respects_deletion() {
         .unwrap();
 
     // 设备 B 不应下载被 tombstone 的 blob
-    let blob_on_b = blobs_dir_b.join("ab").join("ab_hash1.pdf");
+    let blob_on_b = blobs_dir_b.join(&blob.1);
     assert!(!blob_on_b.exists(), "tombstoned blob 不应下载到 B");
     // 云端对应条目应已被删除
     assert!(storage
-        .get("data_governance/blobs/ab/ab_hash1.pdf")
+        .get(&format!("data_governance/blobs/{}", blob.1))
         .await
         .unwrap()
         .is_none());
@@ -1240,16 +1243,10 @@ async fn scenario_40_full_cycle_two_devices_sync_and_delete() {
     let mgr_a = SyncManager::new("dev_a".into());
     let mgr_b = SyncManager::new("dev_b".into());
 
-    // A 写 3 个 blob
-    for (sub, name) in [
-        ("ab", "ab_h1.pdf"),
-        ("cd", "cd_h2.pdf"),
-        ("ef", "ef_h3.pdf"),
-    ] {
-        let d = tmp_a.path().join(sub);
-        std::fs::create_dir_all(&d).unwrap();
-        std::fs::write(d.join(name), b"data").unwrap();
-    }
+    // A 写 3 个真实内容寻址 blob
+    let first = write_content_addressed_blob(tmp_a.path(), b"blob-one");
+    let second = write_content_addressed_blob(tmp_a.path(), b"blob-two");
+    let third = write_content_addressed_blob(tmp_a.path(), b"blob-three");
     let _ = mgr_a.sync_vfs_blobs(&storage, tmp_a.path()).await.unwrap();
     // 云端应有 3 个
     assert_eq!(
@@ -1260,12 +1257,12 @@ async fn scenario_40_full_cycle_two_devices_sync_and_delete() {
     // B 拉
     let out_b = mgr_b.sync_vfs_blobs(&storage, tmp_b.path()).await.unwrap();
     assert_eq!(out_b.downloaded, 3);
-    assert!(tmp_b.path().join("ab").join("ab_h1.pdf").exists());
+    assert!(tmp_b.path().join(&first.1).exists());
 
-    // A 删 ab_h1
-    std::fs::remove_file(tmp_a.path().join("ab").join("ab_h1.pdf")).unwrap();
+    // A 删第一个 blob
+    std::fs::remove_file(tmp_a.path().join(&first.1)).unwrap();
     mgr_a
-        .mark_blob_deleted(&storage, "ab_h1", Some("ab/ab_h1.pdf".into()), Some(4))
+        .mark_blob_deleted(&storage, &first.0, Some(first.1.clone()), Some(4))
         .await
         .unwrap();
 
@@ -1275,12 +1272,12 @@ async fn scenario_40_full_cycle_two_devices_sync_and_delete() {
         .await
         .unwrap();
     assert!(
-        !tmp_b.path().join("ab").join("ab_h1.pdf").exists(),
+        !tmp_b.path().join(&first.1).exists(),
         "B 应看到 blob 已被删除"
     );
     // 剩余 2 个
-    assert!(tmp_b.path().join("cd").join("cd_h2.pdf").exists());
-    assert!(tmp_b.path().join("ef").join("ef_h3.pdf").exists());
+    assert!(tmp_b.path().join(&second.1).exists());
+    assert!(tmp_b.path().join(&third.1).exists());
     assert_eq!(out_b2.uploaded, 0);
 }
 
@@ -1785,18 +1782,17 @@ async fn scenario_57_tombstone_survives_reupload_attempt() {
     let mgr_b = SyncManager::new("dev_b".into());
 
     // A 上传
-    std::fs::create_dir_all(tmp_a.path().join("ab")).unwrap();
-    std::fs::write(tmp_a.path().join("ab").join("ab_h1.pdf"), b"x").unwrap();
+    let blob = write_content_addressed_blob(tmp_a.path(), b"x");
     mgr_a.sync_vfs_blobs(&storage, tmp_a.path()).await.unwrap();
 
     // B 下载
     mgr_b.sync_vfs_blobs(&storage, tmp_b.path()).await.unwrap();
-    assert!(tmp_b.path().join("ab").join("ab_h1.pdf").exists());
+    assert!(tmp_b.path().join(&blob.1).exists());
 
     // A 删除并 tombstone
-    std::fs::remove_file(tmp_a.path().join("ab").join("ab_h1.pdf")).unwrap();
+    std::fs::remove_file(tmp_a.path().join(&blob.1)).unwrap();
     mgr_a
-        .mark_blob_deleted(&storage, "ab_h1", Some("ab/ab_h1.pdf".into()), Some(1))
+        .mark_blob_deleted(&storage, &blob.0, Some(blob.1.clone()), Some(1))
         .await
         .unwrap();
 
@@ -1806,12 +1802,12 @@ async fn scenario_57_tombstone_survives_reupload_attempt() {
         .await
         .unwrap();
     assert!(
-        !tmp_b.path().join("ab").join("ab_h1.pdf").exists(),
+        !tmp_b.path().join(&blob.1).exists(),
         "B 本地 blob 应被 tombstone 删除"
     );
     assert!(
         storage
-            .get("data_governance/blobs/ab/ab_h1.pdf")
+            .get(&format!("data_governance/blobs/{}", blob.1))
             .await
             .unwrap()
             .is_none(),
@@ -1829,8 +1825,7 @@ async fn scenario_58_three_device_conflict_cascade() {
 
     // A 上传 blob
     let tmp_a = TempDir::new().unwrap();
-    std::fs::create_dir_all(tmp_a.path().join("ab")).unwrap();
-    std::fs::write(tmp_a.path().join("ab").join("ab_h1.pdf"), b"v1").unwrap();
+    let blob = write_content_addressed_blob(tmp_a.path(), b"v1");
     mgr_a.sync_vfs_blobs(&storage, tmp_a.path()).await.unwrap();
 
     // B、C 都拿到
@@ -1840,9 +1835,9 @@ async fn scenario_58_three_device_conflict_cascade() {
     mgr_c.sync_vfs_blobs(&storage, tmp_c.path()).await.unwrap();
 
     // A 删除
-    std::fs::remove_file(tmp_a.path().join("ab").join("ab_h1.pdf")).unwrap();
+    std::fs::remove_file(tmp_a.path().join(&blob.1)).unwrap();
     mgr_a
-        .mark_blob_deleted(&storage, "ab_h1", Some("ab/ab_h1.pdf".into()), Some(2))
+        .mark_blob_deleted(&storage, &blob.0, Some(blob.1.clone()), Some(2))
         .await
         .unwrap();
 
@@ -1851,14 +1846,14 @@ async fn scenario_58_three_device_conflict_cascade() {
         .sync_vfs_blobs_with_tombstones(&storage, tmp_b.path())
         .await
         .unwrap();
-    assert!(!tmp_b.path().join("ab").join("ab_h1.pdf").exists());
+    assert!(!tmp_b.path().join(&blob.1).exists());
 
     // C 后同步：同样应传播
     mgr_c
         .sync_vfs_blobs_with_tombstones(&storage, tmp_c.path())
         .await
         .unwrap();
-    assert!(!tmp_c.path().join("ab").join("ab_h1.pdf").exists());
+    assert!(!tmp_c.path().join(&blob.1).exists());
 }
 
 #[tokio::test]
@@ -1869,15 +1864,14 @@ async fn scenario_59_tombstone_then_recreate_with_same_hash() {
     let mgr_a = SyncManager::new("dev_a".into());
     let tmp_a = TempDir::new().unwrap();
 
-    std::fs::create_dir_all(tmp_a.path().join("ab")).unwrap();
-    let blob_path = tmp_a.path().join("ab").join("ab_h1.pdf");
-    std::fs::write(&blob_path, b"content").unwrap();
+    let blob = write_content_addressed_blob(tmp_a.path(), b"content");
+    let blob_path = tmp_a.path().join(&blob.1);
     mgr_a.sync_vfs_blobs(&storage, tmp_a.path()).await.unwrap();
 
     // 删除（tombstone）
     std::fs::remove_file(&blob_path).unwrap();
     mgr_a
-        .mark_blob_deleted(&storage, "ab_h1", Some("ab/ab_h1.pdf".into()), Some(7))
+        .mark_blob_deleted(&storage, &blob.0, Some(blob.1.clone()), Some(7))
         .await
         .unwrap();
 
@@ -1887,13 +1881,13 @@ async fn scenario_59_tombstone_then_recreate_with_same_hash() {
         .await
         .unwrap();
     assert!(storage
-        .get("data_governance/blobs/ab/ab_h1.pdf")
+        .get(&format!("data_governance/blobs/{}", blob.1))
         .await
         .unwrap()
         .is_none());
 
     // 现在又重新创建内容相同的 blob
-    std::fs::write(&blob_path, b"content").unwrap();
+    write_content_addressed_blob(tmp_a.path(), b"content");
 
     // 问题：sync_vfs_blobs_with_tombstones 里会先应用 tombstone，
     // 但 tombstone 还没被删除（我们没自动 prune），所以这个 blob 会被误删。
@@ -1912,7 +1906,7 @@ async fn scenario_59_tombstone_then_recreate_with_same_hash() {
     // 这是已知的一致性权衡 —— 用户若要"复活"同 hash blob，需要手动清除 tombstone 或等 90 天
     let blob_still_there = blob_path.exists();
     let cloud_still_there = storage
-        .get("data_governance/blobs/ab/ab_h1.pdf")
+        .get(&format!("data_governance/blobs/{}", blob.1))
         .await
         .unwrap()
         .is_some();

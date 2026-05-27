@@ -8,6 +8,7 @@ import { OcrSettingsSection } from './OcrSettingsSection';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { getErrorMessage } from '@/utils/errorUtils';
 import { DEFAULT_CHAT_STREAM_TIMEOUT_SECONDS } from './constants';
+import type { SettingsExtra } from './hookDepsTypes';
 
 const GroupTitle = ({ title }: { title: string }) => (
   <div className="px-1 mb-3 mt-0">
@@ -44,11 +45,13 @@ const SwitchRow = ({
   description,
   checked,
   onCheckedChange,
+  loading,
 }: {
   title: string;
   description?: string;
   checked: boolean;
   onCheckedChange: (checked: boolean) => void;
+  loading?: boolean;
 }) => (
   <div className="group flex items-center justify-between gap-4 py-2.5 px-1 rounded">
     <div className="flex-1 min-w-0">
@@ -59,13 +62,17 @@ const SwitchRow = ({
         </p>
       )}
     </div>
-    <Switch checked={checked} onCheckedChange={onCheckedChange} />
+    {loading ? (
+      <div aria-hidden="true" className="h-6 w-11 shrink-0 rounded-full bg-muted/50 animate-pulse" />
+    ) : (
+      <Switch checked={checked} onCheckedChange={onCheckedChange} />
+    )}
   </div>
 );
 
 interface ParamsTabProps {
-  extra: any;
-  setExtra: React.Dispatch<React.SetStateAction<any>>;
+  extra: SettingsExtra;
+  setExtra: React.Dispatch<React.SetStateAction<SettingsExtra>>;
   invoke: ((cmd: string, args?: any) => Promise<any>) | null;
   handleSaveChatStreamTimeout: () => Promise<void>;
   handleToggleChatStreamAutoCancel: (checked: boolean) => Promise<void>;
@@ -79,6 +86,7 @@ export const ParamsTab: React.FC<ParamsTabProps> = ({
   handleToggleChatStreamAutoCancel,
 }) => {
   const { t } = useTranslation(['settings', 'common']);
+  const paramsLoaded = extra.paramsLoaded === true;
 
   const handleFtsToggle = useCallback(async (v: boolean) => {
     setExtra((prev: any) => ({ ...prev, chatSemanticFtsPrefilter: v }));
@@ -123,7 +131,11 @@ export const ParamsTab: React.FC<ParamsTabProps> = ({
               title={t('common:settings.chat_stream.auto_cancel_label')}
               description={t('common:settings.chat_stream.auto_cancel_hint')}
               checked={(extra as any)?.chatStreamAutoCancel ?? true}
-              onCheckedChange={checked => { void handleToggleChatStreamAutoCancel(checked); }}
+              loading={!paramsLoaded}
+              onCheckedChange={checked => {
+                if (!paramsLoaded) return;
+                void handleToggleChatStreamAutoCancel(checked);
+              }}
             />
           </div>
         </div>
@@ -135,7 +147,11 @@ export const ParamsTab: React.FC<ParamsTabProps> = ({
               title={t('settings:field_labels.semantic_search_fts_filter')}
               description={t('settings:sections.semantic_fts_desc')}
               checked={Boolean((extra as any)?.chatSemanticFtsPrefilter ?? true)}
-              onCheckedChange={handleFtsToggle}
+              loading={!paramsLoaded}
+              onCheckedChange={(checked) => {
+                if (!paramsLoaded) return;
+                void handleFtsToggle(checked);
+              }}
             />
           </div>
         </div>

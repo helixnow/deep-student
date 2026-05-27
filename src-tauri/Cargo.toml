@@ -128,7 +128,7 @@ argon2 = "0.5"
 zeroize = { version = "1", features = ["derive"] }
 
 # 云存储 S3 兼容（可选，feature-gated 避免默认增加编译时间）
-aws-sdk-s3 = { version = "1.65", optional = true, default-features = false, features = ["behavior-version-latest", "rt-tokio"] }
+aws-sdk-s3 = { version = "1.65", optional = true, default-features = false, features = ["behavior-version-latest", "rt-tokio", "default-https-client"] }
 aws-config = { version = "1.5", optional = true, default-features = false, features = ["behavior-version-latest", "rt-tokio"] }
 
 # MCP SSE和OAuth支持

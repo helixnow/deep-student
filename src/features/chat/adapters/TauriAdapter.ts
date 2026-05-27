@@ -1642,9 +1642,12 @@ export class ChatV2TauriAdapter {
             payload.durationMs,
             'ms'
           );
+          // 先冲刷当前会话的 chunk buffer，确保最终正文先进入实时态再切终态。
+          chunkBuffer.flushSession(this.sessionId);
           // 🔧 P2修复：先重置状态确保 UI 响应，再异步保存
           // handleStreamComplete 内部会捕获当前状态快照进行保存
           this.store.completeStream('success');
+          this.store.updateMessageMeta(payload.messageId, { terminalError: undefined });
           // 🆕 Prompt 8: 将 messageId 和 usage 传递给 handleStreamComplete
           // token 统计处理在 eventBridge.handleStreamComplete 中完成
           handleStreamComplete(this.store, {
@@ -1668,8 +1671,12 @@ export class ChatV2TauriAdapter {
           this.clearStreamExpectation(payload.messageId);
           // 流式错误 - 重置状态为 idle
           console.error(LOG_PREFIX, 'Stream error:', payload.error);
+          chunkBuffer.flushSession(this.sessionId);
           // 🔧 P2修复：先重置状态确保 UI 响应，再异步保存
           this.store.completeStream('error');
+          this.store.updateMessageMeta(payload.messageId, {
+            terminalError: payload.error || 'Stream ended with error',
+          });
           handleStreamAbort(this.store).catch((err) => {
             console.error(LOG_PREFIX, 'Error in handleStreamAbort:', getErrorMessage(err));
           });
@@ -1692,6 +1699,7 @@ export class ChatV2TauriAdapter {
           this.clearStreamExpectation(payload.messageId);
           // 流式被取消 - 由 abortStream 处理状态重置
           console.log(LOG_PREFIX, 'Stream cancelled for message:', payload.messageId);
+          chunkBuffer.flushSession(this.sessionId);
           // 🔧 P2修复：先重置状态确保 UI 响应，再异步保存
           // 用户主动取消时，abortStream 可能已经重置了状态
           // completeStream 内部会检查状态，如果已经是 idle 则不会重复处理
@@ -2246,6 +2254,7 @@ export class ChatV2TauriAdapter {
       this.clearStreamExpectation();
       const errorMsg = getErrorMessage(error);
       console.error(LOG_PREFIX, 'Execute sendMessage failed:', errorMsg);
+      this.store.updateMessageMeta(assistantMessageId, { terminalError: errorMsg });
       try {
         await this.store.abortStream();
       } catch {
@@ -3876,7 +3885,10 @@ export class ChatV2TauriAdapter {
       options.skillAllowedTools = skillAllowedTools;
     }
 
-    // Transient skill injection 需要每轮拿到所有 enabled skills 的正文、依赖和工具定义。
+    // Transient skill injection 需要每轮拿到所有已注册 skills 的正文、依赖和工具定义。
+    // NOTE: skillContents/skillDependencies/skillEmbeddedTools 必须包含 ALL 已注册技能的完整数据，
+    // 不能按 enabledSkillIdSet 过滤。否则 LLM 调用 load_skills 时后端会因为 skill_contents 缺失而返回
+    // "No skills loaded. Missing: ..."（skills_executor.rs:382）
     const allSkills = skillRegistry.getAll();
     if (allSkills.length > 0) {
       const skillContents: Record<string, string> = {};
@@ -3884,7 +3896,6 @@ export class ChatV2TauriAdapter {
       const skillDependencies: Record<string, string[]> = {};
       const skillEmbeddedTools: Record<string, Array<{ name: string; description?: string; inputSchema?: unknown }>> = {};
       for (const skill of allSkills) {
-        if (!enabledSkillIdSet.has(skill.id)) continue;
         if (skill.content) {
           skillContents[skill.id] = skill.content;
           replaySkillContents[skill.id] = skill.content;
@@ -3903,14 +3914,14 @@ export class ChatV2TauriAdapter {
       if (Object.keys(skillContents).length > 0) {
         (options as Record<string, unknown>).skillContents = skillContents;
         (options as Record<string, unknown>).replaySkillContents = replaySkillContents;
-        console.log(LOG_PREFIX, '[TransientSkills] Injected enabled skill contents:', Object.keys(skillContents).length);
+        console.log(LOG_PREFIX, '[TransientSkills] Injected skill contents:', Object.keys(skillContents).length);
       }
       if (Object.keys(skillDependencies).length > 0) {
         (options as Record<string, unknown>).skillDependencies = skillDependencies;
       }
       if (Object.keys(skillEmbeddedTools).length > 0) {
         (options as Record<string, unknown>).skillEmbeddedTools = skillEmbeddedTools;
-        console.log(LOG_PREFIX, '[TransientSkills] Injected enabled skill embeddedTools:', Object.keys(skillEmbeddedTools).length);
+        console.log(LOG_PREFIX, '[TransientSkills] Injected skill embeddedTools:', Object.keys(skillEmbeddedTools).length);
       }
     }
 

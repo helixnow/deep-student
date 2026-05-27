@@ -2,7 +2,7 @@ use crate::utils::fetch::fetch_binary_with_cache;
 use base64::{engine::general_purpose, Engine as _};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Map, Value};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 use uuid::Uuid;
@@ -68,6 +68,7 @@ impl ProviderAdapter for OpenAIAdapter {
         let url = format!("{}/chat/completions", base_url.trim_end_matches('/'));
         // 确保 API key 被 trim，移除首尾空白字符
         let trimmed_key = api_key.trim();
+        let sanitized_body = sanitize_openai_request_body(body);
 
         Ok(ProviderRequest {
             url,
@@ -78,7 +79,7 @@ impl ProviderAdapter for OpenAIAdapter {
                 ),
                 ("Content-Type".to_string(), "application/json".to_string()),
             ],
-            body: body.clone(),
+            body: sanitized_body,
         })
     }
 
@@ -166,40 +167,218 @@ fn is_meaningful_openai_tool_delta(value: &Value) -> bool {
     has_index && (has_id || has_name || has_arguments)
 }
 
+fn normalize_openai_function_name(name: &str) -> Option<String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        None
+    } else {
+        Some(trimmed.to_string())
+    }
+}
+
+fn sanitize_openai_tools_array(tools: &[Value]) -> Vec<Value> {
+    let mut seen_names = HashSet::new();
+    let mut sanitized = Vec::new();
+
+    for tool in tools {
+        let Some(function) = tool.get("function").and_then(|value| value.as_object()) else {
+            continue;
+        };
+
+        let Some(name) = function
+            .get("name")
+            .and_then(|value| value.as_str())
+            .and_then(normalize_openai_function_name)
+        else {
+            continue;
+        };
+
+        if !seen_names.insert(name.clone()) {
+            continue;
+        }
+
+        let mut sanitized_tool = tool.clone();
+        if let Some(obj) = sanitized_tool.as_object_mut() {
+            let function_value = obj
+                .entry("function".to_string())
+                .or_insert_with(|| Value::Object(Map::new()));
+            if let Some(function_obj) = function_value.as_object_mut() {
+                function_obj.insert("name".to_string(), json!(name));
+                let normalized_parameters = match function_obj.remove("parameters") {
+                    Some(Value::Object(map)) => {
+                        let mut value = Value::Object(map);
+                        if let Some(obj) = value.as_object_mut() {
+                            obj.entry("type".to_string())
+                                .or_insert_with(|| json!("object"));
+                            obj.entry("properties".to_string())
+                                .or_insert_with(|| json!({}));
+                        }
+                        value
+                    }
+                    _ => json!({"type": "object", "properties": {}}),
+                };
+                function_obj.insert("parameters".to_string(), normalized_parameters);
+            }
+        }
+
+        sanitized.push(sanitized_tool);
+    }
+
+    sanitized
+}
+
+fn sanitize_openai_tool_choice(
+    choice: &Value,
+    valid_tool_names: &HashSet<String>,
+) -> Option<Value> {
+    if let Some(choice_str) = choice.as_str() {
+        return match choice_str {
+            "auto" | "none" | "required" => Some(json!(choice_str)),
+            _ => None,
+        };
+    }
+
+    let obj = choice.as_object()?;
+    let choice_type = obj.get("type").and_then(|v| v.as_str()).unwrap_or("");
+    if !matches!(choice_type, "function" | "tool") {
+        return None;
+    }
+
+    let name = obj
+        .get("name")
+        .and_then(|v| v.as_str())
+        .or_else(|| {
+            obj.get("function")
+                .and_then(|function| function.get("name"))
+                .and_then(|v| v.as_str())
+        })
+        .and_then(normalize_openai_function_name)?;
+
+    if !valid_tool_names.contains(&name) {
+        return None;
+    }
+
+    Some(json!({
+        "type": "function",
+        "name": name,
+    }))
+}
+
+fn sanitize_openai_request_body(body: &Value) -> Value {
+    let mut sanitized = body.clone();
+    let mut valid_tool_names = HashSet::new();
+
+    if let Some(obj) = sanitized.as_object_mut() {
+        if let Some(tools) = obj.get("tools").and_then(|value| value.as_array()) {
+            let cleaned_tools = sanitize_openai_tools_array(tools);
+            valid_tool_names = cleaned_tools
+                .iter()
+                .filter_map(|tool| {
+                    tool.get("function")
+                        .and_then(|value| value.get("name"))
+                        .and_then(|value| value.as_str())
+                        .map(|name| name.to_string())
+                })
+                .collect();
+
+            if cleaned_tools.is_empty() {
+                obj.remove("tools");
+                obj.remove("tool_choice");
+            } else {
+                obj.insert("tools".to_string(), Value::Array(cleaned_tools));
+            }
+        }
+
+        if let Some(tool_choice) = obj.get("tool_choice").cloned() {
+            let Some(cleaned_tool_choice) =
+                sanitize_openai_tool_choice(&tool_choice, &valid_tool_names)
+            else {
+                obj.remove("tool_choice");
+                return sanitized;
+            };
+            obj.insert("tool_choice".to_string(), cleaned_tool_choice);
+        }
+    }
+
+    sanitized
+}
+
 pub struct OpenAIResponsesAdapter;
 
 impl OpenAIResponsesAdapter {
-    fn push_text_parts(parts: &mut Vec<Value>, content: &Value) {
+    fn push_message_parts(parts: &mut Vec<Value>, role: &str, content: &Value) {
         match content {
             Value::String(text) => {
                 if !text.trim().is_empty() {
-                    parts.push(json!({ "type": "input_text", "text": text }));
+                    if role == "assistant" {
+                        parts.push(json!({ "type": "output_text", "text": text }));
+                    } else {
+                        parts.push(json!({ "type": "input_text", "text": text }));
+                    }
                 }
             }
             Value::Array(arr) => {
                 for part in arr {
                     let ptype = part.get("type").and_then(|v| v.as_str()).unwrap_or("");
                     match ptype {
-                        "text" => {
+                        "input_text" if role != "assistant" => {
                             if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
                                 if !text.is_empty() {
                                     parts.push(json!({ "type": "input_text", "text": text }));
                                 }
                             }
                         }
-                        "image_url" => {
-                            if let Some(url) = part
-                                .get("image_url")
-                                .and_then(|v| v.get("url"))
-                                .and_then(|v| v.as_str())
-                            {
-                                parts.push(json!({ "type": "input_image", "image_url": url }));
+                        "text" | "output_text" => {
+                            if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
+                                if !text.is_empty() {
+                                    if role == "assistant" {
+                                        parts.push(json!({ "type": "output_text", "text": text }));
+                                    } else {
+                                        parts.push(json!({ "type": "input_text", "text": text }));
+                                    }
+                                }
+                            }
+                        }
+                        "image_url" | "input_image" if role != "assistant" => {
+                            let image_url = if ptype == "input_image" {
+                                part.get("image_url").and_then(|v| v.as_str())
+                            } else {
+                                part.get("image_url")
+                                    .and_then(|v| v.get("url"))
+                                    .and_then(|v| v.as_str())
+                            };
+
+                            if let Some(image_url) = image_url {
+                                let image_part = if let Some(detail) = part.get("detail").cloned() {
+                                    json!({
+                                        "type": "input_image",
+                                        "image_url": image_url,
+                                        "detail": detail
+                                    })
+                                } else {
+                                    json!({
+                                        "type": "input_image",
+                                        "image_url": image_url
+                                    })
+                                };
+                                parts.push(image_part);
+                            }
+                        }
+                        "refusal" if role == "assistant" => {
+                            if let Some(refusal) = part.get("refusal").and_then(|v| v.as_str()) {
+                                if !refusal.is_empty() {
+                                    parts.push(json!({ "type": "refusal", "refusal": refusal }));
+                                }
                             }
                         }
                         _ => {
                             if let Some(text) = part.get("text").and_then(|v| v.as_str()) {
                                 if !text.is_empty() {
-                                    parts.push(json!({ "type": "input_text", "text": text }));
+                                    if role == "assistant" {
+                                        parts.push(json!({ "type": "output_text", "text": text }));
+                                    } else {
+                                        parts.push(json!({ "type": "input_text", "text": text }));
+                                    }
                                 }
                             }
                         }
@@ -317,6 +496,7 @@ impl OpenAIResponsesAdapter {
 
     /// 将 Chat Completions 兼容格式转换为 Responses API 请求格式。
     fn convert_to_responses_format(model: &str, body: &Value) -> Value {
+        let body = sanitize_openai_request_body(body);
         let mut input_blocks: Vec<Value> = Vec::new();
         let mut instructions: Vec<String> = Vec::new();
 
@@ -359,7 +539,7 @@ impl OpenAIResponsesAdapter {
 
                 let mut parts: Vec<Value> = Vec::new();
                 if let Some(content) = message.get("content") {
-                    Self::push_text_parts(&mut parts, content);
+                    Self::push_message_parts(&mut parts, role, content);
                 }
 
                 if !parts.is_empty() {
@@ -1575,11 +1755,10 @@ fn build_usage_event(usage: &Value) -> Option<Value> {
         .get("total_tokens")
         .and_then(|v| v.as_i64())
         .unwrap_or((input_tokens + output_tokens) as i64) as i32;
-    let cache_creation_input_tokens = usage
-        .get("cache_creation_input_tokens")
-        .and_then(|v| v.as_i64())
-        .unwrap_or(0) as i32;
-    let cache_read_input_tokens = usage
+    // 缓存命中 token（业界最佳实践 LiteLLM 对齐）
+    // cache_creation_input_tokens 是 Anthropic 计费元数据，不计入缓存命中
+    // 使用 max() 防中转站重复返回多种格式
+    let anthropic_cache_hit = usage
         .get("cache_read_input_tokens")
         .and_then(|v| v.as_i64())
         .unwrap_or(0) as i32;
@@ -1592,8 +1771,14 @@ fn build_usage_event(usage: &Value) -> Option<Value> {
         .get("prompt_cache_hit_tokens")
         .and_then(|v| v.as_i64())
         .unwrap_or(0) as i32;
-    let cached_tokens =
-        cache_creation_input_tokens + cache_read_input_tokens + openai_cached + deepseek_cached;
+    let gemini_cached = usage
+        .get("cached_tokens")
+        .and_then(|v| v.as_i64())
+        .unwrap_or(0) as i32;
+    let cached_tokens = anthropic_cache_hit
+        .max(openai_cached)
+        .max(deepseek_cached)
+        .max(gemini_cached);
 
     Some(json!({
         "input_tokens": input_tokens,
@@ -1834,8 +2019,8 @@ impl ProviderAdapter for GeminiAdapter {
 #[cfg(test)]
 mod tests {
     use super::{
-        build_usage_event, is_meaningful_openai_tool_delta, AnthropicAdapter, OpenAIAdapter,
-        OpenAIResponsesAdapter, ProviderAdapter, StreamEvent,
+        build_usage_event, is_meaningful_openai_tool_delta, sanitize_openai_request_body,
+        AnthropicAdapter, OpenAIAdapter, OpenAIResponsesAdapter, ProviderAdapter, StreamEvent,
     };
     use serde_json::json;
 
@@ -1961,6 +2146,190 @@ mod tests {
     }
 
     #[test]
+    fn sanitize_openai_request_body_filters_blank_and_duplicate_tool_names() {
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "  ",
+                        "description": "blank",
+                        "parameters": { "type": "object", "properties": {} }
+                    }
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "lookup_weather",
+                        "description": "first",
+                        "parameters": { "type": "object", "properties": {} }
+                    }
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "lookup_weather",
+                        "description": "duplicate",
+                        "parameters": { "type": "object", "properties": {} }
+                    }
+                }
+            ],
+            "tool_choice": {
+                "type": "function",
+                "function": { "name": "lookup_weather" }
+            }
+        });
+
+        let sanitized = sanitize_openai_request_body(&body);
+        let tools = sanitized["tools"]
+            .as_array()
+            .expect("tools should be array");
+
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0]["function"]["name"], json!("lookup_weather"));
+        assert_eq!(sanitized["tool_choice"]["name"], json!("lookup_weather"));
+    }
+
+    #[test]
+    fn sanitize_openai_request_body_normalizes_missing_or_null_parameters() {
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "lookup_weather",
+                        "parameters": null
+                    }
+                }
+            ]
+        });
+
+        let sanitized = sanitize_openai_request_body(&body);
+        assert_eq!(
+            sanitized["tools"][0]["function"]["parameters"]["type"],
+            json!("object")
+        );
+        assert_eq!(
+            sanitized["tools"][0]["function"]["parameters"]["properties"],
+            json!({})
+        );
+    }
+
+    #[test]
+    fn sanitize_openai_request_body_drops_invalid_tool_choice_when_tool_missing() {
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "lookup_weather",
+                        "description": "lookup",
+                        "parameters": { "type": "object", "properties": {} }
+                    }
+                }
+            ],
+            "tool_choice": {
+                "type": "function",
+                "function": { "name": "   " }
+            }
+        });
+
+        let sanitized = sanitize_openai_request_body(&body);
+        assert!(sanitized.get("tool_choice").is_none());
+    }
+
+    #[test]
+    fn openai_adapter_build_request_sanitizes_invalid_tools() {
+        let adapter = OpenAIAdapter;
+        let body = json!({
+            "model": "gpt-4o-mini",
+            "messages": [{ "role": "user", "content": "hi" }],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "",
+                        "description": "blank",
+                        "parameters": { "type": "object", "properties": {} }
+                    }
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "lookup_weather",
+                        "description": "lookup",
+                        "parameters": { "type": "object", "properties": {} }
+                    }
+                }
+            ],
+            "tool_choice": {
+                "type": "function",
+                "function": { "name": "" }
+            }
+        });
+
+        let request = adapter
+            .build_request(
+                "https://api.openai.com/v1",
+                "test-key",
+                "gpt-4o-mini",
+                &body,
+            )
+            .expect("request should build");
+
+        let tools = request.body["tools"]
+            .as_array()
+            .expect("tools should be present");
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0]["function"]["name"], json!("lookup_weather"));
+        assert!(request.body.get("tool_choice").is_none());
+    }
+
+    #[test]
+    fn openai_responses_adapter_build_request_sanitizes_invalid_tools() {
+        let adapter = OpenAIResponsesAdapter;
+        let body = json!({
+            "messages": [{ "role": "user", "content": "hi" }],
+            "tools": [
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "   ",
+                        "description": "blank",
+                        "parameters": { "type": "object", "properties": {} }
+                    }
+                },
+                {
+                    "type": "function",
+                    "function": {
+                        "name": "lookup_weather",
+                        "description": "lookup",
+                        "parameters": { "type": "object", "properties": {} }
+                    }
+                }
+            ],
+            "tool_choice": {
+                "type": "function",
+                "function": { "name": "   " }
+            }
+        });
+
+        let request = adapter
+            .build_request("https://api.openai.com/v1", "test-key", "gpt-5", &body)
+            .expect("request should build");
+
+        let tools = request.body["tools"]
+            .as_array()
+            .expect("tools should be present");
+        assert_eq!(tools.len(), 1);
+        assert_eq!(tools[0]["function"]["name"], json!("lookup_weather"));
+        assert!(request.body.get("tool_choice").is_none());
+    }
+
+    #[test]
     fn openai_responses_adapter_parses_stream_events() {
         let adapter = OpenAIResponsesAdapter;
 
@@ -2076,6 +2445,51 @@ mod tests {
         assert!(input
             .iter()
             .any(|item| item["type"] == json!("function_call_output")));
+    }
+
+    #[test]
+    fn openai_responses_adapter_encodes_assistant_history_as_output_text() {
+        let body = json!({
+            "messages": [
+                { "role": "user", "content": "knock knock" },
+                { "role": "assistant", "content": "Who's there?" },
+                { "role": "user", "content": "Orange" }
+            ]
+        });
+
+        let payload = OpenAIResponsesAdapter::convert_to_responses_format("gpt-5.2", &body);
+        let input = payload["input"].as_array().expect("input should be array");
+
+        assert_eq!(input[1]["role"], json!("assistant"));
+        assert_eq!(input[1]["content"][0]["type"], json!("output_text"));
+        assert_eq!(input[1]["content"][0]["text"], json!("Who's there?"));
+    }
+
+    #[test]
+    fn openai_responses_adapter_preserves_assistant_output_parts() {
+        let body = json!({
+            "messages": [
+                {
+                    "role": "assistant",
+                    "content": [
+                        { "type": "output_text", "text": "First answer" },
+                        { "type": "refusal", "refusal": "Can't help with that." }
+                    ]
+                }
+            ]
+        });
+
+        let payload = OpenAIResponsesAdapter::convert_to_responses_format("gpt-5.2", &body);
+        let input = payload["input"].as_array().expect("input should be array");
+
+        assert_eq!(input[0]["role"], json!("assistant"));
+        assert_eq!(input[0]["content"][0]["type"], json!("output_text"));
+        assert_eq!(input[0]["content"][0]["text"], json!("First answer"));
+        assert_eq!(input[0]["content"][1]["type"], json!("refusal"));
+        assert_eq!(
+            input[0]["content"][1]["refusal"],
+            json!("Can't help with that.")
+        );
     }
 
     #[test]

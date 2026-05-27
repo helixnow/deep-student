@@ -75,15 +75,18 @@ pub fn parse_api_usage(usage: &Value) -> Option<TokenUsage> {
                 .map(|v| v as u32)
         });
 
-    // 提取 cached_tokens
-    // - Anthropic 格式：cache_creation_input_tokens + cache_read_input_tokens（应相加）
-    // - OpenAI 格式：prompt_tokens_details.cached_tokens
-    // - DeepSeek 格式：prompt_cache_hit_tokens（usage 顶层字段）
-    let anthropic_cache_creation = usage
-        .get("cache_creation_input_tokens")
-        .and_then(|v| v.as_u64())
-        .unwrap_or(0) as u32;
-    let anthropic_cache_read = usage
+    // 提取缓存命中 token（业界最佳实践 LiteLLM 对齐）
+    //
+    // 归一化规则：
+    // - Anthropic: cache_read_input_tokens 才是缓存命中；
+    //   cache_creation_input_tokens 是计费元数据（写入缓存），不计入缓存命中
+    // - OpenAI: prompt_tokens_details.cached_tokens
+    // - DeepSeek: prompt_cache_hit_tokens
+    // - Gemini: cached_tokens（顶层，由 gemini-openai-converter 注入）
+    //
+    // 防中转站重复：使用 max() 而非 sum()
+    // 网关（LiteLLM/OneAPI）可能同时返回多种格式表示同一份缓存数据
+    let anthropic_cache_hit = usage
         .get("cache_read_input_tokens")
         .and_then(|v| v.as_u64())
         .unwrap_or(0) as u32;
@@ -96,8 +99,14 @@ pub fn parse_api_usage(usage: &Value) -> Option<TokenUsage> {
         .get("prompt_cache_hit_tokens")
         .and_then(|v| v.as_u64())
         .unwrap_or(0) as u32;
-    let total_cached =
-        anthropic_cache_creation + anthropic_cache_read + openai_cached + deepseek_cached;
+    let gemini_cached = usage
+        .get("cached_tokens")
+        .and_then(|v| v.as_u64())
+        .unwrap_or(0) as u32;
+    let total_cached = anthropic_cache_hit
+        .max(openai_cached)
+        .max(deepseek_cached)
+        .max(gemini_cached);
     let cached_tokens = if total_cached > 0 {
         Some(total_cached)
     } else {

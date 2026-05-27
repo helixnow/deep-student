@@ -212,15 +212,26 @@ const toolCallEventHandler: EventHandler = {
       };
       // 归一化 options：兼容 LLM 误把 options 输出为 { label, value } 对象数组的情况
       // 否则 React 渲染 <span>{option}</span> 时会抛 "Objects are not valid as a React child"
-      const normalizedOptions: string[] = Array.isArray(askInput.options)
+      const normalizedOptions: Array<string | { label: string; reason?: string }> = Array.isArray(askInput.options)
         ? askInput.options
             .map((opt) => {
               if (typeof opt === 'string') return opt;
               if (opt && typeof opt === 'object') {
-                const o = opt as { label?: unknown; value?: unknown; text?: unknown };
-                if (typeof o.label === 'string') return o.label;
-                if (typeof o.value === 'string') return o.value;
-                if (typeof o.text === 'string') return o.text;
+                const o = opt as { label?: unknown; value?: unknown; text?: unknown; reason?: unknown };
+                const label =
+                  typeof o.label === 'string'
+                    ? o.label
+                    : typeof o.value === 'string'
+                      ? o.value
+                      : typeof o.text === 'string'
+                        ? o.text
+                        : null;
+                if (label) {
+                  return {
+                    label,
+                    reason: typeof o.reason === 'string' ? o.reason : undefined,
+                  };
+                }
                 try {
                   return JSON.stringify(opt);
                 } catch {
@@ -229,7 +240,12 @@ const toolCallEventHandler: EventHandler = {
               }
               return String(opt ?? '');
             })
-            .filter((s) => s.length > 0)
+            .filter((option) => {
+              if (typeof option === 'string') {
+                return option.length > 0;
+              }
+              return option.label.length > 0;
+            })
         : [];
       store.setBlockingInteraction({
         kind: 'ask_user',

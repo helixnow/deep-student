@@ -181,7 +181,7 @@ export interface AskUserBlockingInteraction {
   blockId: string;
   toolCallId: string;
   question: string;
-  options: Array<string | { label?: string; value?: string; text?: string }>;
+  options: Array<string | { label?: string; value?: string; text?: string; reason?: string }>;
   multiple: boolean;
   allowCustom: boolean;
   timeoutSeconds: number | null;
