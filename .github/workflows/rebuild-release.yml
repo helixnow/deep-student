@@ -535,13 +535,13 @@ jobs:
           GRADLE_OPTS: -Dorg.gradle.daemon=false
         run: |
           set +e
-          echo "Starting Android build with 70 minute timeout"
-          timeout --signal=TERM --kill-after=60s 70m npx tauri android build --target aarch64
+          echo "Starting Android build with 120 minute timeout"
+          timeout --signal=TERM --kill-after=60s 120m npx tauri android build --target aarch64
           status=$?
           set -e
 
           if [ "$status" -eq 124 ]; then
-            echo "::error::Android build timed out after 70 minutes"
+            echo "::error::Android build timed out after 120 minutes"
           elif [ "$status" -ne 0 ]; then
             echo "::error::Android build failed with exit code ${status}"
           fi
