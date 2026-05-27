@@ -88,10 +88,7 @@
       }
     },
     "android": {
-      "versionCode": 13896,
-      "permissions": [
-        "android.permission.RECORD_AUDIO"
-      ]
+      "versionCode": 13896
     }
   },
   "plugins": {
