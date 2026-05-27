@@ -3,9 +3,9 @@
  * 硅基流动快速配置组件
  */
 
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Brain, Clock, Cpu, DownloadSimple, GearSix, Image, Lightning, LinkSimple, Minus, Plus, Spinner, Stack, Trash } from '@phosphor-icons/react';
+import { Brain, Check, Clock, Cpu, DownloadSimple, FloppyDisk, GearSix, Image, Lightning, LinkSimple, Minus, Plus, Spinner, Stack, Trash, WarningCircle } from '@phosphor-icons/react';
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http'; // 使用Tauri v2 http插件
 import { invoke } from '@tauri-apps/api/core';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
@@ -87,6 +87,11 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   const [error, setError] = useState<string | null>(null); // New state for error message
   const [showApiKey, setShowApiKey] = useState(false);
   const [confirmingClearApiKey, setConfirmingClearApiKey] = useState(false);
+  type SaveStatus = 'idle' | 'dirty' | 'saving' | 'saved' | 'error';
+  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<SaveStatus>('idle');
+  const lastSavedKeyRef = useRef('');
+  const statusTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const siliconFlowVendorKey = 'builtin-siliconflow.api_key';
   const siliconFlowLegacyKey = 'siliconflow.api_key';
   const [lastFetchTime, setLastFetchTime] = useState<number | null>(null); // 上次获取时间
@@ -237,6 +242,45 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     }
   }, [showGlobalNotification, siliconFlowVendorKey, siliconFlowLegacyKey, t]);
 
+  const clearStatusTimer = useCallback(() => {
+    if (statusTimerRef.current) {
+      clearTimeout(statusTimerRef.current);
+      statusTimerRef.current = null;
+    }
+  }, []);
+
+  const scheduleStatusReset = useCallback((nextStatus: 'saved' | 'error', timeoutMs = 2200) => {
+    clearStatusTimer();
+    setSaveStatus(nextStatus);
+    statusTimerRef.current = setTimeout(() => {
+      setSaveStatus('idle');
+      statusTimerRef.current = null;
+    }, timeoutMs);
+  }, [clearStatusTimer]);
+
+  const handleSaveApiKey = useCallback(async () => {
+    const trimmed = apiKey.trim();
+    if (!trimmed || trimmed === lastSavedKeyRef.current) {
+      return;
+    }
+
+    try {
+      setSaving(true);
+      clearStatusTimer();
+      setSaveStatus('saving');
+      await persistApiKey(trimmed);
+      lastSavedKeyRef.current = trimmed;
+      scheduleStatusReset('saved');
+      showGlobalNotification('success', t('settings:vendor_panel.api_key_saved'));
+    } catch (error: unknown) {
+      console.error('保存API密钥失败:', error);
+      scheduleStatusReset('error', 3200);
+      showGlobalNotification('error', t('settings:vendor_panel.api_key_save_failed'));
+    } finally {
+      setSaving(false);
+    }
+  }, [apiKey, persistApiKey, clearStatusTimer, scheduleStatusReset, showGlobalNotification, t]);
+
   // 组件加载时从持久化存储恢复API密钥
   React.useEffect(() => {
     let mounted = true;
@@ -258,6 +302,7 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
         }
         if (mounted && savedApiKey) {
           setApiKey(savedApiKey);
+          lastSavedKeyRef.current = savedApiKey;
         }
       } catch (error: unknown) {
         console.error('加载SiliconFlow API Key失败:', error);
@@ -268,14 +313,23 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     };
   }, [persistApiKey, siliconFlowVendorKey, siliconFlowLegacyKey]);
 
+  React.useEffect(() => {
+    return () => {
+      clearStatusTimer();
+    };
+  }, [clearStatusTimer]);
+
   // 监听其他实例的API Key变化（修复多实例状态不同步问题）
   React.useEffect(() => {
     const handleApiKeyChanged = (event: Event) => {
       const customEvent = event as CustomEvent<{ apiKey: string }>;
       if (customEvent.detail?.apiKey !== undefined) {
-        setApiKey(customEvent.detail.apiKey);
+        const newKey = customEvent.detail.apiKey;
+        setApiKey(newKey);
+        lastSavedKeyRef.current = newKey.trim();
+        setSaveStatus('idle');
         setConfirmingClearApiKey(false);
-        if (!customEvent.detail.apiKey.trim()) {
+        if (!newKey.trim()) {
           setShowApiKey(false);
         }
       }
@@ -312,16 +366,16 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     }
   }, [apiKey, loadCachedModels]);
 
-  // API密钥变化时自动保存
+  // API密钥变化时跟踪保存状态
   const handleApiKeyChange = (value: string) => {
-    // 立即更新状态（修复移动端输入后按钮仍禁用的问题）
     setApiKey(value);
     setConfirmingClearApiKey(false);
+    clearStatusTimer();
     if (!value.trim()) {
       setShowApiKey(false);
     }
-    // 异步保存到后端
-    void persistApiKey(value);
+    const trimmed = value.trim();
+    setSaveStatus(trimmed && trimmed !== lastSavedKeyRef.current ? 'dirty' : 'idle');
   };
 
   // 清除保存的API密钥
@@ -332,8 +386,11 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
     }
 
     setApiKey('');
+    lastSavedKeyRef.current = '';
     setShowApiKey(false);
     setConfirmingClearApiKey(false);
+    clearStatusTimer();
+    setSaveStatus('idle');
     setModels([]);
     setAvailableModels([]);
     setSelectedModel('');
@@ -888,12 +945,38 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
   const showModelControls = variant === 'full' || variant === 'models';
   const isInline = variant === 'inline';
   const canRevealApiKey = apiKey.trim().length > 0;
+  const canSave = apiKey.trim().length > 0 && apiKey.trim() !== lastSavedKeyRef.current && !saving;
+  const canClearStoredKey = saving || lastSavedKeyRef.current.length > 0;
+  const statusText =
+    saveStatus === 'saving'
+      ? t('settings:vendor_panel.api_key_saving', { defaultValue: '正在保存…' })
+      : saveStatus === 'saved'
+        ? t('settings:vendor_panel.api_key_saved')
+        : saveStatus === 'error'
+          ? t('settings:vendor_panel.api_key_save_failed')
+          : saveStatus === 'dirty'
+            ? t('settings:vendor_panel.api_key_unsaved', { defaultValue: '有未保存的更改' })
+            : t('settings:vendor_panel.api_key_manual_save_hint', { defaultValue: '粘贴或输入后，点击保存' });
+  const statusToneClassName =
+    saveStatus === 'error'
+      ? 'text-destructive'
+      : saveStatus === 'saved'
+        ? 'text-green-600 dark:text-green-400'
+        : saveStatus === 'dirty'
+          ? 'text-amber-600 dark:text-amber-400'
+          : 'text-muted-foreground';
 
   const quickBody = (
     <div className="space-y-3">
       <ApiKeyField
         value={apiKey}
         onChange={e => handleApiKeyChange(e.target.value)}
+        onKeyDown={e => {
+          if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 's') {
+            e.preventDefault();
+            void handleSaveApiKey();
+          }
+        }}
         placeholder={t('common:siliconflow.api_key_placeholder_local')}
         revealed={showApiKey}
         canReveal={canRevealApiKey}
@@ -901,14 +984,35 @@ export const SiliconFlowSection: React.FC<SiliconFlowSectionProps> = ({ onCreate
         showLabel={t('common:siliconflow.show_api_key')}
         hideLabel={t('common:siliconflow.hide_api_key')}
       />
-      <div className="flex items-center justify-between pt-2">
+      <div
+        className={['flex items-center gap-2 text-xs transition-colors', statusToneClassName].join(' ')}
+        aria-live="polite"
+      >
+        {saveStatus === 'saving' && <Spinner className="h-3.5 w-3.5 animate-spin" />}
+        {saveStatus === 'saved' && <Check className="h-3.5 w-3.5" />}
+        {saveStatus === 'error' && <WarningCircle className="h-3.5 w-3.5" />}
+        <span>{statusText}</span>
+      </div>
+      <div className="flex flex-wrap gap-2 pt-1">
+        <NotionButton
+          variant="primary"
+          size="sm"
+          onClick={() => {
+            void handleSaveApiKey();
+          }}
+          disabled={!canSave}
+          title={t('common:actions.save')}
+        >
+          {saveStatus === 'saving' ? <Spinner className="h-3.5 w-3.5 animate-spin" /> : <FloppyDisk className="h-3.5 w-3.5" />}
+          {t('common:actions.save')}
+        </NotionButton>
         {/* Notion 风格按钮 - 一键分配 */}
         <NotionButton variant="ghost" size="sm" onClick={handleOneClickAssign} disabled={loading || !apiKey.trim()} className="text-primary bg-primary/10 hover:bg-primary/20">
           <Lightning className="h-3.5 w-3.5" />
           {t('common:siliconflow.one_click_assign')}
         </NotionButton>
-        {/* Notion 风格按钮 - 清除 (右对齐) */}
-        <NotionButton variant={confirmingClearApiKey ? 'danger' : 'ghost'} size="sm" onClick={clearSavedApiKey} disabled={loading || !apiKey} title={t('common:siliconflow.clear_api_key_title')} className={confirmingClearApiKey ? undefined : 'text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20'}>
+        {/* Notion 风格按钮 - 清除 */}
+        <NotionButton variant={confirmingClearApiKey ? 'danger' : 'ghost'} size="sm" onClick={clearSavedApiKey} disabled={!canClearStoredKey} title={t('common:siliconflow.clear_api_key_title')} className={confirmingClearApiKey ? undefined : 'text-red-600 dark:text-red-400 bg-red-500/10 hover:bg-red-500/20'}>
           <Trash className="h-3.5 w-3.5" />
           {confirmingClearApiKey
             ? t('common:siliconflow.clear_confirm_button')
