@@ -10,6 +10,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 格式基于 [Keep a Changelog](https://keepachangelog.com/zh-CN/1.1.0/)，
 本项目遵循 [语义化版本](https://semver.org/lang/zh-CN/)。
 
+## [0.9.40](https://github.com/helixnow/deep-student/compare/v0.9.39...v0.9.40) (2026-05-27)
+
+
+### Features
+
+* sync latest nightly into main for 0.9.40 ([#84](https://github.com/helixnow/deep-student/issues/84)) ([53add86](https://github.com/helixnow/deep-student/commit/53add861020ad6f1c8ae8d6941036fd8f835f0e5))
+
 ## [0.9.39](https://github.com/helixnow/deep-student/compare/v0.9.38...v0.9.39) (2026-05-25)
 
 
