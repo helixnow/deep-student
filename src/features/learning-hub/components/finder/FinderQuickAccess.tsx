@@ -64,6 +64,7 @@ interface FinderQuickAccessProps {
   translationCount?: number;
   recentCount?: number;
   trashCount?: number;
+  fillContainer?: boolean;
 }
 
 /**
@@ -94,7 +95,8 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
   essayCount,
   translationCount,
   recentCount,
-  trashCount
+  trashCount,
+  fillContainer = false
 }: FinderQuickAccessProps) {
   const { t } = useTranslation('learningHub');
   const [isSearchFocused, setIsSearchFocused] = useState(false);
@@ -137,6 +139,52 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
     CustomIcon?: React.FC<ResourceIconProps>
   ) => {
     const isActive = activeType === type;
+    const renderedIcon = CustomIcon ? (
+      <CustomIcon
+        size={fillContainer ? 18 : 20}
+        className={cn(
+          'shrink-0 transition-transform duration-150',
+          isActive && 'scale-105',
+          !isActive && 'group-hover:scale-105'
+        )}
+      />
+    ) : Icon ? (
+      <Icon className={cn(
+        'h-[18px] w-[18px] shrink-0 transition-transform duration-150',
+        iconColor || 'text-muted-foreground',
+        isActive && 'scale-105',
+        !isActive && 'group-hover:scale-105'
+      )} />
+    ) : null;
+
+    if (fillContainer && !collapsed) {
+      return (
+        <NotionButton
+          variant="nav"
+          size="md"
+          className={cn(
+            'desktop-shell-sidebar-row desktop-shell-nav-row group !w-full !justify-start !px-2.5 !py-1.5 text-left',
+            isActive && 'desktop-shell-nav-row--active'
+          )}
+          onClick={() => onNavigate(type)}
+        >
+          <span className="flex min-w-0 flex-1 items-center gap-2.5">
+            <span className="flex w-4 shrink-0 items-center justify-center text-[color:inherit]">
+              {renderedIcon}
+            </span>
+            <span className="desktop-shell-sidebar-row-title block min-w-0 flex-1 truncate leading-4">
+              {label}
+            </span>
+            {count !== undefined && count > 0 && (
+              <span className="min-w-[24px] shrink-0 text-right text-[11px] tabular-nums text-[color:var(--shell-navigation-muted)]">
+                {count}
+              </span>
+            )}
+          </span>
+        </NotionButton>
+      );
+    }
+
     const button = (
       <NotionButton variant="ghost" size="sm"
         className={cn(
@@ -148,23 +196,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
         )}
         onClick={() => onNavigate(type)}
       >
-        {CustomIcon ? (
-          <CustomIcon
-            size={20}
-            className={cn(
-              'shrink-0 transition-transform duration-150',
-              isActive && 'scale-105',
-              !isActive && 'group-hover:scale-105'
-            )}
-          />
-        ) : Icon ? (
-          <Icon className={cn(
-            'h-[18px] w-[18px] shrink-0 transition-transform duration-150',
-            iconColor || 'text-muted-foreground',
-            isActive && 'scale-105',
-            !isActive && 'group-hover:scale-105'
-          )} />
-        ) : null}
+        {renderedIcon}
         {!collapsed && (
           <>
             <span className={cn(
@@ -206,6 +238,15 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
 
   const renderSectionTitle = (title: string) => {
     if (collapsed) return null;
+    if (fillContainer) {
+      return (
+        <div className="px-2 py-1">
+          <span className="desktop-shell-nav-section-label min-w-0 truncate">
+            {title}
+          </span>
+        </div>
+      );
+    }
     return (
       <div className="px-2.5 pt-3 pb-1.5">
         <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/50">
@@ -218,12 +259,14 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
   return (
     <div 
       className={cn(
-        'flex flex-col bg-muted/30 border-r border-border/40 transition-all duration-200 ease-out overflow-hidden',
-        collapsed ? 'w-14' : 'w-52'
+        'flex flex-col transition-all duration-200 ease-out overflow-hidden',
+        fillContainer ? 'bg-transparent text-[color:var(--shell-navigation-foreground)]' : 'bg-muted/30 border-r border-border/40',
+        fillContainer ? 'w-full' : collapsed ? 'w-14' : 'w-52'
       )}
     >
         <div className={cn(
-          'flex items-center gap-1.5 shrink-0 px-2 py-2',
+          'flex items-center gap-1.5 shrink-0 px-2',
+          fillContainer ? 'pt-3 pb-2' : 'py-2',
           collapsed ? 'justify-center' : ''
         )}>
           {!collapsed ? (
@@ -422,7 +465,7 @@ export const FinderQuickAccess = React.memo(function FinderQuickAccess({
           )}
         </div>
 
-        <CustomScrollArea className="flex-1" viewportClassName="px-1.5 pb-2">
+        <CustomScrollArea className="flex-1" viewportClassName={fillContainer ? 'px-2 pb-2' : 'px-1.5 pb-2'}>
           <div className="space-y-0.5">
             {quickAccessItems.map((item) => (
               <React.Fragment key={item.type}>

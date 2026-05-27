@@ -12,6 +12,7 @@ interface SessionSidebarViewContext {
 interface SessionSidebarIndicatorsState {
   streamingSessionIds: string[];
   unreadSessionIds: string[];
+  blockingSessionIds: string[];
   viewContext: SessionSidebarViewContext;
   setViewContext: (nextContext: Partial<SessionSidebarViewContext>) => void;
   markSessionSeen: (sessionId: string) => void;
@@ -67,9 +68,17 @@ function clearSeenSessionIfNeeded(
   return removeSessionId(unreadSessionIds, viewContext.activeSessionId);
 }
 
+function getInitialBlockingSessionIds(): string[] {
+  return sessionManager.getAllSessionIds().filter((sessionId) => {
+    const store = sessionManager.get(sessionId);
+    return store?.getState().pendingBlockingInteraction != null;
+  });
+}
+
 export const useSessionSidebarIndicators = create<SessionSidebarIndicatorsState>((set) => ({
   streamingSessionIds: getInitialStreamingSessionIds(),
   unreadSessionIds: [],
+  blockingSessionIds: getInitialBlockingSessionIds(),
   viewContext: DEFAULT_VIEW_CONTEXT,
   setViewContext: (nextContext) => {
     set((state) => {
@@ -128,14 +137,25 @@ function applySessionManagerEvent(event: SessionManagerEvent): void {
           unreadSessionIds,
         };
       }
+      case 'blocking-interaction-change': {
+        const blockingSessionIds = event.hasBlockingInteraction
+          ? addSessionId(state.blockingSessionIds, event.sessionId)
+          : removeSessionId(state.blockingSessionIds, event.sessionId);
+
+        return blockingSessionIds === state.blockingSessionIds
+          ? state
+          : { blockingSessionIds };
+      }
       case 'session-destroyed':
       case 'session-evicted': {
         const streamingSessionIds = removeSessionId(state.streamingSessionIds, event.sessionId);
         const unreadSessionIds = removeSessionId(state.unreadSessionIds, event.sessionId);
+        const blockingSessionIds = removeSessionId(state.blockingSessionIds, event.sessionId);
 
         if (
           streamingSessionIds === state.streamingSessionIds
           && unreadSessionIds === state.unreadSessionIds
+          && blockingSessionIds === state.blockingSessionIds
         ) {
           return state;
         }
@@ -143,6 +163,7 @@ function applySessionManagerEvent(event: SessionManagerEvent): void {
         return {
           streamingSessionIds,
           unreadSessionIds,
+          blockingSessionIds,
         };
       }
       default:
@@ -167,6 +188,7 @@ export function __resetSessionSidebarIndicatorsForTests(): void {
   useSessionSidebarIndicators.setState({
     streamingSessionIds: [],
     unreadSessionIds: [],
+    blockingSessionIds: [],
     viewContext: DEFAULT_VIEW_CONTEXT,
   });
 }

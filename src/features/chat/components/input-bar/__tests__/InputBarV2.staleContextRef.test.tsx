@@ -2,6 +2,7 @@ import React from 'react';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { act, render, waitFor } from '@testing-library/react';
 import { createStore } from 'zustand/vanilla';
+import { invoke } from '@tauri-apps/api/core';
 import { InputBarV2 } from '../InputBarV2';
 import { ModelPicker } from '../ModelPicker';
 
@@ -48,6 +49,10 @@ vi.mock('../../../registry', () => ({
   modeRegistry: {
     getResolved: () => mockModeRegistryState.plugin,
   },
+}));
+
+vi.mock('@tauri-apps/api/core', () => ({
+  invoke: vi.fn(),
 }));
 
 vi.mock('../../skills/hooks/useLoadedSkills', () => ({
@@ -126,6 +131,7 @@ describe('InputBarV2 stale context ref guard', () => {
     capturedInputBarUIProps = null;
     mockModeRegistryState.plugin = {};
     vi.clearAllMocks();
+    vi.mocked(invoke).mockResolvedValue([]);
   });
 
   it('drops stale context ref creation when attachment has been removed', () => {
@@ -597,6 +603,45 @@ describe('InputBarV2 stale context ref guard', () => {
 
     expect(capturedInputBarUIProps?.thinkingStateLabel).toBe('推理: 高');
     expect(capturedInputBarUIProps?.thinkingDepthOptions?.map((option: any) => option.value)).toEqual(['high', 'max']);
+  });
+
+  it('repairs opaque stored model display names from profile metadata when runtime models are unavailable', async () => {
+    vi.mocked(invoke).mockImplementation(async (command) => {
+      if (command === 'get_model_profiles') {
+        return [
+          {
+            id: 'builtin-sf-text',
+            label: 'SiliconFlow - Qwen/Qwen3-8B',
+            model: 'Qwen/Qwen3-8B',
+          },
+        ];
+      }
+      return [];
+    });
+
+    const { store, setChatParams } = createMockStore();
+
+    act(() => {
+      store.setState({
+        chatParams: {
+          modelId: 'builtin-sf-text',
+          modelDisplayName: 'builtin-sf-text',
+          enableThinking: true,
+          reasoningEffort: undefined,
+          thinkingBudget: undefined,
+        },
+      });
+    });
+
+    render(<InputBarV2 store={store as any} availableModels={[]} />);
+
+    await waitFor(() => {
+      expect(capturedInputBarUIProps?.runtimeModelLabel).toBe('Qwen/Qwen3-8B');
+    });
+
+    expect(setChatParams).toHaveBeenCalledWith({
+      modelDisplayName: 'Qwen/Qwen3-8B',
+    });
   });
 
   it('derives runtime thinking controls from the current dialog model override', () => {

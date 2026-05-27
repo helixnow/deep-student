@@ -151,6 +151,23 @@ describe('InputBarUI thinking runtime state visibility', () => {
     expect(ringSource).not.toContain('className="group inline-flex');
   });
 
+  it('uses the monochrome provider icon in the thinking runtime trigger', () => {
+    const triggerStart = inputBarSource.indexOf('data-testid="thinking-runtime-menu-trigger"');
+    const triggerEnd = inputBarSource.indexOf('</button>', triggerStart);
+    const triggerSource = inputBarSource.slice(triggerStart, triggerEnd);
+    const providerIconStart = triggerSource.indexOf('<ProviderIcon');
+    const providerIconEnd = triggerSource.indexOf('/>', providerIconStart);
+    const providerIconSource = triggerSource.slice(providerIconStart, providerIconEnd);
+
+    expect(triggerStart).toBeGreaterThan(-1);
+    expect(triggerEnd).toBeGreaterThan(triggerStart);
+    expect(providerIconStart).toBeGreaterThan(-1);
+    expect(providerIconEnd).toBeGreaterThan(providerIconStart);
+    expect(providerIconSource).toContain('modelId={runtimeModelIconId}');
+    expect(providerIconSource).toContain('size={15}');
+    expect(providerIconSource).toContain('variant="mono"');
+  });
+
   it('does not mount the input token estimate badge in the right action rail', () => {
     const rightStart = inputBarSource.indexOf('{/* 右侧按钮 - 固定不滚动 */}');
     const panelStart = inputBarSource.indexOf('{/* 🔧 面板容器 - 用于检测点击是否在面板内 */}');

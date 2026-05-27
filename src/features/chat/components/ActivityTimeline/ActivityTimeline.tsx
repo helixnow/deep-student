@@ -10,7 +10,7 @@
  * - 支持多轮工具调用场景（按块顺序分组渲染）
  */
 
-import React, { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useId, useMemo, useReducer, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { motion, AnimatePresence } from 'framer-motion';
@@ -421,11 +421,30 @@ interface ThinkingNodeContentProps {
   isLast: boolean;
 }
 
+function readAutoCollapseSetting(): boolean {
+  if (typeof document === 'undefined') return true;
+  return document.documentElement.getAttribute('data-auto-collapse-thinking') !== 'false';
+}
+
 const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst, isLast }) => {
   const { t } = useTranslation('chatV2');
   const disclosureMotion = useDisclosureMotion();
   const contentId = useId();
   const summaryRef = useRef<HTMLDivElement | null>(null);
+
+  const [, forceRerender] = useReducer((x: number) => x + 1, 0);
+
+  useEffect(() => {
+    const handler = (e: Event) => {
+      const detail = (e as CustomEvent).detail;
+      if (detail?.settingKey === 'thinking.auto_collapse') {
+        forceRerender();
+      }
+    };
+    window.addEventListener('systemSettingsChanged', handler);
+    return () => window.removeEventListener('systemSettingsChanged', handler);
+  }, []);
+
   const liveDurationSeconds = useLiveDurationSeconds(
     node.block.startedAt,
     node.block.endedAt,
@@ -434,8 +453,11 @@ const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst
   const displayDurationSeconds = node.isThinking
     ? liveDurationSeconds
     : (node.durationSeconds ?? liveDurationSeconds);
-  // 思维链默认展开，正在流式时确保展开
-  const [isExpanded, setIsExpanded] = useState(true);
+  const autoCollapseEnabled = readAutoCollapseSetting();
+  const [isExpanded, setIsExpanded] = useState(() => {
+    if (node.isThinking) return true;
+    return !autoCollapseEnabled;
+  });
   const [preserveStickyOnCollapse, setPreserveStickyOnCollapse] = useState(false);
   const isManuallyControlled = useRef(false);
 
@@ -444,8 +466,10 @@ const ThinkingNodeContent: React.FC<ThinkingNodeContentProps> = ({ node, isFirst
     if (node.isThinking) {
       setIsExpanded(true);
       setPreserveStickyOnCollapse(false);
+    } else if (autoCollapseEnabled) {
+      setIsExpanded(false);
     }
-  }, [node.isThinking]);
+  }, [node.isThinking, autoCollapseEnabled]);
 
   const getScrollContainer = useCallback((element: HTMLElement | null): HTMLElement | null => {
     if (typeof window === 'undefined') return null;

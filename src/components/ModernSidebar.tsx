@@ -306,11 +306,11 @@ function SidebarStreamingIndicator() {
   return (
     <span
       data-testid="sidebar-streaming-indicator"
- className="w-3.5 h-3.5 inline-flex items-center justify-center"
+      className="inline-flex h-3.5 w-3.5 items-center justify-center"
       aria-hidden="true"
     >
       <svg
- className="w-3.5 h-3.5 animate-[spin_1.1s_linear_infinite] rounded-full"
+        className="h-3.5 w-3.5 animate-[spin_1.1s_linear_infinite] rounded-full"
         viewBox="0 0 16 16"
         fill="none"
       >
@@ -320,7 +320,7 @@ function SidebarStreamingIndicator() {
           r={SIDEBAR_STREAMING_RING_RADIUS}
           stroke={SIDEBAR_STREAMING_RING_TRACK}
           strokeWidth="2.5"
-/>
+        />
         <circle
           cx="8"
           cy="8"
@@ -330,8 +330,20 @@ function SidebarStreamingIndicator() {
           strokeLinecap="round"
           strokeDasharray={`${SIDEBAR_STREAMING_RING_DASH} ${SIDEBAR_STREAMING_RING_GAP}`}
           transform="rotate(-90 8 8)"
-/>
+        />
       </svg>
+    </span>
+  );
+}
+
+function SidebarBlockingContinueBadge({ label }: { label: string }) {
+  return (
+    <span
+      data-testid="sidebar-blocking-indicator"
+      className="inline-flex min-h-5 items-center rounded-full border border-[color:color-mix(in_oklab,var(--shell-navigation-foreground)_16%,transparent)] bg-[color:color-mix(in_oklab,var(--shell-navigation-foreground)_8%,transparent)] px-1.5 text-[10px] font-medium leading-none text-[color:var(--shell-navigation-foreground)]"
+      aria-hidden="true"
+    >
+      {label}
     </span>
   );
 }
@@ -372,7 +384,6 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   sidebarCollapsed = false,
   updater,
 }) => {
-  void sidebarCollapsed;
   const { t } = useTranslation(['sidebar', 'common', 'chatV2']);
   const [recentSessions, setRecentSessions] = useState<ChatSession[]>([]);
   const [recentGroups, setRecentGroups] = useState<SessionGroup[]>([]);
@@ -398,9 +409,12 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     }
   });
   const streamingSessionIds = useSessionSidebarIndicators((state) => state.streamingSessionIds);
+  const blockingSessionIds = useSessionSidebarIndicators((state) => state.blockingSessionIds);
   const unreadSessionIds = useSessionSidebarIndicators((state) => state.unreadSessionIds);
   const streamingSessionIdSet = useMemo(() => new Set(streamingSessionIds), [streamingSessionIds]);
+  const blockingSessionIdSet = useMemo(() => new Set(blockingSessionIds), [blockingSessionIds]);
   const unreadSessionIdSet = useMemo(() => new Set(unreadSessionIds), [unreadSessionIds]);
+  const blockingContinueLabel = t('chatV2:tool_limit.continue', '继续');
 
   const uiLabEnabled = useIsUILabEnabled();
   const navItems = useMemo(() => createNavItems(t, uiLabEnabled), [t, uiLabEnabled]);
@@ -417,7 +431,9 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     []
   );
   const newSessionShortcutLabel = useMemo(() => formatShortcut('mod+n'), []);
-  const shouldShowUpdateBadge = Boolean(updater && !updater.checking && updater.available && updater.info);
+  const shouldShowUpdateBadge = Boolean(
+    !sidebarCollapsed && updater && !updater.checking && updater.available && updater.info
+  );
   // 包装 onViewChange，添加点击追踪
   const handleViewChange = useCallback((view: CurrentView) => {
     if (view !== currentView) {
@@ -812,8 +828,9 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
     const sessionTitle = getSessionTitleText(session.title, t('chatV2:page.untitled', '未命名对话'));
     const pinned = isSessionPinned(session);
     const isHovered = hoveredRecentSessionId === session.id;
-    const isSessionStreaming = streamingSessionIdSet.has(session.id);
-    const hasUnreadAssistantReply = unreadSessionIdSet.has(session.id);
+            const isSessionStreaming = streamingSessionIdSet.has(session.id);
+            const hasBlockingInteraction = blockingSessionIdSet.has(session.id);
+            const hasUnreadAssistantReply = unreadSessionIdSet.has(session.id);
     const isConfirmingArchive = confirmingArchiveSessionId === session.id;
 
     const relativeTime = (() => {
@@ -887,6 +904,8 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               ) : undefined}
               rightSlot={isSessionStreaming ? (
                 <SidebarStreamingIndicator />
+              ) : hasBlockingInteraction ? (
+                <SidebarBlockingContinueBadge label={blockingContinueLabel} />
               ) : hasUnreadAssistantReply ? (
                 <SidebarUnreadReplyDot />
               ) : isHovered ? (
@@ -1423,7 +1442,9 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
               aria-label={updater?.downloading ? t('sidebar:update.downloading', '下载中...') : t('sidebar:update.available', '点击更新')}
               disabled={updater?.downloading}
             >
-              {updater?.downloading ? t('sidebar:update.short_downloading', '下载中') : t('sidebar:update.short', '更新')}
+              {updater?.downloading ? (
+                <CircleNotch size={10} className="animate-spin" aria-hidden="true" />
+              ) : t('sidebar:update.short', '更新')}
             </button>
           ) : null}
         </div>

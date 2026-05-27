@@ -1594,18 +1594,11 @@ fn resolve_test_api_protocol(
     model: Option<&str>,
     supports_openai_responses: Option<bool>,
 ) -> &'static str {
-    if let Some(protocol) = explicit_protocol {
-        return if protocol == "openai_responses" {
-            "openai_responses"
-        } else {
-            "openai_chat_completions"
-        };
-    }
-
     let mut inferred_config = ApiConfig {
         base_url: api_base.to_string(),
         model: model.unwrap_or_default().to_string(),
         model_adapter: "general".to_string(),
+        api_protocol: explicit_protocol.map(|protocol| protocol.to_string()),
         ..Default::default()
     };
     inferred_config.supports_openai_responses = supports_openai_responses;
@@ -2130,7 +2123,7 @@ pub async fn call_llm_for_boundary(
     // 调用 call_model2_raw_prompt 进行简单的 LLM 调用
     match state
         .llm_manager
-        .call_model2_raw_prompt(&prompt, None)
+        .call_model2_raw_prompt(&prompt, None, crate::llm_usage::CallerType::Other("boundary_detection".to_string()))
         .await
     {
         Ok(output) => {
@@ -3119,7 +3112,7 @@ mod tests {
                 Some("gpt-4o-mini"),
                 None
             ),
-            "openai_responses"
+            "openai_chat_completions"
         );
         assert_eq!(
             resolve_test_api_protocol(
@@ -3159,6 +3152,28 @@ mod tests {
                 Some(true)
             ),
             "openai_responses"
+        );
+    }
+
+    #[test]
+    fn resolve_test_api_protocol_only_honors_explicit_responses_for_supported_endpoints() {
+        assert_eq!(
+            resolve_test_api_protocol(
+                "https://api.openai.com/v1",
+                Some("openai_responses"),
+                Some("gpt-5"),
+                None
+            ),
+            "openai_responses"
+        );
+        assert_eq!(
+            resolve_test_api_protocol(
+                "https://api.qsl.fan/v1",
+                Some("openai_responses"),
+                Some("deepseek-v4-pro"),
+                None
+            ),
+            "openai_chat_completions"
         );
     }
 

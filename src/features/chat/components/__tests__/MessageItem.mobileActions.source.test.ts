@@ -18,8 +18,8 @@ describe('MessageItem mobile actions source', () => {
   });
 
   it('keeps mobile assistant metadata on a single lightweight row', () => {
-    expect(messageItemSource).toContain('第一行：移动端 = 时间/AI标识(左) + 精简操作(右)');
-    expect(messageItemSource).not.toContain('第二行（移动端）：模型名称(左) + AI 标识(右)');
+    expect(messageItemSource).toContain('第一行：移动端 = 时间(左) + 精简操作(右)');
+    expect(messageItemSource).not.toContain('AiContentLabel');
   });
 
   it('does not render compact token usage in the mobile-specific branch', () => {

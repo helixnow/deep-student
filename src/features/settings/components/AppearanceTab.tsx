@@ -24,6 +24,7 @@ const DEFAULT_UI_ZOOM = 1.0;
 const MACOS_NATIVE_FONT_SMOOTHING_SETTING_KEY = 'macos.native_font_smoothing';
 const SIDEBAR_TRANSLUCENT_KEY = 'sidebar.translucent';
 const POINTER_CURSOR_SETTING_KEY = 'ui.pointer_cursor';
+const THINKING_AUTO_COLLAPSE_KEY = 'thinking.auto_collapse';
 const UI_ZOOM_PRESETS = [
   { value: 0.8, label: '80%' },
   { value: 0.9, label: '90%' },
@@ -93,9 +94,10 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
   invoke,
 }) => {
   const { t } = useTranslation(['settings']);
-  const [macosNativeFontSmoothingEnabled, setMacosNativeFontSmoothingEnabled] = useState(true);
-  const [sidebarTranslucent, setSidebarTranslucent] = useState(false);
-  const [pointerCursorEnabled, setPointerCursorEnabled] = useState(true);
+  const [macosNativeFontSmoothingEnabled, setMacosNativeFontSmoothingEnabled] = useState<boolean | null>(null);
+  const [sidebarTranslucent, setSidebarTranslucent] = useState<boolean | null>(null);
+  const [pointerCursorEnabled, setPointerCursorEnabled] = useState<boolean | null>(null);
+  const [thinkingAutoCollapse, setThinkingAutoCollapse] = useState<boolean | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -131,6 +133,39 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
         if (cancelled) return;
         setPointerCursorEnabled(true);
         document.documentElement.setAttribute('data-pointer-cursor', 'true');
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      try {
+        const raw = await tauriInvoke<string | null>('get_setting', {
+          key: THINKING_AUTO_COLLAPSE_KEY,
+        }).catch(() => null);
+        if (cancelled) return;
+        const enabled = String(raw ?? '').trim() !== 'false';
+        setThinkingAutoCollapse(enabled);
+        document.documentElement.setAttribute('data-auto-collapse-thinking', String(enabled));
+        window.dispatchEvent(
+          new CustomEvent('systemSettingsChanged', {
+            detail: { settingKey: THINKING_AUTO_COLLAPSE_KEY, value: enabled },
+          }),
+        );
+      } catch {
+        if (cancelled) return;
+        setThinkingAutoCollapse(true);
+        document.documentElement.setAttribute('data-auto-collapse-thinking', 'true');
+        window.dispatchEvent(
+          new CustomEvent('systemSettingsChanged', {
+            detail: { settingKey: THINKING_AUTO_COLLAPSE_KEY, value: true },
+          }),
+        );
       }
     })();
 
@@ -207,6 +242,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
   }, [invoke, setThemeMode, themeMode]);
 
   const handleMacosNativeFontSmoothingChange = React.useCallback(async (checked: boolean) => {
+    if (macosNativeFontSmoothingEnabled === null) return;
     const previousValue = macosNativeFontSmoothingEnabled;
     setMacosNativeFontSmoothingEnabled(checked);
 
@@ -233,6 +269,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
   }, [invoke, macosNativeFontSmoothingEnabled]);
 
   const handleSidebarTranslucentChange = React.useCallback(async (checked: boolean) => {
+    if (sidebarTranslucent === null) return;
     const previousValue = sidebarTranslucent;
     setSidebarTranslucent(checked);
     document.documentElement.setAttribute('data-sidebar-translucent', String(checked));
@@ -252,6 +289,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
   }, [invoke, sidebarTranslucent]);
 
   const handlePointerCursorChange = React.useCallback(async (checked: boolean) => {
+    if (pointerCursorEnabled === null) return;
     const previousValue = pointerCursorEnabled;
     setPointerCursorEnabled(checked);
     document.documentElement.setAttribute('data-pointer-cursor', String(checked));
@@ -269,6 +307,7 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
           detail: {
             pointerCursor: true,
             settingKey: POINTER_CURSOR_SETTING_KEY,
+            value: checked,
           },
         }),
       );
@@ -278,6 +317,37 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
       showGlobalNotification('error', getErrorMessage(error));
     }
   }, [invoke, pointerCursorEnabled]);
+
+  const handleThinkingAutoCollapseChange = React.useCallback(async (checked: boolean) => {
+    if (thinkingAutoCollapse === null) return;
+    const previousValue = thinkingAutoCollapse;
+    setThinkingAutoCollapse(checked);
+    document.documentElement.setAttribute('data-auto-collapse-thinking', String(checked));
+
+    window.dispatchEvent(
+      new CustomEvent('systemSettingsChanged', {
+        detail: { settingKey: THINKING_AUTO_COLLAPSE_KEY, value: checked },
+      }),
+    );
+
+    if (!invoke) return;
+
+    try {
+      await (invoke as typeof tauriInvoke)('save_setting', {
+        key: THINKING_AUTO_COLLAPSE_KEY,
+        value: String(checked),
+      });
+    } catch (error: unknown) {
+      setThinkingAutoCollapse(previousValue);
+      document.documentElement.setAttribute('data-auto-collapse-thinking', String(previousValue));
+      window.dispatchEvent(
+        new CustomEvent('systemSettingsChanged', {
+          detail: { settingKey: THINKING_AUTO_COLLAPSE_KEY, value: previousValue },
+        }),
+      );
+      showGlobalNotification('error', getErrorMessage(error));
+    }
+  }, [invoke, thinkingAutoCollapse]);
 
   return (
     <div className="space-y-1 pb-10 text-left animate-in fade-in duration-500" data-tour-id="appearance-settings">
@@ -322,7 +392,8 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                   'settings:theme.font_smoothing_description',
                   '在 macOS 下优先跟随系统默认字体平滑策略，不再全局强制 antialiased。关闭后回退为兼容旧版观感的灰度平滑。',
                 )}
-                checked={macosNativeFontSmoothingEnabled}
+                checked={macosNativeFontSmoothingEnabled ?? true}
+                loading={macosNativeFontSmoothingEnabled === null}
                 onCheckedChange={(checked) => {
                   void handleMacosNativeFontSmoothingChange(checked);
                 }}
@@ -335,7 +406,8 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                 'settings:theme.sidebar_translucent_description',
                 '开启后侧边栏背景变为半透明毛玻璃效果，可透视桌面内容。',
               )}
-              checked={sidebarTranslucent}
+              checked={sidebarTranslucent ?? false}
+              loading={sidebarTranslucent === null}
               onCheckedChange={(checked) => {
                 void handleSidebarTranslucentChange(checked);
               }}
@@ -347,9 +419,23 @@ export const AppearanceTab: React.FC<AppearanceTabProps> = ({
                 'settings:theme.pointer_cursor_description',
                 '悬停交互元素时切换为指针光标。',
               )}
-              checked={pointerCursorEnabled}
+              checked={pointerCursorEnabled ?? true}
+              loading={pointerCursorEnabled === null}
               onCheckedChange={(checked) => {
                 void handlePointerCursorChange(checked);
+              }}
+            />
+
+            <SwitchRow
+              title={t('settings:theme.thinking_auto_collapse_title', '思维链自动折叠')}
+              description={t(
+                'settings:theme.thinking_auto_collapse_description',
+                '思维链输出完成后自动折叠，保持对话界面更简洁。',
+              )}
+              checked={thinkingAutoCollapse ?? true}
+              loading={thinkingAutoCollapse === null}
+              onCheckedChange={(checked) => {
+                void handleThinkingAutoCollapseChange(checked);
               }}
             />
 

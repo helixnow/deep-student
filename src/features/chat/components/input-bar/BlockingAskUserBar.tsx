@@ -20,18 +20,25 @@ import { invoke } from '@tauri-apps/api/core';
 import {
   ChatCircleDots,
   Check,
+  Info,
 } from '@phosphor-icons/react';
 
 import type { BlockingInteraction } from '../../core/types/store';
 import { cn } from '@/utils/cn';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
 import type { PlaygroundAskUserInteraction } from '../../dev/playground/blockingRuntime';
+import { CommonTooltip } from '@/components/shared/CommonTooltip';
 
 // ============================================================================
 // 类型定义
 // ============================================================================
 
 type AskUserInteraction = Extract<BlockingInteraction, { kind: 'ask_user' }> | PlaygroundAskUserInteraction;
+
+interface AskUserOptionViewModel {
+  label: string;
+  reason?: string;
+}
 
 interface BlockingAskUserBarProps {
   interaction: AskUserInteraction;
@@ -55,21 +62,36 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
 
     // 防御性归一化：即使上游归一化失效（如 LLM 直接传入 { label, value } 对象），
     // 也避免在 JSX 中渲染对象触发 "Objects are not valid as a React child"
-    const options = useMemo<string[]>(() => {
+    const options = useMemo<AskUserOptionViewModel[]>(() => {
       if (!Array.isArray(rawOptions)) return [];
       return rawOptions
         .map((opt) => {
-          if (typeof opt === 'string') return opt;
+          if (typeof opt === 'string') return { label: opt };
           if (opt && typeof opt === 'object') {
-            const o = opt as { label?: unknown; value?: unknown; text?: unknown };
-            if (typeof o.label === 'string') return o.label;
-            if (typeof o.value === 'string') return o.value;
-            if (typeof o.text === 'string') return o.text;
-            try { return JSON.stringify(opt); } catch { return String(opt); }
+            const o = opt as { label?: unknown; value?: unknown; text?: unknown; reason?: unknown };
+            const label =
+              typeof o.label === 'string'
+                ? o.label
+                : typeof o.value === 'string'
+                  ? o.value
+                  : typeof o.text === 'string'
+                    ? o.text
+                    : null;
+            if (label) {
+              return {
+                label,
+                reason: typeof o.reason === 'string' ? o.reason : undefined,
+              };
+            }
+            try {
+              return { label: JSON.stringify(opt) };
+            } catch {
+              return { label: String(opt) };
+            }
           }
-          return String(opt ?? '');
+          return { label: String(opt ?? '') };
         })
-        .filter((s) => s.length > 0);
+        .filter((option) => option.label.length > 0);
     }, [rawOptions]);
 
     // State
@@ -168,7 +190,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
         : selectedIndex !== null
           ? [selectedIndex]
           : [];
-      const texts = indices.map((i) => options[i]).filter(Boolean);
+      const texts = indices.map((i) => options[i]?.label).filter(Boolean) as string[];
       const trimmedCustom = customInput.trim();
 
       let source: 'user_click' | 'custom_input' | 'mixed';
@@ -186,6 +208,27 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
     const handleIgnore = useCallback(() => {
       handleSubmit([], [], null, 'user_click');
     }, [handleSubmit]);
+
+    const renderOptionReason = useCallback(
+      (option: AskUserOptionViewModel) => {
+        if (!option.reason) return null;
+
+        return (
+          <CommonTooltip content={option.reason} delay={150} maxWidth={280}>
+            <button
+              type="button"
+              aria-label={t('askUser.optionReasonLabel', { defaultValue: 'Why this option' })}
+              className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
+              onClick={(e) => e.stopPropagation()}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <Info size={14} weight="bold" />
+            </button>
+          </CommonTooltip>
+        );
+      },
+      [t]
+    );
 
     // ========== 已回答状态 ==========
     if (hasResponded) {
@@ -242,13 +285,14 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
                       {numberLabel}
                     </span>
                     <span className="min-w-0 flex-1 text-sm font-medium leading-6 text-foreground">
-                      {option}
+                      {option.label}
                       {isRecommended && (
                         <span className="ml-1 text-muted-foreground">
                           ({t('askUser.recommended', { defaultValue: '推荐' })})
                         </span>
                       )}
                     </span>
+                    {renderOptionReason(option)}
                     <Checkbox
                       checked={isChecked}
                       onCheckedChange={() => handleToggleCheck(index)}
@@ -260,14 +304,10 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
               }
 
               return (
-                <NotionButton
+                <div
                   key={index}
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => handleSingleSelect(index)}
-                  disabled={disabled}
                   className={cn(
-                    'group flex h-auto w-full items-center gap-3 rounded-[var(--radius-shell-row)] border px-3 py-2.5 text-left transition-colors',
+                    'group flex h-auto w-full appearance-none items-center gap-3 rounded-[var(--radius-shell-row)] border px-3 py-2.5 text-left transition-colors outline-none focus-visible:ring-2 focus-visible:ring-[color:var(--ring)] disabled:cursor-not-allowed select-none',
                     isChecked
                       ? 'border-[color:var(--button-primary-border)] bg-[color:var(--button-primary-surface)]'
                     : isRecommended
@@ -276,17 +316,25 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
                     disabled && 'pointer-events-none opacity-50'
                   )}
                 >
-                  <span className="w-6 flex-shrink-0 text-sm font-medium text-muted-foreground">
-                    {numberLabel}
-                  </span>
-                  <span className="min-w-0 flex-1 text-sm font-medium leading-6 text-foreground">
-                    {option}
-                    {isRecommended && (
-                      <span className="ml-1 text-muted-foreground">
-                        ({t('askUser.recommended', { defaultValue: '推荐' })})
-                      </span>
-                    )}
-                  </span>
+                  <button
+                    type="button"
+                    onClick={() => handleSingleSelect(index)}
+                    disabled={disabled}
+                    className="flex min-w-0 flex-1 items-center gap-3 text-left outline-none"
+                  >
+                    <span className="w-6 flex-shrink-0 text-sm font-medium text-muted-foreground">
+                      {numberLabel}
+                    </span>
+                    <span className="min-w-0 flex-1 text-sm font-medium leading-6 text-foreground">
+                      {option.label}
+                      {isRecommended && (
+                        <span className="ml-1 text-muted-foreground">
+                          ({t('askUser.recommended', { defaultValue: '推荐' })})
+                        </span>
+                      )}
+                    </span>
+                  </button>
+                  {renderOptionReason(option)}
                   <span
                     className={cn(
                       'flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full transition-colors',
@@ -297,7 +345,7 @@ export const BlockingAskUserBar: React.FC<BlockingAskUserBarProps> = React.memo(
                   >
                     <Check size={16} weight="bold" />
                   </span>
-                </NotionButton>
+                </div>
               );
             })}
           </div>

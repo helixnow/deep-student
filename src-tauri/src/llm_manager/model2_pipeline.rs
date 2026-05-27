@@ -373,12 +373,31 @@ mod tests {
             model_adapter: "general".to_string(),
             api_protocol: Some("openai_responses".to_string()),
             model: "gpt-4o-mini".to_string(),
+            provider_type: Some("openai".to_string()),
+            base_url: "https://api.openai.com/v1".to_string(),
             is_reasoning: false,
             supports_reasoning: false,
             ..Default::default()
         };
 
         assert!(should_use_openai_responses_for_config(&config));
+    }
+
+    #[test]
+    fn test_explicit_openai_responses_protocol_is_downgraded_for_third_party_openai_compatible_endpoint(
+    ) {
+        let config = ApiConfig {
+            model_adapter: "general".to_string(),
+            api_protocol: Some("openai_responses".to_string()),
+            provider_type: Some("openai".to_string()),
+            base_url: "https://api.qsl.fan/v1".to_string(),
+            model: "deepseek-v4-pro".to_string(),
+            is_reasoning: true,
+            supports_reasoning: true,
+            ..Default::default()
+        };
+
+        assert!(!should_use_openai_responses_for_config(&config));
     }
 
     #[test]
@@ -2528,7 +2547,7 @@ impl LLMManager {
             let logger = crate::debug_logger::DebugLogger::new(dir);
 
             // 从 API 返回的 usage 数据中提取实际 token 数量
-            let (actual_prompt_tokens, actual_completion_tokens, reasoning_tokens) =
+            let (actual_prompt_tokens, actual_completion_tokens, reasoning_tokens, cached_tokens) =
                 Self::extract_usage_tokens(
                     &captured_usage,
                     approx_tokens_out,
@@ -2556,7 +2575,7 @@ impl LLMManager {
                 actual_prompt_tokens,
                 actual_completion_tokens,
                 reasoning_tokens,
-                None,
+                cached_tokens,
                 Some(stream_event.to_string()),
                 Some(dur as u64),
                 !was_cancelled,
@@ -3548,7 +3567,7 @@ impl LLMManager {
             let logger = crate::debug_logger::DebugLogger::new(dir);
 
             // 从 API 返回的 usage 数据中提取实际 token 数量
-            let (actual_prompt_tokens, actual_completion_tokens, reasoning_tokens) =
+            let (actual_prompt_tokens, actual_completion_tokens, reasoning_tokens, cached_tokens) =
                 Self::extract_usage_tokens(
                     &captured_usage,
                     approx_tokens_out,
@@ -3576,7 +3595,7 @@ impl LLMManager {
                 actual_prompt_tokens,
                 actual_completion_tokens,
                 reasoning_tokens,
-                None,
+                cached_tokens,
                 Some(stream_event.to_string()),
                 Some(dur as u64),
                 !was_cancelled,
@@ -4489,9 +4508,10 @@ impl LLMManager {
         &self,
         user_prompt: &str,
         image_payloads: Option<Vec<ImagePayload>>,
+        caller_type: crate::llm_usage::CallerType,
     ) -> Result<StandardModel2Output> {
         let config = self.get_model2_config().await?;
-        self.call_raw_prompt_with_config(config, user_prompt, image_payloads)
+        self.call_raw_prompt_with_config(config, user_prompt, image_payloads, caller_type)
             .await
     }
 
@@ -4531,6 +4551,7 @@ impl LLMManager {
             user_prompt,
             None,
             RawPromptOptions { force_json: false },
+            crate::llm_usage::CallerType::ChatV2,
         )
         .await
     }
@@ -4541,7 +4562,7 @@ impl LLMManager {
         user_prompt: &str,
     ) -> Result<StandardModel2Output> {
         let config = self.get_memory_decision_model_config().await?;
-        self.call_raw_prompt_with_config(config, user_prompt, None)
+        self.call_raw_prompt_with_config(config, user_prompt, None, crate::llm_usage::CallerType::Memory)
             .await
     }
 
@@ -4551,7 +4572,7 @@ impl LLMManager {
         user_prompt: &str,
     ) -> Result<StandardModel2Output> {
         let config = self.get_chat_title_model_config().await?;
-        self.call_raw_prompt_with_config(config, user_prompt, None)
+        self.call_raw_prompt_with_config(config, user_prompt, None, crate::llm_usage::CallerType::ChatV2)
             .await
     }
 
@@ -4561,6 +4582,7 @@ impl LLMManager {
         config: ApiConfig,
         user_prompt: &str,
         image_payloads: Option<Vec<ImagePayload>>,
+        caller_type: crate::llm_usage::CallerType,
     ) -> Result<StandardModel2Output> {
         // 旧入口保留默认行为：GPT 启用 JSON 严格模式
         self.call_raw_prompt_with_config_opts(
@@ -4568,6 +4590,7 @@ impl LLMManager {
             user_prompt,
             image_payloads,
             RawPromptOptions { force_json: true },
+            caller_type,
         )
         .await
     }
@@ -4580,6 +4603,7 @@ impl LLMManager {
         user_prompt: &str,
         image_payloads: Option<Vec<ImagePayload>>,
         opts: RawPromptOptions,
+        caller_type: crate::llm_usage::CallerType,
     ) -> Result<StandardModel2Output> {
         // 构造最简消息，仅包含用户指令
         let mut content_parts = vec![json!({
@@ -4729,20 +4753,79 @@ impl LLMManager {
         let response_json: serde_json::Value = response
             .json()
             .await
-            .map_err(|e| AppError::llm(format!("解析RAW_PROMPT响应失败: {}", e)))?;
+            .map_err(|e| {
+                let err_msg = format!("解析RAW_PROMPT响应失败: {}", e);
+                crate::llm_usage::record_llm_usage(
+                    caller_type.clone(),
+                    &config.model,
+                    0,
+                    0,
+                    None,
+                    None,
+                    None,
+                    None,
+                    false,
+                    Some(err_msg.clone()),
+                );
+                AppError::llm(err_msg)
+            })?;
 
         // Gemini 非流式响应统一转换为 OpenAI 形状
         let openai_like_json = if config.model_adapter == "google" {
             if let Some(safety_msg) = Self::extract_gemini_safety_error(&response_json) {
+                crate::llm_usage::record_llm_usage(
+                    caller_type.clone(),
+                    &config.model,
+                    0,
+                    0,
+                    None,
+                    None,
+                    None,
+                    None,
+                    false,
+                    Some(safety_msg.clone()),
+                );
                 return Err(AppError::llm(safety_msg));
             }
             match crate::adapters::gemini_openai_converter::convert_gemini_nonstream_response_to_openai(&response_json, &config.model) {
                 Ok(v) => v,
-                Err(e) => return Err(AppError::llm(format!("Gemini响应转换失败: {}", e))),
+                Err(e) => {
+                    let err_msg = format!("Gemini响应转换失败: {}", e);
+                    crate::llm_usage::record_llm_usage(
+                        caller_type.clone(),
+                        &config.model,
+                        0,
+                        0,
+                        None,
+                        None,
+                        None,
+                        None,
+                        false,
+                        Some(err_msg.clone()),
+                    );
+                    return Err(AppError::llm(err_msg));
+                }
             }
         } else if matches!(config.model_adapter.as_str(), "anthropic" | "claude") {
-            crate::providers::convert_anthropic_response_to_openai(&response_json, &config.model)
-                .ok_or_else(|| AppError::llm("解析Anthropic响应失败".to_string()))?
+            match crate::providers::convert_anthropic_response_to_openai(&response_json, &config.model) {
+                Some(v) => v,
+                None => {
+                    let err_msg = "解析Anthropic响应失败".to_string();
+                    crate::llm_usage::record_llm_usage(
+                        caller_type.clone(),
+                        &config.model,
+                        0,
+                        0,
+                        None,
+                        None,
+                        None,
+                        None,
+                        false,
+                        Some(err_msg.clone()),
+                    );
+                    return Err(AppError::llm(err_msg));
+                }
+            }
         } else {
             response_json.clone()
         };
@@ -4751,6 +4834,27 @@ impl LLMManager {
             .as_str()
             .unwrap_or("")
             .to_string();
+
+        // 记录成功的 LLM 使用量
+        let usage = openai_like_json.get("usage");
+        let (actual_prompt_tokens, actual_completion_tokens, reasoning_tokens, cached_tokens) =
+            Self::extract_usage_tokens(
+                &usage.cloned(),
+                crate::utils::token_budget::estimate_tokens(&assistant_message),
+                (user_prompt.len() / 4).max(1),
+            );
+        crate::llm_usage::record_llm_usage(
+            caller_type,
+            &config.model,
+            actual_prompt_tokens,
+            actual_completion_tokens,
+            reasoning_tokens,
+            cached_tokens,
+            None,
+            None,
+            true,
+            None,
+        );
 
         Ok(StandardModel2Output {
             assistant_message,
@@ -5059,7 +5163,7 @@ impl LLMManager {
         usage: &Option<serde_json::Value>,
         fallback_completion_tokens: usize,
         fallback_prompt_tokens: usize,
-    ) -> (u32, u32, Option<u32>) {
+    ) -> (u32, u32, Option<u32>, Option<u32>) {
         if let Some(usage_value) = usage {
             // 提取 prompt_tokens（输入）
             // 如果 API 返回 0 或未返回，尝试从 total_tokens - completion_tokens 推算
@@ -5102,12 +5206,36 @@ impl LLMManager {
                 .and_then(|v| v.as_u64())
                 .map(|v| v as u32);
 
+            // 提取 cached_tokens（缓存命中，按供应商格式取 max 防中转站重复）
+            let anthropic_cache_hit = usage_value
+                .get("cache_read_input_tokens")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u32;
+            let openai_cached = usage_value
+                .get("prompt_tokens_details")
+                .and_then(|d| d.get("cached_tokens"))
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u32;
+            let deepseek_cached = usage_value
+                .get("prompt_cache_hit_tokens")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u32;
+            let gemini_cached = usage_value
+                .get("cached_tokens")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0) as u32;
+            let cached_tokens = if anthropic_cache_hit > 0 || openai_cached > 0 || deepseek_cached > 0 || gemini_cached > 0 {
+                Some(anthropic_cache_hit.max(openai_cached).max(deepseek_cached).max(gemini_cached))
+            } else {
+                None
+            };
+
             debug!(
-                "[LLM Usage] 从 API 提取: prompt={}, completion={}, reasoning={:?}",
-                prompt_tokens, completion_tokens, reasoning_tokens
+                "[LLM Usage] 从 API 提取: prompt={}, completion={}, reasoning={:?}, cached={:?}",
+                prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens
             );
 
-            (prompt_tokens, completion_tokens, reasoning_tokens)
+            (prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens)
         } else {
             // 没有 API usage 数据，使用估算值
             let estimated_prompt = fallback_prompt_tokens as u32;
@@ -5115,7 +5243,7 @@ impl LLMManager {
                 "[LLM Usage] API 未返回 usage，使用估算值: prompt={}, completion={}",
                 estimated_prompt, fallback_completion_tokens
             );
-            (estimated_prompt, fallback_completion_tokens as u32, None)
+            (estimated_prompt, fallback_completion_tokens as u32, None, None)
         }
     }
 }

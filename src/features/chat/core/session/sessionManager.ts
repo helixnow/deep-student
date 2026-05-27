@@ -49,6 +49,9 @@ class SessionManagerImpl implements ISessionManager {
   /** 流式状态订阅取消函数 */
   private streamingUnsubscribers = new Map<string, () => void>();
 
+  /** 阻塞交互状态订阅取消函数 */
+  private blockingInteractionUnsubscribers = new Map<string, () => void>();
+
   /**
    * [FIX-LRU-EVICTION] Sessions with save-before-eviction in progress.
    *
@@ -128,8 +131,8 @@ class SessionManagerImpl implements ISessionManager {
     // 5. 更新 LRU
     this.lruOrder.push(sessionId);
 
-    // 6. 订阅流式状态变化
-    this.subscribeToStreamingState(sessionId, store);
+    // 6. 订阅运行时状态变化（流式 / 阻塞交互）
+    this.subscribeToRuntimeState(sessionId, store);
 
     // 7. 发送事件（延迟到微任务，避免在 React render 中同步触发 setState）
     queueMicrotask(() => {
@@ -229,12 +232,18 @@ class SessionManagerImpl implements ISessionManager {
     // Only cleanup adapter when session is destroyed
     await adapterManager.destroy(sessionId);
 
-    // 取消流式状态订阅
-    const unsubscribe = this.streamingUnsubscribers.get(sessionId);
-    if (unsubscribe) {
-      unsubscribe();
+    // 取消运行时状态订阅
+    const streamingUnsubscribe = this.streamingUnsubscribers.get(sessionId);
+    if (streamingUnsubscribe) {
+      streamingUnsubscribe();
       this.streamingUnsubscribers.delete(sessionId);
     }
+
+    const blockingUnsubscribe = this.blockingInteractionUnsubscribers.get(sessionId);
+    if (blockingUnsubscribe && blockingUnsubscribe !== streamingUnsubscribe) {
+      blockingUnsubscribe();
+    }
+    this.blockingInteractionUnsubscribers.delete(sessionId);
 
     // 从 Map 和 LRU 中移除
     this.sessions.delete(sessionId);
@@ -509,11 +518,12 @@ class SessionManagerImpl implements ISessionManager {
   /**
    * 订阅会话的流式状态变化
    */
-  private subscribeToStreamingState(
+  private subscribeToRuntimeState(
     sessionId: string,
     store: StoreApi<ChatStore>
   ): void {
     let prevStreaming = store.getState().sessionStatus === 'streaming';
+    let prevHasBlockingInteraction = store.getState().pendingBlockingInteraction !== null;
 
     const unsubscribe = store.subscribe((state) => {
       const isStreaming = state.sessionStatus === 'streaming';
@@ -525,9 +535,20 @@ class SessionManagerImpl implements ISessionManager {
           isStreaming,
         });
       }
+
+      const hasBlockingInteraction = state.pendingBlockingInteraction !== null;
+      if (hasBlockingInteraction !== prevHasBlockingInteraction) {
+        prevHasBlockingInteraction = hasBlockingInteraction;
+        this.emit({
+          type: 'blocking-interaction-change',
+          sessionId,
+          hasBlockingInteraction,
+        });
+      }
     });
 
     this.streamingUnsubscribers.set(sessionId, unsubscribe);
+    this.blockingInteractionUnsubscribers.set(sessionId, unsubscribe);
   }
 
   /**

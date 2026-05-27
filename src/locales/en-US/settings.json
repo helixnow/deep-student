@@ -490,6 +490,8 @@
     "font_smoothing_description": "Prefer the macOS system font smoothing behavior instead of forcing antialiased text globally. Turn this off to restore the previous grayscale smoothing look.",
     "pointer_cursor_title": "Use Pointer Cursor",
     "pointer_cursor_description": "Switch to a pointer cursor when hovering interactive elements.",
+    "thinking_auto_collapse_title": "Auto-collapse Thinking Chain",
+    "thinking_auto_collapse_description": "Automatically collapse the thinking chain block after output completes, keeping the chat view cleaner.",
     "accent_label": "Accent color",
     "accent_hint": "Only tunes buttons, links, and selected states. Background, cards, and text stay stable.",
     "system_default": "System Default",

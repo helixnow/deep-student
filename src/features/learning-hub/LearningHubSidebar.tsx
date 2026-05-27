@@ -1,4 +1,5 @@
 import React, { useEffect, useState, useCallback, useRef, lazy, Suspense } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import { cn } from '@/lib/utils';
 import { MagnifyingGlass, Plus, FolderPlus, X, Trash, CircleNotch, FlowArrow, CheckSquare, ListChecks, CaretLeft, CaretRight, House } from '@phosphor-icons/react';
@@ -126,6 +127,7 @@ export function LearningHubSidebar({
   hasOpenApp = false,
   onCloseApp,
   hideToolbarAndNav = false,
+  quickAccessPortalTarget,
   highlightedIds,
 }: LearningHubSidebarProps) {
   const { isActive: isLearningHubViewActive } = useViewVisibility('learning-hub');
@@ -656,13 +658,13 @@ export function LearningHubSidebar({
       setMobileSearchExpanded(true);
     }
     window.setTimeout(() => {
-      const input = containerRef.current?.querySelector<HTMLInputElement>('input[type="text"]');
+      const input = (quickAccessPortalTarget ?? containerRef.current)?.querySelector<HTMLInputElement>('input[type="text"]');
       if (input) {
         input.focus();
         input.select();
       }
     }, 0);
-  }, [isSmallScreen]);
+  }, [isSmallScreen, quickAccessPortalTarget]);
 
   useCommandEvents(
     {
@@ -2178,33 +2180,38 @@ export function LearningHubSidebar({
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [selectedIds, handleSelectAll, handleBatchDelete, handleClearSelection]);
 
+  const shouldRenderDesktopQuickAccess = !isSmallScreen && mode !== 'canvas';
+  const quickAccessNode = shouldRenderDesktopQuickAccess ? (
+    <FinderQuickAccess
+      collapsed={quickAccessPortalTarget ? false : effectiveQuickAccessCollapsed}
+      activeType={currentQuickAccessType}
+      onNavigate={handleQuickAccessNavigate}
+      onToggleCollapse={quickAccessPortalTarget ? undefined : () => setQuickAccessCollapsed(!quickAccessCollapsed)}
+      searchQuery={searchQuery}
+      onSearchChange={setSearchQuery}
+      searchDisabled={!canSearchInCurrentView}
+      onNewFolder={handleNewFolder}
+      onNewNote={handleNewNote}
+      onImportMarkdownNote={() => {
+        void handleImportMarkdownNote();
+      }}
+      onNewExam={handleNewExam}
+      onNewTextbook={handleNewTextbook}
+      onNewTranslation={handleNewTranslation}
+      onNewEssay={handleNewEssay}
+      onNewMindMap={handleNewMindMap}
+      createDisabled={!canCreateInCurrentView}
+      favoriteCount={0}
+      fillContainer={Boolean(quickAccessPortalTarget)}
+    />
+  ) : null;
+
   return (
     <div ref={containerRef} className={cn("study-shell-sidebar-frame flex h-full", className)} tabIndex={-1}>
       {/* 左侧：快速导航栏（可折叠，包含搜索和新建）- 移动端和 canvas 模式隐藏 */}
-      {!isSmallScreen && mode !== 'canvas' && (
-        <FinderQuickAccess
-          collapsed={effectiveQuickAccessCollapsed}
-          activeType={currentQuickAccessType}
-          onNavigate={handleQuickAccessNavigate}
-          onToggleCollapse={() => setQuickAccessCollapsed(!quickAccessCollapsed)}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-          searchDisabled={!canSearchInCurrentView}
-          onNewFolder={handleNewFolder}
-          onNewNote={handleNewNote}
-          onImportMarkdownNote={() => {
-            void handleImportMarkdownNote();
-          }}
-          onNewExam={handleNewExam}
-          onNewTextbook={handleNewTextbook}
-          onNewTranslation={handleNewTranslation}
-          onNewEssay={handleNewEssay}
-          onNewMindMap={handleNewMindMap}
-          createDisabled={!canCreateInCurrentView}
-          // Counts
-          favoriteCount={0}
-        />
-      )}
+      {quickAccessPortalTarget && quickAccessNode
+        ? createPortal(quickAccessNode, quickAccessPortalTarget)
+        : quickAccessNode}
 
       {/* 右侧：工具栏 + 文件列表（包裹拖拽导入区域） */}
       <UnifiedDragDropZone

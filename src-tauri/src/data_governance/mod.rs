@@ -125,3 +125,48 @@ pub enum DataGovernanceError {
 
 /// 数据治理系统结果类型
 pub type DataGovernanceResult<T> = Result<T, DataGovernanceError>;
+
+/// 启动期数据治理初始化失败时，判断是否应强制进入维护模式。
+///
+/// Schema fingerprint drift 说明“当前物理 schema 与已记录基线不一致”，
+/// 但在已完成迁移且运行时可降级的情况下，不应阻断整站启动。
+pub fn should_force_maintenance_mode_on_init_failure(err: &DataGovernanceError) -> bool {
+    match err {
+        DataGovernanceError::Migration(migration::MigrationError::VerificationFailed {
+            reason,
+            ..
+        }) => !reason.contains("Schema fingerprint drift detected"),
+        _ => true,
+    }
+}
+
+#[cfg(test)]
+mod policy_tests {
+    use super::*;
+
+    #[test]
+    fn schema_fingerprint_drift_does_not_force_maintenance_mode() {
+        let err = DataGovernanceError::Migration(migration::MigrationError::VerificationFailed {
+            version: 20260524,
+            reason: "Schema fingerprint drift detected at v20260524 (db: mistakes).".to_string(),
+        });
+
+        assert!(
+            !should_force_maintenance_mode_on_init_failure(&err),
+            "Schema drift should degrade startup without forcing maintenance mode"
+        );
+    }
+
+    #[test]
+    fn non_drift_verification_failure_still_forces_maintenance_mode() {
+        let err = DataGovernanceError::Migration(migration::MigrationError::VerificationFailed {
+            version: 20260524,
+            reason: "critical verification mismatch".to_string(),
+        });
+
+        assert!(
+            should_force_maintenance_mode_on_init_failure(&err),
+            "Other verification failures should still force maintenance mode"
+        );
+    }
+}

@@ -101,4 +101,22 @@ describe('useSessionSidebarIndicators', () => {
     expect(useSessionSidebarIndicators.getState().streamingSessionIds).toEqual([]);
     expect(useSessionSidebarIndicators.getState().unreadSessionIds).toEqual([]);
   });
+
+  it('tracks sessions that are blocked waiting for user follow-up', () => {
+    __applySessionSidebarEventForTests({
+      type: 'blocking-interaction-change',
+      sessionId: 'session-e',
+      hasBlockingInteraction: true,
+    });
+
+    expect(useSessionSidebarIndicators.getState().blockingSessionIds).toEqual(['session-e']);
+
+    __applySessionSidebarEventForTests({
+      type: 'blocking-interaction-change',
+      sessionId: 'session-e',
+      hasBlockingInteraction: false,
+    });
+
+    expect(useSessionSidebarIndicators.getState().blockingSessionIds).toEqual([]);
+  });
 });

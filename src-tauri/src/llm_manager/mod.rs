@@ -5,6 +5,10 @@ mod model2_pipeline;
 pub(crate) mod parser;
 mod rag_extension;
 
+use crate::canonical_tools::{
+    build_openai_function_tool_schema, prepare_external_tool, ApiNameSource, CanonicalExternalTool,
+    CanonicalExternalToolConfig,
+};
 use crate::crypto::{CryptoService, EncryptedData};
 use crate::database::Database;
 use crate::file_manager::FileManager;
@@ -186,6 +190,30 @@ mod tests {
         LLMManager::new(db, file_manager).expect("create llm manager")
     }
 
+    #[test]
+    fn prepare_frontend_mcp_tool_for_legacy_api_encodes_invalid_names_with_namespace_prefix() {
+        let tool = FrontendMcpTool {
+            name: "fetch:url".to_string(),
+            description: Some("Fetch URL".to_string()),
+            input_schema: json!({ "type": "object" }),
+        };
+
+        let prepared =
+            LLMManager::prepare_frontend_mcp_tool_for_legacy_api(&tool, Some("mcp.tools."))
+                .expect("tool should prepare");
+
+        assert_eq!(prepared.bridge_name, "fetch:url");
+        assert_eq!(prepared.internal_tool_name, "fetch:url");
+        assert_eq!(
+            crate::canonical_tools::decode_tool_name_from_api(&prepared.api_name),
+            Some("mcp.tools.fetch:url".to_string())
+        );
+        assert_eq!(
+            prepared.schema["function"]["name"],
+            json!(prepared.api_name)
+        );
+    }
+
     fn builtin_vendor_config(api_key: &str) -> VendorConfig {
         VendorConfig {
             id: "builtin-openai".to_string(),
@@ -327,6 +355,90 @@ mod tests {
             "https://proxy.example.com/v1",
             None,
         ));
+    }
+
+    #[test]
+    fn third_party_openai_compatible_base_url_does_not_imply_official_responses_support() {
+        assert!(!provider_supports_openai_responses(
+            Some("openai"),
+            "https://api.qsl.fan/v1",
+            None,
+        ));
+    }
+
+    #[tokio::test]
+    async fn bootstrap_vendor_model_config_repairs_invalid_openai_responses_overrides() {
+        let temp_dir = TempDir::new().expect("create temp dir");
+        let manager = create_test_llm_manager(&temp_dir);
+        let vendor = VendorConfig {
+            id: "vendor-qsl".to_string(),
+            name: "QSL".to_string(),
+            provider_type: "openai".to_string(),
+            api_protocol: Some("openai_responses".to_string()),
+            supports_openai_responses: None,
+            base_url: "https://api.qsl.fan/v1".to_string(),
+            api_key: String::new(),
+            headers: HashMap::new(),
+            rate_limit_per_minute: None,
+            default_timeout_ms: None,
+            notes: None,
+            is_builtin: false,
+            is_read_only: false,
+            sort_order: None,
+            max_tokens_limit: None,
+            website_url: None,
+        };
+        let profile = ModelProfile {
+            id: "profile-qsl".to_string(),
+            vendor_id: "vendor-qsl".to_string(),
+            label: "DeepSeek V4".to_string(),
+            model: "deepseek-v4-pro".to_string(),
+            api_protocol: Some("openai_responses".to_string()),
+            model_adapter: "general".to_string(),
+            supports_tools: true,
+            supports_reasoning: true,
+            is_reasoning: true,
+            ..ModelProfile::default()
+        };
+
+        manager
+            .db
+            .save_setting(
+                "vendor_configs",
+                &serde_json::to_string(&vec![vendor]).unwrap(),
+            )
+            .expect("save vendors");
+        manager
+            .db
+            .save_setting(
+                "model_profiles",
+                &serde_json::to_string(&vec![profile]).unwrap(),
+            )
+            .expect("save profiles");
+
+        manager
+            .bootstrap_vendor_model_config()
+            .await
+            .expect("bootstrap should repair stored protocols");
+
+        let vendors = manager
+            .read_user_vendor_configs()
+            .await
+            .expect("read vendors after repair");
+        assert_eq!(
+            vendors[0].api_protocol.as_deref(),
+            Some("openai_chat_completions")
+        );
+        assert_eq!(vendors[0].supports_openai_responses, Some(false));
+
+        let profiles = manager
+            .read_user_model_profiles()
+            .await
+            .expect("read profiles after repair");
+        assert_eq!(
+            profiles[0].api_protocol.as_deref(),
+            Some("openai_chat_completions")
+        );
     }
 
     #[test]
@@ -1355,6 +1467,7 @@ pub struct VendorConfig {
 
 impl Default for VendorConfig {
     fn default() -> Self {
+        let official_openai_base = "https://api.openai.com/v1";
         Self {
             id: Uuid::new_v4().to_string(),
             name: "New Vendor".to_string(),
@@ -1362,12 +1475,12 @@ impl Default for VendorConfig {
             api_protocol: Some(resolve_preferred_protocol_for_provider(
                 Some("openai"),
                 Some("openai"),
-                "",
+                official_openai_base,
                 None,
             )),
             supports_openai_responses: Some(provider_supports_openai_responses(
                 Some("openai"),
-                "",
+                official_openai_base,
                 None,
             )),
             base_url: String::new(),
@@ -1572,8 +1685,10 @@ fn provider_allowed_protocols(provider_type: Option<&str>) -> Vec<String> {
 }
 
 fn resolves_to_official_openai(provider_type: Option<&str>, base_url: &str) -> bool {
-    normalize_provider_protocol_registry_value(provider_type) == "openai"
-        || normalize_base_url_for_provider_protocol_registry(base_url).contains("api.openai.com")
+    let normalized_provider = normalize_provider_protocol_registry_value(provider_type);
+    let normalized_base_url = normalize_base_url_for_provider_protocol_registry(base_url);
+    normalized_base_url.contains("api.openai.com")
+        || (normalized_provider == "openai" && normalized_base_url.is_empty())
 }
 
 pub(crate) fn provider_supports_openai_responses(
@@ -1590,6 +1705,15 @@ pub(crate) fn provider_supports_openai_responses(
     get_provider_protocol_record(provider_type)
         .map(|record| record.supports_openai_responses)
         .unwrap_or(false)
+}
+
+fn should_honor_explicit_openai_responses_protocol(config: &ApiConfig) -> bool {
+    config.model_adapter == "general"
+        && provider_supports_openai_responses(
+            config.provider_type.as_deref(),
+            &config.base_url,
+            config.supports_openai_responses,
+        )
 }
 
 pub(crate) fn resolve_preferred_protocol_for_provider(
@@ -1639,7 +1763,9 @@ pub(crate) fn effective_max_tokens(max_output_tokens: u32, max_tokens_limit: Opt
 #[inline]
 pub(crate) fn should_use_openai_responses_for_config(config: &ApiConfig) -> bool {
     if let Some(protocol) = config.api_protocol.as_deref() {
-        return matches!(protocol, "openai_responses");
+        let normalized = normalize_provider_protocol_registry_value(Some(protocol));
+        return normalized == "openai_responses"
+            && should_honor_explicit_openai_responses_protocol(config);
     }
     if config.model_adapter != "general" {
         return false;
@@ -1653,8 +1779,97 @@ pub(crate) fn should_use_openai_responses_for_config(config: &ApiConfig) -> bool
     ) == "openai_responses"
 }
 
+fn normalize_vendor_protocol_config(vendor: &mut VendorConfig) -> bool {
+    let mut changed = false;
+
+    if vendor.supports_openai_responses.is_none() {
+        vendor.supports_openai_responses = Some(provider_supports_openai_responses(
+            Some(vendor.provider_type.as_str()),
+            &vendor.base_url,
+            None,
+        ));
+        changed = true;
+    }
+
+    if let Some(protocol) = vendor.api_protocol.as_deref() {
+        let normalized = normalize_provider_protocol_registry_value(Some(protocol));
+        if normalized == "openai_responses"
+            && !provider_supports_openai_responses(
+                Some(vendor.provider_type.as_str()),
+                &vendor.base_url,
+                vendor.supports_openai_responses,
+            )
+        {
+            vendor.api_protocol = Some(resolve_preferred_protocol_for_provider(
+                Some(vendor.provider_type.as_str()),
+                Some("general"),
+                &vendor.base_url,
+                vendor.supports_openai_responses,
+            ));
+            changed = true;
+        }
+    }
+
+    changed
+}
+
+fn normalize_model_profile_protocol_config(
+    profile: &mut ModelProfile,
+    vendor: Option<&VendorConfig>,
+) -> bool {
+    let Some(protocol) = profile.api_protocol.as_deref() else {
+        return false;
+    };
+
+    let normalized = normalize_provider_protocol_registry_value(Some(protocol));
+    if normalized != "openai_responses" {
+        return false;
+    }
+
+    let config = ApiConfig {
+        provider_type: vendor.map(|item| item.provider_type.clone()),
+        base_url: vendor.map(|item| item.base_url.clone()).unwrap_or_default(),
+        model_adapter: profile.model_adapter.clone(),
+        api_protocol: Some("openai_responses".to_string()),
+        supports_openai_responses: vendor.and_then(|item| item.supports_openai_responses),
+        ..Default::default()
+    };
+
+    if should_use_openai_responses_for_config(&config) {
+        return false;
+    }
+
+    profile.api_protocol = Some(resolve_preferred_protocol_for_provider(
+        vendor.map(|item| item.provider_type.as_str()),
+        Some(profile.model_adapter.as_str()),
+        vendor
+            .map(|item| item.base_url.as_str())
+            .unwrap_or_default(),
+        vendor.and_then(|item| item.supports_openai_responses),
+    ));
+    true
+}
+
 pub(crate) fn build_provider_adapter(config: &ApiConfig) -> Box<dyn ProviderAdapter> {
-    if should_use_openai_responses_for_config(config) {
+    let use_responses = should_use_openai_responses_for_config(config);
+    if matches!(
+        config
+            .api_protocol
+            .as_deref()
+            .map(|protocol| normalize_provider_protocol_registry_value(Some(protocol)))
+            .as_deref(),
+        Some("openai_responses")
+    ) && !use_responses
+    {
+        warn!(
+            "[LLM Manager] Downgrading unsupported openai_responses protocol to chat_completions: provider_type={:?}, base_url={}, model={}, adapter={}",
+            config.provider_type,
+            config.base_url,
+            config.model,
+            config.model_adapter
+        );
+    }
+    if use_responses {
         Box::new(crate::providers::OpenAIResponsesAdapter)
     } else {
         match config.model_adapter.as_str() {
@@ -2945,6 +3160,7 @@ impl LLMManager {
             .is_some();
 
         if vendor_exists && profile_exists {
+            self.repair_vendor_model_protocol_settings().await?;
             return Ok(());
         }
 
@@ -2987,6 +3203,53 @@ impl LLMManager {
         profiles.retain(|p| !p.is_builtin);
 
         self.save_vendor_model_configs(&vendors, &profiles).await?;
+        Ok(())
+    }
+
+    async fn repair_vendor_model_protocol_settings(&self) -> Result<()> {
+        let raw_vendors = self
+            .db
+            .get_setting("vendor_configs")
+            .map_err(|e| AppError::database(format!("读取供应商配置失败: {}", e)))?
+            .unwrap_or_else(|| "[]".to_string());
+        let raw_profiles = self
+            .db
+            .get_setting("model_profiles")
+            .map_err(|e| AppError::database(format!("读取模型条目失败: {}", e)))?
+            .unwrap_or_else(|| "[]".to_string());
+
+        let mut vendors: Vec<VendorConfig> = serde_json::from_str(&raw_vendors)
+            .map_err(|e| AppError::configuration(format!("解析供应商配置失败: {}", e)))?;
+        let mut profiles: Vec<ModelProfile> = serde_json::from_str(&raw_profiles)
+            .map_err(|e| AppError::configuration(format!("解析模型条目失败: {}", e)))?;
+
+        let mut changed = false;
+        for vendor in &mut vendors {
+            changed |= normalize_vendor_protocol_config(vendor);
+        }
+        let vendor_map: HashMap<String, VendorConfig> = vendors
+            .iter()
+            .cloned()
+            .map(|vendor| (vendor.id.clone(), vendor))
+            .collect();
+        let mut vendor_map = vendor_map;
+        if let Ok((builtin_vendors, _)) = self.load_builtin_vendor_profiles() {
+            for vendor in builtin_vendors {
+                vendor_map.entry(vendor.id.clone()).or_insert(vendor);
+            }
+        }
+        for profile in &mut profiles {
+            let vendor = vendor_map.get(&profile.vendor_id);
+            changed |= normalize_model_profile_protocol_config(profile, vendor);
+        }
+
+        if changed {
+            info!(
+                "[VendorModel] Normalized persisted protocol settings for OpenAI-compatible providers"
+            );
+            self.save_vendor_model_configs(&vendors, &profiles).await?;
+        }
+
         Ok(())
     }
 
@@ -3086,6 +3349,7 @@ impl LLMManager {
                     vendor.api_key = String::new();
                 }
             }
+            normalize_vendor_protocol_config(vendor);
         }
         Ok(vendors)
     }
@@ -3147,6 +3411,7 @@ impl LLMManager {
         let mut sanitized = Vec::new();
         for cfg in configs {
             let mut clone = cfg.clone();
+            normalize_vendor_protocol_config(&mut clone);
 
             let trimmed = cfg.api_key.trim();
             // “保留旧值”占位符：*** 或全 *（但不包含空字符串）
@@ -3374,7 +3639,27 @@ impl LLMManager {
             }
         }
 
-        let json = serde_json::to_string(profiles)
+        let vendor_map: HashMap<String, VendorConfig> = self
+            .read_user_vendor_configs()
+            .await
+            .unwrap_or_default()
+            .into_iter()
+            .map(|vendor| (vendor.id.clone(), vendor))
+            .collect();
+        let mut vendor_map = vendor_map;
+        if let Ok((builtin_vendors, _)) = self.load_builtin_vendor_profiles() {
+            for vendor in builtin_vendors {
+                vendor_map.entry(vendor.id.clone()).or_insert(vendor);
+            }
+        }
+
+        let mut sanitized = profiles.to_vec();
+        for profile in &mut sanitized {
+            let vendor = vendor_map.get(&profile.vendor_id);
+            normalize_model_profile_protocol_config(profile, vendor);
+        }
+
+        let json = serde_json::to_string(&sanitized)
             .map_err(|e| AppError::configuration(format!("序列化模型条目失败: {}", e)))?;
         self.db
             .save_setting("model_profiles", &json)
@@ -4776,18 +5061,15 @@ impl LLMManager {
                 );
             }
 
-            tools_array.push(json!({
-                "type": "function",
-                "function": {
-                    "name": "web_search",
-                    "description": "Search the INTERNET/WEB for current information, news, people, events, or any information not available in local knowledge base. Use this when users explicitly ask for web search or for real-time/current information.",
-                    "parameters": {
-                        "type": "object",
-                        "properties": properties,
-                        "required": ["query"]
-                    }
-                }
-            }));
+            tools_array.push(build_openai_function_tool_schema(
+                "web_search",
+                Some("Search the INTERNET/WEB for current information, news, people, events, or any information not available in local knowledge base. Use this when users explicitly ask for web search or for real-time/current information."),
+                Some(json!({
+                    "type": "object",
+                    "properties": properties,
+                    "required": ["query"]
+                })),
+            ));
 
             debug!(
                 "[工具] web_search工具已成功添加到工具列表，选中引擎: {:?}",
@@ -4859,8 +5141,15 @@ impl LLMManager {
 
         let mcp_tools = self.get_frontend_mcp_tools_cached(window, cache_ttl).await;
         let mut included_count = 0usize;
+        let namespace_prefix = namespace_prefix.trim();
+        let api_name_prefix = (!namespace_prefix.is_empty()).then_some(namespace_prefix);
+
         for t in mcp_tools {
-            let name = t.name.clone();
+            let name = t.name.trim().to_string();
+            if name.is_empty() {
+                warn!("[MCP] 跳过空名称工具: {:?}", t);
+                continue;
+            }
             // 选择/白黑名单策略
             let mut allowed = if !selected.is_empty() {
                 selected.iter().any(|s| s == &name)
@@ -4879,20 +5168,13 @@ impl LLMManager {
                 continue;
             }
 
-            let namespaced = if namespace_prefix.is_empty() {
-                name
-            } else {
-                format!("{}{}", namespace_prefix, name)
+            let Some(prepared) =
+                Self::prepare_frontend_mcp_tool_for_legacy_api(&t, api_name_prefix)
+            else {
+                warn!("[MCP] 跳过无法规范化广告的工具: {}", name);
+                continue;
             };
-
-            tools_array.push(json!({
-                "type": "function",
-                "function": {
-                    "name": namespaced,
-                    "description": t.description.as_deref().unwrap_or(""),
-                    "parameters": t.input_schema
-                }
-            }));
+            tools_array.push(prepared.schema);
             included_count += 1;
         }
         debug!("[MCP] 已广告前端MCP工具 {} 个", included_count);
@@ -5004,16 +5286,23 @@ impl LLMManager {
         info!("MCP tool cache cleared");
     }
 
-    /// 将 MCP 工具转换为 OpenAI 工具 schema
-    fn frontend_mcp_tool_to_openai_schema(mcp_tool: &FrontendMcpTool) -> Value {
-        json!({
-            "type": "function",
-            "function": {
-                "name": mcp_tool.name,
-                "description": mcp_tool.description.as_deref().unwrap_or(""),
-                "parameters": mcp_tool.input_schema
-            }
-        })
+    fn prepare_frontend_mcp_tool_for_legacy_api(
+        mcp_tool: &FrontendMcpTool,
+        api_name_prefix: Option<&str>,
+    ) -> Option<CanonicalExternalTool> {
+        prepare_external_tool(
+            &mcp_tool.name,
+            None,
+            mcp_tool.description.as_deref(),
+            Some(&mcp_tool.input_schema),
+            CanonicalExternalToolConfig {
+                internal_prefix: None,
+                preserve_prefix: None,
+                api_name_prefix,
+                include_server_suffix: false,
+                api_name_source: ApiNameSource::BridgeName,
+            },
+        )
     }
 
     /// 将 OpenAI 格式的工具调用转换为内部 ToolCall 格式

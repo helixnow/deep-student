@@ -5,7 +5,6 @@
  * - 单选模式：按钮点击即提交
  * - 多选模式：复选框 + 确认按钮
  * - 可配置的自定义输入框
- * - 30 秒倒计时，超时自动选择推荐选项
  * - 已回答状态的只读视图
  *
  * 设计参考：
@@ -20,7 +19,7 @@ import { invoke } from '@tauri-apps/api/core';
 import {
   ChatCircleDots,
   Check,
-  Clock,
+  Info,
   Star,
   PaperPlaneRight,
 } from '@phosphor-icons/react';
@@ -30,6 +29,7 @@ import { blockRegistry } from '../../registry/blockRegistry';
 import { cn } from '@/utils/cn';
 import { Input } from '@/components/ui/shad/Input';
 import { Checkbox } from '@/components/ui/shad/Checkbox';
+import { CommonTooltip } from '@/components/shared/CommonTooltip';
 
 // ============================================================================
 // 类型定义
@@ -38,11 +38,60 @@ import { Checkbox } from '@/components/ui/shad/Checkbox';
 /** 提问块输入数据（LLM 工具调用参数） */
 interface AskUserBlockInput {
   question: string;
-  options: string[]; // 2-6 items, index 0 is recommended
+  options: Array<string | { label?: string; value?: string; text?: string; reason?: string }>;
   multiple?: boolean; // default false
   allowCustom?: boolean; // default true
   timeoutSeconds?: number; // optional, no timeout if not set
   context?: string;
+}
+
+interface AskUserOptionViewModel {
+  label: string;
+  reason?: string;
+}
+
+function normalizeAskUserOptions(
+  rawOptions: AskUserBlockInput['options'] | string
+): AskUserOptionViewModel[] {
+  const candidateOptions = Array.isArray(rawOptions)
+    ? rawOptions
+    : typeof rawOptions === 'string'
+      ? [rawOptions]
+      : [];
+
+  return candidateOptions
+    .map((option) => {
+      if (typeof option === 'string') {
+        return { label: option };
+      }
+
+      if (option && typeof option === 'object') {
+        const label =
+          typeof option.label === 'string'
+            ? option.label
+            : typeof option.value === 'string'
+              ? option.value
+              : typeof option.text === 'string'
+                ? option.text
+                : null;
+
+        if (label) {
+          return {
+            label,
+            reason: typeof option.reason === 'string' ? option.reason : undefined,
+          };
+        }
+
+        try {
+          return { label: JSON.stringify(option) };
+        } catch {
+          return { label: String(option) };
+        }
+      }
+
+      return { label: String(option ?? '') };
+    })
+    .filter((option) => option.label.length > 0);
 }
 
 /** 提问块输出数据（用户回答结果） */
@@ -77,7 +126,6 @@ function unwrapOutput(toolOutput: unknown): AskUserBlockOutput | undefined {
 
 const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block }) => {
   const { t } = useTranslation('chatV2');
-  const [remainingSeconds, setRemainingSeconds] = useState<number | null>(null);
   const [hasResponded, setHasResponded] = useState(false);
   const [isResponding, setIsResponding] = useState(false);
   const [customInput, setCustomInput] = useState('');
@@ -94,10 +142,9 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
 
   const question = askInput?.question || '';
   const rawOptions = askInput?.options;
-  const options: string[] = Array.isArray(rawOptions) ? rawOptions : (typeof rawOptions === 'string' ? [rawOptions] : []);
+  const options = useMemo(() => normalizeAskUserOptions(rawOptions ?? []), [rawOptions]);
   const multiple = askInput?.multiple ?? false;
   const allowCustom = askInput?.allowCustom ?? true;
-  const timeoutSeconds = askInput?.timeoutSeconds ?? null;
   const context = askInput?.context;
 
   // Initialize checked indices for multi-select (pre-check recommended = index 0)
@@ -179,7 +226,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
   // Multi-select: confirm button
   const handleMultiConfirm = useCallback(() => {
     const indices = Array.from(checkedIndices).sort((a, b) => a - b);
-    const texts = indices.map((i) => options[i]).filter(Boolean);
+    const texts = indices.map((i) => options[i]?.label).filter(Boolean) as string[];
     const trimmedCustom = customInput.trim();
 
     let source: string;
@@ -201,29 +248,9 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
     handleSubmit([], [], trimmed, 'custom_input');
   }, [customInput, handleSubmit]);
 
-  // 倒计时逻辑（纯视觉倒计时，超时提交由后端统一处理）
-  // 仅在设置了 timeoutSeconds 时启用
-  // 后端超时后会发射 tool_call_end 事件，更新 block.toolOutput 触发 resolved 视图
-  useEffect(() => {
-    if (!timeoutSeconds || hasResponded || isResolved || remainingSeconds === null || remainingSeconds <= 0) return;
-
-    const timer = setInterval(() => {
-      setRemainingSeconds((prev) => {
-        if (prev === null || prev <= 1) {
-          clearInterval(timer);
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-
-    return () => clearInterval(timer);
-  }, [timeoutSeconds, hasResponded, isResolved, remainingSeconds]);
-
   // 新的提问到达时重置状态
   useEffect(() => {
     if (block.status === 'running') {
-      setRemainingSeconds(timeoutSeconds);
       setHasResponded(false);
       setIsResponding(false);
       setCustomInput('');
@@ -232,7 +259,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
       setLocalCustomText(null);
       setLocalSource(null);
     }
-  }, [block.toolCallId, block.status, timeoutSeconds]);
+  }, [block.toolCallId, block.status]);
 
   // 来源文案映射
   const sourceLabel = useMemo(() => {
@@ -244,13 +271,34 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
       case 'mixed':
         return t('askUser.sourceMixed', { defaultValue: '混合选择' });
       case 'timeout':
-        return t('askUser.sourceTimeout');
+        return t('askUser.sourceNoResponse');
       case 'channel_closed':
         return t('askUser.sourceChannelClosed');
       default:
         return resolvedSource || '';
     }
   }, [resolvedSource, t]);
+
+  const renderOptionReason = useCallback(
+    (option: AskUserOptionViewModel) => {
+      if (!option.reason) return null;
+
+      return (
+        <CommonTooltip content={option.reason} delay={150} maxWidth={280}>
+          <button
+            type="button"
+            aria-label={t('askUser.optionReasonLabel', { defaultValue: 'Why this option' })}
+            className="flex h-6 w-6 flex-shrink-0 items-center justify-center rounded-full text-[color:var(--text-secondary)] transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--text-primary)]"
+            onClick={(e) => e.stopPropagation()}
+            onPointerDown={(e) => e.stopPropagation()}
+          >
+            <Info size={14} weight="bold" />
+          </button>
+        </CommonTooltip>
+      );
+    },
+    [t]
+  );
 
   // 如果没有输入数据（preparing 状态），显示加载中
   if (!askInput) {
@@ -274,7 +322,7 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
     if (resolvedCustomText) {
       displayParts.push(resolvedCustomText);
     }
-    const displayText = displayParts.join(' + ') || t('askUser.autoSelected', { defaultValue: '（自动选择）' });
+    const displayText = displayParts.join(' + ') || t('askUser.noResponse', { defaultValue: '（未收到回答）' });
 
     return (
       <div className="overflow-hidden rounded-[var(--radius-shell-row)] border border-[color:var(--border-soft)] bg-[color:var(--surface-elevated)] shadow-[var(--shadow-content-subtle)]">
@@ -306,18 +354,12 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
   // ========== 活跃状态：交互式提问卡片 ==========
   return (
     <div className="overflow-hidden rounded-[var(--radius-shell-row)] border border-[color:var(--border-soft)] bg-[color:var(--surface-elevated)] shadow-[var(--shadow-content-subtle)]">
-      {/* 头部：问题 + 倒计时 */}
+      {/* 头部：问题 */}
       <div className="flex items-center gap-2 border-b border-[color:var(--border-soft)] bg-[color:var(--surface-panel-strong)] px-3 py-2">
           <ChatCircleDots size={16} className="flex-shrink-0 text-[color:var(--text-secondary)]" />
         <span className="flex-1 text-sm font-medium text-[color:var(--text-primary)]">
           {question}
         </span>
-        {remainingSeconds !== null && remainingSeconds > 0 && (
-          <div className="flex flex-shrink-0 items-center gap-1 text-xs text-[color:var(--text-muted)]">
-            <Clock size={14} />
-            <span>{remainingSeconds}s</span>
-          </div>
-        )}
       </div>
 
       {/* 上下文说明 */}
@@ -353,7 +395,8 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
                     onCheckedChange={() => handleToggleCheck(index)}
                     disabled={isResponding}
                   />
-                  <span className="flex-1 text-sm text-[color:var(--text-primary)]">{option}</span>
+                  <span className="flex-1 text-sm text-[color:var(--text-primary)]">{option.label}</span>
+                  {renderOptionReason(option)}
                   {isRecommended && (
                     <span className="flex flex-shrink-0 items-center gap-1 text-xs text-[color:var(--text-secondary)]">
                       <Star size={12} className="fill-current" />
@@ -369,29 +412,33 @@ const AskUserBlockComponent: React.FC<BlockComponentProps> = React.memo(({ block
           options.map((option, index) => {
             const isRecommended = index === 0;
             return (
-              <NotionButton
+              <div
                 key={index}
-                variant={isRecommended ? 'primary' : 'ghost'}
-                size="sm"
-                onClick={() => handleSingleSelect(index, option)}
-                disabled={isResponding}
                 className={cn(
-                  'w-full !justify-start gap-2 !px-3 !py-2 text-left',
-                  'border',
+                  'flex w-full items-center gap-2 rounded-[var(--radius-shell-control)] border px-3 py-2',
                   isRecommended
                     ? 'border-[color:var(--border-soft)] bg-[color:var(--surface-panel-strong)] text-[color:var(--text-primary)] hover:bg-[color:var(--interactive-hover)]'
                     : 'border-[color:var(--border-soft)] bg-[color:var(--surface-elevated)] text-[color:var(--text-primary)] hover:bg-[var(--interactive-hover)]',
                   isResponding && 'opacity-50'
                 )}
               >
-                <span className="flex-1">{option}</span>
+                <NotionButton
+                  variant={isRecommended ? 'primary' : 'ghost'}
+                  size="sm"
+                  onClick={() => handleSingleSelect(index, option.label)}
+                  disabled={isResponding}
+                  className="!h-auto !flex-1 !justify-start !p-0 text-left !bg-transparent !text-inherit hover:!bg-transparent"
+                >
+                  <span className="flex-1">{option.label}</span>
+                </NotionButton>
+                {renderOptionReason(option)}
                 {isRecommended && (
                   <span className="flex flex-shrink-0 items-center gap-1 text-xs text-[color:var(--text-secondary)]">
                     <Star className="w-3 h-3 fill-current" />
                     {t('askUser.recommended')}
                   </span>
                 )}
-              </NotionButton>
+              </div>
             );
           })
         )}

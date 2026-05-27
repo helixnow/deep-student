@@ -365,7 +365,11 @@ fn r09_reset_baseline_is_idempotent() {
         (3, 3),
         "reset 应把 sync_version 对齐到 local_version，而不是制造新的本地漂移"
     );
-    assert_eq!(first, (1, 1), "首次 reset 应清空旧 change_log 并对齐 1 条业务记录");
+    assert_eq!(
+        first,
+        (1, 1),
+        "首次 reset 应清空旧 change_log 并对齐 1 条业务记录"
+    );
     assert_eq!(second, (0, 0), "再次 reset 不应继续产生任何变化");
     let cnt: i64 = conn
         .query_row("SELECT COUNT(*) FROM __change_log", [], |r| r.get(0))

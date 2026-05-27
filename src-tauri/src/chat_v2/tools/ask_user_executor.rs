@@ -1,13 +1,13 @@
 //! 用户提问工具执行器
 //!
-//! 在工具调用循环中向用户提出轻量级问题，不中断执行流程。
-//! 使用 oneshot channel 等待前端响应，30 秒超时自动选择推荐选项。
+//! 在工具调用循环中向用户提出轻量级问题，并阻塞等待真实用户响应。
+//! 使用 oneshot channel 等待前端响应；默认无超时，也不会自动替用户选择答案。
 //!
 //! ## 流程
 //! 1. LLM 调用 `builtin-ask_user` 工具
 //! 2. Executor 发射 `tool_call_start` 事件（前端创建 ask_user 块）
 //! 3. 创建 oneshot channel，注册到全局 PENDING_ASK_CALLBACKS
-//! 4. 等待前端通过 Tauri command 发送用户回答，或 30s 超时
+//! 4. 等待前端通过 Tauri command 发送用户回答
 //! 5. 构造 ToolResultInfo 返回给 Pipeline，注入下一轮 LLM 请求
 //!
 //! ## 设计参考
@@ -23,10 +23,56 @@ use serde::{Deserialize, Serialize};
 use serde_json::json;
 use tokio::sync::oneshot;
 
-use super::arg_utils::get_string_array_arg;
+use super::arg_utils::get_json_array_arg;
 use super::executor::{ExecutionContext, ToolExecutor, ToolSensitivity};
-use crate::chat_v2::events::event_types;
 use crate::chat_v2::types::{ToolCall, ToolResultInfo};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AskUserOption {
+    label: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reason: Option<String>,
+}
+
+fn parse_ask_user_options(arguments: &serde_json::Value) -> Vec<AskUserOption> {
+    get_json_array_arg(arguments, "options")
+        .unwrap_or_default()
+        .into_iter()
+        .filter_map(|item| {
+            if let Some(text) = item.as_str() {
+                let trimmed = text.trim();
+                return if trimmed.is_empty() {
+                    None
+                } else {
+                    Some(AskUserOption {
+                        label: trimmed.to_string(),
+                        reason: None,
+                    })
+                };
+            }
+
+            let obj = item.as_object()?;
+            let label = obj
+                .get("label")
+                .and_then(|v| v.as_str())
+                .or_else(|| obj.get("value").and_then(|v| v.as_str()))
+                .or_else(|| obj.get("text").and_then(|v| v.as_str()))
+                .map(str::trim)
+                .filter(|value| !value.is_empty())?;
+
+            Some(AskUserOption {
+                label: label.to_string(),
+                reason: obj
+                    .get("reason")
+                    .and_then(|v| v.as_str())
+                    .map(str::trim)
+                    .filter(|value| !value.is_empty())
+                    .map(ToOwned::to_owned),
+            })
+        })
+        .collect()
+}
 
 // ============================================================================
 // 类型定义
@@ -87,9 +133,6 @@ pub fn handle_ask_user_response(response: AskUserResponse) {
     }
 }
 
-/// 用户提问超时时间（毫秒）— 仅在 LLM 指定 timeoutSeconds 时使用
-/// 默认无超时，无限等待用户回答。
-
 // ============================================================================
 // 工具执行器
 // ============================================================================
@@ -97,7 +140,7 @@ pub fn handle_ask_user_response(response: AskUserResponse) {
 /// 用户提问工具执行器
 ///
 /// 在工具调用循环中向用户提出轻量级问题。
-/// 支持单选/多选 + 可选自定义输入 + 可选超时（默认无限等待）。
+/// 支持单选/多选 + 可选自定义输入。
 pub struct AskUserExecutor;
 
 impl AskUserExecutor {
@@ -127,8 +170,7 @@ impl ToolExecutor for AskUserExecutor {
             .and_then(|v| v.as_str())
             .unwrap_or("")
             .to_string();
-        let options: Vec<String> =
-            get_string_array_arg(&call.arguments, "options").unwrap_or_default();
+        let options = parse_ask_user_options(&call.arguments);
         let multiple = call
             .arguments
             .get("multiple")
@@ -153,7 +195,7 @@ impl ToolExecutor for AskUserExecutor {
         log::info!(
             "[AskUserExecutor] Asking user: question='{}', options={:?}, multiple={}, allow_custom={}, timeout={:?}s",
             question,
-            options,
+            options.iter().map(|option| option.label.clone()).collect::<Vec<_>>(),
             multiple,
             allow_custom,
             timeout_seconds

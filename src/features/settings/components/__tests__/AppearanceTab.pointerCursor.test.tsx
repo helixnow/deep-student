@@ -97,4 +97,58 @@ describe('AppearanceTab pointer cursor preference', () => {
       expect(document.documentElement.getAttribute('data-pointer-cursor')).toBe('false');
     });
   });
+
+  it('does not render the pointer cursor switch until the persisted setting has loaded', async () => {
+    let resolvePointerCursor: ((value: string | null) => void) | null = null;
+
+    getSettingMock.mockImplementation((key?: unknown) => {
+      if (key === 'ui.pointer_cursor') {
+        return new Promise<string | null>((resolve) => {
+          resolvePointerCursor = resolve;
+        });
+      }
+      if (key === 'sidebar.translucent') return Promise.resolve('false');
+      if (key === 'thinking.auto_collapse') return Promise.resolve('true');
+      if (key === 'macos.native_font_smoothing') return Promise.resolve('true');
+      return Promise.resolve(null);
+    });
+
+    render(
+      <AppearanceTab
+        uiZoom={1}
+        zoomLoading={false}
+        zoomSaving={false}
+        zoomStatus={{ type: 'idle' }}
+        handleZoomChange={vi.fn()}
+        handleZoomReset={vi.fn()}
+        uiFont="inter"
+        fontLoading={false}
+        fontSaving={false}
+        handleFontChange={vi.fn()}
+        handleFontReset={vi.fn()}
+        uiFontSize={1}
+        fontSizeLoading={false}
+        fontSizeSaving={false}
+        handleFontSizeChange={vi.fn()}
+        handleFontSizeReset={vi.fn()}
+        themeMode="light"
+        isSystemDark={false}
+        setThemeMode={vi.fn()}
+        themePalette="default"
+        setThemePalette={vi.fn()}
+        customColor="#6366f1"
+        setCustomColor={vi.fn()}
+        isTauriEnvironment
+        invoke={invokeMock}
+      />,
+    );
+
+    expect(screen.queryByRole('switch', { name: '使用指针光标' })).not.toBeInTheDocument();
+
+    resolvePointerCursor?.('true');
+
+    await waitFor(async () => {
+      expect(await screen.findByRole('switch', { name: '使用指针光标' })).toBeInTheDocument();
+    });
+  });
 });

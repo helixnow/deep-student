@@ -8,6 +8,7 @@ pub mod anki_connect_service;
 pub mod apkg_exporter_service;
 pub mod backup_job_manager;
 pub mod batch_operations;
+pub mod canonical_tools;
 pub mod cmd;
 pub mod commands;
 pub mod config_recovery;
@@ -538,14 +539,16 @@ pub fn run() {
                                 error = %e,
                                 "数据治理系统初始化失败，应用将以降级模式继续运行"
                             );
-                            data_governance_init_failed = true;
+                            data_governance_init_failed =
+                                crate::data_governance::should_force_maintenance_mode_on_init_failure(&e);
 
                             crate::data_governance::commands::persist_migration_error(&active_app_data_dir, &error_msg);
 
                             let _ = app_handle.emit("data-governance-migration-status", serde_json::json!({
                                 "success": false,
                                 "error": error_msg,
-                                "degraded_mode": true
+                                "degraded_mode": true,
+                                "maintenance_mode_forced": data_governance_init_failed
                             }));
 
                             let empty_registry = crate::data_governance::schema_registry::SchemaRegistry::default();

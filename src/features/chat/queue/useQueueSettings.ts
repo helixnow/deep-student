@@ -7,6 +7,7 @@ export type QueueMode = 'queue' | 'guide';
 
 export interface QueueSettings {
   mode: QueueMode;
+  loading: boolean;
   queueEnabled: boolean;
   allowSteer: boolean;
   setMode: (v: QueueMode) => Promise<void>;
@@ -24,6 +25,7 @@ async function readMode(defaultValue: QueueMode): Promise<QueueMode> {
 
 export function useQueueSettings(): QueueSettings {
   const [mode, setModeState] = useState<QueueMode>('queue');
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     let cancelled = false;
@@ -31,8 +33,11 @@ export function useQueueSettings(): QueueSettings {
       const m = await readMode('queue');
       if (cancelled) return;
       setModeState(m);
+      setLoading(false);
     })();
-    return () => { cancelled = true; };
+    return () => {
+      cancelled = true;
+    };
   }, []);
 
   const setMode = useCallback(async (v: QueueMode) => {
@@ -47,6 +52,7 @@ export function useQueueSettings(): QueueSettings {
 
   return {
     mode,
+    loading,
     queueEnabled: true,
     allowSteer: mode === 'guide',
     setMode,

@@ -217,6 +217,9 @@ export interface MessageMeta {
     round: number;
   }>;
 
+  /** 最终失败原因（用于零输出失败态等消息级错误展示） */
+  terminalError?: string;
+
   /** 🆕 2026-01-15: 正在准备中的工具调用信息（LLM 正在生成参数） */
   preparingToolCall?: {
     toolCallId: string;

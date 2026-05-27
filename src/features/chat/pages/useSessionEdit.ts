@@ -48,6 +48,7 @@ export interface UseSessionEditDeps {
   archiveGroup: (id: string) => Promise<void>;
   reorderGroups: (ids: string[]) => void;
   loadUngroupedCount: () => Promise<void>;
+  getOrCreateHiddenDraftSession: (groupId?: string | null) => Promise<ChatSession>;
   groupDragDisabled: boolean;
   visibleGroups: SessionGroup[];
 }
@@ -62,7 +63,7 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     editingTitle, editingGroup, pendingArchiveGroup, sessionsRef,
     groupPickerAddRef, t,
     updateGroup, createGroup, archiveGroup, reorderGroups,
-    loadUngroupedCount, groupDragDisabled, visibleGroups,
+    loadUngroupedCount, getOrCreateHiddenDraftSession, groupDragDisabled, visibleGroups,
   } = deps;
 
   // 开始编辑会话名称
@@ -151,21 +152,33 @@ export function useSessionEdit(deps: UseSessionEditDeps) {
     try {
       await invoke('chat_v2_archive_session', { sessionId });
 
-      const nextCurrentSessionId =
-        currentSessionId === sessionId
-          ? sessionsRef.current.find((session) => session.id !== sessionId)?.id ?? null
-          : currentSessionId;
+      const remaining = sessionsRef.current.filter((s) => s.id !== sessionId);
 
       setSessions((prev) => prev.filter((session) => session.id !== sessionId));
-      if (currentSessionId === sessionId) {
-        setCurrentSessionId(nextCurrentSessionId);
-      }
       emitSessionListUpdated();
+
+      if (currentSessionId === sessionId) {
+        if (remaining.length === 0) {
+          try {
+            const draftSession = await getOrCreateHiddenDraftSession();
+            setSessions([]);
+            emitSessionListUpdated();
+            loadUngroupedCount();
+            setCurrentSessionId(draftSession.id);
+          } catch (e) {
+            console.warn('[ChatV2Page] Failed to create replacement draft session:', e);
+            setCurrentSessionId(null);
+          }
+        } else {
+          setCurrentSessionId(remaining[0].id);
+        }
+      }
+
       showArchiveSessionToast(t);
     } catch (error) {
       console.error('[ChatV2Page] Failed to archive session:', getErrorMessage(error));
     }
-  }, [currentSessionId, setCurrentSessionId, setSessions, sessionsRef, t]);
+  }, [currentSessionId, setCurrentSessionId, setSessions, sessionsRef, t, getOrCreateHiddenDraftSession, loadUngroupedCount]);
 
   // ===== 分组管理 =====
   const openCreateGroup = useCallback(() => {

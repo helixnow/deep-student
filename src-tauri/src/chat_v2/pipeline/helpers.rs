@@ -1,4 +1,7 @@
 use super::*;
+use crate::canonical_tools::{
+    encode_tool_name_for_api, prepare_external_tool, ApiNameSource, CanonicalExternalToolConfig,
+};
 use std::collections::{HashMap, HashSet};
 
 #[derive(Debug, Clone)]
@@ -186,19 +189,59 @@ pub(crate) fn filter_retrieval_results(
     filtered
 }
 
-/// Sanitize tool name for LLM API compatibility.
-/// OpenAI requires function names to match `^[a-zA-Z0-9_-]+$`.
-/// Replaces any non-matching character (e.g. `:`, `.`, `/`) with `_`.
+/// Encode tool names for LLM API compatibility.
+///
+/// Invalid OpenAI function names are serialized through the canonical reversible codec
+/// so execution can recover the exact original MCP bridge name later.
 pub(crate) fn sanitize_tool_name_for_api(name: &str) -> String {
-    name.chars()
-        .map(|c| {
-            if c.is_ascii_alphanumeric() || c == '_' || c == '-' {
-                c
-            } else {
-                '_'
-            }
-        })
-        .collect()
+    encode_tool_name_for_api(name).unwrap_or_default()
+}
+
+/// Normalize tool names for LLM APIs and reject blank names early.
+pub(crate) fn normalize_tool_name_for_api(name: &str) -> Option<String> {
+    encode_tool_name_for_api(name)
+}
+
+pub(crate) fn external_tool_raw_name(tool_name: &str) -> String {
+    if tool_name.starts_with(BUILTIN_NAMESPACE) {
+        tool_name.to_string()
+    } else {
+        format!("mcp_{}", tool_name)
+    }
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct PreparedExternalToolSchema {
+    pub api_name: String,
+    pub raw_tool_name: String,
+    pub preferred_server_id: Option<String>,
+    pub schema: Value,
+}
+
+pub(crate) fn prepare_external_tool_schema(
+    tool: &crate::chat_v2::types::McpToolSchema,
+    include_server_suffix: bool,
+) -> Option<PreparedExternalToolSchema> {
+    let prepared = prepare_external_tool(
+        &tool.name,
+        tool.server_id.as_deref(),
+        tool.description.as_deref(),
+        tool.input_schema.as_ref(),
+        CanonicalExternalToolConfig {
+            internal_prefix: Some("mcp_"),
+            preserve_prefix: Some(BUILTIN_NAMESPACE),
+            api_name_prefix: None,
+            include_server_suffix,
+            api_name_source: ApiNameSource::InternalToolName,
+        },
+    )?;
+
+    Some(PreparedExternalToolSchema {
+        api_name: prepared.api_name,
+        raw_tool_name: prepared.internal_tool_name,
+        preferred_server_id: prepared.preferred_server_id,
+        schema: prepared.schema,
+    })
 }
 
 pub(crate) fn approval_scope_setting_key(tool_name: &str, arguments: &Value) -> String {
@@ -775,5 +818,61 @@ mod tests {
             .all(|msg| msg.tool_call.is_none() && msg.tool_result.is_none()));
         assert_eq!(history[0].content, "turn 2 assistant");
         assert_eq!(history[1].content, "turn 2 user");
+    }
+
+    #[test]
+    fn test_normalize_tool_name_for_api_rejects_blank_names() {
+        assert_eq!(normalize_tool_name_for_api(""), None);
+        assert_eq!(normalize_tool_name_for_api("   "), None);
+    }
+
+    #[test]
+    fn test_normalize_tool_name_for_api_encodes_invalid_names_losslessly() {
+        let normalized =
+            normalize_tool_name_for_api(" mcp:fetch/url ").expect("name should normalize");
+        assert_ne!(normalized, "mcp:fetch/url");
+        assert_eq!(
+            crate::canonical_tools::decode_tool_name_from_api(&normalized),
+            Some("mcp:fetch/url".to_string())
+        );
+    }
+
+    #[test]
+    fn test_prepare_external_tool_schema_builds_namespaced_payload() {
+        let tool = crate::chat_v2::types::McpToolSchema {
+            name: "fetch:url".to_string(),
+            server_id: Some(" server:alpha ".to_string()),
+            description: Some("Fetch a URL".to_string()),
+            input_schema: Some(json!({ "type": "object" })),
+        };
+
+        let prepared =
+            prepare_external_tool_schema(&tool, true).expect("schema should be prepared");
+
+        assert_eq!(prepared.raw_tool_name, "mcp_fetch:url");
+        assert_eq!(
+            prepared.preferred_server_id.as_deref(),
+            Some("server:alpha")
+        );
+        assert_eq!(
+            crate::canonical_tools::decode_tool_name_from_api(&prepared.api_name),
+            Some("mcp_fetch:url__srv_server:alpha".to_string())
+        );
+        assert_eq!(
+            prepared.schema["function"]["name"],
+            json!(prepared.api_name)
+        );
+    }
+
+    #[test]
+    fn test_prepare_external_tool_schema_rejects_blank_tool_name() {
+        let tool = crate::chat_v2::types::McpToolSchema {
+            name: "   ".to_string(),
+            server_id: None,
+            description: None,
+            input_schema: None,
+        };
+
+        assert!(prepare_external_tool_schema(&tool, false).is_none());
     }
 }

@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
   PencilSimple, Copy, Trash, MagnifyingGlass, FileText, Plus,
   PencilSimple as EditIcon, Warning, X, Lightbulb, User,
   Target, Gear, Palette, PaintBrush, Upload, Download,
-  ArrowClockwise, CircleNotch, ArrowLeft, SquaresFour, List, Eye, BookOpen,
+  ArrowClockwise, CircleNotch, ArrowLeft, Eye, BookOpen,
   Code, Database, CaretRight
 } from '@phosphor-icons/react';
 import { unifiedAlert, unifiedConfirm } from '@/utils/unifiedDialogs';
@@ -33,6 +34,7 @@ import { CustomScrollArea } from './custom-scroll-area';
 import { fileManager } from '../utils/fileManager';
 import { usePageMount, pageLifecycleTracker } from '@/debug-panel/hooks/usePageLifecycle';
 import { useMobileHeader, MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
+import { useDesktopShellSidebarPortal } from '@/app/shell/DesktopShellSidebarPortal';
 import { useBreakpoint } from '@/hooks/useBreakpoint';
 import { showGlobalNotification } from './UnifiedNotification';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
@@ -60,6 +62,7 @@ interface TemplateManagementPageProps {
   // 从模板管理返回到 Anki 制卡
   onBackToAnki?: () => void;
   onOpenJsonPreview?: () => void;
+  onDesktopShellBackVisibilityChange?: (visible: boolean) => void;
   refreshToken?: number;
 }
 
@@ -69,11 +72,14 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
   onCancel,
   onBackToAnki,
   onOpenJsonPreview,
+  onDesktopShellBackVisibilityChange,
   refreshToken = 0,
 }) => {
   const { t } = useTranslation('template');
   const { t: tAnki } = useTranslation('anki');
   const { isSmallScreen } = useBreakpoint();
+  const desktopShellSidebarTarget = useDesktopShellSidebarPortal('template-management');
+  const usesDesktopShellSidebar = !isSmallScreen && Boolean(desktopShellSidebarTarget);
   const [screenPosition, setScreenPosition] = useState<ScreenPosition>('center');
   const sidebarOpen = screenPosition === 'left';
   const setSidebarOpen = useCallback((open: boolean) => setScreenPosition(open ? 'left' : 'center'), []);
@@ -122,6 +128,13 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
   const [editorTab, setEditorTab] = useState<EditorTabType>('basic');
   const isCodeMode = !isSelectingMode && (editorTab === 'templates' || editorTab === 'styles') && (activeTab === 'create' || activeTab === 'edit');
 
+  useEffect(() => {
+    onDesktopShellBackVisibilityChange?.(!isSelectingMode && activeTab === 'browse');
+    return () => {
+      onDesktopShellBackVisibilityChange?.(true);
+    };
+  }, [activeTab, isSelectingMode, onDesktopShellBackVisibilityChange]);
+
   // 离开代码编辑模式时，若停留在右屏则回到中屏
   useEffect(() => {
     if (!isCodeMode && screenPosition === 'right') {
@@ -139,7 +152,6 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
   const [showBatchExportDialog, setShowBatchExportDialog] = useState(false);
   const [batchExportSelection, setBatchExportSelection] = useState<Set<string>>(new Set());
   const [isExporting, setIsExporting] = useState(false);
-  const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const tabsRef = useRef<Map<string, HTMLButtonElement>>(new Map());
   const [indicatorStyle, setIndicatorStyle] = useState({ transform: 'translateX(0)', width: 0 });
@@ -567,14 +579,14 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
       {(() => {
         const sidebarContent = (
           <UnifiedSidebar
-            showMacSafeZone={!isSmallScreen}
             searchQuery={searchTerm}
             onSearchQueryChange={setSearchTerm}
             displayMode="panel"
             autoResponsive={false}
-            width={isSmallScreen ? 'full' : 200}
+            width={usesDesktopShellSidebar || isSmallScreen ? 'full' : 200}
             onClose={() => setSidebarOpen(false)}
-            collapsed={globalLeftPanelCollapsed}
+            collapsed={usesDesktopShellSidebar ? false : globalLeftPanelCollapsed}
+            showMacSafeZone={!isSmallScreen && !usesDesktopShellSidebar}
           >
         <UnifiedSidebarHeader
           title={isSelectingMode ? t('page_title_select') : t('manager_title')}
@@ -697,48 +709,21 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
             </div>
           )}
 
-          {/* 视图切换 - 仅浏览模式 + 桌面端显示 */}
-          {activeTab === 'browse' && !isSmallScreen && (
-            <div className="px-2 py-1 mt-2">
-              <div className="text-xs text-muted-foreground px-2 py-1 font-semibold">
-                {t('view_mode_section')}
-              </div>
-              <div className="flex gap-1 px-2">
-                <NotionButton
-                  variant="nav"
-                  size="sm"
-                  onClick={() => setViewMode('grid')}
-                  className={viewMode === 'grid' ? 'bg-[color:var(--button-utility-surface)] text-foreground' : ''}
-                >
-                  <SquaresFour size={16} />
-                </NotionButton>
-                <NotionButton
-                  variant="nav"
-                  size="sm"
-                  onClick={() => setViewMode('list')}
-                  className={viewMode === 'list' ? 'bg-[color:var(--button-utility-surface)] text-foreground' : ''}
-                >
-                  <List size={16} />
-                </NotionButton>
-              </div>
-            </div>
-          )}
         </UnifiedSidebarContent>
 
-        {/* 底部返回按钮 */}
-        {(onBackToAnki || (isSelectingMode && onCancel)) && (
+        {/* 选择模板弹窗模式保留取消入口，普通模板管理页不显示底部返回按钮 */}
+        {isSelectingMode && onCancel && (
           <div className="mt-auto p-2 border-t border-border">
             <NotionButton
               variant="ghost"
               size="sm"
               onClick={() => {
-                if (isSelectingMode && onCancel) onCancel();
-                else if (onBackToAnki) onBackToAnki();
+                onCancel();
               }}
               className="w-full justify-start gap-2"
             >
               <ArrowLeft size={16} />
-              {isSelectingMode ? t('back_button') : t('back_to_anki_button')}
+              {t('back_button')}
             </NotionButton>
           </div>
         )}
@@ -845,7 +830,6 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
               onTemplateSelected={onTemplateSelected}
               renderPreview={renderTemplatePreview}
               onExportTemplate={handleExportTemplate}
-              viewMode={viewMode}
               isSmallScreen={isSmallScreen}
 />
           </div>
@@ -918,6 +902,10 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
           </div>
         );
 
+        const sidebarPortal = usesDesktopShellSidebar && desktopShellSidebarTarget
+          ? createPortal(sidebarContent, desktopShellSidebarTarget)
+          : null;
+
         // ===== 移动端布局：MobileSlidingLayout =====
         if (isSmallScreen) {
           return (
@@ -952,12 +940,15 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
 
         // ===== 桌面端布局 =====
         return (
-          <div className="study-shell-page w-full h-full flex flex-col overflow-hidden">
-            <div className="flex-1 flex overflow-hidden min-h-0">
-              {sidebarContent}
-              {mainContent}
+          <>
+            {sidebarPortal}
+            <div className="study-shell-page w-full h-full flex flex-col overflow-hidden">
+              <div className="flex-1 flex overflow-hidden min-h-0">
+                {!usesDesktopShellSidebar && sidebarContent}
+                {mainContent}
+              </div>
             </div>
-          </div>
+          </>
         );
       })()}
 
@@ -1082,7 +1073,6 @@ interface TemplateBrowserProps {
   onTemplateSelected?: (template: CustomAnkiTemplate) => void;
   renderPreview: (template: string, templateData: CustomAnkiTemplate, isBack?: boolean) => string;
   onExportTemplate: (template: CustomAnkiTemplate) => void;
-  viewMode: 'grid' | 'list';
   isSmallScreen?: boolean;
 }
 
@@ -1100,7 +1090,6 @@ const TemplateBrowser: React.FC<TemplateBrowserProps> = ({
   onTemplateSelected,
   renderPreview,
   onExportTemplate,
-  viewMode,
   isSmallScreen = false
 }) => {
   const { t } = useTranslation('template');
@@ -1115,32 +1104,11 @@ const TemplateBrowser: React.FC<TemplateBrowserProps> = ({
         </div>
       )}
 
-      {/* 模板网格/列表 */}
+      {/* 模板网格 */}
       {isLoading ? (
         <div className="loading-container">
           <div className="loading-spinner"></div>
           <span className="loading-text">{t('loading_text')}</span>
-        </div>
-      ) : viewMode === 'list' ? (
-        <div className="templates-list">
-          {templates.map(template => (
-            <TemplateCard
-              key={template.id}
-              template={template}
-              isSelected={selectedTemplate?.id === template.id}
-              onSelect={() => onSelectTemplate(template)}
-              onEdit={() => onEditTemplate(template)}
-              onDuplicate={() => onDuplicateTemplate(template)}
-              onDelete={() => onDeleteTemplate(template)}
-              onSetDefaultTemplate={() => onSetDefaultTemplate(template)}
-              defaultTemplateId={defaultTemplateId}
-              isSelectingMode={isSelectingMode}
-              onTemplateSelected={onTemplateSelected}
-              renderPreview={renderPreview}
-              onExportTemplate={() => onExportTemplate(template)}
-              viewMode={viewMode}
-/>
-          ))}
         </div>
       ) : (
         <div className="masonry-grid">
@@ -1160,7 +1128,6 @@ const TemplateBrowser: React.FC<TemplateBrowserProps> = ({
                 onTemplateSelected={onTemplateSelected}
                 renderPreview={renderPreview}
                 onExportTemplate={() => onExportTemplate(template)}
-                viewMode={viewMode}
 />
             ))}
           </div>
@@ -1180,7 +1147,6 @@ const TemplateBrowser: React.FC<TemplateBrowserProps> = ({
                 onTemplateSelected={onTemplateSelected}
                 renderPreview={renderPreview}
                 onExportTemplate={() => onExportTemplate(template)}
-                viewMode={viewMode}
 />
             ))}
           </div>
@@ -1214,7 +1180,6 @@ interface TemplateCardProps {
   onTemplateSelected?: (template: CustomAnkiTemplate) => void;
   renderPreview: (template: string, templateData: CustomAnkiTemplate, isBack?: boolean) => string;
   onExportTemplate: () => void;
-  viewMode: 'grid' | 'list';
 }
 
 const TemplateCard: React.FC<TemplateCardProps> = ({
@@ -1229,8 +1194,7 @@ const TemplateCard: React.FC<TemplateCardProps> = ({
   isSelectingMode = false,
   onTemplateSelected,
   renderPreview,
-  onExportTemplate,
-  viewMode
+  onExportTemplate
 }) => {
   const { t } = useTranslation('template');
   const isDefault = defaultTemplateId === template.id;
@@ -1279,7 +1243,7 @@ const renderActions = () => (
   // Notion 风格卡片 - 统一结构
   return (
     <div
-      className={`template-shell-card ${isSelected ? 'selected' : ''} ${!template.is_active ? 'inactive' : ''} ${viewMode === 'list' ? 'list-view' : ''}`}
+      className={`template-shell-card ${isSelected ? 'selected' : ''} ${!template.is_active ? 'inactive' : ''}`}
       data-selected={isSelected}
       onClick={onSelect}
     >
@@ -1294,8 +1258,6 @@ const renderActions = () => (
             <span className="study-shell-badge study-shell-badge--success">v{template.version}</span>
           </div>
         </div>
-        {/* 列表视图：操作按钮放在 header 内 */}
-        {viewMode === 'list' && renderActions()}
       </div>
 
       {/* 预览区域 - 固定高度，可滚动 */}
@@ -1343,8 +1305,7 @@ const renderActions = () => (
         </div>
       </div>
 
-      {/* 操作按钮 - 只在非列表视图显示（列表视图在 header 内渲染） */}
-      {viewMode !== 'list' && renderActions()}
+      {renderActions()}
     </div>
   );
 };

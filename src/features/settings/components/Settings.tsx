@@ -435,6 +435,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
 
   // 顶部栏顶部边距高度设置（用于安卓状态栏等场景）
   const [topbarTopMargin, setTopbarTopMargin] = useState<string>('');
+  const [topbarTopMarginLoaded, setTopbarTopMarginLoaded] = useState(false);
   useEffect(() => {
     if (!invoke) return;
     (async () => {
@@ -452,12 +453,14 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
         // 出错时显示平台默认值
         const defaultValue = isAndroid() ? '30' : '0';
         setTopbarTopMargin(defaultValue);
+      } finally {
+        setTopbarTopMarginLoaded(true);
       }
     })();
   }, []);
 
   // 开发者选项：显示消息请求体
-  const [showRawRequest, setShowRawRequest] = useState<boolean>(false);
+  const [showRawRequest, setShowRawRequest] = useState<boolean | null>(null);
   useEffect(() => {
     if (!invoke) return;
     (async () => {
@@ -600,6 +603,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
         // 一次性更新全部，避免竞态
         setExtra(prev => ({
           ...prev,
+          paramsLoaded: true,
           chatSemanticFtsPrefilter: ftsEnabled,
           rrf_k: rrfk || '',
           rrf_w_fts: wfts || '',
@@ -610,6 +614,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
         }));
       } catch (error) {
         console.warn('[Settings] 加载参数调整设置失败:', error);
+        setExtra(prev => ({ ...prev, paramsLoaded: true }));
       }
     })();
   }, [invoke]);
@@ -1202,10 +1207,12 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
           <GeneralTab
             voiceInputAssignedModel={voiceInputAssignedModel}
             topbarTopMargin={topbarTopMargin}
+            topbarTopMarginLoaded={topbarTopMarginLoaded}
             setTopbarTopMargin={setTopbarTopMargin}
             logTypeForOpen={logTypeForOpen}
             setLogTypeForOpen={setLogTypeForOpen}
-            showRawRequest={showRawRequest}
+            showRawRequest={showRawRequest ?? false}
+            showRawRequestLoaded={showRawRequest !== null}
             setShowRawRequest={setShowRawRequest}
             invoke={invoke}
           />

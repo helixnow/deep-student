@@ -89,7 +89,7 @@
       "emptyContent": "Content cannot be empty",
       "editDialogTitle": "Edit Message",
       "editPlaceholder": "Enter new content...",
-      "editAndResend": "Edit & Resend",
+      "send": "Send",
       "delete": "Delete",
       "deleteConfirmTitle": "Confirm Delete",
       "deleteConfirmDesc": "Are you sure you want to delete this message? This action cannot be undone.",
@@ -111,6 +111,12 @@
       "branch": "Branch from here",
       "branchSuccess": "Branch session created",
       "branchFailed": "Branch failed"
+    },
+    "failure": {
+      "retry": "Retry",
+      "viewErrorDetails": "Error details",
+      "hideErrorDetails": "Hide error details",
+      "genericError": "This response failed before producing output"
     },
     "modelRetry": {
       "clickToRetry": "Click to select model and retry",
@@ -1464,11 +1470,13 @@
     "sourceUserClick": "User choice",
     "sourceCustomInput": "Custom input",
     "sourceMixed": "Mixed selection",
-    "sourceTimeout": "Auto-selected (timeout)",
+    "sourceNoResponse": "No response recorded",
     "sourceChannelClosed": "Connection lost",
     "preparing": "Preparing question...",
     "selected": "Selected",
+    "noResponse": "(No response)",
     "recommended": "Recommended",
+    "optionReasonLabel": "Why this option",
     "confirmSelection": "Confirm selection",
     "customPlaceholder": "Or enter a custom answer..."
   },

@@ -168,6 +168,26 @@ describe('ModernSidebar shell navigation', () => {
     expect(screen.queryByText('更新')).not.toBeInTheDocument();
   });
 
+  it('hides the settings-row update badge when the sidebar is collapsed', async () => {
+    render(
+      <ModernSidebar
+        currentView="chat-v2"
+        onViewChange={() => undefined}
+        sidebarCollapsed
+        updater={{
+          checking: false,
+          available: true,
+          info: { version: '1.2.3' },
+          downloading: false,
+          performUpdateAction: vi.fn(async () => {}),
+        }}
+      />
+    );
+
+    expect(await screen.findByRole('button', { name: '设置' })).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: '点击更新' })).not.toBeInTheDocument();
+  });
+
   it('renders the update badge and triggers update action when clicked', async () => {
     const performUpdateAction = vi.fn(async () => {});
 
@@ -189,6 +209,25 @@ describe('ModernSidebar shell navigation', () => {
     fireEvent.click(badge);
 
     expect(performUpdateAction).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps an accessible icon-only badge while update is downloading', async () => {
+    render(
+      <ModernSidebar
+        currentView="chat-v2"
+        onViewChange={() => undefined}
+        updater={{
+          checking: false,
+          available: true,
+          info: { version: '1.2.3' },
+          downloading: true,
+          performUpdateAction: vi.fn(async () => {}),
+        }}
+      />
+    );
+
+    expect(await screen.findByRole('button', { name: '下载中...' })).toBeInTheDocument();
+    expect(screen.queryByText('下载中')).not.toBeInTheDocument();
   });
 
   it('keeps the global chat entry label fixed even when the current session has a title', async () => {

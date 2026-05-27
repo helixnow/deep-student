@@ -17,6 +17,7 @@ use crate::chat_v2::types::{ToolCall, ToolResultInfo};
 
 /// 默认工具执行超时时间（秒）
 const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 120;
+const NO_TOOL_TIMEOUT_SECS: u64 = 0;
 
 /// 获取工具特定的超时时间（秒）
 ///
@@ -28,6 +29,10 @@ const DEFAULT_TOOL_TIMEOUT_SECS: u64 = 120;
 fn get_tool_timeout_secs(tool_name: &str) -> u64 {
     // 去掉 builtin- 前缀用于统一匹配
     let stripped = tool_name.strip_prefix("builtin-").unwrap_or(tool_name);
+
+    if stripped == "ask_user" {
+        return NO_TOOL_TIMEOUT_SECS;
+    }
 
     // 精确匹配：内置检索和搜索工具
     match tool_name {
@@ -140,6 +145,7 @@ impl ToolExecutorRegistry {
     /// ## 超时保护
     /// 每个工具调用都有全局超时保护，防止 Pipeline 因单个工具执行卡死。
     /// 默认超时为 120 秒，某些特殊工具（如网络请求、代码执行）有更长的超时时间。
+    /// `ask_user` 例外：它表示显式等待用户交互，不应被通用工具 watchdog 截断。
     ///
     /// ## 🆕 取消支持（2026-02）
     /// 如果 `ctx.cancellation_token` 存在，执行会在取消时提前终止。
@@ -172,64 +178,85 @@ impl ToolExecutorRegistry {
 
         // 🆕 P1 修复：获取工具特定的超时时间并添加超时保护
         let timeout_secs = get_tool_timeout_secs(&call.name);
-        let timeout_duration = Duration::from_secs(timeout_secs);
-
-        log::debug!(
-            "[ToolExecutorRegistry] Tool '{}' timeout set to {}s",
-            call.name,
-            timeout_secs
-        );
-
         // 执行工具（带超时和取消保护）
         // 🆕 取消支持：使用 tokio::select! 同时监听取消信号
         let execute_future = executor.execute(call, ctx);
-        let timeout_future = timeout(timeout_duration, execute_future);
 
-        if let Some(cancel_token) = ctx.cancellation_token() {
-            tokio::select! {
-                result = timeout_future => {
-                    match result {
-                        Ok(inner_result) => inner_result,
-                        Err(_elapsed) => {
-                            // 超时
-                            log::error!(
-                                "[ToolExecutorRegistry] Tool execution timeout after {}s: {} (id={})",
-                                timeout_secs,
-                                call.name,
-                                call.id
-                            );
-                            Err(format!(
-                                "Tool '{}' execution timed out after {}s",
-                                call.name, timeout_secs
-                            ))
-                        }
+        if timeout_secs == NO_TOOL_TIMEOUT_SECS {
+            log::debug!(
+                "[ToolExecutorRegistry] Tool '{}' timeout disabled",
+                call.name,
+            );
+
+            if let Some(cancel_token) = ctx.cancellation_token() {
+                tokio::select! {
+                    result = execute_future => result,
+                    _ = cancel_token.cancelled() => {
+                        log::info!(
+                            "[ToolExecutorRegistry] Tool execution cancelled: {} (id={})",
+                            call.name,
+                            call.id
+                        );
+                        Err("Tool execution cancelled".to_string())
                     }
                 }
-                _ = cancel_token.cancelled() => {
-                    log::info!(
-                        "[ToolExecutorRegistry] Tool execution cancelled: {} (id={})",
-                        call.name,
-                        call.id
-                    );
-                    Err("Tool execution cancelled".to_string())
-                }
+            } else {
+                execute_future.await
             }
         } else {
-            // 无取消令牌，使用原来的超时保护逻辑
-            match timeout_future.await {
-                Ok(result) => result,
-                Err(_elapsed) => {
-                    // 超时
-                    log::error!(
-                        "[ToolExecutorRegistry] Tool execution timeout after {}s: {} (id={})",
-                        timeout_secs,
-                        call.name,
-                        call.id
-                    );
-                    Err(format!(
-                        "Tool '{}' execution timed out after {}s",
-                        call.name, timeout_secs
-                    ))
+            let timeout_duration = Duration::from_secs(timeout_secs);
+
+            log::debug!(
+                "[ToolExecutorRegistry] Tool '{}' timeout set to {}s",
+                call.name,
+                timeout_secs
+            );
+
+            let timeout_future = timeout(timeout_duration, execute_future);
+
+            if let Some(cancel_token) = ctx.cancellation_token() {
+                tokio::select! {
+                    result = timeout_future => {
+                        match result {
+                            Ok(inner_result) => inner_result,
+                            Err(_elapsed) => {
+                                log::error!(
+                                    "[ToolExecutorRegistry] Tool execution timeout after {}s: {} (id={})",
+                                    timeout_secs,
+                                    call.name,
+                                    call.id
+                                );
+                                Err(format!(
+                                    "Tool '{}' execution timed out after {}s",
+                                    call.name, timeout_secs
+                                ))
+                            }
+                        }
+                    }
+                    _ = cancel_token.cancelled() => {
+                        log::info!(
+                            "[ToolExecutorRegistry] Tool execution cancelled: {} (id={})",
+                            call.name,
+                            call.id
+                        );
+                        Err("Tool execution cancelled".to_string())
+                    }
+                }
+            } else {
+                match timeout_future.await {
+                    Ok(result) => result,
+                    Err(_elapsed) => {
+                        log::error!(
+                            "[ToolExecutorRegistry] Tool execution timeout after {}s: {} (id={})",
+                            timeout_secs,
+                            call.name,
+                            call.id
+                        );
+                        Err(format!(
+                            "Tool '{}' execution timed out after {}s",
+                            call.name, timeout_secs
+                        ))
+                    }
                 }
             }
         }
@@ -380,5 +407,11 @@ mod tests {
     fn image_generation_tool_uses_five_minute_timeout() {
         assert_eq!(get_tool_timeout_secs("builtin-image_generate"), 300);
         assert_eq!(get_tool_timeout_secs("image_generate"), 300);
+    }
+
+    #[test]
+    fn ask_user_tool_is_not_subject_to_global_timeout() {
+        assert_eq!(get_tool_timeout_secs("builtin-ask_user"), 0);
+        assert_eq!(get_tool_timeout_secs("ask_user"), 0);
     }
 }
