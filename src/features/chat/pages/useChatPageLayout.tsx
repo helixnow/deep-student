@@ -113,7 +113,6 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
   }, [finderJumpToBreadcrumb]);
 
   useMobileHeader('chat-v2', mobileResourcePanelOpen ? {
-    // 📱 资源库打开时：顶栏显示面包屑导航
     titleNode: (
       <MobileBreadcrumb
         rootTitle={t('learningHub:title')}

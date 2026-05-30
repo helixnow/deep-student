@@ -118,6 +118,9 @@
       "hideErrorDetails": "Hide error details",
       "genericError": "This response failed before producing output"
     },
+    "reconnect": {
+      "inline": "Retrying {{attempt}}/{{max}}"
+    },
     "modelRetry": {
       "clickToRetry": "Click to select model and retry",
       "dialogTitle": "Select Model to Retry",
@@ -411,6 +414,8 @@
         "success": "Completed",
         "error": "Failed"
       },
+      "loadedSkills": "Loaded skills",
+      "loadedTools": "Loaded tools",
       "viewSourceFile": "View Source File"
     },
     "imageGen": {
@@ -914,7 +919,9 @@
       "objectResult": "Object result",
       "emptyResult": "No results",
       "itemsResult": "{{count}} items returned",
-      "moreItems": "...and {{count}} more"
+      "moreItems": "...and {{count}} more",
+      "loadedSkills": "Loaded skills",
+      "loadedTools": "Loaded tools"
     },
     "noteTool": {
       "read": "Read Note",
@@ -1110,7 +1117,7 @@
       "expiredTitle": "Approval expired",
       "expiredDetail": "This approval has expired. Please request the tool again.",
       "responseFailedTitle": "Failed to send approval response",
-      "responseFailedDetail": "Check your connection and try again."
+      "responseFailedDetail": "Check your connection and try again"
     },
     "expandArgs": "Show full arguments",
     "collapseArgs": "Collapse arguments",

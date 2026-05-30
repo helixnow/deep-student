@@ -220,6 +220,12 @@ export interface MessageMeta {
   /** 最终失败原因（用于零输出失败态等消息级错误展示） */
   terminalError?: string;
 
+  /** 流式自动重连状态（用于在消息正文内联展示轻量状态） */
+  streamReconnect?: {
+    retryAttempt: number;
+    retryMax: number;
+  };
+
   /** 🆕 2026-01-15: 正在准备中的工具调用信息（LLM 正在生成参数） */
   preparingToolCall?: {
     toolCallId: string;

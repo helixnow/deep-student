@@ -101,7 +101,7 @@ vi.mock('@/components/ui/shad/Select', async () => {
 });
 
 describe('VendorConfigModal add vendor flow', () => {
-  it('starts with vendor name and provider type, and saves provider-scoped protocol defaults', async () => {
+  it('uses a single protocol selector for OpenAI-compatible providers and persists responses compatibility from that choice', async () => {
     const user = userEvent.setup();
     const handleSave = vi.fn();
 
@@ -122,9 +122,9 @@ describe('VendorConfigModal add vendor flow', () => {
 
     await user.type(nameInput, 'DeepSeek 镜像');
     await user.type(baseUrlInput, 'https://api.deepseek.com/v1');
+    expect(screen.queryByLabelText('Supports OpenAI Responses')).not.toBeInTheDocument();
     expect(protocolSelect).toHaveValue('openai_chat_completions');
-    const responsesCheckbox = screen.getByLabelText('Supports OpenAI Responses');
-    await user.click(responsesCheckbox);
+    await user.selectOptions(protocolSelect, 'openai_responses');
     expect(protocolSelect).toHaveValue('openai_responses');
     await user.selectOptions(providerSelect, 'deepseek');
     await user.click(screen.getByRole('button', { name: '保存' }));
@@ -136,6 +136,34 @@ describe('VendorConfigModal add vendor flow', () => {
       supportsOpenAIResponses: true,
       baseUrl: 'https://api.deepseek.com/v1',
       apiKey: '',
+    }));
+  }, 15000);
+
+  it('persists chat completions as not declaring responses support', async () => {
+    const user = userEvent.setup();
+    const handleSave = vi.fn();
+
+    render(
+      <VendorConfigModal
+        open
+        vendor={null}
+        onClose={vi.fn()}
+        onSave={handleSave}
+      />,
+    );
+
+    const nameInput = screen.getByLabelText('供应商名称');
+    const [, protocolSelect] = screen.getAllByRole('combobox');
+    const baseUrlInput = screen.getByLabelText('接口地址');
+
+    await user.type(nameInput, 'Chat Vendor');
+    await user.type(baseUrlInput, 'https://proxy.example.com/v1');
+    await user.selectOptions(protocolSelect, 'openai_chat_completions');
+    await user.click(screen.getByRole('button', { name: '保存' }));
+
+    expect(handleSave).toHaveBeenCalledWith(expect.objectContaining({
+      apiProtocol: 'openai_chat_completions',
+      supportsOpenAIResponses: false,
     }));
   }, 15000);
 });

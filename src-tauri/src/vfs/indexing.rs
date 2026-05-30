@@ -385,6 +385,14 @@ impl VfsChunker {
     }
 }
 
+fn should_disable_index_for_missing_note(resource: &VfsResource) -> bool {
+    !resource
+        .data
+        .as_deref()
+        .map(|data| !data.trim().is_empty())
+        .unwrap_or(false)
+}
+
 pub struct VfsContentExtractor;
 
 impl VfsContentExtractor {
@@ -2084,18 +2092,25 @@ impl VfsFullIndexingService {
                     }
                     Some(_) => {}
                     None => {
-                        // ★ C-3 修复：使用统一的删除方法，确保所有 modality 的向量都被删除
-                        self.delete_resource_index(resource_id).await?;
-                        VfsIndexStateRepo::mark_disabled_with_reason(
-                            &self.db,
-                            resource_id,
-                            "note missing",
-                        )?;
-                        info!(
-                            "[VfsFullIndexingService] Skip missing note {} (resource {})",
+                        if should_disable_index_for_missing_note(&resource) {
+                            // ★ C-3 修复：使用统一的删除方法，确保所有 modality 的向量都被删除
+                            self.delete_resource_index(resource_id).await?;
+                            VfsIndexStateRepo::mark_disabled_with_reason(
+                                &self.db,
+                                resource_id,
+                                "note missing",
+                            )?;
+                            info!(
+                                "[VfsFullIndexingService] Skip missing note {} (resource {})",
+                                note_id, resource_id
+                            );
+                            return Ok((0, 0));
+                        }
+
+                        warn!(
+                            "[VfsFullIndexingService] Note {} missing for resource {}, indexing inline resource.data fallback",
                             note_id, resource_id
                         );
-                        return Ok((0, 0));
                     }
                 }
 
@@ -4575,6 +4590,7 @@ impl VfsFullSearchService {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::vfs::{StorageMode, VfsResourceMetadata};
 
     #[test]
     fn test_chunk_fixed_size() {
@@ -4628,5 +4644,53 @@ mod tests {
         let text = text.unwrap();
         assert!(text.contains("Hello"));
         assert!(text.contains("你好"));
+    }
+
+    #[test]
+    fn test_missing_note_with_inline_data_keeps_indexable_fallback() {
+        let resource = VfsResource {
+            id: "res_note_inline".to_string(),
+            hash: "hash_inline".to_string(),
+            resource_type: VfsResourceType::Note,
+            source_id: Some("note_missing".to_string()),
+            source_table: Some("notes".to_string()),
+            storage_mode: StorageMode::Inline,
+            data: Some("# Inline fallback\n\nkeep me indexed".to_string()),
+            external_hash: None,
+            metadata: Some(VfsResourceMetadata {
+                title: Some("Inline Note".to_string()),
+                mime_type: Some("text/markdown".to_string()),
+                ..Default::default()
+            }),
+            ref_count: 1,
+            created_at: 1,
+            updated_at: 1,
+        };
+
+        assert!(!should_disable_index_for_missing_note(&resource));
+    }
+
+    #[test]
+    fn test_missing_note_without_inline_data_disables_index() {
+        let resource = VfsResource {
+            id: "res_note_missing".to_string(),
+            hash: "hash_missing".to_string(),
+            resource_type: VfsResourceType::Note,
+            source_id: Some("note_missing".to_string()),
+            source_table: Some("notes".to_string()),
+            storage_mode: StorageMode::Inline,
+            data: None,
+            external_hash: None,
+            metadata: Some(VfsResourceMetadata {
+                title: Some("Missing Note".to_string()),
+                mime_type: Some("text/markdown".to_string()),
+                ..Default::default()
+            }),
+            ref_count: 1,
+            created_at: 1,
+            updated_at: 1,
+        };
+
+        assert!(should_disable_index_for_missing_note(&resource));
     }
 }

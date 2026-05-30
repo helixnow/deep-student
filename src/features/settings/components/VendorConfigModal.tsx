@@ -65,6 +65,8 @@ const providerTypeOptions = [
   { value: 'ollama', labelKey: 'settings:vendor_modal.providers.ollama', defaultLabel: 'Ollama' },
 ];
 
+const protocolImpliesResponsesSupport = (protocol?: ApiProtocol | null) => protocol === 'openai_responses';
+
 
 export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigModalProps>(({ open, vendor, onClose, onSave, embeddedMode = false }, ref) => {
   const { t } = useTranslation(['settings', 'common']);
@@ -78,6 +80,10 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
     ((!formData.providerType || formData.providerType === 'custom') && formData.baseUrl.trim()
       ? inferProviderTypeFromBaseUrl(formData.baseUrl)
       : formData.providerType) ?? formData.providerType;
+  const selectedProtocol = normalizeApiProtocolForProviderType(formData.apiProtocol, effectiveProviderType, {
+    baseUrl: formData.baseUrl,
+    supportsOpenAIResponses: formData.supportsOpenAIResponses,
+  });
   const protocolOptions = getAllowedApiProtocolsForProviderType(effectiveProviderType).map(protocol => ({
     value: protocol,
     label: t(`settings:vendor_modal.protocols.${protocol}`, { defaultValue: protocol }),
@@ -92,6 +98,8 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
         apiProtocol: normalizeApiProtocolForProviderType(vendor.apiProtocol, vendor.providerType, {
           baseUrl: vendor.baseUrl,
         }),
+        supportsOpenAIResponses:
+          vendor.supportsOpenAIResponses ?? protocolImpliesResponsesSupport(vendor.apiProtocol),
         apiKey: isMaskedKey ? '' : vendor.apiKey,
       });
       setHeadersInput(
@@ -147,13 +155,17 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
       providerType = inferProviderTypeFromBaseUrl(formData.baseUrl) ?? providerType;
     }
 
+    const normalizedProtocol = normalizeApiProtocolForProviderType(formData.apiProtocol, providerType, {
+      baseUrl: formData.baseUrl,
+      supportsOpenAIResponses: formData.supportsOpenAIResponses,
+    });
+    const supportsOpenAIResponses = protocolImpliesResponsesSupport(normalizedProtocol);
+
     const payload: VendorConfig = {
       ...formData,
       providerType,
-      apiProtocol: normalizeApiProtocolForProviderType(formData.apiProtocol, providerType, {
-        baseUrl: formData.baseUrl,
-        supportsOpenAIResponses: formData.supportsOpenAIResponses,
-      }),
+      apiProtocol: normalizedProtocol,
+      supportsOpenAIResponses,
       apiKey: finalApiKey,
       headers: parsedHeaders,
       id: formData.id || '',
@@ -183,10 +195,15 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
         baseUrl: prev.baseUrl,
         supportsOpenAIResponses: prev.supportsOpenAIResponses,
       });
-      if (nextProtocol === prev.apiProtocol) {
+      const nextSupportsOpenAIResponses = protocolImpliesResponsesSupport(nextProtocol);
+      if (nextProtocol === prev.apiProtocol && nextSupportsOpenAIResponses === !!prev.supportsOpenAIResponses) {
         return prev;
       }
-      return { ...prev, apiProtocol: nextProtocol };
+      return {
+        ...prev,
+        apiProtocol: nextProtocol,
+        supportsOpenAIResponses: nextSupportsOpenAIResponses,
+      };
     });
   }, [formData.providerType, formData.baseUrl]);
 
@@ -226,16 +243,18 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
       <div>
         <Label htmlFor={protocolSelectId}>{t('settings:vendor_modal.protocol_label')}</Label>
         <Select
-          value={formData.apiProtocol ?? defaultApiProtocolForProvider(effectiveProviderType, { baseUrl: formData.baseUrl, supportsOpenAIResponses: formData.supportsOpenAIResponses })}
-          onValueChange={(val) =>
+          value={selectedProtocol ?? defaultApiProtocolForProvider(effectiveProviderType, { baseUrl: formData.baseUrl, supportsOpenAIResponses: formData.supportsOpenAIResponses })}
+          onValueChange={(val) => {
+            const nextProtocol = normalizeApiProtocolForProviderType(val as ApiProtocol, effectiveProviderType, {
+              baseUrl: formData.baseUrl,
+              supportsOpenAIResponses: protocolImpliesResponsesSupport(val as ApiProtocol),
+            });
             setFormData(prev => ({
               ...prev,
-              apiProtocol: normalizeApiProtocolForProviderType(val as ApiProtocol, effectiveProviderType, {
-                baseUrl: prev.baseUrl,
-                supportsOpenAIResponses: prev.supportsOpenAIResponses,
-              }),
-            }))
-          }
+              apiProtocol: nextProtocol,
+              supportsOpenAIResponses: protocolImpliesResponsesSupport(nextProtocol),
+            }));
+          }}
         >
           <SelectTrigger className="mt-2">
             <SelectValue />
@@ -248,27 +267,12 @@ export const VendorConfigModal = forwardRef<VendorConfigModalRef, VendorConfigMo
             ))}
           </SelectContent>
         </Select>
+        {protocolOptions.length > 1 && (
+          <p className="mt-2 text-sm text-muted-foreground">
+            {t('settings:vendor_modal.protocol_hint')}
+          </p>
+        )}
       </div>
-      {effectiveProviderType !== 'anthropic' && effectiveProviderType !== 'google' && effectiveProviderType !== 'gemini' && (
-        <label className="mt-1 flex items-start gap-3 rounded-md border border-border/60 px-3 py-2 text-sm">
-          <input
-            type="checkbox"
-            aria-label="Supports OpenAI Responses"
-            checked={!!formData.supportsOpenAIResponses}
-            onChange={e =>
-              setFormData(prev => ({
-                ...prev,
-                supportsOpenAIResponses: e.target.checked,
-                apiProtocol: defaultApiProtocolForProvider(effectiveProviderType, {
-                  baseUrl: prev.baseUrl,
-                  supportsOpenAIResponses: e.target.checked,
-                }),
-              }))
-            }
-          />
-          <span className="leading-5 text-muted-foreground">Supports OpenAI Responses</span>
-        </label>
-      )}
       <div>
         <Label htmlFor={baseUrlInputId} className="inline-flex items-center gap-1.5">
           <LinkSimple className="h-3.5 w-3.5" aria-hidden="true" />

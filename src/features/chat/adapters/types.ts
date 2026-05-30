@@ -33,6 +33,12 @@ export interface SendOptions {
   skillStateVersion?: number;
   disableTools?: boolean;
   model2OverrideId?: string;
+  /** 当前会话分组/课题 ID，用于后端检索和默认作用域隔离 */
+  groupId?: string;
+  /** 当前会话分组/课题名称，用于后端创建人类可读的作用域标签 */
+  groupName?: string;
+  /** 当前课题绑定的资源 ID（DSTU sourceId 或 VFS resourceId） */
+  groupPinnedResourceIds?: string[];
 
   // RAG 选项
   ragEnabled?: boolean;

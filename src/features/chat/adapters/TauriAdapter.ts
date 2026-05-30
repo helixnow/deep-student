@@ -45,7 +45,6 @@ import type {
   EditMessageResult,
   RetryMessageResult,
 } from './types';
-import { notifyStreamReconnect } from './streamReconnectNotification';
 import {
   buildSendContextRefs,
   buildSendContextRefsWithPaths,
@@ -1619,7 +1618,12 @@ export class ChatV2TauriAdapter {
             });
             break;
           }
-          notifyStreamReconnect(payload);
+          this.store.updateMessageMeta(payload.messageId, {
+            streamReconnect: {
+              retryAttempt: payload.retryAttempt ?? 1,
+              retryMax: payload.retryMax ?? 5,
+            },
+          });
           break;
 
         case 'stream_complete':
@@ -1647,7 +1651,10 @@ export class ChatV2TauriAdapter {
           // 🔧 P2修复：先重置状态确保 UI 响应，再异步保存
           // handleStreamComplete 内部会捕获当前状态快照进行保存
           this.store.completeStream('success');
-          this.store.updateMessageMeta(payload.messageId, { terminalError: undefined });
+          this.store.updateMessageMeta(payload.messageId, {
+            terminalError: undefined,
+            streamReconnect: undefined,
+          });
           // 🆕 Prompt 8: 将 messageId 和 usage 传递给 handleStreamComplete
           // token 统计处理在 eventBridge.handleStreamComplete 中完成
           handleStreamComplete(this.store, {
@@ -1676,6 +1683,7 @@ export class ChatV2TauriAdapter {
           this.store.completeStream('error');
           this.store.updateMessageMeta(payload.messageId, {
             terminalError: payload.error || 'Stream ended with error',
+            streamReconnect: undefined,
           });
           handleStreamAbort(this.store).catch((err) => {
             console.error(LOG_PREFIX, 'Error in handleStreamAbort:', getErrorMessage(err));
@@ -1704,6 +1712,9 @@ export class ChatV2TauriAdapter {
           // 用户主动取消时，abortStream 可能已经重置了状态
           // completeStream 内部会检查状态，如果已经是 idle 则不会重复处理
           this.store.completeStream('cancelled');
+          this.store.updateMessageMeta(payload.messageId, {
+            streamReconnect: undefined,
+          });
           // 用户取消时也清空多变体 ID
           this.store.setPendingParallelModelIds(null);
           handleStreamAbort(this.store).catch((err) => {
@@ -3800,6 +3811,13 @@ export class ChatV2TauriAdapter {
       })(),
       disableTools: chatParams.disableTools,
       model2OverrideId: chatParams.model2OverrideId || undefined,
+      groupId: groupId || undefined,
+      groupName: groupId
+        ? (groupCache.get(groupId)?.name ?? undefined)
+        : undefined,
+      groupPinnedResourceIds: groupId
+        ? (groupCache.get(groupId)?.pinnedResourceIds ?? [])
+        : undefined,
       maxToolRecursion: chatParams.maxToolRecursion,
 
       // 功能开关（结合用户设置和模式配置）

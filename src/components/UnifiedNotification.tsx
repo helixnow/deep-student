@@ -1,6 +1,7 @@
 import React, { useEffect, useRef, useState, useCallback, type CSSProperties } from 'react';
-import { CheckCircle, Info, Warning, WarningCircle, X } from '@phosphor-icons/react';
+import { Check, CheckCircle, Copy, Info, Warning, WarningCircle, X } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
+import { IconSwap } from '@/components/ui/IconSwap';
 import './UnifiedNotification.css';
 
 const normalizeNotificationMessage = (input: unknown): string => {
@@ -58,6 +59,7 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
   const [isClosing, setIsClosing] = useState(false);
   const [isHoverExpanded, setIsHoverExpanded] = useState(false);
   const [isTimerPaused, setIsTimerPaused] = useState(false);
+  const [copied, setCopied] = useState(false);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const startRef = useRef(0);
   const remainingRef = useRef(DURATION);
@@ -91,6 +93,17 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
     if (delay === 0) { onCloseRef.current(); return; }
     setTimeout(() => onCloseRef.current(), delay);
   }, [clear]);
+
+  const handleCopy = useCallback((e: React.MouseEvent) => {
+    e.stopPropagation();
+    const text = [notification.title, notification.message]
+      .filter((p) => typeof p === 'string' && p.trim())
+      .join(': ');
+    navigator.clipboard.writeText(text).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {});
+  }, [notification.title, notification.message]);
 
   const startTimer = useCallback((time: number) => {
     startRef.current = Date.now();
@@ -208,6 +221,20 @@ export const UnifiedNotification: React.FC<NotificationProps> = ({ notification,
           <NotionButton variant="ghost" size="sm" className="unified-notification-action" onClick={() => { notification.action?.onClick(); handleClose(); }}>
             {notification.action.label}
           </NotionButton>
+        )}
+        {notification.type === 'error' && (
+          <button
+            className="unified-notification-copy"
+            aria-label="复制错误信息"
+            onClick={handleCopy}
+            type="button"
+          >
+            <IconSwap
+              active={copied}
+              a={<Copy className="unified-notification-copy-icon" weight="regular" />}
+              b={<Check className="unified-notification-copy-icon" weight="regular" />}
+            />
+          </button>
         )}
         <NotionButton variant="ghost" size="icon" iconOnly className="unified-notification-close" aria-label="关闭通知" onClick={handleClose}>
           <X className="unified-notification-close-icon" weight="regular" aria-hidden="true" />

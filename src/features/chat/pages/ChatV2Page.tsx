@@ -12,7 +12,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { Plus, Chat, PencilSimple, Check, X, SquaresFour, Books, FileText, BookOpen, ClipboardText, Image, File, CircleNotch, DotsSixVertical, List, ArrowClockwise, Folder, ArrowSquareOut } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
-import { Panel, PanelGroup, PanelResizeHandle, type ImperativePanelHandle } from 'react-resizable-panels';
+import { Panel, PanelGroup, PanelResizeHandle } from 'react-resizable-panels';
 import { cn } from '@/lib/utils';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
@@ -99,6 +99,13 @@ interface OpenApp {
   filePath?: string;
 }
 
+type DesktopSecondaryPanelMode = 'sandbox' | 'attachment' | 'canvas';
+
+interface DesktopSecondaryPanelSnapshot {
+  mode: DesktopSecondaryPanelMode;
+  openApp: OpenApp | null;
+}
+
 /**
  * 获取应用类型对应的图标
  */
@@ -113,6 +120,9 @@ const getAppIcon = (type: ResourceType) => {
   }
 };
 const LAST_SESSION_KEY = 'chat-v2-last-session-id';
+const DESKTOP_SECONDARY_PANEL_TRANSITION_MS = 220;
+const DESKTOP_SECONDARY_PANEL_EASING = 'cubic-bezier(0.22, 1, 0.36, 1)';
+const DESKTOP_SECONDARY_PANEL_WIDTH = 'clamp(320px, 42vw, 720px)';
 
 // ============================================================================
 // 组件实现
@@ -169,7 +179,6 @@ export const ChatV2Page: React.FC = () => {
   const sandboxWorkbenchOpen = useSandboxWorkbenchStore((state) => state.isOpen);
   const openSandboxWorkbench = useSandboxWorkbenchStore((state) => state.openWorkbench);
   const closeSandboxWorkbench = useSandboxWorkbenchStore((state) => state.closeWorkbench);
-  const sandboxDesktopPanelRef = useRef<ImperativePanelHandle>(null);
   // 移动端：资源库右侧滑屏状态
   const [mobileResourcePanelOpen, setMobileResourcePanelOpen] = useState(false);
   // 移动端：分组编辑器资源选择回调（右面板复用，返回 'added'|'removed'|false）
@@ -220,6 +229,7 @@ export const ChatV2Page: React.FC = () => {
       return next;
     });
   }, []);
+  const [desktopSecondaryPanelSnapshot, setDesktopSecondaryPanelSnapshot] = useState<DesktopSecondaryPanelSnapshot | null>(null);
 
   // 监听笔记工具打开事件，在右侧 DSTU 面板中打开笔记
   const deferredSessionId = useDeferredValue(currentSessionId);
@@ -305,52 +315,18 @@ export const ChatV2Page: React.FC = () => {
     return map;
   }, [filteredSessions]);
 
-  const activeGroupIds = useMemo(() => new Set(groups.map((group) => group.id)), [groups]);
-
-  const staleSessionGroups = useMemo(() => {
-    const staleIds = Array.from(sessionsByGroup.keys()).filter((groupId) => !activeGroupIds.has(groupId));
-    return staleIds.map((groupId, index): SessionGroup => {
-      const groupSessions = sessionsByGroup.get(groupId) ?? [];
-      const newestUpdatedAt = groupSessions
-        .map((session) => session.updatedAt)
-        .sort((a, b) => b.localeCompare(a))[0] ?? new Date().toISOString();
-      return {
-        id: groupId,
-        name: t('browser.staleTopic', '课题已归档或缺失'),
-        description: t('browser.staleTopicDescription', '这些会话仍保留旧课题 ID，但课题当前不在活跃列表中。'),
-        icon: 'Archive',
-        defaultSkillIds: [],
-        pinnedResourceIds: [],
-        sortOrder: 100000 + index,
-        persistStatus: 'archived',
-        createdAt: newestUpdatedAt,
-        updatedAt: newestUpdatedAt,
-      };
-    });
-  }, [activeGroupIds, sessionsByGroup, t]);
-
   const groupNameMap = useMemo(() => {
     const map = new Map<string, string>();
-    [...groups, ...staleSessionGroups].forEach((group) => {
+    groups.forEach((group) => {
       // 判断 icon 是预设图标名称还是 emoji，只有 emoji 才添加到标签前面
       const presetIcon = group.icon ? PRESET_ICONS.find(p => p.name === group.icon) : null;
       const label = (group.icon && !presetIcon) ? `${group.icon} ${group.name}` : group.name;
       map.set(group.id, label);
     });
     return map;
-  }, [groups, staleSessionGroups]);
+  }, [groups]);
 
   const visibleGroups = useMemo(() => {
-    const displayGroups = [...groups, ...staleSessionGroups];
-    if (!normalizedSearchQuery) return displayGroups;
-    return displayGroups.filter((group) => {
-      const text = `${group.name} ${group.description ?? ''}`.toLowerCase();
-      if (text.includes(normalizedSearchQuery)) return true;
-      return (sessionsByGroup.get(group.id) ?? []).length > 0;
-    });
-  }, [groups, normalizedSearchQuery, sessionsByGroup, staleSessionGroups]);
-
-  const editableVisibleGroups = useMemo(() => {
     if (!normalizedSearchQuery) return groups;
     return groups.filter((group) => {
       const text = `${group.name} ${group.description ?? ''}`.toLowerCase();
@@ -370,42 +346,25 @@ export const ChatV2Page: React.FC = () => {
 
   // 浏览模式的分组信息
   const browserGroups = useMemo(() => {
-    return [...groups, ...staleSessionGroups].map((g) => ({
+    return groups.map((g) => ({
       id: g.id,
       name: g.name,
       icon: g.icon,
       color: g.color,
       sortOrder: g.sortOrder,
     }));
-  }, [groups, staleSessionGroups]);
+  }, [groups]);
 
-  // 未分组会话只展示真正没有 groupId 的会话。
-  // 有 groupId 但分组缺失通常代表归档/删除后的 stale state，不能降级成全局会话。
+  // 未分组会话（仍按时间分组展示，含未知分组）
   const ungroupedSessions = useMemo(
-    () => filteredSessions.filter((s) => !s.groupId),
-    [filteredSessions]
+    () => filteredSessions.filter((s) => !s.groupId || !groupNameMap.has(s.groupId)),
+    [filteredSessions, groupNameMap]
   );
   const groupedSessions = useMemo(() => groupSessionsByTime(ungroupedSessions), [ungroupedSessions]);
 
   useEffect(() => {
     loadGroups();
   }, [loadGroups]);
-
-  useEffect(() => {
-    const onGroupsUpdated = () => {
-      void loadGroups();
-      void loadSessions();
-    };
-    const onSessionsUpdated = () => {
-      void loadSessions();
-    };
-    window.addEventListener('chat-v2:groups-updated', onGroupsUpdated);
-    window.addEventListener('chat-v2:sessions-updated', onSessionsUpdated);
-    return () => {
-      window.removeEventListener('chat-v2:groups-updated', onGroupsUpdated);
-      window.removeEventListener('chat-v2:sessions-updated', onSessionsUpdated);
-    };
-  }, [loadGroups, loadSessions]);
 
   // P2-4 fix: Prune stale collapsed state when groups change
   useEffect(() => {
@@ -570,7 +529,7 @@ export const ChatV2Page: React.FC = () => {
     editingTitle, editingGroup, pendingArchiveGroup, sessionsRef,
     groupPickerAddRef, t,
     updateGroup, createGroup, archiveGroup, reorderGroups,
-    loadUngroupedCount, getOrCreateHiddenDraftSession, groupDragDisabled, visibleGroups: editableVisibleGroups,
+    loadUngroupedCount, getOrCreateHiddenDraftSession, groupDragDisabled, visibleGroups,
   });
 
   // ===== 左侧主导航栏分组操作事件监听 =====
@@ -649,7 +608,7 @@ export const ChatV2Page: React.FC = () => {
     renderSessionItem, handleBrowserSelectSession, handleBrowserRenameSession,
   } = useSessionItemRenderer({
     editingSessionId, hoveredSessionId: null, currentSessionId, pendingDeleteSessionId, pendingArchiveSessionId,
-    editingTitle, renamingSessionId, renameError, groups: visibleGroups, sessions, totalSessionCount,
+    editingTitle, renamingSessionId, renameError, groups, sessions, totalSessionCount,
     t, resetDeleteConfirmation, setCurrentSessionId, setHoveredSessionId: () => {},
     setEditingTitle, setPendingDeleteSessionId, setPendingArchiveSessionId, setSessions, setViewMode,
     clearDeleteConfirmTimeout, deleteConfirmTimeoutRef,
@@ -693,39 +652,71 @@ export const ChatV2Page: React.FC = () => {
     setCanvasSidebarOpen(false);
     setMobileResourcePanelOpen(false);
   }, [setAttachmentPreviewOpen, setCanvasSidebarOpen, setMobileResourcePanelOpen, setOpenApp]);
-  const otherSecondaryPanelOpen = canvasSidebarOpen || attachmentPreviewOpen;
-
   const toggleSandboxWorkbench = useCallback(() => {
-    const panel = sandboxDesktopPanelRef.current;
-    if (!panel || !sandboxActiveSession) return;
+    if (!sandboxActiveSession) return;
 
     if (sandboxWorkbenchOpen) {
-      panel.collapse();
+      closeSandboxWorkbench();
     } else {
       openSandboxWorkbench();
-      panel.expand();
     }
-  }, [openSandboxWorkbench, sandboxActiveSession, sandboxWorkbenchOpen]);
+  }, [closeSandboxWorkbench, openSandboxWorkbench, sandboxActiveSession, sandboxWorkbenchOpen]);
+
+  const desktopSecondaryPanelMode: DesktopSecondaryPanelMode | null = sandboxWorkbenchOpen && sandboxActiveSession
+    ? 'sandbox'
+    : attachmentPreviewOpen && openApp
+      ? 'attachment'
+      : canvasSidebarOpen
+        ? 'canvas'
+        : null;
+  const desktopSecondaryPanelOpen = !isSmallScreen && desktopSecondaryPanelMode !== null;
+  const desktopSecondaryPanelSnapshotApp = desktopSecondaryPanelMode === 'attachment'
+    ? openApp
+    : desktopSecondaryPanelSnapshot?.mode === 'attachment'
+      ? desktopSecondaryPanelSnapshot.openApp
+      : null;
+  const desktopSecondaryPanelSnapshotMode = desktopSecondaryPanelMode ?? desktopSecondaryPanelSnapshot?.mode ?? null;
 
   useEffect(() => {
-    if (isSmallScreen || !sandboxActiveSession || otherSecondaryPanelOpen) return;
-
-    const panel = sandboxDesktopPanelRef.current;
-    if (!panel) return;
-
-    if (sandboxWorkbenchOpen) {
-      panel.expand();
-    } else {
-      panel.collapse();
+    if (isSmallScreen) {
+      setDesktopSecondaryPanelSnapshot(null);
+      return;
     }
-  }, [isSmallScreen, sandboxActiveSession, sandboxWorkbenchOpen, otherSecondaryPanelOpen]);
 
-  const renderDesktopSecondaryPanel = () => {
-    if (!sandboxWorkbenchOpen && !canvasSidebarOpen && !attachmentPreviewOpen) {
+    if (desktopSecondaryPanelMode) {
+      setDesktopSecondaryPanelSnapshot({
+        mode: desktopSecondaryPanelMode,
+        openApp: desktopSecondaryPanelMode === 'attachment' ? openApp : null,
+      });
+      return;
+    }
+
+    if (!desktopSecondaryPanelSnapshot) {
+      return;
+    }
+
+    const timer = window.setTimeout(() => {
+      setDesktopSecondaryPanelSnapshot(null);
+    }, DESKTOP_SECONDARY_PANEL_TRANSITION_MS);
+
+    return () => window.clearTimeout(timer);
+  }, [desktopSecondaryPanelMode, desktopSecondaryPanelSnapshot, isSmallScreen, openApp]);
+
+  const desktopSecondaryPanelShouldRender = !isSmallScreen && desktopSecondaryPanelSnapshotMode !== null;
+  const desktopSecondaryPanelShellClassName = cn(
+    'h-full overflow-hidden will-change-transform transition-[transform,opacity] duration-200 motion-reduce:transition-none',
+    desktopSecondaryPanelOpen ? 'translate-x-0 opacity-100' : 'pointer-events-none translate-x-full opacity-0'
+  );
+
+  const renderDesktopSecondaryPanel = (options?: { mode?: DesktopSecondaryPanelMode | null; openApp?: OpenApp | null }) => {
+    const panelMode = options?.mode ?? desktopSecondaryPanelMode;
+    const panelOpenApp = options?.openApp ?? openApp;
+
+    if (!panelMode) {
       return null;
     }
 
-    if (sandboxWorkbenchOpen && sandboxActiveSession) {
+    if (panelMode === 'sandbox' && sandboxActiveSession) {
       return (
         <div className="h-full transition-[opacity,transform] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none opacity-100 translate-x-0">
           <SandboxWorkbenchSurface
@@ -737,8 +728,8 @@ export const ChatV2Page: React.FC = () => {
       );
     }
 
-    if (attachmentPreviewOpen && !canvasSidebarOpen && openApp) {
-      return renderOpenAppPanel();
+    if (panelMode === 'attachment' && panelOpenApp) {
+      return renderOpenAppPanel({ openAppOverride: panelOpenApp });
     }
 
     return (
@@ -836,9 +827,11 @@ export const ChatV2Page: React.FC = () => {
     options?: {
       fullScreen?: boolean;
       onClose?: () => void;
+      openAppOverride?: OpenApp | null;
     }
   ) => {
-    if (!openApp) return null;
+    const panelOpenApp = options?.openAppOverride ?? openApp;
+    if (!panelOpenApp) return null;
 
     const handleClose = options?.onClose ?? handleCloseApp;
 
@@ -855,14 +848,14 @@ export const ChatV2Page: React.FC = () => {
         >
           <div className="flex items-center gap-2 min-w-0">
             {(() => {
-              const AppIcon = getAppIcon(openApp.type);
+              const AppIcon = getAppIcon(panelOpenApp.type);
               return <AppIcon size={16} className="text-muted-foreground shrink-0" />;
             })()}
             <span className="text-sm font-medium truncate">
-              {openApp.title || t('common:untitled')}
+              {panelOpenApp.title || t('common:untitled')}
             </span>
             <span className="text-xs text-muted-foreground">
-              ({t(`learningHub:resourceType.${openApp.type}`, openApp.type)})
+              ({t(`learningHub:resourceType.${panelOpenApp.type}`, panelOpenApp.type)})
             </span>
           </div>
           <div className="flex items-center gap-1 shrink-0">
@@ -887,9 +880,9 @@ export const ChatV2Page: React.FC = () => {
             }
           >
             <UnifiedAppPanel
-              type={openApp.type}
-              resourceId={openApp.id}
-              dstuPath={openApp.filePath || `/${openApp.id}`}
+              type={panelOpenApp.type}
+              resourceId={panelOpenApp.id}
+              dstuPath={panelOpenApp.filePath || `/${panelOpenApp.id}`}
               onClose={handleClose}
               onTitleChange={handleTitleChange}
               className="h-full"
@@ -1091,37 +1084,33 @@ export const ChatV2Page: React.FC = () => {
             {renderOpenAppPanel({ fullScreen: true })}
           </div>
         ) : (
-          <PanelGroup direction="horizontal" autoSaveId="chat-v2-canvas-layout" className="flex-1 min-w-0 h-full">
-            <Panel defaultSize={(canvasSidebarOpen || attachmentPreviewOpen || sandboxWorkbenchOpen || sandboxActiveSession) ? 60 : 100} minSize={30} className="h-full">
+          <div className="flex flex-1 min-w-0 h-full overflow-hidden">
+            <div className="h-full min-w-0 flex-1">
               {renderMainContent()}
-            </Panel>
-            {(sandboxWorkbenchOpen || canvasSidebarOpen || attachmentPreviewOpen) && (
-              <>
-                <PanelResizeHandle
-                  className="w-1.5 bg-border hover:bg-primary/50 active:bg-primary transition-colors cursor-col-resize"
-                  title={t('learningHub:toolbar.resize')}
-                />
-              </>
-            )}
-            {(sandboxActiveSession || canvasSidebarOpen || attachmentPreviewOpen) && (
-              <Panel
-                ref={sandboxDesktopPanelRef}
-                defaultSize={sandboxWorkbenchOpen ? 42 : openApp ? 50 : 30}
-                minSize={20}
-                maxSize={70}
-                collapsedSize={0}
-                collapsible
-                onCollapse={() => {
-                  if (sandboxWorkbenchOpen) {
-                    closeSandboxWorkbench();
-                  }
+            </div>
+            {desktopSecondaryPanelShouldRender && (
+              <div
+                className="h-full shrink-0 overflow-hidden border-l border-[color:var(--shell-inspector-border)] bg-background shadow-[-12px_0_32px_rgba(15,23,42,0.08)] transition-[width] duration-200 motion-reduce:transition-none"
+                style={{
+                  width: desktopSecondaryPanelOpen ? DESKTOP_SECONDARY_PANEL_WIDTH : 0,
+                  transitionTimingFunction: DESKTOP_SECONDARY_PANEL_EASING,
                 }}
-                className="h-full overflow-hidden transition-[flex-grow] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none"
               >
-                {renderDesktopSecondaryPanel()}
-              </Panel>
+                <div
+                  className={cn('h-full min-w-0', desktopSecondaryPanelShellClassName)}
+                  style={{
+                    width: DESKTOP_SECONDARY_PANEL_WIDTH,
+                    transitionTimingFunction: DESKTOP_SECONDARY_PANEL_EASING,
+                  }}
+                >
+                  {renderDesktopSecondaryPanel({
+                    mode: desktopSecondaryPanelSnapshotMode,
+                    openApp: desktopSecondaryPanelSnapshotApp,
+                  })}
+                </div>
+              </div>
             )}
-          </PanelGroup>
+          </div>
         )
       )}
 

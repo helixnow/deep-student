@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 // 🚀 性能优化：Settings, Dashboard, SOTADashboard 改为懒加载
-import { CaretLeft, CaretRight, CircleNotch, Terminal, Warning, X } from '@phosphor-icons/react';
+import { ArrowLeft, CaretLeft, CaretRight, CircleNotch, DownloadSimple, Terminal, Warning, X } from '@phosphor-icons/react';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { cn } from '@/lib/utils';
@@ -281,18 +281,37 @@ function SidebarUpdateBadge({
   visible,
   onClick,
   downloading,
+  compact,
+  className,
 }: {
   visible: boolean;
   onClick: () => void;
   downloading: boolean;
+  compact?: boolean;
+  className?: string;
 }) {
   if (!visible) return null;
+
+  if (compact) {
+    return (
+      <button
+        type="button"
+        data-slot="sidebar-update-badge"
+        className={cn('desktop-shell-update-badge desktop-shell-update-badge--compact', className)}
+        onClick={onClick}
+        disabled={downloading}
+        aria-label={downloading ? '下载中...' : '点击更新'}
+      >
+        {downloading ? <CircleNotch size={12} className="animate-spin" aria-hidden="true" /> : <DownloadSimple size={12} />}
+      </button>
+    );
+  }
 
   return (
     <button
       type="button"
       data-slot="sidebar-update-badge"
-      className="desktop-shell-update-badge"
+      className={cn('desktop-shell-update-badge', className)}
       onClick={onClick}
       disabled={downloading}
       aria-label={downloading ? '下载中...' : '点击更新'}
@@ -309,6 +328,7 @@ function DesktopSidebarAccessory({
   updateVisible,
   onUpdate,
   updateDownloading,
+  compact,
 }: {
   onToggle: () => void;
   label: string;
@@ -316,6 +336,7 @@ function DesktopSidebarAccessory({
   updateVisible: boolean;
   onUpdate: () => void;
   updateDownloading: boolean;
+  compact?: boolean;
 }) {
   return (
     <div className="desktop-shell-accessory-group flex min-w-0 items-center">
@@ -330,26 +351,13 @@ function DesktopSidebarAccessory({
           {collapsed ? <SidebarFrameIcon /> : <SidebarFrameWithLeftRailIcon />}
         </NotionButton>
       </CommonTooltip>
-      <div
-        aria-hidden={collapsed}
-        className={cn(
-          'overflow-hidden transition-[width,opacity,margin-left] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none',
-          collapsed ? 'ml-0 w-0 opacity-0' : 'ml-1.5 w-[3.125rem] opacity-100'
-        )}
-      >
-        <div
-          className={cn(
-            'flex items-center justify-start transition-[transform,opacity] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none',
-            collapsed ? '-translate-x-1 opacity-0' : 'translate-x-0 opacity-100'
-          )}
-        >
-          <SidebarUpdateBadge
-            visible={updateVisible && !collapsed}
-            onClick={onUpdate}
-            downloading={updateDownloading}
-          />
-        </div>
-      </div>
+      <SidebarUpdateBadge
+        visible={updateVisible}
+        onClick={onUpdate}
+        downloading={updateDownloading}
+        compact={collapsed || compact}
+        className={(collapsed || compact) ? 'ml-0.5' : 'ml-1.5'}
+      />
     </div>
   );
 }
@@ -807,7 +815,8 @@ function App() {
   const desktopSidebarToggleLabel = t('common:navigation.toggle_sidebar', '切换边栏');
   const desktopHeaderNavHotzoneLabel = t('chatV2:page.newSession', '新建会话');
   const desktopHeaderTitleHotzoneLabel = t('common:command_palette_label', '命令面板');
-  const desktopCollapsedLeadingWidth = 148;
+  const updateBadgeVisible = !updater.checking && updater.available && !!updater.info;
+  const desktopCollapsedLeadingWidth = updateBadgeVisible ? 188 : 148;
   const desktopTitlebarLeadingInset = !isSmallScreen && leftPanelCollapsed
     ? (isMacOS() ? DESKTOP_SHELL.macTrafficLightsSpacer : 0) + 16 + desktopCollapsedLeadingWidth
     : 0;
@@ -830,7 +839,7 @@ function App() {
       onToggle={useUIStore.getState().toggleLeftPanel}
       label={desktopSidebarToggleLabel}
       collapsed={leftPanelCollapsed}
-      updateVisible={!updater.checking && updater.available && !!updater.info}
+      updateVisible={updateBadgeVisible}
       onUpdate={() => void updater.performUpdateAction()}
       updateDownloading={updater.downloading}
     />
@@ -1931,7 +1940,7 @@ function App() {
       defaultValue: '在 {{groupName}} 中新建会话',
     })
     : desktopHeaderNavHotzoneLabel;
-  const shouldShowDesktopHeaderNavControls = currentView !== 'settings' && currentView !== 'todo';
+  const shouldShowDesktopHeaderNavControls = leftPanelCollapsed && currentView !== 'settings' && currentView !== 'todo';
   const desktopHeaderNavControls = (
     <DesktopHeaderNavControls
       canGoBack={unifiedCanGoBack}
@@ -2302,12 +2311,12 @@ function App() {
         {!isSmallScreen && (
         <header
           data-shell-layer="window-chrome"
-          className="desktop-shell-titlebar fixed top-0 left-0 right-0 z-[1100] grid transition-[grid-template-columns] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none"
+          data-sidebar-visible={isDesktopSidebarSurfaceVisible ? 'true' : 'false'}
+          className="desktop-shell-titlebar fixed top-0 left-0 right-0 z-[1100] flex motion-reduce:transition-none"
           style={{
             paddingTop: `${topbarTopMargin}px`,
             height: `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
             minHeight: `${DESKTOP_SHELL.titlebarBaseHeight + topbarTopMargin}px`,
-            gridTemplateColumns: `${desktopNavigationWidth}px minmax(0, 1fr)`,
           }}
           onMouseDown={handleDesktopTitlebarMouseDown}
         >
@@ -2333,9 +2342,12 @@ function App() {
 
           <div
             className={cn(
-              'desktop-shell-header-cell desktop-shell-header-cell--nav relative z-10 flex min-w-0 items-center justify-end overflow-hidden transition-[padding] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none',
+              'desktop-shell-header-cell desktop-shell-header-cell--nav relative z-10 flex min-w-0 shrink-0 items-center justify-end overflow-hidden transition-[width,padding] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none',
               leftPanelCollapsed ? 'px-0' : 'px-4'
             )}
+            style={{
+              width: `${desktopNavigationWidth}px`,
+            }}
           >
             <div
               className="desktop-shell-header-hotzone flex min-w-0 items-center justify-end"
@@ -2357,7 +2369,7 @@ function App() {
 
           <div
             data-sidebar-visible={isDesktopSidebarSurfaceVisible ? 'true' : 'false'}
-            className="desktop-shell-header-cell desktop-shell-header-cell--workspace relative z-10 flex min-w-0 items-center justify-between px-5 transition-[padding-left] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)] motion-reduce:transition-none"
+            className="desktop-shell-header-cell desktop-shell-header-cell--workspace relative z-10 flex flex-1 min-w-0 items-center justify-between px-5"
             style={{ paddingLeft: `${20 + desktopTitlebarLeadingInset}px` }}
           >
             <div

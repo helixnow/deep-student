@@ -1461,6 +1461,23 @@ fn convert_assistant_message(message: &Value) -> Option<AnthropicMessage> {
                                 }
                             }
                         }
+                        "tool_use" => {
+                            let id = part
+                                .get("id")
+                                .and_then(|v| v.as_str())
+                                .map(|s| s.to_string())
+                                .unwrap_or_else(|| format!("tool_call_{}", Uuid::new_v4()));
+                            let name = part
+                                .get("name")
+                                .and_then(|v| v.as_str())
+                                .unwrap_or_default()
+                                .to_string();
+                            let input = part
+                                .get("input")
+                                .cloned()
+                                .unwrap_or_else(|| Value::Object(Map::new()));
+                            blocks.push(AnthropicContentBlock::ToolUse { id, name, input });
+                        }
                         _ => {}
                     }
                 }
@@ -2411,6 +2428,39 @@ mod tests {
 
         let request = adapter.convert_openai_to_anthropic("claude-sonnet-4-5", &body);
         assert_eq!(request.tool_choice, Some(json!({ "type": "auto" })));
+    }
+
+    #[test]
+    fn anthropic_preserves_inline_tool_use_blocks_from_assistant_content() {
+        let adapter = AnthropicAdapter::new();
+        let body = json!({
+            "messages": [{
+                "role": "assistant",
+                "content": [
+                    { "type": "thinking", "thinking": "need a tool" },
+                    {
+                        "type": "tool_use",
+                        "id": "toolu_123",
+                        "name": "lookup_weather",
+                        "input": { "city": "Paris" }
+                    },
+                    { "type": "text", "text": "Calling tool now." }
+                ]
+            }]
+        });
+
+        let request = adapter.convert_openai_to_anthropic("claude-sonnet-4-5", &body);
+        let request_json = serde_json::to_value(request).expect("request should serialize");
+        let content = request_json["messages"][0]["content"]
+            .as_array()
+            .expect("assistant content should be an array");
+
+        assert!(content.iter().any(|block| {
+            block["type"] == json!("tool_use")
+                && block["id"] == json!("toolu_123")
+                && block["name"] == json!("lookup_weather")
+                && block["input"]["city"] == json!("Paris")
+        }));
     }
 
     #[test]

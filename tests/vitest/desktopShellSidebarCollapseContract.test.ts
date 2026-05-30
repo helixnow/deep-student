@@ -85,7 +85,9 @@ describe('desktop shell sidebar collapse contract', () => {
   });
 
   it('renders the active desktop shell sidebar for every desktop route so width transitions can animate', () => {
-    expect(appSource).toContain("const desktopShellSidebarElement = currentView === 'settings' ? settingsShellSidebarElement : sidebarElement;");
+    expect(appSource).toContain("const desktopShellSidebarElement = currentView === 'settings'");
+    expect(appSource).toContain(": currentView === 'learning-hub'");
+    expect(appSource).toContain('? learningHubShellSidebarElement');
     expect(appSource).toContain('{!isSmallScreen ? (');
     expect(appSource).not.toContain("{!isSmallScreen && currentView !== 'settings' ? (");
     expect(appSource).toContain("'overflow-hidden transition-[width] duration-200 ease-[cubic-bezier(0.25,0.1,0.25,1)]'");
@@ -117,7 +119,8 @@ describe('desktop shell sidebar collapse contract', () => {
     expect(appSource).toContain('<SettingsShellSidebar');
     expect(appSource).toContain('globalLeftPanelCollapsed={leftPanelCollapsed}');
     expect(appSource).toContain("onBack={() => setCurrentView('chat-v2')}");
-    expect(appSource).toContain("const desktopShellSidebarElement = currentView === 'settings' ? settingsShellSidebarElement : sidebarElement;");
+    expect(appSource).toContain("const desktopShellSidebarElement = currentView === 'settings'");
+    expect(appSource).toContain('? settingsShellSidebarElement');
   });
 
   it('keeps desktop settings content inside the shared workspace boundary instead of drawing its own shell', () => {

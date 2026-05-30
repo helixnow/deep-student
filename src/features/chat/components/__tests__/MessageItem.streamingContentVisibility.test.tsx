@@ -81,7 +81,7 @@ vi.mock('../ui/ThreadContentShell', () => ({
 }));
 
 vi.mock('../message', () => ({
-  MessageActions: () => null,
+  MessageActions: () => <div data-testid="message-actions">message-actions</div>,
   MessageInlineEdit: () => null,
   UserMessageBubble: ({ children }: { children: React.ReactNode }) => <div>{children}</div>,
 }));
@@ -188,7 +188,7 @@ vi.mock('./message/variantMetaResolver', () => ({
 
 vi.mock('@/utils/formatUtils', () => ({
   getModelDisplayName: () => '',
-  formatMessageTime: () => '',
+  formatMessageTime: () => '17:21',
 }));
 
 vi.mock('@/components/UnifiedNotification', () => ({
@@ -272,5 +272,50 @@ describe('MessageItem streaming content visibility', () => {
     await waitFor(() => {
       expect(screen.getByText('final answer')).toBeInTheDocument();
     });
+  });
+
+  it('keeps the latest assistant footer hidden while streaming and reveals it after completion', async () => {
+    const store = createMessageItemStore();
+
+    store.setState((state) => ({
+      ...state,
+      sessionStatus: 'streaming',
+      activeBlockIds: new Set(['blk_content']),
+      blocks: new Map(state.blocks).set('blk_content', {
+        ...state.blocks.get('blk_content')!,
+        content: 'partial answer',
+      }),
+    }));
+
+    const { rerender } = render(
+      <MessageItem
+        messageId="msg_test"
+        store={store as unknown as StoreApi<any>}
+        isLatest
+      />
+    );
+
+    expect(screen.getByText('partial answer')).toBeInTheDocument();
+    expect(screen.queryByTestId('message-actions')).toBeNull();
+    expect(screen.queryByText('17:21')).toBeNull();
+
+    store.setState((state) => ({
+      ...state,
+      sessionStatus: 'idle',
+      activeBlockIds: new Set(),
+    }));
+
+    rerender(
+      <MessageItem
+        messageId="msg_test"
+        store={store as unknown as StoreApi<any>}
+        isLatest
+      />
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('message-actions')).toBeInTheDocument();
+    });
+    expect(screen.getByText('17:21')).toBeInTheDocument();
   });
 });

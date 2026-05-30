@@ -227,6 +227,36 @@
   stroke-width: 2;
 }
 
+.unified-notification-copy {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: hsl(var(--foreground) / 0.58);
+  background: transparent;
+  opacity: 0.74;
+  cursor: pointer;
+  transition: background-color 150ms ease-out, color 150ms ease-out, opacity 150ms ease-out;
+}
+
+.unified-notification-copy:hover,
+.unified-notification-copy:focus-visible {
+  color: hsl(var(--foreground) / 0.88);
+  background: hsl(var(--foreground) / 0.08);
+  opacity: 1;
+}
+
+.unified-notification-copy-icon {
+  width: 12px;
+  height: 12px;
+  stroke-width: 2;
+}
+
 .unified-notification-progress {
   position: absolute;
   left: 12px;

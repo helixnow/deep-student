@@ -2123,7 +2123,11 @@ pub async fn call_llm_for_boundary(
     // 调用 call_model2_raw_prompt 进行简单的 LLM 调用
     match state
         .llm_manager
-        .call_model2_raw_prompt(&prompt, None, crate::llm_usage::CallerType::Other("boundary_detection".to_string()))
+        .call_model2_raw_prompt(
+            &prompt,
+            None,
+            crate::llm_usage::CallerType::Other("boundary_detection".to_string()),
+        )
         .await
     {
         Ok(output) => {

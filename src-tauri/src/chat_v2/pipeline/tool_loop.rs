@@ -650,7 +650,7 @@ impl ChatV2Pipeline {
             ctx.options.thinking_budget,
         );
 
-        const LLM_MAX_RETRIES: u32 = 5;
+        const LLM_MAX_RETRIES: u32 = 2;
         const LLM_RETRY_DELAY_MS: u64 = 1000;
         let timeout_error = || {
             crate::models::AppError::llm(format!(

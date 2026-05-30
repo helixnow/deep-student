@@ -11,6 +11,7 @@ use crate::reasoning_policy::{
 use crate::utils::chat_timing;
 use futures_util::StreamExt;
 use log::{debug, error, info, warn};
+use rand::Rng;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use tauri::{Emitter, Window};
@@ -498,10 +499,16 @@ mod tests {
             ..Default::default()
         };
 
-        apply_runtime_reasoning_overrides(&mut config, Some("max".to_string()), Some(32768));
+        apply_runtime_reasoning_overrides(
+            &mut config,
+            Some(true),
+            Some("max".to_string()),
+            Some(32768),
+        );
 
         assert_eq!(config.reasoning_effort.as_deref(), Some("max"));
         assert_eq!(config.thinking_budget, Some(32768));
+        assert_eq!(config.enable_thinking, Some(true));
     }
 
     #[test]
@@ -589,9 +596,13 @@ mod tests {
 
 fn apply_runtime_reasoning_overrides(
     config: &mut ApiConfig,
+    enable_thinking_override: Option<bool>,
     reasoning_effort_override: Option<String>,
     thinking_budget_override: Option<i32>,
 ) {
+    if let Some(enable) = enable_thinking_override {
+        config.enable_thinking = Some(enable);
+    }
     if let Some(effort) = reasoning_effort_override {
         config.reasoning_effort = Some(effort);
     }
@@ -731,6 +742,58 @@ impl LLMManager {
         })
     }
 
+    /// 向前端发送内层 HTTP 重试进度（model2_pipeline 级别的重试）
+    ///
+    /// 内层重试原来完全静默，前端在等待期间看不到任何状态变化。
+    /// 这里复用 `stream_reconnect` 事件通道让前端显示 "reconnect...(N/max)"。
+    fn emit_inner_retry_progress(
+        window: &Window,
+        stream_event: &str,
+        message_id: Option<&str>,
+        retry_attempt: u32,
+        retry_max: u32,
+    ) {
+        let Some(mid) = message_id else {
+            return;
+        };
+
+        let Some(raw_session_scope) = stream_event.strip_prefix("chat_v2_event_") else {
+            return;
+        };
+
+        // 多变体流的 stream_event 形如 `chat_v2_event_{session_id}_{variant_id}`。
+        // reconnect 是会话级事件，前端监听的是 `chat_v2_session_{session_id}`，
+        // 因此这里需要剥掉尾部的 `_var_xxx` 变体后缀。
+        let session_id = raw_session_scope
+            .rsplit_once("_var_")
+            .map(|(sid, _)| sid)
+            .unwrap_or(raw_session_scope);
+
+        let session_channel = format!("chat_v2_session_{}", session_id);
+        let now_ms = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap_or_default()
+            .as_millis() as i64;
+        let _ = window.emit(
+            &session_channel,
+            &json!({
+                "sessionId": session_id,
+                "eventType": "stream_reconnect",
+                "messageId": mid,
+                "retryAttempt": retry_attempt,
+                "retryMax": retry_max,
+                "timestamp": now_ms,
+            }),
+        );
+    }
+
+    fn compute_retry_delay(min_delay_ms: u64, max_delay_ms: u64) -> u64 {
+        if max_delay_ms <= min_delay_ms {
+            return min_delay_ms;
+        }
+        rand::thread_rng().gen_range(min_delay_ms..=max_delay_ms)
+    }
+
     // 统一AI接口层 - 模型二（核心解析/对话）- 流式版本
     pub async fn call_unified_model_2_stream(
         &self,
@@ -786,6 +849,7 @@ impl LLMManager {
             .await?;
         apply_runtime_reasoning_overrides(
             &mut config,
+            Some(enable_thinking),
             reasoning_effort_override,
             thinking_budget_override,
         );
@@ -1633,10 +1697,10 @@ impl LLMManager {
         }
 
         // ERR-01 修复：HTTP 错误码区分处理与指数退避重试
-        const MAX_RETRIES: u32 = 3;
-        const INITIAL_BACKOFF_MS: u64 = 1000;
+        const MAX_RETRIES: u32 = 5;
+        const MIN_RETRY_DELAY_MS: u64 = 4000;
+        const MAX_RETRY_DELAY_MS: u64 = 5000;
         let mut retry_count = 0u32;
-        let mut backoff_ms = INITIAL_BACKOFF_MS;
 
         let response = loop {
             // 每次重试都需要重新构建 request_builder（因为 send() 会消耗它）
@@ -1693,7 +1757,14 @@ impl LLMManager {
                         .and_then(|v| v.to_str().ok())
                         .and_then(|s| s.parse::<u64>().ok());
 
-                    let wait_ms = retry_after.map(|s| s * 1000).unwrap_or(backoff_ms);
+                    let base_wait_ms = retry_after.map(|s| s * 1000).unwrap_or_else(|| {
+                        Self::compute_retry_delay(MIN_RETRY_DELAY_MS, MAX_RETRY_DELAY_MS)
+                    });
+                    let wait_ms = if retry_after.is_some() {
+                        base_wait_ms
+                    } else {
+                        base_wait_ms
+                    };
 
                     if retry_count < MAX_RETRIES {
                         retry_count += 1;
@@ -1701,8 +1772,14 @@ impl LLMManager {
                             "[模型二API] 遇到速率限制(429)，等待 {}ms 后重试 ({}/{})",
                             wait_ms, retry_count, MAX_RETRIES
                         );
+                        Self::emit_inner_retry_progress(
+                            &window,
+                            stream_event,
+                            message_id,
+                            retry_count,
+                            MAX_RETRIES,
+                        );
                         tokio::time::sleep(tokio::time::Duration::from_millis(wait_ms)).await;
-                        backoff_ms = (backoff_ms * 2).min(30000); // 指数退避，最大30秒
                         continue;
                     } else {
                         let error_text = resp.text().await.unwrap_or_default();
@@ -1728,12 +1805,20 @@ impl LLMManager {
                 500..=599 => {
                     if retry_count < MAX_RETRIES {
                         retry_count += 1;
+                        let wait_ms =
+                            Self::compute_retry_delay(MIN_RETRY_DELAY_MS, MAX_RETRY_DELAY_MS);
                         warn!(
                             "[模型二API] 服务端错误({})，等待 {}ms 后重试 ({}/{})",
-                            status_code, backoff_ms, retry_count, MAX_RETRIES
+                            status_code, wait_ms, retry_count, MAX_RETRIES
                         );
-                        tokio::time::sleep(tokio::time::Duration::from_millis(backoff_ms)).await;
-                        backoff_ms = (backoff_ms * 2).min(30000);
+                        Self::emit_inner_retry_progress(
+                            &window,
+                            stream_event,
+                            message_id,
+                            retry_count,
+                            MAX_RETRIES,
+                        );
+                        tokio::time::sleep(tokio::time::Duration::from_millis(wait_ms)).await;
                         continue;
                     } else {
                         let error_text = resp.text().await.unwrap_or_default();
@@ -4562,8 +4647,13 @@ impl LLMManager {
         user_prompt: &str,
     ) -> Result<StandardModel2Output> {
         let config = self.get_memory_decision_model_config().await?;
-        self.call_raw_prompt_with_config(config, user_prompt, None, crate::llm_usage::CallerType::Memory)
-            .await
+        self.call_raw_prompt_with_config(
+            config,
+            user_prompt,
+            None,
+            crate::llm_usage::CallerType::Memory,
+        )
+        .await
     }
 
     /// 使用标题/标签生成模型调用（回退链：chat_title_model → model2）
@@ -4572,8 +4662,13 @@ impl LLMManager {
         user_prompt: &str,
     ) -> Result<StandardModel2Output> {
         let config = self.get_chat_title_model_config().await?;
-        self.call_raw_prompt_with_config(config, user_prompt, None, crate::llm_usage::CallerType::ChatV2)
-            .await
+        self.call_raw_prompt_with_config(
+            config,
+            user_prompt,
+            None,
+            crate::llm_usage::CallerType::ChatV2,
+        )
+        .await
     }
 
     /// 内部方法：使用显式传入的 ApiConfig 执行 raw prompt 调用
@@ -4750,25 +4845,22 @@ impl LLMManager {
         }
 
         // 7. 解析响应
-        let response_json: serde_json::Value = response
-            .json()
-            .await
-            .map_err(|e| {
-                let err_msg = format!("解析RAW_PROMPT响应失败: {}", e);
-                crate::llm_usage::record_llm_usage(
-                    caller_type.clone(),
-                    &config.model,
-                    0,
-                    0,
-                    None,
-                    None,
-                    None,
-                    None,
-                    false,
-                    Some(err_msg.clone()),
-                );
-                AppError::llm(err_msg)
-            })?;
+        let response_json: serde_json::Value = response.json().await.map_err(|e| {
+            let err_msg = format!("解析RAW_PROMPT响应失败: {}", e);
+            crate::llm_usage::record_llm_usage(
+                caller_type.clone(),
+                &config.model,
+                0,
+                0,
+                None,
+                None,
+                None,
+                None,
+                false,
+                Some(err_msg.clone()),
+            );
+            AppError::llm(err_msg)
+        })?;
 
         // Gemini 非流式响应统一转换为 OpenAI 形状
         let openai_like_json = if config.model_adapter == "google" {
@@ -4807,7 +4899,10 @@ impl LLMManager {
                 }
             }
         } else if matches!(config.model_adapter.as_str(), "anthropic" | "claude") {
-            match crate::providers::convert_anthropic_response_to_openai(&response_json, &config.model) {
+            match crate::providers::convert_anthropic_response_to_openai(
+                &response_json,
+                &config.model,
+            ) {
                 Some(v) => v,
                 None => {
                     let err_msg = "解析Anthropic响应失败".to_string();
@@ -5224,8 +5319,17 @@ impl LLMManager {
                 .get("cached_tokens")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0) as u32;
-            let cached_tokens = if anthropic_cache_hit > 0 || openai_cached > 0 || deepseek_cached > 0 || gemini_cached > 0 {
-                Some(anthropic_cache_hit.max(openai_cached).max(deepseek_cached).max(gemini_cached))
+            let cached_tokens = if anthropic_cache_hit > 0
+                || openai_cached > 0
+                || deepseek_cached > 0
+                || gemini_cached > 0
+            {
+                Some(
+                    anthropic_cache_hit
+                        .max(openai_cached)
+                        .max(deepseek_cached)
+                        .max(gemini_cached),
+                )
             } else {
                 None
             };
@@ -5235,7 +5339,12 @@ impl LLMManager {
                 prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens
             );
 
-            (prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens)
+            (
+                prompt_tokens,
+                completion_tokens,
+                reasoning_tokens,
+                cached_tokens,
+            )
         } else {
             // 没有 API usage 数据，使用估算值
             let estimated_prompt = fallback_prompt_tokens as u32;
@@ -5243,7 +5352,12 @@ impl LLMManager {
                 "[LLM Usage] API 未返回 usage，使用估算值: prompt={}, completion={}",
                 estimated_prompt, fallback_completion_tokens
             );
-            (estimated_prompt, fallback_completion_tokens as u32, None, None)
+            (
+                estimated_prompt,
+                fallback_completion_tokens as u32,
+                None,
+                None,
+            )
         }
     }
 }

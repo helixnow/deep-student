@@ -427,6 +427,7 @@
     "name_placeholder": "请输入供应商名称",
     "provider_label": "供应商类型",
     "protocol_label": "API 协议",
+    "protocol_hint": "这里直接二选一：OpenAI Chat 使用 /chat/completions，OpenAI Responses 使用 /responses。",
     "protocols": {
       "openai_chat_completions": "OpenAI Chat Completions",
       "openai_responses": "OpenAI Responses",
@@ -1246,12 +1247,12 @@
     "vendor_not_found": "未找到供应商"
   },
   "notifications": {
-    "config_save_success": "配置保存成功！",
-    "config_save_success_browser": "配置保存成功！（浏览器模式）",
+    "config_save_success": "配置保存成功",
+    "config_save_success_browser": "配置保存成功（浏览器模式）",
     "config_save_failed": "配置保存失败: {{error}}",
-    "api_test_success": "{{name}} ({{model}}) API连接测试成功！",
+    "api_test_success": "{{name}} ({{model}}) API连接测试成功",
     "api_test_failed": "{{name}} ({{model}}) API连接测试失败",
-    "api_test_success_mock": "{{name}} API连接测试成功！（模拟）",
+    "api_test_success_mock": "{{name}} API连接测试成功（模拟）",
     "api_test_error": "{{name}} 连接测试失败: {{error}}",
     "delete_failed": "删除失败: {{error}}",
     "preset_name_required": "请填写预设名称",

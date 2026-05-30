@@ -76,7 +76,7 @@ export const MULTI_VARIANT_FLAGS = {
    * - true: 允许用户在输入栏选择多个模型，启用并行变体生成
    * - false: 隐藏多模型选择 UI，使用单模型模式
    */
-  enableMultiModelSelect: true,
+   enableMultiModelSelect: false,
 
   /**
    * 是否显示并行变体视图

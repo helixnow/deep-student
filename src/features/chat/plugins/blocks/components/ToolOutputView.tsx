@@ -23,6 +23,33 @@ export interface ToolOutputViewProps {
 
 type OutputType = 'json' | 'text' | 'table' | 'image' | 'unknown';
 
+interface LoadSkillsSummaryData {
+  loadedSkillIds: string[];
+  loadedToolNames: string[];
+  message?: string;
+}
+
+function unwrapLoadSkillsPayload(output: unknown): Record<string, unknown> | null {
+  if (!output || typeof output !== 'object' || Array.isArray(output)) {
+    return null;
+  }
+
+  const data = output as Record<string, unknown>;
+  if (data.result && typeof data.result === 'object' && !Array.isArray(data.result)) {
+    return data.result as Record<string, unknown>;
+  }
+
+  return data;
+}
+
+function resolveTranslationLabel(translated: string, fallbackKey: string, fallbackValue: string): string {
+  if (!translated || translated === fallbackKey || translated === `skills:${fallbackKey}`) {
+    return fallbackValue;
+  }
+
+  return translated;
+}
+
 // ============================================================================
 // 输出类型检测
 // ============================================================================
@@ -71,6 +98,29 @@ function detectOutputType(output: unknown): OutputType {
   }
 
   return 'text';
+}
+
+function extractLoadSkillsSummary(output: unknown): LoadSkillsSummaryData | null {
+  const data = unwrapLoadSkillsPayload(output);
+  if (!data) return null;
+
+  const loadedSkillIds = Array.isArray(data.loaded_skill_ids)
+    ? data.loaded_skill_ids.filter((item): item is string => typeof item === 'string' && item.length > 0)
+    : [];
+  const loadedToolNames = Array.isArray(data.loaded_tool_names)
+    ? data.loaded_tool_names.filter((item): item is string => typeof item === 'string' && item.length > 0)
+    : [];
+  const message = typeof data.message === 'string' ? data.message : undefined;
+
+  if (loadedSkillIds.length === 0 && loadedToolNames.length === 0 && !message) {
+    return null;
+  }
+
+  return {
+    loadedSkillIds,
+    loadedToolNames,
+    message,
+  };
 }
 
 // ============================================================================
@@ -195,6 +245,66 @@ const ImageOutput: React.FC<{ output: unknown }> = ({ output }) => {
   );
 };
 
+const LoadSkillsSummary: React.FC<{ data: LoadSkillsSummaryData }> = ({ data }) => {
+  const { t } = useTranslation(['chatV2', 'skills']);
+
+  if (data.loadedSkillIds.length === 0 && data.loadedToolNames.length === 0 && !data.message) {
+    return null;
+  }
+
+  return (
+    <div className="space-y-2 mb-2">
+      {data.loadedSkillIds.length > 0 && (
+        <div>
+          <div className="text-xs font-medium text-foreground/80 mb-1.5">
+            {t('blocks.mcpTool.loadedSkills', { ns: 'chatV2', defaultValue: 'Loaded skills' })}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {data.loadedSkillIds.map((skillId) => {
+              const key = `builtinNames.${skillId}`;
+              const translated = t(key, { ns: 'skills', defaultValue: '' });
+              const displayName = resolveTranslationLabel(translated, key, skillId);
+              return (
+                <span
+                  key={skillId}
+                  className="inline-flex items-center rounded-full border border-border/50 bg-background/70 px-2 py-0.5 text-xs text-foreground"
+                  title={skillId}
+                >
+                  {displayName}
+                </span>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {data.loadedToolNames.length > 0 && (
+        <div>
+          <div className="text-xs font-medium text-foreground/80 mb-1.5">
+            {t('blocks.mcpTool.loadedTools', { ns: 'chatV2', defaultValue: 'Loaded tools' })}
+          </div>
+          <div className="flex flex-wrap gap-1.5">
+            {data.loadedToolNames.map((toolName) => (
+              <code
+                key={toolName}
+                className="inline-flex items-center rounded-md border border-border/40 bg-background/60 px-1.5 py-0.5 text-[11px] text-muted-foreground"
+              >
+                {toolName}
+              </code>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {data.message && (
+        <div className="text-xs text-muted-foreground">
+          {data.message}
+        </div>
+      )}
+    </div>
+  );
+};
+
 // ============================================================================
 // 主组件
 // ============================================================================
@@ -208,6 +318,7 @@ export const ToolOutputView: React.FC<ToolOutputViewProps> = ({
 }) => {
   const { t } = useTranslation('chatV2');
   const outputType = useMemo(() => detectOutputType(output), [output]);
+  const loadSkillsSummary = useMemo(() => extractLoadSkillsSummary(output), [output]);
 
   // 获取类型图标
   const TypeIcon = useMemo(() => {
@@ -249,6 +360,7 @@ export const ToolOutputView: React.FC<ToolOutputViewProps> = ({
           'border border-border/30'
         )}
       >
+        {loadSkillsSummary && <LoadSkillsSummary data={loadSkillsSummary} />}
         {outputType === 'json' && <JsonOutput data={output} />}
         {outputType === 'text' && <TextOutput text={String(output)} />}
         {outputType === 'table' && (

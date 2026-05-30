@@ -420,6 +420,7 @@
     "name_placeholder": "Enter provider name",
     "provider_label": "Provider Type",
     "protocol_label": "API Protocol",
+    "protocol_hint": "Pick one directly: OpenAI Chat uses /chat/completions, while OpenAI Responses uses /responses.",
     "protocols": {
       "openai_chat_completions": "OpenAI Chat Completions",
       "openai_responses": "OpenAI Responses",
@@ -1239,12 +1240,12 @@
     "vendor_not_found": "Vendor not found"
   },
   "notifications": {
-    "config_save_success": "Configuration saved successfully!",
-    "config_save_success_browser": "Configuration saved successfully! (Browser Mode)",
+    "config_save_success": "Configuration saved successfully",
+    "config_save_success_browser": "Configuration saved successfully (Browser Mode)",
     "config_save_failed": "Failed to save configuration: {{error}}",
-    "api_test_success": "{{name}} ({{model}}) API connection test successful!",
+    "api_test_success": "{{name}} ({{model}}) API connection test successful",
     "api_test_failed": "{{name}} ({{model}}) API connection test failed",
-    "api_test_success_mock": "{{name}} API connection test successful! (Mock)",
+    "api_test_success_mock": "{{name}} API connection test successful (Mock)",
     "api_test_error": "{{name}} connection test failed: {{error}}",
     "delete_failed": "Delete failed: {{error}}",
     "preset_name_required": "Please enter preset name",

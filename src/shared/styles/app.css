@@ -33,6 +33,7 @@ body {
    * 透出的颜色与侧栏始终一致，主题切换时不会出现中间色差。
    */
   background: var(--shell-backdrop);
+  transition: background-color 200ms cubic-bezier(0.25, 0.1, 0.25, 1);
 }
 
 [data-shell-role="app-shell"][data-sidebar-visible="true"] {
@@ -40,8 +41,19 @@ body {
 }
 
 .desktop-shell-titlebar {
-  background: var(--shell-navigation-surface);
+  background: var(--shell-workspace-panel);
   border-bottom: none;
+}
+
+.desktop-shell-titlebar[data-sidebar-visible="true"] {
+  background:
+    linear-gradient(
+      90deg,
+      var(--shell-navigation-surface) 0,
+      var(--shell-navigation-surface) var(--shell-navigation-width),
+      var(--shell-workspace-panel) var(--shell-navigation-width),
+      var(--shell-workspace-panel) 100%
+    );
 }
 
 .desktop-shell-header-cell {
@@ -60,18 +72,18 @@ body {
 }
 
 .desktop-shell-header-cell--nav {
-  background: var(--shell-navigation-surface);
+  background: transparent;
   border-right: 0;
 }
 
 .desktop-shell-header-cell--workspace {
-  background: var(--shell-workspace-panel);
+  background: transparent;
   border: 0;
   box-shadow: none;
-}
-
-.desktop-shell-header-cell--workspace[data-sidebar-visible="true"] {
-  border-top-left-radius: var(--shell-workspace-edge-radius);
+  transition: padding-left 200ms cubic-bezier(0.25, 0.1, 0.25, 1),
+              background-color 400ms cubic-bezier(0.25, 0.0, 0.25, 1.0),
+              backdrop-filter 400ms cubic-bezier(0.25, 0.0, 0.25, 1.0),
+              -webkit-backdrop-filter 400ms cubic-bezier(0.25, 0.0, 0.25, 1.0);
 }
 
 .desktop-shell-toolbar-group {
@@ -266,10 +278,12 @@ body {
 .desktop-shell-workspace {
   background: var(--shell-workspace-panel);
   box-shadow: none;
+  transition: background-color 400ms cubic-bezier(0.25, 0.0, 0.25, 1.0),
+              backdrop-filter 400ms cubic-bezier(0.25, 0.0, 0.25, 1.0),
+              -webkit-backdrop-filter 400ms cubic-bezier(0.25, 0.0, 0.25, 1.0);
 }
 
 .desktop-shell-workspace[data-sidebar-visible="true"] {
-  border-bottom-left-radius: var(--shell-workspace-edge-radius);
   overflow: hidden;
 }
 
@@ -1058,4 +1072,11 @@ main {
 .dark .content-body.settings-view {
   border-left: none;
   border-top: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .desktop-shell-header-cell--workspace,
+  .desktop-shell-workspace {
+    transition: none;
+  }
 }

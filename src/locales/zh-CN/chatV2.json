@@ -118,6 +118,9 @@
       "hideErrorDetails": "收起错误详情",
       "genericError": "本次回复生成失败"
     },
+    "reconnect": {
+      "inline": "正在重试 {{attempt}}/{{max}}"
+    },
     "modelRetry": {
       "clickToRetry": "点击选择模型重试",
       "dialogTitle": "选择模型重试",
@@ -411,6 +414,8 @@
         "success": "执行完成",
         "error": "执行失败"
       },
+      "loadedSkills": "已加载技能",
+      "loadedTools": "已加载工具",
       "viewSourceFile": "查看源文件"
     },
     "imageGen": {
@@ -914,7 +919,9 @@
       "objectResult": "对象结果",
       "emptyResult": "无结果",
       "itemsResult": "返回 {{count}} 条结果",
-      "moreItems": "...还有 {{count}} 条"
+      "moreItems": "...还有 {{count}} 条",
+      "loadedSkills": "已加载技能",
+      "loadedTools": "已加载工具"
     },
     "noteTool": {
       "read": "读取笔记",
@@ -1110,7 +1117,7 @@
       "expiredTitle": "审批已过期",
       "expiredDetail": "该审批已失效，请重新发起工具请求。",
       "responseFailedTitle": "审批响应发送失败",
-      "responseFailedDetail": "请检查连接后重试。"
+      "responseFailedDetail": "请检查连接后重试"
     },
     "expandArgs": "展开完整参数",
     "collapseArgs": "收起参数",
