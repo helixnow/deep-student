@@ -7,7 +7,7 @@
 //! 所有方法均提供 `_with_conn` 版本，直接操作 `Connection`。
 
 use crate::database::Database;
-use chrono::{DateTime, TimeZone, Utc};
+use chrono::{DateTime, Utc};
 use log::{debug, info};
 use rusqlite::{params, Connection, OptionalExtension, Transaction};
 use serde_json::Value;
@@ -596,7 +596,260 @@ impl ChatV2Repo {
         Ok(())
     }
 
-    /// 软删除分组（并将关联会话置为未分组）
+    /// 归档分组（同时归档其下活跃会话，保留 group_id 以便恢复课题归属）
+    pub fn archive_group_with_conn(conn: &mut Connection, group_id: &str) -> ChatV2Result<()> {
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let now = Utc::now().to_rfc3339();
+
+        tx.execute(
+            r#"
+            UPDATE chat_v2_session_groups
+            SET persist_status = 'archived', updated_at = ?2
+            WHERE id = ?1 AND persist_status != 'deleted'
+            "#,
+            params![group_id, now],
+        )?;
+
+        let sessions_to_archive = {
+            let mut stmt = tx.prepare(
+                r#"
+                SELECT id, metadata_json
+                FROM chat_v2_sessions
+                WHERE group_id = ?1 AND persist_status = 'active'
+                "#,
+            )?;
+            let rows = stmt
+                .query_map(params![group_id], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, Option<String>>(1)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            rows
+        };
+
+        for (session_id, metadata_json) in sessions_to_archive {
+            let mut metadata = metadata_json
+                .as_deref()
+                .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+                .unwrap_or_else(|| Value::Object(Default::default()));
+            if !metadata.is_object() {
+                metadata = Value::Object(Default::default());
+            }
+            if let Some(obj) = metadata.as_object_mut() {
+                obj.insert(
+                    "groupArchivedBy".to_string(),
+                    serde_json::json!({
+                        "groupId": group_id,
+                        "archivedAt": now,
+                    }),
+                );
+            }
+            tx.execute(
+                r#"
+                UPDATE chat_v2_sessions
+                SET persist_status = 'archived', updated_at = ?2, metadata_json = ?3
+                WHERE id = ?1
+                "#,
+                params![session_id, now, metadata.to_string()],
+            )?;
+        }
+
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// 恢复分组（同时恢复其下被课题归档带走的会话）
+    pub fn restore_group_with_conn(conn: &mut Connection, group_id: &str) -> ChatV2Result<()> {
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+        let now = Utc::now().to_rfc3339();
+
+        tx.execute(
+            r#"
+            UPDATE chat_v2_session_groups
+            SET persist_status = 'active', updated_at = ?2
+            WHERE id = ?1 AND persist_status = 'archived'
+            "#,
+            params![group_id, now],
+        )?;
+
+        let archived_sessions = {
+            let mut stmt = tx.prepare(
+                r#"
+                SELECT id, metadata_json, group_id
+                FROM chat_v2_sessions
+                WHERE persist_status = 'archived'
+                  AND (
+                    group_id = ?1
+                    OR metadata_json LIKE '%"groupArchivedBy"%'
+                  )
+                "#,
+            )?;
+            let rows = stmt
+                .query_map(params![group_id], |row| {
+                    Ok((
+                        row.get::<_, String>(0)?,
+                        row.get::<_, Option<String>>(1)?,
+                        row.get::<_, Option<String>>(2)?,
+                    ))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            rows
+        };
+
+        for (session_id, metadata_json, existing_group_id) in archived_sessions {
+            let mut metadata = metadata_json
+                .as_deref()
+                .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+                .unwrap_or_else(|| Value::Object(Default::default()));
+            if !metadata.is_object() {
+                metadata = Value::Object(Default::default());
+            }
+
+            let manually_archived = metadata.get("manuallyArchivedBy").is_some();
+            let marker_group_id = metadata
+                .get("groupArchivedBy")
+                .and_then(|marker| marker.get("groupId"))
+                .and_then(|value| value.as_str());
+            let should_restore = if existing_group_id.as_deref() == Some(group_id) {
+                marker_group_id
+                    .map(|archived_group_id| archived_group_id == group_id)
+                    // Compatibility for older builds/sync repairs that archived a topic and its
+                    // sessions before groupArchivedBy existed. Keep group_id, restore together.
+                    .unwrap_or(!manually_archived)
+            } else {
+                // Compatibility for broken older delete/restore flows that cleared group_id but
+                // left the group archive marker behind. Reattach below before restoring.
+                marker_group_id == Some(group_id)
+            };
+            if !should_restore {
+                continue;
+            }
+            if let Some(obj) = metadata.as_object_mut() {
+                obj.remove("groupArchivedBy");
+            }
+            tx.execute(
+                r#"
+                UPDATE chat_v2_sessions
+                SET persist_status = 'active', updated_at = ?2, metadata_json = ?3, group_id = ?4
+                WHERE id = ?1
+                "#,
+                params![session_id, now, metadata.to_string(), group_id],
+            )?;
+        }
+
+        tx.commit()?;
+        Ok(())
+    }
+
+    /// 获取课题下的所有会话 ID（不区分会话状态）。
+    pub fn list_session_ids_for_group_with_conn(
+        conn: &Connection,
+        group_id: &str,
+    ) -> ChatV2Result<Vec<String>> {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id
+            FROM chat_v2_sessions
+            WHERE group_id = ?1
+            "#,
+        )?;
+        let rows = stmt
+            .query_map(params![group_id], |row| row.get::<_, String>(0))?
+            .collect::<Result<Vec<_>, _>>()?;
+        Ok(rows)
+    }
+
+    /// 获取应随课题一起恢复/永久删除的会话 ID。
+    ///
+    /// 覆盖当前仍保留 group_id 的会话，也覆盖旧版本错误清空 group_id、
+    /// 但仍在 metadata 中保留 groupArchivedBy 标记的归档会话。
+    pub fn list_session_ids_owned_by_group_with_conn(
+        conn: &Connection,
+        group_id: &str,
+    ) -> ChatV2Result<Vec<String>> {
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, metadata_json, group_id
+            FROM chat_v2_sessions
+            WHERE group_id = ?1
+               OR metadata_json LIKE '%"groupArchivedBy"%'
+            "#,
+        )?;
+        let rows = stmt
+            .query_map(params![group_id], |row| {
+                Ok((
+                    row.get::<_, String>(0)?,
+                    row.get::<_, Option<String>>(1)?,
+                    row.get::<_, Option<String>>(2)?,
+                ))
+            })?
+            .collect::<Result<Vec<_>, _>>()?;
+
+        let mut session_ids = Vec::new();
+        for (session_id, metadata_json, existing_group_id) in rows {
+            if existing_group_id.as_deref() == Some(group_id) {
+                session_ids.push(session_id);
+                continue;
+            }
+
+            let marker_group_id = metadata_json
+                .as_deref()
+                .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+                .and_then(|metadata| {
+                    metadata
+                        .get("groupArchivedBy")
+                        .and_then(|marker| marker.get("groupId"))
+                        .and_then(|value| value.as_str())
+                        .map(str::to_string)
+                });
+            if marker_group_id.as_deref() == Some(group_id) {
+                session_ids.push(session_id);
+            }
+        }
+
+        Ok(session_ids)
+    }
+
+    /// 永久删除已归档课题，并级联永久删除仍归属于该课题的会话。
+    pub fn permanently_delete_group_with_conn(
+        conn: &mut Connection,
+        group_id: &str,
+    ) -> ChatV2Result<Vec<String>> {
+        let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
+
+        let status: String = tx
+            .query_row(
+                "SELECT persist_status FROM chat_v2_session_groups WHERE id = ?1",
+                params![group_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .ok_or_else(|| ChatV2Error::GroupNotFound(group_id.to_string()))?;
+
+        if status == "active" {
+            return Err(ChatV2Error::Validation(
+                "Cannot permanently delete an active topic. Archive it first.".to_string(),
+            ));
+        }
+
+        let session_ids = Self::list_session_ids_owned_by_group_with_conn(&tx, group_id)?;
+
+        for session_id in &session_ids {
+            Self::delete_session_with_tx(&tx, session_id)?;
+        }
+
+        let rows_affected = tx.execute(
+            "DELETE FROM chat_v2_session_groups WHERE id = ?1",
+            params![group_id],
+        )?;
+        if rows_affected == 0 {
+            return Err(ChatV2Error::GroupNotFound(group_id.to_string()));
+        }
+
+        tx.commit()?;
+        Ok(session_ids)
+    }
+
+    /// 软删除分组（并将关联会话置为未分组）。普通归档请使用 archive_group_with_conn。
     pub fn soft_delete_group_with_conn(conn: &mut Connection, group_id: &str) -> ChatV2Result<()> {
         let tx = conn.transaction_with_behavior(rusqlite::TransactionBehavior::Immediate)?;
         tx.execute(
@@ -2991,6 +3244,261 @@ mod tests {
             .unwrap()
             .unwrap();
         assert!(!after_unlock.title_locked);
+    }
+
+    fn test_group(id: &str, name: &str) -> SessionGroup {
+        let now = Utc::now();
+        SessionGroup {
+            id: id.to_string(),
+            name: name.to_string(),
+            description: None,
+            icon: None,
+            color: None,
+            system_prompt: None,
+            default_skill_ids: Vec::new(),
+            pinned_resource_ids: Vec::new(),
+            workspace_id: None,
+            sort_order: 1,
+            persist_status: PersistStatus::Active,
+            created_at: now,
+            updated_at: now,
+        }
+    }
+
+    #[test]
+    fn test_archive_group_preserves_group_id_and_restore_marker() {
+        let mut conn = setup_test_db();
+        let group = test_group("group_archive_contract", "Archive Contract");
+        ChatV2Repo::create_group_with_conn(&conn, &group).unwrap();
+
+        let mut grouped_session = ChatSession::new(
+            "sess_group_archive_contract".to_string(),
+            "chat".to_string(),
+        );
+        grouped_session.group_id = Some(group.id.clone());
+        ChatV2Repo::create_session_with_conn(&conn, &grouped_session).unwrap();
+
+        ChatV2Repo::archive_group_with_conn(&mut conn, &group.id).unwrap();
+
+        let archived_group = ChatV2Repo::get_group_with_conn(&conn, &group.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(archived_group.persist_status, PersistStatus::Archived);
+
+        let archived_session = ChatV2Repo::get_session_with_conn(&conn, &grouped_session.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(archived_session.persist_status, PersistStatus::Archived);
+        assert_eq!(
+            archived_session.group_id.as_deref(),
+            Some(group.id.as_str())
+        );
+        assert_eq!(
+            archived_session
+                .metadata
+                .as_ref()
+                .and_then(|metadata| metadata.get("groupArchivedBy"))
+                .and_then(|marker| marker.get("groupId"))
+                .and_then(|group_id| group_id.as_str()),
+            Some(group.id.as_str())
+        );
+    }
+
+    #[test]
+    fn test_restore_group_restores_only_group_archived_sessions() {
+        let mut conn = setup_test_db();
+        let group = test_group("group_restore_contract", "Restore Contract");
+        ChatV2Repo::create_group_with_conn(&conn, &group).unwrap();
+
+        let mut carried_session =
+            ChatSession::new("sess_group_carried_restore".to_string(), "chat".to_string());
+        carried_session.group_id = Some(group.id.clone());
+        ChatV2Repo::create_session_with_conn(&conn, &carried_session).unwrap();
+
+        let mut manually_archived_session = ChatSession::new(
+            "sess_manual_archive_restore".to_string(),
+            "chat".to_string(),
+        );
+        manually_archived_session.group_id = Some(group.id.clone());
+        manually_archived_session.persist_status = PersistStatus::Archived;
+        manually_archived_session.metadata = Some(serde_json::json!({
+            "manuallyArchivedBy": {
+                "archivedAt": Utc::now().to_rfc3339(),
+            },
+        }));
+        ChatV2Repo::create_session_with_conn(&conn, &manually_archived_session).unwrap();
+
+        ChatV2Repo::archive_group_with_conn(&mut conn, &group.id).unwrap();
+        ChatV2Repo::restore_group_with_conn(&mut conn, &group.id).unwrap();
+
+        let restored_group = ChatV2Repo::get_group_with_conn(&conn, &group.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(restored_group.persist_status, PersistStatus::Active);
+
+        let carried_after = ChatV2Repo::get_session_with_conn(&conn, &carried_session.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(carried_after.persist_status, PersistStatus::Active);
+        assert_eq!(carried_after.group_id.as_deref(), Some(group.id.as_str()));
+        assert!(carried_after
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("groupArchivedBy"))
+            .is_none());
+
+        let manual_after = ChatV2Repo::get_session_with_conn(&conn, &manually_archived_session.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(manual_after.persist_status, PersistStatus::Archived);
+        assert_eq!(manual_after.group_id.as_deref(), Some(group.id.as_str()));
+    }
+
+    #[test]
+    fn test_restore_group_reattaches_marker_sessions_with_cleared_group_id() {
+        let mut conn = setup_test_db();
+        let group = test_group("group_restore_orphan_contract", "Restore Orphan Contract");
+        ChatV2Repo::create_group_with_conn(&conn, &group).unwrap();
+
+        let mut orphaned_session =
+            ChatSession::new("sess_group_restore_orphan".to_string(), "chat".to_string());
+        orphaned_session.group_id = None;
+        orphaned_session.persist_status = PersistStatus::Archived;
+        orphaned_session.metadata = Some(serde_json::json!({
+            "groupArchivedBy": {
+                "groupId": group.id.clone(),
+                "archivedAt": Utc::now().to_rfc3339(),
+            },
+        }));
+        ChatV2Repo::create_session_with_conn(&conn, &orphaned_session).unwrap();
+
+        let mut archived_group = group.clone();
+        archived_group.persist_status = PersistStatus::Archived;
+        ChatV2Repo::update_group_with_conn(&conn, &archived_group).unwrap();
+
+        ChatV2Repo::restore_group_with_conn(&mut conn, &group.id).unwrap();
+
+        let restored = ChatV2Repo::get_session_with_conn(&conn, &orphaned_session.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(restored.persist_status, PersistStatus::Active);
+        assert_eq!(restored.group_id.as_deref(), Some(group.id.as_str()));
+        assert!(restored
+            .metadata
+            .as_ref()
+            .and_then(|metadata| metadata.get("groupArchivedBy"))
+            .is_none());
+    }
+
+    #[test]
+    fn test_permanently_delete_group_deletes_topic_sessions_without_ungrouping() {
+        let mut conn = setup_test_db();
+        let mut group = test_group(
+            "group_permanent_delete_contract",
+            "Permanent Delete Contract",
+        );
+        ChatV2Repo::create_group_with_conn(&conn, &group).unwrap();
+
+        let mut session = ChatSession::new(
+            "sess_group_permanent_delete_contract".to_string(),
+            "chat".to_string(),
+        );
+        session.group_id = Some(group.id.clone());
+        session.persist_status = PersistStatus::Archived;
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        group.persist_status = PersistStatus::Archived;
+        ChatV2Repo::update_group_with_conn(&conn, &group).unwrap();
+
+        let deleted_session_ids =
+            ChatV2Repo::permanently_delete_group_with_conn(&mut conn, &group.id).unwrap();
+
+        assert_eq!(deleted_session_ids, vec![session.id.clone()]);
+        assert!(ChatV2Repo::get_group_with_conn(&conn, &group.id)
+            .unwrap()
+            .is_none());
+        assert!(ChatV2Repo::get_session_with_conn(&conn, &session.id)
+            .unwrap()
+            .is_none());
+    }
+
+    #[test]
+    fn test_permanently_delete_group_deletes_marker_orphan_sessions() {
+        let mut conn = setup_test_db();
+        let mut group = test_group(
+            "group_permanent_delete_orphan_contract",
+            "Permanent Delete Orphan Contract",
+        );
+        ChatV2Repo::create_group_with_conn(&conn, &group).unwrap();
+
+        let mut orphaned_session = ChatSession::new(
+            "sess_group_permanent_delete_orphan_contract".to_string(),
+            "chat".to_string(),
+        );
+        orphaned_session.group_id = None;
+        orphaned_session.persist_status = PersistStatus::Archived;
+        orphaned_session.metadata = Some(serde_json::json!({
+            "groupArchivedBy": {
+                "groupId": group.id.clone(),
+                "archivedAt": Utc::now().to_rfc3339(),
+            },
+        }));
+        ChatV2Repo::create_session_with_conn(&conn, &orphaned_session).unwrap();
+
+        group.persist_status = PersistStatus::Archived;
+        ChatV2Repo::update_group_with_conn(&conn, &group).unwrap();
+
+        let deleted_session_ids =
+            ChatV2Repo::permanently_delete_group_with_conn(&mut conn, &group.id).unwrap();
+
+        assert_eq!(deleted_session_ids, vec![orphaned_session.id.clone()]);
+        assert!(ChatV2Repo::get_group_with_conn(&conn, &group.id)
+            .unwrap()
+            .is_none());
+        assert!(
+            ChatV2Repo::get_session_with_conn(&conn, &orphaned_session.id)
+                .unwrap()
+                .is_none()
+        );
+    }
+
+    #[test]
+    fn test_permanently_delete_group_rejects_active_topic() {
+        let mut conn = setup_test_db();
+        let group = test_group("group_active_delete_contract", "Active Delete Contract");
+        ChatV2Repo::create_group_with_conn(&conn, &group).unwrap();
+
+        let err = ChatV2Repo::permanently_delete_group_with_conn(&mut conn, &group.id)
+            .expect_err("active groups must not be permanently deleted through archive delete");
+
+        assert!(matches!(err, ChatV2Error::Validation(_)));
+        assert!(ChatV2Repo::get_group_with_conn(&conn, &group.id)
+            .unwrap()
+            .is_some());
+    }
+
+    #[test]
+    fn test_soft_delete_group_is_the_only_group_flow_that_ungroups_sessions() {
+        let mut conn = setup_test_db();
+        let group = test_group("group_delete_contract", "Delete Contract");
+        ChatV2Repo::create_group_with_conn(&conn, &group).unwrap();
+
+        let mut session =
+            ChatSession::new("sess_group_delete_contract".to_string(), "chat".to_string());
+        session.group_id = Some(group.id.clone());
+        ChatV2Repo::create_session_with_conn(&conn, &session).unwrap();
+
+        ChatV2Repo::soft_delete_group_with_conn(&mut conn, &group.id).unwrap();
+
+        let deleted_group = ChatV2Repo::get_group_with_conn(&conn, &group.id)
+            .unwrap()
+            .unwrap();
+        assert_eq!(deleted_group.persist_status, PersistStatus::Deleted);
+
+        let ungrouped_session = ChatV2Repo::get_session_with_conn(&conn, &session.id)
+            .unwrap()
+            .unwrap();
+        assert!(ungrouped_session.group_id.is_none());
     }
 
     #[test]

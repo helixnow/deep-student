@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 // 🚀 性能优化：Settings, Dashboard, SOTADashboard 改为懒加载
-import { ArrowLeft, CaretLeft, CaretRight, CircleNotch, Terminal, Warning, X } from '@phosphor-icons/react';
+import { CaretLeft, CaretRight, CircleNotch, Terminal, Warning, X } from '@phosphor-icons/react';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { cn } from '@/lib/utils';
@@ -100,7 +100,6 @@ import { ViewLayerRenderer } from './app/components';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { canonicalizeView } from './app/navigation/canonicalView';
 import { DESKTOP_SHELL, getShellSidebarWidth } from './app/shell/desktopShell';
-import { DesktopShellSidebarPortalProvider } from './app/shell/DesktopShellSidebarPortal';
 import { getMobileShellCssVars } from './app/shell/mobileShell';
 
 // 🚀 性能优化：懒加载页面组件
@@ -799,17 +798,7 @@ function App() {
   const [currentView, setCurrentViewRaw] = useState<CurrentView>('chat-v2');
   // ★ previousView 用于模板选择返回
   const [previousView, setPreviousView] = useState<CurrentView>('chat-v2');
-  const [desktopPageSidebarTarget, setDesktopPageSidebarTarget] = useState<HTMLDivElement | null>(null);
-  const handleDesktopPageSidebarTarget = useCallback((node: HTMLDivElement | null) => {
-    setDesktopPageSidebarTarget(node);
-  }, []);
-  const [templateManagementShellBackVisible, setTemplateManagementShellBackVisible] = useState(true);
   const leftPanelCollapsed = useUIStore((state) => state.leftPanelCollapsed);
-  const usesDesktopPageShellSidebar =
-    currentView === 'learning-hub' || currentView === 'template-management';
-  const shouldShowDesktopPageBackButton =
-    currentView === 'learning-hub' ||
-    (currentView === 'template-management' && templateManagementShellBackVisible);
   const shellSidebarWidth = getShellSidebarWidth(isSmallScreen);
   const desktopNavigationWidth = !isSmallScreen && leftPanelCollapsed ? 0 : shellSidebarWidth;
   const isDesktopSidebarSurfaceVisible = !isSmallScreen && !leftPanelCollapsed;
@@ -1753,47 +1742,11 @@ function App() {
     />
   ), [leftPanelCollapsed, setCurrentView]);
 
-  const desktopPageShellSidebarElement = useMemo(() => (
-    <div
-      data-shell-layer="navigation"
-      data-shell-surface="navigation"
-      className={cn(
-        'study-shell-sidebar-frame font-sidebar-study-ui h-full w-full min-w-0 flex flex-col overflow-hidden bg-[color:var(--shell-navigation-panel)] text-[color:var(--shell-navigation-foreground)]',
-        'border-r border-[color:var(--shell-navigation-border)]'
-      )}
-      style={{ paddingTop: 'calc(var(--shell-titlebar-height) + var(--shell-layout-gap))' }}
-    >
-      {shouldShowDesktopPageBackButton ? (
-        <div className="shrink-0 px-2 py-1 space-y-0.5">
-          <NotionButton
-            variant="nav"
-            size="md"
-            onClick={() => setCurrentView('chat-v2')}
-            className="desktop-shell-nav-row !w-full !justify-start !px-2.5 !py-1.5 text-left"
-          >
-            <ArrowLeft size={18} className="h-[18px] w-[18px]" />
-            <span className="truncate">
-              {t('common:actions.backToHome', { defaultValue: '返回主页' })}
-            </span>
-          </NotionButton>
-        </div>
-      ) : null}
-      <div ref={handleDesktopPageSidebarTarget} className="min-h-0 flex-1 w-full min-w-0 overflow-hidden" />
-    </div>
-  ), [handleDesktopPageSidebarTarget, setCurrentView, shouldShowDesktopPageBackButton, t]);
-
   const desktopShellSidebarElement = currentView === 'settings'
     ? settingsShellSidebarElement
     : currentView === 'todo'
     ? todoShellSidebarElement
-    : usesDesktopPageShellSidebar
-    ? desktopPageShellSidebarElement
     : sidebarElement;
-
-  const desktopShellSidebarPortalValue = useMemo(() => ({
-    target: desktopPageSidebarTarget,
-    currentView,
-  }), [desktopPageSidebarTarget, currentView]);
 
   const syncSessionSidebarContext = useCallback(() => {
     setSessionSidebarViewContext({
@@ -2237,7 +2190,6 @@ function App() {
         onCancel={handleTemplateSelectionCancel}
         onBackToAnki={() => setCurrentView('task-dashboard')}
         refreshToken={templateManagementRefreshTick}
-        onDesktopShellBackVisibilityChange={setTemplateManagementShellBackVisible}
         onOpenJsonPreview={() => {
           templateJsonPreviewReturnRef.current = currentViewRef.current;
           setCurrentView('template-json-preview');
@@ -2314,7 +2266,6 @@ function App() {
       {/* ★ 移动端顶栏活跃视图同步 - 必须在 MobileHeaderProvider 内部 */}
       <MobileHeaderActiveViewSync activeView={currentView} />
       <LearningHubNavigationProvider>
-      <DesktopShellSidebarPortalProvider value={desktopShellSidebarPortalValue}>
       <div
         data-shell-role="app-shell"
         data-sidebar-visible={isDesktopSidebarSurfaceVisible ? 'true' : 'false'}
@@ -2660,7 +2611,6 @@ function App() {
       <Suspense fallback={null}>
         <LazyNoteEditorPortal />
       </Suspense>
-      </DesktopShellSidebarPortalProvider>
       </LearningHubNavigationProvider>
       </MobileHeaderProvider>
       </MobileLayoutProvider>

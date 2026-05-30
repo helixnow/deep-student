@@ -471,10 +471,10 @@ export const SessionBrowser: React.FC<SessionBrowserProps> = ({
       grouped.push({ group, sessions: groupSessions });
     });
 
-    // 未分组会话
-    const groupIdSet = new Set(groups.map((g) => g.id));
+    // 未分组会话只展示真正没有 groupId 的会话。
+    // 有 groupId 但分组缺失通常代表归档/删除后的 stale state，不能降级成全局会话。
     const ungrouped = filteredSessions
-      .filter((s) => !s.groupId || !groupIdSet.has(s.groupId))
+      .filter((s) => !s.groupId)
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
     return { grouped, ungrouped };

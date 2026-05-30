@@ -566,9 +566,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   const [keyboardInsetPx, setKeyboardInsetPx] = useState(0);
   // 🔧 统一使用 MobileLayoutContext 的移动端判断
   const isMobile = mobileLayout?.isMobile ?? false;
-  const [showEmptyTip, setShowEmptyTip] = useState(false);
   const [isAttachmentMenuOpen, setIsAttachmentMenuOpen] = useState(false);
-  const emptyTipTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const dropZoneRef = useRef<HTMLDivElement>(null);
 
   // 🔧 首帧轻量化：isReady 控制重 UI 延迟挂载
@@ -1324,13 +1322,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       </>
     ) : null;
 
-  // 空文本提示
-  const triggerEmptyTip = useCallback(() => {
-    if (emptyTipTimerRef.current) clearTimeout(emptyTipTimerRef.current);
-    setShowEmptyTip(true);
-    emptyTipTimerRef.current = setTimeout(() => setShowEmptyTip(false), 1800);
-  }, []);
-
   // IME 合成态检测
   const isImeComposing = useCallback((e: React.KeyboardEvent<HTMLTextAreaElement>) => {
     const anyNative = e.nativeEvent as any;
@@ -1356,7 +1347,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   // 处理发送
   const handleSend = useCallback(() => {
     if (!canSendWithAttachments) {
-      triggerEmptyTip();
+      showGlobalNotification('warning', t('common:messages.error.empty_input'));
       return;
     }
     if (disabledSend) return;
@@ -1368,7 +1359,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         // 错误已在上层处理，这里只是避免未捕获的 rejection 警告
       });
     }
-  }, [canSendWithAttachments, disabledSend, onSend, triggerEmptyTip]);
+  }, [canSendWithAttachments, disabledSend, onSend, t]);
 
   // 处理停止
   const handleStop = useCallback(() => {
@@ -1545,13 +1536,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   useEffect(() => {
     adjustTextareaHeight();
   }, [inputValue, adjustTextareaHeight]);
-
-  // 清理 timer
-  useEffect(() => {
-    return () => {
-      if (emptyTipTimerRef.current) clearTimeout(emptyTipTimerRef.current);
-    };
-  }, []);
 
   // 🔧 P2: 全局键盘快捷键支持
   // 注册在 document 上，处理后 stopPropagation 防止与命令系统双重执行
@@ -2109,13 +2093,6 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             </div>
           </div>
         )}
-        {/* 空输入提示 */}
-        {showEmptyTip && (
-          <div className="input-empty-tip" role="status" aria-live="polite">
-            {t('common:messages.error.empty_input')}
-          </div>
-        )}
-
         {composerInlinePanel && (
           <div className="mb-2 w-full">
             {composerInlinePanel}

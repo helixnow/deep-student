@@ -632,10 +632,21 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
   const handleRecentSessionArchive = useCallback(async (sessionId: string) => {
     try {
       await invoke('chat_v2_archive_session', { sessionId });
+      const remainingSessions = recentSessions.filter((item) => item.id !== sessionId);
       setRecentSessions((previous) => previous.filter((item) => item.id !== sessionId));
+
       if (activeSessionId === sessionId) {
-        setActiveSessionId(null);
+        const nextSession = remainingSessions[0] ?? null;
+        if (nextSession) {
+          handleRecentSessionOpen(nextSession.id);
+        } else {
+          setActiveSessionId(null);
+          window.dispatchEvent(new CustomEvent('modern-sidebar:group-action', {
+            detail: { action: 'create-session', groupId: null },
+          }));
+        }
       }
+
       setConfirmingArchiveSessionId((current) => (current === sessionId ? null : current));
       window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
       showArchiveSessionToast(t, 'chatV2');
@@ -643,7 +654,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
       console.warn('[ModernSidebar] Failed to archive recent session:', error);
       void loadSidebarData();
     }
-  }, [activeSessionId, loadSidebarData, t]);
+  }, [activeSessionId, handleRecentSessionOpen, loadSidebarData, recentSessions, t]);
 
   const toggleRecentGroup = useCallback((groupId: string) => {
     setCollapsedRecentGroupIds((previous) => {

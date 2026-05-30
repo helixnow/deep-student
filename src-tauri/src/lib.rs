@@ -5,15 +5,19 @@
 // 声明所有子模块，以便在 crate 内可见
 pub mod adapters;
 pub mod anki_connect_service;
+#[allow(dead_code)]
 pub mod apkg_exporter_service;
+#[allow(dead_code)]
 pub mod backup_job_manager;
 pub mod batch_operations;
-pub mod canonical_tools;
 pub mod cmd;
+#[allow(dead_code)]
 pub mod commands;
 pub mod config_recovery;
 pub mod crash_logger;
+#[allow(dead_code)]
 pub mod crypto;
+#[allow(dead_code)]
 pub mod database;
 pub mod database_optimizations;
 pub mod debug_commands;
@@ -24,11 +28,14 @@ pub mod anr_watchdog; // ANR 看门狗（Android 主线程卡顿检测）
 pub mod background_tasks; // 全局后台任务追踪器（Audit 2 R-2.6：统一管理 fire-and-forget 任务并支持优雅关闭）
 pub mod backup_common;
 pub mod backup_config;
+#[allow(dead_code)]
 pub mod chat_v2; // Chat V2 - 新版聊天后端模块（基于 Block 架构）
+#[allow(dead_code)]
 pub mod cloud_storage;
 pub mod cross_page_merger;
 pub mod data_space;
 pub mod deepseek_ocr_parser;
+#[allow(dead_code)]
 pub mod document_parser;
 pub mod document_processing_service;
 pub mod dstu;
@@ -36,22 +43,28 @@ pub mod enhanced_anki_service;
 pub mod error_details;
 pub mod error_recovery;
 pub mod essay_grading;
+#[allow(dead_code)]
 pub mod exam_sheet_service;
 pub mod feature_flags;
 pub mod figure_extractor;
 pub mod file_manager;
 pub mod injection_budget;
 pub mod json_validator;
+#[allow(dead_code)]
 pub mod lance_vector_store;
+#[allow(dead_code)]
 pub mod llm_manager;
 pub mod llm_structurer;
 pub mod llm_usage; // LLM 使用量统计模块（独立 llm_usage.db）
 #[cfg(feature = "mcp")]
 pub mod mcp;
+#[allow(dead_code)]
 pub mod memory; // Memory-as-VFS 记忆系统（复用 VFS 基础设施）
 pub mod metrics_server;
 pub mod models;
+#[allow(dead_code, deprecated)]
 pub mod multimodal; // 多模态知识库模块（基于 Qwen3-VL-Embedding/Reranker）
+#[allow(dead_code)]
 pub mod notes_exporter;
 pub mod notes_manager;
 pub mod ocr_adapters; // OCR 适配器模块（支持多种 OCR 引擎）
@@ -61,30 +74,40 @@ pub mod page_rasterizer;
 pub mod pdf_ocr_service;
 pub mod pdf_protocol;
 pub mod pdfium_utils; // Pdfium 公共工具（库加载 + 文本提取）
+#[allow(dead_code)]
 pub mod persistent_message_queue;
 pub mod providers;
 pub mod qbank_grading;
+#[allow(dead_code)]
 pub mod question_bank_service;
 pub mod question_export_service;
+#[allow(dead_code)]
 pub mod question_import_service;
 pub mod question_sync_service;
 pub mod reasoning_policy; // 思维链回传策略模块（文档 29 第 7 节）
 pub mod review_plan_service; // 复习计划服务（与错题系统集成）
 pub mod secure_store;
 pub mod services;
+#[allow(dead_code)]
 pub mod session_manager;
 pub mod spaced_repetition;
 pub mod startup_cleanup;
+#[allow(dead_code)]
 pub mod streaming_anki_service;
+#[allow(dead_code)]
 pub mod test_utils;
 pub mod textbooks_db;
+#[allow(dead_code)]
 pub mod tools;
 pub mod translation;
 pub mod tts; // 可选的系统 TTS（Web Speech API 回退方案）
+#[allow(dead_code)]
 pub mod unified_file_manager;
+#[allow(dead_code)]
 pub mod utils;
 pub mod vector_store;
 pub mod vendors;
+#[allow(dead_code, deprecated)]
 pub mod vfs; // VFS 虚拟文件系统（统一资源存储） // DSTU 访达协议层（VFS 的文件系统语义接口）
 pub mod vlm_grounding_service;
 pub mod voice_input;
@@ -92,6 +115,7 @@ pub mod workflow_error_handler; // SM-2 间隔重复算法 // 题目集同步冲
 
 // 数据治理模块（条件编译，需启用 data_governance feature）
 #[cfg(feature = "data_governance")]
+#[allow(dead_code)]
 pub mod data_governance;
 
 // macOS 原生菜单栏（Phase D2 of native-feel migration, 2026-05-14）
@@ -165,6 +189,7 @@ fn prepare_linux_appimage_runtime_env() {
 ///
 /// 目前仅做最小实现，后续可补充 `invoke_handler!` 以注册命令。
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
+#[allow(deprecated)]
 pub fn run() {
     #[cfg(target_os = "linux")]
     prepare_linux_appimage_runtime_env();
@@ -539,16 +564,14 @@ pub fn run() {
                                 error = %e,
                                 "数据治理系统初始化失败，应用将以降级模式继续运行"
                             );
-                            data_governance_init_failed =
-                                crate::data_governance::should_force_maintenance_mode_on_init_failure(&e);
+                            data_governance_init_failed = true;
 
                             crate::data_governance::commands::persist_migration_error(&active_app_data_dir, &error_msg);
 
                             let _ = app_handle.emit("data-governance-migration-status", serde_json::json!({
                                 "success": false,
                                 "error": error_msg,
-                                "degraded_mode": true,
-                                "maintenance_mode_forced": data_governance_init_failed
+                                "degraded_mode": true
                             }));
 
                             let empty_registry = crate::data_governance::schema_registry::SchemaRegistry::default();
@@ -1210,6 +1233,8 @@ pub fn run() {
             // 会话分组命令
             ,crate::chat_v2::handlers::group_handlers::chat_v2_create_group
             ,crate::chat_v2::handlers::group_handlers::chat_v2_update_group
+            ,crate::chat_v2::handlers::group_handlers::chat_v2_archive_group
+            ,crate::chat_v2::handlers::group_handlers::chat_v2_restore_group
             ,crate::chat_v2::handlers::group_handlers::chat_v2_delete_group
             ,crate::chat_v2::handlers::group_handlers::chat_v2_get_group
             ,crate::chat_v2::handlers::group_handlers::chat_v2_list_groups

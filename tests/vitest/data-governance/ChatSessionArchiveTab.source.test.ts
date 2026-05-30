@@ -21,9 +21,38 @@ describe('chat session archive settings source contract', () => {
     const archiveTabSource = readFileSync(archiveTabPath, 'utf8');
     expect(archiveTabSource).toContain("'chat_v2_list_sessions'");
     expect(archiveTabSource).toContain("status: 'archived'");
+    expect(archiveTabSource).toContain('ARCHIVED_SESSIONS_PAGE_SIZE');
+    expect(archiveTabSource).toContain('while (true)');
+    expect(archiveTabSource).not.toContain('limit: 100');
     expect(archiveTabSource).toContain("'chat_v2_restore_session'");
+    expect(archiveTabSource).toContain("'chat_v2_restore_group'");
     expect(archiveTabSource).toContain("'chat_v2_delete_session'");
+    expect(archiveTabSource).toContain("'chat_v2_delete_group'");
     expect(archiveTabSource).not.toContain("'chat_v2_empty_deleted_sessions'");
+  });
+
+  it('broadcasts the right Chat V2 refresh events after archive restoration', () => {
+    const archiveTabSource = readFileSync(archiveTabPath, 'utf8');
+
+    expect(archiveTabSource).toContain("window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'))");
+    expect(archiveTabSource).toContain("window.dispatchEvent(new CustomEvent('chat-v2:groups-updated'))");
+    expect(archiveTabSource).toContain('void restoreGroup(ownerGroup.id);');
+    expect(archiveTabSource).toContain('onClick={() => restoreGroup(group.id)}');
+    expect(archiveTabSource).toContain('await loadArchivedSessions();');
+    expect(archiveTabSource).not.toContain('setSessions((current) => current.filter((session) => session.groupId !== groupId))');
+  });
+
+  it('loads archived sessions in pages and refreshes from backend after group deletion', () => {
+    const archiveTabSource = readFileSync(archiveTabPath, 'utf8');
+
+    expect(archiveTabSource).toContain('ARCHIVED_SESSIONS_PAGE_SIZE');
+    expect(archiveTabSource).toContain('offset += page.length');
+    expect(archiveTabSource).toContain('loadAllArchivedSessions()');
+    expect(archiveTabSource).toContain('confirmingPermanentDeleteGroupId');
+    expect(archiveTabSource).toContain('permanentlyDeleteGroup(group.id)');
+    expect(archiveTabSource).toContain('await loadArchivedSessions();');
+    expect(archiveTabSource).not.toContain("session.groupId === groupId ? { ...session, groupId: undefined } : session");
+    expect(archiveTabSource).toContain('archive_delete_group_confirm');
   });
 
   it('exposes the archive tab from the data governance overview', () => {

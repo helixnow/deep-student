@@ -315,29 +315,6 @@
   border: none; /* 移除内部边框 */
 }
 
-.chat-v2 .input-empty-tip {
-  position: absolute;
-  top: -10px;
-  left: 50%;
-  transform: translate(-50%, -6px);
-  background: hsl(var(--warning-bg));
-  color: hsl(var(--warning));
-  border: 1px solid hsl(var(--warning) / 0.4);
-  border-radius: 999px;
-  padding: 6px 12px;
-  font-size: 12px;
-  line-height: 1;
-  box-shadow: 0 8px 20px hsl(var(--shadow-base) / 0.08);
-  pointer-events: none;
-  animation: tipFloat 240ms ease-out;
-  z-index: 2000;
-}
-
-@keyframes tipFloat {
-  from { opacity: 0; transform: translate(-50%, -2px); }
-  to   { opacity: 1; transform: translate(-50%, -6px); }
-}
-
 /* ============================================================================
    美化的聊天头部 - Enhanced Chat Header
    ============================================================================ */

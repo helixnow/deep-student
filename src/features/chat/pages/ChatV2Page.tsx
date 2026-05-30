@@ -305,18 +305,52 @@ export const ChatV2Page: React.FC = () => {
     return map;
   }, [filteredSessions]);
 
+  const activeGroupIds = useMemo(() => new Set(groups.map((group) => group.id)), [groups]);
+
+  const staleSessionGroups = useMemo(() => {
+    const staleIds = Array.from(sessionsByGroup.keys()).filter((groupId) => !activeGroupIds.has(groupId));
+    return staleIds.map((groupId, index): SessionGroup => {
+      const groupSessions = sessionsByGroup.get(groupId) ?? [];
+      const newestUpdatedAt = groupSessions
+        .map((session) => session.updatedAt)
+        .sort((a, b) => b.localeCompare(a))[0] ?? new Date().toISOString();
+      return {
+        id: groupId,
+        name: t('browser.staleTopic', '课题已归档或缺失'),
+        description: t('browser.staleTopicDescription', '这些会话仍保留旧课题 ID，但课题当前不在活跃列表中。'),
+        icon: 'Archive',
+        defaultSkillIds: [],
+        pinnedResourceIds: [],
+        sortOrder: 100000 + index,
+        persistStatus: 'archived',
+        createdAt: newestUpdatedAt,
+        updatedAt: newestUpdatedAt,
+      };
+    });
+  }, [activeGroupIds, sessionsByGroup, t]);
+
   const groupNameMap = useMemo(() => {
     const map = new Map<string, string>();
-    groups.forEach((group) => {
+    [...groups, ...staleSessionGroups].forEach((group) => {
       // 判断 icon 是预设图标名称还是 emoji，只有 emoji 才添加到标签前面
       const presetIcon = group.icon ? PRESET_ICONS.find(p => p.name === group.icon) : null;
       const label = (group.icon && !presetIcon) ? `${group.icon} ${group.name}` : group.name;
       map.set(group.id, label);
     });
     return map;
-  }, [groups]);
+  }, [groups, staleSessionGroups]);
 
   const visibleGroups = useMemo(() => {
+    const displayGroups = [...groups, ...staleSessionGroups];
+    if (!normalizedSearchQuery) return displayGroups;
+    return displayGroups.filter((group) => {
+      const text = `${group.name} ${group.description ?? ''}`.toLowerCase();
+      if (text.includes(normalizedSearchQuery)) return true;
+      return (sessionsByGroup.get(group.id) ?? []).length > 0;
+    });
+  }, [groups, normalizedSearchQuery, sessionsByGroup, staleSessionGroups]);
+
+  const editableVisibleGroups = useMemo(() => {
     if (!normalizedSearchQuery) return groups;
     return groups.filter((group) => {
       const text = `${group.name} ${group.description ?? ''}`.toLowerCase();
@@ -336,25 +370,42 @@ export const ChatV2Page: React.FC = () => {
 
   // 浏览模式的分组信息
   const browserGroups = useMemo(() => {
-    return groups.map((g) => ({
+    return [...groups, ...staleSessionGroups].map((g) => ({
       id: g.id,
       name: g.name,
       icon: g.icon,
       color: g.color,
       sortOrder: g.sortOrder,
     }));
-  }, [groups]);
+  }, [groups, staleSessionGroups]);
 
-  // 未分组会话（仍按时间分组展示，含未知分组）
+  // 未分组会话只展示真正没有 groupId 的会话。
+  // 有 groupId 但分组缺失通常代表归档/删除后的 stale state，不能降级成全局会话。
   const ungroupedSessions = useMemo(
-    () => filteredSessions.filter((s) => !s.groupId || !groupNameMap.has(s.groupId)),
-    [filteredSessions, groupNameMap]
+    () => filteredSessions.filter((s) => !s.groupId),
+    [filteredSessions]
   );
   const groupedSessions = useMemo(() => groupSessionsByTime(ungroupedSessions), [ungroupedSessions]);
 
   useEffect(() => {
     loadGroups();
   }, [loadGroups]);
+
+  useEffect(() => {
+    const onGroupsUpdated = () => {
+      void loadGroups();
+      void loadSessions();
+    };
+    const onSessionsUpdated = () => {
+      void loadSessions();
+    };
+    window.addEventListener('chat-v2:groups-updated', onGroupsUpdated);
+    window.addEventListener('chat-v2:sessions-updated', onSessionsUpdated);
+    return () => {
+      window.removeEventListener('chat-v2:groups-updated', onGroupsUpdated);
+      window.removeEventListener('chat-v2:sessions-updated', onSessionsUpdated);
+    };
+  }, [loadGroups, loadSessions]);
 
   // P2-4 fix: Prune stale collapsed state when groups change
   useEffect(() => {
@@ -519,7 +570,7 @@ export const ChatV2Page: React.FC = () => {
     editingTitle, editingGroup, pendingArchiveGroup, sessionsRef,
     groupPickerAddRef, t,
     updateGroup, createGroup, archiveGroup, reorderGroups,
-    loadUngroupedCount, getOrCreateHiddenDraftSession, groupDragDisabled, visibleGroups,
+    loadUngroupedCount, getOrCreateHiddenDraftSession, groupDragDisabled, visibleGroups: editableVisibleGroups,
   });
 
   // ===== 左侧主导航栏分组操作事件监听 =====
@@ -598,7 +649,7 @@ export const ChatV2Page: React.FC = () => {
     renderSessionItem, handleBrowserSelectSession, handleBrowserRenameSession,
   } = useSessionItemRenderer({
     editingSessionId, hoveredSessionId: null, currentSessionId, pendingDeleteSessionId, pendingArchiveSessionId,
-    editingTitle, renamingSessionId, renameError, groups, sessions, totalSessionCount,
+    editingTitle, renamingSessionId, renameError, groups: visibleGroups, sessions, totalSessionCount,
     t, resetDeleteConfirmation, setCurrentSessionId, setHoveredSessionId: () => {},
     setEditingTitle, setPendingDeleteSessionId, setPendingArchiveSessionId, setSessions, setViewMode,
     clearDeleteConfirmTimeout, deleteConfirmTimeoutRef,

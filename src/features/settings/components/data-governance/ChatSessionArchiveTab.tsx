@@ -18,6 +18,8 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import type { ChatSession } from '@/features/chat/types/session';
 import type { SessionGroup } from '@/features/chat/types/group';
 
+const ARCHIVED_SESSIONS_PAGE_SIZE = 200;
+
 function formatSessionTime(value: string | undefined) {
   if (!value) return '-';
   const date = new Date(value);
@@ -29,27 +31,47 @@ export const ChatSessionArchiveTab: React.FC = () => {
   const { t } = useTranslation(['data', 'common']);
   const [sessions, setSessions] = useState<ChatSession[]>([]);
   const [groups, setGroups] = useState<SessionGroup[]>([]);
+  const [knownGroups, setKnownGroups] = useState<SessionGroup[]>([]);
   const [loading, setLoading] = useState(false);
   const [actionSessionId, setActionSessionId] = useState<string | null>(null);
+  const [actionGroupId, setActionGroupId] = useState<string | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [confirmingPermanentDeleteId, setConfirmingPermanentDeleteId] = useState<string | null>(null);
+  const [confirmingPermanentDeleteGroupId, setConfirmingPermanentDeleteGroupId] = useState<string | null>(null);
 
   const archivedCount = sessions.length;
-  const hasArchivedSessions = archivedCount > 0;
+  const hasArchivedItems = archivedCount > 0 || groups.length > 0;
 
   const loadArchivedSessions = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
     try {
-      const [sessionsResult, groupsResult] = await Promise.allSettled([
-        invoke<ChatSession[]>('chat_v2_list_sessions', {
-          status: 'archived',
-          limit: 100,
-          offset: 0,
-        }),
+      const loadAllArchivedSessions = async (): Promise<ChatSession[]> => {
+        const allSessions: ChatSession[] = [];
+        let offset = 0;
+        while (true) {
+          const page = await invoke<ChatSession[]>('chat_v2_list_sessions', {
+            status: 'archived',
+            limit: ARCHIVED_SESSIONS_PAGE_SIZE,
+            offset,
+          });
+          if (!Array.isArray(page) || page.length === 0) break;
+          allSessions.push(...page);
+          if (page.length < ARCHIVED_SESSIONS_PAGE_SIZE) break;
+          offset += page.length;
+        }
+        return allSessions;
+      };
+
+      const [sessionsResult, groupsResult, allGroupsResult] = await Promise.allSettled([
+        loadAllArchivedSessions(),
         invoke<SessionGroup[]>('chat_v2_list_groups', {
           status: 'archived',
         }),
+        Promise.all([
+          invoke<SessionGroup[]>('chat_v2_list_groups', { status: 'active' }),
+          invoke<SessionGroup[]>('chat_v2_list_groups', { status: 'archived' }),
+        ]),
       ]);
 
       if (sessionsResult.status === 'fulfilled') {
@@ -63,6 +85,16 @@ export const ChatSessionArchiveTab: React.FC = () => {
       } else {
         console.warn('[ChatSessionArchiveTab] Failed to load archived groups:', groupsResult.reason);
         setGroups([]);
+      }
+
+      if (allGroupsResult.status === 'fulfilled') {
+        const [activeGroups, archivedGroups] = allGroupsResult.value;
+        const mergedGroups = new Map<string, SessionGroup>();
+        [...activeGroups, ...archivedGroups].forEach((group) => mergedGroups.set(group.id, group));
+        setKnownGroups(Array.from(mergedGroups.values()));
+      } else {
+        console.warn('[ChatSessionArchiveTab] Failed to load full group index:', allGroupsResult.reason);
+        setKnownGroups(groupsResult.status === 'fulfilled' && Array.isArray(groupsResult.value) ? groupsResult.value : []);
       }
     } catch (error: unknown) {
       const message = getErrorMessage(error);
@@ -82,7 +114,18 @@ export const ChatSessionArchiveTab: React.FC = () => {
   }, [archivedCount, t]);
 
   const groupedSessions = useMemo(() => {
-    const sortedGroups = [...groups].sort((a, b) => {
+    const visibleGroups = new Map<string, SessionGroup>();
+
+    groups.forEach((group) => visibleGroups.set(group.id, group));
+    sessions.forEach((session) => {
+      if (!session.groupId || visibleGroups.has(session.groupId)) return;
+      const knownGroup = knownGroups.find((group) => group.id === session.groupId);
+      if (knownGroup) {
+        visibleGroups.set(knownGroup.id, knownGroup);
+      }
+    });
+
+    const sortedGroups = Array.from(visibleGroups.values()).sort((a, b) => {
       if (a.sortOrder !== b.sortOrder) return a.sortOrder - b.sortOrder;
       return b.updatedAt.localeCompare(a.updatedAt);
     });
@@ -106,13 +149,14 @@ export const ChatSessionArchiveTab: React.FC = () => {
       .sort((a, b) => b.updatedAt.localeCompare(a.updatedAt));
 
     return { grouped, ungrouped };
-  }, [groups, sessions]);
+  }, [groups, knownGroups, sessions]);
 
   const restoreSession = useCallback(async (sessionId: string) => {
     setActionSessionId(sessionId);
     try {
       await invoke('chat_v2_restore_session', { sessionId });
       setSessions((current) => current.filter((session) => session.id !== sessionId));
+      window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
       showGlobalNotification('success', t('data:governance.archive_restore_success'));
     } catch (error: unknown) {
       showGlobalNotification('error', t('data:governance.archive_restore_failed'), getErrorMessage(error));
@@ -120,6 +164,21 @@ export const ChatSessionArchiveTab: React.FC = () => {
       setActionSessionId(null);
     }
   }, [t]);
+
+  const restoreGroup = useCallback(async (groupId: string) => {
+    setActionGroupId(groupId);
+    try {
+      await invoke('chat_v2_restore_group', { groupId });
+      window.dispatchEvent(new CustomEvent('chat-v2:groups-updated'));
+      window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
+      await loadArchivedSessions();
+      showGlobalNotification('success', t('data:governance.archive_restore_success'));
+    } catch (error: unknown) {
+      showGlobalNotification('error', t('data:governance.archive_restore_failed'), getErrorMessage(error));
+    } finally {
+      setActionGroupId(null);
+    }
+  }, [loadArchivedSessions, t]);
 
   const permanentlyDeleteSession = useCallback(async (sessionId: string) => {
     if (confirmingPermanentDeleteId !== sessionId) {
@@ -140,9 +199,35 @@ export const ChatSessionArchiveTab: React.FC = () => {
     }
   }, [confirmingPermanentDeleteId, t]);
 
-  const renderSessionRow = useCallback((session: ChatSession) => {
+  const permanentlyDeleteGroup = useCallback(async (groupId: string) => {
+    if (confirmingPermanentDeleteGroupId !== groupId) {
+      setConfirmingPermanentDeleteGroupId(groupId);
+      return;
+    }
+
+    setActionGroupId(groupId);
+    try {
+      await invoke('chat_v2_delete_group', { groupId });
+      setConfirmingPermanentDeleteGroupId(null);
+      window.dispatchEvent(new CustomEvent('chat-v2:groups-updated'));
+      window.dispatchEvent(new CustomEvent('chat-v2:sessions-updated'));
+      await loadArchivedSessions();
+      showGlobalNotification('success', t('data:governance.archive_delete_group_success'));
+    } catch (error: unknown) {
+      showGlobalNotification('error', t('data:governance.archive_delete_group_failed'), getErrorMessage(error));
+    } finally {
+      setActionGroupId(null);
+    }
+  }, [confirmingPermanentDeleteGroupId, loadArchivedSessions, t]);
+
+  const renderSessionRow = useCallback((session: ChatSession, ownerGroup?: SessionGroup) => {
     const busy = actionSessionId === session.id;
+    const groupBusy = Boolean(ownerGroup && actionGroupId === ownerGroup.id);
     const confirmingDelete = confirmingPermanentDeleteId === session.id;
+    const restoreArchivedGroup = ownerGroup?.persistStatus === 'archived';
+    const restoreLabel = restoreArchivedGroup
+      ? t('data:governance.archive_restore_group')
+      : t('data:governance.archive_restore');
 
     return (
       <div key={session.id} className="flex flex-col gap-3 p-4 sm:flex-row sm:items-center sm:justify-between">
@@ -171,16 +256,22 @@ export const ChatSessionArchiveTab: React.FC = () => {
           <NotionButton
             variant="ghost"
             size="sm"
-            onClick={() => restoreSession(session.id)}
-            disabled={busy}
-            aria-label={t('data:governance.archive_restore')}
+            onClick={() => {
+              if (restoreArchivedGroup && ownerGroup) {
+                void restoreGroup(ownerGroup.id);
+                return;
+              }
+              void restoreSession(session.id);
+            }}
+            disabled={busy || groupBusy}
+            aria-label={restoreLabel}
           >
-            {busy ? (
+            {busy || groupBusy ? (
               <CircleNotch size={14} className="animate-spin" />
             ) : (
               <ArrowCounterClockwise size={14} />
             )}
-            <span>{t('data:governance.archive_restore')}</span>
+            <span>{restoreLabel}</span>
           </NotionButton>
           <NotionButton
             variant={confirmingDelete ? 'danger' : 'ghost'}
@@ -205,7 +296,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
         </div>
       </div>
     );
-  }, [actionSessionId, confirmingPermanentDeleteId, permanentlyDeleteSession, restoreSession, t]);
+  }, [actionGroupId, actionSessionId, confirmingPermanentDeleteId, permanentlyDeleteSession, restoreGroup, restoreSession, t]);
 
   return (
     <div className="space-y-6">
@@ -227,7 +318,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
           variant="ghost"
           size="sm"
           onClick={loadArchivedSessions}
-          disabled={loading || actionSessionId !== null}
+          disabled={loading || actionSessionId !== null || actionGroupId !== null}
         >
           {loading ? (
             <CircleNotch size={14} className="animate-spin" />
@@ -250,12 +341,12 @@ export const ChatSessionArchiveTab: React.FC = () => {
         </div>
       ) : null}
 
-      {loading && !hasArchivedSessions ? (
+      {loading && !hasArchivedItems ? (
         <div className="flex min-h-40 items-center justify-center rounded-lg border border-border/40 bg-muted/10 text-sm text-muted-foreground">
           <CircleNotch size={16} className="mr-2 animate-spin" />
           {t('data:governance.archive_loading')}
         </div>
-      ) : !hasArchivedSessions ? (
+      ) : !hasArchivedItems ? (
         <div className="flex min-h-40 flex-col items-center justify-center rounded-lg border border-dashed border-border/60 bg-muted/10 px-4 text-center">
           <Archive size={32} className="mb-3 text-muted-foreground/60" />
           <p className="text-sm font-medium text-foreground">{t('data:governance.archive_empty_state')}</p>
@@ -265,17 +356,58 @@ export const ChatSessionArchiveTab: React.FC = () => {
         </div>
       ) : (
         <div className="space-y-4">
-          {groupedSessions.grouped.map(({ group, sessions: groupSessions }) => (
+          {groupedSessions.grouped.map(({ group, sessions: groupSessions }) => {
+            const isArchivedGroup = group.persistStatus === 'archived';
+            const confirmingDeleteGroup = confirmingPermanentDeleteGroupId === group.id;
+            return (
             <section key={group.id} className="overflow-hidden rounded-lg border border-border/40 bg-background/70">
               <div className="flex items-center justify-between gap-3 border-b border-border/40 bg-muted/20 px-4 py-3">
                 <div>
                   <p className="text-sm font-medium text-foreground">{group.name}</p>
                   <p className="text-xs text-muted-foreground">{groupSessions.length} / {archivedCount}</p>
                 </div>
+                {isArchivedGroup ? (
+                  <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+                    <NotionButton
+                      variant="ghost"
+                      size="sm"
+                      onClick={() => restoreGroup(group.id)}
+                      disabled={actionGroupId === group.id || actionSessionId !== null}
+                      aria-label={t('data:governance.archive_restore_group')}
+                    >
+                      {actionGroupId === group.id ? (
+                        <CircleNotch size={14} className="animate-spin" />
+                      ) : (
+                        <ArrowCounterClockwise size={14} />
+                      )}
+                      <span>{t('data:governance.archive_restore_group')}</span>
+                    </NotionButton>
+                    <NotionButton
+                      variant={confirmingDeleteGroup ? 'danger' : 'ghost'}
+                      size="sm"
+                      onClick={() => permanentlyDeleteGroup(group.id)}
+                      disabled={actionGroupId === group.id || actionSessionId !== null}
+                      aria-label={confirmingDeleteGroup
+                        ? t('data:governance.archive_delete_group_confirm')
+                        : t('data:governance.archive_delete_group')}
+                    >
+                      {actionGroupId === group.id ? (
+                        <CircleNotch size={14} className="animate-spin" />
+                      ) : (
+                        <Trash size={14} />
+                      )}
+                      <span>
+                        {confirmingDeleteGroup
+                          ? t('data:governance.archive_delete_group_confirm')
+                          : t('data:governance.archive_delete_group')}
+                      </span>
+                    </NotionButton>
+                  </div>
+                ) : null}
               </div>
               {groupSessions.length > 0 ? (
                 <div className="divide-y divide-border/40">
-                  {groupSessions.map(renderSessionRow)}
+                  {groupSessions.map((session) => renderSessionRow(session, group))}
                 </div>
               ) : (
                 <p className="px-4 py-3 text-sm text-muted-foreground">
@@ -283,7 +415,8 @@ export const ChatSessionArchiveTab: React.FC = () => {
                 </p>
               )}
             </section>
-          ))}
+            );
+          })}
 
           {groupedSessions.ungrouped.length > 0 ? (
             <section className="overflow-hidden rounded-lg border border-border/40 bg-background/70">
@@ -291,7 +424,7 @@ export const ChatSessionArchiveTab: React.FC = () => {
                 <p className="text-sm font-medium text-foreground">{t('data:governance.archive_ungrouped_title')}</p>
               </div>
               <div className="divide-y divide-border/40">
-                {groupedSessions.ungrouped.map(renderSessionRow)}
+                {groupedSessions.ungrouped.map((session) => renderSessionRow(session))}
               </div>
             </section>
           ) : null}
