@@ -280,3 +280,7 @@ AGENTS.md
 UI-REVIEW.md
 FRONTEND_ANALYSIS.md
 .codex-page-state.png
+
+# Project-local AI skills and UI study docs
+.skills/
+.study-ui/
