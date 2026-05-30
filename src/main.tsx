@@ -184,6 +184,59 @@ const installConsoleWarningFilter = () => {
 };
 
 installConsoleWarningFilter();
+
+const installTauriLabFrontendLogBridge = () => {
+  if (typeof window === 'undefined') return;
+  const key = '__TAURI_LAB_FRONTEND_LOG_BRIDGE__';
+  if ((window as any)[key]) return;
+  (window as any)[key] = true;
+
+  let invokePromise: Promise<any> | null = null;
+  const getInvoke = () => {
+    invokePromise ||= import('@tauri-apps/api/core').then(module => module.invoke);
+    return invokePromise;
+  };
+
+  const serializeArg = (arg: unknown): string => {
+    if (arg instanceof Error) return `${arg.name}: ${arg.message}`;
+    if (typeof arg === 'string') return arg;
+    try {
+      return JSON.stringify(arg);
+    } catch {
+      return String(arg);
+    }
+  };
+
+  const send = (level: 'warn' | 'error', args: unknown[], stack?: string) => {
+    const message = args.map(serializeArg).filter(Boolean).join(' ');
+    if (!message && !stack) return;
+    void getInvoke()
+      .then(invoke => invoke('tauri_lab_frontend_log', { level, message, stack }))
+      .catch(() => {});
+  };
+
+  const originalWarn = console.warn;
+  const originalError = console.error;
+  console.warn = (...args: unknown[]) => {
+    originalWarn.apply(console, args as any);
+    send('warn', args);
+  };
+  console.error = (...args: unknown[]) => {
+    originalError.apply(console, args as any);
+    const stack = args.find(arg => arg instanceof Error)?.stack;
+    send('error', args, stack);
+  };
+
+  window.addEventListener('error', event => {
+    send('error', [event.message], event.error instanceof Error ? event.error.stack : undefined);
+  });
+  window.addEventListener('unhandledrejection', event => {
+    const reason = event.reason;
+    send('error', [reason], reason instanceof Error ? reason.stack : undefined);
+  });
+};
+
+installTauriLabFrontendLogBridge();
 // 动态初始化 Sentry（仅当配置存在且用户已同意）
 // 🆕 合规要求：Sentry 默认关闭，需用户在设置中主动开启
 const SENTRY_CONSENT_KEY = 'sentry_error_reporting_enabled';

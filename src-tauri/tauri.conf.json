@@ -15,6 +15,7 @@
     ]
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "title": "Deep Student",

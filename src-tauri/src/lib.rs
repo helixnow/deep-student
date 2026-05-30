@@ -822,36 +822,79 @@ pub fn run() {
 
                 use tauri::Manager;
                 if let Some(window) = app.get_webview_window("main") {
-                    // 设置 macOS 特定的窗口属性
-                    #[allow(unused_unsafe)]
-                    #[allow(unexpected_cfgs)] // objc::msg_send! 宏内部使用 cfg(feature = "cargo-clippy")
-                    unsafe {
-                        use cocoa::base::{id, YES, NO};
-                        use cocoa::appkit::{NSWindowStyleMask, NSWindowTitleVisibility};
-                        use objc::{msg_send, sel, sel_impl};
+                    info!("[setup] 主窗口已创建，准备显示并聚焦");
+                    if let Err(e) = window.show() {
+                        warn!("[setup] 显示主窗口失败: {}", e);
+                    }
+                    if let Err(e) = window.set_focus() {
+                        warn!("[setup] 聚焦主窗口失败: {}", e);
+                    }
 
-                        if let Ok(ns_window_raw) = window.ns_window() {
-                            let ns_window = ns_window_raw as id;
+                    let standard_window_for_e2e = std::env::var("DSTU_E2E_STANDARD_WINDOW")
+                        .map(|value| matches!(value.as_str(), "1" | "true" | "TRUE" | "yes" | "YES"))
+                        .unwrap_or(false);
 
-                            // 使用虚拟标题栏：全尺寸内容视图，隐藏原生标题栏但保留红绿灯按钮
-                            let _: () = msg_send![ns_window, setStyleMask:
-                                NSWindowStyleMask::NSTitledWindowMask
-                                | NSWindowStyleMask::NSClosableWindowMask
-                                | NSWindowStyleMask::NSMiniaturizableWindowMask
-                                | NSWindowStyleMask::NSResizableWindowMask
-                                | NSWindowStyleMask::NSFullSizeContentViewWindowMask
-                            ];
+                    if standard_window_for_e2e {
+                        info!("[setup] DSTU_E2E_STANDARD_WINDOW 已启用，跳过自定义 macOS 标题栏样式以便 UI 自动化访问");
+                        #[allow(unused_unsafe)]
+                        #[allow(unexpected_cfgs)] // objc::msg_send! 宏内部使用 cfg(feature = "cargo-clippy")
+                        unsafe {
+                            use cocoa::base::{id, nil, YES};
+                            use cocoa::foundation::NSString;
+                            use objc::{msg_send, sel, sel_impl};
 
-                            // 使用透明标题栏
-                            let _: () = msg_send![ns_window, setTitlebarAppearsTransparent: YES];
-                            let _: () = msg_send![ns_window, setTitleVisibility: NSWindowTitleVisibility::NSWindowTitleHidden];
+                            if let Ok(ns_window_raw) = window.ns_window() {
+                                let ns_window = ns_window_raw as id;
+                                let ax_window = NSString::alloc(nil).init_str("AXWindow");
+                                let ax_standard_window =
+                                    NSString::alloc(nil).init_str("AXStandardWindow");
+                                let ax_title = NSString::alloc(nil).init_str("Deep Student");
 
-                            // 仅允许标注的区域拖拽：关闭整窗背景拖拽，避免任意区域拖动窗口
-                            let _: () = msg_send![ns_window, setMovableByWindowBackground: NO];
-                        } else {
-                            warn!("获取 macOS NSWindow 失败，跳过窗口样式设置");
+                                let _: () = msg_send![ns_window, setAccessibilityElement: YES];
+                                let _: () = msg_send![ns_window, setAccessibilityRole: ax_window];
+                                let _: () =
+                                    msg_send![ns_window, setAccessibilitySubrole: ax_standard_window];
+                                let _: () = msg_send![ns_window, setAccessibilityTitle: ax_title];
+                                let _: () = msg_send![ns_window, makeKeyAndOrderFront: nil];
+                                let _: () = msg_send![ns_window, orderFrontRegardless];
+                            } else {
+                                warn!("获取 macOS NSWindow 失败，跳过 E2E 可访问性窗口设置");
+                            }
+                        }
+                    } else {
+                        // 设置 macOS 特定的窗口属性
+                        #[allow(unused_unsafe)]
+                        #[allow(unexpected_cfgs)] // objc::msg_send! 宏内部使用 cfg(feature = "cargo-clippy")
+                        unsafe {
+                            use cocoa::base::{id, YES, NO};
+                            use cocoa::appkit::{NSWindowStyleMask, NSWindowTitleVisibility};
+                            use objc::{msg_send, sel, sel_impl};
+
+                            if let Ok(ns_window_raw) = window.ns_window() {
+                                let ns_window = ns_window_raw as id;
+
+                                // 使用虚拟标题栏：全尺寸内容视图，隐藏原生标题栏但保留红绿灯按钮
+                                let _: () = msg_send![ns_window, setStyleMask:
+                                    NSWindowStyleMask::NSTitledWindowMask
+                                    | NSWindowStyleMask::NSClosableWindowMask
+                                    | NSWindowStyleMask::NSMiniaturizableWindowMask
+                                    | NSWindowStyleMask::NSResizableWindowMask
+                                    | NSWindowStyleMask::NSFullSizeContentViewWindowMask
+                                ];
+
+                                // 使用透明标题栏
+                                let _: () = msg_send![ns_window, setTitlebarAppearsTransparent: YES];
+                                let _: () = msg_send![ns_window, setTitleVisibility: NSWindowTitleVisibility::NSWindowTitleHidden];
+
+                                // 仅允许标注的区域拖拽：关闭整窗背景拖拽，避免任意区域拖动窗口
+                                let _: () = msg_send![ns_window, setMovableByWindowBackground: NO];
+                            } else {
+                                warn!("获取 macOS NSWindow 失败，跳过窗口样式设置");
+                            }
                         }
                     }
+                } else {
+                    warn!("[setup] 未找到 label=main 的主窗口");
                 }
             }
 
@@ -1107,6 +1150,7 @@ pub fn run() {
             // debug_commands.rs - 调试专用直接数据库访问
             crate::debug_commands::debug_get_database_stats,
             crate::debug_commands::log_debug_message,
+            crate::debug_commands::tauri_lab_frontend_log,
             crate::debug_commands::debug_vfs_migration_status,
             crate::debug_commands::debug_vfs_textbook_pages,
             // =================================================

@@ -632,6 +632,54 @@ pub async fn log_debug_message(message: String) -> Result<(), String> {
     Ok(())
 }
 
+/// tauri-lab 专用前端日志桥。普通运行时没有 TAURI_LAB_* 环境变量会直接 no-op。
+#[tauri::command]
+pub async fn tauri_lab_frontend_log(
+    level: String,
+    message: String,
+    stack: Option<String>,
+) -> Result<(), String> {
+    use std::fs::OpenOptions;
+    use std::io::Write;
+    use tracing::{debug, error, info, warn};
+
+    let instance_id = std::env::var("TAURI_LAB_INSTANCE_ID").ok();
+    let log_path = std::env::var("TAURI_LAB_FRONTEND_LOG").ok();
+    if instance_id.is_none() && log_path.is_none() {
+        return Ok(());
+    }
+
+    let entry = serde_json::json!({
+        "ts": chrono::Utc::now().to_rfc3339(),
+        "instance_id": instance_id,
+        "level": level,
+        "message": message,
+        "stack": stack,
+    });
+    let line = format!("{}\n", entry);
+
+    if let Some(path) = log_path {
+        if let Some(parent) = std::path::Path::new(&path).parent() {
+            std::fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        }
+        let mut file = OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&path)
+            .map_err(|e| e.to_string())?;
+        file.write_all(line.as_bytes()).map_err(|e| e.to_string())?;
+    }
+
+    match level.as_str() {
+        "error" => error!(target: "tauri_lab_frontend", "{}", message),
+        "warn" => warn!(target: "tauri_lab_frontend", "{}", message),
+        "info" => info!(target: "tauri_lab_frontend", "{}", message),
+        _ => debug!(target: "tauri_lab_frontend", "{}", message),
+    }
+
+    Ok(())
+}
+
 /// VFS 迁移诊断报告
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VfsMigrationDiagnostic {

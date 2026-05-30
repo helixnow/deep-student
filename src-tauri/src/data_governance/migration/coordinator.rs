@@ -11,7 +11,7 @@
 //! 5. 记录审计日志
 //! 6. 失败时协调回滚
 
-use std::collections::HashSet;
+use std::collections::{BTreeSet, HashSet};
 use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::Duration;
@@ -48,6 +48,20 @@ const CORE_BACKUP_RETENTION_COUNT: usize = 5;
 
 // 同一进程（一次应用启动）中，针对同一数据目录只做一次“迁移前核心库备份”
 static STARTUP_CORE_BACKUP_GUARD: OnceLock<Mutex<HashSet<String>>> = OnceLock::new();
+
+#[derive(Debug, Default)]
+struct SchemaFingerprintScope {
+    tables: BTreeSet<String>,
+    indexes: BTreeSet<String>,
+    triggers: BTreeSet<String>,
+}
+
+#[derive(Debug)]
+struct SchemaFingerprint {
+    hash: String,
+    canonical_schema: String,
+    scope: SchemaFingerprintScope,
+}
 
 /// 迁移协调器
 pub struct MigrationCoordinator {
@@ -2851,7 +2865,7 @@ impl MigrationCoordinator {
             .get(current_version as i32)
             .map(|m| m.idempotent)
             .unwrap_or(false);
-        self.verify_schema_fingerprint(conn, id, current_version, allow_rebaseline)?;
+        self.verify_schema_fingerprint(conn, id, migration_set, current_version, allow_rebaseline)?;
 
         tracing::debug!(
             database = migration_set.database_name,
@@ -2869,6 +2883,7 @@ impl MigrationCoordinator {
         &self,
         conn: &rusqlite::Connection,
         id: &DatabaseId,
+        migration_set: &MigrationSet,
         schema_version: u32,
         allow_rebaseline: bool,
     ) -> Result<(), MigrationError> {
@@ -2877,24 +2892,41 @@ impl MigrationCoordinator {
         }
 
         self.ensure_schema_fingerprint_table(conn)?;
-        let (current_fingerprint, canonical_schema) = self.compute_schema_fingerprint(conn)?;
+        let current_fingerprint =
+            self.compute_schema_fingerprint(conn, migration_set, schema_version)?;
 
         let select_sql = format!(
-            "SELECT fingerprint FROM {} WHERE database_id = ?1 AND schema_version = ?2",
+            "SELECT fingerprint, canonical_schema FROM {} WHERE database_id = ?1 AND schema_version = ?2",
             SCHEMA_FINGERPRINT_TABLE
         );
-        let existing: Option<String> = conn
+        let existing: Option<(String, Option<String>)> = conn
             .query_row(
                 &select_sql,
                 rusqlite::params![id.as_str(), schema_version as i64],
-                |row| row.get(0),
+                |row| Ok((row.get(0)?, row.get(1)?)),
             )
             .optional()
             .map_err(|e| MigrationError::Database(e.to_string()))?;
 
-        if let Some(stored) = existing {
-            if stored != current_fingerprint {
-                if allow_rebaseline {
+        if let Some((stored, stored_canonical_schema)) = existing {
+            if stored != current_fingerprint.hash {
+                let filtered_legacy_hash = stored_canonical_schema
+                    .as_deref()
+                    .map(|schema| {
+                        Self::hash_canonical_schema(&Self::filter_canonical_schema_to_scope(
+                            schema,
+                            &current_fingerprint.scope,
+                        ))
+                    })
+                    .transpose()?;
+
+                if filtered_legacy_hash.as_deref() == Some(current_fingerprint.hash.as_str()) {
+                    tracing::warn!(
+                        database = id.as_str(),
+                        version = schema_version,
+                        "Schema fingerprint used legacy broad scope, rebaseline to migration-managed scope"
+                    );
+                } else if allow_rebaseline {
                     tracing::warn!(
                         database = id.as_str(),
                         version = schema_version,
@@ -2925,8 +2957,8 @@ impl MigrationCoordinator {
                     id.as_str(),
                     schema_version as i64,
                     chrono::Utc::now().to_rfc3339(),
-                    current_fingerprint,
-                    canonical_schema,
+                    current_fingerprint.hash,
+                    current_fingerprint.canonical_schema,
                 ],
             )
             .map_err(|e| MigrationError::Database(e.to_string()))?;
@@ -2943,9 +2975,9 @@ impl MigrationCoordinator {
             rusqlite::params![
                 id.as_str(),
                 schema_version as i64,
-                current_fingerprint,
+                current_fingerprint.hash,
                 chrono::Utc::now().to_rfc3339(),
-                canonical_schema,
+                current_fingerprint.canonical_schema,
             ],
         )
         .map_err(|e| MigrationError::Database(e.to_string()))?;
@@ -3005,32 +3037,23 @@ impl MigrationCoordinator {
     fn compute_schema_fingerprint(
         &self,
         conn: &rusqlite::Connection,
-    ) -> Result<(String, String), MigrationError> {
+        migration_set: &MigrationSet,
+        schema_version: u32,
+    ) -> Result<SchemaFingerprint, MigrationError> {
         let mut canonical = String::new();
+        let scope = self.compute_schema_fingerprint_scope(migration_set, schema_version)?;
 
-        let tables_sql = format!(
-            r#"SELECT name FROM sqlite_master
-               WHERE type='table'
-                 AND name NOT LIKE 'sqlite_%'
-                 AND name != 'refinery_schema_history'
-                 AND name != '{}'
-               ORDER BY name"#,
-            SCHEMA_FINGERPRINT_TABLE
-        );
-
-        let mut tables_stmt = conn
-            .prepare(&tables_sql)
-            .map_err(|e| MigrationError::Database(e.to_string()))?;
-
-        let tables = tables_stmt
-            .query_map([], |row| row.get::<_, String>(0))
-            .map_err(|e| MigrationError::Database(e.to_string()))?;
-
-        for table in tables {
-            let table = table.map_err(|e| MigrationError::Database(e.to_string()))?;
+        for table in &scope.tables {
             canonical.push_str("table:");
-            canonical.push_str(&table);
+            canonical.push_str(table);
             canonical.push('\n');
+
+            if !self.table_exists(conn, table)? {
+                canonical.push_str("missing_table:");
+                canonical.push_str(table);
+                canonical.push('\n');
+                continue;
+            }
 
             let escaped_table = table.replace('\'', "''");
             let pragma_sql = format!("PRAGMA table_info('{}')", escaped_table);
@@ -3072,6 +3095,9 @@ impl MigrationCoordinator {
 
             for index in indexes {
                 let (name, sql) = index.map_err(|e| MigrationError::Database(e.to_string()))?;
+                if !scope.indexes.contains(&name) {
+                    continue;
+                }
                 canonical.push_str(&format!("idx:{}:{}\n", name, sql));
             }
 
@@ -3088,15 +3114,185 @@ impl MigrationCoordinator {
 
             for trigger in triggers {
                 let (name, sql) = trigger.map_err(|e| MigrationError::Database(e.to_string()))?;
+                if !scope.triggers.contains(&name) {
+                    continue;
+                }
                 canonical.push_str(&format!("trg:{}:{}\n", name, sql));
             }
         }
 
+        for index in &scope.indexes {
+            let exists = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='index' AND name=?1)",
+                    [index.as_str()],
+                    |row| row.get::<_, bool>(0),
+                )
+                .map_err(|e| MigrationError::Database(e.to_string()))?;
+            if !exists {
+                canonical.push_str("missing_idx:");
+                canonical.push_str(index);
+                canonical.push('\n');
+            }
+        }
+
+        for trigger in &scope.triggers {
+            let exists = conn
+                .query_row(
+                    "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='trigger' AND name=?1)",
+                    [trigger.as_str()],
+                    |row| row.get::<_, bool>(0),
+                )
+                .map_err(|e| MigrationError::Database(e.to_string()))?;
+            if !exists {
+                canonical.push_str("missing_trg:");
+                canonical.push_str(trigger);
+                canonical.push('\n');
+            }
+        }
+
+        let fingerprint = Self::hash_canonical_schema(&canonical)?;
+
+        Ok(SchemaFingerprint {
+            hash: fingerprint,
+            canonical_schema: canonical,
+            scope,
+        })
+    }
+
+    fn hash_canonical_schema(canonical: &str) -> Result<String, MigrationError> {
         let mut hasher = Sha256::new();
         hasher.update(canonical.as_bytes());
-        let fingerprint = format!("{:x}", hasher.finalize());
+        Ok(format!("{:x}", hasher.finalize()))
+    }
 
-        Ok((fingerprint, canonical))
+    fn filter_canonical_schema_to_scope(canonical: &str, scope: &SchemaFingerprintScope) -> String {
+        let mut filtered = String::new();
+        let mut include_current_table = false;
+        let mut include_continuation = false;
+
+        for line in canonical.lines() {
+            if let Some(table_name) = line.strip_prefix("table:") {
+                include_continuation = false;
+                include_current_table = scope.tables.contains(table_name);
+                if include_current_table {
+                    filtered.push_str(line);
+                    filtered.push('\n');
+                }
+                continue;
+            }
+
+            if line.starts_with("col:") {
+                include_continuation = false;
+                if include_current_table {
+                    filtered.push_str(line);
+                    filtered.push('\n');
+                }
+                continue;
+            }
+
+            if let Some(rest) = line.strip_prefix("idx:") {
+                include_continuation = false;
+                let index_name = rest.split(':').next().unwrap_or_default();
+                if include_current_table && scope.indexes.contains(index_name) {
+                    filtered.push_str(line);
+                    filtered.push('\n');
+                    include_continuation = true;
+                }
+                continue;
+            }
+
+            if let Some(rest) = line.strip_prefix("trg:") {
+                include_continuation = false;
+                let trigger_name = rest.split(':').next().unwrap_or_default();
+                if include_current_table && scope.triggers.contains(trigger_name) {
+                    filtered.push_str(line);
+                    filtered.push('\n');
+                    include_continuation = true;
+                }
+                continue;
+            }
+
+            if include_continuation {
+                filtered.push_str(line);
+                filtered.push('\n');
+            }
+        }
+
+        filtered
+    }
+
+    fn compute_schema_fingerprint_scope(
+        &self,
+        migration_set: &MigrationSet,
+        schema_version: u32,
+    ) -> Result<SchemaFingerprintScope, MigrationError> {
+        let scratch = rusqlite::Connection::open_in_memory()
+            .map_err(|e| MigrationError::Database(e.to_string()))?;
+
+        for migration in migration_set.migrations.iter() {
+            if migration.refinery_version > schema_version as i32 {
+                continue;
+            }
+            scratch
+                .execute_batch(migration.sql)
+                .map_err(|e| MigrationError::Database(e.to_string()))?;
+        }
+
+        let mut scope = SchemaFingerprintScope::default();
+
+        {
+            let mut stmt = scratch
+                .prepare(
+                    r#"SELECT name FROM sqlite_master
+                       WHERE type='table'
+                         AND name NOT LIKE 'sqlite_%'
+                         AND name != 'refinery_schema_history'
+                         AND name != ?1
+                       ORDER BY name"#,
+                )
+                .map_err(|e| MigrationError::Database(e.to_string()))?;
+            let rows = stmt
+                .query_map([SCHEMA_FINGERPRINT_TABLE], |row| row.get::<_, String>(0))
+                .map_err(|e| MigrationError::Database(e.to_string()))?;
+            for row in rows {
+                scope
+                    .tables
+                    .insert(row.map_err(|e| MigrationError::Database(e.to_string()))?);
+            }
+        }
+
+        {
+            let mut stmt = scratch
+                .prepare(
+                    "SELECT name FROM sqlite_master                      WHERE type='index' AND name NOT LIKE 'sqlite_autoindex%'                      ORDER BY name",
+                )
+                .map_err(|e| MigrationError::Database(e.to_string()))?;
+            let rows = stmt
+                .query_map([], |row| row.get::<_, String>(0))
+                .map_err(|e| MigrationError::Database(e.to_string()))?;
+            for row in rows {
+                scope
+                    .indexes
+                    .insert(row.map_err(|e| MigrationError::Database(e.to_string()))?);
+            }
+        }
+
+        {
+            let mut stmt = scratch
+                .prepare("SELECT name FROM sqlite_master WHERE type='trigger' ORDER BY name")
+                .map_err(|e| MigrationError::Database(e.to_string()))?;
+            let rows = stmt
+                .query_map([], |row| row.get::<_, String>(0))
+                .map_err(|e| MigrationError::Database(e.to_string()))?;
+            for row in rows {
+                scope
+                    .triggers
+                    .insert(row.map_err(|e| MigrationError::Database(e.to_string()))?);
+            }
+        }
+
+        Ok(scope)
     }
 
     /// 记录迁移审计日志
@@ -3831,7 +4027,13 @@ mod tests {
 
         // 首次记录 fingerprint（allow_rebaseline=false）
         coordinator
-            .verify_schema_fingerprint(&conn, &DatabaseId::Mistakes, 20260130, false)
+            .verify_schema_fingerprint(
+                &conn,
+                &DatabaseId::Mistakes,
+                &MISTAKES_MIGRATIONS,
+                20260130,
+                false,
+            )
             .unwrap();
 
         // 制造 schema 漂移
@@ -3840,7 +4042,13 @@ mod tests {
 
         // allow_rebaseline=false 时应检测到漂移并报错
         let err = coordinator
-            .verify_schema_fingerprint(&conn, &DatabaseId::Mistakes, 20260130, false)
+            .verify_schema_fingerprint(
+                &conn,
+                &DatabaseId::Mistakes,
+                &MISTAKES_MIGRATIONS,
+                20260130,
+                false,
+            )
             .unwrap_err();
 
         match err {
@@ -3852,7 +4060,135 @@ mod tests {
 
         // allow_rebaseline=true 时漂移应被容忍（不报错）
         coordinator
-            .verify_schema_fingerprint(&conn, &DatabaseId::Mistakes, 20260130, true)
+            .verify_schema_fingerprint(
+                &conn,
+                &DatabaseId::Mistakes,
+                &MISTAKES_MIGRATIONS,
+                20260130,
+                true,
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn test_schema_fingerprint_ignores_runtime_managed_objects() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let db_path = temp_dir.path().join("mistakes.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+
+        conn.execute_batch(include_str!(
+            "../../../migrations/mistakes/V20260130__init.sql"
+        ))
+        .unwrap();
+
+        coordinator
+            .verify_schema_fingerprint(
+                &conn,
+                &DatabaseId::Mistakes,
+                &MISTAKES_MIGRATIONS,
+                20260130,
+                false,
+            )
+            .unwrap();
+
+        conn.execute_batch(
+            "
+            CREATE TABLE IF NOT EXISTS runtime_documents (
+                id TEXT PRIMARY KEY,
+                body TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_runtime_documents_body
+                ON runtime_documents(body);
+            CREATE INDEX IF NOT EXISTS idx_rag_sub_libraries_runtime_name
+                ON rag_sub_libraries(name);
+            ",
+        )
+        .unwrap();
+
+        coordinator
+            .verify_schema_fingerprint(
+                &conn,
+                &DatabaseId::Mistakes,
+                &MISTAKES_MIGRATIONS,
+                20260130,
+                false,
+            )
+            .unwrap();
+    }
+
+    #[test]
+    fn test_schema_fingerprint_rebaselines_legacy_broad_scope_record() {
+        let (coordinator, temp_dir) = create_test_coordinator();
+        let db_path = temp_dir.path().join("mistakes.db");
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+
+        conn.execute_batch(include_str!(
+            "../../../migrations/mistakes/V20260130__init.sql"
+        ))
+        .unwrap();
+
+        coordinator
+            .verify_schema_fingerprint(
+                &conn,
+                &DatabaseId::Mistakes,
+                &MISTAKES_MIGRATIONS,
+                20260130,
+                false,
+            )
+            .unwrap();
+
+        let select_sql = format!(
+            "SELECT canonical_schema FROM {} WHERE database_id = ?1 AND schema_version = ?2",
+            SCHEMA_FINGERPRINT_TABLE
+        );
+        let canonical_schema: String = conn
+            .query_row(
+                &select_sql,
+                rusqlite::params!["mistakes", 20260130_i64],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        let legacy_broad_schema = format!(
+            "{}table:runtime_documents\ncol:0:id:TEXT:0::1\nidx:idx_rag_sub_libraries_runtime_name:CREATE INDEX idx_rag_sub_libraries_runtime_name ON rag_sub_libraries(name)\n",
+            canonical_schema
+        );
+        let current = coordinator
+            .compute_schema_fingerprint(&conn, &MISTAKES_MIGRATIONS, 20260130)
+            .unwrap();
+        let filtered = MigrationCoordinator::filter_canonical_schema_to_scope(
+            &legacy_broad_schema,
+            &current.scope,
+        );
+        assert_eq!(filtered, current.canonical_schema);
+
+        let mut hasher = Sha256::new();
+        hasher.update(legacy_broad_schema.as_bytes());
+        let legacy_broad_hash = format!("{:x}", hasher.finalize());
+
+        let update_sql = format!(
+            "UPDATE {} SET fingerprint = ?1, canonical_schema = ?2 WHERE database_id = ?3 AND schema_version = ?4",
+            SCHEMA_FINGERPRINT_TABLE
+        );
+        conn.execute(
+            &update_sql,
+            rusqlite::params![
+                legacy_broad_hash,
+                legacy_broad_schema,
+                "mistakes",
+                20260130_i64
+            ],
+        )
+        .unwrap();
+
+        coordinator
+            .verify_schema_fingerprint(
+                &conn,
+                &DatabaseId::Mistakes,
+                &MISTAKES_MIGRATIONS,
+                20260130,
+                false,
+            )
             .unwrap();
     }
 
