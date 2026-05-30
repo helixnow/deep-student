@@ -14,9 +14,9 @@ use super::sync::{
     SyncDirection, SyncExecutionResult, SyncManager, SyncManifest,
 };
 use crate::backup_common::BACKUP_GLOBAL_LIMITER;
-use crate::cloud_storage::{create_storage, CloudStorage, CloudStorageConfig};
+use crate::cloud_storage::{CloudStorage, CloudStorageConfig, create_storage};
 
-use super::commands::{check_maintenance_mode, try_save_audit_log, SYNC_LOCK_TIMEOUT_SECS};
+use super::commands::{SYNC_LOCK_TIMEOUT_SECS, check_maintenance_mode, try_save_audit_log};
 use super::commands_backup::{
     apply_downloaded_changes_to_databases, build_id_column_map, get_active_data_dir,
     get_app_data_dir, resolve_database_path, validate_user_path,
@@ -596,7 +596,7 @@ pub async fn data_governance_resolve_conflicts(
             return Err(format!(
                 "未知的合并策略: {}。可选值: keep_local, use_cloud, keep_latest, manual",
                 strategy
-            ))
+            ));
         }
     };
 
@@ -759,7 +759,7 @@ pub async fn data_governance_run_sync(
             return Err(format!(
                 "无效的合并策略: {}。可选值: keep_local, use_cloud, keep_latest, manual",
                 s
-            ))
+            ));
         }
     };
 
@@ -1013,6 +1013,7 @@ pub async fn data_governance_run_sync(
 
             // 下载的变更已包含完整数据，按来源数据库路由并应用
             let mut exec_result = exec_result;
+            exec_result.conflicts_detected = 0;
             let mut total_skipped = 0usize;
             if !downloaded_changes.is_empty() {
                 let apply_agg = apply_downloaded_changes_to_databases(
@@ -1020,6 +1021,7 @@ pub async fn data_governance_run_sync(
                     &active_dir,
                     merge_strategy,
                 )?;
+                exec_result.conflicts_detected = apply_agg.total_conflicts;
                 total_skipped = apply_agg.total_skipped;
                 if total_skipped > 0 {
                     warn!(
@@ -1069,6 +1071,7 @@ pub async fn data_governance_run_sync(
             // [P0 Fix] 先应用下载的变更，再上传本地变更。
             // 这确保上传时不会推送已被下载覆盖的过时数据。
             let mut exec_result = exec_result;
+            exec_result.conflicts_detected = 0;
             let mut total_skipped = 0usize;
             let mut applied_keys = std::collections::HashSet::new();
             if !downloaded_changes.is_empty() {
@@ -1077,6 +1080,7 @@ pub async fn data_governance_run_sync(
                     &active_dir,
                     merge_strategy,
                 )?;
+                exec_result.conflicts_detected = apply_agg.total_conflicts;
                 total_skipped = apply_agg.total_skipped;
                 applied_keys = apply_agg.applied_keys;
                 if total_skipped > 0 {
@@ -2433,6 +2437,7 @@ async fn execute_download_with_progress_v2(
 
     // 下载的变更已含完整数据，按数据库路由并应用
     let mut exec_result = exec_result;
+    exec_result.conflicts_detected = 0;
     let mut total_skipped = 0usize;
     if !downloaded_changes.is_empty() {
         let total_changes = downloaded_changes.len() as u64;
@@ -2442,6 +2447,7 @@ async fn execute_download_with_progress_v2(
 
         let apply_agg =
             apply_downloaded_changes_to_databases(&downloaded_changes, active_dir, merge_strategy)?;
+        exec_result.conflicts_detected = apply_agg.total_conflicts;
         total_skipped = apply_agg.total_skipped;
         if total_skipped > 0 {
             exec_result.error_message = Some(format!(
@@ -2535,6 +2541,7 @@ async fn execute_bidirectional_with_progress_v2(
     // [P0 Fix] 先应用下载的变更，再上传本地变更。
     // 这确保上传时不会推送已被下载覆盖的过时数据。
     let mut exec_result = exec_result;
+    exec_result.conflicts_detected = 0;
     let mut total_skipped = 0usize;
     let mut applied_keys = std::collections::HashSet::new();
     if !downloaded_changes.is_empty() {
@@ -2545,6 +2552,7 @@ async fn execute_bidirectional_with_progress_v2(
 
         let apply_agg =
             apply_downloaded_changes_to_databases(&downloaded_changes, active_dir, merge_strategy)?;
+        exec_result.conflicts_detected = apply_agg.total_conflicts;
         total_skipped = apply_agg.total_skipped;
         applied_keys = apply_agg.applied_keys;
         if total_skipped > 0 {

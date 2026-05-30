@@ -119,6 +119,7 @@
     "downloadFailed": "Download failed",
     "deleteFailed": "Delete failed",
     "configInvalid": "Invalid configuration",
+    "passwordRequired": "Enter the cloud storage password before saving",
     "networkError": "Network error",
     "permissionDenied": "Permission denied",
     "notFound": "File not found",

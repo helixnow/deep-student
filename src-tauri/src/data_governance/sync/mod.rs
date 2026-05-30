@@ -50,11 +50,11 @@ pub use conflict_resolver::{
     ConflictAwareApplyResult, ConflictOutcome, ConflictPolicy, ConflictRecordToSave,
     ConflictResolver, ConflictSide,
 };
-pub use emitter::{OptionalEmitter, SyncProgressCallback, SyncProgressEmitter, EVENT_NAME};
-pub use hlc::{compare_hlc_strings, Hlc, HlcClock, HlcError, MAX_DRIFT_MS};
+pub use emitter::{EVENT_NAME, OptionalEmitter, SyncProgressCallback, SyncProgressEmitter};
+pub use hlc::{Hlc, HlcClock, HlcError, MAX_DRIFT_MS, compare_hlc_strings};
 pub use progress::{ProgressTracker, SpeedCalculator, SyncPhase, SyncProgress};
 pub use tombstone::{
-    apply_blob_tombstones, AssetTombstoneEntry, AssetTombstones, BlobTombstoneEntry, BlobTombstones,
+    AssetTombstoneEntry, AssetTombstones, BlobTombstoneEntry, BlobTombstones, apply_blob_tombstones,
 };
 
 /// 公开的时间戳解析函数（供 conflict_resolver 等子模块复用）
@@ -84,7 +84,7 @@ pub fn parse_flexible_timestamp_public(s: &str) -> Option<chrono::DateTime<chron
     None
 }
 
-use rusqlite::{params, types::Type, Connection, OptionalExtension, Row};
+use rusqlite::{Connection, OptionalExtension, Row, params, types::Type};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -1329,6 +1329,10 @@ impl SyncManager {
             .then_with(|| a_change.change_log_id.cmp(&b_change.change_log_id))
         });
 
+        let before_dedupe = all_changes.len();
+        all_changes = Self::dedupe_downloaded_changes(all_changes);
+        let deduped = before_dedupe.saturating_sub(all_changes.len());
+
         if skipped_self > 0 {
             tracing::debug!(
                 "[sync] 跳过本设备变更文件: {} 个（避免回声下载）",
@@ -1337,9 +1341,10 @@ impl SyncManager {
         }
 
         tracing::info!(
-            "[sync] 从云端下载变更: since={}, total={}, skipped_self={}",
+            "[sync] 从云端下载变更: since={}, total={}, deduped={}, skipped_self={}",
             since_version,
             all_changes.len(),
+            deduped,
             skipped_self
         );
 
@@ -1376,6 +1381,42 @@ impl SyncManager {
             })
             .and_then(|stem| stem.split('-').next())
             .and_then(|version_str| version_str.parse().ok())
+    }
+
+    fn dedupe_downloaded_changes(
+        changes: Vec<(u64, SyncChangeWithData)>,
+    ) -> Vec<(u64, SyncChangeWithData)> {
+        let mut seen = HashSet::new();
+        let mut deduped = Vec::with_capacity(changes.len());
+
+        for (version, change) in changes {
+            let key = Self::download_change_dedupe_key(&change);
+            if seen.insert(key) {
+                deduped.push((version, change));
+            }
+        }
+
+        deduped
+    }
+
+    fn download_change_dedupe_key(change: &SyncChangeWithData) -> String {
+        use sha2::{Digest, Sha256};
+
+        let data = change
+            .data
+            .as_ref()
+            .map(Self::canonicalize_sync_value_for_compare)
+            .unwrap_or(serde_json::Value::Null);
+        let raw = serde_json::json!({
+            "database": change.database_name,
+            "table": change.table_name,
+            "record": change.record_id,
+            "operation": change.operation.as_str(),
+            "data": data,
+        });
+        let encoded = serde_json::to_vec(&raw).unwrap_or_default();
+        let digest = Sha256::digest(&encoded);
+        hex::encode(&digest[..16])
     }
 
     /// 将版本号归一化为秒级时间戳
@@ -2501,7 +2542,7 @@ impl SyncManager {
                 return Err(SyncError::Database(format!(
                     "字段增量元数据格式错误: {} = {}",
                     SYNC_FIELD_DELTAS_KEY, other
-                )))
+                )));
             }
         };
 
@@ -3598,7 +3639,7 @@ impl SyncManager {
                     }
                     Some(outcome) => {
                         // 落败方先进冲突表（两端都各存一份，便于 UI 三路展示）
-                        ConflictResolver::save_conflict_record(
+                        let loser_inserted = ConflictResolver::save_conflict_record(
                             conn,
                             conflict_resolver::ConflictRecordToSave {
                                 table_name: &change.table_name,
@@ -3619,7 +3660,7 @@ impl SyncManager {
                         )?;
 
                         // 同时把胜方的快照也记录一份（side=winner），方便 UI 同时看到两份
-                        ConflictResolver::save_conflict_record(
+                        let winner_inserted = ConflictResolver::save_conflict_record(
                             conn,
                             conflict_resolver::ConflictRecordToSave {
                                 table_name: &change.table_name,
@@ -3639,11 +3680,15 @@ impl SyncManager {
                             },
                         )?;
 
-                        conflict_result.conflicts_saved += 2;
-                        *conflict_result
-                            .conflicts_by_table
-                            .entry(change.table_name.clone())
-                            .or_insert(0) += 1;
+                        let inserted_rows =
+                            usize::from(loser_inserted) + usize::from(winner_inserted);
+                        conflict_result.conflicts_saved += inserted_rows;
+                        if inserted_rows > 0 {
+                            *conflict_result
+                                .conflicts_by_table
+                                .entry(change.table_name.clone())
+                                .or_insert(0) += inserted_rows;
+                        }
 
                         if outcome.winner == ConflictSide::Cloud {
                             // Cloud 胜，按云端数据写入本地（但要抑制回声）
@@ -4030,6 +4075,20 @@ impl SyncManager {
                     return Ok(false);
                 }
 
+                if let Some(local_data) =
+                    Self::get_record_data(conn, &change.table_name, &change.record_id, id_column)?
+                {
+                    if Self::records_semantically_equal_for_sync(&local_data, data) {
+                        tracing::debug!(
+                            "[sync] 幂等跳过等价变更: {}.{} = {}",
+                            change.table_name,
+                            id_column,
+                            change.record_id
+                        );
+                        return Ok(false);
+                    }
+                }
+
                 Self::apply_single_record(
                     conn,
                     &change.table_name,
@@ -4169,6 +4228,77 @@ impl SyncManager {
 
         // 严格晚于才跳过；相等时允许 UPSERT（可能是幂等回放）
         local_ts > cloud_ts
+    }
+
+    pub(crate) fn records_semantically_equal_for_sync(
+        local: &serde_json::Value,
+        cloud: &serde_json::Value,
+    ) -> bool {
+        let cloud_keys: HashSet<String> = match cloud {
+            serde_json::Value::Object(obj) => obj.keys().cloned().collect(),
+            _ => {
+                return Self::canonicalize_sync_value_for_compare(local)
+                    == Self::canonicalize_sync_value_for_compare(cloud);
+            }
+        };
+
+        let local_subset = match local {
+            serde_json::Value::Object(obj) => {
+                let filtered: serde_json::Map<String, serde_json::Value> = obj
+                    .iter()
+                    .filter(|(k, _)| cloud_keys.contains(k.as_str()))
+                    .map(|(k, v)| (k.clone(), v.clone()))
+                    .collect();
+                serde_json::Value::Object(filtered)
+            }
+            _ => local.clone(),
+        };
+
+        Self::canonicalize_sync_value_for_compare(&local_subset)
+            == Self::canonicalize_sync_value_for_compare(cloud)
+    }
+
+    fn canonicalize_sync_value_for_compare(value: &serde_json::Value) -> serde_json::Value {
+        const STRIP_KEYS: &[&str] = &[
+            "sync_version",
+            "local_version",
+            "updated_at",
+            "last_synced_at",
+            "last_attempt_at",
+            "indexed_at",
+            "mm_indexed_at",
+            "remote_version",
+            "remote_id",
+            "sync_status",
+            "content_hash",
+        ];
+
+        match value {
+            serde_json::Value::Object(obj) => {
+                let mut sorted: Vec<(String, serde_json::Value)> = obj
+                    .iter()
+                    .filter(|(k, _)| !STRIP_KEYS.contains(&k.as_str()))
+                    .map(|(k, v)| (k.clone(), Self::canonicalize_sync_value_for_compare(v)))
+                    .collect();
+                sorted.sort_by(|a, b| a.0.cmp(&b.0));
+                serde_json::Value::Object(sorted.into_iter().collect())
+            }
+            serde_json::Value::Array(arr) => serde_json::Value::Array(
+                arr.iter()
+                    .map(Self::canonicalize_sync_value_for_compare)
+                    .collect(),
+            ),
+            serde_json::Value::String(s) => {
+                let trimmed = s.trim_start();
+                if trimmed.starts_with('{') || trimmed.starts_with('[') {
+                    if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(trimmed) {
+                        return Self::canonicalize_sync_value_for_compare(&parsed);
+                    }
+                }
+                serde_json::Value::String(s.clone())
+            }
+            other => other.clone(),
+        }
     }
 
     /// 获取记录的完整数据
@@ -7074,6 +7204,105 @@ mod tests {
             )
             .unwrap();
         assert_eq!(unsynced, 0, "echo logs should be marked as synced");
+    }
+
+    #[test]
+    fn test_apply_downloaded_changes_skips_equivalent_replay_without_new_echo_log() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE test_records (
+                id TEXT PRIMARY KEY,
+                content TEXT,
+                updated_at TEXT
+            );
+            CREATE TABLE __change_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                table_name TEXT NOT NULL,
+                record_id TEXT NOT NULL,
+                operation TEXT NOT NULL,
+                changed_at TEXT NOT NULL DEFAULT (datetime('now')),
+                sync_version INTEGER DEFAULT 0
+            );
+            CREATE TRIGGER trg_echo_insert
+            AFTER INSERT ON test_records
+            BEGIN
+                INSERT INTO __change_log(table_name, record_id, operation)
+                VALUES('test_records', NEW.id, 'INSERT');
+            END;
+            CREATE TRIGGER trg_echo_update
+            AFTER UPDATE ON test_records
+            BEGIN
+                INSERT INTO __change_log(table_name, record_id, operation)
+                VALUES('test_records', NEW.id, 'UPDATE');
+            END;
+            "#,
+        )
+        .unwrap();
+
+        let changes = vec![SyncChangeWithData {
+            table_name: "test_records".to_string(),
+            record_id: "r1".to_string(),
+            operation: ChangeOperation::Insert,
+            data: Some(serde_json::json!({
+                "id": "r1",
+                "content": "same",
+                "updated_at": "2026-02-10T00:00:00Z"
+            })),
+            changed_at: "2026-02-10T00:00:00Z".to_string(),
+            change_log_id: None,
+            database_name: Some("vfs".to_string()),
+            suppress_change_log: Some(true),
+        }];
+
+        SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
+        SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
+
+        let log_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM __change_log", [], |r| r.get(0))
+            .unwrap();
+        let unsynced: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM __change_log WHERE sync_version = 0",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(
+            log_count, 1,
+            "equivalent replay must not generate another local echo log"
+        );
+        assert_eq!(unsynced, 0);
+    }
+
+    #[test]
+    fn test_dedupe_downloaded_changes_collapses_equivalent_payloads() {
+        let first = SyncChangeWithData {
+            table_name: "test_records".to_string(),
+            record_id: "r1".to_string(),
+            operation: ChangeOperation::Update,
+            data: Some(serde_json::json!({
+                "id": "r1",
+                "content": "same",
+                "updated_at": "2026-02-10T00:00:00Z"
+            })),
+            changed_at: "2026-02-10T00:00:00Z".to_string(),
+            change_log_id: Some(1),
+            database_name: Some("vfs".to_string()),
+            suppress_change_log: None,
+        };
+        let mut duplicate = first.clone();
+        duplicate.changed_at = "2026-02-10T00:00:05Z".to_string();
+        duplicate.change_log_id = Some(99);
+
+        let deduped = SyncManager::dedupe_downloaded_changes(vec![(1, first), (2, duplicate)]);
+
+        assert_eq!(
+            deduped.len(),
+            1,
+            "same final payload from multiple remote packages should apply once"
+        );
     }
 
     #[test]

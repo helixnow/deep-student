@@ -39,7 +39,7 @@
 //!
 //! 冲突表保留在每个业务数据库内，跟随数据库一起备份/恢复。
 
-use rusqlite::{params, Connection, OptionalExtension};
+use rusqlite::{Connection, OptionalExtension, params};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -425,12 +425,13 @@ impl ConflictResolver {
     pub fn save_conflict_record(
         conn: &Connection,
         rec: ConflictRecordToSave<'_>,
-    ) -> Result<(), SyncError> {
+    ) -> Result<bool, SyncError> {
         Self::ensure_conflict_table(conn)?;
         let data_str = serde_json::to_string(rec.data)
             .map_err(|e| SyncError::Database(format!("序列化冲突数据失败: {}", e)))?;
         let data_hash = Self::compute_data_hash(rec.data);
-        conn.execute(
+        let inserted = conn
+            .execute(
             "INSERT INTO __sync_conflicts
              (table_name, record_id, side, data_json, data_hash, winning_device_id, losing_device_id)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
@@ -448,9 +449,9 @@ impl ConflictResolver {
                 rec.winning_device_id,
                 rec.losing_device_id,
             ],
-        )
-        .map_err(|e| SyncError::Database(format!("写入冲突表失败: {}", e)))?;
-        Ok(())
+            )
+            .map_err(|e| SyncError::Database(format!("写入冲突表失败: {}", e)))?;
+        Ok(inserted > 0)
     }
 }
 

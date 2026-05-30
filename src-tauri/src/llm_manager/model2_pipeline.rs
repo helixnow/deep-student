@@ -4562,8 +4562,13 @@ impl LLMManager {
         user_prompt: &str,
     ) -> Result<StandardModel2Output> {
         let config = self.get_memory_decision_model_config().await?;
-        self.call_raw_prompt_with_config(config, user_prompt, None, crate::llm_usage::CallerType::Memory)
-            .await
+        self.call_raw_prompt_with_config(
+            config,
+            user_prompt,
+            None,
+            crate::llm_usage::CallerType::Memory,
+        )
+        .await
     }
 
     /// 使用标题/标签生成模型调用（回退链：chat_title_model → model2）
@@ -4572,8 +4577,13 @@ impl LLMManager {
         user_prompt: &str,
     ) -> Result<StandardModel2Output> {
         let config = self.get_chat_title_model_config().await?;
-        self.call_raw_prompt_with_config(config, user_prompt, None, crate::llm_usage::CallerType::ChatV2)
-            .await
+        self.call_raw_prompt_with_config(
+            config,
+            user_prompt,
+            None,
+            crate::llm_usage::CallerType::ChatV2,
+        )
+        .await
     }
 
     /// 内部方法：使用显式传入的 ApiConfig 执行 raw prompt 调用
@@ -4750,25 +4760,22 @@ impl LLMManager {
         }
 
         // 7. 解析响应
-        let response_json: serde_json::Value = response
-            .json()
-            .await
-            .map_err(|e| {
-                let err_msg = format!("解析RAW_PROMPT响应失败: {}", e);
-                crate::llm_usage::record_llm_usage(
-                    caller_type.clone(),
-                    &config.model,
-                    0,
-                    0,
-                    None,
-                    None,
-                    None,
-                    None,
-                    false,
-                    Some(err_msg.clone()),
-                );
-                AppError::llm(err_msg)
-            })?;
+        let response_json: serde_json::Value = response.json().await.map_err(|e| {
+            let err_msg = format!("解析RAW_PROMPT响应失败: {}", e);
+            crate::llm_usage::record_llm_usage(
+                caller_type.clone(),
+                &config.model,
+                0,
+                0,
+                None,
+                None,
+                None,
+                None,
+                false,
+                Some(err_msg.clone()),
+            );
+            AppError::llm(err_msg)
+        })?;
 
         // Gemini 非流式响应统一转换为 OpenAI 形状
         let openai_like_json = if config.model_adapter == "google" {
@@ -4807,7 +4814,10 @@ impl LLMManager {
                 }
             }
         } else if matches!(config.model_adapter.as_str(), "anthropic" | "claude") {
-            match crate::providers::convert_anthropic_response_to_openai(&response_json, &config.model) {
+            match crate::providers::convert_anthropic_response_to_openai(
+                &response_json,
+                &config.model,
+            ) {
                 Some(v) => v,
                 None => {
                     let err_msg = "解析Anthropic响应失败".to_string();
@@ -5224,8 +5234,17 @@ impl LLMManager {
                 .get("cached_tokens")
                 .and_then(|v| v.as_u64())
                 .unwrap_or(0) as u32;
-            let cached_tokens = if anthropic_cache_hit > 0 || openai_cached > 0 || deepseek_cached > 0 || gemini_cached > 0 {
-                Some(anthropic_cache_hit.max(openai_cached).max(deepseek_cached).max(gemini_cached))
+            let cached_tokens = if anthropic_cache_hit > 0
+                || openai_cached > 0
+                || deepseek_cached > 0
+                || gemini_cached > 0
+            {
+                Some(
+                    anthropic_cache_hit
+                        .max(openai_cached)
+                        .max(deepseek_cached)
+                        .max(gemini_cached),
+                )
             } else {
                 None
             };
@@ -5235,7 +5254,12 @@ impl LLMManager {
                 prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens
             );
 
-            (prompt_tokens, completion_tokens, reasoning_tokens, cached_tokens)
+            (
+                prompt_tokens,
+                completion_tokens,
+                reasoning_tokens,
+                cached_tokens,
+            )
         } else {
             // 没有 API usage 数据，使用估算值
             let estimated_prompt = fallback_prompt_tokens as u32;
@@ -5243,7 +5267,12 @@ impl LLMManager {
                 "[LLM Usage] API 未返回 usage，使用估算值: prompt={}, completion={}",
                 estimated_prompt, fallback_completion_tokens
             );
-            (estimated_prompt, fallback_completion_tokens as u32, None, None)
+            (
+                estimated_prompt,
+                fallback_completion_tokens as u32,
+                None,
+                None,
+            )
         }
     }
 }

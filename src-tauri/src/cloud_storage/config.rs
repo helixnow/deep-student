@@ -173,6 +173,9 @@ impl CloudStorageConfig {
                 if config.username.trim().is_empty() {
                     return Err("WebDAV 用户名不能为空".into());
                 }
+                if config.password.trim().is_empty() {
+                    return Err("WebDAV 密码不能为空".into());
+                }
                 let is_local = Self::is_local_endpoint(&config.endpoint);
                 if !is_local
                     && !config
@@ -236,6 +239,13 @@ mod tests {
         // 缺少 endpoint
         config.webdav.as_mut().unwrap().endpoint = "".into();
         assert!(config.validate().is_err());
+
+        config.webdav.as_mut().unwrap().endpoint = "https://dav.example.com".into();
+        config.webdav.as_mut().unwrap().password = " ".into();
+        assert!(
+            config.validate().is_err(),
+            "empty WebDAV password should be rejected"
+        );
 
         // S3 配置验证
         let config = CloudStorageConfig {

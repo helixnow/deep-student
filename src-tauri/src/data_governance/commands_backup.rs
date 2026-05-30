@@ -8,13 +8,13 @@ use tracing::{debug, error, info, warn};
 #[cfg(feature = "data_governance")]
 use super::audit::{AuditLog, AuditOperation};
 use super::backup::{
-    export_backup_to_zip, AssetBackupConfig, AssetType, AssetTypeStats, BackupManager,
-    BackupSelection, TieredAssetConfig, ZipExportOptions,
+    AssetBackupConfig, AssetType, AssetTypeStats, BackupManager, BackupSelection,
+    TieredAssetConfig, ZipExportOptions, export_backup_to_zip,
 };
 use super::schema_registry::DatabaseId;
 use super::sync::{
-    classification::{sync_classification_registry, SyncCategory},
     ChangeOperation, MergeStrategy, SyncChangeWithData, SyncManager,
+    classification::{SyncCategory, sync_classification_registry},
 };
 use crate::backup_common::BACKUP_GLOBAL_LIMITER;
 use crate::backup_job_manager::{
@@ -228,6 +228,12 @@ fn should_apply_change_by_strategy(
                 None => return Ok(true),
             };
 
+            if let Some(cloud_data) = change.data.as_ref() {
+                if SyncManager::records_semantically_equal_for_sync(&local, cloud_data) {
+                    return Ok(false);
+                }
+            }
+
             if strategy == MergeStrategy::KeepLocal {
                 return Ok(false);
             }
@@ -300,9 +306,9 @@ pub(super) fn apply_downloaded_changes_to_databases(
                 Some(name) => name.to_string(),
                 None => {
                     warn!(
-                            "[data_governance] Legacy 变更表名 '{}' 无法推断目标数据库，跳过 (record_id={})",
-                            change.table_name, change.record_id
-                        );
+                        "[data_governance] Legacy 变更表名 '{}' 无法推断目标数据库，跳过 (record_id={})",
+                        change.table_name, change.record_id
+                    );
                     agg.total_skipped += 1;
                     continue;
                 }
@@ -354,8 +360,6 @@ pub(super) fn apply_downloaded_changes_to_databases(
                 let mut cloned = (*c).clone();
                 cloned.suppress_change_log = Some(true);
                 owned_changes.push(cloned);
-            } else {
-                agg.total_skipped += 1;
             }
         }
 
