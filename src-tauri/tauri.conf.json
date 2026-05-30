@@ -15,6 +15,7 @@
     ]
   },
   "app": {
+    "macOSPrivateApi": true,
     "windows": [
       {
         "title": "Deep Student",
@@ -88,7 +89,7 @@
       }
     },
     "android": {
-      "versionCode": 13896
+      "versionCode": 13933
     }
   },
   "plugins": {
