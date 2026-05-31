@@ -33,6 +33,8 @@
     "mcp:test:ws": "node ./scripts/mcp-ws-test.mjs",
     "tauri-lab": "node ./dstu-test/scripts/tauri-lab.mjs",
     "dstu-test:install-skills": "node ./dstu-test/scripts/install-codex-skills.mjs",
+    "dstu-test:seed-wide-sync": "node ./dstu-test/scripts/seed-wide-sync-data.mjs",
+    "dstu-test:inspect-wide-sync": "node ./dstu-test/scripts/inspect-wide-sync-image.mjs",
     "dstu-test:cloud:up": "docker compose -f ./dstu-test/docker/docker-compose.sync-test.yml up -d",
     "dstu-test:cloud:down": "docker compose -f ./dstu-test/docker/docker-compose.sync-test.yml down -v",
     "prepreview": "npm run version:generate",

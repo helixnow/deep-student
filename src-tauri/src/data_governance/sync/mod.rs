@@ -1324,9 +1324,12 @@ impl SyncManager {
             }
             .then_with(|| a_change.database_name.cmp(&b_change.database_name))
             .then_with(|| a_change.table_name.cmp(&b_change.table_name))
+            // SQLite change_log_id preserves the writer-side trigger/order within
+            // one uploaded package. Keep it ahead of record_id so same-second
+            // parent/child rows are not alphabetically inverted on download.
+            .then_with(|| a_change.change_log_id.cmp(&b_change.change_log_id))
             .then_with(|| a_change.record_id.cmp(&b_change.record_id))
             .then_with(|| a_change.operation.as_str().cmp(b_change.operation.as_str()))
-            .then_with(|| a_change.change_log_id.cmp(&b_change.change_log_id))
         });
 
         let before_dedupe = all_changes.len();
@@ -3391,6 +3394,167 @@ impl SyncManager {
         Ok(remapped)
     }
 
+    fn is_incomplete_upsert(change: &SyncChangeWithData) -> bool {
+        matches!(
+            change.operation,
+            ChangeOperation::Insert | ChangeOperation::Update
+        ) && change.data.is_none()
+    }
+
+    fn incomplete_upserts_shadowed_by_delete(
+        changes: &[SyncChangeWithData],
+    ) -> HashSet<(String, String)> {
+        let deleted_keys: HashSet<(String, String)> = changes
+            .iter()
+            .filter(|change| change.operation == ChangeOperation::Delete)
+            .map(|change| (change.table_name.clone(), change.record_id.clone()))
+            .collect();
+
+        changes
+            .iter()
+            .filter(|change| Self::is_incomplete_upsert(change))
+            .map(|change| (change.table_name.clone(), change.record_id.clone()))
+            .filter(|key| deleted_keys.contains(key))
+            .collect()
+    }
+
+    fn should_skip_shadowed_incomplete_upsert(
+        change: &SyncChangeWithData,
+        shadowed_incomplete_upserts: &HashSet<(String, String)>,
+    ) -> bool {
+        Self::is_incomplete_upsert(change)
+            && shadowed_incomplete_upserts
+                .contains(&(change.table_name.clone(), change.record_id.clone()))
+    }
+
+    fn todo_parent_id(change: &SyncChangeWithData) -> Option<String> {
+        if change.table_name != "todo_items"
+            || !matches!(
+                change.operation,
+                ChangeOperation::Insert | ChangeOperation::Update
+            )
+        {
+            return None;
+        }
+
+        change
+            .data
+            .as_ref()
+            .and_then(|data| data.get("parent_id"))
+            .and_then(|value| value.as_str())
+            .filter(|parent_id| !parent_id.is_empty())
+            .map(|parent_id| parent_id.to_string())
+    }
+
+    fn emit_dependency_ordered_change_index(
+        index: usize,
+        changes: &[SyncChangeWithData],
+        todo_index_by_id: &HashMap<String, usize>,
+        visiting: &mut HashSet<usize>,
+        emitted: &mut HashSet<usize>,
+        ordered: &mut Vec<usize>,
+    ) {
+        if emitted.contains(&index) {
+            return;
+        }
+
+        if !visiting.insert(index) {
+            tracing::warn!(
+                "[sync] todo_items 父子依赖存在循环或重复路径，保持原始顺序: {}",
+                changes[index].record_id
+            );
+            return;
+        }
+
+        if let Some(parent_id) = Self::todo_parent_id(&changes[index]) {
+            if let Some(parent_index) = todo_index_by_id.get(&parent_id).copied() {
+                if parent_index != index {
+                    Self::emit_dependency_ordered_change_index(
+                        parent_index,
+                        changes,
+                        todo_index_by_id,
+                        visiting,
+                        emitted,
+                        ordered,
+                    );
+                }
+            }
+        }
+
+        visiting.remove(&index);
+        if emitted.insert(index) {
+            ordered.push(index);
+        }
+    }
+
+    fn ordered_changes_for_apply<'a>(
+        changes: &'a [SyncChangeWithData],
+    ) -> Vec<&'a SyncChangeWithData> {
+        let mut todo_index_by_id = HashMap::new();
+        for (index, change) in changes.iter().enumerate() {
+            if change.table_name == "todo_items"
+                && matches!(
+                    change.operation,
+                    ChangeOperation::Insert | ChangeOperation::Update
+                )
+                && change.data.is_some()
+            {
+                todo_index_by_id
+                    .entry(change.record_id.clone())
+                    .or_insert(index);
+            }
+        }
+
+        let mut emitted = HashSet::new();
+        let mut ordered = Vec::with_capacity(changes.len());
+
+        if todo_index_by_id.is_empty() {
+            ordered.extend(0..changes.len());
+        } else {
+            for index in 0..changes.len() {
+                let mut visiting = HashSet::new();
+                Self::emit_dependency_ordered_change_index(
+                    index,
+                    changes,
+                    &todo_index_by_id,
+                    &mut visiting,
+                    &mut emitted,
+                    &mut ordered,
+                );
+            }
+        }
+
+        ordered.sort_by(|left, right| {
+            let left_change = &changes[*left];
+            let right_change = &changes[*right];
+            Self::apply_dependency_rank(left_change).cmp(&Self::apply_dependency_rank(right_change))
+        });
+
+        ordered
+            .into_iter()
+            .map(|index| &changes[index])
+            .collect::<Vec<_>>()
+    }
+
+    fn apply_dependency_rank(change: &SyncChangeWithData) -> i32 {
+        let insert_rank = match change.table_name.as_str() {
+            "resources" => 10,
+            "blobs" => 20,
+            "folders" | "todo_lists" => 30,
+            "notes" | "files" | "exam_sheets" | "translations" | "essays" | "mindmaps"
+            | "todo_items" => 40,
+            "questions" | "essay_sessions" | "pomodoro_records" => 50,
+            "answer_submissions" | "review_plans" | "folder_items" => 60,
+            _ => 100,
+        };
+
+        if change.operation == ChangeOperation::Delete {
+            1000 - insert_rank
+        } else {
+            insert_rank
+        }
+    }
+
     /// 应用下载的变更到数据库
     ///
     /// 批量应用从云端下载的变更，支持事务处理。
@@ -3431,8 +3595,24 @@ impl SyncManager {
 
         let apply_result: Result<(), SyncError> = (|| {
             let id_aliases = Self::build_download_id_aliases(conn, changes, id_column_map)?;
+            let shadowed_incomplete_upserts = Self::incomplete_upserts_shadowed_by_delete(changes);
 
-            for change in changes {
+            let ordered_changes = Self::ordered_changes_for_apply(changes);
+            for change in ordered_changes {
+                if Self::should_skip_shadowed_incomplete_upsert(
+                    change,
+                    &shadowed_incomplete_upserts,
+                ) {
+                    tracing::warn!(
+                        "[sync] 跳过同批 DELETE 覆盖的缺数据 UPSERT: {}.{}",
+                        change.table_name,
+                        change.record_id
+                    );
+                    result.skipped_count += 1;
+                    result.skipped_incomplete_count += 1;
+                    continue;
+                }
+
                 let id_column = id_column_map
                     .and_then(|m| m.get(&change.table_name))
                     .map(|s| s.as_str())
@@ -3598,16 +3778,37 @@ impl SyncManager {
         let mut conflict_result = conflict_resolver::ConflictAwareApplyResult::default();
 
         let inner: Result<(), SyncError> = (|| {
-            for change in changes {
+            let id_aliases = Self::build_download_id_aliases(conn, changes, id_column_map)?;
+            let shadowed_incomplete_upserts = Self::incomplete_upserts_shadowed_by_delete(changes);
+
+            let ordered_changes = Self::ordered_changes_for_apply(changes);
+            for change in ordered_changes {
+                if Self::should_skip_shadowed_incomplete_upsert(
+                    change,
+                    &shadowed_incomplete_upserts,
+                ) {
+                    tracing::warn!(
+                        "[sync] 跳过同批 DELETE 覆盖的缺数据 UPSERT: {}.{}",
+                        change.table_name,
+                        change.record_id
+                    );
+                    apply_result.skipped_count += 1;
+                    apply_result.skipped_incomplete_count += 1;
+                    continue;
+                }
+
                 let id_column = id_column_map
                     .and_then(|m| m.get(&change.table_name))
                     .map(|s| s.as_str())
                     .unwrap_or("id");
 
-                match resolver.resolve_one(conn, change, id_column)? {
+                let change_to_apply =
+                    Self::remap_change_with_aliases(conn, change, id_column, &id_aliases)?;
+
+                match resolver.resolve_one(conn, &change_to_apply, id_column)? {
                     None => {
                         // 非冲突，正常 UPSERT
-                        let suppress = change.suppress_change_log.unwrap_or(false);
+                        let suppress = change_to_apply.suppress_change_log.unwrap_or(false);
                         let pre_log_max_id = if suppress {
                             conn.query_row(
                                 "SELECT COALESCE(MAX(id), 0) FROM __change_log",
@@ -3619,18 +3820,19 @@ impl SyncManager {
                             None
                         };
 
-                        let applied = Self::apply_single_change(conn, change, id_column)?;
+                        let applied = Self::apply_single_change(conn, &change_to_apply, id_column)?;
                         if applied {
                             apply_result.success_count += 1;
-                            apply_result
-                                .applied_keys
-                                .insert((change.table_name.clone(), change.record_id.clone()));
+                            apply_result.applied_keys.insert((
+                                change_to_apply.table_name.clone(),
+                                change_to_apply.record_id.clone(),
+                            ));
                         } else {
                             apply_result.skipped_count += 1;
                             if matches!(
-                                change.operation,
+                                change_to_apply.operation,
                                 ChangeOperation::Insert | ChangeOperation::Update
-                            ) && change.data.is_none()
+                            ) && change_to_apply.data.is_none()
                             {
                                 apply_result.skipped_incomplete_count += 1;
                             }
@@ -3645,8 +3847,8 @@ impl SyncManager {
                                 params![
                                     sync_version,
                                     max_id,
-                                    &change.table_name,
-                                    &change.record_id,
+                                    &change_to_apply.table_name,
+                                    &change_to_apply.record_id,
                                 ],
                             );
                         }
@@ -3656,8 +3858,8 @@ impl SyncManager {
                         let loser_inserted = ConflictResolver::save_conflict_record(
                             conn,
                             conflict_resolver::ConflictRecordToSave {
-                                table_name: &change.table_name,
-                                record_id: &change.record_id,
+                                table_name: &change_to_apply.table_name,
+                                record_id: &change_to_apply.record_id,
                                 side: outcome.loser,
                                 data: &outcome.loser_data,
                                 winning_device_id: if outcome.winner == ConflictSide::Cloud {
@@ -3677,8 +3879,8 @@ impl SyncManager {
                         let winner_inserted = ConflictResolver::save_conflict_record(
                             conn,
                             conflict_resolver::ConflictRecordToSave {
-                                table_name: &change.table_name,
-                                record_id: &change.record_id,
+                                table_name: &change_to_apply.table_name,
+                                record_id: &change_to_apply.record_id,
                                 side: outcome.winner,
                                 data: &outcome.winner_data,
                                 winning_device_id: if outcome.winner == ConflictSide::Cloud {
@@ -3700,13 +3902,13 @@ impl SyncManager {
                         if inserted_rows > 0 {
                             *conflict_result
                                 .conflicts_by_table
-                                .entry(change.table_name.clone())
+                                .entry(change_to_apply.table_name.clone())
                                 .or_insert(0) += inserted_rows;
                         }
 
                         if outcome.winner == ConflictSide::Cloud {
                             // Cloud 胜，按云端数据写入本地（但要抑制回声）
-                            let mut cloud_change = change.clone();
+                            let mut cloud_change = change_to_apply.clone();
                             cloud_change.suppress_change_log = Some(true);
 
                             let pre_log_max_id = conn
@@ -3722,16 +3924,17 @@ impl SyncManager {
                                 Self::apply_single_change_force(conn, &cloud_change, id_column)?;
                             if applied {
                                 apply_result.success_count += 1;
-                                apply_result
-                                    .applied_keys
-                                    .insert((change.table_name.clone(), change.record_id.clone()));
+                                apply_result.applied_keys.insert((
+                                    cloud_change.table_name.clone(),
+                                    cloud_change.record_id.clone(),
+                                ));
                                 conflict_result.applied += 1;
                             } else {
                                 apply_result.skipped_count += 1;
                                 if matches!(
-                                    change.operation,
+                                    cloud_change.operation,
                                     ChangeOperation::Insert | ChangeOperation::Update
-                                ) && change.data.is_none()
+                                ) && cloud_change.data.is_none()
                                 {
                                     apply_result.skipped_incomplete_count += 1;
                                 }
@@ -3746,8 +3949,8 @@ impl SyncManager {
                                     params![
                                         sync_version,
                                         max_id,
-                                        &change.table_name,
-                                        &change.record_id,
+                                        &cloud_change.table_name,
+                                        &cloud_change.record_id,
                                     ],
                                 );
                             }
@@ -3759,6 +3962,8 @@ impl SyncManager {
                     }
                 }
             }
+
+            Self::persist_id_aliases(conn, &id_aliases)?;
 
             let violations = Self::collect_foreign_key_violations(conn, 20)?;
             if !violations.is_empty() {
@@ -7481,6 +7686,85 @@ mod tests {
     }
 
     #[test]
+    fn test_apply_skips_incomplete_upsert_shadowed_by_batch_delete() {
+        let conn = create_test_db_with_business_table();
+
+        let changes = vec![
+            SyncChangeWithData {
+                table_name: "test_records".to_string(),
+                record_id: "hard-deleted".to_string(),
+                operation: ChangeOperation::Insert,
+                data: None,
+                changed_at: "2026-02-10T00:00:00Z".to_string(),
+                change_log_id: Some(1),
+                database_name: Some("vfs".to_string()),
+                suppress_change_log: Some(true),
+            },
+            SyncChangeWithData {
+                table_name: "test_records".to_string(),
+                record_id: "hard-deleted".to_string(),
+                operation: ChangeOperation::Delete,
+                data: None,
+                changed_at: "2026-02-10T00:00:01Z".to_string(),
+                change_log_id: Some(2),
+                database_name: Some("vfs".to_string()),
+                suppress_change_log: Some(true),
+            },
+        ];
+
+        let result = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
+
+        assert_eq!(result.success_count, 1, "DELETE should still be applied");
+        assert_eq!(result.skipped_count, 1);
+        assert_eq!(result.skipped_incomplete_count, 1);
+        assert_eq!(result.failure_count, 0);
+    }
+
+    #[test]
+    fn test_conflict_guard_skips_incomplete_upsert_shadowed_by_batch_delete() {
+        let conn = create_test_db_with_business_table();
+
+        let changes = vec![
+            SyncChangeWithData {
+                table_name: "test_records".to_string(),
+                record_id: "hard-deleted".to_string(),
+                operation: ChangeOperation::Insert,
+                data: None,
+                changed_at: "2026-02-10T00:00:00Z".to_string(),
+                change_log_id: Some(1),
+                database_name: Some("vfs".to_string()),
+                suppress_change_log: Some(true),
+            },
+            SyncChangeWithData {
+                table_name: "test_records".to_string(),
+                record_id: "hard-deleted".to_string(),
+                operation: ChangeOperation::Delete,
+                data: None,
+                changed_at: "2026-02-10T00:00:01Z".to_string(),
+                change_log_id: Some(2),
+                database_name: Some("vfs".to_string()),
+                suppress_change_log: Some(true),
+            },
+        ];
+
+        let (result, conflict_result) = SyncManager::apply_downloaded_changes_with_conflict_guard(
+            &conn,
+            &changes,
+            None,
+            conflict_resolver::ConflictPolicy::KeepLatest,
+            Some("cloud-device"),
+            Some("local-device"),
+        )
+        .unwrap();
+
+        assert_eq!(result.success_count, 1, "DELETE should still be applied");
+        assert_eq!(result.skipped_count, 1);
+        assert_eq!(result.skipped_incomplete_count, 1);
+        assert_eq!(result.failure_count, 0);
+        assert_eq!(conflict_result.conflicts_saved, 0);
+    }
+
+    #[test]
     fn test_apply_downloaded_changes_rolls_back_on_fk_violation() {
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
@@ -7545,6 +7829,291 @@ mod tests {
             "transaction should rollback previously applied records"
         );
         assert_eq!(child_records_count, 0);
+    }
+
+    fn create_todo_constraint_test_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE todo_lists (
+                id TEXT PRIMARY KEY,
+                title TEXT,
+                updated_at TEXT
+            );
+            CREATE TABLE todo_items (
+                id TEXT PRIMARY KEY,
+                todo_list_id TEXT NOT NULL,
+                title TEXT,
+                status TEXT NOT NULL,
+                priority TEXT NOT NULL,
+                parent_id TEXT,
+                updated_at TEXT,
+                deleted_at TEXT
+            );
+            CREATE TRIGGER trg_todo_items_validate_insert
+            BEFORE INSERT ON todo_items
+            FOR EACH ROW
+            BEGIN
+                SELECT RAISE(ABORT, 'todo_items.parent_id must belong to the same list')
+                WHERE NEW.parent_id IS NOT NULL
+                  AND (
+                    SELECT todo_list_id
+                    FROM todo_items
+                    WHERE id = NEW.parent_id AND deleted_at IS NULL
+                  ) IS NOT NEW.todo_list_id;
+            END;
+            CREATE TRIGGER trg_todo_items_validate_update
+            BEFORE UPDATE ON todo_items
+            FOR EACH ROW
+            BEGIN
+                SELECT RAISE(ABORT, 'todo_items.parent_id must belong to the same list')
+                WHERE NEW.parent_id IS NOT NULL
+                  AND (
+                    SELECT todo_list_id
+                    FROM todo_items
+                    WHERE id = NEW.parent_id AND deleted_at IS NULL
+                  ) IS NOT NEW.todo_list_id;
+            END;
+            "#,
+        )
+        .unwrap();
+        conn
+    }
+
+    fn todo_list_change() -> SyncChangeWithData {
+        SyncChangeWithData {
+            table_name: "todo_lists".to_string(),
+            record_id: "list-1".to_string(),
+            operation: ChangeOperation::Insert,
+            data: Some(serde_json::json!({
+                "id": "list-1",
+                "title": "List",
+                "updated_at": "2026-05-31T00:00:00Z"
+            })),
+            changed_at: "2026-05-31T00:00:00Z".to_string(),
+            change_log_id: Some(1),
+            database_name: Some("vfs".to_string()),
+            suppress_change_log: Some(true),
+        }
+    }
+
+    fn todo_parent_change() -> SyncChangeWithData {
+        SyncChangeWithData {
+            table_name: "todo_items".to_string(),
+            record_id: "todo-parent".to_string(),
+            operation: ChangeOperation::Insert,
+            data: Some(serde_json::json!({
+                "id": "todo-parent",
+                "todo_list_id": "list-1",
+                "title": "Parent",
+                "status": "pending",
+                "priority": "high",
+                "parent_id": null,
+                "updated_at": "2026-05-31T00:00:00Z",
+                "deleted_at": null
+            })),
+            changed_at: "2026-05-31T00:00:00Z".to_string(),
+            change_log_id: Some(3),
+            database_name: Some("vfs".to_string()),
+            suppress_change_log: Some(true),
+        }
+    }
+
+    fn todo_child_change() -> SyncChangeWithData {
+        SyncChangeWithData {
+            table_name: "todo_items".to_string(),
+            record_id: "todo-child".to_string(),
+            operation: ChangeOperation::Insert,
+            data: Some(serde_json::json!({
+                "id": "todo-child",
+                "todo_list_id": "list-1",
+                "title": "Child",
+                "status": "pending",
+                "priority": "medium",
+                "parent_id": "todo-parent",
+                "updated_at": "2026-05-31T00:00:00Z",
+                "deleted_at": null
+            })),
+            changed_at: "2026-05-31T00:00:00Z".to_string(),
+            change_log_id: Some(2),
+            database_name: Some("vfs".to_string()),
+            suppress_change_log: Some(true),
+        }
+    }
+
+    fn assert_todo_parent_child_applied(conn: &Connection) {
+        let child: (String, String) = conn
+            .query_row(
+                "SELECT parent_id, todo_list_id FROM todo_items WHERE id = 'todo-child'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(child.0, "todo-parent");
+        assert_eq!(child.1, "list-1");
+
+        let parent_list: String = conn
+            .query_row(
+                "SELECT todo_list_id FROM todo_items WHERE id = 'todo-parent'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(parent_list, "list-1");
+    }
+
+    #[test]
+    fn test_apply_downloaded_changes_orders_todo_parent_before_child() {
+        let conn = create_todo_constraint_test_db();
+        let changes = vec![
+            todo_list_change(),
+            todo_child_change(),
+            todo_parent_change(),
+        ];
+
+        let result = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
+
+        assert_eq!(result.success_count, 3);
+        assert_todo_parent_child_applied(&conn);
+    }
+
+    #[test]
+    fn test_conflict_guard_orders_todo_parent_before_child() {
+        let conn = create_todo_constraint_test_db();
+        let changes = vec![
+            todo_list_change(),
+            todo_child_change(),
+            todo_parent_change(),
+        ];
+
+        let (result, conflict_result) = SyncManager::apply_downloaded_changes_with_conflict_guard(
+            &conn,
+            &changes,
+            None,
+            conflict_resolver::ConflictPolicy::KeepLatest,
+            Some("cloud-device"),
+            Some("local-device"),
+        )
+        .unwrap();
+
+        assert_eq!(result.success_count, 3);
+        assert_eq!(conflict_result.conflicts_saved, 0);
+        assert_todo_parent_child_applied(&conn);
+    }
+
+    fn create_vfs_blob_fk_test_db() -> Connection {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            PRAGMA foreign_keys = ON;
+            CREATE TABLE blobs (
+                hash TEXT PRIMARY KEY,
+                relative_path TEXT NOT NULL,
+                size INTEGER NOT NULL,
+                mime_type TEXT,
+                ref_count INTEGER NOT NULL DEFAULT 0,
+                created_at INTEGER NOT NULL
+            );
+            CREATE TABLE files (
+                id TEXT PRIMARY KEY,
+                blob_hash TEXT,
+                sha256 TEXT NOT NULL UNIQUE,
+                file_name TEXT NOT NULL,
+                size INTEGER NOT NULL,
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                FOREIGN KEY(blob_hash) REFERENCES blobs(hash)
+            );
+            "#,
+        )
+        .unwrap();
+        conn
+    }
+
+    fn blob_metadata_change() -> SyncChangeWithData {
+        SyncChangeWithData {
+            table_name: "blobs".to_string(),
+            record_id: "blob-hash-1".to_string(),
+            operation: ChangeOperation::Insert,
+            data: Some(serde_json::json!({
+                "hash": "blob-hash-1",
+                "relative_path": "bl/ob/blob-hash-1.md",
+                "size": 12,
+                "mime_type": "text/markdown",
+                "ref_count": 1,
+                "created_at": 1780225200000i64
+            })),
+            changed_at: "2026-05-31T00:00:01Z".to_string(),
+            change_log_id: Some(2),
+            database_name: Some("vfs".to_string()),
+            suppress_change_log: Some(true),
+        }
+    }
+
+    fn blob_file_change() -> SyncChangeWithData {
+        SyncChangeWithData {
+            table_name: "files".to_string(),
+            record_id: "file-1".to_string(),
+            operation: ChangeOperation::Insert,
+            data: Some(serde_json::json!({
+                "id": "file-1",
+                "blob_hash": "blob-hash-1",
+                "sha256": "sha256-file-1",
+                "file_name": "blob-backed.md",
+                "size": 12,
+                "created_at": "2026-05-31T00:00:00Z",
+                "updated_at": "2026-05-31T00:00:00Z"
+            })),
+            changed_at: "2026-05-31T00:00:00Z".to_string(),
+            change_log_id: Some(1),
+            database_name: Some("vfs".to_string()),
+            suppress_change_log: Some(true),
+        }
+    }
+
+    fn assert_blob_file_applied(conn: &Connection) {
+        let row: (String, String) = conn
+            .query_row(
+                "SELECT files.blob_hash, blobs.relative_path
+                 FROM files JOIN blobs ON blobs.hash = files.blob_hash
+                 WHERE files.id = 'file-1'",
+                [],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .unwrap();
+        assert_eq!(row.0, "blob-hash-1");
+        assert_eq!(row.1, "bl/ob/blob-hash-1.md");
+    }
+
+    #[test]
+    fn test_apply_downloaded_changes_orders_blob_metadata_before_files() {
+        let conn = create_vfs_blob_fk_test_db();
+        let changes = vec![blob_file_change(), blob_metadata_change()];
+
+        let result = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
+
+        assert_eq!(result.success_count, 2);
+        assert_blob_file_applied(&conn);
+    }
+
+    #[test]
+    fn test_conflict_guard_orders_blob_metadata_before_files() {
+        let conn = create_vfs_blob_fk_test_db();
+        let changes = vec![blob_file_change(), blob_metadata_change()];
+
+        let (result, conflict_result) = SyncManager::apply_downloaded_changes_with_conflict_guard(
+            &conn,
+            &changes,
+            None,
+            conflict_resolver::ConflictPolicy::KeepLatest,
+            Some("cloud-device"),
+            Some("local-device"),
+        )
+        .unwrap();
+
+        assert_eq!(result.success_count, 2);
+        assert_eq!(conflict_result.conflicts_saved, 0);
+        assert_blob_file_applied(&conn);
     }
 
     fn create_resource_alias_test_db() -> Connection {
@@ -7681,6 +8250,29 @@ mod tests {
         let result = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
 
         assert_eq!(result.success_count, 2);
+        assert_resource_alias_result(&conn);
+    }
+
+    #[test]
+    fn test_conflict_guard_business_key_alias_remaps_child_fk() {
+        let conn = create_resource_alias_test_db();
+        let changes = vec![
+            resource_alias_child_change(),
+            resource_alias_parent_change(),
+        ];
+
+        let (result, conflict_result) = SyncManager::apply_downloaded_changes_with_conflict_guard(
+            &conn,
+            &changes,
+            None,
+            conflict_resolver::ConflictPolicy::KeepLatest,
+            Some("cloud-device"),
+            Some("local-device"),
+        )
+        .unwrap();
+
+        assert_eq!(result.success_count, 2);
+        assert_eq!(conflict_result.conflicts_saved, 0);
         assert_resource_alias_result(&conn);
     }
 

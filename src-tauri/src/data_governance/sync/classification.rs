@@ -214,11 +214,11 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             database: "vfs",
             table_name: "blobs",
             primary_key: "hash",
-            category: SyncCategory::FileSync,
+            category: SyncCategory::RowSync,
             conflict_policy: ConflictPolicyClass::NoConflict,
             business_unique_keys: "",
             has_json_blobs: false,
-            merge_notes: "Content-addressed file sync; ref_count is derived",
+            merge_notes: "Content-addressed blob metadata; raw bytes sync through file-level blob sync",
         },
         // --- DerivedRebuild ---
         TableClassification {

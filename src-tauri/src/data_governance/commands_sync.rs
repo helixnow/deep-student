@@ -14,9 +14,9 @@ use super::sync::{
     SyncDirection, SyncExecutionResult, SyncManager, SyncManifest,
 };
 use crate::backup_common::BACKUP_GLOBAL_LIMITER;
-use crate::cloud_storage::{CloudStorage, CloudStorageConfig, create_storage};
+use crate::cloud_storage::{create_storage, CloudStorage, CloudStorageConfig};
 
-use super::commands::{SYNC_LOCK_TIMEOUT_SECS, check_maintenance_mode, try_save_audit_log};
+use super::commands::{check_maintenance_mode, try_save_audit_log, SYNC_LOCK_TIMEOUT_SECS};
 use super::commands_backup::{
     apply_downloaded_changes_to_databases, build_id_column_map, get_active_data_dir,
     get_app_data_dir, resolve_database_path, validate_user_path,

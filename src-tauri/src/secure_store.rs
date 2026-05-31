@@ -210,7 +210,7 @@ impl SecureStore {
             }
         }
 
-        use rand::{RngCore, rngs::OsRng};
+        use rand::{rngs::OsRng, RngCore};
         let mut seed_bytes = [0u8; 32];
         OsRng.fill_bytes(&mut seed_bytes);
         let seed = hex::encode(seed_bytes);
@@ -282,7 +282,7 @@ impl SecureStore {
     fn encrypt_with_key(key: &[u8; 32], value: &str) -> Result<Vec<u8>, SecureStoreError> {
         use aes_gcm::aead::{Aead, KeyInit};
         use aes_gcm::{Aes256Gcm, Key, Nonce};
-        use rand::{RngCore, rngs::OsRng};
+        use rand::{rngs::OsRng, RngCore};
 
         let encryption_key = Key::<Aes256Gcm>::from_slice(key);
         let cipher = Aes256Gcm::new(encryption_key);

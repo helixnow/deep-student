@@ -528,6 +528,13 @@ pub const V20260525_REPAIR_LEGACY_QUESTIONS_CHANGE_LOG_RECORD_IDS: MigrationDef 
     ),
 );
 
+/// V20260526: 为 blobs 元数据添加同步触发器并回填已有行
+pub const V20260526_ADD_BLOB_METADATA_SYNC: MigrationDef = MigrationDef::new(
+    20260526,
+    "add_blob_metadata_sync",
+    include_str!("../../../migrations/vfs/V20260526__add_blob_metadata_sync.sql"),
+);
+
 /// VFS 数据库所有迁移定义
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -561,6 +568,7 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260523_ADD_MISSING_SYNC_COVERAGE,
     V20260524_ADD_CHANGE_LOG_FIELD_DELTAS,
     V20260525_REPAIR_LEGACY_QUESTIONS_CHANGE_LOG_RECORD_IDS,
+    V20260526_ADD_BLOB_METADATA_SYNC,
 ];
 
 /// VFS 迁移集合
@@ -688,12 +696,16 @@ mod tests {
 
     #[test]
     fn test_notes_versions_create_then_drop_is_declared() {
-        assert!(V20260130_INIT
-            .sql
-            .contains("CREATE TABLE IF NOT EXISTS notes_versions"));
-        assert!(V20260214_DROP_NOTES_VERSIONS
-            .sql
-            .contains("DROP TABLE IF EXISTS notes_versions"));
+        assert!(
+            V20260130_INIT
+                .sql
+                .contains("CREATE TABLE IF NOT EXISTS notes_versions")
+        );
+        assert!(
+            V20260214_DROP_NOTES_VERSIONS
+                .sql
+                .contains("DROP TABLE IF EXISTS notes_versions")
+        );
     }
 
     #[test]
