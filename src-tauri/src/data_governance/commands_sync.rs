@@ -1014,7 +1014,7 @@ pub async fn data_governance_run_sync(
             // 下载的变更已包含完整数据，按来源数据库路由并应用
             let mut exec_result = exec_result;
             exec_result.conflicts_detected = 0;
-            let mut total_skipped = 0usize;
+            let mut total_warning_skipped = 0usize;
             if !downloaded_changes.is_empty() {
                 let apply_agg = apply_downloaded_changes_to_databases(
                     &downloaded_changes,
@@ -1022,20 +1022,20 @@ pub async fn data_governance_run_sync(
                     merge_strategy,
                 )?;
                 exec_result.conflicts_detected = apply_agg.total_conflicts;
-                total_skipped = apply_agg.total_skipped;
-                if total_skipped > 0 {
+                total_warning_skipped = apply_agg.total_incomplete_skipped;
+                if total_warning_skipped > 0 {
                     warn!(
                         "[data_governance] 同步完成但有 {} 条变更被跳过（旧格式数据缺失），建议在源设备重新执行完整同步",
-                        total_skipped
+                        total_warning_skipped
                     );
                     exec_result.error_message = Some(format!(
                         "同步已完成，但有 {} 条变更因数据不完整被跳过。建议在源设备重新执行完整同步以补全数据。",
-                        total_skipped
+                        total_warning_skipped
                     ));
                 }
             }
 
-            Ok((exec_result, total_skipped))
+            Ok((exec_result, total_warning_skipped))
         }
         SyncDirection::Bidirectional => {
             // [P0 Fix] Backend enforce prune gap detection
@@ -1072,7 +1072,7 @@ pub async fn data_governance_run_sync(
             // 这确保上传时不会推送已被下载覆盖的过时数据。
             let mut exec_result = exec_result;
             exec_result.conflicts_detected = 0;
-            let mut total_skipped = 0usize;
+            let mut total_warning_skipped = 0usize;
             let mut applied_keys = std::collections::HashSet::new();
             if !downloaded_changes.is_empty() {
                 let apply_agg = apply_downloaded_changes_to_databases(
@@ -1081,16 +1081,16 @@ pub async fn data_governance_run_sync(
                     merge_strategy,
                 )?;
                 exec_result.conflicts_detected = apply_agg.total_conflicts;
-                total_skipped = apply_agg.total_skipped;
+                total_warning_skipped = apply_agg.total_incomplete_skipped;
                 applied_keys = apply_agg.applied_keys;
-                if total_skipped > 0 {
+                if total_warning_skipped > 0 {
                     warn!(
                         "[data_governance] 双向同步完成但有 {} 条变更被跳过（旧格式数据缺失）",
-                        total_skipped
+                        total_warning_skipped
                     );
                     exec_result.error_message = Some(format!(
                         "同步已完成，但有 {} 条变更因数据不完整被跳过。建议在源设备重新执行完整同步以补全数据。",
-                        total_skipped
+                        total_warning_skipped
                     ));
                 }
             }
@@ -1182,7 +1182,7 @@ pub async fn data_governance_run_sync(
                 return Err(format!("上传刷新清单失败: {}", e));
             }
 
-            Ok((exec_result, total_skipped))
+            Ok((exec_result, total_warning_skipped))
         }
     };
 
@@ -1684,7 +1684,7 @@ pub async fn data_governance_import_sync_data(
 
     // 应用变更到本地数据库（v2 格式已含完整数据，按数据库路由）
     let mut total_applied = 0usize;
-    let mut total_skipped = 0usize;
+    let mut total_incomplete_skipped = 0usize;
     let mut total_failed = 0usize;
 
     if !import_data.pending_changes.is_empty() {
@@ -1696,7 +1696,8 @@ pub async fn data_governance_import_sync_data(
         ) {
             Ok(apply_agg) => {
                 total_applied = apply_agg.total_success;
-                total_skipped = apply_agg.total_skipped;
+                let total_skipped = apply_agg.total_skipped;
+                total_incomplete_skipped = apply_agg.total_incomplete_skipped;
                 total_failed = apply_agg.total_failed;
                 info!(
                     "[data_governance] 导入变更应用完成: applied={}, failed={}, skipped={}",
@@ -1723,10 +1724,10 @@ pub async fn data_governance_import_sync_data(
 
     let error_message = if total_failed > 0 {
         Some(format!("{}条变更应用失败", total_failed))
-    } else if total_skipped > 0 {
+    } else if total_incomplete_skipped > 0 {
         Some(format!(
             "导入已完成，但有 {} 条变更因数据不完整被跳过。建议在源设备重新导出完整同步数据。",
-            total_skipped
+            total_incomplete_skipped
         ))
     } else {
         None
@@ -2438,7 +2439,7 @@ async fn execute_download_with_progress_v2(
     // 下载的变更已含完整数据，按数据库路由并应用
     let mut exec_result = exec_result;
     exec_result.conflicts_detected = 0;
-    let mut total_skipped = 0usize;
+    let mut total_warning_skipped = 0usize;
     if !downloaded_changes.is_empty() {
         let total_changes = downloaded_changes.len() as u64;
         emitter
@@ -2448,11 +2449,11 @@ async fn execute_download_with_progress_v2(
         let apply_agg =
             apply_downloaded_changes_to_databases(&downloaded_changes, active_dir, merge_strategy)?;
         exec_result.conflicts_detected = apply_agg.total_conflicts;
-        total_skipped = apply_agg.total_skipped;
-        if total_skipped > 0 {
+        total_warning_skipped = apply_agg.total_incomplete_skipped;
+        if total_warning_skipped > 0 {
             exec_result.error_message = Some(format!(
                 "同步已完成，但有 {} 条变更因数据不完整被跳过。建议在源设备重新执行完整同步以补全数据。",
-                total_skipped
+                total_warning_skipped
             ));
         }
 
@@ -2509,7 +2510,7 @@ async fn execute_download_with_progress_v2(
         }
     }
 
-    Ok((exec_result, total_skipped))
+    Ok((exec_result, total_warning_skipped))
 }
 
 /// 执行双向同步（v2：带进度、多库、完整数据载荷）
@@ -2542,7 +2543,7 @@ async fn execute_bidirectional_with_progress_v2(
     // 这确保上传时不会推送已被下载覆盖的过时数据。
     let mut exec_result = exec_result;
     exec_result.conflicts_detected = 0;
-    let mut total_skipped = 0usize;
+    let mut total_warning_skipped = 0usize;
     let mut applied_keys = std::collections::HashSet::new();
     if !downloaded_changes.is_empty() {
         let total_changes = downloaded_changes.len() as u64;
@@ -2553,12 +2554,12 @@ async fn execute_bidirectional_with_progress_v2(
         let apply_agg =
             apply_downloaded_changes_to_databases(&downloaded_changes, active_dir, merge_strategy)?;
         exec_result.conflicts_detected = apply_agg.total_conflicts;
-        total_skipped = apply_agg.total_skipped;
+        total_warning_skipped = apply_agg.total_incomplete_skipped;
         applied_keys = apply_agg.applied_keys;
-        if total_skipped > 0 {
+        if total_warning_skipped > 0 {
             exec_result.error_message = Some(format!(
                 "同步已完成，但有 {} 条变更因数据不完整被跳过。建议在源设备重新执行完整同步以补全数据。",
-                total_skipped
+                total_warning_skipped
             ));
         }
 
@@ -2759,7 +2760,7 @@ async fn execute_bidirectional_with_progress_v2(
     // 归档本地 __change_log 里超过 30 天的已同步记录（非致命）
     archive_synced_change_logs(active_dir, 30);
 
-    Ok((exec_result, total_skipped))
+    Ok((exec_result, total_warning_skipped))
 }
 
 // ==================== Tombstone API ====================

@@ -80,6 +80,7 @@ pub(super) fn resolve_database_path(db_id: &DatabaseId, active_dir: &Path) -> Pa
 pub(super) struct ApplyToDbsResult {
     pub(super) total_success: usize,
     pub(super) total_skipped: usize,
+    pub(super) total_incomplete_skipped: usize,
     pub(super) total_failed: usize,
     /// 各库的失败明细（db_name → error message），用于精确定位部分失败
     pub(super) db_errors: Vec<(String, String)>,
@@ -293,6 +294,7 @@ pub(super) fn apply_downloaded_changes_to_databases(
     let mut agg = ApplyToDbsResult {
         total_success: 0,
         total_skipped: 0,
+        total_incomplete_skipped: 0,
         total_failed: 0,
         db_errors: Vec::new(),
         applied_keys: std::collections::HashSet::new(),
@@ -424,6 +426,7 @@ pub(super) fn apply_downloaded_changes_to_databases(
             Ok((apply_result, conflict_result)) => {
                 agg.total_success += apply_result.success_count;
                 agg.total_skipped += apply_result.skipped_count;
+                agg.total_incomplete_skipped += apply_result.skipped_incomplete_count;
                 agg.total_failed += apply_result.failure_count;
                 agg.applied_keys.extend(apply_result.applied_keys);
                 if let Some(c) = conflict_result {

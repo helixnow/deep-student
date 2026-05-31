@@ -3459,6 +3459,13 @@ impl SyncManager {
                         .insert((change.table_name.clone(), change.record_id.clone()));
                 } else {
                     result.skipped_count += 1;
+                    if matches!(
+                        change.operation,
+                        ChangeOperation::Insert | ChangeOperation::Update
+                    ) && change.data.is_none()
+                    {
+                        result.skipped_incomplete_count += 1;
+                    }
                 }
 
                 // 精确抑制：标记由本次回放产生的、匹配当前 table+record 的所有
@@ -3620,6 +3627,13 @@ impl SyncManager {
                                 .insert((change.table_name.clone(), change.record_id.clone()));
                         } else {
                             apply_result.skipped_count += 1;
+                            if matches!(
+                                change.operation,
+                                ChangeOperation::Insert | ChangeOperation::Update
+                            ) && change.data.is_none()
+                            {
+                                apply_result.skipped_incomplete_count += 1;
+                            }
                         }
 
                         if let Some(max_id) = pre_log_max_id {
@@ -3714,6 +3728,13 @@ impl SyncManager {
                                 conflict_result.applied += 1;
                             } else {
                                 apply_result.skipped_count += 1;
+                                if matches!(
+                                    change.operation,
+                                    ChangeOperation::Insert | ChangeOperation::Update
+                                ) && change.data.is_none()
+                                {
+                                    apply_result.skipped_incomplete_count += 1;
+                                }
                             }
 
                             if let Some(max_id) = pre_log_max_id {
@@ -4994,6 +5015,9 @@ pub struct ApplyChangesResult {
     pub failure_count: usize,
     /// 跳过的变更数（保留字段，当前主要用于非致命跳过场景）
     pub skipped_count: usize,
+    /// 因旧格式 INSERT/UPDATE 缺少完整 data payload 而跳过的变更数。
+    /// 其他跳过（幂等重复、LWW 本地更新、KeepLocal 本地胜出）不应被当成数据不完整。
+    pub skipped_incomplete_count: usize,
     /// 失败的详情
     pub failures: Vec<ApplyChangeFailure>,
     /// 实际成功落地的记录 key (table_name, record_id)
@@ -5008,6 +5032,7 @@ impl ApplyChangesResult {
             success_count: 0,
             failure_count: 0,
             skipped_count: 0,
+            skipped_incomplete_count: 0,
             failures: Vec::new(),
             applied_keys: std::collections::HashSet::new(),
         }
@@ -5018,6 +5043,7 @@ impl ApplyChangesResult {
         self.success_count += other.success_count;
         self.failure_count += other.failure_count;
         self.skipped_count += other.skipped_count;
+        self.skipped_incomplete_count += other.skipped_incomplete_count;
         self.failures.extend(other.failures);
         self.applied_keys.extend(other.applied_keys);
     }
@@ -6971,6 +6997,10 @@ mod tests {
             result.skipped_count, 1,
             "data=None INSERT should be skipped, not error"
         );
+        assert_eq!(
+            result.skipped_incomplete_count, 1,
+            "data=None INSERT should be counted as incomplete skipped"
+        );
         assert_eq!(result.failure_count, 0);
 
         // 验证记录不存在
@@ -7013,6 +7043,10 @@ mod tests {
             result.skipped_count, 1,
             "data=None UPDATE should be skipped"
         );
+        assert_eq!(
+            result.skipped_incomplete_count, 1,
+            "data=None UPDATE should be counted as incomplete skipped"
+        );
         assert_eq!(result.failure_count, 0);
 
         // 验证记录未被修改
@@ -7054,6 +7088,7 @@ mod tests {
             "DELETE without data should succeed"
         );
         assert_eq!(result.skipped_count, 0);
+        assert_eq!(result.skipped_incomplete_count, 0);
 
         let count: i64 = conn
             .query_row(
@@ -7105,6 +7140,10 @@ mod tests {
             result.skipped_count, 1,
             "data=None INSERT should be skipped"
         );
+        assert_eq!(
+            result.skipped_incomplete_count, 1,
+            "only the data=None change should be counted as incomplete"
+        );
         assert_eq!(result.failure_count, 0, "no failures expected");
 
         let count: i64 = conn
@@ -7115,6 +7154,42 @@ mod tests {
             )
             .unwrap();
         assert_eq!(count, 1, "valid record should still be applied");
+    }
+
+    #[test]
+    fn test_apply_semantically_equal_skip_is_not_incomplete() {
+        let conn = create_test_db_with_business_table();
+
+        conn.execute(
+            "INSERT INTO test_records (id, content, updated_at) VALUES ('same', 'value', '2024-01-01')",
+            [],
+        )
+        .unwrap();
+
+        let changes = vec![SyncChangeWithData {
+            table_name: "test_records".to_string(),
+            record_id: "same".to_string(),
+            operation: ChangeOperation::Update,
+            data: Some(serde_json::json!({
+                "id": "same",
+                "content": "value",
+                "updated_at": "2024-01-01"
+            })),
+            changed_at: "2024-01-01T10:00:00Z".to_string(),
+            change_log_id: None,
+            database_name: None,
+            suppress_change_log: None,
+        }];
+
+        let result = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
+
+        assert_eq!(result.success_count, 0);
+        assert_eq!(result.skipped_count, 1);
+        assert_eq!(
+            result.skipped_incomplete_count, 0,
+            "idempotent/equivalent replay should not surface as incomplete data"
+        );
+        assert_eq!(result.failure_count, 0);
     }
 
     #[test]
