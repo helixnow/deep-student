@@ -84,6 +84,7 @@ devsec/
 
 # Editor directories and files
 .vscode/*
+.trae/*
 !.vscode/extensions.json
 .idea
 .DS_Store

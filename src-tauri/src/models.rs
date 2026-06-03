@@ -1013,6 +1013,10 @@ impl AppError {
         Self::new(AppErrorType::Network, message)
     }
 
+    pub fn authentication(message: impl Into<String>) -> Self {
+        Self::new(AppErrorType::Network, message)
+    }
+
     pub fn unknown(message: impl Into<String>) -> Self {
         Self::new(AppErrorType::Unknown, message)
     }
