@@ -2,13 +2,14 @@
 //!
 //! 基于 suppaftp 的异步 FTP 客户端，支持显式 FTPS（AUTH TLS）
 
+use async_std::io::ReadExt;
 use async_trait::async_trait;
+use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
 use std::path::Path;
-use std::sync::Arc;
 use std::time::Duration;
-use suppaftp::{AsyncFtpStream, AsyncNativeTlsFtpStream, AsyncNativeTlsConnector};
-use tokio::io::{AsyncReadExt, AsyncWriteExt};
+use suppaftp::async_native_tls::TlsConnector;
+use suppaftp::{AsyncFtpStream, AsyncNativeTlsConnector, AsyncNativeTlsFtpStream};
 
 use super::config::FtpConfig;
 use super::traits::{
@@ -62,37 +63,51 @@ impl FtpStorage {
 
         tracing::debug!("[FtpStorage] 正在连接到 {}", address);
 
-        let mut stream = AsyncFtpStream::connect(&address)
-            .await
-            .map_err(|e| AppError::network(format!("FTP 连接失败 {}: {}", address, e)))?;
-
-        // 设置被动模式（PASV）
-        stream
-            .transfer_type(suppaftp::types::FileType::Binary)
-            .await
-            .map_err(|e| AppError::internal(format!("设置 FTP 传输类型失败：{}", e)))?;
-
-        // 如果配置了 TLS，升级为安全连接
         if self.use_tls {
+            // FTPS: 使用 AsyncNativeTlsFtpStream 作为基础类型，
+            // 使得 into_secure 的 Stream 类型参数匹配
+            let mut stream = AsyncNativeTlsFtpStream::connect(&address)
+                .await
+                .map_err(|e| AppError::network(format!("FTP 连接失败 {}: {}", address, e)))?;
+
             tracing::debug!("[FtpStorage] 正在升级到 TLS...");
             let mut secure_stream = stream
-                .into_secure(AsyncNativeTlsConnector::new(), &self.host)
+                .into_secure(
+                    AsyncNativeTlsConnector::from(TlsConnector::new()),
+                    &self.host,
+                )
                 .await
                 .map_err(|e| AppError::network(format!("FTP TLS 升级失败：{}", e)))?;
 
-            // 登录
+            // 登录（在 TLS 升级之后进行，确保凭据加密传输）
             secure_stream
                 .login(&self.username, &self.password)
                 .await
                 .map_err(|e| AppError::authentication(format!("FTP 登录失败：{}", e)))?;
 
+            // 登录后再设置传输类型
+            secure_stream
+                .transfer_type(suppaftp::types::FileType::Binary)
+                .await
+                .map_err(|e| AppError::internal(format!("设置 FTP 传输类型失败：{}", e)))?;
+
             Ok(FtpClient::Secure(secure_stream))
         } else {
-            // 明文登录（仅 localhost 允许）
+            // 明文 FTP（仅 localhost 允许）
+            let mut stream = AsyncFtpStream::connect(&address)
+                .await
+                .map_err(|e| AppError::network(format!("FTP 连接失败 {}: {}", address, e)))?;
+
+            // 先登录，再设置传输类型（有些服务器要求先认证）
             stream
                 .login(&self.username, &self.password)
                 .await
                 .map_err(|e| AppError::authentication(format!("FTP 登录失败：{}", e)))?;
+
+            stream
+                .transfer_type(suppaftp::types::FileType::Binary)
+                .await
+                .map_err(|e| AppError::internal(format!("设置 FTP 传输类型失败：{}", e)))?;
 
             Ok(FtpClient::Plain(stream))
         }
@@ -227,90 +242,133 @@ impl FtpClient {
         Ok(())
     }
 
-    async fn put_file<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
+    /// suppaftp 6.0.7: put_file(filename, reader) 接收远程文件名和一个 async_std::io::Read + Unpin 的 reader
+    async fn put_file(
+        &mut self,
+        filename: &str,
+        reader: &mut (impl async_std::io::Read + std::marker::Unpin),
+    ) -> Result<u64> {
         match self {
             FtpClient::Plain(stream) => stream
-                .put_file(path)
+                .put_file(filename, reader)
                 .await
-                .map_err(|e| AppError::file_system(format!("FTP 上传失败：{}", e)))?,
+                .map_err(|e| AppError::file_system(format!("FTP 上传失败：{}", e))),
             FtpClient::Secure(stream) => stream
-                .put_file(path)
+                .put_file(filename, reader)
                 .await
-                .map_err(|e| AppError::file_system(format!("FTP 上传失败：{}", e)))?,
+                .map_err(|e| AppError::file_system(format!("FTP 上传失败：{}", e))),
         }
-        Ok(())
     }
 
-    async fn get_file<P: AsRef<Path>>(&mut self, path: P) -> Result<()> {
+    /// suppaftp 6.0.7: 使用 retr_as_stream 获取数据流后用 ReadExt 逐块读取
+    async fn retr_to_vec(&mut self, filename: &str) -> Result<Vec<u8>> {
         match self {
-            FtpClient::Plain(stream) => stream
-                .get_file(path)
-                .await
-                .map_err(|e| AppError::file_system(format!("FTP 下载失败：{}", e)))?,
-            FtpClient::Secure(stream) => stream
-                .get_file(path)
-                .await
-                .map_err(|e| AppError::file_system(format!("FTP 下载失败：{}", e)))?,
+            FtpClient::Plain(stream) => {
+                let mut data_stream = stream
+                    .retr_as_stream(filename)
+                    .await
+                    .map_err(|e| AppError::file_system(format!("FTP 下载失败：{}", e)))?;
+                let mut buf = Vec::new();
+                let mut tmp = [0u8; 8192];
+                loop {
+                    let n = data_stream
+                        .read(&mut tmp)
+                        .await
+                        .map_err(|e| AppError::file_system(format!("FTP 读取数据失败：{}", e)))?;
+                    if n == 0 {
+                        break;
+                    }
+                    buf.extend_from_slice(&tmp[..n]);
+                }
+                stream
+                    .finalize_retr_stream(data_stream)
+                    .await
+                    .map_err(|e| AppError::file_system(format!("FTP 下载结束失败：{}", e)))?;
+                Ok(buf)
+            }
+            FtpClient::Secure(stream) => {
+                let mut data_stream = stream
+                    .retr_as_stream(filename)
+                    .await
+                    .map_err(|e| AppError::file_system(format!("FTP 下载失败：{}", e)))?;
+                let mut buf = Vec::new();
+                let mut tmp = [0u8; 8192];
+                loop {
+                    let n = data_stream
+                        .read(&mut tmp)
+                        .await
+                        .map_err(|e| AppError::file_system(format!("FTP 读取数据失败：{}", e)))?;
+                    if n == 0 {
+                        break;
+                    }
+                    buf.extend_from_slice(&tmp[..n]);
+                }
+                stream
+                    .finalize_retr_stream(data_stream)
+                    .await
+                    .map_err(|e| AppError::file_system(format!("FTP 下载结束失败：{}", e)))?;
+                Ok(buf)
+            }
         }
-        Ok(())
     }
 
+    /// suppaftp 6.0.7: list 返回 Result<Vec<String>>
     async fn list(&mut self, path: Option<&str>) -> Result<Vec<String>> {
         match self {
-            FtpClient::Plain(stream) => Ok(stream
+            FtpClient::Plain(stream) => stream
                 .list(path)
                 .await
-                .map_err(|e| AppError::file_system(format!("FTP LIST 失败：{}", e)))?
-                .unwrap_or_default()),
-            FtpClient::Secure(stream) => Ok(stream
+                .map_err(|e| AppError::file_system(format!("FTP LIST 失败：{}", e))),
+            FtpClient::Secure(stream) => stream
                 .list(path)
                 .await
-                .map_err(|e| AppError::file_system(format!("FTP LIST 失败：{}", e)))?
-                .unwrap_or_default()),
+                .map_err(|e| AppError::file_system(format!("FTP LIST 失败：{}", e))),
         }
     }
 
-    async fn delete(&mut self, path: &str) -> Result<()> {
+    /// suppaftp 6.0.7: 删除文件的方法名是 rm
+    async fn rm(&mut self, path: &str) -> Result<()> {
         match self {
             FtpClient::Plain(stream) => stream
-                .delete(path)
+                .rm(path)
                 .await
-                .map_err(|e| AppError::file_system(format!("FTP DELETE 失败：{}", e)))?,
+                .map_err(|e| AppError::file_system(format!("FTP DELETE 失败：{}", e))),
             FtpClient::Secure(stream) => stream
-                .delete(path)
+                .rm(path)
                 .await
-                .map_err(|e| AppError::file_system(format!("FTP DELETE 失败：{}", e)))?,
+                .map_err(|e| AppError::file_system(format!("FTP DELETE 失败：{}", e))),
         }
-        Ok(())
     }
 
+    /// suppaftp 6.0.7: size 返回 FtpResult<usize>，转为 u64
     async fn size(&mut self, path: &str) -> Result<u64> {
         match self {
-            FtpClient::Plain(stream) => Ok(stream
+            FtpClient::Plain(stream) => stream
                 .size(path)
                 .await
-                .map_err(|e| AppError::file_system(format!("FTP SIZE 失败：{}", e)))?
-                .unwrap_or(0)),
-            FtpClient::Secure(stream) => Ok(stream
+                .map(|s| s as u64)
+                .map_err(|e| AppError::file_system(format!("FTP SIZE 失败：{}", e))),
+            FtpClient::Secure(stream) => stream
                 .size(path)
                 .await
-                .map_err(|e| AppError::file_system(format!("FTP SIZE 失败：{}", e)))?
-                .unwrap_or(0)),
+                .map(|s| s as u64)
+                .map_err(|e| AppError::file_system(format!("FTP SIZE 失败：{}", e))),
         }
     }
 
-    async fn mdtm(&mut self, path: &str) -> Result<chrono::DateTime<chrono::Utc>> {
+    /// suppaftp 6.0.7: mdtm 返回 FtpResult<NaiveDateTime>，转为 DateTime<Utc>
+    async fn mdtm(&mut self, path: &str) -> Result<DateTime<Utc>> {
         match self {
-            FtpClient::Plain(stream) => Ok(stream
+            FtpClient::Plain(stream) => stream
                 .mdtm(path)
                 .await
-                .map_err(|e| AppError::file_system(format!("FTP MDTM 失败：{}", e)))?
-                .unwrap_or_else(|| chrono::Utc::now())),
-            FtpClient::Secure(stream) => Ok(stream
+                .map(|dt| DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc))
+                .map_err(|e| AppError::file_system(format!("FTP MDTM 失败：{}", e))),
+            FtpClient::Secure(stream) => stream
                 .mdtm(path)
                 .await
-                .map_err(|e| AppError::file_system(format!("FTP MDTM 失败：{}", e)))?
-                .unwrap_or_else(|| chrono::Utc::now())),
+                .map(|dt| DateTime::<Utc>::from_naive_utc_and_offset(dt, Utc))
+                .map_err(|e| AppError::file_system(format!("FTP MDTM 失败：{}", e))),
         }
     }
 
@@ -338,7 +396,10 @@ impl CloudStorage for FtpStorage {
     async fn check_connection(&self) -> Result<()> {
         self.with_retry(|| async {
             let mut client = self.create_client().await?;
-            // 尝试切换到根目录
+            // 先确保根目录存在（与 put / put_file 保持一致）
+            client.cwd("/").await?;
+            self.ensure_directory(&mut client, &self.root).await?;
+            // 再确认可以切换进去
             client.cwd(&format!("/{}", self.root)).await?;
             client.quit().await?;
             Ok(())
@@ -361,37 +422,18 @@ impl CloudStorage for FtpStorage {
             if let Some(parent) = key.rfind('/') {
                 let parent_path = &key[..parent];
                 if !parent_path.is_empty() {
-                    self.ensure_directory(&mut client, parent_path).await?;
-                    client.cwd(&format!("/{}/{}", self.root, parent_path))
+                    let full_parent = format!("{}/{}", self.root, parent_path);
+                    self.ensure_directory(&mut client, &full_parent).await?;
+                    client
+                        .cwd(&format!("/{}", full_parent))
                         .await?;
                 }
             }
 
-            // 创建临时文件
-            let temp_file = tempfile::Builder::new()
-                .prefix("ftp-upload-")
-                .tempfile()
-                .map_err(|e| AppError::file_system(format!("创建临时文件失败：{}", e)))?;
-            let temp_path = temp_file.path().to_path_buf();
-
-            // 写入数据
-            let mut file = tokio::fs::File::create(&temp_path)
-                .await
-                .map_err(|e| AppError::file_system(format!("创建临时文件失败：{}", e)))?;
-            file.write_all(data)
-                .await
-                .map_err(|e| AppError::file_system(format!("写入临时文件失败：{}", e)))?;
-            file.flush()
-                .await
-                .map_err(|e| AppError::file_system(format!("刷新临时文件失败：{}", e)))?;
-            drop(file);
-
-            // 上传文件
+            // 使用 async_std::io::Cursor 包装内存数据为 reader
             let filename = key.rfind('/').map(|i| &key[i + 1..]).unwrap_or(key);
-            client.put_file(&temp_path).await?;
-
-            // 清理临时文件
-            let _ = std::fs::remove_file(&temp_path);
+            let mut cursor = async_std::io::Cursor::new(data);
+            client.put_file(filename, &mut cursor).await?;
 
             client.quit().await?;
             Ok(())
@@ -403,22 +445,33 @@ impl CloudStorage for FtpStorage {
         self.with_retry(|| async {
             let mut client = self.create_client().await?;
 
-            // 切换到根目录
+            // 确保根目录存在并切换
+            client.cwd("/").await?;
+            self.ensure_directory(&mut client, &self.root).await?;
             client.cwd(&format!("/{}", self.root)).await?;
 
-            // 检查文件是否存在
+            // 切换到文件所在目录
             let filename = key.rfind('/').map(|i| &key[i + 1..]).unwrap_or(key);
             if let Some(parent) = key.rfind('/') {
                 let parent_path = &key[..parent];
                 if !parent_path.is_empty() {
-                    client.cwd(parent_path).await?;
+                    let full_parent = format!("{}/{}", self.root, parent_path);
+                    self.ensure_directory(&mut client, &full_parent).await?;
+                    client.cwd(&format!("/{}", full_parent)).await?;
                 }
             }
 
-            // 获取文件大小
-            let size = client.size(filename).await?;
+            // 检查文件是否存在
+            let size = match client.size(filename).await {
+                Ok(s) => s,
+                Err(_) => {
+                    client.quit().await?;
+                    return Ok(None);
+                }
+            };
+
             if size == 0 {
-                // 尝试获取修改时间来判断文件是否存在
+                // 再通过 mdtm 确认
                 match client.mdtm(filename).await {
                     Ok(_) => {}
                     Err(_) => {
@@ -428,25 +481,9 @@ impl CloudStorage for FtpStorage {
                 }
             }
 
-            // 创建临时文件
-            let temp_file = tempfile::Builder::new()
-                .prefix("ftp-download-")
-                .tempfile()
-                .map_err(|e| AppError::file_system(format!("创建临时文件失败：{}", e)))?;
-            let temp_path = temp_file.path().to_path_buf();
+            let data = client.retr_to_vec(filename).await?;
 
-            // 下载文件
-            client.get_file(&temp_path).await?;
             client.quit().await?;
-
-            // 读取文件内容
-            let data = tokio::fs::read(&temp_path)
-                .await
-                .map_err(|e| AppError::file_system(format!("读取临时文件失败：{}", e)))?;
-
-            // 清理临时文件
-            let _ = std::fs::remove_file(&temp_path);
-
             Ok(Some(data))
         })
         .await
@@ -456,13 +493,17 @@ impl CloudStorage for FtpStorage {
         self.with_retry(|| async {
             let mut client = self.create_client().await?;
 
-            // 切换到根目录
+            // 确保根目录存在并切换
+            client.cwd("/").await?;
+            self.ensure_directory(&mut client, &self.root).await?;
             client.cwd(&format!("/{}", self.root)).await?;
 
-            // 如果有 prefix，切换到对应目录
+            // 如果有 prefix，确保目录存在并切换
             if !prefix.is_empty() {
                 let prefix_path = prefix.trim_matches('/');
-                client.cwd(prefix_path).await?;
+                let full_prefix = format!("{}/{}", self.root, prefix_path);
+                self.ensure_directory(&mut client, &full_prefix).await?;
+                client.cwd(&format!("/{}", full_prefix)).await?;
             }
 
             // 列出文件
@@ -505,7 +546,10 @@ impl CloudStorage for FtpStorage {
                     format!("{}/{}", prefix.trim_matches('/'), filename)
                 };
 
-                let modified = client.mdtm(&file_path).await.unwrap_or_else(|_| chrono::Utc::now());
+                let modified = client
+                    .mdtm(&file_path)
+                    .await
+                    .unwrap_or_else(|_| Utc::now());
 
                 files.push(FileInfo {
                     key: full_key,
@@ -528,7 +572,9 @@ impl CloudStorage for FtpStorage {
         self.with_retry(|| async {
             let mut client = self.create_client().await?;
 
-            // 切换到根目录
+            // 确保根目录存在并切换
+            client.cwd("/").await?;
+            self.ensure_directory(&mut client, &self.root).await?;
             client.cwd(&format!("/{}", self.root)).await?;
 
             // 切换到文件所在目录
@@ -536,12 +582,13 @@ impl CloudStorage for FtpStorage {
             if let Some(parent) = key.rfind('/') {
                 let parent_path = &key[..parent];
                 if !parent_path.is_empty() {
-                    client.cwd(parent_path).await?;
+                    let full_parent = format!("{}/{}", self.root, parent_path);
+                    client.cwd(&format!("/{}", full_parent)).await?;
                 }
             }
 
-            // 删除文件
-            match client.delete(filename).await {
+            // suppaftp 6.0.7: 删除文件使用 rm
+            match client.rm(filename).await {
                 Ok(_) => {}
                 Err(e) => {
                     // 文件不存在也算成功
@@ -562,7 +609,9 @@ impl CloudStorage for FtpStorage {
         self.with_retry(|| async {
             let mut client = self.create_client().await?;
 
-            // 切换到根目录
+            // 确保根目录存在并切换
+            client.cwd("/").await?;
+            self.ensure_directory(&mut client, &self.root).await?;
             client.cwd(&format!("/{}", self.root)).await?;
 
             // 切换到文件所在目录
@@ -570,11 +619,12 @@ impl CloudStorage for FtpStorage {
             if let Some(parent) = key.rfind('/') {
                 let parent_path = &key[..parent];
                 if !parent_path.is_empty() {
-                    client.cwd(parent_path).await?;
+                    let full_parent = format!("{}/{}", self.root, parent_path);
+                    client.cwd(&format!("/{}", full_parent)).await?;
                 }
             }
 
-            // 获取文件大小
+            // 获取文件大小（suppaftp 6.0.7 返回 usize，已转为 u64）
             let size = match client.size(filename).await {
                 Ok(size) => size,
                 Err(_) => {
@@ -638,50 +688,28 @@ impl CloudStorage for FtpStorage {
             if let Some(parent) = key.rfind('/') {
                 let parent_path = &key[..parent];
                 if !parent_path.is_empty() {
-                    self.ensure_directory(&mut client, parent_path).await?;
-                    client.cwd(&format!("/{}/{}", self.root, parent_path))
+                    let full_parent = format!("{}/{}", self.root, parent_path);
+                    self.ensure_directory(&mut client, &full_parent).await?;
+                    client
+                        .cwd(&format!("/{}", full_parent))
                         .await?;
                 }
             }
 
-            // 上传文件
             let filename = key.rfind('/').map(|i| &key[i + 1..]).unwrap_or(key);
 
-            // 读取文件并上传
-            let mut file = tokio::fs::File::open(local_path)
+            // 读取文件内容到内存，用 async_std::io::Cursor 包装后上传
+            let data = tokio::fs::read(local_path)
                 .await
-                .map_err(|e| AppError::file_system(format!("打开文件失败：{}", e)))?;
+                .map_err(|e| AppError::file_system(format!("读取文件失败：{}", e)))?;
 
-            // 创建临时文件用于上传（suppaftp 需要文件路径）
-            let temp_file = tempfile::Builder::new()
-                .prefix("ftp-upload-")
-                .tempfile()
-                .map_err(|e| AppError::file_system(format!("创建临时文件失败：{}", e)))?;
-            let temp_path = temp_file.path().to_path_buf();
-
-            // 复制文件内容
-            let mut temp_writer = tokio::fs::File::create(&temp_path)
-                .await
-                .map_err(|e| AppError::file_system(format!("创建临时文件失败：{}", e)))?;
-            tokio::io::copy(&mut file, &mut temp_writer)
-                .await
-                .map_err(|e| AppError::file_system(format!("复制文件失败：{}", e)))?;
-            temp_writer
-                .flush()
-                .await
-                .map_err(|e| AppError::file_system(format!("刷新临时文件失败：{}", e)))?;
-            drop(temp_writer);
-
-            // 上传
-            client.put_file(&temp_path).await?;
+            let mut cursor = async_std::io::Cursor::new(&data[..]);
+            client.put_file(filename, &mut cursor).await?;
 
             // 报告进度
             if let Some(ref cb) = progress {
                 cb(file_size, file_size);
             }
-
-            // 清理临时文件
-            let _ = std::fs::remove_file(&temp_path);
 
             client.quit().await?;
 
@@ -708,7 +736,9 @@ impl CloudStorage for FtpStorage {
                 cb(0, total_size);
             }
 
-            // 切换到根目录
+            // 确保根目录存在并切换
+            client.cwd("/").await?;
+            self.ensure_directory(&mut client, &self.root).await?;
             client.cwd(&format!("/{}", self.root)).await?;
 
             // 切换到文件所在目录
@@ -716,7 +746,8 @@ impl CloudStorage for FtpStorage {
             if let Some(parent) = key.rfind('/') {
                 let parent_path = &key[..parent];
                 if !parent_path.is_empty() {
-                    client.cwd(parent_path).await?;
+                    let full_parent = format!("{}/{}", self.root, parent_path);
+                    client.cwd(&format!("/{}", full_parent)).await?;
                 }
             }
 
@@ -727,41 +758,13 @@ impl CloudStorage for FtpStorage {
                     .map_err(|e| AppError::file_system(format!("创建目录失败：{}", e)))?;
             }
 
-            // 创建临时下载文件
-            let temp_file = tempfile::Builder::new()
-                .prefix("ftp-download-")
-                .tempfile_in(local_path.parent().unwrap_or(Path::new(".")))
-                .map_err(|e| AppError::file_system(format!("创建临时文件失败：{}", e)))?;
-            let temp_path = temp_file.path().to_path_buf();
-
-            // 下载文件
-            client.get_file(&temp_path).await?;
+            // 下载到内存
+            let data = client.retr_to_vec(filename).await?;
             client.quit().await?;
 
-            // 计算校验和并读取文件
+            // 计算校验和
             let mut hasher = Sha256::new();
-            let mut file = tokio::fs::File::open(&temp_path)
-                .await
-                .map_err(|e| AppError::file_system(format!("打开临时文件失败：{}", e)))?;
-            let mut buffer = vec![0u8; 8192];
-            let mut downloaded = 0u64;
-
-            loop {
-                let bytes_read = file
-                    .read(&mut buffer)
-                    .await
-                    .map_err(|e| AppError::file_system(format!("读取临时文件失败：{}", e)))?;
-                if bytes_read == 0 {
-                    break;
-                }
-                hasher.update(&buffer[..bytes_read]);
-                downloaded += bytes_read as u64;
-
-                if let Some(ref cb) = progress {
-                    cb(downloaded, total_size);
-                }
-            }
-
+            hasher.update(&data);
             let checksum = format!("{:x}", hasher.finalize());
 
             // 验证校验和
@@ -775,14 +778,25 @@ impl CloudStorage for FtpStorage {
                 }
             }
 
-            // 移动到目标位置
-            tokio::fs::rename(&temp_path, local_path)
+            // 写入临时文件
+            let temp_file = tempfile::Builder::new()
+                .prefix("ftp-download-")
+                .tempfile_in(local_path.parent().unwrap_or_else(|| Path::new(".")))
+                .map_err(|e| AppError::file_system(format!("创建临时文件失败：{}", e)))?;
+            let temp_path = temp_file.path().to_path_buf();
+
+            tokio::fs::write(&temp_path, &data)
                 .await
-                .map_err(|e| AppError::file_system(format!("保存文件失败：{}", e)))?;
+                .map_err(|e| AppError::file_system(format!("写入临时文件失败：{}", e)))?;
 
             if let Some(ref cb) = progress {
                 cb(total_size, total_size);
             }
+
+            // 原子重命名
+            tokio::fs::rename(&temp_path, local_path)
+                .await
+                .map_err(|e| AppError::file_system(format!("保存文件失败：{}", e)))?;
 
             Ok(checksum)
         })
@@ -797,8 +811,14 @@ mod tests {
     #[test]
     fn test_join_paths() {
         assert_eq!(FtpStorage::join_paths("root", "file.txt"), "root/file.txt");
-        assert_eq!(FtpStorage::join_paths("root/", "file.txt"), "root/file.txt");
-        assert_eq!(FtpStorage::join_paths("root", "/file.txt"), "root/file.txt");
+        assert_eq!(
+            FtpStorage::join_paths("root/", "file.txt"),
+            "root/file.txt"
+        );
+        assert_eq!(
+            FtpStorage::join_paths("root", "/file.txt"),
+            "root/file.txt"
+        );
         assert_eq!(FtpStorage::join_paths("", "file.txt"), "file.txt");
         assert_eq!(FtpStorage::join_paths("root", ""), "root");
         assert_eq!(FtpStorage::join_paths("", ""), "");

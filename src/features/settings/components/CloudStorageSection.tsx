@@ -350,7 +350,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         if (!['http:', 'https:'].includes(url.protocol)) return false;
       } catch { return false; }
       return true;
-    } else {
+    } else if (provider === 's3') {
       const endpoint = s3Config.endpoint.trim();
       if (!endpoint || !s3Config.bucket.trim() || !s3Config.accessKeyId.trim() || !s3Config.secretAccessKey.trim()) return false;
       try {
@@ -358,8 +358,17 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         if (!['http:', 'https:'].includes(url.protocol)) return false;
       } catch { return false; }
       return true;
+    } else {
+      // FTP provider
+      const host = ftpConfig.host.trim();
+      const username = ftpConfig.username.trim();
+      const password = ftpConfig.password.trim();
+      if (!host || !username || !password) return false;
+      // Validate port range
+      if (ftpConfig.port < 1 || ftpConfig.port > 65535) return false;
+      return true;
     }
-  }, [provider, webdavConfig, s3Config]);
+  }, [provider, webdavConfig, s3Config, ftpConfig]);
 
   const resolveBackupId = useCallback((job: BackupJobSummary | null): string | null => {
     const stats = job?.result?.stats as Record<string, unknown> | undefined;

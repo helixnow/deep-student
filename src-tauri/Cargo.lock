@@ -3089,6 +3089,7 @@ dependencies = [
  "arrow-array",
  "arrow-schema",
  "assert_matches",
+ "async-std",
  "async-trait",
  "aws-config",
  "aws-sdk-s3",
