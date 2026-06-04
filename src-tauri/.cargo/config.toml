@@ -1,11 +1,6 @@
 [build]
 # rustc-wrapper = "sccache"  # Windows 开发环境临时禁用
 
-jobs = 10
-
-# 2. 增量编译：确保开启，让 Rust 只重新编译改动过的部分
-incremental = true
-
 # Windows 本地编译链接器配置 - 解决内存不足问题
 [target.x86_64-pc-windows-msvc]
 rustflags = ["-C", "link-arg=/INCREMENTAL:NO", "-C", "link-arg=/STACK:16777216"]
