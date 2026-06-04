@@ -269,11 +269,7 @@ impl CloudStorageConfig {
                 if config.password.trim().is_empty() {
                     return Err("FTP 密码不能为空".into());
                 }
-                // 非 localhost 且 use_tls=true 时强制使用 TLS
-                let is_local = Self::is_local_ftp_host(&config.host);
-                if !is_local && !config.use_tls {
-                    return Err("FTP 连接必须使用 TLS（仅 localhost 允许明文）".into());
-                }
+                // 允许不安全的 FTP 使用（不强制 TLS）
                 Ok(())
             }
         }

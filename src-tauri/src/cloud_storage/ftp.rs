@@ -1,6 +1,6 @@
 //! FTP/FTPS 存储实现
 //!
-//! 基于 suppaftp 的异步 FTP 客户端，支持显式 FTPS（AUTH TLS）
+//! 基于 suppaftp 的异步 FTP 客户端，支持显式 FTPS（AUTH TLS）和明文 FTP
 
 use async_std::io::ReadExt;
 use async_trait::async_trait;
@@ -34,12 +34,8 @@ impl FtpStorage {
             return Err(AppError::validation("FTP host 不能为空"));
         }
 
-        let is_local = Self::is_local_ftp_host(&config.host);
-        if !is_local && !config.use_tls {
-            return Err(AppError::configuration(
-                "FTP 连接必须使用 TLS 以保护凭据（仅 localhost 允许明文）".to_string(),
-            ));
-        }
+        // 允许不安全的 FTP 使用，不强制要求使用 TLS
+        // 注意：明文 FTP 会暴露凭据和数据，建议在生产环境使用 FTPS
 
         Ok(Self {
             host: config.host.trim().to_string(),
@@ -93,7 +89,7 @@ impl FtpStorage {
 
             Ok(FtpClient::Secure(secure_stream))
         } else {
-            // 明文 FTP（仅 localhost 允许）
+            // 明文 FTP（不推荐用于生产环境）
             let mut stream = AsyncFtpStream::connect(&address)
                 .await
                 .map_err(|e| AppError::network(format!("FTP 连接失败 {}: {}", address, e)))?;
