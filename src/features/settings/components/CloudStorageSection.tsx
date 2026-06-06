@@ -70,6 +70,13 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     region: '',
     pathStyle: false,
   });
+  const [ftpConfig, setFtpConfig] = useState<cloudApi.FtpConfig>({
+    host: '',
+    port: 21,
+    username: '',
+    password: '',
+    useTls: false,
+  });
   const [root, setRoot] = useState('deep-student-sync');
 
   // 端到端加密密码（可选）
@@ -79,6 +86,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   // UI 状态
   const [showPassword, setShowPassword] = useState(false);
   const [showSecretKey, setShowSecretKey] = useState(false);
+  const [showFtpPassword, setShowFtpPassword] = useState(false);
   const [testing, setTesting] = useState(false);
   const [connectionStatus, setConnectionStatus] = useState<'unknown' | 'connected' | 'failed'>('unknown');
   
@@ -150,6 +158,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           if (config.s3) {
             setS3Config(prev => ({ ...prev, ...config.s3, secretAccessKey: '' }));
           }
+          if (config.ftp) {
+            setFtpConfig(prev => ({ ...prev, ...config.ftp, password: '' }));
+          }
           if (config.root) setRoot(config.root);
           configLoaded = true;
         } catch (e: unknown) {
@@ -210,6 +221,9 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
           if (credentials.s3SecretAccessKey) {
             setS3Config(prev => ({ ...prev, secretAccessKey: credentials.s3SecretAccessKey! }));
           }
+          if (credentials.ftpPassword) {
+            setFtpConfig(prev => ({ ...prev, password: credentials.ftpPassword! }));
+          }
           if (credentials.encryptionPassword) {
             setEncryptionPassword(credentials.encryptionPassword);
           }
@@ -228,10 +242,11 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       provider,
       webdav: provider === 'webdav' ? webdavConfig : undefined,
       s3: provider === 's3' ? s3Config : undefined,
+      ftp: provider === 'ftp' ? ftpConfig : undefined,
       root,
       encryptionPassword: encryptionPassword || undefined,
     };
-  }, [provider, webdavConfig, s3Config, root, encryptionPassword]);
+  }, [provider, webdavConfig, s3Config, ftpConfig, root, encryptionPassword]);
 
   // 保存配置
   const saveConfig = useCallback(async () => {
@@ -258,6 +273,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       await cloudApi.saveCredentials({
         webdavPassword: webdavConfig.password || undefined,
         s3SecretAccessKey: s3Config.secretAccessKey || undefined,
+        ftpPassword: ftpConfig.password || undefined,
         encryptionPassword: encryptionPassword || undefined,
       });
       showGlobalNotification('success', t('cloudStorage:messages.configSaved'));
@@ -266,7 +282,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
       showGlobalNotification('warning', t('cloudStorage:messages.configSavedButCredentialsFailed'));
     }
     onConfigChanged?.();
-  }, [buildConfig, webdavConfig.password, s3Config.secretAccessKey, encryptionPassword, t, onConfigChanged]);
+  }, [buildConfig, webdavConfig.password, s3Config.secretAccessKey, ftpConfig.password, encryptionPassword, t, onConfigChanged]);
 
   // 清除配置
   const clearConfig = useCallback(async () => {
@@ -282,6 +298,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
     setOpProgress(null);
     setWebdavConfig({ endpoint: '', username: '', password: '' });
     setS3Config({ endpoint: '', bucket: '', accessKeyId: '', secretAccessKey: '', region: '', pathStyle: false });
+    setFtpConfig({ host: '', port: 21, username: '', password: '', useTls: false });
     setRoot('deep-student-sync');
     setEncryptionPassword('');
     setConnectionStatus('unknown');
@@ -341,7 +358,7 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         if (!['http:', 'https:'].includes(url.protocol)) return false;
       } catch { return false; }
       return true;
-    } else {
+    } else if (provider === 's3') {
       const endpoint = s3Config.endpoint.trim();
       if (!endpoint || !s3Config.bucket.trim() || !s3Config.accessKeyId.trim() || !s3Config.secretAccessKey.trim()) return false;
       try {
@@ -349,8 +366,17 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
         if (!['http:', 'https:'].includes(url.protocol)) return false;
       } catch { return false; }
       return true;
+    } else {
+      // FTP provider
+      const host = ftpConfig.host.trim();
+      const username = ftpConfig.username.trim();
+      const password = ftpConfig.password.trim();
+      if (!host || !username || !password) return false;
+      // Validate port range
+      if (ftpConfig.port < 1 || ftpConfig.port > 65535) return false;
+      return true;
     }
-  }, [provider, webdavConfig, s3Config]);
+  }, [provider, webdavConfig, s3Config, ftpConfig]);
 
   const resolveBackupId = useCallback((job: BackupJobSummary | null): string | null => {
     const stats = job?.result?.stats as Record<string, unknown> | undefined;
@@ -656,6 +682,26 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
               : t('cloudStorage:provider.s3Desc')}
           </span>
         </NotionButton>
+        <NotionButton
+          variant="ghost"
+          size="sm"
+          onClick={() => setProvider('ftp')}
+          className={`relative !h-auto !justify-start flex-col items-start gap-1 !rounded-lg border-2 !p-3 text-left ${
+            provider === 'ftp'
+              ? 'border-primary bg-primary/5'
+              : 'border-border bg-transparent hover:bg-[var(--interactive-hover)]'
+          }`}
+        >
+          {provider === 'ftp' && (
+            <div className="absolute right-2 top-2">
+              <CheckCircle size={16} className="text-primary" />
+            </div>
+          )}
+          <span className="font-medium">{t('cloudStorage:provider.ftp')}</span>
+          <span className="text-xs text-muted-foreground line-clamp-2">
+            {t('cloudStorage:provider.ftpDesc')}
+          </span>
+        </NotionButton>
       </div>
 
       <Tabs value={provider} onValueChange={(v) => setProvider(v as cloudApi.StorageProvider)}>
@@ -771,6 +817,71 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
                   </span>
                 </Label>
               </div>
+            </div>
+          </TabsContent>
+
+          {/* FTP 配置 */}
+          <TabsContent value="ftp" className="space-y-4 mt-0">
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="ftp-host">{t('cloudStorage:ftp.host')}</Label>
+                <Input
+                  id="ftp-host"
+                  placeholder={t('cloudStorage:ftp.hostPlaceholder')}
+                  value={ftpConfig.host}
+                  onChange={(e) => setFtpConfig({ ...ftpConfig, host: e.target.value })}
+                />
+                <p className="text-xs text-muted-foreground">{t('cloudStorage:ftp.hostHint')}</p>
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ftp-port">{t('cloudStorage:ftp.port')}</Label>
+                <Input
+                  id="ftp-port"
+                  type="number"
+                  placeholder={t('cloudStorage:ftp.portPlaceholder')}
+                  value={ftpConfig.port}
+                  onChange={(e) => setFtpConfig({ ...ftpConfig, port: parseInt(e.target.value) || 21 })}
+                />
+                <p className="text-xs text-muted-foreground">{t('cloudStorage:ftp.portHint')}</p>
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label htmlFor="ftp-username">{t('cloudStorage:ftp.username')}</Label>
+                <Input
+                  id="ftp-username"
+                  placeholder={t('cloudStorage:ftp.usernamePlaceholder')}
+                  value={ftpConfig.username}
+                  onChange={(e) => setFtpConfig({ ...ftpConfig, username: e.target.value })}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label htmlFor="ftp-password">{t('cloudStorage:ftp.password')}</Label>
+                <ApiKeyField
+                  id="ftp-password"
+                  placeholder={t('cloudStorage:ftp.passwordPlaceholder')}
+                  value={ftpConfig.password}
+                  onChange={(e) => setFtpConfig({ ...ftpConfig, password: e.target.value })}
+                  revealed={showFtpPassword}
+                  canReveal={ftpConfig.password.trim().length > 0}
+                  onToggle={() => setShowFtpPassword(!showFtpPassword)}
+                  showLabel={t('common:securePassword.showPassword')}
+                  hideLabel={t('common:securePassword.hidePassword')}
+                />
+              </div>
+            </div>
+            <div className="space-y-2">
+              <div className="flex items-center gap-2">
+                <Switch
+                  id="ftp-use-tls"
+                  checked={ftpConfig.useTls}
+                  onCheckedChange={(checked) => setFtpConfig({ ...ftpConfig, useTls: checked })}
+                />
+                <Label htmlFor="ftp-use-tls" className="font-normal">
+                  {t('cloudStorage:ftp.useTls')}
+                </Label>
+              </div>
+              <p className="text-xs text-muted-foreground">{t('cloudStorage:ftp.useTlsHint')}</p>
             </div>
           </TabsContent>
         </Tabs>

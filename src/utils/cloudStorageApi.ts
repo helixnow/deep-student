@@ -10,7 +10,7 @@ import { getErrorMessage } from './errorUtils';
 // ============== 类型定义 ==============
 
 /** 存储提供商类型 */
-export type StorageProvider = 'webdav' | 's3';
+export type StorageProvider = 'webdav' | 's3' | 'ftp';
 
 /** WebDAV 配置 */
 export interface WebDavConfig {
@@ -35,6 +35,20 @@ export interface S3Config {
   pathStyle?: boolean;
 }
 
+/** FTP/FTPS 配置 */
+export interface FtpConfig {
+  /** FTP 服务器主机名或 IP 地址 */
+  host: string;
+  /** FTP 端口（默认 21） */
+  port?: number;
+  /** 用户名 */
+  username: string;
+  /** 密码 */
+  password: string;
+  /** 是否使用 TLS（FTPS 显式加密） */
+  useTls?: boolean;
+}
+
 /** 云存储配置 */
 export interface CloudStorageConfig {
   /** 存储提供商类型 */
@@ -43,6 +57,8 @@ export interface CloudStorageConfig {
   webdav?: WebDavConfig;
   /** S3 配置 */
   s3?: S3Config;
+  /** FTP 配置 */
+  ftp?: FtpConfig;
   /** 根目录路径 */
   root?: string;
   /** 端到端加密密码（可选）
@@ -429,6 +445,28 @@ export function createS3Config(
 }
 
 /**
+ * 创建默认的 FTP 配置
+ */
+export function createFtpConfig(
+  host: string,
+  username: string,
+  password: string,
+  options?: { port?: number; useTls?: boolean; root?: string }
+): CloudStorageConfig {
+  return {
+    provider: 'ftp',
+    ftp: {
+      host,
+      port: options?.port ?? 21,
+      username,
+      password,
+      useTls: options?.useTls ?? false,
+    },
+    root: options?.root,
+  };
+}
+
+/**
  * 检查 S3 存储是否已启用（编译时 feature）
  */
 export async function isS3Enabled(): Promise<boolean> {
@@ -448,6 +486,8 @@ export interface CloudStorageCredentials {
   webdavPassword?: string;
   /** S3 Secret Access Key */
   s3SecretAccessKey?: string;
+  /** FTP 密码 */
+  ftpPassword?: string;
   /** 端到端加密密码 */
   encryptionPassword?: string;
 }

@@ -21,13 +21,14 @@
 //! ```
 
 mod config;
+mod ftp;
 #[cfg(feature = "cloud_storage_s3")]
 mod s3;
 mod sync_manager;
 mod traits;
 mod webdav;
 
-pub use config::{CloudStorageConfig, S3Config, StorageProvider, WebDavConfig};
+pub use config::{CloudStorageConfig, FtpConfig, S3Config, StorageProvider, WebDavConfig};
 pub use sync_manager::{
     get_device_id, BackupVersion, CloudManifest, CloudSyncManager, DownloadResult, SyncStatus,
     UploadResult,
@@ -38,6 +39,7 @@ use serde::Serialize;
 use tauri::{AppHandle, Emitter};
 
 use crate::models::AppError;
+use ftp::FtpStorage;
 #[cfg(feature = "cloud_storage_s3")]
 use s3::S3Storage;
 use webdav::WebDavStorage;
@@ -101,6 +103,14 @@ pub async fn create_storage(config: &CloudStorageConfig) -> Result<Box<dyn Cloud
         StorageProvider::S3 => Err(AppError::configuration(
             "S3 存储支持未启用，请在编译时启用 cloud_storage_s3 feature".to_string(),
         )),
+        StorageProvider::Ftp => {
+            let ftp_config = config
+                .ftp
+                .clone()
+                .ok_or_else(|| AppError::validation("缺少 FTP 配置"))?;
+            let storage = FtpStorage::new(ftp_config, root)?;
+            Ok(Box::new(storage))
+        }
     }
 }
 

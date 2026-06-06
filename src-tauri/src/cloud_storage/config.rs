@@ -13,6 +13,8 @@ pub enum StorageProvider {
     WebDav,
     /// S3 兼容存储（AWS S3、Cloudflare R2、阿里云 OSS、MinIO 等）
     S3,
+    /// FTP/FTPS 存储（支持显式 FTPS）
+    Ftp,
 }
 
 impl Default for StorageProvider {
@@ -26,6 +28,7 @@ impl std::fmt::Display for StorageProvider {
         match self {
             StorageProvider::WebDav => write!(f, "WebDAV"),
             StorageProvider::S3 => write!(f, "S3"),
+            StorageProvider::Ftp => write!(f, "FTP"),
         }
     }
 }
@@ -93,6 +96,40 @@ impl std::fmt::Debug for S3Config {
     }
 }
 
+/// FTP/FTPS 配置
+#[derive(Clone, Serialize, Deserialize, Default)]
+#[serde(rename_all = "camelCase")]
+pub struct FtpConfig {
+    /// FTP 服务器主机名或 IP 地址
+    pub host: String,
+    /// FTP 端口（默认 21）
+    #[serde(default = "default_ftp_port")]
+    pub port: u16,
+    /// 用户名
+    pub username: String,
+    /// 密码
+    pub password: String,
+    /// 是否使用 TLS（FTPS 显式加密）
+    #[serde(default)]
+    pub use_tls: bool,
+}
+
+fn default_ftp_port() -> u16 {
+    21
+}
+
+impl std::fmt::Debug for FtpConfig {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("FtpConfig")
+            .field("host", &self.host)
+            .field("port", &self.port)
+            .field("username", &self.username)
+            .field("password", &"[REDACTED]")
+            .field("use_tls", &self.use_tls)
+            .finish()
+    }
+}
+
 /// 统一的云存储配置
 #[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(rename_all = "camelCase")]
@@ -106,6 +143,9 @@ pub struct CloudStorageConfig {
     /// S3 配置（当 provider 为 S3 时使用）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub s3: Option<S3Config>,
+    /// FTP 配置（当 provider 为 Ftp 时使用）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ftp: Option<FtpConfig>,
     /// 根目录路径（所有操作都在此目录下）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub root: Option<String>,
@@ -126,6 +166,7 @@ impl std::fmt::Debug for CloudStorageConfig {
             .field("provider", &self.provider)
             .field("webdav", &self.webdav)
             .field("s3", &self.s3)
+            .field("ftp", &self.ftp)
             .field("root", &self.root)
             .field(
                 "encryption_password",
@@ -160,6 +201,12 @@ impl CloudStorageConfig {
             .and_then(|u| u.host_str().map(|h| h.to_lowercase()))
             .map(|host| matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1"))
             .unwrap_or(false)
+    }
+
+    /// 判断 FTP host 是否为本地地址
+    fn is_local_ftp_host(host: &str) -> bool {
+        let host = host.trim().to_lowercase();
+        matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1")
     }
 
     /// 验证配置是否完整
@@ -211,6 +258,23 @@ impl CloudStorageConfig {
                         .starts_with("https://")
                 {
                     return Err("S3 endpoint 必须使用 HTTPS（仅 localhost 允许 HTTP）".into());
+                }
+                Ok(())
+            }
+            StorageProvider::Ftp => {
+                let config = self.ftp.as_ref().ok_or("缺少 FTP 配置")?;
+                if config.host.trim().is_empty() {
+                    return Err("FTP host 不能为空".into());
+                }
+                if config.username.trim().is_empty() {
+                    return Err("FTP 用户名不能为空".into());
+                }
+                if config.password.trim().is_empty() {
+                    return Err("FTP 密码不能为空".into());
+                }
+                let is_local = Self::is_local_ftp_host(&config.host);
+                if !is_local && !config.use_tls {
+                    return Err("FTP 必须启用 FTPS（仅 localhost 允许明文 FTP）".into());
                 }
                 Ok(())
             }
@@ -424,6 +488,91 @@ mod tests {
         assert!(
             config.validate().is_err(),
             "S3 http://localhost.evil.com should be rejected as non-local HTTP"
+        );
+    }
+
+    #[test]
+    fn test_ftp_config_validation() {
+        // FTP 配置验证
+        let config = CloudStorageConfig {
+            provider: StorageProvider::Ftp,
+            ftp: Some(FtpConfig {
+                host: "ftp.example.com".into(),
+                port: 21,
+                username: "user".into(),
+                password: "pass".into(),
+                use_tls: true,
+            }),
+            ..Default::default()
+        };
+        assert!(config.validate().is_ok());
+
+        // 缺少 host
+        let mut config = CloudStorageConfig {
+            provider: StorageProvider::Ftp,
+            ftp: Some(FtpConfig {
+                host: "".into(),
+                port: 21,
+                username: "user".into(),
+                password: "pass".into(),
+                use_tls: true,
+            }),
+            ..Default::default()
+        };
+        assert!(config.validate().is_err());
+
+        // 缺少用户名
+        config.ftp.as_mut().unwrap().username = "".into();
+        config.ftp.as_mut().unwrap().host = "ftp.example.com".into();
+        assert!(config.validate().is_err());
+
+        // 缺少密码
+        config.ftp.as_mut().unwrap().username = "user".into();
+        config.ftp.as_mut().unwrap().password = "".into();
+        assert!(config.validate().is_err());
+
+        // 非 localhost 不使用 TLS 应该被拒绝
+        config.ftp.as_mut().unwrap().password = "pass".into();
+        config.ftp.as_mut().unwrap().use_tls = false;
+        assert!(config.validate().is_err());
+
+        // localhost 不使用 TLS 应该被允许
+        config.ftp.as_mut().unwrap().host = "localhost".into();
+        config.ftp.as_mut().unwrap().use_tls = false;
+        assert!(config.validate().is_ok());
+    }
+
+    #[test]
+    fn test_ftp_debug_redaction() {
+        let ftp = FtpConfig {
+            host: "ftp.example.com".into(),
+            port: 21,
+            username: "user".into(),
+            password: "super-secret".into(),
+            use_tls: true,
+        };
+        let debug = format!("{:?}", ftp);
+        assert!(
+            !debug.contains("super-secret"),
+            "password should be redacted in Debug"
+        );
+        assert!(debug.contains("[REDACTED]"));
+    }
+
+    #[test]
+    fn test_is_local_ftp_host() {
+        assert!(CloudStorageConfig::is_local_ftp_host("localhost"));
+        assert!(CloudStorageConfig::is_local_ftp_host("127.0.0.1"));
+        assert!(CloudStorageConfig::is_local_ftp_host("::1"));
+        assert!(CloudStorageConfig::is_local_ftp_host("  localhost  "));
+
+        assert!(
+            !CloudStorageConfig::is_local_ftp_host("ftp.example.com"),
+            "remote host should not be treated as local"
+        );
+        assert!(
+            !CloudStorageConfig::is_local_ftp_host("localhost.evil.com"),
+            "localhost.evil.com should not be treated as local"
         );
     }
 }

@@ -8,7 +8,9 @@
     "webdavDesc": "Jianguoyun, Nextcloud, self-hosted WebDAV, etc.",
     "s3": "S3 Compatible",
     "s3Desc": "AWS S3, Cloudflare R2, Aliyun OSS, MinIO, etc.",
-    "s3Disabled": "Not enabled (requires S3 feature at compile time)"
+    "s3Disabled": "Not enabled (requires S3 feature at compile time)",
+    "ftp": "FTP/FTPS",
+    "ftpDesc": "Traditional FTP servers with explicit FTPS encryption support"
   },
   
   "webdav": {
@@ -39,6 +41,21 @@
     "pathStyleHint": "Required for self-hosted services like MinIO"
   },
   
+  "ftp": {
+    "host": "Server Host",
+    "hostPlaceholder": "ftp.example.com",
+    "hostHint": "FTP server hostname or IP address",
+    "port": "Port",
+    "portPlaceholder": "21",
+    "portHint": "FTP port (default: 21)",
+    "username": "Username",
+    "usernamePlaceholder": "ftpuser",
+    "password": "Password",
+    "passwordPlaceholder": "Your FTP password",
+    "useTls": "Use FTPS Encryption",
+    "useTlsHint": "Enable explicit FTPS (AUTH TLS) to protect credentials (plaintext allowed for localhost only)"
+  },
+
   "root": {
     "label": "Root Directory",
     "placeholder": "deep-student-sync",
