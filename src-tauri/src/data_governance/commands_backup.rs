@@ -80,6 +80,7 @@ pub(super) fn resolve_database_path(db_id: &DatabaseId, active_dir: &Path) -> Pa
 pub(super) struct ApplyToDbsResult {
     pub(super) total_success: usize,
     pub(super) total_skipped: usize,
+    pub(super) total_incomplete_skipped: usize,
     pub(super) total_failed: usize,
     /// 各库的失败明细（db_name → error message），用于精确定位部分失败
     pub(super) db_errors: Vec<(String, String)>,
@@ -228,6 +229,12 @@ fn should_apply_change_by_strategy(
                 None => return Ok(true),
             };
 
+            if let Some(cloud_data) = change.data.as_ref() {
+                if SyncManager::records_semantically_equal_for_sync(&local, cloud_data) {
+                    return Ok(false);
+                }
+            }
+
             if strategy == MergeStrategy::KeepLocal {
                 return Ok(false);
             }
@@ -251,6 +258,21 @@ fn should_apply_change_by_strategy(
     }
 }
 
+fn has_unsynced_local_change(
+    conn: &rusqlite::Connection,
+    table_name: &str,
+    record_id: &str,
+) -> bool {
+    conn.query_row(
+        "SELECT COUNT(*) FROM __change_log
+         WHERE table_name = ?1 AND record_id = ?2 AND sync_version = 0",
+        rusqlite::params![table_name, record_id],
+        |row| row.get::<_, i64>(0),
+    )
+    .map(|count| count > 0)
+    .unwrap_or(false)
+}
+
 /// 将下载的变更按数据库路由并应用（接入冲突保护 + 冲突表）
 ///
 /// 根据每条变更的 `database_name` 字段将变更路由到对应的数据库，
@@ -272,6 +294,7 @@ pub(super) fn apply_downloaded_changes_to_databases(
     let mut agg = ApplyToDbsResult {
         total_success: 0,
         total_skipped: 0,
+        total_incomplete_skipped: 0,
         total_failed: 0,
         db_errors: Vec::new(),
         applied_keys: std::collections::HashSet::new(),
@@ -300,9 +323,9 @@ pub(super) fn apply_downloaded_changes_to_databases(
                 Some(name) => name.to_string(),
                 None => {
                     warn!(
-                            "[data_governance] Legacy 变更表名 '{}' 无法推断目标数据库，跳过 (record_id={})",
-                            change.table_name, change.record_id
-                        );
+                        "[data_governance] Legacy 变更表名 '{}' 无法推断目标数据库，跳过 (record_id={})",
+                        change.table_name, change.record_id
+                    );
                     agg.total_skipped += 1;
                     continue;
                 }
@@ -342,20 +365,40 @@ pub(super) fn apply_downloaded_changes_to_databases(
         let conn = rusqlite::Connection::open(&db_path)
             .map_err(|e| format!("打开数据库 {} 失败: {}", db_name, e))?;
 
-        // 预过滤：先按策略决策（KeepLocal 直接跳过云端变更）
+        // Manual 模式沿用旧的预过滤路径；KeepLatest/UseCloud 必须先进入冲突保护。
+        //
+        // 真实多设备场景里，同一记录如果本地有未同步修改且云端也有不同修改，
+        // 即使 KeepLatest 最终会保留本地，也必须把双方快照写入 __sync_conflicts。
+        // 若在这里先按时间戳过滤，本地较新的变更会直接跳过云端变更，导致冲突
+        // 保护没有机会落表，表现为静默覆盖/静默丢失。
+        //
+        // KeepLocal 仍保留原语义：本地已有且没有本地待同步冲突时跳过云端；只有
+        // 本地存在待同步修改时才进入冲突保护以落表。
         let mut owned_changes: Vec<SyncChangeWithData> = Vec::new();
-        for c in db_changes {
-            let id_column = id_column_map
-                .get(&c.table_name)
-                .map(|s| s.as_str())
-                .unwrap_or("id");
-            let should_apply = should_apply_change_by_strategy(&conn, c, id_column, strategy)?;
-            if should_apply {
+        if policy_opt.is_none() || strategy == MergeStrategy::KeepLocal {
+            for c in db_changes {
+                let id_column = id_column_map
+                    .get(&c.table_name)
+                    .map(|s| s.as_str())
+                    .unwrap_or("id");
+                let should_apply = if strategy == MergeStrategy::KeepLocal
+                    && has_unsynced_local_change(&conn, &c.table_name, &c.record_id)
+                {
+                    true
+                } else {
+                    should_apply_change_by_strategy(&conn, c, id_column, strategy)?
+                };
+                if should_apply {
+                    let mut cloned = (*c).clone();
+                    cloned.suppress_change_log = Some(true);
+                    owned_changes.push(cloned);
+                }
+            }
+        } else {
+            for c in db_changes {
                 let mut cloned = (*c).clone();
                 cloned.suppress_change_log = Some(true);
                 owned_changes.push(cloned);
-            } else {
-                agg.total_skipped += 1;
             }
         }
 
@@ -383,6 +426,7 @@ pub(super) fn apply_downloaded_changes_to_databases(
             Ok((apply_result, conflict_result)) => {
                 agg.total_success += apply_result.success_count;
                 agg.total_skipped += apply_result.skipped_count;
+                agg.total_incomplete_skipped += apply_result.skipped_incomplete_count;
                 agg.total_failed += apply_result.failure_count;
                 agg.applied_keys.extend(apply_result.applied_keys);
                 if let Some(c) = conflict_result {
@@ -469,6 +513,191 @@ pub(super) fn validate_user_path(path: &Path, _app_data_dir: &Path) -> Result<()
     }
 
     Ok(())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use rusqlite::params;
+    use serde_json::json;
+
+    fn create_chat_v2_db(path: &Path) -> rusqlite::Connection {
+        let conn = rusqlite::Connection::open(path).unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE chat_v2_sessions (
+                id TEXT PRIMARY KEY,
+                mode TEXT NOT NULL DEFAULT 'chat',
+                title TEXT,
+                persist_status TEXT NOT NULL DEFAULT 'active',
+                created_at TEXT NOT NULL,
+                updated_at TEXT NOT NULL,
+                device_id TEXT,
+                local_version INTEGER DEFAULT 0,
+                sync_version INTEGER DEFAULT 0,
+                deleted_at TEXT
+            );
+            CREATE TABLE __change_log (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                table_name TEXT NOT NULL,
+                record_id TEXT NOT NULL,
+                operation TEXT NOT NULL,
+                changed_at TEXT NOT NULL DEFAULT (datetime('now')),
+                sync_version INTEGER DEFAULT 0,
+                field_deltas_json TEXT
+            );
+            "#,
+        )
+        .unwrap();
+        conn
+    }
+
+    #[test]
+    fn keep_latest_local_newer_conflict_still_falls_into_conflict_table() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db_path = resolve_database_path(&DatabaseId::ChatV2, tmp.path());
+        let conn = create_chat_v2_db(&db_path);
+
+        conn.execute(
+            "INSERT INTO chat_v2_sessions
+             (id, mode, title, persist_status, created_at, updated_at, device_id)
+             VALUES (?1, 'chat', ?2, 'active', ?3, ?4, 'local-device')",
+            params![
+                "sess_conflict",
+                "local-newer",
+                "2026-05-31T10:00:00Z",
+                "2026-05-31T12:00:00Z"
+            ],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO __change_log
+             (table_name, record_id, operation, changed_at, sync_version)
+             VALUES ('chat_v2_sessions', 'sess_conflict', 'UPDATE', ?1, 0)",
+            params!["2026-05-31T12:00:00Z"],
+        )
+        .unwrap();
+        drop(conn);
+
+        let cloud_change = SyncChangeWithData {
+            change_log_id: None,
+            table_name: "chat_v2_sessions".to_string(),
+            record_id: "sess_conflict".to_string(),
+            operation: ChangeOperation::Update,
+            changed_at: "2026-05-31T11:00:00Z".to_string(),
+            data: Some(json!({
+                "id": "sess_conflict",
+                "mode": "chat",
+                "title": "cloud-older",
+                "persist_status": "active",
+                "created_at": "2026-05-31T10:00:00Z",
+                "updated_at": "2026-05-31T11:00:00Z",
+                "device_id": "cloud-device",
+                "deleted_at": null
+            })),
+            database_name: Some("chat_v2".to_string()),
+            suppress_change_log: None,
+        };
+
+        let agg = apply_downloaded_changes_to_databases(
+            &[cloud_change],
+            tmp.path(),
+            MergeStrategy::KeepLatest,
+        )
+        .unwrap();
+
+        assert!(
+            agg.total_conflicts >= 2,
+            "本地较新但双方都改过同一记录时，不能被预过滤跳过，必须落入冲突表"
+        );
+
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        let title: String = conn
+            .query_row(
+                "SELECT title FROM chat_v2_sessions WHERE id='sess_conflict'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(title, "local-newer");
+
+        let unresolved: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM __sync_conflicts WHERE resolved_at IS NULL",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(unresolved, agg.total_conflicts as i64);
+    }
+
+    #[test]
+    fn keep_local_preserves_existing_non_conflicting_local_record() {
+        let tmp = tempfile::TempDir::new().unwrap();
+        let db_path = resolve_database_path(&DatabaseId::ChatV2, tmp.path());
+        let conn = create_chat_v2_db(&db_path);
+
+        conn.execute(
+            "INSERT INTO chat_v2_sessions
+             (id, mode, title, persist_status, created_at, updated_at, device_id)
+             VALUES (?1, 'chat', ?2, 'active', ?3, ?4, 'local-device')",
+            params![
+                "sess_keep_local",
+                "local-existing",
+                "2026-05-31T10:00:00Z",
+                "2026-05-31T10:00:00Z"
+            ],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO __change_log
+             (table_name, record_id, operation, changed_at, sync_version)
+             VALUES ('chat_v2_sessions', 'sess_keep_local', 'INSERT', ?1, 123)",
+            params!["2026-05-31T10:00:00Z"],
+        )
+        .unwrap();
+        drop(conn);
+
+        let cloud_change = SyncChangeWithData {
+            change_log_id: None,
+            table_name: "chat_v2_sessions".to_string(),
+            record_id: "sess_keep_local".to_string(),
+            operation: ChangeOperation::Update,
+            changed_at: "2026-05-31T12:00:00Z".to_string(),
+            data: Some(json!({
+                "id": "sess_keep_local",
+                "mode": "chat",
+                "title": "cloud-newer",
+                "persist_status": "active",
+                "created_at": "2026-05-31T10:00:00Z",
+                "updated_at": "2026-05-31T12:00:00Z",
+                "device_id": "cloud-device",
+                "deleted_at": null
+            })),
+            database_name: Some("chat_v2".to_string()),
+            suppress_change_log: None,
+        };
+
+        let agg = apply_downloaded_changes_to_databases(
+            &[cloud_change],
+            tmp.path(),
+            MergeStrategy::KeepLocal,
+        )
+        .unwrap();
+
+        assert_eq!(agg.total_success, 0);
+        assert_eq!(agg.total_conflicts, 0);
+
+        let conn = rusqlite::Connection::open(&db_path).unwrap();
+        let title: String = conn
+            .query_row(
+                "SELECT title FROM chat_v2_sessions WHERE id='sess_keep_local'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(title, "local-existing");
+    }
 }
 
 pub(super) fn validate_backup_id(raw_backup_id: &str) -> Result<String, String> {

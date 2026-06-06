@@ -26,7 +26,7 @@
 //! 采用字符串形式（而非纯 u64）是为了**人类可读 + 保序**。`"1700000000001-0000"` 这样的形式
 //! 在字典序下与数值排序等价，且能直接存进 `updated_at` TEXT 列。
 
-use std::cmp::{max, Ordering};
+use std::cmp::{Ordering, max};
 use std::sync::{Arc, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
 

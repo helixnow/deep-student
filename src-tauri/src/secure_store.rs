@@ -16,6 +16,7 @@
 use anyhow::Result;
 use serde::{Deserialize, Serialize};
 use std::collections::HashSet;
+use tauri::Manager;
 use tracing::{debug, info, warn};
 use zeroize::Zeroize;
 
@@ -499,14 +500,23 @@ impl SecureStore {
 use crate::models::AppError;
 
 /// 全局安全存储实例
-fn get_secure_store() -> SecureStore {
-    SecureStore::new(SecureStoreConfig::default())
+fn get_secure_store(app: Option<&tauri::AppHandle>) -> SecureStore {
+    let config = SecureStoreConfig::default();
+    if let Some(app) = app {
+        if let Ok(app_data_dir) = app.path().app_data_dir() {
+            return SecureStore::new_with_dir(config, app_data_dir);
+        }
+    }
+    SecureStore::new(config)
 }
 
 /// 保存云存储凭据到安全存储
 #[tauri::command]
-pub fn secure_save_cloud_credentials(credentials: CloudStorageCredentials) -> Result<(), AppError> {
-    let store = get_secure_store();
+pub fn secure_save_cloud_credentials(
+    app: tauri::AppHandle,
+    credentials: CloudStorageCredentials,
+) -> Result<(), AppError> {
+    let store = get_secure_store(Some(&app));
     store
         .save_cloud_credentials(&credentials)
         .map_err(|e| AppError::internal(format!("保存凭据失败: {}", e)))
@@ -514,8 +524,10 @@ pub fn secure_save_cloud_credentials(credentials: CloudStorageCredentials) -> Re
 
 /// 获取云存储凭据
 #[tauri::command]
-pub fn secure_get_cloud_credentials() -> Result<Option<CloudStorageCredentials>, AppError> {
-    let store = get_secure_store();
+pub fn secure_get_cloud_credentials(
+    app: tauri::AppHandle,
+) -> Result<Option<CloudStorageCredentials>, AppError> {
+    let store = get_secure_store(Some(&app));
     store
         .get_cloud_credentials()
         .map_err(|e| AppError::internal(format!("获取凭据失败: {}", e)))
@@ -523,8 +535,8 @@ pub fn secure_get_cloud_credentials() -> Result<Option<CloudStorageCredentials>,
 
 /// 删除云存储凭据
 #[tauri::command]
-pub fn secure_delete_cloud_credentials() -> Result<(), AppError> {
-    let store = get_secure_store();
+pub fn secure_delete_cloud_credentials(app: tauri::AppHandle) -> Result<(), AppError> {
+    let store = get_secure_store(Some(&app));
     store
         .delete_cloud_credentials()
         .map_err(|e| AppError::internal(format!("删除凭据失败: {}", e)))
@@ -532,7 +544,7 @@ pub fn secure_delete_cloud_credentials() -> Result<(), AppError> {
 
 /// 检查安全存储是否可用
 #[tauri::command]
-pub fn secure_store_is_available() -> bool {
-    let store = get_secure_store();
+pub fn secure_store_is_available(app: tauri::AppHandle) -> bool {
+    let store = get_secure_store(Some(&app));
     store.is_available()
 }

@@ -27,7 +27,7 @@ interface ConflictPair {
   tableName: string;
   recordId: string;
   local?: RecordConflictRow;
-  cloud?: RecordConflictRow;
+  clouds: RecordConflictRow[];
 }
 
 function groupConflicts(rows: RecordConflictRow[]): ConflictPair[] {
@@ -38,12 +38,16 @@ function groupConflicts(rows: RecordConflictRow[]): ConflictPair[] {
       databaseName: r.database_name,
       tableName: r.table_name,
       recordId: r.record_id,
+      clouds: [],
     };
     if (r.side === 'local') pair.local = r;
-    else pair.cloud = r;
+    else pair.clouds.push(r);
     byKey.set(key, pair);
   }
-  return Array.from(byKey.values());
+  return Array.from(byKey.values()).map((pair) => ({
+    ...pair,
+    clouds: [...pair.clouds].sort((a, b) => a.id - b.id),
+  }));
 }
 
 function tryFormatJson(s: string): string {
@@ -54,7 +58,7 @@ function tryFormatJson(s: string): string {
   }
 }
 
-export const RecordConflictsPanel: React.FC = () => {
+export const RecordConflictsPanel: React.FC<{ refreshSignal?: string | number }> = ({ refreshSignal }) => {
   const { t } = useTranslation(['data', 'common']);
   const [rows, setRows] = useState<RecordConflictRow[]>([]);
   const [loading, setLoading] = useState(false);
@@ -79,7 +83,7 @@ export const RecordConflictsPanel: React.FC = () => {
 
   useEffect(() => {
     void refresh();
-  }, [refresh]);
+  }, [refresh, refreshSignal]);
 
   const pairKey = (p: ConflictPair) =>
     `${p.databaseName}|${p.tableName}|${p.recordId}`;
@@ -112,7 +116,8 @@ export const RecordConflictsPanel: React.FC = () => {
   const handleStartMerge = useCallback((p: ConflictPair) => {
     const key = pairKey(p);
     // 默认以 cloud 为基础（业务上通常 cloud 更新）
-    const base = p.cloud?.data_json ?? p.local?.data_json ?? '{}';
+    const latestCloud = p.clouds[p.clouds.length - 1];
+    const base = latestCloud?.data_json ?? p.local?.data_json ?? '{}';
     setMergeEditing(key);
     setMergeText(tryFormatJson(base));
   }, []);
@@ -181,6 +186,7 @@ export const RecordConflictsPanel: React.FC = () => {
           const key = pairKey(p);
           const isResolving = resolvingKey === key;
           const isEditing = mergeEditing === key;
+          const latestCloud = p.clouds[p.clouds.length - 1];
           return (
             <div
               key={key}
@@ -208,10 +214,11 @@ export const RecordConflictsPanel: React.FC = () => {
                     variant="ghost"
                     size="sm"
                     onClick={() => handleResolve(p, 'keep_cloud')}
-                    disabled={isResolving || isEditing || !p.cloud}
+                    disabled={isResolving || isEditing || !latestCloud}
                     className="h-7 text-xs"
+                    title={p.clouds.length > 1 ? '采用最新云端候选' : undefined}
                   >
-                    采用云端
+                    采用云端{p.clouds.length > 1 ? `（最新/${p.clouds.length}）` : ''}
                   </NotionButton>
                   <NotionButton
                     variant="ghost"
@@ -235,14 +242,28 @@ export const RecordConflictsPanel: React.FC = () => {
                     {p.local ? tryFormatJson(p.local.data_json) : '(无)'}
                   </pre>
                 </div>
-                <div className="rounded border border-border/30 bg-muted/20 p-2">
-                  <div className="text-muted-foreground mb-1">
-                    云端 {p.cloud?.winning_device_id && <span>（{p.cloud.winning_device_id.slice(0, 8)}...）</span>}
-                    {p.cloud?.detected_at && <span className="ml-1">{p.cloud.detected_at.slice(0, 19)}</span>}
-                  </div>
-                  <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words">
-                    {p.cloud ? tryFormatJson(p.cloud.data_json) : '(无)'}
-                  </pre>
+                <div className="space-y-2">
+                  {p.clouds.length === 0 && (
+                    <div className="rounded border border-border/30 bg-muted/20 p-2">
+                      <div className="text-muted-foreground mb-1">云端</div>
+                      <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words">(无)</pre>
+                    </div>
+                  )}
+                  {p.clouds.map((cloud, index) => (
+                    <div key={cloud.id} className="rounded border border-border/30 bg-muted/20 p-2">
+                      <div className="text-muted-foreground mb-1">
+                        云端{p.clouds.length > 1 ? ` ${index + 1}/${p.clouds.length}` : ''}
+                        {cloud.winning_device_id && <span>（{cloud.winning_device_id.slice(0, 8)}...）</span>}
+                        {cloud.detected_at && <span className="ml-1">{cloud.detected_at.slice(0, 19)}</span>}
+                        {cloud.id === latestCloud?.id && p.clouds.length > 1 && (
+                          <span className="ml-1">最新</span>
+                        )}
+                      </div>
+                      <pre className="max-h-40 overflow-auto whitespace-pre-wrap break-words">
+                        {tryFormatJson(cloud.data_json)}
+                      </pre>
+                    </div>
+                  ))}
                 </div>
               </div>
               {isEditing && (

@@ -90,6 +90,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
   const { t } = useTranslation(['data', 'common']);
   const syncDatabases = syncStatus?.databases ?? [];
   const showSyncProgress = syncRunning || Boolean(syncProgress?.error);
+  const conflictRefreshSignal = `${syncStatus?.total_pending_changes ?? 0}:${syncStatus?.total_synced_changes ?? 0}`;
 
   return (
     <div className="space-y-8">
@@ -124,7 +125,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             {syncStatus?.device_id ? `${syncStatus.device_id.slice(0, 8)}...` : '-'}
           </div>
           <div className="pt-1">
-            <SyncIndicator />
+            <SyncIndicator refreshSignal={conflictRefreshSignal} />
           </div>
         </div>
       </div>
@@ -488,7 +489,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
       )}
 
       {/* 记录级冲突面板（__sync_conflicts 表） */}
-      <RecordConflictsPanel />
+      <RecordConflictsPanel refreshSignal={conflictRefreshSignal} />
     </div>
   );
 };

@@ -237,6 +237,14 @@ export const CloudStorageSection: React.FC<CloudStorageSectionProps> = ({
   const saveConfig = useCallback(async () => {
     // 保存非敏感配置到 localStorage（不含加密密码——它是高敏感）
     const config = buildConfig();
+    if (
+      (config.provider === 'webdav' && !webdavConfig.password.trim()) ||
+      (config.provider === 's3' && !s3Config.secretAccessKey.trim())
+    ) {
+      showGlobalNotification('error', t('cloudStorage:errors.passwordRequired'));
+      return;
+    }
+
     const safeConfig = {
       ...config,
       webdav: config.webdav ? { ...config.webdav, password: '' } : undefined,

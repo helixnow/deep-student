@@ -119,6 +119,7 @@
     "downloadFailed": "下载失败",
     "deleteFailed": "删除失败",
     "configInvalid": "配置无效",
+    "passwordRequired": "请填写云存储密码后再保存",
     "networkError": "网络错误",
     "permissionDenied": "权限不足",
     "notFound": "文件不存在",
