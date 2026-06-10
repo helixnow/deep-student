@@ -5,7 +5,7 @@
 //! 2. 触发器副作用（FTS 重建、updated_at 自动同步）
 //! 3. 复合主键（llm_usage_daily = date|caller_type|model|provider）
 //! 4. 时间戳存储差异（resources.updated_at 是 INTEGER 毫秒，notes 是 TEXT ISO）
-//! 5. ref_count 引用计数跨端并发递增/递减
+//! 5. ref_count 引用计数由引用方重算，不能按远端全量值/旧 delta 合并
 //! 6. 级联顺序（A 端创建 resource+note，B 端先收到 note 后收到 resource）
 
 use deep_student_lib::data_governance::sync::{
@@ -263,6 +263,8 @@ fn real_61_fk_violation_rolls_back_batch() {
         change_log_id: None,
         database_name: Some("vfs".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let r = SyncManager::apply_downloaded_changes(&conn, &[change], None);
     assert!(r.is_err(), "外键违规应导致整批失败");
@@ -294,6 +296,8 @@ fn real_62_cascade_insert_order_independence() {
         change_log_id: None,
         database_name: Some("vfs".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let parent = SyncChangeWithData {
         table_name: "resources".into(),
@@ -312,6 +316,8 @@ fn real_62_cascade_insert_order_independence() {
         change_log_id: None,
         database_name: Some("vfs".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     // 同一批 child 先 parent 后
     let r = SyncManager::apply_downloaded_changes(&conn, &[child, parent], None);
@@ -339,6 +345,8 @@ fn real_63_three_level_cascade() {
         change_log_id: None,
         database_name: Some("vfs".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let exam = SyncChangeWithData {
         table_name: "exam_sheets".into(),
@@ -354,6 +362,8 @@ fn real_63_three_level_cascade() {
         change_log_id: None,
         database_name: Some("vfs".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let q1 = SyncChangeWithData {
         table_name: "questions".into(),
@@ -367,6 +377,8 @@ fn real_63_three_level_cascade() {
         change_log_id: None,
         database_name: Some("vfs".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let q2 = SyncChangeWithData {
         table_name: "questions".into(),
@@ -380,6 +392,8 @@ fn real_63_three_level_cascade() {
         change_log_id: None,
         database_name: Some("vfs".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     // 反向顺序：q2 -> q1 -> exam -> res
     let changes = vec![q2, q1, exam, res];
@@ -421,6 +435,8 @@ fn real_64_soft_delete_resource_while_referenced_is_allowed() {
         change_log_id: None,
         database_name: Some("vfs".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let r = SyncManager::apply_downloaded_changes(&conn, &[change], None);
     assert!(r.is_ok(), "软删除应该成功: {:?}", r.err());
@@ -485,6 +501,8 @@ fn real_64b_physical_delete_blocked_by_fk() {
         change_log_id: None,
         database_name: None,
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let r = SyncManager::apply_downloaded_changes(&conn, &[change], None);
     assert!(r.is_err(), "物理删除被引用的父记录应当被 FK 阻止");
@@ -516,6 +534,8 @@ fn real_65_fts_trigger_fires_but_batch_stays_transactional() {
         change_log_id: None,
         database_name: Some("vfs".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[setup_exam], None).unwrap();
 
@@ -536,6 +556,8 @@ fn real_65_fts_trigger_fires_but_batch_stays_transactional() {
             change_log_id: None,
             database_name: Some("vfs".into()),
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         });
     }
     SyncManager::apply_downloaded_changes(&conn, &inserts, None).unwrap();
@@ -557,6 +579,8 @@ fn real_65_fts_trigger_fires_but_batch_stays_transactional() {
             change_log_id: None,
             database_name: Some("vfs".into()),
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         });
     }
     let r = SyncManager::apply_downloaded_changes(&conn, &updates, None);
@@ -575,9 +599,9 @@ fn real_65_fts_trigger_fires_but_batch_stays_transactional() {
     );
 }
 
-/// 66. resource.ref_count 并发递增 —— delta 合并应累计两端增量
+/// 66. resource.ref_count 不再 delta 合并；下载后由引用方重算
 #[test]
-fn real_66_ref_count_concurrent_increment_merges_data() {
+fn real_66_ref_count_is_recomputed_not_delta_merged() {
     let conn_a = new_real_vfs_schema();
     let conn_b = new_real_vfs_schema();
     insert_resource(&conn_a, "res1", "h1", 1);
@@ -617,6 +641,8 @@ fn real_66_ref_count_concurrent_increment_merges_data() {
         change_log_id: None,
         database_name: Some("vfs".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let (_, conflict) = SyncManager::apply_downloaded_changes_with_conflict_guard(
         &conn_a,
@@ -633,7 +659,10 @@ fn real_66_ref_count_concurrent_increment_merges_data() {
             r.get(0)
         })
         .unwrap();
-    assert_eq!(ref_count, 3);
+    assert_eq!(
+        ref_count, 0,
+        "无业务行引用该 resource 时，ref_count 应重算为 0，而不是 delta 累加"
+    );
     // 冲突表应该记录了这次竞争，用户可以手动决策
     assert!(conflict.conflicts_saved > 0, "竞争应该产生冲突记录");
 }
@@ -675,6 +704,8 @@ fn real_67_integer_updated_at_handled_correctly() {
         change_log_id: None,
         database_name: Some("vfs".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let (_, conflict) = SyncManager::apply_downloaded_changes_with_conflict_guard(
         &conn,
@@ -743,6 +774,8 @@ fn real_68_composite_primary_key_upsert() {
         change_log_id: None,
         database_name: Some("llm_usage".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
 
@@ -785,6 +818,8 @@ fn real_69_delete_resource_after_child_was_deleted_by_another_device() {
         change_log_id: None,
         database_name: Some("vfs".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let del_res = SyncChangeWithData {
         table_name: "resources".into(),
@@ -795,6 +830,8 @@ fn real_69_delete_resource_after_child_was_deleted_by_another_device() {
         change_log_id: None,
         database_name: Some("vfs".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     // 顺序：先删 resource 后删 note → 会被外键挡住
     // 但 defer_foreign_keys 应当让整批过
@@ -868,6 +905,8 @@ fn real_70_many_notes_one_resource_concurrent_update() {
             change_log_id: None,
             database_name: Some("vfs".into()),
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         });
     }
 

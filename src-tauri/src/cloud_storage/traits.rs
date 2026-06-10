@@ -42,6 +42,28 @@ pub struct FileInfo {
     pub etag: Option<String>,
 }
 
+/// Result of listing a storage prefix.
+///
+/// `files` must contain every object below `prefix` recursively unless
+/// `truncated` is true. Sync download paths treat truncation as a hard error so
+/// missing objects cannot be mistaken for deletion.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ListOutcome {
+    pub files: Vec<FileInfo>,
+    #[serde(default)]
+    pub truncated: bool,
+}
+
+impl ListOutcome {
+    pub fn complete(files: Vec<FileInfo>) -> Self {
+        Self {
+            files,
+            truncated: false,
+        }
+    }
+}
+
 /// 统一的云存储访问 trait
 ///
 /// 支持 WebDAV 和 S3 兼容存储（如 AWS S3、Cloudflare R2、阿里云 OSS、MinIO）
@@ -49,6 +71,12 @@ pub struct FileInfo {
 pub trait CloudStorage: Send + Sync {
     /// 获取存储后端名称（用于日志和调试）
     fn provider_name(&self) -> &'static str;
+
+    /// 返回不含密码/密钥的实例绑定指纹，用于检测同一远端 instance 是否被错误地
+    /// 通过不同 provider/root/account 复用。
+    fn instance_binding_hint(&self) -> String {
+        self.provider_name().to_string()
+    }
 
     /// 检查连接是否可用
     async fn check_connection(&self) -> Result<()>;
@@ -71,7 +99,13 @@ pub trait CloudStorage: Send + Sync {
     /// * `Err(e)` - 其他错误
     async fn get(&self, key: &str) -> Result<Option<Vec<u8>>>;
 
-    /// 列出指定前缀的文件
+    /// 列出指定前缀下的所有文件。
+    ///
+    /// Contract:
+    /// - Results are recursive for every object below `prefix`.
+    /// - Results are sorted by `last_modified` descending.
+    /// - Implementations that cannot prove completeness must expose that via
+    ///   `list_outcome` instead of silently returning a partial list.
     ///
     /// # Arguments
     /// * `prefix` - 路径前缀（如 "backups/"）
@@ -79,6 +113,14 @@ pub trait CloudStorage: Send + Sync {
     /// # Returns
     /// 文件信息列表，按 last_modified 降序排列
     async fn list(&self, prefix: &str) -> Result<Vec<FileInfo>>;
+
+    /// 列出指定前缀并 report whether the result may be truncated.
+    ///
+    /// Existing implementations/tests can keep implementing `list`; production
+    /// backends override this when a backend-specific truncation signal exists.
+    async fn list_outcome(&self, prefix: &str) -> Result<ListOutcome> {
+        self.list(prefix).await.map(ListOutcome::complete)
+    }
 
     /// 删除文件
     ///

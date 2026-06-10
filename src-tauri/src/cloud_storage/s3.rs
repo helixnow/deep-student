@@ -22,6 +22,7 @@ use crate::models::AppError;
 /// S3 兼容存储实现
 pub struct S3Storage {
     client: aws_sdk_s3::Client,
+    endpoint: String,
     bucket: String,
     root: String,
 }
@@ -48,6 +49,15 @@ impl S3Storage {
         let mut s3_config_builder = aws_sdk_s3::Config::builder()
             .credentials_provider(credentials)
             .endpoint_url(&config.endpoint)
+            .timeout_config(
+                // [P0-6/F10] 显式超时：避免 TCP 半开/对端无响应时整个同步流程无限挂起。
+                // connect 30s 建连上限；operation_attempt 120s 单次尝试上限（大对象走
+                // multipart，每个分块各自计时，不受单请求总时长限制）。
+                aws_sdk_s3::config::timeout::TimeoutConfig::builder()
+                    .connect_timeout(std::time::Duration::from_secs(30))
+                    .operation_attempt_timeout(std::time::Duration::from_secs(120))
+                    .build(),
+            )
             .behavior_version_latest();
 
         // 设置区域（如果指定）
@@ -69,6 +79,7 @@ impl S3Storage {
 
         Ok(Self {
             client,
+            endpoint: config.endpoint.trim().trim_end_matches('/').to_string(),
             bucket: config.bucket,
             root: root.trim_matches('/').to_string(),
         })
@@ -104,6 +115,13 @@ impl S3Storage {
 impl CloudStorage for S3Storage {
     fn provider_name(&self) -> &'static str {
         "S3"
+    }
+
+    fn instance_binding_hint(&self) -> String {
+        format!(
+            "s3|endpoint={}|bucket={}|root={}",
+            self.endpoint, self.bucket, self.root
+        )
     }
 
     async fn check_connection(&self) -> Result<()> {

@@ -535,6 +535,16 @@ pub const V20260526_ADD_BLOB_METADATA_SYNC: MigrationDef = MigrationDef::new(
     include_str!("../../../migrations/vfs/V20260526__add_blob_metadata_sync.sql"),
 );
 
+/// V20260527: 添加本地资产删除队列表
+pub const V20260527_ADD_ASSET_DELETION_QUEUE: MigrationDef = MigrationDef::new(
+    20260527,
+    "add_asset_deletion_queue",
+    include_str!("../../../migrations/vfs/V20260527__add_asset_deletion_queue.sql"),
+)
+.with_expected_tables(&["__asset_deletion_queue"])
+.with_expected_indexes(&["idx__asset_deletion_queue_retry"])
+.idempotent();
+
 /// VFS 数据库所有迁移定义
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -569,6 +579,7 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260524_ADD_CHANGE_LOG_FIELD_DELTAS,
     V20260525_REPAIR_LEGACY_QUESTIONS_CHANGE_LOG_RECORD_IDS,
     V20260526_ADD_BLOB_METADATA_SYNC,
+    V20260527_ADD_ASSET_DELETION_QUEUE,
 ];
 
 /// VFS 迁移集合
@@ -620,6 +631,7 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
     "pomodoro_records",
     // 本地辅助队列
     "__blob_deletion_queue",
+    "__asset_deletion_queue",
     // FTS5 虚拟表
     "questions_fts",
 ];
@@ -628,7 +640,7 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
 pub const VFS_VIEW_NAMES: &[&str] = &["trash_view"];
 
 /// VFS 数据库当前保留表总数（不含视图、虚拟表、已废弃表）
-pub const VFS_TABLE_COUNT: usize = 33;
+pub const VFS_TABLE_COUNT: usize = 34;
 
 /// VFS 数据库视图总数
 pub const VFS_VIEW_COUNT: usize = 1;
@@ -665,7 +677,7 @@ mod tests {
         // + V20260311 (todo_constraints) + V20260312 (add_blob_deletion_queue)
         // + V20260523 (missing_sync_coverage) + V20260524 (field_deltas)
         // + V20260525 (repair_legacy_questions_change_log_record_ids)
-        assert_eq!(VFS_MIGRATION_SET.count(), 31);
+        assert_eq!(VFS_MIGRATION_SET.count(), 32);
     }
 
     #[test]
@@ -696,16 +708,12 @@ mod tests {
 
     #[test]
     fn test_notes_versions_create_then_drop_is_declared() {
-        assert!(
-            V20260130_INIT
-                .sql
-                .contains("CREATE TABLE IF NOT EXISTS notes_versions")
-        );
-        assert!(
-            V20260214_DROP_NOTES_VERSIONS
-                .sql
-                .contains("DROP TABLE IF EXISTS notes_versions")
-        );
+        assert!(V20260130_INIT
+            .sql
+            .contains("CREATE TABLE IF NOT EXISTS notes_versions"));
+        assert!(V20260214_DROP_NOTES_VERSIONS
+            .sql
+            .contains("DROP TABLE IF EXISTS notes_versions"));
     }
 
     #[test]

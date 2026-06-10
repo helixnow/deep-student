@@ -172,6 +172,8 @@ fn ops_to_changes(ops: &[PropOp], base_sec: i64) -> Vec<SyncChangeWithData> {
                     change_log_id: None,
                     database_name: Some("test".into()),
                     suppress_change_log: Some(true),
+                    source_device_id: None,
+                    source_seq: None,
                 },
                 PropOp::Update { id, label, counter } => SyncChangeWithData {
                     table_name: "items".into(),
@@ -188,6 +190,8 @@ fn ops_to_changes(ops: &[PropOp], base_sec: i64) -> Vec<SyncChangeWithData> {
                     change_log_id: None,
                     database_name: Some("test".into()),
                     suppress_change_log: Some(true),
+                    source_device_id: None,
+                    source_seq: None,
                 },
                 PropOp::Delete { id } => SyncChangeWithData {
                     table_name: "items".into(),
@@ -198,6 +202,8 @@ fn ops_to_changes(ops: &[PropOp], base_sec: i64) -> Vec<SyncChangeWithData> {
                     change_log_id: None,
                     database_name: Some("test".into()),
                     suppress_change_log: Some(true),
+                    source_device_id: None,
+                    source_seq: None,
                 },
             }
         })
@@ -403,6 +409,8 @@ proptest! {
             change_log_id: None,
             database_name: None,
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         });
 
         let r = SyncManager::apply_downloaded_changes(&conn, &changes_with_bad, None);
@@ -446,6 +454,8 @@ proptest! {
             change_log_id: None,
             database_name: Some("test".into()),
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         };
         SyncManager::apply_downloaded_changes(&conn_a, &[initial.clone()], None).unwrap();
 
@@ -466,6 +476,8 @@ proptest! {
             change_log_id: None,
             database_name: Some("test".into()),
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         };
         let upd_change = SyncChangeWithData {
             operation: ChangeOperation::Update,
@@ -511,6 +523,8 @@ proptest! {
                 change_log_id: None,
                 database_name: Some("test".into()),
                 suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
             };
             let _ = SyncManager::apply_downloaded_changes(&conn, &[c], None);
         }
@@ -526,6 +540,8 @@ proptest! {
                 change_log_id: None,
                 database_name: Some("test".into()),
                 suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
             };
             for _ in 0..3 {
                 let _ = SyncManager::apply_downloaded_changes(&conn, &[del.clone()], None);

@@ -30,10 +30,10 @@ mod webdav;
 
 pub use config::{CloudStorageConfig, FtpConfig, S3Config, StorageProvider, WebDavConfig};
 pub use sync_manager::{
-    get_device_id, BackupVersion, CloudManifest, CloudSyncManager, DownloadResult, SyncStatus,
-    UploadResult,
+    get_device_id, rotate_device_id_after_restore, BackupVersion, CloudManifest, CloudSyncManager,
+    DownloadResult, SyncStatus, UploadResult,
 };
-pub use traits::{CloudStorage, FileInfo, Result};
+pub use traits::{CloudStorage, FileInfo, ListOutcome, Result};
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter};
@@ -377,8 +377,18 @@ pub async fn cloud_sync_download(
             crate::crypto::backup_crypto::decrypt_backup(&ciphertext, pwd).map_err(|e| {
                 AppError::validation(format!("解密备份失败（密码错或数据损坏）: {}", e))
             })?;
-        std::fs::write(downloaded_path, &plaintext)
-            .map_err(|e| AppError::file_system(format!("写入解密后 ZIP 失败: {}", e)))?;
+        let parent = downloaded_path
+            .parent()
+            .unwrap_or_else(|| std::path::Path::new("."));
+        let temp = tempfile::Builder::new()
+            .prefix(".decrypt-")
+            .tempfile_in(parent)
+            .map_err(|e| AppError::file_system(format!("创建解密临时文件失败: {}", e)))?;
+        let temp_path = temp.path().to_path_buf();
+        std::fs::write(&temp_path, &plaintext)
+            .map_err(|e| AppError::file_system(format!("写入解密临时 ZIP 失败: {}", e)))?;
+        std::fs::rename(&temp_path, downloaded_path)
+            .map_err(|e| AppError::file_system(format!("保存解密后 ZIP 失败: {}", e)))?;
     }
 
     emit_sync_progress(

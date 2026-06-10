@@ -94,7 +94,7 @@ export function loadStoredCloudStorageConfigSafe(): CloudStorageConfig | null {
  * 从 localStorage + 系统安全存储加载完整云存储配置（包含敏感凭据）
  *
  * - localStorage: provider/root/endpoint/bucket/accessKeyId 等非敏感信息
- * - 安全存储: webdavPassword / s3SecretAccessKey
+ * - 安全存储: webdavPassword / s3SecretAccessKey / ftpPassword
  */
 export async function loadStoredCloudStorageConfigWithCredentials(): Promise<CloudStorageConfig | null> {
   const safe = loadStoredCloudStorageConfigSafe();
@@ -111,6 +111,20 @@ export async function loadStoredCloudStorageConfigWithCredentials(): Promise<Clo
             ...safe.webdav,
             // 防御性编程：不回退到 safe（localStorage）中的密码字段
             password: credentials?.webdavPassword ?? '',
+          }
+        : undefined,
+      encryptionPassword,
+    };
+  }
+
+  if (safe.provider === 'ftp') {
+    return {
+      ...safe,
+      ftp: safe.ftp
+        ? {
+            ...safe.ftp,
+            // 防御性编程：不回退到 safe（localStorage）中的密码字段
+            password: credentials?.ftpPassword ?? '',
           }
         : undefined,
       encryptionPassword,

@@ -162,6 +162,13 @@ impl VfsBlobRepo {
             |row| Ok((row.get(0)?, row.get(1)?)),
         )?;
 
+        // 重新导入同一内容表示本机撤销了此前的物理删除意图；清掉本地待传播队列，
+        // 避免下一轮云同步又把刚恢复的 blob tombstone 发布出去。
+        let _ = conn.execute(
+            "DELETE FROM __blob_deletion_queue WHERE hash = ?1",
+            params![&hash],
+        );
+
         let is_new = final_ref_count == 1;
         if is_new {
             info!("[VFS::BlobRepo] Stored new blob: {} ({} bytes)", hash, size);

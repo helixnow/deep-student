@@ -10,6 +10,7 @@ pub mod apkg_exporter_service;
 #[allow(dead_code)]
 pub mod backup_job_manager;
 pub mod batch_operations;
+pub mod canonical_tools;
 pub mod cmd;
 #[allow(dead_code)]
 pub mod commands;

@@ -1,0 +1,400 @@
+use std::collections::HashMap;
+use std::path::PathBuf;
+
+use chrono::Utc;
+use rusqlite::{params, Connection, OptionalExtension};
+
+use super::SyncError;
+
+const DEFAULT_INSTANCE_ID: &str = "default";
+
+#[derive(Debug, Clone)]
+pub struct SyncStateStore {
+    path: PathBuf,
+}
+
+impl SyncStateStore {
+    pub fn open_default() -> Result<Self, SyncError> {
+        let base_dir = dirs::data_local_dir()
+            .or_else(dirs::data_dir)
+            .or_else(dirs::config_dir)
+            .unwrap_or_else(|| std::env::temp_dir());
+        let dir = base_dir.join("deep-student").join("sync");
+        std::fs::create_dir_all(&dir)?;
+        let path = dir.join("sync_state.db");
+        let store = Self { path };
+        store.with_conn(|_| Ok(()))?;
+        Ok(store)
+    }
+
+    pub fn default_instance_id() -> &'static str {
+        DEFAULT_INSTANCE_ID
+    }
+
+    fn with_conn<T>(
+        &self,
+        f: impl FnOnce(&Connection) -> Result<T, SyncError>,
+    ) -> Result<T, SyncError> {
+        let conn = Connection::open(&self.path)
+            .map_err(|e| SyncError::Database(format!("打开 sync_state.db 失败: {}", e)))?;
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(|e| {
+                SyncError::Database(format!("设置 sync_state busy_timeout 失败: {}", e))
+            })?;
+        Self::init(&conn)?;
+        f(&conn)
+    }
+
+    fn init(conn: &Connection) -> Result<(), SyncError> {
+        conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS upload_seq (
+                instance_id TEXT NOT NULL,
+                device_id TEXT NOT NULL,
+                last_seq INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (instance_id, device_id)
+            );
+            CREATE TABLE IF NOT EXISTS consume_cursor (
+                instance_id TEXT NOT NULL,
+                uploader_device_id TEXT NOT NULL,
+                last_seq INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (instance_id, uploader_device_id)
+            );
+            CREATE TABLE IF NOT EXISTS legacy_processed_key (
+                instance_id TEXT NOT NULL,
+                object_key TEXT NOT NULL,
+                processed_at TEXT NOT NULL,
+                PRIMARY KEY (instance_id, object_key)
+            );
+            CREATE TABLE IF NOT EXISTS tombstone_watermark (
+                instance_id TEXT NOT NULL,
+                source_device_id TEXT NOT NULL,
+                kind TEXT NOT NULL,
+                last_applied_offset INTEGER NOT NULL DEFAULT 0,
+                updated_at TEXT NOT NULL,
+                PRIMARY KEY (instance_id, source_device_id, kind)
+            );
+            CREATE TABLE IF NOT EXISTS instance_binding (
+                instance_id TEXT PRIMARY KEY,
+                provider TEXT NOT NULL,
+                endpoint_hint TEXT NOT NULL,
+                bound_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS device_history (
+                old_device_id TEXT NOT NULL,
+                new_device_id TEXT NOT NULL,
+                rotated_at TEXT NOT NULL,
+                reason TEXT NOT NULL,
+                PRIMARY KEY (old_device_id, new_device_id)
+            );
+            "#,
+        )
+        .map_err(|e| SyncError::Database(format!("初始化 sync_state.db 失败: {}", e)))?;
+        Ok(())
+    }
+
+    pub fn bind_instance(
+        &self,
+        instance_id: &str,
+        provider: &str,
+        endpoint_hint: &str,
+    ) -> Result<(), SyncError> {
+        self.with_conn(|conn| {
+            let existing: Option<(String, String)> = conn
+                .query_row(
+                    "SELECT provider, endpoint_hint FROM instance_binding WHERE instance_id=?1",
+                    params![instance_id],
+                    |row| Ok((row.get(0)?, row.get(1)?)),
+                )
+                .optional()
+                .map_err(|e| SyncError::Database(format!("读取实例绑定失败: {}", e)))?;
+
+            if let Some((bound_provider, bound_hint)) = existing {
+                if bound_provider != provider || bound_hint != endpoint_hint {
+                    return Err(SyncError::Network(format!(
+                        "云同步实例绑定不匹配：远端 instance_id={} 之前绑定到 {} / {}，当前为 {} / {}。请重置同步基线或确认这是同一份云端数据后再继续。",
+                        instance_id, bound_provider, bound_hint, provider, endpoint_hint
+                    )));
+                }
+                return Ok(());
+            }
+
+            conn.execute(
+                "INSERT INTO instance_binding(instance_id, provider, endpoint_hint, bound_at)
+                 VALUES(?1, ?2, ?3, ?4)",
+                params![instance_id, provider, endpoint_hint, Utc::now().to_rfc3339()],
+            )
+            .map_err(|e| SyncError::Database(format!("写入实例绑定失败: {}", e)))?;
+            Ok(())
+        })
+    }
+
+    pub fn get_tombstone_watermark(
+        &self,
+        instance_id: &str,
+        source_device_id: &str,
+        kind: &str,
+    ) -> Result<u64, SyncError> {
+        self.with_conn(|conn| {
+            let watermark: Option<i64> = conn
+                .query_row(
+                    "SELECT last_applied_offset FROM tombstone_watermark
+                     WHERE instance_id=?1 AND source_device_id=?2 AND kind=?3",
+                    params![instance_id, source_device_id, kind],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|e| SyncError::Database(format!("读取 tombstone 水位失败: {}", e)))?;
+            Ok(watermark.unwrap_or(0).max(0) as u64)
+        })
+    }
+
+    pub fn set_tombstone_watermark(
+        &self,
+        instance_id: &str,
+        source_device_id: &str,
+        kind: &str,
+        last_applied_offset: u64,
+    ) -> Result<(), SyncError> {
+        self.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO tombstone_watermark(instance_id, source_device_id, kind, last_applied_offset, updated_at)
+                 VALUES(?1, ?2, ?3, ?4, ?5)
+                 ON CONFLICT(instance_id, source_device_id, kind)
+                 DO UPDATE SET last_applied_offset=max(tombstone_watermark.last_applied_offset, excluded.last_applied_offset),
+                               updated_at=excluded.updated_at",
+                params![
+                    instance_id,
+                    source_device_id,
+                    kind,
+                    i64::try_from(last_applied_offset).unwrap_or(i64::MAX),
+                    Utc::now().to_rfc3339()
+                ],
+            )
+            .map_err(|e| SyncError::Database(format!("写入 tombstone 水位失败: {}", e)))?;
+            Ok(())
+        })
+    }
+
+    pub fn device_rotations_for_new(
+        &self,
+        new_device_id: &str,
+    ) -> Result<Vec<(String, String)>, SyncError> {
+        self.with_conn(|conn| {
+            let mut stmt = conn
+                .prepare("SELECT old_device_id, reason FROM device_history WHERE new_device_id=?1")
+                .map_err(|e| SyncError::Database(format!("读取设备轮换历史失败: {}", e)))?;
+            let rows = stmt
+                .query_map(params![new_device_id], |row| Ok((row.get(0)?, row.get(1)?)))
+                .map_err(|e| SyncError::Database(format!("查询设备轮换历史失败: {}", e)))?;
+            let mut result = Vec::new();
+            for row in rows {
+                result.push(
+                    row.map_err(|e| SyncError::Database(format!("解析设备轮换历史失败: {}", e)))?,
+                );
+            }
+            Ok(result)
+        })
+    }
+
+    pub fn next_upload_seq(
+        &self,
+        instance_id: &str,
+        device_id: &str,
+        cloud_max_seq: u64,
+    ) -> Result<u64, SyncError> {
+        self.with_conn(|conn| {
+            let local: Option<i64> = conn
+                .query_row(
+                    "SELECT last_seq FROM upload_seq WHERE instance_id=?1 AND device_id=?2",
+                    params![instance_id, device_id],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|e| SyncError::Database(format!("读取上传序号失败: {}", e)))?;
+            let next = local
+                .unwrap_or(0)
+                .max(i64::try_from(cloud_max_seq).unwrap_or(i64::MAX))
+                .saturating_add(1);
+            Ok(next as u64)
+        })
+    }
+
+    pub fn mark_published_seq(
+        &self,
+        instance_id: &str,
+        device_id: &str,
+        seq: u64,
+    ) -> Result<(), SyncError> {
+        self.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO upload_seq(instance_id, device_id, last_seq, updated_at)
+                 VALUES(?1, ?2, ?3, ?4)
+                 ON CONFLICT(instance_id, device_id)
+                 DO UPDATE SET last_seq=max(upload_seq.last_seq, excluded.last_seq),
+                               updated_at=excluded.updated_at",
+                params![
+                    instance_id,
+                    device_id,
+                    i64::try_from(seq).unwrap_or(i64::MAX),
+                    Utc::now().to_rfc3339()
+                ],
+            )
+            .map_err(|e| SyncError::Database(format!("写入已发布上传序号失败: {}", e)))?;
+            Ok(())
+        })
+    }
+
+    pub fn published_max_seq(&self, instance_id: &str, device_id: &str) -> Result<u64, SyncError> {
+        self.with_conn(|conn| {
+            let seq: Option<i64> = conn
+                .query_row(
+                    "SELECT last_seq FROM upload_seq WHERE instance_id=?1 AND device_id=?2",
+                    params![instance_id, device_id],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|e| SyncError::Database(format!("读取发布序号失败: {}", e)))?;
+            Ok(seq.unwrap_or(0).max(0) as u64)
+        })
+    }
+
+    pub fn get_cursor(
+        &self,
+        instance_id: &str,
+        uploader_device_id: &str,
+    ) -> Result<u64, SyncError> {
+        self.with_conn(|conn| {
+            let seq: Option<i64> = conn
+                .query_row(
+                    "SELECT last_seq FROM consume_cursor WHERE instance_id=?1 AND uploader_device_id=?2",
+                    params![instance_id, uploader_device_id],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|e| SyncError::Database(format!("读取消费游标失败: {}", e)))?;
+            Ok(seq.unwrap_or(0).max(0) as u64)
+        })
+    }
+
+    pub fn set_cursor(
+        &self,
+        instance_id: &str,
+        uploader_device_id: &str,
+        last_seq: u64,
+    ) -> Result<(), SyncError> {
+        self.with_conn(|conn| {
+            conn.execute(
+                "INSERT INTO consume_cursor(instance_id, uploader_device_id, last_seq, updated_at)
+                 VALUES(?1, ?2, ?3, ?4)
+                 ON CONFLICT(instance_id, uploader_device_id)
+                 DO UPDATE SET last_seq=max(consume_cursor.last_seq, excluded.last_seq),
+                               updated_at=excluded.updated_at",
+                params![
+                    instance_id,
+                    uploader_device_id,
+                    i64::try_from(last_seq).unwrap_or(i64::MAX),
+                    Utc::now().to_rfc3339()
+                ],
+            )
+            .map_err(|e| SyncError::Database(format!("写入消费游标失败: {}", e)))?;
+            Ok(())
+        })
+    }
+
+    pub fn cursors(&self, instance_id: &str) -> Result<HashMap<String, u64>, SyncError> {
+        self.with_conn(|conn| {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT uploader_device_id, last_seq FROM consume_cursor WHERE instance_id=?1",
+                )
+                .map_err(|e| SyncError::Database(format!("读取消费游标失败: {}", e)))?;
+            let mut rows = stmt
+                .query(params![instance_id])
+                .map_err(|e| SyncError::Database(format!("查询消费游标失败: {}", e)))?;
+            let mut cursors = HashMap::new();
+            while let Some(row) = rows
+                .next()
+                .map_err(|e| SyncError::Database(format!("遍历消费游标失败: {}", e)))?
+            {
+                let device_id: String = row
+                    .get(0)
+                    .map_err(|e| SyncError::Database(format!("读取游标设备失败: {}", e)))?;
+                let seq: i64 = row
+                    .get(1)
+                    .map_err(|e| SyncError::Database(format!("读取游标序号失败: {}", e)))?;
+                cursors.insert(device_id, seq.max(0) as u64);
+            }
+            Ok(cursors)
+        })
+    }
+
+    pub fn is_legacy_processed(
+        &self,
+        instance_id: &str,
+        object_key: &str,
+    ) -> Result<bool, SyncError> {
+        self.with_conn(|conn| {
+            let exists: Option<i64> = conn
+                .query_row(
+                    "SELECT 1 FROM legacy_processed_key WHERE instance_id=?1 AND object_key=?2",
+                    params![instance_id, object_key],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|e| {
+                    SyncError::Database(format!("读取 legacy processed key 失败: {}", e))
+                })?;
+            Ok(exists.is_some())
+        })
+    }
+
+    pub fn mark_legacy_processed(
+        &self,
+        instance_id: &str,
+        object_key: &str,
+    ) -> Result<(), SyncError> {
+        self.with_conn(|conn| {
+            conn.execute(
+                "INSERT OR IGNORE INTO legacy_processed_key(instance_id, object_key, processed_at)
+                 VALUES(?1, ?2, ?3)",
+                params![instance_id, object_key, Utc::now().to_rfc3339()],
+            )
+            .map_err(|e| SyncError::Database(format!("写入 legacy processed key 失败: {}", e)))?;
+            Ok(())
+        })
+    }
+
+    pub fn record_device_rotation(
+        &self,
+        old_device_id: &str,
+        new_device_id: &str,
+        reason: &str,
+    ) -> Result<(), SyncError> {
+        self.with_conn(|conn| {
+            conn.execute(
+                "INSERT OR REPLACE INTO device_history(old_device_id, new_device_id, rotated_at, reason)
+                 VALUES(?1, ?2, ?3, ?4)",
+                params![old_device_id, new_device_id, Utc::now().to_rfc3339(), reason],
+            )
+            .map_err(|e| SyncError::Database(format!("记录设备轮换失败: {}", e)))?;
+            conn.execute(
+                "UPDATE upload_seq SET last_seq=0, updated_at=?1",
+                params![Utc::now().to_rfc3339()],
+            )
+            .map_err(|e| SyncError::Database(format!("重置上传序号失败: {}", e)))?;
+            conn.execute(
+                "UPDATE consume_cursor SET last_seq=0, updated_at=?1",
+                params![Utc::now().to_rfc3339()],
+            )
+            .map_err(|e| SyncError::Database(format!("重置消费游标失败: {}", e)))?;
+            conn.execute("DELETE FROM legacy_processed_key", [])
+                .map_err(|e| SyncError::Database(format!("清理 legacy processed key 失败: {}", e)))?;
+            conn.execute("DELETE FROM tombstone_watermark", [])
+                .map_err(|e| SyncError::Database(format!("重置 tombstone 水位失败: {}", e)))?;
+            Ok(())
+        })
+    }
+}

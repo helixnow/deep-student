@@ -7,8 +7,7 @@
 //! - 冲突表、tombstone、回声抑制**同时**作用下的非线性组合
 
 use deep_student_lib::data_governance::sync::{
-    conflict_resolver::ConflictPolicy, tombstone, ChangeOperation, Hlc, HlcClock,
-    SyncChangeWithData, SyncManager,
+    conflict_resolver::ConflictPolicy, ChangeOperation, Hlc, SyncChangeWithData, SyncManager,
 };
 use rusqlite::{params, Connection};
 use serde_json::json;
@@ -75,6 +74,8 @@ fn mk_change(
         change_log_id: None,
         database_name: Some("test".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     }
 }
 
@@ -93,13 +94,11 @@ fn get_title(conn: &Connection, id: &str) -> Option<String> {
 #[test]
 fn p01_hlc_as_updated_at_lww_comparison() {
     let conn = new_db();
-    let clock_a = HlcClock::new();
-    let clock_b = HlcClock::new();
 
     let now = 1_700_000_000_000u64;
 
     // A 写第一个版本
-    let hlc_1 = clock_a.tick_with_now(now).unwrap();
+    let hlc_1 = Hlc::new(now, 0);
     let c1 = mk_change(
         "n1",
         ChangeOperation::Insert,
@@ -112,10 +111,8 @@ fn p01_hlc_as_updated_at_lww_comparison() {
     );
     SyncManager::apply_downloaded_changes(&conn, &[c1], None).unwrap();
 
-    // B 收到 hlc_1 推进自己的 clock
-    clock_b.receive_with_now(hlc_1, now + 5).unwrap();
     // B 写第二个版本
-    let hlc_2 = clock_b.tick_with_now(now + 10).unwrap();
+    let hlc_2 = Hlc::new(now + 10, 0);
     let c2 = mk_change(
         "n1",
         ChangeOperation::Update,
@@ -136,10 +133,9 @@ fn p01_hlc_as_updated_at_lww_comparison() {
 #[test]
 fn p02_older_hlc_rejected_by_lww() {
     let conn = new_db();
-    let clock = HlcClock::new();
     let now = 1_700_000_000_000u64;
 
-    let hlc_late = clock.tick_with_now(now + 100).unwrap();
+    let hlc_late = Hlc::new(now + 100, 0);
     let c1 = mk_change(
         "n1",
         ChangeOperation::Insert,
@@ -167,13 +163,7 @@ fn p02_older_hlc_rejected_by_lww() {
     SyncManager::apply_downloaded_changes(&conn, &[c2], None).unwrap();
 
     // 本地 hlc_late > hlc_early，所以 LWW 门应跳过
-    // 但注意：LWW 门用 parse_flexible_timestamp，不是 HLC parser
-    // HLC 字符串 "01700000000100-00000" 不是 RFC3339，parse 会失败
-    // → LWW 门退回到"无法解析就不跳过"→ c2 的 UPSERT 会覆盖
-    // 所以 title 会变成 "early" —— 这暴露了 HLC 字符串和 LWW 门的不兼容！
-    let title = get_title(&conn, "n1");
-    println!("P.02 title={:?}", title);
-    // 记录实际行为而不强断言——这揭示了一个需要未来修复的集成问题
+    assert_eq!(get_title(&conn, "n1").as_deref(), Some("late"));
 }
 
 /// **P.03** 三段式：INSERT + UPDATE + DELETE + UPDATE，每段时间戳递增
@@ -379,6 +369,8 @@ fn p07_delete_with_payload_ignored() {
         change_log_id: None,
         database_name: Some("test".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[c], None).unwrap();
 
@@ -634,6 +626,8 @@ fn p13_foreign_keys_off_still_atomic() {
                 change_log_id: None,
                 database_name: None,
                 suppress_change_log: Some(true),
+                source_device_id: None,
+                source_seq: None,
             },
         ],
         None,
@@ -1035,6 +1029,8 @@ fn p25_two_tables_in_one_batch() {
             change_log_id: None,
             database_name: Some("test".into()),
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         },
         SyncChangeWithData {
             table_name: "notes".into(),
@@ -1047,6 +1043,8 @@ fn p25_two_tables_in_one_batch() {
             change_log_id: None,
             database_name: Some("test".into()),
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         },
     ];
     SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
@@ -1082,6 +1080,8 @@ fn p26_same_record_id_in_different_tables() {
             change_log_id: None,
             database_name: Some("test".into()),
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         },
         SyncChangeWithData {
             table_name: "b".into(),
@@ -1094,6 +1094,8 @@ fn p26_same_record_id_in_different_tables() {
             change_log_id: None,
             database_name: Some("test".into()),
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         },
     ];
     SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
@@ -1140,6 +1142,8 @@ fn p27_table_with_many_columns() {
         change_log_id: None,
         database_name: Some("test".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[c], None).unwrap();
     let v: String = conn
@@ -1273,6 +1277,8 @@ fn p30_meta_fields_ignored_in_conflict() {
         change_log_id: None,
         database_name: Some("test".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
 
     let (_, conflict) = SyncManager::apply_downloaded_changes_with_conflict_guard(
@@ -1417,6 +1423,8 @@ fn p34_heterogeneous_payload_shapes() {
             change_log_id: None,
             database_name: Some("test".into()),
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         });
     }
     SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
@@ -1446,6 +1454,8 @@ fn p35_payload_with_many_unknown_columns() {
         change_log_id: None,
         database_name: Some("test".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let r = SyncManager::apply_downloaded_changes(&conn, &[c], None);
     assert!(r.is_err(), "大量未知列应导致失败");
@@ -1582,43 +1592,60 @@ fn p38_single_record_full_stress() {
 #[test]
 fn p39_double_delete_preserves_earlier_tombstone() {
     let conn = new_db();
+    conn.execute_batch(
+        r#"
+        CREATE TABLE notes (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL DEFAULT '',
+            updated_at TEXT NOT NULL,
+            deleted_at TEXT
+        );
+        "#,
+    )
+    .unwrap();
     conn.execute(
-        "INSERT INTO items (id, title, updated_at) VALUES ('n1', 't', ?1)",
+        "INSERT INTO notes (id, title, updated_at) VALUES ('n1', 't', ?1)",
         params![ts_ago(200)],
     )
     .unwrap();
+
+    let delete_change = |changed_at: String| SyncChangeWithData {
+        table_name: "notes".into(),
+        record_id: "n1".into(),
+        operation: ChangeOperation::Delete,
+        data: None,
+        changed_at,
+        change_log_id: None,
+        database_name: None,
+        suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
+    };
+
     // 第一次 DELETE（较早时间戳）
-    SyncManager::apply_downloaded_changes(
-        &conn,
-        &[mk_change(
-            "n1",
-            ChangeOperation::Delete,
-            json!({}),
-            &ts_ago(100),
-        )],
-        None,
-    )
-    .unwrap();
+    let first_result =
+        SyncManager::apply_downloaded_changes(&conn, &[delete_change(ts_ago(100))], None).unwrap();
+    assert_eq!(
+        first_result.failure_count, 0,
+        "first delete apply failures: {:?}",
+        first_result.failures
+    );
     let first_del: String = conn
-        .query_row("SELECT deleted_at FROM items WHERE id='n1'", [], |r| {
+        .query_row("SELECT deleted_at FROM notes WHERE id='n1'", [], |r| {
             r.get(0)
         })
         .unwrap();
 
     // 第二次 DELETE（更早时间戳，应被 LWW 拒绝，deleted_at 保持第一次的值）
-    SyncManager::apply_downloaded_changes(
-        &conn,
-        &[mk_change(
-            "n1",
-            ChangeOperation::Delete,
-            json!({}),
-            &ts_ago(150),
-        )],
-        None,
-    )
-    .unwrap();
+    let second_result =
+        SyncManager::apply_downloaded_changes(&conn, &[delete_change(ts_ago(150))], None).unwrap();
+    assert_eq!(
+        second_result.failure_count, 0,
+        "second delete apply failures: {:?}",
+        second_result.failures
+    );
     let second_del: String = conn
-        .query_row("SELECT deleted_at FROM items WHERE id='n1'", [], |r| {
+        .query_row("SELECT deleted_at FROM notes WHERE id='n1'", [], |r| {
             r.get(0)
         })
         .unwrap();
@@ -1651,6 +1678,8 @@ fn p40_bulk_payload_id_record_id_mismatch() {
             change_log_id: None,
             database_name: Some("test".into()),
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         });
     }
     let r = SyncManager::apply_downloaded_changes(&conn, &changes, None);

@@ -14,6 +14,7 @@ use crate::models::AppError;
 /// 云端 Manifest 文件名
 const MANIFEST_FILE: &str = "manifest.json";
 const MANIFEST_BACKUP_FILE: &str = "manifest.json.bak";
+const MANIFESTS_DIR: &str = "manifests";
 /// 备份文件目录
 const BACKUPS_DIR: &str = "backups";
 /// 默认保留版本数
@@ -134,30 +135,108 @@ impl CloudSyncManager {
         &self.device_id
     }
 
-    /// 读取云端 Manifest
-    pub async fn get_manifest(&self) -> Result<CloudManifest> {
-        match self.storage.get(MANIFEST_FILE).await? {
-            Some(data) => match serde_json::from_slice(&data) {
-                Ok(manifest) => Ok(manifest),
-                Err(e) => {
-                    tracing::warn!("主 manifest 解析失败，尝试备份: {e}");
-                    match self.storage.get(MANIFEST_BACKUP_FILE).await? {
-                        Some(backup_data) => serde_json::from_slice(&backup_data)
-                            .map_err(|e| AppError::internal(format!("manifest 及备份均损坏: {e}"))),
-                        None => Err(AppError::internal(format!("manifest 损坏且无备份: {e}"))),
-                    }
-                }
-            },
-            None => Ok(CloudManifest::default()),
+    fn device_manifest_key(&self) -> String {
+        format!("{}/{}.json", MANIFESTS_DIR, self.device_id)
+    }
+
+    fn merge_manifest(target: &mut CloudManifest, incoming: CloudManifest) {
+        let mut by_id = std::collections::BTreeMap::new();
+        for version in target
+            .versions
+            .drain(..)
+            .chain(incoming.versions.into_iter())
+        {
+            by_id.insert(version.id.clone(), version);
+        }
+        target.versions = by_id.into_values().collect();
+        target
+            .versions
+            .sort_by(|a, b| b.timestamp.cmp(&a.timestamp).then_with(|| b.id.cmp(&a.id)));
+        target.latest = target.versions.first().map(|v| v.id.clone());
+        if incoming.updated_at > target.updated_at {
+            target.updated_at = incoming.updated_at;
         }
     }
 
-    /// 保存云端 Manifest（带备份 + 写入验证）
+    async fn read_manifest_key(&self, key: &str) -> Result<Option<CloudManifest>> {
+        match self.storage.get(key).await? {
+            Some(data) => serde_json::from_slice(&data)
+                .map(Some)
+                .map_err(|e| AppError::internal(format!("manifest {key} 损坏: {e}"))),
+            None => Ok(None),
+        }
+    }
+
+    /// 读取云端 Manifest（合并 per-device manifest，兼容旧 manifest.json）
+    pub async fn get_manifest(&self) -> Result<CloudManifest> {
+        let mut merged = CloudManifest::default();
+        let mut found = false;
+
+        let list = self
+            .storage
+            .list_outcome(&format!("{MANIFESTS_DIR}/"))
+            .await?;
+        if list.truncated {
+            return Err(AppError::internal(
+                "云端备份 manifest 列表被截断，无法安全合并版本列表".to_string(),
+            ));
+        }
+        for file in list.files {
+            if !file.key.ends_with(".json") {
+                continue;
+            }
+            match self.read_manifest_key(&file.key).await {
+                Ok(Some(manifest)) => {
+                    Self::merge_manifest(&mut merged, manifest);
+                    found = true;
+                }
+                Ok(None) => {}
+                Err(e) => tracing::warn!("跳过损坏的设备 manifest {}: {}", file.key, e),
+            }
+        }
+
+        match self.read_manifest_key(MANIFEST_FILE).await {
+            Ok(Some(legacy)) => {
+                Self::merge_manifest(&mut merged, legacy);
+                found = true;
+            }
+            Ok(None) => {}
+            Err(e) => {
+                tracing::warn!("主 manifest 解析失败，尝试备份: {e}");
+                if let Some(backup) = self.read_manifest_key(MANIFEST_BACKUP_FILE).await? {
+                    Self::merge_manifest(&mut merged, backup);
+                    found = true;
+                }
+            }
+        }
+
+        if found {
+            Ok(merged)
+        } else {
+            Ok(CloudManifest::default())
+        }
+    }
+
+    async fn get_device_manifest(&self) -> Result<CloudManifest> {
+        if let Some(manifest) = self.read_manifest_key(&self.device_manifest_key()).await? {
+            Ok(manifest)
+        } else {
+            Ok(CloudManifest::default())
+        }
+    }
+
+    /// 保存本设备 Manifest（per-device，避免多设备 RMW 覆盖）
     async fn save_manifest(&self, manifest: &CloudManifest) -> Result<()> {
         let data = serde_json::to_vec_pretty(manifest)
             .map_err(|e| AppError::internal(format!("序列化 manifest 失败: {e}")))?;
 
-        let temp_key = format!("manifest.{}.tmp", chrono::Utc::now().timestamp_millis());
+        let key = self.device_manifest_key();
+        let temp_key = format!(
+            "{}/{}.{}.tmp",
+            MANIFESTS_DIR,
+            self.device_id,
+            chrono::Utc::now().timestamp_millis()
+        );
 
         self.storage.put(&temp_key, &data).await?;
 
@@ -172,11 +251,7 @@ impl CloudSyncManager {
             }
         }
 
-        if let Ok(Some(old_data)) = self.storage.get(MANIFEST_FILE).await {
-            let _ = self.storage.put(MANIFEST_BACKUP_FILE, &old_data).await;
-        }
-
-        self.storage.put(MANIFEST_FILE, &data).await?;
+        self.storage.put(&key, &data).await?;
         let _ = self.storage.delete(&temp_key).await;
 
         Ok(())
@@ -187,6 +262,12 @@ impl CloudSyncManager {
         match self.storage.check_connection().await {
             Ok(_) => match self.get_manifest().await {
                 Ok(manifest) => {
+                    let device_last_sync = self
+                        .read_manifest_key(&self.device_manifest_key())
+                        .await
+                        .ok()
+                        .flatten()
+                        .map(|m| m.updated_at);
                     let latest = manifest
                         .latest
                         .as_ref()
@@ -195,7 +276,7 @@ impl CloudSyncManager {
                         connected: true,
                         cloud_version_count: manifest.versions.len(),
                         latest_version: latest,
-                        last_sync_time: Some(manifest.updated_at),
+                        last_sync_time: device_last_sync,
                         error: None,
                     }
                 }
@@ -322,7 +403,7 @@ impl CloudSyncManager {
         };
 
         // 更新 Manifest
-        let mut manifest = self.get_manifest().await?;
+        let mut manifest = self.get_device_manifest().await?;
         manifest.versions.insert(0, version.clone());
         manifest.latest = Some(version_id);
         manifest.updated_at = now;
@@ -418,7 +499,7 @@ impl CloudSyncManager {
 
     /// 删除指定版本
     pub async fn delete_version(&self, version_id: &str) -> Result<()> {
-        let mut manifest = self.get_manifest().await?;
+        let mut manifest = self.get_device_manifest().await?;
 
         // 检查是否存在
         let idx = manifest
@@ -522,4 +603,40 @@ pub fn get_device_id() -> String {
     }
 
     new_id
+}
+
+/// 恢复备份后轮换设备 ID。
+///
+/// restore 会把本机数据回退到过去时间点；继续沿用旧 device_id 会触发
+/// data_governance 的回声过滤，使旧身份在备份点之后上传过的变更永远不被本机重新消费。
+/// 轮换后本机以“新设备”身份重新追赶旧设备目录。
+pub fn rotate_device_id_after_restore() -> std::io::Result<(String, String)> {
+    let old_id = get_device_id();
+    let hostname = std::env::var("COMPUTERNAME")
+        .or_else(|_| std::env::var("HOSTNAME"))
+        .or_else(|_| std::env::var("HOST"))
+        .unwrap_or_else(|_| "device".to_string());
+    let short_uuid = &Uuid::new_v4().to_string()[..8];
+    let new_id = format!("{}-{}", hostname, short_uuid);
+
+    let possible_paths: Vec<std::path::PathBuf> =
+        [dirs::data_local_dir(), dirs::config_dir(), dirs::home_dir()]
+            .iter()
+            .filter_map(|opt| opt.clone())
+            .map(|dir| dir.join("deep-student").join(".device_id"))
+            .collect();
+
+    let mut wrote_any = false;
+    for path in &possible_paths {
+        if let Some(parent) = path.parent() {
+            std::fs::create_dir_all(parent)?;
+        }
+        if path.exists() || !wrote_any {
+            std::fs::write(path, &new_id)?;
+            wrote_any = true;
+        }
+    }
+    std::env::set_var("DEVICE_ID", &new_id);
+    tracing::info!("设备 ID 已在恢复后轮换: old={}, new={}", old_id, new_id);
+    Ok((old_id, new_id))
 }

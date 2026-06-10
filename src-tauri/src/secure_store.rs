@@ -459,6 +459,12 @@ pub struct CloudStorageCredentials {
     /// S3 Secret Access Key
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub s3_secret_access_key: Option<String>,
+    /// [P0-4/O2] FTP 密码
+    ///
+    /// 此前结构体缺少该字段，前端 `ftpPassword` 经 serde 被静默丢弃，导致 FTP
+    /// 密码永远进不了安全存储（只能裸存 localStorage）。补齐该字段打通链路。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub ftp_password: Option<String>,
     /// 端到端加密密码（备份 ZIP 上传前用的）
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub encryption_password: Option<String>,

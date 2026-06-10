@@ -4,6 +4,9 @@
 #![allow(non_snake_case)] // Tauri 命令参数使用 camelCase 与前端保持一致
 
 use crate::commands::AppState;
+use crate::data_governance::file_deletion_queue::{
+    active_data_dir_from_runtime_base, asset_key_from_relative_path, enqueue_asset_deletion,
+};
 use crate::dstu::handler_utils::node_converters::note_to_dstu_node;
 use crate::models::AppError;
 use crate::unified_file_manager;
@@ -178,6 +181,32 @@ where
 {
     for cleanup_path in cleanup_paths {
         cleanup_materialized_import_file(context, cleanup_path);
+    }
+}
+
+fn enqueue_deleted_note_asset(relative_path: &str, state: &AppState) {
+    let Some(key) = asset_key_from_relative_path(relative_path) else {
+        log::warn!(
+            "[notes] 跳过资产删除队列：无法归一化相对路径 {}",
+            relative_path
+        );
+        return;
+    };
+    let runtime_base = state.file_manager.get_writable_app_data_dir();
+    let active_dir = active_data_dir_from_runtime_base(&runtime_base);
+    let local_rel = key
+        .strip_prefix("active/")
+        .or_else(|| key.strip_prefix("app_data/"))
+        .unwrap_or(relative_path);
+    let size = std::fs::metadata(active_dir.join(local_rel))
+        .ok()
+        .map(|m| m.len());
+    if let Err(err) = enqueue_asset_deletion(&active_dir, &key, size) {
+        log::warn!(
+            "[notes] 写入资产删除队列失败（不阻塞删除）: key={}, err={}",
+            key,
+            err
+        );
     }
 }
 
@@ -713,7 +742,30 @@ pub async fn notes_list_assets(
 #[tauri::command]
 pub async fn notes_delete_asset(relative_path: String, state: State<'_, AppState>) -> Result<bool> {
     eprintln!("[notes_delete_asset] 收到删除请求: {}", relative_path);
+    let queue_key = asset_key_from_relative_path(&relative_path);
+    let runtime_base = state.file_manager.get_writable_app_data_dir();
+    let active_dir = active_data_dir_from_runtime_base(&runtime_base);
+    let size = queue_key.as_deref().and_then(|key| {
+        let local_rel = key
+            .strip_prefix("active/")
+            .or_else(|| key.strip_prefix("app_data/"))
+            .unwrap_or(&relative_path);
+        std::fs::metadata(active_dir.join(local_rel))
+            .ok()
+            .map(|m| m.len())
+    });
     let deleted = state.file_manager.delete_note_asset(&relative_path)?;
+    if deleted {
+        if let Some(key) = queue_key {
+            if let Err(err) = enqueue_asset_deletion(&active_dir, &key, size) {
+                log::warn!(
+                    "[notes_delete_asset] 写入资产删除队列失败（不阻塞删除）: key={}, err={}",
+                    key,
+                    err
+                );
+            }
+        }
+    }
     eprintln!("[notes_delete_asset] 删除结果: {}", deleted);
     Ok(deleted)
 }
@@ -931,6 +983,7 @@ pub async fn notes_assets_bulk_delete(
     let mut deleted = 0usize;
     for p in &paths {
         if state.file_manager.delete_note_asset(p)? {
+            enqueue_deleted_note_asset(p, state.inner());
             deleted += 1;
         }
     }

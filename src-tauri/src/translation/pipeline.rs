@@ -157,16 +157,16 @@ fn domain_system_prompt(domain: &str) -> &str {
              Translate with absolute precision using standard legal terminology in the target language. \
              Preserve the exact structure of clauses, articles, and numbered sections. \
              Do not paraphrase or simplify legal language. Only output the translated text.",
-        "medical" => 
+        "medical" =>
             "You are a medical translator with expertise in clinical and biomedical texts. \
              Use standard medical terminology (ICD/MeSH terms where applicable). \
              Preserve drug names, dosages, anatomical terms, and abbreviations accurately. \
              Only output the translated text.",
-        "casual" | "conversation" => 
+        "casual" | "conversation" =>
             "You are a friendly translator for everyday conversations and social media content. \
              Use natural, colloquial language that sounds native. \
              Adapt idioms, slang, and cultural expressions appropriately. Only output the translated text.",
-        _ => 
+        _ =>
             "You are a professional translator. Translate the given text accurately while preserving its tone, style, and formatting. Do not add explanations or notes. Only output the translated text.",
     }
 }

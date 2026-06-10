@@ -182,12 +182,16 @@ impl std::fmt::Debug for CloudStorageConfig {
 
 impl CloudStorageConfig {
     /// 获取根目录路径，默认为 "deep-student-sync"
+    ///
+    /// [P0-12/F11] 归一化顺序修正：必须先 `trim_matches('/')` 再判空。
+    /// 旧实现先按 `!trim().is_empty()` 过滤、后 `trim_matches('/')`，导致 root 为
+    /// `"/"` 时通过过滤却被 trim 成空串 → WebDAV `"//"` 前缀不命中、FTP 双斜杠路径。
     pub fn root(&self) -> String {
         self.root
             .as_deref()
-            .filter(|r| !r.trim().is_empty())
+            .map(|r| r.trim().trim_matches('/').trim())
+            .filter(|r| !r.is_empty())
             .unwrap_or("deep-student-sync")
-            .trim_matches('/')
             .to_string()
     }
 
@@ -199,6 +203,7 @@ impl CloudStorageConfig {
         Url::parse(endpoint.trim())
             .ok()
             .and_then(|u| u.host_str().map(|h| h.to_lowercase()))
+            .map(|host| host.trim_matches(['[', ']']).to_string())
             .map(|host| matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1"))
             .unwrap_or(false)
     }
@@ -422,6 +427,18 @@ mod tests {
     #[test]
     fn test_default_root() {
         let config = CloudStorageConfig::default();
+        assert_eq!(config.root(), "deep-student-sync");
+
+        let config = CloudStorageConfig {
+            root: Some("".into()),
+            ..Default::default()
+        };
+        assert_eq!(config.root(), "deep-student-sync");
+
+        let config = CloudStorageConfig {
+            root: Some("/".into()),
+            ..Default::default()
+        };
         assert_eq!(config.root(), "deep-student-sync");
 
         let config = CloudStorageConfig {

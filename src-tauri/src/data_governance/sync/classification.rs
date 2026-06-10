@@ -27,7 +27,8 @@ pub struct TableClassification {
     pub conflict_policy: ConflictPolicyClass,
     /// Comma-separated business unique keys (beyond PK)
     pub business_unique_keys: &'static str,
-    /// Whether this table has JSON blob columns needing field-level merge
+    /// Whether this table has JSON blob columns. JSON blobs default to row-level LWW
+    /// unless a specific column appears in the field_merge strategy registry.
     pub has_json_blobs: bool,
     /// Special merge notes
     pub merge_notes: &'static str,
@@ -54,10 +55,10 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             table_name: "resources",
             primary_key: "id",
             category: SyncCategory::RowSync,
-            conflict_policy: ConflictPolicyClass::CounterMerge,
+            conflict_policy: ConflictPolicyClass::Lww,
             business_unique_keys: "hash",
             has_json_blobs: true,
-            merge_notes: "ref_count uses CRDT counter merge; metadata_json field-level merge",
+            merge_notes: "ref_count is derived/recomputed; metadata_json uses row-level LWW/conflict handling",
         },
         TableClassification {
             database: "vfs",
@@ -75,9 +76,9 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             primary_key: "id",
             category: SyncCategory::RowSync,
             conflict_policy: ConflictPolicyClass::FieldMerge,
-            business_unique_keys: "sha256,content_hash",
+            business_unique_keys: "sha256",
             has_json_blobs: true,
-            merge_notes: "sha256/content_hash conflict = duplicate file, merge via content dedup; bookmarks_json/tags_json/preview_json field-level merge",
+            merge_notes: "sha256 is the verified file-content business key; same-content rows are aliased to the surviving file id",
         },
         TableClassification {
             database: "vfs",
@@ -87,7 +88,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::FieldMerge,
             business_unique_keys: "",
             has_json_blobs: true,
-            merge_notes: "metadata_json/preview_json field-level merge; sync_config for exam-specific sync settings",
+            merge_notes: "metadata_json/preview_json use row-level LWW/conflict handling; sync_config for exam-specific sync settings",
         },
         TableClassification {
             database: "vfs",
@@ -97,7 +98,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::Lww,
             business_unique_keys: "",
             has_json_blobs: true,
-            merge_notes: "metadata_json field-level merge",
+            merge_notes: "metadata_json uses row-level LWW/conflict handling",
         },
         TableClassification {
             database: "vfs",
@@ -107,7 +108,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::FieldMerge,
             business_unique_keys: "",
             has_json_blobs: true,
-            merge_notes: "grading_result_json/dimension_scores_json field-level merge",
+            merge_notes: "grading_result_json/dimension_scores_json use row-level LWW/conflict handling",
         },
         TableClassification {
             database: "vfs",
@@ -127,7 +128,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::FieldMerge,
             business_unique_keys: "",
             has_json_blobs: true,
-            merge_notes: "settings JSON field-level merge",
+            merge_notes: "settings JSON uses row-level LWW/conflict handling",
         },
         TableClassification {
             database: "vfs",
@@ -157,7 +158,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::FieldMerge,
             business_unique_keys: "",
             has_json_blobs: true,
-            merge_notes: "options_json/tags/images_json field-level merge; attempt_count/correct_count = max merge; user_note concatenation",
+            merge_notes: "tags use set union; attempt_count/correct_count use max; options_json/images_json/user_note use row-level LWW/conflict handling",
         },
         TableClassification {
             database: "vfs",
@@ -177,7 +178,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::FieldMerge,
             business_unique_keys: "question_id",
             has_json_blobs: false,
-            merge_notes: "question_id UNIQUE conflict = same question, merge SM-2 stats: ease_factor avg, interval_days max, total_reviews sum",
+            merge_notes: "question_id UNIQUE conflict = same question; total_reviews/total_correct/interval_days/consecutive_failures use max; ease_factor uses row-level LWW",
         },
         TableClassification {
             database: "vfs",
@@ -197,7 +198,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::FieldMerge,
             business_unique_keys: "",
             has_json_blobs: true,
-            merge_notes: "estimated_pomodoros/completed_pomodoros sum; tags_json field-level merge",
+            merge_notes: "estimated_pomodoros/completed_pomodoros use max; tags_json uses set union",
         },
         TableClassification {
             database: "vfs",
@@ -249,7 +250,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::NoConflict,
             business_unique_keys: "",
             has_json_blobs: false,
-            merge_notes: "Computed from review_plans + review_history",
+            merge_notes: "Computed from synced review_plans; review_history is local audit/runtime data and is not part of incremental sync",
         },
         TableClassification {
             database: "vfs",
@@ -300,7 +301,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::NoConflict,
             business_unique_keys: "",
             has_json_blobs: false,
-            merge_notes: "Field-level change history, debugging only",
+            merge_notes: "Column change history, debugging only",
         },
         TableClassification {
             database: "vfs",
@@ -403,7 +404,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::FieldMerge,
             business_unique_keys: "",
             has_json_blobs: true,
-            merge_notes: "metadata_json field-level merge",
+            merge_notes: "metadata_json uses row-level LWW/conflict handling",
         },
         TableClassification {
             database: "chat_v2",
@@ -413,7 +414,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::FieldMerge,
             business_unique_keys: "",
             has_json_blobs: true,
-            merge_notes: "block_ids_json/meta_json/attachments_json/variants_json/shared_context_json field-level merge",
+            merge_notes: "block_ids_json/meta_json/attachments_json/variants_json/shared_context_json use row-level LWW/conflict handling",
         },
         TableClassification {
             database: "chat_v2",
@@ -423,7 +424,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::FieldMerge,
             business_unique_keys: "",
             has_json_blobs: true,
-            merge_notes: "tool_input_json/tool_output_json/citations_json field-level merge",
+            merge_notes: "tool_input_json/tool_output_json/citations_json use row-level LWW/conflict handling",
         },
         TableClassification {
             database: "chat_v2",
@@ -440,10 +441,10 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             table_name: "resources",
             primary_key: "id",
             category: SyncCategory::RowSync,
-            conflict_policy: ConflictPolicyClass::CounterMerge,
+            conflict_policy: ConflictPolicyClass::Lww,
             business_unique_keys: "hash",
             has_json_blobs: true,
-            merge_notes: "ref_count CRDT counter merge; metadata_json field-level merge",
+            merge_notes: "ref_count is derived/recomputed; metadata_json uses row-level LWW/conflict handling",
         },
         TableClassification {
             database: "chat_v2",
@@ -463,7 +464,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::FieldMerge,
             business_unique_keys: "",
             has_json_blobs: true,
-            merge_notes: "default_skill_ids_json/pinned_resource_ids_json field-level merge",
+            merge_notes: "default_skill_ids_json/pinned_resource_ids_json use row-level LWW/conflict handling",
         },
         TableClassification {
             database: "chat_v2",
@@ -616,7 +617,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::FieldMerge,
             business_unique_keys: "",
             has_json_blobs: true,
-            merge_notes: "Anki card parent task; anki_generation_options_json field-level merge",
+            merge_notes: "Anki card parent task; anki_generation_options_json uses row-level LWW/conflict handling",
         },
         TableClassification {
             database: "mistakes",
@@ -626,7 +627,7 @@ pub fn sync_classification_registry() -> Vec<TableClassification> {
             conflict_policy: ConflictPolicyClass::FieldMerge,
             business_unique_keys: "",
             has_json_blobs: true,
-            merge_notes: "tags_json/images_json/extra_fields_json field-level merge",
+            merge_notes: "tags_json uses set union; images_json/extra_fields_json use row-level LWW/conflict handling",
         },
         // --- LocalRuntime ---
         TableClassification {

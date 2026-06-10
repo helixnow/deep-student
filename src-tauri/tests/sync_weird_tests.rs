@@ -6,8 +6,8 @@
 //! 命名约定：W.NN = Weird #N
 
 use deep_student_lib::data_governance::sync::{
-    compare_hlc_strings, conflict_resolver::ConflictPolicy, tombstone, ChangeOperation, Hlc,
-    HlcClock, HlcError, SyncChangeWithData, SyncManager,
+    conflict_resolver::ConflictPolicy, tombstone, ChangeOperation, Hlc, SyncChangeWithData,
+    SyncManager,
 };
 use rusqlite::{params, Connection};
 use serde_json::json;
@@ -78,6 +78,8 @@ fn mk_change(
         change_log_id: None,
         database_name: Some("test".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     }
 }
 
@@ -634,29 +636,31 @@ fn w23_empty_updated_at() {
     // 允许或拒绝都可，只要不 panic
 }
 
-/// **W.24** 重复时间戳的大量同记录变更（HLC 必用 counter 区分）
+/// **W.24** legacy HLC counter 字符串在同一毫秒内保持排序
 #[test]
 fn w24_hlc_counter_saturation() {
-    let clock = HlcClock::new();
     let now = 1_700_000_000_000u64;
 
-    // 同一毫秒内 tick 10000 次，HLC 必须单调递增
     let mut last = Hlc::ZERO;
     for _ in 0..10000 {
-        let h = clock.tick_with_now(now).unwrap();
-        assert!(h > last, "HLC 必须严格单调：last={:?}, new={:?}", last, h);
+        let h = Hlc::new(now, last.counter.saturating_add(1));
+        assert!(
+            h > last,
+            "legacy HLC 必须严格排序：last={:?}, new={:?}",
+            last,
+            h
+        );
         last = h;
     }
 }
 
-/// **W.25** HLC counter 溢出后 wall 被推 +1
+/// **W.25** legacy HLC counter 最大值仍可解析并参与排序
 #[test]
 fn w25_hlc_counter_overflow_rolls_wall() {
-    let clock = HlcClock::from_last(Hlc::new(1000, u16::MAX));
-    // wall_now 保持 1000，counter 已溢出
-    let h = clock.tick_with_now(1000).unwrap();
-    assert_eq!(h.millis, 1001);
-    assert_eq!(h.counter, 0);
+    let saturated = Hlc::new(1000, u16::MAX);
+    let next_millis = Hlc::new(1001, 0);
+    assert!(next_millis > saturated);
+    assert_eq!(Hlc::parse(&saturated.to_string()), Some(saturated));
 }
 
 // ============================================================================
@@ -720,6 +724,8 @@ fn w28_data_is_json_null_value() {
         change_log_id: None,
         database_name: Some("test".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let r = SyncManager::apply_downloaded_changes(&conn, &[c], None);
     // 应报错（data 不是 object）
@@ -739,6 +745,8 @@ fn w29_data_is_array() {
         change_log_id: None,
         database_name: Some("test".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let r = SyncManager::apply_downloaded_changes(&conn, &[c], None);
     assert!(r.is_err());
@@ -888,6 +896,8 @@ fn w35_sql_reserved_words_as_data_keys() {
         change_log_id: None,
         database_name: Some("test".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[c], None).unwrap();
     let (s, f): (String, String) = conn
@@ -1024,7 +1034,7 @@ async fn w39_tombstone_for_nonexistent_blob() {
         }
     }
     let storage = NoopStorage;
-    let r = tombstone::apply_blob_tombstones(&storage, &m, tmp.path(), "blobs").await;
+    let r = tombstone::apply_blob_tombstones(&storage, &m, tmp.path(), "blobs", true).await;
     assert!(r.is_ok());
 }
 
@@ -1060,6 +1070,8 @@ fn w40_delete_rollback_preserves_record() {
             change_log_id: None,
             database_name: None,
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         },
     ];
     let r = SyncManager::apply_downloaded_changes(&conn, &changes, None);
@@ -1216,6 +1228,8 @@ fn w44_single_bad_in_1000_rolls_back_all() {
             change_log_id: None,
             database_name: None,
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         },
     );
 
@@ -1267,88 +1281,53 @@ fn w45_revive_then_delete_in_same_batch() {
 // W.46 - W.55: HLC 和时钟的荒谬场景
 // ============================================================================
 
-/// **W.46** HLC 的 counter 在接收时恰好已满
+/// **W.46** legacy HLC counter 最大值可解析
 #[test]
 fn w46_hlc_receive_when_saturated() {
-    let clock = HlcClock::from_last(Hlc::new(1_700_000_000_000, u16::MAX));
-    // 远端 HLC 与本地 last 相同 wall time，counter 也为 u16::MAX
     let remote = Hlc::new(1_700_000_000_000, u16::MAX);
-    let r = clock.receive_with_now(remote, 1_700_000_000_000);
-    // 三个相等 → max_counter + 1 = u16::MAX + 1 → 溢出
-    assert!(r.is_err());
-    assert!(matches!(r, Err(HlcError::CounterOverflow)));
+    assert_eq!(Hlc::parse(&remote.to_string()), Some(remote));
 }
 
-/// **W.47** HLC 多线程并发 tick
+/// **W.47** legacy HLC parser rejects malformed counters
 #[test]
 fn w47_hlc_concurrent_ticks() {
-    use std::sync::Arc;
-    use std::thread;
-
-    let clock = Arc::new(HlcClock::new());
-    let mut handles = vec![];
-    for _ in 0..20 {
-        let c = clock.clone();
-        handles.push(thread::spawn(move || {
-            let mut ts = vec![];
-            for _ in 0..100 {
-                ts.push(c.tick_with_now(1_700_000_000_000).unwrap());
-            }
-            ts
-        }));
-    }
-
-    let mut all: Vec<Hlc> = handles
-        .into_iter()
-        .flat_map(|h| h.join().unwrap())
-        .collect();
-    all.sort();
-    all.dedup();
-    // 20 × 100 = 2000 次 tick，在 Mutex 保护下应全部不同（Hlc 作为 Ord 值）
-    assert_eq!(all.len(), 2000, "并发 tick 不应产生重复 HLC");
+    assert!(Hlc::parse("001700000000000-not-a-counter").is_none());
+    assert!(Hlc::parse("not-a-millis-00001").is_none());
 }
 
-/// **W.48** 两个独立 HLC 实例通过交换 receive 相互推进
+/// **W.48** legacy HLC 字符串排序与结构排序一致
 #[test]
 fn w48_two_clocks_exchange_converge() {
-    let a = HlcClock::new();
-    let b = HlcClock::new();
-    for i in 0..100 {
-        let now = 1_700_000_000_000u64 + i;
-        let ev_a = a.tick_with_now(now).unwrap();
-        b.receive_with_now(ev_a, now + 1).unwrap();
-        let ev_b = b.tick_with_now(now + 2).unwrap();
-        a.receive_with_now(ev_b, now + 3).unwrap();
-    }
-    let peek_a = a.peek();
-    let peek_b = b.peek();
-    // 两端最后的 HLC 应该非常接近（差不超过 2）
-    let diff = if peek_a > peek_b {
-        peek_a.millis - peek_b.millis
-    } else {
-        peek_b.millis - peek_a.millis
-    };
-    assert!(diff <= 10);
+    let mut values = vec![
+        Hlc::new(1_700_000_000_001, 0),
+        Hlc::new(1_700_000_000_000, 9),
+        Hlc::new(1_700_000_000_000, 1),
+    ];
+    let mut strings: Vec<String> = values.iter().map(|v| v.to_string()).collect();
+    values.sort();
+    strings.sort();
+    let parsed: Vec<Hlc> = strings.iter().filter_map(|s| Hlc::parse(s)).collect();
+    assert_eq!(parsed, values);
 }
 
-/// **W.49** 接受一个有未来漂移但还在窗口内的 HLC
+/// **W.49** legacy HLC parser accepts future-looking values; drift guard lives in canonical LWW.
 #[test]
 fn w49_hlc_receive_within_drift_window() {
-    let clock = HlcClock::new();
     let now = 1_700_000_000_000u64;
-    // 漂移 30 秒（在 60s 窗口内）
     let remote = Hlc::new(now + 30_000, 0);
-    let r = clock.receive_with_now(remote, now).unwrap();
-    assert!(r.millis >= remote.millis);
+    assert_eq!(Hlc::parse(&remote.to_string()), Some(remote));
 }
 
-/// **W.50** HLC 拒绝过时时间戳溢出检测
+/// **W.50** legacy HLC counter edge keeps lexical order.
 #[test]
 fn w50_hlc_compare_strings_edge() {
     // 两个 HLC 字符串，counter 差异极大
     let a = Hlc::new(1_700_000_000_000, 0).to_string();
     let b = Hlc::new(1_700_000_000_000, u16::MAX).to_string();
-    assert_eq!(compare_hlc_strings(&a, &b), Ordering::Less);
+    assert_eq!(
+        Hlc::parse(&a).unwrap().cmp(&Hlc::parse(&b).unwrap()),
+        Ordering::Less
+    );
     // 位数相同，字典序可靠
     assert!(a < b);
 }
@@ -1791,6 +1770,8 @@ fn w60_llm_usage_daily_malformed_record_id() {
         change_log_id: None,
         database_name: Some("llm_usage".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let r = SyncManager::apply_downloaded_changes(&conn, &[c], None);
     // 非法 record_id 应报错
@@ -1896,7 +1877,9 @@ fn w63_all_changes_without_suppress_flag() {
                 changed_at: now_ts(),
                 change_log_id: None,
                 database_name: Some("test".into()),
-                suppress_change_log: None, // 不抑制
+                suppress_change_log: None,
+                source_device_id: None,
+                source_seq: None, // 不抑制
             }
         })
         .collect();

@@ -122,6 +122,8 @@ fn r01_hlc_same_millis_counter_tie_break_in_apply() {
         })),
         database_name: None,
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
 
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
@@ -155,6 +157,8 @@ fn r02_hlc_local_newer_counter_wins_lww() {
         })),
         database_name: None,
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
 
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
@@ -188,6 +192,8 @@ fn r03_hlc_drift_over_60s_future_rejected() {
         })),
         database_name: None,
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
 
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
@@ -220,6 +226,8 @@ fn r04_hlc_local_vs_iso_cloud_mixed_formats() {
         })),
         database_name: None,
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
 
     // 不应 panic；应用结果不强求（混合格式时 LWW 行为降级）
@@ -628,6 +636,8 @@ fn r18_apply_3000_records_crosses_batch_boundary() {
             })),
             database_name: None,
             suppress_change_log: None,
+            source_device_id: None,
+            source_seq: None,
         });
     }
 
@@ -804,6 +814,8 @@ fn r24_conflict_falls_into_table() {
         })),
         database_name: Some("test".to_string()),
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
 
     let (_apply, conflict_result) = SyncManager::apply_downloaded_changes_with_conflict_guard(
@@ -856,6 +868,8 @@ fn r25_conflict_guard_idempotent_on_replay() {
         })),
         database_name: Some("test".to_string()),
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
 
     // 第一次应用
@@ -938,6 +952,8 @@ fn r25b_resolved_does_not_block_new_identical_conflict() {
         })),
         database_name: Some("test".to_string()),
         suppress_change_log: None,
+        source_device_id: None,
+        source_seq: None,
     };
 
     // 第一次：产生冲突

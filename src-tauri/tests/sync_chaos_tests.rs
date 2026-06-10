@@ -178,6 +178,8 @@ fn drain_pending_changes(conn: &Connection, device_id: &str) -> Vec<SyncChangeWi
             change_log_id: None,
             database_name: Some("test".into()),
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         });
 
         let _ = device_id; // silence unused

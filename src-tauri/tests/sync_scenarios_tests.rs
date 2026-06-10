@@ -13,7 +13,8 @@ use async_trait::async_trait;
 use chrono::Utc;
 use deep_student_lib::cloud_storage::{CloudStorage, FileInfo};
 use deep_student_lib::data_governance::sync::{
-    conflict_resolver::ConflictPolicy, tombstone, ChangeOperation, SyncChangeWithData, SyncManager,
+    conflict_resolver::ConflictPolicy, tombstone, ChangeOperation, SyncChangeWithData,
+    SyncDirection, SyncManager,
 };
 use deep_student_lib::models::AppError;
 use rusqlite::{params, Connection};
@@ -295,6 +296,8 @@ fn build_insert_change(id: &str, title: &str, updated_at: &str) -> SyncChangeWit
         change_log_id: None,
         database_name: Some("vfs".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     }
 }
 
@@ -317,6 +320,8 @@ fn build_update_change(id: &str, title: &str, updated_at: &str) -> SyncChangeWit
         change_log_id: None,
         database_name: Some("vfs".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     }
 }
 
@@ -330,6 +335,8 @@ fn build_delete_change(id: &str, changed_at: &str) -> SyncChangeWithData {
         change_log_id: None,
         database_name: Some("vfs".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     }
 }
 
@@ -468,6 +475,8 @@ fn scenario_07_transaction_rollback_on_fk_violation() {
         change_log_id: None,
         database_name: None,
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
 
     let result = SyncManager::apply_downloaded_changes(&conn, &[change], None);
@@ -490,6 +499,8 @@ fn scenario_08_reject_writes_to_internal_tables() {
         change_log_id: None,
         database_name: None,
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let r = SyncManager::apply_downloaded_changes(&conn, &[change], None);
     assert!(r.is_err(), "禁止向内部元数据表写入");
@@ -507,6 +518,8 @@ fn scenario_09_reject_writes_to_sqlite_system_tables() {
         change_log_id: None,
         database_name: None,
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let r = SyncManager::apply_downloaded_changes(&conn, &[change], None);
     assert!(r.is_err());
@@ -524,6 +537,8 @@ fn scenario_10_unknown_table_returns_error() {
         change_log_id: None,
         database_name: None,
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let r = SyncManager::apply_downloaded_changes(&conn, &[change], None);
     assert!(r.is_err());
@@ -721,6 +736,8 @@ fn scenario_17_identical_data_no_conflict() {
         change_log_id: None,
         database_name: Some("vfs".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let (_, conflict) = SyncManager::apply_downloaded_changes_with_conflict_guard(
         &conn,
@@ -945,6 +962,8 @@ fn scenario_28_large_batch_partial_failure_rolls_back_all() {
             change_log_id: None,
             database_name: None,
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         });
     }
     // 插入一条违规的到中间
@@ -957,6 +976,8 @@ fn scenario_28_large_batch_partial_failure_rolls_back_all() {
         change_log_id: None,
         database_name: None,
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     });
     let r = SyncManager::apply_downloaded_changes(&conn, &changes, None);
     assert!(r.is_err());
@@ -1115,10 +1136,15 @@ async fn scenario_35_apply_blob_tombstones_removes_local_file() {
         },
     );
 
-    let affected =
-        tombstone::apply_blob_tombstones(&storage, &tombstones, blobs_dir, "data_governance/blobs")
-            .await
-            .unwrap();
+    let affected = tombstone::apply_blob_tombstones(
+        &storage,
+        &tombstones,
+        blobs_dir,
+        "data_governance/blobs",
+        true,
+    )
+    .await
+    .unwrap();
 
     assert_eq!(affected.len(), 1);
     assert!(!blob_path.exists(), "本地 blob 应被删除");
@@ -1174,7 +1200,10 @@ async fn scenario_37_sync_vfs_blobs_with_tombstones_respects_deletion() {
     let blob = write_content_addressed_blob(blobs_dir, b"content1");
 
     // 先走一次普通 sync，云端会有 blob
-    let _ = mgr_a.sync_vfs_blobs(&storage, blobs_dir).await.unwrap();
+    let _ = mgr_a
+        .sync_vfs_blobs(&storage, blobs_dir, SyncDirection::Bidirectional)
+        .await
+        .unwrap();
     assert!(
         storage
             .get(&format!("data_governance/blobs/{}", blob.1))
@@ -1195,7 +1224,7 @@ async fn scenario_37_sync_vfs_blobs_with_tombstones_respects_deletion() {
     let blobs_dir_b = tmp_b.path();
     let mgr_b = SyncManager::new("device_b".into());
     let outcome = mgr_b
-        .sync_vfs_blobs_with_tombstones(&storage, blobs_dir_b)
+        .sync_vfs_blobs_with_tombstones(&storage, blobs_dir_b, SyncDirection::Bidirectional)
         .await
         .unwrap();
 
@@ -1247,7 +1276,10 @@ async fn scenario_40_full_cycle_two_devices_sync_and_delete() {
     let first = write_content_addressed_blob(tmp_a.path(), b"blob-one");
     let second = write_content_addressed_blob(tmp_a.path(), b"blob-two");
     let third = write_content_addressed_blob(tmp_a.path(), b"blob-three");
-    let _ = mgr_a.sync_vfs_blobs(&storage, tmp_a.path()).await.unwrap();
+    let _ = mgr_a
+        .sync_vfs_blobs(&storage, tmp_a.path(), SyncDirection::Bidirectional)
+        .await
+        .unwrap();
     // 云端应有 3 个
     assert_eq!(
         storage.list("data_governance/blobs/").await.unwrap().len(),
@@ -1255,7 +1287,10 @@ async fn scenario_40_full_cycle_two_devices_sync_and_delete() {
     );
 
     // B 拉
-    let out_b = mgr_b.sync_vfs_blobs(&storage, tmp_b.path()).await.unwrap();
+    let out_b = mgr_b
+        .sync_vfs_blobs(&storage, tmp_b.path(), SyncDirection::Bidirectional)
+        .await
+        .unwrap();
     assert_eq!(out_b.downloaded, 3);
     assert!(tmp_b.path().join(&first.1).exists());
 
@@ -1268,7 +1303,7 @@ async fn scenario_40_full_cycle_two_devices_sync_and_delete() {
 
     // B 再同步
     let out_b2 = mgr_b
-        .sync_vfs_blobs_with_tombstones(&storage, tmp_b.path())
+        .sync_vfs_blobs_with_tombstones(&storage, tmp_b.path(), SyncDirection::Bidirectional)
         .await
         .unwrap();
     assert!(
@@ -1307,6 +1342,8 @@ fn scenario_41_deep_nested_json_in_text_column() {
         change_log_id: None,
         database_name: Some("vfs".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
     let content: String = conn
@@ -1341,6 +1378,8 @@ fn scenario_43_reject_injection_via_table_name() {
         change_log_id: None,
         database_name: None,
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let r = SyncManager::apply_downloaded_changes(&conn, &[change], None);
     assert!(r.is_err());
@@ -1369,6 +1408,8 @@ fn scenario_44_reject_injection_via_column_name() {
         change_log_id: None,
         database_name: None,
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     // 应该报错（不存在的列），且 notes 表不被破坏
     let _ = SyncManager::apply_downloaded_changes(&conn, &[change], None);
@@ -1399,6 +1440,8 @@ fn scenario_45_unicode_content_preserved() {
         change_log_id: None,
         database_name: None,
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
     assert_eq!(get_title(&conn, "n1").as_deref(), Some(content));
@@ -1549,6 +1592,8 @@ fn scenario_49_very_long_field_value() {
         change_log_id: None,
         database_name: None,
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
     assert_eq!(get_title(&conn, "n1").as_deref(), Some(huge.as_str()));
@@ -1783,10 +1828,16 @@ async fn scenario_57_tombstone_survives_reupload_attempt() {
 
     // A 上传
     let blob = write_content_addressed_blob(tmp_a.path(), b"x");
-    mgr_a.sync_vfs_blobs(&storage, tmp_a.path()).await.unwrap();
+    mgr_a
+        .sync_vfs_blobs(&storage, tmp_a.path(), SyncDirection::Bidirectional)
+        .await
+        .unwrap();
 
     // B 下载
-    mgr_b.sync_vfs_blobs(&storage, tmp_b.path()).await.unwrap();
+    mgr_b
+        .sync_vfs_blobs(&storage, tmp_b.path(), SyncDirection::Bidirectional)
+        .await
+        .unwrap();
     assert!(tmp_b.path().join(&blob.1).exists());
 
     // A 删除并 tombstone
@@ -1798,7 +1849,7 @@ async fn scenario_57_tombstone_survives_reupload_attempt() {
 
     // B 再 sync — 本地还有副本，如果不消费 tombstone 会被上传回云端
     mgr_b
-        .sync_vfs_blobs_with_tombstones(&storage, tmp_b.path())
+        .sync_vfs_blobs_with_tombstones(&storage, tmp_b.path(), SyncDirection::Bidirectional)
         .await
         .unwrap();
     assert!(
@@ -1826,13 +1877,22 @@ async fn scenario_58_three_device_conflict_cascade() {
     // A 上传 blob
     let tmp_a = TempDir::new().unwrap();
     let blob = write_content_addressed_blob(tmp_a.path(), b"v1");
-    mgr_a.sync_vfs_blobs(&storage, tmp_a.path()).await.unwrap();
+    mgr_a
+        .sync_vfs_blobs(&storage, tmp_a.path(), SyncDirection::Bidirectional)
+        .await
+        .unwrap();
 
     // B、C 都拿到
     let tmp_b = TempDir::new().unwrap();
     let tmp_c = TempDir::new().unwrap();
-    mgr_b.sync_vfs_blobs(&storage, tmp_b.path()).await.unwrap();
-    mgr_c.sync_vfs_blobs(&storage, tmp_c.path()).await.unwrap();
+    mgr_b
+        .sync_vfs_blobs(&storage, tmp_b.path(), SyncDirection::Bidirectional)
+        .await
+        .unwrap();
+    mgr_c
+        .sync_vfs_blobs(&storage, tmp_c.path(), SyncDirection::Bidirectional)
+        .await
+        .unwrap();
 
     // A 删除
     std::fs::remove_file(tmp_a.path().join(&blob.1)).unwrap();
@@ -1843,14 +1903,14 @@ async fn scenario_58_three_device_conflict_cascade() {
 
     // B 先同步：删除应传播
     mgr_b
-        .sync_vfs_blobs_with_tombstones(&storage, tmp_b.path())
+        .sync_vfs_blobs_with_tombstones(&storage, tmp_b.path(), SyncDirection::Bidirectional)
         .await
         .unwrap();
     assert!(!tmp_b.path().join(&blob.1).exists());
 
     // C 后同步：同样应传播
     mgr_c
-        .sync_vfs_blobs_with_tombstones(&storage, tmp_c.path())
+        .sync_vfs_blobs_with_tombstones(&storage, tmp_c.path(), SyncDirection::Bidirectional)
         .await
         .unwrap();
     assert!(!tmp_c.path().join(&blob.1).exists());
@@ -1866,7 +1926,10 @@ async fn scenario_59_tombstone_then_recreate_with_same_hash() {
 
     let blob = write_content_addressed_blob(tmp_a.path(), b"content");
     let blob_path = tmp_a.path().join(&blob.1);
-    mgr_a.sync_vfs_blobs(&storage, tmp_a.path()).await.unwrap();
+    mgr_a
+        .sync_vfs_blobs(&storage, tmp_a.path(), SyncDirection::Bidirectional)
+        .await
+        .unwrap();
 
     // 删除（tombstone）
     std::fs::remove_file(&blob_path).unwrap();
@@ -1877,7 +1940,7 @@ async fn scenario_59_tombstone_then_recreate_with_same_hash() {
 
     // 走一次同步清理云端
     mgr_a
-        .sync_vfs_blobs_with_tombstones(&storage, tmp_a.path())
+        .sync_vfs_blobs_with_tombstones(&storage, tmp_a.path(), SyncDirection::Bidirectional)
         .await
         .unwrap();
     assert!(storage
@@ -1889,35 +1952,27 @@ async fn scenario_59_tombstone_then_recreate_with_same_hash() {
     // 现在又重新创建内容相同的 blob
     write_content_addressed_blob(tmp_a.path(), b"content");
 
-    // 问题：sync_vfs_blobs_with_tombstones 里会先应用 tombstone，
-    // 但 tombstone 还没被删除（我们没自动 prune），所以这个 blob 会被误删。
-    // 这个场景暴露了 tombstone 管理策略的权衡：
-    // - 若 tombstone 永不过期，用户恢复同名 blob 会被自动删
-    // - 若 tombstone 过期（当前 90 天），恢复需要等过期
-    //
-    // 当前实现的策略是：tombstone 持续生效直到过期，这是多端删除传播的一致性成本。
-    // 记录这个行为：该场景下 blob 会被删除。
+    // 已消费过的 tombstone 有水位记录；同内容 blob 的重新创建发生在 deleted_at 之后。
+    // 因此它应被视为一次新的本地创建，而不是再次被旧 tombstone 删除。
     mgr_a
-        .sync_vfs_blobs_with_tombstones(&storage, tmp_a.path())
+        .sync_vfs_blobs_with_tombstones(&storage, tmp_a.path(), SyncDirection::Bidirectional)
         .await
         .unwrap();
 
-    // 验证行为：内容相同的 blob 被 tombstone 机制删除
-    // 这是已知的一致性权衡 —— 用户若要"复活"同 hash blob，需要手动清除 tombstone 或等 90 天
+    // 验证行为：内容相同的 blob 可在 tombstone 消费后重新生效
     let blob_still_there = blob_path.exists();
     let cloud_still_there = storage
         .get(&format!("data_governance/blobs/{}", blob.1))
         .await
         .unwrap()
         .is_some();
-    // Tombstone 机制应删除重新创建的同 hash blob（已知行为）
     assert!(
-        !blob_still_there,
-        "recreated same-hash blob should be deleted by tombstone"
+        blob_still_there,
+        "recreated same-hash blob should survive consumed tombstone"
     );
     assert!(
-        !cloud_still_there,
-        "recreated same-hash blob should not exist in cloud"
+        cloud_still_there,
+        "recreated same-hash blob should be uploaded again"
     );
 }
 
@@ -1942,6 +1997,8 @@ fn scenario_60_conflict_guard_preserves_atomicity_on_failure() {
             change_log_id: None,
             database_name: None,
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         },
     ];
 
@@ -1960,4 +2017,111 @@ fn scenario_60_conflict_guard_preserves_atomicity_on_failure() {
     assert_eq!(c, 0, "事务回滚后冲突表应为空");
     // notes 表里 a 的 title 仍然是本地值
     assert_eq!(get_title(&conn, "a").as_deref(), Some("local_a"));
+}
+
+#[tokio::test]
+async fn scenario_61_snapshot_bootstrap_and_prune_are_seq_safe() {
+    let storage = MockCloudStorage::new();
+    let suffix = Utc::now().timestamp_nanos_opt().unwrap_or_default();
+    let manager = SyncManager::new(format!("dev_snapshot_target_{suffix}"));
+    let source_device = format!("dev_snapshot_source_{suffix}");
+    let now = Utc::now();
+    let now_iso = now.to_rfc3339();
+
+    let mut covered_cursors = serde_json::Map::new();
+    covered_cursors.insert(source_device.clone(), json!(7));
+    covered_cursors.insert(manager.device_id().to_string(), json!(2));
+
+    let snapshot = json!({
+        "format_version": 1,
+        "database_name": "vfs",
+        "device_id": source_device,
+        "created_at": now_iso,
+        "schema_version": 1,
+        "data_version": 7,
+        "checksum": "snapshot-checksum",
+        "covered_cursors": covered_cursors,
+        "rows": {
+            "notes": [
+                {
+                    "id": "snap-note",
+                    "title": "from snapshot",
+                    "content": "bootstrapped",
+                    "tags": "[]",
+                    "is_favorite": 0,
+                    "created_at": now_iso,
+                    "updated_at": now_iso,
+                    "deleted_at": null
+                }
+            ]
+        }
+    });
+    let snapshot_json = serde_json::to_vec(&snapshot).unwrap();
+    let snapshot_payload = zstd::stream::encode_all(std::io::Cursor::new(snapshot_json), 0)
+        .expect("compress snapshot");
+    let snapshot_key = format!(
+        "data_governance/snapshots/vfs/{}-{}-snapshot.json.zst",
+        now.timestamp_millis(),
+        manager.device_id()
+    );
+    storage.put(&snapshot_key, &snapshot_payload).await.unwrap();
+
+    let bootstrap = manager
+        .download_snapshot_bootstrap_changes(&storage)
+        .await
+        .unwrap();
+    assert_eq!(bootstrap.cursor_advancements.get(&source_device), Some(&7));
+    assert_eq!(
+        bootstrap.cursor_advancements.get(manager.device_id()),
+        Some(&2)
+    );
+    assert_eq!(bootstrap.changes.len(), 1);
+    let change = &bootstrap.changes[0];
+    assert_eq!(change.database_name.as_deref(), Some("vfs"));
+    assert_eq!(change.table_name, "notes");
+    assert_eq!(change.record_id, "snap-note");
+    let expected_source = format!("snapshot:{source_device}");
+    assert_eq!(
+        change.source_device_id.as_deref(),
+        Some(expected_source.as_str())
+    );
+    assert_eq!(change.suppress_change_log, Some(true));
+
+    let own_seq1 = format!(
+        "data_governance/changes/{}/{:012}-{}-a.json.zst",
+        manager.device_id(),
+        1,
+        now.timestamp()
+    );
+    let own_seq2 = format!(
+        "data_governance/changes/{}/{:012}-{}-b.json.zst",
+        manager.device_id(),
+        2,
+        now.timestamp()
+    );
+    let own_seq3 = format!(
+        "data_governance/changes/{}/{:012}-{}-c.json.zst",
+        manager.device_id(),
+        3,
+        now.timestamp()
+    );
+    let other_seq1 = format!(
+        "data_governance/changes/{}/{:012}-{}-d.json.zst",
+        source_device,
+        1,
+        now.timestamp()
+    );
+    for key in [&own_seq1, &own_seq2, &own_seq3, &other_seq1] {
+        storage.put(key, b"payload").await.unwrap();
+    }
+
+    let deleted = manager.prune_old_changes(&storage, 30).await.unwrap();
+    assert_eq!(
+        deleted, 2,
+        "only own seqs covered by the snapshot may be pruned"
+    );
+    assert!(storage.get(&own_seq1).await.unwrap().is_none());
+    assert!(storage.get(&own_seq2).await.unwrap().is_none());
+    assert!(storage.get(&own_seq3).await.unwrap().is_some());
+    assert!(storage.get(&other_seq1).await.unwrap().is_some());
 }

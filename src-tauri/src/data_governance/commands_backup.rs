@@ -58,6 +58,22 @@ pub(super) fn get_backup_dir(app_data_dir: &PathBuf) -> PathBuf {
     app_data_dir.join("backups")
 }
 
+/// [P0-11/M12] 打开同步路径专用的数据库连接，统一设置 busy_timeout。
+///
+/// 同步的应用路径大量使用 `BEGIN IMMEDIATE`，一旦与其它写连接（业务写入、
+/// WAL checkpoint、并发 import）相遇，未设 busy_timeout 的连接会立即返回
+/// `SQLITE_BUSY` 而非等待，导致整批回滚 + 下轮重传。统一 5s 退避窗口。
+///
+/// 行为与 `rusqlite::Connection::open` 完全兼容（同样返回 `rusqlite::Result`），
+/// 调用方可直接替换。
+pub(super) fn open_sync_connection<P: AsRef<Path>>(
+    path: P,
+) -> rusqlite::Result<rusqlite::Connection> {
+    let conn = rusqlite::Connection::open(path)?;
+    conn.busy_timeout(std::time::Duration::from_secs(5))?;
+    Ok(conn)
+}
+
 /// 统一解析数据库文件路径
 ///
 /// 根据 `DatabaseId` 和活动数据空间目录返回对应数据库文件的绝对路径。
@@ -239,16 +255,37 @@ fn should_apply_change_by_strategy(
                 return Ok(false);
             }
 
-            let local_ts = extract_updated_at(&local);
+            let local_ts = local
+                .get("updated_at")
+                .and_then(SyncManager::timestamp_value_to_lww_string);
             let cloud_ts = change
                 .data
                 .as_ref()
-                .and_then(extract_updated_at)
-                .or_else(|| parse_sync_timestamp(&change.changed_at));
+                .and_then(|data| {
+                    data.get("updated_at")
+                        .and_then(SyncManager::timestamp_value_to_lww_string)
+                })
+                .or_else(|| Some(change.changed_at.clone()));
+            let cloud_device_id = change
+                .source_device_id
+                .as_deref()
+                .unwrap_or("cloud-unknown");
 
-            // KeepLatest：云端时间更新才覆盖本地；时间不可比较时，保守保留本地
+            // KeepLatest：使用统一 LWW key（timestamp → device_id → content）裁决。
             match (local_ts, cloud_ts, change.operation) {
-                (Some(l), Some(c), _) => Ok(c >= l),
+                (Some(l), Some(c), _) => Ok(SyncManager::compare_lww_timestamps(
+                    &l,
+                    SyncManager::lww_device_id_from_data(&local, "local-unknown"),
+                    &local.to_string(),
+                    &c,
+                    cloud_device_id,
+                    change
+                        .data
+                        .as_ref()
+                        .map(|data| data.to_string())
+                        .as_deref()
+                        .unwrap_or(""),
+                ) != std::cmp::Ordering::Greater),
                 (Some(_), None, _) => Ok(false),
                 (None, Some(_), _) => Ok(true),
                 (None, None, ChangeOperation::Delete) => Ok(false),
@@ -362,7 +399,7 @@ pub(super) fn apply_downloaded_changes_to_databases(
             continue;
         }
 
-        let conn = rusqlite::Connection::open(&db_path)
+        let conn = open_sync_connection(&db_path)
             .map_err(|e| format!("打开数据库 {} 失败: {}", db_name, e))?;
 
         // Manual 模式沿用旧的预过滤路径；KeepLatest/UseCloud 必须先进入冲突保护。
@@ -553,6 +590,15 @@ mod tests {
     }
 
     #[test]
+    fn open_sync_connection_sets_busy_timeout() {
+        let conn = open_sync_connection(":memory:").unwrap();
+        let timeout_ms: i64 = conn
+            .query_row("PRAGMA busy_timeout", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(timeout_ms, 5000);
+    }
+
+    #[test]
     fn keep_latest_local_newer_conflict_still_falls_into_conflict_table() {
         let tmp = tempfile::TempDir::new().unwrap();
         let db_path = resolve_database_path(&DatabaseId::ChatV2, tmp.path());
@@ -597,6 +643,8 @@ mod tests {
             })),
             database_name: Some("chat_v2".to_string()),
             suppress_change_log: None,
+            source_device_id: None,
+            source_seq: None,
         };
 
         let agg = apply_downloaded_changes_to_databases(
@@ -676,6 +724,8 @@ mod tests {
             })),
             database_name: Some("chat_v2".to_string()),
             suppress_change_log: None,
+            source_device_id: None,
+            source_seq: None,
         };
 
         let agg = apply_downloaded_changes_to_databases(

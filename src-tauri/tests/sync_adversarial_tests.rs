@@ -113,6 +113,8 @@ fn build_change(
         change_log_id: None,
         database_name: Some("test".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     }
 }
 
@@ -1064,6 +1066,8 @@ fn adv_28_table_name_injection_blocked() {
         change_log_id: None,
         database_name: None,
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let r = SyncManager::apply_downloaded_changes(&conn, &[change], None);
     assert!(r.is_err());
@@ -1112,6 +1116,8 @@ fn adv_30_malicious_column_name_in_payload() {
         change_log_id: None,
         database_name: None,
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     let _ = SyncManager::apply_downloaded_changes(&conn, &[change], None);
     // 关键：items 表必须仍在
@@ -1232,6 +1238,8 @@ fn adv_33_payload_id_mismatch_with_record_id() {
         change_log_id: None,
         database_name: Some("test".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     // 当前行为：UPSERT 根据 payload 里的 id 写入（因为 build_insert_parts 用 payload 里的 id）
     // 这可能让 sync 在 record_id 和 payload id 不一致时产生混淆。
@@ -1471,6 +1479,8 @@ fn adv_40_delete_with_unexpected_data_field() {
         change_log_id: None,
         database_name: Some("test".into()),
         suppress_change_log: Some(true),
+        source_device_id: None,
+        source_seq: None,
     };
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
 

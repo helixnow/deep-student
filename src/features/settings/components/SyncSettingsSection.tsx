@@ -221,29 +221,37 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
       // 设置进度监听
       const unlisten = await listenSyncProgress({
         onProgress: (progress) => setSyncProgress(progress),
-        onComplete: () => {
-          setSyncProgress(null);
-          setIsSyncing(false);
+      });
+
+      try {
+        const result = await runSyncWithProgress(direction, cloudConfig, 'keep_latest');
+        setSyncProgress(null);
+        setIsSyncing(false);
+
+        if (result.success && !result.error_message && (result.skipped_changes ?? 0) === 0) {
           showGlobalNotification(
             'success',
             t('data:sync_settings.sync_success')
           );
-          // 刷新同步状态
           void getSyncStatus().catch(console.error);
-        },
-        onError: (error) => {
-          setSyncProgress(null);
-          setIsSyncing(false);
+          return;
+        }
+
+        const message = result.error_message ??
+          t('data:governance.sync_partial_with_skipped', {
+            count: result.skipped_changes ?? 0,
+            defaultValue: `同步完成，但有 ${result.skipped_changes ?? 0} 条变更被跳过。`,
+          });
+
+        if (result.success) {
+          showGlobalNotification('warning', message);
+          void getSyncStatus().catch(console.error);
+        } else {
           showGlobalNotification(
             'error',
-            `${t('data:sync_settings.sync_failed')}: ${error}`
+            `${t('data:sync_settings.sync_failed')}: ${message}`
           );
-        },
-      });
-
-      try {
-        // TODO: 从配置中获取 cloudConfig 和 strategy
-        await runSyncWithProgress(direction, cloudConfig, 'keep_latest');
+        }
       } catch (err: unknown) {
         setSyncProgress(null);
         setIsSyncing(false);

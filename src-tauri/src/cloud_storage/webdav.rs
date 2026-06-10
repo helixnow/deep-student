@@ -19,7 +19,7 @@ use tokio_util::io::ReaderStream;
 
 use super::config::WebDavConfig;
 use super::traits::{
-    CloudStorage, DownloadProgressCallback, FileInfo, Result, UploadProgressCallback,
+    CloudStorage, DownloadProgressCallback, FileInfo, ListOutcome, Result, UploadProgressCallback,
 };
 use crate::backup_common::calculate_file_hash;
 use crate::models::AppError;
@@ -55,7 +55,6 @@ impl WebDavStorage {
         }
 
         let http = Client::builder()
-            .timeout(Duration::from_secs(300))
             .connect_timeout(Duration::from_secs(30))
             .min_tls_version(reqwest::tls::Version::TLS_1_2)
             .build()
@@ -271,7 +270,11 @@ impl WebDavStorage {
                 .and_then(|n| n.text())
                 .unwrap_or_default();
 
-            if href.ends_with('/') {
+            let is_collection = response
+                .descendants()
+                .any(|n| n.has_tag_name((dav_ns, "collection")));
+
+            if is_collection || href.ends_with('/') {
                 continue;
             }
 
@@ -313,17 +316,43 @@ impl WebDavStorage {
     fn extract_relative_key(&self, href: &str, prefix: &str) -> String {
         // URL 解码
         let decoded = urlencoding::decode(href).unwrap_or_else(|_| href.into());
+        let href_path = Url::parse(&decoded)
+            .map(|url| url.path().to_string())
+            .unwrap_or_else(|_| decoded.to_string());
 
-        // 提取 root 之后的路径
-        let root_path = format!("/{}/", self.root);
-        if let Some(idx) = decoded.find(&root_path) {
-            let relative = &decoded[idx + root_path.len()..];
-            // 如果有 prefix，检查是否匹配
-            if !prefix.is_empty() && relative.starts_with(prefix) {
-                return relative.to_string();
-            } else if prefix.is_empty() {
-                return relative.to_string();
+        let base_path = self.base_url.path().trim_end_matches('/');
+        let root = self.root.trim_matches('/');
+        let root_path = match (base_path.is_empty(), root.is_empty()) {
+            (true, true) => String::new(),
+            (true, false) => format!("/{root}"),
+            (false, true) => base_path.to_string(),
+            (false, false) => format!("{base_path}/{root}"),
+        };
+
+        let relative = if root_path.is_empty() {
+            href_path.trim_start_matches('/').to_string()
+        } else if href_path == root_path || href_path == format!("{root_path}/") {
+            String::new()
+        } else {
+            let prefix_with_slash = format!("{root_path}/");
+            href_path
+                .strip_prefix(&prefix_with_slash)
+                .map(ToOwned::to_owned)
+                .unwrap_or_default()
+        };
+
+        if relative.is_empty() {
+            return String::new();
+        }
+
+        // 如果有 prefix，检查是否匹配
+        if !prefix.is_empty() {
+            let prefix = prefix.trim_matches('/');
+            if relative == prefix || relative.starts_with(&format!("{prefix}/")) {
+                return relative;
             }
+        } else {
+            return relative;
         }
         String::new()
     }
@@ -362,7 +391,11 @@ impl WebDavStorage {
                 .and_then(|n| n.text())
                 .unwrap_or_default();
 
-            if href.ends_with('/') {
+            let is_collection = response
+                .descendants()
+                .any(|n| n.has_tag_name((dav_ns, "collection")));
+
+            if is_collection || href.ends_with('/') {
                 // 目录项：提取相对路径（不做 prefix 过滤）
                 let key = self.extract_relative_key(href, "");
                 let dir_path = key.trim_matches('/');
@@ -416,6 +449,15 @@ impl WebDavStorage {
 impl CloudStorage for WebDavStorage {
     fn provider_name(&self) -> &'static str {
         "WebDAV"
+    }
+
+    fn instance_binding_hint(&self) -> String {
+        format!(
+            "webdav|endpoint={}|user={}|root={}",
+            self.base_url.as_str().trim_end_matches('/'),
+            self.username,
+            self.root
+        )
     }
 
     async fn check_connection(&self) -> Result<()> {
@@ -631,13 +673,17 @@ impl CloudStorage for WebDavStorage {
     }
 
     async fn list(&self, prefix: &str) -> Result<Vec<FileInfo>> {
+        Ok(self.list_outcome(prefix).await?.files)
+    }
+
+    async fn list_outcome(&self, prefix: &str) -> Result<ListOutcome> {
         let start_path = if prefix.is_empty() {
             String::new()
         } else {
             prefix.trim_matches('/').to_string()
         };
 
-        let propfind_body = r#"<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getlastmodified/><d:getcontentlength/></d:prop></d:propfind>"#;
+        let propfind_body = r#"<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/><d:getlastmodified/><d:getcontentlength/></d:prop></d:propfind>"#;
 
         let mut all_files = Vec::new();
         let mut dirs_to_visit = vec![start_path];
@@ -645,11 +691,13 @@ impl CloudStorage for WebDavStorage {
         const JIANGUOYUN_PROPFIND_LIMIT: usize = 750;
         const MAX_DIRS: usize = 200;
         let mut visited = 0usize;
+        let mut truncated = false;
 
         while let Some(dir) = dirs_to_visit.pop() {
             visited += 1;
             if visited > MAX_DIRS {
                 tracing::warn!("[WebDAV] 递归列举已访问 {MAX_DIRS} 个目录，停止遍历以防异常");
+                truncated = true;
                 break;
             }
 
@@ -693,17 +741,14 @@ impl CloudStorage for WebDavStorage {
 
             let entry_count = files.len() + subdirs.len();
             if entry_count >= JIANGUOYUN_PROPFIND_LIMIT - 1 {
-                // [P1 Fix] 当条目数达到平台上限时，记录错误级别日志并继续。
-                // 不能直接返回 Err，否则 prune_old_changes 内部的 list() 也会失败，
-                // 导致用户无法通过清理来解决问题（鸡生蛋死锁）。
-                // 返回已列出的文件，让调用方至少能处理已知文件（如执行清理）。
                 tracing::error!(
                     "[WebDAV] PROPFIND 返回 {} 条目（达到坚果云 {} 上限），\
-                     目录 '{}' 下可能有未列出的文件！建议尽快清理旧的同步变更文件。",
+                     目录 '{}' 下可能有未列出的文件。",
                     entry_count,
                     JIANGUOYUN_PROPFIND_LIMIT,
                     dir
                 );
+                truncated = true;
             }
 
             all_files.extend(files);
@@ -711,7 +756,10 @@ impl CloudStorage for WebDavStorage {
         }
 
         all_files.sort_by(|a, b| b.last_modified.cmp(&a.last_modified));
-        Ok(all_files)
+        Ok(ListOutcome {
+            files: all_files,
+            truncated,
+        })
     }
 
     async fn delete(&self, key: &str) -> Result<()> {
@@ -737,7 +785,7 @@ impl CloudStorage for WebDavStorage {
             .header("Authorization", self.auth_header())
             .header("Depth", "0")
             .header("Content-Type", "application/xml")
-            .body(r#"<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getlastmodified/><d:getcontentlength/></d:prop></d:propfind>"#)
+            .body(r#"<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/><d:getlastmodified/><d:getcontentlength/></d:prop></d:propfind>"#)
             .send()
             .await
             .map_err(|e| AppError::network(format!("WebDAV PROPFIND 请求失败: {e}")))?;
@@ -775,6 +823,18 @@ mod tests {
                 password: "webdav123".to_string(),
             },
             "deep-student-sync-contract/webdav/uuid".to_string(),
+        )
+        .expect("create test storage")
+    }
+
+    fn test_storage_with_root(root: &str) -> WebDavStorage {
+        WebDavStorage::new(
+            WebDavConfig {
+                endpoint: "http://localhost:8080/dav/".to_string(),
+                username: "webdav".to_string(),
+                password: "webdav123".to_string(),
+            },
+            root.to_string(),
         )
         .expect("create test storage")
     }
@@ -817,6 +877,57 @@ mod tests {
         assert_eq!(
             storage.build_url("objects/").unwrap().path(),
             "/deep-student-sync-contract/webdav/uuid/objects/"
+        );
+    }
+
+    #[test]
+    fn extract_relative_key_handles_empty_root() {
+        let storage = test_storage_with_root("");
+
+        assert_eq!(
+            storage.extract_relative_key("/dav/data_governance/manifest.json", ""),
+            "data_governance/manifest.json"
+        );
+        assert_eq!(
+            storage.extract_relative_key(
+                "http://localhost:8080/dav/data_governance/changes/device/1.json.zst",
+                "data_governance/changes"
+            ),
+            "data_governance/changes/device/1.json.zst"
+        );
+        assert_eq!(storage.extract_relative_key("/dav/", ""), "");
+    }
+
+    #[test]
+    fn extract_relative_key_handles_root_slash_normalization() {
+        let storage = test_storage_with_root("/");
+
+        assert_eq!(
+            storage.extract_relative_key("/dav/backups/one.zip", "backups"),
+            "backups/one.zip"
+        );
+        assert_eq!(storage.root, "");
+    }
+
+    #[test]
+    fn webdav_contract_source_guards() {
+        let source = include_str!("webdav.rs");
+
+        assert!(
+            source.contains("<d:resourcetype/>"),
+            "WebDAV PROPFIND must request resourcetype for reliable directory detection"
+        );
+        assert!(
+            source.contains("async fn list_outcome"),
+            "WebDAV list must expose truncation state"
+        );
+        assert!(
+            source.contains("truncated = true"),
+            "WebDAV list must mark server/client traversal limits as truncated"
+        );
+        assert!(
+            source.contains("is_collection || href.ends_with('/')"),
+            "Directory detection must use resourcetype with href suffix only as fallback"
         );
     }
 }

@@ -43,6 +43,7 @@ pub mod emitter;
 pub mod field_merge;
 pub mod hlc;
 pub mod progress;
+pub mod state;
 pub mod tombstone;
 
 // 重新导出常用类型
@@ -50,11 +51,12 @@ pub use conflict_resolver::{
     ConflictAwareApplyResult, ConflictOutcome, ConflictPolicy, ConflictRecordToSave,
     ConflictResolver, ConflictSide,
 };
-pub use emitter::{EVENT_NAME, OptionalEmitter, SyncProgressCallback, SyncProgressEmitter};
-pub use hlc::{Hlc, HlcClock, HlcError, MAX_DRIFT_MS, compare_hlc_strings};
+pub use emitter::{OptionalEmitter, SyncProgressCallback, SyncProgressEmitter, EVENT_NAME};
+pub use hlc::{Hlc, MAX_DRIFT_MS};
 pub use progress::{ProgressTracker, SpeedCalculator, SyncPhase, SyncProgress};
+use state::SyncStateStore;
 pub use tombstone::{
-    AssetTombstoneEntry, AssetTombstones, BlobTombstoneEntry, BlobTombstones, apply_blob_tombstones,
+    apply_blob_tombstones, AssetTombstoneEntry, AssetTombstones, BlobTombstoneEntry, BlobTombstones,
 };
 
 /// 公开的时间戳解析函数（供 conflict_resolver 等子模块复用）
@@ -84,7 +86,9 @@ pub fn parse_flexible_timestamp_public(s: &str) -> Option<chrono::DateTime<chron
     None
 }
 
-use rusqlite::{Connection, OptionalExtension, Row, params, types::Type};
+use super::schema_registry::DatabaseId;
+use classification::SyncCategory;
+use rusqlite::{params, types::Type, Connection, OptionalExtension, Row};
 use serde::{Deserialize, Serialize};
 use std::collections::{HashMap, HashSet};
 
@@ -100,6 +104,7 @@ fn log_and_skip_err<T, E: std::fmt::Display>(result: Result<T, E>) -> Option<T> 
 }
 
 type IdAliasMap = HashMap<(String, String), String>;
+type ForeignKeyViolationSet = HashSet<String>;
 
 #[derive(Debug, Clone)]
 struct ForeignKeyColumn {
@@ -163,6 +168,25 @@ pub struct SyncManifest {
     pub created_at: String,
     /// 设备 ID
     pub device_id: String,
+    /// 云同步协议格式版本（3 = per-device seq/cursor）
+    #[serde(default = "default_manifest_format_version")]
+    pub format_version: u32,
+    /// 本设备已经成功发布到云端的最大序号
+    #[serde(default)]
+    pub published_max_seq: u64,
+    /// 本设备已经安全消费到的其他设备序号
+    #[serde(default)]
+    pub cursors: HashMap<String, u64>,
+    /// restore 后旧设备清单可指向新设备 ID
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub superseded_by: Option<String>,
+    /// 本设备最近见过的快照（Phase 2 快照引导占位）
+    #[serde(default)]
+    pub snapshot_seen: HashMap<String, String>,
+}
+
+fn default_manifest_format_version() -> u32 {
+    2
 }
 
 /// 数据库同步状态
@@ -450,6 +474,8 @@ pub struct AssetDirsManifest {
 pub struct AssetFileEntry {
     pub sha256: String,
     pub size: u64,
+    #[serde(default)]
+    pub updated_at: String,
 }
 
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
@@ -482,6 +508,70 @@ impl AssetSyncOutcome {
 pub struct DownloadChangesResult {
     pub changes: Vec<SyncChangeWithData>,
     pub decode_failures: Vec<String>,
+    pub cursor_advancements: HashMap<String, u64>,
+    pub legacy_processed_keys: Vec<String>,
+}
+
+impl DownloadChangesResult {
+    pub fn len(&self) -> usize {
+        self.changes.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.changes.is_empty()
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, SyncChangeWithData> {
+        self.changes.iter()
+    }
+}
+
+impl AsRef<[SyncChangeWithData]> for DownloadChangesResult {
+    fn as_ref(&self) -> &[SyncChangeWithData] {
+        &self.changes
+    }
+}
+
+impl IntoIterator for DownloadChangesResult {
+    type Item = SyncChangeWithData;
+    type IntoIter = std::vec::IntoIter<SyncChangeWithData>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.changes.into_iter()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+enum ParsedChangeKey {
+    V3 {
+        device_id: String,
+        seq: u64,
+        version: u64,
+    },
+    Legacy {
+        device_id: String,
+        version: u64,
+    },
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct SyncDatabaseSnapshot {
+    format_version: u32,
+    database_name: String,
+    device_id: String,
+    created_at: String,
+    schema_version: u32,
+    data_version: u64,
+    checksum: String,
+    /// Per uploader seq covered by this full database snapshot.
+    covered_cursors: HashMap<String, u64>,
+    /// table_name -> complete RowSync rows for this database.
+    rows: HashMap<String, Vec<serde_json::Value>>,
+}
+
+#[derive(Debug, Clone)]
+struct SnapshotCoverage {
+    covered_cursors: HashMap<String, u64>,
 }
 
 /// 同步管理器
@@ -676,6 +766,9 @@ impl SyncManager {
     ///
     /// 对于给定的数据库，比较本地和云端的记录差异。
     /// 这个方法需要实际的记录数据，通常在数据库级冲突检测后调用。
+    #[deprecated(
+        note = "Use conflict_resolver/__sync_conflicts production paths; this helper is legacy/test-only."
+    )]
     pub fn detect_record_conflicts(
         database_name: &str,
         local_records: &[RecordSnapshot],
@@ -693,6 +786,7 @@ impl SyncManager {
         for local_record in local_records {
             if let Some(cloud_record) = cloud_index.get(local_record.record_id.as_str()) {
                 // 双方都有该记录，检查是否冲突
+                #[allow(deprecated)]
                 if Self::is_record_conflicting(local_record, cloud_record) {
                     conflicts.push(ConflictRecord {
                         database_name: database_name.to_string(),
@@ -720,6 +814,9 @@ impl SyncManager {
     ///
     /// 不再要求 sync_version 完全相等：当两台设备经过各自独立的同步周期后
     /// sync_version 自然会发散，原先的相等判断会导致静默数据覆盖。
+    #[deprecated(
+        note = "Use conflict_resolver::__sync_conflicts production paths; this helper is legacy/test-only."
+    )]
     fn is_record_conflicting(local: &RecordSnapshot, cloud: &RecordSnapshot) -> bool {
         let local_modified = local.local_version > local.sync_version;
         let cloud_modified = cloud.local_version > cloud.sync_version;
@@ -733,6 +830,9 @@ impl SyncManager {
     /// 执行同步
     ///
     /// 根据合并策略处理冲突并返回同步结果。
+    #[deprecated(
+        note = "Use execute_download/execute_bidirectional and conflict_resolver paths; this API does not apply real database changes."
+    )]
     pub fn sync(
         &self,
         strategy: MergeStrategy,
@@ -768,8 +868,16 @@ impl SyncManager {
                     resolved_count += 1;
                 }
                 MergeStrategy::KeepLatest => {
-                    // 比较时间戳，保留最新的
-                    if conflict.local_updated_at >= conflict.cloud_updated_at {
+                    // 比较时间戳，保留最新的；legacy wrapper uses stable fallback IDs.
+                    if Self::compare_lww_timestamps(
+                        &conflict.local_updated_at,
+                        Self::lww_device_id_from_data(&conflict.local_data, "local-unknown"),
+                        &conflict.local_data.to_string(),
+                        &conflict.cloud_updated_at,
+                        Self::lww_device_id_from_data(&conflict.cloud_data, "cloud-unknown"),
+                        &conflict.cloud_data.to_string(),
+                    ) != std::cmp::Ordering::Less
+                    {
                         // 本地更新，云端需要更新
                     } else {
                         // 云端更新，本地需要更新
@@ -827,6 +935,11 @@ impl SyncManager {
             status: SyncTransactionStatus::Complete,
             created_at: chrono::Utc::now().to_rfc3339(),
             device_id: self.device_id.clone(),
+            format_version: 3,
+            published_max_seq: 0,
+            cursors: HashMap::new(),
+            superseded_by: None,
+            snapshot_seen: HashMap::new(),
         }
     }
 
@@ -840,10 +953,66 @@ impl SyncManager {
     const MANIFESTS_PREFIX: &'static str = "data_governance/manifests";
     /// 变更数据的云端路径前缀
     const CHANGES_PREFIX: &'static str = "data_governance/changes";
+    /// 全量快照路径前缀
+    const SNAPSHOTS_PREFIX: &'static str = "data_governance/snapshots";
+    /// 明文远端实例标识。用于把本地游标/上传序号与具体云端隔离。
+    const INSTANCE_KEY: &'static str = "data_governance/instance.json";
+    /// 明文格式协商文件。
+    const FORMAT_KEY: &'static str = "data_governance/format.json";
+    const SNAPSHOT_FORMAT_VERSION: u32 = 1;
+    const SNAPSHOT_INTERVAL_DAYS: i64 = 7;
+    const SNAPSHOT_RETAIN_PER_DB: usize = 2;
 
     /// 构建按设备隔离的清单路径
     fn device_manifest_key(device_id: &str) -> String {
         format!("{}/{}.json", Self::MANIFESTS_PREFIX, device_id)
+    }
+
+    async fn ensure_remote_instance_id(
+        &self,
+        storage: &dyn CloudStorage,
+    ) -> Result<String, SyncError> {
+        let provider = storage.provider_name();
+        let endpoint_hint = storage.instance_binding_hint();
+        if let Some(bytes) = storage
+            .get(Self::INSTANCE_KEY)
+            .await
+            .map_err(|e| SyncError::Network(format!("读取远端实例标识失败: {}", e)))?
+        {
+            if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&bytes) {
+                if let Some(id) = value.get("instance_id").and_then(|v| v.as_str()) {
+                    if !id.trim().is_empty() {
+                        let instance_id = id.trim().to_string();
+                        let store = SyncStateStore::open_default()?;
+                        store.bind_instance(&instance_id, provider, &endpoint_hint)?;
+                        return Ok(instance_id);
+                    }
+                }
+            }
+        }
+
+        let instance_id = uuid::Uuid::new_v4().to_string();
+        let body = serde_json::json!({
+            "instance_id": instance_id,
+            "format_version": 3,
+            "created_at": chrono::Utc::now().to_rfc3339(),
+        });
+        let bytes = serde_json::to_vec_pretty(&body)
+            .map_err(|e| SyncError::Database(format!("序列化远端实例标识失败: {}", e)))?;
+        storage
+            .put(Self::INSTANCE_KEY, &bytes)
+            .await
+            .map_err(|e| SyncError::Network(format!("写入远端实例标识失败: {}", e)))?;
+        let format = serde_json::json!({
+            "format_version": 3,
+            "min_client": "deep-student-cloud-sync-v3",
+        });
+        if let Ok(bytes) = serde_json::to_vec_pretty(&format) {
+            let _ = storage.put(Self::FORMAT_KEY, &bytes).await;
+        }
+        let store = SyncStateStore::open_default()?;
+        store.bind_instance(&instance_id, provider, &endpoint_hint)?;
+        Ok(instance_id)
     }
 
     /// 上传本地清单到云端（按设备隔离，自带网络重试）
@@ -852,7 +1021,34 @@ impl SyncManager {
         storage: &dyn CloudStorage,
         manifest: &SyncManifest,
     ) -> Result<(), SyncError> {
-        let json = serde_json::to_vec_pretty(manifest)
+        let instance_id = self.ensure_remote_instance_id(storage).await?;
+        let mut manifest = manifest.clone();
+        manifest.format_version = 3;
+        manifest.device_id = self.device_id.clone();
+        if let Ok(store) = SyncStateStore::open_default() {
+            if let Ok(rotations) = store.device_rotations_for_new(&self.device_id) {
+                for (old_device_id, reason) in rotations {
+                    if let Err(e) = self
+                        .mark_device_manifest_superseded(storage, &old_device_id, &self.device_id)
+                        .await
+                    {
+                        tracing::warn!(
+                            "[sync] 写入旧设备 superseded_by 失败: old={}, new={}, reason={}, err={}",
+                            old_device_id,
+                            self.device_id,
+                            reason,
+                            e
+                        );
+                    }
+                }
+            }
+            manifest.published_max_seq = store
+                .published_max_seq(&instance_id, &self.device_id)
+                .unwrap_or(0);
+            manifest.cursors = store.cursors(&instance_id).unwrap_or_default();
+        }
+
+        let json = serde_json::to_vec_pretty(&manifest)
             .map_err(|e| SyncError::Database(format!("序列化清单失败: {}", e)))?;
 
         // [P0-2] 可选 payload 加密
@@ -885,6 +1081,58 @@ impl SyncManager {
         Ok(())
     }
 
+    async fn mark_device_manifest_superseded(
+        &self,
+        storage: &dyn CloudStorage,
+        old_device_id: &str,
+        new_device_id: &str,
+    ) -> Result<(), SyncError> {
+        if old_device_id.trim().is_empty() || old_device_id == new_device_id {
+            return Ok(());
+        }
+
+        let key = Self::device_manifest_key(old_device_id);
+        let mut manifest = match storage
+            .get(&key)
+            .await
+            .map_err(|e| SyncError::Network(format!("读取旧设备清单失败: {}", e)))?
+        {
+            Some(bytes) => {
+                let decoded = self.decode_payload(&bytes)?;
+                serde_json::from_slice::<SyncManifest>(&decoded)
+                    .map_err(|e| SyncError::Database(format!("解析旧设备清单失败: {}", e)))?
+            }
+            None => SyncManifest {
+                sync_transaction_id: uuid::Uuid::new_v4().to_string(),
+                databases: HashMap::new(),
+                status: SyncTransactionStatus::Complete,
+                created_at: chrono::Utc::now().to_rfc3339(),
+                device_id: old_device_id.to_string(),
+                format_version: 3,
+                published_max_seq: 0,
+                cursors: HashMap::new(),
+                superseded_by: None,
+                snapshot_seen: HashMap::new(),
+            },
+        };
+
+        if manifest.superseded_by.as_deref() == Some(new_device_id) {
+            return Ok(());
+        }
+
+        manifest.format_version = 3;
+        manifest.device_id = old_device_id.to_string();
+        manifest.superseded_by = Some(new_device_id.to_string());
+        let json = serde_json::to_vec_pretty(&manifest)
+            .map_err(|e| SyncError::Database(format!("序列化旧设备清单失败: {}", e)))?;
+        let payload = self.encode_payload(&json)?;
+        storage
+            .put(&key, &payload)
+            .await
+            .map_err(|e| SyncError::Network(format!("上传旧设备 superseded_by 失败: {}", e)))?;
+        Ok(())
+    }
+
     /// 从云端下载清单（合并所有其他设备的清单）
     ///
     /// 策略：
@@ -896,10 +1144,16 @@ impl SyncManager {
         storage: &dyn CloudStorage,
     ) -> Result<SyncManifest, SyncError> {
         // 列出所有设备清单文件
-        let files = storage
-            .list(Self::MANIFESTS_PREFIX)
+        let list = storage
+            .list_outcome(Self::MANIFESTS_PREFIX)
             .await
             .map_err(|e| SyncError::Network(format!("列出清单文件失败: {}", e)))?;
+        if list.truncated {
+            return Err(SyncError::Network(
+                "云端清单列表被截断，已停止同步以避免漏读设备状态".to_string(),
+            ));
+        }
+        let files = list.files;
 
         let mut merged_databases: HashMap<String, DatabaseSyncState> = HashMap::new();
         let mut any_found = false;
@@ -1017,6 +1271,11 @@ impl SyncManager {
                 status: SyncTransactionStatus::Complete,
                 created_at: chrono::Utc::now().to_rfc3339(),
                 device_id: String::new(),
+                format_version: 3,
+                published_max_seq: 0,
+                cursors: HashMap::new(),
+                superseded_by: None,
+                snapshot_seen: HashMap::new(),
             });
         }
 
@@ -1036,7 +1295,65 @@ impl SyncManager {
                 latest_created_at_raw
             },
             device_id: "merged".to_string(),
+            format_version: 3,
+            published_max_seq: 0,
+            cursors: HashMap::new(),
+            superseded_by: None,
+            snapshot_seen: HashMap::new(),
         })
+    }
+
+    async fn download_device_manifests(
+        &self,
+        storage: &dyn CloudStorage,
+    ) -> Result<HashMap<String, SyncManifest>, SyncError> {
+        let list = storage
+            .list_outcome(Self::MANIFESTS_PREFIX)
+            .await
+            .map_err(|e| SyncError::Network(format!("列出清单文件失败: {}", e)))?;
+        if list.truncated {
+            return Err(SyncError::Network(
+                "云端清单列表被截断，已停止同步以避免漏读设备状态".to_string(),
+            ));
+        }
+        let mut manifests = HashMap::new();
+        for file in list.files {
+            let Some(device_id) = file
+                .key
+                .rsplit('/')
+                .next()
+                .and_then(|f| f.strip_suffix(".json"))
+            else {
+                continue;
+            };
+            let Some(bytes) = storage
+                .get(&file.key)
+                .await
+                .map_err(|e| SyncError::Network(format!("下载设备清单失败 {}: {}", file.key, e)))?
+            else {
+                continue;
+            };
+            let decoded = match self.decode_payload(&bytes) {
+                Ok(v) => v,
+                Err(e) => {
+                    tracing::warn!(
+                        "[sync] 跳过无法解密的设备清单: key={}, error={}",
+                        file.key,
+                        e
+                    );
+                    continue;
+                }
+            };
+            match serde_json::from_slice::<SyncManifest>(&decoded) {
+                Ok(manifest) => {
+                    manifests.insert(device_id.to_string(), manifest);
+                }
+                Err(e) => {
+                    tracing::warn!("[sync] 跳过损坏设备清单: key={}, error={}", file.key, e);
+                }
+            }
+        }
+        Ok(manifests)
     }
 
     /// 上传变更数据（v1 旧格式：仅 ChangeLogEntry 元数据，不含行数据）
@@ -1107,16 +1424,25 @@ impl SyncManager {
             return Ok(());
         }
 
-        // 版本使用秒级时间戳，与 legacy 文件同一版本空间
+        let instance_id = self.ensure_remote_instance_id(storage).await?;
+        let store = SyncStateStore::open_default()?;
+        let cloud_max_seq = self
+            .max_cloud_seq_for_device(storage, &self.device_id)
+            .await?;
+        let source_seq = store.next_upload_seq(&instance_id, &self.device_id, cloud_max_seq)?;
+
+        // 版本使用秒级时间戳，仅作为展示/排序辅助；消费进度由 v3 seq/cursor 承载。
         let version = chrono::Utc::now().timestamp() as u64;
-        let key = self.build_change_key(version);
+        let key = self.build_change_key_v3(source_seq, version);
 
         // 序列化为带完整数据的新格式
         let payload = SyncChangesPayload {
             changes: changes.to_vec(),
             total_count: changes.len(),
             device_id: self.device_id.clone(),
-            format_version: 2, // v2 = 带完整数据
+            format_version: 3, // v3 = 带完整数据 + per-device seq/cursor
+            source_seq,
+            source_device_id: self.device_id.clone(),
         };
 
         // Phase 5 Optimization: Compact JSON + Zstd Compression
@@ -1137,31 +1463,37 @@ impl SyncManager {
         let uploaded_size = final_bytes.len();
         let _total_count = payload.total_count;
 
+        // [P0-10/C8] 上传后回验对象 size + 重试。
+        //   - 进度路径首次走流式 put_file（实时字节进度），上传后用 stat 回验 size；
+        //     若回验不符或上传失败，回退到带退避重试 + 回验的 put 路径（重试时无进度）。
+        //   - 非进度路径直接走带退避重试 + 回验的 put 路径。
+        // 回验失败一律返回 Err，调用方不会推进 sync_version（不 mark），下轮重传。
         if let Some(cb) = progress {
             // 有进度回调：写入临时文件，通过 put_file 流式上传以实时汇报字节进度
             let tmp = tempfile::NamedTempFile::new()
                 .map_err(|e| SyncError::Database(format!("创建临时上传文件失败: {}", e)))?;
             std::fs::write(tmp.path(), &final_bytes)
                 .map_err(|e| SyncError::Database(format!("写入临时上传文件失败: {}", e)))?;
-            storage
-                .put_file(&key, tmp.path(), Some(cb))
-                .await
-                .map_err(|e| SyncError::Network(format!("上传变更数据失败: {}", e)))?;
-        } else {
-            // 无进度回调：直接 PUT 字节，带指数退避重试
-            // [P3 Fix] 降低为 2 次，避免与传输层重试叠加
-            retry_async("上传变更数据", 2, || {
-                let final_bytes = final_bytes.clone();
-                let key = key.clone();
-                async move {
-                    storage
-                        .put(&key, &final_bytes)
-                        .await
-                        .map_err(|e| SyncError::Network(format!("上传变更数据失败: {}", e)))
+
+            let streamed_ok = match storage.put_file(&key, tmp.path(), Some(cb)).await {
+                Ok(_) => Self::verify_uploaded_size(storage, &key, uploaded_size as u64).await,
+                Err(e) => {
+                    tracing::warn!(
+                        "[sync] 变更流式上传失败，将回退重试: key={}, err={}",
+                        key,
+                        e
+                    );
+                    false
                 }
-            })
-            .await?;
+            };
+            if !streamed_ok {
+                Self::put_change_with_verify_retry(storage, &key, &final_bytes).await?;
+            }
+        } else {
+            // 无进度回调：直接 PUT 字节，带指数退避重试 + size 回验
+            Self::put_change_with_verify_retry(storage, &key, &final_bytes).await?;
         }
+        store.mark_published_seq(&instance_id, &self.device_id, source_seq)?;
 
         tracing::info!(
             "[sync] 带完整数据的变更已上传: device={}, count={}, key={}, compressed_size={}, uploaded_size={}, encrypted={}",
@@ -1174,6 +1506,65 @@ impl SyncManager {
         );
 
         Ok(())
+    }
+
+    /// [P0-10/C8] 校验已上传对象的 size 是否与期望一致。
+    ///
+    /// stat 失败或对象缺失/大小不符均返回 `false`（视为未确认，触发重传），
+    /// 而不是直接报错，以便上层统一处理重试与回退。
+    async fn verify_uploaded_size(storage: &dyn CloudStorage, key: &str, expected: u64) -> bool {
+        match storage.stat(key).await {
+            Ok(Some(info)) => {
+                if info.size == expected {
+                    true
+                } else {
+                    tracing::warn!(
+                        "[sync] 上传 size 回验不符: key={}, 期望={}, 实际={}",
+                        key,
+                        expected,
+                        info.size
+                    );
+                    false
+                }
+            }
+            Ok(None) => {
+                tracing::warn!("[sync] 上传后对象不存在（回验失败）: key={}", key);
+                false
+            }
+            Err(e) => {
+                tracing::warn!("[sync] 上传 size 回验 stat 失败: key={}, err={}", key, e);
+                false
+            }
+        }
+    }
+
+    /// [P0-10/C8] 带退避重试的 PUT，每次上传后立即回验 size，不符即报错并触发下次重试。
+    async fn put_change_with_verify_retry(
+        storage: &dyn CloudStorage,
+        key: &str,
+        bytes: &[u8],
+    ) -> Result<(), SyncError> {
+        let expected = bytes.len() as u64;
+        retry_async("上传变更数据", 2, || {
+            let bytes = bytes.to_vec();
+            let key = key.to_string();
+            async move {
+                storage
+                    .put(&key, &bytes)
+                    .await
+                    .map_err(|e| SyncError::Network(format!("上传变更数据失败: {}", e)))?;
+                match storage.stat(&key).await {
+                    Ok(Some(info)) if info.size == expected => Ok(()),
+                    Ok(Some(info)) => Err(SyncError::Network(format!(
+                        "上传后 size 校验失败: key={}, 期望={}, 实际={}",
+                        key, expected, info.size
+                    ))),
+                    Ok(None) => Err(SyncError::Network(format!("上传后对象不存在: key={}", key))),
+                    Err(e) => Err(SyncError::Network(format!("上传后回验失败: {}", e))),
+                }
+            }
+        })
+        .await
     }
 
     /// 下载变更数据（支持新旧两种格式）
@@ -1199,115 +1590,221 @@ impl SyncManager {
         since_version: u64,
         per_db_since: Option<&HashMap<String, u64>>,
     ) -> Result<DownloadChangesResult, SyncError> {
-        let files = storage
-            .list(Self::CHANGES_PREFIX)
+        let list = storage
+            .list_outcome(Self::CHANGES_PREFIX)
             .await
             .map_err(|e| SyncError::Network(format!("列出变更文件失败: {}", e)))?;
+        if list.truncated {
+            return Err(SyncError::Network(
+                "云端变更列表被截断，已停止下载以避免静默漏同步".to_string(),
+            ));
+        }
+        let files = list.files;
+        let instance_id = self.ensure_remote_instance_id(storage).await?;
+        let store = SyncStateStore::open_default()?;
+        let device_manifests = self
+            .download_device_manifests(storage)
+            .await
+            .unwrap_or_default();
 
-        let mut all_changes: Vec<(u64, SyncChangeWithData)> = Vec::new();
-        let mut skipped_self = 0usize;
-        let mut decode_failures: Vec<String> = Vec::new();
+        // [P0-8/C6] 版本号毫秒/秒归一化：legacy 文件名可能写入了毫秒时间戳（>1e11），
+        // 而 since_version / per_db_since / prune / min_available 都以秒为口径。
+        let since_norm = Self::normalize_version_to_seconds(since_version);
 
+        let mut v3_files: HashMap<String, Vec<(u64, u64, String)>> = HashMap::new();
+        let mut legacy_files: Vec<(String, u64, String)> = Vec::new();
         for file in files {
-            // 跳过本设备上传的变更文件，避免回声下载
-            // 路径格式: data_governance/changes/{device_id}/{version}-{nonce}.json[.zst]
-            if Self::is_own_change_file(&file.key, &self.device_id) {
-                skipped_self += 1;
-                continue;
+            match Self::parse_change_key(&file.key) {
+                Some(ParsedChangeKey::V3 {
+                    device_id,
+                    seq,
+                    version,
+                }) => {
+                    if device_id == self.device_id {
+                        continue;
+                    }
+                    v3_files.entry(device_id).or_default().push((
+                        seq,
+                        Self::normalize_version_to_seconds(version),
+                        file.key,
+                    ));
+                }
+                Some(ParsedChangeKey::Legacy { device_id, version }) => {
+                    if device_id == self.device_id {
+                        continue;
+                    }
+                    legacy_files.push((
+                        device_id,
+                        Self::normalize_version_to_seconds(version),
+                        file.key,
+                    ));
+                }
+                None => {}
             }
+        }
 
-            if let Some(version) = Self::parse_version_from_key(&file.key) {
-                // >= 防止同秒上传的变更被跳过，apply 层幂等保证安全
-                if version >= since_version {
-                    if let Some(data) = storage
-                        .get(&file.key)
+        let mut all_changes: Vec<(String, u64, u64, SyncChangeWithData)> = Vec::new();
+        let decode_failures: Vec<String> = Vec::new();
+        let mut legacy_processed_keys: Vec<String> = Vec::new();
+        let mut cursor_advancements: HashMap<String, u64> = HashMap::new();
+
+        for (uploader, mut files) in v3_files {
+            files.sort_by_key(|(seq, version, key)| (*seq, *version, key.clone()));
+            let mut expected = store.get_cursor(&instance_id, &uploader)?.saturating_add(1);
+            let published_max = device_manifests
+                .get(&uploader)
+                .map(|m| m.published_max_seq)
+                .unwrap_or_else(|| files.iter().map(|(seq, _, _)| *seq).max().unwrap_or(0));
+
+            let mut index = 0usize;
+            while index < files.len() {
+                let seq = files[index].0;
+                if seq < expected {
+                    index += 1;
+                    continue;
+                }
+                if seq > expected {
+                    if expected <= published_max {
+                        return Err(SyncError::Network(format!(
+                            "云端文件缺失/无法解密，已停在安全点：设备 {} 缺少序号 {}（已发布到 {}）",
+                            uploader, expected, published_max
+                        )));
+                    }
+                    break;
+                }
+
+                while index < files.len() && files[index].0 == seq {
+                    let (_, version, key) = files[index].clone();
+                    let Some(data) = storage
+                        .get(&key)
                         .await
                         .map_err(|e| SyncError::Network(format!("下载变更文件失败: {}", e)))?
-                    {
-                        // [P0-2] 解密顺序：先 decode_payload（若带 DSBK 魔数则解密，
-                        // 否则直通），再 zstd 解压。失败时细分错误来源：
-                        // - 解密失败 → 记为 decode_failure，不致命
-                        // - 解密成功但 zstd 失败 → fallback 到原明文（兼容极老的未压缩格式）
-                        let decrypted = match self.decode_payload(&data) {
-                            Ok(v) => v,
-                            Err(e) => {
-                                decode_failures.push(file.key.clone());
-                                tracing::warn!(
-                                    "[sync] 跳过无法解密的变更文件: key={}, error={}",
-                                    file.key,
-                                    e
-                                );
-                                continue;
-                            }
-                        };
-                        let decoded_data =
-                            zstd::stream::decode_all(std::io::Cursor::new(decrypted.as_slice()))
-                                .unwrap_or(decrypted);
-
-                        if let Ok(payload) =
-                            serde_json::from_slice::<SyncChangesPayload>(&decoded_data)
-                        {
-                            tracing::debug!(
-                                "[sync] 下载变更文件(v2): key={}, count={}",
-                                file.key,
-                                payload.total_count
-                            );
-                            for change in payload.changes {
-                                if let Some(db) = change.database_name.as_deref() {
-                                    if let Some(db_since) = per_db_since.and_then(|m| m.get(db)) {
-                                        if version < *db_since {
-                                            continue;
-                                        }
-                                    }
+                    else {
+                        return Err(SyncError::Network(format!(
+                            "云端文件缺失/无法解密，已停在安全点：{}",
+                            key
+                        )));
+                    };
+                    let decrypted = self.decode_payload(&data).map_err(|e| {
+                        SyncError::Network(format!(
+                            "云端文件缺失/无法解密，已停在安全点：{} ({})",
+                            key, e
+                        ))
+                    })?;
+                    let decoded_data =
+                        zstd::stream::decode_all(std::io::Cursor::new(decrypted.as_slice()))
+                            .unwrap_or(decrypted);
+                    let payload = serde_json::from_slice::<SyncChangesPayload>(&decoded_data)
+                        .map_err(|e| {
+                            SyncError::Network(format!(
+                                "云端文件缺失/无法解密，已停在安全点：{} ({})",
+                                key, e
+                            ))
+                        })?;
+                    let source_device = if payload.source_device_id.is_empty() {
+                        uploader.clone()
+                    } else {
+                        payload.source_device_id.clone()
+                    };
+                    let source_seq = if payload.source_seq == 0 {
+                        seq
+                    } else {
+                        payload.source_seq
+                    };
+                    for mut change in payload.changes {
+                        change.source_device_id = Some(source_device.clone());
+                        change.source_seq = Some(source_seq);
+                        if let Some(db) = change.database_name.as_deref() {
+                            if let Some(db_since) = per_db_since.and_then(|m| m.get(db)) {
+                                if version < Self::normalize_version_to_seconds(*db_since) {
+                                    continue;
                                 }
-                                all_changes.push((version, change));
                             }
-                        } else if let Ok(changes) =
-                            serde_json::from_slice::<PendingChanges>(&decoded_data)
-                        {
-                            tracing::warn!(
-                                "[sync] 下载变更文件(v1/旧格式，数据不完整): key={}, count={}",
-                                file.key,
-                                changes.total_count
-                            );
-                            for entry in &changes.entries {
-                                let change = SyncChangeWithData::from_entry(entry);
-                                if let Some(db) = change.database_name.as_deref() {
-                                    if let Some(db_since) = per_db_since.and_then(|m| m.get(db)) {
-                                        if version < *db_since {
-                                            continue;
-                                        }
-                                    }
-                                }
-                                all_changes.push((version, change));
-                            }
-                        } else {
-                            decode_failures.push(file.key.clone());
-                            tracing::error!("[sync] 无法解析变更文件: key={}", file.key);
                         }
+                        all_changes.push((source_device.clone(), source_seq, version, change));
                     }
+                    cursor_advancements.insert(uploader.clone(), seq);
+                    index += 1;
+                }
+
+                expected = expected.saturating_add(1);
+            }
+        }
+
+        legacy_files.sort_by_key(|(device, version, key)| (device.clone(), *version, key.clone()));
+        for (legacy_device, version, key) in legacy_files {
+            if version < since_norm || store.is_legacy_processed(&instance_id, &key)? {
+                continue;
+            }
+            if let Some(data) = storage
+                .get(&key)
+                .await
+                .map_err(|e| SyncError::Network(format!("下载 legacy 变更文件失败: {}", e)))?
+            {
+                let decrypted = self.decode_payload(&data).map_err(|e| {
+                    SyncError::Network(format!(
+                        "legacy 云端变更无法解密，已停在安全点：{} ({})",
+                        key, e
+                    ))
+                })?;
+                let decoded_data =
+                    zstd::stream::decode_all(std::io::Cursor::new(decrypted.as_slice()))
+                        .unwrap_or(decrypted);
+                if let Ok(payload) = serde_json::from_slice::<SyncChangesPayload>(&decoded_data) {
+                    let source_device = if payload.source_device_id.is_empty() {
+                        legacy_device.clone()
+                    } else {
+                        payload.source_device_id.clone()
+                    };
+                    let source_seq = if payload.source_seq == 0 {
+                        version
+                    } else {
+                        payload.source_seq
+                    };
+                    for mut change in payload.changes {
+                        change.source_device_id = Some(source_device.clone());
+                        change.source_seq = Some(source_seq);
+                        if let Some(db) = change.database_name.as_deref() {
+                            if let Some(db_since) = per_db_since.and_then(|m| m.get(db)) {
+                                if version < Self::normalize_version_to_seconds(*db_since) {
+                                    continue;
+                                }
+                            }
+                        }
+                        all_changes.push(("legacy".to_string(), 0, version, change));
+                    }
+                    legacy_processed_keys.push(key);
+                } else if let Ok(changes) = serde_json::from_slice::<PendingChanges>(&decoded_data)
+                {
+                    for entry in &changes.entries {
+                        let mut change = SyncChangeWithData::from_entry(entry);
+                        change.source_device_id = Some(legacy_device.clone());
+                        change.source_seq = Some(version);
+                        all_changes.push(("legacy".to_string(), 0, version, change));
+                    }
+                    legacy_processed_keys.push(key);
+                } else {
+                    return Err(SyncError::Network(format!(
+                        "legacy 云端变更无法解析，已停在安全点：{}",
+                        key
+                    )));
                 }
             }
         }
 
-        if !decode_failures.is_empty() {
-            let samples = decode_failures
-                .iter()
-                .take(5)
-                .cloned()
-                .collect::<Vec<_>>()
-                .join(", ");
-            tracing::warn!(
-                "[sync] 存在 {} 个无法解析的变更文件，已跳过（示例: {}）",
-                decode_failures.len(),
-                samples
-            );
-        }
-
-        // 使用时间戳归一化排序（兼容 SQLite datetime 和 RFC 3339 格式）
+        // v3 先按上传设备与 seq 连续顺序排序；同一变更包内部再按 writer-side 顺序。
         all_changes.sort_by(|a, b| {
-            let (a_version, a_change) = a;
-            let (b_version, b_change) = b;
+            let (a_device, a_seq, a_version, a_change) = a;
+            let (b_device, b_seq, b_version, b_change) = b;
+
+            match a_device.cmp(b_device) {
+                std::cmp::Ordering::Equal => {}
+                ord => return ord,
+            }
+            match a_seq.cmp(b_seq) {
+                std::cmp::Ordering::Equal => {}
+                ord => return ord,
+            }
 
             match a_version.cmp(b_version) {
                 std::cmp::Ordering::Equal => {}
@@ -1333,27 +1830,26 @@ impl SyncManager {
         });
 
         let before_dedupe = all_changes.len();
-        all_changes = Self::dedupe_downloaded_changes(all_changes);
+        all_changes = Self::dedupe_downloaded_changes_with_source(all_changes);
         let deduped = before_dedupe.saturating_sub(all_changes.len());
 
-        if skipped_self > 0 {
-            tracing::debug!(
-                "[sync] 跳过本设备变更文件: {} 个（避免回声下载）",
-                skipped_self
-            );
-        }
-
         tracing::info!(
-            "[sync] 从云端下载变更: since={}, total={}, deduped={}, skipped_self={}",
+            "[sync] 从云端下载变更: since={}, total={}, deduped={}, v3_devices={}, legacy={}",
             since_version,
             all_changes.len(),
             deduped,
-            skipped_self
+            cursor_advancements.len(),
+            legacy_processed_keys.len()
         );
 
         Ok(DownloadChangesResult {
-            changes: all_changes.into_iter().map(|(_, change)| change).collect(),
+            changes: all_changes
+                .into_iter()
+                .map(|(_, _, _, change)| change)
+                .collect(),
             decode_failures,
+            cursor_advancements,
+            legacy_processed_keys,
         })
     }
 
@@ -1372,34 +1868,87 @@ impl SyncManager {
 
     /// 从文件路径解析版本号
     fn parse_version_from_key(key: &str) -> Option<u64> {
+        // v3 格式: data_governance/changes/{device_id}/{seq}-{version}-{nonce}.json.zst
         // 新格式: data_governance/changes/{device_id}/{version}-{nonce}.json.zst
         // 旧格式: data_governance/changes/{device_id}/{version}-{nonce}.json
         //     或: data_governance/changes/{device_id}/{version}.json
-        key.rsplit('/')
-            .next()
-            .and_then(|filename| {
-                filename
-                    .strip_suffix(".json.zst")
-                    .or_else(|| filename.strip_suffix(".json"))
-            })
-            .and_then(|stem| stem.split('-').next())
-            .and_then(|version_str| version_str.parse().ok())
+        match Self::parse_change_key(key) {
+            Some(ParsedChangeKey::V3 { version, .. }) => Some(version),
+            Some(ParsedChangeKey::Legacy { version, .. }) => Some(version),
+            None => None,
+        }
+    }
+
+    fn parse_change_key(key: &str) -> Option<ParsedChangeKey> {
+        let parts: Vec<&str> = key.split('/').collect();
+        let device_id = parts.get(2)?.to_string();
+        let filename = parts.last()?;
+        let stem = filename
+            .strip_suffix(".json.zst")
+            .or_else(|| filename.strip_suffix(".json"))?;
+        let mut segments = stem.split('-');
+        let first = segments.next()?;
+        let second = segments.next();
+
+        if first.len() == 12 && first.chars().all(|c| c.is_ascii_digit()) {
+            if let Some(second) = second {
+                if let (Ok(seq), Ok(version)) = (first.parse::<u64>(), second.parse::<u64>()) {
+                    return Some(ParsedChangeKey::V3 {
+                        device_id,
+                        seq,
+                        version,
+                    });
+                }
+            }
+        }
+
+        first
+            .parse::<u64>()
+            .ok()
+            .map(|version| ParsedChangeKey::Legacy { device_id, version })
     }
 
     fn dedupe_downloaded_changes(
         changes: Vec<(u64, SyncChangeWithData)>,
     ) -> Vec<(u64, SyncChangeWithData)> {
+        // [P0-7] keep-last 去重：对内容指纹相同的重复变更，保留顺序上**最后**出现的一条。
+        //
+        // 之前的 keep-first 实现存在终态错误：序列 "x=1 → x=2 → x=1" 中，第 1 条与第 3 条
+        // 的内容指纹相同，keep-first 会保留第 1 条 (x=1) 并丢弃第 3 条 (x=1)，最终保留
+        // [x=1, x=2]，按序应用后终态变成 x=2（错误，正确终态应为 x=1）。
+        //
+        // 倒序扫描时首次见到某指纹即保留（对应正序最后一条），再恢复原始顺序，
+        // 即可保证回到旧值的序列其终态正确。
         let mut seen = HashSet::new();
-        let mut deduped = Vec::with_capacity(changes.len());
+        let mut kept_rev: Vec<(u64, SyncChangeWithData)> = Vec::with_capacity(changes.len());
 
-        for (version, change) in changes {
+        for (version, change) in changes.into_iter().rev() {
             let key = Self::download_change_dedupe_key(&change);
             if seen.insert(key) {
-                deduped.push((version, change));
+                kept_rev.push((version, change));
             }
         }
 
-        deduped
+        kept_rev.reverse();
+        kept_rev
+    }
+
+    fn dedupe_downloaded_changes_with_source(
+        changes: Vec<(String, u64, u64, SyncChangeWithData)>,
+    ) -> Vec<(String, u64, u64, SyncChangeWithData)> {
+        let mut seen = HashSet::new();
+        let mut kept_rev: Vec<(String, u64, u64, SyncChangeWithData)> =
+            Vec::with_capacity(changes.len());
+
+        for (device, seq, version, change) in changes.into_iter().rev() {
+            let key = Self::download_change_dedupe_key(&change);
+            if seen.insert(key) {
+                kept_rev.push((device, seq, version, change));
+            }
+        }
+
+        kept_rev.reverse();
+        kept_rev
     }
 
     fn download_change_dedupe_key(change: &SyncChangeWithData) -> String {
@@ -1448,6 +1997,503 @@ impl SyncManager {
         )
     }
 
+    /// 构造 v3 变更文件 key：{seq:012}-{ts}-{nonce}.json.zst
+    fn build_change_key_v3(&self, seq: u64, version: u64) -> String {
+        let nonce = uuid::Uuid::new_v4();
+        format!(
+            "{}/{}/{:012}-{}-{}.json.zst",
+            Self::CHANGES_PREFIX,
+            self.device_id,
+            seq,
+            version,
+            nonce
+        )
+    }
+
+    async fn max_cloud_seq_for_device(
+        &self,
+        storage: &dyn CloudStorage,
+        device_id: &str,
+    ) -> Result<u64, SyncError> {
+        let prefix = format!("{}/{}", Self::CHANGES_PREFIX, device_id);
+        let list = storage
+            .list_outcome(&prefix)
+            .await
+            .map_err(|e| SyncError::Network(format!("列出本设备变更文件失败: {}", e)))?;
+        if list.truncated {
+            return Err(SyncError::Network(
+                "云端本设备变更列表被截断，无法安全分配上传序号".to_string(),
+            ));
+        }
+        Ok(list
+            .files
+            .iter()
+            .filter_map(|f| match Self::parse_change_key(&f.key) {
+                Some(ParsedChangeKey::V3 {
+                    device_id: parsed,
+                    seq,
+                    ..
+                }) if parsed == device_id => Some(seq),
+                _ => None,
+            })
+            .max()
+            .unwrap_or(0))
+    }
+
+    fn database_path_for_active_dir(
+        db_id: &DatabaseId,
+        active_dir: &std::path::Path,
+    ) -> std::path::PathBuf {
+        match db_id {
+            DatabaseId::Vfs => active_dir.join("databases").join("vfs.db"),
+            DatabaseId::ChatV2 => active_dir.join("chat_v2.db"),
+            DatabaseId::Mistakes => active_dir.join("mistakes.db"),
+            DatabaseId::LlmUsage => active_dir.join("llm_usage.db"),
+        }
+    }
+
+    fn snapshot_key(database_name: &str, device_id: &str) -> String {
+        format!(
+            "{}/{}/{}-{}-{}.json.zst",
+            Self::SNAPSHOTS_PREFIX,
+            database_name,
+            chrono::Utc::now().timestamp_millis(),
+            device_id,
+            uuid::Uuid::new_v4()
+        )
+    }
+
+    async fn snapshot_due_for_db(
+        &self,
+        storage: &dyn CloudStorage,
+        database_name: &str,
+    ) -> Result<bool, SyncError> {
+        let prefix = format!("{}/{}", Self::SNAPSHOTS_PREFIX, database_name);
+        let list = storage
+            .list_outcome(&prefix)
+            .await
+            .map_err(|e| SyncError::Network(format!("列出快照失败: {}", e)))?;
+        if list.truncated {
+            return Err(SyncError::Network(
+                "云端快照列表被截断，无法安全判断是否需要生成快照".to_string(),
+            ));
+        }
+        let Some(newest) = list.files.iter().map(|f| f.last_modified).max() else {
+            return Ok(true);
+        };
+        let cutoff = chrono::Utc::now() - chrono::Duration::days(Self::SNAPSHOT_INTERVAL_DAYS);
+        Ok(newest < cutoff)
+    }
+
+    fn table_exists_for_snapshot(conn: &Connection, table_name: &str) -> Result<bool, SyncError> {
+        conn.query_row(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
+            params![table_name],
+            |row| row.get(0),
+        )
+        .map_err(|e| SyncError::Database(format!("检查快照表是否存在失败: {}", e)))
+    }
+
+    fn collect_snapshot_rows(
+        conn: &Connection,
+        database_name: &str,
+    ) -> Result<HashMap<String, Vec<serde_json::Value>>, SyncError> {
+        let mut tables = classification::TableClassification::row_sync_tables()
+            .into_iter()
+            .filter(|table| table.database == database_name)
+            .collect::<Vec<_>>();
+        tables.sort_by(|a, b| a.table_name.cmp(b.table_name));
+
+        let mut rows_by_table = HashMap::new();
+        for table in tables {
+            if !Self::table_exists_for_snapshot(conn, table.table_name)? {
+                continue;
+            }
+            let columns = Self::table_column_names(conn, table.table_name)?;
+            if columns.is_empty() {
+                continue;
+            }
+            let table_ident = Self::quote_identifier(table.table_name)?;
+            let select_columns = columns
+                .iter()
+                .map(|column| Self::quote_identifier(column))
+                .collect::<Result<Vec<_>, _>>()?
+                .join(", ");
+            let order_columns = Self::checksum_order_columns(table.primary_key, &columns);
+            let order_expr = if order_columns.is_empty() {
+                "rowid".to_string()
+            } else {
+                order_columns
+                    .iter()
+                    .map(|column| Self::quote_identifier(column))
+                    .collect::<Result<Vec<_>, _>>()?
+                    .join(", ")
+            };
+            let sql = format!(
+                "SELECT {} FROM {} ORDER BY {}",
+                select_columns, table_ident, order_expr
+            );
+            let mut stmt = conn.prepare(&sql).map_err(|e| {
+                SyncError::Database(format!("准备快照查询失败 {}: {}", table.table_name, e))
+            })?;
+            let mut rows = stmt.query([]).map_err(|e| {
+                SyncError::Database(format!("执行快照查询失败 {}: {}", table.table_name, e))
+            })?;
+            let mut table_rows = Vec::new();
+            while let Some(row) = rows.next().map_err(|e| {
+                SyncError::Database(format!("读取快照行失败 {}: {}", table.table_name, e))
+            })? {
+                let mut obj = serde_json::Map::new();
+                for (idx, column) in columns.iter().enumerate() {
+                    obj.insert(column.clone(), Self::sqlite_value_to_json(row, idx));
+                }
+                table_rows.push(serde_json::Value::Object(obj));
+            }
+            rows_by_table.insert(table.table_name.to_string(), table_rows);
+        }
+        Ok(rows_by_table)
+    }
+
+    fn build_database_snapshot(
+        &self,
+        conn: &Connection,
+        database_name: &str,
+        state: DatabaseSyncState,
+        covered_cursors: HashMap<String, u64>,
+    ) -> Result<SyncDatabaseSnapshot, SyncError> {
+        Ok(SyncDatabaseSnapshot {
+            format_version: Self::SNAPSHOT_FORMAT_VERSION,
+            database_name: database_name.to_string(),
+            device_id: self.device_id.clone(),
+            created_at: chrono::Utc::now().to_rfc3339(),
+            schema_version: state.schema_version,
+            data_version: state.data_version,
+            checksum: state.checksum,
+            covered_cursors,
+            rows: Self::collect_snapshot_rows(conn, database_name)?,
+        })
+    }
+
+    async fn prune_snapshots_for_db(
+        &self,
+        storage: &dyn CloudStorage,
+        database_name: &str,
+    ) -> Result<usize, SyncError> {
+        let prefix = format!("{}/{}", Self::SNAPSHOTS_PREFIX, database_name);
+        let list = storage
+            .list_outcome(&prefix)
+            .await
+            .map_err(|e| SyncError::Network(format!("列出快照失败: {}", e)))?;
+        if list.truncated {
+            tracing::warn!("[sync] 快照列表被截断，跳过快照清理: {}", database_name);
+            return Ok(0);
+        }
+        let mut files = list.files;
+        files.sort_by(|a, b| {
+            b.last_modified
+                .cmp(&a.last_modified)
+                .then_with(|| b.key.cmp(&a.key))
+        });
+        let mut deleted = 0usize;
+        for file in files.into_iter().skip(Self::SNAPSHOT_RETAIN_PER_DB) {
+            storage
+                .delete(&file.key)
+                .await
+                .map_err(|e| SyncError::Network(format!("删除旧快照失败 {}: {}", file.key, e)))?;
+            deleted += 1;
+        }
+        Ok(deleted)
+    }
+
+    /// 生成按库全量快照。快照用于新设备/断层引导，也为 v3 prune 提供安全覆盖下界。
+    pub async fn upload_sync_snapshots(
+        &self,
+        storage: &dyn CloudStorage,
+        active_dir: &std::path::Path,
+    ) -> Result<usize, SyncError> {
+        let instance_id = self.ensure_remote_instance_id(storage).await?;
+        let store = SyncStateStore::open_default()?;
+        let mut covered_cursors = store.cursors(&instance_id)?;
+        covered_cursors.insert(
+            self.device_id.clone(),
+            store.published_max_seq(&instance_id, &self.device_id)?,
+        );
+
+        let mut uploaded = 0usize;
+        for db_id in DatabaseId::all_ordered() {
+            let database_name = db_id.as_str();
+            let db_path = Self::database_path_for_active_dir(&db_id, active_dir);
+            if !db_path.exists() || !self.snapshot_due_for_db(storage, database_name).await? {
+                continue;
+            }
+
+            let conn = Connection::open(&db_path).map_err(|e| {
+                SyncError::Database(format!("打开数据库生成快照失败 {}: {}", database_name, e))
+            })?;
+            conn.busy_timeout(std::time::Duration::from_secs(5))
+                .map_err(|e| {
+                    SyncError::Database(format!(
+                        "设置快照 busy_timeout 失败 {}: {}",
+                        database_name, e
+                    ))
+                })?;
+            let state = Self::get_database_sync_state(&conn, database_name)?;
+            let snapshot =
+                self.build_database_snapshot(&conn, database_name, state, covered_cursors.clone())?;
+            let json = serde_json::to_vec(&snapshot)
+                .map_err(|e| SyncError::Database(format!("序列化快照失败: {}", e)))?;
+            let compressed = zstd::stream::encode_all(std::io::Cursor::new(json), 0)
+                .map_err(|e| SyncError::Database(format!("压缩快照失败: {}", e)))?;
+            let payload = self.encode_payload(&compressed)?;
+            let key = Self::snapshot_key(database_name, &self.device_id);
+            storage
+                .put(&key, &payload)
+                .await
+                .map_err(|e| SyncError::Network(format!("上传快照失败 {}: {}", key, e)))?;
+            uploaded += 1;
+            let _ = self.prune_snapshots_for_db(storage, database_name).await?;
+            tracing::info!(
+                "[sync] 已上传数据库快照: db={}, key={}, tables={}",
+                database_name,
+                key,
+                snapshot.rows.len()
+            );
+        }
+        Ok(uploaded)
+    }
+
+    fn decode_snapshot_payload(&self, bytes: &[u8]) -> Result<SyncDatabaseSnapshot, SyncError> {
+        let decoded = self.decode_payload(bytes)?;
+        let json =
+            zstd::stream::decode_all(std::io::Cursor::new(decoded.as_slice())).unwrap_or(decoded);
+        serde_json::from_slice::<SyncDatabaseSnapshot>(&json)
+            .map_err(|e| SyncError::Database(format!("解析数据库快照失败: {}", e)))
+    }
+
+    async fn download_latest_snapshots(
+        &self,
+        storage: &dyn CloudStorage,
+    ) -> Result<HashMap<String, SyncDatabaseSnapshot>, SyncError> {
+        let list = storage
+            .list_outcome(Self::SNAPSHOTS_PREFIX)
+            .await
+            .map_err(|e| SyncError::Network(format!("列出快照失败: {}", e)))?;
+        if list.truncated {
+            return Err(SyncError::Network(
+                "云端快照列表被截断，已停止快照引导以避免漏读".to_string(),
+            ));
+        }
+
+        let mut latest: HashMap<String, SyncDatabaseSnapshot> = HashMap::new();
+        for file in list.files {
+            if !file.key.ends_with(".json.zst") {
+                continue;
+            }
+            let Some(bytes) = storage
+                .get(&file.key)
+                .await
+                .map_err(|e| SyncError::Network(format!("下载快照失败 {}: {}", file.key, e)))?
+            else {
+                continue;
+            };
+            let snapshot = match self.decode_snapshot_payload(&bytes) {
+                Ok(snapshot) => snapshot,
+                Err(e) => {
+                    tracing::warn!("[sync] 跳过损坏快照: key={}, error={}", file.key, e);
+                    continue;
+                }
+            };
+            let replace = latest
+                .get(&snapshot.database_name)
+                .map(|old| snapshot.created_at > old.created_at)
+                .unwrap_or(true);
+            if replace {
+                latest.insert(snapshot.database_name.clone(), snapshot);
+            }
+        }
+        Ok(latest)
+    }
+
+    async fn latest_snapshot_coverages(
+        &self,
+        storage: &dyn CloudStorage,
+    ) -> Result<HashMap<String, SnapshotCoverage>, SyncError> {
+        Ok(self
+            .download_latest_snapshots(storage)
+            .await?
+            .into_iter()
+            .map(|(db, snapshot)| {
+                (
+                    db,
+                    SnapshotCoverage {
+                        covered_cursors: snapshot.covered_cursors,
+                    },
+                )
+            })
+            .collect())
+    }
+
+    fn snapshot_record_id(
+        table: &classification::TableClassification,
+        row: &serde_json::Value,
+    ) -> Option<String> {
+        let obj = row.as_object()?;
+        let pk_columns = table
+            .primary_key
+            .split(',')
+            .map(str::trim)
+            .filter(|s| !s.is_empty() && !s.starts_with('('))
+            .collect::<Vec<_>>();
+        if pk_columns.is_empty() {
+            return None;
+        }
+        if pk_columns.len() == 1 {
+            let value = obj.get(pk_columns[0])?;
+            return Self::json_value_to_alias_key(value).or_else(|| Some(value.to_string()));
+        }
+
+        let mut pk = serde_json::Map::new();
+        for column in pk_columns {
+            pk.insert(column.to_string(), obj.get(column)?.clone());
+        }
+        serde_json::to_string(&serde_json::Value::Object(pk)).ok()
+    }
+
+    /// 将最新快照转换为可复用的下载变更，以便新设备或断层设备先引导到快照覆盖点。
+    pub async fn download_snapshot_bootstrap_changes(
+        &self,
+        storage: &dyn CloudStorage,
+    ) -> Result<DownloadChangesResult, SyncError> {
+        let mut snapshots = self.download_latest_snapshots(storage).await?;
+        if snapshots.is_empty() {
+            return Ok(DownloadChangesResult::default());
+        }
+
+        let mut ordered = snapshots.drain().collect::<Vec<_>>();
+        ordered.sort_by(|a, b| a.0.cmp(&b.0));
+
+        let mut changes = Vec::new();
+        let mut cursor_advancements: Option<HashMap<String, u64>> = None;
+        for (database_name, snapshot) in ordered {
+            cursor_advancements = Some(match cursor_advancements.take() {
+                None => snapshot.covered_cursors.clone(),
+                Some(mut current) => {
+                    current.retain(|device_id, seq| {
+                        if let Some(next) = snapshot.covered_cursors.get(device_id) {
+                            *seq = (*seq).min(*next);
+                            true
+                        } else {
+                            false
+                        }
+                    });
+                    current
+                }
+            });
+
+            let mut tables = classification::TableClassification::row_sync_tables()
+                .into_iter()
+                .filter(|table| table.database == database_name)
+                .collect::<Vec<_>>();
+            tables.sort_by(|a, b| a.table_name.cmp(b.table_name));
+            for table in tables {
+                let Some(rows) = snapshot.rows.get(table.table_name) else {
+                    continue;
+                };
+                for row in rows {
+                    let Some(record_id) = Self::snapshot_record_id(&table, row) else {
+                        tracing::warn!(
+                            "[sync] 快照行缺少主键，已跳过: db={}, table={}",
+                            database_name,
+                            table.table_name
+                        );
+                        continue;
+                    };
+                    let changed_at = row
+                        .as_object()
+                        .and_then(|obj| obj.get("updated_at"))
+                        .and_then(Self::timestamp_value_to_lww_string)
+                        .unwrap_or_else(|| snapshot.created_at.clone());
+                    changes.push(SyncChangeWithData {
+                        table_name: table.table_name.to_string(),
+                        record_id,
+                        operation: ChangeOperation::Insert,
+                        data: Some(row.clone()),
+                        changed_at,
+                        change_log_id: None,
+                        database_name: Some(database_name.clone()),
+                        suppress_change_log: Some(true),
+                        source_device_id: Some(format!("snapshot:{}", snapshot.device_id)),
+                        source_seq: None,
+                    });
+                }
+            }
+        }
+
+        Ok(DownloadChangesResult {
+            changes,
+            decode_failures: Vec::new(),
+            cursor_advancements: cursor_advancements.unwrap_or_default(),
+            legacy_processed_keys: Vec::new(),
+        })
+    }
+
+    async fn safe_prune_seq_for_self(
+        &self,
+        storage: &dyn CloudStorage,
+        active_days: u64,
+    ) -> Result<u64, SyncError> {
+        let coverages = self.latest_snapshot_coverages(storage).await?;
+        if coverages.is_empty() {
+            return Ok(0);
+        }
+        let snapshot_covered = coverages
+            .values()
+            .filter_map(|coverage| coverage.covered_cursors.get(&self.device_id).copied())
+            .min()
+            .unwrap_or(0);
+        if snapshot_covered == 0 {
+            return Ok(0);
+        }
+
+        let manifests = self.download_device_manifests(storage).await?;
+        let active_cutoff = chrono::Utc::now() - chrono::Duration::days(active_days as i64);
+        let mut active_consumer_cursors = Vec::new();
+        for (device_id, manifest) in manifests {
+            if device_id == self.device_id || manifest.superseded_by.is_some() {
+                continue;
+            }
+            let active = Self::parse_flexible_timestamp(&manifest.created_at)
+                .map(|ts| ts >= active_cutoff)
+                .unwrap_or(true);
+            if active {
+                active_consumer_cursors
+                    .push(manifest.cursors.get(&self.device_id).copied().unwrap_or(0));
+            }
+        }
+
+        let active_cursor_floor = active_consumer_cursors
+            .into_iter()
+            .min()
+            .unwrap_or(snapshot_covered);
+        Ok(snapshot_covered.min(active_cursor_floor))
+    }
+
+    pub async fn commit_download_progress(
+        &self,
+        storage: &dyn CloudStorage,
+        downloaded: &DownloadChangesResult,
+    ) -> Result<(), SyncError> {
+        let instance_id = self.ensure_remote_instance_id(storage).await?;
+        let store = SyncStateStore::open_default()?;
+        for (device, seq) in &downloaded.cursor_advancements {
+            store.set_cursor(&instance_id, &device, *seq)?;
+        }
+        for key in &downloaded.legacy_processed_keys {
+            store.mark_legacy_processed(&instance_id, key)?;
+        }
+        Ok(())
+    }
+
     /// 清理云端过期的变更文件
     ///
     /// 两级清理策略：
@@ -1460,55 +2506,44 @@ impl SyncManager {
         storage: &dyn CloudStorage,
         retention_days: u64,
     ) -> Result<usize, SyncError> {
-        let own_cutoff =
-            (chrono::Utc::now().timestamp() as u64).saturating_sub(retention_days * 86400);
-        // [P2 Fix] 对其他设备的文件使用 3 倍宽限期
-        let global_cutoff =
-            (chrono::Utc::now().timestamp() as u64).saturating_sub(retention_days * 3 * 86400);
-
-        let files = storage
-            .list(Self::CHANGES_PREFIX)
+        let list = storage
+            .list_outcome(Self::CHANGES_PREFIX)
             .await
             .map_err(|e| SyncError::Network(format!("列出变更文件失败: {}", e)))?;
+        if list.truncated {
+            tracing::warn!("[sync] 云端变更列表被截断，跳过本轮 prune 以避免误删");
+            return Ok(0);
+        }
+        let safe_seq = self
+            .safe_prune_seq_for_self(storage, retention_days)
+            .await?;
+        if safe_seq == 0 {
+            tracing::info!("[sync] 跳过变更文件 prune：尚无覆盖本设备变更的安全快照/游标下界");
+            return Ok(0);
+        }
 
-        let mut deleted_own = 0usize;
-        let mut deleted_stale = 0usize;
-        for file in &files {
-            let is_own = Self::is_own_change_file(&file.key, &self.device_id);
-            let cutoff = if is_own { own_cutoff } else { global_cutoff };
-
-            if let Some(raw_version) = Self::parse_version_from_key(&file.key) {
-                let version = Self::normalize_version_to_seconds(raw_version);
-                if version < cutoff {
-                    match storage.delete(&file.key).await {
-                        Ok(_) => {
-                            if is_own {
-                                deleted_own += 1;
-                            } else {
-                                deleted_stale += 1;
-                            }
-                            tracing::debug!("[sync] 已清理过期变更文件: {}", file.key);
-                        }
-                        Err(e) => {
-                            tracing::warn!("[sync] 清理变更文件失败（跳过）: {}: {}", file.key, e);
-                        }
-                    }
+        let mut deleted = 0usize;
+        for file in list.files {
+            match Self::parse_change_key(&file.key) {
+                Some(ParsedChangeKey::V3 { device_id, seq, .. })
+                    if device_id == self.device_id && seq <= safe_seq =>
+                {
+                    storage.delete(&file.key).await.map_err(|e| {
+                        SyncError::Network(format!("删除变更文件失败 {}: {}", file.key, e))
+                    })?;
+                    deleted += 1;
                 }
+                _ => {}
             }
         }
 
-        let total_deleted = deleted_own + deleted_stale;
-        if total_deleted > 0 {
-            tracing::info!(
-                "[sync] 云端变更文件清理完成: 删除 {} 个本设备旧文件（{}天）+ {} 个其他设备过期文件（{}天）",
-                deleted_own,
-                retention_days,
-                deleted_stale,
-                retention_days * 3
-            );
-        }
-
-        Ok(total_deleted)
+        tracing::info!(
+            "[sync] v3 变更文件 prune 完成: device={}, safe_seq={}, deleted={}",
+            self.device_id,
+            safe_seq,
+            deleted
+        );
+        Ok(deleted)
     }
 
     /// 执行完整的上传同步流程（v1 旧格式：不含完整行数据）
@@ -1582,13 +2617,13 @@ impl SyncManager {
     /// * `strategy` - 冲突合并策略
     ///
     /// # 返回
-    /// * `(SyncExecutionResult, Vec<SyncChangeWithData>)` - 同步执行结果和下载的变更数据（含完整记录）
+    /// * `(SyncExecutionResult, DownloadChangesResult)` - 同步执行结果和下载的变更数据（含完整记录）
     pub async fn execute_download(
         &self,
         storage: &dyn CloudStorage,
         local_manifest: &SyncManifest,
         strategy: MergeStrategy,
-    ) -> Result<(SyncExecutionResult, Vec<SyncChangeWithData>), SyncError> {
+    ) -> Result<(SyncExecutionResult, DownloadChangesResult), SyncError> {
         let start = std::time::Instant::now();
 
         // 1. 下载云端清单
@@ -1625,7 +2660,7 @@ impl SyncManager {
                     duration_ms: start.elapsed().as_millis() as u64,
                     error_message: warning,
                 },
-                downloaded.changes,
+                downloaded,
             ));
         }
 
@@ -1693,7 +2728,7 @@ impl SyncManager {
                 duration_ms: start.elapsed().as_millis() as u64,
                 error_message: warning,
             },
-            downloaded.changes,
+            downloaded,
         ))
     }
 
@@ -1709,7 +2744,7 @@ impl SyncManager {
     /// * `strategy` - 冲突合并策略
     ///
     /// # 返回
-    /// * `(SyncExecutionResult, Vec<i64>, Vec<SyncChangeWithData>)` - 同步结果、需要标记的变更 ID、下载的变更（含完整数据）
+    /// * `(SyncExecutionResult, Vec<i64>, DownloadChangesResult)` - 同步结果、需要标记的变更 ID、下载的变更（含完整数据）
     ///
     /// **重要**：此方法只执行下载，**不执行上传**。
     /// 调用方需自行调用 `upload_enriched_changes` + `upload_manifest` 上传带完整数据的变更。
@@ -1720,7 +2755,7 @@ impl SyncManager {
         pending: &PendingChanges,
         local_manifest: &SyncManifest,
         strategy: MergeStrategy,
-    ) -> Result<(SyncExecutionResult, Vec<i64>, Vec<SyncChangeWithData>), SyncError> {
+    ) -> Result<(SyncExecutionResult, Vec<i64>, DownloadChangesResult), SyncError> {
         let start = std::time::Instant::now();
 
         // 1. 下载并应用云端变更
@@ -1859,35 +2894,41 @@ impl SyncManager {
             return Ok(0);
         }
 
-        // 构建 IN 子句的占位符
-        let placeholders: Vec<String> = (1..=change_ids.len())
-            .map(|i| format!("?{}", i + 1))
-            .collect();
-        let placeholders_str = placeholders.join(", ");
+        // [P0-9/C7] 分批更新，避免一次性 UPDATE ... IN (...) 超过 SQLite 变量上限
+        // （默认 SQLITE_MAX_VARIABLE_NUMBER = 999 或 32766）导致整体失败 → 已上传
+        // 的变更标记不成功 → 下轮重复上传死循环。单事务包裹保证要么全部标记成功、
+        // 要么全部回滚，不留部分标记的中间态。
+        const MARK_BATCH_SIZE: usize = 500;
 
-        let sql = format!(
-            "UPDATE __change_log SET sync_version = ?1 WHERE id IN ({})",
-            placeholders_str
-        );
+        let tx = conn
+            .unchecked_transaction()
+            .map_err(|e| SyncError::Database(format!("开启标记事务失败: {}", e)))?;
 
-        let mut stmt = conn
-            .prepare(&sql)
-            .map_err(|e| SyncError::Database(format!("准备更新语句失败: {}", e)))?;
+        let mut updated = 0usize;
+        for chunk in change_ids.chunks(MARK_BATCH_SIZE) {
+            // 占位符从 ?2 开始（?1 留给 sync_version）
+            let placeholders: Vec<String> =
+                (0..chunk.len()).map(|i| format!("?{}", i + 2)).collect();
+            let sql = format!(
+                "UPDATE __change_log SET sync_version = ?1 WHERE id IN ({})",
+                placeholders.join(", ")
+            );
 
-        // 构建参数列表
-        let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> =
-            Vec::with_capacity(change_ids.len() + 1);
-        params_vec.push(Box::new(sync_version));
-        for id in change_ids {
-            params_vec.push(Box::new(*id));
+            let mut params_vec: Vec<Box<dyn rusqlite::ToSql>> = Vec::with_capacity(chunk.len() + 1);
+            params_vec.push(Box::new(sync_version));
+            for id in chunk {
+                params_vec.push(Box::new(*id));
+            }
+            let params_refs: Vec<&dyn rusqlite::ToSql> =
+                params_vec.iter().map(|b| b.as_ref()).collect();
+
+            updated += tx
+                .execute(&sql, params_refs.as_slice())
+                .map_err(|e| SyncError::Database(format!("更新同步版本失败: {}", e)))?;
         }
 
-        let params_refs: Vec<&dyn rusqlite::ToSql> =
-            params_vec.iter().map(|b| b.as_ref()).collect();
-
-        let updated = stmt
-            .execute(params_refs.as_slice())
-            .map_err(|e| SyncError::Database(format!("更新同步版本失败: {}", e)))?;
+        tx.commit()
+            .map_err(|e| SyncError::Database(format!("提交标记事务失败: {}", e)))?;
 
         Ok(updated)
     }
@@ -2101,9 +3142,17 @@ impl SyncManager {
                 }
                 MergeStrategy::KeepLatest => {
                     // 比较更新时间，保留最新的
-                    match Self::compare_timestamps(
+                    let local_content =
+                        serde_json::to_string(&conflict.local_data).unwrap_or_default();
+                    let cloud_content =
+                        serde_json::to_string(&conflict.cloud_data).unwrap_or_default();
+                    match Self::compare_lww_timestamps(
                         &conflict.local_updated_at,
+                        Self::lww_device_id_from_data(&conflict.local_data, "local-unknown"),
+                        &local_content,
                         &conflict.cloud_updated_at,
+                        Self::lww_device_id_from_data(&conflict.cloud_data, "cloud-unknown"),
+                        &cloud_content,
                     ) {
                         std::cmp::Ordering::Greater | std::cmp::Ordering::Equal => {
                             // 本地更新或相同，推送到云端
@@ -2137,42 +3186,8 @@ impl SyncManager {
         Ok(result)
     }
 
-    /// 比较两个时间戳字符串
-    ///
-    /// 兼容两种常见格式：
-    /// - RFC 3339: `"2026-02-27T12:34:56+00:00"` (Rust chrono 生成)
-    /// - SQLite:   `"2026-02-27 12:34:56"`       (datetime('now') 生成)
-    ///
-    /// [P1 Fix] 引入 2 秒容差（CLOCK_SKEW_TOLERANCE_SECS），当两端时间差
-    /// 小于该阈值时视为 Equal，避免设备间微小时钟偏差导致 KeepLatest 做出
-    /// 错误决策。对于差距 > 容差的情况仍正常比较。
-    const CLOCK_SKEW_TOLERANCE_SECS: i64 = 2;
-
     fn compare_timestamps(local: &str, cloud: &str) -> std::cmp::Ordering {
-        // HLC fast-path：若两端都是 HLC 字符串（fixed-width millis-counter 格式），
-        // 直接按 HLC 自然序比较——它已经内置了 "同毫秒内 counter tie-break"，
-        // 比 ISO 秒级比较 + 容差粗糙得多更精确，尤其适合同一物理时钟里爆发式的两端写入。
-        if let (Some(hl), Some(hc)) = (hlc::Hlc::parse(local), hlc::Hlc::parse(cloud)) {
-            return hl.cmp(&hc);
-        }
-
-        let local_dt = Self::parse_flexible_timestamp(local);
-        let cloud_dt = Self::parse_flexible_timestamp(cloud);
-
-        match (local_dt, cloud_dt) {
-            (Some(l), Some(c)) => {
-                let diff_secs = (l - c).num_seconds().abs();
-                if diff_secs <= Self::CLOCK_SKEW_TOLERANCE_SECS {
-                    // 差距在容差范围内，视为相同时间（本地优先）
-                    std::cmp::Ordering::Equal
-                } else {
-                    l.cmp(&c)
-                }
-            }
-            (Some(_), None) => std::cmp::Ordering::Greater,
-            (None, Some(_)) => std::cmp::Ordering::Less,
-            (None, None) => local.cmp(cloud),
-        }
+        Self::compare_lww_timestamps(local, "local-unknown", "", cloud, "cloud-unknown", "")
     }
 
     /// 灵活解析时间戳，兼容 RFC 3339 和 SQLite datetime('now') 格式
@@ -2188,6 +3203,77 @@ impl SyncManager {
             return Some(naive.and_utc());
         }
         None
+    }
+
+    fn canonical_lww_key(
+        timestamp: &str,
+        device_id: &str,
+        content_tiebreaker: &str,
+    ) -> (i64, u32, String, String) {
+        if let Some(hlc) = hlc::Hlc::parse(timestamp) {
+            let millis = i64::try_from(hlc.millis).unwrap_or(i64::MAX);
+            return (
+                millis,
+                hlc.counter.into(),
+                device_id.to_string(),
+                content_tiebreaker.to_string(),
+            );
+        }
+
+        let millis = parse_flexible_timestamp_public(timestamp)
+            .map(|dt| dt.timestamp_millis())
+            .unwrap_or(i64::MIN);
+
+        (
+            millis,
+            0,
+            device_id.to_string(),
+            if millis == i64::MIN {
+                format!("{}|{}", timestamp, content_tiebreaker)
+            } else {
+                content_tiebreaker.to_string()
+            },
+        )
+    }
+
+    pub(crate) fn compare_lww_timestamps(
+        local_timestamp: &str,
+        local_device_id: &str,
+        local_content_tiebreaker: &str,
+        cloud_timestamp: &str,
+        cloud_device_id: &str,
+        cloud_content_tiebreaker: &str,
+    ) -> std::cmp::Ordering {
+        let local_key =
+            Self::canonical_lww_key(local_timestamp, local_device_id, local_content_tiebreaker);
+        let cloud_key =
+            Self::canonical_lww_key(cloud_timestamp, cloud_device_id, cloud_content_tiebreaker);
+        local_key.cmp(&cloud_key)
+    }
+
+    pub(crate) fn timestamp_value_to_lww_string(value: &serde_json::Value) -> Option<String> {
+        match value {
+            serde_json::Value::String(s) => Some(s.clone()),
+            serde_json::Value::Number(n) => Some(n.to_string()),
+            _ => None,
+        }
+    }
+
+    pub(crate) fn lww_device_id_from_data<'a>(
+        data: &'a serde_json::Value,
+        fallback: &'a str,
+    ) -> &'a str {
+        data.get("device_id")
+            .and_then(|v| v.as_str())
+            .filter(|s| !s.trim().is_empty())
+            .unwrap_or(fallback)
+    }
+
+    pub(crate) fn lww_timestamp_millis(timestamp: &str) -> Option<i64> {
+        if let Some(hlc) = hlc::Hlc::parse(timestamp) {
+            return i64::try_from(hlc.millis).ok();
+        }
+        parse_flexible_timestamp_public(timestamp).map(|dt| dt.timestamp_millis())
     }
 
     /// 应用合并策略到数据库（实际执行更新）
@@ -2224,7 +3310,7 @@ impl SyncManager {
 
         for record_id in records_to_pull {
             if let Some(data) = cloud_data.get(record_id) {
-                match Self::apply_single_record(conn, table_name, record_id, data, None) {
+                match Self::apply_single_record(conn, table_name, record_id, data, None, false) {
                     Ok(()) => {
                         updated += 1;
                         tracing::debug!(
@@ -2391,8 +3477,8 @@ impl SyncManager {
             )));
         }
 
-        let mut protected_cols: HashSet<String> =
-            business_key_groups.into_iter().flatten().collect();
+        let _business_key_groups = business_key_groups;
+        let mut protected_cols: HashSet<String> = HashSet::new();
         for pk in pk_columns {
             protected_cols.insert(pk.to_string());
         }
@@ -2405,10 +3491,7 @@ impl SyncManager {
             })
             .map(|c| {
                 let quoted = (*c).to_string();
-                format!(
-                    "{}=COALESCE(excluded.{}, {}.{})",
-                    quoted, quoted, table_ident, quoted
-                )
+                format!("{}=excluded.{}", quoted, quoted)
             })
             .collect::<Vec<_>>()
             .join(", ");
@@ -2441,82 +3524,7 @@ impl SyncManager {
     /// 返回某表需要字段级合并的列清单（在 UPSERT 之前抓取原始本地值用）。
     /// 仅在本地行原先就存在时调用（INSERT 新行没有"原始本地值"这一说）。
     fn field_merge_column_picklist(table_name: &str) -> Vec<&'static str> {
-        match table_name {
-            "resources" | "chat_v2_resources" => vec!["ref_count", "metadata_json"],
-            "questions" => vec![
-                "attempt_count",
-                "correct_count",
-                "user_note",
-                "ai_feedback",
-                "is_favorite",
-                "is_bookmarked",
-                "tags",
-                "images_json",
-                "options_json",
-                "ai_score",
-            ],
-            "notes" => vec!["tags", "is_favorite"],
-            "files" => vec!["tags_json", "is_favorite", "bookmarks_json", "preview_json"],
-            "review_plans" => vec![
-                "total_reviews",
-                "total_correct",
-                "ease_factor",
-                "interval_days",
-                "consecutive_failures",
-            ],
-            "todo_items" => vec!["estimated_pomodoros", "completed_pomodoros", "tags_json"],
-            "chat_v2_sessions" => vec!["metadata_json"],
-            "chat_v2_messages" => vec![
-                "block_ids_json",
-                "meta_json",
-                "variants_json",
-                "shared_context_json",
-                "attachments_json",
-            ],
-            "chat_v2_blocks" => vec!["citations_json", "tool_input_json", "tool_output_json"],
-            "chat_v2_session_groups" => vec!["default_skill_ids_json", "pinned_resource_ids_json"],
-            "essays" => vec!["grading_result_json", "dimension_scores_json"],
-            "mindmaps" => vec!["settings"],
-            "exam_sheets" => vec!["metadata_json", "preview_json"],
-            "translations" => vec!["metadata_json"],
-            "mistakes" => vec![
-                "tags",
-                "question_images",
-                "analysis_images",
-                "chat_metadata",
-            ],
-            "chat_messages" => vec![
-                "rag_sources",
-                "memory_sources",
-                "graph_sources",
-                "web_search_sources",
-                "image_paths",
-                "image_base64",
-                "doc_attachments",
-                "tool_call",
-                "tool_result",
-                "overrides",
-                "relations",
-                "metadata",
-            ],
-            "review_analyses" => vec!["tags", "mistake_ids", "temp_session_data"],
-            "review_chat_messages" => vec![
-                "rag_sources",
-                "memory_sources",
-                "graph_sources",
-                "web_search_sources",
-                "image_paths",
-                "image_base64",
-                "doc_attachments",
-                "tool_call",
-                "tool_result",
-                "overrides",
-                "relations",
-                "metadata",
-            ],
-            "anki_cards" => vec!["tags_json", "images_json", "extra_fields_json"],
-            _ => vec![],
-        }
+        field_merge::field_merge_columns_for_table(table_name)
     }
 
     /// 应用单条下载变更到本地数据库。
@@ -2526,8 +3534,9 @@ impl SyncManager {
         record_id: &str,
         data: &serde_json::Value,
         database_name: Option<&str>,
+        allow_field_merge: bool,
     ) -> Result<(), SyncError> {
-        Self::ensure_table_allowed_and_exists(conn, table_name)?;
+        Self::ensure_table_allowed_and_exists_for(conn, database_name, table_name)?;
 
         let table_ident = Self::quote_identifier(table_name)?;
 
@@ -2553,7 +3562,8 @@ impl SyncManager {
             return Err(SyncError::Database(format!("记录数据为空: {}", record_id)));
         }
 
-        // 只把 deleted_at 的显式 null 作为"复活意图"处理，其他 null 字段走 COALESCE
+        // deleted_at 的显式 null 是"复活意图"；其他 null 字段也会作为 SQL NULL 写入，
+        // 因为 payload 中出现的 null 表示远端明确清空该列。
         let revive_record = matches!(obj.get("deleted_at"), Some(serde_json::Value::Null))
             && Self::table_has_column(conn, table_name, "deleted_at");
 
@@ -2589,7 +3599,6 @@ impl SyncManager {
             }
         }
 
-        // build_insert_parts 已经跳过所有 null，因此 deleted_at=null 不会参与 INSERT/COALESCE
         let (columns, placeholders, values) = Self::build_insert_parts(&obj)?;
         let columns_list: Vec<&str> = columns.split(", ").collect();
 
@@ -2600,6 +3609,7 @@ impl SyncManager {
             let picklist = Self::field_merge_column_picklist(table_name);
             let picklist: Vec<&'static str> = picklist
                 .into_iter()
+                .filter(|_| allow_field_merge)
                 .filter(|col| Self::table_has_column(conn, table_name, col))
                 .collect();
             let mut m = std::collections::HashMap::new();
@@ -2643,7 +3653,7 @@ impl SyncManager {
             let update_set = columns_list
                 .iter()
                 .filter(|c| **c != pk_ident.as_str())
-                .map(|c| format!("{}=COALESCE(excluded.{}, {}.{})", c, c, table_ident, c))
+                .map(|c| format!("{}=excluded.{}", c, c))
                 .collect::<Vec<_>>()
                 .join(", ");
             let action = if update_set.is_empty() {
@@ -2660,7 +3670,7 @@ impl SyncManager {
             let update_set = columns_list
                 .iter()
                 .filter(|c| **c != pk_ident.as_str())
-                .map(|c| format!("{}=COALESCE(excluded.{}, {}.{})", c, c, table_ident, c))
+                .map(|c| format!("{}=excluded.{}", c, c))
                 .collect::<Vec<_>>()
                 .join(", ");
             let action = if update_set.is_empty() {
@@ -2672,29 +3682,12 @@ impl SyncManager {
                 "INSERT INTO {} ({}) VALUES ({}) ON CONFLICT(id) {}",
                 table_ident, columns, placeholders, action
             )
-        } else if table_name == "files" {
-            let pk_ident = Self::quote_identifier("id")?;
-            let update_set = columns_list
-                .iter()
-                .filter(|c| **c != pk_ident.as_str())
-                .map(|c| format!("{}=COALESCE(excluded.{}, {}.{})", c, c, table_ident, c))
-                .collect::<Vec<_>>()
-                .join(", ");
-            let action = if update_set.is_empty() {
-                "DO NOTHING".to_string()
-            } else {
-                format!("DO UPDATE SET {}", update_set)
-            };
-            format!(
-                "INSERT INTO {} ({}) VALUES ({}) ON CONFLICT(sha256) {}",
-                table_ident, columns, placeholders, action
-            )
         } else if table_name == "folder_items" {
             let pk_ident = Self::quote_identifier("id")?;
             let update_set = columns_list
                 .iter()
                 .filter(|c| **c != pk_ident.as_str())
-                .map(|c| format!("{}=COALESCE(excluded.{}, {}.{})", c, c, table_ident, c))
+                .map(|c| format!("{}=excluded.{}", c, c))
                 .collect::<Vec<_>>()
                 .join(", ");
             let action = if update_set.is_empty() {
@@ -2717,7 +3710,7 @@ impl SyncManager {
                     let raw = c.trim_matches('"').replace("\"\"", "\"");
                     !pk_columns.iter().any(|pk| pk == &raw)
                 })
-                .map(|c| format!("{}=COALESCE(excluded.{}, {}.{})", c, c, table_ident, c))
+                .map(|c| format!("{}=excluded.{}", c, c))
                 .collect::<Vec<_>>()
                 .join(", ");
 
@@ -2894,13 +3887,9 @@ impl SyncManager {
     /// # 返回
     /// * `(列名列表, 占位符列表, 参数值列表)`
     ///
-    /// ## NULL 处理（P0 修复）
-    /// 对于值为 JSON `null` 的字段，**直接跳过不写入**。
-    /// 原因：
-    /// 1. 避免 INSERT 路径触发 NOT NULL 约束违规（即使 UPSERT 会走 UPDATE 分支，
-    ///    SQLite 仍会先校验 VALUES 列的约束）
-    /// 2. 语义上等价于"保留本地既有值"（符合项目里原本的 COALESCE 意图）
-    /// 3. 对于真正需要"清空字段"的场景，应显式传递空字符串/空数组，而不是 null
+    /// ## NULL 处理
+    /// payload 中出现的 JSON `null` 是显式清空字段的同步意图，必须写入 SQL NULL。
+    /// payload 中缺失的列不会进入 INSERT/UPSERT 列表，因此会自然保留本地值。
     fn build_insert_parts(
         obj: &serde_json::Map<String, serde_json::Value>,
     ) -> Result<(String, String, Vec<Box<dyn rusqlite::ToSql>>), SyncError> {
@@ -2908,43 +3897,15 @@ impl SyncManager {
         let mut placeholders = Vec::new();
         let mut values: Vec<Box<dyn rusqlite::ToSql>> = Vec::new();
 
-        let mut idx = 0usize;
-        for (key, value) in obj.iter() {
-            if matches!(value, serde_json::Value::Null) {
-                continue;
-            }
-            idx += 1;
+        for (idx, (key, value)) in obj.iter().enumerate() {
+            let idx = idx + 1;
             columns.push(Self::quote_identifier(key)?);
             placeholders.push(format!("?{}", idx));
 
-            // 根据 JSON 值类型转换为 SQLite 参数
-            let sql_value: Box<dyn rusqlite::ToSql> = match value {
-                serde_json::Value::Null => unreachable!("已在上面跳过"),
-                serde_json::Value::Bool(b) => Box::new(*b),
-                serde_json::Value::Number(n) => {
-                    if let Some(i) = n.as_i64() {
-                        Box::new(i)
-                    } else if let Some(f) = n.as_f64() {
-                        Box::new(f)
-                    } else {
-                        Box::new(n.to_string())
-                    }
-                }
-                serde_json::Value::String(s) => Box::new(s.clone()),
-                // 数组和对象序列化为 JSON 字符串存储
-                serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
-                    Box::new(serde_json::to_string(value).unwrap_or_default())
-                }
-            };
+            let sql_value = Self::json_value_to_sql_param(value).ok_or_else(|| {
+                SyncError::Database(format!("字段 {} 的 JSON 值无法转换为 SQLite 参数", key))
+            })?;
             values.push(sql_value);
-        }
-
-        if columns.is_empty() {
-            // 调用方（apply_single_record）应保证至少有一个非 null 字段。
-            // 此分支保留作为防御：全 null 输入时返回错误。
-            return Err(SyncError::Database(
-                "UPSERT: 全部字段为 NULL，调用方应先用独立 UPDATE 处理".to_string(),
-            ));
         }
 
         Ok((columns.join(", "), placeholders.join(", "), values))
@@ -2974,6 +3935,14 @@ impl SyncManager {
         conn: &Connection,
         table_name: &str,
     ) -> Result<(), SyncError> {
+        Self::ensure_table_allowed_and_exists_for(conn, None, table_name)
+    }
+
+    fn ensure_table_allowed_and_exists_for(
+        conn: &Connection,
+        database_name: Option<&str>,
+        table_name: &str,
+    ) -> Result<(), SyncError> {
         let t = table_name.trim();
         if t.starts_with("sqlite_") {
             return Err(SyncError::Database(format!(
@@ -2998,6 +3967,27 @@ impl SyncManager {
 
         if !exists {
             return Err(SyncError::Database(format!("目标表不存在: {}", table_name)));
+        }
+
+        #[cfg(test)]
+        if t.starts_with("test_") || t.ends_with("_records") || t == "resource_notes" {
+            return Ok(());
+        }
+
+        let is_row_sync = classification::sync_classification_registry()
+            .into_iter()
+            .any(|entry| {
+                entry.table_name == t
+                    && entry.category == SyncCategory::RowSync
+                    && database_name.map_or(true, |db| entry.database == db)
+            });
+
+        if !is_row_sync {
+            let scope = database_name.unwrap_or("*");
+            return Err(SyncError::Database(format!(
+                "禁止同步未注册为 RowSync 的表: {}.{}",
+                scope, table_name
+            )));
         }
 
         Ok(())
@@ -3031,6 +4021,35 @@ impl SyncManager {
             }
             violations
                 .push(r.map_err(|e| SyncError::Database(format!("读取外键检查结果失败: {}", e)))?);
+        }
+        Ok(violations)
+    }
+
+    fn collect_foreign_key_violation_set(
+        conn: &Connection,
+    ) -> Result<ForeignKeyViolationSet, SyncError> {
+        let mut stmt = conn
+            .prepare("PRAGMA foreign_key_check")
+            .map_err(|e| SyncError::Database(format!("准备 foreign_key_check 失败: {}", e)))?;
+
+        let rows = stmt
+            .query_map([], |row| {
+                let table: String = row.get(0)?;
+                let rowid: rusqlite::types::Value = row.get(1)?;
+                let parent: String = row.get(2)?;
+                let fkid: rusqlite::types::Value = row.get(3)?;
+                Ok(format!(
+                    "table={}, rowid={:?}, parent={}, fkid={:?}",
+                    table, rowid, parent, fkid
+                ))
+            })
+            .map_err(|e| SyncError::Database(format!("执行 foreign_key_check 失败: {}", e)))?;
+
+        let mut violations = ForeignKeyViolationSet::new();
+        for row in rows {
+            violations.insert(
+                row.map_err(|e| SyncError::Database(format!("读取外键检查结果失败: {}", e)))?,
+            );
         }
         Ok(violations)
     }
@@ -3095,20 +4114,36 @@ impl SyncManager {
 
     fn json_value_to_sql_param(value: &serde_json::Value) -> Option<Box<dyn rusqlite::ToSql>> {
         match value {
-            serde_json::Value::Null => None,
+            serde_json::Value::Null => Some(Box::new(rusqlite::types::Null)),
             serde_json::Value::Bool(b) => Some(Box::new(*b)),
             serde_json::Value::Number(n) => {
                 if let Some(i) = n.as_i64() {
                     Some(Box::new(i))
+                } else if let Some(u) = n.as_u64() {
+                    if u <= i64::MAX as u64 {
+                        Some(Box::new(u as i64))
+                    } else {
+                        None
+                    }
                 } else if let Some(f) = n.as_f64() {
                     Some(Box::new(f))
                 } else {
-                    Some(Box::new(n.to_string()))
+                    None
                 }
             }
             serde_json::Value::String(s) => Some(Box::new(s.clone())),
-            serde_json::Value::Array(_) | serde_json::Value::Object(_) => {
-                Some(Box::new(serde_json::to_string(value).unwrap_or_default()))
+            serde_json::Value::Array(_) => Some(Box::new(serde_json::to_string(value).ok()?)),
+            serde_json::Value::Object(obj) => {
+                if obj.len() == 1 {
+                    if let Some(serde_json::Value::String(encoded)) = obj.get("$dsblob") {
+                        use base64::Engine;
+                        let bytes = base64::engine::general_purpose::STANDARD
+                            .decode(encoded)
+                            .ok()?;
+                        return Some(Box::new(bytes));
+                    }
+                }
+                Some(Box::new(serde_json::to_string(value).ok()?))
             }
         }
     }
@@ -3122,10 +4157,12 @@ impl SyncManager {
         let mut seen = HashSet::new();
         loop {
             if !seen.insert(current.clone()) {
-                return Err(SyncError::Database(format!(
-                    "ID 别名存在循环: {}.{}",
-                    table_name, record_id
-                )));
+                tracing::warn!(
+                    "[sync] ID 别名存在循环，降级使用原始 record_id: {}.{}",
+                    table_name,
+                    record_id
+                );
+                return Ok(record_id.to_string());
             }
             match aliases.get(&(table_name.to_string(), current.clone())) {
                 Some(next) => current = next.clone(),
@@ -3144,18 +4181,29 @@ impl SyncManager {
             return Ok(false);
         }
 
+        let canonical_resolved = Self::resolve_alias(aliases, table_name, canonical_id)?;
+        if canonical_resolved == remote_id {
+            tracing::warn!(
+                "[sync] 拒绝写入会形成循环的 ID 别名: {}.{} -> {}",
+                table_name,
+                remote_id,
+                canonical_id
+            );
+            return Ok(false);
+        }
+
         let key = (table_name.to_string(), remote_id.to_string());
         if let Some(existing) = aliases.get(&key) {
-            if existing == canonical_id {
+            if existing == &canonical_resolved {
                 return Ok(false);
             }
             return Err(SyncError::Database(format!(
                 "ID 别名冲突: {}.{} -> {} / {}",
-                table_name, remote_id, existing, canonical_id
+                table_name, remote_id, existing, canonical_resolved
             )));
         }
 
-        aliases.insert(key, canonical_id.to_string());
+        aliases.insert(key, canonical_resolved);
         Ok(true)
     }
 
@@ -3305,6 +4353,38 @@ impl SyncManager {
         Ok(None)
     }
 
+    fn business_key_fingerprints(
+        conn: &Connection,
+        database_name: Option<&str>,
+        table_name: &str,
+        obj: &serde_json::Map<String, serde_json::Value>,
+    ) -> Result<Vec<String>, SyncError> {
+        let key_groups = Self::business_unique_key_groups(conn, database_name, table_name)?;
+        let mut fingerprints = Vec::new();
+
+        for group in key_groups {
+            let mut parts = Vec::with_capacity(group.len());
+            let mut complete = true;
+            for col in &group {
+                let Some(value) = obj.get(col).filter(|value| !value.is_null()) else {
+                    complete = false;
+                    break;
+                };
+                let Some(key_value) = Self::json_value_to_alias_key(value) else {
+                    complete = false;
+                    break;
+                };
+                parts.push(format!("{}={}", col, key_value));
+            }
+
+            if complete && !parts.is_empty() {
+                fingerprints.push(parts.join("\u{1f}"));
+            }
+        }
+
+        Ok(fingerprints)
+    }
+
     fn build_download_id_aliases(
         conn: &Connection,
         changes: &[SyncChangeWithData],
@@ -3314,6 +4394,7 @@ impl SyncManager {
 
         loop {
             let before = aliases.len();
+            let mut batch_business_keys: HashMap<(String, String, String), String> = HashMap::new();
             for change in changes {
                 if !matches!(
                     change.operation,
@@ -3328,7 +4409,19 @@ impl SyncManager {
                     continue;
                 };
 
-                Self::ensure_table_allowed_and_exists(conn, &change.table_name)?;
+                if let Err(e) = Self::ensure_table_allowed_and_exists_for(
+                    conn,
+                    change.database_name.as_deref(),
+                    &change.table_name,
+                ) {
+                    tracing::warn!(
+                        "[sync] 构建 ID 别名时跳过不可同步表: {}.{} ({})",
+                        change.database_name.as_deref().unwrap_or("*"),
+                        change.table_name,
+                        e
+                    );
+                    continue;
+                }
                 let id_column = id_column_map
                     .and_then(|m| m.get(&change.table_name))
                     .map(|s| s.as_str())
@@ -3337,26 +4430,73 @@ impl SyncManager {
                 let mut obj = source_obj.clone();
                 Self::remap_foreign_keys_in_object(conn, &change.table_name, &mut obj, &aliases)?;
 
+                let scope = change.database_name.clone().unwrap_or_default();
                 let remote_id =
                     Self::resolve_alias(&aliases, &change.table_name, &change.record_id)?;
-                let Some(canonical_id) = Self::find_canonical_id_by_business_key(
+                let fingerprints = Self::business_key_fingerprints(
+                    conn,
+                    change.database_name.as_deref(),
+                    &change.table_name,
+                    &obj,
+                )?;
+
+                if let Some(canonical_id) = Self::find_canonical_id_by_business_key(
                     conn,
                     change.database_name.as_deref(),
                     &change.table_name,
                     id_column,
                     &obj,
-                )?
-                else {
-                    continue;
-                };
+                )? {
+                    Self::insert_alias(&mut aliases, &change.table_name, &remote_id, &canonical_id)?;
+                    Self::insert_alias(
+                        &mut aliases,
+                        &change.table_name,
+                        &change.record_id,
+                        &canonical_id,
+                    )?;
 
-                Self::insert_alias(&mut aliases, &change.table_name, &remote_id, &canonical_id)?;
-                Self::insert_alias(
-                    &mut aliases,
-                    &change.table_name,
-                    &change.record_id,
-                    &canonical_id,
-                )?;
+                    for fingerprint in fingerprints {
+                        batch_business_keys.insert(
+                            (scope.clone(), change.table_name.clone(), fingerprint),
+                            canonical_id.clone(),
+                        );
+                    }
+                    continue;
+                }
+
+                let mut matched_canonical: Option<String> = None;
+                for fingerprint in &fingerprints {
+                    let key = (scope.clone(), change.table_name.clone(), fingerprint.clone());
+                    if let Some(existing_id) = batch_business_keys.get(&key) {
+                        let canonical =
+                            Self::resolve_alias(&aliases, &change.table_name, existing_id)?;
+                        matched_canonical = Some(canonical);
+                        break;
+                    }
+                }
+
+                if let Some(canonical_id) = matched_canonical {
+                    Self::insert_alias(&mut aliases, &change.table_name, &remote_id, &canonical_id)?;
+                    Self::insert_alias(
+                        &mut aliases,
+                        &change.table_name,
+                        &change.record_id,
+                        &canonical_id,
+                    )?;
+                    for fingerprint in fingerprints {
+                        batch_business_keys.insert(
+                            (scope.clone(), change.table_name.clone(), fingerprint),
+                            canonical_id.clone(),
+                        );
+                    }
+                } else {
+                    for fingerprint in fingerprints {
+                        batch_business_keys.insert(
+                            (scope.clone(), change.table_name.clone(), fingerprint),
+                            remote_id.clone(),
+                        );
+                    }
+                }
             }
 
             if aliases.len() == before {
@@ -3527,6 +4667,11 @@ impl SyncManager {
         ordered.sort_by(|left, right| {
             let left_change = &changes[*left];
             let right_change = &changes[*right];
+            if left_change.table_name == right_change.table_name
+                && left_change.record_id == right_change.record_id
+            {
+                return left.cmp(right);
+            }
             Self::apply_dependency_rank(left_change).cmp(&Self::apply_dependency_rank(right_change))
         });
 
@@ -3540,10 +4685,16 @@ impl SyncManager {
         let insert_rank = match change.table_name.as_str() {
             "resources" => 10,
             "blobs" => 20,
+            "chat_v2_session_groups" => 30,
+            "chat_v2_sessions" => 35,
             "folders" | "todo_lists" => 30,
+            "chat_v2_messages" => 38,
             "notes" | "files" | "exam_sheets" | "translations" | "essays" | "mindmaps"
             | "todo_items" => 40,
+            "chat_v2_blocks" => 42,
             "questions" | "essay_sessions" | "pomodoro_records" => 50,
+            "chat_v2_attachments" => 55,
+            "chat_v2_session_mistakes" => 60,
             "answer_submissions" | "review_plans" | "folder_items" => 60,
             _ => 100,
         };
@@ -3553,6 +4704,181 @@ impl SyncManager {
         } else {
             insert_rank
         }
+    }
+
+    pub fn ensure_quarantine_table(conn: &Connection) -> Result<(), SyncError> {
+        conn.execute_batch(
+            r#"
+            CREATE TABLE IF NOT EXISTS __sync_quarantine (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                source_device_id TEXT NOT NULL,
+                source_seq INTEGER NOT NULL,
+                table_name TEXT NOT NULL,
+                record_id TEXT NOT NULL,
+                operation TEXT NOT NULL,
+                payload_json TEXT,
+                error TEXT NOT NULL,
+                attempts INTEGER NOT NULL DEFAULT 1,
+                first_seen TEXT NOT NULL DEFAULT (datetime('now')),
+                last_attempt TEXT NOT NULL DEFAULT (datetime('now')),
+                UNIQUE(source_device_id, source_seq, table_name, record_id, operation)
+            );
+            CREATE INDEX IF NOT EXISTS idx__sync_quarantine_last_attempt
+                ON __sync_quarantine(last_attempt);
+            "#,
+        )
+        .map_err(|e| SyncError::Database(format!("创建 __sync_quarantine 失败: {}", e)))
+    }
+
+    fn is_transient_apply_error(error: &SyncError) -> bool {
+        match error {
+            SyncError::Io(_) | SyncError::Network(_) => true,
+            SyncError::Database(message) => {
+                let lower = message.to_ascii_lowercase();
+                lower.contains("database is locked")
+                    || lower.contains("database table is locked")
+                    || lower.contains("sqlite_busy")
+                    || lower.contains("disk i/o")
+                    || lower.contains("database or disk is full")
+                    || lower.contains("out of memory")
+            }
+            _ => false,
+        }
+    }
+
+    fn source_device_for_quarantine(change: &SyncChangeWithData) -> String {
+        change.source_device_id.clone().unwrap_or_else(|| {
+            change
+                .database_name
+                .as_deref()
+                .map(|db| format!("download:{}", db))
+                .unwrap_or_else(|| "download:unknown".to_string())
+        })
+    }
+
+    fn source_seq_for_quarantine(change: &SyncChangeWithData) -> i64 {
+        change
+            .source_seq
+            .and_then(|seq| i64::try_from(seq).ok())
+            .or(change.change_log_id)
+            .unwrap_or(0)
+    }
+
+    fn quarantine_change(
+        conn: &Connection,
+        change: &SyncChangeWithData,
+        error: &SyncError,
+    ) -> Result<(), SyncError> {
+        Self::ensure_quarantine_table(conn)?;
+        let payload_json = serde_json::to_string(change).ok();
+        conn.execute(
+            "INSERT INTO __sync_quarantine
+             (source_device_id, source_seq, table_name, record_id, operation, payload_json, error)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)
+             ON CONFLICT(source_device_id, source_seq, table_name, record_id, operation)
+             DO UPDATE SET
+                payload_json = excluded.payload_json,
+                error = excluded.error,
+                attempts = attempts + 1,
+                last_attempt = datetime('now')",
+            params![
+                Self::source_device_for_quarantine(change),
+                Self::source_seq_for_quarantine(change),
+                &change.table_name,
+                &change.record_id,
+                change.operation.as_str(),
+                payload_json,
+                error.to_string(),
+            ],
+        )
+        .map_err(|e| SyncError::Database(format!("写入 __sync_quarantine 失败: {}", e)))?;
+        Ok(())
+    }
+
+    fn record_apply_failure(
+        result: &mut ApplyChangesResult,
+        change: &SyncChangeWithData,
+        error: &SyncError,
+    ) {
+        result.failure_count += 1;
+        result.failures.push(ApplyChangeFailure {
+            table_name: change.table_name.clone(),
+            record_id: change.record_id.clone(),
+            operation: change.operation.as_str().to_string(),
+            error: error.to_string(),
+        });
+    }
+
+    fn validate_no_new_fk_violations(
+        conn: &Connection,
+        baseline: &ForeignKeyViolationSet,
+    ) -> Result<(), SyncError> {
+        let current = Self::collect_foreign_key_violation_set(conn)?;
+        let new_violations = current
+            .difference(baseline)
+            .take(20)
+            .cloned()
+            .collect::<Vec<_>>();
+        if !new_violations.is_empty() {
+            return Err(SyncError::Database(format!(
+                "新增外键约束违规（示例最多 20 条）: {}",
+                new_violations.join("; ")
+            )));
+        }
+        Ok(())
+    }
+
+    fn begin_apply_savepoint(conn: &Connection, index: usize) -> Result<String, SyncError> {
+        let name = format!("sp_sync_apply_{}", index);
+        conn.execute_batch(&format!("SAVEPOINT {}", name))
+            .map_err(|e| SyncError::Database(format!("创建 SAVEPOINT 失败: {}", e)))?;
+        Ok(name)
+    }
+
+    fn rollback_and_release_savepoint(conn: &Connection, name: &str) {
+        let _ = conn.execute_batch(&format!("ROLLBACK TO SAVEPOINT {}", name));
+        let _ = conn.execute_batch(&format!("RELEASE SAVEPOINT {}", name));
+    }
+
+    fn release_savepoint(conn: &Connection, name: &str) -> Result<(), SyncError> {
+        conn.execute_batch(&format!("RELEASE SAVEPOINT {}", name))
+            .map_err(|e| SyncError::Database(format!("释放 SAVEPOINT 失败: {}", e)))
+    }
+
+    fn collect_pending_local_change_keys(
+        conn: &Connection,
+    ) -> Result<HashSet<(String, String)>, SyncError> {
+        let table_exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='__change_log')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+        if !table_exists {
+            return Ok(HashSet::new());
+        }
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT DISTINCT table_name, record_id
+                 FROM __change_log
+                 WHERE sync_version = 0",
+            )
+            .map_err(|e| SyncError::Database(format!("查询本地待同步变更失败: {}", e)))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+            })
+            .map_err(|e| SyncError::Database(format!("读取本地待同步变更失败: {}", e)))?;
+
+        let mut keys = HashSet::new();
+        for row in rows {
+            keys.insert(
+                row.map_err(|e| SyncError::Database(format!("解析本地待同步变更失败: {}", e)))?,
+            );
+        }
+        Ok(keys)
     }
 
     /// 应用下载的变更到数据库
@@ -3566,11 +4892,15 @@ impl SyncManager {
     ///
     /// # 返回
     /// * `ApplyChangesResult` - 应用结果
-    pub fn apply_downloaded_changes(
+    pub fn apply_downloaded_changes<C>(
         conn: &Connection,
-        changes: &[SyncChangeWithData],
+        changes: C,
         id_column_map: Option<&HashMap<String, String>>,
-    ) -> Result<ApplyChangesResult, SyncError> {
+    ) -> Result<ApplyChangesResult, SyncError>
+    where
+        C: AsRef<[SyncChangeWithData]>,
+    {
+        let changes = changes.as_ref();
         if changes.is_empty() {
             return Ok(ApplyChangesResult::empty());
         }
@@ -3594,11 +4924,14 @@ impl SyncManager {
             .map_err(|e| SyncError::Database(format!("开始事务失败: {}", e)))?;
 
         let apply_result: Result<(), SyncError> = (|| {
+            Self::ensure_quarantine_table(conn)?;
             let id_aliases = Self::build_download_id_aliases(conn, changes, id_column_map)?;
             let shadowed_incomplete_upserts = Self::incomplete_upserts_shadowed_by_delete(changes);
+            let fk_baseline = Self::collect_foreign_key_violation_set(conn)?;
+            let pending_local_change_keys = Self::collect_pending_local_change_keys(conn)?;
 
             let ordered_changes = Self::ordered_changes_for_apply(changes);
-            for change in ordered_changes {
+            for (index, change) in ordered_changes.into_iter().enumerate() {
                 if Self::should_skip_shadowed_incomplete_upsert(
                     change,
                     &shadowed_incomplete_upserts,
@@ -3613,76 +4946,103 @@ impl SyncManager {
                     continue;
                 }
 
-                let id_column = id_column_map
-                    .and_then(|m| m.get(&change.table_name))
-                    .map(|s| s.as_str())
-                    .unwrap_or("id");
-                let change_to_apply =
-                    Self::remap_change_with_aliases(conn, change, id_column, &id_aliases)?;
+                let savepoint = Self::begin_apply_savepoint(conn, index)?;
+                let result_before = result.clone();
+                let single_result: Result<(), SyncError> = (|| {
+                    let id_column = id_column_map
+                        .and_then(|m| m.get(&change.table_name))
+                        .map(|s| s.as_str())
+                        .unwrap_or("id");
+                    let change_to_apply =
+                        Self::remap_change_with_aliases(conn, change, id_column, &id_aliases)?;
 
-                let suppress = change.suppress_change_log.unwrap_or(false);
+                    let suppress = change_to_apply.suppress_change_log.unwrap_or(false);
 
-                let pre_log_max_id = if suppress {
-                    conn.query_row("SELECT COALESCE(MAX(id), 0) FROM __change_log", [], |row| {
-                        row.get::<_, i64>(0)
-                    })
-                    .ok()
-                } else {
-                    None
-                };
+                    let pre_log_max_id = if suppress {
+                        conn.query_row("SELECT COALESCE(MAX(id), 0) FROM __change_log", [], |row| {
+                            row.get::<_, i64>(0)
+                        })
+                        .ok()
+                    } else {
+                        None
+                    };
 
-                let applied = Self::apply_single_change(conn, &change_to_apply, id_column)?;
-                if applied {
-                    result.success_count += 1;
-                    result
-                        .applied_keys
-                        .insert((change.table_name.clone(), change.record_id.clone()));
-                } else {
-                    result.skipped_count += 1;
-                    if matches!(
-                        change.operation,
-                        ChangeOperation::Insert | ChangeOperation::Update
-                    ) && change.data.is_none()
-                    {
-                        result.skipped_incomplete_count += 1;
+                    let allow_field_merge = pending_local_change_keys.contains(&(
+                        change_to_apply.table_name.clone(),
+                        change_to_apply.record_id.clone(),
+                    ));
+                    let applied = Self::apply_single_change(
+                        conn,
+                        &change_to_apply,
+                        id_column,
+                        allow_field_merge,
+                    )?;
+                    if applied {
+                        result.success_count += 1;
+                        result.applied_keys.insert((
+                            change_to_apply.table_name.clone(),
+                            change_to_apply.record_id.clone(),
+                        ));
+                    } else {
+                        result.skipped_count += 1;
+                        if matches!(
+                            change_to_apply.operation,
+                            ChangeOperation::Insert | ChangeOperation::Update
+                        ) && change_to_apply.data.is_none()
+                        {
+                            result.skipped_incomplete_count += 1;
+                        }
+                    }
+
+                    // 精确抑制：标记由本次回放产生的、匹配当前 table+record 的所有
+                    // change_log 条目为已同步。
+                    if let Some(max_id) = pre_log_max_id {
+                        let sync_version = chrono::Utc::now().timestamp();
+                        let _ = conn.execute(
+                            "UPDATE __change_log SET sync_version = ?1 \
+                             WHERE id > ?2 AND sync_version = 0 \
+                             AND table_name = ?3 AND record_id = ?4",
+                            params![
+                                sync_version,
+                                max_id,
+                                &change_to_apply.table_name,
+                                &change_to_apply.record_id,
+                            ],
+                        );
+                    }
+
+                    Self::validate_no_new_fk_violations(conn, &fk_baseline)?;
+                    Ok(())
+                })();
+
+                match single_result {
+                    Ok(()) => {
+                        Self::release_savepoint(conn, &savepoint)?;
+                    }
+                    Err(e) if !Self::is_transient_apply_error(&e) => {
+                        Self::rollback_and_release_savepoint(conn, &savepoint);
+                        result = result_before;
+                        Self::quarantine_change(conn, change, &e)?;
+                        Self::record_apply_failure(&mut result, change, &e);
+                        tracing::warn!(
+                            "[sync] 单条变更已进入检疫，继续应用后续变更: {}.{} {}: {}",
+                            change.table_name,
+                            change.record_id,
+                            change.operation.as_str(),
+                            e
+                        );
+                    }
+                    Err(e) => {
+                        Self::rollback_and_release_savepoint(conn, &savepoint);
+                        result = result_before;
+                        return Err(e);
                     }
                 }
-
-                // 精确抑制：标记由本次回放产生的、匹配当前 table+record 的所有
-                // change_log 条目为已同步。
-                //
-                // 这里**不限制 operation**，因为 apply_single_record 内部
-                // 对 "payload 含 deleted_at: null" 的情况会先 UPSERT 再做一次独立 UPDATE，
-                // 后者产生的 `operation = UPDATE` 条目也必须被视为回放产物。
-                //
-                // 并发安全性：apply_downloaded_changes 在一个事务内执行，用户手动写入
-                // 使用独立连接无法并发产生同事务内的 __change_log 条目，所以不会误标记。
-                if let Some(max_id) = pre_log_max_id {
-                    let sync_version = chrono::Utc::now().timestamp();
-                    let _ = conn.execute(
-                        "UPDATE __change_log SET sync_version = ?1 \
-                         WHERE id > ?2 AND sync_version = 0 \
-                         AND table_name = ?3 AND record_id = ?4",
-                        params![
-                            sync_version,
-                            max_id,
-                            &change_to_apply.table_name,
-                            &change_to_apply.record_id,
-                        ],
-                    );
-                }
             }
 
+            Self::recompute_derived_ref_counts(conn)?;
             Self::persist_id_aliases(conn, &id_aliases)?;
-
-            // 强校验：必须没有任何外键违规
-            let violations = Self::collect_foreign_key_violations(conn, 20)?;
-            if !violations.is_empty() {
-                return Err(SyncError::Database(format!(
-                    "外键约束检查失败（示例最多 20 条）: {}",
-                    violations.join("; ")
-                )));
-            }
+            Self::validate_no_new_fk_violations(conn, &fk_baseline)?;
 
             Ok(())
         })();
@@ -3724,6 +5084,274 @@ impl SyncManager {
             result.failure_count,
             result.skipped_count
         );
+
+        Ok(result)
+    }
+
+    fn recompute_derived_ref_counts(conn: &Connection) -> Result<(), SyncError> {
+        let pre_log_max = Self::change_log_max_id(conn);
+
+        Self::recompute_resource_ref_counts(conn)?;
+        Self::recompute_blob_ref_counts(conn)?;
+
+        if let Some(max_id) = pre_log_max {
+            let sync_version = chrono::Utc::now().timestamp();
+            let _ = conn.execute(
+                "UPDATE __change_log SET sync_version = ?1
+                 WHERE id > ?2
+                   AND sync_version = 0
+                   AND table_name IN ('resources', 'blobs')",
+                params![sync_version, max_id],
+            );
+        }
+        Ok(())
+    }
+
+    fn change_log_max_id(conn: &Connection) -> Option<i64> {
+        conn.query_row("SELECT COALESCE(MAX(id), 0) FROM __change_log", [], |row| {
+            row.get(0)
+        })
+        .ok()
+    }
+
+    fn user_tables_with_column(
+        conn: &Connection,
+        column_name: &str,
+    ) -> Result<Vec<String>, SyncError> {
+        let mut stmt = conn
+            .prepare(
+                "SELECT name FROM sqlite_master
+                 WHERE type='table'
+                   AND name NOT LIKE 'sqlite_%'
+                   AND name NOT LIKE '\\_\\_%' ESCAPE '\\'",
+            )
+            .map_err(|e| SyncError::Database(format!("查询表清单失败: {}", e)))?;
+        let rows = stmt
+            .query_map([], |row| row.get::<_, String>(0))
+            .map_err(|e| SyncError::Database(format!("扫描表清单失败: {}", e)))?;
+        let mut tables = Vec::new();
+        for row in rows {
+            let table = row.map_err(|e| SyncError::Database(format!("读取表名失败: {}", e)))?;
+            if Self::table_has_column(conn, &table, column_name) {
+                tables.push(table);
+            }
+        }
+        Ok(tables)
+    }
+
+    fn recompute_resource_ref_counts(conn: &Connection) -> Result<(), SyncError> {
+        if !Self::table_has_column(conn, "resources", "ref_count") {
+            return Ok(());
+        }
+
+        let mut subqueries = Vec::new();
+        for table in Self::user_tables_with_column(conn, "resource_id")? {
+            if table == "resources" {
+                continue;
+            }
+            let table_ident = Self::quote_identifier(&table)?;
+            let deleted_filter = if Self::table_has_column(conn, &table, "deleted_at") {
+                " AND deleted_at IS NULL"
+            } else {
+                ""
+            };
+            subqueries.push(format!(
+                "SELECT resource_id AS resource_id FROM {} WHERE resource_id IS NOT NULL{}",
+                table_ident, deleted_filter
+            ));
+        }
+
+        if subqueries.is_empty() {
+            conn.execute("UPDATE resources SET ref_count = 0", [])
+                .map_err(|e| {
+                    SyncError::Database(format!("重算 resources.ref_count 失败: {}", e))
+                })?;
+            return Ok(());
+        }
+
+        let sql = format!(
+            "UPDATE resources
+             SET ref_count = (
+                 SELECT COUNT(*)
+                 FROM ({}) refs
+                 WHERE refs.resource_id = resources.id
+             )",
+            subqueries.join(" UNION ALL ")
+        );
+        conn.execute(&sql, [])
+            .map_err(|e| SyncError::Database(format!("重算 resources.ref_count 失败: {}", e)))?;
+        Ok(())
+    }
+
+    fn recompute_blob_ref_counts(conn: &Connection) -> Result<(), SyncError> {
+        if !Self::table_has_column(conn, "blobs", "ref_count") {
+            return Ok(());
+        }
+
+        let mut subqueries = Vec::new();
+        if Self::table_has_column(conn, "files", "blob_hash") {
+            subqueries.push(
+                "SELECT blob_hash AS blob_hash FROM files WHERE blob_hash IS NOT NULL".to_string(),
+            );
+        }
+        if Self::table_has_column(conn, "files", "compressed_blob_hash") {
+            subqueries.push(
+                "SELECT compressed_blob_hash AS blob_hash FROM files WHERE compressed_blob_hash IS NOT NULL"
+                    .to_string(),
+            );
+        }
+        if Self::table_has_column(conn, "vfs_index_units", "image_blob_hash") {
+            subqueries.push(
+                "SELECT image_blob_hash AS blob_hash FROM vfs_index_units WHERE image_blob_hash IS NOT NULL"
+                    .to_string(),
+            );
+        }
+
+        if subqueries.is_empty() {
+            conn.execute("UPDATE blobs SET ref_count = 0", [])
+                .map_err(|e| SyncError::Database(format!("重算 blobs.ref_count 失败: {}", e)))?;
+            return Ok(());
+        }
+
+        let sql = format!(
+            "UPDATE blobs
+             SET ref_count = (
+                 SELECT COUNT(*)
+                 FROM ({}) refs
+                 WHERE refs.blob_hash = blobs.hash
+             )",
+            subqueries.join(" UNION ALL ")
+        );
+        conn.execute(&sql, [])
+            .map_err(|e| SyncError::Database(format!("重算 blobs.ref_count 失败: {}", e)))?;
+        Ok(())
+    }
+
+    /// 强制应用已经由用户或冲突策略裁决的变更。
+    ///
+    /// 该入口专用于手动冲突解决：跳过 LWW 时间戳门、禁用字段级自动合并，
+    /// 让用户选定的整行值精确落库；是否写入 `__change_log` 仍由
+    /// `SyncChangeWithData::suppress_change_log` 决定。
+    pub fn apply_downloaded_changes_force_exact(
+        conn: &Connection,
+        changes: &[SyncChangeWithData],
+        id_column_map: Option<&HashMap<String, String>>,
+    ) -> Result<ApplyChangesResult, SyncError> {
+        if changes.is_empty() {
+            return Ok(ApplyChangesResult::empty());
+        }
+
+        let original_fk: i64 = conn
+            .query_row("PRAGMA foreign_keys", [], |row| row.get(0))
+            .unwrap_or(1);
+        conn.execute_batch("PRAGMA defer_foreign_keys = ON;")
+            .map_err(|e| SyncError::Database(format!("开启延迟外键检查失败: {}", e)))?;
+        conn.execute_batch("BEGIN IMMEDIATE;")
+            .map_err(|e| SyncError::Database(format!("开始事务失败: {}", e)))?;
+
+        let mut result = ApplyChangesResult::empty();
+        let apply_result: Result<(), SyncError> = (|| {
+            Self::ensure_quarantine_table(conn)?;
+            let id_aliases = Self::build_download_id_aliases(conn, changes, id_column_map)?;
+            let fk_baseline = Self::collect_foreign_key_violation_set(conn)?;
+
+            let ordered_changes = Self::ordered_changes_for_apply(changes);
+            for (index, change) in ordered_changes.into_iter().enumerate() {
+                let savepoint = Self::begin_apply_savepoint(conn, index)?;
+                let result_before = result.clone();
+                let single_result: Result<(), SyncError> = (|| {
+                    let id_column = id_column_map
+                        .and_then(|m| m.get(&change.table_name))
+                        .map(|s| s.as_str())
+                        .unwrap_or("id");
+                    let change_to_apply =
+                        Self::remap_change_with_aliases(conn, change, id_column, &id_aliases)?;
+
+                    let suppress = change_to_apply.suppress_change_log.unwrap_or(false);
+                    let pre_log_max_id = if suppress {
+                        conn.query_row("SELECT COALESCE(MAX(id), 0) FROM __change_log", [], |row| {
+                            row.get::<_, i64>(0)
+                        })
+                        .ok()
+                    } else {
+                        None
+                    };
+
+                    let applied =
+                        Self::apply_single_change_force(conn, &change_to_apply, id_column, false)?;
+                    if applied {
+                        result.success_count += 1;
+                        result.applied_keys.insert((
+                            change_to_apply.table_name.clone(),
+                            change_to_apply.record_id.clone(),
+                        ));
+                    } else {
+                        result.skipped_count += 1;
+                    }
+
+                    if let Some(max_id) = pre_log_max_id {
+                        let sync_version = chrono::Utc::now().timestamp();
+                        let _ = conn.execute(
+                            "UPDATE __change_log SET sync_version = ?1 \
+                             WHERE id > ?2 AND sync_version = 0 \
+                             AND table_name = ?3 AND record_id = ?4",
+                            params![
+                                sync_version,
+                                max_id,
+                                &change_to_apply.table_name,
+                                &change_to_apply.record_id,
+                            ],
+                        );
+                    }
+
+                    Self::validate_no_new_fk_violations(conn, &fk_baseline)?;
+                    Ok(())
+                })();
+
+                match single_result {
+                    Ok(()) => Self::release_savepoint(conn, &savepoint)?,
+                    Err(e) => {
+                        Self::rollback_and_release_savepoint(conn, &savepoint);
+                        result = result_before;
+                        return Err(e);
+                    }
+                }
+            }
+
+            Self::recompute_derived_ref_counts(conn)?;
+            Self::persist_id_aliases(conn, &id_aliases)?;
+            Self::validate_no_new_fk_violations(conn, &fk_baseline)?;
+            Ok(())
+        })();
+
+        match apply_result {
+            Ok(()) => {
+                if let Err(e) = conn.execute_batch("COMMIT;") {
+                    let _ = conn.execute_batch("ROLLBACK;");
+                    let _ = if original_fk == 0 {
+                        conn.execute_batch("PRAGMA foreign_keys = OFF;")
+                    } else {
+                        conn.execute_batch("PRAGMA foreign_keys = ON;")
+                    };
+                    return Err(SyncError::Database(format!("提交事务失败: {}", e)));
+                }
+            }
+            Err(e) => {
+                let _ = conn.execute_batch("ROLLBACK;");
+                let _ = if original_fk == 0 {
+                    conn.execute_batch("PRAGMA foreign_keys = OFF;")
+                } else {
+                    conn.execute_batch("PRAGMA foreign_keys = ON;")
+                };
+                return Err(e);
+            }
+        }
+
+        let _ = if original_fk == 0 {
+            conn.execute_batch("PRAGMA foreign_keys = OFF;")
+        } else {
+            conn.execute_batch("PRAGMA foreign_keys = ON;")
+        };
 
         Ok(result)
     }
@@ -3778,11 +5406,14 @@ impl SyncManager {
         let mut conflict_result = conflict_resolver::ConflictAwareApplyResult::default();
 
         let inner: Result<(), SyncError> = (|| {
+            Self::ensure_quarantine_table(conn)?;
             let id_aliases = Self::build_download_id_aliases(conn, changes, id_column_map)?;
             let shadowed_incomplete_upserts = Self::incomplete_upserts_shadowed_by_delete(changes);
+            let fk_baseline = Self::collect_foreign_key_violation_set(conn)?;
+            let pending_local_change_keys = Self::collect_pending_local_change_keys(conn)?;
 
             let ordered_changes = Self::ordered_changes_for_apply(changes);
-            for change in ordered_changes {
+            for (index, change) in ordered_changes.into_iter().enumerate() {
                 if Self::should_skip_shadowed_incomplete_upsert(
                     change,
                     &shadowed_incomplete_upserts,
@@ -3797,144 +5428,55 @@ impl SyncManager {
                     continue;
                 }
 
-                let id_column = id_column_map
-                    .and_then(|m| m.get(&change.table_name))
-                    .map(|s| s.as_str())
-                    .unwrap_or("id");
+                let savepoint = Self::begin_apply_savepoint(conn, index)?;
+                let apply_before = apply_result.clone();
+                let conflict_before = conflict_result.clone();
+                let single_result: Result<(), SyncError> = (|| {
+                    let id_column = id_column_map
+                        .and_then(|m| m.get(&change.table_name))
+                        .map(|s| s.as_str())
+                        .unwrap_or("id");
 
-                let change_to_apply =
-                    Self::remap_change_with_aliases(conn, change, id_column, &id_aliases)?;
+                    let change_to_apply =
+                        Self::remap_change_with_aliases(conn, change, id_column, &id_aliases)?;
 
-                match resolver.resolve_one(conn, &change_to_apply, id_column)? {
-                    None => {
-                        // 非冲突，正常 UPSERT
-                        let suppress = change_to_apply.suppress_change_log.unwrap_or(false);
-                        let pre_log_max_id = if suppress {
-                            conn.query_row(
-                                "SELECT COALESCE(MAX(id), 0) FROM __change_log",
-                                [],
-                                |row| row.get::<_, i64>(0),
-                            )
-                            .ok()
-                        } else {
-                            None
-                        };
-
-                        let applied = Self::apply_single_change(conn, &change_to_apply, id_column)?;
-                        if applied {
-                            apply_result.success_count += 1;
-                            apply_result.applied_keys.insert((
-                                change_to_apply.table_name.clone(),
-                                change_to_apply.record_id.clone(),
-                            ));
-                        } else {
-                            apply_result.skipped_count += 1;
-                            if matches!(
-                                change_to_apply.operation,
-                                ChangeOperation::Insert | ChangeOperation::Update
-                            ) && change_to_apply.data.is_none()
-                            {
-                                apply_result.skipped_incomplete_count += 1;
-                            }
-                        }
-
-                        if let Some(max_id) = pre_log_max_id {
-                            let sync_version = chrono::Utc::now().timestamp();
-                            let _ = conn.execute(
-                                "UPDATE __change_log SET sync_version = ?1 \
-                                 WHERE id > ?2 AND sync_version = 0 \
-                                 AND table_name = ?3 AND record_id = ?4",
-                                params![
-                                    sync_version,
-                                    max_id,
-                                    &change_to_apply.table_name,
-                                    &change_to_apply.record_id,
-                                ],
-                            );
-                        }
-                    }
-                    Some(outcome) => {
-                        // 落败方先进冲突表（两端都各存一份，便于 UI 三路展示）
-                        let loser_inserted = ConflictResolver::save_conflict_record(
-                            conn,
-                            conflict_resolver::ConflictRecordToSave {
-                                table_name: &change_to_apply.table_name,
-                                record_id: &change_to_apply.record_id,
-                                side: outcome.loser,
-                                data: &outcome.loser_data,
-                                winning_device_id: if outcome.winner == ConflictSide::Cloud {
-                                    cloud_device_id
-                                } else {
-                                    local_device_id
-                                },
-                                losing_device_id: if outcome.loser == ConflictSide::Cloud {
-                                    cloud_device_id
-                                } else {
-                                    local_device_id
-                                },
-                            },
-                        )?;
-
-                        // 同时把胜方的快照也记录一份（side=winner），方便 UI 同时看到两份
-                        let winner_inserted = ConflictResolver::save_conflict_record(
-                            conn,
-                            conflict_resolver::ConflictRecordToSave {
-                                table_name: &change_to_apply.table_name,
-                                record_id: &change_to_apply.record_id,
-                                side: outcome.winner,
-                                data: &outcome.winner_data,
-                                winning_device_id: if outcome.winner == ConflictSide::Cloud {
-                                    cloud_device_id
-                                } else {
-                                    local_device_id
-                                },
-                                losing_device_id: if outcome.loser == ConflictSide::Cloud {
-                                    cloud_device_id
-                                } else {
-                                    local_device_id
-                                },
-                            },
-                        )?;
-
-                        let inserted_rows =
-                            usize::from(loser_inserted) + usize::from(winner_inserted);
-                        conflict_result.conflicts_saved += inserted_rows;
-                        if inserted_rows > 0 {
-                            *conflict_result
-                                .conflicts_by_table
-                                .entry(change_to_apply.table_name.clone())
-                                .or_insert(0) += inserted_rows;
-                        }
-
-                        if outcome.winner == ConflictSide::Cloud {
-                            // Cloud 胜，按云端数据写入本地（但要抑制回声）
-                            let mut cloud_change = change_to_apply.clone();
-                            cloud_change.suppress_change_log = Some(true);
-
-                            let pre_log_max_id = conn
-                                .query_row(
+                    match resolver.resolve_one(conn, &change_to_apply, id_column)? {
+                        None => {
+                            // 非冲突，正常 UPSERT
+                            let suppress = change_to_apply.suppress_change_log.unwrap_or(false);
+                            let pre_log_max_id = if suppress {
+                                conn.query_row(
                                     "SELECT COALESCE(MAX(id), 0) FROM __change_log",
                                     [],
                                     |row| row.get::<_, i64>(0),
                                 )
-                                .ok();
+                                .ok()
+                            } else {
+                                None
+                            };
 
-                            // 冲突已裁决为 Cloud 胜，绕过 LWW 门强制应用
-                            let applied =
-                                Self::apply_single_change_force(conn, &cloud_change, id_column)?;
+                            let allow_field_merge = pending_local_change_keys.contains(&(
+                                change_to_apply.table_name.clone(),
+                                change_to_apply.record_id.clone(),
+                            ));
+                            let applied = Self::apply_single_change(
+                                conn,
+                                &change_to_apply,
+                                id_column,
+                                allow_field_merge,
+                            )?;
                             if applied {
                                 apply_result.success_count += 1;
                                 apply_result.applied_keys.insert((
-                                    cloud_change.table_name.clone(),
-                                    cloud_change.record_id.clone(),
+                                    change_to_apply.table_name.clone(),
+                                    change_to_apply.record_id.clone(),
                                 ));
-                                conflict_result.applied += 1;
                             } else {
                                 apply_result.skipped_count += 1;
                                 if matches!(
-                                    cloud_change.operation,
+                                    change_to_apply.operation,
                                     ChangeOperation::Insert | ChangeOperation::Update
-                                ) && cloud_change.data.is_none()
+                                ) && change_to_apply.data.is_none()
                                 {
                                     apply_result.skipped_incomplete_count += 1;
                                 }
@@ -3949,29 +5491,159 @@ impl SyncManager {
                                     params![
                                         sync_version,
                                         max_id,
-                                        &cloud_change.table_name,
-                                        &cloud_change.record_id,
+                                        &change_to_apply.table_name,
+                                        &change_to_apply.record_id,
                                     ],
                                 );
                             }
-                        } else {
-                            // Local 胜，跳过应用云端变更；但记录为 rejected，上层会在下一轮把本地值上传
-                            conflict_result.rejected += 1;
-                            apply_result.skipped_count += 1;
                         }
+                        Some(outcome) => {
+                            // 落败方先进冲突表（两端都各存一份，便于 UI 三路展示）
+                            let loser_inserted = ConflictResolver::save_conflict_record(
+                                conn,
+                                conflict_resolver::ConflictRecordToSave {
+                                    table_name: &change_to_apply.table_name,
+                                    record_id: &change_to_apply.record_id,
+                                    side: outcome.loser,
+                                    data: &outcome.loser_data,
+                                    winning_device_id: if outcome.winner == ConflictSide::Cloud {
+                                        cloud_device_id
+                                    } else {
+                                        local_device_id
+                                    },
+                                    losing_device_id: if outcome.loser == ConflictSide::Cloud {
+                                        cloud_device_id
+                                    } else {
+                                        local_device_id
+                                    },
+                                },
+                            )?;
+
+                            // 同时把胜方的快照也记录一份（side=winner），方便 UI 同时看到两份
+                            let winner_inserted = ConflictResolver::save_conflict_record(
+                                conn,
+                                conflict_resolver::ConflictRecordToSave {
+                                    table_name: &change_to_apply.table_name,
+                                    record_id: &change_to_apply.record_id,
+                                    side: outcome.winner,
+                                    data: &outcome.winner_data,
+                                    winning_device_id: if outcome.winner == ConflictSide::Cloud {
+                                        cloud_device_id
+                                    } else {
+                                        local_device_id
+                                    },
+                                    losing_device_id: if outcome.loser == ConflictSide::Cloud {
+                                        cloud_device_id
+                                    } else {
+                                        local_device_id
+                                    },
+                                },
+                            )?;
+
+                            let inserted_rows =
+                                usize::from(loser_inserted) + usize::from(winner_inserted);
+                            conflict_result.conflicts_saved += inserted_rows;
+                            if inserted_rows > 0 {
+                                *conflict_result
+                                    .conflicts_by_table
+                                    .entry(change_to_apply.table_name.clone())
+                                    .or_insert(0) += inserted_rows;
+                            }
+
+                            if outcome.winner == ConflictSide::Cloud {
+                                // Cloud 胜，按云端数据写入本地（但要抑制回声）
+                                let mut cloud_change = change_to_apply.clone();
+                                cloud_change.suppress_change_log = Some(true);
+
+                                let pre_log_max_id = conn
+                                    .query_row(
+                                        "SELECT COALESCE(MAX(id), 0) FROM __change_log",
+                                        [],
+                                        |row| row.get::<_, i64>(0),
+                                    )
+                                    .ok();
+
+                                // 冲突已裁决为 Cloud 胜，绕过 LWW 门强制应用
+                                let applied = Self::apply_single_change_force(
+                                    conn,
+                                    &cloud_change,
+                                    id_column,
+                                    false,
+                                )?;
+                                if applied {
+                                    apply_result.success_count += 1;
+                                    apply_result.applied_keys.insert((
+                                        cloud_change.table_name.clone(),
+                                        cloud_change.record_id.clone(),
+                                    ));
+                                    conflict_result.applied += 1;
+                                } else {
+                                    apply_result.skipped_count += 1;
+                                    if matches!(
+                                        cloud_change.operation,
+                                        ChangeOperation::Insert | ChangeOperation::Update
+                                    ) && cloud_change.data.is_none()
+                                    {
+                                        apply_result.skipped_incomplete_count += 1;
+                                    }
+                                }
+
+                                if let Some(max_id) = pre_log_max_id {
+                                    let sync_version = chrono::Utc::now().timestamp();
+                                    let _ = conn.execute(
+                                        "UPDATE __change_log SET sync_version = ?1 \
+                                         WHERE id > ?2 AND sync_version = 0 \
+                                         AND table_name = ?3 AND record_id = ?4",
+                                        params![
+                                            sync_version,
+                                            max_id,
+                                            &cloud_change.table_name,
+                                            &cloud_change.record_id,
+                                        ],
+                                    );
+                                }
+                            } else {
+                                // Local 胜，跳过应用云端变更；但记录为 rejected，上层会在下一轮把本地值上传
+                                conflict_result.rejected += 1;
+                                apply_result.skipped_count += 1;
+                            }
+                        }
+                    }
+
+                    Self::validate_no_new_fk_violations(conn, &fk_baseline)?;
+                    Ok(())
+                })();
+
+                match single_result {
+                    Ok(()) => {
+                        Self::release_savepoint(conn, &savepoint)?;
+                    }
+                    Err(e) if !Self::is_transient_apply_error(&e) => {
+                        Self::rollback_and_release_savepoint(conn, &savepoint);
+                        apply_result = apply_before;
+                        conflict_result = conflict_before;
+                        Self::quarantine_change(conn, change, &e)?;
+                        Self::record_apply_failure(&mut apply_result, change, &e);
+                        tracing::warn!(
+                            "[sync] 冲突感知路径单条变更已进入检疫，继续应用后续变更: {}.{} {}: {}",
+                            change.table_name,
+                            change.record_id,
+                            change.operation.as_str(),
+                            e
+                        );
+                    }
+                    Err(e) => {
+                        Self::rollback_and_release_savepoint(conn, &savepoint);
+                        apply_result = apply_before;
+                        conflict_result = conflict_before;
+                        return Err(e);
                     }
                 }
             }
 
+            Self::recompute_derived_ref_counts(conn)?;
             Self::persist_id_aliases(conn, &id_aliases)?;
-
-            let violations = Self::collect_foreign_key_violations(conn, 20)?;
-            if !violations.is_empty() {
-                return Err(SyncError::Database(format!(
-                    "外键约束检查失败（示例最多 20 条）: {}",
-                    violations.join("; ")
-                )));
-            }
+            Self::validate_no_new_fk_violations(conn, &fk_baseline)?;
 
             Ok(())
         })();
@@ -4031,10 +5703,16 @@ impl SyncManager {
     pub async fn get_min_available_change_version(
         storage: &dyn CloudStorage,
     ) -> Result<Option<u64>, SyncError> {
-        let files = storage
-            .list(Self::CHANGES_PREFIX)
+        let list = storage
+            .list_outcome(Self::CHANGES_PREFIX)
             .await
             .map_err(|e| SyncError::Network(format!("列出变更文件失败: {}", e)))?;
+        if list.truncated {
+            return Err(SyncError::Network(
+                "云端变更列表被截断，无法安全判断最小可用版本".to_string(),
+            ));
+        }
+        let files = list.files;
 
         let mut min_version: Option<u64> = None;
         for file in &files {
@@ -4102,17 +5780,19 @@ impl SyncManager {
         conn: &Connection,
         change: &SyncChangeWithData,
         id_column: &str,
+        allow_field_merge: bool,
     ) -> Result<bool, SyncError> {
-        Self::apply_single_change_inner(conn, change, id_column, false)
+        Self::apply_single_change_inner(conn, change, id_column, false, allow_field_merge)
     }
 
-    /// 同 `apply_single_change`，但跳过 LWW 时间戳门（用于 conflict_guard 已决策场景）
+    /// 同 `apply_single_change`，但跳过 LWW 时间戳门（用于 conflict_guard/手动解决已决策场景）
     fn apply_single_change_force(
         conn: &Connection,
         change: &SyncChangeWithData,
         id_column: &str,
+        allow_field_merge: bool,
     ) -> Result<bool, SyncError> {
-        Self::apply_single_change_inner(conn, change, id_column, true)
+        Self::apply_single_change_inner(conn, change, id_column, true, allow_field_merge)
     }
 
     fn apply_single_change_inner(
@@ -4120,6 +5800,7 @@ impl SyncManager {
         change: &SyncChangeWithData,
         id_column: &str,
         skip_lww: bool,
+        allow_field_merge: bool,
     ) -> Result<bool, SyncError> {
         match change.operation {
             ChangeOperation::Delete => {
@@ -4136,48 +5817,48 @@ impl SyncManager {
                 let pk_predicate_after_set_value =
                     Self::build_primary_key_predicate_from(&pk_columns, 2)?;
 
-                // [LWW + HLC drift 保护 - DELETE]
+                // [LWW drift 保护 - DELETE]
                 // 1. 如果云端 changed_at 超出 wall clock "未来 60 秒" → 视为可疑漂移，跳过
-                // 2. 如果本地记录的 updated_at 严格晚于云端 DELETE 的 changed_at → 跳过（LWW）
+                // 2. 如果本地记录的 updated_at 严格胜过云端 DELETE 的 changed_at → 跳过（LWW）
                 if !skip_lww && has_tombstone {
-                    if let Some(cloud_ts) = parse_flexible_timestamp_public(&change.changed_at) {
-                        // ─── HLC drift check ───
+                    if let Some(cloud_ms) = Self::lww_timestamp_millis(&change.changed_at) {
                         let now = chrono::Utc::now();
-                        if (cloud_ts - now).num_milliseconds() > hlc::MAX_DRIFT_MS {
+                        let drift_ms = cloud_ms - now.timestamp_millis();
+                        if drift_ms > hlc::MAX_DRIFT_MS {
                             tracing::warn!(
                                 "[sync] 跳过 DELETE（时间戳漂移过大）: {}.{} = {}, drift_ms={}",
                                 change.table_name,
                                 id_column,
                                 change.record_id,
-                                (cloud_ts - now).num_milliseconds()
+                                drift_ms
                             );
                             return Ok(false);
                         }
 
-                        // ─── LWW check ───
                         if Self::table_has_column(conn, &change.table_name, "updated_at") {
-                            let local_ts_opt = Self::get_record_data(
+                            let local_data_opt = Self::get_record_data(
                                 conn,
                                 &change.table_name,
                                 &change.record_id,
                                 id_column,
-                            )
-                            .ok()
-                            .flatten()
-                            .and_then(|row| {
-                                row.get("updated_at").and_then(|v| {
-                                    v.as_i64()
-                                        .and_then(
-                                            chrono::DateTime::<chrono::Utc>::from_timestamp_millis,
-                                        )
-                                        .or_else(|| {
-                                            v.as_str().and_then(parse_flexible_timestamp_public)
-                                        })
-                                })
-                            });
+                            )?;
 
-                            if let Some(local_ts) = local_ts_opt {
-                                if local_ts > cloud_ts {
+                            if let Some(local_data) = local_data_opt {
+                                let local_ts = local_data
+                                    .get("updated_at")
+                                    .and_then(Self::timestamp_value_to_lww_string);
+                                let cloud_device_id =
+                                    change.source_device_id.as_deref().unwrap_or("cloud-delete");
+                                if local_ts.as_deref().is_some_and(|local_ts| {
+                                    Self::compare_lww_timestamps(
+                                        local_ts,
+                                        Self::lww_device_id_from_data(&local_data, "local-unknown"),
+                                        &local_data.to_string(),
+                                        &change.changed_at,
+                                        cloud_device_id,
+                                        "",
+                                    ) == std::cmp::Ordering::Greater
+                                }) {
                                     tracing::debug!(
                                         "[sync] LWW skip DELETE: {}.{} = {} (本地 update 更新)",
                                         change.table_name,
@@ -4290,6 +5971,7 @@ impl SyncManager {
                         &change.record_id,
                         id_column,
                         data,
+                        change.source_device_id.as_deref(),
                     )
                 {
                     tracing::debug!(
@@ -4321,6 +6003,7 @@ impl SyncManager {
                     &change.record_id,
                     data,
                     change.database_name.as_deref(),
+                    allow_field_merge,
                 )?;
                 Ok(true)
             }
@@ -4341,6 +6024,7 @@ impl SyncManager {
         record_id: &str,
         id_column: &str,
         cloud_data: &serde_json::Value,
+        source_device_id: Option<&str>,
     ) -> bool {
         // 云端 payload 必须带 updated_at
         // 兼容 TEXT（ISO 8601 / HLC 串）和 INTEGER（毫秒时间戳）两种形式——
@@ -4355,75 +6039,20 @@ impl SyncManager {
         };
         let cloud_str = cloud_str.as_str();
 
-        // ─── HLC 快速路径 ───
-        // 若云端 updated_at 是 HLC 字符串，直接按 HLC 比较；跳过 timestamp 漂移检查
-        // （HLC 内部的 receive() 已经有 MAX_DRIFT_MS 守护，且发送端如果伪造
-        // millis 会被收端直接拒绝）。
-        let cloud_hlc = hlc::Hlc::parse(cloud_str);
-        if let Some(cloud_hlc_val) = cloud_hlc {
-            // HLC 漂移 check：云端 millis 比本地 wall clock 超前过多 → 跳过
-            let now_ms = chrono::Utc::now().timestamp_millis() as u64;
-            if cloud_hlc_val.millis as i64 - now_ms as i64 > hlc::MAX_DRIFT_MS {
+        // ─── 防线 1：漂移 sanity check ───
+        // 如果云端时间戳超出本地 wall clock "未来 60 秒"，视为恶意/故障，跳过。
+        if let Some(cloud_ms) = Self::lww_timestamp_millis(cloud_str) {
+            let drift_ms = cloud_ms - chrono::Utc::now().timestamp_millis();
+            if drift_ms > hlc::MAX_DRIFT_MS {
                 tracing::warn!(
-                    "[sync] 跳过云端变更（HLC 漂移过大）: table={}, id={}, cloud_hlc={}, now_ms={}, drift_ms={}",
+                    "[sync] 跳过云端变更（时间戳漂移过大）: table={}, id={}, cloud_ts={}, drift_ms={}",
                     table_name,
                     record_id,
                     cloud_str,
-                    now_ms,
-                    cloud_hlc_val.millis as i64 - now_ms as i64
+                    drift_ms
                 );
                 return true;
             }
-            // LWW by HLC：查本地 updated_at 并尝试解析为 HLC
-            if !Self::table_has_column(conn, table_name, "updated_at") {
-                return false;
-            }
-            let table_ident = match Self::quote_identifier(table_name) {
-                Ok(s) => s,
-                Err(_) => return false,
-            };
-            let id_col = match Self::quote_identifier(id_column) {
-                Ok(s) => s,
-                Err(_) => return false,
-            };
-            let sql = format!(
-                "SELECT \"updated_at\" FROM {} WHERE {} = ?1",
-                table_ident, id_col
-            );
-            let local_hlc_opt: Option<hlc::Hlc> = conn
-                .query_row(&sql, params![record_id], |row| {
-                    if let Ok(s) = row.get::<_, String>(0) {
-                        return Ok(hlc::Hlc::parse(&s));
-                    }
-                    Ok(None)
-                })
-                .ok()
-                .flatten();
-            if let Some(local_hlc_val) = local_hlc_opt {
-                return local_hlc_val > cloud_hlc_val;
-            }
-            // 本地是非 HLC 格式，继续走常规时间戳路径（降级比较）
-        }
-
-        let cloud_ts = match parse_flexible_timestamp_public(cloud_str) {
-            Some(t) => t,
-            None => return false,
-        };
-
-        // ─── 防线 1：HLC 漂移 sanity check ───
-        // 如果云端时间戳超出本地 wall clock "未来 60 秒"，视为恶意/故障，跳过。
-        let now = chrono::Utc::now();
-        let drift_from_now = cloud_ts - now;
-        if drift_from_now.num_milliseconds() > hlc::MAX_DRIFT_MS {
-            tracing::warn!(
-                "[sync] 跳过云端变更（时间戳漂移过大）: table={}, id={}, cloud_ts={}, now={}, drift_ms={}",
-                table_name,
-                record_id,
-                cloud_ts,
-                now,
-                drift_from_now.num_milliseconds()
-            );
-            return true;
         }
 
         // ─── 防线 2：LWW ───
@@ -4431,29 +6060,32 @@ impl SyncManager {
         if !Self::table_has_column(conn, table_name, "updated_at") {
             return false;
         }
-        let local_ts_opt = Self::get_record_data(conn, table_name, record_id, id_column)
+        let local_data = match Self::get_record_data(conn, table_name, record_id, id_column)
             .ok()
             .flatten()
-            .and_then(|row| {
-                row.get("updated_at").and_then(|updated_at| {
-                    if let Some(s) = updated_at.as_str() {
-                        parse_flexible_timestamp_public(s)
-                    } else if let Some(ms) = updated_at.as_i64() {
-                        chrono::DateTime::<chrono::Utc>::from_timestamp_millis(ms)
-                    } else {
-                        None
-                    }
-                })
-            });
-
-        // 本地不存在 → 不跳过（需要 INSERT）
-        let local_ts = match local_ts_opt {
-            Some(t) => t,
+        {
+            Some(data) => data,
             None => return false,
         };
 
-        // 严格晚于才跳过；相等时允许 UPSERT（可能是幂等回放）
-        local_ts > cloud_ts
+        let local_ts = match local_data
+            .get("updated_at")
+            .and_then(Self::timestamp_value_to_lww_string)
+        {
+            Some(ts) => ts,
+            None => return false,
+        };
+
+        Self::compare_lww_timestamps(
+            &local_ts,
+            Self::lww_device_id_from_data(&local_data, "local-unknown"),
+            &local_data.to_string(),
+            cloud_str,
+            source_device_id
+                .filter(|id| !id.trim().is_empty())
+                .unwrap_or_else(|| Self::lww_device_id_from_data(cloud_data, "cloud-unknown")),
+            &cloud_data.to_string(),
+        ) == std::cmp::Ordering::Greater
     }
 
     pub(crate) fn records_semantically_equal_for_sync(
@@ -4796,19 +6428,13 @@ impl SyncManager {
                 .unwrap_or(serde_json::Value::Null);
         }
         if let Ok(v) = row.get::<_, String>(index) {
-            // 尝试解析为 JSON（处理存储的 JSON 字符串）
-            if v.starts_with('{') || v.starts_with('[') {
-                if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&v) {
-                    return parsed;
-                }
-            }
             return serde_json::Value::String(v);
         }
         if let Ok(v) = row.get::<_, Vec<u8>>(index) {
-            // BLOB 类型，转为 base64 字符串
+            // BLOB 类型必须带类型标记，避免与普通 TEXT/base64 字符串混淆。
             use base64::Engine;
             let encoded = base64::engine::general_purpose::STANDARD.encode(&v);
-            return serde_json::Value::String(encoded);
+            return serde_json::json!({ "$dsblob": encoded });
         }
         // 默认返回 null
         serde_json::Value::Null
@@ -4914,9 +6540,8 @@ impl SyncManager {
             })
             .ok();
 
-        // 计算简单的 checksum（基于表数量和记录数）
-        // 实际应用中可能需要更复杂的 checksum 算法
-        let checksum = Self::calculate_simple_checksum(conn, database_name)?;
+        // 计算稳定行流 checksum，用作跨设备漂移信号。
+        let checksum = Self::calculate_drift_checksum_v2(conn, database_name)?;
 
         Ok(DatabaseSyncState {
             schema_version,
@@ -4928,89 +6553,114 @@ impl SyncManager {
 
     /// 计算数据库 checksum（跨 Rust 版本稳定）
     ///
-    /// 使用 SHA-256 代替 DefaultHasher，确保不同编译版本产生一致的哈希值。
-    ///
-    /// [P1 Fix] 除了 COUNT 之外，还包含 MAX(updated_at)（如果表存在该列），
-    /// 避免 "删 1 + 插 1 → COUNT 不变 → checksum 不变" 的伪阴性问题。
-    fn calculate_simple_checksum(
+    /// 对 registry 中参与同步的表按表名、主键、列名稳定排序，流式 hash 每行值。
+    /// 这比旧的 COUNT+MAX(updated_at) 更适合作为漂移信号：条数不变、更新时间
+    /// 不变但内容被篡改时也能检出。
+    fn calculate_drift_checksum_v2(
         conn: &Connection,
         database_name: &str,
     ) -> Result<String, SyncError> {
-        let classifications = classification::sync_classification_registry();
+        use sha2::{Digest, Sha256};
+        let mut hasher = Sha256::new();
+        hasher.update(database_name.as_bytes());
+        hasher.update(b"\n");
 
-        let tables: Vec<String> = conn
-            .prepare(
-                "SELECT name FROM sqlite_master WHERE type='table'
-                 AND name NOT LIKE 'sqlite_%' AND name NOT LIKE '\\_\\_%' ESCAPE '\\'
-                 ORDER BY name",
-            )
-            .map_err(|e| SyncError::Database(format!("查询表列表失败: {}", e)))?
-            .query_map([], |row| row.get(0))
-            .map_err(|e| SyncError::Database(format!("获取表名失败: {}", e)))?
-            .filter_map(|r: Result<String, _>| r.ok())
-            .filter(|table_name| {
-                // Exclude FTS5 shadow tables when the FTS virtual table is in DerivedRebuild
-                if let Some(base) = table_name
-                    .strip_suffix("_content")
-                    .or_else(|| table_name.strip_suffix("_docsize"))
-                    .or_else(|| table_name.strip_suffix("_config"))
-                    .or_else(|| table_name.strip_suffix("_idx"))
-                    .or_else(|| table_name.strip_suffix("_segdir"))
-                    .or_else(|| table_name.strip_suffix("_segments"))
-                    .or_else(|| table_name.strip_suffix("_stat"))
-                    .or_else(|| table_name.strip_suffix("_data"))
-                {
-                    let is_fts_base = classifications.iter().any(|c| {
-                        c.database == database_name
-                            && c.table_name == base
-                            && c.primary_key == "(virtual)"
-                    });
-                    if is_fts_base {
-                        return false;
-                    }
-                }
-
-                // Only include tables classified as RowSync or FileSync for checksum
-                classifications.iter().any(|c| {
-                    c.database == database_name
-                        && c.table_name == table_name.as_str()
-                        && matches!(
-                            c.category,
-                            classification::SyncCategory::RowSync
-                                | classification::SyncCategory::FileSync
-                        )
-                })
-            })
-            .collect();
-
-        let mut hasher_input = format!("{}:", database_name);
+        let mut tables = classification::TableClassification::checksum_tables(database_name);
+        tables.sort_by(|a, b| a.table_name.cmp(b.table_name));
 
         for table in &tables {
-            let quoted = Self::quote_identifier(table)?;
-            let count: i64 = conn
-                .query_row(&format!("SELECT COUNT(*) FROM {}", quoted), [], |row| {
-                    row.get(0)
+            let columns = Self::table_column_names(conn, table.table_name)?;
+            if columns.is_empty() {
+                continue;
+            }
+
+            let table_ident = Self::quote_identifier(table.table_name)?;
+            let order_columns = Self::checksum_order_columns(table.primary_key, &columns);
+            let select_exprs = columns
+                .iter()
+                .map(|column| {
+                    Self::quote_identifier(column).map(|ident| format!("quote({})", ident))
                 })
-                .unwrap_or(0);
-
-            // [P1 Fix] 追加 MAX(updated_at) 以捕获记录内容变化
-            let max_updated: String = if Self::table_has_column(conn, table, "updated_at") {
-                conn.query_row(
-                    &format!("SELECT COALESCE(MAX(\"updated_at\"), '') FROM {}", quoted),
-                    [],
-                    |row| row.get(0),
-                )
-                .unwrap_or_default()
+                .collect::<Result<Vec<_>, _>>()?;
+            let order_expr = if order_columns.is_empty() {
+                "rowid".to_string()
             } else {
-                String::new()
+                order_columns
+                    .iter()
+                    .map(|column| Self::quote_identifier(column))
+                    .collect::<Result<Vec<_>, _>>()?
+                    .join(", ")
             };
+            let sql = format!(
+                "SELECT {} FROM {} ORDER BY {}",
+                select_exprs.join(", "),
+                table_ident,
+                order_expr
+            );
 
-            hasher_input.push_str(&format!("{}={},{};", table, count, max_updated));
+            hasher.update(b"table:");
+            hasher.update(table.table_name.as_bytes());
+            hasher.update(b"\ncolumns:");
+            hasher.update(columns.join(",").as_bytes());
+            hasher.update(b"\n");
+
+            let mut stmt = conn.prepare(&sql).map_err(|e| {
+                SyncError::Database(format!(
+                    "准备 checksum 查询失败 {}: {}",
+                    table.table_name, e
+                ))
+            })?;
+            let column_count = stmt.column_count();
+            let mut rows = stmt.query([]).map_err(|e| {
+                SyncError::Database(format!(
+                    "执行 checksum 查询失败 {}: {}",
+                    table.table_name, e
+                ))
+            })?;
+            while let Some(row) = rows.next().map_err(|e| {
+                SyncError::Database(format!("读取 checksum 行失败 {}: {}", table.table_name, e))
+            })? {
+                hasher.update(b"row");
+                for idx in 0..column_count {
+                    let value: String = row.get(idx).map_err(|e| {
+                        SyncError::Database(format!(
+                            "读取 checksum 列失败 {}[{}]: {}",
+                            table.table_name, idx, e
+                        ))
+                    })?;
+                    hasher.update(b"\x1f");
+                    hasher.update(value.as_bytes());
+                }
+                hasher.update(b"\n");
+            }
         }
 
-        use sha2::{Digest, Sha256};
-        let hash = Sha256::digest(hasher_input.as_bytes());
+        let hash = hasher.finalize();
         Ok(hex::encode(&hash[..16]))
+    }
+
+    fn table_column_names(conn: &Connection, table_name: &str) -> Result<Vec<String>, SyncError> {
+        let table_ident = Self::quote_identifier(table_name)?;
+        let mut stmt = conn
+            .prepare(&format!("PRAGMA table_info({})", table_ident))
+            .map_err(|e| SyncError::Database(format!("查询表列失败 {}: {}", table_name, e)))?;
+        let columns = stmt
+            .query_map([], |row| row.get::<_, String>(1))
+            .map_err(|e| SyncError::Database(format!("读取表列失败 {}: {}", table_name, e)))?
+            .filter_map(|r| r.ok())
+            .collect::<Vec<_>>();
+        Ok(columns)
+    }
+
+    fn checksum_order_columns(primary_key: &str, columns: &[String]) -> Vec<String> {
+        let mut order_columns = primary_key
+            .split(',')
+            .map(|s| s.trim())
+            .filter(|s| !s.is_empty() && !s.starts_with('('))
+            .map(ToString::to_string)
+            .collect::<Vec<_>>();
+        order_columns.retain(|column| columns.iter().any(|c| c == column));
+        order_columns
     }
 
     /// 获取变更日志统计信息
@@ -5169,6 +6819,12 @@ pub struct SyncChangeWithData {
     /// 回放时是否抑制写入 __change_log（防止下载回放形成回声同步）
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub suppress_change_log: Option<bool>,
+    /// 云端变更文件的真实来源设备 ID（v3 payload 解包时填充）
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub source_device_id: Option<String>,
+    /// 云端变更文件的 per-device source seq（v3 payload 解包时填充）
+    #[serde(skip_serializing_if = "Option::is_none", default)]
+    pub source_seq: Option<u64>,
 }
 
 impl SyncChangeWithData {
@@ -5186,6 +6842,8 @@ impl SyncChangeWithData {
             change_log_id: Some(entry.id),
             database_name: None,
             suppress_change_log: None,
+            source_device_id: None,
+            source_seq: None,
         }
     }
 
@@ -5207,6 +6865,8 @@ impl SyncChangeWithData {
             change_log_id: Some(entry.id),
             database_name: None,
             suppress_change_log: None,
+            source_device_id: None,
+            source_seq: None,
         }
     }
 }
@@ -5282,7 +6942,7 @@ pub struct ChangeLogEntry {
     pub changed_at: String,
     /// 同步版本（0 表示未同步）
     pub sync_version: i64,
-    /// 字段增量元数据（用于 counter merge 等需要 old/new 的场景）
+    /// 字段增量元数据（旧格式兼容；自动字段合并不再依赖 counter delta）
     #[serde(skip_serializing_if = "Option::is_none", default)]
     pub field_deltas_json: Option<serde_json::Value>,
 }
@@ -5331,6 +6991,12 @@ pub struct SyncChangesPayload {
     /// 格式版本号（2 = 带完整数据）
     #[serde(default = "default_format_version")]
     pub format_version: u32,
+    /// 上传设备内单调序号（v3）
+    #[serde(default)]
+    pub source_seq: u64,
+    /// 上传设备 ID（v3，保留 device_id 兼容旧字段）
+    #[serde(default)]
+    pub source_device_id: String,
 }
 
 fn default_format_version() -> u32 {
@@ -5582,6 +7248,93 @@ impl SyncManager {
         "videos",
     ];
 
+    fn file_mtime_rfc3339(path: &std::path::Path) -> String {
+        std::fs::metadata(path)
+            .and_then(|m| m.modified())
+            .ok()
+            .map(chrono::DateTime::<chrono::Utc>::from)
+            .map(|dt| dt.to_rfc3339())
+            .unwrap_or_else(|| chrono::Utc::now().to_rfc3339())
+    }
+
+    fn local_file_wins(local_updated_at: &str, cloud_updated_at: &str, content_key: &str) -> bool {
+        if cloud_updated_at.trim().is_empty() {
+            return true;
+        }
+        Self::compare_lww_timestamps(
+            local_updated_at,
+            &Self::device_component_for_lww("local-file"),
+            content_key,
+            cloud_updated_at,
+            "cloud-file",
+            content_key,
+        ) == std::cmp::Ordering::Greater
+    }
+
+    fn device_component_for_lww(fallback: &str) -> String {
+        fallback.to_string()
+    }
+
+    fn quote_sql_string(value: &str) -> String {
+        format!("'{}'", value.replace('\'', "''"))
+    }
+
+    fn create_workspace_upload_snapshot(
+        path: &std::path::Path,
+        ws_id: &str,
+    ) -> Result<std::path::PathBuf, SyncError> {
+        let snapshot = path.with_file_name(format!(
+            "{}.sync-snapshot-{}.db",
+            ws_id,
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ));
+        let _ = std::fs::remove_file(&snapshot);
+        let conn = rusqlite::Connection::open(path)
+            .map_err(|e| SyncError::Database(format!("打开工作区数据库失败 {:?}: {}", path, e)))?;
+        let _ = conn.execute_batch("PRAGMA busy_timeout = 5000;");
+        let sql = format!(
+            "VACUUM INTO {};",
+            Self::quote_sql_string(&snapshot.to_string_lossy())
+        );
+        conn.execute_batch(&sql).map_err(|e| {
+            let _ = std::fs::remove_file(&snapshot);
+            SyncError::Database(format!("创建工作区数据库一致快照失败 {:?}: {}", path, e))
+        })?;
+        Ok(snapshot)
+    }
+
+    fn save_conflict_copy(path: &std::path::Path, device_id: &str) -> Result<(), SyncError> {
+        if !path.exists() {
+            return Ok(());
+        }
+        let ts = chrono::Utc::now().format("%Y%m%d%H%M%S%3f");
+        let file_name = path.file_name().and_then(|s| s.to_str()).unwrap_or("file");
+        let conflict_name = format!("{}.conflict-{}-{}", file_name, device_id, ts);
+        let dest = path.with_file_name(conflict_name);
+        std::fs::copy(path, &dest)
+            .map(|_| ())
+            .map_err(|e| SyncError::Database(format!("保存冲突副本失败 {:?}: {}", dest, e)))
+    }
+
+    fn verify_sqlite_integrity(path: &std::path::Path) -> Result<(), SyncError> {
+        let conn = rusqlite::Connection::open(path).map_err(|e| {
+            SyncError::Database(format!("打开下载的 SQLite 文件失败 {:?}: {}", path, e))
+        })?;
+        let result: String = conn
+            .query_row("PRAGMA integrity_check", [], |row| row.get(0))
+            .map_err(|e| {
+                SyncError::Database(format!("执行 integrity_check 失败 {:?}: {}", path, e))
+            })?;
+        if result.eq_ignore_ascii_case("ok") {
+            Ok(())
+        } else {
+            Err(SyncError::Database(format!(
+                "下载的 SQLite 文件完整性检查失败 {:?}: {}",
+                path, result
+            )))
+        }
+    }
+
     /// 同步工作区数据库（ws_*.db）与云端
     ///
     /// 策略：
@@ -5592,14 +7345,77 @@ impl SyncManager {
         &self,
         storage: &dyn CloudStorage,
         active_dir: &std::path::Path,
+        direction: SyncDirection,
     ) -> Result<(), SyncError> {
         let workspaces_dir = active_dir.join("workspaces");
 
-        // 1. 下载云端清单
-        let cloud_manifest = self.download_workspaces_manifest(storage).await?;
+        // 1. 下载云端清单，并先消费 workspace tombstone，防止已删工作区复活。
+        let mut cloud_manifest = self.download_workspaces_manifest(storage).await?;
+        let instance_id = self.ensure_remote_instance_id(storage).await?;
+        let state_store = SyncStateStore::open_default()?;
+        let (workspace_tombstones, workspace_tombstone_advances) =
+            tombstone::download_workspace_tombstones_after(storage, self, |source| {
+                state_store.get_tombstone_watermark(&instance_id, source, "workspaces")
+            })
+            .await?;
+        if !workspace_tombstones.entries.is_empty() {
+            let mut manifest_changed = false;
+            for (ws_id, entry) in &workspace_tombstones.entries {
+                let local_db = workspaces_dir.join(format!("{}.db", ws_id));
+                if tombstone::path_modified_after(&local_db, &entry.deleted_at) {
+                    tracing::info!(
+                        "[sync] 跳过过期 workspace tombstone，本地数据库更新: {} deleted_at={}",
+                        ws_id,
+                        entry.deleted_at
+                    );
+                    continue;
+                }
+                if direction != SyncDirection::Download {
+                    let key = format!("{}/{}.db", Self::WORKSPACES_CLOUD_PREFIX, ws_id);
+                    if let Err(e) = storage.delete(&key).await {
+                        tracing::warn!("[sync] 删除云端工作区数据库失败（忽略）: {}: {}", key, e);
+                    }
+                }
+                if local_db.exists() {
+                    let _ = std::fs::remove_file(&local_db);
+                }
+                let local_wal = workspaces_dir.join(format!("{}.db-wal", ws_id));
+                if local_wal.exists() {
+                    let _ = std::fs::remove_file(&local_wal);
+                }
+                let local_shm = workspaces_dir.join(format!("{}.db-shm", ws_id));
+                if local_shm.exists() {
+                    let _ = std::fs::remove_file(&local_shm);
+                }
+                if direction != SyncDirection::Download
+                    && cloud_manifest.entries.remove(ws_id).is_some()
+                {
+                    manifest_changed = true;
+                }
+            }
+            if direction != SyncDirection::Download && manifest_changed {
+                cloud_manifest.updated_at = chrono::Utc::now().to_rfc3339();
+                let json = serde_json::to_vec(&cloud_manifest)
+                    .map_err(|e| SyncError::Database(format!("序列化工作区清单失败: {}", e)))?;
+                let payload = self.encode_payload(&json)?;
+                storage
+                    .put(Self::WORKSPACES_MANIFEST_KEY, &payload)
+                    .await
+                    .map_err(|e| SyncError::Network(format!("上传工作区清单失败: {}", e)))?;
+            }
+        }
+        for advance in workspace_tombstone_advances {
+            state_store.set_tombstone_watermark(
+                &instance_id,
+                &advance.source_device_id,
+                "workspaces",
+                advance.last_applied_offset,
+            )?;
+        }
 
         // 2. 扫描本地 ws_*.db
-        let mut local_entries: HashMap<String, (std::path::PathBuf, String, u64)> = HashMap::new();
+        let mut local_entries: HashMap<String, (std::path::PathBuf, String, u64, String)> =
+            HashMap::new();
         if workspaces_dir.exists() {
             for entry in std::fs::read_dir(&workspaces_dir)
                 .map_err(|e| SyncError::Database(format!("读取工作区目录失败: {}", e)))?
@@ -5627,62 +7443,119 @@ impl SyncManager {
                     SyncError::Database(format!("计算工作区数据库校验和失败 {:?}: {}", path, e))
                 })?;
                 let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-                local_entries.insert(ws_id, (path, sha256, size));
+                let updated_at = Self::file_mtime_rfc3339(&path);
+                local_entries.insert(ws_id, (path, sha256, size, updated_at));
             }
         }
 
         // 3. 上传本地新增或已修改的 ws_*.db
         let mut new_manifest = cloud_manifest.clone();
-        for (ws_id, (path, sha256, size)) in &local_entries {
-            let should_upload = match cloud_manifest.entries.get(ws_id) {
-                None => true,
-                Some(ce) => ce.sha256 != *sha256,
-            };
-            if should_upload {
-                let key = format!("{}/{}.db", Self::WORKSPACES_CLOUD_PREFIX, ws_id);
-                match storage.put_file(&key, path, None).await {
-                    Ok(_) => {
-                        new_manifest.entries.insert(
-                            ws_id.clone(),
-                            WorkspaceEntry {
-                                sha256: sha256.clone(),
-                                size: *size,
-                                updated_at: chrono::Utc::now().to_rfc3339(),
-                            },
-                        );
-                        tracing::info!("[sync] 工作区数据库已上传: {}", ws_id);
+        let mut failures: Vec<String> = Vec::new();
+        if direction != SyncDirection::Download {
+            for (ws_id, (path, sha256, size, local_updated_at)) in &local_entries {
+                let should_upload = match cloud_manifest.entries.get(ws_id) {
+                    None => true,
+                    Some(ce) => {
+                        ce.sha256 != *sha256
+                            && Self::local_file_wins(local_updated_at, &ce.updated_at, ws_id)
                     }
-                    Err(e) => {
-                        tracing::warn!("[sync] 工作区数据库上传失败（跳过）: {}: {}", ws_id, e);
+                };
+                if should_upload {
+                    let key = format!("{}/{}.db", Self::WORKSPACES_CLOUD_PREFIX, ws_id);
+                    let snapshot = match Self::create_workspace_upload_snapshot(path, ws_id) {
+                        Ok(snapshot) => snapshot,
+                        Err(e) => {
+                            tracing::warn!("[sync] 工作区数据库快照失败: {}: {}", ws_id, e);
+                            failures.push(format!("{}: {}", ws_id, e));
+                            continue;
+                        }
+                    };
+                    let snapshot_hash = match crate::backup_common::calculate_file_hash(&snapshot) {
+                        Ok(hash) => hash,
+                        Err(e) => {
+                            let _ = std::fs::remove_file(&snapshot);
+                            failures.push(format!("{}: {}", ws_id, e));
+                            continue;
+                        }
+                    };
+                    let snapshot_size = std::fs::metadata(&snapshot)
+                        .map(|m| m.len())
+                        .unwrap_or(*size);
+                    match storage.put_file(&key, &snapshot, None).await {
+                        Ok(_) => {
+                            new_manifest.entries.insert(
+                                ws_id.clone(),
+                                WorkspaceEntry {
+                                    sha256: snapshot_hash,
+                                    size: snapshot_size,
+                                    updated_at: local_updated_at.clone(),
+                                },
+                            );
+                            tracing::info!("[sync] 工作区数据库已上传: {}", ws_id);
+                        }
+                        Err(e) => {
+                            tracing::warn!("[sync] 工作区数据库上传失败（跳过）: {}: {}", ws_id, e);
+                            failures.push(format!("{}: {}", ws_id, e));
+                        }
                     }
+                    let _ = std::fs::remove_file(&snapshot);
                 }
             }
         }
 
-        // 4. 下载云端有但本地没有的 ws_*.db
-        if !workspaces_dir.exists() {
-            let _ = std::fs::create_dir_all(&workspaces_dir);
-        }
-        for (ws_id, cloud_entry) in &cloud_manifest.entries {
-            if !local_entries.contains_key(ws_id) {
-                let dest = workspaces_dir.join(format!("{}.db", ws_id));
-                let key = format!("{}/{}.db", Self::WORKSPACES_CLOUD_PREFIX, ws_id);
-                match storage
-                    .get_file(&key, &dest, Some(&cloud_entry.sha256), None)
-                    .await
-                {
-                    Ok(_) => {
-                        tracing::info!("[sync] 工作区数据库已下载: {}", ws_id);
+        // 4. 下载云端较新或本地缺失的 ws_*.db
+        if direction != SyncDirection::Upload {
+            if !workspaces_dir.exists() {
+                let _ = std::fs::create_dir_all(&workspaces_dir);
+            }
+            for (ws_id, cloud_entry) in &cloud_manifest.entries {
+                let should_download = match local_entries.get(ws_id) {
+                    None => true,
+                    Some((_path, sha256, _size, local_updated_at)) => {
+                        *sha256 != cloud_entry.sha256
+                            && !Self::local_file_wins(
+                                local_updated_at,
+                                &cloud_entry.updated_at,
+                                ws_id,
+                            )
                     }
-                    Err(e) => {
-                        tracing::warn!("[sync] 工作区数据库下载失败（跳过）: {}: {}", ws_id, e);
+                };
+                if should_download {
+                    let dest = workspaces_dir.join(format!("{}.db", ws_id));
+                    if dest.exists() {
+                        if let Err(e) = Self::save_conflict_copy(&dest, &self.device_id) {
+                            tracing::warn!("[sync] 保存工作区数据库冲突副本失败: {}: {}", ws_id, e);
+                        }
+                    }
+                    let key = format!("{}/{}.db", Self::WORKSPACES_CLOUD_PREFIX, ws_id);
+                    match storage
+                        .get_file(&key, &dest, Some(&cloud_entry.sha256), None)
+                        .await
+                    {
+                        Ok(_) => {
+                            if let Err(e) = Self::verify_sqlite_integrity(&dest) {
+                                let _ = std::fs::remove_file(&dest);
+                                tracing::warn!(
+                                    "[sync] 工作区数据库完整性检查失败（已删除）: {}: {}",
+                                    ws_id,
+                                    e
+                                );
+                                failures.push(format!("{}: {}", ws_id, e));
+                                continue;
+                            }
+                            tracing::info!("[sync] 工作区数据库已下载: {}", ws_id);
+                        }
+                        Err(e) => {
+                            tracing::warn!("[sync] 工作区数据库下载失败（跳过）: {}: {}", ws_id, e);
+                            failures.push(format!("{}: {}", ws_id, e));
+                        }
                     }
                 }
             }
         }
 
         // 5. 仅在有上传时更新云端清单
-        if new_manifest.entries != cloud_manifest.entries {
+        if direction != SyncDirection::Download && new_manifest.entries != cloud_manifest.entries {
             new_manifest.updated_at = chrono::Utc::now().to_rfc3339();
             let json = serde_json::to_vec(&new_manifest)
                 .map_err(|e| SyncError::Database(format!("序列化工作区清单失败: {}", e)))?;
@@ -5692,6 +7565,13 @@ impl SyncManager {
                 .put(Self::WORKSPACES_MANIFEST_KEY, &payload)
                 .await
                 .map_err(|e| SyncError::Network(format!("上传工作区清单失败: {}", e)))?;
+        }
+
+        if !failures.is_empty() {
+            return Err(SyncError::Network(format!(
+                "工作区数据库同步部分失败: {}",
+                failures.join("; ")
+            )));
         }
 
         Ok(())
@@ -5730,6 +7610,7 @@ impl SyncManager {
         &self,
         storage: &dyn CloudStorage,
         blobs_dir: &std::path::Path,
+        direction: SyncDirection,
     ) -> Result<BlobSyncOutcome, SyncError> {
         if !blobs_dir.exists() {
             return Ok(BlobSyncOutcome::default());
@@ -5744,119 +7625,125 @@ impl SyncManager {
         let mut uploaded = 0usize;
         let mut upload_failures: Vec<String> = Vec::new();
 
-        for (hash, path) in &local_blobs {
-            if cloud_manifest.entries.contains_key(hash.as_str()) {
-                continue;
-            }
-            let relative = path
-                .strip_prefix(blobs_dir)
-                .unwrap_or(path)
-                .to_string_lossy()
-                .replace('\\', "/");
-            let key = format!("{}/{}", Self::BLOBS_CLOUD_PREFIX, relative);
-            let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+        if direction != SyncDirection::Download {
+            for (hash, path) in &local_blobs {
+                if cloud_manifest.entries.contains_key(hash.as_str()) {
+                    continue;
+                }
+                let relative = path
+                    .strip_prefix(blobs_dir)
+                    .unwrap_or(path)
+                    .to_string_lossy()
+                    .replace('\\', "/");
+                let key = format!("{}/{}", Self::BLOBS_CLOUD_PREFIX, relative);
+                let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
 
-            let mut last_err = String::new();
-            let mut ok = false;
-            for attempt in 0..Self::BLOB_MAX_RETRIES {
-                match storage.put_file(&key, path, None).await {
-                    Ok(_) => {
-                        new_manifest.entries.insert(
-                            hash.clone(),
-                            BlobEntry {
-                                relative_path: relative.clone(),
-                                size,
-                            },
-                        );
-                        uploaded += 1;
-                        ok = true;
-                        break;
-                    }
-                    Err(e) => {
-                        last_err = e.to_string();
-                        if attempt + 1 < Self::BLOB_MAX_RETRIES {
-                            let delay = Self::BLOB_RETRY_BASE_MS * (1u64 << attempt);
-                            tracing::warn!(
-                                "[sync] blob 上传重试 {}/{}: {}: {}",
-                                attempt + 1,
-                                Self::BLOB_MAX_RETRIES,
-                                hash,
-                                e
+                let mut last_err = String::new();
+                let mut ok = false;
+                for attempt in 0..Self::BLOB_MAX_RETRIES {
+                    match storage.put_file(&key, path, None).await {
+                        Ok(_) => {
+                            new_manifest.entries.insert(
+                                hash.clone(),
+                                BlobEntry {
+                                    relative_path: relative.clone(),
+                                    size,
+                                },
                             );
-                            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                            uploaded += 1;
+                            ok = true;
+                            break;
+                        }
+                        Err(e) => {
+                            last_err = e.to_string();
+                            if attempt + 1 < Self::BLOB_MAX_RETRIES {
+                                let delay = Self::BLOB_RETRY_BASE_MS * (1u64 << attempt);
+                                tracing::warn!(
+                                    "[sync] blob 上传重试 {}/{}: {}: {}",
+                                    attempt + 1,
+                                    Self::BLOB_MAX_RETRIES,
+                                    hash,
+                                    e
+                                );
+                                tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
+                            }
                         }
                     }
                 }
-            }
-            if !ok {
-                tracing::error!("[sync] blob 上传最终失败: {}: {}", hash, last_err);
-                upload_failures.push(hash.clone());
+                if !ok {
+                    tracing::error!("[sync] blob 上传最终失败: {}: {}", hash, last_err);
+                    upload_failures.push(hash.clone());
+                }
             }
         }
 
         let mut downloaded_count = 0usize;
         let mut download_failures: Vec<String> = Vec::new();
 
-        for (hash, cloud_entry) in &cloud_manifest.entries {
-            if local_blobs.contains_key(hash.as_str()) {
-                continue;
-            }
-            let dest = blobs_dir.join(&cloud_entry.relative_path);
-            if let Some(parent) = dest.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            let key = format!("{}/{}", Self::BLOBS_CLOUD_PREFIX, cloud_entry.relative_path);
+        if direction != SyncDirection::Upload {
+            for (hash, cloud_entry) in &cloud_manifest.entries {
+                if local_blobs.contains_key(hash.as_str()) {
+                    continue;
+                }
+                let dest = blobs_dir.join(&cloud_entry.relative_path);
+                if let Some(parent) = dest.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                let key = format!("{}/{}", Self::BLOBS_CLOUD_PREFIX, cloud_entry.relative_path);
 
-            let mut last_err = String::new();
-            let mut ok = false;
-            for attempt in 0..Self::BLOB_MAX_RETRIES {
-                match storage.get_file(&key, &dest, Some(hash), None).await {
-                    Ok(_) => {
-                        let actual_size = std::fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
-                        if cloud_entry.size > 0 && actual_size != cloud_entry.size {
-                            last_err = format!(
-                                "blob 大小不匹配: 期望 {} 字节, 实际 {} 字节",
-                                cloud_entry.size, actual_size
-                            );
+                let mut last_err = String::new();
+                let mut ok = false;
+                for attempt in 0..Self::BLOB_MAX_RETRIES {
+                    match storage.get_file(&key, &dest, Some(hash), None).await {
+                        Ok(_) => {
+                            let actual_size =
+                                std::fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
+                            if cloud_entry.size > 0 && actual_size != cloud_entry.size {
+                                last_err = format!(
+                                    "blob 大小不匹配: 期望 {} 字节, 实际 {} 字节",
+                                    cloud_entry.size, actual_size
+                                );
+                                let _ = std::fs::remove_file(&dest);
+                                if attempt + 1 < Self::BLOB_MAX_RETRIES {
+                                    let delay = Self::BLOB_RETRY_BASE_MS * (1u64 << attempt);
+                                    tracing::warn!(
+                                        "[sync] blob 大小校验失败，重试 {}/{}: {}: {}",
+                                        attempt + 1,
+                                        Self::BLOB_MAX_RETRIES,
+                                        hash,
+                                        last_err
+                                    );
+                                    tokio::time::sleep(std::time::Duration::from_millis(delay))
+                                        .await;
+                                }
+                                continue;
+                            }
+                            downloaded_count += 1;
+                            ok = true;
+                            break;
+                        }
+                        Err(e) => {
+                            last_err = e.to_string();
+                            // 清理可能写到一半的文件
                             let _ = std::fs::remove_file(&dest);
                             if attempt + 1 < Self::BLOB_MAX_RETRIES {
                                 let delay = Self::BLOB_RETRY_BASE_MS * (1u64 << attempt);
                                 tracing::warn!(
-                                    "[sync] blob 大小校验失败，重试 {}/{}: {}: {}",
+                                    "[sync] blob 下载重试 {}/{}: {}: {}",
                                     attempt + 1,
                                     Self::BLOB_MAX_RETRIES,
                                     hash,
-                                    last_err
+                                    e
                                 );
                                 tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                             }
-                            continue;
-                        }
-                        downloaded_count += 1;
-                        ok = true;
-                        break;
-                    }
-                    Err(e) => {
-                        last_err = e.to_string();
-                        // 清理可能写到一半的文件
-                        let _ = std::fs::remove_file(&dest);
-                        if attempt + 1 < Self::BLOB_MAX_RETRIES {
-                            let delay = Self::BLOB_RETRY_BASE_MS * (1u64 << attempt);
-                            tracing::warn!(
-                                "[sync] blob 下载重试 {}/{}: {}: {}",
-                                attempt + 1,
-                                Self::BLOB_MAX_RETRIES,
-                                hash,
-                                e
-                            );
-                            tokio::time::sleep(std::time::Duration::from_millis(delay)).await;
                         }
                     }
                 }
-            }
-            if !ok {
-                tracing::error!("[sync] blob 下载最终失败: {}: {}", hash, last_err);
-                download_failures.push(hash.clone());
+                if !ok {
+                    tracing::error!("[sync] blob 下载最终失败: {}: {}", hash, last_err);
+                    download_failures.push(hash.clone());
+                }
             }
         }
 
@@ -5914,10 +7801,12 @@ impl SyncManager {
         storage: &dyn CloudStorage,
         active_dir: &std::path::Path,
         app_data_dir: &std::path::Path,
+        direction: SyncDirection,
     ) -> Result<AssetSyncOutcome, SyncError> {
         let cloud_manifest = self.download_assets_manifest(storage).await?;
 
-        let mut local_files: HashMap<String, (std::path::PathBuf, String, u64)> = HashMap::new();
+        let mut local_files: HashMap<String, (std::path::PathBuf, String, u64, String)> =
+            HashMap::new();
         for dir_name in Self::ACTIVE_ASSET_DIRS {
             let dir = active_dir.join(dir_name);
             if !dir.exists() {
@@ -5941,61 +7830,82 @@ impl SyncManager {
         let mut uploaded = 0usize;
         let mut upload_failures = Vec::new();
 
-        for (key, (path, sha256, size)) in &local_files {
-            let should_upload = match cloud_manifest.entries.get(key) {
-                None => true,
-                Some(entry) => entry.sha256 != *sha256 || entry.size != *size,
-            };
-            if !should_upload {
-                continue;
-            }
-            let remote_key = format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key);
-            match storage.put_file(&remote_key, path, None).await {
-                Ok(_) => {
-                    new_manifest.entries.insert(
-                        key.clone(),
-                        AssetFileEntry {
-                            sha256: sha256.clone(),
-                            size: *size,
-                        },
-                    );
-                    uploaded += 1;
+        if direction != SyncDirection::Download {
+            for (key, (path, sha256, size, local_updated_at)) in &local_files {
+                let should_upload = match cloud_manifest.entries.get(key) {
+                    None => true,
+                    Some(entry) => {
+                        (entry.sha256 != *sha256 || entry.size != *size)
+                            && Self::local_file_wins(local_updated_at, &entry.updated_at, key)
+                    }
+                };
+                if !should_upload {
+                    continue;
                 }
-                Err(e) => {
-                    tracing::warn!("[sync] 资产上传失败（跳过）: {}: {}", key, e);
-                    upload_failures.push(key.clone());
+                let remote_key = format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key);
+                match storage.put_file(&remote_key, path, None).await {
+                    Ok(_) => {
+                        new_manifest.entries.insert(
+                            key.clone(),
+                            AssetFileEntry {
+                                sha256: sha256.clone(),
+                                size: *size,
+                                updated_at: local_updated_at.clone(),
+                            },
+                        );
+                        uploaded += 1;
+                    }
+                    Err(e) => {
+                        tracing::warn!("[sync] 资产上传失败（跳过）: {}: {}", key, e);
+                        upload_failures.push(key.clone());
+                    }
                 }
             }
         }
 
         let mut downloaded = 0usize;
         let mut download_failures = Vec::new();
-        for (key, entry) in &cloud_manifest.entries {
-            if local_files.contains_key(key) {
-                continue;
-            }
-            let Some(dest) = Self::asset_local_path_from_key(active_dir, app_data_dir, key) else {
-                tracing::warn!("[sync] 非法资产键，跳过下载: {}", key);
-                continue;
-            };
-            if let Some(parent) = dest.parent() {
-                let _ = std::fs::create_dir_all(parent);
-            }
-            let remote_key = format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key);
-            match storage
-                .get_file(&remote_key, &dest, Some(&entry.sha256), None)
-                .await
-            {
-                Ok(_) => downloaded += 1,
-                Err(e) => {
-                    tracing::warn!("[sync] 资产下载失败（跳过）: {}: {}", key, e);
-                    let _ = std::fs::remove_file(&dest);
-                    download_failures.push(key.clone());
+        if direction != SyncDirection::Upload {
+            for (key, entry) in &cloud_manifest.entries {
+                let should_download = match local_files.get(key) {
+                    None => true,
+                    Some((_path, sha256, size, local_updated_at)) => {
+                        (*sha256 != entry.sha256 || *size != entry.size)
+                            && !Self::local_file_wins(local_updated_at, &entry.updated_at, key)
+                    }
+                };
+                if !should_download {
+                    continue;
+                }
+                let Some(dest) = Self::asset_local_path_from_key(active_dir, app_data_dir, key)
+                else {
+                    tracing::warn!("[sync] 非法资产键，跳过下载: {}", key);
+                    continue;
+                };
+                if let Some(parent) = dest.parent() {
+                    let _ = std::fs::create_dir_all(parent);
+                }
+                if dest.exists() {
+                    if let Err(e) = Self::save_conflict_copy(&dest, &self.device_id) {
+                        tracing::warn!("[sync] 保存资产冲突副本失败: {}: {}", key, e);
+                    }
+                }
+                let remote_key = format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key);
+                match storage
+                    .get_file(&remote_key, &dest, Some(&entry.sha256), None)
+                    .await
+                {
+                    Ok(_) => downloaded += 1,
+                    Err(e) => {
+                        tracing::warn!("[sync] 资产下载失败（跳过）: {}: {}", key, e);
+                        let _ = std::fs::remove_file(&dest);
+                        download_failures.push(key.clone());
+                    }
                 }
             }
         }
 
-        if new_manifest.entries != cloud_manifest.entries {
+        if direction != SyncDirection::Download && new_manifest.entries != cloud_manifest.entries {
             new_manifest.updated_at = chrono::Utc::now().to_rfc3339();
             let json = serde_json::to_vec(&new_manifest)
                 .map_err(|e| SyncError::Database(format!("序列化资产清单失败: {}", e)))?;
@@ -6049,7 +7959,7 @@ impl SyncManager {
         top_dir: &str,
         base_dir: &std::path::Path,
         current_dir: &std::path::Path,
-        out: &mut HashMap<String, (std::path::PathBuf, String, u64)>,
+        out: &mut HashMap<String, (std::path::PathBuf, String, u64, String)>,
     ) -> Result<(), SyncError> {
         for entry in std::fs::read_dir(current_dir)
             .map_err(|e| SyncError::Database(format!("读取资产目录失败: {}", e)))?
@@ -6075,7 +7985,8 @@ impl SyncManager {
                 SyncError::Database(format!("计算资产文件校验和失败 {:?}: {}", path, e))
             })?;
             let size = std::fs::metadata(&path).map(|m| m.len()).unwrap_or(0);
-            out.insert(key, (path, sha256, size));
+            let updated_at = Self::file_mtime_rfc3339(&path);
+            out.insert(key, (path, sha256, size, updated_at));
         }
         Ok(())
     }
@@ -6143,7 +8054,8 @@ impl SyncManager {
         size: Option<u64>,
     ) -> Result<(), SyncError> {
         // [P0-2] tombstone 清单也走 E2EE（self 实现了 PayloadCodec）
-        let mut manifest = tombstone::download_blob_tombstones(storage, self).await?;
+        let mut manifest =
+            tombstone::download_blob_tombstones_for_device(storage, self, &self.device_id).await?;
         manifest.entries.insert(
             hash.to_string(),
             tombstone::BlobTombstoneEntry {
@@ -6153,7 +8065,41 @@ impl SyncManager {
                 relative_path,
             },
         );
-        tombstone::upload_blob_tombstones(storage, self, manifest).await
+        tombstone::prune_tombstones(
+            &mut manifest.entries,
+            tombstone::DEFAULT_TOMBSTONE_RETENTION_DAYS,
+            |entry| &entry.deleted_at,
+        );
+        tombstone::upload_blob_tombstones(storage, self, &self.device_id, manifest).await
+    }
+
+    pub async fn mark_blob_deletions(
+        &self,
+        storage: &dyn CloudStorage,
+        entries: Vec<(String, Option<String>, Option<u64>, String)>,
+    ) -> Result<(), SyncError> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+        let mut manifest =
+            tombstone::download_blob_tombstones_for_device(storage, self, &self.device_id).await?;
+        for (hash, relative_path, size, deleted_at) in entries {
+            manifest.entries.insert(
+                hash,
+                tombstone::BlobTombstoneEntry {
+                    deleted_at,
+                    device_id: self.device_id.clone(),
+                    size,
+                    relative_path,
+                },
+            );
+        }
+        tombstone::prune_tombstones(
+            &mut manifest.entries,
+            tombstone::DEFAULT_TOMBSTONE_RETENTION_DAYS,
+            |entry| &entry.deleted_at,
+        );
+        tombstone::upload_blob_tombstones(storage, self, &self.device_id, manifest).await
     }
 
     /// 标记资产已删除
@@ -6163,7 +8109,8 @@ impl SyncManager {
         key: &str,
         size: Option<u64>,
     ) -> Result<(), SyncError> {
-        let mut manifest = tombstone::download_asset_tombstones(storage, self).await?;
+        let mut manifest =
+            tombstone::download_asset_tombstones_for_device(storage, self, &self.device_id).await?;
         manifest.entries.insert(
             key.to_string(),
             tombstone::AssetTombstoneEntry {
@@ -6172,7 +8119,101 @@ impl SyncManager {
                 size,
             },
         );
-        tombstone::upload_asset_tombstones(storage, self, manifest).await
+        tombstone::prune_tombstones(
+            &mut manifest.entries,
+            tombstone::DEFAULT_TOMBSTONE_RETENTION_DAYS,
+            |entry| &entry.deleted_at,
+        );
+        tombstone::upload_asset_tombstones(storage, self, &self.device_id, manifest).await
+    }
+
+    pub async fn mark_asset_deletions(
+        &self,
+        storage: &dyn CloudStorage,
+        entries: Vec<(String, Option<u64>, String)>,
+    ) -> Result<(), SyncError> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+        let mut manifest =
+            tombstone::download_asset_tombstones_for_device(storage, self, &self.device_id).await?;
+        for (key, size, deleted_at) in entries {
+            manifest.entries.insert(
+                key,
+                tombstone::AssetTombstoneEntry {
+                    deleted_at,
+                    device_id: self.device_id.clone(),
+                    size,
+                },
+            );
+        }
+        tombstone::prune_tombstones(
+            &mut manifest.entries,
+            tombstone::DEFAULT_TOMBSTONE_RETENTION_DAYS,
+            |entry| &entry.deleted_at,
+        );
+        tombstone::upload_asset_tombstones(storage, self, &self.device_id, manifest).await
+    }
+
+    pub async fn mark_workspace_deleted(
+        &self,
+        storage: &dyn CloudStorage,
+        workspace_id: &str,
+    ) -> Result<(), SyncError> {
+        let mut manifest =
+            tombstone::download_workspace_tombstones_for_device(storage, self, &self.device_id)
+                .await?;
+        let manifest_id = Self::workspace_manifest_id(workspace_id);
+        manifest.entries.insert(
+            manifest_id,
+            tombstone::WorkspaceTombstoneEntry {
+                deleted_at: chrono::Utc::now().to_rfc3339(),
+                device_id: self.device_id.clone(),
+            },
+        );
+        tombstone::prune_tombstones(
+            &mut manifest.entries,
+            tombstone::DEFAULT_TOMBSTONE_RETENTION_DAYS,
+            |entry| &entry.deleted_at,
+        );
+        tombstone::upload_workspace_tombstones(storage, self, &self.device_id, manifest).await
+    }
+
+    pub async fn mark_workspace_deletions(
+        &self,
+        storage: &dyn CloudStorage,
+        entries: Vec<(String, String)>,
+    ) -> Result<(), SyncError> {
+        if entries.is_empty() {
+            return Ok(());
+        }
+        let mut manifest =
+            tombstone::download_workspace_tombstones_for_device(storage, self, &self.device_id)
+                .await?;
+        for (workspace_id, deleted_at) in entries {
+            let manifest_id = Self::workspace_manifest_id(&workspace_id);
+            manifest.entries.insert(
+                manifest_id,
+                tombstone::WorkspaceTombstoneEntry {
+                    deleted_at,
+                    device_id: self.device_id.clone(),
+                },
+            );
+        }
+        tombstone::prune_tombstones(
+            &mut manifest.entries,
+            tombstone::DEFAULT_TOMBSTONE_RETENTION_DAYS,
+            |entry| &entry.deleted_at,
+        );
+        tombstone::upload_workspace_tombstones(storage, self, &self.device_id, manifest).await
+    }
+
+    fn workspace_manifest_id(workspace_id: &str) -> String {
+        if workspace_id.starts_with("ws_") {
+            workspace_id.to_string()
+        } else {
+            format!("ws_{}", workspace_id)
+        }
     }
 
     /// 同步 VFS blobs + 消费 tombstone（修复 #6）
@@ -6183,32 +8224,43 @@ impl SyncManager {
         &self,
         storage: &dyn CloudStorage,
         blobs_dir: &std::path::Path,
+        direction: SyncDirection,
     ) -> Result<BlobSyncOutcome, SyncError> {
         // 1. 拉取 tombstone 并执行删除传播
-        let tombstones = tombstone::download_blob_tombstones(storage, self).await?;
+        let instance_id = self.ensure_remote_instance_id(storage).await?;
+        let state_store = SyncStateStore::open_default()?;
+        let (tombstones, tombstone_advances) =
+            tombstone::download_blob_tombstones_after(storage, self, |source| {
+                state_store.get_tombstone_watermark(&instance_id, source, "blobs")
+            })
+            .await?;
         if !tombstones.entries.is_empty() {
-            let _ = tombstone::apply_blob_tombstones(
+            let applied_tombstone_hashes = tombstone::apply_blob_tombstones(
                 storage,
                 &tombstones,
                 blobs_dir,
                 Self::BLOBS_CLOUD_PREFIX,
+                direction != SyncDirection::Download,
             )
             .await?;
 
             // 同时从 blob manifest 里摘掉 tombstoned 条目
             // [P0-2] 读写都需要透明 encode/decode
-            if let Ok(Some(bytes)) = storage.get(Self::BLOBS_MANIFEST_KEY).await {
-                if let Ok(decoded) = self.decode_payload(&bytes) {
-                    if let Ok(mut mf) = serde_json::from_slice::<BlobsManifest>(&decoded) {
-                        let before = mf.entries.len();
-                        for hash in tombstones.entries.keys() {
-                            mf.entries.remove(hash);
-                        }
-                        if mf.entries.len() != before {
-                            mf.updated_at = chrono::Utc::now().to_rfc3339();
-                            if let Ok(json) = serde_json::to_vec(&mf) {
-                                if let Ok(payload) = self.encode_payload(&json) {
-                                    let _ = storage.put(Self::BLOBS_MANIFEST_KEY, &payload).await;
+            if direction != SyncDirection::Download {
+                if let Ok(Some(bytes)) = storage.get(Self::BLOBS_MANIFEST_KEY).await {
+                    if let Ok(decoded) = self.decode_payload(&bytes) {
+                        if let Ok(mut mf) = serde_json::from_slice::<BlobsManifest>(&decoded) {
+                            let before = mf.entries.len();
+                            for hash in &applied_tombstone_hashes {
+                                mf.entries.remove(hash);
+                            }
+                            if mf.entries.len() != before {
+                                mf.updated_at = chrono::Utc::now().to_rfc3339();
+                                if let Ok(json) = serde_json::to_vec(&mf) {
+                                    if let Ok(payload) = self.encode_payload(&json) {
+                                        let _ =
+                                            storage.put(Self::BLOBS_MANIFEST_KEY, &payload).await;
+                                    }
                                 }
                             }
                         }
@@ -6216,9 +8268,17 @@ impl SyncManager {
                 }
             }
         }
+        for advance in tombstone_advances {
+            state_store.set_tombstone_watermark(
+                &instance_id,
+                &advance.source_device_id,
+                "blobs",
+                advance.last_applied_offset,
+            )?;
+        }
 
         // 2. 走标准上传/下载流程（现在云端/本地里已无 tombstoned 条目）
-        self.sync_vfs_blobs(storage, blobs_dir).await
+        self.sync_vfs_blobs(storage, blobs_dir, direction).await
     }
 
     /// 同步资产目录 + 消费 asset tombstone
@@ -6230,39 +8290,64 @@ impl SyncManager {
         storage: &dyn CloudStorage,
         active_dir: &std::path::Path,
         app_data_dir: &std::path::Path,
+        direction: SyncDirection,
     ) -> Result<AssetSyncOutcome, SyncError> {
         // 1. 拉取 asset tombstone 并删除本地/云端对应文件
-        let tombstones = tombstone::download_asset_tombstones(storage, self).await?;
+        let instance_id = self.ensure_remote_instance_id(storage).await?;
+        let state_store = SyncStateStore::open_default()?;
+        let (tombstones, tombstone_advances) =
+            tombstone::download_asset_tombstones_after(storage, self, |source| {
+                state_store.get_tombstone_watermark(&instance_id, source, "assets")
+            })
+            .await?;
         if !tombstones.entries.is_empty() {
-            for (key, _entry) in &tombstones.entries {
+            let mut applied_tombstone_keys = Vec::new();
+            for (key, entry) in &tombstones.entries {
+                let local_path = Self::asset_local_path_from_key(active_dir, app_data_dir, key);
+                if local_path
+                    .as_ref()
+                    .is_some_and(|local| tombstone::path_modified_after(local, &entry.deleted_at))
+                {
+                    tracing::info!(
+                        "[sync] 跳过过期 asset tombstone，本地文件更新: {} deleted_at={}",
+                        key,
+                        entry.deleted_at
+                    );
+                    continue;
+                }
                 // 云端删除
-                let remote_key = format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key);
-                if let Err(e) = storage.delete(&remote_key).await {
-                    tracing::warn!("[sync] 删除云端资产失败（忽略）: {}: {}", remote_key, e);
+                if direction != SyncDirection::Download {
+                    let remote_key = format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key);
+                    if let Err(e) = storage.delete(&remote_key).await {
+                        tracing::warn!("[sync] 删除云端资产失败（忽略）: {}: {}", remote_key, e);
+                    }
                 }
                 // 本地删除
-                if let Some(local) = Self::asset_local_path_from_key(active_dir, app_data_dir, key)
-                {
+                if let Some(local) = local_path {
                     if local.exists() {
                         let _ = std::fs::remove_file(&local);
                     }
                 }
+                applied_tombstone_keys.push(key.clone());
             }
 
             // 从云端资产清单摘掉 tombstoned 条目
             // [P0-2] 同样需要透明 encode/decode
-            if let Ok(Some(bytes)) = storage.get(Self::ASSETS_MANIFEST_KEY).await {
-                if let Ok(decoded) = self.decode_payload(&bytes) {
-                    if let Ok(mut mf) = serde_json::from_slice::<AssetDirsManifest>(&decoded) {
-                        let before = mf.entries.len();
-                        for key in tombstones.entries.keys() {
-                            mf.entries.remove(key);
-                        }
-                        if mf.entries.len() != before {
-                            mf.updated_at = chrono::Utc::now().to_rfc3339();
-                            if let Ok(json) = serde_json::to_vec(&mf) {
-                                if let Ok(payload) = self.encode_payload(&json) {
-                                    let _ = storage.put(Self::ASSETS_MANIFEST_KEY, &payload).await;
+            if direction != SyncDirection::Download {
+                if let Ok(Some(bytes)) = storage.get(Self::ASSETS_MANIFEST_KEY).await {
+                    if let Ok(decoded) = self.decode_payload(&bytes) {
+                        if let Ok(mut mf) = serde_json::from_slice::<AssetDirsManifest>(&decoded) {
+                            let before = mf.entries.len();
+                            for key in &applied_tombstone_keys {
+                                mf.entries.remove(key);
+                            }
+                            if mf.entries.len() != before {
+                                mf.updated_at = chrono::Utc::now().to_rfc3339();
+                                if let Ok(json) = serde_json::to_vec(&mf) {
+                                    if let Ok(payload) = self.encode_payload(&json) {
+                                        let _ =
+                                            storage.put(Self::ASSETS_MANIFEST_KEY, &payload).await;
+                                    }
                                 }
                             }
                         }
@@ -6270,9 +8355,17 @@ impl SyncManager {
                 }
             }
         }
+        for advance in tombstone_advances {
+            state_store.set_tombstone_watermark(
+                &instance_id,
+                &advance.source_device_id,
+                "assets",
+                advance.last_applied_offset,
+            )?;
+        }
 
         // 2. 走标准同步流程
-        self.sync_asset_directories(storage, active_dir, app_data_dir)
+        self.sync_asset_directories(storage, active_dir, app_data_dir, direction)
             .await
     }
 }
@@ -6304,6 +8397,11 @@ mod tests {
             status: SyncTransactionStatus::Complete,
             created_at: "2024-01-01T00:00:00Z".to_string(),
             device_id: device_id.to_string(),
+            format_version: 3,
+            published_max_seq: 0,
+            cursors: HashMap::new(),
+            superseded_by: None,
+            snapshot_seen: HashMap::new(),
         }
     }
 
@@ -6326,6 +8424,146 @@ mod tests {
         let key =
             "data_governance/changes/device-1/1707500000-550e8400-e29b-41d4-a716-446655440000.json";
         assert_eq!(SyncManager::parse_version_from_key(key), Some(1707500000));
+    }
+
+    #[test]
+    fn regression_c1_v3_change_key_parses_seq_and_timestamp() {
+        let manager = SyncManager::new("device-1".to_string());
+        let key = manager.build_change_key_v3(42, 1_707_500_000);
+
+        assert_eq!(
+            SyncManager::parse_version_from_key(&key),
+            Some(1_707_500_000)
+        );
+        assert!(matches!(
+            SyncManager::parse_change_key(&key),
+            Some(ParsedChangeKey::V3 {
+                device_id,
+                seq: 42,
+                version: 1_707_500_000,
+            }) if device_id == "device-1"
+        ));
+    }
+
+    // ==================== Phase 0 回归测试 ====================
+
+    fn make_change(record: &str, data: serde_json::Value) -> SyncChangeWithData {
+        SyncChangeWithData {
+            table_name: "items".to_string(),
+            record_id: record.to_string(),
+            operation: ChangeOperation::Update,
+            data: Some(data),
+            changed_at: "2024-01-01T00:00:00Z".to_string(),
+            change_log_id: None,
+            database_name: Some("vfs".to_string()),
+            suppress_change_log: None,
+            source_device_id: None,
+            source_seq: None,
+        }
+    }
+
+    #[test]
+    fn regression_c4_dedupe_keeps_last() {
+        // 序列 x=1 → x=2 → x=1：keep-first 会丢掉最后的 x=1，终态错为 x=2。
+        // keep-last 必须保留顺序上最后一条 x=1，终态为 x=1。
+        let changes = vec![
+            (1u64, make_change("r1", json!({ "x": 1 }))),
+            (2u64, make_change("r1", json!({ "x": 2 }))),
+            (3u64, make_change("r1", json!({ "x": 1 }))),
+        ];
+        let deduped = SyncManager::dedupe_downloaded_changes(changes);
+        // x=1 的两条指纹相同，仅保留最后一条；x=2 保留 → 共 2 条
+        assert_eq!(deduped.len(), 2, "应去掉一条重复的 x=1");
+        // 顺序保持升序，最后应用的一条必须是 x=1（版本 3）
+        let last = deduped.last().unwrap();
+        assert_eq!(last.0, 3, "保留的 x=1 应是版本 3 那条");
+        assert_eq!(last.1.data.as_ref().unwrap()["x"], json!(1));
+        // 中间一条是 x=2
+        assert_eq!(deduped[0].1.data.as_ref().unwrap()["x"], json!(2));
+    }
+
+    #[test]
+    fn regression_c4_dedupe_distinct_kept() {
+        // 内容各异的变更全部保留，顺序不变
+        let changes = vec![
+            (1u64, make_change("r1", json!({ "x": 1 }))),
+            (2u64, make_change("r2", json!({ "x": 1 }))),
+            (3u64, make_change("r1", json!({ "x": 2 }))),
+        ];
+        let deduped = SyncManager::dedupe_downloaded_changes(changes);
+        assert_eq!(deduped.len(), 3);
+        assert_eq!(deduped[0].0, 1);
+        assert_eq!(deduped[1].0, 2);
+        assert_eq!(deduped[2].0, 3);
+    }
+
+    #[test]
+    fn regression_c6_normalize_version_to_seconds() {
+        // 毫秒时间戳归一化为秒；秒级保持不变
+        assert_eq!(
+            SyncManager::normalize_version_to_seconds(1_707_500_000_123),
+            1_707_500_000
+        );
+        assert_eq!(
+            SyncManager::normalize_version_to_seconds(1_707_500_000),
+            1_707_500_000
+        );
+        // 阈值边界：恰好 1e11 视为秒级保留
+        assert_eq!(
+            SyncManager::normalize_version_to_seconds(100_000_000_000),
+            100_000_000_000
+        );
+    }
+
+    #[test]
+    fn regression_c7_mark_synced_batches_over_variable_limit() {
+        // 一次标记 > SQLite 变量上限（默认 999/32766）的变更，分批后必须全部成功。
+        let conn = rusqlite::Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            "CREATE TABLE __change_log (id INTEGER PRIMARY KEY, sync_version INTEGER NOT NULL DEFAULT 0);",
+        )
+        .unwrap();
+
+        let n = 1500i64;
+        {
+            let tx = conn.unchecked_transaction().unwrap();
+            for i in 1..=n {
+                tx.execute(
+                    "INSERT INTO __change_log (id, sync_version) VALUES (?1, 0)",
+                    [i],
+                )
+                .unwrap();
+            }
+            tx.commit().unwrap();
+        }
+
+        let ids: Vec<i64> = (1..=n).collect();
+        let updated = SyncManager::mark_synced(&conn, &ids, 12345).unwrap();
+        assert_eq!(updated as i64, n, "应全部标记成功");
+
+        let marked: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM __change_log WHERE sync_version = 12345",
+                [],
+                |r| r.get(0),
+            )
+            .unwrap();
+        assert_eq!(marked, n, "全部行的 sync_version 应被更新");
+    }
+
+    #[test]
+    fn regression_c8_upload_path_verifies_size() {
+        let source = include_str!("mod.rs");
+        assert!(source.contains("verify_uploaded_size"));
+        assert!(source.contains("put_change_with_verify_retry"));
+        assert!(
+            source.contains("storage.stat(&key).await"),
+            "PUT 后必须 stat 回验对象大小"
+        );
+        assert!(
+            source.contains("Ok(Some(info)) if info.size == expected"),
+            "size 与期望不符时必须拒绝推进 mark"
+        );
     }
 
     #[test]
@@ -6567,6 +8805,35 @@ mod tests {
         conn
     }
 
+    #[test]
+    fn test_checksum_detects_content_drift_without_updated_at_change() {
+        let conn = create_test_db();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE notes (
+                id TEXT PRIMARY KEY,
+                title TEXT,
+                body TEXT,
+                updated_at TEXT,
+                deleted_at TEXT
+            );
+            INSERT INTO notes (id, title, body, updated_at, deleted_at)
+            VALUES ('note-1', 'Title', 'before', '2026-01-01T00:00:00Z', NULL);
+            "#,
+        )
+        .unwrap();
+
+        let before = SyncManager::calculate_drift_checksum_v2(&conn, "vfs").unwrap();
+        conn.execute("UPDATE notes SET body = 'after' WHERE id = 'note-1'", [])
+            .unwrap();
+        let after = SyncManager::calculate_drift_checksum_v2(&conn, "vfs").unwrap();
+
+        assert_ne!(
+            before, after,
+            "checksum must detect row content drift even when count and updated_at do not change"
+        );
+    }
+
     /// 插入测试用的变更日志
     fn insert_test_change_log(
         conn: &Connection,
@@ -6781,7 +9048,8 @@ mod tests {
         );
         assert_eq!(
             SyncManager::compare_timestamps(&earlier, &earlier),
-            std::cmp::Ordering::Equal
+            std::cmp::Ordering::Greater,
+            "相同 timestamp 继续用 deterministic device tie-break，避免 Equal 分支各处自行解释"
         );
     }
 
@@ -6950,6 +9218,30 @@ mod tests {
         assert_eq!(result.kept_local, 1);
         assert_eq!(result.used_cloud, 1);
         assert_eq!(result.records_to_push, vec!["msg-2"]);
+        assert_eq!(result.records_to_pull, vec!["msg-1"]);
+    }
+
+    #[test]
+    fn regression_m3_keep_latest_uses_device_tiebreaker() {
+        let conflicts = vec![ConflictRecord {
+            database_name: "chat_v2".to_string(),
+            table_name: "messages".to_string(),
+            record_id: "msg-1".to_string(),
+            local_version: 3,
+            cloud_version: 4,
+            local_updated_at: "2024-01-01T10:00:00Z".to_string(),
+            cloud_updated_at: "2024-01-01T10:00:00Z".to_string(),
+            local_data: serde_json::json!({"content": "local", "device_id": "device-a"}),
+            cloud_data: serde_json::json!({"content": "cloud", "device_id": "device-b"}),
+        }];
+
+        let result =
+            SyncManager::apply_merge_strategy(MergeStrategy::KeepLatest, &conflicts).unwrap();
+
+        assert!(result.success);
+        assert_eq!(result.kept_local, 0);
+        assert_eq!(result.used_cloud, 1);
+        assert!(result.records_to_push.is_empty());
         assert_eq!(result.records_to_pull, vec!["msg-1"]);
     }
 
@@ -7181,6 +9473,145 @@ mod tests {
     }
 
     #[test]
+    fn regression_m5_apply_explicit_null_clears_column() {
+        let conn = create_test_db_with_business_table();
+        conn.execute(
+            "INSERT INTO test_records(id, content, updated_at) VALUES(?1, ?2, ?3)",
+            rusqlite::params!["rec-null", "keep-me", "2024-01-01T00:00:00Z"],
+        )
+        .unwrap();
+
+        let changes = vec![SyncChangeWithData {
+            table_name: "test_records".to_string(),
+            record_id: "rec-null".to_string(),
+            operation: ChangeOperation::Update,
+            data: Some(json!({
+                "id": "rec-null",
+                "content": null,
+                "updated_at": "2024-01-02T00:00:00Z",
+            })),
+            changed_at: "2024-01-02T00:00:00Z".to_string(),
+            change_log_id: None,
+            database_name: None,
+            suppress_change_log: None,
+            source_device_id: None,
+            source_seq: None,
+        }];
+
+        let result = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
+        assert_eq!(result.success_count, 1);
+
+        let content: Option<String> = conn
+            .query_row(
+                "SELECT content FROM test_records WHERE id='rec-null'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert!(content.is_none(), "显式 JSON null 必须传播为 SQL NULL");
+    }
+
+    #[test]
+    fn regression_m1_single_sided_remote_tag_delete_is_not_field_merged_back() {
+        let conn = create_test_db();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE notes (
+                id TEXT PRIMARY KEY,
+                tags TEXT,
+                is_favorite INTEGER DEFAULT 0,
+                updated_at TEXT
+            );
+            "#,
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO notes(id, tags, updated_at) VALUES(?1, ?2, ?3)",
+            rusqlite::params!["note-1", r#"["local"]"#, "2026-02-09T00:00:00Z"],
+        )
+        .unwrap();
+
+        let changes = vec![SyncChangeWithData {
+            table_name: "notes".to_string(),
+            record_id: "note-1".to_string(),
+            operation: ChangeOperation::Update,
+            data: Some(json!({
+                "id": "note-1",
+                "tags": [],
+                "updated_at": "2026-02-10T00:00:00Z",
+            })),
+            changed_at: "2026-02-10T00:00:00Z".to_string(),
+            change_log_id: None,
+            database_name: Some("vfs".to_string()),
+            suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
+        }];
+
+        let result = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
+        assert_eq!(result.success_count, 1);
+
+        let tags: String = conn
+            .query_row("SELECT tags FROM notes WHERE id='note-1'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(tags, "[]", "非并发远端删 tag 不能被本地旧 tag 复活");
+    }
+
+    #[test]
+    fn regression_m1_pending_local_change_allows_field_merge() {
+        let conn = create_test_db();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE notes (
+                id TEXT PRIMARY KEY,
+                tags TEXT,
+                is_favorite INTEGER DEFAULT 0,
+                updated_at TEXT
+            );
+            "#,
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO notes(id, tags, updated_at) VALUES(?1, ?2, ?3)",
+            rusqlite::params!["note-merge", r#"["local"]"#, "2026-02-09T00:00:00Z"],
+        )
+        .unwrap();
+        insert_test_change_log(&conn, "notes", "note-merge", "UPDATE", 0);
+
+        let changes = vec![SyncChangeWithData {
+            table_name: "notes".to_string(),
+            record_id: "note-merge".to_string(),
+            operation: ChangeOperation::Update,
+            data: Some(json!({
+                "id": "note-merge",
+                "tags": ["remote"],
+                "updated_at": "2026-02-10T00:00:00Z",
+            })),
+            changed_at: "2026-02-10T00:00:00Z".to_string(),
+            change_log_id: None,
+            database_name: Some("vfs".to_string()),
+            suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
+        }];
+
+        let result = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
+        assert_eq!(result.success_count, 1);
+
+        let tags: String = conn
+            .query_row("SELECT tags FROM notes WHERE id='note-merge'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(
+            tags, r#"["local","remote"]"#,
+            "本地存在 pending 修改时仍允许集合字段并发合并"
+        );
+    }
+
+    #[test]
     fn test_apply_insert_with_data_none_is_skipped() {
         let conn = create_test_db_with_business_table();
 
@@ -7193,6 +9624,8 @@ mod tests {
             change_log_id: None,
             database_name: None,
             suppress_change_log: None,
+            source_device_id: None,
+            source_seq: None,
         }];
 
         let result = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
@@ -7239,6 +9672,8 @@ mod tests {
             change_log_id: None,
             database_name: None,
             suppress_change_log: None,
+            source_device_id: None,
+            source_seq: None,
         }];
 
         let result = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
@@ -7284,6 +9719,8 @@ mod tests {
             change_log_id: None,
             database_name: None,
             suppress_change_log: None,
+            source_device_id: None,
+            source_seq: None,
         }];
 
         let result = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
@@ -7320,6 +9757,8 @@ mod tests {
                 change_log_id: None,
                 database_name: None,
                 suppress_change_log: None,
+                source_device_id: None,
+                source_seq: None,
             },
             // 2. INSERT 有数据 → 成功
             SyncChangeWithData {
@@ -7335,6 +9774,8 @@ mod tests {
                 change_log_id: None,
                 database_name: None,
                 suppress_change_log: None,
+                source_device_id: None,
+                source_seq: None,
             },
         ];
 
@@ -7384,6 +9825,8 @@ mod tests {
             change_log_id: None,
             database_name: None,
             suppress_change_log: None,
+            source_device_id: None,
+            source_seq: None,
         }];
 
         let result = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
@@ -7472,6 +9915,8 @@ mod tests {
             change_log_id: None,
             database_name: Some("vfs".to_string()),
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         }];
 
         SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
@@ -7533,6 +9978,8 @@ mod tests {
             change_log_id: None,
             database_name: Some("vfs".to_string()),
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         }];
 
         SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
@@ -7571,6 +10018,8 @@ mod tests {
             change_log_id: Some(1),
             database_name: Some("vfs".to_string()),
             suppress_change_log: None,
+            source_device_id: None,
+            source_seq: None,
         };
         let mut duplicate = first.clone();
         duplicate.changed_at = "2026-02-10T00:00:05Z".to_string();
@@ -7669,6 +10118,8 @@ mod tests {
             change_log_id: None,
             database_name: None,
             suppress_change_log: None,
+            source_device_id: None,
+            source_seq: None,
         }];
 
         let result = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
@@ -7699,6 +10150,8 @@ mod tests {
                 change_log_id: Some(1),
                 database_name: Some("vfs".to_string()),
                 suppress_change_log: Some(true),
+                source_device_id: None,
+                source_seq: None,
             },
             SyncChangeWithData {
                 table_name: "test_records".to_string(),
@@ -7709,6 +10162,8 @@ mod tests {
                 change_log_id: Some(2),
                 database_name: Some("vfs".to_string()),
                 suppress_change_log: Some(true),
+                source_device_id: None,
+                source_seq: None,
             },
         ];
 
@@ -7734,6 +10189,8 @@ mod tests {
                 change_log_id: Some(1),
                 database_name: Some("vfs".to_string()),
                 suppress_change_log: Some(true),
+                source_device_id: None,
+                source_seq: None,
             },
             SyncChangeWithData {
                 table_name: "test_records".to_string(),
@@ -7744,6 +10201,8 @@ mod tests {
                 change_log_id: Some(2),
                 database_name: Some("vfs".to_string()),
                 suppress_change_log: Some(true),
+                source_device_id: None,
+                source_seq: None,
             },
         ];
 
@@ -7799,6 +10258,8 @@ mod tests {
                 change_log_id: None,
                 database_name: None,
                 suppress_change_log: None,
+                source_device_id: None,
+                source_seq: None,
             },
             SyncChangeWithData {
                 table_name: "child_records".to_string(),
@@ -7812,6 +10273,8 @@ mod tests {
                 change_log_id: None,
                 database_name: None,
                 suppress_change_log: None,
+                source_device_id: None,
+                source_seq: None,
             },
         ];
 
@@ -7829,6 +10292,122 @@ mod tests {
             "transaction should rollback previously applied records"
         );
         assert_eq!(child_records_count, 0);
+    }
+
+    #[test]
+    fn regression_m10_poison_payload_is_quarantined_without_blocking_batch() {
+        let conn = create_test_db_with_business_table();
+
+        let changes = vec![
+            SyncChangeWithData {
+                table_name: "test_records".to_string(),
+                record_id: "bad-id".to_string(),
+                operation: ChangeOperation::Insert,
+                data: Some(json!({
+                    "id": "different-id",
+                    "content": "poison",
+                    "updated_at": "2026-02-10T00:00:00Z"
+                })),
+                changed_at: "2026-02-10T00:00:00Z".to_string(),
+                change_log_id: Some(1),
+                database_name: None,
+                suppress_change_log: Some(true),
+                source_device_id: None,
+                source_seq: None,
+            },
+            SyncChangeWithData {
+                table_name: "test_records".to_string(),
+                record_id: "good-id".to_string(),
+                operation: ChangeOperation::Insert,
+                data: Some(json!({
+                    "id": "good-id",
+                    "content": "applied",
+                    "updated_at": "2026-02-10T00:00:01Z"
+                })),
+                changed_at: "2026-02-10T00:00:01Z".to_string(),
+                change_log_id: Some(2),
+                database_name: None,
+                suppress_change_log: Some(true),
+                source_device_id: None,
+                source_seq: None,
+            },
+        ];
+
+        let result = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
+
+        assert_eq!(result.success_count, 1);
+        assert_eq!(result.failure_count, 1);
+        assert_eq!(result.failures[0].record_id, "bad-id");
+
+        let good_content: String = conn
+            .query_row(
+                "SELECT content FROM test_records WHERE id = 'good-id'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(good_content, "applied");
+
+        let quarantine_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM __sync_quarantine", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        assert_eq!(quarantine_count, 1);
+    }
+
+    #[test]
+    fn regression_m20_unregistered_table_payload_is_quarantined() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE evil_payloads (
+                id TEXT PRIMARY KEY,
+                content TEXT
+            );
+            "#,
+        )
+        .unwrap();
+
+        let changes = vec![SyncChangeWithData {
+            table_name: "evil_payloads".to_string(),
+            record_id: "evil-1".to_string(),
+            operation: ChangeOperation::Insert,
+            data: Some(json!({
+                "id": "evil-1",
+                "content": "must not be written"
+            })),
+            changed_at: "2026-02-10T00:00:00Z".to_string(),
+            change_log_id: None,
+            database_name: Some("vfs".to_string()),
+            suppress_change_log: None,
+            source_device_id: None,
+            source_seq: None,
+        }];
+
+        let result = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
+
+        assert_eq!(result.success_count, 0);
+        assert_eq!(result.failure_count, 1);
+        assert!(
+            result.failures[0]
+                .error
+                .contains("禁止同步未注册为 RowSync 的表"),
+            "unexpected failure: {:?}",
+            result.failures[0]
+        );
+
+        let evil_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM evil_payloads", [], |row| row.get(0))
+            .unwrap();
+        let quarantine_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM __sync_quarantine", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+
+        assert_eq!(evil_count, 0);
+        assert_eq!(quarantine_count, 1);
     }
 
     fn create_todo_constraint_test_db() -> Connection {
@@ -7894,6 +10473,8 @@ mod tests {
             change_log_id: Some(1),
             database_name: Some("vfs".to_string()),
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         }
     }
 
@@ -7916,6 +10497,8 @@ mod tests {
             change_log_id: Some(3),
             database_name: Some("vfs".to_string()),
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         }
     }
 
@@ -7938,6 +10521,8 @@ mod tests {
             change_log_id: Some(2),
             database_name: Some("vfs".to_string()),
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         }
     }
 
@@ -8047,6 +10632,8 @@ mod tests {
             change_log_id: Some(2),
             database_name: Some("vfs".to_string()),
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         }
     }
 
@@ -8068,6 +10655,8 @@ mod tests {
             change_log_id: Some(1),
             database_name: Some("vfs".to_string()),
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         }
     }
 
@@ -8086,6 +10675,28 @@ mod tests {
     }
 
     #[test]
+    fn test_quarantine_source_uses_v3_metadata() {
+        let change = SyncChangeWithData {
+            table_name: "notes".to_string(),
+            record_id: "note-1".to_string(),
+            operation: ChangeOperation::Update,
+            data: None,
+            changed_at: "2026-06-01T00:00:00Z".to_string(),
+            change_log_id: Some(7),
+            database_name: Some("vfs".to_string()),
+            suppress_change_log: Some(true),
+            source_device_id: Some("device-a".to_string()),
+            source_seq: Some(42),
+        };
+
+        assert_eq!(
+            SyncManager::source_device_for_quarantine(&change),
+            "device-a"
+        );
+        assert_eq!(SyncManager::source_seq_for_quarantine(&change), 42);
+    }
+
+    #[test]
     fn test_apply_downloaded_changes_orders_blob_metadata_before_files() {
         let conn = create_vfs_blob_fk_test_db();
         let changes = vec![blob_file_change(), blob_metadata_change()];
@@ -8094,6 +10705,28 @@ mod tests {
 
         assert_eq!(result.success_count, 2);
         assert_blob_file_applied(&conn);
+    }
+
+    #[test]
+    fn regression_ref_count_is_recomputed_after_download_apply() {
+        let conn = create_vfs_blob_fk_test_db();
+        let mut blob = blob_metadata_change();
+        if let Some(serde_json::Value::Object(obj)) = blob.data.as_mut() {
+            obj.insert("ref_count".to_string(), serde_json::json!(99));
+        }
+        let changes = vec![blob_file_change(), blob];
+
+        let result = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
+
+        assert_eq!(result.success_count, 2);
+        let ref_count: i64 = conn
+            .query_row(
+                "SELECT ref_count FROM blobs WHERE hash='blob-hash-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(ref_count, 1);
     }
 
     #[test]
@@ -8114,6 +10747,146 @@ mod tests {
         assert_eq!(result.success_count, 2);
         assert_eq!(conflict_result.conflicts_saved, 0);
         assert_blob_file_applied(&conn);
+    }
+
+    #[test]
+    fn regression_p3_5_files_same_sha_is_aliased_to_existing_file() {
+        let conn = create_vfs_blob_fk_test_db();
+        conn.execute(
+            "INSERT INTO blobs(hash, relative_path, size, mime_type, ref_count, created_at)
+             VALUES(?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                "blob-hash-1",
+                "bl/ob/blob-hash-1.md",
+                12i64,
+                "text/markdown",
+                1i64,
+                1780225200000i64
+            ],
+        )
+        .unwrap();
+        conn.execute(
+            "INSERT INTO files(id, blob_hash, sha256, file_name, size, created_at, updated_at)
+             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![
+                "file-1",
+                "blob-hash-1",
+                "same-sha",
+                "original.md",
+                12i64,
+                "2026-05-31T00:00:00Z",
+                "2026-05-31T00:00:00Z"
+            ],
+        )
+        .unwrap();
+
+        let changes = vec![SyncChangeWithData {
+            table_name: "files".to_string(),
+            record_id: "file-2".to_string(),
+            operation: ChangeOperation::Insert,
+            data: Some(serde_json::json!({
+                "id": "file-2",
+                "blob_hash": "blob-hash-1",
+                "sha256": "same-sha",
+                "file_name": "must-not-merge.md",
+                "size": 12,
+                "created_at": "2026-06-01T00:00:00Z",
+                "updated_at": "2026-06-01T00:00:00Z"
+            })),
+            changed_at: "2026-06-01T00:00:00Z".to_string(),
+            change_log_id: Some(42),
+            database_name: Some("vfs".to_string()),
+            suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
+        }];
+
+        let result = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
+
+        assert_eq!(result.success_count, 1);
+        assert_eq!(result.failure_count, 0);
+
+        let original_name: String = conn
+            .query_row("SELECT file_name FROM files WHERE id='file-1'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let file_2_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM files WHERE id='file-2'", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let quarantine_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM __sync_quarantine", [], |row| {
+                row.get(0)
+            })
+            .unwrap();
+        let alias_canonical: String = conn
+            .query_row(
+                "SELECT canonical_id FROM __sync_id_aliases
+                 WHERE table_name='files' AND remote_id='file-2'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(original_name, "must-not-merge.md");
+        assert_eq!(file_2_count, 0);
+        assert_eq!(quarantine_count, 0);
+        assert_eq!(alias_canonical, "file-1");
+    }
+
+    #[test]
+    fn regression_m15_sqlite_text_json_string_is_not_reserialized() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE docs (
+                id TEXT PRIMARY KEY,
+                body TEXT
+            );
+            INSERT INTO docs (id, body)
+            VALUES ('d1', '{"b":2, "a":1}');
+            "#,
+        )
+        .unwrap();
+
+        let body = conn
+            .query_row("SELECT body FROM docs WHERE id='d1'", [], |row| {
+                Ok(SyncManager::sqlite_value_to_json(row, 0))
+            })
+            .unwrap();
+
+        assert_eq!(body, serde_json::json!("{\"b\":2, \"a\":1}"));
+    }
+
+    #[test]
+    fn regression_m15_sqlite_blob_is_typed_dsblob_payload() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE docs (
+                id TEXT PRIMARY KEY,
+                payload BLOB
+            );
+            INSERT INTO docs (id, payload)
+            VALUES ('d1', x'000102ff');
+            "#,
+        )
+        .unwrap();
+
+        let payload = conn
+            .query_row("SELECT payload FROM docs WHERE id='d1'", [], |row| {
+                Ok(SyncManager::sqlite_value_to_json(row, 0))
+            })
+            .unwrap();
+
+        assert_eq!(payload, serde_json::json!({ "$dsblob": "AAEC/w==" }));
+        let param = SyncManager::json_value_to_sql_param(&payload).unwrap();
+        let restored: Vec<u8> = conn
+            .query_row("SELECT ?1", [&param.as_ref()], |row| row.get(0))
+            .unwrap();
+        assert_eq!(restored, vec![0, 1, 2, 255]);
     }
 
     fn create_resource_alias_test_db() -> Connection {
@@ -8157,6 +10930,8 @@ mod tests {
             change_log_id: None,
             database_name: Some("vfs".to_string()),
             suppress_change_log: None,
+            source_device_id: None,
+            source_seq: None,
         }
     }
 
@@ -8175,6 +10950,8 @@ mod tests {
             change_log_id: None,
             database_name: Some("vfs".to_string()),
             suppress_change_log: None,
+            source_device_id: None,
+            source_seq: None,
         }
     }
 
@@ -8324,6 +11101,8 @@ mod tests {
             change_log_id: None,
             database_name: None,
             suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
         }];
         SyncManager::apply_downloaded_changes(&conn, &replay_insert, None).unwrap();
 

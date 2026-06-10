@@ -285,3 +285,9 @@ FRONTEND_ANALYSIS.md
 # Project-local AI skills and UI study docs
 .skills/
 .study-ui/
+
+# Local tooling artifacts (never commit)
+.codex_downgrade/
+.playwright-mcp/
+src-tauri/.codex_appcast.xml
+.pr-review/

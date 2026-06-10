@@ -39,7 +39,7 @@
 //!
 //! 冲突表保留在每个业务数据库内，跟随数据库一起备份/恢复。
 
-use rusqlite::{Connection, OptionalExtension, params};
+use rusqlite::{params, Connection, OptionalExtension};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
@@ -111,20 +111,15 @@ impl ConflictAwareApplyResult {
 /// 冲突解决器
 pub struct ConflictResolver {
     policy: ConflictPolicy,
-    /// 允许一个灰区容差：本地和云端时间戳相差在此值内视为同时刻（走 policy 的 tie-break）
-    clock_skew_tolerance_secs: i64,
 }
 
 impl ConflictResolver {
     pub fn new(policy: ConflictPolicy) -> Self {
-        Self {
-            policy,
-            clock_skew_tolerance_secs: 2,
-        }
+        Self { policy }
     }
 
-    pub fn with_tolerance(mut self, secs: i64) -> Self {
-        self.clock_skew_tolerance_secs = secs.max(0);
+    pub fn with_tolerance(self, secs: i64) -> Self {
+        let _ = secs;
         self
     }
 
@@ -263,9 +258,10 @@ impl ConflictResolver {
     }
 
     /// 提取记录的 updated_at 时间戳（用于 KeepLatest 策略的仲裁）
-    fn extract_updated_at(value: &serde_json::Value) -> Option<chrono::DateTime<chrono::Utc>> {
-        let s = value.get("updated_at").and_then(|v| v.as_str())?;
-        crate::data_governance::sync::parse_flexible_timestamp_public(s)
+    fn extract_updated_at(value: &serde_json::Value) -> Option<String> {
+        value
+            .get("updated_at")
+            .and_then(SyncManager::timestamp_value_to_lww_string)
     }
 
     /// 判定一条下载变更是否需要走冲突保护逻辑
@@ -303,20 +299,21 @@ impl ConflictResolver {
                 ConflictPolicy::KeepCloud => (ConflictSide::Cloud, ConflictSide::Local),
                 ConflictPolicy::KeepLocal => (ConflictSide::Local, ConflictSide::Cloud),
                 ConflictPolicy::KeepLatest => {
-                    // 删除没有 updated_at 语义，用 change.changed_at 代替；同时刻时偏向保留本地（安全优先）
-                    let cloud_ts = crate::data_governance::sync::parse_flexible_timestamp_public(
-                        &change.changed_at,
-                    );
                     let local_ts = Self::extract_updated_at(&local_data);
-                    match (local_ts, cloud_ts) {
-                        (Some(l), Some(c)) => {
-                            let diff = (c - l).num_seconds();
-                            if diff > self.clock_skew_tolerance_secs {
-                                (ConflictSide::Cloud, ConflictSide::Local)
-                            } else {
-                                (ConflictSide::Local, ConflictSide::Cloud)
-                            }
+                    match local_ts {
+                        Some(local_ts)
+                            if SyncManager::compare_lww_timestamps(
+                                &local_ts,
+                                SyncManager::lww_device_id_from_data(&local_data, "local-unknown"),
+                                &local_data.to_string(),
+                                &change.changed_at,
+                                change.source_device_id.as_deref().unwrap_or("cloud-delete"),
+                                "",
+                            ) == std::cmp::Ordering::Less =>
+                        {
+                            (ConflictSide::Cloud, ConflictSide::Local)
                         }
+                        Some(_) => (ConflictSide::Local, ConflictSide::Cloud),
                         _ => (ConflictSide::Local, ConflictSide::Cloud),
                     }
                 }
@@ -373,18 +370,23 @@ impl ConflictResolver {
             ConflictPolicy::KeepLocal => (ConflictSide::Local, ConflictSide::Cloud),
             ConflictPolicy::KeepLatest => {
                 let local_ts = Self::extract_updated_at(&local_data);
-                let cloud_ts = Self::extract_updated_at(&cloud_data).or_else(|| {
-                    crate::data_governance::sync::parse_flexible_timestamp_public(
-                        &change.changed_at,
-                    )
-                });
+                let cloud_ts = Self::extract_updated_at(&cloud_data)
+                    .or_else(|| Some(change.changed_at.clone()));
+                let cloud_device_id = change
+                    .source_device_id
+                    .as_deref()
+                    .unwrap_or("cloud-unknown");
                 match (local_ts, cloud_ts) {
                     (Some(l), Some(c)) => {
-                        let diff_secs = (c - l).num_seconds();
-                        if diff_secs.abs() <= self.clock_skew_tolerance_secs {
-                            // 近似同时刻：偏向保留本地（"已在用"）
-                            (ConflictSide::Local, ConflictSide::Cloud)
-                        } else if diff_secs > 0 {
+                        if SyncManager::compare_lww_timestamps(
+                            &l,
+                            SyncManager::lww_device_id_from_data(&local_data, "local-unknown"),
+                            &local_data.to_string(),
+                            &c,
+                            cloud_device_id,
+                            &cloud_data.to_string(),
+                        ) == std::cmp::Ordering::Less
+                        {
                             (ConflictSide::Cloud, ConflictSide::Local)
                         } else {
                             (ConflictSide::Local, ConflictSide::Cloud)

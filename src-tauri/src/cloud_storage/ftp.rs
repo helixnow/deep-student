@@ -2,14 +2,16 @@
 //!
 //! 基于 suppaftp 的异步 FTP 客户端，支持显式 FTPS（AUTH TLS）和 localhost 明文 FTP
 
-use async_std::io::ReadExt;
+use async_std::io::{ReadExt, WriteExt};
 use async_trait::async_trait;
 use chrono::{DateTime, Utc};
 use sha2::{Digest, Sha256};
 use std::path::Path;
 use std::time::Duration;
 use suppaftp::async_native_tls::TlsConnector;
+use suppaftp::list::File as FtpListFile;
 use suppaftp::{AsyncFtpStream, AsyncNativeTlsConnector, AsyncNativeTlsFtpStream};
+use uuid::Uuid;
 
 use super::config::FtpConfig;
 use super::traits::{
@@ -25,6 +27,14 @@ pub struct FtpStorage {
     password: String,
     use_tls: bool,
     root: String,
+}
+
+#[derive(Debug)]
+struct FtpListEntry {
+    name: String,
+    is_dir: bool,
+    size: u64,
+    modified: DateTime<Utc>,
 }
 
 impl FtpStorage {
@@ -66,7 +76,7 @@ impl FtpStorage {
         if self.use_tls {
             // FTPS: 使用 AsyncNativeTlsFtpStream 作为基础类型，
             // 使得 into_secure 的 Stream 类型参数匹配
-            let mut stream = AsyncNativeTlsFtpStream::connect(&address)
+            let stream = AsyncNativeTlsFtpStream::connect(&address)
                 .await
                 .map_err(|e| AppError::network(format!("FTP 连接失败 {}: {}", address, e)))?;
 
@@ -144,6 +154,57 @@ impl FtpStorage {
         }
     }
 
+    fn absolute_path(path: &str) -> String {
+        let path = path.trim_matches('/');
+        if path.is_empty() {
+            "/".to_string()
+        } else {
+            format!("/{path}")
+        }
+    }
+
+    fn split_parent_filename(key: &str) -> (&str, &str) {
+        key.rfind('/')
+            .map(|i| (&key[..i], &key[i + 1..]))
+            .unwrap_or(("", key))
+    }
+
+    fn is_not_found_error(error: &AppError) -> bool {
+        let err = error.to_string().to_lowercase();
+        err.contains("550")
+            || err.contains("not found")
+            || err.contains("no such file")
+            || err.contains("不存在")
+    }
+
+    fn parse_list_entry(line: &str) -> Option<FtpListEntry> {
+        let parsed = FtpListFile::from_mlsx_line(line)
+            .or_else(|_| FtpListFile::try_from(line))
+            .ok()?;
+        Some(FtpListEntry {
+            name: parsed.name().to_string(),
+            is_dir: parsed.is_directory(),
+            size: parsed.size() as u64,
+            modified: DateTime::<Utc>::from(parsed.modified()),
+        })
+    }
+
+    async fn upload_reader_atomic(
+        &self,
+        client: &mut FtpClient,
+        final_name: &str,
+        reader: &mut (impl async_std::io::Read + std::marker::Unpin),
+    ) -> Result<()> {
+        let nonce = Uuid::new_v4().simple();
+        let temp_name = format!("{final_name}.tmp-{nonce}");
+        client.put_file(&temp_name, reader).await?;
+        if let Err(err) = client.rename(&temp_name, final_name).await {
+            let _ = client.rm(&temp_name).await;
+            return Err(err);
+        }
+        Ok(())
+    }
+
     /// 确保远程目录存在（递归创建）
     async fn ensure_directory(&self, client: &mut FtpClient, path: &str) -> Result<()> {
         let parts: Vec<&str> = path
@@ -214,6 +275,43 @@ enum FtpClient {
 }
 
 impl FtpClient {
+    async fn stream_to_file(
+        reader: &mut (impl async_std::io::Read + std::marker::Unpin),
+        temp_path: &Path,
+        total_size: u64,
+        progress: Option<&DownloadProgressCallback>,
+    ) -> Result<String> {
+        let mut file = async_std::fs::File::create(temp_path)
+            .await
+            .map_err(|e| AppError::file_system(format!("创建临时下载文件失败：{}", e)))?;
+        let mut hasher = Sha256::new();
+        let mut downloaded = 0u64;
+        let mut tmp = [0u8; 64 * 1024];
+
+        loop {
+            let n = reader
+                .read(&mut tmp)
+                .await
+                .map_err(|e| AppError::file_system(format!("FTP 读取数据失败：{}", e)))?;
+            if n == 0 {
+                break;
+            }
+            file.write_all(&tmp[..n])
+                .await
+                .map_err(|e| AppError::file_system(format!("写入临时下载文件失败：{}", e)))?;
+            hasher.update(&tmp[..n]);
+            downloaded += n as u64;
+            if let Some(cb) = progress {
+                cb(downloaded, total_size);
+            }
+        }
+        file.flush()
+            .await
+            .map_err(|e| AppError::file_system(format!("刷新临时下载文件失败：{}", e)))?;
+
+        Ok(format!("{:x}", hasher.finalize()))
+    }
+
     async fn cwd(&mut self, path: &str) -> Result<()> {
         match self {
             FtpClient::Plain(stream) => stream
@@ -312,6 +410,43 @@ impl FtpClient {
         }
     }
 
+    async fn retr_to_file(
+        &mut self,
+        filename: &str,
+        temp_path: &Path,
+        total_size: u64,
+        progress: Option<&DownloadProgressCallback>,
+    ) -> Result<String> {
+        match self {
+            FtpClient::Plain(stream) => {
+                let mut data_stream = stream
+                    .retr_as_stream(filename)
+                    .await
+                    .map_err(|e| AppError::file_system(format!("FTP 下载失败：{}", e)))?;
+                let checksum =
+                    Self::stream_to_file(&mut data_stream, temp_path, total_size, progress).await?;
+                stream
+                    .finalize_retr_stream(data_stream)
+                    .await
+                    .map_err(|e| AppError::file_system(format!("FTP 下载结束失败：{}", e)))?;
+                Ok(checksum)
+            }
+            FtpClient::Secure(stream) => {
+                let mut data_stream = stream
+                    .retr_as_stream(filename)
+                    .await
+                    .map_err(|e| AppError::file_system(format!("FTP 下载失败：{}", e)))?;
+                let checksum =
+                    Self::stream_to_file(&mut data_stream, temp_path, total_size, progress).await?;
+                stream
+                    .finalize_retr_stream(data_stream)
+                    .await
+                    .map_err(|e| AppError::file_system(format!("FTP 下载结束失败：{}", e)))?;
+                Ok(checksum)
+            }
+        }
+    }
+
     /// suppaftp 6.0.7: list 返回 Result<Vec<String>>
     async fn list(&mut self, path: Option<&str>) -> Result<Vec<String>> {
         match self {
@@ -324,6 +459,33 @@ impl FtpClient {
                 .await
                 .map_err(|e| AppError::file_system(format!("FTP LIST 失败：{}", e))),
         }
+    }
+
+    async fn mlsd(&mut self, path: Option<&str>) -> Result<Vec<String>> {
+        match self {
+            FtpClient::Plain(stream) => stream
+                .mlsd(path)
+                .await
+                .map_err(|e| AppError::file_system(format!("FTP MLSD 失败：{}", e))),
+            FtpClient::Secure(stream) => stream
+                .mlsd(path)
+                .await
+                .map_err(|e| AppError::file_system(format!("FTP MLSD 失败：{}", e))),
+        }
+    }
+
+    async fn rename(&mut self, from: &str, to: &str) -> Result<()> {
+        match self {
+            FtpClient::Plain(stream) => stream
+                .rename(from, to)
+                .await
+                .map_err(|e| AppError::file_system(format!("FTP RENAME 失败：{}", e)))?,
+            FtpClient::Secure(stream) => stream
+                .rename(from, to)
+                .await
+                .map_err(|e| AppError::file_system(format!("FTP RENAME 失败：{}", e)))?,
+        }
+        Ok(())
     }
 
     /// suppaftp 6.0.7: 删除文件的方法名是 rm
@@ -393,6 +555,13 @@ impl CloudStorage for FtpStorage {
         "FTP"
     }
 
+    fn instance_binding_hint(&self) -> String {
+        format!(
+            "ftp|host={}|port={}|user={}|tls={}|root={}",
+            self.host, self.port, self.username, self.use_tls, self.root
+        )
+    }
+
     async fn check_connection(&self) -> Result<()> {
         self.with_retry(|| async {
             let mut client = self.create_client().await?;
@@ -416,22 +585,19 @@ impl CloudStorage for FtpStorage {
             self.ensure_directory(&mut client, &self.root).await?;
 
             // 切换到根目录
-            client.cwd(&format!("/{}", self.root)).await?;
+            client.cwd(&Self::absolute_path(&self.root)).await?;
 
             // 确保父目录存在
-            if let Some(parent) = key.rfind('/') {
-                let parent_path = &key[..parent];
-                if !parent_path.is_empty() {
-                    let full_parent = format!("{}/{}", self.root, parent_path);
-                    self.ensure_directory(&mut client, &full_parent).await?;
-                    client.cwd(&format!("/{}", full_parent)).await?;
-                }
+            let (parent_path, filename) = Self::split_parent_filename(key);
+            if !parent_path.is_empty() {
+                let full_parent = self.remote_path(parent_path);
+                self.ensure_directory(&mut client, &full_parent).await?;
+                client.cwd(&Self::absolute_path(&full_parent)).await?;
             }
 
-            // 使用 async_std::io::Cursor 包装内存数据为 reader
-            let filename = key.rfind('/').map(|i| &key[i + 1..]).unwrap_or(key);
             let mut cursor = async_std::io::Cursor::new(data);
-            client.put_file(filename, &mut cursor).await?;
+            self.upload_reader_atomic(&mut client, filename, &mut cursor)
+                .await?;
 
             client.quit().await?;
             Ok(())
@@ -443,28 +609,25 @@ impl CloudStorage for FtpStorage {
         self.with_retry(|| async {
             let mut client = self.create_client().await?;
 
-            // 确保根目录存在并切换
             client.cwd("/").await?;
-            self.ensure_directory(&mut client, &self.root).await?;
-            client.cwd(&format!("/{}", self.root)).await?;
-
-            // 切换到文件所在目录
-            let filename = key.rfind('/').map(|i| &key[i + 1..]).unwrap_or(key);
-            if let Some(parent) = key.rfind('/') {
-                let parent_path = &key[..parent];
-                if !parent_path.is_empty() {
-                    let full_parent = format!("{}/{}", self.root, parent_path);
-                    self.ensure_directory(&mut client, &full_parent).await?;
-                    client.cwd(&format!("/{}", full_parent)).await?;
+            let (parent_path, filename) = Self::split_parent_filename(key);
+            let full_parent = Self::join_paths(&self.root, parent_path);
+            if let Err(err) = client.cwd(&Self::absolute_path(&full_parent)).await {
+                client.quit().await?;
+                if Self::is_not_found_error(&err) {
+                    return Ok(None);
                 }
+                return Err(err);
             }
 
-            // 检查文件是否存在
             let size = match client.size(filename).await {
                 Ok(s) => s,
-                Err(_) => {
+                Err(err) => {
                     client.quit().await?;
-                    return Ok(None);
+                    if Self::is_not_found_error(&err) {
+                        return Ok(None);
+                    }
+                    return Err(err);
                 }
             };
 
@@ -472,9 +635,12 @@ impl CloudStorage for FtpStorage {
                 // 再通过 mdtm 确认
                 match client.mdtm(filename).await {
                     Ok(_) => {}
-                    Err(_) => {
+                    Err(err) => {
                         client.quit().await?;
-                        return Ok(None);
+                        if Self::is_not_found_error(&err) {
+                            return Ok(None);
+                        }
+                        return Err(err);
                     }
                 }
             }
@@ -491,67 +657,52 @@ impl CloudStorage for FtpStorage {
         self.with_retry(|| async {
             let mut client = self.create_client().await?;
 
-            // 确保根目录存在并切换
             client.cwd("/").await?;
-            self.ensure_directory(&mut client, &self.root).await?;
-            client.cwd(&format!("/{}", self.root)).await?;
-
-            // 如果有 prefix，确保目录存在并切换
-            if !prefix.is_empty() {
-                let prefix_path = prefix.trim_matches('/');
-                let full_prefix = format!("{}/{}", self.root, prefix_path);
-                self.ensure_directory(&mut client, &full_prefix).await?;
-                client.cwd(&format!("/{}", full_prefix)).await?;
-            }
-
-            // 列出文件
-            let entries = client.list(None).await?;
             let mut files = Vec::new();
+            let start = prefix.trim_matches('/').to_string();
+            let mut dirs = vec![start];
 
-            for entry in entries {
-                // 解析 LIST 输出（格式：-rw-r--r--  1 user group  1234 Jun  3 12:00 filename）
-                let parts: Vec<&str> = entry.split_whitespace().collect();
-                if parts.len() < 9 {
-                    continue;
-                }
-
-                // 跳过目录
-                let perms = parts[0];
-                if perms.starts_with('d') {
-                    continue;
-                }
-
-                // 提取文件名和大小
-                let size = parts[4].parse::<u64>().unwrap_or(0);
-                let filename = parts[8..].join(" ");
-
-                // 跳过隐藏文件
-                if filename.starts_with('.') {
-                    continue;
-                }
-
-                // 构建完整路径
-                let full_key = if prefix.is_empty() {
-                    filename.clone()
-                } else {
-                    format!("{}/{}", prefix.trim_matches('/'), filename)
+            while let Some(relative_dir) = dirs.pop() {
+                let full_dir = Self::join_paths(&self.root, &relative_dir);
+                let full_dir_abs = Self::absolute_path(&full_dir);
+                let raw_entries = match client.mlsd(Some(&full_dir_abs)).await {
+                    Ok(entries) => entries,
+                    Err(mlsd_err) => {
+                        if Self::is_not_found_error(&mlsd_err) {
+                            continue;
+                        }
+                        match client.list(Some(&full_dir_abs)).await {
+                            Ok(entries) => entries,
+                            Err(list_err) => {
+                                if Self::is_not_found_error(&list_err) {
+                                    continue;
+                                }
+                                return Err(mlsd_err);
+                            }
+                        }
+                    }
                 };
 
-                // 获取修改时间
-                let file_path = if prefix.is_empty() {
-                    filename.clone()
-                } else {
-                    format!("{}/{}", prefix.trim_matches('/'), filename)
-                };
-
-                let modified = client.mdtm(&file_path).await.unwrap_or_else(|_| Utc::now());
-
-                files.push(FileInfo {
-                    key: full_key,
-                    size,
-                    last_modified: modified,
-                    etag: None,
-                });
+                for raw in raw_entries {
+                    let Some(entry) = Self::parse_list_entry(&raw) else {
+                        tracing::warn!("[FtpStorage] 无法解析 LIST/MLSD 条目: {}", raw);
+                        continue;
+                    };
+                    if entry.name == "." || entry.name == ".." || entry.name.starts_with('.') {
+                        continue;
+                    }
+                    let key = Self::join_paths(&relative_dir, &entry.name);
+                    if entry.is_dir {
+                        dirs.push(key);
+                    } else {
+                        files.push(FileInfo {
+                            key,
+                            size: entry.size,
+                            last_modified: entry.modified,
+                            etag: None,
+                        });
+                    }
+                }
             }
 
             client.quit().await?;
@@ -570,15 +721,15 @@ impl CloudStorage for FtpStorage {
             // 确保根目录存在并切换
             client.cwd("/").await?;
             self.ensure_directory(&mut client, &self.root).await?;
-            client.cwd(&format!("/{}", self.root)).await?;
+            client.cwd(&Self::absolute_path(&self.root)).await?;
 
             // 切换到文件所在目录
             let filename = key.rfind('/').map(|i| &key[i + 1..]).unwrap_or(key);
             if let Some(parent) = key.rfind('/') {
                 let parent_path = &key[..parent];
                 if !parent_path.is_empty() {
-                    let full_parent = format!("{}/{}", self.root, parent_path);
-                    client.cwd(&format!("/{}", full_parent)).await?;
+                    let full_parent = self.remote_path(parent_path);
+                    client.cwd(&Self::absolute_path(&full_parent)).await?;
                 }
             }
 
@@ -604,27 +755,25 @@ impl CloudStorage for FtpStorage {
         self.with_retry(|| async {
             let mut client = self.create_client().await?;
 
-            // 确保根目录存在并切换
             client.cwd("/").await?;
-            self.ensure_directory(&mut client, &self.root).await?;
-            client.cwd(&format!("/{}", self.root)).await?;
-
-            // 切换到文件所在目录
-            let filename = key.rfind('/').map(|i| &key[i + 1..]).unwrap_or(key);
-            if let Some(parent) = key.rfind('/') {
-                let parent_path = &key[..parent];
-                if !parent_path.is_empty() {
-                    let full_parent = format!("{}/{}", self.root, parent_path);
-                    client.cwd(&format!("/{}", full_parent)).await?;
+            let (parent_path, filename) = Self::split_parent_filename(key);
+            let full_parent = Self::join_paths(&self.root, parent_path);
+            if let Err(err) = client.cwd(&Self::absolute_path(&full_parent)).await {
+                client.quit().await?;
+                if Self::is_not_found_error(&err) {
+                    return Ok(None);
                 }
+                return Err(err);
             }
 
-            // 获取文件大小（suppaftp 6.0.7 返回 usize，已转为 u64）
             let size = match client.size(filename).await {
                 Ok(size) => size,
-                Err(_) => {
+                Err(err) => {
                     client.quit().await?;
-                    return Ok(None);
+                    if Self::is_not_found_error(&err) {
+                        return Ok(None);
+                    }
+                    return Err(err);
                 }
             };
 
@@ -677,27 +826,21 @@ impl CloudStorage for FtpStorage {
             self.ensure_directory(&mut client, &self.root).await?;
 
             // 切换到根目录
-            client.cwd(&format!("/{}", self.root)).await?;
+            client.cwd(&Self::absolute_path(&self.root)).await?;
 
             // 确保父目录存在
-            if let Some(parent) = key.rfind('/') {
-                let parent_path = &key[..parent];
-                if !parent_path.is_empty() {
-                    let full_parent = format!("{}/{}", self.root, parent_path);
-                    self.ensure_directory(&mut client, &full_parent).await?;
-                    client.cwd(&format!("/{}", full_parent)).await?;
-                }
+            let (parent_path, filename) = Self::split_parent_filename(key);
+            if !parent_path.is_empty() {
+                let full_parent = self.remote_path(parent_path);
+                self.ensure_directory(&mut client, &full_parent).await?;
+                client.cwd(&Self::absolute_path(&full_parent)).await?;
             }
 
-            let filename = key.rfind('/').map(|i| &key[i + 1..]).unwrap_or(key);
-
-            // 读取文件内容到内存，用 async_std::io::Cursor 包装后上传
-            let data = tokio::fs::read(local_path)
+            let mut file = async_std::fs::File::open(local_path)
                 .await
-                .map_err(|e| AppError::file_system(format!("读取文件失败：{}", e)))?;
-
-            let mut cursor = async_std::io::Cursor::new(&data[..]);
-            client.put_file(filename, &mut cursor).await?;
+                .map_err(|e| AppError::file_system(format!("打开文件失败：{}", e)))?;
+            self.upload_reader_atomic(&mut client, filename, &mut file)
+                .await?;
 
             // 报告进度
             if let Some(ref cb) = progress {
@@ -729,18 +872,21 @@ impl CloudStorage for FtpStorage {
                 cb(0, total_size);
             }
 
-            // 确保根目录存在并切换
+            // 读路径禁止 MKD 副作用：目录不存在应按 not-found 或真实错误返回。
             client.cwd("/").await?;
-            self.ensure_directory(&mut client, &self.root).await?;
-            client.cwd(&format!("/{}", self.root)).await?;
+            client.cwd(&Self::absolute_path(&self.root)).await?;
 
             // 切换到文件所在目录
-            let filename = key.rfind('/').map(|i| &key[i + 1..]).unwrap_or(key);
-            if let Some(parent) = key.rfind('/') {
-                let parent_path = &key[..parent];
-                if !parent_path.is_empty() {
-                    let full_parent = format!("{}/{}", self.root, parent_path);
-                    client.cwd(&format!("/{}", full_parent)).await?;
+            let (parent_path, filename) = Self::split_parent_filename(key);
+            if !parent_path.is_empty() {
+                let full_parent = self.remote_path(parent_path);
+                match client.cwd(&Self::absolute_path(&full_parent)).await {
+                    Ok(_) => {}
+                    Err(e) if Self::is_not_found_error(&e) => {
+                        client.quit().await?;
+                        return Err(AppError::not_found("云端文件不存在"));
+                    }
+                    Err(e) => return Err(e),
                 }
             }
 
@@ -751,14 +897,17 @@ impl CloudStorage for FtpStorage {
                     .map_err(|e| AppError::file_system(format!("创建目录失败：{}", e)))?;
             }
 
-            // 下载到内存
-            let data = client.retr_to_vec(filename).await?;
-            client.quit().await?;
+            // 写入临时文件
+            let temp_file = tempfile::Builder::new()
+                .prefix("ftp-download-")
+                .tempfile_in(local_path.parent().unwrap_or_else(|| Path::new(".")))
+                .map_err(|e| AppError::file_system(format!("创建临时文件失败：{}", e)))?;
+            let temp_path = temp_file.path().to_path_buf();
 
-            // 计算校验和
-            let mut hasher = Sha256::new();
-            hasher.update(&data);
-            let checksum = format!("{:x}", hasher.finalize());
+            let checksum = client
+                .retr_to_file(filename, &temp_path, total_size, progress.as_ref())
+                .await?;
+            client.quit().await?;
 
             // 验证校验和
             if let Some(expected) = expected_checksum {
@@ -770,17 +919,6 @@ impl CloudStorage for FtpStorage {
                     )));
                 }
             }
-
-            // 写入临时文件
-            let temp_file = tempfile::Builder::new()
-                .prefix("ftp-download-")
-                .tempfile_in(local_path.parent().unwrap_or_else(|| Path::new(".")))
-                .map_err(|e| AppError::file_system(format!("创建临时文件失败：{}", e)))?;
-            let temp_path = temp_file.path().to_path_buf();
-
-            tokio::fs::write(&temp_path, &data)
-                .await
-                .map_err(|e| AppError::file_system(format!("写入临时文件失败：{}", e)))?;
 
             if let Some(ref cb) = progress {
                 cb(total_size, total_size);
@@ -845,6 +983,38 @@ mod tests {
         assert!(
             !FtpStorage::is_local_ftp_host("localhost.evil.com"),
             "localhost.evil.com should not be treated as local"
+        );
+    }
+
+    #[test]
+    fn ftp_contract_source_guards() {
+        let source = include_str!("ftp.rs");
+
+        assert!(
+            source.contains("async fn upload_reader_atomic"),
+            "FTP writes must upload to a temporary object and rename into place"
+        );
+        assert!(
+            source.contains("client.rename(&temp_name, final_name).await"),
+            "FTP atomic visibility depends on RNFR/RNTO rename"
+        );
+        assert!(
+            source.contains("client.mlsd(Some(&full_dir_abs))"),
+            "FTP list must prefer MLSD so directory entries are typed"
+        );
+        assert!(
+            source.contains("dirs.push(key)"),
+            "FTP list must recursively traverse directories"
+        );
+
+        let get_body = source
+            .split("async fn get(&self, key: &str)")
+            .nth(1)
+            .and_then(|s| s.split("async fn list(&self").next())
+            .expect("get body");
+        assert!(
+            !get_body.contains("ensure_directory"),
+            "FTP get/stat/list read paths must not create directories"
         );
     }
 }

@@ -10,7 +10,8 @@
     "s3Desc": "AWS S3, Cloudflare R2, Aliyun OSS, MinIO, etc.",
     "s3Disabled": "Not enabled (requires S3 feature at compile time)",
     "ftp": "FTP/FTPS",
-    "ftpDesc": "Traditional FTP servers with explicit FTPS encryption support"
+    "ftpDesc": "Traditional FTP servers with explicit FTPS encryption support",
+    "ftpDescExperimental": "Experimental backend with known data-risk issues"
   },
   
   "webdav": {
@@ -53,7 +54,8 @@
     "password": "Password",
     "passwordPlaceholder": "Your FTP password",
     "useTls": "Use FTPS Encryption",
-    "useTlsHint": "Enable explicit FTPS (AUTH TLS) to protect credentials (plaintext allowed for localhost only)"
+    "useTlsHint": "Enable explicit FTPS (AUTH TLS) to protect credentials (plaintext allowed for localhost only)",
+    "experimentalWarning": "FTP/FTPS cloud sync is experimental and has known data consistency risks. Prefer WebDAV or S3."
   },
 
   "root": {
@@ -80,7 +82,7 @@
     "connected": "Connected",
     "disconnected": "Disconnected",
     "notConfigured": "Not Configured",
-    "lastSync": "Last Sync",
+    "lastSync": "This Device Last Sync",
     "cloudVersions": "Cloud Versions",
     "latestVersion": "Latest Version",
     "deviceId": "Device ID",

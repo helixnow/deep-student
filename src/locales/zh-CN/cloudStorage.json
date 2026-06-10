@@ -10,7 +10,8 @@
     "s3Desc": "AWS S3、Cloudflare R2、阿里云 OSS、MinIO 等",
     "s3Disabled": "未启用（需编译时启用 S3 feature）",
     "ftp": "FTP/FTPS",
-    "ftpDesc": "传统 FTP 服务器、支持显式 FTPS 加密"
+    "ftpDesc": "传统 FTP 服务器、支持显式 FTPS 加密",
+    "ftpDescExperimental": "实验性后端，当前存在已知数据风险"
   },
   
   "webdav": {
@@ -53,7 +54,8 @@
     "password": "密码",
     "passwordPlaceholder": "您的 FTP 密码",
     "useTls": "使用 FTPS 加密",
-    "useTlsHint": "启用显式 FTPS（AUTH TLS）以保护凭据（仅 localhost 允许明文）"
+    "useTlsHint": "启用显式 FTPS（AUTH TLS）以保护凭据（仅 localhost 允许明文）",
+    "experimentalWarning": "FTP/FTPS 云同步仍处于实验阶段，当前存在已知数据一致性风险。请优先使用 WebDAV 或 S3。"
   },
 
   "root": {
@@ -80,7 +82,7 @@
     "connected": "已连接",
     "disconnected": "未连接",
     "notConfigured": "未配置",
-    "lastSync": "最后同步",
+    "lastSync": "本设备最后同步",
     "cloudVersions": "云端版本数",
     "latestVersion": "最新版本",
     "deviceId": "设备 ID",

@@ -12,7 +12,10 @@ use deep_student_lib::cloud_storage::{
 };
 use deep_student_lib::crypto::backup_crypto;
 use deep_student_lib::data_governance::migration::MigrationCoordinator;
-use deep_student_lib::data_governance::sync::{MergeStrategy, SyncChangeWithData, SyncManager};
+use deep_student_lib::data_governance::sync::{
+    MergeStrategy, SyncChangeWithData, SyncDirection, SyncManager, SyncManifest,
+    SyncTransactionStatus,
+};
 use rusqlite::{params, Connection};
 use sha2::{Digest, Sha256};
 use std::collections::{BTreeMap, HashMap};
@@ -1108,49 +1111,116 @@ async fn run_prune_old_changes_contract(storage: Box<dyn CloudStorage>) {
         .await
         .expect("provider connection should work");
 
-    let manager = SyncManager::new("device-prune".to_string());
+    let manager = SyncManager::new(format!("device-prune-{}", Uuid::new_v4()));
+    let peer_device = format!("device-peer-{}", Uuid::new_v4());
+    let now_iso = chrono::Utc::now().to_rfc3339();
     let now = chrono::Utc::now().timestamp() as u64;
-    let old = now - 5 * 86400;
-    let recent = now;
-    let old_own = format!(
-        "data_governance/changes/device-prune/{}-{}.json.zst",
-        old,
+    let covered_own = format!(
+        "data_governance/changes/{}/{:012}-{}-{}.json.zst",
+        manager.device_id(),
+        1,
+        now - 5 * 86400,
         Uuid::new_v4()
     );
-    let old_other = format!(
-        "data_governance/changes/device-retired/{}-{}.json.zst",
-        old,
+    let covered_by_snapshot_but_not_peer = format!(
+        "data_governance/changes/{}/{:012}-{}-{}.json.zst",
+        manager.device_id(),
+        2,
+        now - 5 * 86400,
         Uuid::new_v4()
     );
-    let recent_own = format!(
-        "data_governance/changes/device-prune/{}-{}.json.zst",
-        recent,
+    let other_device = format!(
+        "data_governance/changes/{}/{:012}-{}-{}.json.zst",
+        peer_device,
+        1,
+        now - 5 * 86400,
         Uuid::new_v4()
     );
 
-    for key in [&old_own, &old_other, &recent_own] {
+    for key in [
+        &covered_own,
+        &covered_by_snapshot_but_not_peer,
+        &other_device,
+    ] {
         storage
             .put(key, b"placeholder")
             .await
             .expect("seed change file");
     }
 
+    let mut cursors = HashMap::new();
+    cursors.insert(manager.device_id().to_string(), 1);
+    let peer_manifest = SyncManifest {
+        sync_transaction_id: "peer".to_string(),
+        databases: HashMap::new(),
+        status: SyncTransactionStatus::Complete,
+        created_at: now_iso.clone(),
+        device_id: peer_device.clone(),
+        format_version: 3,
+        published_max_seq: 0,
+        cursors,
+        superseded_by: None,
+        snapshot_seen: HashMap::new(),
+    };
+    let manifest_json = serde_json::to_vec(&peer_manifest).expect("serialize peer manifest");
+    storage
+        .put(
+            &format!("data_governance/manifests/{peer_device}.json"),
+            &manifest_json,
+        )
+        .await
+        .expect("seed peer manifest");
+
+    let mut covered_cursors = serde_json::Map::new();
+    covered_cursors.insert(manager.device_id().to_string(), serde_json::json!(2));
+    let snapshot = serde_json::json!({
+        "format_version": 1,
+        "database_name": "vfs",
+        "device_id": peer_device,
+        "created_at": now_iso,
+        "schema_version": 1,
+        "data_version": 1,
+        "checksum": "snapshot",
+        "covered_cursors": covered_cursors,
+        "rows": {}
+    });
+    let snapshot_json = serde_json::to_vec(&snapshot).expect("serialize snapshot");
+    let snapshot_payload = zstd::stream::encode_all(std::io::Cursor::new(snapshot_json), 0)
+        .expect("compress snapshot");
+    let snapshot_key = format!(
+        "data_governance/snapshots/vfs/{}-{}-{}.json.zst",
+        chrono::Utc::now().timestamp_millis(),
+        manager.device_id(),
+        Uuid::new_v4()
+    );
+    storage
+        .put(&snapshot_key, &snapshot_payload)
+        .await
+        .expect("seed snapshot");
+
     let deleted = manager
         .prune_old_changes(storage.as_ref(), 1)
         .await
         .expect("prune old provider changes");
-    assert_eq!(deleted, 2);
-    assert!(storage.get(&old_own).await.expect("read old own").is_none());
     assert!(storage
-        .get(&old_other)
+        .get(&covered_own)
         .await
-        .expect("read old other")
+        .expect("read covered own")
         .is_none());
     assert!(storage
-        .get(&recent_own)
+        .get(&covered_by_snapshot_but_not_peer)
         .await
-        .expect("read recent own")
+        .expect("read cursor-limited own")
         .is_some());
+    assert!(storage
+        .get(&other_device)
+        .await
+        .expect("read other device")
+        .is_some());
+    assert_eq!(
+        deleted, 1,
+        "only own v3 changes covered by snapshot and all active peer cursors may be pruned"
+    );
 }
 
 async fn run_workspace_database_file_sync_contract(storage: Box<dyn CloudStorage>) {
@@ -1174,13 +1244,21 @@ async fn run_workspace_database_file_sync_contract(storage: Box<dyn CloudStorage
     let target_manager = SyncManager::new(format!("device-ws-dst-{}", Uuid::new_v4()));
 
     source_manager
-        .sync_workspace_databases(storage.as_ref(), source_active.path())
+        .sync_workspace_databases(
+            storage.as_ref(),
+            source_active.path(),
+            SyncDirection::Bidirectional,
+        )
         .await
         .expect("upload source workspace database");
     assert_remote_file_present(storage.as_ref(), &remote_key).await;
 
     target_manager
-        .sync_workspace_databases(storage.as_ref(), target_active.path())
+        .sync_workspace_databases(
+            storage.as_ref(),
+            target_active.path(),
+            SyncDirection::Bidirectional,
+        )
         .await
         .expect("download workspace database to target directory");
     assert!(
@@ -1214,7 +1292,11 @@ async fn run_workspace_remote_same_size_corruption_rejected_contract(
     let source_manager = SyncManager::new(format!("device-ws-src-{}", Uuid::new_v4()));
     let target_manager = SyncManager::new(format!("device-ws-dst-{}", Uuid::new_v4()));
     source_manager
-        .sync_workspace_databases(storage.as_ref(), source_active.path())
+        .sync_workspace_databases(
+            storage.as_ref(),
+            source_active.path(),
+            SyncDirection::Bidirectional,
+        )
         .await
         .expect("upload source workspace database");
 
@@ -1225,7 +1307,11 @@ async fn run_workspace_remote_same_size_corruption_rejected_contract(
         .expect("overwrite remote workspace database with same-size corrupted bytes");
 
     target_manager
-        .sync_workspace_databases(storage.as_ref(), target_active.path())
+        .sync_workspace_databases(
+            storage.as_ref(),
+            target_active.path(),
+            SyncDirection::Bidirectional,
+        )
         .await
         .expect("workspace sync should skip corrupted download without failing whole pass");
     let target_db = target_active
@@ -1263,7 +1349,11 @@ async fn run_vfs_blob_file_sync_and_tombstone_contract(storage: Box<dyn CloudSto
     let target_manager = SyncManager::new(format!("device-blob-dst-{}", Uuid::new_v4()));
 
     let upload = source_manager
-        .sync_vfs_blobs(storage.as_ref(), source_blobs.path())
+        .sync_vfs_blobs(
+            storage.as_ref(),
+            source_blobs.path(),
+            SyncDirection::Bidirectional,
+        )
         .await
         .expect("upload source blob");
     assert_eq!(upload.uploaded, 1);
@@ -1271,7 +1361,11 @@ async fn run_vfs_blob_file_sync_and_tombstone_contract(storage: Box<dyn CloudSto
     assert_remote_file_present(storage.as_ref(), &remote_key).await;
 
     let download = target_manager
-        .sync_vfs_blobs(storage.as_ref(), target_blobs.path())
+        .sync_vfs_blobs(
+            storage.as_ref(),
+            target_blobs.path(),
+            SyncDirection::Bidirectional,
+        )
         .await
         .expect("download blob to target directory");
     assert_eq!(download.downloaded, 1);
@@ -1293,7 +1387,11 @@ async fn run_vfs_blob_file_sync_and_tombstone_contract(storage: Box<dyn CloudSto
         .expect("upload blob tombstone");
 
     let tombstone_sync = target_manager
-        .sync_vfs_blobs_with_tombstones(storage.as_ref(), target_blobs.path())
+        .sync_vfs_blobs_with_tombstones(
+            storage.as_ref(),
+            target_blobs.path(),
+            SyncDirection::Bidirectional,
+        )
         .await
         .expect("apply blob tombstone on target");
     assert!(
@@ -1333,7 +1431,11 @@ async fn run_vfs_blob_remote_same_size_corruption_rejected_contract(
     let target_manager = SyncManager::new(format!("device-blob-dst-{}", Uuid::new_v4()));
 
     let upload = source_manager
-        .sync_vfs_blobs(storage.as_ref(), source_blobs.path())
+        .sync_vfs_blobs(
+            storage.as_ref(),
+            source_blobs.path(),
+            SyncDirection::Bidirectional,
+        )
         .await
         .expect("upload source blob");
     assert_eq!(upload.uploaded, 1);
@@ -1351,7 +1453,11 @@ async fn run_vfs_blob_remote_same_size_corruption_rejected_contract(
         .expect("overwrite remote blob with same-size corrupted payload");
 
     let download = target_manager
-        .sync_vfs_blobs(storage.as_ref(), target_blobs.path())
+        .sync_vfs_blobs(
+            storage.as_ref(),
+            target_blobs.path(),
+            SyncDirection::Bidirectional,
+        )
         .await
         .expect("sync should report per-file blob failure instead of failing whole pass");
     assert_eq!(download.downloaded, 0);
@@ -1407,6 +1513,7 @@ async fn run_asset_directories_file_sync_and_tombstone_contract(storage: Box<dyn
             storage.as_ref(),
             source_active.path(),
             source_app_data.path(),
+            SyncDirection::Bidirectional,
         )
         .await
         .expect("upload source asset directories");
@@ -1420,6 +1527,7 @@ async fn run_asset_directories_file_sync_and_tombstone_contract(storage: Box<dyn
             storage.as_ref(),
             target_active.path(),
             target_app_data.path(),
+            SyncDirection::Bidirectional,
         )
         .await
         .expect("download assets to target directories");
@@ -1447,6 +1555,7 @@ async fn run_asset_directories_file_sync_and_tombstone_contract(storage: Box<dyn
             storage.as_ref(),
             target_active.path(),
             target_app_data.path(),
+            SyncDirection::Bidirectional,
         )
         .await
         .expect("apply asset tombstone on target");
@@ -1490,6 +1599,7 @@ async fn run_asset_remote_same_size_corruption_rejected_contract(storage: Box<dy
             storage.as_ref(),
             source_active.path(),
             source_app_data.path(),
+            SyncDirection::Bidirectional,
         )
         .await
         .expect("upload source asset");
@@ -1512,6 +1622,7 @@ async fn run_asset_remote_same_size_corruption_rejected_contract(storage: Box<dy
             storage.as_ref(),
             target_active.path(),
             target_app_data.path(),
+            SyncDirection::Bidirectional,
         )
         .await
         .expect("asset sync should report per-file failure");
