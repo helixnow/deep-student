@@ -21,7 +21,8 @@ use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::{VfsError, VfsResult};
 use crate::vfs::repos::path_cache_repo::VfsPathCacheRepo;
 use crate::vfs::repos::{
-    VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsMindMapRepo, VfsNoteRepo, VfsTranslationRepo,
+    VfsBlobRepo, VfsEssayRepo, VfsExamRepo, VfsFileRepo, VfsMindMapRepo, VfsNoteRepo,
+    VfsTranslationRepo,
 };
 use crate::vfs::types::{
     FolderResourceInfo, FolderResourcesResult, FolderTreeNode, ResourceLocation, VfsFolder,
@@ -1232,7 +1233,15 @@ impl VfsFolderRepo {
     /// 递归清理文件夹树内的所有资源，再删除文件夹树本身，避免留下孤儿记录。
     pub fn purge_folder(db: &VfsDatabase, folder_id: &str) -> VfsResult<()> {
         let conn = db.get_conn_safe()?;
-        Self::purge_folder_with_conn(&conn, db.blobs_dir(), folder_id)
+        Self::purge_folder_with_conn(&conn, db.blobs_dir(), folder_id)?;
+        // ★ 2026-06-10（审阅问题 A2）：事务提交后清扫 ref_count=0 的 blob（两阶段删除第二阶段）
+        if let Err(e) = VfsBlobRepo::cleanup_unreferenced_with_conn(&conn, db.blobs_dir()) {
+            warn!(
+                "[VFS::FolderRepo] Post-purge blob sweep failed (will retry on next sweep): {}",
+                e
+            );
+        }
+        Ok(())
     }
 
     /// 永久删除文件夹（使用现有连接）

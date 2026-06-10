@@ -332,6 +332,26 @@ mod tests {
     }
 
     #[test]
+    fn regression_m22_classification_field_merge_requires_registered_columns() {
+        use crate::data_governance::sync::classification::{
+            sync_classification_registry, ConflictPolicyClass, SyncCategory,
+        };
+
+        for entry in sync_classification_registry()
+            .into_iter()
+            .filter(|entry| entry.category == SyncCategory::RowSync)
+            .filter(|entry| matches!(entry.conflict_policy, ConflictPolicyClass::FieldMerge))
+        {
+            assert!(
+                !field_merge_columns_for_table(entry.table_name).is_empty(),
+                "{}.{} is classified FieldMerge but has no registered merge columns",
+                entry.database,
+                entry.table_name
+            );
+        }
+    }
+
+    #[test]
     fn test_unregistered_json_looking_field_remains_conflict() {
         let (result, changed, conflict) = merge_field(
             "questions",

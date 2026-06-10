@@ -93,6 +93,56 @@ const inferResourceTypeFromFileName = (fileName: string): ResourceType => {
   return 'file';
 };
 
+// ============================================================================
+// ★ I10 修复：标签页持久化（localStorage）
+// ============================================================================
+
+const TABS_STORAGE_KEY = 'learning-hub-tabs-v1';
+
+interface PersistedTabsState {
+  tabs: OpenTab[];
+  activeTabId: string | null;
+}
+
+let persistedTabsCache: PersistedTabsState | null = null;
+
+/** 读取持久化的标签页状态（模块级缓存，避免 useState 初始化重复解析） */
+const loadPersistedTabs = (): PersistedTabsState => {
+  if (persistedTabsCache) return persistedTabsCache;
+  const fallback: PersistedTabsState = { tabs: [], activeTabId: null };
+  try {
+    const raw = localStorage.getItem(TABS_STORAGE_KEY);
+    if (!raw) {
+      persistedTabsCache = fallback;
+      return fallback;
+    }
+    const parsed = JSON.parse(raw) as Partial<PersistedTabsState>;
+    const tabs = Array.isArray(parsed.tabs)
+      ? parsed.tabs.filter(
+          (t): t is OpenTab =>
+            !!t && typeof t.tabId === 'string' && typeof t.resourceId === 'string' && typeof t.dstuPath === 'string'
+        )
+      : [];
+    const activeTabId =
+      typeof parsed.activeTabId === 'string' && tabs.some(t => t.tabId === parsed.activeTabId)
+        ? parsed.activeTabId
+        : tabs[tabs.length - 1]?.tabId ?? null;
+    persistedTabsCache = { tabs, activeTabId };
+    return persistedTabsCache;
+  } catch {
+    persistedTabsCache = fallback;
+    return fallback;
+  }
+};
+
+const savePersistedTabs = (tabs: OpenTab[], activeTabId: string | null) => {
+  try {
+    localStorage.setItem(TABS_STORAGE_KEY, JSON.stringify({ tabs, activeTabId }));
+  } catch {
+    // localStorage 不可用时静默忽略
+  }
+};
+
 /**
  * Learning Hub 全屏页面组件
  *
@@ -110,8 +160,9 @@ export const LearningHubPage: React.FC = () => {
   const desktopShellSidebarTarget = useDesktopShellSidebarPortal('learning-hub');
 
   // ========== ★ 标签页状态 ==========
-  const [tabs, setTabs] = useState<OpenTab[]>([]);
-  const [activeTabId, setActiveTabId] = useState<string | null>(null);
+  // ★ I10 修复：标签页持久化——重启后恢复上次打开的标签页
+  const [tabs, setTabs] = useState<OpenTab[]>(() => loadPersistedTabs().tabs);
+  const [activeTabId, setActiveTabId] = useState<string | null>(() => loadPersistedTabs().activeTabId);
   const [splitView, setSplitView] = useState<SplitViewState | null>(null);
 
   // 派生状态
@@ -123,6 +174,43 @@ export const LearningHubPage: React.FC = () => {
   activeTabIdRef.current = activeTabId;
   const tabsRef = useRef(tabs);
   tabsRef.current = tabs;
+
+  // ★ I10 修复：标签页变化时持久化
+  useEffect(() => {
+    savePersistedTabs(tabs, activeTabId);
+  }, [tabs, activeTabId]);
+
+  // ★ I10 修复：恢复后后台校验资源有效性，关闭已删除/已移动资源的失效标签页
+  const restoredValidationDone = useRef(false);
+  useEffect(() => {
+    if (restoredValidationDone.current) return;
+    restoredValidationDone.current = true;
+    const restored = tabsRef.current;
+    if (restored.length === 0) return;
+
+    let cancelled = false;
+    void (async () => {
+      const invalidIds: string[] = [];
+      for (const tab of restored) {
+        const result = await dstu.get(tab.dstuPath);
+        if (!result.ok) {
+          invalidIds.push(tab.tabId);
+        }
+        if (cancelled) return;
+      }
+      if (invalidIds.length === 0) return;
+      setTabs(prev => {
+        const next = prev.filter(t => !invalidIds.includes(t.tabId));
+        if (next.length === prev.length) return prev;
+        setActiveTabId(currentId => {
+          if (currentId && next.some(t => t.tabId === currentId)) return currentId;
+          return next[next.length - 1]?.tabId ?? null;
+        });
+        return next;
+      });
+    })();
+    return () => { cancelled = true; };
+  }, []);
 
   const openTab = useCallback((app: Omit<OpenTab, 'tabId' | 'openedAt'>) => {
     setTabs(prev => {

@@ -770,33 +770,23 @@ async fn run_encrypted_data_governance_payload_contract(storage: Box<dyn CloudSt
         wrong_password_device_id,
         Some("wrong-data-governance-password".to_string()),
     );
-    let wrong_password_download = wrong_password_manager
+    let wrong_password_error = wrong_password_manager
         .download_changes(storage.as_ref(), 0, None)
         .await
-        .expect("wrong password should report decode failures without failing the batch");
+        .expect_err("wrong password should stop at the encrypted change file");
     assert!(
-        wrong_password_download.changes.is_empty(),
-        "wrong password must not return decrypted changes"
-    );
-    assert_eq!(
-        wrong_password_download.decode_failures,
-        vec![change_key.clone()],
-        "wrong password should identify the encrypted change file"
+        wrong_password_error.to_string().contains(&change_key),
+        "wrong password error should identify the encrypted change file: {wrong_password_error}"
     );
 
     let plaintext_manager = SyncManager::new(plaintext_device_id);
-    let plaintext_download = plaintext_manager
+    let plaintext_error = plaintext_manager
         .download_changes(storage.as_ref(), 0, None)
         .await
-        .expect("missing password should report decode failures without failing the batch");
+        .expect_err("missing password should stop at the encrypted change file");
     assert!(
-        plaintext_download.changes.is_empty(),
-        "missing password must not return encrypted changes as plaintext"
-    );
-    assert_eq!(
-        plaintext_download.decode_failures,
-        vec![change_key],
-        "missing password should identify the encrypted change file"
+        plaintext_error.to_string().contains(&change_key),
+        "missing password error should identify the encrypted change file: {plaintext_error}"
     );
 }
 
@@ -816,7 +806,7 @@ async fn run_mixed_plaintext_and_encrypted_change_contract(storage: Box<dyn Clou
     clear_change_log(&encrypted_vfs);
     clear_change_log(&target_vfs);
 
-    let (plain_res_id, plain_note_id, _plain_hash, plain_title) =
+    let (_plain_res_id, plain_note_id, _plain_hash, plain_title) =
         insert_vfs_note_bundle(&plaintext_vfs, "mixed_plaintext");
     let (_encrypted_res_id, encrypted_note_id, encrypted_hash, encrypted_title) =
         insert_vfs_note_bundle(&encrypted_vfs, "mixed_encrypted");
@@ -919,26 +909,13 @@ async fn run_mixed_plaintext_and_encrypted_change_contract(storage: Box<dyn Clou
     );
 
     let unauthenticated_manager = SyncManager::new(unauthenticated_device_id);
-    let unauthenticated_download = unauthenticated_manager
+    let unauthenticated_error = unauthenticated_manager
         .download_changes(storage.as_ref(), 0, None)
         .await
-        .expect("download mixed changes without password");
-    assert_eq!(
-        unauthenticated_download.decode_failures,
-        vec![encrypted_key],
-        "clients without the new password should report only encrypted change files"
-    );
-    assert_eq!(
-        unauthenticated_download.changes.len(),
-        plain_changes.len(),
-        "clients without a password should still read legacy plaintext changes"
-    );
+        .expect_err("clients without the new password should stop at encrypted change files");
     assert!(
-        unauthenticated_download
-            .changes
-            .iter()
-            .all(|change| change.record_id == plain_note_id || change.record_id == plain_res_id),
-        "unauthenticated download must not expose encrypted records"
+        unauthenticated_error.to_string().contains(&encrypted_key),
+        "clients without the new password should identify the encrypted change file: {unauthenticated_error}"
     );
 }
 
@@ -1056,20 +1033,14 @@ async fn run_corrupt_change_file_contract(storage: Box<dyn CloudStorage>) {
         .await
         .expect("upload corrupt change file");
 
-    let downloaded = target_manager
+    let corrupt_error = target_manager
         .download_changes(storage.as_ref(), 0, None)
         .await
-        .expect("download changes with corrupt neighbor");
+        .expect_err("corrupt change neighbor should stop the download at a safe point");
     assert!(
-        downloaded.changes.len() >= changes.len(),
-        "valid changes should survive corrupt neighbor"
+        corrupt_error.to_string().contains(&corrupt_key),
+        "corrupt file should be reported, not silently ignored: {corrupt_error}"
     );
-    assert_eq!(
-        downloaded.decode_failures.len(),
-        1,
-        "corrupt file should be reported, not silently ignored"
-    );
-    assert_eq!(downloaded.decode_failures[0], corrupt_key);
 }
 
 async fn run_corrupt_manifest_contract(storage: Box<dyn CloudStorage>) {

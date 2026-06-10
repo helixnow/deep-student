@@ -295,14 +295,22 @@ impl VfsBlobRepo {
 
     /// 减少引用计数（使用现有连接）
     ///
-    /// 使用 RETURNING 子句确保更新和读取的原子性
-    /// 如果引用计数降为 0，可以选择删除文件和记录（可配置）
+    /// 使用 RETURNING 子句确保更新和读取的原子性。
+    ///
+    /// ★ 2026-06-10 修复（审阅问题 A2）：引用计数降为 0 时**不再在本函数内删除物理文件**。
+    /// 旧行为在调用方事务（BEGIN/SAVEPOINT）内执行 `fs::remove_file`，
+    /// 一旦后续 SQL 失败回滚，DB 记录复活但文件已永久丢失。
+    /// 现在 ref_count=0 的行保留在 blobs 表中，由调用方在事务提交后调用
+    /// `cleanup_unreferenced` / `cleanup_blob_with_conn` 统一清理（两阶段删除）。
+    /// 即使应用在提交后、清理前崩溃，残留的 ref_count=0 行也会被下次清扫回收，
+    /// 不会造成数据丢失。
     pub fn decrement_ref_with_conn(
         conn: &Connection,
         blobs_dir: &Path,
         hash: &str,
     ) -> VfsResult<i32> {
-        // 使用 RETURNING 子句原子地更新并返回新值
+        let _ = blobs_dir; // 保留签名兼容；物理删除已移交事务提交后的清扫阶段
+                           // 使用 RETURNING 子句原子地更新并返回新值
         let new_count: i32 = conn.query_row(
             "UPDATE blobs SET ref_count = MAX(0, ref_count - 1) WHERE hash = ?1 RETURNING ref_count",
             params![hash],
@@ -323,12 +331,11 @@ impl VfsBlobRepo {
             hash, new_count
         );
 
-        // 可选：清理无引用的 Blob
         if new_count == 0 {
-            // 启用blob清理逻辑
-            if let Err(e) = Self::cleanup_blob_with_conn(conn, blobs_dir, hash) {
-                warn!("[VFS::BlobRepo] Failed to cleanup blob {}: {}", hash, e);
-            }
+            debug!(
+                "[VFS::BlobRepo] Blob {} reached ref_count=0, deferred cleanup after commit",
+                hash
+            );
         }
 
         Ok(new_count)
@@ -378,10 +385,11 @@ impl VfsBlobRepo {
 
         // 入删除传播队列（尽力，失败不阻塞 blob 清理）
         // `__blob_deletion_queue` 在 V20260312 迁移中创建。老数据库没有此表时忽略错误。
+        let deleted_at = chrono::Utc::now().to_rfc3339();
         if let Err(e) = conn.execute(
             "INSERT OR REPLACE INTO __blob_deletion_queue (hash, relative_path, size, deleted_at, retry_count)
-             VALUES (?1, ?2, ?3, datetime('now'), 0)",
-            params![hash, relative_path, file_size],
+             VALUES (?1, ?2, ?3, ?4, 0)",
+            params![hash, relative_path, file_size, deleted_at],
         ) {
             warn!(
                 "[VFS::BlobRepo] Failed to enqueue blob deletion (may be old schema): {}",
@@ -428,10 +436,11 @@ impl VfsBlobRepo {
             conn.execute("DELETE FROM blobs WHERE hash = ?1", params![hash])?;
 
             // 入删除队列（老 schema 下失败不阻塞）
+            let deleted_at = chrono::Utc::now().to_rfc3339();
             if let Err(e) = conn.execute(
                 "INSERT OR REPLACE INTO __blob_deletion_queue (hash, relative_path, size, deleted_at, retry_count)
-                 VALUES (?1, ?2, ?3, datetime('now'), 0)",
-                params![hash, relative_path, file_size],
+                 VALUES (?1, ?2, ?3, ?4, 0)",
+                params![hash, relative_path, file_size, deleted_at],
             ) {
                 warn!(
                     "[VFS::BlobRepo] Failed to enqueue blob deletion (may be old schema): {}",

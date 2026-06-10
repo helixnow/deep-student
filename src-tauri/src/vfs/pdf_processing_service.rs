@@ -2063,8 +2063,9 @@ impl PdfProcessingService {
                 if !progress.ready_modes.contains(&"ocr".to_string()) {
                     progress.ready_modes.push("ocr".to_string());
                     if let Ok(new_json) = serde_json::to_string(&progress) {
+                        // ★ G2 修复：处理状态写入不触碰业务 updated_at
                         conn.execute(
-                            "UPDATE files SET processing_progress = ?1, updated_at = datetime('now') WHERE id = ?2",
+                            "UPDATE files SET processing_progress = ?1 WHERE id = ?2",
                             params![new_json, file_id],
                         )?;
                     }
@@ -2127,6 +2128,8 @@ impl PdfProcessingService {
             let progress_json = progress.map(|p| serde_json::to_string(p).unwrap_or_default());
             let now_ms = chrono::Utc::now().timestamp_millis();
 
+            // ★ G2 修复：处理状态/进度写入不再触碰业务 updated_at，
+            // 避免长流水线期间"按修改时间排序"列表浮动和同步噪声
             if stage == ProcessingStage::Completed {
                 // 完成
                 conn.execute(
@@ -2135,8 +2138,7 @@ impl PdfProcessingService {
                     SET processing_status = ?1,
                         processing_progress = ?2,
                         processing_completed_at = ?3,
-                        processing_error = NULL,
-                        updated_at = datetime('now')
+                        processing_error = NULL
                     WHERE id = ?4
                     "#,
                     params![
@@ -2163,8 +2165,7 @@ impl PdfProcessingService {
                     SET processing_status = ?1,
                         processing_progress = ?2,
                         processing_completed_at = ?3,
-                        processing_error = COALESCE(?4, processing_error),
-                        updated_at = datetime('now')
+                        processing_error = COALESCE(?4, processing_error)
                     WHERE id = ?5
                     "#,
                     params![
@@ -2181,8 +2182,7 @@ impl PdfProcessingService {
                     r#"
                     UPDATE files
                     SET processing_status = ?1,
-                        processing_progress = ?2,
-                        updated_at = datetime('now')
+                        processing_progress = ?2
                     WHERE id = ?3
                     "#,
                     params![stage.as_str(), progress_json, file_id],
@@ -2194,8 +2194,7 @@ impl PdfProcessingService {
                     UPDATE files
                     SET processing_status = ?1,
                         processing_progress = ?2,
-                        processing_started_at = COALESCE(processing_started_at, ?3),
-                        updated_at = datetime('now')
+                        processing_started_at = COALESCE(processing_started_at, ?3)
                     WHERE id = ?4
                     "#,
                     params![stage.as_str(), progress_json, now_ms, file_id],
@@ -2242,8 +2241,7 @@ impl PdfProcessingService {
             UPDATE files
             SET processing_status = 'error',
                 processing_error = ?1,
-                processing_completed_at = ?2,
-                updated_at = datetime('now')
+                processing_completed_at = ?2
             WHERE id = ?3
             "#,
             params![error, now_ms, file_id],
@@ -2424,8 +2422,7 @@ impl PdfProcessingService {
                 .execute(
                     r#"UPDATE files
                    SET processing_status = 'pending',
-                       processing_error = 'recovered: interrupted by app restart',
-                       updated_at = datetime('now')
+                       processing_error = 'recovered: interrupted by app restart'
                    WHERE id = ?1"#,
                     params![file_id],
                 )
@@ -2461,12 +2458,12 @@ impl PdfProcessingService {
         // 兼容轮询链路：将最新进度持久化到 DB，避免前端只能在 completed 才看到 ready_modes 变化。
         if let Ok(conn) = self.db.get_conn_safe() {
             let progress_json = serde_json::to_string(&progress).unwrap_or_default();
+            // ★ G2 修复：高频进度持久化不触碰业务 updated_at
             if let Err(e) = conn.execute(
                 r#"
                 UPDATE files
                 SET processing_status = ?1,
-                    processing_progress = ?2,
-                    updated_at = datetime('now')
+                    processing_progress = ?2
                 WHERE id = ?3
                 "#,
                 params![progress.stage.clone(), progress_json, file_id],

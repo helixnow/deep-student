@@ -149,12 +149,19 @@ impl VfsIndexService {
 
         let sync_result = index_unit_repo::sync_units(conn, &input.resource_id, output.units)?;
 
+        // ★ F5 修复：孤立向量入队（与本次同步同一连接/事务），
+        // 由后台索引循环 drain_lance_orphan_queue 真正删除 LanceDB 向量
         if !sync_result.orphaned_lance_row_ids.is_empty() {
-            log::warn!(
-                "[VfsIndexService] sync_resource_units: {} orphaned LanceDB vectors for resource {} (lance_row_ids: {:?}). These should be cleaned up by the next full index or manual cleanup.",
+            for row_id in &sync_result.orphaned_lance_row_ids {
+                conn.execute(
+                    "INSERT OR IGNORE INTO __lance_orphan_queue (lance_row_id, resource_id) VALUES (?1, ?2)",
+                    rusqlite::params![row_id, input.resource_id],
+                )?;
+            }
+            log::info!(
+                "[VfsIndexService] sync_resource_units: enqueued {} orphaned LanceDB vectors for resource {} into __lance_orphan_queue",
                 sync_result.orphaned_lance_row_ids.len(),
-                input.resource_id,
-                sync_result.orphaned_lance_row_ids
+                input.resource_id
             );
         }
 

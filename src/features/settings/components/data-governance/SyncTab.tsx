@@ -5,8 +5,8 @@
  * 展示同步状态概览、数据库同步表、云端同步配置和冲突解决
  */
 
-import React from 'react';
-import { useTranslation } from 'react-i18next';
+import React from "react";
+import { useTranslation } from "react-i18next";
 import {
   Cloud,
   HardDrive,
@@ -20,29 +20,38 @@ import {
   Upload,
   ArrowsLeftRight,
   FileText,
-} from '@phosphor-icons/react';
+} from "@phosphor-icons/react";
 
-import { NotionButton } from '@/components/ui/NotionButton';
-import { Badge } from '@/components/ui/shad/Badge';
-import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/shad/Table';
-import { AppSelect } from '@/components/ui/app-menu';
-import { CloudStorageSection } from '../CloudStorageSection';
-import { RecordConflictsPanel } from './RecordConflictsPanel';
-import { SyncIndicator } from './SyncIndicator';
-import { settingsQuietTableRowClassName } from '../SettingsCommon';
+import { NotionButton } from "@/components/ui/NotionButton";
+import { Badge } from "@/components/ui/shad/Badge";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/shad/Table";
+import { AppSelect } from "@/components/ui/app-menu";
+import { CloudStorageSection } from "../CloudStorageSection";
+import { RecordConflictsPanel } from "./RecordConflictsPanel";
+import { SyncQuarantinePanel } from "./SyncQuarantinePanel";
+import { SyncIndicator } from "./SyncIndicator";
+import { settingsQuietTableRowClassName } from "../SettingsCommon";
 import type {
   SyncStatusResponse,
   ConflictDetectionResponse,
   SyncProgress,
   MergeStrategy,
-} from '@/types/dataGovernance';
+} from "@/types/dataGovernance";
 import {
   getDatabaseDisplayName,
   getSyncPhaseName,
+  formatBytes,
   formatSpeed,
   formatEta,
-} from '@/types/dataGovernance';
-import type { StorageProvider } from '@/utils/cloudStorageApi';
+} from "@/types/dataGovernance";
+import type { StorageProvider } from "@/utils/cloudStorageApi";
 
 export interface SyncTabProps {
   syncStatus: SyncStatusResponse | null;
@@ -61,7 +70,10 @@ export interface SyncTabProps {
   onToggleCloudSettingsEditor: () => void;
   onSetCloudSettingsEditorOpen: (open: boolean) => void;
   onCloudConfigChanged: () => void;
-  onRunSync: (direction: 'upload' | 'download' | 'bidirectional', strategy: MergeStrategy) => void;
+  onRunSync: (
+    direction: "upload" | "download" | "bidirectional",
+    strategy: MergeStrategy,
+  ) => void;
   onRetrySync?: () => void;
   onViewAuditLog?: () => void;
 }
@@ -87,10 +99,19 @@ export const SyncTab: React.FC<SyncTabProps> = ({
   onRetrySync,
   onViewAuditLog,
 }) => {
-  const { t } = useTranslation(['data', 'common']);
+  const { t } = useTranslation(["data", "common"]);
   const syncDatabases = syncStatus?.databases ?? [];
   const showSyncProgress = syncRunning || Boolean(syncProgress?.error);
   const conflictRefreshSignal = `${syncStatus?.total_pending_changes ?? 0}:${syncStatus?.total_synced_changes ?? 0}`;
+  const syncProgressCounter =
+    syncProgress &&
+    (syncProgress.phase === "uploading" ||
+      syncProgress.phase === "downloading") &&
+    syncProgress.total > 1024
+      ? `${formatBytes(syncProgress.current)} / ${formatBytes(syncProgress.total)}`
+      : syncProgress
+        ? `${syncProgress.current} / ${syncProgress.total} ${t("data:governance.items")}`
+        : "";
 
   return (
     <div className="space-y-8">
@@ -99,7 +120,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
             <Cloud size={16} />
-            {t('data:governance.pending_changes')}
+            {t("data:governance.pending_changes")}
           </div>
           <div className="text-2xl font-semibold text-foreground">
             {syncStatus?.total_pending_changes ?? 0}
@@ -109,7 +130,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
             <CheckCircle size={16} />
-            {t('data:governance.synced_changes')}
+            {t("data:governance.synced_changes")}
           </div>
           <div className="text-2xl font-semibold text-foreground">
             {syncStatus?.total_synced_changes ?? 0}
@@ -119,10 +140,15 @@ export const SyncTab: React.FC<SyncTabProps> = ({
         <div className="space-y-1">
           <div className="flex items-center gap-2 text-sm font-medium text-muted-foreground">
             <HardDrive size={16} />
-            {t('data:governance.device_id')}
+            {t("data:governance.device_id")}
           </div>
-          <div className="text-sm font-mono truncate" title={syncStatus?.device_id}>
-            {syncStatus?.device_id ? `${syncStatus.device_id.slice(0, 8)}...` : '-'}
+          <div
+            className="text-sm font-mono truncate"
+            title={syncStatus?.device_id}
+          >
+            {syncStatus?.device_id
+              ? `${syncStatus.device_id.slice(0, 8)}...`
+              : "-"}
           </div>
           <div className="pt-1">
             <SyncIndicator refreshSignal={conflictRefreshSignal} />
@@ -137,20 +163,35 @@ export const SyncTab: React.FC<SyncTabProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <h3 className="text-base font-medium text-foreground">
-              {t('data:governance.database_sync_status')}
+              {t("data:governance.database_sync_status")}
             </h3>
             <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20">
-              {t('data:governance.experimental_badge')}
+              {t("data:governance.experimental_badge")}
             </span>
           </div>
           <div className="flex gap-2">
-            <NotionButton variant="ghost" size="sm" onClick={onRefresh} disabled={loading} className="h-8">
-              <ArrowClockwise size={14} className={`mr-1.5 ${loading ? 'animate-spin' : ''}`} />
-              {t('common:actions.refresh')}
+            <NotionButton
+              variant="ghost"
+              size="sm"
+              onClick={onRefresh}
+              disabled={loading}
+              className="h-8"
+            >
+              <ArrowClockwise
+                size={14}
+                className={`mr-1.5 ${loading ? "animate-spin" : ""}`}
+              />
+              {t("common:actions.refresh")}
             </NotionButton>
-            <NotionButton variant="default" size="sm" onClick={onDetectConflicts} disabled={loading} className="h-8">
-                <MagnifyingGlass size={14} className="mr-1.5" />
-              {t('data:governance.detect_conflicts')}
+            <NotionButton
+              variant="default"
+              size="sm"
+              onClick={onDetectConflicts}
+              disabled={loading}
+              className="h-8"
+            >
+              <MagnifyingGlass size={14} className="mr-1.5" />
+              {t("data:governance.detect_conflicts")}
             </NotionButton>
           </div>
         </div>
@@ -159,15 +200,26 @@ export const SyncTab: React.FC<SyncTabProps> = ({
           <Table>
             <TableHeader>
               <TableRow className="hover:bg-transparent border-border/40">
-                <TableHead className="h-10 whitespace-nowrap min-w-[80px]">{t('data:governance.database')}</TableHead>
-                <TableHead className="h-10 whitespace-nowrap min-w-[80px]">{t('data:governance.change_log')}</TableHead>
-                <TableHead className="h-10 whitespace-nowrap min-w-[60px]">{t('data:governance.pending')}</TableHead>
-                <TableHead className="h-10 whitespace-nowrap min-w-[60px]">{t('data:governance.synced')}</TableHead>
+                <TableHead className="h-10 whitespace-nowrap min-w-[80px]">
+                  {t("data:governance.database")}
+                </TableHead>
+                <TableHead className="h-10 whitespace-nowrap min-w-[80px]">
+                  {t("data:governance.change_log")}
+                </TableHead>
+                <TableHead className="h-10 whitespace-nowrap min-w-[60px]">
+                  {t("data:governance.pending")}
+                </TableHead>
+                <TableHead className="h-10 whitespace-nowrap min-w-[60px]">
+                  {t("data:governance.synced")}
+                </TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {syncDatabases.map((db) => (
-                <TableRow key={db.id} className={settingsQuietTableRowClassName}>
+                <TableRow
+                  key={db.id}
+                  className={settingsQuietTableRowClassName}
+                >
                   <TableCell className="font-medium py-3 whitespace-nowrap">
                     {getDatabaseDisplayName(db.id, t)}
                   </TableCell>
@@ -180,26 +232,36 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                   </TableCell>
                   <TableCell className="py-3">
                     {db.pending_changes > 0 ? (
-                      <Badge variant="secondary" className="rounded-sm font-normal">{db.pending_changes}</Badge>
+                      <Badge
+                        variant="secondary"
+                        className="rounded-sm font-normal"
+                      >
+                        {db.pending_changes}
+                      </Badge>
                     ) : (
                       <span className="text-muted-foreground/50">0</span>
                     )}
                   </TableCell>
                   <TableCell className="py-3">
-                    <span className="text-muted-foreground/70">{db.synced_changes}</span>
+                    <span className="text-muted-foreground/70">
+                      {db.synced_changes}
+                    </span>
                   </TableCell>
                 </TableRow>
               ))}
               {(!syncStatus || syncDatabases.length === 0) && (
                 <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
+                  <TableCell
+                    colSpan={4}
+                    className="text-center text-muted-foreground py-8"
+                  >
                     {loading ? (
                       <div className="flex items-center justify-center gap-2">
                         <CircleNotch size={16} className="animate-spin" />
-                        {t('common:status.loading')}
+                        {t("common:status.loading")}
                       </div>
                     ) : (
-                      t('data:governance.no_data')
+                      t("data:governance.no_data")
                     )}
                   </TableCell>
                 </TableRow>
@@ -216,10 +278,10 @@ export const SyncTab: React.FC<SyncTabProps> = ({
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <h3 className="text-base font-medium text-foreground">
-              {t('data:governance.cloud_sync_title')}
+              {t("data:governance.cloud_sync_title")}
             </h3>
             <span className="inline-flex items-center rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-medium text-amber-600 dark:text-amber-400 ring-1 ring-inset ring-amber-500/20">
-              {t('data:governance.experimental_badge')}
+              {t("data:governance.experimental_badge")}
             </span>
           </div>
           <NotionButton
@@ -229,7 +291,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             className="h-8"
           >
             <Cloud size={14} className="mr-1.5" />
-            {t('data:governance.open_cloud_settings')}
+            {t("data:governance.open_cloud_settings")}
           </NotionButton>
         </div>
 
@@ -237,10 +299,10 @@ export const SyncTab: React.FC<SyncTabProps> = ({
           <div className="rounded-lg border border-border/40 bg-muted/20 p-4 space-y-2">
             <div className="flex items-center gap-2 text-sm font-medium text-foreground">
               <Warning size={16} className="text-amber-500" />
-              {t('data:governance.cloud_sync_not_configured')}
+              {t("data:governance.cloud_sync_not_configured")}
             </div>
             <p className="text-sm text-muted-foreground pl-6">
-              {t('data:governance.cloud_sync_not_configured_desc')}
+              {t("data:governance.cloud_sync_not_configured_desc")}
             </p>
             <div className="pl-6 pt-1">
               <NotionButton
@@ -249,7 +311,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 onClick={() => onSetCloudSettingsEditorOpen(true)}
                 className="bg-background hover:bg-[var(--interactive-hover)]"
               >
-                {t('data:governance.cloud_sync_configure_now')}
+                {t("data:governance.cloud_sync_configure_now")}
               </NotionButton>
             </div>
           </div>
@@ -258,32 +320,43 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
               <div className="text-sm text-muted-foreground">
                 <span className="font-medium text-foreground">
-                  {t('data:governance.cloud_sync_provider')}
+                  {t("data:governance.cloud_sync_provider")}
                 </span>
                 <span className="ml-2 font-mono">
-                  {cloudSyncSummary?.provider ?? '-'}
+                  {cloudSyncSummary?.provider ?? "-"}
                 </span>
                 <span className="mx-2 text-muted-foreground/50">•</span>
                 <span className="font-medium text-foreground">
-                  {t('data:governance.cloud_sync_root')}
+                  {t("data:governance.cloud_sync_root")}
                 </span>
                 <span className="ml-2 font-mono">
-                  {cloudSyncSummary?.root ?? '-'}
+                  {cloudSyncSummary?.root ?? "-"}
                 </span>
               </div>
 
               <div className="flex items-center gap-2">
                 <span className="text-sm text-muted-foreground">
-                  {t('data:governance.merge_strategy')}
+                  {t("data:governance.merge_strategy")}
                 </span>
                 <AppSelect
                   value={syncStrategy}
-                  onValueChange={(v) => onSyncStrategyChange(v as MergeStrategy)}
+                  onValueChange={(v) =>
+                    onSyncStrategyChange(v as MergeStrategy)
+                  }
                   options={[
-                    { value: 'keep_latest', label: t('data:governance.keep_latest') },
-                    { value: 'keep_local', label: t('data:governance.keep_local') },
-                    { value: 'use_cloud', label: t('data:governance.use_cloud') },
-                    { value: 'manual', label: t('data:governance.manual') },
+                    {
+                      value: "keep_latest",
+                      label: t("data:governance.keep_latest"),
+                    },
+                    {
+                      value: "keep_local",
+                      label: t("data:governance.keep_local"),
+                    },
+                    {
+                      value: "use_cloud",
+                      label: t("data:governance.use_cloud"),
+                    },
+                    { value: "manual", label: t("data:governance.manual") },
                   ]}
                   size="sm"
                   variant="outline"
@@ -295,32 +368,32 @@ export const SyncTab: React.FC<SyncTabProps> = ({
               <NotionButton
                 variant="default"
                 size="sm"
-                onClick={() => onRunSync('bidirectional', syncStrategy)}
+                onClick={() => onRunSync("bidirectional", syncStrategy)}
                 disabled={loading || syncRunning}
                 className="h-8"
               >
                 <ArrowsLeftRight size={14} className="mr-1.5" />
-                {t('data:governance.sync_bidirectional')}
+                {t("data:governance.sync_bidirectional")}
               </NotionButton>
               <NotionButton
                 variant="ghost"
                 size="sm"
-                onClick={() => onRunSync('upload', syncStrategy)}
+                onClick={() => onRunSync("upload", syncStrategy)}
                 disabled={loading || syncRunning}
                 className="h-8 bg-background hover:bg-[var(--interactive-hover)]"
               >
                 <Upload size={14} className="mr-1.5" />
-                {t('data:governance.sync_upload')}
+                {t("data:governance.sync_upload")}
               </NotionButton>
               <NotionButton
                 variant="ghost"
                 size="sm"
-                onClick={() => onRunSync('download', syncStrategy)}
+                onClick={() => onRunSync("download", syncStrategy)}
                 disabled={loading || syncRunning}
                 className="h-8 bg-background hover:bg-[var(--interactive-hover)]"
               >
                 <Download size={14} className="mr-1.5" />
-                {t('data:governance.sync_download')}
+                {t("data:governance.sync_download")}
               </NotionButton>
             </div>
 
@@ -330,12 +403,19 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                 <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
                     {syncRunning ? (
-                      <CircleNotch size={16} className="animate-spin text-primary" />
+                      <CircleNotch
+                        size={16}
+                        className="animate-spin text-primary"
+                      />
                     ) : (
                       <XCircle size={16} className="text-destructive" />
                     )}
-                    <span className={`text-sm font-medium ${syncRunning ? 'text-primary' : 'text-destructive'}`}>
-                      {syncRunning ? t('data:governance.sync_in_progress') : t('data:governance.sync_failed')}
+                    <span
+                      className={`text-sm font-medium ${syncRunning ? "text-primary" : "text-destructive"}`}
+                    >
+                      {syncRunning
+                        ? t("data:governance.sync_in_progress")
+                        : t("data:governance.sync_failed")}
                     </span>
                     {syncRunning && (
                       <span className="text-xs text-muted-foreground">
@@ -347,9 +427,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
 
                 <div className="space-y-1">
                   <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>
-                      {syncProgress.current_item ?? '-'}
-                    </span>
+                    <span>{syncProgress.current_item ?? "-"}</span>
                     <span>{Math.round(syncProgress.percent)}%</span>
                   </div>
                   <div className="h-2 bg-secondary rounded-full overflow-hidden">
@@ -359,14 +437,14 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                     />
                   </div>
                   <div className="flex flex-wrap justify-between gap-2 text-xs text-muted-foreground">
+                    <span>{syncProgressCounter}</span>
                     <span>
-                      {syncProgress.current} / {syncProgress.total} {t('data:governance.items')}
+                      {t("data:governance.speed")}:{" "}
+                      {formatSpeed(syncProgress.speed_bytes_per_sec)}
                     </span>
                     <span>
-                      {t('data:governance.speed')}: {formatSpeed(syncProgress.speed_bytes_per_sec)}
-                    </span>
-                    <span>
-                      {t('data:governance.eta')}: {formatEta(syncProgress.eta_seconds)}
+                      {t("data:governance.eta")}:{" "}
+                      {formatEta(syncProgress.eta_seconds)}
                     </span>
                   </div>
                   {syncProgress.error && (
@@ -385,7 +463,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                             className="h-6 text-xs px-2"
                           >
                             <ArrowClockwise size={12} className="mr-1" />
-                            {t('common:actions.retry')}
+                            {t("common:actions.retry")}
                           </NotionButton>
                         )}
                         {onViewAuditLog && (
@@ -396,7 +474,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
                             className="h-6 text-xs px-2"
                           >
                             <FileText size={12} className="mr-1" />
-                            {t('data:governance.view_audit_log')}
+                            {t("data:governance.view_audit_log")}
                           </NotionButton>
                         )}
                       </div>
@@ -423,11 +501,11 @@ export const SyncTab: React.FC<SyncTabProps> = ({
         <div className="rounded-lg border border-amber-500/30 bg-amber-500/5 p-4 space-y-4">
           <div className="flex items-center gap-2 text-amber-600 font-medium">
             <Warning size={16} />
-            {t('data:governance.conflicts_detected')}
+            {t("data:governance.conflicts_detected")}
           </div>
-          
+
           <p className="text-sm text-muted-foreground">
-            {t('data:governance.conflicts_count', {
+            {t("data:governance.conflicts_count", {
               count: conflicts.database_conflicts.length,
               records: conflicts.record_conflict_count,
             })}
@@ -435,15 +513,16 @@ export const SyncTab: React.FC<SyncTabProps> = ({
 
           {conflicts.needs_migration && (
             <p className="text-xs text-amber-700">
-              {t('data:governance.schema_mismatch_needs_migration', {
-                defaultValue: '检测到 Schema 不匹配，请先完成迁移后再执行冲突解决。',
+              {t("data:governance.schema_mismatch_needs_migration", {
+                defaultValue:
+                  "检测到 Schema 不匹配，请先完成迁移后再执行冲突解决。",
               })}
             </p>
           )}
 
           {/* 冲突影响说明 */}
           <p className="text-xs text-muted-foreground/80">
-            {t('data:governance.conflict_impact_hint')}
+            {t("data:governance.conflict_impact_hint")}
           </p>
 
           {/* 冲突解决策略 */}
@@ -451,38 +530,38 @@ export const SyncTab: React.FC<SyncTabProps> = ({
             <NotionButton
               variant="ghost"
               size="sm"
-              onClick={() => onResolveConflicts('keep_local')}
+              onClick={() => onResolveConflicts("keep_local")}
               disabled={loading || conflicts.needs_migration}
               className="bg-background hover:bg-[var(--interactive-hover)]"
             >
-              {t('data:governance.keep_local')}
+              {t("data:governance.keep_local")}
             </NotionButton>
             <NotionButton
               variant="ghost"
               size="sm"
-              onClick={() => onResolveConflicts('use_cloud')}
+              onClick={() => onResolveConflicts("use_cloud")}
               disabled={loading || conflicts.needs_migration}
               className="bg-background hover:bg-[var(--interactive-hover)]"
             >
-              {t('data:governance.use_cloud')}
+              {t("data:governance.use_cloud")}
             </NotionButton>
             <NotionButton
               variant="ghost"
               size="sm"
-              onClick={() => onResolveConflicts('keep_latest')}
+              onClick={() => onResolveConflicts("keep_latest")}
               disabled={loading || conflicts.needs_migration}
               className="bg-background hover:bg-[var(--interactive-hover)]"
             >
-              {t('data:governance.keep_latest')}
+              {t("data:governance.keep_latest")}
             </NotionButton>
             <NotionButton
               variant="ghost"
               size="sm"
-              onClick={() => onResolveConflicts('manual')}
+              onClick={() => onResolveConflicts("manual")}
               disabled={loading || conflicts.needs_migration}
               className="bg-background hover:bg-[var(--interactive-hover)]"
             >
-              {t('data:governance.manual')}
+              {t("data:governance.manual")}
             </NotionButton>
           </div>
         </div>
@@ -490,6 +569,7 @@ export const SyncTab: React.FC<SyncTabProps> = ({
 
       {/* 记录级冲突面板（__sync_conflicts 表） */}
       <RecordConflictsPanel refreshSignal={conflictRefreshSignal} />
+      <SyncQuarantinePanel refreshSignal={conflictRefreshSignal} />
     </div>
   );
 };

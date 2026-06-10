@@ -681,7 +681,15 @@ impl VfsTextbookRepo {
     /// 永久删除教材
     pub fn purge_textbook(db: &VfsDatabase, textbook_id: &str) -> VfsResult<()> {
         let conn = db.get_conn_safe()?;
-        Self::purge_textbook_with_conn(&conn, db.blobs_dir(), textbook_id)
+        Self::purge_textbook_with_conn(&conn, db.blobs_dir(), textbook_id)?;
+        // ★ 2026-06-10（审阅问题 A2）：事务提交后清扫 ref_count=0 的 blob
+        if let Err(e) = VfsBlobRepo::cleanup_unreferenced_with_conn(&conn, db.blobs_dir()) {
+            warn!(
+                "[VFS::TextbookRepo] Post-purge blob sweep failed (will retry on next sweep): {}",
+                e
+            );
+        }
+        Ok(())
     }
 
     /// 永久删除教材（使用现有连接）
@@ -698,14 +706,17 @@ impl VfsTextbookRepo {
     ) -> VfsResult<()> {
         info!("[VFS::TextbookRepo] Purging textbook: {}", textbook_id);
 
-        // ★ 开启事务
-        conn.execute("BEGIN IMMEDIATE", []).map_err(|e| {
-            error!(
-                "[VFS::TextbookRepo] Failed to begin transaction for purge: {}",
-                e
-            );
-            VfsError::Database(format!("Failed to begin transaction: {}", e))
-        })?;
+        // ★ 开启保存点事务
+        // ★ 2026-06-10 修复（审阅问题 A2 关联）：改 BEGIN IMMEDIATE 为 SAVEPOINT，
+        // 支持在外层事务（如文件夹树 purge）内嵌套调用。
+        conn.execute_batch("SAVEPOINT vfs_textbook_purge_tx")
+            .map_err(|e| {
+                error!(
+                    "[VFS::TextbookRepo] Failed to begin savepoint for purge: {}",
+                    e
+                );
+                VfsError::Database(format!("Failed to begin savepoint: {}", e))
+            })?;
 
         let result = (|| -> VfsResult<()> {
             // 1. 获取 blob_hash 和 preview_json
@@ -815,17 +826,20 @@ impl VfsTextbookRepo {
             Ok(())
         })();
 
-        // ★ 根据结果提交或回滚事务
+        // ★ 根据结果提交或回滚保存点
         match result {
             Ok(_) => {
-                conn.execute("COMMIT", []).map_err(|e| {
-                    error!(
-                        "[VFS::TextbookRepo] Failed to commit purge transaction: {}",
-                        e
-                    );
-                    let _ = conn.execute("ROLLBACK", []);
-                    VfsError::Database(format!("Failed to commit transaction: {}", e))
-                })?;
+                conn.execute_batch("RELEASE SAVEPOINT vfs_textbook_purge_tx")
+                    .map_err(|e| {
+                        error!(
+                            "[VFS::TextbookRepo] Failed to release purge savepoint: {}",
+                            e
+                        );
+                        let _ = conn.execute_batch(
+                            "ROLLBACK TO SAVEPOINT vfs_textbook_purge_tx; RELEASE SAVEPOINT vfs_textbook_purge_tx;",
+                        );
+                        VfsError::Database(format!("Failed to release savepoint: {}", e))
+                    })?;
                 info!(
                     "[VFS::TextbookRepo] Permanently deleted textbook: {}",
                     textbook_id
@@ -833,7 +847,9 @@ impl VfsTextbookRepo {
                 Ok(())
             }
             Err(e) => {
-                let _ = conn.execute("ROLLBACK", []);
+                let _ = conn.execute_batch(
+                    "ROLLBACK TO SAVEPOINT vfs_textbook_purge_tx; RELEASE SAVEPOINT vfs_textbook_purge_tx;",
+                );
                 error!("[VFS::TextbookRepo] Purge failed, rolled back: {}", e);
                 Err(e)
             }
@@ -875,7 +891,15 @@ impl VfsTextbookRepo {
     /// 清空回收站（永久删除所有已删除的教材）
     pub fn purge_deleted_textbooks(db: &VfsDatabase) -> VfsResult<usize> {
         let conn = db.get_conn_safe()?;
-        Self::purge_deleted_textbooks_with_conn(&conn, db.blobs_dir())
+        let count = Self::purge_deleted_textbooks_with_conn(&conn, db.blobs_dir())?;
+        // ★ 2026-06-10（审阅问题 A2）：批量 purge 完成后统一清扫 ref_count=0 的 blob
+        if let Err(e) = VfsBlobRepo::cleanup_unreferenced_with_conn(&conn, db.blobs_dir()) {
+            warn!(
+                "[VFS::TextbookRepo] Post-batch-purge blob sweep failed (will retry on next sweep): {}",
+                e
+            );
+        }
+        Ok(count)
     }
 
     /// 清空回收站（使用现有连接）

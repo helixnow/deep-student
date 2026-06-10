@@ -1650,7 +1650,15 @@ impl VfsAttachmentRepo {
     /// - `id`: 附件 ID
     pub fn purge_attachment(db: &VfsDatabase, id: &str) -> VfsResult<()> {
         let conn = db.get_conn_safe()?;
-        Self::purge_attachment_with_conn(&conn, db.blobs_dir(), id)
+        Self::purge_attachment_with_conn(&conn, db.blobs_dir(), id)?;
+        // ★ 2026-06-10（审阅问题 A2）：事务提交后清扫 ref_count=0 的 blob
+        if let Err(e) = VfsBlobRepo::cleanup_unreferenced_with_conn(&conn, db.blobs_dir()) {
+            warn!(
+                "[VFS::AttachmentRepo] Post-purge blob sweep failed (will retry on next sweep): {}",
+                e
+            );
+        }
+        Ok(())
     }
 
     /// 永久删除附件（使用现有连接）
@@ -1701,14 +1709,17 @@ impl VfsAttachmentRepo {
         // 保存 resource_id 以便稍后删除
         let resource_id_to_delete = attachment.resource_id.clone();
 
-        // ★ 使用事务包装所有删除操作，确保原子性
-        conn.execute("BEGIN IMMEDIATE", []).map_err(|e| {
-            error!(
-                "[VFS::AttachmentRepo] Failed to begin transaction for purge: {}",
-                e
-            );
-            VfsError::Database(format!("Failed to begin transaction: {}", e))
-        })?;
+        // ★ 使用 SAVEPOINT 包装所有删除操作，确保原子性
+        // ★ 2026-06-10 修复（审阅问题 A2 关联）：改 BEGIN IMMEDIATE 为 SAVEPOINT，
+        // 支持在外层事务内嵌套调用（BEGIN 嵌套会直接报错）。
+        conn.execute_batch("SAVEPOINT vfs_attachment_purge_tx")
+            .map_err(|e| {
+                error!(
+                    "[VFS::AttachmentRepo] Failed to begin savepoint for purge: {}",
+                    e
+                );
+                VfsError::Database(format!("Failed to begin savepoint: {}", e))
+            })?;
 
         // 定义回滚宏（将rusqlite::Error转换为VfsError）
         macro_rules! rollback_on_error {
@@ -1717,7 +1728,9 @@ impl VfsAttachmentRepo {
                     Ok(v) => v,
                     Err(e) => {
                         error!("[VFS::AttachmentRepo] {}: {}", $msg, e);
-                        let _ = conn.execute("ROLLBACK", []);
+                        let _ = conn.execute_batch(
+                            "ROLLBACK TO SAVEPOINT vfs_attachment_purge_tx; RELEASE SAVEPOINT vfs_attachment_purge_tx;",
+                        );
                         return Err(VfsError::Database(format!("{}: {}", $msg, e)));
                     }
                 }
@@ -1800,7 +1813,9 @@ impl VfsAttachmentRepo {
                 "[VFS::AttachmentRepo] CRITICAL: Attachment record disappeared during deletion: {}",
                 id
             );
-            let _ = conn.execute("ROLLBACK", []);
+            let _ = conn.execute_batch(
+                "ROLLBACK TO SAVEPOINT vfs_attachment_purge_tx; RELEASE SAVEPOINT vfs_attachment_purge_tx;",
+            );
             return Err(VfsError::Other(format!(
                 "Attachment record disappeared during deletion: {}. This may indicate a race condition.",
                 id
@@ -1828,22 +1843,26 @@ impl VfsAttachmentRepo {
             );
         }
 
-        // ★ 提交事务
-        conn.execute("COMMIT", []).map_err(|e| {
-            error!(
-                "[VFS::AttachmentRepo] Failed to commit purge transaction: {}",
-                e
-            );
-            let _ = conn.execute("ROLLBACK", []);
-            VfsError::Database(format!("Failed to commit transaction: {}", e))
-        })?;
+        // ★ 提交（释放保存点；若存在外层事务则随外层一起提交）
+        conn.execute_batch("RELEASE SAVEPOINT vfs_attachment_purge_tx")
+            .map_err(|e| {
+                error!(
+                    "[VFS::AttachmentRepo] Failed to release purge savepoint: {}",
+                    e
+                );
+                let _ = conn.execute_batch(
+                    "ROLLBACK TO SAVEPOINT vfs_attachment_purge_tx; RELEASE SAVEPOINT vfs_attachment_purge_tx;",
+                );
+                VfsError::Database(format!("Failed to release savepoint: {}", e))
+            })?;
 
         info!(
             "[VFS::AttachmentRepo] Successfully completed attachment deletion: {}",
             id
         );
 
-        // ★ P0修复：blob 引用计数已在上方处理，decrement_ref_with_conn 会在引用计数为 0 时自动清理文件
+        // ★ 2026-06-10（审阅问题 A2）：blob 引用计数在事务内只递减不删文件，
+        // ref_count=0 的物理文件由调用方在事务提交后通过 cleanup_unreferenced 清扫。
 
         Ok(())
     }
@@ -2191,6 +2210,15 @@ impl VfsAttachmentRepo {
         }
 
         info!("[VFS::AttachmentRepo] Purged {} deleted attachments", count);
+
+        // ★ 2026-06-10（审阅问题 A2）：批量 purge 完成后统一清扫 ref_count=0 的 blob
+        if let Err(e) = VfsBlobRepo::cleanup_unreferenced_with_conn(&conn, blobs_dir) {
+            warn!(
+                "[VFS::AttachmentRepo] Post-batch-purge blob sweep failed (will retry on next sweep): {}",
+                e
+            );
+        }
+
         Ok(count)
     }
 

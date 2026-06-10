@@ -61,5 +61,51 @@
   "placeholders": {
     "description": "Add a description...",
     "title": "Task title"
+  },
+  "pomodoro": {
+    "modes": {
+      "focusing": "Focusing",
+      "shortBreak": "Short Break",
+      "longBreak": "Long Break",
+      "ready": "Ready",
+      "idle": "Pomodoro"
+    },
+    "controls": {
+      "start": "Start",
+      "startFocus": "Start Focus",
+      "pause": "Pause",
+      "resume": "Resume",
+      "stop": "Stop",
+      "skipBreak": "Skip Break",
+      "immersive": "Immersive Mode",
+      "enterImmersive": "Enter immersive focus mode",
+      "exitImmersive": "Exit focus mode (ESC)",
+      "pauseSpace": "Pause (Space)",
+      "startSpace": "Start (Space)",
+      "noiseOn": "Enable ambient sound",
+      "noiseOff": "Disable ambient sound"
+    },
+    "stats": {
+      "todayLabel": "Today",
+      "pomodoroUnit": "pomodoros",
+      "todayCount": "{{value}} pomodoros today",
+      "focusLabel": "Focused",
+      "minutes": "{{value}} min",
+      "hours": "{{value}} h",
+      "interrupted": "Interrupted {{value}} times"
+    },
+    "notifications": {
+      "workCompleteTitle": "Pomodoro Complete",
+      "workCompleteBody": "Focus session finished. Time for a break ({{value}} pomodoros today)",
+      "breakCompleteTitle": "Break Over",
+      "breakCompleteBody": "Break finished. Ready for the next pomodoro?"
+    },
+    "immersive": {
+      "currentTask": "Current Task",
+      "hintEscPrefix": "Press ",
+      "hintEscSuffix": " to exit",
+      "hintSpacePrefix": "",
+      "hintSpaceSuffix": " to pause/resume"
+    }
   }
 }

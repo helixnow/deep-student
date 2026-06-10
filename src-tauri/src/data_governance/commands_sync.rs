@@ -11,9 +11,9 @@ use super::audit::{AuditLog, AuditOperation};
 use super::schema_registry::DatabaseId;
 use super::sync::{
     classification::{self, SyncCategory},
-    ChangeLogEntry, DatabaseSyncState, DownloadChangesResult, MergeStrategy, OptionalEmitter,
-    PendingChanges, SyncChangeWithData, SyncDirection, SyncExecutionResult, SyncManager,
-    SyncManifest, SyncPhase, SyncProgress, SyncProgressEmitter,
+    ChangeLogEntry, DatabaseSyncState, DownloadChangesResult, FileTransferProgressCallback,
+    MergeStrategy, OptionalEmitter, PendingChanges, SyncChangeWithData, SyncDirection,
+    SyncExecutionResult, SyncManager, SyncManifest, SyncPhase, SyncProgress, SyncProgressEmitter,
 };
 use crate::backup_common::BACKUP_GLOBAL_LIMITER;
 use crate::cloud_storage::{create_storage, CloudStorage, CloudStorageConfig};
@@ -93,7 +93,7 @@ fn mark_apply_failures_visible(
     exec_result.success = false;
     let detail = if apply_agg.db_errors.is_empty() {
         format!(
-            "{} 条云端变更未能应用，已进入同步检疫或失败记录。请处理后重试同步。",
+            "{} 条云端变更未能应用，已移入同步隔离区或失败记录。请处理后重试同步。",
             apply_agg.total_failed
         )
     } else {
@@ -282,27 +282,23 @@ fn archive_synced_change_logs(active_dir: &std::path::Path, keep_days: i64) {
 /// 2. 成功后从本地队列删除
 /// 3. 失败（如网络问题）则 `retry_count += 1`，达到阈值后放弃（保留记录供排查）
 ///
-/// 返回成功推送的条数。
+/// 返回成功推送的条数；云端传播失败必须上浮，避免后续行级同步在删除未发布时继续推进。
 async fn drain_blob_deletion_queue(
     active_dir: &std::path::Path,
     manager: &SyncManager,
     storage: &dyn crate::cloud_storage::CloudStorage,
-) -> usize {
+) -> Result<usize, String> {
     const MAX_RETRIES: i64 = 5;
 
     let vfs_path = active_dir.join("databases").join("vfs.db");
     if !vfs_path.exists() {
-        return 0;
+        return Ok(0);
     }
 
     let conn = match open_sync_connection(&vfs_path) {
         Ok(c) => c,
         Err(e) => {
-            warn!(
-                "[data_governance] 打开 vfs.db 失败（跳过 blob 删除队列）: {}",
-                e
-            );
-            return 0;
+            return Err(format!("打开 vfs.db 失败（无法传播 blob 删除队列）: {}", e));
         }
     };
 
@@ -315,7 +311,7 @@ async fn drain_blob_deletion_queue(
         )
         .unwrap_or(false);
     if !table_exists {
-        return 0;
+        return Ok(0);
     }
 
     let rows: Vec<(String, Option<String>, Option<i64>, String)> = {
@@ -327,7 +323,7 @@ async fn drain_blob_deletion_queue(
              LIMIT 500",
         ) {
             Ok(s) => s,
-            Err(_) => return 0,
+            Err(e) => return Err(format!("读取 blob 删除队列失败: {}", e)),
         };
         let mapped = match stmt.query_map(rusqlite::params![MAX_RETRIES], |r| {
             Ok((
@@ -338,13 +334,13 @@ async fn drain_blob_deletion_queue(
             ))
         }) {
             Ok(iter) => iter.filter_map(|x| x.ok()).collect::<Vec<_>>(),
-            Err(_) => return 0,
+            Err(e) => return Err(format!("读取 blob 删除队列失败: {}", e)),
         };
         mapped
     };
 
     if rows.is_empty() {
-        return 0;
+        return Ok(0);
     }
 
     let entries = rows
@@ -380,7 +376,11 @@ async fn drain_blob_deletion_queue(
                     rusqlite::params![hash],
                 );
             }
-            return 0;
+            return Err(format!(
+                "批量传播 blob 删除失败（将重试 {} 条）: {}",
+                rows.len(),
+                e
+            ));
         }
     }
 
@@ -391,29 +391,28 @@ async fn drain_blob_deletion_queue(
             success
         );
     }
-    success
+    Ok(success)
 }
 
 async fn drain_asset_deletion_queue(
     active_dir: &std::path::Path,
     manager: &SyncManager,
     storage: &dyn crate::cloud_storage::CloudStorage,
-) -> usize {
+) -> Result<usize, String> {
     const MAX_RETRIES: i64 = 5;
 
     let vfs_path = active_dir.join("databases").join("vfs.db");
     if !vfs_path.exists() {
-        return 0;
+        return Ok(0);
     }
 
     let conn = match open_sync_connection(&vfs_path) {
         Ok(c) => c,
         Err(e) => {
-            warn!(
-                "[data_governance] 打开 vfs.db 失败（跳过 asset 删除队列）: {}",
+            return Err(format!(
+                "打开 vfs.db 失败（无法传播 asset 删除队列）: {}",
                 e
-            );
-            return 0;
+            ));
         }
     };
 
@@ -425,7 +424,7 @@ async fn drain_asset_deletion_queue(
         )
         .unwrap_or(false);
     if !table_exists {
-        return 0;
+        return Ok(0);
     }
 
     let rows: Vec<(String, Option<i64>, String)> = {
@@ -437,7 +436,7 @@ async fn drain_asset_deletion_queue(
              LIMIT 500",
         ) {
             Ok(s) => s,
-            Err(_) => return 0,
+            Err(e) => return Err(format!("读取 asset 删除队列失败: {}", e)),
         };
         let mapped = match stmt.query_map(rusqlite::params![MAX_RETRIES], |r| {
             Ok((
@@ -447,13 +446,13 @@ async fn drain_asset_deletion_queue(
             ))
         }) {
             Ok(iter) => iter.filter_map(|x| x.ok()).collect::<Vec<_>>(),
-            Err(_) => return 0,
+            Err(e) => return Err(format!("读取 asset 删除队列失败: {}", e)),
         };
         mapped
     };
 
     if rows.is_empty() {
-        return 0;
+        return Ok(0);
     }
 
     let entries = rows
@@ -488,7 +487,11 @@ async fn drain_asset_deletion_queue(
                     rusqlite::params![key],
                 );
             }
-            return 0;
+            return Err(format!(
+                "批量传播 asset 删除失败（将重试 {} 条）: {}",
+                rows.len(),
+                e
+            ));
         }
     }
 
@@ -497,29 +500,28 @@ async fn drain_asset_deletion_queue(
         "[data_governance] asset 删除队列已批量传播 {} 条到云端",
         success
     );
-    success
+    Ok(success)
 }
 
 async fn drain_workspace_deletion_queue(
     active_dir: &std::path::Path,
     manager: &SyncManager,
     storage: &dyn crate::cloud_storage::CloudStorage,
-) -> usize {
+) -> Result<usize, String> {
     const MAX_RETRIES: i64 = 5;
 
     let chat_path = active_dir.join("chat_v2.db");
     if !chat_path.exists() {
-        return 0;
+        return Ok(0);
     }
 
     let conn = match open_sync_connection(&chat_path) {
         Ok(c) => c,
         Err(e) => {
-            warn!(
-                "[data_governance] 打开 chat_v2.db 失败（跳过 workspace 删除队列）: {}",
+            return Err(format!(
+                "打开 chat_v2.db 失败（无法传播 workspace 删除队列）: {}",
                 e
-            );
-            return 0;
+            ));
         }
     };
 
@@ -531,7 +533,7 @@ async fn drain_workspace_deletion_queue(
         )
         .unwrap_or(false);
     if !table_exists {
-        return 0;
+        return Ok(0);
     }
 
     let rows: Vec<(String, String)> = {
@@ -543,19 +545,19 @@ async fn drain_workspace_deletion_queue(
              LIMIT 500",
         ) {
             Ok(s) => s,
-            Err(_) => return 0,
+            Err(e) => return Err(format!("读取 workspace 删除队列失败: {}", e)),
         };
         let mapped = match stmt.query_map(rusqlite::params![MAX_RETRIES], |r| {
             Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?))
         }) {
             Ok(iter) => iter.filter_map(|x| x.ok()).collect::<Vec<_>>(),
-            Err(_) => return 0,
+            Err(e) => return Err(format!("读取 workspace 删除队列失败: {}", e)),
         };
         mapped
     };
 
     if rows.is_empty() {
-        return 0;
+        return Ok(0);
     }
 
     match manager
@@ -582,7 +584,11 @@ async fn drain_workspace_deletion_queue(
                     rusqlite::params![workspace_id],
                 );
             }
-            return 0;
+            return Err(format!(
+                "批量传播 workspace 删除失败（将重试 {} 条）: {}",
+                rows.len(),
+                e
+            ));
         }
     }
 
@@ -591,7 +597,7 @@ async fn drain_workspace_deletion_queue(
         "[data_governance] workspace 删除队列已批量传播 {} 条到云端",
         success
     );
-    success
+    Ok(success)
 }
 
 #[derive(Debug, Default)]
@@ -626,6 +632,55 @@ impl FileLevelProgress<'_> {
             error: None,
         });
     }
+
+    fn transfer_callback(
+        &self,
+        direction: SyncDirection,
+        step: u64,
+        total_steps: u64,
+        label: &'static str,
+    ) -> FileTransferProgressCallback {
+        let emitter = self.emitter.clone();
+        let start = self.start;
+        let end = self.end;
+        let total_steps = total_steps.max(1);
+        let last_emit_ms = std::sync::Arc::new(std::sync::atomic::AtomicU64::new(0));
+        std::sync::Arc::new(move |item, done, total_bytes| {
+            let is_final = total_bytes > 0 && done >= total_bytes;
+            if !is_final {
+                let now_ms = std::time::SystemTime::now()
+                    .duration_since(std::time::UNIX_EPOCH)
+                    .map(|d| d.as_millis() as u64)
+                    .unwrap_or(0);
+                let last = last_emit_ms.load(std::sync::atomic::Ordering::Relaxed);
+                if now_ms.saturating_sub(last) < 100 {
+                    return;
+                }
+                last_emit_ms.store(now_ms, std::sync::atomic::Ordering::Relaxed);
+            }
+            let phase = match direction {
+                SyncDirection::Download => SyncPhase::Downloading,
+                SyncDirection::Upload | SyncDirection::Bidirectional => SyncPhase::Uploading,
+            };
+            let inner = if total_bytes > 0 {
+                (done as f32 / total_bytes as f32).clamp(0.0, 1.0)
+            } else {
+                0.0
+            };
+            let stage = (step as f32 + inner) / total_steps as f32;
+            let percent = start + (end - start) * stage.clamp(0.0, 1.0);
+            emitter.emit_force_sync(SyncProgress {
+                phase,
+                percent,
+                current: done,
+                total: total_bytes,
+                current_item: Some(format!("{}：{}", label, item)),
+                speed_bytes_per_sec: None,
+                eta_seconds: None,
+                error: None,
+            });
+        })
+    }
 }
 
 async fn run_file_level_sync(
@@ -645,10 +700,21 @@ async fn run_file_level_sync(
     }
 
     if direction != SyncDirection::Download {
-        drain_workspace_deletion_queue(active_dir, manager, storage).await;
+        if let Err(e) = drain_workspace_deletion_queue(active_dir, manager, storage).await {
+            warn!("[data_governance] {}", e);
+            append_warning_message(&mut report.warning, e);
+            report.failed = true;
+        }
     }
     if let Err(e) = manager
-        .sync_workspace_databases(storage, active_dir, direction)
+        .sync_workspace_databases_with_progress(
+            storage,
+            active_dir,
+            direction,
+            progress.map(|progress| {
+                progress.transfer_callback(direction, 0, total_steps, "文件级传输")
+            }),
+        )
         .await
     {
         let msg = format!("工作区数据库同步失败: {}", e);
@@ -661,10 +727,21 @@ async fn run_file_level_sync(
     }
 
     if direction != SyncDirection::Download {
-        drain_blob_deletion_queue(active_dir, manager, storage).await;
+        if let Err(e) = drain_blob_deletion_queue(active_dir, manager, storage).await {
+            warn!("[data_governance] {}", e);
+            append_warning_message(&mut report.warning, e);
+            report.failed = true;
+        }
     }
     match manager
-        .sync_vfs_blobs_with_tombstones(storage, &blobs_dir, direction)
+        .sync_vfs_blobs_with_tombstones_and_progress(
+            storage,
+            &blobs_dir,
+            direction,
+            progress.map(|progress| {
+                progress.transfer_callback(direction, 1, total_steps, "文件级传输")
+            }),
+        )
         .await
     {
         Ok(outcome) => {
@@ -688,10 +765,22 @@ async fn run_file_level_sync(
     }
 
     if direction != SyncDirection::Download {
-        drain_asset_deletion_queue(active_dir, manager, storage).await;
+        if let Err(e) = drain_asset_deletion_queue(active_dir, manager, storage).await {
+            warn!("[data_governance] {}", e);
+            append_warning_message(&mut report.warning, e);
+            report.failed = true;
+        }
     }
     match manager
-        .sync_asset_directories_with_tombstones(storage, active_dir, app_data_dir, direction)
+        .sync_asset_directories_with_tombstones_and_progress(
+            storage,
+            active_dir,
+            app_data_dir,
+            direction,
+            progress.map(|progress| {
+                progress.transfer_callback(direction, 2, total_steps, "文件级传输")
+            }),
+        )
         .await
     {
         Ok(outcome) => {
@@ -3095,7 +3184,7 @@ async fn apply_snapshot_bootstrap_if_needed(
         skipped = apply_agg.total_incomplete_skipped;
         if apply_agg.total_failed > 0 {
             let detail = if apply_agg.db_errors.is_empty() {
-                "部分快照变更已进入同步检疫".to_string()
+                "部分快照变更已移入同步隔离区".to_string()
             } else {
                 apply_agg
                     .db_errors
@@ -3534,6 +3623,196 @@ pub async fn data_governance_mark_asset_deleted(
 // ==================== __sync_conflicts 查询与解决 ====================
 
 use crate::data_governance::schema_registry::DatabaseId as _DatabaseId;
+
+/// 单条同步检疫记录
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct SyncQuarantineRow {
+    pub id: i64,
+    pub database_name: String,
+    pub source_device_id: String,
+    pub source_seq: i64,
+    pub table_name: String,
+    pub record_id: String,
+    pub operation: String,
+    pub payload_json: Option<String>,
+    pub error: String,
+    pub attempts: i64,
+    pub first_seen: String,
+    pub last_attempt: String,
+}
+
+fn sqlite_table_exists(conn: &rusqlite::Connection, table_name: &str) -> bool {
+    conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name=?1)",
+        rusqlite::params![table_name],
+        |row| row.get(0),
+    )
+    .unwrap_or(false)
+}
+
+/// 列出所有数据库里的同步检疫记录。
+#[tauri::command]
+pub async fn data_governance_list_quarantine(
+    app: tauri::AppHandle,
+    limit: Option<u32>,
+    offset: Option<u32>,
+) -> Result<Vec<SyncQuarantineRow>, String> {
+    let active_dir = get_active_data_dir(&app)?;
+    let limit = limit.unwrap_or(200).min(2000) as usize;
+    let offset = offset.unwrap_or(0) as usize;
+
+    let mut out = Vec::new();
+    for db_id in _DatabaseId::all_ordered() {
+        let db_path =
+            crate::data_governance::commands_backup::resolve_database_path(&db_id, &active_dir);
+        if !db_path.exists() {
+            continue;
+        }
+        let conn = match open_sync_connection(&db_path) {
+            Ok(c) => c,
+            Err(_) => continue,
+        };
+        if !sqlite_table_exists(&conn, "__sync_quarantine") {
+            continue;
+        }
+
+        let mut stmt = conn
+            .prepare(
+                "SELECT id, source_device_id, source_seq, table_name, record_id, operation,
+                        payload_json, error, attempts, first_seen, last_attempt
+                 FROM __sync_quarantine",
+            )
+            .map_err(|e| format!("准备隔离区查询失败: {}", e))?;
+        let rows = stmt
+            .query_map([], |row| {
+                Ok(SyncQuarantineRow {
+                    id: row.get(0)?,
+                    database_name: db_id.as_str().to_string(),
+                    source_device_id: row.get(1)?,
+                    source_seq: row.get(2)?,
+                    table_name: row.get(3)?,
+                    record_id: row.get(4)?,
+                    operation: row.get(5)?,
+                    payload_json: row.get(6)?,
+                    error: row.get(7)?,
+                    attempts: row.get(8)?,
+                    first_seen: row.get(9)?,
+                    last_attempt: row.get(10)?,
+                })
+            })
+            .map_err(|e| format!("执行隔离区查询失败: {}", e))?;
+
+        for row in rows {
+            out.push(row.map_err(|e| format!("读取隔离记录失败: {}", e))?);
+        }
+    }
+
+    out.sort_by(|a, b| {
+        b.last_attempt
+            .cmp(&a.last_attempt)
+            .then_with(|| b.id.cmp(&a.id))
+    });
+    Ok(out.into_iter().skip(offset).take(limit).collect())
+}
+
+/// 重试一条检疫记录。返回 true 表示该检疫项已清除。
+#[tauri::command]
+pub async fn data_governance_retry_quarantine(
+    app: tauri::AppHandle,
+    database_name: String,
+    quarantine_id: i64,
+) -> Result<bool, String> {
+    let active_dir = get_active_data_dir(&app)?;
+    let db_id = _DatabaseId::all_ordered()
+        .into_iter()
+        .find(|id| id.as_str() == database_name)
+        .ok_or_else(|| format!("未知数据库: {}", database_name))?;
+    let db_path =
+        crate::data_governance::commands_backup::resolve_database_path(&db_id, &active_dir);
+    let conn = open_sync_connection(&db_path)
+        .map_err(|e| format!("打开数据库 {} 失败: {}", database_name, e))?;
+    if !sqlite_table_exists(&conn, "__sync_quarantine") {
+        return Ok(false);
+    }
+
+    let payload_json: Option<String> = conn
+        .query_row(
+            "SELECT payload_json FROM __sync_quarantine WHERE id=?1",
+            rusqlite::params![quarantine_id],
+            |row| row.get(0),
+        )
+        .map_err(|e| match e {
+            rusqlite::Error::QueryReturnedNoRows => "该隔离记录不存在".to_string(),
+            other => format!("读取隔离记录失败: {}", other),
+        })?;
+    let payload_json = payload_json.ok_or_else(|| "该隔离记录缺少 payload，无法重试".to_string())?;
+    let change: SyncChangeWithData =
+        serde_json::from_str(&payload_json).map_err(|e| format!("解析隔离记录 payload 失败: {}", e))?;
+
+    match SyncManager::apply_downloaded_changes(&conn, &[change], Some(&id_column_map())) {
+        Ok(result) if result.failure_count == 0 => {
+            let deleted = conn
+                .execute(
+                    "DELETE FROM __sync_quarantine WHERE id=?1",
+                    rusqlite::params![quarantine_id],
+                )
+                .map_err(|e| format!("清理隔离记录失败: {}", e))?;
+            Ok(deleted > 0)
+        }
+        Ok(result) => {
+            let error = result
+                .failures
+                .first()
+                .map(|f| f.error.clone())
+                .unwrap_or_else(|| "重试后仍未能应用".to_string());
+            let _ = conn.execute(
+                "UPDATE __sync_quarantine
+                 SET attempts = attempts + 1, error = ?1, last_attempt = datetime('now')
+                 WHERE id=?2",
+                rusqlite::params![error, quarantine_id],
+            );
+            Ok(false)
+        }
+        Err(e) => {
+            let _ = conn.execute(
+                "UPDATE __sync_quarantine
+                 SET attempts = attempts + 1, error = ?1, last_attempt = datetime('now')
+                 WHERE id=?2",
+                rusqlite::params![e.to_string(), quarantine_id],
+            );
+            Err(format!("重试隔离记录失败: {}", e))
+        }
+    }
+}
+
+/// 丢弃一条检疫记录（不会写入业务表）。
+#[tauri::command]
+pub async fn data_governance_discard_quarantine(
+    app: tauri::AppHandle,
+    database_name: String,
+    quarantine_id: i64,
+) -> Result<bool, String> {
+    let active_dir = get_active_data_dir(&app)?;
+    let db_id = _DatabaseId::all_ordered()
+        .into_iter()
+        .find(|id| id.as_str() == database_name)
+        .ok_or_else(|| format!("未知数据库: {}", database_name))?;
+    let db_path =
+        crate::data_governance::commands_backup::resolve_database_path(&db_id, &active_dir);
+    let conn = open_sync_connection(&db_path)
+        .map_err(|e| format!("打开数据库 {} 失败: {}", database_name, e))?;
+    if !sqlite_table_exists(&conn, "__sync_quarantine") {
+        return Ok(false);
+    }
+
+    let deleted = conn
+        .execute(
+            "DELETE FROM __sync_quarantine WHERE id=?1",
+            rusqlite::params![quarantine_id],
+        )
+        .map_err(|e| format!("丢弃隔离记录失败: {}", e))?;
+    Ok(deleted > 0)
+}
 
 /// 单条记录级冲突
 #[derive(Debug, Clone, serde::Serialize)]

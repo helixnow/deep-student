@@ -50,6 +50,10 @@ const DEFAULT_SEARCH_TOP_K: u32 = 10;
 /// ★ L-028: 搜索查询最大数量限制（后端 clamp）
 const MAX_SEARCH_TOP_K: u64 = 50;
 
+/// ★ D15 修复：resource_read 单次返回内容的硬上限（字符数）。
+/// 超过该上限将截断并在结果中附带 truncationNotice，引导 LLM 按页读取。
+const MAX_READ_CONTENT_CHARS: usize = 40_000;
+
 // ============================================================================
 // 内置学习资源工具执行器
 // ============================================================================
@@ -1151,6 +1155,21 @@ impl BuiltinResourceExecutor {
             (content, total)
         };
 
+        // ★ D15 修复：出口硬上限——无论按页还是全量读取，content 超过上限即截断，
+        // 防止超大文档（无页结构的笔记/大文本文件等）一次性撑爆 LLM 上下文。
+        let original_char_count = content.chars().count();
+        let (content, content_truncated) = if original_char_count > MAX_READ_CONTENT_CHARS {
+            log::info!(
+                "[BuiltinResourceExecutor] resource_read content truncated: {} -> {} chars (resource={})",
+                original_char_count,
+                MAX_READ_CONTENT_CHARS,
+                resolved.read_id
+            );
+            (safe_truncate_chars(&content, MAX_READ_CONTENT_CHARS), true)
+        } else {
+            (content, false)
+        };
+
         let availability =
             Self::collect_read_availability(resolved.resource_type, &content, metadata.as_ref());
         let degradation = Self::build_degradation_info(
@@ -1185,6 +1204,7 @@ impl BuiltinResourceExecutor {
             "type": resolved.resource_type,
             "content": content,
             "contentLength": content.len(),
+            "contentTruncated": content_truncated,
             "availability": {
                 "hasExtractedText": availability.has_extracted_text,
                 "hasOcrPages": availability.has_ocr_pages,
@@ -1200,6 +1220,22 @@ impl BuiltinResourceExecutor {
             },
             "durationMs": duration,
         });
+
+        // ★ D15 修复：明确告知 LLM 内容已被截断及应对方式
+        if content_truncated {
+            let paging_hint = if paged_total_pages > 0 {
+                format!(
+                    "请缩小 page_start/page_end 范围分批读取（共 {} 页）。",
+                    paged_total_pages
+                )
+            } else {
+                "该资源没有分页结构，已返回开头部分内容。".to_string()
+            };
+            result["truncationNotice"] = json!(format!(
+                "内容过长已截断：原始 {} 字符，仅返回前 {} 字符。{}",
+                original_char_count, MAX_READ_CONTENT_CHARS, paging_hint
+            ));
+        }
 
         // ★ 按页读取信息：让 LLM 知道总页数和当前读取的范围
         if paged_total_pages > 0 {

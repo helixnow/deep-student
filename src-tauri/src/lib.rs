@@ -219,7 +219,8 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_http::init())
-        .plugin(tauri_plugin_fs::init());
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_notification::init());
 
     // 桌面端专用：自动更新 + 进程管理（仅 macOS/Windows/Linux）
     #[cfg(any(target_os = "macos", windows, target_os = "linux"))]
@@ -1721,6 +1722,10 @@ pub fn run() {
             ,crate::data_governance::commands_sync::data_governance_run_sync_with_progress
             ,crate::data_governance::commands_sync::data_governance_export_sync_data
             ,crate::data_governance::commands_sync::data_governance_import_sync_data
+            // 同步检疫管理
+            ,crate::data_governance::commands_sync::data_governance_list_quarantine
+            ,crate::data_governance::commands_sync::data_governance_retry_quarantine
+            ,crate::data_governance::commands_sync::data_governance_discard_quarantine
             // Tombstone 删除传播
             ,crate::data_governance::commands_sync::data_governance_mark_blob_deleted
             ,crate::data_governance::commands_sync::data_governance_mark_asset_deleted
@@ -1913,6 +1918,24 @@ fn build_app_state(
         Err(e) => {
             tracing::warn!("[AppSetup] Failed to recover stuck indexing records: {}", e);
         }
+    }
+
+    // ★ 2026-06-10（审阅问题 A2）：启动时清扫 ref_count=0 的 blob。
+    // 引用计数递减在事务内只改计数不删文件（两阶段删除），
+    // 若上次会话在"提交后、清扫前"崩溃，残留的 0 引用 blob 在此回收。
+    {
+        let vfs_db_sweep = vfs_db.clone();
+        tauri::async_runtime::spawn_blocking(move || {
+            match crate::vfs::repos::VfsBlobRepo::cleanup_unreferenced(&vfs_db_sweep) {
+                Ok(count) if count > 0 => {
+                    tracing::info!("[AppSetup] Swept {} unreferenced blobs", count);
+                }
+                Ok(_) => {}
+                Err(e) => {
+                    tracing::warn!("[AppSetup] Unreferenced blob sweep failed: {}", e);
+                }
+            }
+        });
     }
 
     // 🔧 Phase 1: 启动时恢复卡住的 Anki 制卡任务

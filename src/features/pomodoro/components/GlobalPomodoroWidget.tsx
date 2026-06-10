@@ -1,4 +1,5 @@
 import React, { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pause, Play, Square, Coffee, Brain, ArrowsOut } from '@phosphor-icons/react';
 import { usePomodoroStore } from '../stores/usePomodoroStore';
 import { useViewStore } from '@/stores/viewStore';
@@ -15,6 +16,7 @@ import { ImmersiveFocusMode } from './ImmersiveFocusMode';
  * 空闲态不显示任何浮动 UI——番茄钟主入口在 Todo 页面内的 PomodoroPanel。
  */
 export const GlobalPomodoroWidget: React.FC = () => {
+  const { t } = useTranslation('todo');
   const { mode, status, timeLeft, currentTaskTitle, pause, resume, stop, tick, isImmersive, setImmersive } = usePomodoroStore();
   const currentView = useViewStore((s) => s.currentView);
 
@@ -75,21 +77,21 @@ export const GlobalPomodoroWidget: React.FC = () => {
         <button
           onClick={handleTogglePlay}
           className="p-1.5 rounded-full hover:bg-[var(--interactive-hover)] transition-colors"
-          title={status === 'running' ? '暂停' : '继续'}
+          title={status === 'running' ? t('pomodoro.controls.pause') : t('pomodoro.controls.resume')}
         >
           {status === 'running' ? <Pause size={14} /> : <Play size={14} />}
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); stop(true); }}
           className="p-1.5 rounded-full hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
-          title="停止"
+          title={t('pomodoro.controls.stop')}
         >
           <Square size={14} />
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); setImmersive(true); }}
           className="p-1.5 rounded-full hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground transition-colors"
-          title="沉浸模式"
+          title={t('pomodoro.controls.immersive')}
         >
           <ArrowsOut size={14} />
         </button>

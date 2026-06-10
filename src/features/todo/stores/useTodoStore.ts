@@ -14,6 +14,10 @@ import type {
 } from '../types';
 import * as api from '../api';
 
+// ★ I6 修复：搜索防抖定时器（模块级，store 为单例）
+let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
+const SEARCH_DEBOUNCE_MS = 300;
+
 interface TodoState {
   // 数据
   lists: TodoList[];
@@ -200,12 +204,41 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     }
   },
 
+  // ★ I6 修复：乐观勾选——立即翻转本地状态，成功后用后端返回值就地替换，
+  // 失败回滚；不再整表 reload，消除勾选时的列表闪烁与延迟
   toggleItem: async (itemId) => {
+    const prevItems = get().items;
+    const target = prevItems.find((i) => i.id === itemId);
+    if (!target) return;
+
+    const optimisticStatus = target.status === 'completed' ? 'pending' : 'completed';
+    set((s) => ({
+      items: s.items.map((i) =>
+        i.id === itemId ? { ...i, status: optimisticStatus } : i
+      ),
+      error: null,
+    }));
+
     try {
-      await api.toggleTodoItem(itemId);
-      await get().reloadCurrentView();
+      const updated = await api.toggleTodoItem(itemId);
+      set((s) => {
+        const { view, showCompleted } = s.filter;
+        // 勾选后是否仍属于当前视图（completed 视图只留已完成；其他视图按 showCompleted）
+        const stillVisible =
+          view === 'completed'
+            ? updated.status === 'completed'
+            : updated.status !== 'completed' || showCompleted;
+        return {
+          items: stillVisible
+            ? s.items.map((i) => (i.id === itemId ? updated : i))
+            : s.items.filter((i) => i.id !== itemId),
+          selectedItemId:
+            !stillVisible && s.selectedItemId === itemId ? null : s.selectedItemId,
+        };
+      });
     } catch (e) {
-      set({ error: String(e) });
+      // 回滚乐观更新
+      set({ items: prevItems, error: String(e) });
     }
   },
 
@@ -372,15 +405,30 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     void get().reloadCurrentView();
   },
 
+  // ★ I6 修复：搜索防抖——每次按键不再立即整表查询；
+  // 输入期间保留旧结果（bump version 使在途请求失效），300ms 静默后才发起查询；
+  // 清空搜索时立即恢复当前视图
   setSearch: (search) => {
     set((s) => ({
       filter: { ...s.filter, search },
       selectedItemId: null,
-      items: [],
-      isLoadingItems: false,
       itemsRequestVersion: s.itemsRequestVersion + 1,
     }));
-    void get().reloadCurrentView();
+
+    if (searchDebounceTimer) {
+      clearTimeout(searchDebounceTimer);
+      searchDebounceTimer = null;
+    }
+
+    if (!search.trim()) {
+      void get().reloadCurrentView();
+      return;
+    }
+
+    searchDebounceTimer = setTimeout(() => {
+      searchDebounceTimer = null;
+      void get().reloadCurrentView();
+    }, SEARCH_DEBOUNCE_MS);
   },
 
   setPriorityFilter: (priority) =>

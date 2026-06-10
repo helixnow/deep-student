@@ -3162,8 +3162,9 @@ impl VfsFullIndexingService {
                 if !progress.ready_modes.contains(&"ocr".to_string()) {
                     progress.ready_modes.push("ocr".to_string());
                     if let Ok(new_json) = serde_json::to_string(&progress) {
+                        // ★ G2 修复：处理状态写入不触碰业务 updated_at
                         if let Err(e) = conn.execute(
-                            "UPDATE files SET processing_progress = ?1, updated_at = datetime('now') WHERE id = ?2",
+                            "UPDATE files SET processing_progress = ?1 WHERE id = ?2",
                             rusqlite::params![new_json, file_id],
                         ) {
                             log::warn!("[VfsIndexing] Failed to update processing_progress for file {}: {}", file_id, e);
@@ -3662,6 +3663,14 @@ impl VfsFullIndexingService {
     /// ## 并行策略
     /// 使用 `max_concurrent` 配置控制并行度（默认 2）
     pub async fn process_pending_batch(&self, batch_size: u32) -> VfsResult<(usize, usize)> {
+        // ★ F5 修复：每轮先排空 Lance 孤立向量队列，防止已删内容仍被 RAG 命中
+        if let Err(e) = self.drain_lance_orphan_queue(200).await {
+            warn!(
+                "[VfsFullIndexingService] drain_lance_orphan_queue failed: {}",
+                e
+            );
+        }
+
         let config = VfsIndexingService::new(self.db.clone()).get_indexing_config()?;
         let pending =
             VfsIndexStateRepo::claim_pending_resources(&self.db, batch_size, config.max_retries)?;
@@ -3718,6 +3727,84 @@ impl VfsFullIndexingService {
         );
 
         Ok((success, fail))
+    }
+
+    /// ★ F5 修复：排空 Lance 孤立向量队列
+    ///
+    /// `sync_resource_units` 增量同步删除 Units 时，孤立的 lance_row_id 会被写入
+    /// `__lance_orphan_queue`（与业务变更同事务）。本方法批量取出队列条目，
+    /// 调用 `delete_by_embedding_ids` 从 text/multimodal 两个 modality 中删除向量：
+    /// - 成功：从队列中移除；
+    /// - 失败：递增 retry_count，超过 10 次后放弃并告警（避免队列无限膨胀）。
+    pub async fn drain_lance_orphan_queue(&self, limit: u32) -> VfsResult<usize> {
+        const MAX_RETRY: i32 = 10;
+
+        let entries: Vec<(String, i32)> = {
+            let conn = self.db.get_conn()?;
+            let mut stmt = conn.prepare(
+                "SELECT lance_row_id, retry_count FROM __lance_orphan_queue
+                 WHERE retry_count < ?1 ORDER BY enqueued_at LIMIT ?2",
+            )?;
+            let rows = stmt
+                .query_map(rusqlite::params![MAX_RETRY, limit], |row| {
+                    Ok((row.get::<_, String>(0)?, row.get::<_, i32>(1)?))
+                })?
+                .collect::<Result<Vec<_>, _>>()?;
+            rows
+        };
+
+        if entries.is_empty() {
+            return Ok(0);
+        }
+
+        let ids: Vec<String> = entries.iter().map(|(id, _)| id.clone()).collect();
+        let text_result = self
+            .lance_store
+            .delete_by_embedding_ids(MODALITY_TEXT, &ids)
+            .await;
+        let mm_result = self
+            .lance_store
+            .delete_by_embedding_ids(MODALITY_MULTIMODAL, &ids)
+            .await;
+
+        let conn = self.db.get_conn()?;
+        let cleaned = if text_result.is_ok() && mm_result.is_ok() {
+            // 全部成功：从队列移除
+            for id in &ids {
+                conn.execute(
+                    "DELETE FROM __lance_orphan_queue WHERE lance_row_id = ?1",
+                    rusqlite::params![id],
+                )?;
+            }
+            info!(
+                "[VfsFullIndexingService] drain_lance_orphan_queue: cleaned {} orphaned vectors",
+                ids.len()
+            );
+            ids.len()
+        } else {
+            // 失败：递增 retry，超限后放弃
+            for id in &ids {
+                conn.execute(
+                    "UPDATE __lance_orphan_queue SET retry_count = retry_count + 1 WHERE lance_row_id = ?1",
+                    rusqlite::params![id],
+                )?;
+            }
+            let abandoned: i64 = conn.query_row(
+                "SELECT COUNT(*) FROM __lance_orphan_queue WHERE retry_count >= ?1",
+                rusqlite::params![MAX_RETRY],
+                |row| row.get(0),
+            )?;
+            warn!(
+                "[VfsFullIndexingService] drain_lance_orphan_queue: lance delete failed (text: {:?}, mm: {:?}); retry deferred, {} entries abandoned (retry>={})",
+                text_result.err(),
+                mm_result.err(),
+                abandoned,
+                MAX_RETRY
+            );
+            0
+        };
+
+        Ok(cleaned)
     }
 
     /// 检查资源是否需要重新索引

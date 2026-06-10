@@ -922,14 +922,14 @@ impl VfsNoteRepo {
         // 保存主 resource_id
         let main_resource_id = note.resource_id.clone();
 
-        // ★ 使用事务包装所有删除操作，确保原子性
-        conn.execute("BEGIN IMMEDIATE", []).map_err(|e| {
-            tracing::error!(
-                "[VFS::NoteRepo] Failed to begin transaction for purge: {}",
-                e
-            );
-            VfsError::Database(format!("Failed to begin transaction: {}", e))
-        })?;
+        // ★ 使用 SAVEPOINT 包装所有删除操作，确保原子性
+        // ★ 2026-06-10 修复（审阅问题 A2 关联）：改 BEGIN IMMEDIATE 为 SAVEPOINT，
+        // 支持在外层事务（如文件夹树 purge）内嵌套调用。
+        conn.execute("SAVEPOINT vfs_note_purge_tx", [])
+            .map_err(|e| {
+                tracing::error!("[VFS::NoteRepo] Failed to begin savepoint for purge: {}", e);
+                VfsError::Database(format!("Failed to begin savepoint: {}", e))
+            })?;
 
         // 定义回滚宏
         macro_rules! rollback_on_error {
@@ -938,7 +938,9 @@ impl VfsNoteRepo {
                     Ok(v) => v,
                     Err(e) => {
                         tracing::error!("[VFS::NoteRepo] {}: {}", $msg, e);
-                        let _ = conn.execute("ROLLBACK", []);
+                        let _ = conn.execute_batch(
+                            "ROLLBACK TO SAVEPOINT vfs_note_purge_tx; RELEASE SAVEPOINT vfs_note_purge_tx;",
+                        );
                         return Err(VfsError::Database(format!("{}: {}", $msg, e)));
                     }
                 }
@@ -970,7 +972,9 @@ impl VfsNoteRepo {
                 "[VFS::NoteRepo] CRITICAL: Note record disappeared during deletion: {}",
                 note_id
             );
-            let _ = conn.execute("ROLLBACK", []);
+            let _ = conn.execute_batch(
+                "ROLLBACK TO SAVEPOINT vfs_note_purge_tx; RELEASE SAVEPOINT vfs_note_purge_tx;",
+            );
             return Err(VfsError::Other(format!(
                 "Note record disappeared during deletion: {}. This may indicate a race condition.",
                 note_id
@@ -1019,12 +1023,15 @@ impl VfsNoteRepo {
             deleted_resources, note_id
         );
 
-        // ★ 提交事务
-        conn.execute("COMMIT", []).map_err(|e| {
-            tracing::error!("[VFS::NoteRepo] Failed to commit purge transaction: {}", e);
-            let _ = conn.execute("ROLLBACK", []);
-            VfsError::Database(format!("Failed to commit transaction: {}", e))
-        })?;
+        // ★ 提交（释放保存点；若存在外层事务则随外层一起提交）
+        conn.execute_batch("RELEASE SAVEPOINT vfs_note_purge_tx")
+            .map_err(|e| {
+                tracing::error!("[VFS::NoteRepo] Failed to release purge savepoint: {}", e);
+                let _ = conn.execute_batch(
+                    "ROLLBACK TO SAVEPOINT vfs_note_purge_tx; RELEASE SAVEPOINT vfs_note_purge_tx;",
+                );
+                VfsError::Database(format!("Failed to release savepoint: {}", e))
+            })?;
 
         info!(
             "[VFS::NoteRepo] Successfully completed note deletion: {}",

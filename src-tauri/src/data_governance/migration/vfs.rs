@@ -545,6 +545,32 @@ pub const V20260527_ADD_ASSET_DELETION_QUEUE: MigrationDef = MigrationDef::new(
 .with_expected_indexes(&["idx__asset_deletion_queue_retry"])
 .idempotent();
 
+/// V20260610: 重建 questions_fts 触发器为 FTS5 'delete' 命令模式并 rebuild 存量索引
+pub const V20260610_FIX_QUESTIONS_FTS_TRIGGERS: MigrationDef = MigrationDef::new(
+    20260610,
+    "fix_questions_fts_triggers",
+    include_str!("../../../migrations/vfs/V20260610__fix_questions_fts_triggers.sql"),
+)
+.idempotent();
+
+/// V20260611: 添加 Lance 孤立向量清理队列表
+pub const V20260611_ADD_LANCE_ORPHAN_QUEUE: MigrationDef = MigrationDef::new(
+    20260611,
+    "add_lance_orphan_queue",
+    include_str!("../../../migrations/vfs/V20260611__add_lance_orphan_queue.sql"),
+)
+.with_expected_tables(&["__lance_orphan_queue"])
+.with_expected_indexes(&["idx__lance_orphan_queue_retry"])
+.idempotent();
+
+/// V20260612: todo_items INSERT 触发器补 parent_id 自引用检查
+pub const V20260612_TODO_INSERT_SELF_REF_CHECK: MigrationDef = MigrationDef::new(
+    20260612,
+    "todo_insert_self_ref_check",
+    include_str!("../../../migrations/vfs/V20260612__todo_insert_self_ref_check.sql"),
+)
+.idempotent();
+
 /// VFS 数据库所有迁移定义
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -580,6 +606,9 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260525_REPAIR_LEGACY_QUESTIONS_CHANGE_LOG_RECORD_IDS,
     V20260526_ADD_BLOB_METADATA_SYNC,
     V20260527_ADD_ASSET_DELETION_QUEUE,
+    V20260610_FIX_QUESTIONS_FTS_TRIGGERS,
+    V20260611_ADD_LANCE_ORPHAN_QUEUE,
+    V20260612_TODO_INSERT_SELF_REF_CHECK,
 ];
 
 /// VFS 迁移集合
@@ -632,6 +661,7 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
     // 本地辅助队列
     "__blob_deletion_queue",
     "__asset_deletion_queue",
+    "__lance_orphan_queue",
     // FTS5 虚拟表
     "questions_fts",
 ];
@@ -640,7 +670,7 @@ pub const VFS_ALL_TABLE_NAMES: &[&str] = &[
 pub const VFS_VIEW_NAMES: &[&str] = &["trash_view"];
 
 /// VFS 数据库当前保留表总数（不含视图、虚拟表、已废弃表）
-pub const VFS_TABLE_COUNT: usize = 34;
+pub const VFS_TABLE_COUNT: usize = 35;
 
 /// VFS 数据库视图总数
 pub const VFS_VIEW_COUNT: usize = 1;
@@ -677,7 +707,10 @@ mod tests {
         // + V20260311 (todo_constraints) + V20260312 (add_blob_deletion_queue)
         // + V20260523 (missing_sync_coverage) + V20260524 (field_deltas)
         // + V20260525 (repair_legacy_questions_change_log_record_ids)
-        assert_eq!(VFS_MIGRATION_SET.count(), 32);
+        // + V20260526 (add_blob_metadata_sync) + V20260527 (add_asset_deletion_queue)
+        // + V20260610 (fix_questions_fts_triggers) + V20260611 (add_lance_orphan_queue)
+        // + V20260612 (todo_insert_self_ref_check)
+        assert_eq!(VFS_MIGRATION_SET.count(), 36);
     }
 
     #[test]
@@ -772,6 +805,6 @@ mod tests {
 
     #[test]
     fn test_latest_version() {
-        assert_eq!(VFS_MIGRATION_SET.latest_version(), 20260525);
+        assert_eq!(VFS_MIGRATION_SET.latest_version(), 20260612);
     }
 }

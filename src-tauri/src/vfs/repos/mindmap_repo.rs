@@ -923,25 +923,30 @@ impl VfsMindMapRepo {
     /// 永久删除知识导图（使用现有连接）
     ///
     /// ★ P0 修复：使用事务保护，防止多步操作部分失败导致数据不一致
+    /// ★ 2026-06-10 修复（审阅问题 A2 关联）：改 BEGIN IMMEDIATE 为 SAVEPOINT，
+    /// 支持在外层事务（如文件夹树 purge）内嵌套调用。
     pub fn purge_mindmap_with_conn(conn: &Connection, mindmap_id: &str) -> VfsResult<()> {
-        // 开始事务
-        conn.execute("BEGIN IMMEDIATE", [])?;
+        conn.execute_batch("SAVEPOINT vfs_mindmap_purge_tx")?;
 
         let result = Self::purge_mindmap_inner(conn, mindmap_id);
 
         match result {
             Ok(_) => {
-                // 修复：COMMIT 失败时也需要回滚
-                if let Err(commit_err) = conn.execute("COMMIT", []) {
-                    let _ = conn.execute("ROLLBACK", []);
-                    return Err(commit_err.into());
+                if let Err(release_err) =
+                    conn.execute_batch("RELEASE SAVEPOINT vfs_mindmap_purge_tx")
+                {
+                    let _ = conn.execute_batch(
+                        "ROLLBACK TO SAVEPOINT vfs_mindmap_purge_tx; RELEASE SAVEPOINT vfs_mindmap_purge_tx;",
+                    );
+                    return Err(release_err.into());
                 }
                 info!("[VFS::MindMapRepo] Purged mindmap: {}", mindmap_id);
                 Ok(())
             }
             Err(e) => {
-                // 回滚事务，忽略回滚本身的错误
-                let _ = conn.execute("ROLLBACK", []);
+                let _ = conn.execute_batch(
+                    "ROLLBACK TO SAVEPOINT vfs_mindmap_purge_tx; RELEASE SAVEPOINT vfs_mindmap_purge_tx;",
+                );
                 Err(e)
             }
         }

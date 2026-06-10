@@ -61,5 +61,51 @@
   "placeholders": {
     "description": "添加描述...",
     "title": "待办标题"
+  },
+  "pomodoro": {
+    "modes": {
+      "focusing": "专注中",
+      "shortBreak": "短休息",
+      "longBreak": "长休息",
+      "ready": "准备就绪",
+      "idle": "番茄钟"
+    },
+    "controls": {
+      "start": "开始",
+      "startFocus": "开始专注",
+      "pause": "暂停",
+      "resume": "继续",
+      "stop": "停止",
+      "skipBreak": "跳过休息",
+      "immersive": "沉浸模式",
+      "enterImmersive": "进入沉浸式专注模式",
+      "exitImmersive": "退出专注模式 (ESC)",
+      "pauseSpace": "暂停 (Space)",
+      "startSpace": "开始 (Space)",
+      "noiseOn": "开启环境音",
+      "noiseOff": "关闭环境音"
+    },
+    "stats": {
+      "todayLabel": "今日",
+      "pomodoroUnit": "个番茄",
+      "todayCount": "今日 {{value}} 个番茄",
+      "focusLabel": "专注",
+      "minutes": "{{value}} 分钟",
+      "hours": "{{value}} 小时",
+      "interrupted": "中断 {{value}} 次"
+    },
+    "notifications": {
+      "workCompleteTitle": "番茄完成",
+      "workCompleteBody": "专注结束，休息一下吧（今日已完成 {{value}} 个番茄）",
+      "breakCompleteTitle": "休息结束",
+      "breakCompleteBody": "休息结束，开始下一个番茄吧"
+    },
+    "immersive": {
+      "currentTask": "当前任务",
+      "hintEscPrefix": "按 ",
+      "hintEscSuffix": " 退出",
+      "hintSpacePrefix": "",
+      "hintSpaceSuffix": " 暂停/恢复"
+    }
   }
 }

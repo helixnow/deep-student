@@ -443,6 +443,27 @@ impl QuestionBankService {
 
         tx.commit().map_err(|e| AppError::database(e.to_string()))?;
 
+        // ★ I1 修复：答错时自动创建（或复用）SM-2 复习计划，接通间隔重复学习闭环。
+        // 失败不阻塞答题流程，仅记录告警。
+        if is_correct == Some(false) {
+            let review_service =
+                crate::review_plan_service::ReviewPlanService::new(Arc::clone(&self.vfs_db));
+            match review_service.get_or_create_plan(question_id, &question.exam_id) {
+                Ok(plan) => {
+                    info!(
+                        "[QuestionBankService] Auto review plan for wrong answer: question_id={}, plan_id={}",
+                        question_id, plan.id
+                    );
+                }
+                Err(e) => {
+                    warn!(
+                        "[QuestionBankService] Failed to auto-create review plan for question_id={}: {}",
+                        question_id, e
+                    );
+                }
+            }
+        }
+
         let message = if needs_manual_grading {
             "需要手动批改".to_string()
         } else if raw_is_correct {

@@ -864,7 +864,15 @@ impl VfsFileRepo {
 
     pub fn purge_file(db: &VfsDatabase, file_id: &str) -> VfsResult<()> {
         let conn = db.get_conn_safe()?;
-        Self::purge_file_with_conn(&conn, db.blobs_dir(), file_id)
+        Self::purge_file_with_conn(&conn, db.blobs_dir(), file_id)?;
+        // ★ 2026-06-10（审阅问题 A2）：事务提交后清扫 ref_count=0 的 blob（两阶段删除的第二阶段）
+        if let Err(e) = VfsBlobRepo::cleanup_unreferenced_with_conn(&conn, db.blobs_dir()) {
+            warn!(
+                "[VFS::FileRepo] Post-purge blob sweep failed (will retry on next sweep): {}",
+                e
+            );
+        }
+        Ok(())
     }
 
     /// 永久删除文件（带事务保护）
@@ -915,14 +923,16 @@ impl VfsFileRepo {
         // 保存 resource_id 以便稍后删除
         let resource_id_to_delete = file.resource_id.clone();
 
-        // ★ 使用事务包装所有删除操作，确保原子性
-        conn.execute("BEGIN IMMEDIATE", []).map_err(|e| {
-            error!(
-                "[VFS::FileRepo] Failed to begin transaction for purge: {}",
-                e
-            );
-            VfsError::Database(format!("Failed to begin transaction: {}", e))
-        })?;
+        // ★ 使用 SAVEPOINT 包装所有删除操作，确保原子性
+        // ★ 2026-06-10 修复（审阅问题 A2 关联）：改 BEGIN IMMEDIATE 为 SAVEPOINT。
+        // 本函数会被 folder_repo::purge_folder_tree_resources_with_conn 在外层
+        // SAVEPOINT 事务内嵌套调用，BEGIN 会报 "cannot start a transaction within
+        // a transaction" 导致含文件的文件夹永远无法清空。SAVEPOINT 可安全嵌套。
+        conn.execute_batch("SAVEPOINT vfs_file_purge_tx")
+            .map_err(|e| {
+                error!("[VFS::FileRepo] Failed to begin savepoint for purge: {}", e);
+                VfsError::Database(format!("Failed to begin savepoint: {}", e))
+            })?;
 
         // 定义回滚宏
         macro_rules! rollback_on_error {
@@ -931,7 +941,9 @@ impl VfsFileRepo {
                     Ok(v) => v,
                     Err(e) => {
                         error!("[VFS::FileRepo] {}: {}", $msg, e);
-                        let _ = conn.execute("ROLLBACK", []);
+                        let _ = conn.execute_batch(
+                            "ROLLBACK TO SAVEPOINT vfs_file_purge_tx; RELEASE SAVEPOINT vfs_file_purge_tx;",
+                        );
                         return Err(VfsError::Database(format!("{}: {}", $msg, e)));
                     }
                 }
@@ -1066,7 +1078,9 @@ impl VfsFileRepo {
                 "[VFS::FileRepo] CRITICAL: File record disappeared during deletion: {}",
                 file_id
             );
-            let _ = conn.execute("ROLLBACK", []);
+            let _ = conn.execute_batch(
+                "ROLLBACK TO SAVEPOINT vfs_file_purge_tx; RELEASE SAVEPOINT vfs_file_purge_tx;",
+            );
             return Err(VfsError::Other(format!(
                 "File record disappeared during deletion: {}. This may indicate a race condition.",
                 file_id
@@ -1094,12 +1108,15 @@ impl VfsFileRepo {
             );
         }
 
-        // ★ 提交事务
-        conn.execute("COMMIT", []).map_err(|e| {
-            error!("[VFS::FileRepo] Failed to commit purge transaction: {}", e);
-            let _ = conn.execute("ROLLBACK", []);
-            VfsError::Database(format!("Failed to commit transaction: {}", e))
-        })?;
+        // ★ 提交（释放保存点；若存在外层事务则随外层一起提交）
+        conn.execute_batch("RELEASE SAVEPOINT vfs_file_purge_tx")
+            .map_err(|e| {
+                error!("[VFS::FileRepo] Failed to release purge savepoint: {}", e);
+                let _ = conn.execute_batch(
+                    "ROLLBACK TO SAVEPOINT vfs_file_purge_tx; RELEASE SAVEPOINT vfs_file_purge_tx;",
+                );
+                VfsError::Database(format!("Failed to release savepoint: {}", e))
+            })?;
 
         info!(
             "[VFS::FileRepo] Successfully completed file deletion: {}",
@@ -1448,7 +1465,15 @@ impl VfsFileRepo {
 
     pub fn purge_deleted_files(db: &VfsDatabase) -> VfsResult<usize> {
         let conn = db.get_conn_safe()?;
-        Self::purge_deleted_files_with_conn(&conn, db.blobs_dir())
+        let count = Self::purge_deleted_files_with_conn(&conn, db.blobs_dir())?;
+        // ★ 2026-06-10（审阅问题 A2）：批量 purge 完成后统一清扫 ref_count=0 的 blob
+        if let Err(e) = VfsBlobRepo::cleanup_unreferenced_with_conn(&conn, db.blobs_dir()) {
+            warn!(
+                "[VFS::FileRepo] Post-batch-purge blob sweep failed (will retry on next sweep): {}",
+                e
+            );
+        }
+        Ok(count)
     }
 
     pub fn purge_deleted_files_with_conn(conn: &Connection, blobs_dir: &Path) -> VfsResult<usize> {

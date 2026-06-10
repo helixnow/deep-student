@@ -17,7 +17,7 @@ use chrono::Utc;
 use encoding_rs::{GB18030, GBK, UTF_16BE, UTF_16LE};
 use rusqlite::params;
 use serde::Serialize;
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::sync::LazyLock;
 use tauri::{Emitter, State, Window};
@@ -207,6 +207,72 @@ fn enqueue_deleted_note_asset(relative_path: &str, state: &AppState) {
             key,
             err
         );
+    }
+}
+
+fn collect_note_asset_deletion_entries(
+    state: &AppState,
+    subject: &str,
+    note_id: &str,
+) -> Vec<(String, Option<u64>)> {
+    let runtime_base = state.file_manager.get_writable_app_data_dir();
+    let assets_dir = runtime_base
+        .join("notes_assets")
+        .join(subject)
+        .join(note_id);
+    let mut entries = Vec::new();
+    collect_note_asset_deletion_entries_inner(&runtime_base, &assets_dir, &mut entries);
+    entries
+}
+
+fn collect_note_asset_deletion_entries_inner(
+    runtime_base: &Path,
+    current: &Path,
+    out: &mut Vec<(String, Option<u64>)>,
+) {
+    let Ok(children) = std::fs::read_dir(current) else {
+        return;
+    };
+    for child in children {
+        let Ok(child) = child else {
+            continue;
+        };
+        let path: PathBuf = child.path();
+        if path.is_dir() {
+            collect_note_asset_deletion_entries_inner(runtime_base, &path, out);
+            continue;
+        }
+        if !path.is_file() {
+            continue;
+        }
+        let rel = path
+            .strip_prefix(runtime_base)
+            .unwrap_or(&path)
+            .to_string_lossy()
+            .replace('\\', "/");
+        let Some(key) = asset_key_from_relative_path(&rel) else {
+            log::warn!("[notes] 跳过资产目录删除队列：无法归一化相对路径 {}", rel);
+            continue;
+        };
+        let size = std::fs::metadata(&path).ok().map(|m| m.len());
+        out.push((key, size));
+    }
+}
+
+fn enqueue_deleted_note_asset_entries(entries: Vec<(String, Option<u64>)>, state: &AppState) {
+    if entries.is_empty() {
+        return;
+    }
+    let runtime_base = state.file_manager.get_writable_app_data_dir();
+    let active_dir = active_data_dir_from_runtime_base(&runtime_base);
+    for (key, size) in entries {
+        if let Err(err) = enqueue_asset_deletion(&active_dir, &key, size) {
+            log::warn!(
+                "[notes] 写入资产目录删除队列失败（不阻塞删除）: key={}, err={}",
+                key,
+                err
+            );
+        }
     }
 }
 
@@ -537,6 +603,9 @@ pub async fn notes_hard_delete(
         ids
     };
 
+    let subject = subject.unwrap_or_else(|| "_global".to_string());
+    let pending_asset_deletions = collect_note_asset_deletion_entries(state.inner(), &subject, &id);
+
     // VFS purge_note 会删除：笔记、关联资源
     let deleted = crate::vfs::VfsNoteRepo::purge_note(vfs_db, &id)
         .map(|_| true)
@@ -544,8 +613,14 @@ pub async fn notes_hard_delete(
 
     if deleted {
         // 清理资产目录
-        let subject = subject.unwrap_or_else(|| "_global".to_string());
-        let _ = state.file_manager.delete_note_assets_dir(&subject, &id);
+        match state.file_manager.delete_note_assets_dir(&subject, &id) {
+            Ok(_) => enqueue_deleted_note_asset_entries(pending_asset_deletions, state.inner()),
+            Err(e) => log::warn!(
+                "[notes_hard_delete] Failed to delete note assets dir for {}: {}",
+                id,
+                e
+            ),
+        }
 
         // 清理索引（SQLite + Lance）
         let index_service = VfsIndexService::new(vfs_db.clone());

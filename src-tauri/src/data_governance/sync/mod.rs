@@ -433,6 +433,8 @@ pub struct BlobEntry {
     /// 相对路径（相对于 vfs_blobs/），如 "ab/abc123....pdf"
     pub relative_path: String,
     pub size: u64,
+    #[serde(default)]
+    pub updated_at: String,
 }
 
 /// VFS Blob 同步结果，区分完全成功与部分失败
@@ -485,6 +487,9 @@ pub struct AssetSyncOutcome {
     pub upload_failures: Vec<String>,
     pub download_failures: Vec<String>,
 }
+
+pub(crate) type FileTransferProgressCallback =
+    std::sync::Arc<dyn Fn(String, u64, u64) + Send + Sync>;
 
 impl AssetSyncOutcome {
     pub fn has_failures(&self) -> bool {
@@ -1605,7 +1610,7 @@ impl SyncManager {
         let device_manifests = self
             .download_device_manifests(storage)
             .await
-            .unwrap_or_default();
+            .map_err(|e| SyncError::Network(format!("下载设备 manifest 失败: {}", e)))?;
 
         // [P0-8/C6] 版本号毫秒/秒归一化：legacy 文件名可能写入了毫秒时间戳（>1e11），
         // 而 since_version / per_db_since / prune / min_available 都以秒为口径。
@@ -1714,13 +1719,6 @@ impl SyncManager {
                     for mut change in payload.changes {
                         change.source_device_id = Some(source_device.clone());
                         change.source_seq = Some(source_seq);
-                        if let Some(db) = change.database_name.as_deref() {
-                            if let Some(db_since) = per_db_since.and_then(|m| m.get(db)) {
-                                if version < Self::normalize_version_to_seconds(*db_since) {
-                                    continue;
-                                }
-                            }
-                        }
                         all_changes.push((source_device.clone(), source_seq, version, change));
                     }
                     cursor_advancements.insert(uploader.clone(), seq);
@@ -2314,13 +2312,38 @@ impl SyncManager {
         Ok(latest)
     }
 
+    fn expected_snapshot_databases() -> HashSet<String> {
+        classification::TableClassification::row_sync_tables()
+            .into_iter()
+            .map(|table| table.database.to_string())
+            .collect()
+    }
+
+    fn missing_snapshot_databases(
+        snapshots: &HashMap<String, SyncDatabaseSnapshot>,
+    ) -> Vec<String> {
+        let mut missing = Self::expected_snapshot_databases()
+            .into_iter()
+            .filter(|db| !snapshots.contains_key(db))
+            .collect::<Vec<_>>();
+        missing.sort();
+        missing
+    }
+
     async fn latest_snapshot_coverages(
         &self,
         storage: &dyn CloudStorage,
     ) -> Result<HashMap<String, SnapshotCoverage>, SyncError> {
-        Ok(self
-            .download_latest_snapshots(storage)
-            .await?
+        let snapshots = self.download_latest_snapshots(storage).await?;
+        let missing = Self::missing_snapshot_databases(&snapshots);
+        if !missing.is_empty() {
+            tracing::warn!(
+                "[sync] 快照覆盖不完整，拒绝用于 prune: missing_dbs={:?}",
+                missing
+            );
+            return Ok(HashMap::new());
+        }
+        Ok(snapshots
             .into_iter()
             .map(|(db, snapshot)| {
                 (
@@ -2366,6 +2389,14 @@ impl SyncManager {
     ) -> Result<DownloadChangesResult, SyncError> {
         let mut snapshots = self.download_latest_snapshots(storage).await?;
         if snapshots.is_empty() {
+            return Ok(DownloadChangesResult::default());
+        }
+        let missing = Self::missing_snapshot_databases(&snapshots);
+        if !missing.is_empty() {
+            tracing::warn!(
+                "[sync] 快照覆盖不完整，拒绝用于下载引导: missing_dbs={:?}",
+                missing
+            );
             return Ok(DownloadChangesResult::default());
         }
 
@@ -4447,7 +4478,12 @@ impl SyncManager {
                     id_column,
                     &obj,
                 )? {
-                    Self::insert_alias(&mut aliases, &change.table_name, &remote_id, &canonical_id)?;
+                    Self::insert_alias(
+                        &mut aliases,
+                        &change.table_name,
+                        &remote_id,
+                        &canonical_id,
+                    )?;
                     Self::insert_alias(
                         &mut aliases,
                         &change.table_name,
@@ -4466,7 +4502,11 @@ impl SyncManager {
 
                 let mut matched_canonical: Option<String> = None;
                 for fingerprint in &fingerprints {
-                    let key = (scope.clone(), change.table_name.clone(), fingerprint.clone());
+                    let key = (
+                        scope.clone(),
+                        change.table_name.clone(),
+                        fingerprint.clone(),
+                    );
                     if let Some(existing_id) = batch_business_keys.get(&key) {
                         let canonical =
                             Self::resolve_alias(&aliases, &change.table_name, existing_id)?;
@@ -4476,7 +4516,12 @@ impl SyncManager {
                 }
 
                 if let Some(canonical_id) = matched_canonical {
-                    Self::insert_alias(&mut aliases, &change.table_name, &remote_id, &canonical_id)?;
+                    Self::insert_alias(
+                        &mut aliases,
+                        &change.table_name,
+                        &remote_id,
+                        &canonical_id,
+                    )?;
                     Self::insert_alias(
                         &mut aliases,
                         &change.table_name,
@@ -7257,6 +7302,17 @@ impl SyncManager {
             .unwrap_or_else(|| chrono::Utc::now().to_rfc3339())
     }
 
+    fn file_transfer_progress(
+        progress: Option<&FileTransferProgressCallback>,
+        item: String,
+    ) -> Option<Box<dyn Fn(u64, u64) + Send + Sync>> {
+        progress.cloned().map(|progress| {
+            Box::new(move |done, total| {
+                progress(item.clone(), done, total);
+            }) as Box<dyn Fn(u64, u64) + Send + Sync>
+        })
+    }
+
     fn local_file_wins(local_updated_at: &str, cloud_updated_at: &str, content_key: &str) -> bool {
         if cloud_updated_at.trim().is_empty() {
             return true;
@@ -7269,6 +7325,19 @@ impl SyncManager {
             "cloud-file",
             content_key,
         ) == std::cmp::Ordering::Greater
+    }
+
+    fn timestamp_after(candidate: &str, reference: &str) -> bool {
+        if candidate.trim().is_empty() || reference.trim().is_empty() {
+            return false;
+        }
+        match (
+            Self::parse_flexible_timestamp(candidate),
+            Self::parse_flexible_timestamp(reference),
+        ) {
+            (Some(candidate), Some(reference)) => candidate > reference,
+            _ => candidate > reference,
+        }
     }
 
     fn device_component_for_lww(fallback: &str) -> String {
@@ -7347,6 +7416,17 @@ impl SyncManager {
         active_dir: &std::path::Path,
         direction: SyncDirection,
     ) -> Result<(), SyncError> {
+        self.sync_workspace_databases_with_progress(storage, active_dir, direction, None)
+            .await
+    }
+
+    pub async fn sync_workspace_databases_with_progress(
+        &self,
+        storage: &dyn CloudStorage,
+        active_dir: &std::path::Path,
+        direction: SyncDirection,
+        progress: Option<FileTransferProgressCallback>,
+    ) -> Result<(), SyncError> {
         let workspaces_dir = active_dir.join("workspaces");
 
         // 1. 下载云端清单，并先消费 workspace tombstone，防止已删工作区复活。
@@ -7362,6 +7442,16 @@ impl SyncManager {
             let mut manifest_changed = false;
             for (ws_id, entry) in &workspace_tombstones.entries {
                 let local_db = workspaces_dir.join(format!("{}.db", ws_id));
+                if cloud_manifest.entries.get(ws_id).is_some_and(|cloud| {
+                    Self::timestamp_after(&cloud.updated_at, &entry.deleted_at)
+                }) {
+                    tracing::info!(
+                        "[sync] 跳过过期 workspace tombstone，云端数据库更新: {} cloud_updated_at>{}",
+                        ws_id,
+                        entry.deleted_at
+                    );
+                    continue;
+                }
                 if tombstone::path_modified_after(&local_db, &entry.deleted_at) {
                     tracing::info!(
                         "[sync] 跳过过期 workspace tombstone，本地数据库更新: {} deleted_at={}",
@@ -7481,7 +7571,11 @@ impl SyncManager {
                     let snapshot_size = std::fs::metadata(&snapshot)
                         .map(|m| m.len())
                         .unwrap_or(*size);
-                    match storage.put_file(&key, &snapshot, None).await {
+                    let transfer_progress = Self::file_transfer_progress(
+                        progress.as_ref(),
+                        format!("工作区数据库 {}", ws_id),
+                    );
+                    match storage.put_file(&key, &snapshot, transfer_progress).await {
                         Ok(_) => {
                             new_manifest.entries.insert(
                                 ws_id.clone(),
@@ -7528,8 +7622,12 @@ impl SyncManager {
                         }
                     }
                     let key = format!("{}/{}.db", Self::WORKSPACES_CLOUD_PREFIX, ws_id);
+                    let transfer_progress = Self::file_transfer_progress(
+                        progress.as_ref(),
+                        format!("工作区数据库 {}", ws_id),
+                    );
                     match storage
-                        .get_file(&key, &dest, Some(&cloud_entry.sha256), None)
+                        .get_file(&key, &dest, Some(&cloud_entry.sha256), transfer_progress)
                         .await
                     {
                         Ok(_) => {
@@ -7612,6 +7710,17 @@ impl SyncManager {
         blobs_dir: &std::path::Path,
         direction: SyncDirection,
     ) -> Result<BlobSyncOutcome, SyncError> {
+        self.sync_vfs_blobs_with_progress(storage, blobs_dir, direction, None)
+            .await
+    }
+
+    pub async fn sync_vfs_blobs_with_progress(
+        &self,
+        storage: &dyn CloudStorage,
+        blobs_dir: &std::path::Path,
+        direction: SyncDirection,
+        progress: Option<FileTransferProgressCallback>,
+    ) -> Result<BlobSyncOutcome, SyncError> {
         if !blobs_dir.exists() {
             return Ok(BlobSyncOutcome::default());
         }
@@ -7637,17 +7746,23 @@ impl SyncManager {
                     .replace('\\', "/");
                 let key = format!("{}/{}", Self::BLOBS_CLOUD_PREFIX, relative);
                 let size = std::fs::metadata(path).map(|m| m.len()).unwrap_or(0);
+                let updated_at = Self::file_mtime_rfc3339(path);
 
                 let mut last_err = String::new();
                 let mut ok = false;
                 for attempt in 0..Self::BLOB_MAX_RETRIES {
-                    match storage.put_file(&key, path, None).await {
+                    let transfer_progress = Self::file_transfer_progress(
+                        progress.as_ref(),
+                        format!("VFS blob {}", hash),
+                    );
+                    match storage.put_file(&key, path, transfer_progress).await {
                         Ok(_) => {
                             new_manifest.entries.insert(
                                 hash.clone(),
                                 BlobEntry {
                                     relative_path: relative.clone(),
                                     size,
+                                    updated_at: updated_at.clone(),
                                 },
                             );
                             uploaded += 1;
@@ -7694,7 +7809,14 @@ impl SyncManager {
                 let mut last_err = String::new();
                 let mut ok = false;
                 for attempt in 0..Self::BLOB_MAX_RETRIES {
-                    match storage.get_file(&key, &dest, Some(hash), None).await {
+                    let transfer_progress = Self::file_transfer_progress(
+                        progress.as_ref(),
+                        format!("VFS blob {}", hash),
+                    );
+                    match storage
+                        .get_file(&key, &dest, Some(hash), transfer_progress)
+                        .await
+                    {
                         Ok(_) => {
                             let actual_size =
                                 std::fs::metadata(&dest).map(|m| m.len()).unwrap_or(0);
@@ -7803,6 +7925,24 @@ impl SyncManager {
         app_data_dir: &std::path::Path,
         direction: SyncDirection,
     ) -> Result<AssetSyncOutcome, SyncError> {
+        self.sync_asset_directories_with_progress(
+            storage,
+            active_dir,
+            app_data_dir,
+            direction,
+            None,
+        )
+        .await
+    }
+
+    pub async fn sync_asset_directories_with_progress(
+        &self,
+        storage: &dyn CloudStorage,
+        active_dir: &std::path::Path,
+        app_data_dir: &std::path::Path,
+        direction: SyncDirection,
+        progress: Option<FileTransferProgressCallback>,
+    ) -> Result<AssetSyncOutcome, SyncError> {
         let cloud_manifest = self.download_assets_manifest(storage).await?;
 
         let mut local_files: HashMap<String, (std::path::PathBuf, String, u64, String)> =
@@ -7843,7 +7983,9 @@ impl SyncManager {
                     continue;
                 }
                 let remote_key = format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key);
-                match storage.put_file(&remote_key, path, None).await {
+                let transfer_progress =
+                    Self::file_transfer_progress(progress.as_ref(), format!("资产文件 {}", key));
+                match storage.put_file(&remote_key, path, transfer_progress).await {
                     Ok(_) => {
                         new_manifest.entries.insert(
                             key.clone(),
@@ -7891,8 +8033,10 @@ impl SyncManager {
                     }
                 }
                 let remote_key = format!("{}/{}", Self::ASSETS_CLOUD_PREFIX, key);
+                let transfer_progress =
+                    Self::file_transfer_progress(progress.as_ref(), format!("资产文件 {}", key));
                 match storage
-                    .get_file(&remote_key, &dest, Some(&entry.sha256), None)
+                    .get_file(&remote_key, &dest, Some(&entry.sha256), transfer_progress)
                     .await
                 {
                     Ok(_) => downloaded += 1,
@@ -8226,18 +8370,52 @@ impl SyncManager {
         blobs_dir: &std::path::Path,
         direction: SyncDirection,
     ) -> Result<BlobSyncOutcome, SyncError> {
+        self.sync_vfs_blobs_with_tombstones_and_progress(storage, blobs_dir, direction, None)
+            .await
+    }
+
+    pub async fn sync_vfs_blobs_with_tombstones_and_progress(
+        &self,
+        storage: &dyn CloudStorage,
+        blobs_dir: &std::path::Path,
+        direction: SyncDirection,
+        progress: Option<FileTransferProgressCallback>,
+    ) -> Result<BlobSyncOutcome, SyncError> {
         // 1. 拉取 tombstone 并执行删除传播
         let instance_id = self.ensure_remote_instance_id(storage).await?;
         let state_store = SyncStateStore::open_default()?;
+        let cloud_manifest = self.download_blobs_manifest(storage).await?;
         let (tombstones, tombstone_advances) =
             tombstone::download_blob_tombstones_after(storage, self, |source| {
                 state_store.get_tombstone_watermark(&instance_id, source, "blobs")
             })
             .await?;
         if !tombstones.entries.is_empty() {
+            let mut effective_tombstones = tombstones.clone();
+            effective_tombstones.entries.retain(|hash, entry| {
+                let keep = match cloud_manifest.entries.get(hash) {
+                    Some(cloud) => {
+                        let cloud_updated_at = if cloud.updated_at.trim().is_empty() {
+                            cloud_manifest.updated_at.as_str()
+                        } else {
+                            cloud.updated_at.as_str()
+                        };
+                        !Self::timestamp_after(cloud_updated_at, &entry.deleted_at)
+                    }
+                    None => true,
+                };
+                if !keep {
+                    tracing::info!(
+                        "[sync] 跳过过期 blob tombstone，云端清单更新: {} cloud_manifest_updated_at>{}",
+                        hash,
+                        entry.deleted_at
+                    );
+                }
+                keep
+            });
             let applied_tombstone_hashes = tombstone::apply_blob_tombstones(
                 storage,
-                &tombstones,
+                &effective_tombstones,
                 blobs_dir,
                 Self::BLOBS_CLOUD_PREFIX,
                 direction != SyncDirection::Download,
@@ -8247,24 +8425,20 @@ impl SyncManager {
             // 同时从 blob manifest 里摘掉 tombstoned 条目
             // [P0-2] 读写都需要透明 encode/decode
             if direction != SyncDirection::Download {
-                if let Ok(Some(bytes)) = storage.get(Self::BLOBS_MANIFEST_KEY).await {
-                    if let Ok(decoded) = self.decode_payload(&bytes) {
-                        if let Ok(mut mf) = serde_json::from_slice::<BlobsManifest>(&decoded) {
-                            let before = mf.entries.len();
-                            for hash in &applied_tombstone_hashes {
-                                mf.entries.remove(hash);
-                            }
-                            if mf.entries.len() != before {
-                                mf.updated_at = chrono::Utc::now().to_rfc3339();
-                                if let Ok(json) = serde_json::to_vec(&mf) {
-                                    if let Ok(payload) = self.encode_payload(&json) {
-                                        let _ =
-                                            storage.put(Self::BLOBS_MANIFEST_KEY, &payload).await;
-                                    }
-                                }
-                            }
-                        }
-                    }
+                let mut mf = cloud_manifest.clone();
+                let before = mf.entries.len();
+                for hash in &applied_tombstone_hashes {
+                    mf.entries.remove(hash);
+                }
+                if mf.entries.len() != before {
+                    mf.updated_at = chrono::Utc::now().to_rfc3339();
+                    let json = serde_json::to_vec(&mf)
+                        .map_err(|e| SyncError::Database(format!("序列化 blob 清单失败: {}", e)))?;
+                    let payload = self.encode_payload(&json)?;
+                    storage
+                        .put(Self::BLOBS_MANIFEST_KEY, &payload)
+                        .await
+                        .map_err(|e| SyncError::Network(format!("上传 blob 清单失败: {}", e)))?;
                 }
             }
         }
@@ -8278,7 +8452,8 @@ impl SyncManager {
         }
 
         // 2. 走标准上传/下载流程（现在云端/本地里已无 tombstoned 条目）
-        self.sync_vfs_blobs(storage, blobs_dir, direction).await
+        self.sync_vfs_blobs_with_progress(storage, blobs_dir, direction, progress)
+            .await
     }
 
     /// 同步资产目录 + 消费 asset tombstone
@@ -8292,9 +8467,28 @@ impl SyncManager {
         app_data_dir: &std::path::Path,
         direction: SyncDirection,
     ) -> Result<AssetSyncOutcome, SyncError> {
+        self.sync_asset_directories_with_tombstones_and_progress(
+            storage,
+            active_dir,
+            app_data_dir,
+            direction,
+            None,
+        )
+        .await
+    }
+
+    pub async fn sync_asset_directories_with_tombstones_and_progress(
+        &self,
+        storage: &dyn CloudStorage,
+        active_dir: &std::path::Path,
+        app_data_dir: &std::path::Path,
+        direction: SyncDirection,
+        progress: Option<FileTransferProgressCallback>,
+    ) -> Result<AssetSyncOutcome, SyncError> {
         // 1. 拉取 asset tombstone 并删除本地/云端对应文件
         let instance_id = self.ensure_remote_instance_id(storage).await?;
         let state_store = SyncStateStore::open_default()?;
+        let cloud_manifest = self.download_assets_manifest(storage).await?;
         let (tombstones, tombstone_advances) =
             tombstone::download_asset_tombstones_after(storage, self, |source| {
                 state_store.get_tombstone_watermark(&instance_id, source, "assets")
@@ -8303,6 +8497,16 @@ impl SyncManager {
         if !tombstones.entries.is_empty() {
             let mut applied_tombstone_keys = Vec::new();
             for (key, entry) in &tombstones.entries {
+                if cloud_manifest.entries.get(key).is_some_and(|cloud| {
+                    Self::timestamp_after(&cloud.updated_at, &entry.deleted_at)
+                }) {
+                    tracing::info!(
+                        "[sync] 跳过过期 asset tombstone，云端文件更新: {} cloud_updated_at>{}",
+                        key,
+                        entry.deleted_at
+                    );
+                    continue;
+                }
                 let local_path = Self::asset_local_path_from_key(active_dir, app_data_dir, key);
                 if local_path
                     .as_ref()
@@ -8334,24 +8538,20 @@ impl SyncManager {
             // 从云端资产清单摘掉 tombstoned 条目
             // [P0-2] 同样需要透明 encode/decode
             if direction != SyncDirection::Download {
-                if let Ok(Some(bytes)) = storage.get(Self::ASSETS_MANIFEST_KEY).await {
-                    if let Ok(decoded) = self.decode_payload(&bytes) {
-                        if let Ok(mut mf) = serde_json::from_slice::<AssetDirsManifest>(&decoded) {
-                            let before = mf.entries.len();
-                            for key in &applied_tombstone_keys {
-                                mf.entries.remove(key);
-                            }
-                            if mf.entries.len() != before {
-                                mf.updated_at = chrono::Utc::now().to_rfc3339();
-                                if let Ok(json) = serde_json::to_vec(&mf) {
-                                    if let Ok(payload) = self.encode_payload(&json) {
-                                        let _ =
-                                            storage.put(Self::ASSETS_MANIFEST_KEY, &payload).await;
-                                    }
-                                }
-                            }
-                        }
-                    }
+                let mut mf = cloud_manifest.clone();
+                let before = mf.entries.len();
+                for key in &applied_tombstone_keys {
+                    mf.entries.remove(key);
+                }
+                if mf.entries.len() != before {
+                    mf.updated_at = chrono::Utc::now().to_rfc3339();
+                    let json = serde_json::to_vec(&mf)
+                        .map_err(|e| SyncError::Database(format!("序列化资产清单失败: {}", e)))?;
+                    let payload = self.encode_payload(&json)?;
+                    storage
+                        .put(Self::ASSETS_MANIFEST_KEY, &payload)
+                        .await
+                        .map_err(|e| SyncError::Network(format!("上传资产清单失败: {}", e)))?;
                 }
             }
         }
@@ -8365,8 +8565,14 @@ impl SyncManager {
         }
 
         // 2. 走标准同步流程
-        self.sync_asset_directories(storage, active_dir, app_data_dir, direction)
-            .await
+        self.sync_asset_directories_with_progress(
+            storage,
+            active_dir,
+            app_data_dir,
+            direction,
+            progress,
+        )
+        .await
     }
 }
 
@@ -11028,6 +11234,97 @@ mod tests {
 
         assert_eq!(result.success_count, 2);
         assert_resource_alias_result(&conn);
+    }
+
+    #[test]
+    fn regression_m9_same_batch_business_key_alias_remaps_later_child_fk() {
+        let conn = create_resource_alias_test_db();
+        conn.execute("DELETE FROM resource_notes", []).unwrap();
+        conn.execute("DELETE FROM resources", []).unwrap();
+
+        let parent_a = SyncChangeWithData {
+            table_name: "resources".to_string(),
+            record_id: "remote-res-a".to_string(),
+            operation: ChangeOperation::Insert,
+            data: Some(serde_json::json!({
+                "id": "remote-res-a",
+                "hash": "same-batch-hash",
+                "body": "first parent",
+                "updated_at": "2024-01-02T00:00:00Z"
+            })),
+            changed_at: "2024-01-02T00:00:00Z".to_string(),
+            change_log_id: None,
+            database_name: Some("vfs".to_string()),
+            suppress_change_log: None,
+            source_device_id: None,
+            source_seq: None,
+        };
+        let parent_b = SyncChangeWithData {
+            table_name: "resources".to_string(),
+            record_id: "remote-res-b".to_string(),
+            operation: ChangeOperation::Insert,
+            data: Some(serde_json::json!({
+                "id": "remote-res-b",
+                "hash": "same-batch-hash",
+                "body": "second parent",
+                "updated_at": "2024-01-02T00:00:01Z"
+            })),
+            changed_at: "2024-01-02T00:00:01Z".to_string(),
+            change_log_id: None,
+            database_name: Some("vfs".to_string()),
+            suppress_change_log: None,
+            source_device_id: None,
+            source_seq: None,
+        };
+        let child = SyncChangeWithData {
+            table_name: "resource_notes".to_string(),
+            record_id: "note-remote-b".to_string(),
+            operation: ChangeOperation::Insert,
+            data: Some(serde_json::json!({
+                "id": "note-remote-b",
+                "resource_id": "remote-res-b",
+                "note": "child references duplicate parent",
+                "updated_at": "2024-01-02T00:00:02Z"
+            })),
+            changed_at: "2024-01-02T00:00:02Z".to_string(),
+            change_log_id: None,
+            database_name: Some("vfs".to_string()),
+            suppress_change_log: None,
+            source_device_id: None,
+            source_seq: None,
+        };
+
+        let result =
+            SyncManager::apply_downloaded_changes(&conn, &[parent_a, parent_b, child], None)
+                .unwrap();
+
+        assert_eq!(result.success_count, 3);
+        assert_eq!(result.failure_count, 0);
+        let resource_count: i64 = conn
+            .query_row("SELECT COUNT(*) FROM resources", [], |row| row.get(0))
+            .unwrap();
+        let child_fk: String = conn
+            .query_row(
+                "SELECT resource_id FROM resource_notes WHERE id='note-remote-b'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        let alias_canonical: String = conn
+            .query_row(
+                "SELECT canonical_id FROM __sync_id_aliases
+                 WHERE table_name='resources' AND remote_id='remote-res-b'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+
+        assert_eq!(resource_count, 1);
+        assert_eq!(child_fk, "remote-res-a");
+        assert_eq!(alias_canonical, "remote-res-a");
+        assert!(SyncManager::collect_foreign_key_violations(&conn, 20)
+            .unwrap()
+            .is_empty());
     }
 
     #[test]

@@ -1,10 +1,28 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
+import i18n from '@/i18n';
 import type { PomodoroState, PomodoroMode } from '../types';
 import { DEFAULT_POMODORO_SETTINGS } from '../types';
 import { createPomodoroRecord } from '../api';
 
-// TODO: Replace with Tauri system notifications in Phase 3
+// ★ I2 修复：阶段完成时发送系统通知（应用在后台时用户也能感知）
+const sendSystemNotification = async (title: string, body: string) => {
+  try {
+    const { isPermissionGranted, requestPermission, sendNotification } = await import(
+      '@tauri-apps/plugin-notification'
+    );
+    let granted = await isPermissionGranted();
+    if (!granted) {
+      granted = (await requestPermission()) === 'granted';
+    }
+    if (granted) {
+      sendNotification({ title, body });
+    }
+  } catch (e) {
+    console.warn('[Pomodoro] System notification failed:', e);
+  }
+};
+
 const playNotificationSound = () => {
   try {
     const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
@@ -46,9 +64,19 @@ const recordSession = (
     actualDuration,
     type,
     status,
-  }).catch((err) => {
-    console.error('[Pomodoro] Failed to record session:', err);
-  });
+  })
+    .then(() => {
+      // ★ I11 修复：完成的工作番茄会在后端递增 todo_items.completed_pomodoros，
+      // 记录成功后刷新 todo 视图，让计数立即反映到 UI
+      if (todoItemId && type === 'work' && status === 'completed') {
+        void import('@/features/todo/stores/useTodoStore')
+          .then(({ useTodoStore }) => useTodoStore.getState().reloadCurrentView())
+          .catch(() => {});
+      }
+    })
+    .catch((err) => {
+      console.error('[Pomodoro] Failed to record session:', err);
+    });
 };
 
 export const usePomodoroStore = create<PomodoroState>()(
@@ -162,6 +190,12 @@ export const usePomodoroStore = create<PomodoroState>()(
             );
           }
 
+          // ★ I2 修复：系统通知
+          void sendSystemNotification(
+            i18n.t('todo:pomodoro.notifications.workCompleteTitle'),
+            i18n.t('todo:pomodoro.notifications.workCompleteBody', { value: newCompletedCount }),
+          );
+
           set({
             completedPomodorosToday: newCompletedCount,
             lastActiveDate: new Date().toDateString(),
@@ -177,6 +211,12 @@ export const usePomodoroStore = create<PomodoroState>()(
           if (sessionStartTime) {
             recordSession(null, sessionStartTime, breakDuration, breakDuration, breakType, 'completed');
           }
+
+          // ★ I2 修复：系统通知
+          void sendSystemNotification(
+            i18n.t('todo:pomodoro.notifications.breakCompleteTitle'),
+            i18n.t('todo:pomodoro.notifications.breakCompleteBody'),
+          );
 
           set({
             mode: 'idle',

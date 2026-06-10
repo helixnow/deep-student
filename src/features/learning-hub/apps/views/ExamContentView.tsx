@@ -16,6 +16,7 @@ import {
 import { invoke } from '@tauri-apps/api/core';
 import { useQuestionBankSession } from '@/hooks/useQuestionBankSession';
 import { useQuestionBankStore } from '@/stores/questionBankStore';
+import { useReviewPlanStore } from '@/stores/reviewPlanStore';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import SyncConflictDialog from '@/components/SyncConflictDialog';
@@ -32,12 +33,32 @@ const QuestionBankStatsView = lazy(() => import('@/components/QuestionBankStatsV
 const QuestionFavoritesView = lazy(() => import('@/components/QuestionFavoritesView'));
 const QuestionHistoryView = lazy(() => import('@/components/QuestionHistoryView'));
 const ReviewQuestionsView = lazy(() => import('@/components/ReviewQuestionsView'));
+// ★ I1 修复：接入 SM-2 间隔复习系统（复习计划 + 复习会话）
+const ReviewPlanView = lazy(() => import('@/components/ReviewPlanView'));
+const ReviewSession = lazy(() => import('@/components/ReviewSession'));
 const TagNavigationView = lazy(() => import('@/components/TagNavigationView'));
 const PracticeLauncher = lazy(() => import('@/components/practice/PracticeLauncher'));
 const CsvImportDialog = lazy(() => import('@/components/CsvImportDialog'));
 const QuestionBankExportDialog = lazy(() => import('@/components/QuestionBankExportDialog'));
 
-type ViewMode = 'list' | 'manage' | 'stats' | 'favorites' | 'practice' | 'upload' | 'review' | 'tags' | 'launcher';
+type ViewMode = 'list' | 'manage' | 'stats' | 'favorites' | 'practice' | 'upload' | 'review' | 'sm2' | 'tags' | 'launcher';
+
+/**
+ * ★ I1 修复：SM-2 间隔复习面板
+ *
+ * 有活跃复习会话时渲染 ReviewSession（答题打分），否则渲染 ReviewPlanView
+ * （今日到期/复习队列/开始复习）。会话由 reviewPlanStore 全局管理。
+ */
+const Sm2ReviewPanel: React.FC<{ examId: string }> = ({ examId }) => {
+  const isSessionActive = useReviewPlanStore((s) => s.session.isActive);
+  return (
+    <div className="flex-1 min-h-0 overflow-y-auto">
+      <Suspense fallback={null}>
+        {isSessionActive ? <ReviewSession /> : <ReviewPlanView examId={examId} />}
+      </Suspense>
+    </div>
+  );
+};
 
 interface ManageFilters {
   search?: string;
@@ -888,6 +909,21 @@ const ExamContentView: React.FC<ContentViewProps> = ({
               <NotionButton
                 variant="ghost"
                 size="sm"
+                onClick={() => setViewMode('sm2')}
+                className={cn(
+                  'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
+                  viewMode === 'sm2'
+                    ? 'bg-foreground text-background font-medium'
+                    : 'text-muted-foreground hover:text-foreground hover:bg-[var(--interactive-hover)]'
+                )}
+              >
+                {t('review:title', '复习计划')}
+              </NotionButton>
+            )}
+            {hasQuestions && (
+              <NotionButton
+                variant="ghost"
+                size="sm"
                 onClick={() => setViewMode('manage')}
                 className={cn(
                   'px-2.5 sm:px-3 py-1.5 text-sm rounded-md transition-colors whitespace-nowrap flex-shrink-0',
@@ -1089,6 +1125,9 @@ const ExamContentView: React.FC<ContentViewProps> = ({
                 setViewMode('practice');
               }}
             />
+          ) : viewMode === 'sm2' && hasQuestions ? (
+            /* ★ I1 修复：SM-2 间隔复习视图（计划面板 + 复习会话） */
+            <Sm2ReviewPanel examId={sessionId} />
           ) : viewMode === 'review' && hasQuestions ? (
             /* 错题本视图 */
             <ReviewQuestionsView

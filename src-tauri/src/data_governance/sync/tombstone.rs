@@ -25,12 +25,12 @@
 //! 保留期：tombstone 默认保留 90 天，期满由 `prune_tombstones()` 清理。
 //! 90 天窗口覆盖"设备长期离线→上线"仍能感知删除。
 
-use chrono::{DateTime, Utc};
+use chrono::Utc;
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 
-use super::SyncError;
+use super::{parse_flexible_timestamp_public, SyncError};
 use crate::cloud_storage::CloudStorage;
 
 /// Payload 编解码能力（P0-2 修复引入）
@@ -162,10 +162,10 @@ pub fn workspace_device_tombstone_key(device_id: &str) -> String {
 
 fn deleted_at_is_newer(candidate: &str, current: &str) -> bool {
     match (
-        DateTime::parse_from_rfc3339(candidate),
-        DateTime::parse_from_rfc3339(current),
+        parse_flexible_timestamp_public(candidate),
+        parse_flexible_timestamp_public(current),
     ) {
-        (Ok(a), Ok(b)) => a > b,
+        (Some(a), Some(b)) => a > b,
         _ => candidate > current,
     }
 }
@@ -225,11 +225,10 @@ pub fn path_modified_after(path: &Path, timestamp: &str) -> bool {
     let Ok(modified) = meta.modified() else {
         return false;
     };
-    let modified: DateTime<Utc> = modified.into();
-    match DateTime::parse_from_rfc3339(timestamp) {
-        Ok(ts) => modified > ts.with_timezone(&Utc),
-        Err(_) => false,
-    }
+    let modified: chrono::DateTime<Utc> = modified.into();
+    parse_flexible_timestamp_public(timestamp)
+        .map(|ts| modified > ts)
+        .unwrap_or(false)
 }
 
 fn decode_tombstone_file<T: serde::de::DeserializeOwned>(
@@ -291,8 +290,7 @@ fn source_device_from_tombstone_key(prefix: &str, key: &str) -> String {
 }
 
 fn tombstone_offset_from_deleted_at(deleted_at: &str) -> u64 {
-    DateTime::parse_from_rfc3339(deleted_at)
-        .ok()
+    parse_flexible_timestamp_public(deleted_at)
         .map(|dt| dt.timestamp_millis().max(0) as u64)
         .unwrap_or(0)
 }
@@ -836,10 +834,9 @@ pub fn prune_tombstones<T>(
     let before = entries.len();
     entries.retain(|_, v| {
         let ts = extract_deleted_at(v);
-        match DateTime::parse_from_rfc3339(ts) {
-            Ok(dt) => dt.with_timezone(&Utc) > cutoff,
-            Err(_) => true, // 时间戳无法解析就保留，避免误删
-        }
+        parse_flexible_timestamp_public(ts)
+            .map(|dt| dt > cutoff)
+            .unwrap_or(true) // 时间戳无法解析就保留，避免误删
     });
     before.saturating_sub(entries.len())
 }

@@ -54,10 +54,11 @@ pub(crate) fn enqueue_asset_deletion(
 ) -> rusqlite::Result<()> {
     let db_path = active_dir.join("databases").join("vfs.db");
     let conn = open_queue_connection(&db_path)?;
+    let deleted_at = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "INSERT OR REPLACE INTO __asset_deletion_queue (key, size, deleted_at, retry_count)
-         VALUES (?1, ?2, datetime('now'), 0)",
-        params![key, size.map(|s| s as i64)],
+         VALUES (?1, ?2, ?3, 0)",
+        params![key, size.map(|s| s as i64), deleted_at],
     )?;
     Ok(())
 }
@@ -67,10 +68,11 @@ pub(crate) fn enqueue_workspace_deletion(
     workspace_id: &str,
     size: Option<u64>,
 ) -> rusqlite::Result<()> {
+    let deleted_at = chrono::Utc::now().to_rfc3339();
     conn.execute(
         "INSERT OR REPLACE INTO __workspace_deletion_queue (workspace_id, size, deleted_at, retry_count)
-         VALUES (?1, ?2, datetime('now'), 0)",
-        params![workspace_id, size.map(|s| s as i64)],
+         VALUES (?1, ?2, ?3, 0)",
+        params![workspace_id, size.map(|s| s as i64), deleted_at],
     )?;
     Ok(())
 }

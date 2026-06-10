@@ -9,6 +9,7 @@
  */
 
 import React, { useCallback, useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   Play,
   Pause,
@@ -33,6 +34,7 @@ interface ModeInfo {
 }
 
 export const PomodoroPanel: React.FC = () => {
+  const { t } = useTranslation('todo');
   const {
     mode,
     status,
@@ -61,7 +63,9 @@ export const PomodoroPanel: React.FC = () => {
 
   const formatMinutes = (s: number) => {
     const m = Math.round(s / 60);
-    return m < 60 ? `${m} 分钟` : `${(m / 60).toFixed(1)} 小时`;
+    return m < 60
+      ? t('pomodoro.stats.minutes', { value: m })
+      : t('pomodoro.stats.hours', { value: (m / 60).toFixed(1) });
   };
 
   const handleTogglePlay = useCallback(() => {
@@ -96,28 +100,28 @@ export const PomodoroPanel: React.FC = () => {
     switch (mode) {
       case 'work':
         return {
-          label: '专注中',
+          label: t('pomodoro.modes.focusing'),
           icon: <Brain size={14} />,
           colorClass: 'text-[color:hsl(var(--warning))]',
           progressClass: 'bg-[color:hsl(var(--warning))]',
         };
       case 'short_break':
         return {
-          label: '短休息',
+          label: t('pomodoro.modes.shortBreak'),
           icon: <Coffee size={14} />,
           colorClass: 'text-[color:hsl(var(--success))]',
           progressClass: 'bg-[color:hsl(var(--success))]',
         };
       case 'long_break':
         return {
-          label: '长休息',
+          label: t('pomodoro.modes.longBreak'),
           icon: <Coffee size={14} />,
           colorClass: 'text-[color:hsl(var(--info))]',
           progressClass: 'bg-[color:hsl(var(--info))]',
         };
       default:
         return {
-          label: '番茄钟',
+          label: t('pomodoro.modes.idle'),
           icon: <Timer size={14} />,
           colorClass: 'text-muted-foreground',
           progressClass: 'bg-[color:var(--shell-workspace-border)]',
@@ -190,8 +194,8 @@ export const PomodoroPanel: React.FC = () => {
               size="icon"
               iconOnly
               onClick={handleStop}
-              title="停止"
-              aria-label="stop"
+              title={t('pomodoro.controls.stop')}
+              aria-label={t('pomodoro.controls.stop')}
               className="!h-7 !w-7"
             >
               <Square size={14} />
@@ -202,12 +206,12 @@ export const PomodoroPanel: React.FC = () => {
             variant={mode === 'idle' || !isRunning ? 'primary' : 'utility'}
             size="sm"
             onClick={handleTogglePlay}
-            title={isRunning ? '暂停' : mode === 'idle' ? '开始专注' : '继续'}
-            aria-label={isRunning ? '暂停' : mode === 'idle' ? '开始专注' : '继续'}
+            title={isRunning ? t('pomodoro.controls.pause') : mode === 'idle' ? t('pomodoro.controls.startFocus') : t('pomodoro.controls.resume')}
+            aria-label={isRunning ? t('pomodoro.controls.pause') : mode === 'idle' ? t('pomodoro.controls.startFocus') : t('pomodoro.controls.resume')}
             className="h-7 gap-1.5 !px-3 text-xs"
           >
             {isRunning ? <Pause size={14} /> : <Play size={14} />}
-            <span>{isRunning ? '暂停' : mode === 'idle' ? '开始' : '继续'}</span>
+            <span>{isRunning ? t('pomodoro.controls.pause') : mode === 'idle' ? t('pomodoro.controls.start') : t('pomodoro.controls.resume')}</span>
           </NotionButton>
 
           {(mode === 'short_break' || mode === 'long_break') && (
@@ -216,8 +220,8 @@ export const PomodoroPanel: React.FC = () => {
               size="icon"
               iconOnly
               onClick={() => stop(false)}
-              title="跳过休息"
-              aria-label="skip"
+              title={t('pomodoro.controls.skipBreak')}
+              aria-label={t('pomodoro.controls.skipBreak')}
               className="!h-7 !w-7"
             >
               <SkipForward size={14} />
@@ -230,8 +234,8 @@ export const PomodoroPanel: React.FC = () => {
               size="icon"
               iconOnly
               onClick={() => setImmersive(true)}
-              title="进入沉浸式专注模式"
-              aria-label="immersive"
+              title={t('pomodoro.controls.enterImmersive')}
+              aria-label={t('pomodoro.controls.enterImmersive')}
               className="!h-7 !w-7"
             >
               <ArrowsOut size={14} />
@@ -245,16 +249,16 @@ export const PomodoroPanel: React.FC = () => {
         <div className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
           <Flame size={12} className="text-[color:hsl(var(--warning))]" />
           <span>
-            今日{' '}
+            {t('pomodoro.stats.todayLabel')}{' '}
             <strong className="font-semibold text-foreground">
               {todayStats?.completedCount ?? completedPomodorosToday}
             </strong>{' '}
-            个番茄
+            {t('pomodoro.stats.pomodoroUnit')}
           </span>
         </div>
         {todayStats && todayStats.totalFocusSeconds > 0 && (
           <div className="text-[11px] text-muted-foreground">
-            专注{' '}
+            {t('pomodoro.stats.focusLabel')}{' '}
             <strong className="font-semibold text-foreground">
               {formatMinutes(todayStats.totalFocusSeconds)}
             </strong>
@@ -262,7 +266,7 @@ export const PomodoroPanel: React.FC = () => {
         )}
         {todayStats && todayStats.interruptedCount > 0 && (
           <div className="text-[11px] text-muted-foreground/60">
-            中断 {todayStats.interruptedCount} 次
+            {t('pomodoro.stats.interrupted', { value: todayStats.interruptedCount })}
           </div>
         )}
       </div>

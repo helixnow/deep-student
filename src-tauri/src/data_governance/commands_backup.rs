@@ -443,6 +443,11 @@ pub(super) fn apply_downloaded_changes_to_databases(
             continue;
         }
 
+        let cloud_device_id = owned_changes
+            .iter()
+            .find_map(|change| change.source_device_id.as_deref())
+            .filter(|id| !id.trim().is_empty());
+
         // 根据是否有 policy 决定走冲突保护还是老路径
         let result = if let Some(policy) = policy_opt {
             SyncManager::apply_downloaded_changes_with_conflict_guard(
@@ -450,7 +455,7 @@ pub(super) fn apply_downloaded_changes_to_databases(
                 &owned_changes,
                 Some(&id_column_map),
                 policy,
-                None, // cloud_device_id — 云端变更目前没携带，留空
+                cloud_device_id,
                 Some(&local_device_id),
             )
             .map(|(apply, conflict)| (apply, Some(conflict)))

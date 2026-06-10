@@ -51,6 +51,7 @@
     "fs:allow-temp-write-recursive",
     "updater:default",
     "process:default",
+    "notification:default",
     "opener:default",
     "opener:allow-open-url",
     "opener:allow-default-urls",

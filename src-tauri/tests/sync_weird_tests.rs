@@ -1642,9 +1642,8 @@ async fn w57_many_blob_tombstones() {
             .await
             .unwrap();
     }
-    // [P0-2] download helper 现在要求一个 PayloadCodec；测试里用明文即可
-    // 因为 mgr 是 SyncManager::new（未启用加密），等价于 PlainCodec
-    let m = tombstone::download_blob_tombstones(&store, &tombstone::PlainCodec)
+    // mark_blob_deleted writes to this manager's per-device tombstone manifest.
+    let m = tombstone::download_blob_tombstones_for_device(&store, &mgr, "d1")
         .await
         .unwrap();
     assert_eq!(m.entries.len(), 100);

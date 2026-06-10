@@ -1,4 +1,5 @@
 import React, { useEffect, useCallback, useState, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Play, Pause, Square, X, Coffee, Brain, SpeakerHigh, SpeakerSlash, SkipForward } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { usePomodoroStore } from '../stores/usePomodoroStore';
@@ -143,6 +144,7 @@ const CircularProgress: React.FC<{
 export const ImmersiveFocusMode: React.FC<{
   onClose: () => void;
 }> = ({ onClose }) => {
+  const { t } = useTranslation('todo');
   const {
     mode,
     status,
@@ -229,13 +231,13 @@ export const ImmersiveFocusMode: React.FC<{
   const getModeInfo = () => {
     switch (mode) {
       case 'work':
-        return { label: '专注中', icon: <Brain size={20} />, color: 'text-orange-400' };
+        return { label: t('pomodoro.modes.focusing'), icon: <Brain size={20} />, color: 'text-orange-400' };
       case 'short_break':
-        return { label: '短休息', icon: <Coffee size={20} />, color: 'text-emerald-400' };
+        return { label: t('pomodoro.modes.shortBreak'), icon: <Coffee size={20} />, color: 'text-emerald-400' };
       case 'long_break':
-        return { label: '长休息', icon: <Coffee size={20} />, color: 'text-blue-400' };
+        return { label: t('pomodoro.modes.longBreak'), icon: <Coffee size={20} />, color: 'text-blue-400' };
       default:
-        return { label: '准备就绪', icon: <Brain size={20} />, color: 'text-white/60' };
+        return { label: t('pomodoro.modes.ready'), icon: <Brain size={20} />, color: 'text-white/60' };
     }
   };
 
@@ -272,7 +274,7 @@ export const ImmersiveFocusMode: React.FC<{
           </span>
           {completedPomodorosToday > 0 && (
             <span className="text-xs text-white/40 bg-white/5 px-2 py-0.5 rounded-full">
-              今日 {completedPomodorosToday} 个番茄
+              {t('pomodoro.stats.todayCount', { value: completedPomodorosToday })}
             </span>
           )}
         </div>
@@ -286,7 +288,7 @@ export const ImmersiveFocusMode: React.FC<{
                 ? 'bg-white/10 text-white/80 hover:bg-[var(--overlay-control-hover)]'
                 : 'text-white/30 hover:text-white/50 hover:bg-[var(--overlay-control-hover)]'
             )}
-            title={noiseOn ? '关闭环境音' : '开启环境音'}
+            title={noiseOn ? t('pomodoro.controls.noiseOff') : t('pomodoro.controls.noiseOn')}
           >
             {noiseOn ? <SpeakerHigh size={16} /> : <SpeakerSlash size={16} />}
           </button>
@@ -294,7 +296,7 @@ export const ImmersiveFocusMode: React.FC<{
           <button
             onClick={onClose}
             className="p-2 rounded-lg text-white/30 hover:text-white/60 hover:bg-[var(--overlay-control-hover)] transition-colors"
-            title="退出专注模式 (ESC)"
+            title={t('pomodoro.controls.exitImmersive')}
           >
             <X size={20} />
           </button>
@@ -321,7 +323,7 @@ export const ImmersiveFocusMode: React.FC<{
         {/* 当前任务 */}
         {currentTaskTitle && (
           <div className="text-center max-w-md px-4">
-            <p className="text-white/40 text-xs uppercase tracking-widest mb-1">当前任务</p>
+            <p className="text-white/40 text-xs uppercase tracking-widest mb-1">{t('pomodoro.immersive.currentTask')}</p>
             <p className="text-white/80 text-lg font-medium truncate" title={currentTaskTitle}>
               {currentTaskTitle}
             </p>
@@ -335,7 +337,7 @@ export const ImmersiveFocusMode: React.FC<{
             <button
               onClick={handleStop}
               className="flex items-center justify-center w-12 h-12 rounded-full bg-white/5 text-white/40 hover:text-red-400 hover:bg-red-500/10 transition-all"
-              title="停止"
+              title={t('pomodoro.controls.stop')}
             >
               <Square size={20} />
             </button>
@@ -350,7 +352,7 @@ export const ImmersiveFocusMode: React.FC<{
                 ? 'bg-white/10 text-white hover:bg-[var(--overlay-control-hover)]'
                 : 'bg-orange-500 text-white hover:bg-orange-400 shadow-lg shadow-orange-500/20'
             )}
-            title={status === 'running' ? '暂停 (Space)' : '开始 (Space)'}
+            title={status === 'running' ? t('pomodoro.controls.pauseSpace') : t('pomodoro.controls.startSpace')}
           >
             {status === 'running' ? (
               <Pause size={24} />
@@ -366,7 +368,7 @@ export const ImmersiveFocusMode: React.FC<{
                 stop(false);
               }}
               className="flex items-center justify-center w-12 h-12 rounded-full bg-white/5 text-white/40 hover:text-white/70 hover:bg-[var(--overlay-control-hover)] transition-all"
-              title="跳过休息"
+              title={t('pomodoro.controls.skipBreak')}
             >
               <SkipForward size={20} />
             </button>
@@ -377,9 +379,13 @@ export const ImmersiveFocusMode: React.FC<{
       {/* 底部提示 */}
       <div className="absolute bottom-6 left-0 right-0 text-center">
         <p className="text-white/20 text-xs">
-          按 <kbd className="px-1.5 py-0.5 bg-white/5 rounded text-white/30 text-[10px] font-mono">ESC</kbd> 退出
+          {t('pomodoro.immersive.hintEscPrefix')}
+          <kbd className="px-1.5 py-0.5 bg-white/5 rounded text-white/30 text-[10px] font-mono">ESC</kbd>
+          {t('pomodoro.immersive.hintEscSuffix')}
           {' '}·{' '}
-          <kbd className="px-1.5 py-0.5 bg-white/5 rounded text-white/30 text-[10px] font-mono">Space</kbd> 暂停/恢复
+          {t('pomodoro.immersive.hintSpacePrefix')}
+          <kbd className="px-1.5 py-0.5 bg-white/5 rounded text-white/30 text-[10px] font-mono">Space</kbd>
+          {t('pomodoro.immersive.hintSpaceSuffix')}
         </p>
       </div>
     </div>

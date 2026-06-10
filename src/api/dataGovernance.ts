@@ -4,8 +4,8 @@
  * 封装所有数据治理相关的 Tauri 命令调用
  */
 
-import { invoke } from '@tauri-apps/api/core';
-import { listen, type UnlistenFn } from '@tauri-apps/api/event';
+import { invoke } from "@tauri-apps/api/core";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import type {
   SchemaRegistryResponse,
   MigrationStatusResponse,
@@ -39,11 +39,11 @@ import type {
   AssetTypeInfo,
   BackupVerifyWithAssetsResponse,
   AutoVerifyResponse,
-} from '../types/dataGovernance';
+} from "../types/dataGovernance";
 import {
   SYNC_PROGRESS_EVENT,
   isSyncPhaseTerminal,
-} from '../types/dataGovernance';
+} from "../types/dataGovernance";
 
 // ==================== 维护模式 API ====================
 
@@ -51,8 +51,12 @@ import {
  * 查询后端维护模式状态
  * 用于应用启动时同步后端维护模式到前端 store
  */
-export async function getMaintenanceStatus(): Promise<{ is_in_maintenance_mode: boolean }> {
-  return invoke<{ is_in_maintenance_mode: boolean }>('data_governance_get_maintenance_status');
+export async function getMaintenanceStatus(): Promise<{
+  is_in_maintenance_mode: boolean;
+}> {
+  return invoke<{ is_in_maintenance_mode: boolean }>(
+    "data_governance_get_maintenance_status",
+  );
 }
 
 // ==================== Schema 相关 API ====================
@@ -62,7 +66,7 @@ export async function getMaintenanceStatus(): Promise<{ is_in_maintenance_mode: 
  * 返回所有数据库的版本状态和迁移历史
  */
 export async function getSchemaRegistry(): Promise<SchemaRegistryResponse> {
-  return invoke<SchemaRegistryResponse>('data_governance_get_schema_registry');
+  return invoke<SchemaRegistryResponse>("data_governance_get_schema_registry");
 }
 
 /**
@@ -70,17 +74,24 @@ export async function getSchemaRegistry(): Promise<SchemaRegistryResponse> {
  * 返回各数据库的当前版本信息
  */
 export async function getMigrationStatus(): Promise<MigrationStatusResponse> {
-  return invoke<MigrationStatusResponse>('data_governance_get_migration_status');
+  return invoke<MigrationStatusResponse>(
+    "data_governance_get_migration_status",
+  );
 }
 
 /**
  * 获取特定数据库的详细状态
  * @param databaseId 数据库 ID
  */
-export async function getDatabaseStatus(databaseId: string): Promise<DatabaseDetailResponse | null> {
-  return invoke<DatabaseDetailResponse | null>('data_governance_get_database_status', {
-    databaseId,
-  });
+export async function getDatabaseStatus(
+  databaseId: string,
+): Promise<DatabaseDetailResponse | null> {
+  return invoke<DatabaseDetailResponse | null>(
+    "data_governance_get_database_status",
+    {
+      databaseId,
+    },
+  );
 }
 
 /**
@@ -88,7 +99,7 @@ export async function getDatabaseStatus(databaseId: string): Promise<DatabaseDet
  * 检查所有数据库的完整性和依赖关系
  */
 export async function runHealthCheck(): Promise<HealthCheckResponse> {
-  return invoke<HealthCheckResponse>('data_governance_run_health_check');
+  return invoke<HealthCheckResponse>("data_governance_run_health_check");
 }
 
 // ==================== 审计日志 API ====================
@@ -104,9 +115,9 @@ export async function getAuditLogs(
   operationType?: AuditOperationType,
   status?: AuditStatus,
   limit?: number,
-  offset?: number
+  offset?: number,
 ): Promise<AuditLogPagedResponse> {
-  return invoke<AuditLogPagedResponse>('data_governance_get_audit_logs', {
+  return invoke<AuditLogPagedResponse>("data_governance_get_audit_logs", {
     operationType,
     status,
     limit,
@@ -129,10 +140,10 @@ export async function getAuditLogs(
  */
 export async function cleanupAuditLogs(
   keepRecent?: number,
-  beforeDays?: number
+  beforeDays?: number,
 ): Promise<number> {
   const confirmationToken = `AUDIT_CLEANUP_${Math.floor(Date.now() / 1000)}`;
-  return invoke<number>('data_governance_cleanup_audit_logs', {
+  return invoke<number>("data_governance_cleanup_audit_logs", {
     keepRecent,
     beforeDays,
     confirmationToken,
@@ -164,7 +175,7 @@ export interface BackupConfig {
  * 获取备份配置
  */
 export async function getBackupConfig(): Promise<BackupConfig> {
-  return invoke<BackupConfig>('get_backup_config');
+  return invoke<BackupConfig>("get_backup_config");
 }
 
 /**
@@ -172,29 +183,29 @@ export async function getBackupConfig(): Promise<BackupConfig> {
  * @param config 备份配置
  */
 export async function setBackupConfig(config: BackupConfig): Promise<void> {
-  return invoke<void>('set_backup_config', { config });
+  return invoke<void>("set_backup_config", { config });
 }
 
 // ==================== 备份 API ====================
 
 /**
  * 执行备份（异步后台任务）
- * 
+ *
  * 立即返回任务 ID，备份在后台执行。
  * 进度通过 `backup-job-progress` 事件发送。
- * 
+ *
  * @param backupType 备份类型：'full'（完整）或 'incremental'（增量）
  * @param baseVersion 增量备份的基础版本（仅增量备份需要）
  * @param includeAssets 是否包含资产文件
  * @param assetTypes 要备份的资产类型列表
  */
 export async function runBackup(
-  backupType?: 'full' | 'incremental',
+  backupType?: "full" | "incremental",
   baseVersion?: string,
   includeAssets?: boolean,
-  assetTypes?: string[]
+  assetTypes?: string[],
 ): Promise<BackupJobStartResponse> {
-  return invoke<BackupJobStartResponse>('data_governance_run_backup', {
+  return invoke<BackupJobStartResponse>("data_governance_run_backup", {
     backupType,
     baseVersion,
     includeAssets,
@@ -207,7 +218,7 @@ export async function runBackup(
  * 返回所有可用的备份文件列表
  */
 export async function getBackupList(): Promise<BackupInfoResponse[]> {
-  return invoke<BackupInfoResponse[]>('data_governance_get_backup_list');
+  return invoke<BackupInfoResponse[]>("data_governance_get_backup_list");
 }
 
 /**
@@ -215,7 +226,7 @@ export async function getBackupList(): Promise<BackupInfoResponse[]> {
  * @param backupId 要删除的备份 ID
  */
 export async function deleteBackup(backupId: string): Promise<boolean> {
-  return invoke<boolean>('data_governance_delete_backup', {
+  return invoke<boolean>("data_governance_delete_backup", {
     backupId,
   });
 }
@@ -224,8 +235,10 @@ export async function deleteBackup(backupId: string): Promise<boolean> {
  * 验证备份
  * @param backupId 要验证的备份 ID
  */
-export async function verifyBackup(backupId: string): Promise<BackupVerifyResponse> {
-  return invoke<BackupVerifyResponse>('data_governance_verify_backup', {
+export async function verifyBackup(
+  backupId: string,
+): Promise<BackupVerifyResponse> {
+  return invoke<BackupVerifyResponse>("data_governance_verify_backup", {
     backupId,
   });
 }
@@ -237,23 +250,25 @@ export async function verifyBackup(backupId: string): Promise<BackupVerifyRespon
  * 并将验证结果写入审计日志。
  */
 export async function autoVerifyLatestBackup(): Promise<AutoVerifyResponse> {
-  return invoke<AutoVerifyResponse>('data_governance_auto_verify_latest_backup');
+  return invoke<AutoVerifyResponse>(
+    "data_governance_auto_verify_latest_backup",
+  );
 }
 
 /**
  * 从备份恢复（异步后台任务）
- * 
+ *
  * 立即返回任务 ID，恢复在后台执行。
  * 进度通过 `backup-job-progress` 事件发送。
- * 
+ *
  * @param backupId 要恢复的备份 ID
  * @param restoreAssets 是否恢复资产文件（可选：默认根据备份清单自动决定）
  */
 export async function restoreBackup(
   backupId: string,
-  restoreAssets?: boolean
+  restoreAssets?: boolean,
 ): Promise<BackupJobStartResponse> {
-  return invoke<BackupJobStartResponse>('data_governance_restore_backup', {
+  return invoke<BackupJobStartResponse>("data_governance_restore_backup", {
     backupId,
     restoreAssets,
   });
@@ -280,8 +295,8 @@ export interface BackupJobStartResponse {
  */
 export interface BackupJobSummary {
   job_id: string;
-  kind: 'export' | 'import';
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+  kind: "export" | "import";
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
   phase: string;
   progress: number;
   message?: string;
@@ -316,8 +331,8 @@ export interface BackupJobResultPayload {
  */
 export interface BackupJobEvent {
   job_id: string;
-  kind: 'export' | 'import';
-  status: 'queued' | 'running' | 'completed' | 'failed' | 'cancelled';
+  kind: "export" | "import";
+  status: "queued" | "running" | "completed" | "failed" | "cancelled";
   phase: string;
   progress: number;
   message?: string;
@@ -332,8 +347,7 @@ export interface BackupJobEvent {
 }
 
 /** 备份任务进度事件名称 */
-export const BACKUP_JOB_PROGRESS_EVENT = 'backup-job-progress';
-
+export const BACKUP_JOB_PROGRESS_EVENT = "backup-job-progress";
 
 /**
  * 取消备份任务
@@ -341,7 +355,7 @@ export const BACKUP_JOB_PROGRESS_EVENT = 'backup-job-progress';
  * @returns 是否成功请求取消
  */
 export async function cancelBackup(jobId: string): Promise<boolean> {
-  return invoke<boolean>('data_governance_cancel_backup', {
+  return invoke<boolean>("data_governance_cancel_backup", {
     jobId,
   });
 }
@@ -350,8 +364,10 @@ export async function cancelBackup(jobId: string): Promise<boolean> {
  * 获取备份任务状态
  * @param jobId 任务 ID
  */
-export async function getBackupJob(jobId: string): Promise<BackupJobSummary | null> {
-  return invoke<BackupJobSummary | null>('data_governance_get_backup_job', {
+export async function getBackupJob(
+  jobId: string,
+): Promise<BackupJobSummary | null> {
+  return invoke<BackupJobSummary | null>("data_governance_get_backup_job", {
     jobId,
   });
 }
@@ -360,7 +376,7 @@ export async function getBackupJob(jobId: string): Promise<BackupJobSummary | nu
  * 获取所有备份任务列表
  */
 export async function listBackupJobs(): Promise<BackupJobSummary[]> {
-  return invoke<BackupJobSummary[]>('data_governance_list_backup_jobs');
+  return invoke<BackupJobSummary[]>("data_governance_list_backup_jobs");
 }
 
 /**
@@ -372,73 +388,114 @@ export async function listBackupJobs(): Promise<BackupJobSummary[]> {
  */
 export async function listenBackupProgress(
   jobId: string | null,
-  onProgress: (event: BackupJobEvent) => void
+  onProgress: (event: BackupJobEvent) => void,
 ): Promise<UnlistenFn> {
-  const normalizeBackupJobResultPayload = (payload: unknown): BackupJobResultPayload | undefined => {
-    if (!payload || typeof payload !== 'object') return undefined;
+  const normalizeBackupJobResultPayload = (
+    payload: unknown,
+  ): BackupJobResultPayload | undefined => {
+    if (!payload || typeof payload !== "object") return undefined;
     const p = payload as Record<string, unknown>;
 
-    const outputPath = (p.output_path ?? p.outputPath);
-    const resolvedPath = (p.resolved_path ?? p.resolvedPath);
-    const durationMs = (p.duration_ms ?? p.durationMs);
-    const requiresRestart = (p.requires_restart ?? p.requiresRestart);
-    const checkpointPath = (p.checkpoint_path ?? p.checkpointPath);
-    const resumableJobId = (p.resumable_job_id ?? p.resumableJobId);
+    const outputPath = p.output_path ?? p.outputPath;
+    const resolvedPath = p.resolved_path ?? p.resolvedPath;
+    const durationMs = p.duration_ms ?? p.durationMs;
+    const requiresRestart = p.requires_restart ?? p.requiresRestart;
+    const checkpointPath = p.checkpoint_path ?? p.checkpointPath;
+    const resumableJobId = p.resumable_job_id ?? p.resumableJobId;
 
     return {
       success: Boolean(p.success),
-      output_path: typeof outputPath === 'string' ? outputPath : undefined,
-      resolved_path: typeof resolvedPath === 'string' ? resolvedPath : undefined,
-      message: typeof p.message === 'string' ? p.message : undefined,
-      error: typeof p.error === 'string' ? p.error : undefined,
-      duration_ms: typeof durationMs === 'number' ? durationMs : undefined,
-      stats: (p.stats && typeof p.stats === 'object') ? (p.stats as Record<string, unknown>) : undefined,
+      output_path: typeof outputPath === "string" ? outputPath : undefined,
+      resolved_path:
+        typeof resolvedPath === "string" ? resolvedPath : undefined,
+      message: typeof p.message === "string" ? p.message : undefined,
+      error: typeof p.error === "string" ? p.error : undefined,
+      duration_ms: typeof durationMs === "number" ? durationMs : undefined,
+      stats:
+        p.stats && typeof p.stats === "object"
+          ? (p.stats as Record<string, unknown>)
+          : undefined,
       requires_restart: Boolean(requiresRestart),
-      checkpoint_path: typeof checkpointPath === 'string' ? checkpointPath : undefined,
-      resumable_job_id: typeof resumableJobId === 'string' ? resumableJobId : undefined,
+      checkpoint_path:
+        typeof checkpointPath === "string" ? checkpointPath : undefined,
+      resumable_job_id:
+        typeof resumableJobId === "string" ? resumableJobId : undefined,
     };
   };
 
-  const normalizeBackupJobEventPayload = (payload: unknown): BackupJobEvent | null => {
-    if (!payload || typeof payload !== 'object') return null;
+  const normalizeBackupJobEventPayload = (
+    payload: unknown,
+  ): BackupJobEvent | null => {
+    if (!payload || typeof payload !== "object") return null;
     const p = payload as Record<string, unknown>;
 
-    const job_id_raw = (p.job_id ?? p.jobId);
+    const job_id_raw = p.job_id ?? p.jobId;
     const kind = p.kind;
     const status = p.status;
     const phase = p.phase;
     const progress_raw = p.progress;
 
-    const job_id = typeof job_id_raw === 'string' ? job_id_raw : (job_id_raw != null ? String(job_id_raw) : '');
-    const progress = typeof progress_raw === 'number' ? progress_raw : Number(progress_raw);
+    const job_id =
+      typeof job_id_raw === "string"
+        ? job_id_raw
+        : job_id_raw != null
+          ? String(job_id_raw)
+          : "";
+    const progress =
+      typeof progress_raw === "number" ? progress_raw : Number(progress_raw);
 
     if (!job_id) return null;
-    if (kind !== 'export' && kind !== 'import') return null;
-    if (status !== 'queued' && status !== 'running' && status !== 'completed' && status !== 'failed' && status !== 'cancelled') {
+    if (kind !== "export" && kind !== "import") return null;
+    if (
+      status !== "queued" &&
+      status !== "running" &&
+      status !== "completed" &&
+      status !== "failed" &&
+      status !== "cancelled"
+    ) {
       return null;
     }
-    if (typeof phase !== 'string' || !Number.isFinite(progress)) return null;
+    if (typeof phase !== "string" || !Number.isFinite(progress)) return null;
 
-    const processed_items_raw = (p.processed_items ?? p.processedItems);
-    const total_items_raw = (p.total_items ?? p.totalItems);
-    const eta_seconds_raw = (p.eta_seconds ?? p.etaSeconds);
+    const processed_items_raw = p.processed_items ?? p.processedItems;
+    const total_items_raw = p.total_items ?? p.totalItems;
+    const eta_seconds_raw = p.eta_seconds ?? p.etaSeconds;
 
-    const processed_items = typeof processed_items_raw === 'number' ? processed_items_raw : Number(processed_items_raw ?? 0);
-    const total_items = typeof total_items_raw === 'number' ? total_items_raw : Number(total_items_raw ?? 0);
-    const eta_seconds = typeof eta_seconds_raw === 'number'
-      ? eta_seconds_raw
-      : (eta_seconds_raw != null && eta_seconds_raw !== '' ? Number(eta_seconds_raw) : undefined);
+    const processed_items =
+      typeof processed_items_raw === "number"
+        ? processed_items_raw
+        : Number(processed_items_raw ?? 0);
+    const total_items =
+      typeof total_items_raw === "number"
+        ? total_items_raw
+        : Number(total_items_raw ?? 0);
+    const eta_seconds =
+      typeof eta_seconds_raw === "number"
+        ? eta_seconds_raw
+        : eta_seconds_raw != null && eta_seconds_raw !== ""
+          ? Number(eta_seconds_raw)
+          : undefined;
 
-    const created_at_raw = (p.created_at ?? p.createdAt);
-    const started_at_raw = (p.started_at ?? p.startedAt);
-    const finished_at_raw = (p.finished_at ?? p.finishedAt);
+    const created_at_raw = p.created_at ?? p.createdAt;
+    const started_at_raw = p.started_at ?? p.startedAt;
+    const finished_at_raw = p.finished_at ?? p.finishedAt;
 
-    const created_at = typeof created_at_raw === 'string' ? created_at_raw : (created_at_raw != null ? String(created_at_raw) : '');
+    const created_at =
+      typeof created_at_raw === "string"
+        ? created_at_raw
+        : created_at_raw != null
+          ? String(created_at_raw)
+          : "";
 
     const cancellable_raw = p.cancellable;
-    const cancellable = typeof cancellable_raw === 'boolean'
-      ? cancellable_raw
-      : !(status === 'completed' || status === 'failed' || status === 'cancelled');
+    const cancellable =
+      typeof cancellable_raw === "boolean"
+        ? cancellable_raw
+        : !(
+            status === "completed" ||
+            status === "failed" ||
+            status === "cancelled"
+          );
 
     return {
       job_id,
@@ -446,20 +503,26 @@ export async function listenBackupProgress(
       status,
       phase,
       progress,
-      message: typeof p.message === 'string' ? p.message : undefined,
+      message: typeof p.message === "string" ? p.message : undefined,
       processed_items: Number.isFinite(processed_items) ? processed_items : 0,
       total_items: Number.isFinite(total_items) ? total_items : 0,
-      eta_seconds: Number.isFinite(Number(eta_seconds)) ? Number(eta_seconds) : undefined,
+      eta_seconds: Number.isFinite(Number(eta_seconds))
+        ? Number(eta_seconds)
+        : undefined,
       cancellable,
       created_at,
-      started_at: typeof started_at_raw === 'string' ? started_at_raw : undefined,
-      finished_at: typeof finished_at_raw === 'string' ? finished_at_raw : undefined,
+      started_at:
+        typeof started_at_raw === "string" ? started_at_raw : undefined,
+      finished_at:
+        typeof finished_at_raw === "string" ? finished_at_raw : undefined,
       result: normalizeBackupJobResultPayload(p.result),
     };
   };
 
   return listen<unknown>(BACKUP_JOB_PROGRESS_EVENT, (event) => {
-    const normalized = normalizeBackupJobEventPayload((event as { payload?: unknown })?.payload);
+    const normalized = normalizeBackupJobEventPayload(
+      (event as { payload?: unknown })?.payload,
+    );
     if (!normalized) return;
 
     // 如果指定了 jobId，只处理该任务的事件（兼容 camelCase/snake_case）
@@ -473,8 +536,10 @@ export async function listenBackupProgress(
 /**
  * 判断备份任务是否已完成（终态）
  */
-export function isBackupJobTerminal(status: BackupJobEvent['status']): boolean {
-  return status === 'completed' || status === 'failed' || status === 'cancelled';
+export function isBackupJobTerminal(status: BackupJobEvent["status"]): boolean {
+  return (
+    status === "completed" || status === "failed" || status === "cancelled"
+  );
 }
 
 // ==================== 任务恢复 API ====================
@@ -486,7 +551,7 @@ export interface ResumableJob {
   /** 任务 ID */
   job_id: string;
   /** 任务类型 */
-  kind: 'export' | 'import';
+  kind: "export" | "import";
   /** 当前阶段 */
   phase: string;
   /** 进度百分比 (0-100) */
@@ -506,8 +571,10 @@ export interface ResumableJob {
  * @param jobId 要恢复的任务 ID
  * @returns 任务启动响应
  */
-export async function resumeBackupJob(jobId: string): Promise<BackupJobStartResponse> {
-  return invoke<BackupJobStartResponse>('data_governance_resume_backup_job', {
+export async function resumeBackupJob(
+  jobId: string,
+): Promise<BackupJobStartResponse> {
+  return invoke<BackupJobStartResponse>("data_governance_resume_backup_job", {
     jobId,
   });
 }
@@ -520,26 +587,39 @@ export async function resumeBackupJob(jobId: string): Promise<BackupJobStartResp
  * @returns 可恢复任务列表
  */
 export async function listResumableJobs(): Promise<ResumableJob[]> {
-  const normalizeResumableJobPayload = (payload: unknown): ResumableJob | null => {
-    if (!payload || typeof payload !== 'object') return null;
+  const normalizeResumableJobPayload = (
+    payload: unknown,
+  ): ResumableJob | null => {
+    if (!payload || typeof payload !== "object") return null;
     const p = payload as Record<string, unknown>;
 
-    const job_id_raw = (p.job_id ?? p.jobId);
+    const job_id_raw = p.job_id ?? p.jobId;
     const kind = p.kind;
     const phase = p.phase;
     const progress_raw = p.progress;
-    const created_at_raw = (p.created_at ?? p.createdAt);
+    const created_at_raw = p.created_at ?? p.createdAt;
 
-    const job_id = typeof job_id_raw === 'string' ? job_id_raw : (job_id_raw != null ? String(job_id_raw) : '');
-    const progress = typeof progress_raw === 'number' ? progress_raw : Number(progress_raw);
-    const created_at = typeof created_at_raw === 'string' ? created_at_raw : (created_at_raw != null ? String(created_at_raw) : '');
+    const job_id =
+      typeof job_id_raw === "string"
+        ? job_id_raw
+        : job_id_raw != null
+          ? String(job_id_raw)
+          : "";
+    const progress =
+      typeof progress_raw === "number" ? progress_raw : Number(progress_raw);
+    const created_at =
+      typeof created_at_raw === "string"
+        ? created_at_raw
+        : created_at_raw != null
+          ? String(created_at_raw)
+          : "";
 
     if (!job_id) return null;
-    if (kind !== 'export' && kind !== 'import') return null;
-    if (typeof phase !== 'string' || !Number.isFinite(progress)) return null;
+    if (kind !== "export" && kind !== "import") return null;
+    if (typeof phase !== "string" || !Number.isFinite(progress)) return null;
 
-    const message_raw = (p.message ?? p.error_message ?? p.errorMessage);
-    const message = typeof message_raw === 'string' ? message_raw : undefined;
+    const message_raw = p.message ?? p.error_message ?? p.errorMessage;
+    const message = typeof message_raw === "string" ? message_raw : undefined;
 
     return {
       job_id,
@@ -551,7 +631,7 @@ export async function listResumableJobs(): Promise<ResumableJob[]> {
     };
   };
 
-  const raw = await invoke<unknown>('data_governance_list_resumable_jobs');
+  const raw = await invoke<unknown>("data_governance_list_resumable_jobs");
   if (!Array.isArray(raw)) return [];
 
   return raw
@@ -567,7 +647,7 @@ export async function listResumableJobs(): Promise<ResumableJob[]> {
  * @returns 清理的文件数量
  */
 export async function cleanupPersistedJobs(): Promise<number> {
-  return invoke<number>('data_governance_cleanup_persisted_jobs');
+  return invoke<number>("data_governance_cleanup_persisted_jobs");
 }
 
 // ==================== 分层备份 API ====================
@@ -594,9 +674,9 @@ export async function backupTiered(
   excludeDatabases?: string[],
   includeAssets?: boolean,
   maxAssetSize?: number,
-  assetTypes?: AssetType[]
+  assetTypes?: AssetType[],
 ): Promise<BackupJobStartResponse> {
-  return invoke<BackupJobStartResponse>('data_governance_backup_tiered', {
+  return invoke<BackupJobStartResponse>("data_governance_backup_tiered", {
     tiers,
     includeDatabases,
     excludeDatabases,
@@ -621,17 +701,19 @@ export async function backupAndExportZip(
   includeAssets?: boolean,
   assetTypes?: AssetType[],
 ): Promise<BackupJobStartResponse> {
-  return invoke<BackupJobStartResponse>('data_governance_backup_and_export_zip', {
-    outputPath,
-    compressionLevel,
-    addToBackupList,
-    useTiered,
-    tiers,
-    includeAssets,
-    assetTypes,
-  });
+  return invoke<BackupJobStartResponse>(
+    "data_governance_backup_and_export_zip",
+    {
+      outputPath,
+      compressionLevel,
+      addToBackupList,
+      useTiered,
+      tiers,
+      includeAssets,
+      assetTypes,
+    },
+  );
 }
-
 
 // ==================== ZIP 导出 API ====================
 
@@ -654,16 +736,15 @@ export async function exportZip(
   backupId: string,
   outputPath?: string,
   compressionLevel?: number,
-  includeChecksums?: boolean
+  includeChecksums?: boolean,
 ): Promise<BackupJobStartResponse> {
-  return invoke<BackupJobStartResponse>('data_governance_export_zip', {
+  return invoke<BackupJobStartResponse>("data_governance_export_zip", {
     backupId,
     outputPath,
     compressionLevel,
     includeChecksums,
   });
 }
-
 
 /**
  * 从 ZIP 文件导入备份（异步后台任务）
@@ -676,14 +757,13 @@ export async function exportZip(
  */
 export async function importZip(
   zipPath: string,
-  backupId?: string
+  backupId?: string,
 ): Promise<BackupJobStartResponse> {
-  return invoke<BackupJobStartResponse>('data_governance_import_zip', {
+  return invoke<BackupJobStartResponse>("data_governance_import_zip", {
     zipPath,
     backupId,
   });
 }
-
 
 // ==================== 同步 API ====================
 
@@ -692,7 +772,7 @@ export async function importZip(
  * 返回当前设备的同步状态信息
  */
 export async function getSyncStatus(): Promise<SyncStatusResponse> {
-  return invoke<SyncStatusResponse>('data_governance_get_sync_status');
+  return invoke<SyncStatusResponse>("data_governance_get_sync_status");
 }
 
 /**
@@ -701,9 +781,9 @@ export async function getSyncStatus(): Promise<SyncStatusResponse> {
  */
 export async function detectConflicts(
   cloudManifestJson?: string,
-  cloudConfig?: CloudStorageConfig
+  cloudConfig?: CloudStorageConfig,
 ): Promise<ConflictDetectionResponse> {
-  return invoke<ConflictDetectionResponse>('data_governance_detect_conflicts', {
+  return invoke<ConflictDetectionResponse>("data_governance_detect_conflicts", {
     cloudManifestJson,
     cloudConfig,
   });
@@ -716,9 +796,9 @@ export async function detectConflicts(
  */
 export async function resolveConflicts(
   strategy: MergeStrategy,
-  cloudManifestJson: string
+  cloudManifestJson: string,
 ): Promise<SyncResultResponse> {
-  return invoke<SyncResultResponse>('data_governance_resolve_conflicts', {
+  return invoke<SyncResultResponse>("data_governance_resolve_conflicts", {
     strategy,
     cloudManifestJson,
   });
@@ -731,11 +811,11 @@ export async function resolveConflicts(
  * @param strategy 合并策略
  */
 export async function runSync(
-  direction: 'upload' | 'download' | 'bidirectional',
+  direction: "upload" | "download" | "bidirectional",
   cloudConfig?: CloudStorageConfig,
-  strategy?: MergeStrategy
+  strategy?: MergeStrategy,
 ): Promise<SyncExecutionResponse> {
-  return invoke<SyncExecutionResponse>('data_governance_run_sync', {
+  return invoke<SyncExecutionResponse>("data_governance_run_sync", {
     direction,
     cloudConfig,
     strategy,
@@ -746,8 +826,10 @@ export async function runSync(
  * 导出同步数据到本地文件
  * @param outputPath 输出文件路径（可选，默认自动生成）
  */
-export async function exportSyncData(outputPath?: string): Promise<SyncExportResponse> {
-  return invoke<SyncExportResponse>('data_governance_export_sync_data', {
+export async function exportSyncData(
+  outputPath?: string,
+): Promise<SyncExportResponse> {
+  return invoke<SyncExportResponse>("data_governance_export_sync_data", {
     outputPath,
   });
 }
@@ -759,9 +841,9 @@ export async function exportSyncData(outputPath?: string): Promise<SyncExportRes
  */
 export async function importSyncData(
   inputPath: string,
-  strategy?: MergeStrategy
+  strategy?: MergeStrategy,
 ): Promise<SyncImportResponse> {
-  return invoke<SyncImportResponse>('data_governance_import_sync_data', {
+  return invoke<SyncImportResponse>("data_governance_import_sync_data", {
     inputPath,
     strategy,
   });
@@ -793,7 +875,7 @@ export async function importSyncData(
  * ```
  */
 export async function listenSyncProgress(
-  options: SyncProgressListenerOptions
+  options: SyncProgressListenerOptions,
 ): Promise<UnlistenFn> {
   let prevPhase: SyncPhase | null = null;
 
@@ -812,12 +894,12 @@ export async function listenSyncProgress(
     }
 
     // 完成回调
-    if (progress.phase === 'completed' && options.onComplete) {
+    if (progress.phase === "completed" && options.onComplete) {
       options.onComplete();
     }
 
     // 失败回调
-    if (progress.phase === 'failed' && options.onError && progress.error) {
+    if (progress.phase === "failed" && options.onError && progress.error) {
       options.onError(progress.error);
     }
   });
@@ -854,15 +936,18 @@ export async function listenSyncProgress(
  * ```
  */
 export async function runSyncWithProgress(
-  direction: 'upload' | 'download' | 'bidirectional',
+  direction: "upload" | "download" | "bidirectional",
   cloudConfig?: CloudStorageConfig,
-  strategy?: MergeStrategy
+  strategy?: MergeStrategy,
 ): Promise<SyncExecutionResponse> {
-  return invoke<SyncExecutionResponse>('data_governance_run_sync_with_progress', {
-    direction,
-    cloudConfig,
-    strategy,
-  });
+  return invoke<SyncExecutionResponse>(
+    "data_governance_run_sync_with_progress",
+    {
+      direction,
+      cloudConfig,
+      strategy,
+    },
+  );
 }
 
 /**
@@ -889,10 +974,10 @@ export async function runSyncWithProgress(
  * ```
  */
 export async function runSyncWithProgressTracking(
-  direction: 'upload' | 'download' | 'bidirectional',
+  direction: "upload" | "download" | "bidirectional",
   cloudConfig: CloudStorageConfig | undefined,
   options: SyncProgressListenerOptions,
-  strategy?: MergeStrategy
+  strategy?: MergeStrategy,
 ): Promise<SyncExecutionResponse> {
   // 设置监听器
   const unlisten = await listenSyncProgress(options);
@@ -947,8 +1032,10 @@ export function createSyncProgressState() {
  * 扫描资产目录
  * @param assetTypes 要扫描的资产类型列表（可选，为空则扫描全部）
  */
-export async function scanAssets(assetTypes?: string[]): Promise<AssetScanResponse> {
-  return invoke<AssetScanResponse>('data_governance_scan_assets', {
+export async function scanAssets(
+  assetTypes?: string[],
+): Promise<AssetScanResponse> {
+  return invoke<AssetScanResponse>("data_governance_scan_assets", {
     assetTypes,
   });
 }
@@ -958,7 +1045,7 @@ export async function scanAssets(assetTypes?: string[]): Promise<AssetScanRespon
  * 返回系统支持的所有资产类型及其信息
  */
 export async function getAssetTypes(): Promise<AssetTypeInfo[]> {
-  return invoke<AssetTypeInfo[]>('data_governance_get_asset_types');
+  return invoke<AssetTypeInfo[]>("data_governance_get_asset_types");
 }
 
 /**
@@ -981,12 +1068,15 @@ export interface RestoreWithAssetsResponse {
  */
 export async function restoreWithAssets(
   backupId: string,
-  restoreAssets?: boolean
+  restoreAssets?: boolean,
 ): Promise<RestoreWithAssetsResponse> {
-  return invoke<RestoreWithAssetsResponse>('data_governance_restore_with_assets', {
-    backupId,
-    restoreAssets,
-  });
+  return invoke<RestoreWithAssetsResponse>(
+    "data_governance_restore_with_assets",
+    {
+      backupId,
+      restoreAssets,
+    },
+  );
 }
 
 /**
@@ -994,11 +1084,14 @@ export async function restoreWithAssets(
  * @param backupId 要验证的备份 ID
  */
 export async function verifyBackupWithAssets(
-  backupId: string
+  backupId: string,
 ): Promise<BackupVerifyWithAssetsResponse> {
-  return invoke<BackupVerifyWithAssetsResponse>('data_governance_verify_backup_with_assets', {
-    backupId,
-  });
+  return invoke<BackupVerifyWithAssetsResponse>(
+    "data_governance_verify_backup_with_assets",
+    {
+      backupId,
+    },
+  );
 }
 
 // ==================== Chat V2 迁移 API ====================
@@ -1019,7 +1112,12 @@ export interface ChatMigrationCheckResult {
  * Chat V2 迁移报告
  */
 export interface ChatMigrationReport {
-  status: 'not_started' | 'in_progress' | 'completed' | 'rolled_back' | 'failed';
+  status:
+    | "not_started"
+    | "in_progress"
+    | "completed"
+    | "rolled_back"
+    | "failed";
   sessionsCreated: number;
   messagesMigrated: number;
   blocksCreated: number;
@@ -1036,7 +1134,7 @@ export interface ChatMigrationReport {
  * 返回是否需要迁移以及当前迁移进度
  */
 export async function checkChatMigrationStatus(): Promise<ChatMigrationCheckResult> {
-  return invoke<ChatMigrationCheckResult>('chat_v2_check_migration_status');
+  return invoke<ChatMigrationCheckResult>("chat_v2_check_migration_status");
 }
 
 /**
@@ -1044,7 +1142,7 @@ export async function checkChatMigrationStatus(): Promise<ChatMigrationCheckResu
  * 返回迁移报告
  */
 export async function migrateLegacyChat(): Promise<ChatMigrationReport> {
-  return invoke<ChatMigrationReport>('chat_v2_migrate_legacy_chat');
+  return invoke<ChatMigrationReport>("chat_v2_migrate_legacy_chat");
 }
 
 /**
@@ -1052,7 +1150,7 @@ export async function migrateLegacyChat(): Promise<ChatMigrationReport> {
  * 返回回滚报告
  */
 export async function rollbackChatMigration(): Promise<ChatMigrationReport> {
-  return invoke<ChatMigrationReport>('chat_v2_rollback_migration');
+  return invoke<ChatMigrationReport>("chat_v2_rollback_migration");
 }
 
 // ==================== 媒体缓存 API ====================
@@ -1098,15 +1196,17 @@ export interface ClearMediaCacheResult {
  * 返回 PDF 预览、压缩图片、OCR 文本、向量索引等缓存的统计数据
  */
 export async function getMediaCacheStats(): Promise<MediaCacheStats> {
-  return invoke<MediaCacheStats>('vfs_get_media_cache_stats');
+  return invoke<MediaCacheStats>("vfs_get_media_cache_stats");
 }
 
 /**
  * 清理媒体缓存
  * @param options 指定要清理的缓存类型（可选，默认全部清理）
  */
-export async function clearMediaCache(options?: ClearMediaCacheOptions): Promise<ClearMediaCacheResult> {
-  return invoke<ClearMediaCacheResult>('vfs_clear_media_cache', {
+export async function clearMediaCache(
+  options?: ClearMediaCacheOptions,
+): Promise<ClearMediaCacheResult> {
+  return invoke<ClearMediaCacheResult>("vfs_clear_media_cache", {
     params: options,
   });
 }
@@ -1142,12 +1242,15 @@ export interface SlotMigrationTestResponse {
  * @returns 磁盘空间检查结果
  */
 export async function checkDiskSpaceForRestore(
-  backupId: string
+  backupId: string,
 ): Promise<DiskSpaceCheckResponse> {
   try {
-    return await invoke<DiskSpaceCheckResponse>('data_governance_check_disk_space_for_restore', {
-      backupId,
-    });
+    return await invoke<DiskSpaceCheckResponse>(
+      "data_governance_check_disk_space_for_restore",
+      {
+        backupId,
+      },
+    );
   } catch {
     // 如果后端尚未实现该命令，返回"空间足够"以不阻塞流程
     return {
@@ -1166,21 +1269,25 @@ export async function checkDiskSpaceForRestore(
  * 收集所有数据库状态、错误信息、迁移历史、磁盘空间等，返回格式化文本
  */
 export async function getMigrationDiagnosticReport(): Promise<string> {
-  return invoke<string>('data_governance_get_migration_diagnostic_report');
+  return invoke<string>("data_governance_get_migration_diagnostic_report");
 }
 
 /**
  * 手动触发 Slot C 空库迁移测试
  */
 export async function runSlotCEmptyDbTest(): Promise<SlotMigrationTestResponse> {
-  return invoke<SlotMigrationTestResponse>('data_governance_run_slot_c_empty_db_test');
+  return invoke<SlotMigrationTestResponse>(
+    "data_governance_run_slot_c_empty_db_test",
+  );
 }
 
 /**
  * 手动触发 Slot D 克隆库迁移测试
  */
 export async function runSlotDCloneDbTest(): Promise<SlotMigrationTestResponse> {
-  return invoke<SlotMigrationTestResponse>('data_governance_run_slot_d_clone_db_test');
+  return invoke<SlotMigrationTestResponse>(
+    "data_governance_run_slot_d_clone_db_test",
+  );
 }
 
 // ==================== 记录级冲突 API ====================
@@ -1193,7 +1300,7 @@ export interface RecordConflictRow {
   database_name: string;
   table_name: string;
   record_id: string;
-  side: 'local' | 'cloud';
+  side: "local" | "cloud";
   data_json: string;
   winning_device_id?: string | null;
   losing_device_id?: string | null;
@@ -1209,7 +1316,7 @@ export async function listRecordConflicts(
   limit?: number,
   offset?: number,
 ): Promise<RecordConflictRow[]> {
-  return invoke<RecordConflictRow[]>('data_governance_list_record_conflicts', {
+  return invoke<RecordConflictRow[]>("data_governance_list_record_conflicts", {
     limit,
     offset,
   });
@@ -1219,7 +1326,9 @@ export async function listRecordConflicts(
  * 按数据库统计未解决冲突数（用于 UI 徽章）
  */
 export async function countRecordConflicts(): Promise<Record<string, number>> {
-  return invoke<Record<string, number>>('data_governance_count_record_conflicts');
+  return invoke<Record<string, number>>(
+    "data_governance_count_record_conflicts",
+  );
 }
 
 /**
@@ -1234,10 +1343,10 @@ export async function resolveRecordConflict(
   databaseName: string,
   tableName: string,
   recordId: string,
-  resolution: 'keep_local' | 'keep_cloud' | 'merged',
+  resolution: "keep_local" | "keep_cloud" | "merged",
   mergedDataJson?: string,
 ): Promise<void> {
-  return invoke<void>('data_governance_resolve_record_conflict', {
+  return invoke<void>("data_governance_resolve_record_conflict", {
     databaseName,
     tableName,
     recordId,
@@ -1249,15 +1358,64 @@ export async function resolveRecordConflict(
 /**
  * 清理已解决的冲突记录（保留 olderThanDays 天以上的）
  */
-export async function purgeResolvedConflicts(olderThanDays?: number): Promise<number> {
-  return invoke<number>('data_governance_purge_resolved_conflicts', {
+export async function purgeResolvedConflicts(
+  olderThanDays?: number,
+): Promise<number> {
+  return invoke<number>("data_governance_purge_resolved_conflicts", {
     olderThanDays,
+  });
+}
+
+// ==================== 同步检疫 API ====================
+
+export interface SyncQuarantineRow {
+  id: number;
+  database_name: string;
+  source_device_id: string;
+  source_seq: number;
+  table_name: string;
+  record_id: string;
+  operation: string;
+  payload_json?: string | null;
+  error: string;
+  attempts: number;
+  first_seen: string;
+  last_attempt: string;
+}
+
+export async function listQuarantine(
+  limit?: number,
+  offset?: number,
+): Promise<SyncQuarantineRow[]> {
+  return invoke<SyncQuarantineRow[]>("data_governance_list_quarantine", {
+    limit,
+    offset,
+  });
+}
+
+export async function retryQuarantine(
+  databaseName: string,
+  quarantineId: number,
+): Promise<boolean> {
+  return invoke<boolean>("data_governance_retry_quarantine", {
+    databaseName,
+    quarantineId,
+  });
+}
+
+export async function discardQuarantine(
+  databaseName: string,
+  quarantineId: number,
+): Promise<boolean> {
+  return invoke<boolean>("data_governance_discard_quarantine", {
+    databaseName,
+    quarantineId,
   });
 }
 
 // ==================== Tombstone（删除传播）API ====================
 
-import type { CloudStorageConfig as CloudCfg } from '../types/dataGovernance';
+import type { CloudStorageConfig as CloudCfg } from "../types/dataGovernance";
 
 /**
  * 标记一个 blob 已被本地删除（用于跨设备删除传播）
@@ -1269,7 +1427,7 @@ export async function markBlobDeleted(
   relativePath?: string,
   size?: number,
 ): Promise<void> {
-  return invoke<void>('data_governance_mark_blob_deleted', {
+  return invoke<void>("data_governance_mark_blob_deleted", {
     hash,
     relativePath,
     size,
@@ -1285,7 +1443,7 @@ export async function markAssetDeleted(
   cloudConfig: CloudCfg,
   size?: number,
 ): Promise<void> {
-  return invoke<void>('data_governance_mark_asset_deleted', {
+  return invoke<void>("data_governance_mark_asset_deleted", {
     key,
     size,
     cloudConfig,
@@ -1304,8 +1462,12 @@ export interface PruneGapResponse {
  * 检查云端变更保留范围是否覆盖本地的 since_version
  * 返回 has_gap = true 时，应提示用户走"全量恢复"而不是普通同步
  */
-export async function detectPruneGap(cloudConfig: CloudCfg): Promise<PruneGapResponse> {
-  return invoke<PruneGapResponse>('data_governance_detect_prune_gap', { cloudConfig });
+export async function detectPruneGap(
+  cloudConfig: CloudCfg,
+): Promise<PruneGapResponse> {
+  return invoke<PruneGapResponse>("data_governance_detect_prune_gap", {
+    cloudConfig,
+  });
 }
 
 export const DataGovernanceApi = {
@@ -1396,6 +1558,9 @@ export const DataGovernanceApi = {
   countRecordConflicts,
   resolveRecordConflict,
   purgeResolvedConflicts,
+  listQuarantine,
+  retryQuarantine,
+  discardQuarantine,
 
   // Tombstone 删除传播
   markBlobDeleted,
