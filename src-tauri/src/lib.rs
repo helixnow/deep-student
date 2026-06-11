@@ -1896,11 +1896,17 @@ fn build_app_state(
         app_handle.manage(pps.clone());
 
         match pps.recover_stuck_tasks() {
-            Ok(count) if count > 0 => {
+            Ok(recovered) if !recovered.is_empty() => {
                 tracing::info!(
-                    "[AppSetup] Recovered {} stuck media processing tasks",
-                    count
+                    "[AppSetup] Recovered {} stuck media processing tasks, scheduling auto-resume",
+                    recovered.len()
                 );
+                // ★ G1 修复：恢复出的 pending 任务自动续跑（带并发上限），
+                // 否则被重启打断的 OCR/压缩/向量索引永久停摆且无 UI 入口恢复。
+                let pps_resume = pps.clone();
+                tauri::async_runtime::spawn(async move {
+                    pps_resume.resume_recovered_tasks(recovered).await;
+                });
             }
             Ok(_) => {}
             Err(e) => {

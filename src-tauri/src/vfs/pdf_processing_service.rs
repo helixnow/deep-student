@@ -2334,7 +2334,15 @@ impl PdfProcessingService {
         let status = self.get_status(file_id)?;
 
         match status {
-            Some(s) if s.stage == "error" || s.stage == "completed_with_issues" => {
+            // ★ G1 修复：retry 放宽到 pending——重启恢复后被重置为 pending 的任务
+            // 此前无法通过重试按钮续跑（仅 error/completed_with_issues 可重试）。
+            // is_running 防护避免对正在运行的任务重复启动。
+            Some(s)
+                if (s.stage == "error"
+                    || s.stage == "completed_with_issues"
+                    || s.stage == "pending")
+                    && !self.is_running(file_id) =>
+            {
                 // 检测媒体类型，选择正确的重试起始阶段
                 let media_type = self.detect_media_type(file_id)?;
                 let start_stage = match media_type {
@@ -2382,8 +2390,9 @@ impl PdfProcessingService {
     /// 处于中间状态（ocr_processing / vector_indexing / page_compression 等）的文件。
     /// 这些文件不会自动恢复，用户也无法通过 retry 修复（retry 仅处理 error 状态）。
     ///
-    /// 此方法将所有 stuck 文件重置为 pending 状态，允许后续重新处理。
-    pub fn recover_stuck_tasks(&self) -> VfsResult<usize> {
+    /// 此方法将所有 stuck 文件重置为 pending 状态，并返回恢复的文件 ID 列表，
+    /// 供调用方（lib.rs 启动逻辑）通过 `resume_recovered_tasks` 自动续跑（G1 修复）。
+    pub fn recover_stuck_tasks(&self) -> VfsResult<Vec<String>> {
         let conn = self.db.get_conn_safe()?;
 
         // 查找所有处于中间处理状态的文件
@@ -2408,15 +2417,15 @@ impl PdfProcessingService {
 
         if stuck_ids.is_empty() {
             debug!("[MediaProcessingService] No stuck tasks found at startup");
-            return Ok(0);
+            return Ok(Vec::new());
         }
 
-        let count = stuck_ids.len();
         info!(
             "[MediaProcessingService] Found {} stuck tasks at startup, resetting to pending",
-            count
+            stuck_ids.len()
         );
 
+        let mut recovered = Vec::with_capacity(stuck_ids.len());
         for file_id in &stuck_ids {
             let affected = conn
                 .execute(
@@ -2433,10 +2442,60 @@ impl PdfProcessingService {
                     "[MediaProcessingService] Reset stuck file {} to pending",
                     file_id
                 );
+                recovered.push(file_id.clone());
             }
         }
 
-        Ok(count)
+        Ok(recovered)
+    }
+
+    /// ★ G1 修复：启动后自动续跑被重启打断的任务
+    ///
+    /// `recover_stuck_tasks` 把中间态任务重置为 pending 后，此前全链路无人消费：
+    /// retry 不接受 pending、前端也没有任何入口调用 start_pipeline，
+    /// 导致被打断的 OCR/压缩/向量索引永久停摆。
+    ///
+    /// 此方法依次对恢复出的文件重新启动流水线，通过 `running_count` 轮询
+    /// 限制并发（流水线内部 OCR 已有并发=4，多文件叠加会打爆 LLM 配额）。
+    /// 应在后台任务中调用，不阻塞启动流程。
+    pub async fn resume_recovered_tasks(self: &Arc<Self>, file_ids: Vec<String>) {
+        const MAX_AUTO_RESUME_CONCURRENCY: usize = 2;
+
+        if file_ids.is_empty() {
+            return;
+        }
+
+        info!(
+            "[MediaProcessingService] Auto-resuming {} recovered tasks",
+            file_ids.len()
+        );
+
+        for file_id in file_ids {
+            // 等待并发槽位（含用户手动触发的任务）
+            while self.running_count() >= MAX_AUTO_RESUME_CONCURRENCY {
+                tokio::time::sleep(std::time::Duration::from_secs(2)).await;
+            }
+
+            // 任务可能在等待期间被用户手动重试/启动
+            if self.is_running(&file_id) {
+                continue;
+            }
+
+            match self.start_pipeline(&file_id, None).await {
+                Ok(()) => {
+                    info!(
+                        "[MediaProcessingService] Auto-resumed pipeline for recovered file: {}",
+                        file_id
+                    );
+                }
+                Err(e) => {
+                    warn!(
+                        "[MediaProcessingService] Failed to auto-resume file {}: {}",
+                        file_id, e
+                    );
+                }
+            }
+        }
     }
 
     // ========================================================================

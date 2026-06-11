@@ -77,29 +77,34 @@ impl CryptoService {
             Ok(key)
         } else {
             tracing::warn!("🔐 [Crypto] 主密钥文件不存在，将创建新密钥: {:?}", key_path);
-            if let Some(parent) = key_path.parent() {
-                fs::create_dir_all(parent)?;
-            }
-            let mut key = [0u8; 32];
-            OsRng.fill_bytes(&mut key);
-            let mut encoded = general_purpose::STANDARD.encode(key);
-            let mut file = OpenOptions::new()
-                .create(true)
-                .write(true)
-                .truncate(true)
-                .open(key_path)
-                .with_context(|| format!("无法创建主密钥文件: {:?}", key_path))?;
-            file.write_all(encoded.as_bytes())?;
-            encoded.zeroize();
-            #[cfg(unix)]
-            {
-                use std::os::unix::fs::PermissionsExt;
-                let perms = fs::Permissions::from_mode(0o600);
-                fs::set_permissions(key_path, perms)?;
-            }
-            tracing::info!("🔐 [Crypto] 新主密钥已创建");
-            Ok(key)
+            Self::create_master_key(key_path)
         }
+    }
+
+    /// 生成并持久化一把全新的主密钥（覆盖已有文件）
+    fn create_master_key(key_path: &Path) -> Result<[u8; 32]> {
+        if let Some(parent) = key_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let mut key = [0u8; 32];
+        OsRng.fill_bytes(&mut key);
+        let mut encoded = general_purpose::STANDARD.encode(key);
+        let mut file = OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(key_path)
+            .with_context(|| format!("无法创建主密钥文件: {:?}", key_path))?;
+        file.write_all(encoded.as_bytes())?;
+        encoded.zeroize();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let perms = fs::Permissions::from_mode(0o600);
+            fs::set_permissions(key_path, perms)?;
+        }
+        tracing::info!("🔐 [Crypto] 新主密钥已创建");
+        Ok(key)
     }
 
     fn cipher(&self) -> Aes256Gcm {
@@ -180,9 +185,15 @@ impl CryptoService {
     }
 
     pub fn rotate_master_key(&self, new_path: &Path) -> Result<Self> {
-        let master_key = Self::load_or_create_master_key(new_path)?;
+        // 修复两个问题：
+        // 1. new_path 是目录，必须拼接 .master_key 文件名（旧实现直接把目录
+        //    当文件打开，报 "Is a directory"）；
+        // 2. 轮换必须强制生成新密钥并覆盖旧文件——load_or_create 在文件已存在时
+        //    会原样加载旧密钥，"轮换"变成无操作。
+        let key_path = new_path.join(".master_key");
+        let master_key = Self::create_master_key(&key_path)?;
         Ok(Self {
-            key_path: new_path.to_path_buf(),
+            key_path,
             master_key,
         })
     }

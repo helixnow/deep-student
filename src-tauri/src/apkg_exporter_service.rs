@@ -743,7 +743,13 @@ pub async fn export_cards_to_apkg_with_full_template(
     }
 
     // 创建临时目录
-    let temp_dir = std::env::temp_dir().join(format!("anki_export_{}", Utc::now().timestamp()));
+    // 注意必须带随机后缀：仅用秒级时间戳时，同一秒内的并发导出会
+    // 共享同一 collection.anki2，第二次初始化报 "table col already exists"
+    let temp_dir = std::env::temp_dir().join(format!(
+        "anki_export_{}_{}",
+        Utc::now().timestamp(),
+        uuid::Uuid::new_v4().simple()
+    ));
     fs::create_dir_all(&temp_dir).map_err(|e| format!("创建临时目录失败: {}", e))?;
 
     let db_path = temp_dir.join("collection.anki2");
@@ -990,7 +996,12 @@ pub async fn export_multi_template_apkg(
         return Err("没有卡片可以导出".to_string());
     }
 
-    let temp_dir = std::env::temp_dir().join(format!("anki_export_{}", Utc::now().timestamp()));
+    // 同上：带随机后缀防止同一秒并发导出共用临时库
+    let temp_dir = std::env::temp_dir().join(format!(
+        "anki_export_{}_{}",
+        Utc::now().timestamp(),
+        uuid::Uuid::new_v4().simple()
+    ));
     fs::create_dir_all(&temp_dir).map_err(|e| format!("创建临时目录失败: {}", e))?;
     let db_path = temp_dir.join("collection.anki2");
     if let Some(parent) = output_path.parent() {
