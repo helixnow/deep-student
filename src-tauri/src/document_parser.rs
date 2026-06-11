@@ -3371,11 +3371,7 @@ mod tests {
         let text = result.unwrap();
         assert!(text.contains("高数错题本"), "应包含书名，实际: {}", text);
         assert!(text.contains("极限"), "应包含章节正文，实际: {}", text);
-        assert!(
-            text.contains("sin(x)/x"),
-            "应包含段落内容，实际: {}",
-            text
-        );
+        assert!(text.contains("sin(x)/x"), "应包含段落内容，实际: {}", text);
     }
 
     #[test]

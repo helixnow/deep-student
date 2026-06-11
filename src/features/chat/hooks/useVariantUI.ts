@@ -100,7 +100,7 @@ function isVariantCancellable(status: VariantStatus): boolean {
 // displayBlockIds 是决定消息显示哪些块的核心逻辑，需要确保前后端一致。
 // 
 // 【权威实现位置】：
-//   - 前端：src/chat-v2/core/store/createChatStore.ts - getDisplayBlockIds()
+//   - 前端：src/features/chat/core/store/createChatStore.ts - getDisplayBlockIds()
 //   - 后端：src-tauri/src/chat_v2/types.rs - get_active_block_ids()
 // 
 // 【统一逻辑】：

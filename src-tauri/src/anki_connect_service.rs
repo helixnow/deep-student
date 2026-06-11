@@ -485,8 +485,8 @@ pub async fn create_model_from_template(
         return Err("模板缺少正面/背面 HTML，无法创建 Anki 模型".to_string());
     }
 
-    let is_cloze = template.front_template.contains("{{cloze:")
-        || template.back_template.contains("{{cloze:");
+    let is_cloze =
+        template.front_template.contains("{{cloze:") || template.back_template.contains("{{cloze:");
 
     let params = serde_json::json!({
         "modelName": model_name,
@@ -509,12 +509,60 @@ pub async fn create_model_from_template(
 async fn can_add_notes(notes: &[Note]) -> Result<Vec<bool>, String> {
     let params = serde_json::json!({ "notes": notes });
     let result = invoke_anki_connect_action("canAddNotes", Some(params), 15).await?;
-    serde_json::from_value::<Vec<bool>>(result).map_err(|e| format!("解析 canAddNotes 结果失败: {}", e))
+    serde_json::from_value::<Vec<bool>>(result)
+        .map_err(|e| format!("解析 canAddNotes 结果失败: {}", e))
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum CanAddFalseReason {
+    Duplicate,
+    InvalidNote,
+}
+
+fn classify_can_add_false(
+    note: &Note,
+    model_field_names_cache: &HashMap<String, Option<Vec<String>>>,
+) -> CanAddFalseReason {
+    if note.deck_name.trim().is_empty() || note.model_name.trim().is_empty() {
+        return CanAddFalseReason::InvalidNote;
+    }
+
+    let Some(Some(model_fields)) = model_field_names_cache.get(&note.model_name) else {
+        return CanAddFalseReason::InvalidNote;
+    };
+    if model_fields.is_empty() {
+        return CanAddFalseReason::InvalidNote;
+    }
+
+    if model_fields
+        .iter()
+        .any(|field| !note.fields.contains_key(field))
+    {
+        return CanAddFalseReason::InvalidNote;
+    }
+
+    let Some(first_field) = model_fields.first() else {
+        return CanAddFalseReason::InvalidNote;
+    };
+    if note
+        .fields
+        .get(first_field)
+        .map(|value| value.trim().is_empty())
+        .unwrap_or(true)
+    {
+        return CanAddFalseReason::InvalidNote;
+    }
+
+    if note.fields.values().all(|value| value.trim().is_empty()) {
+        return CanAddFalseReason::InvalidNote;
+    }
+
+    CanAddFalseReason::Duplicate
 }
 
 /// D1 修复版同步：
 /// 1. 缺失模型先用 custom_template 自动 createModel；
-/// 2. canAddNotes 预检把"重复"与"失败"分开；
+/// 2. canAddNotes 预检结合本地字段校验，把"重复"与"失败"分开；
 /// 3. 返回明细报告（added/duplicates/failed/created_models）。
 pub async fn add_notes_to_anki_detailed(
     cards: Vec<AnkiCard>,
@@ -610,13 +658,21 @@ pub async fn add_notes_to_anki_detailed(
 
     let total = notes.len();
 
-    // canAddNotes 预检（D1）：false 视为重复（Anki 对重复笔记 addNotes 返回 null，
-    // 预检可把"已存在"与"真实失败"分开）。预检自身失败则降级为全量直接添加。
+    // canAddNotes 预检（D1）：false 只有在本地结构校验通过时才视为重复；
+    // 模型字段未知、首字段为空、字段缺失等情况记为真实失败，避免把结构错误误报为幂等成功。
     let can_add: Vec<bool> = match can_add_notes(&notes).await {
         Ok(flags) if flags.len() == total => flags,
         Ok(_) | Err(_) => vec![true; total],
     };
-    let duplicates = can_add.iter().filter(|ok| !**ok).count();
+    let duplicates = notes
+        .iter()
+        .zip(can_add.iter())
+        .filter(|(note, ok)| {
+            !**ok
+                && classify_can_add_false(note, &model_field_names_cache)
+                    == CanAddFalseReason::Duplicate
+        })
+        .count();
 
     let addable_notes: Vec<&Note> = notes
         .iter()
@@ -643,7 +699,7 @@ pub async fn add_notes_to_anki_detailed(
     }
 
     let added = note_ids.iter().filter(|id| id.is_some()).count();
-    let failed = total - added - duplicates;
+    let failed = total.saturating_sub(added + duplicates);
 
     Ok(AnkiSyncReport {
         note_ids,
@@ -747,5 +803,74 @@ pub async fn import_apkg(path: &str) -> Result<bool, String> {
             }
         }
         Err(e) => Err(format!("请求AnkiConnect导入失败: {}", e)),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn basic_note(front: &str, back: &str) -> Note {
+        let mut fields = HashMap::new();
+        fields.insert("Front".to_string(), front.to_string());
+        fields.insert("Back".to_string(), back.to_string());
+        Note {
+            deck_name: "Default".to_string(),
+            model_name: "Basic".to_string(),
+            fields,
+            tags: vec![],
+        }
+    }
+
+    fn basic_model_cache() -> HashMap<String, Option<Vec<String>>> {
+        HashMap::from([(
+            "Basic".to_string(),
+            Some(vec!["Front".to_string(), "Back".to_string()]),
+        )])
+    }
+
+    #[test]
+    fn can_add_false_with_valid_note_is_duplicate() {
+        let note = basic_note("question", "answer");
+        let cache = basic_model_cache();
+
+        assert_eq!(
+            classify_can_add_false(&note, &cache),
+            CanAddFalseReason::Duplicate
+        );
+    }
+
+    #[test]
+    fn can_add_false_with_empty_first_field_is_failure() {
+        let note = basic_note("   ", "answer");
+        let cache = basic_model_cache();
+
+        assert_eq!(
+            classify_can_add_false(&note, &cache),
+            CanAddFalseReason::InvalidNote
+        );
+    }
+
+    #[test]
+    fn can_add_false_with_unknown_model_fields_is_failure() {
+        let note = basic_note("question", "answer");
+        let cache = HashMap::from([("Basic".to_string(), None)]);
+
+        assert_eq!(
+            classify_can_add_false(&note, &cache),
+            CanAddFalseReason::InvalidNote
+        );
+    }
+
+    #[test]
+    fn can_add_false_with_missing_model_field_is_failure() {
+        let mut note = basic_note("question", "answer");
+        note.fields.remove("Back");
+        let cache = basic_model_cache();
+
+        assert_eq!(
+            classify_can_add_false(&note, &cache),
+            CanAddFalseReason::InvalidNote
+        );
     }
 }

@@ -3,7 +3,7 @@
  *
  * 当 Agent 调用 attempt_completion 工具时显示，展示任务完成结果。
  *
- * 设计文档：src/chat-v2/docs/29-ChatV2-Agent能力增强改造方案.md 第 5.4 节
+ * 设计文档：src/features/chat/docs/29-ChatV2-Agent能力增强改造方案.md 第 5.4 节
  */
 
 import React, { useCallback } from 'react';

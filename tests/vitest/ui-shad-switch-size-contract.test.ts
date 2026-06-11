@@ -12,7 +12,7 @@ describe('shared switch size contract', () => {
     'utf-8'
   );
   const advancedPanelSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/plugins/chat/AdvancedPanel.tsx'),
+    resolve(process.cwd(), 'src/features/chat/plugins/chat/AdvancedPanel.tsx'),
     'utf-8'
   );
   const apiEditModalSource = readFileSync(

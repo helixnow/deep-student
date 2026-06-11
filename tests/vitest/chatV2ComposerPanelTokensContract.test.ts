@@ -8,15 +8,15 @@ describe('chat v2 composer panel semantic token contract', () => {
     'utf-8'
   );
   const overlaySource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/components/input-bar/ComposerPanelOverlay.tsx'),
+    resolve(process.cwd(), 'src/features/chat/components/input-bar/ComposerPanelOverlay.tsx'),
     'utf-8'
   );
   const inputBarSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/components/input-bar/InputBarUI.tsx'),
+    resolve(process.cwd(), 'src/features/chat/components/input-bar/InputBarUI.tsx'),
     'utf-8'
   );
   const composerPanelSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/components/input-bar/ComposerPanel/ComposerPanel.tsx'),
+    resolve(process.cwd(), 'src/features/chat/components/input-bar/ComposerPanel/ComposerPanel.tsx'),
     'utf-8'
   );
 

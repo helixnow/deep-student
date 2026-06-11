@@ -199,8 +199,7 @@ pub async fn add_cards_to_anki_connect(
     }
 
     let mut card_models: HashMap<String, String> = HashMap::new();
-    let mut templates_by_model: HashMap<String, crate::models::CustomAnkiTemplate> =
-        HashMap::new();
+    let mut templates_by_model: HashMap<String, crate::models::CustomAnkiTemplate> = HashMap::new();
     for card in &selected_cards {
         let Some(template_id) = card
             .template_id

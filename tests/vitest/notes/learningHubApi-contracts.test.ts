@@ -4,7 +4,7 @@ import {
   canReferenceToChat,
   mapSourceToResourceType,
   type SourceDatabase,
-} from '@/components/notes/learningHubApi';
+} from '@/features/notes/learningHubApi';
 
 describe('learningHubApi source-db contracts', () => {
   it('supports modern source databases in type contracts', () => {

@@ -677,9 +677,8 @@ mod tests {
 
     #[test]
     fn test_parse_verdict_and_score() {
-        let (verdict, score) = parse_verdict_and_score(
-            "分析过程…… <verdict>partial</verdict> <score value=\"65\"/>",
-        );
+        let (verdict, score) =
+            parse_verdict_and_score("分析过程…… <verdict>partial</verdict> <score value=\"65\"/>");
         assert!(matches!(verdict, Some(Verdict::Partial)));
         assert_eq!(score, Some(65));
 

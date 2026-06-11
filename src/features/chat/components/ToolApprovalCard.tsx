@@ -3,7 +3,7 @@
  *
  * 显示敏感工具的审批请求，让用户决定是否允许执行。
  *
- * 设计文档：src/chat-v2/docs/29-ChatV2-Agent能力增强改造方案.md 第 4.6 节
+ * 设计文档：src/features/chat/docs/29-ChatV2-Agent能力增强改造方案.md 第 4.6 节
  */
 
 import React, { useState, useEffect, useCallback, useMemo } from 'react';

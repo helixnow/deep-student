@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 describe('chat v2 send button contract', () => {
-  const inputBarSource = readFileSync(resolve(process.cwd(), 'src/chat-v2/components/input-bar/InputBarUI.tsx'), 'utf-8');
+  const inputBarSource = readFileSync(resolve(process.cwd(), 'src/features/chat/components/input-bar/InputBarUI.tsx'), 'utf-8');
   const packageSource = readFileSync(resolve(process.cwd(), 'package.json'), 'utf-8');
   const shadcnVariablesSource = readFileSync(resolve(process.cwd(), 'src/styles/shadcn-variables.css'), 'utf-8');
   const themeColorsSource = readFileSync(resolve(process.cwd(), 'src/styles/theme-colors.css'), 'utf-8');

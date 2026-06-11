@@ -6,9 +6,9 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
-import { useFolderStorage } from '@/components/notes/hooks/useFolderStorage';
+import { useFolderStorage } from '@/features/notes/hooks/useFolderStorage';
 import type { NoteItem } from '@/utils/notesApi';
-import type { ReferenceNode, SourceDatabase } from '@/components/notes/types/reference';
+import type { ReferenceNode, SourceDatabase } from '@/features/notes/types/reference';
 
 // Mock NotesAPI
 vi.mock('@/utils/notesApi', () => ({

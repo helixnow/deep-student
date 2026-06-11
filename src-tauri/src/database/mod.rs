@@ -5526,7 +5526,7 @@ impl Database {
         Ok(tasks)
     }
 
-    /// 🔧 Phase 1: 恢复卡住的制卡任务（手动触发，应用运行中）
+    /// 🔧 Phase 1: 恢复卡住的制卡任务
     /// 将 Processing/Streaming 状态超过给定分钟数的任务标记为 Failed（中断），
     /// 用户可通过"重试失败任务"续跑。
     ///

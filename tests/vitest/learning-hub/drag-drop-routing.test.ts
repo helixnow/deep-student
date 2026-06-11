@@ -2,12 +2,12 @@ import { describe, expect, it } from 'vitest';
 import {
   consumePathsDropHandledFlag,
   isDragDropBlockedView,
-} from '@/components/learning-hub/dragDropRouting';
+} from '@/features/learning-hub/dragDropRouting';
 import {
   getCreatableFolderId,
   isRealFolderId,
   isSpecialViewFolderId,
-} from '@/components/learning-hub/viewGuards';
+} from '@/features/learning-hub/viewGuards';
 
 describe('learning-hub drag drop routing', () => {
   it('blocks drag drop in special views only', () => {

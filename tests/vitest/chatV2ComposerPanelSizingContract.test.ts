@@ -4,23 +4,23 @@ import { describe, expect, it } from 'vitest';
 
 describe('chat v2 composer panel sizing contract', () => {
   const overlaySource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/components/input-bar/ComposerPanelOverlay.tsx'),
+    resolve(process.cwd(), 'src/features/chat/components/input-bar/ComposerPanelOverlay.tsx'),
     'utf-8'
   );
   const inputBarSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/components/input-bar/InputBarUI.tsx'),
+    resolve(process.cwd(), 'src/features/chat/components/input-bar/InputBarUI.tsx'),
     'utf-8'
   );
   const skillSelectorSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/skills/components/SkillSelector.tsx'),
+    resolve(process.cwd(), 'src/features/chat/skills/components/SkillSelector.tsx'),
     'utf-8'
   );
   const mcpPanelSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/plugins/chat/McpPanel.tsx'),
+    resolve(process.cwd(), 'src/features/chat/plugins/chat/McpPanel.tsx'),
     'utf-8'
   );
   const composerPanelSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/components/input-bar/ComposerPanel/ComposerPanel.tsx'),
+    resolve(process.cwd(), 'src/features/chat/components/input-bar/ComposerPanel/ComposerPanel.tsx'),
     'utf-8'
   );
 

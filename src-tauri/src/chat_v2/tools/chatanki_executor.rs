@@ -5147,9 +5147,9 @@ fn is_limit_cancelled_task(t: &crate::models::DocumentTask) -> bool {
 
 /// 是否存在"用户/系统主动取消"的任务（排除 limit 取消）。
 fn tasks_user_cancelled(tasks: &[crate::models::DocumentTask]) -> bool {
-    tasks
-        .iter()
-        .any(|t| matches!(t.status, crate::models::TaskStatus::Cancelled) && !is_limit_cancelled_task(t))
+    tasks.iter().any(|t| {
+        matches!(t.status, crate::models::TaskStatus::Cancelled) && !is_limit_cancelled_task(t)
+    })
 }
 
 /// 是否存在因达到全局上限而停止的任务。

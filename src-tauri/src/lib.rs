@@ -1945,9 +1945,9 @@ fn build_app_state(
         });
     }
 
-    // 🔧 Phase 1: 启动时恢复卡住的 Anki 制卡任务
-    // 进程刚启动，不可能存在真正运行中的任务 → 无条件把 Processing/Streaming 标记为 Failed（可重试）
-    match anki_database.recover_stuck_document_tasks_older_than_minutes(0) {
+    // 🔧 Phase 1: 启动时恢复卡住的 Anki 制卡任务。
+    // 保留时间阈值，避免多实例/后台任务场景下把刚更新过的任务误标为 Failed。
+    match anki_database.recover_stuck_document_tasks() {
         Ok(count) if count > 0 => {
             tracing::info!("[AppSetup] Recovered {} stuck Anki document tasks", count);
         }

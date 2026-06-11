@@ -577,8 +577,7 @@ impl StreamingAnkiService {
                 - 数量由内容的知识点密度决定：知识点少就少生成，不要为凑数而拆分或编造\n\
                 - 优先覆盖内容中最重要的知识点，确保每张卡片高质量\n\
                 - 生成到第 {} 张后必须立即停止，不要再输出任何卡片\n\n",
-                options.max_cards_per_mistake,
-                options.max_cards_per_mistake
+                options.max_cards_per_mistake, options.max_cards_per_mistake
             )
         } else {
             "根据内容的信息密度生成适量的高质量卡片，充分覆盖所有知识点。\n\n".to_string()

@@ -5,11 +5,11 @@ import { describe, expect, it } from 'vitest';
 describe('archive session toast contract', () => {
   it('announces archived sessions with the settings hint from every session archive path', () => {
     const modernSidebarSource = readFileSync(resolve(process.cwd(), 'src/components/ModernSidebar.tsx'), 'utf-8');
-    const sessionEditSource = readFileSync(resolve(process.cwd(), 'src/chat-v2/pages/useSessionEdit.ts'), 'utf-8');
+    const sessionEditSource = readFileSync(resolve(process.cwd(), 'src/features/chat/pages/useSessionEdit.ts'), 'utf-8');
     const zhChatV2 = readFileSync(resolve(process.cwd(), 'src/locales/zh-CN/chatV2.json'), 'utf-8');
     const enChatV2 = readFileSync(resolve(process.cwd(), 'src/locales/en-US/chatV2.json'), 'utf-8');
 
-    const toastHelperSource = readFileSync(resolve(process.cwd(), 'src/chat-v2/utils/archiveSessionToast.ts'), 'utf-8');
+    const toastHelperSource = readFileSync(resolve(process.cwd(), 'src/features/chat/utils/archiveSessionToast.ts'), 'utf-8');
 
     expect(modernSidebarSource).toContain('showArchiveSessionToast');
     expect(sessionEditSource).toContain('showArchiveSessionToast');

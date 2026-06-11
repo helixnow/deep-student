@@ -3,7 +3,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 
 describe('ChatV2 icon import contract', () => {
-  const source = readFileSync(resolve(process.cwd(), 'src/chat-v2/pages/ChatV2Page.tsx'), 'utf-8');
+  const source = readFileSync(resolve(process.cwd(), 'src/features/chat/pages/ChatV2Page.tsx'), 'utf-8');
 
   it('keeps ChatV2 page icons on the active Phosphor import set', () => {
     expect(source).toMatch(/import\s*\{[^}]*\bChat\b[^}]*\bBooks\b[^}]*\bArrowSquareOut\b[^}]*\}\s*from '@phosphor-icons\/react';/);

@@ -44,7 +44,7 @@ import {
 
   // 工厂函数
   createReferenceNode,
-} from '../../../src/components/notes/types/reference';
+} from '../../../src/features/notes/types/reference';
 
 // ============================================================================
 // ID 常量测试

@@ -5,7 +5,7 @@
  * 更新 Store 中的 pendingApprovalRequest 状态，
  * 触发前端显示审批对话框。
  *
- * 设计文档：src/chat-v2/docs/29-ChatV2-Agent能力增强改造方案.md 第 4.6 节
+ * 设计文档：src/features/chat/docs/29-ChatV2-Agent能力增强改造方案.md 第 4.6 节
  */
 
 import type { EventHandler } from '../../registry/eventRegistry';

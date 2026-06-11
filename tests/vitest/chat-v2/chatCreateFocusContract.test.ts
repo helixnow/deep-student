@@ -4,11 +4,11 @@ import { resolve } from 'node:path';
 
 describe('chat create focus contract', () => {
   const sessionLifecycleSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/pages/useSessionLifecycle.ts'),
+    resolve(process.cwd(), 'src/features/chat/pages/useSessionLifecycle.ts'),
     'utf-8'
   );
   const inputBarSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/components/input-bar/InputBarUI.tsx'),
+    resolve(process.cwd(), 'src/features/chat/components/input-bar/InputBarUI.tsx'),
     'utf-8'
   );
 

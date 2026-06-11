@@ -20,7 +20,7 @@ describe('stream reconnect source contract', () => {
 
   it('emits a session-level reconnect event that the frontend can toast', () => {
     const events = readFileSync(join(repoRoot, 'src-tauri/src/chat_v2/events.rs'), 'utf8');
-    const adapter = readFileSync(join(repoRoot, 'src/chat-v2/adapters/TauriAdapter.ts'), 'utf8');
+    const adapter = readFileSync(join(repoRoot, 'src/features/chat/adapters/TauriAdapter.ts'), 'utf8');
 
     expect(events).toContain('STREAM_RECONNECT');
     expect(events).toContain('stream_reconnect');

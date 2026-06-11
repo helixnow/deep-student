@@ -5,19 +5,19 @@ import { resolve } from 'node:path';
 describe('app chat header title contract', () => {
   const appSource = readFileSync(resolve(process.cwd(), 'src/App.tsx'), 'utf-8');
   const sessionManagerSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/core/session/sessionManager.ts'),
+    resolve(process.cwd(), 'src/features/chat/core/session/sessionManager.ts'),
     'utf-8'
   );
   const sessionTypesSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/core/session/types.ts'),
+    resolve(process.cwd(), 'src/features/chat/core/session/types.ts'),
     'utf-8'
   );
   const groupManagementSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/hooks/useGroupManagement.ts'),
+    resolve(process.cwd(), 'src/features/chat/hooks/useGroupManagement.ts'),
     'utf-8'
   );
   const chatPageEventsSource = readFileSync(
-    resolve(process.cwd(), 'src/chat-v2/pages/useChatPageEvents.ts'),
+    resolve(process.cwd(), 'src/features/chat/pages/useChatPageEvents.ts'),
     'utf-8'
   );
 
