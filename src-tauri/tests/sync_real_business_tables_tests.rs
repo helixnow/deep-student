@@ -453,7 +453,10 @@ fn b04_resources_large_inline_data() {
             r.get(0)
         })
         .unwrap();
-    assert_eq!(data.len(), 4 * 1024 * 1024);
+    // 云端 updated_at(2000) 严格新于本地(1000)，LWW 下云端 5MB 数据获胜；
+    // 大字段 inline 数据应完整落库不被截断
+    assert_eq!(data.len(), 5 * 1024 * 1024);
+    assert!(data.starts_with('y'));
 }
 
 /// B05：resources.hash UNIQUE 约束冲突 —— 两端不同 id 但相同 hash

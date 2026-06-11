@@ -184,6 +184,15 @@ impl CryptoService {
         Ok(serde_json::to_string(&encrypted)?)
     }
 
+    /// 轮换主密钥：在 `new_path` 目录下强制生成全新的 `.master_key` 并覆盖同名旧文件。
+    ///
+    /// # 安全语义（重要）
+    ///
+    /// 本方法**只换钥匙，不搬数据**：旧密钥加密的所有密文（如已存储的 API Key）
+    /// 在轮换后将永久无法解密。调用方若需保留既有数据，必须自行实现
+    /// "旧实例解密 → 新实例重加密" 的迁移流程后再丢弃旧实例。
+    /// 若 `new_path` 与当前实例的密钥目录相同，旧密钥文件会被原地覆盖，
+    /// 该操作不可逆。当前仅测试使用，生产接入前需先补数据重加密编排。
     pub fn rotate_master_key(&self, new_path: &Path) -> Result<Self> {
         // 修复两个问题：
         // 1. new_path 是目录，必须拼接 .master_key 文件名（旧实现直接把目录

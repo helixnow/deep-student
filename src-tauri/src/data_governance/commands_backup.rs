@@ -266,26 +266,29 @@ fn should_apply_change_by_strategy(
                         .and_then(SyncManager::timestamp_value_to_lww_string)
                 })
                 .or_else(|| Some(change.changed_at.clone()));
-            let cloud_device_id = change
-                .source_device_id
-                .as_deref()
-                .unwrap_or("cloud-unknown");
-
             // KeepLatest：使用统一 LWW key（timestamp → device_id → content）裁决。
+            // 设备分量必须是数据属性（写入者），不可用评估方常量（见 lww_device_pair）。
             match (local_ts, cloud_ts, change.operation) {
-                (Some(l), Some(c), _) => Ok(SyncManager::compare_lww_timestamps(
-                    &l,
-                    SyncManager::lww_device_id_from_data(&local, "local-unknown"),
-                    &local.to_string(),
-                    &c,
-                    cloud_device_id,
-                    change
-                        .data
-                        .as_ref()
-                        .map(|data| data.to_string())
-                        .as_deref()
-                        .unwrap_or(""),
-                ) != std::cmp::Ordering::Greater),
+                (Some(l), Some(c), _) => {
+                    let (local_dev, cloud_dev) = SyncManager::lww_device_pair(
+                        &local,
+                        change.data.as_ref(),
+                        change.source_device_id.as_deref(),
+                    );
+                    Ok(SyncManager::compare_lww_timestamps(
+                        &l,
+                        local_dev,
+                        &local.to_string(),
+                        &c,
+                        cloud_dev,
+                        change
+                            .data
+                            .as_ref()
+                            .map(|data| data.to_string())
+                            .as_deref()
+                            .unwrap_or(""),
+                    ) != std::cmp::Ordering::Greater)
+                }
                 (Some(_), None, _) => Ok(false),
                 (None, Some(_), _) => Ok(true),
                 (None, None, ChangeOperation::Delete) => Ok(false),
@@ -496,6 +499,30 @@ pub(super) fn apply_downloaded_changes_to_databases(
                 );
                 agg.total_failed += db_changes.len();
                 agg.db_errors.push((db_name.clone(), err_msg));
+            }
+        }
+
+        // [P1] 隔离区自动重放：时钟漂移、偶发性错误等"暂时不可应用"的隔离项
+        // 随时间推移可自愈；每次同步应用后自动重试（带 attempts 上限），
+        // 成功即清除，持续失败的条目留给 UI 手动处理。
+        match SyncManager::replay_quarantined_changes(
+            &conn,
+            Some(&id_column_map),
+            SyncManager::QUARANTINE_AUTO_REPLAY_MAX_ATTEMPTS,
+        ) {
+            Ok(replayed) if replayed > 0 => {
+                agg.total_success += replayed;
+                info!(
+                    "[data_governance] 数据库 {} 隔离区自动重放成功 {} 条",
+                    db_name, replayed
+                );
+            }
+            Ok(_) => {}
+            Err(e) => {
+                warn!(
+                    "[data_governance] 数据库 {} 隔离区自动重放失败（忽略）: {}",
+                    db_name, e
+                );
             }
         }
     }

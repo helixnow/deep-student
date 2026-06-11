@@ -713,30 +713,49 @@ fn r21_mixed_format_cmp_is_deterministic() {
     assert!(result.success);
 }
 
-/// R22：两端 HLC 完全相同 —— 视为 Equal（tie，保留本地）
+/// R22：两端 HLC 完全相同 —— 平局必须由内容 tiebreaker 决定且全设备同判。
+///
+/// 旧实现用 "local-unknown" > "cloud-unknown" 评估方常量，平局时每台设备
+/// 都判"本地"赢，两台设备得出相反结论、永不收敛（P0）。新实现：写入者
+/// 未知时设备分量中性化，平局交给内容比较——内容随数据传播，双方一致。
 #[test]
-fn r22_identical_hlc_treated_as_equal() {
+fn r22_identical_hlc_tie_resolved_by_content_convergently() {
     use deep_student_lib::data_governance::sync::ConflictRecord;
     use deep_student_lib::data_governance::sync::MergeStrategy;
 
     let hlc = Hlc::new(1_700_000_000_000, 42).to_string();
 
-    let conflicts = vec![ConflictRecord {
+    let make_conflict = |local: serde_json::Value, cloud: serde_json::Value| ConflictRecord {
         database_name: "test".to_string(),
         table_name: "items".to_string(),
         record_id: "n1".to_string(),
         local_version: 1,
         cloud_version: 1,
         local_updated_at: hlc.clone(),
-        cloud_updated_at: hlc,
-        local_data: json!({"x": 1}),
-        cloud_data: json!({"x": 2}),
-    }];
+        cloud_updated_at: hlc.clone(),
+        local_data: local,
+        cloud_data: cloud,
+    };
 
-    let result = SyncManager::apply_merge_strategy(MergeStrategy::KeepLatest, &conflicts).unwrap();
-    // 相等时 KeepLatest 的实现选本地（记录当前行为）
-    assert!(result.success);
-    assert_eq!(result.kept_local, 1);
+    // 设备 A 视角：local={"x":1}, cloud={"x":2} → 内容 "2" > "1" → 用云端
+    let result_a = SyncManager::apply_merge_strategy(
+        MergeStrategy::KeepLatest,
+        &[make_conflict(json!({"x": 1}), json!({"x": 2}))],
+    )
+    .unwrap();
+    assert!(result_a.success);
+    assert_eq!(result_a.used_cloud, 1);
+
+    // 设备 B 视角（同一对数据反向）：local={"x":2}, cloud={"x":1} → 保留本地
+    let result_b = SyncManager::apply_merge_strategy(
+        MergeStrategy::KeepLatest,
+        &[make_conflict(json!({"x": 2}), json!({"x": 1}))],
+    )
+    .unwrap();
+    assert!(result_b.success);
+    assert_eq!(result_b.kept_local, 1);
+
+    // 两台设备都收敛到 {"x":2}：A 采纳云端，B 保留本地，结论一致。
 }
 
 /// R23：时钟偏差容差 vs HLC 精确——HLC 格式时 counter 差哪怕 1 也决胜，

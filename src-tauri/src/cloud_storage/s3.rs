@@ -484,7 +484,17 @@ impl CloudStorage for S3Storage {
 
             // 检查是否还有更多结果
             if output.is_truncated.unwrap_or(false) {
-                continuation_token = output.next_continuation_token;
+                match output.next_continuation_token {
+                    Some(token) => continuation_token = Some(token),
+                    None => {
+                        // is_truncated=true 却没有 continuation token：
+                        // 不带 token 重发只会拿到同一页（死循环），静默 break 则
+                        // 返回截断列表（上层可能据此误判删除/上传）。如实报错。
+                        return Err(AppError::network(
+                            "S3 列表被截断但未返回 continuation token，无法安全继续分页".to_string(),
+                        ));
+                    }
+                }
             } else {
                 break;
             }

@@ -191,46 +191,46 @@ fn adv_02_clock_ahead_is_rejected_by_drift_guard() {
 
 /// **A.03** 同秒并发：A 和 B 在同一秒对同一记录写入，时间戳相等
 ///
-/// LWW 门判定"严格晚于"才跳过。相等时不跳过 → 后 apply 者胜。
-/// 关键是两端必须用相同的排序规则才能收敛。
+/// 关键是两端必须用相同的排序规则才能收敛：平局由内容 tiebreaker 决定
+/// （内容随数据传播、双方一致可见），与到达顺序无关。
+/// 旧实现"先到者保留"是到达顺序依赖的——A 先收到 A 保 A，B 先收到 B 保 B，
+/// 两台设备永不收敛（P0）。
 #[test]
 fn adv_03_same_second_concurrent_writes() {
-    let conn = new_db();
     let same_ts = "2026-05-01T12:00:00Z";
+    let data_a = json!({
+        "id": "n1",
+        "title": "a_write",
+        "body": "",
+        "updated_at": same_ts,
+        "deleted_at": serde_json::Value::Null,
+    });
+    let data_b = json!({
+        "id": "n1",
+        "title": "b_write",
+        "body": "",
+        "updated_at": same_ts,
+        "deleted_at": serde_json::Value::Null,
+    });
 
-    // 先写 A 的变更
-    let change_a = build_change(
-        "n1",
-        ChangeOperation::Insert,
-        json!({
-            "id": "n1",
-            "title": "a_write",
-            "body": "",
-            "updated_at": same_ts,
-            "deleted_at": serde_json::Value::Null,
-        }),
-        same_ts,
-    );
-    SyncManager::apply_downloaded_changes(&conn, &[change_a], None).unwrap();
+    // 顺序 1：先 A 后 B
+    let conn1 = new_db();
+    let change_a = build_change("n1", ChangeOperation::Insert, data_a.clone(), same_ts);
+    let change_b = build_change("n1", ChangeOperation::Update, data_b.clone(), same_ts);
+    SyncManager::apply_downloaded_changes(&conn1, &[change_a], None).unwrap();
+    SyncManager::apply_downloaded_changes(&conn1, &[change_b], None).unwrap();
+    let (title1, _, _, _, _) = get_item(&conn1, "n1").unwrap();
 
-    // 现在 B 的变更带相同时间戳
-    let change_b = build_change(
-        "n1",
-        ChangeOperation::Update,
-        json!({
-            "id": "n1",
-            "title": "b_write",
-            "body": "",
-            "updated_at": same_ts,
-            "deleted_at": serde_json::Value::Null,
-        }),
-        same_ts,
-    );
-    SyncManager::apply_downloaded_changes(&conn, &[change_b], None).unwrap();
+    // 顺序 2：先 B 后 A
+    let conn2 = new_db();
+    let change_b2 = build_change("n1", ChangeOperation::Insert, data_b, same_ts);
+    let change_a2 = build_change("n1", ChangeOperation::Update, data_a, same_ts);
+    SyncManager::apply_downloaded_changes(&conn2, &[change_b2], None).unwrap();
+    SyncManager::apply_downloaded_changes(&conn2, &[change_a2], None).unwrap();
+    let (title2, _, _, _, _) = get_item(&conn2, "n1").unwrap();
 
-    let (title, _, _, _, _) = get_item(&conn, "n1").unwrap();
-    // 时间戳相等时保留先到值，避免重放顺序抖动导致同一批数据反复改写。
-    assert_eq!(title, "a_write", "同时间戳下先到者稳定保留");
+    // 收敛性：两种到达顺序必须得到同一结果（内容平局决胜，与顺序无关）
+    assert_eq!(title1, title2, "同时间戳并发写入必须与到达顺序无关地收敛");
 }
 
 /// **A.04** 时间戳格式差异：ISO "2026-05-01T12:00:00Z" vs SQLite "2026-05-01 12:00:00"

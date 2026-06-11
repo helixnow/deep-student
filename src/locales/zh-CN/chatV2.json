@@ -548,6 +548,8 @@
         "syncFailedDetail": "同步失败：未导入任何卡片（请检查 AnkiConnect/笔记类型/重复卡片）",
         "syncPartialTitle": "部分同步到 Anki",
         "syncPartialDetail": "已导入 {{added}} 张，{{failed}} 张失败。请检查 AnkiConnect / 笔记类型 / 重复卡片 / 字段映射。",
+        "syncAllDuplicatesTitle": "卡片均已存在",
+        "syncAllDuplicatesDetail": "{{count}} 张卡片均已存在于 Anki 中（重复跳过），未新增卡片。",
         "syncedCount": "已同步 {{count}} 张到 Anki",
         "syncedCountWithHint": "已同步 {{count}} 张到 Anki。下一步：打开 Anki 复核。",
         "syncFailedWithHint": "同步失败。请确认 Anki 正在运行且 AnkiConnect 已启用后重试。",

@@ -565,7 +565,13 @@ export class CardAgent {
 
           try {
             const noteType = input.noteType || 'Basic';
-            const noteIds = await invoke<(number | null)[]>('add_cards_to_anki_connect', {
+            const report = await invoke<{
+              noteIds: (number | null)[];
+              added: number;
+              duplicates: number;
+              failed: number;
+              createdModels: string[];
+            }>('add_cards_to_anki_connect', {
               selected_cards: selectedCards,
               selectedCards,
               deck_name: input.deckName,
@@ -574,10 +580,12 @@ export class CardAgent {
               noteType,
             });
 
-            const importedCount = noteIds.filter(id => id !== null).length;
+            // 全部已存在（added=0, failed=0, duplicates>0）视为幂等成功
+            const allDuplicates =
+              report.added === 0 && report.failed === 0 && report.duplicates > 0;
             return {
-              ok: importedCount > 0,
-              importedCount,
+              ok: report.added > 0 || allDuplicates,
+              importedCount: report.added,
             };
           } catch (importError: unknown) {
             console.warn('[CardAgent] AnkiConnect import failed:', importError);

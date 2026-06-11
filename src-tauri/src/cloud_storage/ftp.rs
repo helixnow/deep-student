@@ -67,8 +67,17 @@ impl FtpStorage {
         matches!(host.as_str(), "localhost" | "127.0.0.1" | "::1")
     }
 
-    /// 创建 FTP 客户端连接
+    /// 创建 FTP 客户端连接（带总超时：黑洞主机/防火墙 DROP 下 connect
+    /// 或欢迎横幅读取可能无限挂起，必须有上限）
     async fn create_client(&self) -> Result<FtpClient> {
+        tokio::time::timeout(Duration::from_secs(45), self.create_client_inner())
+            .await
+            .map_err(|_| {
+                AppError::network(format!("FTP 连接超时（45 秒）: {}:{}", self.host, self.port))
+            })?
+    }
+
+    async fn create_client_inner(&self) -> Result<FtpClient> {
         let address = format!("{}:{}", self.host, self.port);
 
         tracing::debug!("[FtpStorage] 正在连接到 {}", address);

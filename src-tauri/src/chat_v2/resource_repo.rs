@@ -104,13 +104,14 @@ impl ResourceRepo {
         let created_at = Utc::now().timestamp_millis();
 
         // data 已经是字符串（文本或 base64），直接存储。
-        // 注意：列清单必须与 V20260130 init 的 resources 表对齐——
-        // 旧代码引用的 storage_mode/updated_at 列来自已废弃的迁移系列，
-        // 当前 schema 中不存在，带上会导致 "no such column" 错误。
+        // 注意：storage_mode 列从未存在于当前迁移系列（V20260130 init 起），
+        // 不可引用；updated_at 由 V20260523 补充（TEXT，无默认值），需要在
+        // INSERT 时显式写入毫秒时间戳，否则同步冲突解析拿到 NULL 无法比较
+        // 新旧（sync 的 parse_flexible_timestamp 支持纯数字毫秒串）。
         conn.execute(
             r#"
-            INSERT INTO resources (id, hash, type, source_id, data, metadata_json, ref_count, created_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7)
+            INSERT INTO resources (id, hash, type, source_id, data, metadata_json, ref_count, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, 0, ?7, ?8)
             "#,
             params![
                 resource_id,
@@ -120,6 +121,7 @@ impl ResourceRepo {
                 params.data,
                 metadata_json,
                 created_at,
+                created_at.to_string(),
             ],
         )?;
 

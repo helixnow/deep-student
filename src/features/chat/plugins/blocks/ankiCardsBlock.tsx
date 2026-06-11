@@ -736,6 +736,15 @@ const ActionButtons: React.FC<{
             failed: result.warning.details.failed,
           })
         );
+      } else if (result.warning?.code === 'anki_sync_all_duplicates') {
+        // 全部已存在：幂等成功，提示而非报错
+        showGlobalNotification(
+          'info',
+          t('blocks.ankiCards.action.syncAllDuplicatesTitle'),
+          t('blocks.ankiCards.action.syncAllDuplicatesDetail', {
+            count: result.warning.details.duplicates,
+          })
+        );
       } else {
         showGlobalNotification('success', t('blocks.ankiCards.action.syncedCountWithHint', { count: result.importedCount }));
       }

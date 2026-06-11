@@ -384,6 +384,27 @@ pub enum SyncError {
 
     #[error("Not implemented: {0}")]
     NotImplemented(String),
+
+    /// 云端变更时间戳超出本地 wall clock 未来容忍窗口（疑似时钟漂移/篡改）。
+    /// 此类变更必须进入隔离区（可见、可重放），绝不允许静默丢弃——
+    /// 否则一台时钟超前的设备的全部写入会被其他设备永久忽略（违反 INV-1）。
+    #[error("Clock drift suspected: {table}.{record_id} timestamp is {drift_ms}ms in the future")]
+    ClockDriftSuspected {
+        table: String,
+        record_id: String,
+        drift_ms: i64,
+    },
+}
+
+/// 云端 UPSERT 新鲜度评估结果
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum UpsertFreshness {
+    /// 正常应用
+    Proceed,
+    /// 本地严格更新（LWW），跳过这条云端变更
+    SkipStale,
+    /// 云端时间戳超前本地 wall clock 过多，疑似漂移 → 调用方必须隔离而非丢弃
+    SuspectDrift { drift_ms: i64 },
 }
 
 /// 同步字段 SQL（用于需要同步的表）
@@ -411,11 +432,24 @@ pub struct WorkspacesManifest {
 }
 
 /// 单个工作区数据库的同步条目
+///
+/// [P1 churn 修复] 两个哈希字段承担不同职责，不可混用：
+/// - `sha256`：**传输对象**（VACUUM INTO 快照）的哈希，用于下载完整性校验；
+/// - `source_sha256`：上传时**本地源文件**的哈希，用于变更检测。
+///   VACUUM 会重写页布局，快照哈希与活动文件哈希几乎永不相等——
+///   旧实现拿 `sha256` 与本地活动文件哈希比较，导致每次同步都误判
+///   "已变更" 而把所有工作区 DB 原样重传。
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct WorkspaceEntry {
     pub sha256: String,
     pub size: u64,
     pub updated_at: String,
+    /// 上传时本地源文件（活动 .db）的哈希；旧清单无此字段（None 时退化为旧行为）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub source_sha256: Option<String>,
+    /// 上传者设备 ID（审计/调试）
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub device_id: Option<String>,
 }
 
 /// VFS blob 云同步清单（内容寻址）
@@ -873,13 +907,15 @@ impl SyncManager {
                     resolved_count += 1;
                 }
                 MergeStrategy::KeepLatest => {
-                    // 比较时间戳，保留最新的；legacy wrapper uses stable fallback IDs.
+                    // 比较时间戳，保留最新的；平局由写入者 device_id / 内容 tiebreaker 决定。
+                    let (local_dev, cloud_dev) =
+                        Self::lww_device_pair(&conflict.local_data, Some(&conflict.cloud_data), None);
                     if Self::compare_lww_timestamps(
                         &conflict.local_updated_at,
-                        Self::lww_device_id_from_data(&conflict.local_data, "local-unknown"),
+                        local_dev,
                         &conflict.local_data.to_string(),
                         &conflict.cloud_updated_at,
-                        Self::lww_device_id_from_data(&conflict.cloud_data, "cloud-unknown"),
+                        cloud_dev,
                         &conflict.cloud_data.to_string(),
                     ) != std::cmp::Ordering::Less
                     {
@@ -3177,12 +3213,14 @@ impl SyncManager {
                         serde_json::to_string(&conflict.local_data).unwrap_or_default();
                     let cloud_content =
                         serde_json::to_string(&conflict.cloud_data).unwrap_or_default();
+                    let (local_dev, cloud_dev) =
+                        Self::lww_device_pair(&conflict.local_data, Some(&conflict.cloud_data), None);
                     match Self::compare_lww_timestamps(
                         &conflict.local_updated_at,
-                        Self::lww_device_id_from_data(&conflict.local_data, "local-unknown"),
+                        local_dev,
                         &local_content,
                         &conflict.cloud_updated_at,
-                        Self::lww_device_id_from_data(&conflict.cloud_data, "cloud-unknown"),
+                        cloud_dev,
                         &cloud_content,
                     ) {
                         std::cmp::Ordering::Greater | std::cmp::Ordering::Equal => {
@@ -3218,7 +3256,9 @@ impl SyncManager {
     }
 
     fn compare_timestamps(local: &str, cloud: &str) -> std::cmp::Ordering {
-        Self::compare_lww_timestamps(local, "local-unknown", "", cloud, "cloud-unknown", "")
+        // 设备分量使用相同的中性值：纯时间戳比较的平局必须返回 Equal，
+        // 而不是被评估方视角的常量（'l' > 'c'）扭曲成"本地恒胜"。
+        Self::compare_lww_timestamps(local, "", "", cloud, "", "")
     }
 
     /// 灵活解析时间戳，兼容 RFC 3339 和 SQLite datetime('now') 格式
@@ -3290,14 +3330,35 @@ impl SyncManager {
         }
     }
 
-    pub(crate) fn lww_device_id_from_data<'a>(
-        data: &'a serde_json::Value,
-        fallback: &'a str,
-    ) -> &'a str {
-        data.get("device_id")
+    /// [P0 收敛性] 计算 LWW 平局比较使用的设备分量对 (local, cloud)。
+    ///
+    /// 设备分量必须是"数据的属性"（写入者 ID），绝不能是"评估方的属性"。
+    /// 旧实现用 "local-unknown" / "cloud-unknown" 这类评估方视角的常量，
+    /// 时间戳平局时每台设备都判"本地"获胜（'l' > 'c'），两台设备得出相反
+    /// 结论，永不收敛。修复：仅当双方写入者都可知时才用真实 device_id；
+    /// 任一侧未知则双方退化为相同的中性值，让平局交给内容 tiebreaker
+    /// （内容随数据传播，所有设备可见一致）决定，保证全设备同判。
+    pub(crate) fn lww_device_pair<'a>(
+        local_data: &'a serde_json::Value,
+        cloud_data: Option<&'a serde_json::Value>,
+        cloud_device_hint: Option<&'a str>,
+    ) -> (&'a str, &'a str) {
+        let local = local_data
+            .get("device_id")
             .and_then(|v| v.as_str())
+            .filter(|s| !s.trim().is_empty());
+        let cloud = cloud_device_hint
             .filter(|s| !s.trim().is_empty())
-            .unwrap_or(fallback)
+            .or_else(|| {
+                cloud_data
+                    .and_then(|d| d.get("device_id"))
+                    .and_then(|v| v.as_str())
+                    .filter(|s| !s.trim().is_empty())
+            });
+        match (local, cloud) {
+            (Some(l), Some(c)) => (l, c),
+            _ => ("", ""),
+        }
     }
 
     pub(crate) fn lww_timestamp_millis(timestamp: &str) -> Option<i64> {
@@ -4004,7 +4065,11 @@ impl SyncManager {
         if t.starts_with("test_") || t.ends_with("_records") || t == "resource_notes" {
             return Ok(());
         }
-        if Self::looks_like_sync_test_fixture_table(conn, t) {
+        // 集成测试（tests/sync_*）以非 cfg(test) 方式编译本库，其 fixture 表
+        // （items/weird/a/b/big 等）需要放行。仅在 debug 构建生效：release
+        // 构建保持 fail-close，防止未注册的真实业务表借同名 + id/updated_at
+        // 形状绕过 RowSync 白名单校验。
+        if cfg!(debug_assertions) && Self::looks_like_sync_test_fixture_table(conn, t) {
             return Ok(());
         }
 
@@ -4822,6 +4887,9 @@ impl SyncManager {
     fn is_transient_apply_error(error: &SyncError) -> bool {
         match error {
             SyncError::Io(_) | SyncError::Network(_) => true,
+            // 时钟漂移属于"暂时不可应用但必须保留"的变更：进隔离区（非 transient），
+            // 由 replay_quarantined_changes 在后续同步中自动重放（wall clock 追上后即可成功）。
+            SyncError::ClockDriftSuspected { .. } => false,
             SyncError::Database(message) => {
                 let lower = message.to_ascii_lowercase();
                 lower.contains("database is locked")
@@ -4896,6 +4964,106 @@ impl SyncManager {
             operation: change.operation.as_str().to_string(),
             error: error.to_string(),
         });
+    }
+
+    /// 隔离区自动重放的重试上限：超过后仅保留给手动处理（UI 隔离区）。
+    pub const QUARANTINE_AUTO_REPLAY_MAX_ATTEMPTS: i64 = 20;
+
+    /// [P1] 自动重放隔离区中尚有重试余量的变更。
+    ///
+    /// 设计动机：隔离项中有一类是"暂时不可应用"而非"永久损坏"——
+    /// 时钟漂移（wall clock 追上后即可应用）、偶发性 DB 错误等。
+    /// 旧实现只有手动逐条重试入口，这类条目会无限期滞留。
+    /// 本函数在每次同步的应用阶段后调用：逐条重放，成功即清除；
+    /// 失败则 attempts 递增（由 quarantine_change 的 ON CONFLICT 或本函数负责），
+    /// 超过 `max_attempts` 后不再自动重试，避免永久损坏条目空转。
+    ///
+    /// 返回成功重放并清除的条目数。
+    pub fn replay_quarantined_changes(
+        conn: &Connection,
+        id_columns: Option<&HashMap<String, String>>,
+        max_attempts: i64,
+    ) -> Result<usize, SyncError> {
+        let table_exists: bool = conn
+            .query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='__sync_quarantine')",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap_or(false);
+        if !table_exists {
+            return Ok(0);
+        }
+
+        let candidates: Vec<(i64, String)> = {
+            let mut stmt = conn
+                .prepare(
+                    "SELECT id, payload_json FROM __sync_quarantine
+                     WHERE payload_json IS NOT NULL AND attempts <= ?1
+                     ORDER BY id",
+                )
+                .map_err(|e| SyncError::Database(format!("准备隔离区重放查询失败: {}", e)))?;
+            let rows = stmt
+                .query_map(params![max_attempts], |row| {
+                    Ok((row.get::<_, i64>(0)?, row.get::<_, String>(1)?))
+                })
+                .map_err(|e| SyncError::Database(format!("执行隔离区重放查询失败: {}", e)))?;
+            rows.filter_map(|r| r.ok()).collect()
+        };
+
+        if candidates.is_empty() {
+            return Ok(0);
+        }
+
+        let mut replayed = 0usize;
+        for (quarantine_id, payload_json) in candidates {
+            let change: SyncChangeWithData = match serde_json::from_str(&payload_json) {
+                Ok(c) => c,
+                Err(e) => {
+                    // payload 损坏：标记错误并跳出自动重放（保留人工处理）
+                    let _ = conn.execute(
+                        "UPDATE __sync_quarantine
+                         SET attempts = attempts + 1,
+                             error = ?1,
+                             last_attempt = datetime('now')
+                         WHERE id = ?2",
+                        params![format!("payload 解析失败: {}", e), quarantine_id],
+                    );
+                    continue;
+                }
+            };
+            match Self::apply_downloaded_changes(conn, &[change], id_columns) {
+                Ok(result) if result.failure_count == 0 => {
+                    let _ = conn.execute(
+                        "DELETE FROM __sync_quarantine WHERE id = ?1",
+                        params![quarantine_id],
+                    );
+                    replayed += 1;
+                }
+                Ok(_) => {
+                    // 再次失败：apply 内部的 quarantine_change ON CONFLICT 已递增 attempts，
+                    // 这里无需重复处理。
+                }
+                Err(e) => {
+                    // transient 错误：本轮放弃，不再继续重放（环境性问题影响所有条目）
+                    let _ = conn.execute(
+                        "UPDATE __sync_quarantine
+                         SET attempts = attempts + 1,
+                             error = ?1,
+                             last_attempt = datetime('now')
+                         WHERE id = ?2",
+                        params![e.to_string(), quarantine_id],
+                    );
+                    tracing::warn!("[sync] 隔离区自动重放遇到暂时性错误，本轮终止: {}", e);
+                    break;
+                }
+            }
+        }
+
+        if replayed > 0 {
+            tracing::info!("[sync] 隔离区自动重放成功 {} 条", replayed);
+        }
+        Ok(replayed)
     }
 
     fn validate_no_new_fk_violations(
@@ -5907,7 +6075,8 @@ impl SyncManager {
                     Self::build_primary_key_predicate_from(&pk_columns, 2)?;
 
                 // [LWW drift 保护 - DELETE]
-                // 1. 如果云端 changed_at 超出 wall clock "未来 60 秒" → 视为可疑漂移，跳过
+                // 1. 如果云端 changed_at 超出 wall clock "未来 60 秒" → 疑似时钟漂移，
+                //    进隔离区（可见、可重放），绝不静默跳过（INV-1：禁止无记录的数据丢弃）
                 // 2. 如果本地记录的 updated_at 严格胜过云端 DELETE 的 changed_at → 跳过（LWW）
                 if !skip_lww && has_tombstone {
                     if let Some(cloud_ms) = Self::lww_timestamp_millis(&change.changed_at) {
@@ -5915,13 +6084,17 @@ impl SyncManager {
                         let drift_ms = cloud_ms - now.timestamp_millis();
                         if drift_ms > hlc::MAX_DRIFT_MS {
                             tracing::warn!(
-                                "[sync] 跳过 DELETE（时间戳漂移过大）: {}.{} = {}, drift_ms={}",
+                                "[sync] DELETE 时间戳漂移过大，转入隔离区: {}.{} = {}, drift_ms={}",
                                 change.table_name,
                                 id_column,
                                 change.record_id,
                                 drift_ms
                             );
-                            return Ok(false);
+                            return Err(SyncError::ClockDriftSuspected {
+                                table: change.table_name.clone(),
+                                record_id: change.record_id.clone(),
+                                drift_ms,
+                            });
                         }
 
                         if Self::table_has_column(conn, &change.table_name, "updated_at") {
@@ -5936,15 +6109,18 @@ impl SyncManager {
                                 let local_ts = local_data
                                     .get("updated_at")
                                     .and_then(Self::timestamp_value_to_lww_string);
-                                let cloud_device_id =
-                                    change.source_device_id.as_deref().unwrap_or("cloud-delete");
                                 if local_ts.as_deref().is_some_and(|local_ts| {
+                                    let (local_dev, cloud_dev) = Self::lww_device_pair(
+                                        &local_data,
+                                        None,
+                                        change.source_device_id.as_deref(),
+                                    );
                                     Self::compare_lww_timestamps(
                                         local_ts,
-                                        Self::lww_device_id_from_data(&local_data, "local-unknown"),
+                                        local_dev,
                                         &local_data.to_string(),
                                         &change.changed_at,
-                                        cloud_device_id,
+                                        cloud_dev,
                                         "",
                                     ) == std::cmp::Ordering::Greater
                                 }) {
@@ -6053,23 +6229,34 @@ impl SyncManager {
                 // 抵达" 的场景产生分叉）。
                 //
                 // 跳过的判定需要**双方的 updated_at 都能解析**，否则保持原有行为（直接 UPSERT）。
-                if !skip_lww
-                    && Self::should_skip_stale_update(
+                if !skip_lww {
+                    match Self::evaluate_cloud_upsert_freshness(
                         conn,
                         &change.table_name,
                         &change.record_id,
                         id_column,
                         data,
                         change.source_device_id.as_deref(),
-                    )
-                {
-                    tracing::debug!(
-                        "[sync] LWW skip: {}.{} = {} (本地更新)",
-                        change.table_name,
-                        id_column,
-                        change.record_id
-                    );
-                    return Ok(false);
+                    ) {
+                        UpsertFreshness::Proceed => {}
+                        UpsertFreshness::SkipStale => {
+                            tracing::debug!(
+                                "[sync] LWW skip: {}.{} = {} (本地更新)",
+                                change.table_name,
+                                id_column,
+                                change.record_id
+                            );
+                            return Ok(false);
+                        }
+                        UpsertFreshness::SuspectDrift { drift_ms } => {
+                            // 疑似时钟漂移：进隔离区（可见、可重放），不静默丢弃。
+                            return Err(SyncError::ClockDriftSuspected {
+                                table: change.table_name.clone(),
+                                record_id: change.record_id.clone(),
+                                drift_ms,
+                            });
+                        }
+                    }
                 }
 
                 if let Some(local_data) =
@@ -6099,22 +6286,24 @@ impl SyncManager {
         }
     }
 
-    /// 判断是否应当跳过这条云端 UPSERT
+    /// 评估这条云端 UPSERT 的新鲜度
     ///
     /// 两道防线：
     /// 1. **HLC 漂移保护（防恶意超前时间戳）**：如果云端 `updated_at` 比本地 wall clock
-    ///    晚超过 `hlc::MAX_DRIFT_MS`（60 秒），视为可疑并跳过，避免一个时钟错乱的
-    ///    设备永久压制其他设备。参考 CockroachDB / YugabyteDB 的 MAX_OFFSET 设计。
+    ///    晚超过 `hlc::MAX_DRIFT_MS`（60 秒），视为可疑漂移。注意：可疑漂移**不是**
+    ///    静默跳过——调用方必须将其转入隔离区（可见、可重放），否则一台时钟超前
+    ///    设备的所有写入会被其他设备永久静默丢弃。参考 CockroachDB / YugabyteDB
+    ///    的 MAX_OFFSET 设计。
     /// 2. **LWW 比较（防过时变更覆盖较新本地值）**：如果本地 `updated_at` 严格晚于
     ///    云端 payload，跳过这条云端 change。这保证最终一致性收敛（chaos test 暴露的关键 bug）。
-    fn should_skip_stale_update(
+    fn evaluate_cloud_upsert_freshness(
         conn: &Connection,
         table_name: &str,
         record_id: &str,
         id_column: &str,
         cloud_data: &serde_json::Value,
         source_device_id: Option<&str>,
-    ) -> bool {
+    ) -> UpsertFreshness {
         // 云端 payload 必须带 updated_at
         // 兼容 TEXT（ISO 8601 / HLC 串）和 INTEGER（毫秒时间戳）两种形式——
         // 项目里 resources / chat_v2_todo_lists 等表用的是 INTEGER ms。
@@ -6124,37 +6313,37 @@ impl SyncManager {
                 // 数值 updated_at：统一转成字符串供下游解析
                 n.to_string()
             }
-            _ => return false,
+            _ => return UpsertFreshness::Proceed,
         };
         let cloud_str = cloud_str.as_str();
 
         // ─── 防线 1：漂移 sanity check ───
-        // 如果云端时间戳超出本地 wall clock "未来 60 秒"，视为恶意/故障，跳过。
+        // 如果云端时间戳超出本地 wall clock "未来 60 秒"，交由调用方隔离。
         if let Some(cloud_ms) = Self::lww_timestamp_millis(cloud_str) {
             let drift_ms = cloud_ms - chrono::Utc::now().timestamp_millis();
             if drift_ms > hlc::MAX_DRIFT_MS {
                 tracing::warn!(
-                    "[sync] 跳过云端变更（时间戳漂移过大）: table={}, id={}, cloud_ts={}, drift_ms={}",
+                    "[sync] 云端变更时间戳漂移过大，转入隔离区: table={}, id={}, cloud_ts={}, drift_ms={}",
                     table_name,
                     record_id,
                     cloud_str,
                     drift_ms
                 );
-                return true;
+                return UpsertFreshness::SuspectDrift { drift_ms };
             }
         }
 
         // ─── 防线 2：LWW ───
         // 查本地当前 updated_at（要求该表也有 updated_at 列）
         if !Self::table_has_column(conn, table_name, "updated_at") {
-            return false;
+            return UpsertFreshness::Proceed;
         }
         let local_data = match Self::get_record_data(conn, table_name, record_id, id_column)
             .ok()
             .flatten()
         {
             Some(data) => data,
-            None => return false,
+            None => return UpsertFreshness::Proceed,
         };
 
         let local_ts = match local_data
@@ -6162,19 +6351,24 @@ impl SyncManager {
             .and_then(Self::timestamp_value_to_lww_string)
         {
             Some(ts) => ts,
-            None => return false,
+            None => return UpsertFreshness::Proceed,
         };
 
-        Self::compare_lww_timestamps(
+        let (local_dev, cloud_dev) =
+            Self::lww_device_pair(&local_data, Some(cloud_data), source_device_id);
+        if Self::compare_lww_timestamps(
             &local_ts,
-            Self::lww_device_id_from_data(&local_data, "local-unknown"),
+            local_dev,
             &local_data.to_string(),
             cloud_str,
-            source_device_id
-                .filter(|id| !id.trim().is_empty())
-                .unwrap_or_else(|| Self::lww_device_id_from_data(cloud_data, "cloud-unknown")),
+            cloud_dev,
             &cloud_data.to_string(),
         ) == std::cmp::Ordering::Greater
+        {
+            UpsertFreshness::SkipStale
+        } else {
+            UpsertFreshness::Proceed
+        }
     }
 
     pub(crate) fn records_semantically_equal_for_sync(
@@ -7357,17 +7551,28 @@ impl SyncManager {
         })
     }
 
-    fn local_file_wins(local_updated_at: &str, cloud_updated_at: &str, content_key: &str) -> bool {
+    /// 文件级 LWW：本地文件是否胜过云端清单条目。
+    ///
+    /// [P0 收敛性] 设备分量必须中性（双方相同）：旧实现用 "local-file" vs
+    /// "cloud-file"（'l' > 'c'），mtime 平局时每台设备都判本地获胜，导致
+    /// 两台设备各自反复上传、永不收敛。平局改由内容哈希（随数据传播、
+    /// 所有设备一致可见）决定，保证全设备得出同一结论。
+    fn local_file_wins(
+        local_updated_at: &str,
+        cloud_updated_at: &str,
+        local_content_hash: &str,
+        cloud_content_hash: &str,
+    ) -> bool {
         if cloud_updated_at.trim().is_empty() {
             return true;
         }
         Self::compare_lww_timestamps(
             local_updated_at,
-            &Self::device_component_for_lww("local-file"),
-            content_key,
+            "",
+            local_content_hash,
             cloud_updated_at,
-            "cloud-file",
-            content_key,
+            "",
+            cloud_content_hash,
         ) == std::cmp::Ordering::Greater
     }
 
@@ -7382,10 +7587,6 @@ impl SyncManager {
             (Some(candidate), Some(reference)) => candidate > reference,
             _ => candidate > reference,
         }
-    }
-
-    fn device_component_for_lww(fallback: &str) -> String {
-        fallback.to_string()
     }
 
     fn quote_sql_string(value: &str) -> String {
@@ -7511,6 +7712,15 @@ impl SyncManager {
                     }
                 }
                 if local_db.exists() {
+                    // [P2] tombstone 驱动的本地删除前保留冲突副本：
+                    // "本设备在对端删除之前的未上传编辑" 不应被无备份清除。
+                    if let Err(e) = Self::save_conflict_copy(&local_db, &self.device_id) {
+                        tracing::warn!(
+                            "[sync] tombstone 删除前保存工作区冲突副本失败: {}: {}",
+                            ws_id,
+                            e
+                        );
+                    }
                     let _ = std::fs::remove_file(&local_db);
                 }
                 let local_wal = workspaces_dir.join(format!("{}.db-wal", ws_id));
@@ -7590,8 +7800,19 @@ impl SyncManager {
                 let should_upload = match cloud_manifest.entries.get(ws_id) {
                     None => true,
                     Some(ce) => {
-                        ce.sha256 != *sha256
-                            && Self::local_file_wins(local_updated_at, &ce.updated_at, ws_id)
+                        // 变更检测必须比较同一度量：本地活动文件哈希 vs 上次上传时的
+                        // 源文件哈希（source_sha256）。与传输快照哈希（sha256，VACUUM
+                        // 重写页布局后几乎必然不同）比较会导致每次同步都误判为已变更。
+                        // 本地文件恰好是云端快照本身（刚下载所得）也视为未变更。
+                        let unchanged = ce.source_sha256.as_deref() == Some(sha256.as_str())
+                            || ce.sha256 == *sha256;
+                        !unchanged
+                            && Self::local_file_wins(
+                                local_updated_at,
+                                &ce.updated_at,
+                                sha256,
+                                ce.source_sha256.as_deref().unwrap_or(&ce.sha256),
+                            )
                     }
                 };
                 if should_upload {
@@ -7627,6 +7848,8 @@ impl SyncManager {
                                     sha256: snapshot_hash,
                                     size: snapshot_size,
                                     updated_at: local_updated_at.clone(),
+                                    source_sha256: Some(sha256.clone()),
+                                    device_id: Some(self.device_id.clone()),
                                 },
                             );
                             tracing::info!("[sync] 工作区数据库已上传: {}", ws_id);
@@ -7650,11 +7873,20 @@ impl SyncManager {
                 let should_download = match local_entries.get(ws_id) {
                     None => true,
                     Some((_path, sha256, _size, local_updated_at)) => {
-                        *sha256 != cloud_entry.sha256
+                        // 与上传侧对称：本地活动文件与云端源哈希一致，或本地文件
+                        // 本身就是该快照（之前下载所得），都视为未变更。
+                        let unchanged = cloud_entry.source_sha256.as_deref()
+                            == Some(sha256.as_str())
+                            || *sha256 == cloud_entry.sha256;
+                        !unchanged
                             && !Self::local_file_wins(
                                 local_updated_at,
                                 &cloud_entry.updated_at,
-                                ws_id,
+                                sha256,
+                                cloud_entry
+                                    .source_sha256
+                                    .as_deref()
+                                    .unwrap_or(&cloud_entry.sha256),
                             )
                     }
                 };
@@ -7697,9 +7929,42 @@ impl SyncManager {
         }
 
         // 5. 仅在有上传时更新云端清单
+        // [P2 D9-lite] 共享单文件清单存在多设备并发 read-modify-write 互相覆盖
+        // 条目的竞态。写前重新拉取最新云端清单并做条目级合并（我们改动的条目
+        // 按 LWW 与对端并发写入比较），把覆盖窗口从"整个同步过程"缩到毫秒级。
         if direction != SyncDirection::Download && new_manifest.entries != cloud_manifest.entries {
-            new_manifest.updated_at = chrono::Utc::now().to_rfc3339();
-            let json = serde_json::to_vec(&new_manifest)
+            let mut merged = match self.download_workspaces_manifest(storage).await {
+                Ok(fresh) => fresh,
+                Err(e) => {
+                    tracing::warn!("[sync] 写前刷新工作区清单失败，退回本地视图: {}", e);
+                    cloud_manifest.clone()
+                }
+            };
+            for (ws_id, entry) in &new_manifest.entries {
+                let ours_changed = cloud_manifest.entries.get(ws_id) != Some(entry);
+                if !ours_changed {
+                    continue;
+                }
+                let theirs_newer = merged.entries.get(ws_id).is_some_and(|theirs| {
+                    Self::local_file_wins(
+                        &theirs.updated_at,
+                        &entry.updated_at,
+                        &theirs.sha256,
+                        &entry.sha256,
+                    )
+                });
+                if !theirs_newer {
+                    merged.entries.insert(ws_id.clone(), entry.clone());
+                }
+            }
+            // 本轮显式移除的条目（tombstone 驱动）在合并结果中同样移除
+            for ws_id in cloud_manifest.entries.keys() {
+                if !new_manifest.entries.contains_key(ws_id) {
+                    merged.entries.remove(ws_id);
+                }
+            }
+            merged.updated_at = chrono::Utc::now().to_rfc3339();
+            let json = serde_json::to_vec(&merged)
                 .map_err(|e| SyncError::Database(format!("序列化工作区清单失败: {}", e)))?;
             // [P0-2] 可选加密
             let payload = self.encode_payload(&json)?;
@@ -7924,8 +8189,23 @@ impl SyncManager {
         }
 
         if uploaded > 0 {
-            new_manifest.updated_at = chrono::Utc::now().to_rfc3339();
-            let json = serde_json::to_vec(&new_manifest)
+            // [P2 D9-lite] 写前重新拉取最新清单做并集合并：blob 内容寻址（同 hash
+            // 必同内容），并集天然无冲突；避免并发设备的新增条目被本设备覆盖丢失。
+            let mut merged = match self.download_blobs_manifest(storage).await {
+                Ok(fresh) => fresh,
+                Err(e) => {
+                    tracing::warn!("[sync] 写前刷新 blob 清单失败，退回本地视图: {}", e);
+                    cloud_manifest.clone()
+                }
+            };
+            for (hash, entry) in &new_manifest.entries {
+                merged
+                    .entries
+                    .entry(hash.clone())
+                    .or_insert_with(|| entry.clone());
+            }
+            merged.updated_at = chrono::Utc::now().to_rfc3339();
+            let json = serde_json::to_vec(&merged)
                 .map_err(|e| SyncError::Database(format!("序列化 blob 清单失败: {}", e)))?;
             // [P0-2] 可选加密（注意：这里加密的是 **清单** 文件，blob 原文件本身不加密）
             let payload = self.encode_payload(&json)?;
@@ -8020,7 +8300,12 @@ impl SyncManager {
                     None => true,
                     Some(entry) => {
                         (entry.sha256 != *sha256 || entry.size != *size)
-                            && Self::local_file_wins(local_updated_at, &entry.updated_at, key)
+                            && Self::local_file_wins(
+                                local_updated_at,
+                                &entry.updated_at,
+                                sha256,
+                                &entry.sha256,
+                            )
                     }
                 };
                 if !should_upload {
@@ -8057,7 +8342,12 @@ impl SyncManager {
                     None => true,
                     Some((_path, sha256, size, local_updated_at)) => {
                         (*sha256 != entry.sha256 || *size != entry.size)
-                            && !Self::local_file_wins(local_updated_at, &entry.updated_at, key)
+                            && !Self::local_file_wins(
+                                local_updated_at,
+                                &entry.updated_at,
+                                sha256,
+                                &entry.sha256,
+                            )
                     }
                 };
                 if !should_download {
@@ -8094,8 +8384,39 @@ impl SyncManager {
         }
 
         if direction != SyncDirection::Download && new_manifest.entries != cloud_manifest.entries {
-            new_manifest.updated_at = chrono::Utc::now().to_rfc3339();
-            let json = serde_json::to_vec(&new_manifest)
+            // [P2 D9-lite] 写前重新拉取最新清单做条目级合并，缩小多设备并发
+            // read-modify-write 互相覆盖条目的竞态窗口。
+            let mut merged = match self.download_assets_manifest(storage).await {
+                Ok(fresh) => fresh,
+                Err(e) => {
+                    tracing::warn!("[sync] 写前刷新资产清单失败，退回本地视图: {}", e);
+                    cloud_manifest.clone()
+                }
+            };
+            for (key, entry) in &new_manifest.entries {
+                let ours_changed = cloud_manifest.entries.get(key) != Some(entry);
+                if !ours_changed {
+                    continue;
+                }
+                let theirs_newer = merged.entries.get(key).is_some_and(|theirs| {
+                    Self::local_file_wins(
+                        &theirs.updated_at,
+                        &entry.updated_at,
+                        &theirs.sha256,
+                        &entry.sha256,
+                    )
+                });
+                if !theirs_newer {
+                    merged.entries.insert(key.clone(), entry.clone());
+                }
+            }
+            for key in cloud_manifest.entries.keys() {
+                if !new_manifest.entries.contains_key(key) {
+                    merged.entries.remove(key);
+                }
+            }
+            merged.updated_at = chrono::Utc::now().to_rfc3339();
+            let json = serde_json::to_vec(&merged)
                 .map_err(|e| SyncError::Database(format!("序列化资产清单失败: {}", e)))?;
             // [P0-2] 可选加密
             let payload = self.encode_payload(&json)?;
@@ -9298,8 +9619,9 @@ mod tests {
         );
         assert_eq!(
             SyncManager::compare_timestamps(&earlier, &earlier),
-            std::cmp::Ordering::Greater,
-            "相同 timestamp 继续用 deterministic device tie-break，避免 Equal 分支各处自行解释"
+            std::cmp::Ordering::Equal,
+            "纯时间戳比较使用中性设备分量：平局必须对称地返回 Equal，\
+             不能被评估方视角扭曲成本地恒胜（否则两端各自判赢、永不收敛）"
         );
     }
 

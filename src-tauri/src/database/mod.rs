@@ -5537,7 +5537,9 @@ impl Database {
     }
 
     /// 将 Processing/Streaming 超过 `minutes` 分钟未更新的任务标记为 Failed。
-    /// `minutes = 0` 表示无条件（用于应用启动时：进程刚启动，不可能有真正在跑的任务）。
+    /// `minutes = 0` 表示无条件回收。注意：应用未启用单实例约束，启动路径
+    /// 必须走带阈值的 `recover_stuck_document_tasks()`（10 分钟），不要传 0，
+    /// 否则并行实例正在跑的任务会被误标为 Failed。
     pub fn recover_stuck_document_tasks_older_than_minutes(&self, minutes: u32) -> Result<u32> {
         let conn = self.get_conn_safe()?;
         let count = conn.execute(

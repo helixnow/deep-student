@@ -421,6 +421,7 @@ pub async fn add_notes_to_anki_with_card_models(
 /// AnkiConnect 同步明细结果（D1 修复）：
 /// 把"重复（已存在）"与"真实失败"分开统计，并报告自动创建的模型。
 #[derive(Debug, Clone, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
 pub struct AnkiSyncReport {
     /// 与输入卡片一一对应的 note id（None = 未添加：重复或失败）
     pub note_ids: Vec<Option<u64>>,

@@ -1199,9 +1199,11 @@ fn w43_all_same_timestamp() {
         ));
     }
     SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
-    // LWW 门：相等时间戳保留先到记录，避免同一时间戳重放抖动。
-    assert_eq!(get_title(&conn, "n1").as_deref(), Some("v0"));
-    assert_eq!(get_counter(&conn, "n1"), Some(0));
+    // LWW 门：时间戳完全平局时由内容 tiebreaker 决胜——收敛到内容序最大者
+    // （v99），与变更到达顺序无关。旧的"保留先到"语义依赖到达顺序，
+    // 两台设备以不同顺序收到同批变更会得出不同终态，违反收敛性。
+    assert_eq!(get_title(&conn, "n1").as_deref(), Some("v99"));
+    assert_eq!(get_counter(&conn, "n1"), Some(99));
 }
 
 /// **W.44** 极端：1000 条批次里夹着 1 条非法 —— 单条隔离且不 panic

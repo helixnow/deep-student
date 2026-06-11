@@ -302,14 +302,21 @@ impl ConflictResolver {
                     let local_ts = Self::extract_updated_at(&local_data);
                     match local_ts {
                         Some(local_ts)
-                            if SyncManager::compare_lww_timestamps(
-                                &local_ts,
-                                SyncManager::lww_device_id_from_data(&local_data, "local-unknown"),
-                                &local_data.to_string(),
-                                &change.changed_at,
-                                change.source_device_id.as_deref().unwrap_or("cloud-delete"),
-                                "",
-                            ) == std::cmp::Ordering::Less =>
+                            if {
+                                let (local_dev, cloud_dev) = SyncManager::lww_device_pair(
+                                    &local_data,
+                                    None,
+                                    change.source_device_id.as_deref(),
+                                );
+                                SyncManager::compare_lww_timestamps(
+                                    &local_ts,
+                                    local_dev,
+                                    &local_data.to_string(),
+                                    &change.changed_at,
+                                    cloud_dev,
+                                    "",
+                                ) == std::cmp::Ordering::Less
+                            } =>
                         {
                             (ConflictSide::Cloud, ConflictSide::Local)
                         }
@@ -372,18 +379,19 @@ impl ConflictResolver {
                 let local_ts = Self::extract_updated_at(&local_data);
                 let cloud_ts = Self::extract_updated_at(&cloud_data)
                     .or_else(|| Some(change.changed_at.clone()));
-                let cloud_device_id = change
-                    .source_device_id
-                    .as_deref()
-                    .unwrap_or("cloud-unknown");
                 match (local_ts, cloud_ts) {
                     (Some(l), Some(c)) => {
+                        let (local_dev, cloud_dev) = SyncManager::lww_device_pair(
+                            &local_data,
+                            Some(&cloud_data),
+                            change.source_device_id.as_deref(),
+                        );
                         if SyncManager::compare_lww_timestamps(
                             &l,
-                            SyncManager::lww_device_id_from_data(&local_data, "local-unknown"),
+                            local_dev,
                             &local_data.to_string(),
                             &c,
-                            cloud_device_id,
+                            cloud_dev,
                             &cloud_data.to_string(),
                         ) == std::cmp::Ordering::Less
                         {

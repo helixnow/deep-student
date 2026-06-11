@@ -7152,8 +7152,8 @@ mod tests {
         let medium_data = "x".repeat(20 * 1024 * 1024);
         assert!(validate_file_size(&VfsResourceType::File, &medium_data).is_ok());
 
-        // 但 File 也有上限
-        let very_large_data = "x".repeat(51 * 1024 * 1024); // 51MB
+        // 但 File 也有上限（随常量走，避免上限调整时测试失真）
+        let very_large_data = "x".repeat(get_max_size_bytes(&VfsResourceType::File) + 1);
         assert!(validate_file_size(&VfsResourceType::File, &very_large_data).is_err());
     }
 

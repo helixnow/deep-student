@@ -548,6 +548,8 @@
         "syncFailedDetail": "Sync failed: no cards imported (check AnkiConnect/note type/duplicates)",
         "syncPartialTitle": "Partial sync to Anki",
         "syncPartialDetail": "Imported {{added}} cards, {{failed}} failed. Check AnkiConnect, note type, duplicates, or field mapping.",
+        "syncAllDuplicatesTitle": "Cards already exist",
+        "syncAllDuplicatesDetail": "All {{count}} cards already exist in Anki (skipped as duplicates); nothing new was added.",
         "syncedCount": "Synced {{count}} cards to Anki",
         "syncedCountWithHint": "Synced {{count}} cards to Anki. Next: open Anki to review.",
         "syncFailedWithHint": "Sync failed. Ensure Anki is running and AnkiConnect is enabled, then retry.",

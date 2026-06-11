@@ -56,6 +56,10 @@ impl WebDavStorage {
 
         let http = Client::builder()
             .connect_timeout(Duration::from_secs(30))
+            // 死连接保护：reqwest 0.11 没有 read_timeout，依靠 TCP keepalive
+            // 检测对端消失；流式读写的逐块停滞保护见 get_file/put_file。
+            .tcp_keepalive(Duration::from_secs(60))
+            .pool_idle_timeout(Duration::from_secs(90))
             .min_tls_version(reqwest::tls::Version::TLS_1_2)
             .build()
             .map_err(|e| AppError::internal(format!("构建 HTTP 客户端失败: {e}")))?;
@@ -183,10 +187,19 @@ impl WebDavStorage {
                 builder
             };
 
-            match builder.send().await {
-                Ok(resp) => return Ok(resp),
-                Err(e) => {
-                    last_error = Some(e);
+            // send() 覆盖"连接 + 发送内存体 + 等响应头"，不覆盖流式响应体下载，
+            // 因此对 get_file 的大文件流式下载无影响（其逐块停滞保护在 get_file 内）。
+            // 防止服务器收下 TCP 连接后无限沉默导致 send() 永久挂起。
+            match tokio::time::timeout(std::time::Duration::from_secs(120), builder.send()).await {
+                Ok(Ok(resp)) => return Ok(resp),
+                Ok(Err(e)) => {
+                    last_error = Some(e.to_string());
+                    if attempt == max_retries - 1 {
+                        break;
+                    }
+                }
+                Err(_) => {
+                    last_error = Some("等待响应头超时（120 秒）".to_string());
                     if attempt == max_retries - 1 {
                         break;
                     }
@@ -198,7 +211,7 @@ impl WebDavStorage {
             "WebDAV {} 请求失败（已重试 {} 次）: {}",
             method,
             max_retries,
-            last_error.map(|e| e.to_string()).unwrap_or_default()
+            last_error.unwrap_or_default()
         )))
     }
 
@@ -526,10 +539,17 @@ impl CloudStorage for WebDavStorage {
         });
 
         let url = self.build_url(key)?;
+        // 流式上传的 send() 覆盖整个请求体传输：用按体积放缩的超时做停滞保护
+        // （下限 64KB/s + 120 秒余量），避免固定超时杀死慢速大文件上传。
+        let upload_timeout =
+            std::time::Duration::from_secs(120 + file_size / (64 * 1024)).max(
+                std::time::Duration::from_secs(300),
+            );
         let res = self
             .http
             .request(Method::PUT, url)
             .header("Authorization", self.auth_header())
+            .timeout(upload_timeout)
             .body(reqwest::Body::wrap_stream(stream))
             .send()
             .await
@@ -596,7 +616,17 @@ impl CloudStorage for WebDavStorage {
                 .map_err(|e| AppError::file_system(format!("创建文件失败: {e}")))?;
 
             let mut stream = res.bytes_stream();
-            while let Some(chunk) = stream.next().await {
+            loop {
+                // 逐块停滞超时：单块 90 秒收不到任何数据视为死连接。
+                // 不限制总传输时长，慢但有进展的大文件下载不受影响。
+                let next = tokio::time::timeout(std::time::Duration::from_secs(90), stream.next())
+                    .await
+                    .map_err(|_| {
+                        AppError::network("WebDAV 下载停滞超过 90 秒，连接可能已断开".to_string())
+                    })?;
+                let Some(chunk) = next else {
+                    break;
+                };
                 let bytes = chunk.map_err(|e| AppError::network(format!("读取响应体失败: {e}")))?;
                 file.write_all(&bytes)
                     .await

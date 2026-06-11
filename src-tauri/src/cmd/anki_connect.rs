@@ -136,13 +136,18 @@ pub async fn create_anki_deck(deck_name: String) -> Result<()> {
     }
 }
 /// 将选定的卡片添加到AnkiConnect
+///
+/// 返回同步明细报告（新增/重复/失败分开统计）：
+/// - 全部已存在（duplicates == total）属于幂等成功，返回 Ok 而非错误，
+///   由前端按 `added == 0 && failed == 0` 展示"均已存在"提示；
+/// - 仅当存在真实失败且无任何新增时返回 Err。
 #[tauri::command]
 pub async fn add_cards_to_anki_connect(
     selected_cards: Vec<crate::models::AnkiCard>,
     deck_name: String,
     mut note_type: String,
     state: State<'_, AppState>,
-) -> Result<Vec<Option<u64>>> {
+) -> Result<crate::anki_connect_service::AnkiSyncReport> {
     if selected_cards.is_empty() {
         return Err(AppError::validation("没有选择任何卡片".to_string()));
     }
@@ -246,13 +251,7 @@ pub async fn add_cards_to_anki_connect(
                 }
             );
 
-            if report.added == 0 && report.failed == 0 && report.duplicates > 0 {
-                // 全部已存在：幂等成功，明确告知而不是报"同步失败"
-                Err(AppError::validation(format!(
-                    "{} 张卡片均已存在于 Anki 中（重复跳过），未新增卡片",
-                    report.duplicates
-                )))
-            } else if report.added == 0 {
+            if report.added == 0 && report.failed > 0 {
                 let mut reason = String::from("所有卡片同步失败");
                 if report.duplicates > 0 {
                     reason.push_str(&format!("（其中 {} 张为重复卡片）", report.duplicates));
@@ -260,7 +259,8 @@ pub async fn add_cards_to_anki_connect(
                 reason.push_str("。请检查 Anki 中是否存在对应笔记类型、卡片字段是否为空");
                 Err(AppError::validation(reason))
             } else {
-                Ok(report.note_ids)
+                // 含"全部已存在"的幂等成功：duplicates 信息随报告返回前端展示
+                Ok(report)
             }
         }
         Err(e) => {

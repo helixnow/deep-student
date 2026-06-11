@@ -45,8 +45,6 @@ import {
   isSyncPhaseTerminal,
 } from "../types/dataGovernance";
 
-const snakeArgs = <T extends Record<string, unknown>>(args: T): T => args;
-
 // ==================== 维护模式 API ====================
 
 /**
@@ -90,9 +88,9 @@ export async function getDatabaseStatus(
 ): Promise<DatabaseDetailResponse | null> {
   return invoke<DatabaseDetailResponse | null>(
     "data_governance_get_database_status",
-    snakeArgs({
-      database_id: databaseId,
-    }),
+    {
+      databaseId,
+    },
   );
 }
 
@@ -119,12 +117,12 @@ export async function getAuditLogs(
   limit?: number,
   offset?: number,
 ): Promise<AuditLogPagedResponse> {
-  return invoke<AuditLogPagedResponse>("data_governance_get_audit_logs", snakeArgs({
-    operation_type: operationType,
+  return invoke<AuditLogPagedResponse>("data_governance_get_audit_logs", {
+    operationType,
     status,
     limit,
     offset,
-  }));
+  });
 }
 
 /**
@@ -145,11 +143,11 @@ export async function cleanupAuditLogs(
   beforeDays?: number,
 ): Promise<number> {
   const confirmationToken = `AUDIT_CLEANUP_${Math.floor(Date.now() / 1000)}`;
-  return invoke<number>("data_governance_cleanup_audit_logs", snakeArgs({
-    keep_recent: keepRecent,
-    before_days: beforeDays,
-    confirmation_token: confirmationToken,
-  }));
+  return invoke<number>("data_governance_cleanup_audit_logs", {
+    keepRecent,
+    beforeDays,
+    confirmationToken,
+  });
 }
 
 // ==================== 备份配置 API ====================
@@ -207,12 +205,12 @@ export async function runBackup(
   includeAssets?: boolean,
   assetTypes?: string[],
 ): Promise<BackupJobStartResponse> {
-  return invoke<BackupJobStartResponse>("data_governance_run_backup", snakeArgs({
-    backup_type: backupType,
-    base_version: baseVersion,
-    include_assets: includeAssets,
-    asset_types: assetTypes,
-  }));
+  return invoke<BackupJobStartResponse>("data_governance_run_backup", {
+    backupType,
+    baseVersion,
+    includeAssets,
+    assetTypes,
+  });
 }
 
 /**
@@ -228,9 +226,9 @@ export async function getBackupList(): Promise<BackupInfoResponse[]> {
  * @param backupId 要删除的备份 ID
  */
 export async function deleteBackup(backupId: string): Promise<boolean> {
-  return invoke<boolean>("data_governance_delete_backup", snakeArgs({
-    backup_id: backupId,
-  }));
+  return invoke<boolean>("data_governance_delete_backup", {
+    backupId,
+  });
 }
 
 /**
@@ -240,9 +238,9 @@ export async function deleteBackup(backupId: string): Promise<boolean> {
 export async function verifyBackup(
   backupId: string,
 ): Promise<BackupVerifyResponse> {
-  return invoke<BackupVerifyResponse>("data_governance_verify_backup", snakeArgs({
-    backup_id: backupId,
-  }));
+  return invoke<BackupVerifyResponse>("data_governance_verify_backup", {
+    backupId,
+  });
 }
 
 /**
@@ -270,10 +268,10 @@ export async function restoreBackup(
   backupId: string,
   restoreAssets?: boolean,
 ): Promise<BackupJobStartResponse> {
-  return invoke<BackupJobStartResponse>("data_governance_restore_backup", snakeArgs({
-    backup_id: backupId,
-    restore_assets: restoreAssets,
-  }));
+  return invoke<BackupJobStartResponse>("data_governance_restore_backup", {
+    backupId,
+    restoreAssets,
+  });
 }
 
 // ==================== 后台备份任务 API ====================
@@ -357,9 +355,9 @@ export const BACKUP_JOB_PROGRESS_EVENT = "backup-job-progress";
  * @returns 是否成功请求取消
  */
 export async function cancelBackup(jobId: string): Promise<boolean> {
-  return invoke<boolean>("data_governance_cancel_backup", snakeArgs({
-    job_id: jobId,
-  }));
+  return invoke<boolean>("data_governance_cancel_backup", {
+    jobId,
+  });
 }
 
 /**
@@ -369,9 +367,9 @@ export async function cancelBackup(jobId: string): Promise<boolean> {
 export async function getBackupJob(
   jobId: string,
 ): Promise<BackupJobSummary | null> {
-  return invoke<BackupJobSummary | null>("data_governance_get_backup_job", snakeArgs({
-    job_id: jobId,
-  }));
+  return invoke<BackupJobSummary | null>("data_governance_get_backup_job", {
+    jobId,
+  });
 }
 
 /**
@@ -576,9 +574,9 @@ export interface ResumableJob {
 export async function resumeBackupJob(
   jobId: string,
 ): Promise<BackupJobStartResponse> {
-  return invoke<BackupJobStartResponse>("data_governance_resume_backup_job", snakeArgs({
-    job_id: jobId,
-  }));
+  return invoke<BackupJobStartResponse>("data_governance_resume_backup_job", {
+    jobId,
+  });
 }
 
 /**
@@ -678,14 +676,14 @@ export async function backupTiered(
   maxAssetSize?: number,
   assetTypes?: AssetType[],
 ): Promise<BackupJobStartResponse> {
-  return invoke<BackupJobStartResponse>("data_governance_backup_tiered", snakeArgs({
+  return invoke<BackupJobStartResponse>("data_governance_backup_tiered", {
     tiers,
-    include_databases: includeDatabases,
-    exclude_databases: excludeDatabases,
-    include_assets: includeAssets,
-    max_asset_size: maxAssetSize,
-    asset_types: assetTypes,
-  }));
+    includeDatabases,
+    excludeDatabases,
+    includeAssets,
+    maxAssetSize,
+    assetTypes,
+  });
 }
 
 /**
@@ -705,15 +703,15 @@ export async function backupAndExportZip(
 ): Promise<BackupJobStartResponse> {
   return invoke<BackupJobStartResponse>(
     "data_governance_backup_and_export_zip",
-    snakeArgs({
-      output_path: outputPath,
-      compression_level: compressionLevel,
-      add_to_backup_list: addToBackupList,
-      use_tiered: useTiered,
+    {
+      outputPath,
+      compressionLevel,
+      addToBackupList,
+      useTiered,
       tiers,
-      include_assets: includeAssets,
-      asset_types: assetTypes,
-    }),
+      includeAssets,
+      assetTypes,
+    },
   );
 }
 
@@ -740,12 +738,12 @@ export async function exportZip(
   compressionLevel?: number,
   includeChecksums?: boolean,
 ): Promise<BackupJobStartResponse> {
-  return invoke<BackupJobStartResponse>("data_governance_export_zip", snakeArgs({
-    backup_id: backupId,
-    output_path: outputPath,
-    compression_level: compressionLevel,
-    include_checksums: includeChecksums,
-  }));
+  return invoke<BackupJobStartResponse>("data_governance_export_zip", {
+    backupId,
+    outputPath,
+    compressionLevel,
+    includeChecksums,
+  });
 }
 
 /**
@@ -761,10 +759,10 @@ export async function importZip(
   zipPath: string,
   backupId?: string,
 ): Promise<BackupJobStartResponse> {
-  return invoke<BackupJobStartResponse>("data_governance_import_zip", snakeArgs({
-    zip_path: zipPath,
-    backup_id: backupId,
-  }));
+  return invoke<BackupJobStartResponse>("data_governance_import_zip", {
+    zipPath,
+    backupId,
+  });
 }
 
 // ==================== 同步 API ====================
@@ -785,10 +783,10 @@ export async function detectConflicts(
   cloudManifestJson?: string,
   cloudConfig?: CloudStorageConfig,
 ): Promise<ConflictDetectionResponse> {
-  return invoke<ConflictDetectionResponse>("data_governance_detect_conflicts", snakeArgs({
-    cloud_manifest_json: cloudManifestJson,
-    cloud_config: cloudConfig,
-  }));
+  return invoke<ConflictDetectionResponse>("data_governance_detect_conflicts", {
+    cloudManifestJson,
+    cloudConfig,
+  });
 }
 
 /**
@@ -800,10 +798,10 @@ export async function resolveConflicts(
   strategy: MergeStrategy,
   cloudManifestJson: string,
 ): Promise<SyncResultResponse> {
-  return invoke<SyncResultResponse>("data_governance_resolve_conflicts", snakeArgs({
+  return invoke<SyncResultResponse>("data_governance_resolve_conflicts", {
     strategy,
-    cloud_manifest_json: cloudManifestJson,
-  }));
+    cloudManifestJson,
+  });
 }
 
 /**
@@ -817,11 +815,11 @@ export async function runSync(
   cloudConfig?: CloudStorageConfig,
   strategy?: MergeStrategy,
 ): Promise<SyncExecutionResponse> {
-  return invoke<SyncExecutionResponse>("data_governance_run_sync", snakeArgs({
+  return invoke<SyncExecutionResponse>("data_governance_run_sync", {
     direction,
-    cloud_config: cloudConfig,
+    cloudConfig,
     strategy,
-  }));
+  });
 }
 
 /**
@@ -831,9 +829,9 @@ export async function runSync(
 export async function exportSyncData(
   outputPath?: string,
 ): Promise<SyncExportResponse> {
-  return invoke<SyncExportResponse>("data_governance_export_sync_data", snakeArgs({
-    output_path: outputPath,
-  }));
+  return invoke<SyncExportResponse>("data_governance_export_sync_data", {
+    outputPath,
+  });
 }
 
 /**
@@ -845,10 +843,10 @@ export async function importSyncData(
   inputPath: string,
   strategy?: MergeStrategy,
 ): Promise<SyncImportResponse> {
-  return invoke<SyncImportResponse>("data_governance_import_sync_data", snakeArgs({
-    input_path: inputPath,
+  return invoke<SyncImportResponse>("data_governance_import_sync_data", {
+    inputPath,
     strategy,
-  }));
+  });
 }
 
 // ==================== 带进度回调的同步 API ====================
@@ -944,11 +942,11 @@ export async function runSyncWithProgress(
 ): Promise<SyncExecutionResponse> {
   return invoke<SyncExecutionResponse>(
     "data_governance_run_sync_with_progress",
-    snakeArgs({
+    {
       direction,
-      cloud_config: cloudConfig,
+      cloudConfig,
       strategy,
-    }),
+    },
   );
 }
 
@@ -1037,9 +1035,9 @@ export function createSyncProgressState() {
 export async function scanAssets(
   assetTypes?: string[],
 ): Promise<AssetScanResponse> {
-  return invoke<AssetScanResponse>("data_governance_scan_assets", snakeArgs({
-    asset_types: assetTypes,
-  }));
+  return invoke<AssetScanResponse>("data_governance_scan_assets", {
+    assetTypes,
+  });
 }
 
 /**
@@ -1074,10 +1072,10 @@ export async function restoreWithAssets(
 ): Promise<RestoreWithAssetsResponse> {
   return invoke<RestoreWithAssetsResponse>(
     "data_governance_restore_with_assets",
-    snakeArgs({
-      backup_id: backupId,
-      restore_assets: restoreAssets,
-    }),
+    {
+      backupId,
+      restoreAssets,
+    },
   );
 }
 
@@ -1090,9 +1088,9 @@ export async function verifyBackupWithAssets(
 ): Promise<BackupVerifyWithAssetsResponse> {
   return invoke<BackupVerifyWithAssetsResponse>(
     "data_governance_verify_backup_with_assets",
-    snakeArgs({
-      backup_id: backupId,
-    }),
+    {
+      backupId,
+    },
   );
 }
 
@@ -1249,9 +1247,9 @@ export async function checkDiskSpaceForRestore(
   try {
     return await invoke<DiskSpaceCheckResponse>(
       "data_governance_check_disk_space_for_restore",
-      snakeArgs({
-        backup_id: backupId,
-      }),
+      {
+        backupId,
+      },
     );
   } catch {
     // 如果后端尚未实现该命令，返回"空间足够"以不阻塞流程
