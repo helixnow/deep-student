@@ -5789,11 +5789,26 @@ mod tests {
     use serde_json::json;
     use tempfile::tempdir;
 
+    /// 创建已应用全部 Mistakes 迁移的测试数据库
+    ///
+    /// `Database::new` 本身不建表（schema 由 MigrationCoordinator 在应用
+    /// 启动时统一管理），需先走迁移路径。
+    fn setup_migrated_db(app_data_dir: &std::path::Path) -> anyhow::Result<Database> {
+        use crate::data_governance::migration::coordinator::MigrationCoordinator;
+        use crate::data_governance::schema_registry::DatabaseId;
+
+        let mut coordinator =
+            MigrationCoordinator::new(app_data_dir.to_path_buf()).with_audit_db(None);
+        coordinator
+            .migrate_single(DatabaseId::Mistakes)
+            .map_err(|e| anyhow::anyhow!("mistakes migrations failed: {}", e))?;
+        Ok(Database::new(&app_data_dir.join("mistakes.db"))?)
+    }
+
     #[test]
     fn append_preserves_turn_metadata_and_scoped_deletion() -> anyhow::Result<()> {
         let dir = tempdir()?;
-        let db_path = dir.path().join("chat_test.db");
-        let db = Database::new(&db_path)?;
+        let db = setup_migrated_db(dir.path())?;
 
         let now = Utc::now().to_rfc3339();
         {
@@ -5954,8 +5969,7 @@ mod tests {
     fn save_document_task_with_cards_atomic_rolls_back_when_all_cards_ignored() -> anyhow::Result<()>
     {
         let dir = tempdir()?;
-        let db_path = dir.path().join("atomic_cards_test.db");
-        let db = Database::new(&db_path)?;
+        let db = setup_migrated_db(dir.path())?;
         let now = Utc::now().to_rfc3339();
 
         let task_1 = DocumentTask {

@@ -485,9 +485,9 @@ mod tests {
         let ef5 = calculate_ease_factor(2.5, 5.0);
         assert!(ef5 > 2.5);
 
-        // 质量 4 应该稍微增加 EF
+        // 标准 SM-2 公式下质量 4 的 ΔEF = 0.1 - 1*(0.08+0.02) = 0，EF 保持不变
         let ef4 = calculate_ease_factor(2.5, 4.0);
-        assert!(ef4 > 2.5);
+        assert!((ef4 - 2.5).abs() < 1e-9);
 
         // 质量 3 应该降低 EF
         let ef3 = calculate_ease_factor(2.5, 3.0);

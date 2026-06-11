@@ -861,9 +861,18 @@ mod tests {
         let tmp_dir = std::env::temp_dir().join(format!("dstu_test_{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&tmp_dir).unwrap();
 
-        // file manager + db
+        // file manager + db（先经 MigrationCoordinator 建出 mistakes 全量 schema）
         let fm = Arc::new(FileManager::new(tmp_dir.clone()).expect("fm"));
-        let db_path = tmp_dir.join("test.db");
+        {
+            use crate::data_governance::migration::coordinator::MigrationCoordinator;
+            use crate::data_governance::schema_registry::DatabaseId;
+            let mut coordinator =
+                MigrationCoordinator::new(tmp_dir.clone()).with_audit_db(None);
+            coordinator
+                .migrate_single(DatabaseId::Mistakes)
+                .expect("mistakes migrations");
+        }
+        let db_path = tmp_dir.join("mistakes.db");
         let db = Arc::new(crate::database::Database::new(&db_path).expect("db"));
         let llm =
             Arc::new(crate::llm_manager::LLMManager::new(db.clone(), fm.clone()).expect("llm"));
@@ -934,7 +943,16 @@ mod tests {
         std::fs::create_dir_all(&tmp_dir).unwrap();
 
         let fm = Arc::new(FileManager::new(tmp_dir.clone()).expect("fm"));
-        let db_path = tmp_dir.join("test.db");
+        {
+            use crate::data_governance::migration::coordinator::MigrationCoordinator;
+            use crate::data_governance::schema_registry::DatabaseId;
+            let mut coordinator =
+                MigrationCoordinator::new(tmp_dir.clone()).with_audit_db(None);
+            coordinator
+                .migrate_single(DatabaseId::Mistakes)
+                .expect("mistakes migrations");
+        }
+        let db_path = tmp_dir.join("mistakes.db");
         let db = Arc::new(crate::database::Database::new(&db_path).expect("db"));
         let llm =
             Arc::new(crate::llm_manager::LLMManager::new(db.clone(), fm.clone()).expect("llm"));

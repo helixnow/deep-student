@@ -10047,11 +10047,14 @@ mod tests {
     }
 
     #[test]
-    fn test_get_record_data_llm_usage_daily_with_json_record_id() {
+    fn test_get_record_data_composite_pk_with_json_record_id() {
+        // 注：原测试针对 llm_usage_daily，但该表自 V20260525 起退出 RowSync
+        // （派生聚合数据不再行级同步），get_record_data 会按白名单拒绝。
+        // 此处改用测试白名单表验证"复合主键 + JSON record_id"解析能力。
         let conn = Connection::open_in_memory().unwrap();
         conn.execute_batch(
             r#"
-            CREATE TABLE llm_usage_daily (
+            CREATE TABLE test_usage_daily (
                 date TEXT NOT NULL,
                 caller_type TEXT NOT NULL,
                 model TEXT NOT NULL,
@@ -10059,7 +10062,7 @@ mod tests {
                 request_count INTEGER NOT NULL DEFAULT 0,
                 PRIMARY KEY (date, caller_type, model, provider)
             );
-            INSERT INTO llm_usage_daily(date, caller_type, model, provider, request_count)
+            INSERT INTO test_usage_daily(date, caller_type, model, provider, request_count)
             VALUES('2026-02-10', 'chat', 'gpt-4o', 'openai', 7);
             "#,
         )
@@ -10073,7 +10076,7 @@ mod tests {
         })
         .to_string();
 
-        let data = SyncManager::get_record_data(&conn, "llm_usage_daily", &record_id, "id")
+        let data = SyncManager::get_record_data(&conn, "test_usage_daily", &record_id, "id")
             .unwrap()
             .expect("record should be found");
 
@@ -10484,8 +10487,13 @@ mod tests {
             },
         ];
 
-        let result = SyncManager::apply_downloaded_changes(&conn, &changes, None);
-        assert!(result.is_err(), "fk violation should fail entire batch");
+        // 2026-06 语义更新：FK 违规属于非瞬态错误，违规的单条变更回滚到
+        // SAVEPOINT 并进入检疫表，批次继续应用（不再整批失败）——
+        // 与 regression_m10_poison_payload_is_quarantined_without_blocking_batch 一致。
+        let result = SyncManager::apply_downloaded_changes(&conn, &changes, None)
+            .expect("fk violation should be quarantined, not fail the batch");
+        assert_eq!(result.success_count, 1, "safe record should be applied");
+        assert_eq!(result.failure_count, 1, "violating record should be recorded as failure");
 
         let test_records_count: i64 = conn
             .query_row("SELECT COUNT(*) FROM test_records", [], |row| row.get(0))
@@ -10493,11 +10501,21 @@ mod tests {
         let child_records_count: i64 = conn
             .query_row("SELECT COUNT(*) FROM child_records", [], |row| row.get(0))
             .unwrap();
+        assert_eq!(test_records_count, 1, "safe record should be committed");
         assert_eq!(
-            test_records_count, 0,
-            "transaction should rollback previously applied records"
+            child_records_count, 0,
+            "fk-violating record must not be committed"
         );
-        assert_eq!(child_records_count, 0);
+
+        // 违规记录应进入检疫表
+        let quarantined: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM __sync_quarantine WHERE record_id = 'child-1'",
+                [],
+                |row| row.get(0),
+            )
+            .unwrap();
+        assert_eq!(quarantined, 1, "violating record should be quarantined");
     }
 
     #[test]

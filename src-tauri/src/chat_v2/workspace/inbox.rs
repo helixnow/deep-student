@@ -182,13 +182,29 @@ mod tests {
         );
 
         assert_eq!(manager.len("agent1"), MAX_INBOX_SIZE);
+
+        // drain 单次受 INBOX_DRAIN_BATCH_SIZE 上限约束（按批消费），
+        // 即使请求 MAX_INBOX_SIZE 也只返回一个批次，且保持 FIFO 顺序
         let drained = manager.drain("agent1", MAX_INBOX_SIZE);
-        let expected_last = format!("msg{}", MAX_INBOX_SIZE - 1);
+        assert_eq!(drained.len(), INBOX_DRAIN_BATCH_SIZE);
+        let expected_last = format!("msg{}", INBOX_DRAIN_BATCH_SIZE - 1);
         assert_eq!(drained.first().map(String::as_str), Some("msg0"));
         assert_eq!(
             drained.last().map(String::as_str),
             Some(expected_last.as_str())
         );
+
+        // 反复 drain 可清空整个收件箱
+        let mut total = drained.len();
+        loop {
+            let batch = manager.drain("agent1", MAX_INBOX_SIZE);
+            if batch.is_empty() {
+                break;
+            }
+            total += batch.len();
+        }
+        assert_eq!(total, MAX_INBOX_SIZE);
+        assert_eq!(manager.len("agent1"), 0);
     }
 
     #[test]

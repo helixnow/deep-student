@@ -1558,9 +1558,7 @@ mod tests {
     use tempfile::TempDir;
 
     fn setup_test_db() -> (TempDir, VfsDatabase) {
-        let temp_dir = TempDir::new().expect("Failed to create temp dir");
-        let db = VfsDatabase::new(temp_dir.path()).expect("Failed to create VFS database");
-        (temp_dir, db)
+        crate::vfs::database::setup_migrated_test_db()
     }
 
     fn create_list(db: &VfsDatabase, title: &str) -> VfsTodoList {

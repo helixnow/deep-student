@@ -5499,8 +5499,17 @@ mod tests {
     }
 
     fn make_test_db() -> (crate::database::Database, tempfile::TempDir) {
+        use crate::data_governance::migration::coordinator::MigrationCoordinator;
+        use crate::data_governance::schema_registry::DatabaseId;
+
         let dir = tempdir().expect("tempdir");
-        let db_path = dir.path().join("test.db");
+        // Database::new 本身不建表，先经 MigrationCoordinator 应用 Mistakes 迁移
+        let mut coordinator =
+            MigrationCoordinator::new(dir.path().to_path_buf()).with_audit_db(None);
+        coordinator
+            .migrate_single(DatabaseId::Mistakes)
+            .expect("mistakes migrations");
+        let db_path = dir.path().join("mistakes.db");
         let db = crate::database::Database::new(&db_path).expect("db");
         (db, dir)
     }

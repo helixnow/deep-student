@@ -1428,11 +1428,14 @@ fn test_parse_api_usage_openai_format() {
 
 #[test]
 fn test_parse_api_usage_anthropic_format() {
-    // 验证 Anthropic 格式解析
+    // 验证 Anthropic 格式解析。
+    // 归一化规则（与 LiteLLM 对齐）：cache_read_input_tokens 计入缓存命中，
+    // cache_creation_input_tokens 仅是计费元数据，不计入。
     let usage = json!({
         "input_tokens": 1234,
         "output_tokens": 567,
-        "cache_creation_input_tokens": 100
+        "cache_read_input_tokens": 100,
+        "cache_creation_input_tokens": 50
     });
 
     let result = parse_api_usage(&usage);

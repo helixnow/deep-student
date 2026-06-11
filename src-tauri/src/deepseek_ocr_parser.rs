@@ -310,9 +310,9 @@ mod tests {
         let slice = safe_slice(s, 10, 16); // "<|ref|>问题"
         assert_eq!(slice, "问题");
 
-        // 危险情况1：start 在 UTF-8 字符中间（会自动向前调整）
+        // 危险情况1：start 在 UTF-8 字符中间（会自动向前回退到字符边界）
         let slice = safe_slice(s, 11, 16); // 11 是 "问" 的第二个字节
-        assert!(slice.len() <= 5); // 会回退到前一个字符边界
+        assert_eq!(slice, "问题"); // start 回退到 10（"问" 起始），得到完整 "问题"（6 字节）
 
         // 危险情况2：end 在 UTF-8 字符中间（会自动向后调整）
         let slice = safe_slice(s, 10, 14); // 14 是 "题" 的第二个字节

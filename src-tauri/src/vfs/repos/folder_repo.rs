@@ -2757,10 +2757,7 @@ mod tests {
 
     /// 创建测试数据库（使用 VfsDatabase::new 自动执行迁移）
     fn setup_test_db() -> (TempDir, VfsDatabase) {
-        let temp_dir = TempDir::new().expect("Failed to create temp dir");
-        let db = VfsDatabase::new(temp_dir.path()).expect("Failed to create database");
-        // VfsDatabase::new 已经执行了所有迁移，包括 011_remove_subject
-        (temp_dir, db)
+        crate::vfs::database::setup_migrated_test_db()
     }
 
     #[test]

@@ -1045,24 +1045,24 @@ mod integration_tests {
         assert_eq!(VFS_MIGRATION_SET.database_name, "vfs");
         assert_eq!(
             VFS_MIGRATION_SET.count(),
-            28,
+            36,
             "VFS migration count mismatch"
         );
         assert_eq!(
             VFS_MIGRATION_SET.latest_version(),
-            20260312,
+            20260612,
             "VFS latest version mismatch"
         );
 
         assert_eq!(CHAT_V2_MIGRATION_SET.database_name, "chat_v2");
         assert_eq!(
             CHAT_V2_MIGRATION_SET.count(),
-            14,
+            17,
             "ChatV2 migration count mismatch"
         );
         assert_eq!(
             CHAT_V2_MIGRATION_SET.latest_version(),
-            20260516,
+            20260527,
             "ChatV2 latest version mismatch"
         );
 

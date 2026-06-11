@@ -1585,16 +1585,19 @@ mod tests {
             err_msg
         );
 
+        // 2026-06：run_all 引入"任一库失败 → 所有核心库从迁移前快照恢复"的
+        // 全库一致性回滚语义。chat_v2 锁失败后，已迁移完成的 VFS 也会被
+        // 回滚到迁移前状态（本测试中为全新空库 v0），而非保留已迁移版本。
         let vfs_db_path = get_database_path(&temp_dir, &DatabaseId::Vfs);
         let vfs_conn = Connection::open(&vfs_db_path).expect("Failed to open vfs db");
         let vfs_version = coordinator
             .get_current_version(&vfs_conn)
             .expect("Failed to read VFS version");
         assert_eq!(
-            vfs_version,
-            expected_latest_version(&DatabaseId::Vfs),
-            "VFS should already be migrated before chat_v2 lock failure"
+            vfs_version, 0,
+            "VFS should be rolled back to pre-migration snapshot after chat_v2 failure (all-or-nothing recovery)"
         );
+        drop(vfs_conn);
 
         lock_conn
             .execute_batch("ROLLBACK;")

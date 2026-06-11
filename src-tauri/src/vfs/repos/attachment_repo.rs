@@ -1914,9 +1914,11 @@ impl VfsAttachmentRepo {
     ///
     /// 与前端 src/components/shared/UnifiedDragDropZone.tsx 的 EXTENSION_TO_MIME 保持一致
     fn infer_extension(mime_type: &str, name: &str) -> Option<String> {
-        // 首先尝试从文件名获取
-        if let Some(ext) = name.rsplit('.').next() {
-            if !ext.is_empty() && ext.len() < 10 {
+        // 首先尝试从文件名获取。
+        // 注意必须用 rsplit_once：无扩展名的文件名（如 "photo"）经 rsplit('.')
+        // 会把整个文件名当作"扩展名"返回，导致 MIME 推断永远不生效。
+        if let Some((stem, ext)) = name.rsplit_once('.') {
+            if !stem.is_empty() && !ext.is_empty() && ext.len() < 10 {
                 return Some(ext.to_lowercase());
             }
         }
