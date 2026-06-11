@@ -1922,9 +1922,24 @@ mod tests {
 
         async fn receive(&self) -> McpResult<String> {
             let mut responses = self.responses.lock().await;
-            responses
+            let response = responses
                 .pop()
-                .ok_or_else(|| McpError::TransportError("No more responses".to_string()))
+                .ok_or_else(|| McpError::TransportError("No more responses".to_string()))?;
+            let request_id = {
+                let requests = self.requests.lock().await;
+                requests
+                    .last()
+                    .and_then(|request| serde_json::from_str::<Value>(request).ok())
+                    .and_then(|request| request.get("id").cloned())
+            };
+            if let Some(id) = request_id {
+                if let Ok(mut response_json) = serde_json::from_str::<Value>(&response) {
+                    response_json["id"] = id;
+                    return serde_json::to_string(&response_json)
+                        .map_err(McpError::SerializationError);
+                }
+            }
+            Ok(response)
         }
 
         async fn close(&self) -> McpResult<()> {

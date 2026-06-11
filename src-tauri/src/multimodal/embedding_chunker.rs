@@ -568,8 +568,8 @@ mod tests {
     fn test_estimate_tokens_chinese() {
         let text = "这是一段中文测试文本";
         let tokens = EmbeddingChunker::estimate_tokens(text);
-        // 10 个中文字符 * 0.7 ≈ 7 tokens
-        assert!(tokens >= 5 && tokens <= 10);
+        // 中文按保守估算约 1.5 token/字符。
+        assert!(tokens >= 10 && tokens <= 20);
     }
 
     #[test]

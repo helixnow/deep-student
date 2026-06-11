@@ -55,12 +55,25 @@ describe('ActivityTimeline thinking summary', () => {
     expect(zhChatV2.timeline.thinking.completed).toBe('已思考 {{seconds}} 秒');
   });
 
-  it('renders the thinking chain expanded by default and keeps the compact summary sticky while expanded', () => {
+  it('renders completed thinking collapsed by default when auto-collapse is enabled', () => {
     render(<ActivityTimeline blocks={[createThinkingBlock()]} isStreaming={false} />);
 
     const button = screen.getByRole('button', { name: 'timeline.thinking.completed' });
     const stickySummary = button.parentElement?.parentElement;
 
+    expect(button).toHaveAttribute('aria-expanded', 'false');
+    expect(screen.queryByText('第一段思维链')).not.toBeInTheDocument();
+    expect(stickySummary?.className).not.toContain('sticky');
+  });
+
+  it('keeps the compact summary sticky while the user expands the thinking chain', () => {
+    render(<ActivityTimeline blocks={[createThinkingBlock()]} isStreaming={false} />);
+
+    const button = screen.getByRole('button', { name: 'timeline.thinking.completed' });
+    fireEvent.click(button);
+    const stickySummary = button.parentElement?.parentElement;
+
+    expect(button).toHaveAttribute('aria-expanded', 'true');
     expect(screen.getByText('第一段思维链')).toBeInTheDocument();
     expect(screen.getByText('第二段思维链')).toBeInTheDocument();
     expect(stickySummary?.className).toContain('sticky');
@@ -71,6 +84,9 @@ describe('ActivityTimeline thinking summary', () => {
     render(<ActivityTimeline blocks={[createThinkingBlock()]} isStreaming={false} />);
 
     const button = screen.getByRole('button', { name: 'timeline.thinking.completed' });
+    fireEvent.click(button);
+    expect(screen.getByText('第一段思维链')).toBeInTheDocument();
+
     fireEvent.click(button);
 
     await waitFor(() => {
@@ -93,6 +109,9 @@ describe('ActivityTimeline thinking summary', () => {
 
     const scrollContainer = container.firstElementChild as HTMLDivElement;
     const button = screen.getByRole('button', { name: 'timeline.thinking.completed' });
+    fireEvent.click(button);
+    expect(screen.getByText('第一段思维链')).toBeInTheDocument();
+
     const stickySummary = button.parentElement?.parentElement as HTMLDivElement;
 
     const originalGetBoundingClientRect = stickySummary.getBoundingClientRect.bind(stickySummary);

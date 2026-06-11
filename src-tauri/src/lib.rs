@@ -1088,6 +1088,7 @@ pub fn run() {
             crate::tts::tts_stop,
             crate::commands::read_file_text,
             crate::commands::get_file_size,
+            crate::commands::pdfstream_check_access,
             crate::commands::hash_file,
             crate::commands::read_file_bytes,
             crate::commands::copy_file,
@@ -1945,7 +1946,8 @@ fn build_app_state(
     }
 
     // 🔧 Phase 1: 启动时恢复卡住的 Anki 制卡任务
-    match anki_database.recover_stuck_document_tasks() {
+    // 进程刚启动，不可能存在真正运行中的任务 → 无条件把 Processing/Streaming 标记为 Failed（可重试）
+    match anki_database.recover_stuck_document_tasks_older_than_minutes(0) {
         Ok(count) if count > 0 => {
             tracing::info!("[AppSetup] Recovered {} stuck Anki document tasks", count);
         }

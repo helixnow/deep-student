@@ -51,9 +51,7 @@ function SidebarHarness() {
     setSearchQuery: vi.fn(),
     setViewMode: vi.fn(),
     setSessionSheetOpen: vi.fn(),
-    setShowChatControl: vi.fn(),
     setPendingDeleteSessionId: vi.fn(),
-    showChatControl: false,
     isInitialLoading: false,
     sessions: [groupedSession, ungroupedSession],
     visibleGroups: groups,
@@ -91,9 +89,7 @@ function EmptyTopicsSidebarHarness() {
     setSearchQuery: vi.fn(),
     setViewMode: vi.fn(),
     setSessionSheetOpen: vi.fn(),
-    setShowChatControl: vi.fn(),
     setPendingDeleteSessionId: vi.fn(),
-    showChatControl: false,
     isInitialLoading: false,
     sessions: [ungroupedSession],
     visibleGroups: [],
@@ -122,7 +118,7 @@ describe('useSessionSidebarContent', () => {
 
     expect(screen.getByText('课题')).toBeInTheDocument();
     expect(screen.getByText('最近')).toBeInTheDocument();
-    expect(screen.getByText('未分类')).toBeInTheDocument();
+    expect(screen.getByText('未分组')).toBeInTheDocument();
     expect(screen.getAllByText('四级备考待办').length).toBeGreaterThan(0);
     expect(screen.getByText('社会工作简介')).toBeInTheDocument();
   });
@@ -133,6 +129,6 @@ describe('useSessionSidebarContent', () => {
     expect(screen.getByText('课题')).toBeInTheDocument();
     expect(screen.getByText('暂无课题')).toBeInTheDocument();
     expect(screen.getByText('最近')).toBeInTheDocument();
-    expect(screen.getByText('未分类')).toBeInTheDocument();
+    expect(screen.getByText('未分组')).toBeInTheDocument();
   });
 });

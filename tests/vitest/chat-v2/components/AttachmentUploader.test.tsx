@@ -289,7 +289,9 @@ describe('AttachmentUploader', () => {
       const fileInput = document.querySelector('input[type="file"]') as HTMLInputElement;
       const dropZone = fileInput.nextElementSibling as HTMLElement;
 
-      fireEvent.dragEnter(dropZone);
+      fireEvent.dragEnter(dropZone, {
+        dataTransfer: createDataTransfer([]),
+      });
       expect(screen.getByText('Drop files here')).toBeInTheDocument();
 
       // drop 会显式 setIsDragging(false)，比 dragLeave 更稳定（jsdom 的 DragEvent 坐标不可靠）

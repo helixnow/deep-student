@@ -2,7 +2,6 @@ import React from 'react';
 import { beforeAll, afterAll, describe, expect, it, vi } from 'vitest';
 import { render, screen } from '@testing-library/react';
 import { WindowControls } from '@/components/WindowControls';
-import { BottomTabBar } from '@/components/layout/BottomTabBar';
 import { MobileHeaderProvider } from '@/components/layout/MobileHeaderContext';
 import { UnifiedMobileHeader } from '@/components/layout/UnifiedMobileHeader';
 import {
@@ -50,7 +49,6 @@ describe('ui shell smoke render', () => {
         <MobileHeaderProvider>
           <UnifiedMobileHeader canGoBack onBack={() => undefined} />
         </MobileHeaderProvider>
-        <BottomTabBar currentView="chat-v2" onViewChange={() => undefined} />
       </>
     );
 
@@ -59,11 +57,6 @@ describe('ui shell smoke render', () => {
 
     const mobileBackButton = screen.getByLabelText('common:mobile_header.back');
     expect(mobileBackButton.closest('[data-mobile-shell="header"]')).toBeInTheDocument();
-
-    const tabList = screen.getByRole('tablist', { name: 'Navigation' });
-    expect(tabList).toHaveAttribute('data-mobile-shell', 'tabbar');
-    expect(screen.getAllByRole('tab')).toHaveLength(5);
-    expect(screen.getByRole('tab', { selected: true })).toBeInTheDocument();
   });
 
   it('renders unified sidebar search, selected rows, and footer through shell wrappers', () => {

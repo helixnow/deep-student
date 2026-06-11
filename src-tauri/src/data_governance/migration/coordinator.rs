@@ -4001,7 +4001,13 @@ mod tests {
         .unwrap();
 
         coordinator
-            .verify_migrations(&conn, &DatabaseId::Mistakes, &MISTAKES_MIGRATIONS, 20260130, 1)
+            .verify_migrations(
+                &conn,
+                &DatabaseId::Mistakes,
+                &MISTAKES_MIGRATIONS,
+                20260130,
+                1,
+            )
             .unwrap();
 
         let check_sql = format!(

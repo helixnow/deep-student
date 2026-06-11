@@ -73,7 +73,7 @@ export function DocumentUploadPanel({
   const { t } = useTranslation();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const supportedExtensions = getSupportedExtensions?.() || 'PDF, DOCX, TXT, MD, CSV, JSON, XML';
+  const supportedExtensions = getSupportedExtensions?.() || 'PDF, DOCX, TXT, MD, CSV, JSON, XML, EPUB';
   // ★ 2026-01 清理：错题导入功能已废弃
   const isImporting = false;
   const isDisabled = isProcessingFiles || isGenerating;
@@ -112,7 +112,8 @@ export function DocumentUploadPanel({
         onDragStateChange={onDragStateChange}
         enabled={!isDisabled}
         acceptedFileTypes={[{
-          extensions: ['pdf', 'docx', 'txt', 'md', 'csv', 'json', 'xml'],
+          // #58: epub 后端解析器（document_parser::extract_epub_from_bytes）已支持，前端入口同步放开
+          extensions: ['pdf', 'docx', 'txt', 'md', 'csv', 'json', 'xml', 'epub'],
           mimeTypes: [
             'application/pdf',
             'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -121,6 +122,7 @@ export function DocumentUploadPanel({
             'text/csv',
             'application/json',
             'application/xml',
+            'application/epub+zip',
           ],
           description: 'Document',
         }]}
@@ -156,7 +158,7 @@ export function DocumentUploadPanel({
           <input
             type="file"
             ref={fileInputRef}
-            accept=".pdf,.docx,.txt,.md,.csv,.json,.xml"
+            accept=".pdf,.docx,.txt,.md,.csv,.json,.xml,.epub"
             onChange={handleFileInputChange}
             className="absolute inset-0 h-full w-full cursor-pointer opacity-0 z-20"
             id="anki-file-input"

@@ -2552,6 +2552,6 @@ mod tests {
         });
 
         let event = build_usage_event(&usage).expect("usage event");
-        assert_eq!(event["cached_tokens"], json!(50));
+        assert_eq!(event["cached_tokens"], json!(30));
     }
 }

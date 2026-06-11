@@ -857,7 +857,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
       return (
         <div
           data-slot="mobile-settings-sheet-real-content"
-          className="flex min-h-0 flex-1 flex-col bg-background text-foreground [--background:0_0%_100%] [--border:220_13%_90%] [--card:0_0%_100%] [--foreground:0_0%_7%] [--muted:220_14%_96%] [--muted-foreground:220_6%_44%] [--popover:0_0%_100%]"
+          className="flex min-h-0 flex-1 flex-col bg-background text-foreground"
         >
           <div className="flex gap-2 overflow-hidden border-b border-border px-5 py-3">
             {[1, 2, 3].map((i) => (
@@ -1481,7 +1481,7 @@ export const Settings: React.FC<SettingsProps> = ({ onBack, mobilePresentation =
     return (
       <div
         data-slot="mobile-settings-sheet-real-content"
-        className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background text-foreground [--background:0_0%_100%] [--border:220_13%_90%] [--card:0_0%_100%] [--foreground:0_0%_7%] [--muted:220_14%_96%] [--muted-foreground:220_6%_44%] [--popover:0_0%_100%]"
+        className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background text-foreground"
       >
         <UnifiedErrorHandler errors={mcpErrors} onDismiss={dismissMcpError} onClearAll={clearMcpErrors} />
         {renderSettingsSheetTabRail()}

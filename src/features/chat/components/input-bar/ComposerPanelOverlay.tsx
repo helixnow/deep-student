@@ -72,8 +72,10 @@ export function ComposerPanelOverlay({
     if (!anchor || typeof window === 'undefined') return;
 
     const anchorRect = anchor.getBoundingClientRect();
-    const viewportWidth = window.innerWidth;
-    const viewportHeight = window.innerHeight;
+    // I-2: 用 visualViewport 感知软键盘——键盘弹出时可视高度缩小，
+    // 用 innerHeight 计算会让面板下半截被键盘遮住
+    const viewportWidth = window.visualViewport?.width ?? window.innerWidth;
+    const viewportHeight = window.visualViewport?.height ?? window.innerHeight;
     const safeWidth = Math.max(0, viewportWidth - VIEWPORT_PADDING_PX * 2);
     const desiredWidth = widthMode === 'wide'
       ? Math.max(anchorRect.width, preferredWidth)
@@ -147,6 +149,9 @@ export function ComposerPanelOverlay({
     const handleViewportChange = () => updatePosition();
     window.addEventListener('resize', handleViewportChange, { passive: true });
     window.addEventListener('scroll', handleViewportChange, { capture: true, passive: true });
+    // I-2: 软键盘弹出/收起只反映在 visualViewport 上
+    window.visualViewport?.addEventListener('resize', handleViewportChange, { passive: true });
+    window.visualViewport?.addEventListener('scroll', handleViewportChange, { passive: true });
 
     const resizeObserver = typeof ResizeObserver === 'function'
       ? new ResizeObserver(handleViewportChange)
@@ -163,6 +168,8 @@ export function ComposerPanelOverlay({
       }
       window.removeEventListener('resize', handleViewportChange);
       window.removeEventListener('scroll', handleViewportChange, true);
+      window.visualViewport?.removeEventListener('resize', handleViewportChange);
+      window.visualViewport?.removeEventListener('scroll', handleViewportChange);
       resizeObserver?.disconnect();
     };
   }, [anchorRef, updatePosition]);
@@ -190,7 +197,8 @@ export function ComposerPanelOverlay({
         className
       )}
       style={{
-        zIndex: Z_INDEX.popover,
+        // I-3: 高于移动顶栏（1100），小屏向上展开时不再被顶栏遮挡
+        zIndex: Z_INDEX.composerPanel,
         left: position?.left ?? VIEWPORT_PADDING_PX,
         top: position?.top ?? VIEWPORT_PADDING_PX,
         width: position?.width ?? 0,

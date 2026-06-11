@@ -3,8 +3,6 @@
 //! 提供 todo_lists 和 todo_items 表的 CRUD 操作。
 //! 独立于 VFS 资源系统，直接操作 todo_lists / todo_items 表。
 
-use std::sync::Arc;
-
 use log::{debug, info, warn};
 use rusqlite::{params, Connection, OptionalExtension};
 

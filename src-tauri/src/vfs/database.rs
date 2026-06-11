@@ -443,9 +443,8 @@ pub struct VfsDatabaseStats {
 #[cfg(test)]
 pub(crate) fn setup_migrated_test_db() -> (tempfile::TempDir, VfsDatabase) {
     let temp_dir = tempfile::TempDir::new().expect("Failed to create temp dir");
-    let mut coordinator = crate::data_governance::migration::MigrationCoordinator::new(
-        temp_dir.path().to_path_buf(),
-    );
+    let mut coordinator =
+        crate::data_governance::migration::MigrationCoordinator::new(temp_dir.path().to_path_buf());
     coordinator
         .migrate_single(crate::data_governance::schema_registry::DatabaseId::Vfs)
         .expect("VFS migrations should apply cleanly");

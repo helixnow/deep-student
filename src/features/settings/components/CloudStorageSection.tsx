@@ -42,8 +42,10 @@ const CONFIG_STORAGE_KEY = 'cloud_storage_config_v2';
 // 旧版 key（用于迁移）
 const LEGACY_CONFIG_KEY = 'cloud_storage_config';
 const FTP_RISK_WARNING_KEY = 'cloud_storage_ftp_risk_warning_v1';
+// #91: FTP/FTPS 后端（PR#103）已合入并具备完整实现（原子上传/重试/TLS 强制），
+// 默认放开入口；保留 VITE_ENABLE_EXPERIMENTAL_FTP_STORAGE=false 作为紧急关闭开关。
 const FTP_STORAGE_EXPERIMENTAL_ENABLED =
-  import.meta.env.VITE_ENABLE_EXPERIMENTAL_FTP_STORAGE === 'true';
+  import.meta.env.VITE_ENABLE_EXPERIMENTAL_FTP_STORAGE !== 'false';
 
 interface CloudStorageSectionProps {
   /** 在 Dialog 中显示时优化布局 */

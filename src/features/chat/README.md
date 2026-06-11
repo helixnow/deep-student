@@ -29,19 +29,10 @@
 
 | 文档 | 说明 |
 |------|------|
-| [01-可复用清单](./docs/01-可复用清单.md) | 可复用的组件、工具、样式、类型 |
-| [02-完整架构](./docs/02-完整架构.md) | 插件化架构图、目录结构、扩展流程 |
-| [03-数据契约](./docs/03-数据契约.md) | 类型定义、块系统、插件接口、SSOT |
-| [04-实现阶段](./docs/04-实现阶段.md) | 会话模式、实现优先级、插件开发指南 |
-| [05-多会话管理](./docs/05-多会话管理.md) | SessionManager、LRU 缓存、并行流式 |
+| [BLOCK_RENDERING_GUIDE](./BLOCK_RENDERING_GUIDE.md) | 块渲染/互动/持久化开发者参考手册：Block 类型体系、插件注册、事件系统、工具块渲染、扩展指南 |
+| `core/types/common.ts` | Block/Session 类型定义（SSOT） |
+| `plugins/` | 模式、块渲染、事件处理器插件目录（import 即注册） |
 
-### 架构文档 (最新)
-
-| 文档 | 说明 |
-|------|------|
-| [整体架构图](./docs/architecture/整体架构图.md) | 前后端整体架构、数据流、插件扩展点 |
-| [前端架构图](./docs/architecture/前端架构图.md) | Store、Hooks、Components、中间件、适配器 |
-| [后端架构图](./docs/architecture/后端架构图.md) | Pipeline、Handlers、Events、Repo、Adapters |
-| [数据结构图](./docs/architecture/数据结构图.md) | 类型定义、前后端对齐、数据库 Schema |
+> 历史设计文档（01-可复用清单 ~ 05-多会话管理、架构图系列）已随项目演进移除；当前架构以本 README + BLOCK_RENDERING_GUIDE 为准。
 
 ---

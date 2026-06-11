@@ -21,6 +21,7 @@ import { CSS } from '@dnd-kit/utilities';
 import type { DstuNode, DstuNodeType } from '@/dstu/types';
 import type { ViewMode } from '../../stores/finderStore';
 import { InlineEditText } from '../InlineEditText';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 export interface FinderFileItemProps {
   item: DstuNode;
@@ -141,6 +142,8 @@ export const FinderFileItem = React.memo(function FinderFileItem({
   const matchSource = item.metadata?.matchSource as string | undefined;
   // ★ 记忆系统改造：提取记忆元数据
   const memoryMeta = item.type === 'note' ? extractMemoryMeta(item.metadata?.tags as string[] | undefined) : null;
+  // N-3/N-4: 触屏设备上没有 hover 和双击心智，单击直接打开、更多按钮常显
+  const isTouchPrimary = useMediaQuery('(pointer: coarse)');
 
   const handleClick = useCallback((e: React.MouseEvent) => {
     // 编辑模式下不处理点击事件
@@ -151,10 +154,14 @@ export const FinderFileItem = React.memo(function FinderFileItem({
       onSelect('toggle');
     } else if (e.shiftKey) {
       onSelect('range');
+    } else if (isTouchPrimary) {
+      // 移动端范式：单击 = 打开（文件夹进入 / 文件打开），选中态同步更新
+      onSelect('single');
+      onOpen();
     } else {
       onSelect('single');
     }
-  }, [isEditing, onSelect]);
+  }, [isEditing, isTouchPrimary, onSelect, onOpen]);
 
   const handleDoubleClick = useCallback((e: React.MouseEvent) => {
     // 编辑模式下不处理双击事件
@@ -248,27 +255,43 @@ export const FinderFileItem = React.memo(function FinderFileItem({
         </div>
         
         {/* 右侧元数据 - 始终可见 */}
-        {!compact && (
+        {(!compact || isTouchPrimary) && (
           <div className="flex items-center gap-2.5 shrink-0">
-            {/* 子项数量（文件夹）或文件大小（文件类） */}
-            {(childCountLabel || (item.type !== 'folder' && item.size !== undefined)) && (
-              <span className="text-[11px] text-muted-foreground/50 tabular-nums w-12 text-right">
-                {childCountLabel ?? formatSize(item.size)}
-              </span>
+            {!compact && (
+              <>
+                {/* 子项数量（文件夹）或文件大小（文件类） */}
+                {(childCountLabel || (item.type !== 'folder' && item.size !== undefined)) && (
+                  <span className="text-[11px] text-muted-foreground/50 tabular-nums w-12 text-right">
+                    {childCountLabel ?? formatSize(item.size)}
+                  </span>
+                )}
+                {/* 类型标签 */}
+                {typeLabel && (
+                  <span className="text-[10px] text-muted-foreground/45 bg-muted/50 px-1.5 py-0 rounded shrink-0">
+                    {typeLabel}
+                  </span>
+                )}
+                {/* 修改时间 */}
+                <span className="text-[11px] text-muted-foreground/55 tabular-nums shrink-0">
+                  {relativeTime}
+                </span>
+              </>
             )}
-            {/* 类型标签 */}
-            {typeLabel && (
-              <span className="text-[10px] text-muted-foreground/45 bg-muted/50 px-1.5 py-0 rounded shrink-0">
-                {typeLabel}
-              </span>
-            )}
-            {/* 修改时间 */}
-            <span className="text-[11px] text-muted-foreground/55 tabular-nums shrink-0">
-              {relativeTime}
-            </span>
-            {/* 更多操作按钮 - 悬停时显示 */}
-            <NotionButton variant="ghost" size="icon" iconOnly className="!h-6 !w-6 !p-1 hover:bg-[var(--interactive-hover)] opacity-0 group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity duration-150" onClick={(e) => { e.stopPropagation(); onContextMenu(e); }} aria-label="more">
-              <DotsThree size={16} className="text-muted-foreground/60" />
+            {/* 更多操作按钮 - 桌面悬停显示，触屏常显（N-4） */}
+            <NotionButton
+              variant="ghost"
+              size="icon"
+              iconOnly
+              className={cn(
+                'hover:bg-[var(--interactive-hover)] transition-opacity duration-150',
+                isTouchPrimary
+                  ? '!h-9 !w-9 !p-1.5 opacity-100'
+                  : '!h-6 !w-6 !p-1 opacity-0 group-hover:opacity-100 group-focus-within:opacity-100'
+              )}
+              onClick={(e) => { e.stopPropagation(); onContextMenu(e); }}
+              aria-label="more"
+            >
+              <DotsThree size={isTouchPrimary ? 20 : 16} className="text-muted-foreground/60" />
             </NotionButton>
           </div>
         )}
@@ -309,7 +332,20 @@ export const FinderFileItem = React.memo(function FinderFileItem({
       )}
       {/* 收藏星标 */}
       {isFavorite && (
-        <Star size={12} className="absolute top-1.5 right-1.5 text-yellow-500 fill-yellow-500" />
+        <Star size={12} className={cn('absolute top-1.5 text-yellow-500 fill-yellow-500', isTouchPrimary ? 'left-1.5' : 'right-1.5')} />
+      )}
+      {/* 触屏更多操作入口（N-4）：网格模式无 hover/双指，常显右上角 */}
+      {isTouchPrimary && !isEditing && (
+        <NotionButton
+          variant="ghost"
+          size="icon"
+          iconOnly
+          className="absolute top-0.5 right-0.5 z-10 !h-8 !w-8 !p-1 hover:bg-[var(--interactive-hover)]"
+          onClick={(e) => { e.stopPropagation(); onContextMenu(e); }}
+          aria-label="more"
+        >
+          <DotsThree size={18} className="text-muted-foreground/70" />
+        </NotionButton>
       )}
       
       {/* 自定义 SVG 图标 */}

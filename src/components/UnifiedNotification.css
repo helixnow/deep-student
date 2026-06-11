@@ -293,10 +293,11 @@
   }
 }
 
-/* 响应式设计 - 移动端优化 */
-@media (max-width: 640px) {
+/* 响应式设计 - 移动端优化
+   CSS-3: 断点与 shell <768 对齐；top 避让 56px 移动顶栏（--mobile-header-total-height 已含安全区） */
+@media (max-width: 767.98px) {
   .notification-container {
-    top: calc(10px + env(safe-area-inset-top, 0px));
+    top: calc(var(--mobile-header-total-height, calc(56px + env(safe-area-inset-top, 0px))) + 8px);
     left: 50%;
     right: auto;
     width: calc(100vw - 20px);

@@ -19,6 +19,10 @@ describe('chat v2 composer panel sizing contract', () => {
     resolve(process.cwd(), 'src/chat-v2/plugins/chat/McpPanel.tsx'),
     'utf-8'
   );
+  const composerPanelSource = readFileSync(
+    resolve(process.cwd(), 'src/chat-v2/components/input-bar/ComposerPanel/ComposerPanel.tsx'),
+    'utf-8'
+  );
 
   it('uses a wide anchored tray for complex composer panels instead of composer-width popovers', () => {
     expect(overlaySource).toContain("widthMode?: 'anchor' | 'wide'");
@@ -30,7 +34,9 @@ describe('chat v2 composer panel sizing contract', () => {
   it('lets skill and MCP panels fill the available tray height with internal scroll regions', () => {
     expect(skillSelectorSource).toContain('flex min-h-0 flex-1 gap-3 overflow-hidden');
     expect(skillSelectorSource).not.toContain('h-[240px]');
-    expect(mcpPanelSource).toContain('flex h-full min-h-0 flex-col gap-2 overflow-hidden');
+    expect(composerPanelSource).toContain("'flex min-h-0 flex-col gap-3'");
+    expect(composerPanelSource).toContain("fillHeight && 'h-full'");
+    expect(mcpPanelSource).toContain('<ComposerPanel.Root fillHeight className="overflow-hidden">');
     expect(mcpPanelSource).toContain('className="flex-1 min-h-0"');
   });
 });

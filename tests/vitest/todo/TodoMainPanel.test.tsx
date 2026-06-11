@@ -4,6 +4,7 @@ import { TodoMainPanel } from '@/features/todo/components/TodoMainPanel';
 import { useTodoStore } from '@/features/todo/stores/useTodoStore';
 
 vi.mock('react-i18next', () => ({
+  initReactI18next: { type: '3rdParty', init: vi.fn() },
   useTranslation: () => ({
     t: (key: string, vars?: Record<string, string>) => {
       if (vars?.date) return `${key}:${vars.date}`;
@@ -37,6 +38,19 @@ function resetTodoStore() {
 
 describe('TodoMainPanel', () => {
   beforeEach(() => {
+    Object.defineProperty(window, 'matchMedia', {
+      writable: true,
+      value: vi.fn().mockImplementation((query: string) => ({
+        matches: false,
+        media: query,
+        onchange: null,
+        addListener: vi.fn(),
+        removeListener: vi.fn(),
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      })),
+    });
     resetTodoStore();
   });
 

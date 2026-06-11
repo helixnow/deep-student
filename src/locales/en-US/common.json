@@ -1,8 +1,8 @@
 {
   "app": {
-    "name": "Deep Learning Assistant",
-    "title": "AI Mistake Management System",
-    "description": "Intelligent Mistake Analysis and Learning Management System",
+    "name": "Deep Student",
+    "title": "Deep Student",
+    "description": "AI-powered intelligent learning assistant",
     "version": "Version"
   },
   "contextMenu": {
@@ -727,7 +727,16 @@
     "forward_tooltip": "Go forward to next page ({{shortcut}})",
     "no_back_history": "No back history available",
     "no_forward_history": "No forward history available",
-    "restoreFailed": "Page state could not be restored"
+    "restoreFailed": "Page state could not be restored",
+    "dashboard": "Dashboard",
+    "data_management": "Data Management",
+    "template_json_preview": "Template Preview",
+    "pdf_reader": "PDF Reader",
+    "sandbox_workbench": "Sandbox Workbench",
+    "todo": "Todo",
+    "tree_test": "Tree Test",
+    "crepe_demo": "Crepe Demo",
+    "chat_v2_test": "Chat V2 Test"
   },
   "time": {
     "now": "Just now",
@@ -3373,6 +3382,7 @@
   "mobile_header": {
     "back": "Back",
     "open_menu": "Open menu",
+    "open_sidebar": "Open sidebar",
     "menu": "Menu"
   },
   "sidebar": {

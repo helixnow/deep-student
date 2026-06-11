@@ -315,25 +315,57 @@ export const ChatV2Page: React.FC = () => {
     return map;
   }, [filteredSessions]);
 
+  const activeGroupIds = useMemo(() => new Set(groups.map((group) => group.id)), [groups]);
+
+  const staleSessionGroups = useMemo<SessionGroup[]>(() => {
+    const staleGroupIds = Array.from(new Set(
+      sessions
+        .map((session) => session.groupId)
+        .filter((groupId): groupId is string => !!groupId)
+        .filter((groupId) => !activeGroupIds.has(groupId))
+    ));
+    const now = new Date().toISOString();
+    return staleGroupIds.map((groupId, index) => ({
+      id: groupId,
+      name: t('browser.staleTopic', { defaultValue: 'Needs repair' }),
+      description: t('browser.staleTopicDescription', { defaultValue: 'Sessions whose original topic is no longer available.' }),
+      icon: 'Folder',
+      color: 'muted',
+      defaultSkillIds: [],
+      pinnedResourceIds: [],
+      sortOrder: Number.MAX_SAFE_INTEGER - staleGroupIds.length + index,
+      persistStatus: 'archived',
+      createdAt: now,
+      updatedAt: now,
+    }));
+  }, [activeGroupIds, sessions, t]);
+
+  const displayGroups = [...groups, ...staleSessionGroups];
+
   const groupNameMap = useMemo(() => {
     const map = new Map<string, string>();
-    groups.forEach((group) => {
+    displayGroups.forEach((group) => {
       // 判断 icon 是预设图标名称还是 emoji，只有 emoji 才添加到标签前面
       const presetIcon = group.icon ? PRESET_ICONS.find(p => p.name === group.icon) : null;
       const label = (group.icon && !presetIcon) ? `${group.icon} ${group.name}` : group.name;
       map.set(group.id, label);
     });
     return map;
-  }, [groups]);
+  }, [displayGroups]);
 
   const visibleGroups = useMemo(() => {
-    if (!normalizedSearchQuery) return groups;
-    return groups.filter((group) => {
+    if (!normalizedSearchQuery) return displayGroups;
+    return displayGroups.filter((group) => {
       const text = `${group.name} ${group.description ?? ''}`.toLowerCase();
       if (text.includes(normalizedSearchQuery)) return true;
       return (sessionsByGroup.get(group.id) ?? []).length > 0;
     });
-  }, [groups, normalizedSearchQuery, sessionsByGroup]);
+  }, [displayGroups, normalizedSearchQuery, sessionsByGroup]);
+
+  const editableVisibleGroups = useMemo(
+    () => visibleGroups.filter((group) => activeGroupIds.has(group.id)),
+    [activeGroupIds, visibleGroups]
+  );
 
   const groupDragDisabled = normalizedSearchQuery.length > 0;
 
@@ -346,19 +378,19 @@ export const ChatV2Page: React.FC = () => {
 
   // 浏览模式的分组信息
   const browserGroups = useMemo(() => {
-    return groups.map((g) => ({
+    return [...groups, ...staleSessionGroups].map((g) => ({
       id: g.id,
       name: g.name,
       icon: g.icon,
       color: g.color,
       sortOrder: g.sortOrder,
     }));
-  }, [groups]);
+  }, [groups, staleSessionGroups]);
 
-  // 未分组会话（仍按时间分组展示，含未知分组）
+  // 未分组会话（仍按时间分组展示）
   const ungroupedSessions = useMemo(
-    () => filteredSessions.filter((s) => !s.groupId || !groupNameMap.has(s.groupId)),
-    [filteredSessions, groupNameMap]
+    () => filteredSessions.filter((s) => !s.groupId),
+    [filteredSessions]
   );
   const groupedSessions = useMemo(() => groupSessionsByTime(ungroupedSessions), [ungroupedSessions]);
 
@@ -390,13 +422,6 @@ export const ChatV2Page: React.FC = () => {
   const [totalSessionCount, setTotalSessionCount] = useState<number | null>(null);
   const [ungroupedSessionCount, setUngroupedSessionCount] = useState<number | null>(null);
 
-  // 🆕 对话控制侧栏标签页状态
-  const [showChatControl, setShowChatControl] = useState(false);
-
-  useEffect(() => {
-    setShowChatControl(false);
-  }, [currentSessionId, viewMode, groupEditorOpen]);
-
   // ===== 会话生命周期 hook =====
   const {
     loadUngroupedCount, createSession, createAnalysisSession,
@@ -406,7 +431,7 @@ export const ChatV2Page: React.FC = () => {
     currentSessionId,
     setSessions, setCurrentSessionId, setIsLoading, setTotalSessionCount,
     setUngroupedSessionCount, setHasMoreSessions, setIsInitialLoading,
-    setIsLoadingMore, setShowChatControl,
+    setIsLoadingMore,
     isLoadingMore, hasMoreSessions, sessionsRef,
     t, PAGE_SIZE, LAST_SESSION_KEY,
   });
@@ -523,13 +548,13 @@ export const ChatV2Page: React.FC = () => {
   } = useSessionEdit({
     resetDeleteConfirmation, currentSessionId, setCurrentSessionId, setEditingSessionId, setEditingTitle,
     setRenamingSessionId, setRenameError, setSessions,
-    setGroupEditorOpen, setEditingGroup, setGroupEditorAutoFocusField, setShowChatControl,
+    setGroupEditorOpen, setEditingGroup, setGroupEditorAutoFocusField,
     setViewMode, setSessionSheetOpen, setPendingArchiveGroup,
     setGroupPinnedIds, setMobileResourcePanelOpen,
     editingTitle, editingGroup, pendingArchiveGroup, sessionsRef,
     groupPickerAddRef, t,
     updateGroup, createGroup, archiveGroup, reorderGroups,
-    loadUngroupedCount, getOrCreateHiddenDraftSession, groupDragDisabled, visibleGroups,
+    loadUngroupedCount, getOrCreateHiddenDraftSession, groupDragDisabled, visibleGroups: editableVisibleGroups,
   });
 
   // ===== 左侧主导航栏分组操作事件监听 =====
@@ -589,7 +614,7 @@ export const ChatV2Page: React.FC = () => {
     viewMode, sessionSheetOpen, t, sessionCount: sessions.length,
     createSession, isLoading,
     mobileResourcePanelOpen, finderBreadcrumbs, finderJumpToBreadcrumb,
-    setMobileResourcePanelOpen, setSessionSheetOpen, setShowChatControl, setViewMode,
+    setMobileResourcePanelOpen, setSessionSheetOpen, setViewMode,
   });
 
   // ===== 页面事件 hook =====
@@ -608,7 +633,7 @@ export const ChatV2Page: React.FC = () => {
     renderSessionItem, handleBrowserSelectSession, handleBrowserRenameSession,
   } = useSessionItemRenderer({
     editingSessionId, hoveredSessionId: null, currentSessionId, pendingDeleteSessionId, pendingArchiveSessionId,
-    editingTitle, renamingSessionId, renameError, groups, sessions, totalSessionCount,
+    editingTitle, renamingSessionId, renameError, groups: visibleGroups, sessions, totalSessionCount,
     t, resetDeleteConfirmation, setCurrentSessionId, setHoveredSessionId: () => {},
     setEditingTitle, setPendingDeleteSessionId, setPendingArchiveSessionId, setSessions, setViewMode,
     clearDeleteConfirmTimeout, deleteConfirmTimeoutRef,
@@ -619,8 +644,7 @@ export const ChatV2Page: React.FC = () => {
   // ===== 侧边栏内容 hook =====
   const { renderSessionSidebarContent } = useSessionSidebarContent({
     searchQuery, setSearchQuery, setViewMode, setSessionSheetOpen,
-    setShowChatControl, setPendingDeleteSessionId,
-    showChatControl,
+    setPendingDeleteSessionId,
     isInitialLoading, sessions, visibleGroups, sessionsByGroup, ungroupedSessions,
     currentSessionId, totalSessionCount,
     hasMoreSessions, isLoadingMore, pendingDeleteSessionId,
@@ -1049,7 +1073,7 @@ export const ChatV2Page: React.FC = () => {
           }}
           rightPanelEnabled={true}
           sidebarWidth={304}
-          showSidebarAppNavigation={false}
+          showSidebarAppNavigation
           showContentOverlay
           enableGesture={true}
           edgeWidth={20}

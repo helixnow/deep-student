@@ -169,7 +169,7 @@ export async function updateAnkiCard(request: {
 }
 
 export async function deleteAnkiCard(cardId: string): Promise<boolean> {
-  return invoke<boolean>('delete_anki_card', { card_id: cardId });
+  return invoke<boolean>('delete_anki_card', { cardId });
 }
 
 export async function exportAnkiCards(options: {

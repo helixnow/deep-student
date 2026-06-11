@@ -56,7 +56,7 @@ fn test_error_details_builder_api_key_missing() {
     assert!(error.user_message.contains("OpenAI"));
     assert!(!error.suggestions.is_empty());
     assert_eq!(error.suggestions[0].action_type, "settings");
-    assert_eq!(error.suggestions[0].label, "前往设置");
+    assert_eq!(error.suggestions[0].label, "Open Settings");
 }
 
 #[test]

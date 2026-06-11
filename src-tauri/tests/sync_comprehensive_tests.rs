@@ -222,10 +222,11 @@ mod tests {
                     title TEXT,
                     device_id TEXT,
                     local_version INTEGER DEFAULT 0,
+                    sync_version INTEGER DEFAULT 0,
                     updated_at TEXT DEFAULT (datetime('now')),
                     deleted_at TEXT
                 );
-                INSERT INTO resources (id, title, local_version) VALUES ('res_1', 'test', 5);
+                INSERT INTO resources (id, title, local_version, sync_version) VALUES ('res_1', 'test', 5, 2);
                 CREATE TABLE __change_log (
                     id INTEGER PRIMARY KEY,
                     table_name TEXT,
@@ -260,16 +261,17 @@ mod tests {
                 "reset_count should be > 0 after baseline reset"
             );
 
-            let new_version: i64 = conn
+            let (local_version, sync_version): (i64, i64) = conn
                 .query_row(
-                    "SELECT local_version FROM resources WHERE id = 'res_1'",
+                    "SELECT local_version, sync_version FROM resources WHERE id = 'res_1'",
                     [],
-                    |row| row.get(0),
+                    |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .unwrap();
+            assert_eq!(local_version, 5, "local_version should not be mutated");
             assert_eq!(
-                new_version, 6,
-                "local_version should be incremented from 5 to 6"
+                sync_version, 5,
+                "sync_version should align to local_version"
             );
         }
 
@@ -280,16 +282,18 @@ mod tests {
                 "CREATE TABLE notes (
                     id TEXT PRIMARY KEY, title TEXT,
                     device_id TEXT, local_version INTEGER DEFAULT 0,
+                    sync_version INTEGER DEFAULT 0,
                     updated_at TEXT DEFAULT (datetime('now')), deleted_at TEXT
                 );
-                INSERT INTO notes (id, title, local_version) VALUES ('n1', 'note1', 3);
-                INSERT INTO notes (id, title, local_version) VALUES ('n2', 'note2', 7);
+                INSERT INTO notes (id, title, local_version, sync_version) VALUES ('n1', 'note1', 3, 0);
+                INSERT INTO notes (id, title, local_version, sync_version) VALUES ('n2', 'note2', 7, 0);
                 CREATE TABLE questions (
                     id TEXT PRIMARY KEY, title TEXT,
                     device_id TEXT, local_version INTEGER DEFAULT 0,
+                    sync_version INTEGER DEFAULT 0,
                     updated_at TEXT DEFAULT (datetime('now')), deleted_at TEXT
                 );
-                INSERT INTO questions (id, title, local_version) VALUES ('q1', 'q1', 1);
+                INSERT INTO questions (id, title, local_version, sync_version) VALUES ('q1', 'q1', 1, 0);
                 CREATE TABLE __change_log (
                     id INTEGER PRIMARY KEY, table_name TEXT,
                     record_id TEXT, operation TEXT, changed_at TEXT,
@@ -313,30 +317,30 @@ mod tests {
             let (_truncated, reset_count) = result.unwrap();
             assert!(reset_count >= 3, "should touch all 3 rows across 2 tables");
 
-            let n1_version: i64 = conn
+            let n1_versions: (i64, i64) = conn
                 .query_row(
-                    "SELECT local_version FROM notes WHERE id = 'n1'",
+                    "SELECT local_version, sync_version FROM notes WHERE id = 'n1'",
                     [],
-                    |row| row.get(0),
+                    |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .unwrap();
-            let n2_version: i64 = conn
+            let n2_versions: (i64, i64) = conn
                 .query_row(
-                    "SELECT local_version FROM notes WHERE id = 'n2'",
+                    "SELECT local_version, sync_version FROM notes WHERE id = 'n2'",
                     [],
-                    |row| row.get(0),
+                    |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .unwrap();
-            let q1_version: i64 = conn
+            let q1_versions: (i64, i64) = conn
                 .query_row(
-                    "SELECT local_version FROM questions WHERE id = 'q1'",
+                    "SELECT local_version, sync_version FROM questions WHERE id = 'q1'",
                     [],
-                    |row| row.get(0),
+                    |row| Ok((row.get(0)?, row.get(1)?)),
                 )
                 .unwrap();
-            assert_eq!(n1_version, 4);
-            assert_eq!(n2_version, 8);
-            assert_eq!(q1_version, 2);
+            assert_eq!(n1_versions, (3, 3));
+            assert_eq!(n2_versions, (7, 7));
+            assert_eq!(q1_versions, (1, 1));
         }
 
         #[test]

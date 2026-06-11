@@ -5,7 +5,7 @@
 //! 1. **幂等性**：apply(changes) 和 apply(changes); apply(changes) 最终态相同
 //! 2. **无损性（冲突保护版）**：所有落败方数据都能在 __sync_conflicts 表找到
 //! 3. **收敛性**：两端互换变更集合后，双方 checksum 相等
-//! 4. **事务原子性**：一批里有违规 → 整批不落地
+//! 4. **失败隔离**：一批里有违规 → 合法变更落地，违规变更计入 failure
 //! 5. **UPSERT 等价性**：Insert 与 Update 在已有记录时结果相同
 //!
 //! 每个 property 默认跑 256 次随机实例（proptest 默认），覆盖
@@ -379,7 +379,7 @@ proptest! {
 }
 
 // ============================================================================
-// Property 4：事务原子性 —— 如果批次应用失败，数据库状态等同于未应用
+// Property 4：失败隔离 —— 非法变更不应阻断同批次合法变更
 // ============================================================================
 
 proptest! {
@@ -389,16 +389,20 @@ proptest! {
     })]
 
     #[test]
-    fn prop_transactional_atomicity(ops in arb_ops(1, 20)) {
+    fn prop_invalid_change_is_isolated(ops in arb_ops(1, 20)) {
         let conn = new_db();
         // 先应用一半
         let (head, _) = ops.split_at(ops.len() / 2);
         let head_changes = ops_to_changes(head, 1_700_000_000);
         let _ = SyncManager::apply_downloaded_changes(&conn, &head_changes, None);
-        let sum_before = items_checksum(&conn);
 
         // 再应用一批 ops + 一条必定失败的（写不存在的表）
         let tail_changes = ops_to_changes(&ops, 1_700_001_000);
+        let conn_without_bad = new_db();
+        let _ = SyncManager::apply_downloaded_changes(&conn_without_bad, &head_changes, None);
+        let _ = SyncManager::apply_downloaded_changes(&conn_without_bad, &tail_changes, None);
+        let sum_without_bad = items_checksum(&conn_without_bad);
+
         let mut changes_with_bad = tail_changes.clone();
         changes_with_bad.push(SyncChangeWithData {
             table_name: "nonexistent_table".into(),
@@ -414,12 +418,14 @@ proptest! {
         });
 
         let r = SyncManager::apply_downloaded_changes(&conn, &changes_with_bad, None);
-        prop_assert!(r.is_err(), "含非法变更的批次应失败");
+        prop_assert!(r.is_ok(), "含非法变更的批次应返回部分失败结果");
+        let r = r.unwrap();
+        prop_assert_eq!(r.failure_count, 1, "非法变更应被隔离为单条 failure");
 
         let sum_after = items_checksum(&conn);
         prop_assert_eq!(
-            sum_before.clone(), sum_after.clone(),
-            "失败的批次应完全回滚: before={}, after={}", sum_before, sum_after
+            sum_without_bad.clone(), sum_after.clone(),
+            "非法变更不应阻断合法变更: expected={}, actual={}", sum_without_bad, sum_after
         );
     }
 }

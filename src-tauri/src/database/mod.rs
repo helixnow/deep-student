@@ -5526,16 +5526,29 @@ impl Database {
         Ok(tasks)
     }
 
-    /// 🔧 Phase 1: 恢复卡住的制卡任务
-    /// 将 Processing/Streaming 状态超过 1 小时的任务重置为 Pending
+    /// 🔧 Phase 1: 恢复卡住的制卡任务（手动触发，应用运行中）
+    /// 将 Processing/Streaming 状态超过给定分钟数的任务标记为 Failed（中断），
+    /// 用户可通过"重试失败任务"续跑。
+    ///
+    /// 注意：updated_at 存储为 RFC3339（带 'T'/'Z'），直接与 datetime('now',...) 的
+    /// 空格分隔格式做字符串比较在同一天内恒为假，必须先用 datetime() 规范化两侧。
     pub fn recover_stuck_document_tasks(&self) -> Result<u32> {
+        self.recover_stuck_document_tasks_older_than_minutes(10)
+    }
+
+    /// 将 Processing/Streaming 超过 `minutes` 分钟未更新的任务标记为 Failed。
+    /// `minutes = 0` 表示无条件（用于应用启动时：进程刚启动，不可能有真正在跑的任务）。
+    pub fn recover_stuck_document_tasks_older_than_minutes(&self, minutes: u32) -> Result<u32> {
         let conn = self.get_conn_safe()?;
         let count = conn.execute(
             r#"UPDATE document_tasks
-               SET status = 'Pending', error_message = 'Recovered after app restart', updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+               SET status = 'Failed',
+                   error_message = '任务被中断（应用重启或长时间无响应），可点击"重试失败任务"继续',
+                   updated_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                WHERE status IN ('Processing', 'Streaming')
-               AND updated_at < datetime('now', '-1 hour')"#,
-            [],
+               AND (?1 = 0 OR datetime(updated_at) < datetime('now', '-' || ?1 || ' minutes')
+                    OR datetime(updated_at) IS NULL)"#,
+            rusqlite::params![minutes],
         )?;
         Ok(count as u32)
     }
@@ -5814,9 +5827,9 @@ mod tests {
         {
             let conn = db.get_conn_safe()?;
             conn.execute(
-                "INSERT INTO mistakes (id, subject, created_at, question_images, analysis_images, user_question, ocr_text, tags, mistake_type, status, chat_category, updated_at, last_accessed_at)
-                 VALUES (?1, ?2, ?3, '[]', '[]', ?4, ?5, '[]', 'analysis', 'completed', 'analysis', ?3, ?3)",
-                params!["mistake-1", "math", now, "示例问题", ""],
+                "INSERT INTO mistakes (id, created_at, question_images, analysis_images, user_question, ocr_text, tags, mistake_type, status, chat_category, updated_at, last_accessed_at)
+                 VALUES (?1, ?2, '[]', '[]', ?3, ?4, '[]', 'analysis', 'completed', 'analysis', ?2, ?2)",
+                params!["mistake-1", now, "示例问题", ""],
             )?;
         }
 

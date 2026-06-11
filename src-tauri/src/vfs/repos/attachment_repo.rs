@@ -134,8 +134,10 @@ fn normalize_extension(name: &str) -> Option<String> {
 const INLINE_SIZE_THRESHOLD: usize = 1024 * 1024;
 
 /// 附件上传大小上限
+/// #62: 文件上限从 50MB 提升至 200MB（与 document_parser::MAX_DOCUMENT_SIZE 对齐；
+/// 超过 1MB 即走 external blob 存储，不会膨胀 resources 表）
 const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
-const MAX_FILE_BYTES: usize = 50 * 1024 * 1024;
+const MAX_FILE_BYTES: usize = 200 * 1024 * 1024;
 
 /// 允许的扩展名（用于服务端类型校验）
 const SUPPORTED_EXTENSIONS: &[&str] = &[

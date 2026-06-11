@@ -15,6 +15,10 @@ describe('chat v2 composer panel semantic token contract', () => {
     resolve(process.cwd(), 'src/chat-v2/components/input-bar/InputBarUI.tsx'),
     'utf-8'
   );
+  const composerPanelSource = readFileSync(
+    resolve(process.cwd(), 'src/chat-v2/components/input-bar/ComposerPanel/ComposerPanel.tsx'),
+    'utf-8'
+  );
 
   it('defines composer panel tokens as a semantic layer over existing app tokens', () => {
     expect(themeSource).toContain('--composer-panel-surface:');
@@ -49,7 +53,8 @@ describe('chat v2 composer panel semantic token contract', () => {
     expect(inputBarSource).toContain('var(--composer-panel-control-border)');
     expect(inputBarSource).toContain('var(--composer-panel-control-hover)');
     expect(inputBarSource).toContain('var(--composer-panel-focus-border)');
-    expect(inputBarSource).toContain('var(--composer-panel-placeholder)');
+    expect(composerPanelSource).toContain('var(--composer-panel-placeholder)');
+    expect(composerPanelSource).toContain('var(--composer-panel-focus-border)');
     expect(inputBarSource).not.toContain('border-[hsl(var(--border))]');
     expect(inputBarSource).not.toContain('var(--input-surface)');
     expect(inputBarSource).not.toContain('var(--text-tertiary)');

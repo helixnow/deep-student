@@ -46,6 +46,9 @@ export const Z_INDEX = {
   /** 桌面端标题栏 */
   desktopTitlebar: 1100,
 
+  /** 输入栏组合面板（附件/模型等，需覆盖移动顶栏，低于抽屉遮罩） */
+  composerPanel: 1150,
+
   /** 侧边栏/抽屉遮罩 */
   overlay: 2000,
 

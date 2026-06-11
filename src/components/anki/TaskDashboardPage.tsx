@@ -418,7 +418,7 @@ const SessionRow: React.FC<{
         } else {
           // [M1] 使用 allSettled 避免部分失败中断其余任务
           const results = await Promise.allSettled(
-            failedTasks.map(ft => invoke('trigger_task_processing', { task_id: ft.id })),
+            failedTasks.map(ft => invoke('trigger_task_processing', { taskId: ft.id })),
           );
           const succeeded = results.filter(r => r.status === 'fulfilled').length;
           const failed = results.length - succeeded;
@@ -1064,7 +1064,7 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
   return (
     <div className="study-shell-page h-full">
       <CustomScrollArea className="h-full">
-        <div className={`study-shell-pane max-w-[960px] mx-auto px-4 sm:px-6 py-6 sm:py-8 ${isSmallScreen ? 'pb-20' : ''}`}>
+        <div className="study-shell-pane max-w-[960px] mx-auto px-4 sm:px-6 py-6 sm:py-8">
         {/* ======== 页面标题 ======== */}
         {!isSmallScreen && (
           <div className="mb-8">

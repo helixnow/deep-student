@@ -373,11 +373,32 @@ export WINDOWS_CERTIFICATE_PASSWORD="your-password"
 
 ---
 
+## 🐧 Linux 构建配置
+
+### 必需配置
+
+```bash
+# Rust Linux 目标（脚本会自动安装）
+rustup target add x86_64-unknown-linux-gnu
+```
+
+依赖 GTK/WebKitGTK 等系统库（Debian 系：`libwebkit2gtk-4.1-dev libgtk-3-dev libayatana-appindicator3-dev librsvg2-dev`）。
+
+### 构建命令
+
+```bash
+bash ./scripts/build_linux_all.sh   # 产出 deb / rpm / 可执行文件到 build-linux/
+```
+
+同样支持 `SKIP_FRONTEND_BUILD=true` 跳过前端构建。
+
+---
+
 ## 📚 相关文档
 
 - [快速参考](./README-BUILD.md)
 
 ---
 
-**最后更新**: 2026-02-07
+**最后更新**: 2026-06-11
 

@@ -189,14 +189,6 @@ pub(crate) fn filter_retrieval_results(
     filtered
 }
 
-/// Encode tool names for LLM API compatibility.
-///
-/// Invalid OpenAI function names are serialized through the canonical reversible codec
-/// so execution can recover the exact original MCP bridge name later.
-pub(crate) fn sanitize_tool_name_for_api(name: &str) -> String {
-    encode_tool_name_for_api(name).unwrap_or_default()
-}
-
 /// Normalize tool names for LLM APIs and reject blank names early.
 pub(crate) fn normalize_tool_name_for_api(name: &str) -> Option<String> {
     encode_tool_name_for_api(name)

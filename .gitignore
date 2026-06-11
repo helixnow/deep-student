@@ -207,31 +207,14 @@ wasi-*.tar.gz
 # Rust local build cache variant
 src-tauri/.cargo-target/
 
-# Internal docs (not for OSS repo)
-/PLAN.md
+# Internal docs (not for OSS repo) — 目录级管理，不再按文件名模式匹配
+# 内部一次性文档统一放 docs/archive/（历史归档）或 docs/design/（内部设计）
 /todo.md
-/CHATANKI_REVIEW_FIX.md
-/CRITICAL_CODE_REVIEW_REPORT.md
-/LEARNING_RESOURCE_CRITICAL_REVIEW_FIXES.md
-/SECURITY_AUDIT_TYPESCRIPT_FIXES.md
+/docs/archive/
 /docs/design/
-/docs/features/
-/docs/research/
-/docs/plans/
-/docs/review/
-/docs/tech-debt-*.md
-/docs/backup-tiers.md
-/docs/SCHEMA_CHANGELOG.md
 /docs/RELEASE-WORKFLOW.md
-/docs/api-config-provider-editing.md
-/docs/mindmap-layout-architecture.md
-/docs/mindmap-layout-style-system.md
-/docs/ocr-adapters.md
-/docs/*report*.md
-/docs/*audit*.md
-/docs/*review*.md
-/docs/*debug*.md
-/docs/*checklist*.md
+# 自动生成的 i18n 检查报告（scripts/check-missing-translations.mjs 现写入 note/，此条防历史路径回归）
+/docs/翻译键缺失详细报告.md
 
 # Intermediate verification/fix docs in src
 src/**/verify-*.md
@@ -291,3 +274,7 @@ FRONTEND_ANALYSIS.md
 .playwright-mcp/
 src-tauri/.codex_appcast.xml
 .pr-review/
+# 本机 MCP 反馈工具 clone（嵌套 git 仓库）
+mcp-feedback-enhanced/
+# 根目录调试数据库副本
+/deep-student.db

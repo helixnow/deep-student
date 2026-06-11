@@ -240,7 +240,7 @@ fn image_needs_compression_with_conn(
 fn get_max_size_bytes(resource_type: &VfsResourceType) -> usize {
     match resource_type {
         VfsResourceType::Image => 10 * 1024 * 1024,       // 10MB
-        VfsResourceType::File => 50 * 1024 * 1024,        // 50MB
+        VfsResourceType::File => 200 * 1024 * 1024,       // 200MB（#62：与附件上限对齐）
         VfsResourceType::Note => 50 * 1024 * 1024,        // 50MB
         VfsResourceType::Retrieval => 10 * 1024 * 1024,   // 10MB
         VfsResourceType::Exam => 50 * 1024 * 1024,        // 50MB
@@ -7177,7 +7177,10 @@ mod tests {
             get_max_size_bytes(&VfsResourceType::Image),
             10 * 1024 * 1024
         );
-        assert_eq!(get_max_size_bytes(&VfsResourceType::File), 50 * 1024 * 1024);
+        assert_eq!(
+            get_max_size_bytes(&VfsResourceType::File),
+            200 * 1024 * 1024
+        );
         assert_eq!(get_max_size_bytes(&VfsResourceType::Note), 50 * 1024 * 1024);
         assert_eq!(
             get_max_size_bytes(&VfsResourceType::Translation),

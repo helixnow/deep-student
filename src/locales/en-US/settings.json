@@ -103,7 +103,14 @@
       "insecure_context": "Runtime is not exposing a secure recording context",
       "missing_get_user_media": "Runtime does not expose getUserMedia",
       "unavailable": "Recording backend unavailable"
-    }
+    },
+    "description_short": "Shortcuts, dictionary, and dictation history",
+    "not_configured": "Not configured",
+    "trigger_mode_title": "Trigger Mode",
+    "trigger_mode_description": "Hold the shortcut to talk, or press once to toggle. Dictation results are inserted at the cursor only and never sent automatically.",
+    "diagnostics_title": "Diagnostics",
+    "hold_mode_short": "Hold",
+    "toggle_mode_short": "Toggle"
   },
   "api": {
     "title": "API Configuration",

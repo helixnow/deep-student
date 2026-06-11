@@ -2210,6 +2210,61 @@ pub async fn read_file_bytes(window: Window, path: String) -> Result<Vec<u8>> {
 pub async fn get_file_size(window: Window, path: String) -> Result<u64> {
     unified_file_manager::get_file_size(&window, &path)
 }
+
+/// pdfstream 协议可达性探测结果
+#[derive(serde::Serialize)]
+pub struct PdfStreamAccess {
+    pub available: bool,
+    pub size: Option<u64>,
+    pub reason: Option<String>,
+}
+
+/// 检查路径能否通过 pdfstream:// 协议访问（#59）
+///
+/// 与 `pdf_protocol::handle_asset_protocol` 使用完全相同的校验规则
+/// （canonicalize → 目录白名单 → .pdf 扩展名 → 文件存在），
+/// 避免前端用 `get_file_size` 探测成功、实际加载却 403 的不一致。
+#[tauri::command]
+pub async fn pdfstream_check_access(
+    app: tauri::AppHandle,
+    path: String,
+) -> Result<PdfStreamAccess> {
+    let denied = |reason: &str| PdfStreamAccess {
+        available: false,
+        size: None,
+        reason: Some(reason.to_string()),
+    };
+
+    let canonical = match std::fs::canonicalize(Path::new(&path)) {
+        Ok(p) => p,
+        Err(e) => return Ok(denied(&format!("文件不存在或不可读: {}", e))),
+    };
+
+    let allowed_dirs = crate::pdf_protocol::resolve_allowed_dirs(&app);
+    if !allowed_dirs.iter().any(|dir| canonical.starts_with(dir)) {
+        return Ok(denied("路径不在 pdfstream 白名单目录内"));
+    }
+
+    let is_pdf = canonical
+        .extension()
+        .and_then(|s| s.to_str())
+        .map(|ext| ext.eq_ignore_ascii_case("pdf"))
+        .unwrap_or(false);
+    if !is_pdf {
+        return Ok(denied("非 PDF 文件"));
+    }
+
+    if !canonical.is_file() {
+        return Ok(denied("路径不是常规文件"));
+    }
+
+    let size = std::fs::metadata(&canonical).map(|m| m.len()).ok();
+    Ok(PdfStreamAccess {
+        available: true,
+        size,
+        reason: None,
+    })
+}
 /// 计算文件 SHA-256（十六进制）
 #[tauri::command]
 pub async fn hash_file(window: Window, path: String) -> Result<String> {

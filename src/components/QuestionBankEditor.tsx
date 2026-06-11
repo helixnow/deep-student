@@ -2116,6 +2116,15 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                               {t('editor.aiGradingFailed')}
                             </span>
                           </div>
+                          {/* #56: 评判失败时保留已流式输出的内容，不再整段消失 */}
+                          {aiGrading.state.feedback && (
+                            <div className="pl-7.5 text-sm text-muted-foreground leading-relaxed max-h-48 overflow-y-auto">
+                              <StreamingMarkdownRenderer
+                                content={aiGrading.state.feedback}
+                                isStreaming={false}
+/>
+                            </div>
+                          )}
                           {submitResult.correctAnswer && (
                             <p className="text-sm text-muted-foreground pl-7.5">
                               {t('editor.referenceAnswerLabel')}<span className="font-medium text-foreground">{submitResult.correctAnswer}</span>
@@ -2268,12 +2277,19 @@ export const QuestionBankEditor: React.FC<QuestionBankEditorProps> = ({
                               </div>
                             )}
                           </div>
-                        ) : aiGrading.state.feedback && !aiGrading.state.error ? (
+                        ) : aiGrading.state.feedback ? (
+                          /* #56: 即使流异常中断（error 态）也保留已输出的解析内容 */
                           <div className="space-y-1">
                             <div className="flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400">
                               <DsAnalysisIconMuted className="w-4 h-4" />
                               {t('editor.aiAnalysis')}
                             </div>
+                            {aiGrading.state.error && (
+                              <div className="flex items-center gap-1.5 text-xs text-warning">
+                                <WarningCircle size={12} />
+                                {aiGrading.state.error}
+                              </div>
+                            )}
                             <div className="text-sm text-muted-foreground leading-relaxed">
                               <StreamingMarkdownRenderer
                                 content={aiGrading.state.feedback}

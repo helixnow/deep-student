@@ -1051,8 +1051,9 @@ pub async fn dstu_create(
             };
 
             // 验证 Base64 数据大小（避免超大字符串导致内存压力）
+            // #62: 文件上限 50MB→200MB，与附件上传（attachment_repo）及学习资源导入对齐
             const MAX_IMAGE_SIZE: usize = 10 * 1024 * 1024; // 10MB
-            const MAX_FILE_SIZE: usize = 50 * 1024 * 1024; // 50MB
+            const MAX_FILE_SIZE: usize = 200 * 1024 * 1024; // 200MB
             let max_file_size = if resource_type == "images" {
                 MAX_IMAGE_SIZE
             } else {

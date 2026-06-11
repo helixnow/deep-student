@@ -4,10 +4,6 @@ import { createPortal } from 'react-dom';
 import {
   DndContext,
   closestCenter,
-  PointerSensor,
-  KeyboardSensor,
-  useSensor,
-  useSensors,
   DragStartEvent,
   DragEndEvent,
   DragOverEvent,
@@ -20,10 +16,10 @@ import {
 } from '@dnd-kit/core';
 import {
   SortableContext,
-  sortableKeyboardCoordinates,
   verticalListSortingStrategy,
   useSortable,
 } from '@dnd-kit/sortable';
+import { useTouchFriendlyDndSensors } from '@/hooks/useTouchFriendlyDndSensors';
 import { CSS } from '@dnd-kit/utilities';
 import { useMindMapStore } from '../store';
 import { cn } from '@/lib/utils';
@@ -968,14 +964,7 @@ export const OutlineView: React.FC = () => {
   const [focusedRootId, setFocusedRootId] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
 
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: { distance: 8 },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
+  const sensors = useTouchFriendlyDndSensors();
 
   const displayRoot = useMemo(() => {
     if (!focusedRootId) return document.root;

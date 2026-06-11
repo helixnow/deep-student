@@ -568,16 +568,15 @@ impl StreamingAnkiService {
 
         // 已在系统段开头处理自定义要求
 
-        // 构建卡片数量要求
+        // 构建卡片数量要求（E4 修复：上限语义是"至多 N 张"，不是"恰好 N 张"，
+        // 避免模型为凑数生成低质量填充卡）
         let card_count_instruction = if options.max_cards_per_mistake > 0 {
             format!(
-                "🚨 卡片数量硬性限制 🚨\n\
-                你必须严格生成**恰好 {} 张**卡片，不多不少。\n\
-                - 生成到第 {} 张后立即停止，不要再输出任何卡片\n\
-                - 确保每张卡片都是高质量的，覆盖内容中最重要的知识点\n\
-                - 如果内容不够生成 {} 张，则生成尽可能多但不超过 {} 张\n\n",
-                options.max_cards_per_mistake,
-                options.max_cards_per_mistake,
+                "🚨 卡片数量上限 🚨\n\
+                本次最多生成 {} 张卡片，超过上限的输出会被丢弃。\n\
+                - 数量由内容的知识点密度决定：知识点少就少生成，不要为凑数而拆分或编造\n\
+                - 优先覆盖内容中最重要的知识点，确保每张卡片高质量\n\
+                - 生成到第 {} 张后必须立即停止，不要再输出任何卡片\n\n",
                 options.max_cards_per_mistake,
                 options.max_cards_per_mistake
             )
@@ -590,10 +589,11 @@ impl StreamingAnkiService {
             "{}\
             重要指令：\n\
             1. 请逐个生成卡片，每个卡片必须是完整的JSON格式\n\
-            2. 每生成一个完整的卡片JSON后，立即输出分隔符：<<<ANKI_CARD_JSON_END>>>\n\
+            2. 每生成一个完整的卡片JSON后，立即输出分隔符：<<<ANKI_CARD_JSON_END>>>（包括最后一张卡片之后也必须输出分隔符）\n\
             3. JSON格式必须包含以下字段：{}\n\
             4. 不要使用Markdown代码块，直接输出JSON\n\
-            5. 示例输出格式：\n\
+            5. 输出完所有卡片和最后一个分隔符后立即停止，不要输出任何总结或结束语\n\
+            6. 示例输出格式：\n\
             {}\n\
             <<<ANKI_CARD_JSON_END>>>",
             card_count_instruction, fields_requirement, example_json
@@ -951,10 +951,52 @@ impl StreamingAnkiService {
                 }
             }
 
-            // 处理剩余缓冲区内容
-            if !buffer.trim().is_empty() {
-                if let Ok(error_card) = self.create_error_card(&buffer, task_id).await {
-                    self.emit_error_card(error_card, document_id, window).await;
+            // 处理剩余缓冲区内容（E1 修复）：
+            // 模型经常遗漏最后一张卡之后的分隔符，残留内容大概率是一张合法卡片；
+            // 先尝试正常解析入库，失败且不像 JSON（纯收尾客套话）则丢弃，
+            // 只有"像卡片但解析失败"才降级为错误卡。
+            let residual = buffer.trim().to_string();
+            if !residual.is_empty() {
+                let within_limit = options.max_cards_per_mistake <= 0
+                    || (card_count as i32) < options.max_cards_per_mistake;
+                let looks_like_card = residual.contains('{');
+
+                let mut handled = false;
+                if within_limit && looks_like_card {
+                    match self.parse_and_save_card(&residual, task_id, options).await {
+                        Ok(Some(card)) => {
+                            card_count += 1;
+                            info!(
+                                "[ANKI_CARD_DEBUG] 流收尾残留缓冲解析为正常卡片（第{}张）",
+                                card_count
+                            );
+                            self.emit_new_card(card, document_id, window).await;
+                            handled = true;
+                        }
+                        Ok(None) => {
+                            // 重复卡片被去重跳过，视为已处理
+                            debug!("[ANKI_CARD_DEBUG] 流收尾残留缓冲解析成功但被去重跳过");
+                            handled = true;
+                        }
+                        Err(e) => {
+                            debug!("[ANKI_CARD_DEBUG] 流收尾残留缓冲解析失败: {}", e);
+                        }
+                    }
+                }
+
+                if !handled {
+                    if looks_like_card {
+                        // 像卡片但解析失败：保留为错误卡供用户检查
+                        if let Ok(error_card) = self.create_error_card(&residual, task_id).await {
+                            self.emit_error_card(error_card, document_id, window).await;
+                        }
+                    } else {
+                        // 纯自然语言收尾（如"以上就是全部卡片"）：丢弃，不生成错误卡
+                        info!(
+                            "[ANKI_CARD_DEBUG] 丢弃流收尾的非卡片残留内容（{} 字符）",
+                            residual.chars().count()
+                        );
+                    }
                 }
             }
         }

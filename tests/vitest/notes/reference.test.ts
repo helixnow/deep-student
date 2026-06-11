@@ -195,13 +195,13 @@ describe('getNodeType', () => {
 describe('isValidSourceDatabase', () => {
   it('接受有效值', () => {
     expect(isValidSourceDatabase('textbooks')).toBe(true);
-    expect(isValidSourceDatabase('mistakes')).toBe(true);
     expect(isValidSourceDatabase('chat_v2')).toBe(true);
     expect(isValidSourceDatabase('exam_sessions')).toBe(true);
   });
 
   it('拒绝无效值', () => {
     expect(isValidSourceDatabase('notes')).toBe(false);
+    expect(isValidSourceDatabase('mistakes')).toBe(false);
     expect(isValidSourceDatabase('other')).toBe(false);
     expect(isValidSourceDatabase('')).toBe(false);
     expect(isValidSourceDatabase(null)).toBe(false);
@@ -315,7 +315,7 @@ describe('createReferenceNode', () => {
 
   it('使用指定的 icon', () => {
     const node = createReferenceNode({
-      sourceDb: 'mistakes',
+      sourceDb: 'exam_sessions',
       sourceId: 'mis_123',
       title: 'Test',
       icon: 'CustomIcon',
@@ -324,14 +324,14 @@ describe('createReferenceNode', () => {
     expect(node.icon).toBe('CustomIcon');
   });
 
-  it('mistakes 默认 previewType 为 none', () => {
+  it('exam_sessions 默认 previewType 为 exam', () => {
     const node = createReferenceNode({
-      sourceDb: 'mistakes',
+      sourceDb: 'exam_sessions',
       sourceId: 'mis_123',
       title: 'Test',
     });
 
-    expect(node.previewType).toBe('none');
+    expect(node.previewType).toBe('exam');
   });
 
   it('chat_v2 默认 previewType 为 none', () => {
@@ -363,7 +363,6 @@ describe('SourceDatabase 辅助', () => {
   describe('SOURCE_DB_DISPLAY_NAMES', () => {
     it('包含所有 SourceDatabase 的显示名称', () => {
       expect(SOURCE_DB_DISPLAY_NAMES.textbooks).toEqual({ zh: '教材', en: 'Textbook' });
-      expect(SOURCE_DB_DISPLAY_NAMES.mistakes).toEqual({ zh: '错题', en: 'Mistake' });
       expect(SOURCE_DB_DISPLAY_NAMES.chat_v2).toEqual({ zh: '附件', en: 'Attachment' });
       expect(SOURCE_DB_DISPLAY_NAMES.exam_sessions).toEqual({ zh: '题目集识别', en: 'Exam Session' });
     });
@@ -372,7 +371,6 @@ describe('SourceDatabase 辅助', () => {
   describe('SOURCE_DB_ICONS', () => {
     it('包含所有 SourceDatabase 的图标', () => {
       expect(SOURCE_DB_ICONS.textbooks).toBe('BookOpen');
-      expect(SOURCE_DB_ICONS.mistakes).toBe('ClipboardList');
       expect(SOURCE_DB_ICONS.chat_v2).toBe('Paperclip');
       expect(SOURCE_DB_ICONS.exam_sessions).toBe('FileSpreadsheet');
     });
@@ -381,7 +379,6 @@ describe('SourceDatabase 辅助', () => {
   describe('getSourceDbIcon', () => {
     it('返回正确的图标', () => {
       expect(getSourceDbIcon('textbooks')).toBe('BookOpen');
-      expect(getSourceDbIcon('mistakes')).toBe('ClipboardList');
       expect(getSourceDbIcon('chat_v2')).toBe('Paperclip');
       expect(getSourceDbIcon('exam_sessions')).toBe('FileSpreadsheet');
     });
@@ -390,7 +387,6 @@ describe('SourceDatabase 辅助', () => {
   describe('getSourceDbPreviewType', () => {
     it('返回正确的预览类型', () => {
       expect(getSourceDbPreviewType('textbooks')).toBe('pdf');
-      expect(getSourceDbPreviewType('mistakes')).toBe('none');
       expect(getSourceDbPreviewType('chat_v2')).toBe('none');
       expect(getSourceDbPreviewType('exam_sessions')).toBe('exam');
     });

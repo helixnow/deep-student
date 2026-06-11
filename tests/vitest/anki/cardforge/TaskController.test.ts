@@ -88,7 +88,7 @@ describe('TaskController', () => {
   it('retry should call backend and return tasks', async () => {
     vi.mocked(invoke).mockImplementation(async (command, payload) => {
       if (command === 'trigger_task_processing') {
-        expect(payload).toEqual({ task_id: 'task-2' });
+        expect(payload).toEqual({ taskId: 'task-2' });
         return undefined;
       }
       if (command === 'get_document_tasks') {
@@ -99,7 +99,7 @@ describe('TaskController', () => {
 
     const result = await controller.retry('doc-1', ' task-2 ');
 
-    expect(invoke).toHaveBeenCalledWith('trigger_task_processing', { task_id: 'task-2' });
+    expect(invoke).toHaveBeenCalledWith('trigger_task_processing', { taskId: 'task-2' });
     expect(result.ok).toBe(true);
     expect(result.tasks).toEqual(expectedTasks);
   });

@@ -50,7 +50,7 @@ cd src-tauri && cargo tree --format "{p} {l}"
 
 | 许可证 | 数量 | 代表性依赖 |
 |--------|------|-----------|
-| MIT | ~111 | react, zustand, framer-motion, lucide-react, mermaid 等 |
+| MIT | ~111 | react, zustand, framer-motion, @phosphor-icons/react, mermaid 等 |
 | Apache-2.0 | ~8 | pdfjs-dist, docx-preview, @hello-pangea/dnd 等 |
 | MIT OR Apache-2.0 | ~5 | @tauri-apps/* 等 |
 | Apache-2.0 OR MIT | ~2 | — |

@@ -14,9 +14,10 @@ describe("App sidebar update badge source", () => {
     assert.match(source, /onClick:\s*\(\)\s*=>\s*void;/u);
     assert.match(source, /downloading:\s*boolean;/u);
     assert.match(source, /if\s*\(!visible\)\s*return null;/u);
+    assert.match(source, /const updateBadgeVisible = !updater\.checking && updater\.available && !!updater\.info;/u);
     assert.match(
       source,
-      /<DesktopSidebarAccessory[\s\S]*updateVisible=\{!updater\.checking && updater\.available && !!updater\.info\}[\s\S]*onUpdate=\{\(\) => void updater\.performUpdateAction\(\)\}[\s\S]*updateDownloading=\{updater\.downloading\}/u,
+      /<DesktopSidebarAccessory[\s\S]*updateVisible=\{updateBadgeVisible\}[\s\S]*onUpdate=\{\(\) => void updater\.performUpdateAction\(\)\}[\s\S]*updateDownloading=\{updater\.downloading\}/u,
     );
   });
 
@@ -34,5 +35,6 @@ describe("App sidebar update badge source", () => {
 
     assert.doesNotMatch(source, /\{downloading \? '下载中' : '更新'\}/u);
     assert.match(source, /downloading\s*\?\s*<CircleNotch[\s\S]*animate-spin/u);
+    assert.match(source, /:\s*<DownloadSimple size=\{12\}/u);
   });
 });

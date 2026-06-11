@@ -30,8 +30,8 @@ describe('AppMenu checked indicator contract', () => {
   });
 
   it('uses the Phosphor check icon for checked menu items', () => {
-    expect(componentSource).toMatch(/import\s*\{\s*Check\s+as\s+PhosphorCheck\s*\}\s*from '@phosphor-icons\/react';/);
-    expect(componentSource).toContain('<PhosphorCheck className="w-4 h-4" weight="bold" />');
+    expect(componentSource).toMatch(/import\s*\{[^}]*Check\s+as\s+PhosphorCheck[^}]*\}\s*from '@phosphor-icons\/react';/);
+    expect(componentSource).toContain('<PhosphorCheck size={16} weight="bold" />');
     expect(componentSource).not.toMatch(/import\s*\{[^}]*\bCheck\b[^}]*\}\s*from 'lucide-react';/);
   });
 });

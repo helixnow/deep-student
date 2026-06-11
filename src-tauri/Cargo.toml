@@ -2,7 +2,7 @@
 name = "deep-student"
 version = "0.9.38"
 description = "Deep Student - AI驱动的智能学习助手"
-authors = ["you"]
+authors = ["helixnow"]
 edition = "2021"
 default-run = "deep-student"
 license = "AGPL-3.0-or-later"

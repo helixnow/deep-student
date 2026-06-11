@@ -728,8 +728,10 @@ fn w28_data_is_json_null_value() {
         source_seq: None,
     };
     let r = SyncManager::apply_downloaded_changes(&conn, &[c], None);
-    // 应报错（data 不是 object）
-    assert!(r.is_err(), "data = null 必须报错: {:?}", r);
+    // data 不是 object，应隔离为单条 failure
+    let r = r.unwrap();
+    assert_eq!(r.success_count, 0);
+    assert_eq!(r.failure_count, 1);
 }
 
 /// **W.29** payload 的 data 是数组而不是对象
@@ -749,7 +751,9 @@ fn w29_data_is_array() {
         source_seq: None,
     };
     let r = SyncManager::apply_downloaded_changes(&conn, &[c], None);
-    assert!(r.is_err());
+    let r = r.unwrap();
+    assert_eq!(r.success_count, 0);
+    assert_eq!(r.failure_count, 1);
 }
 
 /// **W.30** data 是空对象 {}
@@ -758,7 +762,9 @@ fn w30_data_empty_object() {
     let conn = new_db();
     let c = mk_change("n1", ChangeOperation::Insert, json!({}), &now_ts());
     let r = SyncManager::apply_downloaded_changes(&conn, &[c], None);
-    assert!(r.is_err(), "空 object 应当拒绝");
+    let r = r.unwrap();
+    assert_eq!(r.success_count, 0);
+    assert_eq!(r.failure_count, 1, "空 object 应当隔离为 failure");
 }
 
 /// **W.31** data 里所有字段都是 null
@@ -776,8 +782,10 @@ fn w31_all_fields_null() {
         &now_ts(),
     );
     let r = SyncManager::apply_downloaded_changes(&conn, &[c], None);
-    // build_insert_parts 跳过 null 字段 → columns 全空 → 返回 Err
-    assert!(r.is_err());
+    // build_insert_parts 跳过 null 字段 → columns 全空 → 隔离为 failure
+    let r = r.unwrap();
+    assert_eq!(r.success_count, 0);
+    assert_eq!(r.failure_count, 1);
 }
 
 /// **W.32** 字段值是对象而不是基础类型
@@ -1074,16 +1082,16 @@ fn w40_delete_rollback_preserves_record() {
             source_seq: None,
         },
     ];
-    let r = SyncManager::apply_downloaded_changes(&conn, &changes, None);
-    assert!(r.is_err());
+    let r = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
+    assert_eq!(r.failure_count, 1);
 
-    // n1 没被删
+    // 非法变更被隔离，合法 DELETE 仍然生效
     let d: Option<String> = conn
         .query_row("SELECT deleted_at FROM items WHERE id='n1'", [], |r| {
             r.get::<_, Option<String>>(0)
         })
         .unwrap();
-    assert!(d.is_none(), "非法批次里的 DELETE 应被回滚");
+    assert!(d.is_some(), "非法批次不应回滚合法 DELETE");
 }
 
 // ============================================================================
@@ -1191,12 +1199,12 @@ fn w43_all_same_timestamp() {
         ));
     }
     SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
-    // LWW 门：相等不跳过，所以每次都会覆盖。最终 = v99
-    assert_eq!(get_title(&conn, "n1").as_deref(), Some("v99"));
-    assert_eq!(get_counter(&conn, "n1"), Some(99));
+    // LWW 门：相等时间戳保留先到记录，避免同一时间戳重放抖动。
+    assert_eq!(get_title(&conn, "n1").as_deref(), Some("v0"));
+    assert_eq!(get_counter(&conn, "n1"), Some(0));
 }
 
-/// **W.44** 极端：1000 条批次里夹着 1 条非法 —— 全部回滚且不 panic
+/// **W.44** 极端：1000 条批次里夹着 1 条非法 —— 单条隔离且不 panic
 #[test]
 fn w44_single_bad_in_1000_rolls_back_all() {
     let conn = new_db();
@@ -1233,12 +1241,12 @@ fn w44_single_bad_in_1000_rolls_back_all() {
         },
     );
 
-    let r = SyncManager::apply_downloaded_changes(&conn, &changes, None);
-    assert!(r.is_err());
+    let r = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
+    assert_eq!(r.failure_count, 1);
     let n: i64 = conn
         .query_row("SELECT COUNT(*) FROM items", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(n, 0, "任何一条失败必须回滚所有");
+    assert_eq!(n, 1000, "非法变更应隔离，合法变更应落地");
 }
 
 /// **W.45** 同批里先 UPSERT 设 deleted_at=null，再 DELETE（复活然后立刻删）
@@ -1773,8 +1781,10 @@ fn w60_llm_usage_daily_malformed_record_id() {
         source_seq: None,
     };
     let r = SyncManager::apply_downloaded_changes(&conn, &[c], None);
-    // 非法 record_id 应报错
-    assert!(r.is_err());
+    // 非法 record_id 应隔离为 failure
+    let r = r.unwrap();
+    assert_eq!(r.success_count, 0);
+    assert_eq!(r.failure_count, 1);
 }
 
 /// **W.61** 两个设备对同一记录做完全相同的修改（idempotent edits）

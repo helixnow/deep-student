@@ -7,20 +7,26 @@ describe('shared shad switch source contract', () => {
     resolve(process.cwd(), 'src/components/ui/shad/Switch.tsx'),
     'utf-8'
   );
+  const cssSource = readFileSync(
+    resolve(process.cwd(), 'src/components/ui/shad/Switch.css'),
+    'utf-8'
+  );
+  const cssDeclarations = cssSource.replace(/\/\*[\s\S]*?\*\//g, '');
 
-  it('owns its sizing and state styles in the component instead of a legacy css override file', () => {
-    expect(source).not.toContain("import './Switch.css';");
+  it('owns its sizing and state styles through the shared switch stylesheet instead of legacy overrides', () => {
+    expect(source).toContain('import "./Switch.css"');
     expect(source).not.toContain('data-shad-switch=""');
-    expect(source).toContain('h-5 w-9');
-    expect(source).toContain('p-[2px]');
-    expect(source).toContain('data-[state=checked]:bg-[color:var(--button-primary-foreground)]');
-    expect(source).toContain('data-[state=unchecked]:bg-[color:var(--button-utility-surface)]');
+    expect(cssSource).toContain('height: 1.5rem');
+    expect(cssSource).toContain('width: 2.75rem');
+    expect(cssSource).toContain('padding: 2px');
+    expect(cssSource).toContain('background-color: hsl(var(--primary))');
   });
 
-  it('defines thumb size and travel inline so className overrides remain predictable', () => {
-    expect(source).toContain('h-4 w-4');
-    expect(source).toContain('data-[state=checked]:translate-x-4');
-    expect(source).toContain('data-[state=unchecked]:translate-x-0');
-    expect(source).not.toContain('!important');
+  it('defines thumb size and travel in tokenized selectors without important overrides', () => {
+    expect(cssSource).toContain('height: 1.25rem');
+    expect(cssSource).toContain('width: 1.25rem');
+    expect(cssSource).toContain('transform: translateX(1.25rem)');
+    expect(cssSource).toContain('transform: translateX(0.75rem)');
+    expect(cssDeclarations).not.toContain('!important');
   });
 });

@@ -3745,9 +3745,10 @@ pub async fn data_governance_retry_quarantine(
             rusqlite::Error::QueryReturnedNoRows => "该隔离记录不存在".to_string(),
             other => format!("读取隔离记录失败: {}", other),
         })?;
-    let payload_json = payload_json.ok_or_else(|| "该隔离记录缺少 payload，无法重试".to_string())?;
-    let change: SyncChangeWithData =
-        serde_json::from_str(&payload_json).map_err(|e| format!("解析隔离记录 payload 失败: {}", e))?;
+    let payload_json =
+        payload_json.ok_or_else(|| "该隔离记录缺少 payload，无法重试".to_string())?;
+    let change: SyncChangeWithData = serde_json::from_str(&payload_json)
+        .map_err(|e| format!("解析隔离记录 payload 失败: {}", e))?;
 
     match SyncManager::apply_downloaded_changes(&conn, &[change], Some(&id_column_map())) {
         Ok(result) if result.failure_count == 0 => {

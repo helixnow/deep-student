@@ -41,7 +41,8 @@ const NoteContentView: React.FC<ContentViewProps> = ({
   isActive = false,
 }) => {
   const { t } = useTranslation(['notes', 'common']);
-  const isSmallScreen = useMediaQuery("(max-width: 768px)");
+  // N-1: 与 App shell 的 <768 断点对齐（767.98 避免 768px 整点两头缺失）
+  const isSmallScreen = useMediaQuery("(max-width: 767.98px)");
 
   // ========== 右侧面板状态 ==========
   const [rightPanelVisible, setRightPanelVisible] = useState(true);

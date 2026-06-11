@@ -38,6 +38,7 @@ import { TodoListPanel, type TodoStep, type TodoListOutput } from '../../plugins
 import { NoteToolPreview, isNoteTool, type NoteToolPreviewProps } from './NoteToolPreview';
 import { isTemplateVisualOutput, TemplateToolOutput } from '../../plugins/blocks/components';
 import { getReadableToolName } from '@/features/chat/utils/toolDisplayName';
+import { formatToolDurationShort } from '@/features/chat/utils/toolDuration';
 import { TextShimmer } from '../ui/TextShimmer';
 import './ActivityTimeline.css';
 
@@ -819,13 +820,15 @@ const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast
       return t('timeline.tool.failed', { ns: 'chatV2' });
     }
     if (isSuccess) {
-      if (durationMs !== undefined) {
-        return t('timeline.tool.completed', { ms: durationMs, ns: 'chatV2' });
-      }
       return t('timeline.tool.success', { ns: 'chatV2' });
     }
     return t('timeline.tool.pending', { ns: 'chatV2' });
-  }, [isPreparing, isRunning, isError, isSuccess, durationMs, t]);
+  }, [isPreparing, isRunning, isError, isSuccess, t]);
+
+  const durationText = useMemo(() => {
+    if (!isSuccess || durationMs === undefined) return '';
+    return formatToolDurationShort(durationMs);
+  }, [durationMs, isSuccess]);
 
   // 获取状态图标 - 只在错误状态显示图标
   const StatusIcon = useMemo(() => {
@@ -895,6 +898,11 @@ const ToolNodeContent: React.FC<ToolNodeContentProps> = ({ node, isFirst, isLast
               <span className={cn('text-xs', statusColor)}>
                 {statusText}
               </span>
+              {durationText && (
+                <span className="text-xs text-muted-foreground/70">
+                  {durationText}
+                </span>
+              )}
             </>
           )}
         </NotionButton>

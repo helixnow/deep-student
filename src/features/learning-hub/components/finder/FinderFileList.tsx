@@ -7,10 +7,6 @@ import { useVirtualizer } from '@tanstack/react-virtual';
 import {
   DndContext,
   pointerWithin,
-  KeyboardSensor,
-  PointerSensor,
-  useSensor,
-  useSensors,
   DragEndEvent,
   DragStartEvent,
   DragOverlay,
@@ -18,10 +14,10 @@ import {
 } from '@dnd-kit/core';
 import {
   SortableContext,
-  sortableKeyboardCoordinates,
   verticalListSortingStrategy,
   rectSortingStrategy,
 } from '@dnd-kit/sortable';
+import { useTouchFriendlyDndSensors } from '@/hooks/useTouchFriendlyDndSensors';
 import type { DstuNode } from '@/dstu/types';
 import type { ViewMode } from '../../stores/finderStore';
 import { FinderFileItem, SortableFinderFileItem } from './FinderFileItem';
@@ -243,17 +239,8 @@ export function FinderFileList({
     minDistance: 10,
   });
 
-  // DnD 传感器配置
-  const sensors = useSensors(
-    useSensor(PointerSensor, {
-      activationConstraint: {
-        distance: 8, // 拖动 8px 后激活
-      },
-    }),
-    useSensor(KeyboardSensor, {
-      coordinateGetter: sortableKeyboardCoordinates,
-    })
-  );
+  // DnD 传感器配置（N-9/DND-1: 触屏长按激活，避免与滚动/单击打开冲突）
+  const sensors = useTouchFriendlyDndSensors();
 
   // ★ 列表模式虚拟滚动配置
   const listVirtualizer = useVirtualizer({

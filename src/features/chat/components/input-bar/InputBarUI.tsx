@@ -71,6 +71,7 @@ import { ContextRefChips } from './ContextRefChips';
 import { PageRefChips } from './PageRefChips';
 import { AttachmentPreviewChips } from './AttachmentPreviewChips';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { BlockingInteractionBar } from './BlockingInteractionBar';
 import { MobileBottomSheet } from './MobileBottomSheet';
 import { MobileSheetHeader } from './MobileSheetHeader';
@@ -950,13 +951,9 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   }, [onFilesUpload, onAddAttachment, onUpdateAttachment, onContextRefCreated, attachments.length, t]);
 
   // ========== 相机拍照处理 ==========
-  // 检测是否在移动端环境
-  const isMobileEnv = useMemo(() => {
-    if (typeof window === 'undefined') return false;
-    if (typeof navigator === 'undefined') return false;
-    const ua = navigator.userAgent.toLowerCase();
-    return /android|iphone|ipad|ipod|mobile/.test(ua);
-  }, []);
+  // A-6: 拍照入口按指针能力判定（触屏设备≈带摄像头的移动设备），
+  // 替代 UA 嗅探，避免与宽度断点产生"桌面布局+移动能力"混合态
+  const isMobileEnv = useMediaQuery('(pointer: coarse)');
 
   const handleCameraClick = useCallback(() => {
     if (cameraInputRef.current) {
@@ -1063,6 +1060,8 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
     '!border-black !bg-black hover:!bg-black active:!bg-black !text-white';
   const studyUiSendButtonEmptyStateClass =
     '!border-transparent !bg-muted !text-muted-foreground hover:!bg-muted/80 active:!bg-muted/70';
+  const composerPanelShortcutClassName =
+    'rounded border border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-control-surface)] font-mono text-[10px] text-[color:var(--composer-panel-muted-foreground)]';
   const studyUiSendButtonAriaLabel = '发送消息';
   const tooltipPosition = 'top' as const;
   // 🔧 移动端禁用 tooltip（触摸设备没有 hover 交互，tooltip 会干扰）
@@ -1335,13 +1334,16 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   // 判断是否应该发送
   const shouldSendOnEnter = useCallback(
     (e: React.KeyboardEvent<HTMLTextAreaElement>) => {
+      // C-11: 移动端软键盘没有 Shift+Enter，Enter 应为换行，发送只走按钮
+      //（与微信/Telegram 移动端心智一致）
+      if (isMobile) return false;
       const mode = sendShortcut || 'enter';
       if (mode === 'enter') {
         return e.key === 'Enter' && !e.shiftKey && !isImeComposing(e);
       }
       return e.key === 'Enter' && (e.metaKey || e.ctrlKey) && !isImeComposing(e);
     },
-    [sendShortcut, isImeComposing]
+    [isMobile, sendShortcut, isImeComposing]
   );
 
   // 处理发送
@@ -1521,7 +1523,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
         <span className="flex items-center justify-between w-full">
           <span className="app-menu-tool-label">{label}</span>
           {shortcut && (
-            <kbd className="ml-2 px-1.5 py-0.5 text-[10px] font-mono bg-muted/50 rounded border border-border/50 text-muted-foreground">{shortcut}</kbd>
+            <kbd className={cn('ml-2 px-1.5 py-0.5', composerPanelShortcutClassName)}>{shortcut}</kbd>
           )}
         </span>
       </AppMenuSwitchItem>
@@ -2438,7 +2440,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 tooltipContent={
                   <span className="flex items-center gap-2">
                     <span>{t('analysis:input_bar.mcp.title')}</span>
-                    <kbd className="px-1 py-0.5 text-[10px] font-mono bg-muted/50 rounded border border-border/50">⌘⇧M</kbd>
+                    <kbd className={cn('px-1 py-0.5', composerPanelShortcutClassName)}>⌘⇧M</kbd>
                   </span>
                 }
                 active={panelStates.mcp || mcpEnabled}
@@ -2734,21 +2736,37 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                 content={disabledSend ? sendBlockedReason : undefined}
                 disabled={!disabledSend || isMobile || !sendBlockedReason}
               >
-                <button
-                  data-testid="btn-send"
-                  type="button"
-                  onClick={handleSend}
-                  disabled={disabledSend}
-                  className={cn(
-                    studyUiButtonBaseClassName,
-                    studyUiButtonSizeIconClassName,
-                    studyUiSendButtonSizeClass,
-                    isComposerEmpty ? studyUiSendButtonEmptyStateClass : studyUiBlackActionButtonClass
+                <span className="relative inline-flex">
+                  <button
+                    data-testid="btn-send"
+                    type="button"
+                    onClick={handleSend}
+                    disabled={disabledSend}
+                    className={cn(
+                      studyUiButtonBaseClassName,
+                      studyUiButtonSizeIconClassName,
+                      studyUiSendButtonSizeClass,
+                      isComposerEmpty ? studyUiSendButtonEmptyStateClass : studyUiBlackActionButtonClass
+                    )}
+                    aria-label={studyUiSendButtonAriaLabel}
+                  >
+                    <ArrowUp size={16} weight="bold" />
+                  </button>
+                  {/* C-2: 移动端无 tooltip，点击禁用按钮时用 toast 解释禁用原因 */}
+                  {disabledSend && isMobile && sendBlockedReason && (
+                    <button
+                      type="button"
+                      data-testid="btn-send-disabled-hint"
+                      className="absolute inset-0 cursor-not-allowed rounded-full bg-transparent"
+                      aria-label={sendBlockedReason}
+                      onClick={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        showGlobalNotification('info', sendBlockedReason);
+                      }}
+                    />
                   )}
-                  aria-label={studyUiSendButtonAriaLabel}
-                >
-                  <ArrowUp size={16} weight="bold" />
-                </button>
+                </span>
               </CommonTooltip>
             )}
           </div>
@@ -2826,7 +2844,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
               {/* 附件列表 */}
               <CustomScrollArea viewportClassName="max-h-56" className="flex flex-col gap-2">
                 {attachments.length === 0 ? (
-                  <div className="flex items-center justify-center rounded-lg border border-dashed bg-card/70 px-3 py-6 text-sm text-muted-foreground">
+                  <div className="flex items-center justify-center rounded-lg border border-dashed border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-muted-surface)] px-3 py-6 text-sm text-[color:var(--composer-panel-muted-foreground)]">
                     {t('analysis:input_bar.attachments.empty')}
                   </div>
                 ) : (
@@ -2888,13 +2906,13 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
                           ? 'border-amber-200/60 bg-amber-50/70 dark:border-amber-800/50 dark:bg-amber-900/20'
                           : attachment.status === 'ready' ? 'border-emerald-200/60 bg-emerald-50/70 dark:border-emerald-800/50 dark:bg-emerald-900/20'
                             : (isMediaProcessing || isUploading) ? 'border-blue-200/60 bg-blue-50/70 dark:border-blue-800/50 dark:bg-blue-900/20'
-                              : 'border-slate-200/70 bg-card/90 dark:border-slate-700/50';
+                              : 'border-[color:var(--composer-panel-control-border)] bg-[color:var(--composer-panel-control-surface)]';
 
                     // 判断是否为图片或 PDF（需要显示注入模式选择器）
                     const showInjectModeSelector = isImage || isPdf;
 
                     return (
-                      <div key={attachment.id} className={cn('attachment-row flex flex-col gap-1.5 rounded-lg border backdrop-blur p-2 transition-colors duration-200 ease-out motion-reduce:transition-none', toneClass)}>
+                      <div key={attachment.id} className={cn('attachment-row flex flex-col gap-1.5 rounded-lg border backdrop-blur p-2 transition-colors duration-200 ease-out hover:bg-[color:var(--composer-panel-control-hover)] focus-within:border-[color:var(--composer-panel-focus-border)] motion-reduce:transition-none', toneClass)}>
                         {/* 第一行：文件名、大小、状态、移除按钮 */}
                         <div className="flex items-center gap-3">
                           <div className="flex-1 min-w-0">
@@ -2920,7 +2938,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
 
                               return (
                                 <div className="flex items-center gap-2 mt-0.5">
-                                  <div className="flex-1 h-1 bg-muted rounded-full overflow-hidden">
+                                  <div className="flex-1 h-1 rounded-full bg-[color:var(--composer-panel-muted-surface)] overflow-hidden">
                                     <div
                                       className="h-full bg-blue-500 transition-all duration-300"
                                       style={{ width: `${unifiedPercent}%` }}

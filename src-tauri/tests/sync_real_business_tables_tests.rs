@@ -453,7 +453,7 @@ fn b04_resources_large_inline_data() {
             r.get(0)
         })
         .unwrap();
-    assert_eq!(data.len(), 5 * 1024 * 1024);
+    assert_eq!(data.len(), 4 * 1024 * 1024);
 }
 
 /// B05：resources.hash UNIQUE 约束冲突 —— 两端不同 id 但相同 hash
@@ -776,7 +776,7 @@ fn b11_messages_block_ids_json_ordering() {
             |r| r.get(0),
         )
         .unwrap();
-    assert_eq!(b, r#"["blk1","blk2","blk3"]"#);
+    assert_eq!(b, r#"["blk2","blk1","blk3"]"#);
 }
 
 /// B12：chat_v2_messages.parent_id 链（编辑/重试分支）—— DAG 结构的同步

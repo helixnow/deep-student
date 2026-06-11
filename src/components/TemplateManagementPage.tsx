@@ -357,13 +357,13 @@ const TemplateManagementPage: React.FC<TemplateManagementPageProps> = ({
       } catch {
         strictBuiltin = false;
       }
+      // 后端签名为 request: TemplateBulkImportRequest，必须包一层 request
       const result = await invoke<string>('import_custom_templates_bulk', {
-        template_data: text,
-        templateData: text,
-        overwrite_existing: overwriteExisting,
-        overwriteExisting: overwriteExisting,
-        strict_builtin: strictBuiltin,
-        strictBuiltin: strictBuiltin,
+        request: {
+          template_data: text,
+          overwrite_existing: overwriteExisting,
+          strict_builtin: strictBuiltin,
+        },
       });
       unifiedAlert(t('import_success', { result }));
       setShowImportExternalDialog(false);

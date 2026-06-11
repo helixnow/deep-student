@@ -91,12 +91,13 @@ describe('Context Actions', () => {
       };
 
       actions.addContextRef(ref1);
-      actions.addContextRef(ref2); // same resourceId: 去重 + 更新 hash
+      actions.addContextRef(ref2); // same resourceId: 去重 + 更新完整引用字段
 
       expect(mockState.pendingContextRefs).toHaveLength(1);
       expect(mockState.pendingContextRefs[0]).toEqual({
         ...ref1,
         hash: 'def456',
+        typeId: 'card',
       });
     });
 

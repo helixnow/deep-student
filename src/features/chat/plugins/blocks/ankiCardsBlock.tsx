@@ -1123,6 +1123,33 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
     [block.id, t]
   );
 
+  // E2 修复：块内编辑/删除同时回写 anki_cards 表（消灭双数据源）。
+  // AI 的 chatanki_export / chatanki_sync 读取的是 DB，
+  // 不回写会导致"用户在块里删过/改过的卡在 AI 导出时复活"。
+  const syncCardUpdateToDb = useCallback((card: AnkiCard) => {
+    if (!card.id) return;
+    // 空 text 归一化为 null，避免把 DB 中的 NULL 覆盖为空字符串
+    const payload = { ...card, text: card.text?.trim() ? card.text : null };
+    invoke('update_anki_card', { card: payload }).catch((err) => {
+      console.warn('[AnkiCardsBlock] Failed to sync card edit to anki DB:', err);
+      showGlobalNotification(
+        'warning',
+        t('blocks.ankiCards.action.dbSyncFailed'),
+      );
+    });
+  }, [t]);
+
+  const syncCardDeleteToDb = useCallback((card: AnkiCard | undefined) => {
+    if (!card?.id) return;
+    invoke('delete_anki_card', { cardId: card.id }).catch((err) => {
+      console.warn('[AnkiCardsBlock] Failed to sync card delete to anki DB:', err);
+      showGlobalNotification(
+        'warning',
+        t('blocks.ankiCards.action.dbSyncFailed'),
+      );
+    });
+  }, [t]);
+
   // 保存卡片编辑
   const handleSaveCard = useCallback(
     (index: number, updated: AnkiCard) => {
@@ -1132,10 +1159,11 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
       const newData = { ...data, cards: newCards };
       store.getState().updateBlock(block.id, { toolOutput: newData });
       persistToolOutput(newData);
+      syncCardUpdateToDb(updated);
       setEditingIndex(-1);
       logChatAnkiEvent('chat_anki_card_edited', { index, blockId: block.id });
     },
-    [cards, data, store, block.id, persistToolOutput]
+    [cards, data, store, block.id, persistToolOutput, syncCardUpdateToDb]
   );
 
   // 删除卡片
@@ -1143,10 +1171,12 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
   const handleDeleteCard = useCallback(
     (index: number) => {
       if (!data || !store) return;
+      const removed = cards[index];
       const newCards = cards.filter((_, i) => i !== index);
       const newData = { ...data, cards: newCards };
       store.getState().updateBlock(block.id, { toolOutput: newData });
       persistToolOutput(newData);
+      syncCardDeleteToDb(removed);
       setEditingIndex((prev) => {
         if (prev === index) return -1;
         if (prev > index) return prev - 1;
@@ -1154,7 +1184,7 @@ const AnkiCardsBlock: React.FC<BlockComponentProps> = React.memo(({
       });
       logChatAnkiEvent('chat_anki_card_deleted', { index, blockId: block.id });
     },
-    [cards, data, store, block.id, persistToolOutput]
+    [cards, data, store, block.id, persistToolOutput, syncCardDeleteToDb]
   );
 
   // 计算预览状态

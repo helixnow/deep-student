@@ -221,9 +221,9 @@ describe('ContextTypeRegistry', () => {
   });
 
   describe('getLabel', () => {
-    it('应该返回中文标签', () => {
+    it('应该返回当前语言标签', () => {
       registry.register(noteDefinition);
-      expect(registry.getLabel('note', 'zh')).toBe('笔记');
+      expect(registry.getLabel('note', 'zh')).toBe(noteDefinition.label);
     });
 
     it('应该返回英文标签', () => {
@@ -321,11 +321,13 @@ describe('预定义类型 formatToBlocks', () => {
       });
 
       const blocks = imageDefinition.formatToBlocks(resource);
-      expect(blocks.length).toBe(1);
+      expect(blocks.length).toBe(2);
       expect(isImageContentBlock(blocks[0])).toBe(true);
+      expect(isTextContentBlock(blocks[1])).toBe(true);
       
       const block = blocks[0] as { type: 'image'; mediaType: string; base64: string };
       expect(block.mediaType).toBe('image/png');
+      expect((blocks[1] as { type: 'text'; text: string }).text).toContain('<ocr_status');
     });
 
     it('应该处理 data URL 格式', () => {
@@ -346,12 +348,14 @@ describe('预定义类型 formatToBlocks', () => {
       });
 
       const blocks = imageDefinition.formatToBlocks(resource);
-      expect(blocks.length).toBe(1);
+      expect(blocks.length).toBe(2);
       expect(isImageContentBlock(blocks[0])).toBe(true);
+      expect(isTextContentBlock(blocks[1])).toBe(true);
       
       const block = blocks[0] as { type: 'image'; mediaType: string; base64: string };
       expect(block.mediaType).toBe('image/jpeg');
       expect(block.base64).toBe('/9j/4AAQSkZJRg==');
+      expect((blocks[1] as { type: 'text'; text: string }).text).toContain('<ocr_status');
     });
 
     it('无效图片数据应该返回占位文本', () => {
@@ -374,7 +378,7 @@ describe('预定义类型 formatToBlocks', () => {
       const blocks = imageDefinition.formatToBlocks(resource);
       expect(blocks.length).toBe(1);
       expect(isTextContentBlock(blocks[0])).toBe(true);
-      expect((blocks[0] as { type: 'text'; text: string }).text).toContain('[图片内容无效]');
+      expect((blocks[0] as { type: 'text'; text: string }).text).toContain('<ocr_status');
     });
   });
 

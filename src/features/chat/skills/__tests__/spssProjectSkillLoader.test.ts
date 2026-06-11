@@ -1,10 +1,11 @@
-import { readFileSync } from 'node:fs';
 import path from 'node:path';
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const PROJECT_ROOT = path.resolve(process.cwd());
 const PROJECT_SKILLS_ROOT = path.join(PROJECT_ROOT, '.skills');
+
+import { SPSS_PROJECT_SKILL_FIXTURES } from './spssProjectSkillFixtures';
 
 const { invokeMock } = vi.hoisted(() => ({
   invokeMock: vi.fn(async (command: string, args: { path: string }) => {
@@ -22,9 +23,10 @@ const { invokeMock } = vi.hoisted(() => ({
     }
 
     if (command === 'skill_read_file') {
+      const skillId = path.basename(path.dirname(args.path));
       return {
         path: args.path,
-        content: readFileSync(args.path, 'utf8'),
+        content: SPSS_PROJECT_SKILL_FIXTURES[skillId],
       };
     }
 

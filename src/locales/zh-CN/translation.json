@@ -171,7 +171,7 @@
     "parse_failed": "文档解析失败",
     "translate_failed": "翻译失败",
     "model_not_configured": "未配置翻译模型或Model2",
-    "file_too_large": "文件过大（最大50MB）",
+    "file_too_large": "文件过大（最大200MB）",
     "unsupported_format": "不支持的文件格式",
     "empty_text": "请输入待翻译文本",
     "network_error": "网络错误，请检查连接",

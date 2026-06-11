@@ -360,7 +360,7 @@ describe('AnalysisModePlugin', () => {
 
       expect(() => {
         analysisPlugin?.onSendMessage?.(mockStore, 'test message');
-      }).toThrow('OCR 正在进行中');
+      }).toThrow(/OCR (正在进行中|is in progress)/);
     });
 
     it('should throw when OCR is running', () => {
@@ -380,7 +380,7 @@ describe('AnalysisModePlugin', () => {
 
       expect(() => {
         analysisPlugin?.onSendMessage?.(mockStore, 'test message');
-      }).toThrow('OCR 正在进行中');
+      }).toThrow(/OCR (正在进行中|is in progress)/);
     });
 
     it('should not throw when OCR is success', () => {

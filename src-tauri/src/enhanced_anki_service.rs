@@ -866,8 +866,7 @@ mod tests {
         {
             use crate::data_governance::migration::coordinator::MigrationCoordinator;
             use crate::data_governance::schema_registry::DatabaseId;
-            let mut coordinator =
-                MigrationCoordinator::new(tmp_dir.clone()).with_audit_db(None);
+            let mut coordinator = MigrationCoordinator::new(tmp_dir.clone()).with_audit_db(None);
             coordinator
                 .migrate_single(DatabaseId::Mistakes)
                 .expect("mistakes migrations");
@@ -946,8 +945,7 @@ mod tests {
         {
             use crate::data_governance::migration::coordinator::MigrationCoordinator;
             use crate::data_governance::schema_registry::DatabaseId;
-            let mut coordinator =
-                MigrationCoordinator::new(tmp_dir.clone()).with_audit_db(None);
+            let mut coordinator = MigrationCoordinator::new(tmp_dir.clone()).with_audit_db(None);
             coordinator
                 .migrate_single(DatabaseId::Mistakes)
                 .expect("mistakes migrations");

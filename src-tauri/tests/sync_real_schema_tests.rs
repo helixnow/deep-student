@@ -242,7 +242,7 @@ fn mark_all_synced(conn: &Connection) {
 // 场景 61-70：外键 / 级联顺序 / FTS 触发器交互
 // ============================================================================
 
-/// 61. 向 notes 插入一条引用不存在 resource 的记录 —— 必须整批回滚
+/// 61. 向 notes 插入一条引用不存在 resource 的记录 —— 单条失败被隔离
 #[test]
 fn real_61_fk_violation_rolls_back_batch() {
     let conn = new_real_vfs_schema();
@@ -266,8 +266,9 @@ fn real_61_fk_violation_rolls_back_batch() {
         source_device_id: None,
         source_seq: None,
     };
-    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None);
-    assert!(r.is_err(), "外键违规应导致整批失败");
+    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+    assert_eq!(r.success_count, 0);
+    assert_eq!(r.failure_count, 1, "外键违规应被隔离为失败变更");
     let n: i64 = conn
         .query_row("SELECT COUNT(*) FROM notes", [], |r| r.get(0))
         .unwrap();
@@ -504,8 +505,9 @@ fn real_64b_physical_delete_blocked_by_fk() {
         source_device_id: None,
         source_seq: None,
     };
-    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None);
-    assert!(r.is_err(), "物理删除被引用的父记录应当被 FK 阻止");
+    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+    assert_eq!(r.success_count, 0);
+    assert_eq!(r.failure_count, 1, "物理删除被引用的父记录应当被 FK 阻止");
 
     // 事务回滚，parent 仍在
     let n: i64 = conn
@@ -734,7 +736,7 @@ fn real_67_integer_updated_at_handled_correctly() {
     assert!(data.is_some());
 }
 
-/// 68. llm_usage_daily 复合主键同步
+/// 68. llm_usage_daily 已是 Derived/Rebuild，不走 RowSync UPSERT
 #[test]
 fn real_68_composite_primary_key_upsert() {
     let conn = new_llm_usage_schema();
@@ -777,7 +779,9 @@ fn real_68_composite_primary_key_upsert() {
         source_device_id: None,
         source_seq: None,
     };
-    SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+    let result = SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+    assert_eq!(result.success_count, 0);
+    assert_eq!(result.failure_count, 1);
 
     let (prompt, completion): (i64, i64) = conn
         .query_row(
@@ -787,8 +791,8 @@ fn real_68_composite_primary_key_upsert() {
             |r| Ok((r.get(0)?, r.get(1)?)),
         )
         .unwrap();
-    assert_eq!(prompt, 200);
-    assert_eq!(completion, 100);
+    assert_eq!(prompt, 100);
+    assert_eq!(completion, 50);
 
     // 关键：不应产生新行
     let n: i64 = conn

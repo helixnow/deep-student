@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next';
 import { invoke } from '@tauri-apps/api/core';
 import { getCurrentWindow } from '@tauri-apps/api/window';
 // 🚀 性能优化：Settings, Dashboard, SOTADashboard 改为懒加载
-import { ArrowLeft, CaretLeft, CaretRight, CircleNotch, DownloadSimple, Terminal, Warning, X } from '@phosphor-icons/react';
+import { CaretLeft, CaretRight, CircleNotch, DownloadSimple, Terminal, Warning, X } from '@phosphor-icons/react';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
 import { CommonTooltip } from '@/components/shared/CommonTooltip';
 import { cn } from '@/lib/utils';
@@ -76,6 +76,7 @@ import { settingsMobileSheetCloseButtonClassName } from '@/features/settings';
 import { setPendingSettingsTab } from './utils/pendingSettingsTab';
 import { useBreakpoint } from './hooks/useBreakpoint';
 import { useNavigationHistory } from './hooks/useNavigationHistory';
+import { installAndroidBackBridge, registerBackHandler, BACK_PRIORITY } from './app/navigation/androidBackCoordinator';
 import { useNavigationShortcuts, getNavigationShortcutText } from './hooks/useNavigationShortcuts';
 import type { CurrentView as NavigationCurrentView } from './types/navigation';
 import { autoSaveScrollPosition, autoRestoreScrollPosition } from './utils/viewStateManager';
@@ -100,6 +101,7 @@ import { ViewLayerRenderer } from './app/components';
 import { ErrorBoundary } from './components/ErrorBoundary';
 import { canonicalizeView } from './app/navigation/canonicalView';
 import { DESKTOP_SHELL, getShellSidebarWidth } from './app/shell/desktopShell';
+import { DesktopShellSidebarPortalProvider } from './app/shell/DesktopShellSidebarPortal';
 import { getMobileShellCssVars } from './app/shell/mobileShell';
 
 // 🚀 性能优化：懒加载页面组件
@@ -316,7 +318,7 @@ function SidebarUpdateBadge({
       disabled={downloading}
       aria-label={downloading ? '下载中...' : '点击更新'}
     >
-      {downloading ? <CircleNotch size={12} className="animate-spin" aria-hidden="true" /> : '更新'}
+      {downloading ? <CircleNotch size={12} className="animate-spin" aria-hidden="true" /> : <DownloadSimple size={12} />}
     </button>
   );
 }
@@ -352,11 +354,11 @@ function DesktopSidebarAccessory({
         </NotionButton>
       </CommonTooltip>
       <SidebarUpdateBadge
-        visible={updateVisible}
+        visible={updateVisible && !collapsed}
         onClick={onUpdate}
         downloading={updateDownloading}
-        compact={collapsed || compact}
-        className={(collapsed || compact) ? 'ml-0.5' : 'ml-1.5'}
+        compact={compact}
+        className={compact ? 'ml-0.5' : 'ml-1.5'}
       />
     </div>
   );
@@ -816,7 +818,7 @@ function App() {
   const desktopHeaderNavHotzoneLabel = t('chatV2:page.newSession', '新建会话');
   const desktopHeaderTitleHotzoneLabel = t('common:command_palette_label', '命令面板');
   const updateBadgeVisible = !updater.checking && updater.available && !!updater.info;
-  const desktopCollapsedLeadingWidth = updateBadgeVisible ? 188 : 148;
+  const desktopCollapsedLeadingWidth = 148;
   const desktopTitlebarLeadingInset = !isSmallScreen && leftPanelCollapsed
     ? (isMacOS() ? DESKTOP_SHELL.macTrafficLightsSpacer : 0) + 16 + desktopCollapsedLeadingWidth
     : 0;
@@ -856,6 +858,8 @@ function App() {
     '--sidebar-header-height': '65px', // 左侧导航栏第一个图标到分隔线的高度
   }) as React.CSSProperties, [desktopNavigationWidth, shellSidebarWidth, topbarTopMargin]);
   const [templateManagementRefreshTick, setTemplateManagementRefreshTick] = useState(0);
+  const [desktopPageSidebarTarget, setDesktopPageSidebarTarget] = useState<HTMLDivElement | null>(null);
+  const [templateManagementShellBackVisible, setTemplateManagementShellBackVisible] = useState(true);
   const currentViewRef = useRef<CurrentView>('chat-v2');
   const isSmallScreenRef = useRef(isSmallScreen);
   const [mobileSettingsSheetOpen, setMobileSettingsSheetOpen] = useState(false);
@@ -1381,6 +1385,21 @@ function App() {
     canGoForward: unifiedCanGoForward,
   });
 
+  // 🤖 Android 系统返回键接管（A-5）：
+  // overlay 由协调器内部 handler/Escape 兜底处理；这里注册最低优先级的导航 fallback。
+  useEffect(() => {
+    installAndroidBackBridge();
+  }, []);
+  const unifiedGoBackRef = useRef({ canGoBack: unifiedCanGoBack, goBack: unifiedGoBack });
+  unifiedGoBackRef.current = { canGoBack: unifiedCanGoBack, goBack: unifiedGoBack };
+  useEffect(() => {
+    return registerBackHandler(() => {
+      if (!unifiedGoBackRef.current.canGoBack) return false;
+      unifiedGoBackRef.current.goBack();
+      return true;
+    }, BACK_PRIORITY.navigation);
+  }, []);
+
   // 🎯 P0-01 修复: 监听命令面板导航事件
   // 🎯 P1-04 修复: 监听 GLOBAL_SHORTCUT_SETTINGS 等事件
   const handleShortcutSettings = useCallback(() => {
@@ -1751,10 +1770,43 @@ function App() {
     />
   ), [leftPanelCollapsed, setCurrentView]);
 
+  const handleDesktopPageSidebarTarget = useCallback((node: HTMLDivElement | null) => {
+    setDesktopPageSidebarTarget(node);
+  }, []);
+  const shouldShowDesktopPageBackButton =
+    currentView === 'learning-hub'
+    || (currentView === 'template-management' && templateManagementShellBackVisible);
+  const desktopPageShellSidebarElement = useMemo(() => (
+    <div className="sidebar-shell-surface font-sidebar-study-ui flex h-full min-h-0 w-full min-w-0 flex-col overflow-hidden">
+      {shouldShowDesktopPageBackButton ? (
+        <div className="flex shrink-0 items-center px-3 pb-2 pt-[var(--sidebar-header-height)]">
+          <NotionButton
+            variant="ghost"
+            size="sm"
+            onClick={() => setCurrentView('chat-v2')}
+            className="desktop-shell-sidebar-row w-full justify-start"
+          >
+            <CaretLeft size={14} aria-hidden="true" />
+            <span className="desktop-shell-sidebar-row-title truncate">
+              {t('common:actions.backToHome', { defaultValue: '返回主页' })}
+            </span>
+          </NotionButton>
+        </div>
+      ) : null}
+      <div ref={handleDesktopPageSidebarTarget} className="min-h-0 flex-1 overflow-hidden" />
+    </div>
+  ), [handleDesktopPageSidebarTarget, setCurrentView, shouldShowDesktopPageBackButton, t]);
+  const desktopShellSidebarPortalValue = useMemo(() => ({
+    target: desktopPageSidebarTarget,
+    currentView,
+  }), [currentView, desktopPageSidebarTarget]);
+
   const desktopShellSidebarElement = currentView === 'settings'
     ? settingsShellSidebarElement
     : currentView === 'todo'
     ? todoShellSidebarElement
+    : currentView === 'learning-hub' || currentView === 'template-management'
+    ? desktopPageShellSidebarElement
     : sidebarElement;
 
   const syncSessionSidebarContext = useCallback(() => {
@@ -2106,6 +2158,8 @@ function App() {
       'ui-lab': t('sidebar:navigation.ui_lab', '样式调试'),
       'template-json-preview': t('common:navigation.template_json_preview', '模板预览'),
       'pdf-reader': t('common:navigation.pdf_reader', 'PDF 阅读器'),
+      'sandbox-workbench': t('common:navigation.sandbox_workbench', '沙箱工作台'),
+      'todo': t('common:navigation.todo', '待办'),
       'tree-test': t('common:navigation.tree_test', 'Tree Test'),
       'crepe-demo': t('common:navigation.crepe_demo', 'Crepe Demo'),
       'chat-v2-test': t('common:navigation.chat_v2_test', 'Chat V2 Test'),
@@ -2199,6 +2253,7 @@ function App() {
         onCancel={handleTemplateSelectionCancel}
         onBackToAnki={() => setCurrentView('task-dashboard')}
         refreshToken={templateManagementRefreshTick}
+        onDesktopShellBackVisibilityChange={setTemplateManagementShellBackVisible}
         onOpenJsonPreview={() => {
           templateJsonPreviewReturnRef.current = currentViewRef.current;
           setCurrentView('template-json-preview');
@@ -2275,6 +2330,7 @@ function App() {
       {/* ★ 移动端顶栏活跃视图同步 - 必须在 MobileHeaderProvider 内部 */}
       <MobileHeaderActiveViewSync activeView={currentView} />
       <LearningHubNavigationProvider>
+      <DesktopShellSidebarPortalProvider value={desktopShellSidebarPortalValue}>
       <div
         data-shell-role="app-shell"
         data-sidebar-visible={isDesktopSidebarSurfaceVisible ? 'true' : 'false'}
@@ -2303,6 +2359,7 @@ function App() {
           <UnifiedMobileHeader
             canGoBack={unifiedCanGoBack}
             onBack={unifiedGoBack}
+            fallbackTitle={desktopShellViewLabel}
             className="fixed top-0 left-0 right-0 z-[1100]"
           />
         )}
@@ -2467,8 +2524,6 @@ function App() {
             role="main"
             className={cn(
               "flex-1 relative overflow-hidden w-full"
-              // 移除 pb-16: InputBarUI 已通过 bottom: 64px 处理底部导航间距
-              // 之前的 pb-16 会缩小 content-body 高度，导致输入框被双重偏移
             )}
             data-tour-id="analysis-main"
           >
@@ -2623,6 +2678,7 @@ function App() {
       <Suspense fallback={null}>
         <LazyNoteEditorPortal />
       </Suspense>
+      </DesktopShellSidebarPortalProvider>
       </LearningHubNavigationProvider>
       </MobileHeaderProvider>
       </MobileLayoutProvider>

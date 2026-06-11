@@ -40,6 +40,8 @@ export function useBreakpoint() {
       is2Xl,
       
       // 语义化别名
+      // ⚠️ A-6: 此 isMobile 为 <640px，与 useIsMobile()（<768px）同名异义！
+      // 判断「是否切移动端布局」请用 isSmallScreen（<768，与 App shell 一致）
       isMobile: !isSm,          // < 640px
       isTablet: isSm && !isLg,  // 640px ~ 1024px
       isLaptop: isLg && !is2Xl, // 1024px ~ 1536px
@@ -71,6 +73,9 @@ export function useBreakpoint() {
 
 /**
  * 简化版：只检测是否为移动端
+ *
+ * ⚠️ A-6: 此处为 <768px（= isSmallScreen），与 useBreakpoint().isMobile（<640px）
+ * 同名异义。切移动端布局用本 hook 或 isSmallScreen，勿混用。
  */
 export function useIsMobile(): boolean {
   return useMediaQuery(`(max-width: ${BREAKPOINTS.md - 1}px)`);

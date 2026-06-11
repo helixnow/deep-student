@@ -5,10 +5,10 @@ import { describe, expect, it } from 'vitest';
 const repoRoot = process.cwd();
 
 describe('stream reconnect source contract', () => {
-  it('keeps the backend default LLM reconnect attempts at five', () => {
+  it('keeps the backend default LLM reconnect attempts at two', () => {
     const toolLoop = readFileSync(join(repoRoot, 'src-tauri/src/chat_v2/pipeline/tool_loop.rs'), 'utf8');
 
-    expect(toolLoop).toMatch(/const LLM_MAX_RETRIES:\s*u32\s*=\s*5;/);
+    expect(toolLoop).toMatch(/const LLM_MAX_RETRIES:\s*u32\s*=\s*2;/);
   });
 
   it('treats stream timeout errors as retryable', () => {

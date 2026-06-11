@@ -6,7 +6,7 @@ use log::{info, warn};
 use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::vfs::database::VfsDatabase;
-use crate::vfs::error::{VfsError, VfsResult};
+use crate::vfs::error::VfsResult;
 use crate::vfs::types::{CreatePomodoroRecordParams, PomodoroRecord, PomodoroTodayStats};
 
 fn log_and_skip_err<T>(r: Result<T, rusqlite::Error>) -> Option<T> {

@@ -20,7 +20,7 @@ const scanData = scanDataJson as ScanData;
  * 3. Token 校对：所有语义 CSS 变量的实时渲染和复制
  * 4. 混用清单：按组件族展示当前混用情况和涉及文件
  */
-export default function StyleDebugPage() {
+export function StyleDebugPage() {
   return (
     <CustomScrollArea className="h-full">
       <div className="max-w-5xl mx-auto px-6 py-8">
@@ -61,3 +61,5 @@ export default function StyleDebugPage() {
     </CustomScrollArea>
   );
 }
+
+export default StyleDebugPage;

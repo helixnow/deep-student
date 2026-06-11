@@ -199,6 +199,8 @@ pub async fn add_cards_to_anki_connect(
     }
 
     let mut card_models: HashMap<String, String> = HashMap::new();
+    let mut templates_by_model: HashMap<String, crate::models::CustomAnkiTemplate> =
+        HashMap::new();
     for card in &selected_cards {
         let Some(template_id) = card
             .template_id
@@ -215,37 +217,51 @@ pub async fn add_cards_to_anki_connect(
             let model_name = template.note_type.trim();
             if !model_name.is_empty() {
                 card_models.insert(card.id.clone(), model_name.to_string());
+                templates_by_model
+                    .entry(model_name.to_string())
+                    .or_insert(template);
             }
         }
     }
 
-    match crate::anki_connect_service::add_notes_to_anki_with_card_models(
+    // D1 修复：detailed 版本会自动创建缺失模型、用 canAddNotes 把重复与失败分开
+    match crate::anki_connect_service::add_notes_to_anki_detailed(
         selected_cards,
         deck_name,
         note_type,
         card_models,
+        templates_by_model,
     )
     .await
     {
-        Ok(note_ids) => {
-            let successful_count = note_ids.iter().filter(|id| id.is_some()).count();
-            let failed_count = note_ids.len() - successful_count;
-
+        Ok(report) => {
             println!(
-                "卡片添加完成: 成功 {} 张, 失败 {} 张",
-                successful_count, failed_count
+                "卡片添加完成: 新增 {} 张, 重复 {} 张, 失败 {} 张{}",
+                report.added,
+                report.duplicates,
+                report.failed,
+                if report.created_models.is_empty() {
+                    String::new()
+                } else {
+                    format!("（自动创建模型: {}）", report.created_models.join(", "))
+                }
             );
 
-            if failed_count > 0 {
-                println!("部分卡片添加失败，可能是重复卡片或格式错误");
-            }
-
-            if successful_count == 0 {
-                Err(AppError::validation(
-                    "所有卡片同步失败，可能是重复卡片或字段/模板不匹配".to_string(),
-                ))
+            if report.added == 0 && report.failed == 0 && report.duplicates > 0 {
+                // 全部已存在：幂等成功，明确告知而不是报"同步失败"
+                Err(AppError::validation(format!(
+                    "{} 张卡片均已存在于 Anki 中（重复跳过），未新增卡片",
+                    report.duplicates
+                )))
+            } else if report.added == 0 {
+                let mut reason = String::from("所有卡片同步失败");
+                if report.duplicates > 0 {
+                    reason.push_str(&format!("（其中 {} 张为重复卡片）", report.duplicates));
+                }
+                reason.push_str("。请检查 Anki 中是否存在对应笔记类型、卡片字段是否为空");
+                Err(AppError::validation(reason))
             } else {
-                Ok(note_ids)
+                Ok(report.note_ids)
             }
         }
         Err(e) => {

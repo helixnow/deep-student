@@ -152,16 +152,20 @@ pub async fn run_qbank_grading(
     }
 
     if matches!(stream_status, StreamStatus::Incomplete) {
+        // 🔧 #56: 仅在没有任何累积文本时才报错；已有文本则继续走后续校验/持久化，
+        // 避免"解析先流式出现、随后整段消失"。grade 模式仍由下方 verdict 校验兜底。
+        if accumulated.trim().is_empty() {
+            let err = AppError::llm(
+                "AI 评判流式响应异常中断，结果不完整。请检查网络连接后重试。".to_string(),
+            );
+            deps.emitter
+                .emit_error(&request.stream_session_id, err.message.clone());
+            return Err(err);
+        }
         log::warn!(
-            "[QbankGrading] 流式响应未完成，丢弃不完整结果（已累积 {} 字符）",
+            "[QbankGrading] SSE 流缺少完成哨兵但已累积 {} 字符，保留结果继续处理（#56）",
             accumulated.len()
         );
-        let err = AppError::llm(
-            "AI 评判流式响应异常中断，结果不完整。请检查网络连接后重试。".to_string(),
-        );
-        deps.emitter
-            .emit_error(&request.stream_session_id, err.message.clone());
-        return Err(err);
     }
 
     // S-014: 二次检查取消状态
@@ -450,6 +454,27 @@ fn parse_verdict_and_score(result: &str) -> (Option<Verdict>, Option<i32>) {
     (verdict, score)
 }
 
+/// 🔧 #56: 检测 SSE 数据块是否携带 finish_reason（非 null）。
+///
+/// 部分 OpenAI 兼容网关只发 `finish_reason: "stop"` 而不发 `data: [DONE]` 哨兵，
+/// 此时也应视为流正常完成，避免把完整结果误判为 Incomplete 而丢弃。
+fn sse_block_signals_finish(line: &str) -> bool {
+    let Some(data) = line.strip_prefix("data: ") else {
+        return false;
+    };
+    let Ok(json_data) = serde_json::from_str::<serde_json::Value>(data) else {
+        return false;
+    };
+    json_data["choices"]
+        .as_array()
+        .map(|choices| {
+            choices
+                .iter()
+                .any(|c| c["finish_reason"].as_str().is_some())
+        })
+        .unwrap_or(false)
+}
+
 /// 流式调用 LLM（复用 essay_grading 的 stream_grade 实现）
 async fn stream_grade<F>(
     config: &ApiConfig,
@@ -525,6 +550,40 @@ where
         let mut buffer = String::new();
         let mut stream_ended = false;
         let mut cancelled = false;
+        // 🔧 #56: 部分 OpenAI 兼容网关只发 finish_reason 不发 `data: [DONE]` 哨兵。
+        // 观察到 finish_reason 即视为正常完成，避免把完整结果误判为 Incomplete 而丢弃。
+        let mut finish_observed = false;
+
+        // 处理单个 SSE 块：返回 true 表示流已结束
+        let mut handle_sse_block =
+            |line: &str, on_chunk: &mut F, finish_observed: &mut bool| -> bool {
+                if line.is_empty() {
+                    return false;
+                }
+
+                if line == "data: [DONE]" {
+                    return true;
+                }
+
+                if sse_block_signals_finish(line) {
+                    *finish_observed = true;
+                }
+
+                let events = adapter.parse_stream(line);
+                let mut done = false;
+                for event in events {
+                    match event {
+                        crate::providers::StreamEvent::ContentChunk(content) => {
+                            on_chunk(content);
+                        }
+                        crate::providers::StreamEvent::Done => {
+                            done = true;
+                        }
+                        _ => {}
+                    }
+                }
+                done
+            };
 
         while !stream_ended && !cancelled {
             if llm.consume_pending_cancel(stream_event).await {
@@ -548,30 +607,8 @@ where
                                 let line = buffer[..pos].trim().to_string();
                                 buffer = buffer[pos + 2..].to_string();
 
-                                if line.is_empty() {
-                                    continue;
-                                }
-
-                                if line == "data: [DONE]" {
+                                if handle_sse_block(&line, &mut on_chunk, &mut finish_observed) {
                                     stream_ended = true;
-                                    break;
-                                }
-
-                                let events = adapter.parse_stream(&line);
-                                for event in events {
-                                    match event {
-                                        crate::providers::StreamEvent::ContentChunk(content) => {
-                                            on_chunk(content);
-                                        }
-                                        crate::providers::StreamEvent::Done => {
-                                            stream_ended = true;
-                                            break;
-                                        }
-                                        _ => {}
-                                    }
-                                }
-
-                                if stream_ended {
                                     break;
                                 }
                             }
@@ -588,10 +625,21 @@ where
             return Ok(StreamStatus::Cancelled);
         }
 
-        if stream_ended {
+        // 🔧 #56: 流自然关闭后 flush 残留 buffer（最后一个事件可能缺少结尾空行）
+        if !stream_ended && !buffer.trim().is_empty() {
+            for raw_line in std::mem::take(&mut buffer).split('\n') {
+                let line = raw_line.trim();
+                if handle_sse_block(line, &mut on_chunk, &mut finish_observed) {
+                    stream_ended = true;
+                    break;
+                }
+            }
+        }
+
+        if stream_ended || finish_observed {
             Ok(StreamStatus::Completed)
         } else {
-            log::warn!("[QbankGrading] SSE 流未收到 DONE 标记就结束，结果可能不完整");
+            log::warn!("[QbankGrading] SSE 流未收到 DONE 标记或 finish_reason 就结束，结果可能不完整");
             Ok(StreamStatus::Incomplete)
         }
     }
@@ -600,4 +648,43 @@ where
     llm.clear_cancel_stream(stream_event).await;
 
     result
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_sse_block_signals_finish_detects_stop() {
+        assert!(sse_block_signals_finish(
+            r#"data: {"choices":[{"delta":{},"finish_reason":"stop"}]}"#
+        ));
+        assert!(sse_block_signals_finish(
+            r#"data: {"choices":[{"delta":{"content":"末尾"},"finish_reason":"length"}]}"#
+        ));
+    }
+
+    #[test]
+    fn test_sse_block_signals_finish_ignores_normal_chunks() {
+        assert!(!sse_block_signals_finish(
+            r#"data: {"choices":[{"delta":{"content":"abc"},"finish_reason":null}]}"#
+        ));
+        assert!(!sse_block_signals_finish("data: [DONE]"));
+        assert!(!sse_block_signals_finish(": keep-alive"));
+        assert!(!sse_block_signals_finish(""));
+        assert!(!sse_block_signals_finish("data: not-json"));
+    }
+
+    #[test]
+    fn test_parse_verdict_and_score() {
+        let (verdict, score) = parse_verdict_and_score(
+            "分析过程…… <verdict>partial</verdict> <score value=\"65\"/>",
+        );
+        assert!(matches!(verdict, Some(Verdict::Partial)));
+        assert_eq!(score, Some(65));
+
+        let (verdict, score) = parse_verdict_and_score("没有任何标签的纯文本");
+        assert!(verdict.is_none());
+        assert!(score.is_none());
+    }
 }

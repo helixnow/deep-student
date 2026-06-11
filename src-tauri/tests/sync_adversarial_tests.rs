@@ -229,9 +229,8 @@ fn adv_03_same_second_concurrent_writes() {
     SyncManager::apply_downloaded_changes(&conn, &[change_b], None).unwrap();
 
     let (title, _, _, _, _) = get_item(&conn, "n1").unwrap();
-    // 时间戳相等 → LWW 不跳过 → B 覆盖 A
-    // 这在逻辑上是对的（等价时允许覆盖），但两端必须用相同顺序才收敛
-    assert_eq!(title, "b_write", "同时间戳下后应用者胜");
+    // 时间戳相等时保留先到值，避免重放顺序抖动导致同一批数据反复改写。
+    assert_eq!(title, "a_write", "同时间戳下先到者稳定保留");
 }
 
 /// **A.04** 时间戳格式差异：ISO "2026-05-01T12:00:00Z" vs SQLite "2026-05-01 12:00:00"
@@ -261,8 +260,8 @@ fn adv_04_timestamp_format_variants() {
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
 
     let (title, _, _, _, _) = get_item(&conn, "n1").unwrap();
-    // 两种格式应被解析为同一时刻 → 不跳过 → 云端胜
-    assert_eq!(title, "cloud", "不同格式的相同时间戳应被视为相等");
+    // SQLite 裸格式没有时区信息，当前策略保守保留本地，避免误把模糊时间当更新。
+    assert_eq!(title, "local", "模糊时间格式应保守保留本地值");
 }
 
 /// **A.05** 时区表示：+08:00 和 Z 应被正确转换为同一 UTC 时刻
@@ -544,7 +543,7 @@ fn adv_11_payload_missing_fields_preserves_local() {
 
 /// **A.12** 云端 payload 有本地 schema 里**没有**的字段（新客户端 → 老客户端）
 ///
-/// 预期：apply 应当**报错**（未知列），整批回滚
+/// 预期：未知列被隔离为单条失败，不让整批 API 失败。
 #[test]
 fn adv_12_payload_unknown_columns_rejected() {
     let conn = new_db();
@@ -561,8 +560,9 @@ fn adv_12_payload_unknown_columns_rejected() {
         }),
         "2026-05-01T11:00:00Z",
     );
-    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None);
-    assert!(r.is_err(), "未知列必须导致失败，不能静默插入");
+    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+    assert_eq!(r.success_count, 0);
+    assert_eq!(r.failure_count, 1, "未知列必须被隔离，不能静默插入");
 }
 
 /// **A.13** 云端 payload 里字段类型不匹配（本地 INTEGER，云端 String）
@@ -871,9 +871,8 @@ fn adv_22_cloud_garbage_updated_at() {
     SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
 
     let (title, _, _, _, _) = get_item(&conn, "n1").unwrap();
-    // 当 LWW 门无法决策时，默认"允许"是一个策略选择。
-    // 这里验证：至少不 panic，且行为符合预期（允许覆盖）
-    assert_eq!(title, "cloud");
+    // 当 LWW 门无法可靠决策时，当前策略保守保留本地。
+    assert_eq!(title, "local");
 }
 
 /// **A.23** 本地记录不存在（新插入），LWW 门应让 INSERT 通过
@@ -897,10 +896,9 @@ fn adv_23_insert_nonexistent_passes_lww() {
     assert_eq!(title, "new");
 }
 
-/// **A.24** payload 缺 updated_at → 写入 NOT NULL 列触发约束错误（整批回滚）
+/// **A.24** payload 缺 updated_at → 单条变更被隔离
 ///
-/// 这是**更严格的保护**：而不是静默用云端值覆盖较新本地，而是**直接拒绝**。
-/// 生产端必须保证每条上传的 change 都带 updated_at，否则整批失败。
+/// 生产端必须保证每条上传的 change 都带 updated_at，否则该条变更失败。
 #[test]
 fn adv_24_payload_missing_updated_at_is_rejected() {
     let conn = new_db();
@@ -918,13 +916,13 @@ fn adv_24_payload_missing_updated_at_is_rejected() {
         }),
         "2026-05-01T10:00:00Z",
     );
-    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None);
-    // 因为 items.updated_at NOT NULL，UPSERT 会违反约束 → 整批回滚
-    assert!(r.is_err(), "缺 updated_at 的 UPSERT 应触发 NOT NULL 错误");
+    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+    assert_eq!(r.success_count, 0);
+    assert_eq!(r.failure_count, 1, "缺 updated_at 的 UPSERT 应被隔离");
 
     // 本地值未被改变
     let (title, _, _, _, _) = get_item(&conn, "n1").unwrap();
-    assert_eq!(title, "local_newer", "事务回滚，本地值不变");
+    assert_eq!(title, "local_newer", "失败变更被隔离，本地值不变");
 }
 
 // ============================================================================
@@ -1069,8 +1067,9 @@ fn adv_28_table_name_injection_blocked() {
         source_device_id: None,
         source_seq: None,
     };
-    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None);
-    assert!(r.is_err());
+    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+    assert_eq!(r.success_count, 0);
+    assert_eq!(r.failure_count, 1);
     // 确认 items 表仍在
     let _: i64 = conn
         .query_row("SELECT COUNT(*) FROM items", [], |r| r.get(0))

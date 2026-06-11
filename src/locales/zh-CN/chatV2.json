@@ -507,7 +507,8 @@
           "taskCreated": "任务已创建，正在分段处理...",
           "paused": "已暂停，可稍后继续。",
           "cancelled": "已取消生成。",
-          "completedWithErrors": "已完成，但部分分段失败（failed={{failed}}, truncated={{truncated}}）。可在面板中重试失败分段。"
+          "completedWithErrors": "已完成，但部分分段失败（failed={{failed}}, truncated={{truncated}}）。可在面板中重试失败分段。",
+          "limitReached": "已达到设定的卡片数量上限（{{limit}} 张），生成正常结束。"
         }
       },
       "errors": {
@@ -524,13 +525,14 @@
         "statusNotFound": "未找到该文档任务，请稍候或重新发起生成。",
         "ankiConnectUnavailable": "AnkiConnect 不可用。请打开 Anki 并启用 AnkiConnect 后重试。",
         "missingClozeNoteType": "Anki 缺少 Cloze 笔记类型。请在 Anki 中创建后重试。",
-        "ankiSyncEmpty": "未导入任何卡片。请检查 AnkiConnect、笔记类型、重复卡片与字段映射。"
+        "ankiSyncEmpty": "未导入任何卡片。请检查 Anki 是否运行、笔记类型是否存在、卡片字段是否为空。"
       },
       "warnings": {
         "imageTruncated": "仅使用了前 {{shown}} 张图片（上限 {{limit}}，共 {{total}} 张）。建议拆分附件后重试。",
         "contextRefInvalid": "{{count}} 个附件无法解析，必要时移除并重新添加。",
         "textTruncated": "文档内容超过 {{limitMB}}MB 上限，仅处理了前 {{limitMB}}MB 部分。建议拆分文档分批制卡。",
-        "templateLoadPartial": "{{count}} 个模板加载失败，已跳过并继续生成。请检查模板是否被删除，或去模板设置重新启用后重试。"
+        "templateLoadPartial": "{{count}} 个模板加载失败，已跳过并继续生成。请检查模板是否被删除，或去模板设置重新启用后重试。",
+        "overLimitCardsRemoved": "并发生成超出上限 {{limit}} 张，已移除多余的 {{count}} 张卡片。"
       },
       "action": {
         "saveFailed": "保存失败",
@@ -550,6 +552,7 @@
         "syncedCountWithHint": "已同步 {{count}} 张到 Anki。下一步：打开 Anki 复核。",
         "syncFailedWithHint": "同步失败。请确认 Anki 正在运行且 AnkiConnect 已启用后重试。",
         "persistFailed": "卡片编辑保存失败，切换会话后可能丢失。请重试编辑。",
+        "dbSyncFailed": "卡片改动未能同步到卡片库，AI 导出/同步结果可能不包含此改动。",
         "exportCancelled": "已取消导出",
         "exportSkippedErrors": "已导出 {{exported}} 张卡片，跳过 {{skipped}} 张错误卡片。"
       }
@@ -831,6 +834,10 @@
     "loadMore": "加载更多",
     "studySessions": "课题",
     "studySessionsEmpty": "暂无课题",
+    "recentSessions": "最近",
+    "pinnedSessions": "置顶会话",
+    "sessionActions": "会话操作",
+    "primaryNavigation": "主入口",
     "resourceUnsupported": "该资源类型暂不支持在学习中心打开",
     "groupSaveFailed": "保存分组失败",
     "openNoteFailed": "打开笔记失败"
@@ -1074,6 +1081,8 @@
     "createdAt": "创建时间",
     "groupByTime": "按时间分组",
     "groupByGroup": "按分组浏览",
+    "staleTopic": "待修复分组",
+    "staleTopicDescription": "原分组已不可用的会话。",
     "ungrouped": "未分组"
   },
   "search": {

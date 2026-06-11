@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next';
 import { Pause, Play, Square, Coffee, Brain, ArrowsOut } from '@phosphor-icons/react';
 import { usePomodoroStore } from '../stores/usePomodoroStore';
 import { useViewStore } from '@/stores/viewStore';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
+import { cn } from '@/lib/utils';
 import { ImmersiveFocusMode } from './ImmersiveFocusMode';
 
 /**
@@ -19,6 +21,8 @@ export const GlobalPomodoroWidget: React.FC = () => {
   const { t } = useTranslation('todo');
   const { mode, status, timeLeft, currentTaskTitle, pause, resume, stop, tick, isImmersive, setImmersive } = usePomodoroStore();
   const currentView = useViewStore((s) => s.currentView);
+  // P-1/P-2: 触屏上抬高药丸避开底部停靠的输入栏，并放大控制按钮触控目标
+  const isTouchPrimary = useMediaQuery('(pointer: coarse)');
 
   // 全局唯一 tick 驱动
   useEffect(() => {
@@ -60,9 +64,21 @@ export const GlobalPomodoroWidget: React.FC = () => {
   };
 
   // 悬浮药丸：仅在有活跃会话 + 不在 Todo 页面时显示
+  const controlButtonClass = isTouchPrimary
+    ? 'flex h-10 w-10 items-center justify-center rounded-full transition-colors'
+    : 'p-1.5 rounded-full transition-colors';
+  const controlIconSize = isTouchPrimary ? 16 : 14;
+
   return (
     <div
-      className="fixed bottom-6 right-6 z-50 bg-background border border-border shadow-xl rounded-full h-12 flex items-center gap-3 px-4 pr-2 cursor-default animate-in fade-in slide-in-from-bottom-4 duration-300"
+      className={cn(
+        'fixed right-6 z-50 bg-background border border-border shadow-xl rounded-full flex items-center gap-3 px-4 pr-2 cursor-default animate-in fade-in slide-in-from-bottom-4 duration-300',
+        isTouchPrimary ? 'h-14' : 'h-12'
+      )}
+      style={{
+        // 触屏上避开底部停靠的聊天输入栏（约 88px）+ 安全区
+        bottom: isTouchPrimary ? 'calc(env(safe-area-inset-bottom, 0px) + 96px)' : '1.5rem',
+      }}
     >
       {getModeIcon()}
       <span className="font-mono font-medium tracking-wider text-sm text-foreground">
@@ -76,24 +92,27 @@ export const GlobalPomodoroWidget: React.FC = () => {
       <div className="flex items-center gap-1 ml-1">
         <button
           onClick={handleTogglePlay}
-          className="p-1.5 rounded-full hover:bg-[var(--interactive-hover)] transition-colors"
+          className={cn(controlButtonClass, 'hover:bg-[var(--interactive-hover)]')}
           title={status === 'running' ? t('pomodoro.controls.pause') : t('pomodoro.controls.resume')}
+          aria-label={status === 'running' ? t('pomodoro.controls.pause') : t('pomodoro.controls.resume')}
         >
-          {status === 'running' ? <Pause size={14} /> : <Play size={14} />}
+          {status === 'running' ? <Pause size={controlIconSize} /> : <Play size={controlIconSize} />}
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); stop(true); }}
-          className="p-1.5 rounded-full hover:bg-destructive/10 text-muted-foreground hover:text-destructive transition-colors"
+          className={cn(controlButtonClass, 'hover:bg-destructive/10 text-muted-foreground hover:text-destructive')}
           title={t('pomodoro.controls.stop')}
+          aria-label={t('pomodoro.controls.stop')}
         >
-          <Square size={14} />
+          <Square size={controlIconSize} />
         </button>
         <button
           onClick={(e) => { e.stopPropagation(); setImmersive(true); }}
-          className="p-1.5 rounded-full hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground transition-colors"
+          className={cn(controlButtonClass, 'hover:bg-[var(--interactive-hover)] text-muted-foreground hover:text-foreground')}
           title={t('pomodoro.controls.immersive')}
+          aria-label={t('pomodoro.controls.immersive')}
         >
-          <ArrowsOut size={14} />
+          <ArrowsOut size={controlIconSize} />
         </button>
       </div>
     </div>

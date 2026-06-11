@@ -469,7 +469,7 @@ export class CardAgent {
             };
           }
           await invoke('trigger_task_processing', {
-            task_id: input.taskId,
+            taskId: input.taskId,
           });
           return {
             ok: true,

@@ -41,21 +41,21 @@ function createSendContextRef(
 
 describe('Token 估算改进', () => {
   test('纯英文文本估算（约4字符/token）', () => {
-    const englishText = 'This is a test sentence with English words only.'; // 50 chars
+    const englishText = 'This is a test sentence with English words only.'; // 48 chars
     const blocks = [createTextBlock(englishText)];
     const tokens = estimateContentBlockTokens(blocks);
 
-    // 50 / 4 = 12.5 -> 13 tokens
-    expect(tokens).toBe(13);
+    // 48 / 4 = 12 tokens
+    expect(tokens).toBe(12);
   });
 
-  test('纯中文文本估算（约1.5字符/token）', () => {
-    const chineseText = '这是一段中文测试文本，用于验证Token估算准确性。'; // 24 chars
+  test('纯中文文本估算（约1字符/token）', () => {
+    const chineseText = '这是一段中文测试文本，用于验证Token估算准确性。'; // 17 chars
     const blocks = [createTextBlock(chineseText)];
     const tokens = estimateContentBlockTokens(blocks);
 
-    // 24 / 1.5 = 16 tokens
-    expect(tokens).toBe(16);
+    // 当前实现与后端 token_budget 对齐，纯中文按约 1 字符/token 估算
+    expect(tokens).toBe(17);
   });
 
   test('中英文混合文本估算', () => {
@@ -76,10 +76,10 @@ describe('Token 估算改进', () => {
     expect(tokens).toBe(0);
   });
 
-  test('图片块固定估算为500 tokens', () => {
+  test('图片块无尺寸时使用保守估算', () => {
     const blocks: ContentBlock[] = [{ type: 'image', source: { type: 'base64', media_type: 'image/png', data: '' } }];
     const tokens = estimateContentBlockTokens(blocks);
-    expect(tokens).toBe(500);
+    expect(tokens).toBe(800);
   });
 });
 

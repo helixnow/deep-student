@@ -413,6 +413,116 @@ pub async fn add_notes_to_anki_with_card_models(
     note_type: String,
     card_models: HashMap<String, String>,
 ) -> Result<Vec<Option<u64>>, String> {
+    add_notes_to_anki_detailed(cards, deck_name, note_type, card_models, HashMap::new())
+        .await
+        .map(|report| report.note_ids)
+}
+
+/// AnkiConnect 同步明细结果（D1 修复）：
+/// 把"重复（已存在）"与"真实失败"分开统计，并报告自动创建的模型。
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct AnkiSyncReport {
+    /// 与输入卡片一一对应的 note id（None = 未添加：重复或失败）
+    pub note_ids: Vec<Option<u64>>,
+    pub added: usize,
+    /// canAddNotes 预检判定为重复（笔记已存在于 Anki）
+    pub duplicates: usize,
+    /// 非重复原因的失败（模型缺失/字段为空等）
+    pub failed: usize,
+    /// 本次同步自动创建的 Anki 模型名
+    pub created_models: Vec<String>,
+}
+
+/// 通用 AnkiConnect 调用辅助（新增 action 使用）。
+async fn invoke_anki_connect_action(
+    action: &str,
+    params: Option<serde_json::Value>,
+    timeout_secs: u64,
+) -> Result<serde_json::Value, String> {
+    let request = AnkiConnectRequest {
+        action: action.to_string(),
+        version: 6,
+        params,
+    };
+    let client = reqwest::Client::new();
+    let response = client
+        .post(ANKI_CONNECT_URL)
+        .json(&request)
+        .timeout(std::time::Duration::from_secs(timeout_secs))
+        .send()
+        .await
+        .map_err(|e| format!("AnkiConnect 请求失败({}): {}", action, e))?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "AnkiConnect HTTP错误({}): {}",
+            action,
+            response.status()
+        ));
+    }
+    let resp: AnkiConnectResponse = response
+        .json()
+        .await
+        .map_err(|e| format!("解析AnkiConnect响应失败({}): {}", action, e))?;
+    if let Some(error) = resp.error {
+        return Err(format!("AnkiConnect错误({}): {}", action, error));
+    }
+    Ok(resp.result.unwrap_or(serde_json::Value::Null))
+}
+
+/// 用自定义模板在 Anki 中创建模型（createModel）。
+/// 字段、正反面 HTML 模板与 CSS 都来自 custom_template。
+pub async fn create_model_from_template(
+    template: &crate::models::CustomAnkiTemplate,
+) -> Result<(), String> {
+    let model_name = template.note_type.trim();
+    if model_name.is_empty() {
+        return Err("模板未配置笔记类型（note_type 为空）".to_string());
+    }
+    if template.fields.is_empty() {
+        return Err("模板未配置字段，无法创建 Anki 模型".to_string());
+    }
+    if template.front_template.trim().is_empty() || template.back_template.trim().is_empty() {
+        return Err("模板缺少正面/背面 HTML，无法创建 Anki 模型".to_string());
+    }
+
+    let is_cloze = template.front_template.contains("{{cloze:")
+        || template.back_template.contains("{{cloze:");
+
+    let params = serde_json::json!({
+        "modelName": model_name,
+        "inOrderFields": template.fields,
+        "css": template.css_style,
+        "isCloze": is_cloze,
+        "cardTemplates": [{
+            "Name": "Card 1",
+            "Front": template.front_template,
+            "Back": template.back_template,
+        }],
+    });
+
+    invoke_anki_connect_action("createModel", Some(params), 15).await?;
+    println!("✅ 已在 Anki 中创建模型: {}", model_name);
+    Ok(())
+}
+
+/// canAddNotes 预检：返回每张卡是否可添加（false 通常表示重复）。
+async fn can_add_notes(notes: &[Note]) -> Result<Vec<bool>, String> {
+    let params = serde_json::json!({ "notes": notes });
+    let result = invoke_anki_connect_action("canAddNotes", Some(params), 15).await?;
+    serde_json::from_value::<Vec<bool>>(result).map_err(|e| format!("解析 canAddNotes 结果失败: {}", e))
+}
+
+/// D1 修复版同步：
+/// 1. 缺失模型先用 custom_template 自动 createModel；
+/// 2. canAddNotes 预检把"重复"与"失败"分开；
+/// 3. 返回明细报告（added/duplicates/failed/created_models）。
+pub async fn add_notes_to_anki_detailed(
+    cards: Vec<AnkiCard>,
+    deck_name: String,
+    note_type: String,
+    card_models: HashMap<String, String>,
+    templates_by_model: HashMap<String, crate::models::CustomAnkiTemplate>,
+) -> Result<AnkiSyncReport, String> {
     // 首先检查AnkiConnect可用性
     check_anki_connect_availability().await?;
 
@@ -428,6 +538,34 @@ pub async fn add_notes_to_anki_with_card_models(
         .collect();
     model_names.sort();
     model_names.dedup();
+
+    // 模型预检（D1）：缺失的模型若有对应自定义模板，自动创建
+    let mut created_models: Vec<String> = Vec::new();
+    if !templates_by_model.is_empty() {
+        match get_model_names().await {
+            Ok(existing) => {
+                for model_name in &model_names {
+                    if existing.iter().any(|m| m == model_name) {
+                        continue;
+                    }
+                    if let Some(template) = templates_by_model.get(model_name) {
+                        match create_model_from_template(template).await {
+                            Ok(()) => created_models.push(model_name.clone()),
+                            Err(e) => {
+                                println!("⚠️ 自动创建模型 {} 失败: {}", model_name, e);
+                            }
+                        }
+                    } else {
+                        println!(
+                            "⚠️ Anki 中缺少模型 {} 且无对应模板，可能导致同步失败",
+                            model_name
+                        );
+                    }
+                }
+            }
+            Err(e) => println!("⚠️ 获取 Anki 模型列表失败，跳过模型预检: {}", e),
+        }
+    }
 
     for model_name in model_names {
         let loaded = match get_model_field_names(&model_name).await {
@@ -470,48 +608,50 @@ pub async fn add_notes_to_anki_with_card_models(
         })
         .collect();
 
-    let params = serde_json::json!({
-        "notes": notes
-    });
+    let total = notes.len();
 
-    let request = AnkiConnectRequest {
-        action: "addNotes".to_string(),
-        version: 6,
-        params: Some(params),
+    // canAddNotes 预检（D1）：false 视为重复（Anki 对重复笔记 addNotes 返回 null，
+    // 预检可把"已存在"与"真实失败"分开）。预检自身失败则降级为全量直接添加。
+    let can_add: Vec<bool> = match can_add_notes(&notes).await {
+        Ok(flags) if flags.len() == total => flags,
+        Ok(_) | Err(_) => vec![true; total],
     };
+    let duplicates = can_add.iter().filter(|ok| !**ok).count();
 
-    let client = reqwest::Client::new();
+    let addable_notes: Vec<&Note> = notes
+        .iter()
+        .zip(can_add.iter())
+        .filter(|(_, ok)| **ok)
+        .map(|(note, _)| note)
+        .collect();
 
-    match client
-        .post(ANKI_CONNECT_URL)
-        .json(&request)
-        .timeout(std::time::Duration::from_secs(30))
-        .send()
-        .await
-    {
-        Ok(response) => {
-            if response.status().is_success() {
-                match response.json::<AnkiConnectResponse>().await {
-                    Ok(anki_response) => {
-                        if let Some(error) = anki_response.error {
-                            Err(format!("AnkiConnect错误: {}", error))
-                        } else if let Some(result) = anki_response.result {
-                            match serde_json::from_value::<Vec<Option<u64>>>(result) {
-                                Ok(note_ids) => Ok(note_ids),
-                                Err(e) => Err(format!("解析笔记ID列表失败: {}", e)),
-                            }
-                        } else {
-                            Err("AnkiConnect返回空结果".to_string())
-                        }
-                    }
-                    Err(e) => Err(format!("解析AnkiConnect响应失败: {}", e)),
-                }
-            } else {
-                Err(format!("AnkiConnect HTTP错误: {}", response.status()))
+    let mut note_ids: Vec<Option<u64>> = vec![None; total];
+    if !addable_notes.is_empty() {
+        let params = serde_json::json!({ "notes": addable_notes });
+        let result = invoke_anki_connect_action("addNotes", Some(params), 30).await?;
+        let added_ids = serde_json::from_value::<Vec<Option<u64>>>(result)
+            .map_err(|e| format!("解析笔记ID列表失败: {}", e))?;
+
+        // 回填到原位置
+        let mut cursor = 0usize;
+        for (i, ok) in can_add.iter().enumerate() {
+            if *ok {
+                note_ids[i] = added_ids.get(cursor).cloned().flatten();
+                cursor += 1;
             }
         }
-        Err(e) => Err(format!("添加笔记到Anki失败: {}", e)),
     }
+
+    let added = note_ids.iter().filter(|id| id.is_some()).count();
+    let failed = total - added - duplicates;
+
+    Ok(AnkiSyncReport {
+        note_ids,
+        added,
+        duplicates,
+        failed,
+        created_models,
+    })
 }
 
 /// 创建牌组（如果不存在）

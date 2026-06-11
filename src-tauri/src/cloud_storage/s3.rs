@@ -58,6 +58,15 @@ impl S3Storage {
                     .operation_attempt_timeout(std::time::Duration::from_secs(120))
                     .build(),
             )
+            // [#57] behavior_version_latest 默认对所有 PutObject 附加 CRC32 校验和头，
+            // 腾讯云 COS、阿里云 OSS、部分 MinIO 等 S3 兼容服务不支持，会直接报错或静默失败。
+            // WhenRequired = 仅在 API 强制要求时才计算（与旧版 SDK 行为一致），对 AWS 官方 S3 无副作用。
+            .request_checksum_calculation(
+                aws_sdk_s3::config::RequestChecksumCalculation::WhenRequired,
+            )
+            .response_checksum_validation(
+                aws_sdk_s3::config::ResponseChecksumValidation::WhenRequired,
+            )
             .behavior_version_latest();
 
         // 设置区域（如果指定）

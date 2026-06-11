@@ -1,8 +1,9 @@
 /**
  * useTextSelection - 文本选择状态检测 Hook
  *
- * 监听 mouseup 事件，检测选中文本并计算选区位置，
- * 用于驱动浮动工具栏的显示和定位。
+ * 桌面：监听 mouseup 事件，检测选中文本并计算选区位置。
+ * 触屏（C-8）：mouseup 不可靠（长按选词/拖选择手柄没有 mouseup），
+ * 改用 document.selectionchange + 防抖，选区稳定后显示工具栏。
  *
  * 选择策略（与 ChatGPT/Claude 桌面版一致）：
  * - 不限制用户的自由选择行为
@@ -16,6 +17,17 @@
  */
 
 import { useState, useCallback, useEffect, useRef } from 'react';
+
+/** 触屏 selectionchange 防抖时长：长按/拖手柄期间持续触发，稳定后再弹工具栏 */
+const TOUCH_SELECTION_DEBOUNCE_MS = 300;
+
+const isTouchPrimaryPointer = (): boolean => {
+  try {
+    return window.matchMedia?.('(pointer: coarse)').matches ?? false;
+  } catch {
+    return false;
+  }
+};
 
 export interface SelectionRect {
   top: number;
@@ -101,7 +113,54 @@ export function useTextSelection(
     setContextAfter('');
   }, []);
 
-  // 检测选中文本
+  // 评估当前选区并更新工具栏状态（mouseup 与 selectionchange 共用）
+  const evaluateSelection = useCallback(() => {
+    const selection = window.getSelection();
+    if (!selection || selection.isCollapsed || !selection.rangeCount) {
+      clear();
+      return;
+    }
+
+    const text = selection.toString().trim();
+    if (text.length < MIN_SELECTION_LENGTH) {
+      clear();
+      return;
+    }
+
+    // 确保选区完全在容器内（起点和终点都在容器内）
+    const container = containerRef.current;
+    if (!container) {
+      clear();
+      return;
+    }
+
+    const range = selection.getRangeAt(0);
+    const startInContainer = container.contains(range.startContainer);
+    const endInContainer = container.contains(range.endContainer);
+
+    // 只有选区完全在容器内才显示工具栏
+    if (!startInContainer || !endInContainer) {
+      clear();
+      return;
+    }
+
+    // 计算选区位置
+    const rect = range.getBoundingClientRect();
+    const ctx = extractContext(container, range, text);
+    setSelectedText(text);
+    setSelectionRect({
+      top: rect.top,
+      left: rect.left,
+      width: rect.width,
+      height: rect.height,
+      bottom: rect.bottom,
+    });
+    setContextBefore(ctx.before);
+    setContextAfter(ctx.after);
+    setIsVisible(true);
+  }, [containerRef, clear]);
+
+  // 检测选中文本（桌面鼠标路径）
   const handleMouseUp = useCallback((e: MouseEvent) => {
     // 仅处理左键（右键/中键不应触发浮动工具栏）
     if (e.button !== 0) {
@@ -116,51 +175,9 @@ export function useTextSelection(
 
     // 延迟一帧确保 selection 已更新
     requestAnimationFrame(() => {
-      const selection = window.getSelection();
-      if (!selection || selection.isCollapsed || !selection.rangeCount) {
-        clear();
-        return;
-      }
-
-      const text = selection.toString().trim();
-      if (text.length < MIN_SELECTION_LENGTH) {
-        clear();
-        return;
-      }
-
-      // 确保选区完全在容器内（起点和终点都在容器内）
-      const container = containerRef.current;
-      if (!container) {
-        clear();
-        return;
-      }
-
-      const range = selection.getRangeAt(0);
-      const startInContainer = container.contains(range.startContainer);
-      const endInContainer = container.contains(range.endContainer);
-
-      // 只有选区完全在容器内才显示工具栏
-      if (!startInContainer || !endInContainer) {
-        clear();
-        return;
-      }
-
-      // 计算选区位置
-      const rect = range.getBoundingClientRect();
-      const ctx = extractContext(container, range, text);
-      setSelectedText(text);
-      setSelectionRect({
-        top: rect.top,
-        left: rect.left,
-        width: rect.width,
-        height: rect.height,
-        bottom: rect.bottom,
-      });
-      setContextBefore(ctx.before);
-      setContextAfter(ctx.after);
-      setIsVisible(true);
+      evaluateSelection();
     });
-  }, [containerRef, clear]);
+  }, [evaluateSelection]);
 
   // mousedown 时检查是否点击在工具栏上
   const handleMouseDown = useCallback((e: MouseEvent) => {
@@ -207,6 +224,23 @@ export function useTextSelection(
     document.addEventListener('keydown', handleKeyDown);
     document.addEventListener('contextmenu', handleContextMenu);
 
+    // C-8: 触屏路径——长按选词/拖选择手柄不产生 mouseup，
+    // 监听 selectionchange 并防抖，选区稳定后评估
+    let selectionChangeTimer: number | null = null;
+    const handleSelectionChange = () => {
+      if (selectionChangeTimer !== null) {
+        window.clearTimeout(selectionChangeTimer);
+      }
+      selectionChangeTimer = window.setTimeout(() => {
+        selectionChangeTimer = null;
+        evaluateSelection();
+      }, TOUCH_SELECTION_DEBOUNCE_MS);
+    };
+    const touchSelectionEnabled = isTouchPrimaryPointer();
+    if (touchSelectionEnabled) {
+      document.addEventListener('selectionchange', handleSelectionChange);
+    }
+
     // 滚动监听：找到最近的可滚动父元素
     const scrollParent = container.closest('.chat-history-viewport') || container.parentElement;
     scrollParent?.addEventListener('scroll', handleScroll, { passive: true });
@@ -216,9 +250,15 @@ export function useTextSelection(
       document.removeEventListener('mousedown', handleMouseDown);
       document.removeEventListener('keydown', handleKeyDown);
       document.removeEventListener('contextmenu', handleContextMenu);
+      if (touchSelectionEnabled) {
+        document.removeEventListener('selectionchange', handleSelectionChange);
+        if (selectionChangeTimer !== null) {
+          window.clearTimeout(selectionChangeTimer);
+        }
+      }
       scrollParent?.removeEventListener('scroll', handleScroll);
     };
-  }, [containerRef, handleMouseUp, handleMouseDown, handleScroll, handleKeyDown, handleContextMenu]);
+  }, [containerRef, handleMouseUp, handleMouseDown, handleScroll, handleKeyDown, handleContextMenu, evaluateSelection]);
 
   return { selectedText, selectionRect, isVisible, contextBefore, contextAfter, clear };
 }

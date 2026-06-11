@@ -545,6 +545,8 @@ body {
 html, body, #root {
   max-width: 100vw;
   overflow-x: hidden;
+  /* SC-1: 抑制 Android WebView 整页下拉 overscroll 辉光/回弹 */
+  overscroll-behavior: none;
 }
 
 @media (max-width: 768px) {
@@ -754,6 +756,26 @@ main {
   border-top: 1px solid hsl(var(--border) / 0.5);
   color: hsl(var(--foreground));
   flex-shrink: 0;
+  /* N-6: 窄屏控件溢出时允许横向滚动，避免裁切不可达 */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.modern-viewer-toolbar::-webkit-scrollbar {
+  display: none;
+}
+
+.modern-viewer-toolbar > * {
+  flex-shrink: 0;
+}
+
+/* N-5: 触屏上放大预览工具栏触控目标 */
+@media (pointer: coarse) {
+  .modern-viewer-toolbar {
+    height: 44px;
+    gap: 4px;
+  }
 }
 
 .modern-viewer-divider {
@@ -798,6 +820,15 @@ main {
 .modern-viewer-icon-button:hover:not([disabled]) {
   color: hsl(var(--foreground));
   background: hsl(var(--accent));
+}
+
+/* N-5: 触屏上预览工具栏按钮放大到 ≥36px */
+@media (pointer: coarse) {
+  .modern-viewer-icon-button {
+    min-width: 36px;
+    height: 36px;
+    padding: 6px;
+  }
 }
 
 .modern-viewer-icon-button:disabled {

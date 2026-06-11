@@ -3291,6 +3291,111 @@ mod tests {
     }
 
     // ========================================================================
+    // #58: EPUB 解析回归测试（anki 制卡 / 学习资源导入共用此链路）
+    // ========================================================================
+
+    /// 构造一个最小的合法 EPUB（zip 容器 + container.xml + OPF + 单章 xhtml）
+    fn build_minimal_epub() -> Vec<u8> {
+        let mut zip_buffer = Vec::new();
+        {
+            let mut zip_writer = zip::ZipWriter::new(std::io::Cursor::new(&mut zip_buffer));
+            let options = zip::write::FileOptions::default()
+                .compression_method(zip::CompressionMethod::Stored);
+
+            zip_writer.start_file("mimetype", options).unwrap();
+            zip_writer.write_all(b"application/epub+zip").unwrap();
+
+            zip_writer
+                .start_file("META-INF/container.xml", options)
+                .unwrap();
+            zip_writer
+                .write_all(
+                    br#"<?xml version="1.0" encoding="UTF-8"?>
+<container version="1.0" xmlns="urn:oasis:names:tc:opendocument:xmlns:container">
+  <rootfiles>
+    <rootfile full-path="OEBPS/content.opf" media-type="application/oebps-package+xml"/>
+  </rootfiles>
+</container>"#,
+                )
+                .unwrap();
+
+            zip_writer.start_file("OEBPS/content.opf", options).unwrap();
+            zip_writer
+                .write_all(
+                    r#"<?xml version="1.0" encoding="UTF-8"?>
+<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid">
+  <metadata xmlns:dc="http://purl.org/dc/elements/1.1/">
+    <dc:identifier id="uid">test-epub-58</dc:identifier>
+    <dc:title>高数错题本</dc:title>
+    <dc:creator>测试作者</dc:creator>
+    <dc:language>zh</dc:language>
+  </metadata>
+  <manifest>
+    <item id="ch1" href="chapter1.xhtml" media-type="application/xhtml+xml"/>
+  </manifest>
+  <spine>
+    <itemref idref="ch1"/>
+  </spine>
+</package>"#
+                        .as_bytes(),
+                )
+                .unwrap();
+
+            zip_writer
+                .start_file("OEBPS/chapter1.xhtml", options)
+                .unwrap();
+            zip_writer
+                .write_all(
+                    r#"<?xml version="1.0" encoding="UTF-8"?>
+<html xmlns="http://www.w3.org/1999/xhtml">
+  <head><title>第一章</title></head>
+  <body><h1>第一章 极限</h1><p>当 x 趋近于 0 时 sin(x)/x 的极限为 1。</p></body>
+</html>"#
+                        .as_bytes(),
+                )
+                .unwrap();
+
+            zip_writer.finish().unwrap();
+        }
+        zip_buffer
+    }
+
+    #[test]
+    fn test_epub_extract_text_from_bytes() {
+        let parser = DocumentParser::new();
+        let epub_bytes = build_minimal_epub();
+
+        let result = parser.extract_text_from_bytes("book.epub", epub_bytes);
+        assert!(result.is_ok(), "EPUB 解析失败: {:?}", result.err());
+
+        let text = result.unwrap();
+        assert!(text.contains("高数错题本"), "应包含书名，实际: {}", text);
+        assert!(text.contains("极限"), "应包含章节正文，实际: {}", text);
+        assert!(
+            text.contains("sin(x)/x"),
+            "应包含段落内容，实际: {}",
+            text
+        );
+    }
+
+    #[test]
+    fn test_epub_invalid_zip_reports_epub_error() {
+        let parser = DocumentParser::new();
+        let result = parser.extract_text_from_bytes("broken.epub", vec![0u8; 64]);
+        assert!(matches!(result, Err(ParsingError::EpubParsingError(_))));
+    }
+
+    #[test]
+    fn test_epub_extension_case_insensitive() {
+        let parser = DocumentParser::new();
+        let epub_bytes = build_minimal_epub();
+        // 大写扩展名同样应路由到 EPUB 解析器
+        let result = parser.extract_text_from_bytes("BOOK.EPUB", epub_bytes);
+        assert!(result.is_ok(), "大写扩展名解析失败: {:?}", result.err());
+        assert!(result.unwrap().contains("极限"));
+    }
+
+    // ========================================================================
     // CORE-02: Office 加密检测测试
     // ========================================================================
 

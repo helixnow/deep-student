@@ -1008,18 +1008,7 @@ mod tests {
         let valid_base64 = "a".repeat(200);
         let input = MultimodalInput::text_and_image("test text", &valid_base64, "image/png");
 
-        let inputs = vec![input];
-        let llm_manager = create_mock_llm_manager();
-        let service = MultimodalEmbeddingService::new(Arc::new(llm_manager));
-
-        // 由于 LLMManager 需要真实环境，这里只测试输入准备逻辑
-        // 实际的 API 调用测试需要集成测试环境
-    }
-
-    // 辅助函数：创建模拟的 LLMManager（仅用于测试编译）
-    fn create_mock_llm_manager() -> LLMManager {
-        // 注意：这需要真实的 Database 和 FileManager
-        // 在单元测试中，我们只验证逻辑，不调用实际 API
-        panic!("此函数仅用于类型检查，不应在测试中实际调用")
+        assert_eq!(input.text.as_deref(), Some("test text"));
+        assert!(input.image.is_some());
     }
 }

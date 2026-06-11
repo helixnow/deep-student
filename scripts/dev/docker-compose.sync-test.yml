@@ -1,6 +1,7 @@
 # 本地 WebDAV + S3 (MinIO) 同步测试环境
 # 启动: docker compose -f scripts/dev/docker-compose.sync-test.yml up -d
 # 停止: docker compose -f scripts/dev/docker-compose.sync-test.yml down -v
+# 注意: dstu-test/docker/docker-compose.sync-test.yml 是本文件的副本（npm run dstu-test:cloud:* 使用），修改时需同步两份
 
 services:
   # ============== MinIO (S3 兼容) ==============

@@ -65,7 +65,7 @@ pub struct CreateResourceInput {
 fn get_max_size_bytes(resource_type: &ResourceType) -> usize {
     match resource_type {
         ResourceType::Image => 10 * 1024 * 1024,       // 10MB
-        ResourceType::File => 50 * 1024 * 1024,        // 50MB
+        ResourceType::File => 200 * 1024 * 1024,       // 200MB（#62：与附件上限对齐）
         ResourceType::Note => 50 * 1024 * 1024,        // 50MB（笔记可能很长）
         ResourceType::Card => 10 * 1024 * 1024,        // 10MB
         ResourceType::Retrieval => 10 * 1024 * 1024,   // 10MB
@@ -601,7 +601,8 @@ mod tests {
     #[test]
     fn test_max_size_bytes() {
         assert_eq!(get_max_size_bytes(&ResourceType::Image), 10 * 1024 * 1024);
-        assert_eq!(get_max_size_bytes(&ResourceType::File), 50 * 1024 * 1024);
+        // #62: File 上限 50MB→200MB
+        assert_eq!(get_max_size_bytes(&ResourceType::File), 200 * 1024 * 1024);
         assert_eq!(get_max_size_bytes(&ResourceType::Note), 50 * 1024 * 1024);
         assert_eq!(get_max_size_bytes(&ResourceType::Card), 10 * 1024 * 1024);
         assert_eq!(

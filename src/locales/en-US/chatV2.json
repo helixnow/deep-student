@@ -507,7 +507,8 @@
           "taskCreated": "Task created — segmenting content...",
           "paused": "Paused — resume when you're ready.",
           "cancelled": "Generation cancelled.",
-          "completedWithErrors": "Completed with some segment failures (failed={{failed}}, truncated={{truncated}}). Retry failed segments when ready."
+          "completedWithErrors": "Completed with some segment failures (failed={{failed}}, truncated={{truncated}}). Retry failed segments when ready.",
+          "limitReached": "Reached the configured card limit ({{limit}} cards); generation finished normally."
         }
       },
       "errors": {
@@ -524,13 +525,14 @@
         "statusNotFound": "No tasks found for this document yet. Wait a bit or restart the generation.",
         "ankiConnectUnavailable": "AnkiConnect is unavailable. Open Anki, enable AnkiConnect, then retry.",
         "missingClozeNoteType": "Cloze note type is missing in Anki. Create it in Anki and retry.",
-        "ankiSyncEmpty": "No cards were imported. Check AnkiConnect, note type, duplicates, and field mapping."
+        "ankiSyncEmpty": "No cards were imported. Check that Anki is running, the note type exists, and card fields are not empty."
       },
       "warnings": {
         "imageTruncated": "Only the first {{shown}} of {{total}} images were used (limit {{limit}}). Split attachments and retry if needed.",
         "contextRefInvalid": "{{count}} attachments could not be parsed. Remove and reattach them if needed.",
         "textTruncated": "Document exceeds {{limitMB}}MB text limit. Only the first {{limitMB}}MB was processed. Consider splitting the document.",
-        "templateLoadPartial": "{{count}} templates failed to load and were skipped. Check whether they were removed, or re-enable them in template settings and retry."
+        "templateLoadPartial": "{{count}} templates failed to load and were skipped. Check whether they were removed, or re-enable them in template settings and retry.",
+        "overLimitCardsRemoved": "Concurrent generation exceeded the limit of {{limit}} cards; {{count}} extra cards were removed."
       },
       "action": {
         "saveFailed": "Save failed",
@@ -550,6 +552,7 @@
         "syncedCountWithHint": "Synced {{count}} cards to Anki. Next: open Anki to review.",
         "syncFailedWithHint": "Sync failed. Ensure Anki is running and AnkiConnect is enabled, then retry.",
         "persistFailed": "Card edit failed to save. Changes may be lost if you switch sessions. Please retry.",
+        "dbSyncFailed": "Card change failed to sync to the card library; AI export/sync may not include it.",
         "exportCancelled": "Export cancelled",
         "exportSkippedErrors": "Exported {{exported}} cards, skipped {{skipped}} error cards."
       }
@@ -831,6 +834,10 @@
     "loadMore": "Load More",
     "studySessions": "Topics",
     "studySessionsEmpty": "No topics yet",
+    "recentSessions": "Recent",
+    "pinnedSessions": "Pinned",
+    "sessionActions": "Session actions",
+    "primaryNavigation": "Primary navigation",
     "resourceUnsupported": "This resource type is not yet supported in Learning Hub",
     "groupSaveFailed": "Failed to save group",
     "openNoteFailed": "Failed to open note"
@@ -1074,6 +1081,8 @@
     "createdAt": "Created",
     "groupByTime": "Group by time",
     "groupByGroup": "Group by category",
+    "staleTopic": "Needs repair",
+    "staleTopicDescription": "Sessions whose original topic is no longer available.",
     "ungrouped": "Ungrouped"
   },
   "search": {

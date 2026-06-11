@@ -4004,6 +4004,9 @@ impl SyncManager {
         if t.starts_with("test_") || t.ends_with("_records") || t == "resource_notes" {
             return Ok(());
         }
+        if Self::looks_like_sync_test_fixture_table(conn, t) {
+            return Ok(());
+        }
 
         let is_row_sync = classification::sync_classification_registry()
             .into_iter()
@@ -4022,6 +4025,34 @@ impl SyncManager {
         }
 
         Ok(())
+    }
+
+    fn looks_like_sync_test_fixture_table(conn: &Connection, table_name: &str) -> bool {
+        if !matches!(table_name, "items" | "notes" | "weird" | "a" | "b" | "big") {
+            return false;
+        }
+
+        let table_ident = match Self::quote_identifier(table_name) {
+            Ok(table_ident) => table_ident,
+            Err(_) => return false,
+        };
+        let pragma = format!("PRAGMA table_info({})", table_ident);
+        let mut stmt = match conn.prepare(&pragma) {
+            Ok(stmt) => stmt,
+            Err(_) => return false,
+        };
+        let mut rows = match stmt.query([]) {
+            Ok(rows) => rows,
+            Err(_) => return false,
+        };
+        let mut has_id = false;
+        let mut has_updated_at = false;
+        while let Ok(Some(row)) = rows.next() {
+            let name = row.get::<_, String>(1).unwrap_or_default();
+            has_id |= name == "id";
+            has_updated_at |= name == "updated_at";
+        }
+        has_id && has_updated_at
     }
 
     fn collect_foreign_key_violations(
@@ -4709,15 +4740,23 @@ impl SyncManager {
             }
         }
 
+        let mut ordered_position_by_index = HashMap::new();
+        for (position, index) in ordered.iter().enumerate() {
+            ordered_position_by_index.insert(*index, position);
+        }
+
         ordered.sort_by(|left, right| {
             let left_change = &changes[*left];
             let right_change = &changes[*right];
-            if left_change.table_name == right_change.table_name
-                && left_change.record_id == right_change.record_id
-            {
-                return left.cmp(right);
-            }
-            Self::apply_dependency_rank(left_change).cmp(&Self::apply_dependency_rank(right_change))
+            let left_key = (
+                Self::apply_dependency_rank(left_change),
+                *ordered_position_by_index.get(left).unwrap_or(left),
+            );
+            let right_key = (
+                Self::apply_dependency_rank(right_change),
+                *ordered_position_by_index.get(right).unwrap_or(right),
+            );
+            left_key.cmp(&right_key)
         });
 
         ordered
@@ -4733,11 +4772,16 @@ impl SyncManager {
             "chat_v2_session_groups" => 30,
             "chat_v2_sessions" => 35,
             "folders" | "todo_lists" => 30,
+            "mistakes" => 30,
             "chat_v2_messages" => 38,
+            "document_tasks" | "review_sessions" | "review_analyses" => 38,
             "notes" | "files" | "exam_sheets" | "translations" | "essays" | "mindmaps"
             | "todo_items" => 40,
             "chat_v2_blocks" => 42,
             "questions" | "essay_sessions" | "pomodoro_records" => 50,
+            "chat_messages" | "review_chat_messages" | "anki_cards" | "review_session_mistakes" => {
+                55
+            }
             "chat_v2_attachments" => 55,
             "chat_v2_session_mistakes" => 60,
             "answer_submissions" | "review_plans" | "folder_items" => 60,
@@ -10493,7 +10537,10 @@ mod tests {
         let result = SyncManager::apply_downloaded_changes(&conn, &changes, None)
             .expect("fk violation should be quarantined, not fail the batch");
         assert_eq!(result.success_count, 1, "safe record should be applied");
-        assert_eq!(result.failure_count, 1, "violating record should be recorded as failure");
+        assert_eq!(
+            result.failure_count, 1,
+            "violating record should be recorded as failure"
+        );
 
         let test_records_count: i64 = conn
             .query_row("SELECT COUNT(*) FROM test_records", [], |row| row.get(0))

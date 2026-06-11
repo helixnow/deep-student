@@ -31,11 +31,11 @@ export interface AttachmentSettings {
  * SSOT (Single Source of Truth) 原则：
  * - 图片类型：与 ATTACHMENT_IMAGE_TYPES 一致
  * - 文档类型：与 ATTACHMENT_DOCUMENT_TYPES 一致
- * - 大小限制：与 ATTACHMENT_MAX_SIZE (50MB) 一致
+ * - 大小限制：与 ATTACHMENT_MAX_SIZE (200MB，#62) 一致
  */
 const DEFAULT_SETTINGS: AttachmentSettings = {
   maxImageSize: 10 * 1024 * 1024, // 10MB
-  maxFileSize: ATTACHMENT_MAX_SIZE, // 50MB - 与 constants.ts 和后端 VFS 保持一致
+  maxFileSize: ATTACHMENT_MAX_SIZE, // 200MB - 与 constants.ts 和后端 VFS 保持一致（#62）
   maxAttachments: ATTACHMENT_MAX_COUNT,
   allowedImageTypes: ATTACHMENT_IMAGE_TYPES,
   allowedFileTypes: ATTACHMENT_DOCUMENT_TYPES,
@@ -64,6 +64,12 @@ export function useAttachmentSettings(): UseAttachmentSettingsReturn {
         if (raw) {
           try {
             const parsed = JSON.parse(raw);
+            // #62: 旧版本默认值为 50MB 且曾被持久化；视为旧默认而非用户主动选择，
+            // 升级到新默认 200MB（用户显式设置的其他值不受影响）
+            const LEGACY_DEFAULT_MAX_FILE_SIZE = 50 * 1024 * 1024;
+            if (parsed?.maxFileSize === LEGACY_DEFAULT_MAX_FILE_SIZE) {
+              delete parsed.maxFileSize;
+            }
             setSettings({ ...DEFAULT_SETTINGS, ...parsed });
           } catch {
             setSettings(DEFAULT_SETTINGS);

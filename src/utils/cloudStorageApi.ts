@@ -80,8 +80,9 @@ export const CLOUD_STORAGE_CONFIG_V2_STORAGE_KEY = 'cloud_storage_config_v2';
  * 注意：这里返回的是“安全配置”（password / secretAccessKey 通常为空字符串）。
  */
 export function loadStoredCloudStorageConfigSafe(): CloudStorageConfig | null {
-  if (typeof window === 'undefined') return null;
-  const raw = window.localStorage.getItem(CLOUD_STORAGE_CONFIG_V2_STORAGE_KEY);
+  const storage = typeof window !== 'undefined' ? window.localStorage : undefined;
+  if (!storage) return null;
+  const raw = storage.getItem(CLOUD_STORAGE_CONFIG_V2_STORAGE_KEY);
   if (!raw) return null;
   try {
     return JSON.parse(raw) as CloudStorageConfig;

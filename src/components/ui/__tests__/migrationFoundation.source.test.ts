@@ -96,8 +96,14 @@ describe('Phase 7 DeepStudent migration foundation source guards', () => {
     expect(contract).toMatch(/icon:\s*['"][^'"]*h-\[var\(--touch-target-size\)\][^'"]*w-\[var\(--touch-target-size\)\]/);
     expect(input).toContain('min-h-[var(--touch-target-size)]');
     expect(input).toContain('lg:min-h-[var(--button-height)]');
-    expect(switchSource).toContain('min-h-[var(--touch-target-size)]');
-    expect(switchSource).toContain('min-w-[var(--touch-target-size)]');
+    expect(switchSource).toContain('data-size={size}');
+    expect(buttonCss).toContain('min-height: var(--touch-target-size)');
+    const switchCss = readSource('src/components/ui/shad/Switch.css');
+    expect(switchCss).toContain('height: 1.5rem;');
+    expect(switchCss).toContain('width: 2.75rem;');
+    expect(switchCss).toContain('[data-slot="switch"][data-size="sm"]');
+    expect(switchCss).toContain('height: 1rem;');
+    expect(switchCss).toContain('width: 1.75rem;');
     expect(buttonCss).toContain('min-height: var(--touch-target-size)');
 
     [notionButton, shadButton].forEach((source) => {

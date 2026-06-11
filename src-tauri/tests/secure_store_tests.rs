@@ -8,6 +8,16 @@ async fn create_test_database() -> (Database, TempDir) {
     let temp_dir = TempDir::new().expect("Failed to create temp dir");
     let db_path = temp_dir.path().join("test.db");
     let db = Database::new(&db_path).expect("Failed to create database");
+    db.get_conn_safe()
+        .expect("Failed to get database connection")
+        .execute_batch(
+            "CREATE TABLE IF NOT EXISTS settings (
+                key TEXT PRIMARY KEY,
+                value TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );",
+        )
+        .expect("Failed to create settings table");
     (db, temp_dir)
 }
 

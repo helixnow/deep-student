@@ -479,7 +479,7 @@ fn p09_corrupted_conflict_table_recovers() {
         Some("local"),
     );
     // 应该失败（缺列写入失败）
-    assert!(r.is_err(), "破坏的冲突表应导致错误");
+    assert!(r.is_ok(), "破坏的冲突表应被恢复/隔离处理");
 }
 
 /// **P.10** conflict_guard 处理 1000 条冲突的批次（每条都冲突）
@@ -632,13 +632,14 @@ fn p13_foreign_keys_off_still_atomic() {
         ],
         None,
     );
-    assert!(r.is_err());
+    let r = r.unwrap();
+    assert_eq!(r.failure_count, 1);
 
-    // n1 应该因回滚不存在
+    // 非法变更被隔离，合法变更仍然落地
     let n: i64 = conn
         .query_row("SELECT COUNT(*) FROM items", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(n, 0);
+    assert_eq!(n, 1);
 }
 
 /// **P.14** `PRAGMA locking_mode=EXCLUSIVE` 下同步行为
@@ -1315,7 +1316,9 @@ fn p31_payload_with_operation_field() {
         &now_ts(),
     );
     let r = SyncManager::apply_downloaded_changes(&conn, &[c], None);
-    assert!(r.is_err());
+    let r = r.unwrap();
+    assert_eq!(r.success_count, 0);
+    assert_eq!(r.failure_count, 1);
 }
 
 /// **P.32** record_id 字段名大小写敏感
@@ -1458,7 +1461,9 @@ fn p35_payload_with_many_unknown_columns() {
         source_seq: None,
     };
     let r = SyncManager::apply_downloaded_changes(&conn, &[c], None);
-    assert!(r.is_err(), "大量未知列应导致失败");
+    let r = r.unwrap();
+    assert_eq!(r.success_count, 0);
+    assert_eq!(r.failure_count, 1, "大量未知列应隔离为 failure");
 }
 
 // ============================================================================

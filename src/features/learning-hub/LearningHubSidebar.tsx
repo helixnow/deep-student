@@ -2239,45 +2239,45 @@ export function LearningHubSidebar({
                   placeholder={t('finder.search.placeholder', '搜索...')}
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-7 text-sm flex-1"
+                  className="h-9 text-sm flex-1"
                   autoFocus
                   disabled={!canSearchInCurrentView}
                 />
                 <NotionButton
                   variant="ghost"
                   size="sm"
-                  className="h-7 w-7 p-0"
+                  className="h-10 w-10 p-0"
                   onClick={() => {
                     setMobileSearchExpanded(false);
                     setSearchQuery('');
                   }}
                 >
-                  <X className="w-4 h-4" />
+                  <X className="w-5 h-5" />
                 </NotionButton>
               </div>
             ) : (
-              // 工具栏按钮
+              // 工具栏按钮（N-5: 移动端触控目标 ≥40px）
               <>
                 <NotionButton
                   variant="ghost"
                   size="sm"
-                  className="h-7 w-7 p-0"
+                  className="h-10 w-10 p-0"
                   onClick={() => setMobileSearchExpanded(true)}
                   title={t('finder.search.title', '搜索')}
                   disabled={!canSearchInCurrentView}
                 >
-                  <MagnifyingGlass className="w-4 h-4" />
+                  <MagnifyingGlass className="w-5 h-5" />
                 </NotionButton>
                 <AppMenu>
                   <AppMenuTrigger asChild>
                     <NotionButton
                       variant="ghost"
                       size="sm"
-                      className="h-7 w-7 p-0"
+                      className="h-10 w-10 p-0"
                       title={t('finder.toolbar.new', '新建')}
                       disabled={!canCreateInCurrentView}
                     >
-                      <Plus className="w-4 h-4" />
+                      <Plus className="w-5 h-5" />
                     </NotionButton>
                   </AppMenuTrigger>
                   <AppMenuContent align="end" className="min-w-[180px]">
@@ -2338,11 +2338,11 @@ export function LearningHubSidebar({
                   <NotionButton
                     variant="ghost"
                     size="sm"
-                    className="h-7 w-7 p-0 text-destructive hover:text-destructive"
+                    className="h-10 w-10 p-0 text-destructive hover:text-destructive"
                     onClick={handleEmptyTrash}
                     title={t('finder.actions.emptyTrash', '清空回收站')}
                   >
-                    <Trash className="w-4 h-4" />
+                    <Trash className="w-5 h-5" />
                   </NotionButton>
                 )}
                 <div className="flex-1" />
@@ -2358,31 +2358,31 @@ export function LearningHubSidebar({
 {/* ★ Canvas 模式导航栏：返回/前进 + 面包屑 */}
         {mode === 'canvas' && !hideToolbarAndNav && (
           <div className="study-shell-toolbar flex items-center gap-1 px-1.5 py-1 border-b shrink-0 min-w-0">
-            {/* 返回/前进按钮 */}
+            {/* 返回/前进按钮（N-5: 小屏放大触控目标） */}
             <NotionButton
               variant="ghost"
               size="sm"
-              className="h-6 w-6 p-0 shrink-0"
+              className={cn('p-0 shrink-0', isSmallScreen ? 'h-9 w-9' : 'h-6 w-6')}
               onClick={goBack}
               disabled={historyIndex <= 0}
               title={t('finder.toolbar.back', '返回')}
             >
-              <CaretLeft className="w-3.5 h-3.5" />
+              <CaretLeft className={isSmallScreen ? 'w-5 h-5' : 'w-3.5 h-3.5'} />
             </NotionButton>
             <NotionButton
               variant="ghost"
               size="sm"
-              className="h-6 w-6 p-0 shrink-0"
+              className={cn('p-0 shrink-0', isSmallScreen ? 'h-9 w-9' : 'h-6 w-6')}
               onClick={goForward}
               disabled={historyIndex >= history.length - 1}
               title={t('finder.toolbar.forward', '前进')}
             >
-              <CaretRight className="w-3.5 h-3.5" />
+              <CaretRight className={isSmallScreen ? 'w-5 h-5' : 'w-3.5 h-3.5'} />
             </NotionButton>
             {/* 面包屑路径 */}
             <div className="flex items-center gap-0.5 min-w-0 overflow-hidden text-xs">
-              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => jumpToBreadcrumb(-1)} className="shrink-0 !h-4 !w-4 !p-0" title={t('learningHub:title', '资源库')} aria-label="home">
-                <House className="w-3 h-3" />
+              <NotionButton variant="ghost" size="icon" iconOnly onClick={() => jumpToBreadcrumb(-1)} className={cn('shrink-0 !p-0', isSmallScreen ? '!h-9 !w-9' : '!h-4 !w-4')} title={t('learningHub:title', '资源库')} aria-label="home">
+                <House className={isSmallScreen ? 'w-4 h-4' : 'w-3 h-3'} />
               </NotionButton>
               {currentPath.breadcrumbs.map((crumb, index) => (
                 <React.Fragment key={crumb.id}>
@@ -2452,7 +2452,8 @@ export function LearningHubSidebar({
                 variant="ghost"
                 size="sm"
                 className={cn(
-                  "h-7 w-7 p-0",
+                  'p-0',
+                  isSmallScreen ? 'h-9 w-9' : 'h-7 w-7',
                   isMultiSelectMode && "bg-primary/10 text-primary hover:bg-primary/15"
                 )}
                 onClick={() => {
@@ -2465,18 +2466,18 @@ export function LearningHubSidebar({
                 }}
                 title={isMultiSelectMode ? t('finder.canvas.exitMultiSelect', '退出多选') : t('finder.canvas.multiSelect', '多选')}
               >
-                <ListChecks className="w-4 h-4" />
+                <ListChecks className={isSmallScreen ? 'w-5 h-5' : 'w-4 h-4'} />
               </NotionButton>
               {/* 关闭资源库按钮 */}
               {onClose && (
                 <NotionButton
                   variant="ghost"
                   size="sm"
-                  className="h-7 w-7 p-0"
+                  className={cn('p-0', isSmallScreen ? 'h-9 w-9' : 'h-7 w-7')}
                   onClick={onClose}
                   title={t('common:close', '关闭')}
                 >
-                  <X className="w-4 h-4" />
+                  <X className={isSmallScreen ? 'w-5 h-5' : 'w-4 h-4'} />
                 </NotionButton>
               )}
             </div>

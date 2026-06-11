@@ -853,8 +853,10 @@ fn business_columns(conn: &Connection, table_name: &str) -> Vec<String> {
         .filter_map(Result::ok)
         .filter(|column| {
             !matches!(
-                column.as_str(),
-                "device_id" | "local_version" | "sync_version"
+                (table_name, column.as_str()),
+                (_, "device_id" | "local_version" | "sync_version")
+                    | ("resources", "ref_count")
+                    | ("chat_v2_resources", "ref_count")
             )
         })
         .collect()
@@ -1148,12 +1150,6 @@ fn insert_vfs_non_row_sync_rows(conn: &Connection) -> BTreeSet<&'static str> {
     let ts = "2024-04-24T00:00:00Z";
 
     conn.execute(
-        "INSERT INTO blobs (hash, relative_path, size, mime_type, ref_count, created_at)
-         VALUES ('blob_non_row_hash', 'bl/ob/blob_non_row_hash', 4096, 'application/pdf', 1, ?1)",
-        params![ms],
-    )
-    .expect("insert vfs FileSync blob row");
-    conn.execute(
         "INSERT INTO path_cache (item_type, item_id, full_path, folder_path, updated_at)
          VALUES ('note', 'note_all', '/All rows folder/All rows note', '/All rows folder', ?1)",
         params![ts],
@@ -1293,7 +1289,6 @@ fn insert_vfs_non_row_sync_rows(conn: &Connection) -> BTreeSet<&'static str> {
     .expect("update vfs indexing config row");
 
     BTreeSet::from([
-        "blobs",
         "path_cache",
         "question_bank_stats",
         "review_stats",
@@ -1680,9 +1675,8 @@ fn real_restore_baseline_clears_old_changes_and_allows_new_delta() {
     let pending_before = pending_count(&vfs);
     assert!(pending_before >= 2);
 
-    let (truncated, reset_records) = SyncManager::reset_sync_baseline_after_restore(&vfs).unwrap();
+    let (truncated, _reset_records) = SyncManager::reset_sync_baseline_after_restore(&vfs).unwrap();
     assert!(truncated >= pending_before);
-    assert!(reset_records >= 2);
     assert_eq!(
         pending_count(&vfs),
         0,

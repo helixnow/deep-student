@@ -7,7 +7,7 @@ describe('macOS font smoothing contracts', () => {
     const typographySource = readFileSync(resolve(process.cwd(), 'src/styles/typography.css'), 'utf8');
     const componentSources = [
       readFileSync(resolve(process.cwd(), 'src/chat-v2/styles/chat-beautify.css'), 'utf8'),
-      readFileSync(resolve(process.cwd(), 'src/components/mindmap/mindmap.css'), 'utf8'),
+      readFileSync(resolve(process.cwd(), 'src/features/mindmap/styles/mindmap.css'), 'utf8'),
     ];
     const baseTypographyRule = typographySource.match(/html,\s*body,\s*#root\s*\{[\s\S]*?\n\}/u)?.[0] ?? '';
 

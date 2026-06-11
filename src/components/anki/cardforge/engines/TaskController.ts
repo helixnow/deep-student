@@ -216,9 +216,9 @@ export class TaskController {
         };
       }
 
-      // 调用后端重试命令
+      // 调用后端重试命令（Tauri v2 默认参数 key 为 camelCase）
       await invoke<void>('trigger_task_processing', {
-        task_id: taskId.trim(),
+        taskId: taskId.trim(),
       });
 
       // 获取更新后的任务状态

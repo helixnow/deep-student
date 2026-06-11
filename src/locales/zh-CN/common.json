@@ -1,8 +1,8 @@
 {
   "app": {
-    "name": "深度学习助手",
-    "title": "AI错题管理系统",
-    "description": "AI驱动的智能学习管理系统",
+    "name": "Deep Student",
+    "title": "Deep Student",
+    "description": "AI驱动的智能学习助手",
     "version": "版本"
   },
   "contextMenu": {
@@ -1130,7 +1130,16 @@
     "forward_tooltip": "前进到下一个页面 ({{shortcut}})",
     "no_back_history": "没有可后退的历史",
     "no_forward_history": "没有可前进的历史",
-    "restoreFailed": "页面状态无法恢复"
+    "restoreFailed": "页面状态无法恢复",
+    "dashboard": "总览",
+    "data_management": "数据管理",
+    "template_json_preview": "模板预览",
+    "pdf_reader": "PDF 阅读器",
+    "sandbox_workbench": "沙箱工作台",
+    "todo": "待办",
+    "tree_test": "Tree Test",
+    "crepe_demo": "Crepe Demo",
+    "chat_v2_test": "Chat V2 Test"
   },
   "time": {
     "now": "刚刚",
@@ -3316,6 +3325,7 @@
   "mobile_header": {
     "back": "返回",
     "open_menu": "打开菜单",
+    "open_sidebar": "展开侧边栏",
     "menu": "菜单"
   },
   "sidebar": {

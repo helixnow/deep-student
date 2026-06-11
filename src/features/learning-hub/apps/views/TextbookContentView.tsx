@@ -169,6 +169,8 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
   }, [isDocx, isPptx, isText, isXlsx, resolvedPreviewType, setPreviewType]);
 
   // 校验 filePath 是否可访问（用于失效回退）
+  // #59: PDF 走 pdfstream:// 协议加载，探测必须使用与协议一致的白名单规则，
+  // 否则 get_file_size 成功但实际加载 403，且永远不会回退到数据库。
   useEffect(() => {
     let isActive = true;
     if (!filePath) {
@@ -178,6 +180,23 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
 
     const checkFilePath = async () => {
       try {
+        if (isPdf) {
+          const access = await invoke<{ available: boolean; size?: number; reason?: string }>(
+            'pdfstream_check_access',
+            { path: filePath }
+          );
+          if (!isActive) return;
+          if (!access.available) {
+            console.warn(
+              '[TextbookContentView] filePath not streamable, fallback to DB:',
+              filePath,
+              access.reason
+            );
+          }
+          setFilePathStat({ available: access.available, size: access.size });
+          return;
+        }
+
         const size = await invoke<number>('get_file_size', { path: filePath });
         if (!isActive) return;
         setFilePathStat({ available: true, size });
@@ -192,7 +211,7 @@ const TextbookContentViewInner: React.FC<ContentViewProps> = ({
     return () => {
       isActive = false;
     };
-  }, [filePath]);
+  }, [filePath, isPdf]);
 
   const effectiveFilePath = filePathStat?.available ? filePath : undefined;
   const effectiveFileSize = filePathStat?.available ? filePathStat.size : undefined;

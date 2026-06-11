@@ -5,6 +5,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { AppContentErrorBoundary } from '@/components/learning-hub/apps/AppContentErrorBoundary';
 
 vi.mock('react-i18next', () => ({
+  initReactI18next: { type: '3rdParty', init: vi.fn() },
   useTranslation: () => ({
     t: (key: string, defaultValueOrOptions?: string | Record<string, unknown>, maybeOptions?: Record<string, unknown>) => {
       if (key === 'learningHub:resourceType.exam') {

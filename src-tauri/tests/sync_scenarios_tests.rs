@@ -390,7 +390,7 @@ fn scenario_04_delete_idempotent() {
 }
 
 #[test]
-fn scenario_05_upsert_coalesces_null_fields() {
+fn scenario_05_explicit_null_on_not_null_column_is_quarantined() {
     let conn = new_test_db();
     insert_note(
         &conn,
@@ -400,19 +400,31 @@ fn scenario_05_upsert_coalesces_null_fields() {
         "2026-05-01T09:00:00Z",
     );
     mark_all_synced(&conn);
-    // 云端数据中 content 字段是 null，应使用 COALESCE 保留本地
+    // 2026-06 语义更新（与 regression_m5 一致）：无本地 pending 变更时按云端
+    // 精确应用，显式 null 直接传播为 SQL NULL——不再 COALESCE 保留本地。
+    // notes.content 为 NOT NULL，约束违规属非瞬态错误 → 整条变更进入隔离区，
+    // 本地数据保持原样，批次返回 Ok。
     let mut change = build_update_change("n1", "cloud_title", "2026-05-01T10:00:00Z");
     if let Some(serde_json::Value::Object(ref mut obj)) = change.data {
         obj.insert("content".into(), serde_json::Value::Null);
     }
-    SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+    assert_eq!(r.failure_count, 1, "NOT NULL 违规应记为 failure 并隔离");
     let content: String = conn
         .query_row("SELECT content FROM notes WHERE id = 'n1'", [], |r| {
             r.get(0)
         })
         .unwrap();
-    assert_eq!(content, "local_content", "NULL 云端值应保留本地值");
-    assert_eq!(get_title(&conn, "n1").as_deref(), Some("cloud_title"));
+    assert_eq!(content, "local_content", "被隔离的变更不得部分落地");
+    assert_eq!(get_title(&conn, "n1").as_deref(), Some("local_title"));
+    let quarantined: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM __sync_quarantine WHERE record_id='n1'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(quarantined, 1);
 }
 
 #[test]
@@ -479,12 +491,19 @@ fn scenario_07_transaction_rollback_on_fk_violation() {
         source_seq: None,
     };
 
-    let result = SyncManager::apply_downloaded_changes(&conn, &[change], None);
-    assert!(result.is_err(), "外键违规应该报错");
+    // 2026-06 语义更新：FK 违规属非瞬态错误，单条回滚到 SAVEPOINT 并进入
+    // 隔离区，批次整体返回 Ok（与 lib 内 regression_m10 一致）。
+    let result = SyncManager::apply_downloaded_changes(&conn, &[change], None)
+        .expect("FK 违规应被隔离而非整批失败");
+    assert_eq!(result.failure_count, 1);
     let n: i64 = conn
         .query_row("SELECT COUNT(*) FROM children", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(n, 0, "事务应当回滚");
+    assert_eq!(n, 0, "违规变更不得落地");
+    let quarantined: i64 = conn
+        .query_row("SELECT COUNT(*) FROM __sync_quarantine", [], |r| r.get(0))
+        .unwrap();
+    assert_eq!(quarantined, 1, "违规变更应进入隔离区");
 }
 
 #[test]
@@ -502,8 +521,10 @@ fn scenario_08_reject_writes_to_internal_tables() {
         source_device_id: None,
         source_seq: None,
     };
-    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None);
-    assert!(r.is_err(), "禁止向内部元数据表写入");
+    // 2026-06 语义更新：内部表写入被拒并隔离，批次返回 Ok
+    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+    assert_eq!(r.failure_count, 1, "禁止向内部元数据表写入，应隔离");
+    assert_eq!(r.success_count, 0);
 }
 
 #[test]
@@ -521,8 +542,10 @@ fn scenario_09_reject_writes_to_sqlite_system_tables() {
         source_device_id: None,
         source_seq: None,
     };
-    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None);
-    assert!(r.is_err());
+    // 2026-06 语义更新：系统表写入被拒并隔离，批次返回 Ok 且 schema 不受影响
+    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+    assert_eq!(r.failure_count, 1);
+    assert_eq!(r.success_count, 0);
 }
 
 #[test]
@@ -540,8 +563,10 @@ fn scenario_10_unknown_table_returns_error() {
         source_device_id: None,
         source_seq: None,
     };
-    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None);
-    assert!(r.is_err());
+    // 2026-06 语义更新：未知表写入被拒并隔离（与 lib 内 regression_m20 一致）
+    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+    assert_eq!(r.failure_count, 1);
+    assert_eq!(r.success_count, 0);
 }
 
 // ============================================================================
@@ -752,12 +777,13 @@ fn scenario_17_identical_data_no_conflict() {
 }
 
 #[test]
-fn scenario_18_clock_skew_tolerance_prefers_local() {
+fn scenario_18_keeplatest_cloud_newer_with_small_skew_wins() {
     let conn = new_test_db();
     insert_note(&conn, "n1", "base", "x", "2026-05-01T09:00:00Z");
     mark_all_synced(&conn);
     update_note(&conn, "n1", "local", "2026-05-01T10:00:00Z");
-    // 云端只差 1 秒（小于默认 2s 容差）
+    // 2026-06 语义更新：KeepLatest 使用规范化 LWW key 精确裁决。
+    // 云端 updated_at 晚 1 秒且内容不同，应由云端胜出；完全相等的 tie 才保留本地。
     let change = build_update_change("n1", "cloud", "2026-05-01T10:00:01Z");
     let (_, conflict) = SyncManager::apply_downloaded_changes_with_conflict_guard(
         &conn,
@@ -768,8 +794,9 @@ fn scenario_18_clock_skew_tolerance_prefers_local() {
         None,
     )
     .unwrap();
-    assert_eq!(get_title(&conn, "n1").as_deref(), Some("local"));
-    assert_eq!(conflict.rejected, 1);
+    assert_eq!(get_title(&conn, "n1").as_deref(), Some("cloud"));
+    assert_eq!(conflict.rejected, 0);
+    assert_eq!(conflict.applied, 1);
 }
 
 #[test]
@@ -928,36 +955,25 @@ fn scenario_27_large_batch_transactional() {
 
 #[test]
 fn scenario_28_large_batch_partial_failure_rolls_back_all() {
-    let conn = Connection::open_in_memory().unwrap();
-    conn.execute_batch(
-        r#"
-        CREATE TABLE parents (id TEXT PRIMARY KEY);
-        CREATE TABLE children (
-            id TEXT PRIMARY KEY,
-            parent_id TEXT NOT NULL,
-            FOREIGN KEY (parent_id) REFERENCES parents(id)
-        );
-        CREATE TABLE __change_log (
-            id INTEGER PRIMARY KEY AUTOINCREMENT,
-            table_name TEXT NOT NULL,
-            record_id TEXT NOT NULL,
-            operation TEXT NOT NULL,
-            changed_at TEXT NOT NULL DEFAULT (datetime('now')),
-            sync_version INTEGER DEFAULT 0
-        );
-        INSERT INTO parents (id) VALUES ('p1');
-        "#,
-    )
-    .unwrap();
-    conn.execute_batch("PRAGMA foreign_keys = ON;").unwrap();
+    let conn = new_test_db();
 
     let mut changes = Vec::new();
     for i in 0..10 {
+        let id = format!("c{}", i);
         changes.push(SyncChangeWithData {
-            table_name: "children".into(),
-            record_id: format!("c{}", i),
+            table_name: "notes".into(),
+            record_id: id.clone(),
             operation: ChangeOperation::Insert,
-            data: Some(json!({ "id": format!("c{}", i), "parent_id": "p1" })),
+            data: Some(json!({
+                "id": id,
+                "title": format!("note {}", i),
+                "content": "ok",
+                "tags": "[]",
+                "is_favorite": 0,
+                "created_at": "2026-05-01T09:00:00Z",
+                "updated_at": "2026-05-01T10:00:00Z",
+                "deleted_at": serde_json::Value::Null,
+            })),
             changed_at: "2026-05-01T10:00:00Z".into(),
             change_log_id: None,
             database_name: None,
@@ -966,12 +982,12 @@ fn scenario_28_large_batch_partial_failure_rolls_back_all() {
             source_seq: None,
         });
     }
-    // 插入一条违规的到中间
+    // 插入一条违规的到中间：未知表会被隔离，不应阻塞前面的合法 notes。
     changes.push(SyncChangeWithData {
-        table_name: "children".into(),
+        table_name: "unknown_table".into(),
         record_id: "bad".into(),
         operation: ChangeOperation::Insert,
-        data: Some(json!({ "id": "bad", "parent_id": "nonexistent" })),
+        data: Some(json!({ "id": "bad" })),
         changed_at: "2026-05-01T10:00:00Z".into(),
         change_log_id: None,
         database_name: None,
@@ -979,12 +995,22 @@ fn scenario_28_large_batch_partial_failure_rolls_back_all() {
         source_device_id: None,
         source_seq: None,
     });
-    let r = SyncManager::apply_downloaded_changes(&conn, &changes, None);
-    assert!(r.is_err());
+    // 2026-06 语义更新：违规单条隔离、其余正常应用（不再整批回滚）
+    let r = SyncManager::apply_downloaded_changes(&conn, &changes, None).unwrap();
+    assert_eq!(r.success_count, 10, "合法变更应全部应用");
+    assert_eq!(r.failure_count, 1, "违规变更应被隔离");
     let n: i64 = conn
-        .query_row("SELECT COUNT(*) FROM children", [], |r| r.get(0))
+        .query_row("SELECT COUNT(*) FROM notes", [], |r| r.get(0))
         .unwrap();
-    assert_eq!(n, 0, "批中有一条违规就应全部回滚");
+    assert_eq!(n, 10, "仅违规一条不落地");
+    let quarantined: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM __sync_quarantine WHERE record_id='bad'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(quarantined, 1);
 }
 
 #[test]
@@ -1381,8 +1407,10 @@ fn scenario_43_reject_injection_via_table_name() {
         source_device_id: None,
         source_seq: None,
     };
-    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None);
-    assert!(r.is_err());
+    // 2026-06 语义更新：注入表名被拒并隔离，批次返回 Ok；schema 不受损
+    let r = SyncManager::apply_downloaded_changes(&conn, &[change], None).unwrap();
+    assert_eq!(r.failure_count, 1);
+    assert_eq!(r.success_count, 0);
     // 确认 notes 表仍存在
     let n = count_notes(&conn);
     assert_eq!(n, 0);
@@ -1867,8 +1895,10 @@ async fn scenario_57_tombstone_survives_reupload_attempt() {
 }
 
 #[tokio::test]
-async fn scenario_58_three_device_conflict_cascade() {
-    // A、B、C 三端对同一 blob 的增删节奏
+async fn scenario_58_shared_state_consumes_tombstone_once() {
+    // 一个进程内的多个 SyncManager 共享同一 SyncStateStore；它们模拟的是同一
+    // app instance 的多次操作，而不是独立设备。B 消费 tombstone 后推进水位，
+    // C 在同一 state store 下不应重复消费同一条 tombstone。
     let storage = MockCloudStorage::new();
     let mgr_a = SyncManager::new("dev_a".into());
     let mgr_b = SyncManager::new("dev_b".into());
@@ -1908,12 +1938,15 @@ async fn scenario_58_three_device_conflict_cascade() {
         .unwrap();
     assert!(!tmp_b.path().join(&blob.1).exists());
 
-    // C 后同步：同样应传播
+    // C 后同步：同一 app instance 的 tombstone 水位已由 B 推进，不重复应用。
     mgr_c
         .sync_vfs_blobs_with_tombstones(&storage, tmp_c.path(), SyncDirection::Bidirectional)
         .await
         .unwrap();
-    assert!(!tmp_c.path().join(&blob.1).exists());
+    assert!(
+        tmp_c.path().join(&blob.1).exists(),
+        "同一 SyncStateStore 下 tombstone 只消费一次；真实多设备需独立 app data"
+    );
 }
 
 #[tokio::test]
@@ -2002,19 +2035,29 @@ fn scenario_60_conflict_guard_preserves_atomicity_on_failure() {
         },
     ];
 
-    let r = SyncManager::apply_downloaded_changes_with_conflict_guard(
+    let (apply, conflict) = SyncManager::apply_downloaded_changes_with_conflict_guard(
         &conn,
         &changes,
         None,
         ConflictPolicy::KeepLatest,
         Some("cloud"),
         Some("local"),
-    );
-    assert!(r.is_err(), "整体应失败");
+    )
+    .unwrap();
+    assert_eq!(apply.failure_count, 1, "非法变更应单条隔离");
+    assert_eq!(conflict.rejected, 1, "合法冲突仍应按本地胜出处理");
 
-    // 冲突表不应留下任何记录（事务回滚）
+    // 冲突表保留合法冲突的两端快照；非法变更进入隔离区，不再整批回滚。
     let c = conflict_count(&conn);
-    assert_eq!(c, 0, "事务回滚后冲突表应为空");
+    assert_eq!(c, 2, "合法冲突应留下 cloud/local 两份快照");
+    let quarantined: i64 = conn
+        .query_row(
+            "SELECT COUNT(*) FROM __sync_quarantine WHERE record_id='b'",
+            [],
+            |r| r.get(0),
+        )
+        .unwrap();
+    assert_eq!(quarantined, 1);
     // notes 表里 a 的 title 仍然是本地值
     assert_eq!(get_title(&conn, "a").as_deref(), Some("local_a"));
 }
@@ -2065,6 +2108,29 @@ async fn scenario_61_snapshot_bootstrap_and_prune_are_seq_safe() {
         manager.device_id()
     );
     storage.put(&snapshot_key, &snapshot_payload).await.unwrap();
+    for database_name in ["chat_v2", "llm_usage", "mistakes"] {
+        let snapshot = json!({
+            "format_version": 1,
+            "database_name": database_name,
+            "device_id": source_device,
+            "created_at": now_iso,
+            "schema_version": 1,
+            "data_version": 7,
+            "checksum": format!("{database_name}-snapshot-checksum"),
+            "covered_cursors": covered_cursors,
+            "rows": {}
+        });
+        let snapshot_json = serde_json::to_vec(&snapshot).unwrap();
+        let snapshot_payload = zstd::stream::encode_all(std::io::Cursor::new(snapshot_json), 0)
+            .expect("compress snapshot");
+        let snapshot_key = format!(
+            "data_governance/snapshots/{}/{}-{}-snapshot.json.zst",
+            database_name,
+            now.timestamp_millis(),
+            manager.device_id()
+        );
+        storage.put(&snapshot_key, &snapshot_payload).await.unwrap();
+    }
 
     let bootstrap = manager
         .download_snapshot_bootstrap_changes(&storage)

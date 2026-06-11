@@ -303,17 +303,12 @@ html.is-android .android-safe-top {
   --shell-navigation-width: 272px;
 }
 
-/* 小屏幕下：显示ModernSidebar，隐藏Topbar和content-header */
+/* 小屏幕下：隐藏Topbar和content-header
+   SHELL-1: 移动端无持久侧栏（MobileSlidingLayout 抽屉取代），--sidebar-width 归零 */
 @media (max-width: 767px) {
   :root {
-    --sidebar-width: 110px;
+    --sidebar-width: 0px;
     --desktop-titlebar-height: 0px;
-  }
-  
-  .app-sidebar {
-    display: flex !important;
-    width: var(--sidebar-width) !important;
-    min-width: var(--sidebar-width) !important;
   }
   
   .dstu-topbar {

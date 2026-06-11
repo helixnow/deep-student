@@ -13,6 +13,7 @@ import { cn } from '@/lib/utils';
 import { Z_INDEX } from '@/config/zIndex';
 import { useMobileLayoutSafe } from './MobileLayoutContext';
 import { MobileSidebarNavigation } from './MobileSidebarNavigation';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 /** 三屏位置枚举 */
 export type ScreenPosition = 'left' | 'center' | 'right';
@@ -23,6 +24,30 @@ const INTERACTIVE_SELECTOR = 'button, [role="button"], a, input, select, textare
 const isInteractiveTarget = (target: EventTarget | null): boolean => {
   if (!(target instanceof Element)) return false;
   return Boolean(target.closest(INTERACTIVE_SELECTOR));
+};
+
+/**
+ * C-9: 触点落在可横向滚动的内容（代码块/宽表格/横滑卡片区）内时，
+ * 放行原生滚动，避免布局手势劫持。
+ */
+const isInsideHorizontalScrollable = (target: EventTarget | null, boundary: HTMLElement): boolean => {
+  let el: Element | null = target instanceof Element ? target : null;
+  while (el && el !== boundary) {
+    if (el instanceof HTMLElement && el.scrollWidth > el.clientWidth + 1) {
+      const overflowX = window.getComputedStyle(el).overflowX;
+      if (overflowX === 'auto' || overflowX === 'scroll') {
+        return true;
+      }
+    }
+    el = el.parentElement;
+  }
+  return false;
+};
+
+/** C-9: 存在未折叠文本选区时挂起布局手势（用户可能在拖选择手柄） */
+const hasActiveTextSelection = (): boolean => {
+  const selection = window.getSelection();
+  return Boolean(selection && selection.rangeCount > 0 && !selection.isCollapsed);
 };
 
 interface MobileSlidingLayoutProps {
@@ -79,6 +104,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
   sidebarWidth: sidebarWidthProp = 'auto',
   mainContentPeekWidth = 60,
   enableGesture = true,
+  edgeWidth = 20,
   threshold = 0.3,
   className,
   rightPanelEnabled = false,
@@ -139,7 +165,8 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
   }, []);
 
   // The app keeps visited views mounted. Only the visible layer should be allowed
-  // to hide the global bottom tab bar when one of its side panels is open.
+  // to claim fullscreen-content state (consumed by InputBarUI bottom padding)
+  // when one of its side panels is open.
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
@@ -324,15 +351,39 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
     onSidebarOpenChange?.(false);
   }, [isThreeScreenMode, onScreenPositionChange, onSidebarOpenChange]);
 
+  // Android 返回键（A-5）：侧栏/右面板展开时，返回键先收回到主视图
+  const backStateRef = useRef({ screenPosition, isActiveViewLayer, close: closeSidebarAfterAppNavigation });
+  backStateRef.current = { screenPosition, isActiveViewLayer, close: closeSidebarAfterAppNavigation };
+  useEffect(() => {
+    if (!isMobileLayout) return;
+    return registerBackHandler(() => {
+      const { screenPosition: pos, isActiveViewLayer: active, close } = backStateRef.current;
+      if (!active || pos === 'center') return false;
+      close();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isMobileLayout]);
+
   // 绑定原生事件（支持 passive: false）
   useEffect(() => {
     const container = containerRef.current;
     if (!container) return;
 
+    // C-9: 非边缘起手时检测冲突源（横向滚动容器/文本选区），避免手势劫持。
+    // 边缘起手（edgeWidth 内）保持布局手势优先，保证"随时可滑回"的可达性。
+    const shouldYieldToContent = (target: EventTarget | null, clientX: number): boolean => {
+      const rect = container.getBoundingClientRect();
+      const fromEdge = clientX - rect.left <= edgeWidth || rect.right - clientX <= edgeWidth;
+      if (fromEdge) return false;
+      if (hasActiveTextSelection()) return true;
+      return isInsideHorizontalScrollable(target, container);
+    };
+
     // 触摸事件
     const onTouchStart = (e: TouchEvent) => {
       if (isInteractiveTarget(e.target)) return;
       const touch = e.touches[0];
+      if (shouldYieldToContent(e.target, touch.clientX)) return;
       handleDragStart(touch.clientX, touch.clientY);
     };
 
@@ -350,6 +401,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
       // 只响应左键
       if (e.button !== 0) return;
       if (isInteractiveTarget(e.target)) return;
+      if (shouldYieldToContent(e.target, e.clientX)) return;
       handleDragStart(e.clientX, e.clientY);
     };
 
@@ -396,7 +448,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
       document.removeEventListener('visibilitychange', onDragAbort);
       document.removeEventListener('contextmenu', onDragAbort);
     };
-  }, [handleDragStart, handleDragMove, handleDragEnd]);
+  }, [handleDragStart, handleDragMove, handleDragEnd, edgeWidth]);
 
   // 计算最终的 transform 值
   const translateX = isDragging ? currentTranslate : baseTranslate;

@@ -25,6 +25,7 @@ let capturedListenerCallbacks: {
 
 const mockStartListening = vi.hoisted(() => vi.fn());
 const mockStopListening = vi.hoisted(() => vi.fn());
+const mockSaveDialog = vi.hoisted(() => vi.fn());
 
 const mockDataGovernanceApi = vi.hoisted(() => ({
   getMigrationStatus: vi.fn(),
@@ -63,6 +64,11 @@ vi.mock('@/hooks/useBackupJobListener', () => ({
   },
 }));
 
+vi.mock('@tauri-apps/plugin-dialog', () => ({
+  open: vi.fn(),
+  save: mockSaveDialog,
+}));
+
 vi.mock('@/features/settings/components/data-governance/MigrationTab', () => ({
   MigrationTab: () => <div data-testid="schema-migration-tab">migration-tab</div>,
 }));
@@ -78,6 +84,8 @@ vi.mock('@/utils/tauriApi', () => ({
 }));
 
 import { DataGovernanceDashboard } from '@/features/settings';
+
+const exportBackupButtonName = /导出备份|data:governance\.export_backup/i;
 
 // ============================================================================
 // 默认 mock 数据
@@ -144,25 +152,30 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
     mockDataGovernanceApi.getSyncStatus.mockResolvedValue(null);
     mockDataGovernanceApi.getAuditLogs.mockResolvedValue({ logs: [], total: 0 });
     mockDataGovernanceApi.checkDiskSpaceForRestore.mockResolvedValue({ has_enough_space: true, available_bytes: 10737418240, required_bytes: 2147483648, backup_size: 1536000 });
+    mockSaveDialog.mockResolvedValue('/tmp/deep-student-backup.zip');
   });
 
-  it('renders tiered backup panel with "core" selected by default', async () => {
+  it('renders tiered backup options after enabling tiered export', async () => {
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
 
-    // 分层备份标题应存在（用 getAllByText 避免与"创建分层备份"按钮冲突）
-    const tieredBackupTexts = screen.getAllByText(/分层备份|data:governance\.tiered_backup/i);
-    expect(tieredBackupTexts.length).toBeGreaterThanOrEqual(1);
-
-    // 创建分层备份按钮应存在且可用
-    const createTieredBtn = screen.getByRole('button', {
-      name: /创建分层备份|data:governance\.create_tiered_backup/i,
+    const tieredToggle = screen.getByRole('checkbox', {
+      name: /data:governance\.use_tiered_backup/i,
     });
-    expect(createTieredBtn).toBeEnabled();
+    fireEvent.click(tieredToggle);
+
+    expect(screen.getByText(/settings:data_governance\.backup_tiers\.core_label/i)).toBeInTheDocument();
+    expect(screen.getByText(/settings:data_governance\.backup_tiers\.important_label/i)).toBeInTheDocument();
+    expect(screen.getByText(/settings:data_governance\.backup_tiers\.rebuildable_label/i)).toBeInTheDocument();
+
+    const exportBtn = screen.getByRole('button', {
+      name: /导出备份|data:governance\.export_backup/i,
+    });
+    expect(exportBtn).toBeEnabled();
   });
 
-  it('clicking "创建分层备份" calls backupTiered with default core tier', async () => {
-    mockDataGovernanceApi.backupTiered.mockResolvedValue({
+  it('clicking "导出备份" with tiered mode calls backupAndExportZip with default core tier', async () => {
+    mockDataGovernanceApi.backupAndExportZip.mockResolvedValue({
       job_id: 'tiered-job-001',
       kind: 'export',
       status: 'queued',
@@ -172,28 +185,31 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
 
-    const createTieredBtn = screen.getByRole('button', {
-      name: /创建分层备份|data:governance\.create_tiered_backup/i,
+    fireEvent.click(screen.getByRole('checkbox', {
+      name: /data:governance\.use_tiered_backup/i,
+    }));
+
+    const exportBtn = screen.getByRole('button', {
+      name: /导出备份|data:governance\.export_backup/i,
     });
 
     await act(async () => {
-      fireEvent.click(createTieredBtn);
+      fireEvent.click(exportBtn);
     });
 
-    // backupTiered 应被调用，参数包含 'core' 层级
     await waitFor(() => {
-      expect(mockDataGovernanceApi.backupTiered).toHaveBeenCalledTimes(1);
+      expect(mockDataGovernanceApi.backupAndExportZip).toHaveBeenCalledTimes(1);
     });
 
-    const callArgs = mockDataGovernanceApi.backupTiered.mock.calls[0];
-    // 第一个参数是 tiers 数组
-    expect(callArgs[0]).toEqual(expect.arrayContaining(['core']));
+    const callArgs = mockDataGovernanceApi.backupAndExportZip.mock.calls[0];
+    expect(callArgs[3]).toBe(true);
+    expect(callArgs[4]).toEqual(expect.arrayContaining(['core']));
     // includeAssets 默认 false
-    expect(callArgs[3]).toBe(false);
+    expect(callArgs[5]).toBe(false);
   });
 
   it('toggling tier checkboxes changes selection state', async () => {
-    mockDataGovernanceApi.backupTiered.mockResolvedValue({
+    mockDataGovernanceApi.backupAndExportZip.mockResolvedValue({
       job_id: 'tiered-job-002',
       kind: 'export',
       status: 'queued',
@@ -202,6 +218,10 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
 
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
+
+    fireEvent.click(screen.getByRole('checkbox', {
+      name: /data:governance\.use_tiered_backup/i,
+    }));
 
     // 找到各层级的可点击区域（通过层级标签文本）
     const importantTier = screen.getByText(
@@ -215,21 +235,18 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
     fireEvent.click(importantTier.closest('[class*="cursor-pointer"]')!);
     fireEvent.click(rebuildableTier.closest('[class*="cursor-pointer"]')!);
 
-    // 点击创建分层备份
-    const createTieredBtn = screen.getByRole('button', {
-      name: /创建分层备份|data:governance\.create_tiered_backup/i,
-    });
+    const exportBtn = screen.getByRole('button', { name: exportBackupButtonName });
 
     await act(async () => {
-      fireEvent.click(createTieredBtn);
+      fireEvent.click(exportBtn);
     });
 
     await waitFor(() => {
-      expect(mockDataGovernanceApi.backupTiered).toHaveBeenCalledTimes(1);
+      expect(mockDataGovernanceApi.backupAndExportZip).toHaveBeenCalledTimes(1);
     });
 
-    const callArgs = mockDataGovernanceApi.backupTiered.mock.calls[0];
-    const tiers = callArgs[0] as string[];
+    const callArgs = mockDataGovernanceApi.backupAndExportZip.mock.calls[0];
+    const tiers = callArgs[4] as string[];
     // 应包含 core（默认）+ important + rebuildable
     expect(tiers).toContain('core');
     expect(tiers).toContain('important');
@@ -238,7 +255,7 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
   });
 
   it('deselecting core tier and creating backup sends correct tiers', async () => {
-    mockDataGovernanceApi.backupTiered.mockResolvedValue({
+    mockDataGovernanceApi.backupAndExportZip.mockResolvedValue({
       job_id: 'tiered-job-003',
       kind: 'export',
       status: 'queued',
@@ -247,6 +264,10 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
 
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
+
+    fireEvent.click(screen.getByRole('checkbox', {
+      name: /data:governance\.use_tiered_backup/i,
+    }));
 
     // 取消 core 层级选择
     const coreTier = screen.getByText(
@@ -260,27 +281,29 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
     );
     fireEvent.click(importantTier.closest('[class*="cursor-pointer"]')!);
 
-    const createTieredBtn = screen.getByRole('button', {
-      name: /创建分层备份|data:governance\.create_tiered_backup/i,
-    });
+    const exportBtn = screen.getByRole('button', { name: exportBackupButtonName });
 
     await act(async () => {
-      fireEvent.click(createTieredBtn);
+      fireEvent.click(exportBtn);
     });
 
     await waitFor(() => {
-      expect(mockDataGovernanceApi.backupTiered).toHaveBeenCalledTimes(1);
+      expect(mockDataGovernanceApi.backupAndExportZip).toHaveBeenCalledTimes(1);
     });
 
-    const tiers = mockDataGovernanceApi.backupTiered.mock.calls[0][0] as string[];
+    const tiers = mockDataGovernanceApi.backupAndExportZip.mock.calls[0][4] as string[];
     // core 被取消，只包含 important
     expect(tiers).not.toContain('core');
     expect(tiers).toContain('important');
   });
 
-  it('disables create button when no tiers are selected', async () => {
+  it('does not export when tiered mode has no tiers selected', async () => {
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
+
+    fireEvent.click(screen.getByRole('checkbox', {
+      name: /data:governance\.use_tiered_backup/i,
+    }));
 
     // 取消 core 层级选择（默认唯一选中项）
     const coreTier = screen.getByText(
@@ -288,11 +311,11 @@ describe('DataGovernanceDashboard tiered backup selector', () => {
     );
     fireEvent.click(coreTier.closest('[class*="cursor-pointer"]')!);
 
-    // 创建分层备份按钮应被禁用
-    const createTieredBtn = screen.getByRole('button', {
-      name: /创建分层备份|data:governance\.create_tiered_backup/i,
+    await act(async () => {
+      fireEvent.click(screen.getByRole('button', { name: exportBackupButtonName }));
     });
-    expect(createTieredBtn).toBeDisabled();
+
+    expect(mockDataGovernanceApi.backupAndExportZip).not.toHaveBeenCalled();
   });
 });
 
@@ -311,10 +334,11 @@ describe('DataGovernanceDashboard backup progress display', () => {
     mockDataGovernanceApi.getSyncStatus.mockResolvedValue(null);
     mockDataGovernanceApi.getAuditLogs.mockResolvedValue({ logs: [], total: 0 });
     mockDataGovernanceApi.checkDiskSpaceForRestore.mockResolvedValue({ has_enough_space: true, available_bytes: 10737418240, required_bytes: 2147483648, backup_size: 1536000 });
+    mockSaveDialog.mockResolvedValue('/tmp/deep-student-backup.zip');
   });
 
   it('shows progress bar with percentage and phase when backup is running', async () => {
-    mockDataGovernanceApi.runBackup.mockResolvedValue({
+    mockDataGovernanceApi.backupAndExportZip.mockResolvedValue({
       job_id: 'progress-job-001',
       kind: 'export',
       status: 'queued',
@@ -324,16 +348,13 @@ describe('DataGovernanceDashboard backup progress display', () => {
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
 
-    // 点击完整备份
-    const createBtn = screen.getByRole('button', {
-      name: /完整备份|data:governance\.create_full_backup/i,
-    });
+    const createBtn = screen.getByRole('button', { name: exportBackupButtonName });
     await act(async () => {
       fireEvent.click(createBtn);
     });
 
     await waitFor(() => {
-      expect(mockDataGovernanceApi.runBackup).toHaveBeenCalled();
+      expect(mockDataGovernanceApi.backupAndExportZip).toHaveBeenCalled();
     });
 
     // 模拟 onProgress 回调（通过捕获的回调）
@@ -366,7 +387,7 @@ describe('DataGovernanceDashboard backup progress display', () => {
   });
 
   it('shows ETA when eta_seconds is available', async () => {
-    mockDataGovernanceApi.runBackup.mockResolvedValue({
+    mockDataGovernanceApi.backupAndExportZip.mockResolvedValue({
       job_id: 'progress-eta-001',
       kind: 'export',
       status: 'queued',
@@ -376,15 +397,13 @@ describe('DataGovernanceDashboard backup progress display', () => {
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
 
-    const createBtn = screen.getByRole('button', {
-      name: /完整备份|data:governance\.create_full_backup/i,
-    });
+    const createBtn = screen.getByRole('button', { name: exportBackupButtonName });
     await act(async () => {
       fireEvent.click(createBtn);
     });
 
     await waitFor(() => {
-      expect(mockDataGovernanceApi.runBackup).toHaveBeenCalled();
+      expect(mockDataGovernanceApi.backupAndExportZip).toHaveBeenCalled();
     });
 
     await act(async () => {
@@ -410,7 +429,7 @@ describe('DataGovernanceDashboard backup progress display', () => {
   });
 
   it('clears progress and shows success notification on onComplete', async () => {
-    mockDataGovernanceApi.runBackup.mockResolvedValue({
+    mockDataGovernanceApi.backupAndExportZip.mockResolvedValue({
       job_id: 'complete-job-001',
       kind: 'export',
       status: 'queued',
@@ -431,15 +450,13 @@ describe('DataGovernanceDashboard backup progress display', () => {
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
 
-    const createBtn = screen.getByRole('button', {
-      name: /完整备份|data:governance\.create_full_backup/i,
-    });
+    const createBtn = screen.getByRole('button', { name: exportBackupButtonName });
     await act(async () => {
       fireEvent.click(createBtn);
     });
 
     await waitFor(() => {
-      expect(mockDataGovernanceApi.runBackup).toHaveBeenCalled();
+      expect(mockDataGovernanceApi.backupAndExportZip).toHaveBeenCalled();
     });
 
     // 先模拟进度
@@ -480,7 +497,7 @@ describe('DataGovernanceDashboard backup progress display', () => {
     await waitFor(() => {
       expect(
         screen.getByRole('button', {
-          name: /完整备份|data:governance\.create_full_backup/i,
+          name: exportBackupButtonName,
         }),
       ).toBeEnabled();
     });
@@ -493,7 +510,7 @@ describe('DataGovernanceDashboard backup progress display', () => {
   });
 
   it('shows correct operation text for tiered backup in progress', async () => {
-    mockDataGovernanceApi.backupTiered.mockResolvedValue({
+    mockDataGovernanceApi.backupAndExportZip.mockResolvedValue({
       job_id: 'tiered-progress-001',
       kind: 'export',
       status: 'queued',
@@ -503,16 +520,17 @@ describe('DataGovernanceDashboard backup progress display', () => {
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
 
-    // 点击创建分层备份
-    const createTieredBtn = screen.getByRole('button', {
-      name: /创建分层备份|data:governance\.create_tiered_backup/i,
-    });
+    fireEvent.click(screen.getByRole('checkbox', {
+      name: /data:governance\.use_tiered_backup/i,
+    }));
+
+    const createTieredBtn = screen.getByRole('button', { name: exportBackupButtonName });
     await act(async () => {
       fireEvent.click(createTieredBtn);
     });
 
     await waitFor(() => {
-      expect(mockDataGovernanceApi.backupTiered).toHaveBeenCalled();
+      expect(mockDataGovernanceApi.backupAndExportZip).toHaveBeenCalled();
     });
 
     // 模拟进度
@@ -553,17 +571,16 @@ describe('DataGovernanceDashboard backup failure handling', () => {
     mockDataGovernanceApi.getSyncStatus.mockResolvedValue(null);
     mockDataGovernanceApi.getAuditLogs.mockResolvedValue({ logs: [], total: 0 });
     mockDataGovernanceApi.checkDiskSpaceForRestore.mockResolvedValue({ has_enough_space: true, available_bytes: 10737418240, required_bytes: 2147483648, backup_size: 1536000 });
+    mockSaveDialog.mockResolvedValue('/tmp/deep-student-backup.zip');
   });
 
-  it('recovers button state when runBackup API rejects', async () => {
-    mockDataGovernanceApi.runBackup.mockRejectedValue(new Error('Disk full'));
+  it('recovers button state when backupAndExportZip API rejects', async () => {
+    mockDataGovernanceApi.backupAndExportZip.mockRejectedValue(new Error('Disk full'));
 
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
 
-    const createBtn = screen.getByRole('button', {
-      name: /完整备份|data:governance\.create_full_backup/i,
-    });
+    const createBtn = screen.getByRole('button', { name: exportBackupButtonName });
     expect(createBtn).toBeEnabled();
 
     await act(async () => {
@@ -571,7 +588,7 @@ describe('DataGovernanceDashboard backup failure handling', () => {
     });
 
     await waitFor(() => {
-      expect(mockDataGovernanceApi.runBackup).toHaveBeenCalled();
+      expect(mockDataGovernanceApi.backupAndExportZip).toHaveBeenCalled();
     });
 
     // 按钮应恢复为可用状态
@@ -580,17 +597,19 @@ describe('DataGovernanceDashboard backup failure handling', () => {
     });
   });
 
-  it('recovers button state when backupTiered API rejects', async () => {
-    mockDataGovernanceApi.backupTiered.mockRejectedValue(
+  it('recovers button state when tiered backup export rejects', async () => {
+    mockDataGovernanceApi.backupAndExportZip.mockRejectedValue(
       new Error('Permission denied'),
     );
 
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
 
-    const createTieredBtn = screen.getByRole('button', {
-      name: /创建分层备份|data:governance\.create_tiered_backup/i,
-    });
+    fireEvent.click(screen.getByRole('checkbox', {
+      name: /data:governance\.use_tiered_backup/i,
+    }));
+
+    const createTieredBtn = screen.getByRole('button', { name: exportBackupButtonName });
     expect(createTieredBtn).toBeEnabled();
 
     await act(async () => {
@@ -598,7 +617,7 @@ describe('DataGovernanceDashboard backup failure handling', () => {
     });
 
     await waitFor(() => {
-      expect(mockDataGovernanceApi.backupTiered).toHaveBeenCalled();
+      expect(mockDataGovernanceApi.backupAndExportZip).toHaveBeenCalled();
     });
 
     // 按钮应恢复为可用状态
@@ -608,7 +627,7 @@ describe('DataGovernanceDashboard backup failure handling', () => {
   });
 
   it('handles onError callback from backup job listener', async () => {
-    mockDataGovernanceApi.runBackup.mockResolvedValue({
+    mockDataGovernanceApi.backupAndExportZip.mockResolvedValue({
       job_id: 'fail-job-001',
       kind: 'export',
       status: 'queued',
@@ -618,15 +637,13 @@ describe('DataGovernanceDashboard backup failure handling', () => {
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
 
-    const createBtn = screen.getByRole('button', {
-      name: /完整备份|data:governance\.create_full_backup/i,
-    });
+    const createBtn = screen.getByRole('button', { name: exportBackupButtonName });
     await act(async () => {
       fireEvent.click(createBtn);
     });
 
     await waitFor(() => {
-      expect(mockDataGovernanceApi.runBackup).toHaveBeenCalled();
+      expect(mockDataGovernanceApi.backupAndExportZip).toHaveBeenCalled();
     });
 
     // 模拟 onError 回调
@@ -659,7 +676,7 @@ describe('DataGovernanceDashboard backup failure handling', () => {
   });
 
   it('handles onCancelled callback from backup job listener', async () => {
-    mockDataGovernanceApi.runBackup.mockResolvedValue({
+    mockDataGovernanceApi.backupAndExportZip.mockResolvedValue({
       job_id: 'cancel-job-001',
       kind: 'export',
       status: 'queued',
@@ -669,15 +686,13 @@ describe('DataGovernanceDashboard backup failure handling', () => {
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
 
-    const createBtn = screen.getByRole('button', {
-      name: /完整备份|data:governance\.create_full_backup/i,
-    });
+    const createBtn = screen.getByRole('button', { name: exportBackupButtonName });
     await act(async () => {
       fireEvent.click(createBtn);
     });
 
     await waitFor(() => {
-      expect(mockDataGovernanceApi.runBackup).toHaveBeenCalled();
+      expect(mockDataGovernanceApi.backupAndExportZip).toHaveBeenCalled();
     });
 
     // 模拟 onCancelled 回调
@@ -704,7 +719,7 @@ describe('DataGovernanceDashboard backup failure handling', () => {
   });
 
   it('cancel button calls cancelBackup API when backup is running', async () => {
-    mockDataGovernanceApi.runBackup.mockResolvedValue({
+    mockDataGovernanceApi.backupAndExportZip.mockResolvedValue({
       job_id: 'cancel-test-001',
       kind: 'export',
       status: 'queued',
@@ -716,15 +731,13 @@ describe('DataGovernanceDashboard backup failure handling', () => {
     await navigateToBackupTab();
 
     // 开始备份
-    const createBtn = screen.getByRole('button', {
-      name: /完整备份|data:governance\.create_full_backup/i,
-    });
+    const createBtn = screen.getByRole('button', { name: exportBackupButtonName });
     await act(async () => {
       fireEvent.click(createBtn);
     });
 
     await waitFor(() => {
-      expect(mockDataGovernanceApi.runBackup).toHaveBeenCalled();
+      expect(mockDataGovernanceApi.backupAndExportZip).toHaveBeenCalled();
     });
 
     // 模拟运行中的进度（含 cancellable: true）
@@ -774,10 +787,11 @@ describe('DataGovernanceDashboard backup buttons disabled while running', () => 
     mockDataGovernanceApi.getSyncStatus.mockResolvedValue(null);
     mockDataGovernanceApi.getAuditLogs.mockResolvedValue({ logs: [], total: 0 });
     mockDataGovernanceApi.checkDiskSpaceForRestore.mockResolvedValue({ has_enough_space: true, available_bytes: 10737418240, required_bytes: 2147483648, backup_size: 1536000 });
+    mockSaveDialog.mockResolvedValue('/tmp/deep-student-backup.zip');
   });
 
   it('disables backup buttons while a backup job is running', async () => {
-    mockDataGovernanceApi.runBackup.mockResolvedValue({
+    mockDataGovernanceApi.backupAndExportZip.mockResolvedValue({
       job_id: 'running-job-001',
       kind: 'export',
       status: 'queued',
@@ -787,9 +801,7 @@ describe('DataGovernanceDashboard backup buttons disabled while running', () => 
     render(<DataGovernanceDashboard embedded />);
     await navigateToBackupTab();
 
-    const fullBackupBtn = screen.getByRole('button', {
-      name: /完整备份|data:governance\.create_full_backup/i,
-    });
+    const fullBackupBtn = screen.getByRole('button', { name: exportBackupButtonName });
 
     // 开始备份
     await act(async () => {
@@ -797,7 +809,7 @@ describe('DataGovernanceDashboard backup buttons disabled while running', () => 
     });
 
     await waitFor(() => {
-      expect(mockDataGovernanceApi.runBackup).toHaveBeenCalled();
+      expect(mockDataGovernanceApi.backupAndExportZip).toHaveBeenCalled();
     });
 
     // 模拟运行中
@@ -815,11 +827,11 @@ describe('DataGovernanceDashboard backup buttons disabled while running', () => 
       });
     });
 
-    // 完整备份和分层备份按钮都应被禁用
+    // 导出按钮和分层开关都应被禁用
     expect(fullBackupBtn).toBeDisabled();
     expect(
-      screen.getByRole('button', {
-        name: /创建分层备份|data:governance\.create_tiered_backup/i,
+      screen.getByRole('checkbox', {
+        name: /data:governance\.use_tiered_backup/i,
       }),
     ).toBeDisabled();
 

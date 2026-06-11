@@ -30,6 +30,7 @@ let capturedListenerCallbacks: {
 
 const mockStartListening = vi.hoisted(() => vi.fn());
 const mockStopListening = vi.hoisted(() => vi.fn());
+const mockDialogSave = vi.hoisted(() => vi.fn());
 
 const mockDataGovernanceApi = vi.hoisted(() => ({
   getMigrationStatus: vi.fn(),
@@ -66,6 +67,11 @@ vi.mock('@/hooks/useBackupJobListener', () => ({
       stopListening: mockStopListening,
     };
   },
+}));
+
+vi.mock('@tauri-apps/plugin-dialog', () => ({
+  save: mockDialogSave,
+  open: vi.fn(),
 }));
 
 vi.mock('@/features/settings/components/data-governance/MigrationTab', () => ({
@@ -213,10 +219,11 @@ describe('Backup operations trigger maintenance mode', () => {
     mockDataGovernanceApi.listResumableJobs.mockResolvedValue([]);
     mockDataGovernanceApi.getSyncStatus.mockResolvedValue(null);
     mockDataGovernanceApi.getAuditLogs.mockResolvedValue({ logs: [], total: 0 });
+    mockDialogSave.mockResolvedValue('/tmp/deep-student-maintenance-backup.zip');
   });
 
   it('enters maintenance mode when creating a full backup', async () => {
-    mockDataGovernanceApi.runBackup.mockResolvedValue({
+    mockDataGovernanceApi.backupAndExportZip.mockResolvedValue({
       job_id: 'maint-backup-001',
       kind: 'export',
       status: 'queued',
@@ -230,7 +237,7 @@ describe('Backup operations trigger maintenance mode', () => {
     await navigateToBackupTab();
 
     const createBtn = screen.getByRole('button', {
-      name: /完整备份|data:governance\.create_full_backup/i,
+      name: /导出备份|data:governance\.export_backup/i,
     });
 
     await act(async () => {
@@ -238,7 +245,7 @@ describe('Backup operations trigger maintenance mode', () => {
     });
 
     await waitFor(() => {
-      expect(mockDataGovernanceApi.runBackup).toHaveBeenCalled();
+      expect(mockDataGovernanceApi.backupAndExportZip).toHaveBeenCalled();
     });
 
     // 备份开始后，维护模式应为 true
@@ -247,7 +254,7 @@ describe('Backup operations trigger maintenance mode', () => {
   });
 
   it('exits maintenance mode when backup completes', async () => {
-    mockDataGovernanceApi.runBackup.mockResolvedValue({
+    mockDataGovernanceApi.backupAndExportZip.mockResolvedValue({
       job_id: 'maint-complete-001',
       kind: 'export',
       status: 'queued',
@@ -258,7 +265,7 @@ describe('Backup operations trigger maintenance mode', () => {
     await navigateToBackupTab();
 
     const createBtn = screen.getByRole('button', {
-      name: /完整备份|data:governance\.create_full_backup/i,
+      name: /导出备份|data:governance\.export_backup/i,
     });
 
     await act(async () => {
@@ -266,7 +273,7 @@ describe('Backup operations trigger maintenance mode', () => {
     });
 
     await waitFor(() => {
-      expect(mockDataGovernanceApi.runBackup).toHaveBeenCalled();
+      expect(mockDataGovernanceApi.backupAndExportZip).toHaveBeenCalled();
     });
 
     // 确认进入维护模式

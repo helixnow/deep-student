@@ -510,6 +510,8 @@ impl ChatAnkiToolExecutor {
             "documentId": document_id,
             "counts": counts,
             "cardsCount": cards.len(),
+            // 达到 maxCards 上限提前停止时为 true，提示 AI 这是预期行为而非异常取消
+            "limitReached": tasks_limit_reached(&tasks),
             "error": error,
             "shouldRetry": should_retry,
         });
@@ -599,6 +601,7 @@ impl ChatAnkiToolExecutor {
         let mut final_cards_count: Option<usize> = None;
         let mut final_progress: Option<Value> = None;
         let mut final_anki_connect: Option<Value> = None;
+        let mut final_limit_reached = false;
         let mut block_ever_found = false;
 
         let has_anki_block_id = args
@@ -733,9 +736,10 @@ impl ChatAnkiToolExecutor {
                                 | crate::models::TaskStatus::Truncated
                         )
                     });
-                    let has_cancelled = tasks
-                        .iter()
-                        .any(|t| matches!(t.status, crate::models::TaskStatus::Cancelled));
+                    let user_cancelled = tasks_user_cancelled(&tasks);
+                    if tasks_limit_reached(&tasks) {
+                        final_limit_reached = true;
+                    }
 
                     // If tasks don't exist yet, keep waiting (avoid failing fast).
                     if !tasks.is_empty() {
@@ -749,7 +753,7 @@ impl ChatAnkiToolExecutor {
                             break;
                         }
                         if !is_in_progress {
-                            final_status = if has_cancelled {
+                            final_status = if user_cancelled {
                                 "cancelled".to_string()
                             } else if has_failed_or_truncated {
                                 "completed_with_errors".to_string()
@@ -830,10 +834,11 @@ impl ChatAnkiToolExecutor {
                                                 | crate::models::TaskStatus::Truncated
                                         )
                                     });
-                                    let has_cancelled = tasks.iter().any(|t| {
-                                        matches!(t.status, crate::models::TaskStatus::Cancelled)
-                                    });
-                                    final_status = if has_cancelled {
+                                    let user_cancelled = tasks_user_cancelled(&tasks);
+                                    if tasks_limit_reached(&tasks) {
+                                        final_limit_reached = true;
+                                    }
+                                    final_status = if user_cancelled {
                                         "cancelled".to_string()
                                     } else if has_failed_or_truncated {
                                         "completed_with_errors".to_string()
@@ -897,9 +902,10 @@ impl ChatAnkiToolExecutor {
                                 | crate::models::TaskStatus::Truncated
                         )
                     });
-                    let has_cancelled = tasks
-                        .iter()
-                        .any(|t| matches!(t.status, crate::models::TaskStatus::Cancelled));
+                    let user_cancelled = tasks_user_cancelled(&tasks);
+                    if tasks_limit_reached(&tasks) {
+                        final_limit_reached = true;
+                    }
 
                     // If tasks don't exist yet, keep waiting (avoid failing fast).
                     if !tasks.is_empty() {
@@ -913,7 +919,7 @@ impl ChatAnkiToolExecutor {
                             break;
                         }
                         if !is_in_progress {
-                            final_status = if has_cancelled {
+                            final_status = if user_cancelled {
                                 "cancelled".to_string()
                             } else if has_failed_or_truncated {
                                 "completed_with_errors".to_string()
@@ -985,6 +991,8 @@ impl ChatAnkiToolExecutor {
             "cardsCount": final_cards_count.unwrap_or(0),
             "progress": final_progress,
             "ankiConnect": final_anki_connect,
+            // 达到 maxCards 上限提前停止时为 true，提示 AI 这是预期行为而非异常取消
+            "limitReached": final_limit_reached,
             "error": final_error,
             "shouldRetry": should_retry,
         });
@@ -1706,9 +1714,12 @@ impl ChatAnkiToolExecutor {
         let inferred_single_template_id = infer_single_template_id_from_cards(&cards);
         let fallback_template_id = explicit_template_id.or(inferred_single_template_id);
         let mut card_note_types: HashMap<String, String> = HashMap::new();
+        let mut templates_by_model: HashMap<String, crate::models::CustomAnkiTemplate> =
+            HashMap::new();
 
         if !note_type_explicit && !all_cloze {
-            let mut template_note_type_cache: HashMap<String, Option<String>> = HashMap::new();
+            let mut template_cache: HashMap<String, Option<crate::models::CustomAnkiTemplate>> =
+                HashMap::new();
             for card in &cards {
                 let card_template_id = card
                     .template_id
@@ -1719,41 +1730,35 @@ impl ChatAnkiToolExecutor {
                     .or_else(|| fallback_template_id.clone())
                     .or_else(|| requested_template_ids.first().cloned());
                 if let Some(template_id) = card_template_id {
-                    let maybe_note_type =
-                        if let Some(cached) = template_note_type_cache.get(&template_id) {
-                            cached.clone()
-                        } else {
-                            let loaded = db
-                                .get_custom_template_by_id(&template_id)
-                                .ok()
-                                .flatten()
-                                .and_then(|template| {
-                                    let note = template.note_type.trim().to_string();
-                                    if note.is_empty() {
-                                        None
-                                    } else {
-                                        Some(note)
-                                    }
-                                });
-                            template_note_type_cache.insert(template_id.clone(), loaded.clone());
-                            loaded
-                        };
-                    if let Some(model_name) = maybe_note_type {
-                        card_note_types.insert(card.id.clone(), model_name);
+                    let maybe_template = if let Some(cached) = template_cache.get(&template_id) {
+                        cached.clone()
+                    } else {
+                        let loaded = db.get_custom_template_by_id(&template_id).ok().flatten();
+                        template_cache.insert(template_id.clone(), loaded.clone());
+                        loaded
+                    };
+                    if let Some(template) = maybe_template {
+                        let model_name = template.note_type.trim().to_string();
+                        if !model_name.is_empty() {
+                            card_note_types.insert(card.id.clone(), model_name.clone());
+                            // D1 修复：缺失模型同步前自动 createModel 所需的模板数据
+                            templates_by_model.entry(model_name).or_insert(template);
+                        }
                     }
                 }
             }
         }
 
-        let note_ids = match crate::anki_connect_service::add_notes_to_anki_with_card_models(
+        let report = match crate::anki_connect_service::add_notes_to_anki_detailed(
             cards.clone(),
             deck_name.clone(),
             note_type.clone(),
             card_note_types,
+            templates_by_model,
         )
         .await
         {
-            Ok(ids) => ids,
+            Ok(report) => report,
             Err(e) => {
                 let error_msg = e;
                 ctx.emit_tool_call_error(&error_msg);
@@ -1770,26 +1775,33 @@ impl ChatAnkiToolExecutor {
             }
         };
 
-        let added = note_ids.iter().filter(|id| id.is_some()).count();
-        let failed = note_ids.len().saturating_sub(added);
-        let status = if added == 0 {
-            "error"
-        } else if failed > 0 {
+        let total = report.note_ids.len();
+        let added = report.added;
+        let duplicates = report.duplicates;
+        let failed = report.failed;
+        // D1 三态语义：
+        // - 全部已存在（duplicates==total）：幂等成功，不是错误
+        // - 有真实失败且无新增：错误
+        // - 部分失败：partial
+        let status = if failed == 0 {
+            "ok"
+        } else if added > 0 || duplicates > 0 {
             "partial"
         } else {
-            "ok"
+            "error"
         };
-        let error = if added == 0 {
+        let error = if status == "error" {
             Some("blocks.ankiCards.errors.ankiSyncEmpty".to_string())
         } else {
             None
         };
-        let warning = if added > 0 && failed > 0 {
+        let warning = if status == "partial" {
             Some(json!({
                 "code": "anki_sync_partial",
                 "details": {
-                    "total": note_ids.len(),
+                    "total": total,
                     "added": added,
+                    "duplicates": duplicates,
                     "failed": failed,
                 },
             }))
@@ -1802,9 +1814,13 @@ impl ChatAnkiToolExecutor {
             "documentId": args.document_id,
             "deckName": deck_name,
             "noteType": note_type,
-            "total": note_ids.len(),
+            "total": total,
             "added": added,
+            // 已存在于 Anki 中被跳过的卡片数（重复≠失败）
+            "duplicates": duplicates,
             "failed": failed,
+            // 本次自动创建的 Anki 模型（自定义模板首次同步时）
+            "createdModels": report.created_models,
             "error": error,
             "warning": warning,
         });
@@ -2234,6 +2250,22 @@ impl ChatAnkiToolExecutor {
         preferred_resource_ids: Option<Vec<String>>,
         max_cards: Option<i32>,
     ) -> Result<ToolResultInfo, String> {
+        // E3 修复：maxCards 超过单次硬上限时 clamp 到 100（与 EnhancedAnkiService 校验一致），
+        // 避免底层服务直接拒绝整个请求。
+        const MAX_CARDS_HARD_LIMIT: i32 = 100;
+        let max_cards = max_cards.map(|v| {
+            if v > MAX_CARDS_HARD_LIMIT {
+                log::warn!(
+                    "[ChatAnkiToolExecutor] maxCards {} exceeds hard limit, clamped to {}",
+                    v,
+                    MAX_CARDS_HARD_LIMIT
+                );
+                MAX_CARDS_HARD_LIMIT
+            } else {
+                v
+            }
+        });
+
         // Minimal validation (fail fast).
         if goal.trim().is_empty() {
             let error_msg = "goal is required".to_string();
@@ -3458,9 +3490,8 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                     | crate::models::TaskStatus::Streaming
             )
         });
-        let has_cancelled = tasks
-            .iter()
-            .any(|t| matches!(t.status, crate::models::TaskStatus::Cancelled));
+        let has_user_cancelled = tasks_user_cancelled(&tasks);
+        let has_limit_cancelled = tasks_limit_reached(&tasks);
 
         if let Some(limit) = global_card_limit {
             if cards.len() >= limit && is_in_progress && !limit_cancel_triggered {
@@ -3492,18 +3523,19 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                         let _ = proc.update_task_status(
                             &t.id,
                             crate::models::TaskStatus::Cancelled,
-                            Some("GLOBAL_CARD_LIMIT_REACHED".to_string()),
+                            Some(GLOBAL_CARD_LIMIT_MARKER.to_string()),
                         );
                     }
                 }
             }
         }
 
+        // limit 取消（达到 maxCards 上限）视为正常完成，不进入 cancelled（C1 修复）
         let stage = if is_in_progress {
             "generating"
         } else if is_paused {
             "paused"
-        } else if has_cancelled {
+        } else if has_user_cancelled {
             "cancelled"
         } else {
             "completed"
@@ -3511,7 +3543,15 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
         let stage_message_key: Option<&str> = match stage {
             "paused" => Some("blocks.ankiCards.progress.messages.paused"),
             "cancelled" => Some("blocks.ankiCards.progress.messages.cancelled"),
+            "completed" if has_limit_cancelled => {
+                Some("blocks.ankiCards.progress.messages.limitReached")
+            }
             _ => None,
+        };
+        let stage_message_params: Option<Value> = if stage == "completed" && has_limit_cancelled {
+            Some(json!({ "limit": global_card_limit.unwrap_or(0) }))
+        } else {
+            None
         };
 
         // Stream new cards (in small batches).
@@ -3538,6 +3578,7 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                     "stage": stage,
                     "route": route.as_str(),
                     "messageKey": stage_message_key,
+                    "messageParams": stage_message_params.clone(),
                     "cardsGenerated": visible_card_count,
                     "counts": counts.get("counts").cloned().unwrap_or(json!({})),
                     "completedRatio": ratio,
@@ -3558,6 +3599,7 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                             "stage": stage,
                             "route": route.as_str(),
                             "messageKey": stage_message_key,
+                            "messageParams": stage_message_params.clone(),
                             "cardsGenerated": visible_card_count,
                             "counts": counts.get("counts").cloned().unwrap_or(json!({})),
                             "completedRatio": ratio,
@@ -3592,10 +3634,27 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
 
         if !is_in_progress && !is_paused {
             // Done: emit end with full cards list.
+            // 超出 maxCards 的卡片仍按上限裁剪（保持限额语义），但不再静默：
+            // 删除数量记入 warnings，让用户和 AI 都能看到（C1/E3 修复）。
             if cards.len() > visible_card_count {
+                let removed_count = cards.len() - visible_card_count;
                 for c in cards.iter().skip(visible_card_count) {
                     let _ = params.anki_db.delete_anki_card(&c.id);
                 }
+                log::info!(
+                    "[ChatAnkiToolExecutor] removed {} over-limit cards (limit={:?}) for {}",
+                    removed_count,
+                    global_card_limit,
+                    document_id
+                );
+                warnings.push(json!({
+                    "code": "over_limit_cards_removed",
+                    "messageKey": "blocks.ankiCards.warnings.overLimitCardsRemoved",
+                    "messageParams": {
+                        "count": removed_count,
+                        "limit": global_card_limit.unwrap_or(0),
+                    }
+                }));
             }
             let final_cards: Vec<Value> = cards
                 .iter()
@@ -3616,7 +3675,8 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                 .iter()
                 .filter(|t| matches!(t.status, crate::models::TaskStatus::Truncated))
                 .count();
-            let final_stage = if has_cancelled {
+            // limit 取消视为正常完成（C1 修复）
+            let final_stage = if has_user_cancelled {
                 "cancelled"
             } else {
                 "completed"
@@ -3625,19 +3685,23 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
             let template_id_for_options = template_id.clone();
             let template_ids = params.template_ids.clone();
             let template_mode = params.template_mode.as_str();
-            let final_message_key = if has_cancelled {
+            let final_message_key = if has_user_cancelled {
                 Some("blocks.ankiCards.progress.messages.cancelled")
             } else if has_failed {
                 Some("blocks.ankiCards.progress.messages.completedWithErrors")
+            } else if has_limit_cancelled {
+                Some("blocks.ankiCards.progress.messages.limitReached")
             } else {
                 None
             };
             let final_message_params = if has_failed {
                 Some(json!({ "failed": failed_count, "truncated": truncated_count }))
+            } else if !has_user_cancelled && has_limit_cancelled {
+                Some(json!({ "limit": global_card_limit.unwrap_or(0) }))
             } else {
                 None
             };
-            let final_error_key = if !has_cancelled && has_failed {
+            let final_error_key = if !has_user_cancelled && has_failed {
                 Some("blocks.ankiCards.errors.partialSegmentsFailed".to_string())
             } else {
                 None
@@ -3661,6 +3725,8 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                     "max_cards_per_source": 0
                 },
                 "warnings": warnings,
+                // 达到 maxCards 上限提前停止时为 true（C1 修复）
+                "limitReached": has_limit_cancelled,
                 "progress": {
                     "stage": final_stage,
                     "route": route.as_str(),
@@ -3685,7 +3751,7 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
                 id: params.anki_block_id.clone(),
                 message_id: params.message_id.clone(),
                 block_type: block_types::ANKI_CARDS.to_string(),
-                status: if !has_cancelled && has_failed {
+                status: if !has_user_cancelled && has_failed {
                     block_status::ERROR.to_string()
                 } else {
                     block_status::SUCCESS.to_string()
@@ -3703,7 +3769,7 @@ async fn run_chatanki_pipeline_background(params: BackgroundParams) -> Result<()
             };
             let _ = upsert_block_allow_orphan(&params.chat_db, &block);
 
-            if !has_cancelled && has_failed {
+            if !has_user_cancelled && has_failed {
                 // Ensure UI receives a final progress snapshot before switching to error status.
                 emit_anki_cards_chunk(
                     &params.emitter,
@@ -5070,6 +5136,27 @@ fn distribute_global_max_cards(total: i32, segments: usize) -> Vec<i32> {
         .collect()
 }
 
+/// 全局卡片上限触发的取消标记（写入 document_task.error_message）。
+pub(crate) const GLOBAL_CARD_LIMIT_MARKER: &str = "GLOBAL_CARD_LIMIT_REACHED";
+
+/// 达到 maxCards 上限导致的取消属于"按上限完成"，不是用户取消（C1 修复）。
+fn is_limit_cancelled_task(t: &crate::models::DocumentTask) -> bool {
+    matches!(t.status, crate::models::TaskStatus::Cancelled)
+        && t.error_message.as_deref() == Some(GLOBAL_CARD_LIMIT_MARKER)
+}
+
+/// 是否存在"用户/系统主动取消"的任务（排除 limit 取消）。
+fn tasks_user_cancelled(tasks: &[crate::models::DocumentTask]) -> bool {
+    tasks
+        .iter()
+        .any(|t| matches!(t.status, crate::models::TaskStatus::Cancelled) && !is_limit_cancelled_task(t))
+}
+
+/// 是否存在因达到全局上限而停止的任务。
+fn tasks_limit_reached(tasks: &[crate::models::DocumentTask]) -> bool {
+    tasks.iter().any(is_limit_cancelled_task)
+}
+
 fn derive_status_snapshot(
     tasks: &[crate::models::DocumentTask],
     cards_len: usize,
@@ -5091,20 +5178,19 @@ fn derive_status_snapshot(
             crate::models::TaskStatus::Failed | crate::models::TaskStatus::Truncated
         )
     });
-    let has_cancelled = tasks
-        .iter()
-        .any(|t| matches!(t.status, crate::models::TaskStatus::Cancelled));
+    let user_cancelled = tasks_user_cancelled(tasks);
     let status = if tasks.is_empty() && cards_len == 0 {
         "not_found".to_string()
     } else if is_in_progress {
         "running".to_string()
     } else if is_paused {
         "paused".to_string()
-    } else if has_cancelled {
+    } else if user_cancelled {
         "cancelled".to_string()
     } else if has_failed_or_truncated {
         "completed_with_errors".to_string()
     } else {
+        // limit 取消的任务也走这里：对用户/AI 而言任务"已按上限完成"
         "completed".to_string()
     };
     let error = if status == "not_found" {
@@ -5607,6 +5693,34 @@ mod tests {
         assert_eq!(status, "cancelled");
         assert!(error.is_none());
         assert!(!should_retry);
+    }
+
+    #[test]
+    fn test_derive_status_snapshot_limit_cancelled_is_completed() {
+        // C1：达到 maxCards 上限导致的取消应视为正常完成，而不是 cancelled
+        let mut limit_task = make_task(TaskStatus::Cancelled);
+        limit_task.error_message = Some(GLOBAL_CARD_LIMIT_MARKER.to_string());
+        let tasks = vec![make_task(TaskStatus::Completed), limit_task];
+
+        let (status, error, should_retry) = derive_status_snapshot(&tasks, 10);
+        assert_eq!(status, "completed");
+        assert!(error.is_none());
+        assert!(!should_retry);
+        assert!(tasks_limit_reached(&tasks));
+        assert!(!tasks_user_cancelled(&tasks));
+    }
+
+    #[test]
+    fn test_derive_status_snapshot_mixed_user_and_limit_cancelled() {
+        // 用户取消优先于 limit 完成语义
+        let mut limit_task = make_task(TaskStatus::Cancelled);
+        limit_task.error_message = Some(GLOBAL_CARD_LIMIT_MARKER.to_string());
+        let user_task = make_task(TaskStatus::Cancelled);
+        let tasks = vec![limit_task, user_task];
+
+        let (status, _, _) = derive_status_snapshot(&tasks, 5);
+        assert_eq!(status, "cancelled");
+        assert!(tasks_user_cancelled(&tasks));
     }
 
     #[test]
