@@ -173,6 +173,14 @@ const PomodoroSettingsPopover: React.FC<{ onClose: () => void }> = ({ onClose })
         unit={t('pomodoro.settings.minutesUnit')}
         onChange={(v) => updateSettings({ endReminderSeconds: v * 60 })}
       />
+      <SettingsNumberRow
+        label={t('pomodoro.settings.dailyGoal')}
+        value={settings.dailyGoal}
+        min={0}
+        max={99}
+        unit={t('pomodoro.settings.pomodorosUnit')}
+        onChange={(v) => updateSettings({ dailyGoal: v })}
+      />
       <div className="my-1.5 h-px bg-[color:var(--shell-workspace-border)]" />
       <div className="flex items-center justify-between gap-3 py-1">
         <span className="text-xs text-muted-foreground">{t('pomodoro.settings.noiseType')}</span>
@@ -344,6 +352,10 @@ export const PomodoroPanel: React.FC = () => {
 
   const modeInfo = getModeInfo();
   const isRunning = status === 'running';
+
+  // 每日目标进度（后端统计优先，store 计数兜底）
+  const todayCount = todayStats?.completedCount ?? completedPomodorosToday;
+  const goalReached = settings.dailyGoal > 0 && todayCount >= settings.dailyGoal;
 
   return (
     <div className="flex-shrink-0">
@@ -532,17 +544,58 @@ export const PomodoroPanel: React.FC = () => {
         </div>
       </div>
 
-      {/* 今日统计 */}
+      {/* 今日统计 + 每日目标 */}
       <div className="flex flex-wrap items-center gap-x-4 gap-y-1 px-4 pb-2.5 sm:px-6">
         <div className="inline-flex items-center gap-1.5 text-[11px] text-muted-foreground">
-          <Flame size={12} className="text-[color:hsl(var(--warning))]" />
+          <Flame
+            size={12}
+            weight={goalReached ? 'fill' : 'regular'}
+            className={cn(
+              'text-[color:hsl(var(--warning))]',
+              goalReached && 'text-[color:hsl(var(--success))]',
+            )}
+          />
           <span>
             {t('pomodoro.stats.todayLabel')}{' '}
             <strong className="font-semibold text-foreground">
-              {todayStats?.completedCount ?? completedPomodorosToday}
+              {todayCount}
+              {settings.dailyGoal > 0 && (
+                <span className="font-normal text-muted-foreground">/{settings.dailyGoal}</span>
+              )}
             </strong>{' '}
             {t('pomodoro.stats.pomodoroUnit')}
           </span>
+          {/* 目标进度（设置了目标才显示） */}
+          {settings.dailyGoal > 0 && (
+            <span
+              className="ml-1 inline-flex h-1 w-16 overflow-hidden rounded-full bg-[color:var(--shell-workspace-border)]"
+              title={
+                goalReached
+                  ? t('pomodoro.stats.goalReached')
+                  : t('pomodoro.stats.goalProgress', {
+                      done: todayCount,
+                      goal: settings.dailyGoal,
+                    })
+              }
+            >
+              <span
+                className={cn(
+                  'h-full rounded-full transition-all duration-500',
+                  goalReached
+                    ? 'bg-[color:hsl(var(--success))]'
+                    : 'bg-[color:hsl(var(--warning))]',
+                )}
+                style={{
+                  width: `${Math.min(100, (todayCount / settings.dailyGoal) * 100)}%`,
+                }}
+              />
+            </span>
+          )}
+          {goalReached && (
+            <span className="text-[11px] font-medium text-[color:hsl(var(--success))]">
+              {t('pomodoro.stats.goalReached')}
+            </span>
+          )}
         </div>
         {todayStats && todayStats.totalFocusSeconds > 0 && (
           <div className="text-[11px] text-muted-foreground">

@@ -382,10 +382,23 @@ export const usePomodoroStore = create<PomodoroState>()(
             );
           }
 
-          // ★ I2 修复：系统通知
+          // ★ I2 修复：系统通知（恰好达成每日目标时换庆祝文案）
+          const reachedDailyGoal =
+            settings.dailyGoal > 0 &&
+            countsAsPomodoro &&
+            newCompletedCount === settings.dailyGoal;
           void sendSystemNotification(
-            i18n.t('todo:pomodoro.notifications.workCompleteTitle'),
-            i18n.t('todo:pomodoro.notifications.workCompleteBody', { value: newCompletedCount }),
+            i18n.t(
+              reachedDailyGoal
+                ? 'todo:pomodoro.notifications.dailyGoalTitle'
+                : 'todo:pomodoro.notifications.workCompleteTitle',
+            ),
+            i18n.t(
+              reachedDailyGoal
+                ? 'todo:pomodoro.notifications.dailyGoalBody'
+                : 'todo:pomodoro.notifications.workCompleteBody',
+              { value: newCompletedCount },
+            ),
           );
 
           const autoStart = settings.autoStartBreaks;
@@ -449,6 +462,7 @@ export const usePomodoroStore = create<PomodoroState>()(
           merged.longBreakInterval = Math.max(1, Math.round(merged.longBreakInterval));
           merged.endReminderSeconds = Math.max(0, Math.round(merged.endReminderSeconds));
           merged.noiseVolume = Math.max(0, Math.min(1, merged.noiseVolume));
+          merged.dailyGoal = Math.max(0, Math.min(99, Math.round(merged.dailyGoal)));
 
           const next: Partial<PomodoroState> = { settings: merged };
           // 空闲态同步显示新的工作时长（正计时模式空闲显示 0）

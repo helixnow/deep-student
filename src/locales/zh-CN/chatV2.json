@@ -912,6 +912,11 @@
       "mixed": "混合来源"
     }
   },
+  "agentPanel": {
+    "plan": "计划",
+    "sources": "来源",
+    "artifacts": "产物"
+  },
   "timeline": {
     "thinking": {
       "inProgress": "正在思考...",

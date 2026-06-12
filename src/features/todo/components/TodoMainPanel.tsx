@@ -34,6 +34,7 @@ import {
   Bell,
   SortAscending,
   Sparkle,
+  CalendarPlus,
 } from '@phosphor-icons/react';
 import {
   DndContext,
@@ -76,11 +77,14 @@ import {
   EISENHOWER_QUADRANTS,
   PRIORITY_CONFIG,
   REPEAT_OPTIONS,
+  addDays,
   classifyEisenhower,
+  formatLocalDate,
   groupItemsByDueBucket,
   isOverdue,
   isDueToday,
   localToday,
+  mondayWeekStart,
   nextRepeatOccurrence,
   parseTags,
   parseRepeatRule,
@@ -91,6 +95,7 @@ import {
 import { parseQuickAddInput } from '../quickAddParser';
 import { aiBreakdownTodo } from '../api';
 import { useReviewPlanStore } from '@/stores/reviewPlanStore';
+import { useViewStore } from '@/stores/viewStore';
 import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 // ============================================================================
@@ -224,6 +229,7 @@ const TodoQuickAdd: React.FC = () => {
           onKeyDown={handleKeyDown}
           onFocus={() => setIsExpanded(true)}
           placeholder={t('todo:actions.quickAddPlaceholder')}
+          data-todo-quick-add
           className="min-w-0 flex-1 bg-transparent border-0 focus-visible:ring-0 placeholder:text-muted-foreground/50"
         />
         {/* 自然语言解析预览 chip（提交时生效） */}
@@ -323,6 +329,124 @@ const PriorityIcon: React.FC<{ priority: TodoPriority; className?: string }> = (
   };
   const Icon = icons[config.icon] || Minus;
   return <Icon size={16} className={cn(config.color, className)} />;
+};
+
+// ============================================================================
+// RescheduleButton — 行内一键改期（今天/明天/下周一/移除日期）
+// 对标 Todoist 的 quick reschedule：不进详情面板即可挪动到期日
+// ============================================================================
+
+const RescheduleButton: React.FC<{ item: TodoItem }> = ({ item }) => {
+  const { t } = useTranslation(['todo']);
+  const { updateItem } = useTodoStore();
+  const [menuPos, setMenuPos] = useState<{ x: number; y: number; openUp: boolean } | null>(null);
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!menuPos) return;
+    const handleOutside = (e: MouseEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuPos(null);
+    };
+    const handleEsc = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuPos(null);
+    };
+    document.addEventListener('mousedown', handleOutside);
+    document.addEventListener('keydown', handleEsc);
+    return () => {
+      document.removeEventListener('mousedown', handleOutside);
+      document.removeEventListener('keydown', handleEsc);
+    };
+  }, [menuPos]);
+
+  const options = useMemo(() => {
+    const now = new Date();
+    const today = formatLocalDate(now);
+    const tomorrow = formatLocalDate(addDays(now, 1));
+    const nextMonday = formatLocalDate(addDays(mondayWeekStart(now), 7));
+    const opts: Array<{ key: string; label: string; date: string; hint?: string }> = [];
+    if (item.dueDate !== today) {
+      opts.push({ key: 'today', label: t('todo:reschedule.today'), date: today });
+    }
+    if (item.dueDate !== tomorrow) {
+      opts.push({ key: 'tomorrow', label: t('todo:reschedule.tomorrow'), date: tomorrow });
+    }
+    if (item.dueDate !== nextMonday) {
+      opts.push({
+        key: 'nextMonday',
+        label: t('todo:reschedule.nextMonday'),
+        date: nextMonday,
+        hint: nextMonday.slice(5),
+      });
+    }
+    if (item.dueDate) {
+      opts.push({ key: 'clear', label: t('todo:reschedule.clear'), date: '' });
+    }
+    return opts;
+  }, [item.dueDate, t]);
+
+  const handlePick = useCallback(
+    (date: string) => {
+      setMenuPos(null);
+      void updateItem({ id: item.id, dueDate: date });
+    },
+    [item.id, updateItem],
+  );
+
+  return (
+    <>
+      <NotionButton
+        variant="utility"
+        size="icon"
+        iconOnly
+        onClick={(e) => {
+          e.stopPropagation();
+          const rect = (e.currentTarget as HTMLElement).getBoundingClientRect();
+          // 菜单宽 144px；贴右对齐按钮，靠近视口底部时向上弹
+          const openUp = rect.bottom + 160 > window.innerHeight;
+          setMenuPos({
+            x: Math.max(8, rect.right - 144),
+            y: openUp ? rect.top - 4 : rect.bottom + 4,
+            openUp,
+          });
+        }}
+        title={t('todo:reschedule.title')}
+        aria-label={t('todo:reschedule.title')}
+        className="flex-shrink-0 opacity-0 transition-opacity duration-100 group-hover:opacity-100 group-focus-within:opacity-100 [@media(pointer:coarse)]:opacity-60 !p-1.5"
+      >
+        <CalendarPlus size={16} />
+      </NotionButton>
+      {menuPos && (
+        <div
+          ref={menuRef}
+          role="menu"
+          aria-label={t('todo:reschedule.title')}
+          className="fixed z-50 w-36 rounded-[var(--radius-shell-control)] border border-[color:var(--shell-workspace-border)] bg-[color:var(--surface-root,var(--background))] py-1 shadow-xl"
+          style={
+            menuPos.openUp
+              ? { left: menuPos.x, bottom: window.innerHeight - menuPos.y }
+              : { left: menuPos.x, top: menuPos.y }
+          }
+          onClick={(e) => e.stopPropagation()}
+        >
+          {options.map((opt) => (
+            <button
+              key={opt.key}
+              role="menuitem"
+              onClick={() => handlePick(opt.date)}
+              className={cn(
+                'flex w-full items-center justify-between gap-2 px-3 py-1.5 text-left text-xs transition-colors',
+                'hover:bg-[color:var(--interactive-hover)]',
+                opt.key === 'clear' ? 'text-muted-foreground' : 'text-foreground',
+              )}
+            >
+              <span>{opt.label}</span>
+              {opt.hint && <span className="text-[10px] text-muted-foreground">{opt.hint}</span>}
+            </button>
+          ))}
+        </div>
+      )}
+    </>
+  );
 };
 
 interface TodoItemRowProps {
@@ -489,6 +613,8 @@ const TodoItemRow: React.FC<TodoItemRowProps> = ({
           </div>
         )}
       </div>
+
+      {!isCompleted && <RescheduleButton item={item} />}
 
       {!isCompleted && (
         <NotionButton
@@ -1323,6 +1449,35 @@ export const TodoMainPanel: React.FC = () => {
   const activeList = lists.find((l) => l.id === activeListId);
   const selectedItem = items.find((i) => i.id === selectedItemId);
 
+  // 键盘快捷键：/ 聚焦搜索，n 聚焦快速添加（仅 Todo 页面、非输入态生效）
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      if (useViewStore.getState().currentView !== 'todo') return;
+      const target = e.target as HTMLElement | null;
+      if (
+        target &&
+        (target.tagName === 'INPUT' ||
+          target.tagName === 'TEXTAREA' ||
+          target.isContentEditable)
+      ) {
+        return;
+      }
+      if (e.key === '/') {
+        e.preventDefault();
+        document.querySelector<HTMLInputElement>('[data-todo-search]')?.focus();
+      } else if (e.key === 'n' || e.key === 'N') {
+        const quickAdd = document.querySelector<HTMLInputElement>('[data-todo-quick-add]');
+        if (quickAdd) {
+          e.preventDefault();
+          quickAdd.focus();
+        }
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    return () => document.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
   const filteredItems = useMemo(() => {
     const visible = items.filter((item) => {
       if (filter.priorityFilter && item.priority !== filter.priorityFilter) return false;
@@ -1438,6 +1593,66 @@ export const TodoMainPanel: React.FC = () => {
     }
   })();
 
+  // 空态按视图差异化：清零类视图用庆祝语气（对齐 Todoist「Todoist Zero」体验）
+  const emptyState = (() => {
+    if (filter.search.trim()) {
+      return {
+        icon: MagnifyingGlass,
+        title: t('todo:empty.noSearchResults'),
+        hint: t('todo:empty.noSearchResultsHint'),
+        celebratory: false,
+      };
+    }
+    switch (filter.view) {
+      case 'today':
+        return {
+          icon: CheckCircle,
+          title: t('todo:empty.todayClear'),
+          hint: t('todo:empty.todayClearHint'),
+          celebratory: true,
+        };
+      case 'overdue':
+        return {
+          icon: CheckCircle,
+          title: t('todo:empty.overdueClear'),
+          hint: t('todo:empty.overdueClearHint'),
+          celebratory: true,
+        };
+      case 'upcoming':
+        return {
+          icon: Calendar,
+          title: t('todo:empty.upcomingClear'),
+          hint: t('todo:empty.upcomingClearHint'),
+          celebratory: false,
+        };
+      case 'completed':
+        return {
+          icon: ListChecks,
+          title: t('todo:empty.completedEmpty'),
+          hint: t('todo:empty.completedEmptyHint'),
+          celebratory: false,
+        };
+      default:
+        return {
+          icon: ListChecks,
+          title: t('todo:empty.noItems'),
+          hint: t('todo:empty.hint'),
+          celebratory: false,
+        };
+    }
+  })();
+
+  // 今日负荷摘要：未完成任务的预估番茄合计（仅 today 视图、有预估时显示）
+  const todayPomodoroLoad = useMemo(() => {
+    if (filter.view !== 'today') return 0;
+    return items
+      .filter((i) => i.status === 'pending')
+      .reduce((acc, i) => {
+        const remaining = (i.estimatedPomodoros || 0) - (i.completedPomodoros || 0);
+        return acc + Math.max(0, remaining);
+      }, 0);
+  }, [filter.view, items]);
+
   return (
     <div className="flex min-w-0 flex-1 flex-row overflow-hidden">
       {/* 主列 */}
@@ -1458,6 +1673,14 @@ export const TodoMainPanel: React.FC = () => {
                   {completedCount}&nbsp;{t('todo:stats.completed')}
                 </>
               )}
+              {todayPomodoroLoad > 0 && (
+                <>
+                  <span className="mx-1 text-muted-foreground/30">·</span>
+                  <span title={t('todo:stats.pomodoroLoadHint')}>
+                    {t('todo:stats.pomodoroLoad', { count: todayPomodoroLoad })}
+                  </span>
+                </>
+              )}
             </span>
           </div>
 
@@ -1469,6 +1692,7 @@ export const TodoMainPanel: React.FC = () => {
                 value={filter.search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder={t('todo:actions.search')}
+                data-todo-search
                 className="h-8 w-44 pl-8 pr-3 text-xs sm:w-56"
               />
             </div>
@@ -1529,15 +1753,16 @@ export const TodoMainPanel: React.FC = () => {
               </div>
             ) : filteredItems.length === 0 ? (
               <div className="study-shell-empty-state m-4 sm:m-6 animate-in fade-in duration-300">
-                <div className="study-shell-empty-state__icon">
-                  <ListChecks size={24} />
+                <div
+                  className={cn(
+                    'study-shell-empty-state__icon',
+                    emptyState.celebratory && '!text-[color:hsl(var(--success))]',
+                  )}
+                >
+                  <emptyState.icon size={24} weight={emptyState.celebratory ? 'fill' : 'regular'} />
                 </div>
-                <h3 className="study-shell-empty-state__title">
-                  {t('todo:empty.noItems')}
-                </h3>
-                <p className="study-shell-empty-state__description">
-                  {t('todo:empty.hint')}
-                </p>
+                <h3 className="study-shell-empty-state__title">{emptyState.title}</h3>
+                <p className="study-shell-empty-state__description">{emptyState.hint}</p>
               </div>
             ) : isManualSortView ? (
               <DndContext

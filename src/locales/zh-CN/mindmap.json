@@ -89,7 +89,20 @@
     "redo": "重做",
     "save": "保存",
     "search": "搜索",
-    "deleteNode": "删除节点"
+    "deleteNode": "删除节点",
+    "groupGeneral": "通用",
+    "groupCanvas": "导图视图",
+    "groupOutline": "大纲视图",
+    "navigate": "在节点间导航",
+    "editNode": "编辑节点",
+    "editNote": "编辑备注",
+    "moveNode": "上移 / 下移节点",
+    "collapseExpand": "折叠 / 展开节点",
+    "bold": "加粗",
+    "fitView": "适应视图",
+    "clipboard": "复制 / 剪切 / 粘贴",
+    "indentOutdent": "缩进 / 反缩进",
+    "escape": "退出编辑 / 取消选中"
   },
   "embed": {
     "zoomIn": "放大",

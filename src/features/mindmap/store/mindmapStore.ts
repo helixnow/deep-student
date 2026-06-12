@@ -380,7 +380,10 @@ export const useMindMapStore = create<MindMapStoreState>()(
 
     const pushHistory = (doc: MindMapDocument) => {
       set((state) => {
-        state.history.past.push(JSON.parse(JSON.stringify(doc)));
+        // ★ 性能：store 经 immer 中间件，document 是 frozen 不可变树，
+        // 每次 mutation 产生结构共享的新树。历史栈直接存引用即可，
+        // 全量深克隆（旧实现）在大导图上每次编辑都有明显开销且浪费内存。
+        state.history.past.push(doc);
         if (state.history.past.length > MAX_HISTORY) {
           state.history.past.shift();
         }
@@ -394,7 +397,8 @@ export const useMindMapStore = create<MindMapStoreState>()(
       if (!s.mindmapId) return null;
       return {
         mindmapId: s.mindmapId,
-        document: JSON.parse(JSON.stringify(overrides?.document ?? s.document)),
+        // frozen 树可直接被 JSON.stringify 序列化写入草稿，无需先深克隆
+        document: overrides?.document ?? s.document,
         currentView: overrides?.currentView ?? s.currentView,
         focusedNodeId: overrides?.focusedNodeId ?? s.focusedNodeId,
         savedAt: new Date().toISOString(),
@@ -917,7 +921,8 @@ export const useMindMapStore = create<MindMapStoreState>()(
         set((state) => {
           const prev = state.history.past.pop();
           if (prev) {
-            state.history.future.push(JSON.parse(JSON.stringify(document)));
+            // document 为 immer frozen 树，直接存引用（见 pushHistory）
+            state.history.future.push(document);
             state.document = prev;
             state.isDirty = true;
             state._documentVersion += 1;
@@ -954,7 +959,8 @@ export const useMindMapStore = create<MindMapStoreState>()(
         set((state) => {
           const next = state.history.future.pop();
           if (next) {
-            state.history.past.push(JSON.parse(JSON.stringify(document)));
+            // document 为 immer frozen 树，直接存引用（见 pushHistory）
+            state.history.past.push(document);
             state.document = next;
             state.isDirty = true;
             state._documentVersion += 1;

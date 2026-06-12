@@ -92,7 +92,20 @@
     "redo": "Redo",
     "save": "Save",
     "search": "Search",
-    "deleteNode": "Delete node"
+    "deleteNode": "Delete node",
+    "groupGeneral": "General",
+    "groupCanvas": "Mind Map View",
+    "groupOutline": "Outline View",
+    "navigate": "Navigate between nodes",
+    "editNode": "Edit node",
+    "editNote": "Edit note",
+    "moveNode": "Move node up / down",
+    "collapseExpand": "Collapse / expand node",
+    "bold": "Bold",
+    "fitView": "Fit view",
+    "clipboard": "Copy / cut / paste",
+    "indentOutdent": "Indent / outdent",
+    "escape": "Exit editing / deselect"
   },
   "embed": {
     "zoomIn": "Zoom in",

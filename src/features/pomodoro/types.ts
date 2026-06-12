@@ -20,6 +20,8 @@ export interface PomodoroSettings {
   noiseType: NoiseType;
   /** 环境音音量 0-1 */
   noiseVolume: number;
+  /** 每日专注目标（番茄数）；0 = 不设目标 */
+  dailyGoal: number;
 }
 
 export const DEFAULT_POMODORO_SETTINGS: PomodoroSettings = {
@@ -34,6 +36,7 @@ export const DEFAULT_POMODORO_SETTINGS: PomodoroSettings = {
   endReminderSeconds: 0,
   noiseType: 'brown',
   noiseVolume: 0.12,
+  dailyGoal: 8,
 };
 
 export interface PomodoroState {

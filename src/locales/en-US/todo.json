@@ -40,6 +40,13 @@
     "deleteItem": "Delete todo",
     "dragToReorder": "Drag to reorder"
   },
+  "reschedule": {
+    "title": "Reschedule",
+    "today": "Today",
+    "tomorrow": "Tomorrow",
+    "nextMonday": "Next Monday",
+    "clear": "Remove date"
+  },
   "notifications": {
     "operationFailed": "Operation failed",
     "listDeleted": "Deleted list \"{{title}}\"",
@@ -79,13 +86,25 @@
   },
   "stats": {
     "pending": "pending",
-    "completed": "completed"
+    "completed": "completed",
+    "pomodoroLoad": "~{{count}} pomodoros",
+    "pomodoroLoadHint": "Estimated pomodoros for today's remaining tasks"
   },
   "empty": {
     "noItems": "No items yet",
     "hint": "Keep the momentum going.",
     "noLists": "No lists yet",
-    "noMatchingLists": "No matching lists"
+    "noMatchingLists": "No matching lists",
+    "todayClear": "All clear for today",
+    "todayClearHint": "Enjoy the moment, or plan ahead in Upcoming.",
+    "upcomingClear": "Nothing due in the next 7 days",
+    "upcomingClearHint": "Use quick add to leave a note for your future self.",
+    "overdueClear": "No overdue tasks",
+    "overdueClearHint": "Great job staying on top of things.",
+    "completedEmpty": "No completed tasks yet",
+    "completedEmptyHint": "Finished tasks will show up here.",
+    "noSearchResults": "No matching tasks",
+    "noSearchResultsHint": "Try a different keyword."
   },
   "detail": {
     "title": "Details",
@@ -234,7 +253,12 @@
       "totalPomodoros": "Pomodoros",
       "dailyAvg": "Daily avg",
       "pomodoroCount": "{{count}} pomodoros",
-      "empty": "No focus sessions in this range"
+      "empty": "No focus sessions in this range",
+      "thisWeek": "This week",
+      "weekUp": "+{{value}}% vs same time last week",
+      "weekDown": "-{{value}}% vs same time last week",
+      "weekFlat": "Same as last week",
+      "weekNoBase": "No record same time last week"
     },
     "stats": {
       "todayLabel": "Today",
@@ -243,7 +267,9 @@
       "focusLabel": "Focused",
       "minutes": "{{value}} min",
       "hours": "{{value}} h",
-      "interrupted": "Interrupted {{value}} times"
+      "interrupted": "Interrupted {{value}} times",
+      "goalProgress": "Daily goal {{done}}/{{goal}}",
+      "goalReached": "Goal reached"
     },
     "notifications": {
       "workCompleteTitle": "Pomodoro Complete",
@@ -252,7 +278,9 @@
       "breakCompleteBody": "Break finished. Ready for the next pomodoro?",
       "endReminderTitle": "Almost done",
       "endReminderBodyWork": "About {{minutes}} min of focus left — start wrapping up",
-      "endReminderBodyBreak": "About {{minutes}} min of break left"
+      "endReminderBodyBreak": "About {{minutes}} min of break left",
+      "dailyGoalTitle": "Daily goal reached!",
+      "dailyGoalBody": "{{value}} pomodoros done — you hit today's goal. Treat yourself!"
     },
     "settings": {
       "title": "Pomodoro Settings",
@@ -268,7 +296,8 @@
       "countUp": "Stopwatch (count up)",
       "endReminder": "End reminder (0 = off)",
       "noiseType": "Ambient sound",
-      "noiseVolume": "Volume"
+      "noiseVolume": "Volume",
+      "dailyGoal": "Daily goal (0 = off)"
     },
     "progressTitle": "{{done}}/{{total}} pomodoros completed",
     "completedCount": "{{count}} completed",

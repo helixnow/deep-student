@@ -912,6 +912,11 @@
       "mixed": "Mixed Source"
     }
   },
+  "agentPanel": {
+    "plan": "Plan",
+    "sources": "Sources",
+    "artifacts": "Artifacts"
+  },
   "timeline": {
     "thinking": {
       "inProgress": "Thinking for {{seconds}}s…",

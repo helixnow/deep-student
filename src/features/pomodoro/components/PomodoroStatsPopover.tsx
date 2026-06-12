@@ -19,6 +19,18 @@ type ViewMode = RangeDays | 'heatmap';
 /** 热力图覆盖天数（12 周） */
 const HEATMAP_DAYS = 84;
 
+const fmtLocalDate = (d: Date): string => {
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const day = String(d.getDate()).padStart(2, '0');
+  return `${d.getFullYear()}-${m}-${day}`;
+};
+
+const shiftDays = (d: Date, n: number): Date => {
+  const next = new Date(d);
+  next.setDate(next.getDate() + n);
+  return next;
+};
+
 export const PomodoroStatsPopover: React.FC<{ onClose: () => void }> = ({ onClose }) => {
   const { t, i18n } = useTranslation('todo');
   const ref = useRef<HTMLDivElement>(null);
@@ -55,6 +67,35 @@ export const PomodoroStatsPopover: React.FC<{ onClose: () => void }> = ({ onClos
       cancelled = true;
     };
   }, [days]);
+
+  // ===== 周对比：本周至今 vs 上周同期（固定取近 14 天，与展示模式无关） =====
+  const [weekCompare, setWeekCompare] = useState<{
+    thisWeekSeconds: number;
+    lastWeekSeconds: number;
+  } | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    getPomodoroDailyStats(14)
+      .then((data) => {
+        if (cancelled) return;
+        const byDate = new Map(data.map((d) => [d.date, d.focusSeconds]));
+        const now = new Date();
+        const dayIdx = (now.getDay() + 6) % 7; // 0 = 周一
+        const monday = shiftDays(now, -dayIdx);
+        let thisWeekSeconds = 0;
+        let lastWeekSeconds = 0;
+        for (let i = 0; i <= dayIdx; i++) {
+          thisWeekSeconds += byDate.get(fmtLocalDate(shiftDays(monday, i))) ?? 0;
+          lastWeekSeconds += byDate.get(fmtLocalDate(shiftDays(monday, i - 7))) ?? 0;
+        }
+        setWeekCompare({ thisWeekSeconds, lastWeekSeconds });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   const summary = useMemo(() => {
     if (!stats || stats.length === 0) {
@@ -259,6 +300,51 @@ export const PomodoroStatsPopover: React.FC<{ onClose: () => void }> = ({ onClos
         <div className="mt-1 flex justify-between text-[10px] text-muted-foreground/50">
           <span>{dayLabel(stats[0].date)}</span>
           <span>{dayLabel(stats[stats.length - 1].date)}</span>
+        </div>
+      )}
+
+      {/* 周对比：本周至今 vs 上周同期 */}
+      {weekCompare && (weekCompare.thisWeekSeconds > 0 || weekCompare.lastWeekSeconds > 0) && (
+        <div className="mt-2 flex items-center gap-1.5 border-t border-[color:var(--shell-workspace-border)] pt-2 text-[11px] text-muted-foreground">
+          <span>
+            {t('pomodoro.statsPopover.thisWeek')}{' '}
+            <strong className="font-semibold text-foreground">
+              {formatFocus(Math.round(weekCompare.thisWeekSeconds / 60))}
+            </strong>
+          </span>
+          {weekCompare.lastWeekSeconds > 0 ? (
+            (() => {
+              const delta =
+                (weekCompare.thisWeekSeconds - weekCompare.lastWeekSeconds) /
+                weekCompare.lastWeekSeconds;
+              const pct = Math.round(Math.abs(delta) * 100);
+              if (pct === 0) {
+                return (
+                  <span className="text-muted-foreground/70">
+                    {t('pomodoro.statsPopover.weekFlat')}
+                  </span>
+                );
+              }
+              return (
+                <span
+                  className={cn(
+                    'font-medium',
+                    delta > 0
+                      ? 'text-[color:hsl(var(--success))]'
+                      : 'text-[color:hsl(var(--destructive))]',
+                  )}
+                >
+                  {t(delta > 0 ? 'pomodoro.statsPopover.weekUp' : 'pomodoro.statsPopover.weekDown', {
+                    value: pct,
+                  })}
+                </span>
+              );
+            })()
+          ) : (
+            <span className="text-muted-foreground/70">
+              {t('pomodoro.statsPopover.weekNoBase')}
+            </span>
+          )}
         </div>
       )}
     </div>

@@ -40,6 +40,13 @@
     "deleteItem": "删除待办",
     "dragToReorder": "拖拽排序"
   },
+  "reschedule": {
+    "title": "改期",
+    "today": "今天",
+    "tomorrow": "明天",
+    "nextMonday": "下周一",
+    "clear": "移除日期"
+  },
   "notifications": {
     "operationFailed": "操作失败",
     "listDeleted": "已删除列表「{{title}}」",
@@ -79,13 +86,25 @@
   },
   "stats": {
     "pending": "待完成",
-    "completed": "已完成"
+    "completed": "已完成",
+    "pomodoroLoad": "预计 {{count}} 番茄",
+    "pomodoroLoadHint": "今日未完成任务的预估番茄合计"
   },
   "empty": {
     "noItems": "暂无待办事项",
     "hint": "今天也继续稳步推进。",
     "noLists": "暂无列表",
-    "noMatchingLists": "没有匹配的列表"
+    "noMatchingLists": "没有匹配的列表",
+    "todayClear": "今日待办已清零",
+    "todayClearHint": "享受当下，或去「即将到期」提前规划。",
+    "upcomingClear": "未来 7 天没有安排",
+    "upcomingClearHint": "用快速添加给未来的自己留个备忘。",
+    "overdueClear": "没有逾期任务",
+    "overdueClearHint": "保持得很好，继续。",
+    "completedEmpty": "还没有完成记录",
+    "completedEmptyHint": "完成的任务会出现在这里。",
+    "noSearchResults": "没有找到匹配的任务",
+    "noSearchResultsHint": "换个关键词试试。"
   },
   "detail": {
     "title": "详情",
@@ -232,7 +251,12 @@
       "totalPomodoros": "番茄",
       "dailyAvg": "日均",
       "pomodoroCount": "{{count}} 个番茄",
-      "empty": "该时间段暂无专注记录"
+      "empty": "该时间段暂无专注记录",
+      "thisWeek": "本周",
+      "weekUp": "较上周同期 +{{value}}%",
+      "weekDown": "较上周同期 -{{value}}%",
+      "weekFlat": "与上周同期持平",
+      "weekNoBase": "上周同期无记录"
     },
     "stats": {
       "todayLabel": "今日",
@@ -241,7 +265,9 @@
       "focusLabel": "专注",
       "minutes": "{{value}} 分钟",
       "hours": "{{value}} 小时",
-      "interrupted": "中断 {{value}} 次"
+      "interrupted": "中断 {{value}} 次",
+      "goalProgress": "今日目标 {{done}}/{{goal}}",
+      "goalReached": "目标达成"
     },
     "notifications": {
       "workCompleteTitle": "番茄完成",
@@ -250,7 +276,9 @@
       "breakCompleteBody": "休息结束，开始下一个番茄吧",
       "endReminderTitle": "即将结束",
       "endReminderBodyWork": "专注还剩约 {{minutes}} 分钟，准备收尾",
-      "endReminderBodyBreak": "休息还剩约 {{minutes}} 分钟"
+      "endReminderBodyBreak": "休息还剩约 {{minutes}} 分钟",
+      "dailyGoalTitle": "今日目标达成！",
+      "dailyGoalBody": "已完成 {{value}} 个番茄，达成今日目标，给自己一点奖励吧"
     },
     "settings": {
       "title": "番茄钟设置",
@@ -266,7 +294,8 @@
       "countUp": "正计时（秒表向上计时）",
       "endReminder": "结束前提醒（0 关闭）",
       "noiseType": "环境音",
-      "noiseVolume": "音量"
+      "noiseVolume": "音量",
+      "dailyGoal": "每日目标（0 不设）"
     },
     "progressTitle": "已完成 {{done}}/{{total}} 个番茄",
     "completedCount": "已完成 {{count}} 个",

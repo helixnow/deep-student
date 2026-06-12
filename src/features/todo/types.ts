@@ -437,14 +437,14 @@ function parseLocalDate(s: string): Date | null {
   return Number.isNaN(d.getTime()) ? null : d;
 }
 
-function formatLocalDate(d: Date): string {
+export function formatLocalDate(d: Date): string {
   const y = d.getFullYear();
   const m = String(d.getMonth() + 1).padStart(2, '0');
   const day = String(d.getDate()).padStart(2, '0');
   return `${y}-${m}-${day}`;
 }
 
-function addDays(d: Date, n: number): Date {
+export function addDays(d: Date, n: number): Date {
   const next = new Date(d);
   next.setDate(next.getDate() + n);
   return next;
@@ -458,7 +458,7 @@ function addMonthsClamped(d: Date, n: number): Date {
 }
 
 /** 周一为一周起点（与后端 step_weekly_by_weekday 一致） */
-function mondayWeekStart(d: Date): Date {
+export function mondayWeekStart(d: Date): Date {
   const offset = (d.getDay() + 6) % 7;
   return addDays(d, -offset);
 }

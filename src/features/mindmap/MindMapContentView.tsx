@@ -730,10 +730,28 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
           <MindMapView />
         )}
 
-        {showShortcutHelp && (
+        {showShortcutHelp && (() => {
+          const Kbd: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+            <kbd className="px-1.5 py-0.5 rounded border border-[var(--mm-border)] text-xs whitespace-nowrap">{children}</kbd>
+          );
+          const Row: React.FC<{ keys: string[]; label: string }> = ({ keys, label }) => (
+            <div className="flex items-center justify-between gap-3 py-1">
+              <span>{label}</span>
+              <span className="flex items-center gap-1 flex-shrink-0">
+                {keys.map((k, i) => <Kbd key={i}>{k}</Kbd>)}
+              </span>
+            </div>
+          );
+          const Group: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
+            <div>
+              <div className="text-xs font-medium text-[var(--mm-text-muted)] uppercase tracking-wide mb-1">{title}</div>
+              {children}
+            </div>
+          );
+          return (
           <div className="absolute inset-0 z-50 flex items-center justify-center p-4">
             <div className="absolute inset-0 bg-black/35" onClick={() => setShowShortcutHelp(false)} />
-            <div className="relative w-full max-w-lg rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] shadow-lg">
+            <div className="relative w-full max-w-lg max-h-[80vh] flex flex-col rounded-lg border border-[var(--mm-border)] bg-[var(--mm-bg-elevated)] shadow-lg">
               <div className="flex items-center justify-between px-4 py-3 border-b border-[var(--mm-border)]">
                 <h3 className="text-sm font-medium">{t('mindmap:shortcuts.title')}</h3>
                 <NotionButton variant="ghost"
@@ -744,18 +762,40 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
                   <X className="w-4 h-4" />
                 </NotionButton>
               </div>
-              <div className="p-4 text-sm text-[var(--mm-text-secondary)] space-y-2">
-                <p><kbd className="px-1.5 py-0.5 rounded border border-[var(--mm-border)] text-xs">Tab</kbd> {t('mindmap:shortcuts.addChild')}</p>
-                <p><kbd className="px-1.5 py-0.5 rounded border border-[var(--mm-border)] text-xs">Enter</kbd> {t('mindmap:shortcuts.addSiblingOrEdit')}</p>
-                <p><kbd className="px-1.5 py-0.5 rounded border border-[var(--mm-border)] text-xs">Cmd/Ctrl + Z</kbd> {t('mindmap:shortcuts.undo')}</p>
-                <p><kbd className="px-1.5 py-0.5 rounded border border-[var(--mm-border)] text-xs">Cmd/Ctrl + Shift + Z</kbd> / <kbd className="px-1.5 py-0.5 rounded border border-[var(--mm-border)] text-xs">Cmd/Ctrl + Y</kbd> {t('mindmap:shortcuts.redo')}</p>
-                <p><kbd className="px-1.5 py-0.5 rounded border border-[var(--mm-border)] text-xs">Cmd/Ctrl + S</kbd> {t('mindmap:shortcuts.save')}</p>
-                <p><kbd className="px-1.5 py-0.5 rounded border border-[var(--mm-border)] text-xs">Cmd/Ctrl + F</kbd> {t('mindmap:shortcuts.search')}</p>
-                <p><kbd className="px-1.5 py-0.5 rounded border border-[var(--mm-border)] text-xs">Del</kbd> {t('mindmap:shortcuts.deleteNode')}</p>
+              <div className="p-4 text-sm text-[var(--mm-text-secondary)] space-y-4 overflow-y-auto">
+                <Group title={t('mindmap:shortcuts.groupGeneral')}>
+                  <Row keys={['⌘/Ctrl + Z']} label={t('mindmap:shortcuts.undo')} />
+                  <Row keys={['⌘/Ctrl + ⇧ + Z', '⌘/Ctrl + Y']} label={t('mindmap:shortcuts.redo')} />
+                  <Row keys={['⌘/Ctrl + S']} label={t('mindmap:shortcuts.save')} />
+                  <Row keys={['⌘/Ctrl + F']} label={t('mindmap:shortcuts.search')} />
+                  <Row keys={['Esc']} label={t('mindmap:shortcuts.escape')} />
+                </Group>
+                <Group title={t('mindmap:shortcuts.groupCanvas')}>
+                  <Row keys={['Tab', '⌘/Ctrl + Enter']} label={t('mindmap:shortcuts.addChild')} />
+                  <Row keys={['Enter']} label={t('mindmap:shortcuts.addSiblingOrEdit')} />
+                  <Row keys={['F2', 'Space']} label={t('mindmap:shortcuts.editNode')} />
+                  <Row keys={['⇧ + Enter']} label={t('mindmap:shortcuts.editNote')} />
+                  <Row keys={['↑ ↓ ← →']} label={t('mindmap:shortcuts.navigate')} />
+                  <Row keys={['⌘/Ctrl + ↑/↓']} label={t('mindmap:shortcuts.moveNode')} />
+                  <Row keys={['⌘/Ctrl + [/]']} label={t('mindmap:shortcuts.collapseExpand')} />
+                  <Row keys={['⌘/Ctrl + B']} label={t('mindmap:shortcuts.bold')} />
+                  <Row keys={['⌘/Ctrl + C/X/V']} label={t('mindmap:shortcuts.clipboard')} />
+                  <Row keys={['Del / ⌫']} label={t('mindmap:shortcuts.deleteNode')} />
+                  <Row keys={['⌘/Ctrl + 0']} label={t('mindmap:shortcuts.fitView')} />
+                </Group>
+                <Group title={t('mindmap:shortcuts.groupOutline')}>
+                  <Row keys={['Enter']} label={t('mindmap:shortcuts.addSiblingOrEdit')} />
+                  <Row keys={['Tab / ⇧ + Tab']} label={t('mindmap:shortcuts.indentOutdent')} />
+                  <Row keys={['↑ ↓']} label={t('mindmap:shortcuts.navigate')} />
+                  <Row keys={['⌘/Ctrl + ↑/↓']} label={t('mindmap:shortcuts.moveNode')} />
+                  <Row keys={['⌘/Ctrl + [/]']} label={t('mindmap:shortcuts.collapseExpand')} />
+                  <Row keys={['⇧ + Enter']} label={t('mindmap:shortcuts.editNote')} />
+                </Group>
               </div>
             </div>
           </div>
-        )}
+          );
+        })()}
         
         {/* Mobile: Structure Panel Overlay */}
         {showMobileStructure && (
