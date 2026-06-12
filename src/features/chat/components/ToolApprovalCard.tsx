@@ -120,7 +120,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
   }, [request.toolCallId, request.timeoutSeconds]);
 
   const handleResponse = useCallback(
-    async (approved: boolean, reason?: string, remember: boolean = false) => {
+    async (approved: boolean, reason?: string, remember: boolean = false, rememberSession: boolean = false) => {
       if (hasResponded || isResponding || isResolved) return;
 
       setIsResponding(true);
@@ -132,6 +132,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
           approved,
           reason: reason ?? null,
           remember,
+          rememberSession, // 🆕 三档分级：本会话允许该工具
           arguments: request.arguments,
         });
         setHasResponded(true);
@@ -291,7 +292,7 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
           </div>
         ) : (
           <>
-            {/* 始终允许按钮 */}
+            {/* 低频档：始终允许/始终拒绝（持久化白名单，设置页可管理） */}
             <NotionButton
               variant="outline"
               size="sm"
@@ -302,7 +303,6 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
               {t('approval.alwaysAllow')}
             </NotionButton>
 
-            {/* 始终拒绝按钮 */}
             <NotionButton
               variant="outline"
               size="sm"
@@ -312,6 +312,8 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
             >
               {t('approval.alwaysDeny')}
             </NotionButton>
+
+            <div className="flex-1" />
 
             {/* 拒绝按钮 */}
             <NotionButton
@@ -325,7 +327,18 @@ export const ToolApprovalCard: React.FC<ToolApprovalCardProps> = ({
               {t('approval.reject')}
             </NotionButton>
 
-            {/* 批准按钮 */}
+            {/* 🆕 三档分级中间档：本会话允许该工具（重复任务不再反复弹卡） */}
+            <NotionButton
+              variant="outline"
+              size="sm"
+              onClick={() => handleResponse(true, undefined, false, true)}
+              disabled={isResponding}
+              className="text-success hover:text-success/80"
+            >
+              {t('approval.allowSession', '本会话允许')}
+            </NotionButton>
+
+            {/* 批准按钮（仅此次） */}
             <NotionButton
               size="sm"
               onClick={() => handleResponse(true)}

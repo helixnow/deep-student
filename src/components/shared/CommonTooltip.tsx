@@ -28,6 +28,11 @@ export interface CommonTooltipProps {
   maxWidth?: number | string;
   /** 自定义className */
   className?: string;
+  /**
+   * 快捷键角标：在提示文案右侧渲染 kbd 键位（如 "⌘K" 或 ["⌘", "K"]）。
+   * 用于让键位提示渗透到各处 Tooltip（借鉴 OpenCode 界面处处标键位）。
+   */
+  shortcut?: string | string[];
   /** 子元素 */
   children: React.ReactElement;
 }
@@ -56,6 +61,7 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
   delay = DEFAULT_TOOLTIP_DELAY_MS,
   maxWidth = 300,
   className = '',
+  shortcut,
   children,
 }) => {
   const tooltipId = useId();
@@ -300,7 +306,18 @@ export const CommonTooltip: React.FC<CommonTooltipProps> = ({
       aria-hidden={!isVisible}
     >
       <div className="common-tooltip__content">
-        {content}
+        {shortcut ? (
+          <span className="common-tooltip__row">
+            <span>{content}</span>
+            <span className="common-tooltip__shortcut" aria-hidden="true">
+              {(Array.isArray(shortcut) ? shortcut : [shortcut]).map((key, index) => (
+                <kbd key={index} className="common-tooltip__kbd">{key}</kbd>
+              ))}
+            </span>
+          </span>
+        ) : (
+          content
+        )}
       </div>
       {showArrow && <div className="common-tooltip__arrow" />}
     </div>

@@ -37,7 +37,7 @@ function CommandPaletteButton() {
   const isMac = platform === 'macos';
   
   return (
-    <CommonTooltip content={`${t('command_palette:title', '命令面板')} (${isMac ? '⌘' : 'Ctrl'}+K)`} position="bottom">
+    <CommonTooltip content={t('command_palette:title', '命令面板')} position="bottom" shortcut={isMac ? '⌘K' : 'Ctrl+K'}>
       <NotionButton variant="ghost" size="sm" onClick={open} className="h-8 px-2 hover:bg-[hsl(var(--accent))] text-[hsl(var(--muted-foreground))] hover:text-[hsl(var(--foreground))]" aria-label={t('command_palette:title', '命令面板')}>
         <Command size={16} />
         <span className="text-xs font-medium hidden sm:inline">

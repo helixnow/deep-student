@@ -81,8 +81,10 @@ export async function copyFile(sourcePath: string, destPath: string): Promise<vo
  */
 export async function readFileAsBytes(path: string): Promise<Uint8Array> {
   try {
-    const bytes = await invoke<number[]>('read_file_bytes', { path });
-    return new Uint8Array(bytes);
+    // ★ 2026-06-12（审阅问题 R4）：后端改为返回原始二进制（ArrayBuffer），
+    // 不再是 JSON number[]（旧格式传输体积膨胀 3-4 倍）
+    const buffer = await invoke<ArrayBuffer>('read_file_bytes', { path });
+    return new Uint8Array(buffer);
   } catch (error) {
     console.error('Failed to read binary file:', error);
     throw new Error(`Failed to read binary file: ${error}`);

@@ -19,6 +19,11 @@ import { useQueueSettings } from '@/features/chat/queue/useQueueSettings';
 import { debugMasterSwitch } from '@/debug-panel/debugMasterSwitch';
 import { isAndroid } from '@/utils/platform';
 import { getDefaultConfig, configFromPreset, type CopyFilterConfig } from '@/features/chat/hooks/useDevShowRawRequest';
+import {
+  getSystemNotificationPolicy,
+  setSystemNotificationPolicy,
+  type SystemNotificationPolicy,
+} from '@/utils/systemNotification';
 import type { VoiceInputAssignedModel } from '@/voice-input/types';
 
 const SENTRY_CONSENT_KEY = 'sentry_error_reporting_enabled';
@@ -57,6 +62,7 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
   const [debugLogsInfo, setDebugLogsInfo] = useState<{ count: number; total_size_display: string } | null>(null);
   const [debugLogsClearing, setDebugLogsClearing] = useState(false);
   const { mode, loading: queueModeLoading, setMode } = useQueueSettings();
+  const [notificationPolicy, setNotificationPolicy] = useState<SystemNotificationPolicy>(() => getSystemNotificationPolicy());
 
   useEffect(() => {
     (async () => {
@@ -172,6 +178,28 @@ export const GeneralTab: React.FC<GeneralTabProps> = ({
                 ]}
               />
               {queueModeLoading && <div aria-hidden="true" className="h-7 w-[132px] animate-pulse rounded-[var(--radius-shell-control)] bg-muted/50" />}
+            </SettingRow>
+
+            <SettingRow
+              title={t('settings:system_notification.title', '系统通知')}
+              description={t('settings:system_notification.desc', '番茄钟、待办提醒、制卡等任务的系统通知策略。「仅后台」表示应用在前台时不打扰。')}
+              className="items-center"
+            >
+              <SegmentedControl
+                ariaLabel={t('settings:system_notification.title', '系统通知')}
+                value={notificationPolicy}
+                onValueChange={(next) => {
+                  const policy = next as SystemNotificationPolicy;
+                  setNotificationPolicy(policy);
+                  setSystemNotificationPolicy(policy);
+                }}
+                size="compact"
+                options={[
+                  { value: 'background', label: t('settings:system_notification.background', '仅后台') },
+                  { value: 'always', label: t('settings:system_notification.always', '总是') },
+                  { value: 'never', label: t('settings:system_notification.never', '从不') },
+                ]}
+              />
             </SettingRow>
 
             <SettingRow

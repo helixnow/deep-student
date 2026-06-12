@@ -1,8 +1,9 @@
 import React, { useEffect, useCallback, useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Play, Pause, Square, X, Coffee, Brain, SpeakerHigh, SpeakerSlash, SkipForward } from '@phosphor-icons/react';
+import { Play, Pause, Square, X, Coffee, Brain, SpeakerHigh, SpeakerSlash, SkipForward, CheckCircle } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { usePomodoroStore } from '../stores/usePomodoroStore';
+import { noiseEngine, NOISE_TYPES } from '../noiseEngine';
 
 /**
  * 沉浸式专注模式 —— 全屏覆盖视图
@@ -12,77 +13,8 @@ import { usePomodoroStore } from '../stores/usePomodoroStore';
  * - 大号圆形进度 + 数字倒计时居中
  * - 呼吸灯动画暗示"活跃计时"
  * - ESC / 右上角关闭回到正常界面
- * - 可选白噪音控制
+ * - 环境音（多音色 + 音量随设置），引擎与面板共享
  */
-
-// ============================================================================
-// 白噪音引擎（轻量级，基于 Web Audio API）
-// ============================================================================
-
-class WhiteNoiseEngine {
-  private ctx: AudioContext | null = null;
-  private gainNode: GainNode | null = null;
-  private noiseNode: AudioBufferSourceNode | null = null;
-  private _playing = false;
-
-  get playing() {
-    return this._playing;
-  }
-
-  start(volume = 0.15) {
-    if (this._playing) return;
-    try {
-      this.ctx = new (window.AudioContext || (window as any).webkitAudioContext)();
-      const bufferSize = 2 * this.ctx.sampleRate;
-      const buffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
-      const data = buffer.getChannelData(0);
-
-      // 棕噪音（Brown noise）—— 比白噪音更柔和，更适合专注
-      let lastOut = 0;
-      for (let i = 0; i < bufferSize; i++) {
-        const white = Math.random() * 2 - 1;
-        data[i] = (lastOut + 0.02 * white) / 1.02;
-        lastOut = data[i];
-        data[i] *= 3.5; // 增益补偿
-      }
-
-      this.noiseNode = this.ctx.createBufferSource();
-      this.noiseNode.buffer = buffer;
-      this.noiseNode.loop = true;
-
-      this.gainNode = this.ctx.createGain();
-      this.gainNode.gain.value = volume;
-
-      this.noiseNode.connect(this.gainNode);
-      this.gainNode.connect(this.ctx.destination);
-      this.noiseNode.start();
-      this._playing = true;
-    } catch (e) {
-      console.error('[WhiteNoise] Failed to start:', e);
-    }
-  }
-
-  stop() {
-    try {
-      this.noiseNode?.stop();
-      this.noiseNode?.disconnect();
-      this.gainNode?.disconnect();
-      this.ctx?.close();
-    } catch { /* ignore */ }
-    this.noiseNode = null;
-    this.gainNode = null;
-    this.ctx = null;
-    this._playing = false;
-  }
-
-  setVolume(v: number) {
-    if (this.gainNode) {
-      this.gainNode.gain.value = Math.max(0, Math.min(1, v));
-    }
-  }
-}
-
-const noiseEngine = new WhiteNoiseEngine();
 
 // ============================================================================
 // 圆形进度环组件
@@ -149,6 +81,7 @@ export const ImmersiveFocusMode: React.FC<{
     mode,
     status,
     timeLeft,
+    phaseStartedAt,
     currentTaskTitle,
     settings,
     completedPomodorosToday,
@@ -156,12 +89,17 @@ export const ImmersiveFocusMode: React.FC<{
     resume,
     stop,
     start,
+    completeCurrentSession,
+    updateSettings,
   } = usePomodoroStore();
 
-  const [noiseOn, setNoiseOn] = useState(false);
+  const [noiseOn, setNoiseOn] = useState(noiseEngine.playing);
   const containerRef = useRef<HTMLDivElement>(null);
 
   // ⚠️ tick interval 由父组件 GlobalPomodoroWidget 统一驱动，此处不再重复注册
+
+  const isCountUpWork = mode === 'work' && (phaseStartedAt != null || settings.countUp);
+  const pauseLocked = settings.strictMode && mode === 'work' && status === 'running';
 
   // ESC 退出
   useEffect(() => {
@@ -169,33 +107,39 @@ export const ImmersiveFocusMode: React.FC<{
       if (e.key === 'Escape') {
         onClose();
       }
-      // 空格键暂停/恢复
+      // 空格键暂停/恢复（严格模式专注中忽略）
       if (e.key === ' ' && e.target === document.body) {
         e.preventDefault();
         if (mode === 'idle') return;
-        status === 'running' ? pause() : resume();
+        if (status === 'running') {
+          pause();
+        } else {
+          resume();
+        }
       }
     };
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [onClose, mode, status, pause, resume]);
 
-  // 关闭时停止白噪音
-  useEffect(() => {
-    return () => {
-      noiseEngine.stop();
-    };
-  }, []);
+  // 退出沉浸模式不再强停环境音（面板与沉浸共享引擎，由用户显式控制）
 
   const toggleNoise = useCallback(() => {
     if (noiseEngine.playing) {
       noiseEngine.stop();
       setNoiseOn(false);
     } else {
-      noiseEngine.start(0.12);
+      noiseEngine.start(settings.noiseType, settings.noiseVolume);
       setNoiseOn(true);
     }
-  }, []);
+  }, [settings.noiseType, settings.noiseVolume]);
+
+  const cycleNoiseType = useCallback(() => {
+    const idx = NOISE_TYPES.indexOf(settings.noiseType);
+    const next = NOISE_TYPES[(idx + 1) % NOISE_TYPES.length];
+    updateSettings({ noiseType: next });
+    noiseEngine.setType(next);
+  }, [settings.noiseType, updateSettings]);
 
   const handleTogglePlay = useCallback(() => {
     if (mode === 'idle') {
@@ -217,7 +161,7 @@ export const ImmersiveFocusMode: React.FC<{
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // 计算进度
+  // 计算进度（正计时：相对设定工作时长封顶）
   const totalDuration = (() => {
     switch (mode) {
       case 'work': return settings.workDuration;
@@ -226,7 +170,12 @@ export const ImmersiveFocusMode: React.FC<{
       default: return settings.workDuration;
     }
   })();
-  const progress = mode === 'idle' ? 0 : 1 - timeLeft / totalDuration;
+  const progress =
+    mode === 'idle'
+      ? 0
+      : isCountUpWork
+        ? Math.min(1, timeLeft / totalDuration)
+        : 1 - timeLeft / totalDuration;
 
   const getModeInfo = () => {
     switch (mode) {
@@ -279,7 +228,17 @@ export const ImmersiveFocusMode: React.FC<{
           )}
         </div>
         <div className="flex items-center gap-2">
-          {/* 白噪音切换 */}
+          {/* 噪音类型（开启时显示，点击循环切换音色） */}
+          {noiseOn && (
+            <button
+              onClick={cycleNoiseType}
+              className="px-2 py-1 rounded-lg text-[11px] text-white/50 bg-white/5 hover:text-white/80 hover:bg-[var(--overlay-control-hover)] transition-colors"
+              title={t('pomodoro.controls.noiseCycle')}
+            >
+              {t(`pomodoro.noise.${settings.noiseType}`)}
+            </button>
+          )}
+          {/* 环境音切换 */}
           <button
             onClick={toggleNoise}
             className={cn(
@@ -292,6 +251,22 @@ export const ImmersiveFocusMode: React.FC<{
           >
             {noiseOn ? <SpeakerHigh size={16} /> : <SpeakerSlash size={16} />}
           </button>
+          {/* 音量滑杆（开启时显示） */}
+          {noiseOn && (
+            <input
+              type="range"
+              min={0}
+              max={100}
+              value={Math.round(settings.noiseVolume * 100)}
+              onChange={(e) => {
+                const volume = Number(e.target.value) / 100;
+                updateSettings({ noiseVolume: volume });
+                noiseEngine.setVolume(volume);
+              }}
+              className="h-1 w-20 cursor-pointer accent-white/70"
+              aria-label={t('pomodoro.settings.noiseVolume')}
+            />
+          )}
           {/* 关闭按钮 */}
           <button
             onClick={onClose}
@@ -343,23 +318,44 @@ export const ImmersiveFocusMode: React.FC<{
             </button>
           )}
 
-          {/* 播放/暂停 */}
-          <button
-            onClick={handleTogglePlay}
-            className={cn(
-              'flex items-center justify-center w-16 h-16 rounded-full transition-all',
-              status === 'running'
-                ? 'bg-white/10 text-white hover:bg-[var(--overlay-control-hover)]'
-                : 'bg-orange-500 text-white hover:bg-orange-400 shadow-lg shadow-orange-500/20'
-            )}
-            title={status === 'running' ? t('pomodoro.controls.pauseSpace') : t('pomodoro.controls.startSpace')}
-          >
-            {status === 'running' ? (
-              <Pause size={24} />
-            ) : (
-              <Play size={24} className="ml-1" />
-            )}
-          </button>
+          {/* 正计时专注中：完成按钮 */}
+          {isCountUpWork && status === 'running' && (
+            <button
+              onClick={() => completeCurrentSession()}
+              className="flex items-center justify-center w-16 h-16 rounded-full bg-emerald-500 text-white hover:bg-emerald-400 shadow-lg shadow-emerald-500/20 transition-all"
+              title={t('pomodoro.controls.finish')}
+            >
+              <CheckCircle size={26} />
+            </button>
+          )}
+
+          {/* 播放/暂停（严格模式专注中隐藏暂停） */}
+          {!pauseLocked && (
+            <button
+              onClick={handleTogglePlay}
+              className={cn(
+                'flex items-center justify-center w-16 h-16 rounded-full transition-all',
+                status === 'running'
+                  ? 'bg-white/10 text-white hover:bg-[var(--overlay-control-hover)]'
+                  : 'bg-orange-500 text-white hover:bg-orange-400 shadow-lg shadow-orange-500/20'
+              )}
+              title={status === 'running' ? t('pomodoro.controls.pauseSpace') : t('pomodoro.controls.startSpace')}
+            >
+              {status === 'running' ? (
+                <Pause size={24} />
+              ) : (
+                <Play size={24} className="ml-1" />
+              )}
+            </button>
+          )}
+          {pauseLocked && !isCountUpWork && (
+            <span
+              className="px-3 py-1 rounded-full bg-white/5 text-white/40 text-xs"
+              title={t('pomodoro.strictHint')}
+            >
+              {t('pomodoro.strictBadge')}
+            </span>
+          )}
 
           {/* 跳过（休息阶段可用） */}
           {(mode === 'short_break' || mode === 'long_break') && (

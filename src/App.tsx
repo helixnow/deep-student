@@ -28,6 +28,7 @@ import { WindowControls } from './components/WindowControls';
 import { useFinderStore } from './features/learning-hub/stores/finderStore';
 import { MobileLayoutProvider, MobileHeaderProvider, UnifiedMobileHeader, MobileHeaderActiveViewSync, MOBILE_APP_NAVIGATE_EVENT } from '@/components/layout';
 import { GlobalPomodoroWidget } from '@/features/pomodoro';
+import { initReminderScheduler } from '@/features/todo/reminderScheduler';
 // 🚀 性能优化：IrecServiceSwitcher, IrecGraphFlow, IrecGraphFlowDemo, CrepeDemoPage, ChatV2IntegrationTest, BridgeToIrec 改为懒加载
 import { TauriAPI } from './utils/tauriApi';
 // ★ MistakeItem 类型导入已废弃（2026-01 清理）
@@ -779,6 +780,18 @@ function App() {
     return () => {
       unregister();
     };
+  }, []);
+
+  // ⏰ 待办提醒调度器（应用级，到点弹系统通知）
+  useEffect(() => initReminderScheduler(), []);
+
+  // ★ 4.2 制卡完成通知（应用级，后台时发系统通知）
+  useEffect(() => {
+    let cleanup: (() => void) | undefined;
+    import('@/features/anki/ankiCompletionNotifier').then((m) => {
+      cleanup = m.initAnkiCompletionNotifier();
+    });
+    return () => cleanup?.();
   }, []);
 
   // 🎯 命令面板：语言切换回调
@@ -2128,7 +2141,10 @@ function App() {
   const dashboardContent = useMemo(() => (
     <CustomScrollArea className="flex-1" viewportClassName="flex-1" trackOffsetTop={12} trackOffsetBottom={12}>
       <Suspense fallback={<PageLoadingFallback />}>
-        <LazySOTADashboard onBack={() => setCurrentView('chat-v2')} />
+        <LazySOTADashboard
+          onBack={() => setCurrentView('chat-v2')}
+          onNavigate={(view) => setCurrentView(view)}
+        />
       </Suspense>
     </CustomScrollArea>
   ), [setCurrentView]);

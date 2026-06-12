@@ -22,6 +22,7 @@ import { nodeTypes as defaultNodeTypes } from './nodes';
 import { edgeTypes as defaultEdgeTypes } from './edges';
 import { useMindMapKeyboard } from '../../hooks/useMindMapKeyboard';
 import { useMindMapClipboard } from '../../hooks/useMindMapClipboard';
+import { useMindMapIsActive } from '../../MindMapActiveContext';
 import { CanvasContextMenu } from './CanvasContextMenu';
 import { MindMapResourcePicker } from './MindMapResourcePicker';
 import { findNodeById, findParentNode, isDescendantOf } from '../../utils/node/find';
@@ -54,6 +55,7 @@ const MindMapCanvasInner: React.FC = () => {
   const { fitView, setCenter, getNodes, getZoom } = reactFlowInstance;
   const hasFitView = useRef(false);
   const prevFocusedNodeId = useRef<string | null>(null);
+  const isCanvasActive = useMindMapIsActive();
 
   useMindMapKeyboard();
   useMindMapClipboard();
@@ -520,6 +522,8 @@ const MindMapCanvasInner: React.FC = () => {
 
   // Ctrl+0 / Cmd+0: 适应视图（注册在 document，stopPropagation 防止 global.zoom-reset 冲突）
   useEffect(() => {
+    // ★ 标签页保活：非活跃实例不注册，防止隐藏标签页抢占快捷键
+    if (!isCanvasActive) return;
     const handleKeyDown = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
       if (tag === 'INPUT' || tag === 'TEXTAREA' || (e.target as HTMLElement).isContentEditable) return;
@@ -534,7 +538,43 @@ const MindMapCanvasInner: React.FC = () => {
     // 使用 window.document 避免与组件内 MindMapDocument 变量 shadowing
     window.document.addEventListener('keydown', handleKeyDown);
     return () => window.document.removeEventListener('keydown', handleKeyDown);
-  }, [fitView]);
+  }, [fitView, isCanvasActive]);
+
+  // ★ 移动端虚拟键盘：进入节点编辑后若节点位于键盘遮挡区，向上平移画布。
+  // ReactFlow 画布不是文档流，浏览器不会自动滚动聚焦元素，需手动调整 viewport。
+  const editingNodeIdForKeyboard = useMindMapStore(s => s.editingNodeId);
+  useEffect(() => {
+    if (!editingNodeIdForKeyboard) return;
+    if (!window.matchMedia?.('(pointer: coarse)').matches) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+
+    const ensureNodeVisible = () => {
+      const node = reactFlowInstance
+        .getNodes()
+        .find((n) => n.id === editingNodeIdForKeyboard);
+      if (!node) return;
+      const center = {
+        x: node.position.x + (node.measured?.width ?? 0) / 2,
+        y: node.position.y + (node.measured?.height ?? 0) / 2,
+      };
+      const screen = reactFlowInstance.flowToScreenPosition(center);
+      // visualViewport 高度已扣除键盘；节点低于可视区 55% 视为可能被遮挡
+      if (screen.y > vv.height * 0.55) {
+        const dy = screen.y - vv.height * 0.35;
+        const vp = reactFlowInstance.getViewport();
+        reactFlowInstance.setViewport({ ...vp, y: vp.y - dy }, { duration: 200 });
+      }
+    };
+
+    // 键盘弹出会触发 visualViewport resize；进入编辑稍后也主动检查一次
+    vv.addEventListener('resize', ensureNodeVisible);
+    const timer = window.setTimeout(ensureNodeVisible, 350);
+    return () => {
+      vv.removeEventListener('resize', ensureNodeVisible);
+      window.clearTimeout(timer);
+    };
+  }, [editingNodeIdForKeyboard, reactFlowInstance]);
 
   return (
     <div className={`w-full h-full overflow-hidden bg-[var(--mm-bg)] ${DISABLE_HOVER_BLUR_FACTORS ? 'mm-blur-safety-mode' : ''} ${isExporting ? 'mm-exporting' : ''}`}>

@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  Archive,
   CaretRight,
   ChatCenteredText,
   Folder,
@@ -7,6 +8,7 @@ import {
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
+import { openArchivedSessionsSettings } from '@/utils/pendingSettingsTab';
 import { ChatErrorBoundary } from '../components/ChatErrorBoundary';
 import { compareSessionsForSidebar, isSessionPinned } from '../utils/sessionPin';
 import type { SessionDragState } from './SessionItemRenderer';
@@ -264,6 +266,18 @@ export function useSessionSidebarContent(deps: UseSessionSidebarContentDeps) {
             </div>
           </section>
         )}
+
+        {/* 归档会话入口：低调常驻（替代仅靠归档 toast 才能发现的隐藏路径） */}
+        <section className="space-y-0.5">
+          <button
+            type="button"
+            onClick={openArchivedSessionsSettings}
+            className="group inline-flex min-h-[2rem] w-full min-w-0 shrink-0 appearance-none items-center gap-2.5 overflow-hidden whitespace-nowrap rounded-2xl border border-transparent bg-transparent px-2.5 py-1 text-left text-[13px] font-normal leading-none text-[color:var(--sidebar-muted)] outline-none transition-colors hover:bg-[color:var(--interactive-hover)] hover:text-[color:var(--sidebar-foreground)] focus-visible:ring-2 focus-visible:ring-ring select-none"
+          >
+            <Archive size={15} className="h-[15px] w-[15px] shrink-0" />
+            <span className="min-w-0 flex-1 truncate">{t('page.archivedSessionsEntry', '已归档会话')}</span>
+          </button>
+        </section>
       </div>
     );
   };

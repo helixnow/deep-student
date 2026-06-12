@@ -683,6 +683,51 @@ impl FileLevelProgress<'_> {
     }
 }
 
+/// 工作区维护模式守卫：进入时暂停所有已加载工作区的数据库连接池
+/// （checkpoint TRUNCATE + 切换到内存池），Drop 时恢复磁盘连接池。
+///
+/// 确保 ws_*.db 文件级同步期间没有活跃 SQLite 连接：
+/// - 上传侧：checkpoint 保证 WAL 已合并进主文件，上传的库不缺数据；
+/// - 下载侧：覆盖 ws_*.db 时不会有连接持有旧文件句柄继续读写旧 inode。
+///
+/// 用 Drop 恢复保证 panic/Future 取消时连接池也能回到正常状态。
+struct WorkspaceMaintenanceGuard {
+    coordinator: std::sync::Arc<crate::chat_v2::workspace::WorkspaceCoordinator>,
+}
+
+impl WorkspaceMaintenanceGuard {
+    fn enter(
+        coordinator: Option<&std::sync::Arc<crate::chat_v2::workspace::WorkspaceCoordinator>>,
+    ) -> Option<Self> {
+        let coordinator = coordinator?.clone();
+        if let Err(e) = coordinator.enter_maintenance_mode() {
+            warn!(
+                "[data_governance] 进入工作区维护模式失败（继续同步，不中断）: {}",
+                e
+            );
+            return None;
+        }
+        Some(Self { coordinator })
+    }
+}
+
+impl Drop for WorkspaceMaintenanceGuard {
+    fn drop(&mut self) {
+        if let Err(e) = self.coordinator.exit_maintenance_mode() {
+            warn!("[data_governance] 退出工作区维护模式失败: {}", e);
+        }
+    }
+}
+
+/// 从 Tauri state 取 WorkspaceCoordinator（chat_v2 未初始化时返回 None）
+fn workspace_coordinator_from_app(
+    app: &tauri::AppHandle,
+) -> Option<std::sync::Arc<crate::chat_v2::workspace::WorkspaceCoordinator>> {
+    use tauri::Manager;
+    app.try_state::<std::sync::Arc<crate::chat_v2::workspace::WorkspaceCoordinator>>()
+        .map(|state| state.inner().clone())
+}
+
 async fn run_file_level_sync(
     active_dir: &std::path::Path,
     app_data_dir: &std::path::Path,
@@ -690,6 +735,7 @@ async fn run_file_level_sync(
     storage: &dyn crate::cloud_storage::CloudStorage,
     direction: SyncDirection,
     progress: Option<&FileLevelProgress<'_>>,
+    ws_coordinator: Option<&std::sync::Arc<crate::chat_v2::workspace::WorkspaceCoordinator>>,
 ) -> FileLevelSyncReport {
     let mut report = FileLevelSyncReport::default();
     let blobs_dir = active_dir.join("vfs_blobs");
@@ -699,28 +745,33 @@ async fn run_file_level_sync(
         progress.emit(direction, 0, total_steps, "文件级同步：工作区数据库");
     }
 
-    if direction != SyncDirection::Download {
-        if let Err(e) = drain_workspace_deletion_queue(active_dir, manager, storage).await {
-            warn!("[data_governance] {}", e);
-            append_warning_message(&mut report.warning, e);
+    {
+        // ws_*.db 同步期间进入维护模式，结束后立即恢复（窗口仅覆盖本段）
+        let _ws_guard = WorkspaceMaintenanceGuard::enter(ws_coordinator);
+
+        if direction != SyncDirection::Download {
+            if let Err(e) = drain_workspace_deletion_queue(active_dir, manager, storage).await {
+                warn!("[data_governance] {}", e);
+                append_warning_message(&mut report.warning, e);
+                report.failed = true;
+            }
+        }
+        if let Err(e) = manager
+            .sync_workspace_databases_with_progress(
+                storage,
+                active_dir,
+                direction,
+                progress.map(|progress| {
+                    progress.transfer_callback(direction, 0, total_steps, "文件级传输")
+                }),
+            )
+            .await
+        {
+            let msg = format!("工作区数据库同步失败: {}", e);
+            warn!("[data_governance] {}", msg);
+            append_warning_message(&mut report.warning, msg);
             report.failed = true;
         }
-    }
-    if let Err(e) = manager
-        .sync_workspace_databases_with_progress(
-            storage,
-            active_dir,
-            direction,
-            progress.map(|progress| {
-                progress.transfer_callback(direction, 0, total_steps, "文件级传输")
-            }),
-        )
-        .await
-    {
-        let msg = format!("工作区数据库同步失败: {}", e);
-        warn!("[data_governance] {}", msg);
-        append_warning_message(&mut report.warning, msg);
-        report.failed = true;
     }
     if let Some(progress) = progress {
         progress.emit(direction, 1, total_steps, "文件级同步：VFS blob");
@@ -1037,7 +1088,9 @@ pub async fn data_governance_detect_conflicts(
     // 2) 传入 cloud_config 时，从云端下载清单
     let cloud_manifest: Option<SyncManifest> = if let Some(cloud_json) = cloud_manifest_json {
         Some(serde_json::from_str(&cloud_json).map_err(|e| format!("解析云端清单失败: {}", e))?)
-    } else if let Some(cfg) = cloud_config {
+    } else if let Some(mut cfg) = cloud_config {
+        // [P0-3A] 空白凭据由后端从安全存储补全
+        crate::secure_store::hydrate_cloud_config(&app, &mut cfg);
         let storage = create_storage(&cfg)
             .await
             .map_err(|e| format!("创建云存储失败: {}", e))?;
@@ -1336,13 +1389,15 @@ pub async fn data_governance_run_sync(
     };
 
     // 获取云存储配置
-    let config = match cloud_config {
+    let mut config = match cloud_config {
         Some(cfg) => cfg,
         None => {
             // TODO: 从应用配置或状态中获取默认云存储配置
             return Err("未提供云存储配置。请在调用前配置云存储。".to_string());
         }
     };
+    // [P0-3A] 空白凭据由后端从安全存储补全
+    crate::secure_store::hydrate_cloud_config(&app, &mut config);
 
     // 获取设备 ID（用于审计与同步清单）
     let device_id = get_device_id(&app);
@@ -1375,19 +1430,12 @@ pub async fn data_governance_run_sync(
         );
     }
 
-    // P1-4: 全局互斥（带超时）：避免与备份/恢复/ZIP 导入导出并发，降低一致性风险
-    let _permit = tokio::time::timeout(
-        std::time::Duration::from_secs(SYNC_LOCK_TIMEOUT_SECS),
-        BACKUP_GLOBAL_LIMITER.clone().acquire_owned(),
-    )
-    .await
-    .map_err(|_| {
-        format!(
-            "等待全局数据治理锁超时（{}秒），可能有其他数据治理操作正在执行，请稍后再试。",
-            SYNC_LOCK_TIMEOUT_SECS
-        )
-    })?
-    .map_err(|_| "获取全局数据治理锁失败".to_string())?;
+    // P1-4: 全局互斥：避免与备份/恢复/ZIP 导入导出/另一次同步并发。
+    // 同步命令用 try_acquire 立即失败：双入口重复触发时第二个请求应当即刻
+    // 返回"正在进行中"，而不是排队 30 秒后再完整跑一遍同步。
+    let _permit = BACKUP_GLOBAL_LIMITER.clone().try_acquire_owned().map_err(|_| {
+        "另一个数据治理任务（同步/备份/恢复）正在进行中，请稍后再试。".to_string()
+    })?;
 
     // 创建云存储实例
     let storage = create_storage(&config)
@@ -1396,6 +1444,9 @@ pub async fn data_governance_run_sync(
 
     let active_dir = get_active_data_dir(&app)?;
     let app_data_dir = get_app_data_dir(&app)?;
+
+    // ws_*.db 文件级同步时进入工作区维护模式所需（未初始化时为 None，降级为无守卫）
+    let ws_coordinator = workspace_coordinator_from_app(&app);
 
     // 创建同步管理器
     // [P0-2] 透传加密密码，让所有上传/下载走 DSBK 容器
@@ -1503,6 +1554,7 @@ pub async fn data_governance_run_sync(
                 storage.as_ref(),
                 SyncDirection::Upload,
                 None,
+                ws_coordinator.as_ref(),
             )
             .await;
             if file_report.failed {
@@ -1741,6 +1793,7 @@ pub async fn data_governance_run_sync(
                 storage.as_ref(),
                 SyncDirection::Upload,
                 None,
+                ws_coordinator.as_ref(),
             )
             .await;
             if file_report.failed {
@@ -1850,6 +1903,7 @@ pub async fn data_governance_run_sync(
                         storage.as_ref(),
                         file_direction,
                         None,
+                        ws_coordinator.as_ref(),
                     )
                     .await;
                     if file_report.failed {
@@ -2464,7 +2518,7 @@ pub async fn data_governance_run_sync_with_progress(
     };
 
     // 获取云存储配置
-    let config = match cloud_config {
+    let mut config = match cloud_config {
         Some(cfg) => cfg,
         None => {
             let error_msg = "未提供云存储配置。请在调用前配置云存储。".to_string();
@@ -2472,6 +2526,8 @@ pub async fn data_governance_run_sync_with_progress(
             return Err(error_msg);
         }
     };
+    // [P0-3A] 空白凭据由后端从安全存储补全
+    crate::secure_store::hydrate_cloud_config(&app, &mut config);
 
     // 获取设备 ID（用于审计与同步清单）
     let device_id = get_device_id(&app);
@@ -2505,24 +2561,14 @@ pub async fn data_governance_run_sync_with_progress(
         );
     }
 
-    // P1-4: 全局互斥（带超时）：避免与备份/恢复/ZIP 导入导出并发，降低一致性风险
-    let _permit = match tokio::time::timeout(
-        std::time::Duration::from_secs(SYNC_LOCK_TIMEOUT_SECS),
-        BACKUP_GLOBAL_LIMITER.clone().acquire_owned(),
-    )
-    .await
-    {
-        Ok(Ok(p)) => p,
-        Ok(Err(_)) => {
-            let error_msg = "获取全局数据治理锁失败".to_string();
-            emitter.emit_failed(&error_msg).await;
-            return Err(error_msg);
-        }
+    // P1-4: 全局互斥：避免与备份/恢复/ZIP 导入导出/另一次同步并发。
+    // 同步命令用 try_acquire 立即失败：双入口重复触发时第二个请求应当即刻
+    // 返回"正在进行中"，而不是排队 30 秒后再完整跑一遍同步。
+    let _permit = match BACKUP_GLOBAL_LIMITER.clone().try_acquire_owned() {
+        Ok(p) => p,
         Err(_) => {
-            let error_msg = format!(
-                "等待全局数据治理锁超时（{}秒），可能有其他数据治理操作正在执行，请稍后再试。",
-                SYNC_LOCK_TIMEOUT_SECS
-            );
+            let error_msg =
+                "另一个数据治理任务（同步/备份/恢复）正在进行中，请稍后再试。".to_string();
             emitter.emit_failed(&error_msg).await;
             return Err(error_msg);
         }
@@ -2677,6 +2723,9 @@ pub async fn data_governance_run_sync_with_progress(
     // 使用 OptionalEmitter 包装
     let opt_emitter = OptionalEmitter::with_emitter(emitter.clone());
 
+    // ws_*.db 文件级同步时进入工作区维护模式所需（未初始化时为 None，降级为无守卫）
+    let ws_coordinator = workspace_coordinator_from_app(&app);
+
     // 执行同步（带进度回调）
     let result = match sync_direction {
         SyncDirection::Upload => {
@@ -2689,6 +2738,7 @@ pub async fn data_governance_run_sync_with_progress(
                 &active_dir,
                 &app_data_dir,
                 &opt_emitter.clone(),
+                ws_coordinator.as_ref(),
             )
             .await
         }
@@ -2701,6 +2751,7 @@ pub async fn data_governance_run_sync_with_progress(
                 &active_dir,
                 &app_data_dir,
                 &opt_emitter,
+                ws_coordinator.as_ref(),
             )
             .await
         }
@@ -2715,6 +2766,7 @@ pub async fn data_governance_run_sync_with_progress(
                 &active_dir,
                 &app_data_dir,
                 &opt_emitter,
+                ws_coordinator.as_ref(),
             )
             .await
         }
@@ -2857,6 +2909,7 @@ async fn execute_upload_with_progress_v2(
     active_dir: &std::path::Path,
     app_data_dir: &std::path::Path,
     emitter: &OptionalEmitter,
+    ws_coordinator: Option<&std::sync::Arc<crate::chat_v2::workspace::WorkspaceCoordinator>>,
 ) -> Result<(SyncExecutionResult, usize), String> {
     let start = std::time::Instant::now();
     let total = enriched.len() as u64;
@@ -2872,6 +2925,7 @@ async fn execute_upload_with_progress_v2(
         storage,
         SyncDirection::Upload,
         Some(&file_progress),
+        ws_coordinator,
     )
     .await;
     if file_report.failed {
@@ -3217,6 +3271,7 @@ async fn execute_download_with_progress_v2(
     active_dir: &std::path::Path,
     app_data_dir: &std::path::Path,
     emitter: &OptionalEmitter,
+    ws_coordinator: Option<&std::sync::Arc<crate::chat_v2::workspace::WorkspaceCoordinator>>,
 ) -> Result<(SyncExecutionResult, usize), String> {
     let _start = std::time::Instant::now();
 
@@ -3291,6 +3346,7 @@ async fn execute_download_with_progress_v2(
         storage,
         SyncDirection::Download,
         Some(&file_progress),
+        ws_coordinator,
     )
     .await;
     if file_report.failed {
@@ -3314,6 +3370,7 @@ async fn execute_bidirectional_with_progress_v2(
     active_dir: &std::path::Path,
     app_data_dir: &std::path::Path,
     emitter: &OptionalEmitter,
+    ws_coordinator: Option<&std::sync::Arc<crate::chat_v2::workspace::WorkspaceCoordinator>>,
 ) -> Result<(SyncExecutionResult, usize), String> {
     let _start = std::time::Instant::now();
 
@@ -3413,6 +3470,7 @@ async fn execute_bidirectional_with_progress_v2(
         storage,
         SyncDirection::Upload,
         Some(&file_upload_progress),
+        ws_coordinator,
     )
     .await;
     if file_upload_report.failed {
@@ -3542,6 +3600,7 @@ async fn execute_bidirectional_with_progress_v2(
         storage,
         SyncDirection::Download,
         Some(&file_download_progress),
+        ws_coordinator,
     )
     .await;
     if file_download_report.failed {
@@ -3579,8 +3638,10 @@ pub async fn data_governance_mark_blob_deleted(
     hash: String,
     relative_path: Option<String>,
     size: Option<u64>,
-    cloud_config: CloudStorageConfig,
+    mut cloud_config: CloudStorageConfig,
 ) -> Result<(), String> {
+    // [P0-3A] 空白凭据由后端从安全存储补全
+    crate::secure_store::hydrate_cloud_config(&app, &mut cloud_config);
     let storage = create_storage(&cloud_config)
         .await
         .map_err(|e| format!("创建云存储失败: {}", e))?;
@@ -3607,8 +3668,10 @@ pub async fn data_governance_mark_asset_deleted(
     app: tauri::AppHandle,
     key: String,
     size: Option<u64>,
-    cloud_config: CloudStorageConfig,
+    mut cloud_config: CloudStorageConfig,
 ) -> Result<(), String> {
+    // [P0-3A] 空白凭据由后端从安全存储补全
+    crate::secure_store::hydrate_cloud_config(&app, &mut cloud_config);
     let storage = create_storage(&cloud_config)
         .await
         .map_err(|e| format!("创建云存储失败: {}", e))?;
@@ -4132,11 +4195,14 @@ pub struct PruneGapResponse {
 #[tauri::command]
 pub async fn data_governance_detect_prune_gap(
     app: tauri::AppHandle,
-    cloud_config: CloudStorageConfig,
+    mut cloud_config: CloudStorageConfig,
 ) -> Result<PruneGapResponse, String> {
     use crate::cloud_storage::create_storage;
 
     check_maintenance_mode(&app)?;
+
+    // [P0-3A] 空白凭据由后端从安全存储补全
+    crate::secure_store::hydrate_cloud_config(&app, &mut cloud_config);
 
     let active_dir = get_active_data_dir(&app)?;
 

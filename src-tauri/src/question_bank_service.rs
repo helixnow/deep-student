@@ -1558,7 +1558,8 @@ impl QuestionBankService {
         exam_id: &str,
         count: u32,
     ) -> Result<DailyPracticeResult, AppError> {
-        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        // "今天"用本地时区（与 todo/review_plan 模块一致）
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
         let target_count = count as usize;
 
         // M-031: 使用 SQL 层随机抽取各类别题目，避免全量加载
@@ -1884,10 +1885,10 @@ impl QuestionBankService {
             return 0;
         }
 
-        let today = chrono::Utc::now().format("%Y-%m-%d").to_string();
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
 
         // 如果今天没有打卡，检查昨天
-        let yesterday = (chrono::Utc::now() - Duration::days(1))
+        let yesterday = (chrono::Local::now() - Duration::days(1))
             .format("%Y-%m-%d")
             .to_string();
 

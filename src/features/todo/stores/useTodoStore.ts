@@ -13,32 +13,24 @@ import type {
   UpdateTodoItemInput,
   TodoPriority,
   TodoViewFilter,
+  TodoSortBy,
 } from '../types';
 import * as api from '../api';
 
 // ★ I6 修复：搜索防抖定时器（模块级，store 为单例）
 let searchDebounceTimer: ReturnType<typeof setTimeout> | null = null;
 const SEARCH_DEBOUNCE_MS = 300;
+/** 回收站分页大小（与后端 todo_list_deleted_* 命令的 limit 对应） */
+const TRASH_PAGE_SIZE = 100;
 
 // 每次应用启动只发一次逾期系统通知（模块级，store 为单例）
 let overdueNotifiedThisLaunch = false;
 
-/** 系统通知（权限缺失/非 Tauri 环境静默失败） */
+// ★ 8.1 统一通知策略：经全局三档管线发送（仅后台/总是/从不）
+// 逾期汇总属于用户主动关心的提醒，force 绕过 background 前台拦截
 async function sendSystemNotification(title: string, body: string): Promise<void> {
-  try {
-    const { isPermissionGranted, requestPermission, sendNotification } = await import(
-      '@tauri-apps/plugin-notification'
-    );
-    let granted = await isPermissionGranted();
-    if (!granted) {
-      granted = (await requestPermission()) === 'granted';
-    }
-    if (granted) {
-      sendNotification({ title, body });
-    }
-  } catch (e) {
-    console.warn('[Todo] System notification failed:', e);
-  }
+  const { sendSystemNotification: send } = await import('@/utils/systemNotification');
+  await send(title, body, { force: true });
 }
 
 /** 操作失败时统一弹全局错误通知（store 不在 React 上下文，直接用 i18n 实例） */
@@ -46,6 +38,18 @@ function notifyError(e: unknown): string {
   const message = e instanceof Error ? e.message : String(e);
   showGlobalNotification('error', message, i18n.t('todo:notifications.operationFailed'));
   return message;
+}
+
+const SORT_BY_STORAGE_KEY = 'todo-sort-by';
+const VALID_SORT_BY: TodoSortBy[] = ['manual', 'dueDate', 'priority', 'title'];
+
+function loadPersistedSortBy(): TodoSortBy {
+  try {
+    const raw = localStorage.getItem(SORT_BY_STORAGE_KEY);
+    return VALID_SORT_BY.includes(raw as TodoSortBy) ? (raw as TodoSortBy) : 'manual';
+  } catch {
+    return 'manual';
+  }
 }
 
 interface TodoState {
@@ -62,6 +66,8 @@ interface TodoState {
   trashLists: TodoList[];
   trashItems: TodoItem[];
   isLoadingTrash: boolean;
+  /** 上次拉取返回了整页数据，可能还有更早的删除记录 */
+  trashHasMore: boolean;
 
   // 过滤
   filter: TodoFilterState;
@@ -93,6 +99,7 @@ interface TodoState {
   loadTodayItems: () => Promise<void>;
   loadOverdueItems: () => Promise<void>;
   loadUpcomingItems: (days?: number) => Promise<void>;
+  loadAllPendingItems: () => Promise<void>;
   loadCompletedItems: () => Promise<void>;
   searchItems: (query: string) => Promise<void>;
   reloadCurrentView: () => Promise<void>;
@@ -102,12 +109,14 @@ interface TodoState {
   setSearch: (search: string) => void;
   setPriorityFilter: (priority: TodoPriority | null) => void;
   setShowCompleted: (show: boolean) => void;
+  setSortBy: (sortBy: TodoSortBy) => void;
 
   // 逾期角标
   refreshOverdueCount: () => Promise<void>;
 
   // 回收站
   loadTrash: () => Promise<void>;
+  loadMoreTrash: () => Promise<void>;
   restoreListFromTrash: (listId: string) => Promise<void>;
   restoreItemFromTrash: (itemId: string) => Promise<void>;
   purgeListFromTrash: (listId: string) => Promise<void>;
@@ -129,12 +138,14 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   trashLists: [],
   trashItems: [],
   isLoadingTrash: false,
+  trashHasMore: false,
 
   filter: {
     view: 'all',
     search: '',
     priorityFilter: null,
     showCompleted: false,
+    sortBy: loadPersistedSortBy(),
   },
 
   isLoadingLists: false,
@@ -453,6 +464,26 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     }
   },
 
+  loadAllPendingItems: async () => {
+    const requestVersion = get().itemsRequestVersion + 1;
+    set({ isLoadingItems: true, itemsRequestVersion: requestVersion, error: null });
+    try {
+      const items = await api.listAllPendingItems();
+      if (get().itemsRequestVersion !== requestVersion) return;
+      const selectedItemId = get().selectedItemId;
+      set({
+        items,
+        isLoadingItems: false,
+        selectedItemId: selectedItemId && items.some((item) => item.id === selectedItemId)
+          ? selectedItemId
+          : null,
+      });
+    } catch (e) {
+      if (get().itemsRequestVersion !== requestVersion) return;
+      set({ error: notifyError(e), isLoadingItems: false });
+    }
+  },
+
   loadCompletedItems: async () => {
     const requestVersion = get().itemsRequestVersion + 1;
     set({ isLoadingItems: true, itemsRequestVersion: requestVersion, error: null });
@@ -513,6 +544,9 @@ export const useTodoStore = create<TodoState>((set, get) => ({
       case 'upcoming':
         await state.loadUpcomingItems();
         return;
+      case 'matrix':
+        await state.loadAllPendingItems();
+        return;
       case 'completed':
         await state.loadCompletedItems();
         return;
@@ -570,6 +604,16 @@ export const useTodoStore = create<TodoState>((set, get) => ({
   setPriorityFilter: (priority) =>
     set((s) => ({ filter: { ...s.filter, priorityFilter: priority } })),
 
+  // 排序为纯客户端行为，不触发重新加载；选择持久化到 localStorage
+  setSortBy: (sortBy) => {
+    set((s) => ({ filter: { ...s.filter, sortBy } }));
+    try {
+      localStorage.setItem(SORT_BY_STORAGE_KEY, sortBy);
+    } catch {
+      // 持久化失败不影响本次会话
+    }
+  },
+
   setShowCompleted: (show) => {
     set((s) => ({
       filter: { ...s.filter, showCompleted: show },
@@ -602,10 +646,43 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     set({ isLoadingTrash: true });
     try {
       const [trashLists, trashItems] = await Promise.all([
-        api.listDeletedTodoLists(),
-        api.listDeletedTodoItems(),
+        api.listDeletedTodoLists(TRASH_PAGE_SIZE, 0),
+        api.listDeletedTodoItems(TRASH_PAGE_SIZE, 0),
       ]);
-      set({ trashLists, trashItems, isLoadingTrash: false });
+      set({
+        trashLists,
+        trashItems,
+        isLoadingTrash: false,
+        trashHasMore:
+          trashLists.length >= TRASH_PAGE_SIZE || trashItems.length >= TRASH_PAGE_SIZE,
+      });
+    } catch (e) {
+      set({ isLoadingTrash: false, error: notifyError(e) });
+    }
+  },
+
+  // ★ 2026-06-12（第二轮审阅）：回收站超过一页时支持继续加载，
+  // 否则用户看不到更早的删除记录（而"清空回收站"清的是全部，口径不一致）。
+  loadMoreTrash: async () => {
+    const { trashLists, trashItems, isLoadingTrash } = get();
+    if (isLoadingTrash) return;
+    set({ isLoadingTrash: true });
+    try {
+      const [moreLists, moreItems] = await Promise.all([
+        api.listDeletedTodoLists(TRASH_PAGE_SIZE, trashLists.length),
+        api.listDeletedTodoItems(TRASH_PAGE_SIZE, trashItems.length),
+      ]);
+      set((s) => {
+        const seenLists = new Set(s.trashLists.map((l) => l.id));
+        const seenItems = new Set(s.trashItems.map((i) => i.id));
+        return {
+          trashLists: [...s.trashLists, ...moreLists.filter((l) => !seenLists.has(l.id))],
+          trashItems: [...s.trashItems, ...moreItems.filter((i) => !seenItems.has(i.id))],
+          isLoadingTrash: false,
+          trashHasMore:
+            moreLists.length >= TRASH_PAGE_SIZE || moreItems.length >= TRASH_PAGE_SIZE,
+        };
+      });
     } catch (e) {
       set({ isLoadingTrash: false, error: notifyError(e) });
     }
@@ -662,7 +739,7 @@ export const useTodoStore = create<TodoState>((set, get) => ({
     try {
       await api.purgeDeletedTodoItems();
       await api.purgeDeletedTodoLists();
-      set({ trashLists: [], trashItems: [] });
+      set({ trashLists: [], trashItems: [], trashHasMore: false });
       showGlobalNotification('success', i18n.t('todo:trash.emptied'));
     } catch (e) {
       notifyError(e);

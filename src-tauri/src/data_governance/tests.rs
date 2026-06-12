@@ -1045,12 +1045,12 @@ mod integration_tests {
         assert_eq!(VFS_MIGRATION_SET.database_name, "vfs");
         assert_eq!(
             VFS_MIGRATION_SET.count(),
-            37,
+            39,
             "VFS migration count mismatch"
         );
         assert_eq!(
             VFS_MIGRATION_SET.latest_version(),
-            20260613,
+            20260615,
             "VFS latest version mismatch"
         );
 

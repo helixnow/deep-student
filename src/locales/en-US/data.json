@@ -1,6 +1,14 @@
 {
   "page_title": "Data Management",
   "page_subtitle": "Manage your mistake data, system settings, and backups",
+  "today_center": {
+    "title": "Today",
+    "all_clear": "Nothing pending",
+    "review_due": "Reviews due",
+    "todo_due": "Todos today",
+    "active_jobs": "Active jobs",
+    "go": "Open"
+  },
   "export_title": "Data Export",
   "export_description": "Export all your mistake data, including images and chat history, as well as system settings.",
   "export_format_label": "Export Format",

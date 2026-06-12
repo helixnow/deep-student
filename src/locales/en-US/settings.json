@@ -146,6 +146,12 @@
     "modal": {
       "basic_info": "Basic Info",
       "advanced_settings": "Advanced Settings",
+      "test_connection": "Test Connection",
+      "test_connection_testing": "Testing…",
+      "test_connection_success": "Connected ({{latency}} ms)",
+      "test_connection_failed": "Connection failed. Check base URL, key and model name.",
+      "test_connection_failed_short": "Failed",
+      "test_connection_unavailable": "Connection test is unavailable in this environment",
       "tabs": {
         "general": "General",
         "capabilities": "Capabilities",
@@ -622,6 +628,13 @@
     "switch_language": "Switch Language",
     "chinese": "中文",
     "english": "English"
+  },
+  "system_notification": {
+    "title": "System Notifications",
+    "desc": "Notification policy for pomodoro, todo reminders and card generation. \"Background only\" keeps quiet while the app is focused.",
+    "background": "Background only",
+    "always": "Always",
+    "never": "Never"
   },
   "debug": {
     "description": "For debugging global streaming sessions and events"
@@ -1251,6 +1264,7 @@
     "config_save_success_browser": "Configuration saved successfully (Browser Mode)",
     "config_save_failed": "Failed to save configuration: {{error}}",
     "api_test_success": "{{name}} ({{model}}) API connection test successful",
+    "api_test_latency": "Took {{latency}} ms",
     "api_test_failed": "{{name}} ({{model}}) API connection test failed",
     "api_test_success_mock": "{{name}} API connection test successful (Mock)",
     "api_test_error": "{{name}} connection test failed: {{error}}",

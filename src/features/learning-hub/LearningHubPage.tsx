@@ -31,7 +31,7 @@ import { DotsSixVertical, SquaresFour, Gear } from '@phosphor-icons/react';
 import { NotionButton } from '@/components/ui/NotionButton';
 import { useDesktopShellSidebarPortal } from '@/app/shell/DesktopShellSidebarPortal';
 import { useUIStore } from '@/stores/uiStore';
-import { useMobileHeader } from '@/components/layout';
+import { useMobileHeader, MobileSlidingLayout, type ScreenPosition } from '@/components/layout';
 import { MobileBreadcrumb } from './components/MobileBreadcrumb';
 import { useVfsContextInject, useLearningHubEvents } from './hooks';
 import type {
@@ -55,13 +55,6 @@ import { setActiveTabForExternal } from './activeTabAccessor';
 import { COMMAND_EVENTS, useCommandEvents } from '@/command-palette/hooks/useCommandEvents';
 import { getCreatableFolderId } from './viewGuards';
 import { getQuickAccessTypeFromLauncherType, getViewCapabilities } from './learningHubContracts';
-
-// ============================================================================
-// 三屏滑动布局类型和常量
-// ============================================================================
-
-/** 三屏位置枚举 */
-type ScreenPosition = 'left' | 'center' | 'right';
 
 /**
  * 根据文件名推断资源类型
@@ -350,41 +343,9 @@ export const LearningHubPage: React.FC = () => {
   }, [t]);
 
   // ========== 三屏滑动布局状态（移动端） ==========
+  // A-8 归一：手势/动画/返回键统一由 MobileSlidingLayout 承载，本页只管理屏幕位置状态
   const [screenPosition, setScreenPosition] = useState<ScreenPosition>('center');
   const [activeAppType, setActiveAppType] = useState<string>('all');
-
-  // 拖拽状态
-  const containerRef = useRef<HTMLDivElement>(null);
-  const stateRef = useRef({
-    isDragging: false,
-    startX: 0,
-    startY: 0,
-    currentTranslate: 0,
-    axisLocked: null as 'horizontal' | 'vertical' | null,
-  });
-  const [isDragging, setIsDragging] = useState(false);
-  const [dragOffset, setDragOffset] = useState(0);
-  // ★ ref 用于 handleDragEnd 读取最新 dragOffset，避免将 dragOffset 放入 useCallback deps
-  //   否则每次 touchmove 更新 dragOffset 都会重建 handleDragEnd → 重新注册所有 touch listener
-  const dragOffsetRef = useRef(0);
-  dragOffsetRef.current = dragOffset;
-  const [containerWidth, setContainerWidth] = useState(0);
-
-  // 监听容器宽度
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container || !isSmallScreen) return;
-
-    const updateWidth = () => setContainerWidth(container.clientWidth);
-    updateWidth();
-
-    const ro = new ResizeObserver(updateWidth);
-    ro.observe(container);
-    return () => ro.disconnect();
-  }, [isSmallScreen]);
-
-  // 计算侧边栏宽度（移动端与设置页面保持一致的半宽 × 1.15）
-  const sidebarWidth = Math.max(Math.round(containerWidth / 2 * 1.15), 200);
 
   // ★ 使用 finderStore 获取实际的文件夹导航状态（而非 NavigationContext）
   // finderStore 是实际控制文件列表显示的状态，NavigationContext 只是同步层
@@ -419,132 +380,9 @@ export const LearningHubPage: React.FC = () => {
   const handleCloseAppRef = useRef<() => void>(() => {});
   const canInjectCurrentResourceRef = useRef<() => boolean>(() => false);
 
-  // ========== 三屏滑动：计算基础偏移量 ==========
-  // 布局：左侧(sidebarWidth) + 中间(containerWidth) + 右侧(containerWidth)
-  const getBaseTranslate = useCallback(() => {
-    switch (screenPosition) {
-      case 'left': return 0; // 显示左侧应用入口
-      case 'center': return -sidebarWidth; // 显示中间文件视图
-      case 'right': return -(sidebarWidth + containerWidth); // 显示右侧应用内容（整宽）
-      default: return -sidebarWidth;
-    }
-  }, [screenPosition, sidebarWidth, containerWidth]);
-
-  // ========== 三屏滑动：拖拽处理 ==========
-  const handleDragStart = useCallback((clientX: number, clientY: number) => {
-    stateRef.current = {
-      isDragging: true,
-      startX: clientX,
-      startY: clientY,
-      currentTranslate: getBaseTranslate(),
-      axisLocked: null,
-    };
-    setIsDragging(true);
-    setDragOffset(0);
-  }, [getBaseTranslate]);
-
-  const handleDragMove = useCallback((clientX: number, clientY: number, preventDefault: () => void) => {
-    if (!stateRef.current.isDragging) return;
-
-    const deltaX = clientX - stateRef.current.startX;
-    const deltaY = clientY - stateRef.current.startY;
-
-    // 确定轴向（轴向锁定，防止与竖直滚动冲突）
-    if (stateRef.current.axisLocked === null && (Math.abs(deltaX) > 10 || Math.abs(deltaY) > 10)) {
-      if (Math.abs(deltaX) > Math.abs(deltaY) * 1.2) {
-        stateRef.current.axisLocked = 'horizontal';
-      } else {
-        stateRef.current.axisLocked = 'vertical';
-        stateRef.current.isDragging = false;
-        setIsDragging(false);
-        return;
-      }
-    }
-
-    if (stateRef.current.axisLocked === 'vertical') return;
-    if (stateRef.current.axisLocked === 'horizontal') preventDefault();
-
-    // 限制范围：最大偏移 = 左侧宽度 + 中间宽度
-    const minTranslate = -(sidebarWidth + containerWidth);
-    const maxTranslate = 0;
-    let newTranslate = stateRef.current.currentTranslate + deltaX;
-    newTranslate = Math.max(minTranslate, Math.min(maxTranslate, newTranslate));
-
-    setDragOffset(newTranslate - getBaseTranslate());
-  }, [sidebarWidth, containerWidth, getBaseTranslate]);
-
-  const handleDragEnd = useCallback(() => {
-    if (!stateRef.current.isDragging) {
-      stateRef.current.axisLocked = null;
-      return;
-    }
-
-    const threshold = sidebarWidth * 0.3; // 30% 阈值
-    const offset = dragOffsetRef.current;
-
-    // 根据拖拽方向和距离决定目标屏幕
-    if (Math.abs(offset) > threshold) {
-      if (offset > 0) {
-        // 向右滑动
-        if (screenPosition === 'center') setScreenPosition('left');
-        else if (screenPosition === 'right') setScreenPosition('center');
-      } else {
-        // 向左滑动
-        if (screenPosition === 'center') {
-          // 只有在有打开的应用时才能滑动到右侧
-          if (activeTab) {
-            setScreenPosition('right');
-          }
-        } else if (screenPosition === 'left') {
-          setScreenPosition('center');
-        }
-      }
-    }
-
-    stateRef.current.isDragging = false;
-    stateRef.current.axisLocked = null;
-    setIsDragging(false);
-    setDragOffset(0);
-  }, [screenPosition, sidebarWidth, activeTab]);
-
-  // ========== 三屏滑动：绑定触摸事件 ==========
-  useEffect(() => {
-    const container = containerRef.current;
-    if (!container || !isSmallScreen) return;
-
-    const shouldIgnoreGestureTarget = (target: EventTarget | null): boolean => {
-      const element = target instanceof Element ? target : null;
-      if (!element) return false;
-      return Boolean(element.closest(
-        'input, textarea, select, [contenteditable="true"], button, [role="button"], [data-no-screen-swipe], .react-pdf__Page, .ds-pdf__viewer, .mindmap-canvas, .ProseMirror'
-      ));
-    };
-
-    const onTouchStart = (e: TouchEvent) => {
-      if (shouldIgnoreGestureTarget(e.target)) return;
-      const touch = e.touches[0];
-      handleDragStart(touch.clientX, touch.clientY);
-    };
-
-    const onTouchMove = (e: TouchEvent) => {
-      const touch = e.touches[0];
-      handleDragMove(touch.clientX, touch.clientY, () => e.preventDefault());
-    };
-
-    const onTouchEnd = () => handleDragEnd();
-
-    container.addEventListener('touchstart', onTouchStart, { passive: true });
-    container.addEventListener('touchmove', onTouchMove, { passive: false });
-    container.addEventListener('touchend', onTouchEnd, { passive: true });
-    container.addEventListener('touchcancel', onTouchEnd, { passive: true });
-
-    return () => {
-      container.removeEventListener('touchstart', onTouchStart);
-      container.removeEventListener('touchmove', onTouchMove);
-      container.removeEventListener('touchend', onTouchEnd);
-      container.removeEventListener('touchcancel', onTouchEnd);
-    };
-  }, [isSmallScreen, handleDragStart, handleDragMove, handleDragEnd]);
+  /** 自带手势的内容（PDF/思维导图/富文本编辑器）内不启动三屏布局手势 */
+  const mobileGestureIgnoreSelector =
+    '[data-no-screen-swipe], .react-pdf__Page, .ds-pdf__viewer, .mindmap-canvas, .ProseMirror';
 
   // ========== 📱 移动端顶栏导航逻辑 ==========
   // 判断是否在子文件夹中（不在根目录）
@@ -994,53 +832,76 @@ export const LearningHubPage: React.FC = () => {
   }, [tabs.length, isSmallScreen]);
 
   // ========== 移动端：三屏滑动布局 ==========
+  // A-8 归一：复用 MobileSlidingLayout，统一获得轴向锁定、横向滚动/选区让行（C-9）、
+  // Android 返回键收回（A-5）与抽屉底部应用导航
   if (isSmallScreen) {
-    const translateX = getBaseTranslate() + dragOffset;
-
     return (
       <div
-        ref={containerRef}
-        className="study-shell-page absolute inset-0 flex flex-col overflow-hidden select-none"
+        className="study-shell-page absolute inset-0 flex flex-col overflow-hidden"
         style={{
-          touchAction: 'pan-y pinch-zoom',
           bottom: 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))',
         }}
       >
-        {/* 三屏内容容器：左侧(sidebarWidth) + 中间(100%) + 右侧(100%) */}
-        <div
-          className="flex flex-1 min-h-0"
-          style={{
-            width: `calc(200% + ${sidebarWidth}px)`,
-            transform: `translateX(${translateX}px)`,
-            transition: isDragging ? 'none' : 'transform 0.3s cubic-bezier(0.4, 0, 0.2, 1)',
-          }}
+        <MobileSlidingLayout
+          className="flex-1"
+          sidebarWidth={0.575}
+          screenPosition={screenPosition}
+          onScreenPositionChange={setScreenPosition}
+          rightPanelEnabled={!!activeTab}
+          gestureIgnoreSelector={mobileGestureIgnoreSelector}
+          sidebar={
+            <div className="study-shell-pane h-full">
+              <DstuAppLauncher
+                activeType={activeAppType}
+                onSelectApp={(type) => {
+                  setActiveAppType(type);
+                  // ★ 2026-01-19: 调用 finderStore 进行实际导航
+                  // 映射 DstuAppLauncher 的类型到 finderStore 的 QuickAccessType
+                  finderQuickAccessNavigate(getQuickAccessTypeFromLauncherType(type));
+                  setScreenPosition('center');
+                }}
+                onCreateAndOpen={handleCreateAndOpen}
+                onClose={() => setScreenPosition('center')}
+                createDisabled={!finderViewCapabilities.canCreate}
+                searchDisabled={!finderViewCapabilities.canSearch}
+              />
+            </div>
+          }
+          rightPanel={
+            <div className="study-shell-panel h-full overflow-hidden">
+              {tabs.length > 0 ? (
+                <div className="h-full flex flex-col safe-area-bottom">
+                  {/* ★ 移动端标签页栏：多 tab 可见、可切换、可关闭（修复"标签黑洞"） */}
+                  <TabBar
+                    tabs={tabs}
+                    setTabs={setTabs}
+                    activeTabId={activeTabId}
+                    onSwitch={switchTab}
+                    onClose={closeTab}
+                  />
+                  <div className="flex-1 overflow-hidden">
+                    <TabPanelContainer
+                      tabs={tabs}
+                      activeTabId={activeTabId}
+                      onClose={closeTab}
+                      onTitleChange={updateTabTitle}
+                      className="h-full"
+                    />
+                  </div>
+                </div>
+              ) : (
+                <div className="h-full flex items-center justify-center text-muted-foreground">
+                  <div className="text-center p-8">
+                    <SquaresFour size={48} className="mx-auto mb-4 opacity-50" />
+                    <p className="text-sm">{t('learningHub:selectResource')}</p>
+                  </div>
+                </div>
+              )}
+            </div>
+          }
         >
-          {/* 左侧：DSTU 应用入口 */}
-          <div
-            className="study-shell-pane h-full flex-shrink-0"
-            style={{ width: sidebarWidth }}
-          >
-            <DstuAppLauncher
-              activeType={activeAppType}
-              onSelectApp={(type) => {
-                setActiveAppType(type);
-                // ★ 2026-01-19: 调用 finderStore 进行实际导航
-                // 映射 DstuAppLauncher 的类型到 finderStore 的 QuickAccessType
-                finderQuickAccessNavigate(getQuickAccessTypeFromLauncherType(type));
-                setScreenPosition('center');
-              }}
-              onCreateAndOpen={handleCreateAndOpen}
-              onClose={() => setScreenPosition('center')}
-              createDisabled={!finderViewCapabilities.canCreate}
-              searchDisabled={!finderViewCapabilities.canSearch}
-            />
-          </div>
-
           {/* 中间：文件视图 */}
-          <div
-            className="study-shell-pane h-full flex-shrink-0 overflow-hidden"
-            style={{ width: containerWidth || '100vw' }}
-          >
+          <div className="study-shell-pane h-full overflow-hidden">
             <LearningHubSidebar
               mode="fullscreen"
               onOpenPreview={handleOpenApp}
@@ -1050,42 +911,7 @@ export const LearningHubPage: React.FC = () => {
               activeFileId={activeTab?.resourceId}
             />
           </div>
-
-          {/* 右侧：DSTU 应用内容（整宽）—— 移动端使用 TabPanelContainer 保活 */}
-          <div
-            className="study-shell-panel h-full flex-shrink-0 overflow-hidden"
-            style={{ width: containerWidth || '100vw' }}
-          >
-            {tabs.length > 0 ? (
-              <div className="h-full flex flex-col safe-area-bottom">
-                {/* ★ 移动端标签页栏：多 tab 可见、可切换、可关闭（修复"标签黑洞"） */}
-                <TabBar
-                  tabs={tabs}
-                  setTabs={setTabs}
-                  activeTabId={activeTabId}
-                  onSwitch={switchTab}
-                  onClose={closeTab}
-                />
-                <div className="flex-1 overflow-hidden">
-                  <TabPanelContainer
-                    tabs={tabs}
-                    activeTabId={activeTabId}
-                    onClose={closeTab}
-                    onTitleChange={updateTabTitle}
-                    className="h-full"
-                  />
-                </div>
-              </div>
-            ) : (
-              <div className="h-full flex items-center justify-center text-muted-foreground">
-                <div className="text-center p-8">
-                  <SquaresFour size={48} className="mx-auto mb-4 opacity-50" />
-                  <p className="text-sm">{t('learningHub:selectResource')}</p>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
+        </MobileSlidingLayout>
       </div>
     );
   }

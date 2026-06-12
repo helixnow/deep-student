@@ -6,6 +6,26 @@ import { cn } from '@/lib/utils';
 import { Z_INDEX } from '@/config/zIndex';
 import { NotionButton, type NotionButtonVariant, type NotionButtonSize } from './NotionButton';
 import { CustomScrollArea } from '../custom-scroll-area';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import { useIsMobile } from '@/hooks/useBreakpoint';
+
+/**
+ * Android 系统返回键接入：NotionDialog 是 framer-motion 自绘弹窗（非 Radix），
+ * 没有 data-state="open"，androidBackCoordinator 的 Radix Escape 兜底匹配不到，
+ * 必须显式注册 overlay 级返回 handler，否则移动端按返回键会穿透到底层导航。
+ * 用 ref 保持注册稳定，避免回调变化导致注销重注、破坏多层弹窗的栈语义。
+ */
+function useAndroidBackClose(open: boolean, close: () => void) {
+  const closeRef = React.useRef(close);
+  closeRef.current = close;
+  React.useEffect(() => {
+    if (!open) return;
+    return registerBackHandler(() => {
+      closeRef.current();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [open]);
+}
 
 // ============================================================================
 // 动画变体
@@ -26,6 +46,16 @@ const contentVariants = {
     transition: { type: 'spring' as const, stiffness: 420, damping: 28, mass: 0.7 },
   },
   exit: { opacity: 0, scale: 0.96, y: 8, transition: { duration: 0.12, ease: 'easeIn' as const } },
+};
+
+/** 移动端 bottom sheet 形态：从底部整体滑入/滑出（iOS/Material 范式） */
+const sheetContentVariants = {
+  hidden: { y: '100%' },
+  visible: {
+    y: 0,
+    transition: { type: 'spring' as const, stiffness: 380, damping: 34, mass: 0.8 },
+  },
+  exit: { y: '100%', transition: { duration: 0.18, ease: 'easeIn' as const } },
 };
 
 const alertContentVariants = {
@@ -89,10 +119,20 @@ export function NotionDialog({
     return () => document.removeEventListener('keydown', handler);
   }, [open, onOpenChange]);
 
+  // Android 返回键 = 关闭弹窗（与 ESC 同语义）
+  useAndroidBackClose(open, () => onOpenChange(false));
+
+  // 移动端（<768，与 App shell 同源）切换为 bottom sheet 形态，
+  // 视觉规格对齐全局移动设置 Sheet（rounded-t-[24px] + 顶部把手 + 贴底全宽）
+  const isMobileSheet = useIsMobile();
+
   return (
     <ModalPortal open={open}>
       <motion.div
-        className="fixed inset-0 flex items-center justify-center p-4 sm:p-6"
+        className={cn(
+          'fixed inset-0 flex',
+          isMobileSheet ? 'items-end justify-center p-0' : 'items-center justify-center p-4 sm:p-6',
+        )}
         style={{ zIndex: Z_INDEX.modal }}
         initial="hidden"
         animate="visible"
@@ -108,29 +148,42 @@ export function NotionDialog({
         <motion.div
           role="dialog"
           aria-modal="true"
-          variants={contentVariants}
+          variants={isMobileSheet ? sheetContentVariants : contentVariants}
           className={cn(
-            'relative w-[92vw] rounded-[var(--radius-shell-dialog)] border bg-background text-foreground',
+            'relative border bg-background text-foreground',
             'flex flex-col overflow-hidden',
-            maxWidth,
+            isMobileSheet
+              ? 'w-full max-w-none rounded-b-none rounded-t-[24px] border-x-0 border-b-0'
+              : cn('w-[92vw] rounded-[var(--radius-shell-dialog)]', maxWidth),
             className,
           )}
           style={{
             zIndex: Z_INDEX.modal + 1,
-            maxHeight: 'min(85vh, 720px)',
+            maxHeight: isMobileSheet ? 'min(86dvh, calc(100dvh - 0.5rem))' : 'min(85vh, 720px)',
+            paddingBottom: isMobileSheet
+              ? 'var(--android-safe-area-bottom, env(safe-area-inset-bottom, 0px))'
+              : undefined,
             background: 'var(--dialog-shell-surface)',
             borderColor: 'var(--dialog-shell-border)',
             boxShadow: 'var(--shadow-shell-floating)',
           }}
           onClick={(e) => e.stopPropagation()}
         >
+          {isMobileSheet && (
+            <div aria-hidden className="flex h-6 shrink-0 items-center justify-center">
+              <div className="h-1 w-12 rounded-full bg-[color:var(--mobile-sheet-handle,var(--border))]" />
+            </div>
+          )}
           {showClose && (
             <NotionButton
               variant="ghost"
               size="sm"
               iconOnly
               aria-label="Close"
- className="w-6 h-6 absolute top-2.5 right-2.5 z-10 text-muted-foreground/50 hover:text-foreground"
+              className={cn(
+                'absolute z-10 text-muted-foreground/50 hover:text-foreground',
+                isMobileSheet ? 'right-3 top-3 h-8 w-8' : 'w-6 h-6 top-2.5 right-2.5',
+              )}
               onClick={() => onOpenChange(false)}
             >
               <X size={16} />
@@ -288,6 +341,9 @@ export function NotionAlertDialog({
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
   }, [open, handleCancel]);
+
+  // Android 返回键 = 取消（确认框不可遮罩关闭，但返回键应等同"取消"，与 ESC 一致）
+  useAndroidBackClose(open, handleCancel);
 
   return (
     <ModalPortal open={open}>

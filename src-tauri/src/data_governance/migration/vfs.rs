@@ -587,6 +587,14 @@ pub const V20260614_TODO_PARENT_CHECK_SOFTDELETE_FIX: MigrationDef = MigrationDe
 )
 .idempotent();
 
+/// V20260615: todo_items 环检测覆盖软删除节点（全图遍历 + 深度上限）
+pub const V20260615_TODO_CYCLE_CHECK_FULL_GRAPH: MigrationDef = MigrationDef::new(
+    20260615,
+    "todo_cycle_check_full_graph",
+    include_str!("../../../migrations/vfs/V20260615__todo_cycle_check_full_graph.sql"),
+)
+.idempotent();
+
 /// VFS 数据库所有迁移定义
 pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260130_INIT,
@@ -627,6 +635,7 @@ pub const VFS_MIGRATIONS: &[MigrationDef] = &[
     V20260612_TODO_INSERT_SELF_REF_CHECK,
     V20260613_POMODORO_TIMESTAMPS_AND_CONSTRAINTS,
     V20260614_TODO_PARENT_CHECK_SOFTDELETE_FIX,
+    V20260615_TODO_CYCLE_CHECK_FULL_GRAPH,
 ];
 
 /// VFS 迁移集合
@@ -730,7 +739,8 @@ mod tests {
         // + V20260612 (todo_insert_self_ref_check)
         // + V20260613 (pomodoro_timestamps_and_constraints)
         // + V20260614 (todo_parent_check_softdelete_fix)
-        assert_eq!(VFS_MIGRATION_SET.count(), 38);
+        // + V20260615 (todo_cycle_check_full_graph)
+        assert_eq!(VFS_MIGRATION_SET.count(), 39);
     }
 
     #[test]
@@ -825,6 +835,6 @@ mod tests {
 
     #[test]
     fn test_latest_version() {
-        assert_eq!(VFS_MIGRATION_SET.latest_version(), 20260614);
+        assert_eq!(VFS_MIGRATION_SET.latest_version(), 20260615);
     }
 }

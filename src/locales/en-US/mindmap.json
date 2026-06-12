@@ -12,7 +12,8 @@
   },
   "placeholder": {
     "root": "Central Topic",
-    "node": "Type something..."
+    "node": "Type something...",
+    "note": "Add a note..."
   },
   "toolbar": {
     "outline": "Outline",
@@ -102,7 +103,11 @@
     "emptyContent": "Mind map content is empty",
     "loadFailed": "Loading failed",
     "loading": "Loading mind map...",
-    "newMindMap": "New Mind Map"
+    "newMindMap": "New Mind Map",
+    "versionSource": "Version source: {{source}}",
+    "layoutSingle": "Switch to single-side layout",
+    "layoutBoth": "Switch to two-sided layout",
+    "nodeCount": "{{count}} nodes"
   },
   "structure": {
     "mindmap": "Mind Map",
@@ -162,7 +167,8 @@
     "depthExceeded": "Mind map depth exceeds the maximum limit and cannot be saved.",
     "nodeCountExceeded": "Mind map node count exceeds the maximum limit and cannot be saved.",
     "invalidContent": "Mind map content is abnormal and cannot be saved. Please try again later.",
-    "draftSaveFailed": "Local storage is full, draft save failed. Please save your work and ensure network connectivity."
+    "draftSaveFailed": "Local storage is full, draft save failed. Please save your work and ensure network connectivity.",
+    "externalUpdatedDirty": "Mind map was updated elsewhere; you have unsaved changes, conflicts will be handled on save"
   },
   "style": {
     "bold": "Bold",

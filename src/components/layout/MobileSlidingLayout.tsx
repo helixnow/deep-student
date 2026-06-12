@@ -67,7 +67,8 @@ interface MobileSlidingLayoutProps {
   onScreenPositionChange?: (position: ScreenPosition) => void;
   /**
    * 侧边栏宽度
-   * - 数字：固定像素宽度（默认 280px）
+   * - 数字 > 1：固定像素宽度（默认 280px）
+   * - 数字 (0, 1]：容器宽度的比例（如 0.575 = 57.5%）
    * - 'auto'：自动计算为接近全屏宽度（100vw - mainContentPeekWidth）
    * - 'half'：容器宽度的 50%
    */
@@ -91,6 +92,11 @@ interface MobileSlidingLayoutProps {
   showSidebarAppNavigation?: boolean;
   /** 侧边栏打开时是否给主内容加遮罩 */
   showContentOverlay?: boolean;
+  /**
+   * 额外的手势豁免选择器：触点落在匹配元素内时不启动布局手势，
+   * 用于 PDF 查看器/思维导图画布/富文本编辑器等自带手势的内容
+   */
+  gestureIgnoreSelector?: string;
 }
 
 export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
@@ -110,6 +116,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
   rightPanelEnabled = false,
   showSidebarAppNavigation = true,
   showContentOverlay = false,
+  gestureIgnoreSelector,
 }) => {
   // 判断是否为三屏模式
   const isThreeScreenMode = rightPanel !== undefined && onScreenPositionChange !== undefined;
@@ -128,10 +135,12 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
     baseTranslate: 0,
     /** 拖拽开始时的 baseTranslate 快照，拖拽过程中不会被渲染更新覆盖 */
     dragStartBase: 0,
+    /** fling 检测：最近一次 move 的位置/时间与指数平滑速度（px/ms） */
+    lastMoveX: 0,
+    lastMoveTime: 0,
+    velocityX: 0,
   });
 
-  // 用于触发重渲染
-  const [, forceUpdate] = useState(0);
   const [isDragging, setIsDragging] = useState(false);
   const [currentTranslate, setCurrentTranslate] = useState(0);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -216,7 +225,9 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
     ? Math.max(containerWidth - mainContentPeekWidth, 280) // 最小 280px
     : sidebarWidthProp === 'half'
       ? Math.max(Math.round(containerWidth / 2), 180)
-      : sidebarWidthProp;
+      : sidebarWidthProp > 0 && sidebarWidthProp <= 1
+        ? Math.max(Math.round(containerWidth * sidebarWidthProp), 200) // 比例宽度
+        : sidebarWidthProp;
 
   // 计算当前偏移量（三屏模式）
   const getBaseTranslate = useCallback(() => {
@@ -245,6 +256,9 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
     stateRef.current.axisLocked = null;
     stateRef.current.dragStartBase = baseTranslate;
     stateRef.current.baseTranslate = baseTranslate;
+    stateRef.current.lastMoveX = clientX;
+    stateRef.current.lastMoveTime = performance.now();
+    stateRef.current.velocityX = 0;
 
     setIsDragging(true);
     setCurrentTranslate(baseTranslate);
@@ -286,6 +300,16 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
       return;
     }
 
+    // fling 检测：指数平滑瞬时速度，抑制单帧抖动
+    const now = performance.now();
+    const dt = now - stateRef.current.lastMoveTime;
+    if (dt > 0) {
+      const instantVelocity = (clientX - stateRef.current.lastMoveX) / dt;
+      stateRef.current.velocityX = stateRef.current.velocityX * 0.7 + instantVelocity * 0.3;
+    }
+    stateRef.current.lastMoveX = clientX;
+    stateRef.current.lastMoveTime = now;
+
     // 计算新的偏移量（使用拖拽开始时的快照，防止中途被渲染更新干扰）
     let newTranslate = stateRef.current.dragStartBase + deltaX;
 
@@ -310,9 +334,19 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
     const deltaX = stateRef.current.currentTranslate - stateRef.current.dragStartBase;
     const thresholdPx = sidebarWidth * threshold;
 
+    // fling：快速轻扫时即使位移不足距离阈值也按方向切换（与原生抽屉手感一致）。
+    // 松手前停顿超过 100ms 视为无惯性，避免"拖出去停住再松手"误判为 fling。
+    const FLING_VELOCITY_THRESHOLD = 0.35; // px/ms
+    const flingExpired = performance.now() - stateRef.current.lastMoveTime > 100;
+    const velocityX = flingExpired ? 0 : stateRef.current.velocityX;
+    const isFling =
+      (velocityX > FLING_VELOCITY_THRESHOLD && deltaX > 0) ||
+      (velocityX < -FLING_VELOCITY_THRESHOLD && deltaX < 0);
+    const shouldSwitch = Math.abs(deltaX) > thresholdPx || isFling;
+
     // 三屏模式下的状态切换逻辑
     if (isThreeScreenMode && onScreenPositionChange) {
-      if (Math.abs(deltaX) > thresholdPx) {
+      if (shouldSwitch) {
         if (deltaX > 0) {
           // 向右滑动
           if (screenPosition === 'center') onScreenPositionChange('left');
@@ -325,13 +359,12 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
       }
     } else if (onSidebarOpenChange) {
       // 两屏模式兼容逻辑
-      const progress = Math.abs(deltaX) / sidebarWidth;
       if (sidebarOpen) {
-        if (deltaX < 0 && progress > threshold) {
+        if (deltaX < 0 && shouldSwitch) {
           onSidebarOpenChange(false);
         }
       } else {
-        if (deltaX > 0 && progress > threshold) {
+        if (deltaX > 0 && shouldSwitch) {
           onSidebarOpenChange(true);
         }
       }
@@ -369,13 +402,20 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
     const container = containerRef.current;
     if (!container) return;
 
-    // C-9: 非边缘起手时检测冲突源（横向滚动容器/文本选区），避免手势劫持。
+    // C-9: 非边缘起手时检测冲突源（横向滚动容器/文本选区/自带手势内容），避免手势劫持。
     // 边缘起手（edgeWidth 内）保持布局手势优先，保证"随时可滑回"的可达性。
     const shouldYieldToContent = (target: EventTarget | null, clientX: number): boolean => {
       const rect = container.getBoundingClientRect();
       const fromEdge = clientX - rect.left <= edgeWidth || rect.right - clientX <= edgeWidth;
       if (fromEdge) return false;
       if (hasActiveTextSelection()) return true;
+      if (
+        gestureIgnoreSelector &&
+        target instanceof Element &&
+        target.closest(gestureIgnoreSelector)
+      ) {
+        return true;
+      }
       return isInsideHorizontalScrollable(target, container);
     };
 
@@ -448,7 +488,7 @@ export const MobileSlidingLayout: React.FC<MobileSlidingLayoutProps> = ({
       document.removeEventListener('visibilitychange', onDragAbort);
       document.removeEventListener('contextmenu', onDragAbort);
     };
-  }, [handleDragStart, handleDragMove, handleDragEnd, edgeWidth]);
+  }, [handleDragStart, handleDragMove, handleDragEnd, edgeWidth, gestureIgnoreSelector]);
 
   // 计算最终的 transform 值
   const translateX = isDragging ? currentTranslate : baseTranslate;

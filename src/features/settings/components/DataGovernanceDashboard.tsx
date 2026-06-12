@@ -46,6 +46,7 @@ import { MediaCacheSection } from './MediaCacheSection';
 import { LanceOptimizationPanel } from './IndexMaintenanceSection';
 import { useShallow } from 'zustand/react/shallow';
 import { useSystemStatusStore } from '@/stores/systemStatusStore';
+import { useGlobalSyncStore } from '@/stores/syncStatusStore';
 import { useBackupJobListener } from '@/hooks/useBackupJobListener';
 import type {
   DashboardTab,
@@ -460,6 +461,8 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
   // 云端同步状态（进度事件）
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
   const [isSyncRunning, setIsSyncRunning] = useState(false);
+  // 全局同步状态：其他入口（如设置页同步区块）正在同步时，本面板按钮也禁用
+  const globalSyncing = useGlobalSyncStore((s) => s.isSyncing);
   const [syncStrategy, setSyncStrategy] = useState<MergeStrategy>('keep_latest');
   // 记录最近一次同步请求快照（用于重试）
   const lastSyncRequestRef = useRef<{
@@ -1071,6 +1074,14 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       );
       return;
     }
+    // 全局占用：拦截来自其他入口（如设置页同步区块）的并发触发
+    if (!useGlobalSyncStore.getState().beginSync('data-governance')) {
+      showGlobalNotification(
+        'warning',
+        t('data:governance.sync_already_running')
+      );
+      return;
+    }
     syncInFlightRef.current = true;
 
     lastSyncRequestRef.current = { direction, strategy };
@@ -1198,6 +1209,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
       stopTabLoading('sync');
       setIsSyncRunning(false);
       syncInFlightRef.current = false;
+      useGlobalSyncStore.getState().endSync();
       exitMaintenanceMode();
     }
   }, [
@@ -1578,7 +1590,7 @@ export const DataGovernanceDashboard: React.FC<DataGovernanceDashboardProps> = (
           onResolveConflicts={resolveConflicts}
           cloudSyncConfigured={cloudSyncConfigured}
           cloudSyncSummary={cloudSyncSummary}
-          syncRunning={isSyncRunning}
+          syncRunning={isSyncRunning || globalSyncing}
           syncProgress={syncProgress}
           syncStrategy={syncStrategy}
           onSyncStrategyChange={setSyncStrategy}

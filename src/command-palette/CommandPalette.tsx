@@ -11,7 +11,24 @@ import React, {
   useMemo,
 } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MagnifyingGlass, X, ArrowElbowDownLeft, Star, Clock, StarHalf } from '@phosphor-icons/react';
+import {
+  MagnifyingGlass,
+  X,
+  ArrowElbowDownLeft,
+  Star,
+  Clock,
+  StarHalf,
+  File as FileIcon,
+  Notebook,
+  BookOpen,
+  Exam,
+  Translate,
+  PenNib,
+  Image as ImageIcon,
+  TreeStructure,
+  ChatCenteredText,
+} from '@phosphor-icons/react';
+import type { Icon } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { useCommandPalette } from './CommandPaletteProvider';
@@ -19,14 +36,35 @@ import { CustomScrollArea } from '@/components/custom-scroll-area';
 import type { Command, CommandCategory } from './registry/types';
 
 // 扩展分类类型，包含特殊分组
-type DisplayCategory = CommandCategory | 'recent' | 'favorites';
+type DisplayCategory = CommandCategory | 'recent' | 'favorites' | 'files' | 'sessions';
 import { CATEGORY_CONFIG, CATEGORY_LABELS } from './registry/types';
 import { commandRegistry } from './registry/commandRegistry';
 import { commandHistory } from './registry/commandHistory';
 import { commandFavorites } from './registry/commandFavorites';
 import { shortcutManager } from './registry/shortcutManager';
 import { formatShortcut } from './registry/shortcutUtils';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
+import {
+  useResourceSearch,
+  openFileFromPalette,
+  openSessionFromPalette,
+} from './hooks/useResourceSearch';
+import type { DstuNodeType } from '@/dstu/types';
 import './styles/command-palette.css';
+
+/** 资源命令 id 前缀（不进入命令注册表，仅在面板内即时构造） */
+const RESOURCE_COMMAND_PREFIX = '__resource.';
+
+/** DSTU 资源类型 → 图标 */
+const RESOURCE_TYPE_ICONS: Partial<Record<DstuNodeType, Icon>> = {
+  note: Notebook,
+  textbook: BookOpen,
+  exam: Exam,
+  translation: Translate,
+  essay: PenNib,
+  image: ImageIcon,
+  mindmap: TreeStructure,
+};
 
 /**
  * 按分类分组命令
@@ -119,7 +157,36 @@ export function CommandPalette() {
     }
     return searchCommands(query);
   }, [searchCommands, query, viewMode, recentCommands, favoriteCommands]);
-  
+
+  // 资源直达搜索（文件 + 会话），仅在搜索模式且输入 ≥2 字符时启用
+  const resourceSearchEnabled = isOpen && viewMode === 'search' && query.trim().length >= 2;
+  const { fileResults, sessionResults } = useResourceSearch(query, resourceSearchEnabled);
+
+  // 将资源结果转为即时命令（不进入注册表，执行时直接调用 execute）
+  const fileCommands = useMemo<Command[]>(() => {
+    if (!resourceSearchEnabled) return [];
+    return fileResults.map((node) => ({
+      id: `${RESOURCE_COMMAND_PREFIX}file.${node.id}`,
+      name: node.name,
+      description: node.path,
+      category: 'learning',
+      icon: RESOURCE_TYPE_ICONS[node.type] ?? FileIcon,
+      execute: (d) => { void openFileFromPalette(d, node); },
+    }));
+  }, [resourceSearchEnabled, fileResults]);
+
+  const sessionCommands = useMemo<Command[]>(() => {
+    if (!resourceSearchEnabled) return [];
+    return sessionResults.map((item) => ({
+      id: `${RESOURCE_COMMAND_PREFIX}session.${item.sessionId}`,
+      name: item.title || t('command_palette:untitled', '未命名'),
+      description: item.snippet,
+      category: 'chat',
+      icon: ChatCenteredText,
+      execute: (d) => { openSessionFromPalette(d, item.sessionId); },
+    }));
+  }, [resourceSearchEnabled, sessionResults, t]);
+
   // 分组结果（搜索模式按分类分组，最近/收藏模式显示为单独分组）
   const groupedCommands = useMemo(() => {
     if (viewMode === 'recent') {
@@ -130,9 +197,16 @@ export function CommandPalette() {
       // 收藏模式，显示为单独分组
       return new Map<DisplayCategory, Command[]>([['favorites', filteredCommands]]);
     }
-    // 搜索模式按分类分组显示
-    return groupCommandsByCategory(filteredCommands);
-  }, [filteredCommands, viewMode]);
+    // 搜索模式按分类分组显示，资源直达分组追加在命令之后
+    const groups = groupCommandsByCategory(filteredCommands) as Map<DisplayCategory, Command[]>;
+    if (fileCommands.length > 0) {
+      groups.set('files', fileCommands);
+    }
+    if (sessionCommands.length > 0) {
+      groups.set('sessions', sessionCommands);
+    }
+    return groups;
+  }, [filteredCommands, viewMode, fileCommands, sessionCommands]);
   
   // 扁平化命令列表（用于键盘导航）
   const flatCommands = useMemo(() => {
@@ -155,12 +229,29 @@ export function CommandPalette() {
       });
     }
   }, [isOpen]);
+
+  // Android 系统返回键 = 关闭面板（自绘 dialog 无 data-state，协调器 Radix 兜底覆盖不到）
+  const closeRef = useRef(close);
+  closeRef.current = close;
+  useEffect(() => {
+    if (!isOpen) return;
+    return registerBackHandler(() => {
+      closeRef.current();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isOpen]);
   
   // 执行命令并记录历史
-  const handleExecuteCommand = useCallback((commandId: string) => {
-    commandHistory.record(commandId);
-    executeCommand(commandId);
-  }, [executeCommand]);
+  // 资源直达命令（files/sessions）不在注册表中：直接调用其 execute 并关闭面板
+  const handleExecuteCommand = useCallback((command: Command) => {
+    if (command.id.startsWith(RESOURCE_COMMAND_PREFIX)) {
+      close();
+      void command.execute(deps);
+      return;
+    }
+    commandHistory.record(command.id);
+    executeCommand(command.id);
+  }, [executeCommand, close, deps]);
   
   // 切换收藏状态
   const handleToggleFavorite = useCallback((commandId: string, e: React.MouseEvent) => {
@@ -211,7 +302,7 @@ export function CommandPalette() {
           const command = flatCommands[selectedIndex];
           const isEnabled = !command.isEnabled || command.isEnabled(deps);
           if (isEnabled) {
-            handleExecuteCommand(command.id);
+            handleExecuteCommand(command);
           } else {
             showGlobalNotification(
               'warning',
@@ -242,7 +333,7 @@ export function CommandPalette() {
   
   // 执行命令
   const handleCommandClick = useCallback((command: Command) => {
-    handleExecuteCommand(command.id);
+    handleExecuteCommand(command);
   }, [handleExecuteCommand]);
   
   if (!isOpen) return null;
@@ -348,6 +439,10 @@ export function CommandPalette() {
                 categoryLabel = t('command_palette:mode_recent', '最近使用');
               } else if (category === 'favorites') {
                 categoryLabel = t('command_palette:mode_favorites', '收藏');
+              } else if (category === 'files') {
+                categoryLabel = t('command_palette:resource_files', '文件');
+              } else if (category === 'sessions') {
+                categoryLabel = t('command_palette:resource_sessions', '会话');
               } else {
                 categoryLabel = t(
                   `command_palette:categories.${category}`,
@@ -365,6 +460,7 @@ export function CommandPalette() {
                     const isSelected = flatIndex === selectedIndex;
                     const isEnabled = !command.isEnabled || command.isEnabled(deps);
                     const Icon = command.icon;
+                    const isResource = command.id.startsWith(RESOURCE_COMMAND_PREFIX);
 
                     return (
                       <div
@@ -384,34 +480,36 @@ export function CommandPalette() {
                         <div className="command-palette-item-left">
                           {Icon && <Icon className="command-palette-item-icon" size={16} />}
                           <span className="command-palette-item-name">
-                            {t(`command_palette:commands.${command.id}`, command.name)}
+                            {isResource ? command.name : t(`command_palette:commands.${command.id}`, command.name)}
                           </span>
                           {command.description && (
                             <span className="command-palette-item-description">
-                              {t(`command_palette:descriptions.${command.id}`, command.description)}
+                              {isResource ? command.description : t(`command_palette:descriptions.${command.id}`, command.description)}
                             </span>
                           )}
                         </div>
-                        {/* 收藏按钮 */}
-                        <button
-                          className={cn(
-                            'command-palette-item-favorite',
-                            commandFavorites.isFavorite(command.id) && 'command-palette-item-favorite-active'
-                          )}
-                          onClick={(e) => handleToggleFavorite(command.id, e)}
-                          title={commandFavorites.isFavorite(command.id)
-                            ? t('command_palette:unfavorite', '取消收藏')
-                            : t('command_palette:favorite', '收藏')
-                          }
-                        >
-                          {commandFavorites.isFavorite(command.id) ? (
-                            <Star size={14} className="fill-current" />
-                          ) : (
-                            <StarHalf size={14} />
-                          )}
-                        </button>
+                        {/* 收藏按钮（资源直达项为动态结果，不支持收藏） */}
+                        {!isResource && (
+                          <button
+                            className={cn(
+                              'command-palette-item-favorite',
+                              commandFavorites.isFavorite(command.id) && 'command-palette-item-favorite-active'
+                            )}
+                            onClick={(e) => handleToggleFavorite(command.id, e)}
+                            title={commandFavorites.isFavorite(command.id)
+                              ? t('command_palette:unfavorite', '取消收藏')
+                              : t('command_palette:favorite', '收藏')
+                            }
+                          >
+                            {commandFavorites.isFavorite(command.id) ? (
+                              <Star size={14} className="fill-current" />
+                            ) : (
+                              <StarHalf size={14} />
+                            )}
+                          </button>
+                        )}
                         {/* 显示有效快捷键（优先使用自定义快捷键） */}
-                        {(() => {
+                        {!isResource && (() => {
                           const effectiveShortcut = shortcutManager.getShortcut(command.id);
                           return effectiveShortcut ? (
                             <div className="command-palette-item-shortcut">

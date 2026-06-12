@@ -31,6 +31,7 @@ import type { ModelInfo } from '../../utils/parseModelMentions';
 import { isMultiModelSelectEnabled } from '@/config/featureFlags';
 import { inferCapabilities, inferInputContextBudget } from '@/utils/modelCapabilities';
 import { deriveContextWindowUsage } from './contextWindowUsage';
+import { useSessionUsageSummary } from './useSessionUsageSummary';
 import {
   deepSeekV32EffortToBudget,
   normalizeDeepSeekV4Effort,
@@ -405,6 +406,9 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
       () => deriveContextWindowUsage(lastAssistantUsage, contextUsageLimitTokens),
       [contextUsageLimitTokens, lastAssistantUsage]
     );
+
+    // ★ 1.2 本会话累计用量（每轮回复结束后刷新）
+    const sessionUsage = useSessionUsageSummary(sessionId, lastAssistantUsage);
 
     const thinkingControl = useMemo(
       () =>
@@ -994,6 +998,7 @@ export const InputBarV2: React.FC<InputBarV2Props> = memo(
         queueFull={queueLength >= QUEUE_HARD_CAP}
         canSubmit={canSubmit}
         contextWindowUsage={contextWindowUsage}
+        sessionUsage={sessionUsage}
         attachments={attachments}
         panelStates={panelStates}
         // 回调

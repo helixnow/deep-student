@@ -274,6 +274,10 @@ impl UserTodoExecutor {
                 .get("due_time")
                 .and_then(|v| v.as_str())
                 .map(|s| s.to_string()),
+            reminder: args
+                .get("reminder")
+                .and_then(|v| v.as_str())
+                .map(|s| s.to_string()),
             tags: args.get("tags").and_then(|v| v.as_array()).map(|arr| {
                 arr.iter()
                     .filter_map(|v| v.as_str().map(|s| s.to_string()))
@@ -366,13 +370,9 @@ impl UserTodoExecutor {
                     VfsTodoRepo::list_items_by_list(vfs_db, list_id, include_completed)
                         .map_err(|e| e.to_string())?
                 } else {
-                    // Default: list today + overdue
-                    let mut all = VfsTodoRepo::list_today_items(vfs_db, include_completed)
-                        .map_err(|e| e.to_string())?;
-                    let overdue = VfsTodoRepo::list_overdue_items(vfs_db, include_completed)
-                        .map_err(|e| e.to_string())?;
-                    all.extend(overdue);
-                    all
+                    // Default: today 视图（list_today_items 已含逾期未完成，无需再合并）
+                    VfsTodoRepo::list_today_items(vfs_db, include_completed)
+                        .map_err(|e| e.to_string())?
                 }
             }
         };

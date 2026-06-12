@@ -31,6 +31,7 @@ import { IconSwap } from '@/components/ui/IconSwap';
 import { copyTextToClipboard } from '@/utils/clipboardUtils';
 import { Z_INDEX } from '@/config/zIndex';
 import { useViewStore } from '@/stores/viewStore';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 import type { SelectionRect } from '../hooks/useTextSelection';
 
 // ============================================================================
@@ -238,17 +239,28 @@ export const ExplainPopover: React.FC<ExplainPopoverProps> = ({
     return () => document.removeEventListener('keydown', handleKeyDown);
   }, [isVisible, onClose]);
 
-  // 外部点击关闭
+  // Android 系统返回键 = 关闭浮层（自绘 popover，协调器 Radix 兜底覆盖不到）
+  const backCloseRef = useRef(onClose);
+  backCloseRef.current = onClose;
   useEffect(() => {
     if (!isVisible) return;
-    const handleMouseDown = (e: MouseEvent) => {
+    return registerBackHandler(() => {
+      backCloseRef.current();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isVisible]);
+
+  // 外部点击关闭（pointerdown：移动端触摸滚动/拖选不产生 mousedown，与 ComposerPanel 一致）
+  useEffect(() => {
+    if (!isVisible) return;
+    const handlePointerDown = (e: PointerEvent) => {
       const target = e.target as Node | null;
       if (!target) return;
       if (popoverRef.current?.contains(target)) return;
       onClose();
     };
-    document.addEventListener('mousedown', handleMouseDown);
-    return () => document.removeEventListener('mousedown', handleMouseDown);
+    document.addEventListener('pointerdown', handlePointerDown);
+    return () => document.removeEventListener('pointerdown', handlePointerDown);
   }, [isVisible, onClose]);
 
   // 滚动关闭（忽略 popover 内部滚动）

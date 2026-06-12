@@ -135,7 +135,8 @@
     "itemNotFound": "项目未找到",
     "folderCannotAddToChat": "文件夹不支持添加到对话",
     "unsupportedResourceType": "不支持的资源类型: {{type}}",
-    "openResourceFailed": "打开资源失败"
+    "openResourceFailed": "打开资源失败",
+    "imageDecodeFailed": "图片解码失败"
   },
   "errors": {
     "openResourceFailed": "打开资源失败"
@@ -183,7 +184,11 @@
     "loading": "加载图片中...",
     "largeFileWarning": "大文件警告",
     "largeFileDescription": "此图片较大 ({{size}})，加载可能需要较长时间并占用较多内存。是否继续加载？",
-    "loadAnyway": "继续加载"
+    "loadAnyway": "继续加载",
+    "renderFailed": "图片无法显示",
+    "unsupportedFormatHint": "当前系统的内置浏览器不支持该格式（如 HEIC/HEIF）。可保存到本地后用系统图片查看器打开。",
+    "renderFailedHint": "图片数据可能已损坏或格式不受支持。可尝试保存到本地查看。",
+    "saveToDevice": "保存到本地"
   },
   "file": {
     "noPreview": "此文件类型不支持预览",
@@ -225,7 +230,9 @@
     "docTypeXlsx": "Excel 表格",
     "docTypePptx": "PowerPoint 演示",
     "docTypeText": "文本文件",
-    "documentHint": "双击或在右侧面板中查看完整内容"
+    "documentHint": "双击或在右侧面板中查看完整内容",
+    "xlsxTruncated": "表格过大，仅显示前 {{shown}} 行（其余 {{hidden}} 行未渲染，可下载文件查看完整内容）",
+    "csvTruncated": "表格过大，仅显示前 {{shown}} 行（其余 {{hidden}} 行未渲染）"
   },
   "textbook": {
     "import": "导入教材",
@@ -662,6 +669,12 @@
       "favorites": "收藏",
       "recentAccess": "最近访问"
     }
+  },
+  "indexMiniBar": {
+    "indexing": "索引中…",
+    "indexingWithProgress": "索引中 {{progress}}%",
+    "failed": "{{count}} 项索引失败",
+    "pending": "{{count}} 项待索引"
   },
   "indexStatus": {
     "state": {

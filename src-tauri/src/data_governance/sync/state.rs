@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
 
 use chrono::Utc;
 use rusqlite::{params, Connection, OptionalExtension};
@@ -8,9 +8,14 @@ use super::SyncError;
 
 const DEFAULT_INSTANCE_ID: &str = "default";
 
+/// 同步状态存储。
+///
+/// 连接在 `open_default` 时打开一次并完成建表，之后所有操作复用同一连接
+/// （此前每次操作都重新 `Connection::open` + `CREATE TABLE IF NOT EXISTS`，
+/// 一次同步会触发数百次开库/建表开销）。`Clone` 共享同一底层连接。
 #[derive(Debug, Clone)]
 pub struct SyncStateStore {
-    path: PathBuf,
+    conn: Arc<Mutex<Connection>>,
 }
 
 impl SyncStateStore {
@@ -22,9 +27,18 @@ impl SyncStateStore {
         let dir = base_dir.join("deep-student").join("sync");
         std::fs::create_dir_all(&dir)?;
         let path = dir.join("sync_state.db");
-        let store = Self { path };
-        store.with_conn(|_| Ok(()))?;
-        Ok(store)
+
+        let conn = Connection::open(&path)
+            .map_err(|e| SyncError::Database(format!("打开 sync_state.db 失败: {}", e)))?;
+        conn.busy_timeout(std::time::Duration::from_secs(5))
+            .map_err(|e| {
+                SyncError::Database(format!("设置 sync_state busy_timeout 失败: {}", e))
+            })?;
+        Self::init(&conn)?;
+
+        Ok(Self {
+            conn: Arc::new(Mutex::new(conn)),
+        })
     }
 
     pub fn default_instance_id() -> &'static str {
@@ -35,13 +49,10 @@ impl SyncStateStore {
         &self,
         f: impl FnOnce(&Connection) -> Result<T, SyncError>,
     ) -> Result<T, SyncError> {
-        let conn = Connection::open(&self.path)
-            .map_err(|e| SyncError::Database(format!("打开 sync_state.db 失败: {}", e)))?;
-        conn.busy_timeout(std::time::Duration::from_secs(5))
-            .map_err(|e| {
-                SyncError::Database(format!("设置 sync_state busy_timeout 失败: {}", e))
-            })?;
-        Self::init(&conn)?;
+        let conn = self.conn.lock().unwrap_or_else(|poisoned| {
+            // 仅守护普通 SQL 操作，前一持有者 panic 不会让连接处于损坏状态
+            poisoned.into_inner()
+        });
         f(&conn)
     }
 
@@ -367,6 +378,17 @@ impl SyncStateStore {
         })
     }
 
+    /// 记录设备轮换（仅在备份恢复后调用）。
+    ///
+    /// 恢复操作把本地数据回滚到旧时点，本地"已消费/已应用"状态不再可信，
+    /// 因此清空所有实例的消费游标、legacy 处理记录与 tombstone 水位，
+    /// 强制下次同步重新消费云端全部变更——变更应用是幂等的（LWW + UPSERT），
+    /// 跨实例多余重放只有时间代价、没有正确性代价。
+    ///
+    /// 注意：**不**清零 `upload_seq`。上传序号由 `next_upload_seq` 取
+    /// `max(本地, 云端)+1`，保留本地值只会让序号偏大（无害）；反之全局清零
+    /// 会破坏其他实例的单调性依据，在云端列举不全（如 PROPFIND 截断）时
+    /// 可能复用已存在的 seq 而被其他设备的消费游标静默跳过。
     pub fn record_device_rotation(
         &self,
         old_device_id: &str,
@@ -380,11 +402,6 @@ impl SyncStateStore {
                 params![old_device_id, new_device_id, Utc::now().to_rfc3339(), reason],
             )
             .map_err(|e| SyncError::Database(format!("记录设备轮换失败: {}", e)))?;
-            conn.execute(
-                "UPDATE upload_seq SET last_seq=0, updated_at=?1",
-                params![Utc::now().to_rfc3339()],
-            )
-            .map_err(|e| SyncError::Database(format!("重置上传序号失败: {}", e)))?;
             conn.execute(
                 "UPDATE consume_cursor SET last_seq=0, updated_at=?1",
                 params![Utc::now().to_rfc3339()],

@@ -136,14 +136,16 @@ const INLINE_SIZE_THRESHOLD: usize = 1024 * 1024;
 /// 附件上传大小上限
 /// #62: 文件上限从 50MB 提升至 200MB（与 document_parser::MAX_DOCUMENT_SIZE 对齐；
 /// 超过 1MB 即走 external blob 存储，不会膨胀 resources 表）
-const MAX_IMAGE_BYTES: usize = 10 * 1024 * 1024;
+/// ★ 2026-06-12（审阅问题 M8）：图片上限 10MB→50MB。现代手机原图/HEIC 转
+/// JPEG 普遍超过 10MB，旧限制导致常见照片无法导入。
+const MAX_IMAGE_BYTES: usize = 50 * 1024 * 1024;
 const MAX_FILE_BYTES: usize = 200 * 1024 * 1024;
 
 /// 允许的扩展名（用于服务端类型校验）
 const SUPPORTED_EXTENSIONS: &[&str] = &[
     "jpg", "jpeg", "png", "gif", "bmp", "webp", "svg", "heic", "heif", // images
     "pdf", "docx", "xlsx", "xls", "xlsb", "ods", "pptx", // office
-    "txt", "md", "csv", "json", "xml", "html", "htm", // text
+    "txt", "md", "markdown", "csv", "json", "xml", "html", "htm", // text
     "epub", "rtf", // ebook/rtf
     "mp3", "wav", "ogg", "m4a", "flac", "aac", "wma", "opus", // audio
     "mp4", "webm", "mov", "avi", "mkv", "m4v", "wmv", "flv", // video

@@ -684,6 +684,25 @@
     "clear": "Clear",
     "saveAsTemplate": "Save as Template",
     "newTemplateName": "New Template",
+    "personas": {
+      "title": "Tone",
+      "coach": {
+        "label": "Strict Coach",
+        "content": "Tone: act like a strict but fair coach. Point out mistakes and weak spots directly; require me to show my reasoning; when I get something wrong, let me retry before revealing the answer."
+      },
+      "companion": {
+        "label": "Gentle Companion",
+        "content": "Tone: act like a patient, gentle study companion. Encourage more than criticize; explain step by step and allow mistakes; comfort me first when I feel frustrated."
+      },
+      "socratic": {
+        "label": "Socratic",
+        "content": "Tone: use Socratic questioning. Do not give answers directly; guide me with a chain of leading questions so I derive conclusions myself; only reveal the answer when I explicitly give up."
+      },
+      "concise": {
+        "label": "Exam-focused",
+        "content": "Tone: exam-oriented and concise. Give the conclusion/answer first, then bullet the key steps and common pitfalls; avoid long-winded explanations."
+      }
+    },
     "variables": {
       "grade": {
         "label": "Grade",
@@ -802,6 +821,7 @@
     "pinSession": "Pin Thread",
     "unpinSession": "Unpin Thread",
     "archiveSession": "Archive Thread",
+    "archivedSessionsEntry": "Archived Sessions",
     "confirmArchiveSession": "Confirm Archive",
     "archiveSessionToast": "Archived. View archived sessions: Settings",
     "archiveSessionToastMessage": "Archived. View archived sessions:",
@@ -880,6 +900,9 @@
     "contextRemainingPercent": "{{percent}}% remaining",
     "contextUsedTokens": "{{tokens}} used",
     "contextRemainingTokens": "{{tokens}} remaining",
+    "contextHighWaterHint": "Context is nearly full — consider starting a new session or trimming references",
+    "sessionTotal": "Session total",
+    "sessionCost": "Session cost",
     "tokens": "tokens",
     "inputEstimate": "Estimated input token count",
     "source": {
@@ -1109,6 +1132,7 @@
     "arguments": "Arguments",
     "approve": "Approve",
     "reject": "Reject",
+    "allowSession": "Allow for Session",
     "alwaysAllow": "Always Allow",
     "alwaysDeny": "Always Deny",
     "timeout": "Approval Timeout",

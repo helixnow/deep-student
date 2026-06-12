@@ -370,11 +370,15 @@ export function inferFilePreviewTypeFromName(fileName: string): ResourceListItem
   if (!ext) return 'none';
 
   if (ext === 'pdf') return 'pdf';
-  if (ext === 'docx' || ext === 'doc') return 'docx';
-  if (['xlsx', 'xls', 'xlsb', 'ods'].includes(ext)) return 'xlsx';
-  if (ext === 'pptx' || ext === 'ppt') return 'pptx';
+  // ★ 2026-06-12（审阅问题 R3）：富文档渲染仅限 OOXML 格式。
+  // 老格式（doc/xls/xlsb/ods/ppt）前端渲染库（docx-preview/ExcelJS/pptx-preview）
+  // 一律解析失败：xls/xlsb/ods 降级为 text（后端可提取文本），
+  // doc/ppt 后端也无法解析 → none（提示下载打开）。
+  if (ext === 'docx') return 'docx';
+  if (ext === 'xlsx') return 'xlsx';
+  if (ext === 'pptx') return 'pptx';
 
-  if (['txt', 'md', 'markdown', 'html', 'htm', 'csv', 'json', 'xml', 'rtf', 'epub'].includes(ext)) {
+  if (['txt', 'md', 'markdown', 'html', 'htm', 'csv', 'json', 'xml', 'rtf', 'epub', 'xls', 'xlsb', 'ods'].includes(ext)) {
     return 'text';
   }
 

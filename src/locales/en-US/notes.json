@@ -76,6 +76,11 @@
     "reject": "Reject",
     "no_changes": "No changes detected"
   },
+  "aiCheckpoint": {
+    "applied": "AI edit applied",
+    "rollback": "Roll back",
+    "keep": "Keep"
+  },
   "errors": {
     "noteNotFound": "Note not found",
     "search_notes": "Search notes",

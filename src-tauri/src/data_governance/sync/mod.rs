@@ -3051,9 +3051,15 @@ impl SyncManager {
     /// # 返回
     /// * 删除的记录数量
     pub fn cleanup_synced_changes(conn: &Connection, older_than: &str) -> Result<usize, SyncError> {
+        // changed_at 由 datetime('now') 写入（"YYYY-MM-DD HH:MM:SS"），而调用方
+        // 传入的 older_than 通常是 RFC3339（含 'T' 与时区后缀）。直接字符串比较
+        // 在同日期时 ' ' < 'T' 恒成立，会误删边界日的记录；用 datetime() 把两侧
+        // 归一化为同一格式再比较。无法解析的 changed_at 得到 NULL，比较结果为
+        // NULL（不删除），天然 fail-safe。
         let deleted = conn
             .execute(
-                "DELETE FROM __change_log WHERE sync_version > 0 AND changed_at < ?1",
+                "DELETE FROM __change_log
+                 WHERE sync_version > 0 AND datetime(changed_at) < datetime(?1)",
                 params![older_than],
             )
             .map_err(|e| SyncError::Database(format!("清理变更日志失败: {}", e)))?;
@@ -5359,6 +5365,8 @@ impl SyncManager {
     /// - `resources` / `blobs` 本身（包括 LWW 覆盖写入的 ref_count 旧值需要纠正）
     /// - 任何带 `resource_id` / `blob_hash` / `compressed_blob_hash` /
     ///   `image_blob_hash` 列的引用方表
+    /// - 任何带 `preview_json` / `images_json` 列的表（JSON 内嵌 blob 引用，
+    ///   见 `recompute_blob_ref_counts`）
     fn changes_affect_ref_counts(conn: &Connection, changes: &[SyncChangeWithData]) -> bool {
         let mut seen: HashSet<&str> = HashSet::new();
         for change in changes {
@@ -5373,6 +5381,8 @@ impl SyncManager {
                 || Self::table_has_column(conn, table, "blob_hash")
                 || Self::table_has_column(conn, table, "compressed_blob_hash")
                 || Self::table_has_column(conn, table, "image_blob_hash")
+                || Self::table_has_column(conn, table, "preview_json")
+                || Self::table_has_column(conn, table, "images_json")
             {
                 return true;
             }
@@ -5510,14 +5520,79 @@ impl SyncManager {
             );
         }
         if Self::table_has_column(conn, "files", "compressed_blob_hash") {
+            // "压缩不划算"路径会把 compressed_blob_hash 指向原始 blob_hash 而
+            // 不额外 store_blob(+1)，purge 也对应跳过递减（见 file_repo purge 1.5），
+            // 等值时不得重复计数。
             subqueries.push(
-                "SELECT compressed_blob_hash AS blob_hash FROM files WHERE compressed_blob_hash IS NOT NULL"
+                "SELECT compressed_blob_hash AS blob_hash FROM files
+                 WHERE compressed_blob_hash IS NOT NULL
+                   AND compressed_blob_hash IS NOT blob_hash"
                     .to_string(),
             );
         }
         if Self::table_has_column(conn, "vfs_index_units", "image_blob_hash") {
             subqueries.push(
                 "SELECT image_blob_hash AS blob_hash FROM vfs_index_units WHERE image_blob_hash IS NOT NULL"
+                    .to_string(),
+            );
+        }
+
+        // ★ 2026-06-12（P1 防数据丢失）：JSON 内嵌 blob 引用必须参与重算。
+        // 旧实现只统计上面三个显式列，把仅存在于 JSON 中的引用（PDF/教材页图、
+        // 试卷页图、题目图片）全部清零 → 启动时 cleanup_unreferenced 物理删除
+        // 这些图片，并经 tombstone 把删除传播到云端与其他设备。
+        // 提取口径与本地计数模型严格对齐（每出现一次计一次引用）：
+        // - files.preview_json:    $.pages[*].blob_hash（page_rasterizer store_blob +1）
+        //                          $.pages[*].compressed_blob_hash（页图压缩 store_blob +1）
+        // - exam_sheets.preview_json: $.pages[*].blob_hash（试卷页图，
+        //                          见 exam_repo::collect_exam_blob_hashes）
+        // - questions.images_json: $[*].hash（题目图片，question_import store_blob +1；
+        //                          含软删题目——purge 才递减）
+        // json_valid 守卫：历史/外来数据可能存在非法 JSON，json_each 直接报错会
+        // 中断整个同步事务；非法 JSON 行按"无引用"处理（与本地 serde 解析失败一致）。
+        if Self::table_has_column(conn, "files", "preview_json") {
+            subqueries.push(
+                "SELECT json_extract(page.value, '$.blob_hash') AS blob_hash
+                 FROM files, json_each(files.preview_json, '$.pages') AS page
+                 WHERE files.preview_json IS NOT NULL
+                   AND json_valid(files.preview_json)
+                   AND json_extract(page.value, '$.blob_hash') IS NOT NULL
+                   AND json_extract(page.value, '$.blob_hash') <> ''"
+                    .to_string(),
+            );
+            // 页级"压缩不划算"路径同样把 compressed 指向原始页图而不 +1，
+            // purge/copy 也按等值跳过（见 file_repo purge 第 2 步），口径一致。
+            subqueries.push(
+                "SELECT json_extract(page.value, '$.compressed_blob_hash') AS blob_hash
+                 FROM files, json_each(files.preview_json, '$.pages') AS page
+                 WHERE files.preview_json IS NOT NULL
+                   AND json_valid(files.preview_json)
+                   AND json_extract(page.value, '$.compressed_blob_hash') IS NOT NULL
+                   AND json_extract(page.value, '$.compressed_blob_hash') <> ''
+                   AND json_extract(page.value, '$.compressed_blob_hash')
+                       IS NOT json_extract(page.value, '$.blob_hash')"
+                    .to_string(),
+            );
+        }
+        if Self::table_has_column(conn, "exam_sheets", "preview_json") {
+            subqueries.push(
+                "SELECT json_extract(page.value, '$.blob_hash') AS blob_hash
+                 FROM exam_sheets, json_each(exam_sheets.preview_json, '$.pages') AS page
+                 WHERE exam_sheets.preview_json IS NOT NULL
+                   AND json_valid(exam_sheets.preview_json)
+                   AND json_extract(page.value, '$.blob_hash') IS NOT NULL
+                   AND json_extract(page.value, '$.blob_hash') <> ''"
+                    .to_string(),
+            );
+        }
+        if Self::table_has_column(conn, "questions", "images_json") {
+            subqueries.push(
+                "SELECT json_extract(img.value, '$.hash') AS blob_hash
+                 FROM questions, json_each(questions.images_json) AS img
+                 WHERE questions.images_json IS NOT NULL
+                   AND json_valid(questions.images_json)
+                   AND json_extract(img.value, '$.hash') IS NOT NULL
+                   AND json_extract(img.value, '$.hash') <> ''"
                     .to_string(),
             );
         }
@@ -7982,6 +8057,15 @@ impl SyncManager {
                         .await
                     {
                         Ok(_) => {
+                            // 新主库文件已替换 dest，但旧库遗留的 -wal/-shm 还在：
+                            // SQLite 打开时会尝试关联它们，旧 WAL 帧可能污染新库
+                            // 或导致打开失败。必须在完整性校验前清掉。
+                            for suffix in ["-wal", "-shm"] {
+                                let side = workspaces_dir.join(format!("{}.db{}", ws_id, suffix));
+                                if side.exists() {
+                                    let _ = std::fs::remove_file(&side);
+                                }
+                            }
                             if let Err(e) = Self::verify_sqlite_integrity(&dest) {
                                 let _ = std::fs::remove_file(&dest);
                                 tracing::warn!(
@@ -11496,6 +11580,169 @@ mod tests {
             )
             .unwrap();
         assert_eq!(ref_count, 1);
+    }
+
+    /// ★ 2026-06-12（P1 防数据丢失）回归：仅存在于 JSON 中的 blob 引用
+    /// （PDF 页图/压缩页图、试卷页图、题目图片）不得被重算清零。
+    /// 修复前 recompute 只统计三个显式列，这些 blob 会被清零 → 启动清扫物理删除。
+    #[test]
+    fn regression_recompute_counts_json_embedded_blob_refs() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE blobs (
+                hash TEXT PRIMARY KEY,
+                ref_count INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE TABLE files (
+                id TEXT PRIMARY KEY,
+                blob_hash TEXT,
+                compressed_blob_hash TEXT,
+                preview_json TEXT
+            );
+            CREATE TABLE exam_sheets (
+                id TEXT PRIMARY KEY,
+                preview_json TEXT
+            );
+            CREATE TABLE questions (
+                id TEXT PRIMARY KEY,
+                images_json TEXT
+            );
+            "#,
+        )
+        .unwrap();
+
+        // 6 个 blob：主文件、PDF 页图、压缩页图、试卷页图、题目图片、
+        // "压缩不划算"去重 blob。初始 ref_count 全部写成错误值，验证重算后恢复正确。
+        for hash in [
+            "main-blob",
+            "page-blob",
+            "page-compressed-blob",
+            "exam-page-blob",
+            "question-img-blob",
+            "dedup-blob",
+        ] {
+            conn.execute(
+                "INSERT INTO blobs(hash, ref_count) VALUES (?1, 99)",
+                rusqlite::params![hash],
+            )
+            .unwrap();
+        }
+
+        conn.execute(
+            r#"INSERT INTO files(id, blob_hash, compressed_blob_hash, preview_json) VALUES (
+                'file-1', 'main-blob', NULL,
+                '{"pages":[{"page_index":0,"blob_hash":"page-blob","compressed_blob_hash":"page-compressed-blob"}]}'
+            )"#,
+            [],
+        )
+        .unwrap();
+        // "压缩不划算"：文件级与页级 compressed 均指向原始 blob，
+        // 本地只 +1（store 一次），重算必须按等值排除避免双计。
+        conn.execute(
+            r#"INSERT INTO files(id, blob_hash, compressed_blob_hash, preview_json) VALUES (
+                'file-2', 'dedup-blob', 'dedup-blob',
+                '{"pages":[{"page_index":0,"blob_hash":"dedup-blob","compressed_blob_hash":"dedup-blob"}]}'
+            )"#,
+            [],
+        )
+        .unwrap();
+        conn.execute(
+            r#"INSERT INTO exam_sheets(id, preview_json) VALUES (
+                'exam-1', '{"pages":[{"page_index":0,"blob_hash":"exam-page-blob"}]}'
+            )"#,
+            [],
+        )
+        .unwrap();
+        // 两道题引用同一张图：引用计数应为出现次数 2
+        conn.execute(
+            r#"INSERT INTO questions(id, images_json) VALUES
+                ('q-1', '[{"id":"att_1","hash":"question-img-blob"}]'),
+                ('q-2', '[{"id":"att_2","hash":"question-img-blob"}]')"#,
+            [],
+        )
+        .unwrap();
+        // 非法 JSON 行不得让重算报错（按无引用处理）
+        conn.execute(
+            "INSERT INTO files(id, blob_hash, preview_json) VALUES ('file-bad', NULL, '{not json')",
+            [],
+        )
+        .unwrap();
+
+        SyncManager::recompute_blob_ref_counts(&conn).unwrap();
+
+        let count_of = |hash: &str| -> i64 {
+            conn.query_row(
+                "SELECT ref_count FROM blobs WHERE hash = ?1",
+                rusqlite::params![hash],
+                |row| row.get(0),
+            )
+            .unwrap()
+        };
+        assert_eq!(count_of("main-blob"), 1, "显式列引用");
+        assert_eq!(count_of("page-blob"), 1, "preview_json 页图引用不得清零");
+        assert_eq!(
+            count_of("page-compressed-blob"),
+            1,
+            "preview_json 压缩页图引用不得清零"
+        );
+        assert_eq!(
+            count_of("exam-page-blob"),
+            1,
+            "exam_sheets.preview_json 页图引用不得清零"
+        );
+        assert_eq!(
+            count_of("question-img-blob"),
+            2,
+            "questions.images_json 按出现次数计数"
+        );
+        // file-2：files.blob_hash(+1) + 页图 blob_hash(+1)；
+        // 文件级/页级 compressed 与原始等值 → 不重复计数（本地未额外 store）
+        assert_eq!(
+            count_of("dedup-blob"),
+            2,
+            "压缩不划算（compressed==原始）不得双计"
+        );
+    }
+
+    /// JSON 引用表（questions/exam_sheets）变更也必须触发重算门控
+    #[test]
+    fn regression_changes_to_json_ref_tables_trigger_recompute_gate() {
+        let conn = Connection::open_in_memory().unwrap();
+        conn.execute_batch(
+            r#"
+            CREATE TABLE questions (id TEXT PRIMARY KEY, images_json TEXT);
+            CREATE TABLE exam_sheets (id TEXT PRIMARY KEY, preview_json TEXT);
+            CREATE TABLE notes (id TEXT PRIMARY KEY, title TEXT);
+            "#,
+        )
+        .unwrap();
+
+        let change_for = |table: &str| SyncChangeWithData {
+            table_name: table.to_string(),
+            record_id: "r1".to_string(),
+            operation: ChangeOperation::Update,
+            data: None,
+            changed_at: "2026-06-12T00:00:00Z".to_string(),
+            change_log_id: Some(1),
+            database_name: Some("vfs".to_string()),
+            suppress_change_log: Some(true),
+            source_device_id: None,
+            source_seq: None,
+        };
+
+        assert!(SyncManager::changes_affect_ref_counts(
+            &conn,
+            &[change_for("questions")]
+        ));
+        assert!(SyncManager::changes_affect_ref_counts(
+            &conn,
+            &[change_for("exam_sheets")]
+        ));
+        assert!(!SyncManager::changes_affect_ref_counts(
+            &conn,
+            &[change_for("notes")]
+        ));
     }
 
     #[test]

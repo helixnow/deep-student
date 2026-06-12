@@ -7,7 +7,7 @@
  * 支持分屏模式：当 splitView 不为 null 时，左右双面板布局。
  */
 
-import React, { lazy, Suspense, useCallback } from 'react';
+import React, { lazy, Suspense, useCallback, useRef } from 'react';
 import { CircleNotch, X, SidebarSimple, DotsSixVertical } from '@phosphor-icons/react';
 import { PanelGroup, Panel, PanelResizeHandle } from 'react-resizable-panels';
 import { cn } from '@/lib/utils';
@@ -16,6 +16,14 @@ import { useTranslation } from 'react-i18next';
 
 // 懒加载统一应用面板
 const UnifiedAppPanel = lazy(() => import('./UnifiedAppPanel').then(m => ({ default: m.UnifiedAppPanel })));
+
+/**
+ * ★ 2026-06-12（审阅问题 M3）：保活实例上限。
+ * 旧实现对所有打开的 tab 无条件 display:none 保活，几十个 PDF/编辑器
+ * 同时驻留内存。现按 LRU 只保活最近使用的 N 个，其余卸载（重新激活时
+ * 重建，状态由各自 store/后端持久化兜底）。
+ */
+const MAX_KEEPALIVE_TABS = 5;
 
 // ============================================================================
 // 类型定义
@@ -53,6 +61,29 @@ export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
 
   const handleClose = useCallback((tabId: string) => onClose(tabId), [onClose]);
   const handleTitleChange = useCallback((tabId: string, title: string) => onTitleChange(tabId, title), [onTitleChange]);
+
+  // LRU 记录：tabId → 最近活跃序号（数值越大越新）
+  const lruRef = useRef<Map<string, number>>(new Map());
+  const lruTickRef = useRef(0);
+
+  if (activeTabId) {
+    lruRef.current.set(activeTabId, ++lruTickRef.current);
+  }
+  if (splitView?.rightTabId) {
+    lruRef.current.set(splitView.rightTabId, ++lruTickRef.current);
+  }
+  // 清理已关闭 tab 的记录
+  const openTabIds = new Set(tabs.map(tab => tab.tabId));
+  for (const id of Array.from(lruRef.current.keys())) {
+    if (!openTabIds.has(id)) lruRef.current.delete(id);
+  }
+  // 保活集合 = 最近使用的前 N 个（活跃 tab 与分屏 tab 序号最新，必然在内）
+  const keepAliveIds = new Set(
+    Array.from(lruRef.current.entries())
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, MAX_KEEPALIVE_TABS)
+      .map(([id]) => id)
+  );
 
   // 渲染单个 tab 面板内容（保活逻辑）
   const renderTabPanel = (tab: OpenTab, visible: boolean) => (
@@ -94,8 +125,10 @@ export const TabPanelContainer: React.FC<TabPanelContainerProps> = ({
           {/* ★ Y3 修复：右侧分屏 tab 不在左侧重复渲染。
               之前左侧 map 中包含右侧 tab 的隐藏实例，导致同一资源双实例
               （重复加载、重复事件监听、编辑器互相干扰） */}
+          {/* ★ M3：超出 LRU 保活上限的 tab 直接卸载，不再隐藏驻留 */}
           {tabs
             .filter(tab => !splitView || tab.tabId !== splitView.rightTabId)
+            .filter(tab => keepAliveIds.has(tab.tabId) || tab.tabId === activeTabId)
             .map(tab => renderTabPanel(tab, tab.tabId === activeTabId))}
         </div>
       </Panel>

@@ -6,24 +6,13 @@ import { DEFAULT_POMODORO_SETTINGS } from '../types';
 import { createPomodoroRecord } from '../api';
 
 // ★ I2 修复：阶段完成时发送系统通知（应用在后台时用户也能感知）
+// ★ 8.1 统一通知策略：默认 background 档（前台时有声音+UI 反馈，无需系统通知）
 const sendSystemNotification = async (title: string, body: string) => {
-  try {
-    const { isPermissionGranted, requestPermission, sendNotification } = await import(
-      '@tauri-apps/plugin-notification'
-    );
-    let granted = await isPermissionGranted();
-    if (!granted) {
-      granted = (await requestPermission()) === 'granted';
-    }
-    if (granted) {
-      sendNotification({ title, body });
-    }
-  } catch (e) {
-    console.warn('[Pomodoro] System notification failed:', e);
-  }
+  const { sendSystemNotification: send } = await import('@/utils/systemNotification');
+  await send(title, body);
 };
 
-const playNotificationSound = () => {
+const playNotificationSound = (volume = 1) => {
   try {
     const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
     const oscillator = audioCtx.createOscillator();
@@ -36,7 +25,7 @@ const playNotificationSound = () => {
     oscillator.frequency.value = 800;
 
     gainNode.gain.setValueAtTime(0, audioCtx.currentTime);
-    gainNode.gain.linearRampToValueAtTime(1, audioCtx.currentTime + 0.01);
+    gainNode.gain.linearRampToValueAtTime(volume, audioCtx.currentTime + 0.01);
     gainNode.gain.exponentialRampToValueAtTime(0.001, audioCtx.currentTime + 1);
 
     oscillator.start(audioCtx.currentTime);
@@ -45,6 +34,9 @@ const playNotificationSound = () => {
     console.error('Failed to play notification sound', e);
   }
 };
+
+// 结束前提醒：每个倒计时阶段只触发一次（以 phaseEndsAt 为阶段标识，非持久化）
+let endReminderFiredPhase: number | null = null;
 
 /** Record a pomodoro session to the backend (fire-and-forget) */
 const recordSession = (
@@ -87,6 +79,12 @@ const wallClockRemaining = (phaseEndsAt: number | null, fallback: number): numbe
   return Math.max(0, Math.ceil((phaseEndsAt - Date.now()) / 1000));
 };
 
+/** 正计时阶段的已专注秒数（phaseStartedAt 已折算暂停时间） */
+const countUpElapsed = (phaseStartedAt: number | null, fallback: number): number => {
+  if (phaseStartedAt == null) return fallback;
+  return Math.max(0, Math.floor((Date.now() - phaseStartedAt) / 1000));
+};
+
 const phaseDuration = (mode: PomodoroMode, settings: PomodoroSettings): number => {
   switch (mode) {
     case 'work':
@@ -107,6 +105,7 @@ export const usePomodoroStore = create<PomodoroState>()(
       status: 'paused',
       timeLeft: DEFAULT_POMODORO_SETTINGS.workDuration,
       phaseEndsAt: null,
+      phaseStartedAt: null,
       currentTaskId: null,
       currentTaskTitle: null,
       sessionStartTime: null,
@@ -123,6 +122,7 @@ export const usePomodoroStore = create<PomodoroState>()(
           currentTaskId,
           sessionStartTime,
           phaseEndsAt,
+          phaseStartedAt,
           timeLeft,
           lastActiveDate,
           completedPomodorosToday,
@@ -133,11 +133,13 @@ export const usePomodoroStore = create<PomodoroState>()(
         const baseCount = shouldReset ? 0 : completedPomodorosToday;
 
         const beginWork = () => {
+          const isCountUp = settings.countUp;
           set({
             mode: 'work',
             status: 'running',
-            timeLeft: settings.workDuration,
-            phaseEndsAt: Date.now() + settings.workDuration * 1000,
+            timeLeft: isCountUp ? 0 : settings.workDuration,
+            phaseEndsAt: isCountUp ? null : Date.now() + settings.workDuration * 1000,
+            phaseStartedAt: isCountUp ? Date.now() : null,
             currentTaskId: taskId || null,
             currentTaskTitle: taskTitle || null,
             sessionStartTime: new Date().toISOString(),
@@ -156,6 +158,91 @@ export const usePomodoroStore = create<PomodoroState>()(
         const isSwitchingTask = !!taskId && taskId !== currentTaskId;
         if (isSwitchingTask) {
           if (mode === 'work' && sessionStartTime) {
+            const isCountUpPhase = phaseStartedAt != null || (status === 'paused' && phaseEndsAt == null && settings.countUp);
+            if (isCountUpPhase) {
+              const elapsed = status === 'running' ? countUpElapsed(phaseStartedAt, timeLeft) : timeLeft;
+              if (elapsed > 0) {
+                recordSession(currentTaskId, sessionStartTime, elapsed, elapsed, 'work', 'interrupted');
+              }
+            } else {
+              const remaining =
+                status === 'running' ? wallClockRemaining(phaseEndsAt, timeLeft) : timeLeft;
+              const actualDuration = settings.workDuration - remaining;
+              if (actualDuration > 0) {
+                recordSession(
+                  currentTaskId,
+                  sessionStartTime,
+                  settings.workDuration,
+                  actualDuration,
+                  'work',
+                  'interrupted',
+                );
+              }
+            }
+          }
+          beginWork();
+          return;
+        }
+
+        // 同任务/无任务：恢复当前阶段
+        get().resume();
+      },
+
+      pause: () => {
+        const { status, mode, phaseEndsAt, phaseStartedAt, timeLeft, settings } = get();
+        if (status !== 'running') return;
+        // 严格模式：专注阶段不可暂停（对标番茄ToDo 强制专注）
+        if (settings.strictMode && mode === 'work') return;
+        if (phaseStartedAt != null) {
+          // 正计时：冻结已专注秒数
+          set({
+            status: 'paused',
+            timeLeft: countUpElapsed(phaseStartedAt, timeLeft),
+            phaseStartedAt: null,
+          });
+          return;
+        }
+        set({
+          status: 'paused',
+          timeLeft: wallClockRemaining(phaseEndsAt, timeLeft),
+          phaseEndsAt: null,
+        });
+      },
+
+      resume: () => {
+        const { sessionStartTime, timeLeft, status, mode, settings } = get();
+        if (status === 'running') return;
+        // 正计时工作阶段：以「已专注秒数」反推起算时刻
+        const isCountUpWork = mode === 'work' && settings.countUp;
+        set({
+          status: 'running',
+          phaseEndsAt: isCountUpWork ? null : Date.now() + Math.max(0, timeLeft) * 1000,
+          phaseStartedAt: isCountUpWork ? Date.now() - Math.max(0, timeLeft) * 1000 : null,
+          sessionStartTime: sessionStartTime || new Date().toISOString(),
+          lastActiveDate: localToday(),
+        });
+      },
+
+      stop: (interrupted = true) => {
+        const {
+          mode,
+          status,
+          currentTaskId,
+          settings,
+          sessionStartTime,
+          phaseEndsAt,
+          phaseStartedAt,
+          timeLeft,
+        } = get();
+
+        if (interrupted && mode === 'work' && sessionStartTime) {
+          if (phaseStartedAt != null || (phaseEndsAt == null && status === 'paused' && settings.countUp)) {
+            // 正计时：已专注秒数即实际时长
+            const elapsed = status === 'running' ? countUpElapsed(phaseStartedAt, timeLeft) : timeLeft;
+            if (elapsed > 0) {
+              recordSession(currentTaskId, sessionStartTime, elapsed, elapsed, 'work', 'interrupted');
+            }
+          } else {
             const remaining =
               status === 'running' ? wallClockRemaining(phaseEndsAt, timeLeft) : timeLeft;
             const actualDuration = settings.workDuration - remaining;
@@ -170,60 +257,14 @@ export const usePomodoroStore = create<PomodoroState>()(
               );
             }
           }
-          beginWork();
-          return;
-        }
-
-        // 同任务/无任务：恢复当前阶段
-        get().resume();
-      },
-
-      pause: () => {
-        const { status, phaseEndsAt, timeLeft } = get();
-        if (status !== 'running') return;
-        set({
-          status: 'paused',
-          timeLeft: wallClockRemaining(phaseEndsAt, timeLeft),
-          phaseEndsAt: null,
-        });
-      },
-
-      resume: () => {
-        const { sessionStartTime, timeLeft, status } = get();
-        if (status === 'running') return;
-        set({
-          status: 'running',
-          phaseEndsAt: Date.now() + Math.max(0, timeLeft) * 1000,
-          sessionStartTime: sessionStartTime || new Date().toISOString(),
-          lastActiveDate: localToday(),
-        });
-      },
-
-      stop: (interrupted = true) => {
-        const { mode, status, currentTaskId, settings, sessionStartTime, phaseEndsAt, timeLeft } =
-          get();
-
-        if (interrupted && mode === 'work' && sessionStartTime) {
-          const remaining =
-            status === 'running' ? wallClockRemaining(phaseEndsAt, timeLeft) : timeLeft;
-          const actualDuration = settings.workDuration - remaining;
-          if (actualDuration > 0) {
-            recordSession(
-              currentTaskId,
-              sessionStartTime,
-              settings.workDuration,
-              actualDuration,
-              'work',
-              'interrupted',
-            );
-          }
         }
 
         set({
           mode: 'idle',
           status: 'paused',
-          timeLeft: settings.workDuration,
+          timeLeft: settings.countUp ? 0 : settings.workDuration,
           phaseEndsAt: null,
+          phaseStartedAt: null,
           currentTaskId: null,
           currentTaskTitle: null,
           sessionStartTime: null,
@@ -231,10 +272,41 @@ export const usePomodoroStore = create<PomodoroState>()(
       },
 
       tick: () => {
-        const { status, phaseEndsAt, timeLeft } = get();
+        const { status, phaseEndsAt, phaseStartedAt, timeLeft, settings, mode } = get();
         if (status !== 'running') return;
 
+        // 正计时：向上累加，无自动完成
+        if (phaseStartedAt != null) {
+          const elapsed = countUpElapsed(phaseStartedAt, timeLeft);
+          if (elapsed !== timeLeft) {
+            set({ timeLeft: elapsed });
+          }
+          return;
+        }
+
         const remaining = wallClockRemaining(phaseEndsAt, timeLeft);
+
+        // 结束前提醒：剩余进入阈值窗口时轻提示一次（每阶段一次）
+        if (
+          settings.endReminderSeconds > 0 &&
+          phaseEndsAt != null &&
+          remaining > 0 &&
+          remaining <= settings.endReminderSeconds &&
+          endReminderFiredPhase !== phaseEndsAt
+        ) {
+          endReminderFiredPhase = phaseEndsAt;
+          playNotificationSound(0.35);
+          void sendSystemNotification(
+            i18n.t('todo:pomodoro.notifications.endReminderTitle'),
+            i18n.t(
+              mode === 'work'
+                ? 'todo:pomodoro.notifications.endReminderBodyWork'
+                : 'todo:pomodoro.notifications.endReminderBodyBreak',
+              { minutes: Math.max(1, Math.ceil(remaining / 60)) },
+            ),
+          );
+        }
+
         if (remaining <= 0) {
           get().completeCurrentSession();
         } else if (remaining !== timeLeft) {
@@ -245,9 +317,18 @@ export const usePomodoroStore = create<PomodoroState>()(
       // 墙钟矫正：应用重启 rehydrate、窗口重新可见、系统休眠唤醒后调用。
       // 运行中已超时 → 直接按完成处理（计时基于 phaseEndsAt，离线期间也在走）
       syncWallClock: () => {
-        const { status, phaseEndsAt, timeLeft, mode } = get();
-        if (status !== 'running' || mode === 'idle' || phaseEndsAt == null) return;
+        const { status, phaseEndsAt, phaseStartedAt, timeLeft, mode } = get();
+        if (status !== 'running' || mode === 'idle') return;
 
+        if (phaseStartedAt != null) {
+          const elapsed = countUpElapsed(phaseStartedAt, timeLeft);
+          if (elapsed !== timeLeft) {
+            set({ timeLeft: elapsed });
+          }
+          return;
+        }
+
+        if (phaseEndsAt == null) return;
         const remaining = wallClockRemaining(phaseEndsAt, timeLeft);
         if (remaining <= 0) {
           get().completeCurrentSession();
@@ -257,27 +338,45 @@ export const usePomodoroStore = create<PomodoroState>()(
       },
 
       completeCurrentSession: () => {
-        const { mode, settings, completedPomodorosToday, lastActiveDate, currentTaskId, sessionStartTime } =
-          get();
+        const {
+          mode,
+          status,
+          settings,
+          completedPomodorosToday,
+          lastActiveDate,
+          currentTaskId,
+          sessionStartTime,
+          phaseStartedAt,
+          timeLeft,
+        } = get();
 
         playNotificationSound();
 
         if (mode === 'work') {
-          // 跨午夜完成：当天计数从 1 重新开始
-          const today = localToday();
-          const newCompletedCount = lastActiveDate === today ? completedPomodorosToday + 1 : 1;
+          // 正计时手动完成：实际时长 = 已专注秒数；倒计时 = 设定工作时长
+          const isCountUpPhase = phaseStartedAt != null || (settings.countUp && get().phaseEndsAt == null);
+          const workSeconds = isCountUpPhase
+            ? (status === 'running' ? countUpElapsed(phaseStartedAt, timeLeft) : timeLeft)
+            : settings.workDuration;
 
-          const isLongBreak = newCompletedCount % settings.longBreakInterval === 0;
+          // 跨午夜完成：当天计数从 1 重新开始。正计时不足 1 分钟不计数（防误触）
+          const today = localToday();
+          const countsAsPomodoro = !isCountUpPhase || workSeconds >= 60;
+          const base = lastActiveDate === today ? completedPomodorosToday : 0;
+          const newCompletedCount = countsAsPomodoro ? base + 1 : base;
+
+          const isLongBreak =
+            newCompletedCount > 0 && newCompletedCount % settings.longBreakInterval === 0;
           const nextMode: PomodoroMode = isLongBreak ? 'long_break' : 'short_break';
           const nextTimeLeft = isLongBreak ? settings.longBreak : settings.shortBreak;
 
           // Record completed work session to backend
-          if (sessionStartTime) {
+          if (sessionStartTime && workSeconds > 0) {
             recordSession(
               currentTaskId,
               sessionStartTime,
-              settings.workDuration,
-              settings.workDuration,
+              isCountUpPhase ? workSeconds : settings.workDuration,
+              workSeconds,
               'work',
               'completed',
             );
@@ -297,6 +396,7 @@ export const usePomodoroStore = create<PomodoroState>()(
             status: autoStart ? 'running' : 'paused',
             timeLeft: nextTimeLeft,
             phaseEndsAt: autoStart ? Date.now() + nextTimeLeft * 1000 : null,
+            phaseStartedAt: null,
             sessionStartTime: new Date().toISOString(),
           });
         } else {
@@ -316,11 +416,13 @@ export const usePomodoroStore = create<PomodoroState>()(
 
           if (settings.autoStartWork) {
             // 自动开始下一个番茄（沿用当前任务）
+            const isCountUp = settings.countUp;
             set({
               mode: 'work',
               status: 'running',
-              timeLeft: settings.workDuration,
-              phaseEndsAt: Date.now() + settings.workDuration * 1000,
+              timeLeft: isCountUp ? 0 : settings.workDuration,
+              phaseEndsAt: isCountUp ? null : Date.now() + settings.workDuration * 1000,
+              phaseStartedAt: isCountUp ? Date.now() : null,
               sessionStartTime: new Date().toISOString(),
               lastActiveDate: localToday(),
             });
@@ -328,8 +430,9 @@ export const usePomodoroStore = create<PomodoroState>()(
             set({
               mode: 'idle',
               status: 'paused',
-              timeLeft: settings.workDuration,
+              timeLeft: settings.countUp ? 0 : settings.workDuration,
               phaseEndsAt: null,
+              phaseStartedAt: null,
               sessionStartTime: null,
             });
           }
@@ -344,11 +447,13 @@ export const usePomodoroStore = create<PomodoroState>()(
           merged.shortBreak = Math.max(60, merged.shortBreak);
           merged.longBreak = Math.max(60, merged.longBreak);
           merged.longBreakInterval = Math.max(1, Math.round(merged.longBreakInterval));
+          merged.endReminderSeconds = Math.max(0, Math.round(merged.endReminderSeconds));
+          merged.noiseVolume = Math.max(0, Math.min(1, merged.noiseVolume));
 
           const next: Partial<PomodoroState> = { settings: merged };
-          // 空闲态同步显示新的工作时长
+          // 空闲态同步显示新的工作时长（正计时模式空闲显示 0）
           if (state.mode === 'idle') {
-            next.timeLeft = merged.workDuration;
+            next.timeLeft = merged.countUp ? 0 : merged.workDuration;
           }
           return next as PomodoroState;
         });
@@ -367,6 +472,7 @@ export const usePomodoroStore = create<PomodoroState>()(
         status: state.status,
         timeLeft: state.timeLeft,
         phaseEndsAt: state.phaseEndsAt,
+        phaseStartedAt: state.phaseStartedAt,
         currentTaskId: state.currentTaskId,
         currentTaskTitle: state.currentTaskTitle,
         sessionStartTime: state.sessionStartTime,

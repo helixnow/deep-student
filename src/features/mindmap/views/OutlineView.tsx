@@ -188,17 +188,31 @@ const SortableOutlineNode: React.FC<{
   };
 
   useEffect(() => {
-    if (isFocused && !isEditingNote) {
+    if (isFocused && !isEditingNote && !reciteMode) {
       if (inputRef.current) {
         inputRef.current.focus();
         // ★ 空间锚定：确保焦点节点在可视区域内
         inputRef.current.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
-      } else if (!isEditing && containsLatex(localText)) {
-        // LaTeX 渲染态下 input 未挂载，需先进入编辑模式
-        setIsEditing(true);
+      } else if (!isEditing) {
+        // ★ 非编辑态渲染为静态 div（纯文本/LaTeX 均无 input 可聚焦）。
+        // 进入编辑态让 input 挂载，下一轮 effect 完成聚焦。
+        // 否则 ArrowUp/Down 导航到该节点时 DOM 焦点仍滞留在旧 input，
+        // 后续按键继续由旧节点处理，键盘导航在第二个节点处断裂。
+        //
+        // 仅当焦点空闲或在另一个大纲节点输入框（键盘导航中）时才接管，
+        // 避免抢走搜索框/备注框等其它输入控件的焦点。
+        const active = globalThis.document.activeElement as HTMLElement | null;
+        const isOtherInputFocused =
+          !!active &&
+          active !== globalThis.document.body &&
+          (active.tagName === 'INPUT' || active.tagName === 'TEXTAREA' || active.isContentEditable) &&
+          active.dataset.mmOutlineInput !== 'true';
+        if (!isOtherInputFocused) {
+          setIsEditing(true);
+        }
       }
     }
-  }, [isFocused, isEditingNote, isEditing, localText]);
+  }, [isFocused, isEditingNote, isEditing, reciteMode]);
 
   useEffect(() => {
     if (isEditingNote && noteRef.current) {
@@ -348,6 +362,9 @@ const SortableOutlineNode: React.FC<{
       e.preventDefault();
       setLocalText(node.text);
       setIsEditing(false);
+      // ★ 同时清除聚焦：否则 isFocused 仍为 true，focus-effect 会立即
+      // 重新进入编辑态，Esc 永远退不出（LaTeX 节点旧有问题，现统一修复）
+      setFocusedNodeId(null);
       inputRef.current?.blur();
     }
   }, [isRoot, parentId, indexInParent, node.id, node.text, node.collapsed, hasChildren, localText, addNode, setFocusedNodeId, indentNode, outdentNode, deleteNode, commitText, moveNode, toggleCollapse, onNavigate]);
@@ -509,6 +526,7 @@ const SortableOutlineNode: React.FC<{
         ) : isEditing ? (
         <TextareaAutosize
           ref={inputRef as any}
+          data-mm-outline-input="true"
           className={cn(
             "node-input resize-none overflow-hidden block w-full",
             isRoot && "root",
@@ -965,6 +983,26 @@ export const OutlineView: React.FC = () => {
   const containerRef = useRef<HTMLDivElement>(null);
 
   const sensors = useTouchFriendlyDndSensors();
+
+  // ★ 移动端虚拟键盘：键盘弹起（visualViewport 缩小）后，把正在编辑的
+  // 输入框滚回可视区中部，避免被键盘遮挡
+  useEffect(() => {
+    if (!window.matchMedia?.('(pointer: coarse)').matches) return;
+    const vv = window.visualViewport;
+    if (!vv) return;
+    const handleResize = () => {
+      const active = globalThis.document.activeElement as HTMLElement | null;
+      if (
+        active &&
+        (active.tagName === 'TEXTAREA' || active.tagName === 'INPUT') &&
+        containerRef.current?.contains(active)
+      ) {
+        active.scrollIntoView({ block: 'center', behavior: 'smooth' });
+      }
+    };
+    vv.addEventListener('resize', handleResize);
+    return () => vv.removeEventListener('resize', handleResize);
+  }, []);
 
   const displayRoot = useMemo(() => {
     if (!focusedRootId) return document.root;

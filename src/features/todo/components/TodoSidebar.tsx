@@ -21,6 +21,7 @@ import {
   Trash,
   X,
   PencilSimple,
+  SquaresFour,
 } from '@phosphor-icons/react';
 import { cn } from '@/lib/utils';
 import { Input } from '@/components/ui/shad/Input';
@@ -41,6 +42,7 @@ const SMART_VIEWS: SmartView[] = [
   { id: 'all', icon: Tray, labelKey: 'todo:views.inbox' },
   { id: 'today', icon: Calendar, labelKey: 'todo:views.today' },
   { id: 'upcoming', icon: Clock, labelKey: 'todo:views.upcoming' },
+  { id: 'matrix', icon: SquaresFour, labelKey: 'todo:views.matrix' },
   { id: 'overdue', icon: Warning, labelKey: 'todo:views.overdue' },
   { id: 'completed', icon: CheckSquare, labelKey: 'todo:views.completed' },
 ];

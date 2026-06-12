@@ -79,13 +79,14 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
 
   // 发送审批响应
   const handleResponse = useCallback(
-    async (decision: 'approve' | 'reject' | 'always_allow' | 'always_deny') => {
+    async (decision: 'approve' | 'allow_session' | 'reject' | 'always_allow' | 'always_deny') => {
       if (hasResponded || isResponding || isResolved) return;
 
       setIsResponding(true);
       try {
-        const approved = decision === 'approve' || decision === 'always_allow';
+        const approved = decision === 'approve' || decision === 'allow_session' || decision === 'always_allow';
         const remember = decision === 'always_allow' || decision === 'always_deny';
+        const rememberSession = decision === 'allow_session';
         const reason = approved ? undefined : 'user_rejected';
 
         if ('respond' in interaction && typeof interaction.respond === 'function') {
@@ -102,6 +103,7 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             approved,
             reason: reason ?? null,
             remember,
+            rememberSession, // 🆕 三档分级：本会话允许该工具
             arguments: interaction.arguments,
           });
         }
@@ -232,6 +234,17 @@ export const BlockingApprovalBar: React.FC<BlockingApprovalBarProps> = React.mem
             className="text-red-600 hover:text-red-700 dark:text-red-400"
           >
             {t('approval.reject')}
+          </NotionButton>
+
+          {/* 🆕 本会话允许该工具 */}
+          <NotionButton
+            variant="outline"
+            size="sm"
+            onClick={() => handleResponse('allow_session')}
+            disabled={disabled}
+            className="text-success hover:text-success/80"
+          >
+            {t('approval.allowSession', '本会话允许')}
           </NotionButton>
 
           {/* 批准 */}

@@ -1,4 +1,4 @@
-import { useEffect, useRef, useCallback } from 'react';
+import { useEffect, useRef, useCallback, useState } from 'react';
 import { listen, UnlistenFn } from '@tauri-apps/api/event';
 import { invoke } from '@tauri-apps/api/core';
 import type { CrepeEditorApi } from '@/components/crepe';
@@ -11,11 +11,27 @@ interface UseCanvasAIEditHandlerOptions {
   enabled?: boolean;
 }
 
+/** ★ 2.1 AI 编辑检查点：接受后仍可回滚整轮 */
+export interface AIEditCheckpoint {
+  /** 编辑前的完整内容 */
+  originalContent: string;
+  /** 应用时间戳 */
+  appliedAt: number;
+  /** 所属笔记（切换笔记后检查点失效） */
+  noteId: string;
+}
+
 interface UseCanvasAIEditHandlerReturn {
   aiEditState: AIEditState;
   handleAccept: () => Promise<void>;
   handleReject: () => Promise<void>;
   isLocked: boolean;
+  /** ★ 2.1 最近一次已接受 AI 编辑的检查点（可回滚） */
+  checkpoint: AIEditCheckpoint | null;
+  /** ★ 2.1 回滚到检查点（恢复 AI 编辑前内容并落盘） */
+  rollbackCheckpoint: () => Promise<void>;
+  /** ★ 2.1 放弃检查点（保留 AI 编辑结果） */
+  dismissCheckpoint: () => void;
 }
 
 export function useCanvasAIEditHandler({
@@ -29,6 +45,14 @@ export function useCanvasAIEditHandler({
   const onSaveRef = useRef(onSave);
 
   const { state: aiEditState, startEdit, accept, reject, clear } = useAIEditState();
+
+  // ★ 2.1 AI 编辑检查点
+  const [checkpoint, setCheckpoint] = useState<AIEditCheckpoint | null>(null);
+
+  // 切换笔记后检查点失效（回滚目标已不在编辑器中）
+  useEffect(() => {
+    setCheckpoint((prev) => (prev && prev.noteId !== noteId ? null : prev));
+  }, [noteId]);
 
   useEffect(() => {
     noteIdRef.current = noteId;
@@ -67,6 +91,9 @@ export function useCanvasAIEditHandler({
       return;
     }
 
+    // ★ 2.1 接受前记录检查点（编辑前全文），接受后仍可整轮回滚
+    const contentBeforeApply = editor.getMarkdown();
+
     editor.setMarkdown(proposedContent);
 
     if (onSaveRef.current) {
@@ -86,8 +113,38 @@ export function useCanvasAIEditHandler({
       }
     }
 
+    if (noteIdRef.current) {
+      setCheckpoint({
+        originalContent: contentBeforeApply,
+        appliedAt: Date.now(),
+        noteId: noteIdRef.current,
+      });
+    }
+
     await sendResult(result);
   }, [accept, sendResult]);
+
+  // ★ 2.1 回滚到检查点
+  const rollbackCheckpoint = useCallback(async () => {
+    if (!checkpoint) return;
+    const editor = editorApiRef.current;
+    if (!editor || editor.isReadonly()) {
+      console.warn('[useCanvasAIEditHandler] Rollback skipped: editor not writable');
+      return;
+    }
+
+    editor.setMarkdown(checkpoint.originalContent);
+    if (onSaveRef.current) {
+      try {
+        await onSaveRef.current(checkpoint.originalContent);
+      } catch (err) {
+        console.warn('[useCanvasAIEditHandler] Rollback save failed:', err);
+      }
+    }
+    setCheckpoint(null);
+  }, [checkpoint]);
+
+  const dismissCheckpoint = useCallback(() => setCheckpoint(null), []);
 
   const handleReject = useCallback(async () => {
     const result = reject();
@@ -127,6 +184,9 @@ export function useCanvasAIEditHandler({
         await sendResult(result);
         return;
       }
+
+      // ★ 2.1 新一轮编辑开始 → 旧检查点失效（只支持回滚最近一轮）
+      setCheckpoint(null);
 
       const originalContent = editor.getMarkdown();
       const immediateFailure = startEdit(request, originalContent);
@@ -210,6 +270,9 @@ export function useCanvasAIEditHandler({
     handleAccept,
     handleReject,
     isLocked: aiEditState.isActive,
+    checkpoint,
+    rollbackCheckpoint,
+    dismissCheckpoint,
   };
 }
 

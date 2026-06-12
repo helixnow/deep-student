@@ -85,6 +85,16 @@ export interface UsageRecord {
 
 export type TimeGranularity = 'hour' | 'day' | 'week' | 'month';
 
+/** ★ 1.2 会话级用量汇总 */
+export interface SessionUsageSummary {
+  sessionId: string;
+  requestCount: number;
+  promptTokens: number;
+  completionTokens: number;
+  totalTokens: number;
+  estimatedCostUsd?: number;
+}
+
 export const LlmUsageApi = {
   getTrends: (days: number, granularity: TimeGranularity = 'day'): Promise<UsageTrendPoint[]> =>
     invoke<UsageTrendPoint[]>('llm_usage_get_trends', { days, granularity }),
@@ -97,6 +107,10 @@ export const LlmUsageApi = {
 
   getSummary: (startDate?: string, endDate?: string): Promise<UsageSummary> =>
     invoke<UsageSummary>('llm_usage_summary', { startDate, endDate }),
+
+  /** ★ 1.2 会话级累计用量（token + 费用） */
+  getSessionSummary: (sessionId: string): Promise<SessionUsageSummary> =>
+    invoke<SessionUsageSummary>('llm_usage_session_summary', { sessionId }),
 
   getRecent: (limit?: number): Promise<UsageRecord[]> =>
     invoke<UsageRecord[]>('llm_usage_recent', { limit }),

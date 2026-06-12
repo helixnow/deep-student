@@ -76,6 +76,11 @@
     "reject": "拒绝",
     "no_changes": "未检测到变更"
   },
+  "aiCheckpoint": {
+    "applied": "AI 编辑已应用",
+    "rollback": "回滚整轮",
+    "keep": "保留"
+  },
   "errors": {
     "noteNotFound": "笔记未找到",
     "search_notes": "搜索笔记",

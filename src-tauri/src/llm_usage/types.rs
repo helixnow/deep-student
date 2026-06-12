@@ -478,6 +478,27 @@ impl UsageTrendPoint {
 // 使用统计汇总
 // ============================================================================
 
+/// ★ 1.2 会话级用量汇总（按 caller_id 聚合）
+///
+/// 用于聊天界面常驻显示「本会话累计 token / 费用」。
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionUsageSummary {
+    /// 会话 ID（即 caller_id）
+    pub session_id: String,
+    /// 请求次数
+    pub request_count: u64,
+    /// 累计输入 Token
+    pub prompt_tokens: u64,
+    /// 累计输出 Token
+    pub completion_tokens: u64,
+    /// 累计总 Token
+    pub total_tokens: u64,
+    /// 累计估算成本（美元），无定价信息时为 None
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub estimated_cost_usd: Option<f64>,
+}
+
 /// 使用统计汇总
 ///
 /// 整体使用统计的汇总视图，包含总量、按维度分组的统计和趋势数据。

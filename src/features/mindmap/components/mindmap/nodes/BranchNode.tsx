@@ -117,8 +117,10 @@ export const BranchNode: React.FC<NodeProps<Node<BranchNodeData>>> = ({
     const newId = addNode(data.nodeId, 0);
     if (newId) {
       setFocusedNodeId(newId);
+      // 与 Tab/Enter 快捷键行为一致：新节点直接进入编辑，省一次双击
+      setEditingNodeId(newId);
     }
-  }, [data.nodeId, addNode, setFocusedNodeId]);
+  }, [data.nodeId, addNode, setFocusedNodeId, setEditingNodeId]);
 
   const handleDelete = useCallback((e: React.MouseEvent) => {
     e.stopPropagation();

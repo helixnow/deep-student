@@ -7,8 +7,22 @@
     "inbox": "收件箱",
     "today": "今日",
     "upcoming": "即将到期",
+    "matrix": "四象限",
     "overdue": "已过期",
     "completed": "已完成"
+  },
+  "matrix": {
+    "urgentImportant": "重要且紧急",
+    "importantNotUrgent": "重要不紧急",
+    "urgentNotImportant": "紧急不重要",
+    "neither": "不紧急不重要",
+    "empty": "暂无任务"
+  },
+  "reviewLink": {
+    "title": "今日有 {{count}} 题待复习",
+    "subtitle": "间隔复习计划已就绪",
+    "withOverdue": "其中 {{overdue}} 题已逾期",
+    "action": "去复习"
   },
   "actions": {
     "quickAddPlaceholder": "添加待办，试试「明天交作业 !高」...",
@@ -41,10 +55,27 @@
   "subtasks": {
     "title": "子任务",
     "progress": "子任务 {{done}}/{{total}}",
-    "addPlaceholder": "添加子任务..."
+    "addPlaceholder": "添加子任务...",
+    "aiBreakdown": "AI 拆解",
+    "aiBreaking": "拆解中...",
+    "aiBreakdownHint": "让 AI 把任务拆解为可执行的子任务"
   },
   "filters": {
     "showCompleted": "显示已完成"
+  },
+  "sort": {
+    "label": "排序",
+    "manual": "手动排序",
+    "dueDate": "按截止日期",
+    "priority": "按优先级",
+    "title": "按标题"
+  },
+  "groups": {
+    "overdue": "已逾期",
+    "today": "今天",
+    "tomorrow": "明天",
+    "thisWeek": "7 天内",
+    "later": "以后"
   },
   "stats": {
     "pending": "待完成",
@@ -67,7 +98,29 @@
     "dueTime": "时间",
     "description": "描述",
     "pomodoros": "番茄",
-    "repeat": "重复"
+    "repeat": "重复",
+    "reminder": "提醒",
+    "tags": "标签"
+  },
+  "reminder": {
+    "clear": "清除提醒",
+    "notificationTitle": "提醒：{{title}}",
+    "notificationBody": "该处理这条待办了",
+    "notificationBodyWithDue": "截止 {{due}}，记得及时处理"
+  },
+  "dailyDigest": {
+    "title": "今日有 {{count}} 项待办到期",
+    "bodyMore": "{{titles}} 等，另有 {{rest}} 项"
+  },
+  "tags": {
+    "addPlaceholder": "添加标签...",
+    "remove": "移除标签 {{tag}}"
+  },
+  "focusHistory": {
+    "title": "专注历史",
+    "summary": "{{count}} 个番茄 · {{minutes}} 分钟",
+    "minutes": "{{count}} 分钟",
+    "more": "还有 {{count}} 条记录"
   },
   "repeat": {
     "none": "不重复",
@@ -79,7 +132,21 @@
     "everyNDays": "每 {{count}} 天",
     "everyNWeeks": "每 {{count}} 周",
     "everyNMonths": "每 {{count}} 个月",
-    "everyNYears": "每 {{count}} 年"
+    "everyNYears": "每 {{count}} 年",
+    "weeklyOn": "每周{{days}}",
+    "everyNWeeksOn": "每 {{count}} 周的周{{days}}",
+    "weekdayJoin": "、",
+    "weekdayShort": {
+      "0": "日",
+      "1": "一",
+      "2": "二",
+      "3": "三",
+      "4": "四",
+      "5": "五",
+      "6": "六"
+    },
+    "pickWeekdays": "选择星期",
+    "nextOccurrence": "下次：{{date}}"
   },
   "trash": {
     "title": "回收站",
@@ -96,7 +163,8 @@
     "emptyAll": "清空回收站",
     "emptyAllConfirmTitle": "清空回收站",
     "emptyAllConfirmDescription": "确定清空回收站吗？所有已删除的列表与待办将被永久移除，该操作不可撤销。",
-    "emptied": "回收站已清空"
+    "emptied": "回收站已清空",
+    "loadMore": "加载更早的记录"
   },
   "overdue": {
     "badgeAria": "{{count}} 个逾期待办",
@@ -133,6 +201,7 @@
       "pause": "暂停",
       "resume": "继续",
       "stop": "停止",
+      "finish": "完成",
       "skipBreak": "跳过休息",
       "immersive": "沉浸模式",
       "enterImmersive": "进入沉浸式专注模式",
@@ -140,7 +209,30 @@
       "pauseSpace": "暂停 (Space)",
       "startSpace": "开始 (Space)",
       "noiseOn": "开启环境音",
-      "noiseOff": "关闭环境音"
+      "noiseOff": "关闭环境音",
+      "noiseCycle": "切换音色",
+      "popOut": "弹出置顶小窗"
+    },
+    "miniWindow": {
+      "close": "收回到主窗口"
+    },
+    "countUpLabel": "正计时",
+    "strictBadge": "严格模式",
+    "strictHint": "严格模式下专注不可暂停",
+    "noise": {
+      "brown": "海浪",
+      "pink": "细雨",
+      "white": "白噪",
+      "rain": "雨声"
+    },
+    "statsPopover": {
+      "title": "专注趋势",
+      "rangeDays": "{{count}} 天",
+      "heatmap": "热力图",
+      "totalPomodoros": "番茄",
+      "dailyAvg": "日均",
+      "pomodoroCount": "{{count}} 个番茄",
+      "empty": "该时间段暂无专注记录"
     },
     "stats": {
       "todayLabel": "今日",
@@ -155,7 +247,10 @@
       "workCompleteTitle": "番茄完成",
       "workCompleteBody": "专注结束，休息一下吧（今日已完成 {{value}} 个番茄）",
       "breakCompleteTitle": "休息结束",
-      "breakCompleteBody": "休息结束，开始下一个番茄吧"
+      "breakCompleteBody": "休息结束，开始下一个番茄吧",
+      "endReminderTitle": "即将结束",
+      "endReminderBodyWork": "专注还剩约 {{minutes}} 分钟，准备收尾",
+      "endReminderBodyBreak": "休息还剩约 {{minutes}} 分钟"
     },
     "settings": {
       "title": "番茄钟设置",
@@ -166,7 +261,12 @@
       "minutesUnit": "分钟",
       "pomodorosUnit": "个",
       "autoStartBreaks": "自动开始休息",
-      "autoStartWork": "休息后自动开始专注"
+      "autoStartWork": "休息后自动开始专注",
+      "strictMode": "严格模式（专注不可暂停）",
+      "countUp": "正计时（秒表向上计时）",
+      "endReminder": "结束前提醒（0 关闭）",
+      "noiseType": "环境音",
+      "noiseVolume": "音量"
     },
     "progressTitle": "已完成 {{done}}/{{total}} 个番茄",
     "completedCount": "已完成 {{count}} 个",

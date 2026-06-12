@@ -165,12 +165,32 @@ impl SecureStore {
 
     // ==================== 加密文件存储（所有平台通用） ====================
 
+    /// 收紧文件/目录权限（Unix: 文件 0600、目录 0700；其他平台为 no-op）。
+    ///
+    /// `.secure` 下存放加密凭据与密钥种子 `.key_seed`（种子等价于解密钥匙），
+    /// 默认 umask 创建的 0644/0755 允许同机其他用户读取。
+    fn restrict_permissions(path: &std::path::Path, is_dir: bool) {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = if is_dir { 0o700 } else { 0o600 };
+            if let Err(e) = std::fs::set_permissions(path, std::fs::Permissions::from_mode(mode)) {
+                warn!("设置安全存储权限失败 {:?}: {}", path, e);
+            }
+        }
+        #[cfg(not(unix))]
+        {
+            let _ = (path, is_dir);
+        }
+    }
+
     /// 获取安全存储目录（优先使用实例的 secure_dir，回退到静态路径）
     fn get_secure_dir(&self) -> Result<std::path::PathBuf, SecureStoreError> {
         if let Some(ref dir) = self.secure_dir {
             // 使用传入的 app_data_dir（稳定路径）
             std::fs::create_dir_all(dir)
                 .map_err(|e| SecureStoreError::Other(format!("创建安全目录失败: {}", e)))?;
+            Self::restrict_permissions(dir, true);
             return Ok(dir.clone());
         }
         // 回退到静态路径（桌面端兼容）
@@ -183,7 +203,10 @@ impl SecureStore {
             .unwrap_or_else(|| std::env::temp_dir().join("deep-student").join(".secure"));
 
         match std::fs::create_dir_all(&candidate) {
-            Ok(()) => Ok(candidate),
+            Ok(()) => {
+                Self::restrict_permissions(&candidate, true);
+                Ok(candidate)
+            }
             Err(primary_err) => {
                 // 在沙箱/权限受限环境下回退到临时目录，避免直接失败
                 let fallback = std::env::temp_dir().join("deep-student").join(".secure");
@@ -193,6 +216,7 @@ impl SecureStore {
                         primary_err, fallback_err
                     ))
                 })?;
+                Self::restrict_permissions(&fallback, true);
                 Ok(fallback)
             }
         }
@@ -217,6 +241,8 @@ impl SecureStore {
         seed_bytes.zeroize();
         std::fs::write(&seed_file, &seed)
             .map_err(|e| SecureStoreError::Other(format!("写入密钥种子失败: {}", e)))?;
+        // 种子是凭据加密的根密钥，必须限制为仅属主可读
+        Self::restrict_permissions(&seed_file, false);
         Ok(seed)
     }
 
@@ -335,6 +361,7 @@ impl SecureStore {
 
         std::fs::write(&file_path, &data)
             .map_err(|e| SecureStoreError::Other(format!("写入文件失败: {}", e)))?;
+        Self::restrict_permissions(&file_path, false);
 
         debug!("✅ 凭据已加密存储: {}", key);
         Ok(())
@@ -553,4 +580,92 @@ pub fn secure_delete_cloud_credentials(app: tauri::AppHandle) -> Result<(), AppE
 pub fn secure_store_is_available(app: tauri::AppHandle) -> bool {
     let store = get_secure_store(Some(&app));
     store.is_available()
+}
+
+// ==================== 凭据后端自取（hydrate） ====================
+
+/// 用安全存储中的凭据补全 `CloudStorageConfig` 中留空的敏感字段。
+///
+/// [P0-3A] 前端的常规调用路径（同步、冲突检测、状态查询等）不再携带明文
+/// 凭据——密码字段传空串，由各 Tauri 命令在入口处调用本函数从安全存储补全。
+/// 这样明文凭据只在用户首次录入时经过一次 IPC，之后不再往返于前端。
+///
+/// 规则：
+/// - 仅补全**空白**字段；调用方显式传入的非空值（如设置页"测试连接"时
+///   用户刚输入的新密码）原样保留，优先级高于安全存储；
+/// - `encryption_password`：安全存储中存有非空值即视为"已启用端到端加密"
+///   并补全。用户在设置页清空加密密码时，保存流程会把它从安全存储删除，
+///   因此不会出现"已关闭加密却被误补全"的情况。
+pub fn hydrate_cloud_config(
+    app: &tauri::AppHandle,
+    config: &mut crate::cloud_storage::CloudStorageConfig,
+) {
+    let needs_webdav = config
+        .webdav
+        .as_ref()
+        .is_some_and(|w| w.password.trim().is_empty());
+    let needs_s3 = config
+        .s3
+        .as_ref()
+        .is_some_and(|s| s.secret_access_key.trim().is_empty());
+    let needs_ftp = config
+        .ftp
+        .as_ref()
+        .is_some_and(|f| f.password.trim().is_empty());
+    let needs_encryption = config
+        .encryption_password
+        .as_deref()
+        .map(|p| p.trim().is_empty())
+        .unwrap_or(true);
+
+    if !(needs_webdav || needs_s3 || needs_ftp || needs_encryption) {
+        return;
+    }
+
+    let store = get_secure_store(Some(app));
+    let credentials = match store.get_cloud_credentials() {
+        Ok(Some(c)) => c,
+        Ok(None) => return,
+        Err(e) => {
+            warn!("读取云存储凭据失败（跳过补全）: {}", e);
+            return;
+        }
+    };
+
+    if needs_webdav {
+        if let (Some(webdav), Some(password)) =
+            (config.webdav.as_mut(), credentials.webdav_password.as_ref())
+        {
+            if !password.trim().is_empty() {
+                webdav.password = password.clone();
+            }
+        }
+    }
+    if needs_s3 {
+        if let (Some(s3), Some(secret)) =
+            (config.s3.as_mut(), credentials.s3_secret_access_key.as_ref())
+        {
+            if !secret.trim().is_empty() {
+                s3.secret_access_key = secret.clone();
+            }
+        }
+    }
+    if needs_ftp {
+        if let (Some(ftp), Some(password)) =
+            (config.ftp.as_mut(), credentials.ftp_password.as_ref())
+        {
+            if !password.trim().is_empty() {
+                ftp.password = password.clone();
+            }
+        }
+    }
+    if needs_encryption {
+        if let Some(password) = credentials
+            .encryption_password
+            .as_ref()
+            .filter(|p| !p.trim().is_empty())
+        {
+            config.encryption_password = Some(password.clone());
+        }
+    }
 }

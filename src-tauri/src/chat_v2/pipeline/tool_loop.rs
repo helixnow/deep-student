@@ -1919,10 +1919,14 @@ impl ChatV2Pipeline {
                     db.get_setting(&v1_key).ok().flatten().map(|v| v == "allow")
                 });
 
-                // 使用持久化设置或内存缓存
-                let remembered = persisted_approval.or_else(|| {
-                    approval_manager.check_remembered(&tool_call.name, &tool_call.arguments)
-                });
+                // 使用持久化设置、会话级记住（🆕 三档分级中间档）或内存缓存
+                let remembered = persisted_approval
+                    .or_else(|| {
+                        approval_manager.check_session_remembered(session_id, &tool_call.name)
+                    })
+                    .or_else(|| {
+                        approval_manager.check_remembered(&tool_call.name, &tool_call.arguments)
+                    });
 
                 if let Some(is_allowed) = remembered {
                     log::info!(

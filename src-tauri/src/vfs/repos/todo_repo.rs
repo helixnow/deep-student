@@ -32,33 +32,39 @@ fn escape_like_pattern(query: &str) -> String {
 const VALID_TODO_STATUSES: &[&str] = &["pending", "completed", "cancelled"];
 const VALID_TODO_PRIORITIES: &[&str] = &["none", "low", "medium", "high", "urgent"];
 
-/// 校验 `YYYY-MM-DD`。日期参与字符串比较（today/overdue/upcoming 查询），
-/// 格式错误会静默破坏所有日期视图，必须在写入前拦截。
-fn validate_due_date(v: &Option<String>) -> VfsResult<()> {
-    if let Some(s) = v {
-        if chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d").is_err() {
-            return Err(VfsError::InvalidArgument {
+/// 校验并规范化为零填充 `YYYY-MM-DD`。日期参与字符串比较
+/// （today/overdue/upcoming 查询），格式错误会静默破坏所有日期视图。
+/// ★ 2026-06-12（第二轮审阅）：chrono 接受 `2026-6-1` 这类非零填充输入，
+/// 但字符串比较下 '2026-6-1' > '2026-06-30'，必须在写入前规范化。
+fn validate_due_date(v: &Option<String>) -> VfsResult<Option<String>> {
+    match v {
+        Some(s) => match chrono::NaiveDate::parse_from_str(s, "%Y-%m-%d") {
+            Ok(d) => Ok(Some(d.format("%Y-%m-%d").to_string())),
+            Err(_) => Err(VfsError::InvalidArgument {
                 param: "due_date".to_string(),
                 reason: format!("Invalid due_date '{}'; expected YYYY-MM-DD", s),
-            });
-        }
+            }),
+        },
+        None => Ok(None),
     }
-    Ok(())
 }
 
-/// 校验 `HH:MM`（也接受 `HH:MM:SS`）。
-fn validate_due_time(v: &Option<String>) -> VfsResult<()> {
-    if let Some(s) = v {
-        let ok = chrono::NaiveTime::parse_from_str(s, "%H:%M").is_ok()
-            || chrono::NaiveTime::parse_from_str(s, "%H:%M:%S").is_ok();
-        if !ok {
-            return Err(VfsError::InvalidArgument {
-                param: "due_time".to_string(),
-                reason: format!("Invalid due_time '{}'; expected HH:MM", s),
-            });
+/// 校验并规范化为零填充 `HH:MM`（也接受 `HH:MM:SS`，秒会被截断）。
+fn validate_due_time(v: &Option<String>) -> VfsResult<Option<String>> {
+    match v {
+        Some(s) => {
+            let parsed = chrono::NaiveTime::parse_from_str(s, "%H:%M")
+                .or_else(|_| chrono::NaiveTime::parse_from_str(s, "%H:%M:%S"));
+            match parsed {
+                Ok(t) => Ok(Some(t.format("%H:%M").to_string())),
+                Err(_) => Err(VfsError::InvalidArgument {
+                    param: "due_time".to_string(),
+                    reason: format!("Invalid due_time '{}'; expected HH:MM", s),
+                }),
+            }
         }
+        None => Ok(None),
     }
-    Ok(())
 }
 
 // ============================================================================
@@ -67,11 +73,15 @@ fn validate_due_time(v: &Option<String>) -> VfsResult<()> {
 
 /// repeat_json 的结构化形式：`{"freq":"daily","interval":1}`。
 /// `interval` 对 daily/weekly/monthly/yearly 生效；`weekdays`（工作日）忽略 interval。
+/// weekly 可携带 `byWeekday`（0=周日..6=周六，与 JS getDay() 一致）实现
+/// 「每周一、三、五」多选星期；旧客户端忽略该字段降级为普通每周。
 #[derive(Debug, Clone, serde::Deserialize)]
 pub struct TodoRepeatRule {
     pub freq: String,
     #[serde(default = "default_repeat_interval")]
     pub interval: u32,
+    #[serde(default, rename = "byWeekday")]
+    pub by_weekday: Option<Vec<u8>>,
 }
 
 fn default_repeat_interval() -> u32 {
@@ -82,12 +92,27 @@ const VALID_REPEAT_FREQS: &[&str] = &["daily", "weekly", "monthly", "yearly", "w
 
 /// 解析并校验重复规则；非法返回 None。
 pub fn parse_repeat_rule(repeat_json: &str) -> Option<TodoRepeatRule> {
-    let rule: TodoRepeatRule = serde_json::from_str(repeat_json).ok()?;
+    let mut rule: TodoRepeatRule = serde_json::from_str(repeat_json).ok()?;
     if !VALID_REPEAT_FREQS.contains(&rule.freq.as_str()) {
         return None;
     }
     if rule.interval == 0 || rule.interval > 999 {
         return None;
+    }
+    // byWeekday 仅对 weekly 有意义：去重排序并校验 0-6；空数组视为未设置
+    if let Some(ref mut days) = rule.by_weekday {
+        if rule.freq != "weekly" {
+            rule.by_weekday = None;
+        } else {
+            if days.iter().any(|d| *d > 6) {
+                return None;
+            }
+            days.sort_unstable();
+            days.dedup();
+            if days.is_empty() {
+                rule.by_weekday = None;
+            }
+        }
     }
     Some(rule)
 }
@@ -100,7 +125,7 @@ fn validate_repeat_json(v: &Option<String>) -> VfsResult<()> {
             return Err(VfsError::InvalidArgument {
                 param: "repeat_json".to_string(),
                 reason: format!(
-                    "Invalid repeat rule '{}'; expected {{\"freq\":\"daily|weekly|monthly|yearly|weekdays\",\"interval\":1-999}}",
+                    "Invalid repeat rule '{}'; expected {{\"freq\":\"daily|weekly|monthly|yearly|weekdays\",\"interval\":1-999,\"byWeekday\":[0-6]?}}",
                     s
                 ),
             });
@@ -116,7 +141,12 @@ fn step_due_date(from: chrono::NaiveDate, rule: &TodoRepeatRule) -> Option<chron
     let interval = rule.interval.max(1);
     match rule.freq.as_str() {
         "daily" => from.checked_add_days(Days::new(interval as u64)),
-        "weekly" => from.checked_add_days(Days::new(7 * interval as u64)),
+        "weekly" => match rule.by_weekday {
+            Some(ref days) if !days.is_empty() => {
+                step_weekly_by_weekday(from, days, interval)
+            }
+            _ => from.checked_add_days(Days::new(7 * interval as u64)),
+        },
         "monthly" => from.checked_add_months(Months::new(interval)),
         "yearly" => from.checked_add_months(Months::new(12 * interval)),
         "weekdays" => {
@@ -128,6 +158,40 @@ fn step_due_date(from: chrono::NaiveDate, rule: &TodoRepeatRule) -> Option<chron
         }
         _ => None,
     }
+}
+
+/// 「每 N 周的周一/三/五」：从 `from` 之后逐日扫描，命中星期集合且
+/// 所在周（周一为起点）与 `from` 所在周的间隔是 interval 的整数倍。
+/// weekday 编号 0=周日..6=周六（与 JS getDay() 一致）。
+fn step_weekly_by_weekday(
+    from: chrono::NaiveDate,
+    days: &[u8],
+    interval: u32,
+) -> Option<chrono::NaiveDate> {
+    use chrono::{Datelike, Days};
+
+    let week_start = |d: chrono::NaiveDate| -> chrono::NaiveDate {
+        // 周一为一周起点
+        let offset = d.weekday().num_days_from_monday() as u64;
+        d.checked_sub_days(Days::new(offset)).unwrap_or(d)
+    };
+    let from_week = week_start(from);
+    let interval = interval.max(1) as i64;
+
+    // 最多扫 interval 周 + 1 周，必能覆盖下一个命中日
+    let scan_limit = (interval * 7 + 7) as u64;
+    let mut d = from.checked_add_days(Days::new(1))?;
+    for _ in 0..scan_limit {
+        let js_weekday = (d.weekday().num_days_from_sunday()) as u8;
+        if days.contains(&js_weekday) {
+            let week_diff = (week_start(d) - from_week).num_days() / 7;
+            if week_diff % interval == 0 {
+                return Some(d);
+            }
+        }
+        d = d.checked_add_days(Days::new(1))?;
+    }
+    None
 }
 
 /// 完成重复任务后的下一次到期日。
@@ -150,6 +214,23 @@ fn compute_next_due_date(
         }
     }
     Some(next)
+}
+
+/// 重复任务滚动时把提醒时间平移到新到期日（保留时刻）。
+///
+/// reminder 为本地 datetime（`YYYY-MM-DDTHH:MM[:SS]`，datetime-local 格式）。
+/// 平移量 = 新到期日 - 旧到期日；解析失败返回 None（丢弃过期提醒）。
+fn shift_reminder(
+    reminder: &str,
+    old_due: chrono::NaiveDate,
+    new_due: chrono::NaiveDate,
+) -> Option<String> {
+    let parsed = chrono::NaiveDateTime::parse_from_str(reminder, "%Y-%m-%dT%H:%M:%S")
+        .or_else(|_| chrono::NaiveDateTime::parse_from_str(reminder, "%Y-%m-%dT%H:%M"))
+        .ok()?;
+    let delta = new_due.signed_duration_since(old_due);
+    let shifted = parsed.checked_add_signed(delta)?;
+    Some(shifted.format("%Y-%m-%dT%H:%M").to_string())
 }
 
 fn validate_todo_status(status: &str) -> VfsResult<()> {
@@ -444,12 +525,16 @@ impl VfsTodoRepo {
         Self::restore_todo_list_with_conn(&conn, list_id)
     }
 
-    /// 恢复软删除的待办列表（使用现有连接，事务保护）
+    /// 恢复软删除的待办列表（使用现有连接，SAVEPOINT 支持嵌套）
     ///
     /// 仅恢复与列表同批次（deleted_at 相同）删除的待办项——
     /// 列表删除之前已被用户单独删除的项保持删除状态，不会"复活"。
+    ///
+    /// ★ 2026-06-12（第二轮审阅）：BEGIN IMMEDIATE 改为 SAVEPOINT，
+    /// 与 delete/restore_item 等同仓库其余事务保持一致，调用方持有
+    /// 外层事务时不会因嵌套 BEGIN 报错。
     pub fn restore_todo_list_with_conn(conn: &Connection, list_id: &str) -> VfsResult<VfsTodoList> {
-        conn.execute("BEGIN IMMEDIATE", [])?;
+        conn.execute("SAVEPOINT restore_todo_list", [])?;
 
         let result = (|| -> VfsResult<()> {
             let now = chrono::Utc::now()
@@ -485,9 +570,9 @@ impl VfsTodoRepo {
 
         match result {
             Ok(_) => {
-                if let Err(commit_err) = conn.execute("COMMIT", []) {
-                    let _ = conn.execute("ROLLBACK", []);
-                    return Err(commit_err.into());
+                if let Err(e) = conn.execute("RELEASE SAVEPOINT restore_todo_list", []) {
+                    let _ = conn.execute("ROLLBACK TO SAVEPOINT restore_todo_list", []);
+                    return Err(e.into());
                 }
                 info!("[VFS::TodoRepo] Restored todo list: {}", list_id);
                 Self::get_todo_list_with_conn(conn, list_id)?.ok_or_else(|| VfsError::NotFound {
@@ -496,7 +581,8 @@ impl VfsTodoRepo {
                 })
             }
             Err(e) => {
-                let _ = conn.execute("ROLLBACK", []);
+                let _ = conn.execute("ROLLBACK TO SAVEPOINT restore_todo_list", []);
+                let _ = conn.execute("RELEASE SAVEPOINT restore_todo_list", []);
                 Err(e)
             }
         }
@@ -635,10 +721,8 @@ impl VfsTodoRepo {
             });
         }
         validate_todo_priority(&params.priority)?;
-        let normalized_due_date = normalize_optional_str(params.due_date.clone());
-        let normalized_due_time = normalize_optional_str(params.due_time.clone());
-        validate_due_date(&normalized_due_date)?;
-        validate_due_time(&normalized_due_time)?;
+        let normalized_due_date = validate_due_date(&normalize_optional_str(params.due_date.clone()))?;
+        let normalized_due_time = validate_due_time(&normalize_optional_str(params.due_time.clone()))?;
         let normalized_repeat_json = normalize_optional_str(params.repeat_json.clone());
         validate_repeat_json(&normalized_repeat_json)?;
 
@@ -710,10 +794,12 @@ impl VfsTodoRepo {
             )
             .unwrap_or(-1);
 
+        let normalized_reminder = normalize_optional_str(params.reminder.clone());
+
         conn.execute(
             r#"
-            INSERT INTO todo_items (id, todo_list_id, title, description, status, priority, due_date, due_time, tags_json, sort_order, parent_id, repeat_json, attachments_json, created_at, updated_at)
-            VALUES (?1, ?2, ?3, ?4, 'pending', ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)
+            INSERT INTO todo_items (id, todo_list_id, title, description, status, priority, due_date, due_time, reminder, tags_json, sort_order, parent_id, repeat_json, attachments_json, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, 'pending', ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)
             "#,
             params![
                 item_id,
@@ -723,6 +809,7 @@ impl VfsTodoRepo {
                 params.priority,
                 normalized_due_date,
                 normalized_due_time,
+                normalized_reminder,
                 tags_json,
                 max_sort + 1,
                 params.parent_id,
@@ -753,7 +840,7 @@ impl VfsTodoRepo {
             priority: params.priority,
             due_date: normalized_due_date,
             due_time: normalized_due_time,
-            reminder: None,
+            reminder: normalized_reminder,
             tags_json,
             sort_order: max_sort + 1,
             parent_id: params.parent_id,
@@ -877,17 +964,15 @@ impl VfsTodoRepo {
         // Fix: normalize empty strings to None so that clearing a date
         // does not write "" into the DB (which SQL treats as < any date).
         let final_due_date = if params.due_date.is_some() {
-            normalize_optional_str(params.due_date)
+            validate_due_date(&normalize_optional_str(params.due_date))?
         } else {
             current.due_date.clone()
         };
         let final_due_time = if params.due_time.is_some() {
-            normalize_optional_str(params.due_time)
+            validate_due_time(&normalize_optional_str(params.due_time))?
         } else {
             current.due_time.clone()
         };
-        validate_due_date(&final_due_date)?;
-        validate_due_time(&final_due_time)?;
         // 清空截止日期时联动清空截止时间，避免遗留"孤立时间"
         let final_due_time = if final_due_date.is_none() {
             None
@@ -941,15 +1026,19 @@ impl VfsTodoRepo {
                     }
                     _ => {}
                 }
+                // ★ 2026-06-12（第二轮审阅）：环检测遍历全图（含软删除节点）。
+                // 环是结构属性，与删除状态无关——只看存活链会放过
+                // "经软删除节点成环、恢复后变成活环"的情况（与 V20260615 触发器一致）。
+                // 深度上限防御历史坏数据中已存在的环导致递归不终止。
                 let creates_cycle: bool = conn.query_row(
                     r#"
-                    WITH RECURSIVE descendants(id) AS (
-                        SELECT id FROM todo_items WHERE parent_id = ?1 AND deleted_at IS NULL
+                    WITH RECURSIVE descendants(id, depth) AS (
+                        SELECT id, 1 FROM todo_items WHERE parent_id = ?1
                         UNION ALL
-                        SELECT ti.id
+                        SELECT ti.id, d.depth + 1
                         FROM todo_items ti
                         JOIN descendants d ON ti.parent_id = d.id
-                        WHERE ti.deleted_at IS NULL
+                        WHERE d.depth < 100
                     )
                     SELECT EXISTS(SELECT 1 FROM descendants WHERE id = ?2)
                     "#,
@@ -1002,39 +1091,53 @@ impl VfsTodoRepo {
             current.completed_at.clone()
         };
 
-        conn.execute(
-            r#"
-            UPDATE todo_items
-            SET title = ?1, description = ?2, status = ?3, priority = ?4, due_date = ?5, due_time = ?6,
-                reminder = ?7, tags_json = ?8, parent_id = ?9, completed_at = ?10, repeat_json = ?11,
-                attachments_json = ?12, updated_at = ?13, estimated_pomodoros = ?15, completed_pomodoros = ?16
-            WHERE id = ?14
-            "#,
-            params![
-                final_title,
-                final_description,
-                final_status,
-                final_priority,
-                final_due_date,
-                final_due_time,
-                final_reminder,
-                final_tags_json,
-                final_parent_id,
-                final_completed_at,
-                final_repeat_json,
-                final_attachments_json,
-                now,
-                item_id,
-                final_estimated_pomodoros,
-                final_completed_pomodoros,
-            ],
-        )?;
+        // ★ 2026-06-12（第二轮审阅）：条目更新 + 列表时间戳 + 重复任务派生
+        // 必须原子提交，否则中途失败会留下"条目已变更但列表时间戳未推进"
+        // 的不一致（云同步 LWW 依赖 updated_at 判断新旧）。
+        conn.execute("SAVEPOINT update_todo_item", [])?;
 
-        // 更新列表的 updated_at
-        conn.execute(
-            "UPDATE todo_lists SET updated_at = ?1 WHERE id = ?2",
-            params![now, current.todo_list_id],
-        )?;
+        let write_result = (|| -> VfsResult<()> {
+            conn.execute(
+                r#"
+                UPDATE todo_items
+                SET title = ?1, description = ?2, status = ?3, priority = ?4, due_date = ?5, due_time = ?6,
+                    reminder = ?7, tags_json = ?8, parent_id = ?9, completed_at = ?10, repeat_json = ?11,
+                    attachments_json = ?12, updated_at = ?13, estimated_pomodoros = ?15, completed_pomodoros = ?16
+                WHERE id = ?14
+                "#,
+                params![
+                    final_title,
+                    final_description,
+                    final_status,
+                    final_priority,
+                    final_due_date,
+                    final_due_time,
+                    final_reminder,
+                    final_tags_json,
+                    final_parent_id,
+                    final_completed_at,
+                    final_repeat_json,
+                    final_attachments_json,
+                    now,
+                    item_id,
+                    final_estimated_pomodoros,
+                    final_completed_pomodoros,
+                ],
+            )?;
+
+            // 更新列表的 updated_at
+            conn.execute(
+                "UPDATE todo_lists SET updated_at = ?1 WHERE id = ?2",
+                params![now, current.todo_list_id],
+            )?;
+            Ok(())
+        })();
+
+        if let Err(e) = write_result {
+            let _ = conn.execute("ROLLBACK TO SAVEPOINT update_todo_item", []);
+            let _ = conn.execute("RELEASE SAVEPOINT update_todo_item", []);
+            return Err(e);
+        }
 
         info!("[VFS::TodoRepo] Updated todo item: {}", item_id);
 
@@ -1063,7 +1166,8 @@ impl VfsTodoRepo {
             deleted_at: None,
         };
 
-        // 重复任务：完成时生成下一次实例（失败仅告警，不阻塞完成操作）
+        // 重复任务：完成时生成下一次实例（失败仅告警，不阻塞完成操作——
+        // 派生实例可在用户取消完成/再完成时补生成，不值得回滚整个更新）
         if was_completed_now {
             if let Err(e) = Self::spawn_next_recurrence_with_conn(conn, &updated) {
                 warn!(
@@ -1071,6 +1175,11 @@ impl VfsTodoRepo {
                     item_id, e
                 );
             }
+        }
+
+        if let Err(e) = conn.execute("RELEASE SAVEPOINT update_todo_item", []) {
+            let _ = conn.execute("ROLLBACK TO SAVEPOINT update_todo_item", []);
+            return Err(e.into());
         }
 
         Ok(updated)
@@ -1146,6 +1255,12 @@ impl VfsTodoRepo {
             )
             .unwrap_or(-1);
 
+        // 提醒随到期日平移（保留时刻），无法解析则丢弃避免指向过去
+        let next_reminder = completed
+            .reminder
+            .as_deref()
+            .and_then(|r| shift_reminder(r, due, next));
+
         conn.execute(
             r#"
             INSERT INTO todo_items (id, todo_list_id, title, description, status, priority, due_date, due_time, reminder, tags_json, sort_order, parent_id, repeat_json, attachments_json, estimated_pomodoros, created_at, updated_at)
@@ -1159,7 +1274,7 @@ impl VfsTodoRepo {
                 completed.priority,
                 next_str,
                 completed.due_time,
-                completed.reminder,
+                next_reminder,
                 completed.tags_json,
                 max_sort + 1,
                 completed.parent_id,
@@ -1424,6 +1539,10 @@ impl VfsTodoRepo {
     // ========================================================================
 
     /// 获取今日到期的待办项
+    /// 「今天」视图（SOTA 语义，对齐 Todoist/TickTick）：
+    /// - 今天到期的待办
+    /// - 加上所有逾期未完成的待办（逾期任务不该从「今天」消失，前端按到期分组置顶展示）
+    /// - include_completed 时额外包含今天完成的（逾期+已完成不再属于「今天」）
     pub fn list_today_items(
         db: &VfsDatabase,
         include_completed: bool,
@@ -1436,9 +1555,11 @@ impl VfsTodoRepo {
             SELECT id, todo_list_id, title, description, status, priority, due_date, due_time, reminder,
                    tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, estimated_pomodoros, completed_pomodoros, created_at, updated_at, deleted_at
             FROM todo_items
-            WHERE due_date = ?1 AND status IN ('pending', 'completed') AND deleted_at IS NULL
+            WHERE ((status = 'pending' AND due_date <= ?1) OR (status = 'completed' AND due_date = ?1))
+              AND deleted_at IS NULL
             ORDER BY
                 CASE status WHEN 'pending' THEN 0 WHEN 'completed' THEN 1 ELSE 2 END,
+                due_date ASC,
                 CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END,
                 due_time ASC NULLS LAST,
                 sort_order ASC
@@ -1448,8 +1569,9 @@ impl VfsTodoRepo {
             SELECT id, todo_list_id, title, description, status, priority, due_date, due_time, reminder,
                    tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, estimated_pomodoros, completed_pomodoros, created_at, updated_at, deleted_at
             FROM todo_items
-            WHERE due_date = ?1 AND status = 'pending' AND deleted_at IS NULL
+            WHERE status = 'pending' AND due_date <= ?1 AND deleted_at IS NULL
             ORDER BY
+                due_date ASC,
                 CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END,
                 due_time ASC NULLS LAST,
                 sort_order ASC
@@ -1494,6 +1616,44 @@ impl VfsTodoRepo {
         let mut stmt = conn.prepare(sql)?;
 
         let rows = stmt.query_map(params![today], Self::row_to_todo_item)?;
+        Ok(rows.filter_map(log_and_skip_err).collect())
+    }
+
+    /// 列出全部待处理任务（跨清单，四象限矩阵视图数据源）。
+    pub fn list_all_pending_items(db: &VfsDatabase) -> VfsResult<Vec<VfsTodoItem>> {
+        let conn = db.get_conn_safe()?;
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, todo_list_id, title, description, status, priority, due_date, due_time, reminder,
+                   tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, estimated_pomodoros, completed_pomodoros, created_at, updated_at, deleted_at
+            FROM todo_items
+            WHERE status = 'pending' AND deleted_at IS NULL
+            ORDER BY
+                CASE WHEN due_date IS NULL THEN 1 ELSE 0 END,
+                due_date ASC,
+                CASE priority WHEN 'urgent' THEN 0 WHEN 'high' THEN 1 WHEN 'medium' THEN 2 WHEN 'low' THEN 3 ELSE 4 END
+            "#,
+        )?;
+        let rows = stmt.query_map([], Self::row_to_todo_item)?;
+        Ok(rows.filter_map(log_and_skip_err).collect())
+    }
+
+    /// 列出所有设置了提醒的待处理任务（提醒调度器数据源）。
+    ///
+    /// reminder 为本地 datetime 字符串（YYYY-MM-DDTHH:MM），时间比较交给前端
+    /// （前端持有正确的本地时钟与时区语义），此处只做存在性过滤。
+    pub fn list_reminder_items(db: &VfsDatabase) -> VfsResult<Vec<VfsTodoItem>> {
+        let conn = db.get_conn_safe()?;
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT id, todo_list_id, title, description, status, priority, due_date, due_time, reminder,
+                   tags_json, sort_order, parent_id, completed_at, repeat_json, attachments_json, estimated_pomodoros, completed_pomodoros, created_at, updated_at, deleted_at
+            FROM todo_items
+            WHERE reminder IS NOT NULL AND reminder != '' AND status = 'pending' AND deleted_at IS NULL
+            ORDER BY reminder ASC
+            "#,
+        )?;
+        let rows = stmt.query_map([], Self::row_to_todo_item)?;
         Ok(rows.filter_map(log_and_skip_err).collect())
     }
 
@@ -2152,6 +2312,7 @@ mod tests {
                 priority: "none".to_string(),
                 due_date,
                 due_time: None,
+                reminder: None,
                 tags: None,
                 parent_id,
                 attachments: None,
@@ -2177,6 +2338,7 @@ mod tests {
                 priority: "none".to_string(),
                 due_date: None,
                 due_time: None,
+                reminder: None,
                 tags: None,
                 parent_id: Some(parent.id),
                 attachments: None,
@@ -2246,6 +2408,47 @@ mod tests {
     }
 
     #[test]
+    fn test_list_today_items_includes_overdue_pending_excludes_overdue_completed() {
+        let (_temp_dir, db) = setup_test_db();
+        let list = create_list(&db, "Today");
+        let today = chrono::Local::now().format("%Y-%m-%d").to_string();
+        let yesterday = (chrono::Local::now() - chrono::Duration::days(1))
+            .format("%Y-%m-%d")
+            .to_string();
+
+        let due_today = create_item(&db, &list.id, "Due today", Some(today.clone()), None);
+        let overdue = create_item(&db, &list.id, "Overdue", Some(yesterday.clone()), None);
+        let overdue_done = create_item(&db, &list.id, "Overdue done", Some(yesterday), None);
+        // 无截止日的任务不属于今天视图
+        create_item(&db, &list.id, "No due", None, None);
+
+        VfsTodoRepo::update_todo_item(
+            &db,
+            &overdue_done.id,
+            VfsUpdateTodoItemParams {
+                status: Some("completed".to_string()),
+                ..Default::default()
+            },
+        )
+        .expect("complete overdue item");
+
+        let items = VfsTodoRepo::list_today_items(&db, false).expect("list today");
+        let ids: Vec<&str> = items.iter().map(|i| i.id.as_str()).collect();
+        assert!(ids.contains(&due_today.id.as_str()), "today item missing");
+        assert!(ids.contains(&overdue.id.as_str()), "overdue pending should appear in today view");
+        assert_eq!(items.len(), 2, "no-due and completed-overdue must be excluded");
+        // 逾期任务排在今天任务之前（due_date ASC）
+        assert_eq!(items[0].id, overdue.id);
+
+        // include_completed 也不应把「逾期+已完成」捞回来
+        let with_completed = VfsTodoRepo::list_today_items(&db, true).expect("list with completed");
+        assert!(
+            !with_completed.iter().any(|i| i.id == overdue_done.id),
+            "completed overdue item must not appear"
+        );
+    }
+
+    #[test]
     fn test_todo_insert_trigger_rejects_invalid_status() {
         let (_temp_dir, db) = setup_test_db();
         let list = create_list(&db, "Trigger");
@@ -2294,6 +2497,7 @@ mod tests {
                 priority: "impossible".to_string(),
                 due_date: None,
                 due_time: None,
+                reminder: None,
                 tags: None,
                 parent_id: None,
                 attachments: None,
@@ -2344,6 +2548,15 @@ mod tests {
         TodoRepeatRule {
             freq: freq.to_string(),
             interval,
+            by_weekday: None,
+        }
+    }
+
+    fn weekly_rule(interval: u32, by_weekday: &[u8]) -> TodoRepeatRule {
+        TodoRepeatRule {
+            freq: "weekly".to_string(),
+            interval,
+            by_weekday: Some(by_weekday.to_vec()),
         }
     }
 
@@ -2360,6 +2573,50 @@ mod tests {
     }
 
     #[test]
+    fn test_parse_repeat_rule_by_weekday() {
+        // 合法多选星期：去重排序
+        let rule =
+            parse_repeat_rule(r#"{"freq":"weekly","interval":1,"byWeekday":[5,1,3,1]}"#).unwrap();
+        assert_eq!(rule.by_weekday, Some(vec![1, 3, 5]));
+        // 超范围星期非法
+        assert!(parse_repeat_rule(r#"{"freq":"weekly","byWeekday":[7]}"#).is_none());
+        // 空数组视为未设置
+        let rule = parse_repeat_rule(r#"{"freq":"weekly","byWeekday":[]}"#).unwrap();
+        assert_eq!(rule.by_weekday, None);
+        // 非 weekly 频率忽略 byWeekday
+        let rule = parse_repeat_rule(r#"{"freq":"daily","byWeekday":[1,3]}"#).unwrap();
+        assert_eq!(rule.by_weekday, None);
+    }
+
+    #[test]
+    fn test_step_due_date_weekly_by_weekday() {
+        // 2026-06-08 是周一；规则=每周一三五（JS 编号 1/3/5）
+        // 周一 → 周三
+        let next = step_due_date(date("2026-06-08"), &weekly_rule(1, &[1, 3, 5])).unwrap();
+        assert_eq!(next, date("2026-06-10"));
+        // 周三 → 周五
+        let next = step_due_date(date("2026-06-10"), &weekly_rule(1, &[1, 3, 5])).unwrap();
+        assert_eq!(next, date("2026-06-12"));
+        // 周五 → 下周一
+        let next = step_due_date(date("2026-06-12"), &weekly_rule(1, &[1, 3, 5])).unwrap();
+        assert_eq!(next, date("2026-06-15"));
+        // 从非选中日（周四）出发 → 最近的周五
+        let next = step_due_date(date("2026-06-11"), &weekly_rule(1, &[1, 3, 5])).unwrap();
+        assert_eq!(next, date("2026-06-12"));
+    }
+
+    #[test]
+    fn test_step_due_date_weekly_by_weekday_interval() {
+        // 每 2 周的周一/周五；2026-06-12 是周五
+        // 同周内还有候选日时不跳周：周一 06-08 → 周五 06-12
+        let next = step_due_date(date("2026-06-08"), &weekly_rule(2, &[1, 5])).unwrap();
+        assert_eq!(next, date("2026-06-12"));
+        // 本周候选用尽 → 跳 2 周后的周一（06-22，跳过 06-15 那周）
+        let next = step_due_date(date("2026-06-12"), &weekly_rule(2, &[1, 5])).unwrap();
+        assert_eq!(next, date("2026-06-22"));
+    }
+
+    #[test]
     fn test_step_due_date_monthly_clamps_to_month_end() {
         // 1-31 + 1 月 → 2-28（非闰年）
         let next = step_due_date(date("2026-01-31"), &rule("monthly", 1)).unwrap();
@@ -2367,6 +2624,18 @@ mod tests {
         // 闰年 2-29 + 12 月 → 次年 2-28
         let next = step_due_date(date("2028-02-29"), &rule("yearly", 1)).unwrap();
         assert_eq!(next, date("2029-02-28"));
+    }
+
+    #[test]
+    fn test_shift_reminder_follows_due_date() {
+        // 到期日 +7 天 → 提醒同步 +7 天，保留时刻
+        let shifted = shift_reminder("2026-06-12T08:30", date("2026-06-12"), date("2026-06-19"));
+        assert_eq!(shifted.as_deref(), Some("2026-06-19T08:30"));
+        // 带秒格式也能解析（输出归一化到分钟）
+        let shifted = shift_reminder("2026-06-11T21:00:00", date("2026-06-12"), date("2026-06-13"));
+        assert_eq!(shifted.as_deref(), Some("2026-06-12T21:00"));
+        // 解析失败 → None（丢弃）
+        assert!(shift_reminder("not-a-date", date("2026-06-12"), date("2026-06-13")).is_none());
     }
 
     #[test]
@@ -2411,6 +2680,7 @@ mod tests {
                 priority: "high".to_string(),
                 due_date: Some(today.clone()),
                 due_time: Some("08:00".to_string()),
+                reminder: None,
                 tags: None,
                 parent_id: None,
                 attachments: None,
@@ -2467,6 +2737,7 @@ mod tests {
                 priority: "none".to_string(),
                 due_date: None,
                 due_time: None,
+                reminder: None,
                 tags: None,
                 parent_id: None,
                 attachments: None,
@@ -2498,6 +2769,7 @@ mod tests {
                 priority: "none".to_string(),
                 due_date: None,
                 due_time: None,
+                reminder: None,
                 tags: None,
                 parent_id: None,
                 attachments: None,

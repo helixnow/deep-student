@@ -6,11 +6,11 @@ export type Breakpoint = 'mobile' | 'tablet' | 'laptop' | 'desktop' | 'wide';
 /**
  * 响应式断点Hook
  * 提供统一的屏幕尺寸检测能力
- * 
+ *
  * @example
- * const { isMobile, isTablet, currentBreakpoint } = useBreakpoint();
- * 
- * if (isMobile) {
+ * const { isSmallScreen, isTablet, currentBreakpoint } = useBreakpoint();
+ *
+ * if (isSmallScreen) {
  *   return <MobileLayout />;
  * }
  */
@@ -40,9 +40,8 @@ export function useBreakpoint() {
       is2Xl,
       
       // 语义化别名
-      // ⚠️ A-6: 此 isMobile 为 <640px，与 useIsMobile()（<768px）同名异义！
+      // A-6 修复：移除曾经的 isMobile（<640）别名——与 useIsMobile()（<768）同名异义易误用。
       // 判断「是否切移动端布局」请用 isSmallScreen（<768，与 App shell 一致）
-      isMobile: !isSm,          // < 640px
       isTablet: isSm && !isLg,  // 640px ~ 1024px
       isLaptop: isLg && !is2Xl, // 1024px ~ 1536px
       isDesktop: isXl,          // >= 1280px
@@ -72,10 +71,7 @@ export function useBreakpoint() {
 }
 
 /**
- * 简化版：只检测是否为移动端
- *
- * ⚠️ A-6: 此处为 <768px（= isSmallScreen），与 useBreakpoint().isMobile（<640px）
- * 同名异义。切移动端布局用本 hook 或 isSmallScreen，勿混用。
+ * 简化版：只检测是否为移动端（<768px，与 isSmallScreen / App shell 同源）
  */
 export function useIsMobile(): boolean {
   return useMediaQuery(`(max-width: ${BREAKPOINTS.md - 1}px)`);

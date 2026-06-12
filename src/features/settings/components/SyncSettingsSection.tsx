@@ -46,6 +46,7 @@ import {
   formatEta,
 } from '@/types/dataGovernance';
 import { loadStoredCloudStorageConfigWithCredentials } from '@/utils/cloudStorageApi';
+import { useGlobalSyncStore } from '@/stores/syncStatusStore';
 import {
   listenSyncProgress,
   runSyncWithProgress,
@@ -97,7 +98,8 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
 
   // 同步进度状态
   const [syncProgress, setSyncProgress] = useState<SyncProgress | null>(null);
-  const [isSyncing, setIsSyncing] = useState(false);
+  // 全局同步状态：与数据治理面板等其他入口共享，任一入口同步时本入口按钮禁用
+  const isSyncing = useGlobalSyncStore((s) => s.isSyncing);
 
   // 合并策略（与数据治理仪表盘 SyncTab 保持一致，不再硬编码 keep_latest）
   const [syncStrategy, setSyncStrategy] = useState<MergeStrategy>('keep_latest');
@@ -199,8 +201,6 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
   // 执行同步（带进度跟踪）
   const handleSync = useCallback(
     async (direction: 'upload' | 'download' | 'bidirectional') => {
-      if (isSyncing) return;
-
       const cloudConfig = await loadStoredCloudStorageConfigWithCredentials();
       if (!cloudConfig) {
         showGlobalNotification(
@@ -210,7 +210,15 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
         return;
       }
 
-      setIsSyncing(true);
+      // 全局占用：任何入口已有同步进行中则直接拒绝本次触发
+      if (!useGlobalSyncStore.getState().beginSync('sync-settings')) {
+        showGlobalNotification(
+          'warning',
+          t('data:governance.sync_already_running', '另一个同步任务正在进行中，请稍后再试')
+        );
+        return;
+      }
+
       setSyncProgress({
         phase: 'preparing',
         percent: 0,
@@ -230,7 +238,6 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
       try {
         const result = await runSyncWithProgress(direction, cloudConfig, syncStrategy);
         setSyncProgress(null);
-        setIsSyncing(false);
 
         if (result.success && !result.error_message && (result.skipped_changes ?? 0) === 0) {
           showGlobalNotification(
@@ -258,16 +265,16 @@ export const SyncSettingsSection: React.FC<SyncSettingsSectionProps> = ({
         }
       } catch (err: unknown) {
         setSyncProgress(null);
-        setIsSyncing(false);
         showGlobalNotification(
           'error',
           `${t('data:sync_settings.sync_failed')}: ${getErrorMessage(err)}`
         );
       } finally {
+        useGlobalSyncStore.getState().endSync();
         unlisten();
       }
     },
-    [getSyncStatus, isSyncing, syncStrategy, t]
+    [getSyncStatus, syncStrategy, t]
   );
 
   // 计算同步状态摘要

@@ -92,17 +92,18 @@ export function loadStoredCloudStorageConfigSafe(): CloudStorageConfig | null {
 }
 
 /**
- * 从 localStorage + 系统安全存储加载完整云存储配置（包含敏感凭据）
+ * 加载用于调用后端命令的云存储配置（不含明文凭据）
  *
- * - localStorage: provider/root/endpoint/bucket/accessKeyId 等非敏感信息
- * - 安全存储: webdavPassword / s3SecretAccessKey / ftpPassword
+ * [P0-3A] 敏感字段（密码 / secretAccessKey / 加密密码）一律传空，由后端
+ * 各 Tauri 命令在入口处调用 `hydrate_cloud_config` 从系统安全存储自行补全。
+ * 明文凭据不再在前端内存与 IPC 通道中往返，仅在用户首次录入时经过一次。
+ *
+ * 函数名保留 `WithCredentials` 以兼容既有调用方——语义是"可直接用于
+ * 需要凭据的后端调用"，而非"对象里携带明文凭据"。
  */
 export async function loadStoredCloudStorageConfigWithCredentials(): Promise<CloudStorageConfig | null> {
   const safe = loadStoredCloudStorageConfigSafe();
   if (!safe) return null;
-
-  const credentials = await getCredentials().catch(() => null);
-  const encryptionPassword = credentials?.encryptionPassword ?? undefined;
 
   if (safe.provider === 'webdav') {
     return {
@@ -110,11 +111,11 @@ export async function loadStoredCloudStorageConfigWithCredentials(): Promise<Clo
       webdav: safe.webdav
         ? {
             ...safe.webdav,
-            // 防御性编程：不回退到 safe（localStorage）中的密码字段
-            password: credentials?.webdavPassword ?? '',
+            // 空串占位：后端 hydrate_cloud_config 会从安全存储补全
+            password: '',
           }
         : undefined,
-      encryptionPassword,
+      encryptionPassword: undefined,
     };
   }
 
@@ -124,11 +125,10 @@ export async function loadStoredCloudStorageConfigWithCredentials(): Promise<Clo
       ftp: safe.ftp
         ? {
             ...safe.ftp,
-            // 防御性编程：不回退到 safe（localStorage）中的密码字段
-            password: credentials?.ftpPassword ?? '',
+            password: '',
           }
         : undefined,
-      encryptionPassword,
+      encryptionPassword: undefined,
     };
   }
 
@@ -137,10 +137,10 @@ export async function loadStoredCloudStorageConfigWithCredentials(): Promise<Clo
     s3: safe.s3
       ? {
           ...safe.s3,
-          secretAccessKey: credentials?.s3SecretAccessKey ?? '',
+          secretAccessKey: '',
         }
       : undefined,
-    encryptionPassword,
+    encryptionPassword: undefined,
   };
 }
 

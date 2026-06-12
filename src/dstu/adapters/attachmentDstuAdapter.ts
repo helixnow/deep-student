@@ -205,9 +205,22 @@ export const attachmentDstuAdapter = {
     }
 
     // 否则，需要分别获取 image 和 file 类型并合并
+    // ★ 2026-06-12（审阅问题 M5）：修复双重分页。
+    // 旧实现把 offset/limit 原样传给两个子查询，随后又对合并结果再做一次
+    // slice(offset, offset+limit)——offset 被应用两次，第 2 页开始数据错位且
+    // 跨类型边界的条目永远不可见。正确做法：子查询各取前 offset+limit 条
+    //（offset 置 0），合并排序后统一切片。
+    const offset = options?.offset ?? 0;
+    const limit = options?.limit;
+    const mergedFetchOptions: DstuListOptions = {
+      ...options,
+      offset: 0,
+      limit: limit !== undefined ? offset + limit : undefined,
+    };
+
     const [imageResult, fileResult] = await Promise.all([
-      dstu.list(path, { ...options, typeFilter: 'image' }),
-      dstu.list(path, { ...options, typeFilter: 'file' }),
+      dstu.list(path, { ...mergedFetchOptions, typeFilter: 'image' }),
+      dstu.list(path, { ...mergedFetchOptions, typeFilter: 'file' }),
     ]);
 
     // 处理错误情况
@@ -232,44 +245,38 @@ export const attachmentDstuAdapter = {
     // 合并结果
     const mergedNodes = [...imageResult.value, ...fileResult.value];
 
-    // 应用排序（如果指定）
-    if (options?.sortBy) {
-      const sortBy = options.sortBy;
-      const sortOrder = options.sortOrder || 'asc';
-      const multiplier = sortOrder === 'asc' ? 1 : -1;
+    // 应用排序（未显式指定时按 updatedAt 降序，与单类型查询的后端默认序一致，
+    // 避免合并后出现"先全部图片后全部文件"的拼接序）
+    const sortBy = options?.sortBy ?? 'updatedAt';
+    const sortOrder = options?.sortOrder ?? (options?.sortBy ? 'asc' : 'desc');
+    const multiplier = sortOrder === 'asc' ? 1 : -1;
 
-      mergedNodes.sort((a, b) => {
-        let aVal: string | number;
-        let bVal: string | number;
+    mergedNodes.sort((a, b) => {
+      let aVal: string | number;
+      let bVal: string | number;
 
-        if (sortBy === 'name') {
-          aVal = a.name;
-          bVal = b.name;
-        } else if (sortBy === 'createdAt') {
-          aVal = a.createdAt;
-          bVal = b.createdAt;
-        } else if (sortBy === 'updatedAt') {
-          aVal = a.updatedAt;
-          bVal = b.updatedAt;
-        } else {
-          return 0;
-        }
-
-        if (aVal < bVal) return -1 * multiplier;
-        if (aVal > bVal) return 1 * multiplier;
+      if (sortBy === 'name') {
+        aVal = a.name;
+        bVal = b.name;
+      } else if (sortBy === 'createdAt') {
+        aVal = a.createdAt;
+        bVal = b.createdAt;
+      } else if (sortBy === 'updatedAt') {
+        aVal = a.updatedAt;
+        bVal = b.updatedAt;
+      } else {
         return 0;
-      });
-    }
+      }
 
-    // 应用分页（如果指定）
-    let finalNodes = mergedNodes;
-    if (options?.offset !== undefined || options?.limit !== undefined) {
-      const offset = options.offset || 0;
-      const limit = options.limit;
-      finalNodes = limit !== undefined
-        ? mergedNodes.slice(offset, offset + limit)
-        : mergedNodes.slice(offset);
-    }
+      if (aVal < bVal) return -1 * multiplier;
+      if (aVal > bVal) return 1 * multiplier;
+      return 0;
+    });
+
+    // 统一切片（子查询已取 offset+limit 条且 offset=0，这里只切一次）
+    const finalNodes = limit !== undefined
+      ? mergedNodes.slice(offset, offset + limit)
+      : (offset > 0 ? mergedNodes.slice(offset) : mergedNodes);
 
     return ok(finalNodes);
   },

@@ -684,6 +684,25 @@
     "clear": "清空",
     "saveAsTemplate": "保存为模板",
     "newTemplateName": "新模板",
+    "personas": {
+      "title": "语气人格",
+      "coach": {
+        "label": "严格教练",
+        "content": "语气要求：像一位严格但公正的教练。直接指出错误和薄弱点，不绕弯子；要求我给出推理过程；当我答错时先让我自己再试一次。"
+      },
+      "companion": {
+        "label": "温和陪伴",
+        "content": "语气要求：像一位耐心温和的学习伙伴。多鼓励、少批评；解释时循序渐进，允许我犯错；在我沮丧时先安抚再继续。"
+      },
+      "socratic": {
+        "label": "苏格拉底",
+        "content": "语气要求：采用苏格拉底式提问。不直接给出答案，而是通过一连串引导性问题让我自己推导出结论；只有当我明确放弃时才揭示答案。"
+      },
+      "concise": {
+        "label": "简洁应试",
+        "content": "语气要求：以应试为导向，回答尽量简短、结构化。先给结论/答案，再用要点列出关键步骤与易错点，避免冗长展开。"
+      }
+    },
     "variables": {
       "grade": {
         "label": "年级",
@@ -802,6 +821,7 @@
     "pinSession": "置顶线程",
     "unpinSession": "取消置顶",
     "archiveSession": "归档线程",
+    "archivedSessionsEntry": "已归档会话",
     "confirmArchiveSession": "确认归档线程",
     "archiveSessionToast": "已归档。查看已归档的会话：设置",
     "archiveSessionToastMessage": "已归档。查看已归档的会话：",
@@ -880,6 +900,9 @@
     "contextRemainingPercent": "剩余 {{percent}}%",
     "contextUsedTokens": "已用 {{tokens}}",
     "contextRemainingTokens": "剩余 {{tokens}}",
+    "contextHighWaterHint": "上下文接近上限，建议新开会话或精简引用内容",
+    "sessionTotal": "本会话累计",
+    "sessionCost": "本会话费用",
     "tokens": "tokens",
     "inputEstimate": "估算输入 token 数量",
     "source": {
@@ -1109,6 +1132,7 @@
     "arguments": "参数",
     "approve": "批准",
     "reject": "拒绝",
+    "allowSession": "本会话允许",
     "alwaysAllow": "始终允许",
     "alwaysDeny": "始终拒绝",
     "timeout": "审批超时",

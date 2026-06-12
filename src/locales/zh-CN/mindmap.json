@@ -12,7 +12,8 @@
   },
   "placeholder": {
     "root": "中心主题",
-    "node": "输入内容..."
+    "node": "输入内容...",
+    "note": "添加备注…"
   },
   "toolbar": {
     "outline": "大纲",
@@ -99,7 +100,11 @@
     "emptyContent": "导图内容为空",
     "loadFailed": "加载失败",
     "loading": "加载思维导图...",
-    "newMindMap": "新思维导图"
+    "newMindMap": "新思维导图",
+    "versionSource": "版本来源：{{source}}",
+    "layoutSingle": "切换为单侧布局",
+    "layoutBoth": "切换为两翼布局",
+    "nodeCount": "{{count}} 节点"
   },
   "structure": {
     "mindmap": "思维导图",
@@ -159,7 +164,8 @@
     "depthExceeded": "导图层级过深，超过最大限制，无法保存",
     "nodeCountExceeded": "导图节点过多，超过最大限制，无法保存",
     "invalidContent": "导图内容异常，无法保存，请稍后重试",
-    "draftSaveFailed": "本地存储空间不足，草稿保存失败，请及时保存并确保网络畅通"
+    "draftSaveFailed": "本地存储空间不足，草稿保存失败，请及时保存并确保网络畅通",
+    "externalUpdatedDirty": "导图已在别处被更新；当前存在未保存修改，保存时将提示处理冲突"
   },
   "style": {
     "bold": "加粗",

@@ -72,6 +72,20 @@ describe('todo quickAdd natural language parser', () => {
     expect(parseQuickAddInput('review today', FRI).dueDate).toBe('2026-06-12');
   });
 
+  it('requires word boundaries for english relative tokens', () => {
+    // "tomorrowland"/"todays" 中的子串不得被识别为日期
+    const r1 = parseQuickAddInput('visit tomorrowland', FRI);
+    expect(r1.dueDate).toBeUndefined();
+    expect(r1.title).toBe('visit tomorrowland');
+
+    const r2 = parseQuickAddInput('read todays news', FRI);
+    expect(r2.dueDate).toBeUndefined();
+    expect(r2.title).toBe('read todays news');
+
+    // 大小写不敏感的独立词仍然识别
+    expect(parseQuickAddInput('essay Tomorrow', FRI).dueDate).toBe('2026-06-13');
+  });
+
   it('parses 每天/每月/每年 repeat with today as default due date', () => {
     const daily = parseQuickAddInput('每天背单词', FRI);
     expect(daily.repeat).toEqual({ freq: 'daily', interval: 1 });
@@ -118,5 +132,71 @@ describe('todo quickAdd natural language parser', () => {
     const r = parseQuickAddInput('记录天气', FRI);
     expect(r.repeat).toBeUndefined();
     expect(r.title).toBe('记录天气');
+  });
+
+  it('parses 每周一三五 as weekly with byWeekday', () => {
+    const r = parseQuickAddInput('每周一三五健身', FRI);
+    expect(r.repeat).toEqual({ freq: 'weekly', interval: 1, byWeekday: [1, 3, 5] });
+    expect(r.title).toBe('健身');
+    // 基准周五：最近的选中星期是当天周五 6/12
+    expect(r.dueDate).toBe('2026-06-12');
+  });
+
+  it('parses 每周二、四 with separators', () => {
+    const r = parseQuickAddInput('每周二、四 复习英语', FRI);
+    expect(r.repeat).toEqual({ freq: 'weekly', interval: 1, byWeekday: [2, 4] });
+    expect(r.title).toBe('复习英语');
+    // 基准周五：最近的周二 6/16 vs 周四 6/18 → 6/16
+    expect(r.dueDate).toBe('2026-06-16');
+  });
+
+  it('parses 每周六日 weekend combo', () => {
+    const r = parseQuickAddInput('每周六日打球', FRI);
+    expect(r.repeat).toEqual({ freq: 'weekly', interval: 1, byWeekday: [0, 6] });
+    // 基准周五：最近是周六 6/13
+    expect(r.dueDate).toBe('2026-06-13');
+  });
+
+  it('parses chinese time tokens', () => {
+    const r1 = parseQuickAddInput('明天下午3点 开会', FRI);
+    expect(r1.dueDate).toBe('2026-06-13');
+    expect(r1.dueTime).toBe('15:00');
+    expect(r1.title).toBe('开会');
+
+    const r2 = parseQuickAddInput('晚上8点半 复盘', FRI);
+    expect(r2.dueTime).toBe('20:30');
+    // 无日期 token 时默认今天
+    expect(r2.dueDate).toBe('2026-06-12');
+
+    const r3 = parseQuickAddInput('9点 晨会', FRI);
+    expect(r3.dueTime).toBe('09:00');
+    expect(r3.title).toBe('晨会');
+  });
+
+  it('parses HH:MM and am/pm time tokens', () => {
+    expect(parseQuickAddInput('meeting 14:30', FRI).dueTime).toBe('14:30');
+    expect(parseQuickAddInput('meeting 3pm', FRI).dueTime).toBe('15:00');
+    expect(parseQuickAddInput('standup 9:15am', FRI).dueTime).toBe('09:15');
+  });
+
+  it('does not misparse 买3点心 as a time', () => {
+    const r = parseQuickAddInput('买3点心', FRI);
+    expect(r.dueTime).toBeUndefined();
+    expect(r.title).toBe('买3点心');
+  });
+
+  it('parses #tags and strips them from title', () => {
+    const r = parseQuickAddInput('复习线代 #数学 #期末', FRI);
+    expect(r.tags).toEqual(['数学', '期末']);
+    expect(r.title).toBe('复习线代');
+  });
+
+  it('combines tags + date + time + priority + repeat', () => {
+    const r = parseQuickAddInput('每周一三五早读 #英语 7点 !高', FRI);
+    expect(r.repeat).toEqual({ freq: 'weekly', interval: 1, byWeekday: [1, 3, 5] });
+    expect(r.tags).toEqual(['英语']);
+    expect(r.dueTime).toBe('07:00');
+    expect(r.priority).toBe('high');
+    expect(r.title).toBe('早读');
   });
 });

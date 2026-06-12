@@ -146,6 +146,12 @@
     "modal": {
       "basic_info": "基础信息",
       "advanced_settings": "高级参数",
+      "test_connection": "测试连接",
+      "test_connection_testing": "测试中…",
+      "test_connection_success": "连接成功（{{latency}} ms）",
+      "test_connection_failed": "连接失败，请检查地址、密钥与模型名",
+      "test_connection_failed_short": "失败",
+      "test_connection_unavailable": "当前环境不支持连接测试",
       "tabs": {
         "general": "常规",
         "capabilities": "能力",
@@ -622,6 +628,13 @@
     "switch_language": "切换语言",
     "chinese": "中文",
     "english": "English"
+  },
+  "system_notification": {
+    "title": "系统通知",
+    "desc": "番茄钟、待办提醒、制卡等任务的系统通知策略。「仅后台」表示应用在前台时不打扰。",
+    "background": "仅后台",
+    "always": "总是",
+    "never": "从不"
   },
   "debug": {
     "description": "用于调试全局流式会话与事件"
@@ -1251,6 +1264,7 @@
     "config_save_success_browser": "配置保存成功（浏览器模式）",
     "config_save_failed": "配置保存失败: {{error}}",
     "api_test_success": "{{name}} ({{model}}) API连接测试成功",
+    "api_test_latency": "耗时 {{latency}} ms",
     "api_test_failed": "{{name}} ({{model}}) API连接测试失败",
     "api_test_success_mock": "{{name}} API连接测试成功（模拟）",
     "api_test_error": "{{name}} 连接测试失败: {{error}}",

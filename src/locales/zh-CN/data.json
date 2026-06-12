@@ -1,6 +1,14 @@
 {
   "page_title": "数据管理",
   "page_subtitle": "管理您的错题数据、系统设置和备份",
+  "today_center": {
+    "title": "今日",
+    "all_clear": "暂无待处理事项",
+    "review_due": "到期复习",
+    "todo_due": "今日待办",
+    "active_jobs": "运行中任务",
+    "go": "前往"
+  },
   "export_title": "数据导出",
   "export_description": "导出您的所有错题数据，包括图片和聊天记录，以及系统设置。",
   "export_format_label": "导出格式",

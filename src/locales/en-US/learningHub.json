@@ -135,7 +135,8 @@
     "itemNotFound": "Item not found",
     "folderCannotAddToChat": "Folders cannot be added to chat",
     "unsupportedResourceType": "Unsupported resource type: {{type}}",
-    "openResourceFailed": "Failed to open resource"
+    "openResourceFailed": "Failed to open resource",
+    "imageDecodeFailed": "Failed to decode image"
   },
   "errors": {
     "openResourceFailed": "Failed to open resource"
@@ -183,7 +184,11 @@
     "loading": "Loading image...",
     "largeFileWarning": "Large File Warning",
     "largeFileDescription": "This image is large ({{size}}) and may take a while to load and use more memory. Continue loading?",
-    "loadAnyway": "Load Anyway"
+    "loadAnyway": "Load Anyway",
+    "renderFailed": "Image cannot be displayed",
+    "unsupportedFormatHint": "The built-in browser does not support this format (e.g. HEIC/HEIF). Save it locally and open with your system image viewer.",
+    "renderFailedHint": "The image data may be corrupted or in an unsupported format. Try saving it locally.",
+    "saveToDevice": "Save to device"
   },
   "file": {
     "noPreview": "Preview not available for this file type",
@@ -225,7 +230,9 @@
     "docTypeXlsx": "Excel Spreadsheet",
     "docTypePptx": "PowerPoint Presentation",
     "docTypeText": "Text File",
-    "documentHint": "Double-click or view in the side panel"
+    "documentHint": "Double-click or view in the side panel",
+    "xlsxTruncated": "Sheet is too large. Showing first {{shown}} rows ({{hidden}} more rows not rendered; download the file for full content)",
+    "csvTruncated": "Table is too large. Showing first {{shown}} rows ({{hidden}} more rows not rendered)"
   },
   "textbook": {
     "import": "Import Textbook",
@@ -662,6 +669,12 @@
       "favorites": "Favorites",
       "recentAccess": "Recent"
     }
+  },
+  "indexMiniBar": {
+    "indexing": "Indexing…",
+    "indexingWithProgress": "Indexing {{progress}}%",
+    "failed": "{{count}} failed to index",
+    "pending": "{{count}} pending index"
   },
   "indexStatus": {
     "state": {

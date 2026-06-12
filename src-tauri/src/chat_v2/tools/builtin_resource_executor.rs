@@ -3059,9 +3059,30 @@ impl BuiltinResourceExecutor {
             }
         }
 
-        // 先从原位置移除
         let root = doc.get_mut("root").ok_or("Document has no 'root' node")?;
 
+        // ★ 修复：移除前完成全部校验，防止"先移除、后查找失败"导致子树永久丢失。
+        // 之前若 new_parent 是被移节点自身或其后代，移除后 new_parent 随子树消失，
+        // 节点无法插回且同批次其它成功操作仍会保存损坏的文档。
+        {
+            let root_ref: &Value = root;
+            let moving = Self::find_node_ref(root_ref, node_id)
+                .ok_or_else(|| format!("move_node: node '{}' not found", node_id))?;
+            if node_id == new_parent_id || Self::contains_node_id(moving, new_parent_id) {
+                return Err(format!(
+                    "move_node: cannot move node '{}' into itself or its own descendant '{}'",
+                    node_id, new_parent_id
+                ));
+            }
+            if Self::find_node_ref(root_ref, new_parent_id).is_none() {
+                return Err(format!(
+                    "move_node: new parent '{}' not found",
+                    new_parent_id
+                ));
+            }
+        }
+
+        // 校验通过后再从原位置移除
         let removed = Self::find_and_remove_child(root, node_id)
             .ok_or_else(|| format!("move_node: node '{}' not found", node_id))?;
 
@@ -3126,6 +3147,21 @@ impl BuiltinResourceExecutor {
             return Self::find_node_mut(&mut node["children"][idx], target_id);
         }
 
+        None
+    }
+
+    /// 递归查找节点（只读引用），用于修改前的存在性/后代关系校验
+    fn find_node_ref<'a>(node: &'a Value, target_id: &str) -> Option<&'a Value> {
+        if node.get("id").and_then(|v| v.as_str()) == Some(target_id) {
+            return Some(node);
+        }
+        if let Some(children) = node.get("children").and_then(|c| c.as_array()) {
+            for child in children {
+                if let Some(found) = Self::find_node_ref(child, target_id) {
+                    return Some(found);
+                }
+            }
+        }
         None
     }
 

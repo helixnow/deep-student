@@ -34,12 +34,6 @@ export {
   type SourceType,
 } from './useReferenceToChat';
 
-export {
-  PreviewRouter,
-  type PreviewRouterProps,
-  type PreviewRouterData,
-} from './PreviewRouter';
-
 // 导航上下文
 export {
   LearningHubNavigationProvider,

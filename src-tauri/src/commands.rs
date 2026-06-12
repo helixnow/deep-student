@@ -2196,13 +2196,67 @@ pub async fn parse_document_from_base64(
 /// 读取文件文本内容
 #[tauri::command]
 pub async fn read_file_text(window: Window, path: String) -> Result<String> {
+    deny_hidden_local_path(&window, &path)?;
     unified_file_manager::read_to_string(&window, &path)
 }
 
+/// 拒绝包含隐藏路径段（点号开头）的本地路径
+///
+/// ★ 2026-06-12（审阅问题 R4 安全配套）：`read_file_bytes`/`read_file_text`
+/// 没有任何路径白名单，前端任意 JS 都能读取 ~/.ssh、~/.aws 等敏感目录。
+/// 正常导入/预览流程只会访问用户可见文件，封掉隐藏路径段不影响功能。
+/// 应用自身数据目录（Linux 下位于 ~/.local/share）始终放行。
+fn deny_hidden_local_path(window: &Window, raw_path: &str) -> Result<()> {
+    use tauri::Manager;
+
+    if unified_file_manager::is_virtual_uri(raw_path) {
+        return Ok(());
+    }
+
+    // 应用数据目录内的路径（如 VFS blob）放行
+    let app = window.app_handle();
+    let in_app_dirs = [
+        app.path().app_data_dir().ok(),
+        app.path().app_local_data_dir().ok(),
+        app.path().app_cache_dir().ok(),
+    ]
+    .into_iter()
+    .flatten()
+    .any(|dir| Path::new(raw_path).starts_with(&dir));
+    if in_app_dirs {
+        return Ok(());
+    }
+
+    let has_hidden_component = Path::new(raw_path).components().any(|c| {
+        matches!(
+            c,
+            std::path::Component::Normal(name)
+                if name.to_string_lossy().starts_with('.')
+        )
+    });
+    if has_hidden_component {
+        return Err(AppError::validation(format!(
+            "拒绝读取隐藏路径: {}",
+            raw_path
+        )));
+    }
+    Ok(())
+}
+
 /// 读取文件二进制内容（支持 content://、ph:// 等移动端安全URI）
+///
+/// ★ 2026-06-12（审阅问题 R4）：返回 `tauri::ipc::Response` 原始二进制。
+/// 旧实现返回 `Vec<u8>` 会被序列化成 JSON number 数组，传输体积膨胀 3-4 倍，
+/// 200MB 文件经 IPC 后字符串近 1GB。同时把磁盘读取移入 blocking 线程。
 #[tauri::command]
-pub async fn read_file_bytes(window: Window, path: String) -> Result<Vec<u8>> {
-    unified_file_manager::read_all_bytes(&window, &path)
+pub async fn read_file_bytes(window: Window, path: String) -> Result<tauri::ipc::Response> {
+    deny_hidden_local_path(&window, &path)?;
+    let bytes = tauri::async_runtime::spawn_blocking(move || {
+        unified_file_manager::read_all_bytes(&window, &path)
+    })
+    .await
+    .map_err(|e| AppError::file_system(format!("读取任务异常终止: {}", e)))??;
+    Ok(tauri::ipc::Response::new(bytes))
 }
 
 /// 获取文件大小（字节）

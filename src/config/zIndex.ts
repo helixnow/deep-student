@@ -58,7 +58,7 @@ export const Z_INDEX = {
   /** 模态对话框 */
   modal: 3000,
 
-  /** 底部 Sheet（MobileBottomSheet） */
+  /** 底部 Sheet（Radix Sheet / 移动端设置抽屉等） */
   sheet: 4000,
 
   /** 通知 Toast */

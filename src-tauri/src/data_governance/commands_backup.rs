@@ -322,7 +322,8 @@ fn has_unsynced_local_change(
 /// **[P0 接入]** 使用 `apply_downloaded_changes_with_conflict_guard`：
 /// - 将 `MergeStrategy` 映射为 `ConflictPolicy`
 /// - 冲突落败方进 `__sync_conflicts` 表（每库一份），前端可据此列出待处理冲突
-/// - Manual 策略特殊处理：回退到旧行为（仍用 LWW 门 + 策略过滤，不自动解决冲突）
+/// - Manual 策略映射为 `KeepLocal`：无冲突的变更照常按 LWW 收敛；真冲突时
+///   本地保持不变、双方快照落表，由用户在冲突面板逐条裁决
 pub(super) fn apply_downloaded_changes_to_databases(
     changes: &[SyncChangeWithData],
     active_dir: &std::path::Path,
@@ -344,11 +345,15 @@ pub(super) fn apply_downloaded_changes_to_databases(
     let id_column_map = build_id_column_map();
 
     // 策略映射
-    let policy_opt: Option<ConflictPolicy> = match strategy {
-        MergeStrategy::KeepLocal => Some(ConflictPolicy::KeepLocal),
-        MergeStrategy::UseCloud => Some(ConflictPolicy::KeepCloud),
-        MergeStrategy::KeepLatest => Some(ConflictPolicy::KeepLatest),
-        MergeStrategy::Manual => None, // 手动模式保持老行为，不自动解决
+    let policy: ConflictPolicy = match strategy {
+        MergeStrategy::KeepLocal => ConflictPolicy::KeepLocal,
+        MergeStrategy::UseCloud => ConflictPolicy::KeepCloud,
+        MergeStrategy::KeepLatest => ConflictPolicy::KeepLatest,
+        // Manual：无冲突的云端变更照常按 LWW 应用（保持收敛）；真冲突（本地
+        // 有未同步修改且语义不同）时本地保持不变、双方快照落 __sync_conflicts，
+        // 由用户在冲突面板逐条裁决。此前 Manual 走完全绕过冲突落表的旧路径，
+        // 用户选了"手动处理"反而永远看不到待处理冲突。
+        MergeStrategy::Manual => ConflictPolicy::KeepLocal,
     };
 
     // 获取本地设备 ID（仅作为冲突记录里的 losing_device_id，真实设备 ID 由 SyncManager 持有）
@@ -405,7 +410,7 @@ pub(super) fn apply_downloaded_changes_to_databases(
         let conn = open_sync_connection(&db_path)
             .map_err(|e| format!("打开数据库 {} 失败: {}", db_name, e))?;
 
-        // Manual 模式沿用旧的预过滤路径；KeepLatest/UseCloud 必须先进入冲突保护。
+        // KeepLatest/UseCloud/Manual 必须先进入冲突保护。
         //
         // 真实多设备场景里，同一记录如果本地有未同步修改且云端也有不同修改，
         // 即使 KeepLatest 最终会保留本地，也必须把双方快照写入 __sync_conflicts。
@@ -415,7 +420,7 @@ pub(super) fn apply_downloaded_changes_to_databases(
         // KeepLocal 仍保留原语义：本地已有且没有本地待同步冲突时跳过云端；只有
         // 本地存在待同步修改时才进入冲突保护以落表。
         let mut owned_changes: Vec<SyncChangeWithData> = Vec::new();
-        if policy_opt.is_none() || strategy == MergeStrategy::KeepLocal {
+        if strategy == MergeStrategy::KeepLocal {
             for c in db_changes {
                 let id_column = id_column_map
                     .get(&c.table_name)
@@ -451,21 +456,16 @@ pub(super) fn apply_downloaded_changes_to_databases(
             .find_map(|change| change.source_device_id.as_deref())
             .filter(|id| !id.trim().is_empty());
 
-        // 根据是否有 policy 决定走冲突保护还是老路径
-        let result = if let Some(policy) = policy_opt {
-            SyncManager::apply_downloaded_changes_with_conflict_guard(
-                &conn,
-                &owned_changes,
-                Some(&id_column_map),
-                policy,
-                cloud_device_id,
-                Some(&local_device_id),
-            )
-            .map(|(apply, conflict)| (apply, Some(conflict)))
-        } else {
-            SyncManager::apply_downloaded_changes(&conn, &owned_changes, Some(&id_column_map))
-                .map(|apply| (apply, None))
-        };
+        // 所有策略统一走冲突保护路径（冲突落败方写入 __sync_conflicts）
+        let result = SyncManager::apply_downloaded_changes_with_conflict_guard(
+            &conn,
+            &owned_changes,
+            Some(&id_column_map),
+            policy,
+            cloud_device_id,
+            Some(&local_device_id),
+        )
+        .map(|(apply, conflict)| (apply, Some(conflict)));
 
         match result {
             Ok((apply_result, conflict_result)) => {

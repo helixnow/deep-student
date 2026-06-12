@@ -569,7 +569,7 @@ impl DocumentParser {
             "docx" => self.extract_docx_from_path(file_path),
             "pdf" => self.extract_pdf_from_path(file_path),
             "txt" => self.extract_txt_from_path(file_path),
-            "md" => self.extract_md_from_path(file_path),
+            "md" | "markdown" => self.extract_md_from_path(file_path),
             "html" | "htm" => self.extract_html_from_path(file_path),
             "xlsx" | "xls" | "xlsb" | "ods" => self.extract_excel_from_path(file_path),
             "pptx" => self.extract_pptx_from_path(file_path),
@@ -612,7 +612,7 @@ impl DocumentParser {
             "docx" => self.extract_docx_from_bytes(bytes),
             "pdf" => self.extract_pdf_from_bytes(bytes),
             "txt" => self.extract_txt_from_bytes(bytes),
-            "md" => self.extract_md_from_bytes(bytes),
+            "md" | "markdown" => self.extract_md_from_bytes(bytes),
             "html" | "htm" => self.extract_html_from_bytes(bytes),
             "xlsx" | "xls" | "xlsb" | "ods" => self.extract_excel_from_bytes(file_name, bytes),
             "pptx" => self.extract_pptx_from_bytes(bytes),
@@ -1848,17 +1848,39 @@ impl DocumentParser {
         self.extract_txt_from_bytes(bytes)
     }
 
-    /// 从TXT字节流提取文本
-    fn extract_txt_from_bytes(&self, bytes: Vec<u8>) -> Result<String, ParsingError> {
-        // 尝试UTF-8解码，先不消费bytes
-        match std::str::from_utf8(&bytes) {
-            Ok(text) => Ok(text.trim().to_string()),
-            Err(_) => {
-                // 如果UTF-8失败，使用lossy转换
-                let text = String::from_utf8_lossy(&bytes);
-                Ok(text.trim().to_string())
+    /// 解码文本字节流（多编码探测）
+    ///
+    /// ★ 2026-06-12（审阅问题 M6）：旧实现 UTF-8 失败后直接 `from_utf8_lossy`，
+    /// GBK/Big5/Shift_JIS 文本全部变成 U+FFFD 乱码且不可恢复。
+    /// 现按 BOM → UTF-8 → GB18030（GBK 超集）→ Big5 → Shift_JIS 顺序探测，
+    /// 中文场景优先 GB18030。
+    fn decode_text_bytes(bytes: &[u8]) -> String {
+        // 1. BOM 检测（UTF-8 / UTF-16 LE / UTF-16 BE）
+        if let Some((encoding, _bom_len)) = encoding_rs::Encoding::for_bom(bytes) {
+            let (text, _, _) = encoding.decode(bytes);
+            return text.into_owned();
+        }
+
+        // 2. 严格 UTF-8
+        if let Ok(text) = std::str::from_utf8(bytes) {
+            return text.to_string();
+        }
+
+        // 3. 常见 CJK 编码按优先级探测（解码无错即采用）
+        for encoding in [encoding_rs::GB18030, encoding_rs::BIG5, encoding_rs::SHIFT_JIS] {
+            let (text, had_errors) = encoding.decode_without_bom_handling(bytes);
+            if !had_errors {
+                return text.into_owned();
             }
         }
+
+        // 4. 兜底：lossy UTF-8
+        String::from_utf8_lossy(bytes).into_owned()
+    }
+
+    /// 从TXT字节流提取文本
+    fn extract_txt_from_bytes(&self, bytes: Vec<u8>) -> Result<String, ParsingError> {
+        Ok(Self::decode_text_bytes(&bytes).trim().to_string())
     }
 
     /// 从MD文件路径提取文本
@@ -3113,10 +3135,12 @@ impl DocumentParser {
     fn extract_csv_from_bytes(&self, bytes: Vec<u8>) -> Result<String, ParsingError> {
         self.check_file_size(bytes.len())?;
 
+        // ★ M6：CSV 同样先做编码探测（Excel 导出的 CSV 常为 GBK）
+        let decoded = Self::decode_text_bytes(&bytes);
         let mut reader = csv::ReaderBuilder::new()
             .flexible(true) // 允许不规则行
             .has_headers(true)
-            .from_reader(Cursor::new(bytes));
+            .from_reader(Cursor::new(decoded.into_bytes()));
 
         let mut output = String::with_capacity(8192);
 
@@ -3281,6 +3305,40 @@ mod tests {
         let large_content = vec![0u8; MAX_DOCUMENT_SIZE + 1];
         let result = parser.extract_text_from_bytes("test.txt", large_content);
         assert!(matches!(result, Err(ParsingError::FileTooLarge(_))));
+    }
+
+    #[test]
+    fn test_txt_gbk_decoding() {
+        // ★ 审阅问题 M6：GBK 编码文本不应退化为 U+FFFD 乱码
+        let parser = DocumentParser::new();
+        // "中文测试" 的 GBK 编码
+        let gbk_bytes: Vec<u8> = vec![0xD6, 0xD0, 0xCE, 0xC4, 0xB2, 0xE2, 0xCA, 0xD4];
+        let result = parser
+            .extract_text_from_bytes("test.txt", gbk_bytes)
+            .expect("GBK text should decode");
+        assert_eq!(result, "中文测试");
+        assert!(!result.contains('\u{FFFD}'));
+    }
+
+    #[test]
+    fn test_txt_utf8_bom_decoding() {
+        let parser = DocumentParser::new();
+        let mut bytes = vec![0xEF, 0xBB, 0xBF];
+        bytes.extend_from_slice("BOM 文本".as_bytes());
+        let result = parser
+            .extract_text_from_bytes("test.txt", bytes)
+            .expect("UTF-8 BOM text should decode");
+        assert_eq!(result, "BOM 文本");
+    }
+
+    #[test]
+    fn test_markdown_extension_alias() {
+        // ★ 审阅问题 R2：.markdown 扩展名应与 .md 同等支持
+        let parser = DocumentParser::new();
+        let result = parser
+            .extract_text_from_bytes("readme.markdown", b"# Title".to_vec())
+            .expect(".markdown should be supported");
+        assert_eq!(result, "# Title");
     }
 
     #[test]

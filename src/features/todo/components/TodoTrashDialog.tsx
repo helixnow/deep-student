@@ -104,7 +104,9 @@ export const TodoTrashDialog: React.FC<TodoTrashDialogProps> = ({ open, onOpenCh
     trashLists,
     trashItems,
     isLoadingTrash,
+    trashHasMore,
     loadTrash,
+    loadMoreTrash,
     restoreListFromTrash,
     restoreItemFromTrash,
     purgeListFromTrash,
@@ -142,7 +144,7 @@ export const TodoTrashDialog: React.FC<TodoTrashDialogProps> = ({ open, onOpenCh
         </NotionDialogHeader>
 
         <NotionDialogBody overlayScroll>
-          {isLoadingTrash ? (
+          {isLoadingTrash && isEmpty ? (
             <div className="py-8 text-center text-[13px] text-muted-foreground">
               {t('common:status.loading', { defaultValue: '加载中...' })}
             </div>
@@ -203,6 +205,22 @@ export const TodoTrashDialog: React.FC<TodoTrashDialogProps> = ({ open, onOpenCh
                     ))}
                   </div>
                 </section>
+              )}
+
+              {trashHasMore && (
+                <div className="flex justify-center pt-1">
+                  <NotionButton
+                    variant="ghost"
+                    size="sm"
+                    disabled={isLoadingTrash}
+                    onClick={() => void loadMoreTrash()}
+                    className="text-[12px] text-muted-foreground"
+                  >
+                    {isLoadingTrash
+                      ? t('common:status.loading', { defaultValue: '加载中...' })
+                      : t('todo:trash.loadMore')}
+                  </NotionButton>
+                </div>
               )}
             </div>
           )}

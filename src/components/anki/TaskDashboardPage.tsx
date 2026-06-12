@@ -33,7 +33,7 @@ import {
   ArrowsClockwise, CaretDown, CaretRight, Play, Pause, ArrowCounterClockwise,
   Trash, DownloadSimple, ArrowSquareOut, Warning, CheckCircle,
   CircleNotch, FileText, Hash, TrendUp,
-  ChartBar, Circle, MagnifyingGlass, X, ArrowsDownUp, ChatCircleDots,
+  ChartBar, Circle, MagnifyingGlass, X, ArrowsDownUp, ChatCircleDots, Coffee,
 } from '@phosphor-icons/react';
 import type { AnkiCard, CustomAnkiTemplate } from '@/types';
 import { exportCardsAsApkg } from '@/features/chat/anki';
@@ -846,6 +846,26 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
   const hasActiveRef = useRef(false);
   const { isActive: isViewActive } = useViewVisibility('task-dashboard');
 
+  // ★ 4.2 防休眠开关（长任务时阻止系统休眠）
+  const [preventSleep, setPreventSleep] = useState(false);
+  useEffect(() => {
+    invoke<boolean>('get_prevent_sleep')
+      .then(setPreventSleep)
+      .catch(() => { /* 平台不支持时保持 false */ });
+  }, []);
+  const togglePreventSleep = useCallback(async () => {
+    try {
+      const next = await invoke<boolean>('set_prevent_sleep', { enabled: !preventSleep });
+      setPreventSleep(next);
+      if (next !== !preventSleep && !preventSleep) {
+        // 请求开启但实际未开启 → 平台不支持
+        showGlobalNotification('info', t('taskDashboard.preventSleepUnsupported'));
+      }
+    } catch (err: unknown) {
+      showGlobalNotification('error', getErrorMessage(err));
+    }
+  }, [preventSleep, t]);
+
   const load = useCallback(async () => {
     try {
       const [s, st] = await Promise.all([
@@ -928,9 +948,15 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
     return { active: a, attention: at, completed: c };
   }, [sessions]);
 
-  // 同步 hasActiveRef
+  // 同步 hasActiveRef；任务全部结束时自动解除防休眠
   useEffect(() => {
+    const hadActive = hasActiveRef.current;
     hasActiveRef.current = groups.active.length > 0;
+    if (hadActive && groups.active.length === 0) {
+      invoke<boolean>('set_prevent_sleep', { enabled: false })
+        .then(setPreventSleep)
+        .catch(() => { /* ignore */ });
+    }
   }, [groups.active.length]);
 
   // 聚合指标
@@ -1097,6 +1123,17 @@ export const TaskDashboardPage: React.FC<TaskDashboardPageProps> = ({
                 <span className="inline-flex items-center gap-1.5">
                   <CircleNotch size={12} className="text-[color:hsl(var(--info))] animate-spin" />
                   <span className="text-[color:hsl(var(--info))] font-medium">{groups.active.length}</span>
+                  <CommonTooltip content={preventSleep ? t('taskDashboard.preventSleepOn') : t('taskDashboard.preventSleepOff')}>
+                    <NotionButton
+                      size="sm"
+                      variant={preventSleep ? 'secondary' : 'ghost'}
+                      onClick={togglePreventSleep}
+                      className="ml-1 h-6 text-[12px]"
+                    >
+                      <Coffee size={12} className={preventSleep ? 'text-[color:hsl(var(--warning))]' : ''} />
+                      {t('taskDashboard.preventSleep')}
+                    </NotionButton>
+                  </CommonTooltip>
                 </span>
               ) : (
                 <span className="inline-flex items-center gap-1.5">

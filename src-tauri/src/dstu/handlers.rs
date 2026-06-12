@@ -1052,7 +1052,8 @@ pub async fn dstu_create(
 
             // 验证 Base64 数据大小（避免超大字符串导致内存压力）
             // #62: 文件上限 50MB→200MB，与附件上传（attachment_repo）及学习资源导入对齐
-            const MAX_IMAGE_SIZE: usize = 10 * 1024 * 1024; // 10MB
+            // ★ 2026-06-12（审阅问题 M8）：图片 10MB→50MB，与 attachment_repo::MAX_IMAGE_BYTES 对齐
+            const MAX_IMAGE_SIZE: usize = 50 * 1024 * 1024; // 50MB
             const MAX_FILE_SIZE: usize = 200 * 1024 * 1024; // 200MB
             let max_file_size = if resource_type == "images" {
                 MAX_IMAGE_SIZE
@@ -2249,7 +2250,7 @@ pub async fn dstu_copy(
             // ★ 2026-06-12（第二轮审阅）：通过 repo 层 copy_exam_sheet 复制。
             // 旧实现仅复制 exam_sheets 行：页图 blob 引用计数不增（purge 任一份
             // 导致另一份页图被物理清扫），且不复制题目（副本是空卷）。
-            let _ = exam; // 名称在 repo 内沿用原卷（与文件复制语义一致）
+            let _ = exam; // 名称由 repo 统一加"(副本)"后缀（与文件复制语义一致）
             let new_exam = match VfsExamRepo::copy_exam_sheet(
                 &vfs_db,
                 &src_id,

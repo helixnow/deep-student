@@ -129,6 +129,21 @@ export async function listUpcomingItems(days: number, includeCompleted = false):
   return invoke('todo_list_upcoming', { days, includeCompleted });
 }
 
+/** 所有设置了提醒的待处理任务（提醒调度器轮询用） */
+export async function listReminderItems(): Promise<TodoItem[]> {
+  return invoke('todo_list_reminders');
+}
+
+/** 全部待处理任务（跨清单，四象限矩阵视图用） */
+export async function listAllPendingItems(): Promise<TodoItem[]> {
+  return invoke('todo_list_all_pending');
+}
+
+/** AI 拆解：让工具模型把任务拆为若干子任务并落库，返回新建的子任务 */
+export async function aiBreakdownTodo(itemId: string): Promise<TodoItem[]> {
+  return invoke('todo_ai_breakdown', { itemId });
+}
+
 export async function listCompletedItems(listId?: string): Promise<TodoItem[]> {
   return invoke('todo_list_completed', { listId });
 }

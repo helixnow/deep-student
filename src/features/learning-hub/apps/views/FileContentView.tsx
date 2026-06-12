@@ -34,6 +34,7 @@ import { showGlobalNotification } from '@/components/UnifiedNotification';
 import { TextbookPdfViewer } from '@/features/pdf/components/TextbookPdfViewer';
 import { resolveFilePreviewMode } from './filePreviewResolver';
 import { RichDocumentPreview } from './RichDocumentPreview';
+import { TextFilePreview } from './TextFilePreview';
 
 /**
  * 根据 MIME 类型获取对应图标
@@ -525,13 +526,11 @@ const FileContentViewInner: React.FC<ContentViewProps> = ({
       );
     }
 
-    // 纯文本预览（带滚动容器）
+    // 文本预览（md 富渲染 / csv 表格化 / 纯文本，带滚动容器）
     if (textContent) {
       return (
         <div className="h-full overflow-auto">
-          <pre className="whitespace-pre-wrap text-sm p-4 m-0 min-h-full text-foreground">
-            {textContent}
-          </pre>
+          <TextFilePreview content={textContent} fileName={node.name} />
         </div>
       );
     }

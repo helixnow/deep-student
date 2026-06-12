@@ -58,6 +58,8 @@ import { getErrorMessage } from '@/utils/errorUtils';
 import { cancelPdfProcessing, getBatchPdfProcessingStatus, retryPdfProcessing } from '@/api/vfsPdfProcessingApi';
 import type { InputBarUIProps } from './types';
 import type { ContextWindowUsage } from './contextWindowUsage';
+import { formatContextTokenAmount } from './contextWindowUsage';
+import type { SessionUsageSummary } from '@/api/llmUsageApi';
 import { vfsRefApi } from '../../context/vfsRefApi';
 import { resourceStoreApi, type ContextRef } from '../../resources';
 import { IMAGE_TYPE_ID } from '../../context/definitions/image';
@@ -73,8 +75,6 @@ import { AttachmentPreviewChips } from './AttachmentPreviewChips';
 import { useMobileLayoutSafe } from '@/components/layout/MobileLayoutContext';
 import { useMediaQuery } from '@/hooks/useMediaQuery';
 import { BlockingInteractionBar } from './BlockingInteractionBar';
-import { MobileBottomSheet } from './MobileBottomSheet';
-import { MobileSheetHeader } from './MobileSheetHeader';
 import { AttachmentInjectModeSelector } from './AttachmentInjectModeSelector';
 import { ComposerPanelOverlay } from './ComposerPanelOverlay';
 import { ComposerPanel } from './ComposerPanel';
@@ -89,6 +89,7 @@ import {
 } from './injectModeUtils';
 import { COMMAND_EVENTS } from '@/command-palette/hooks/useCommandEvents';
 import { useVoiceInputIntegration } from '@/voice-input';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 // ============================================================================
 // 常量
@@ -184,14 +185,22 @@ function getCompactThinkingLabel(label?: string): string | undefined {
 
 function ContextWindowUsageRing({
   usage,
+  sessionUsage,
   t,
   disabled,
 }: {
   usage: ContextWindowUsage;
+  sessionUsage?: SessionUsageSummary | null;
   t: TFunction;
   disabled: boolean;
 }) {
-  const contextUsageColor = 'var(--text-primary)';
+  // ★ 1.2 水位分级警示：<75% 默认，75-90% warning，>90% danger
+  const contextUsageColor =
+    usage.usedPercent >= 90
+      ? 'hsl(var(--danger))'
+      : usage.usedPercent >= 75
+        ? 'hsl(var(--warning))'
+        : 'var(--text-primary)';
   const ringRadius = 6.75;
   const ringCircumference = 2 * Math.PI * ringRadius;
   const ringProgressOffset = ringCircumference * (1 - usage.usedPercent / 100);
@@ -233,6 +242,34 @@ function ContextWindowUsageRing({
           </span>
         </div>
       </div>
+      {usage.usedPercent >= 75 && (
+        <p className="mt-2 border-t border-[color:var(--input-shell-border)] pt-2 text-[11px] leading-snug text-[color:var(--text-secondary)]">
+          {t('chatV2:tokenUsage.contextHighWaterHint')}
+        </p>
+      )}
+      {/* ★ 1.2 本会话累计（token / 费用） */}
+      {sessionUsage && sessionUsage.totalTokens > 0 && (
+        <div className="mt-2 space-y-1.5 border-t border-[color:var(--input-shell-border)] pt-2">
+          <div className="flex items-center justify-between gap-3">
+            <span className="text-[color:var(--text-secondary)]">
+              {t('chatV2:tokenUsage.sessionTotal')}
+            </span>
+            <span className="font-mono tabular-nums text-[color:var(--text-primary)]">
+              {formatContextTokenAmount(sessionUsage.totalTokens)}
+            </span>
+          </div>
+          {typeof sessionUsage.estimatedCostUsd === 'number' && sessionUsage.estimatedCostUsd > 0 && (
+            <div className="flex items-center justify-between gap-3">
+              <span className="text-[color:var(--text-secondary)]">
+                {t('chatV2:tokenUsage.sessionCost')}
+              </span>
+              <span className="font-mono tabular-nums text-[color:var(--text-primary)]">
+                ${sessionUsage.estimatedCostUsd.toFixed(sessionUsage.estimatedCostUsd < 0.1 ? 4 : 2)}
+              </span>
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 
@@ -451,6 +488,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   canAbort,
   isStreaming,
   contextWindowUsage,
+  sessionUsage,
   attachments,
   panelStates,
   disabledReason,
@@ -1403,7 +1441,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
   useEffect(() => {
     if (!hasAnyPanelOpen) return;
 
-    const handleClickOutside = (e: MouseEvent) => {
+    const handleClickOutside = (e: PointerEvent) => {
       const target = e.target as Node;
       // 检查点击是否在面板容器内
       if (panelContainerRef.current?.contains(target)) {
@@ -1420,10 +1458,22 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
       closeAllPanels();
     };
 
-    // 使用 mousedown 而不是 click，更早响应
-    document.addEventListener('mousedown', handleClickOutside);
-    return () => document.removeEventListener('mousedown', handleClickOutside);
+    // pointerdown 同时覆盖鼠标与触摸（触摸场景不依赖合成 mouse 事件），且比 click 更早响应
+    document.addEventListener('pointerdown', handleClickOutside);
+    return () => document.removeEventListener('pointerdown', handleClickOutside);
   }, [hasAnyPanelOpen, closeAllPanels]);
+
+  // 📱 Android 系统返回键：组合面板（附件/模型/技能/MCP/对话控制）打开时先关闭面板，
+  // 与 Radix 浮层、MobileSlidingLayout 的返回键语义保持一致（A-5 体系补全）。
+  const closeAllPanelsRef = useRef(closeAllPanels);
+  closeAllPanelsRef.current = closeAllPanels;
+  useEffect(() => {
+    if (!isMobile || !hasAnyPanelOpen) return;
+    return registerBackHandler(() => {
+      closeAllPanelsRef.current();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isMobile, hasAnyPanelOpen]);
 
   // 统一的面板切换函数，自动处理互斥逻辑
   const togglePanel = useCallback((panelName: keyof PanelStates) => {
@@ -2470,6 +2520,7 @@ export const InputBarUI: React.FC<InputBarUIProps> = ({
             {contextWindowUsage && (
               <ContextWindowUsageRing
                 usage={contextWindowUsage}
+                sessionUsage={sessionUsage}
                 t={t}
                 disabled={tooltipDisabled}
               />

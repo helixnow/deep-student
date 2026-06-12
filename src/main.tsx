@@ -275,6 +275,10 @@ export { SENTRY_CONSENT_KEY };
 
 const root = ReactDOM.createRoot(document.getElementById("root") as HTMLElement);
 
+// ★ 3.2 番茄钟置顶小窗：独立轻量入口（不挂载完整 App）
+const IS_POMODORO_MINI_WINDOW =
+  new URLSearchParams(window.location.search).get('window') === 'pomodoro-mini';
+
 /** Safe i18n accessor for contexts where hooks are unavailable (e.g. error boundary fallback).
  *  Falls back to the provided default string if i18n is not yet initialised or throws. */
 const safeT = (key: string, fallback: string, options?: Record<string, unknown>): string => {
@@ -424,7 +428,12 @@ const appTree = (
 
 // 在开发态移除 StrictMode，避免 effect/事件监听的二次执行造成噪声与性能影响；
 // 生产环境仍保留 StrictMode 以捕获潜在问题。
-if ((import.meta as any).env?.MODE === 'production') {
+if (IS_POMODORO_MINI_WINDOW) {
+  // 置顶小窗：只渲染番茄钟 UI，跳过 App 与全部重量级初始化
+  import('./features/pomodoro/components/PomodoroMiniWindow').then(({ PomodoroMiniWindow }) => {
+    root.render(<PomodoroMiniWindow />);
+  });
+} else if ((import.meta as any).env?.MODE === 'production') {
   initSentryIfConfigured().finally(() => {
     root.render(<React.StrictMode>{appTree}</React.StrictMode>);
   });
@@ -436,9 +445,11 @@ if ((import.meta as any).env?.MODE === 'production') {
 
 
 // Initialize Frontend MCP Service from saved settings (best-effort)
-bootstrapMcpFromSettings({ preheat: true }).catch((err) => {
-  debugLog.warn('[MCP] Bootstrap failed:', err);
-});
+if (!IS_POMODORO_MINI_WINDOW) {
+  bootstrapMcpFromSettings({ preheat: true }).catch((err) => {
+    debugLog.warn('[MCP] Bootstrap failed:', err);
+  });
+}
 
 // Respond to settings change to reload MCP servers from DB
 const handleSystemSettingsChanged = async (event?: Event) => {

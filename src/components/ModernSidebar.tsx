@@ -1279,7 +1279,7 @@ export const ModernSidebar: React.FC<ModernSidebarProps> = ({
 
   const conversationHeaderAction = (
     <span className="flex shrink-0 items-center gap-1">
-      <CommonTooltip content={newConversationLabel} position="right">
+      <CommonTooltip content={newConversationLabel} position="right" shortcut={formatShortcut('mod+n')}>
         <NotionButton
           variant="ghost"
           size="icon"

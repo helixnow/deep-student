@@ -74,10 +74,25 @@ pub fn resolve_allowed_dirs(app: &tauri::AppHandle) -> Vec<PathBuf> {
         resolvers.push(Box::new(|| app.path().picture_dir()));
     }
 
-    resolvers
+    let mut dirs: Vec<PathBuf> = resolvers
         .into_iter()
         .filter_map(|f| f().ok().and_then(|p| std::fs::canonicalize(&p).ok()))
-        .collect()
+        .collect();
+
+    // ★ 2026-06-12（审阅问题 R1 配套）：VFS blobs 目录加入白名单。
+    // 数据槽可由用户迁移到任意位置（可能在 app_data 之外），
+    // 教材 PDF 复制进 blob 后需要可被 pdfstream:// 流式读取。
+    if let Some(state) = app.try_state::<crate::commands::AppState>() {
+        if let Some(vfs_db) = state.vfs_db.as_ref() {
+            if let Ok(blobs_dir) = std::fs::canonicalize(vfs_db.blobs_dir()) {
+                if !dirs.contains(&blobs_dir) {
+                    dirs.push(blobs_dir);
+                }
+            }
+        }
+    }
+
+    dirs
 }
 
 /// 处理 pdfstream:// 协议请求

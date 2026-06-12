@@ -404,10 +404,12 @@ impl VfsExamRepo {
             }
 
             let new_temp_id = format!("copy_{}", nanoid::nanoid!(10));
+            // ★ 2026-06-12（第二轮审阅）：与文件复制语义一致，加"(副本)"后缀，
+            // 否则列表中出现两个同名试卷无法区分。
             let new_exam = Self::create_exam_sheet_with_conn(
                 conn,
                 crate::vfs::types::VfsCreateExamSheetParams {
-                    exam_name: src.exam_name.clone(),
+                    exam_name: src.exam_name.clone().map(|n| format!("{} (副本)", n)),
                     temp_id: new_temp_id,
                     metadata_json: src.metadata_json.clone(),
                     preview_json: src.preview_json.clone(),
@@ -2034,7 +2036,7 @@ mod tests {
         // 复制 → blob 引用 +1，题目逐条复制
         let copy = VfsExamRepo::copy_exam_sheet(&db, &exam.id, None).unwrap();
         assert_ne!(copy.id, exam.id);
-        assert_eq!(copy.exam_name.as_deref(), Some("复制回归卷"));
+        assert_eq!(copy.exam_name.as_deref(), Some("复制回归卷 (副本)"));
 
         let conn = db.get_conn_safe().unwrap();
         for (label, hash) in [("page", &page_blob.hash), ("question", &question_blob.hash)] {

@@ -7,7 +7,9 @@ use rusqlite::{params, Connection, OptionalExtension};
 
 use crate::vfs::database::VfsDatabase;
 use crate::vfs::error::{VfsError, VfsResult};
-use crate::vfs::types::{CreatePomodoroRecordParams, PomodoroRecord, PomodoroTodayStats};
+use crate::vfs::types::{
+    CreatePomodoroRecordParams, PomodoroDailyStat, PomodoroRecord, PomodoroTodayStats,
+};
 
 const VALID_POMODORO_TYPES: &[&str] = &["work", "short_break", "long_break"];
 const VALID_POMODORO_STATUSES: &[&str] = &["completed", "interrupted"];
@@ -237,6 +239,85 @@ impl VfsPomodoroRepo {
             total_focus_seconds,
             interrupted_count,
         })
+    }
+
+    /// 近 N 天（含今天）的按日聚合统计，按本地日期分桶。
+    ///
+    /// 仅统计 work 类型：completed 计入完成数；focus_seconds 累加
+    /// completed 与 interrupted 的 actual_duration（真实专注时间）。
+    /// 返回完整日期序列（无记录的天补零），升序排列。
+    pub fn get_daily_stats(db: &VfsDatabase, days: u32) -> VfsResult<Vec<PomodoroDailyStat>> {
+        use chrono::{DateTime, Duration, TimeZone, Utc};
+
+        let days = days.clamp(1, 366) as i64;
+        let today = chrono::Local::now().date_naive();
+        let range_start_local = today - Duration::days(days - 1);
+        // 本地起始日 00:00 对应的 UTC 时间戳（与 created_at 同格式，可直接字符串比较）
+        let range_start_utc = range_start_local
+            .and_hms_opt(0, 0, 0)
+            .and_then(|naive| chrono::Local.from_local_datetime(&naive).single())
+            .map(|dt| {
+                dt.with_timezone(&Utc)
+                    .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                    .to_string()
+            })
+            .unwrap_or_else(|| {
+                Utc::now()
+                    .format("%Y-%m-%dT00:00:00.000Z")
+                    .to_string()
+            });
+
+        let conn = db.get_conn_safe()?;
+        let mut stmt = conn.prepare(
+            r#"
+            SELECT created_at, status, actual_duration
+            FROM pomodoro_records
+            WHERE type = 'work' AND created_at >= ?1
+            "#,
+        )?;
+        let rows: Vec<(String, String, i64)> = stmt
+            .query_map(params![range_start_utc], |row| {
+                Ok((row.get(0)?, row.get(1)?, row.get(2)?))
+            })?
+            .filter_map(log_and_skip_err)
+            .collect();
+
+        // 预填完整日期序列（无记录天补零，前端热力图/趋势不必再补洞）
+        let mut buckets: Vec<PomodoroDailyStat> = (0..days)
+            .map(|i| PomodoroDailyStat {
+                date: (range_start_local + Duration::days(i))
+                    .format("%Y-%m-%d")
+                    .to_string(),
+                completed_count: 0,
+                focus_seconds: 0,
+                interrupted_count: 0,
+            })
+            .collect();
+
+        for (created_at, status, actual_duration) in rows {
+            // UTC 时间戳 → 本地日期分桶
+            let local_date = DateTime::parse_from_rfc3339(&created_at)
+                .map(|dt| dt.with_timezone(&chrono::Local).date_naive())
+                .unwrap_or(today);
+            let idx = (local_date - range_start_local).num_days();
+            if idx < 0 || idx >= days {
+                continue;
+            }
+            let bucket = &mut buckets[idx as usize];
+            match status.as_str() {
+                "completed" => {
+                    bucket.completed_count += 1;
+                    bucket.focus_seconds += actual_duration.max(0);
+                }
+                "interrupted" => {
+                    bucket.interrupted_count += 1;
+                    bucket.focus_seconds += actual_duration.max(0);
+                }
+                _ => {}
+            }
+        }
+
+        Ok(buckets)
     }
 
     /// 列出今日的所有番茄钟记录

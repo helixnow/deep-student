@@ -77,7 +77,26 @@ impl VfsBlobRepo {
         debug!("[VFS::BlobRepo] Computed hash: {}", hash);
 
         // 2. 构建存储路径
-        let (relative_path, absolute_path) = Self::build_blob_path(blobs_dir, &hash, extension)?;
+        // ★ 2026-06-12（审阅问题 M1）：同 hash 已有记录时必须复用已登记的
+        // relative_path。旧实现总是按本次调用方传入的 extension 重新拼路径，
+        // 当两次导入扩展名不同（如 a.pdf 与 a.PDF→pdf / a.bin）时会在磁盘上
+        // 写出第二个物理文件，而 DB 记录仍指向旧路径——新文件成为永远不被
+        // 清理的孤儿。
+        let existing_relative_path: Option<String> = conn
+            .query_row(
+                "SELECT relative_path FROM blobs WHERE hash = ?1",
+                params![hash],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        let (relative_path, absolute_path) = match existing_relative_path {
+            Some(rel) => {
+                let abs = blobs_dir.join(&rel);
+                (rel, abs)
+            }
+            None => Self::build_blob_path(blobs_dir, &hash, extension)?,
+        };
 
         // 3. 确保目录存在
         if let Some(parent) = absolute_path.parent() {
@@ -604,6 +623,41 @@ mod tests {
 
         assert_eq!(blob1.hash, blob2.hash, "Should have same hash");
         assert_eq!(blob2.ref_count, 2, "ref_count should be incremented");
+    }
+
+    #[test]
+    fn test_blob_dedup_different_extension_no_orphan() {
+        // ★ 审阅问题 M1：同内容不同扩展名重复导入不应产生孤儿文件
+        let (temp_dir, db) = setup_test_db();
+
+        let data = b"Same content, different extension";
+        let blob1 = VfsBlobRepo::store_blob(&db, data, None, Some("pdf"))
+            .expect("First store should succeed");
+        let blob2 = VfsBlobRepo::store_blob(&db, data, None, Some("bin"))
+            .expect("Second store should succeed");
+
+        assert_eq!(blob1.hash, blob2.hash);
+        assert_eq!(
+            blob1.relative_path, blob2.relative_path,
+            "Second store must reuse the registered relative_path"
+        );
+        assert_eq!(blob2.ref_count, 2);
+
+        // 磁盘上只应有一个该 hash 的文件
+        let prefix_dir = temp_dir
+            .path()
+            .join("vfs_blobs")
+            .join(&blob1.hash[..2]);
+        let count = fs::read_dir(&prefix_dir)
+            .expect("prefix dir should exist")
+            .flatten()
+            .filter(|e| {
+                e.file_name()
+                    .to_string_lossy()
+                    .starts_with(&blob1.hash)
+            })
+            .count();
+        assert_eq!(count, 1, "Only one physical file should exist for the hash");
     }
 
     #[test]

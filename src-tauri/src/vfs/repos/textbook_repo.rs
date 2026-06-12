@@ -794,6 +794,77 @@ impl VfsTextbookRepo {
         Ok(())
     }
 
+    /// ★ 2026-06-12（审阅问题 R1/M7）：重新导入命中去重时，
+    /// 将记录的显示名更新为本次导入的文件名（用户语义上是"重新上传了这个文件"）。
+    /// 仅在名称确实变化时更新，避免无意义的 updated_at 抖动。
+    pub fn rename_textbook_with_conn(
+        conn: &Connection,
+        textbook_id: &str,
+        new_file_name: &str,
+    ) -> VfsResult<bool> {
+        let trimmed = new_file_name.trim();
+        if trimmed.is_empty() {
+            return Ok(false);
+        }
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
+        let updated = conn.execute(
+            "UPDATE files SET file_name = ?1, name = ?1, updated_at = ?2 WHERE id = ?3 AND file_name != ?1",
+            params![trimmed, now, textbook_id],
+        )?;
+        Ok(updated > 0)
+    }
+
+    /// ★ 2026-06-12（审阅问题 R1）：为缺失 blob 的教材补存内容（自愈）。
+    ///
+    /// 历史版本的 `textbooks_add` 只记录 original_path 不复制文件内容，
+    /// 原文件被移动/删除后资源永久失效。本方法在以下时机调用：
+    /// - 重新导入同一文件命中 sha256 去重时（顺手把内容补进 VFS）
+    /// - 用户手动"重新关联"失联文件时
+    ///
+    /// 仅当记录当前没有 blob_hash 时才写入；返回是否实际补存。
+    pub fn attach_blob_if_missing_with_conn(
+        conn: &Connection,
+        blobs_dir: &Path,
+        textbook_id: &str,
+        data: &[u8],
+        mime_type: Option<&str>,
+        extension: Option<&str>,
+    ) -> VfsResult<bool> {
+        let current: Option<Option<String>> = conn
+            .query_row(
+                "SELECT blob_hash FROM files WHERE id = ?1",
+                params![textbook_id],
+                |row| row.get(0),
+            )
+            .optional()?;
+
+        match current {
+            None => Err(VfsError::NotFound {
+                resource_type: "Textbook".to_string(),
+                id: textbook_id.to_string(),
+            }),
+            Some(Some(_)) => Ok(false),
+            Some(None) => {
+                let blob =
+                    VfsBlobRepo::store_blob_with_conn(conn, blobs_dir, data, mime_type, extension)?;
+                let now = chrono::Utc::now()
+                    .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+                    .to_string();
+                conn.execute(
+                    "UPDATE files SET blob_hash = ?1, updated_at = ?2 WHERE id = ?3",
+                    params![blob.hash, now, textbook_id],
+                )?;
+                info!(
+                    "[VFS::TextbookRepo] Healed missing blob for textbook {}: {}",
+                    textbook_id, blob.hash
+                );
+                Ok(true)
+            }
+        }
+    }
+
     /// 永久删除教材
     pub fn purge_textbook(db: &VfsDatabase, textbook_id: &str) -> VfsResult<()> {
         let conn = db.get_conn_safe()?;

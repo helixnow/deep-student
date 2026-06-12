@@ -11,7 +11,7 @@
 
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { MagnifyingGlass, FilePlus, FolderPlus, ImageSquare, ArrowSquareOut, BookOpen, PencilLine } from '@phosphor-icons/react';
+import { MagnifyingGlass, FilePlus, FolderPlus, ImageSquare, ArrowSquareOut, BookOpen, PencilLine, Robot, ArrowCounterClockwise, X } from '@phosphor-icons/react';
 import { CrepeEditor, type CrepeEditorApi } from '@/components/crepe';
 import { CustomScrollArea } from '@/components/custom-scroll-area';
 import { useNotesOptional } from './NotesContext';
@@ -728,7 +728,15 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
     }
   }, [isDstuMode, dstuOnSave, noteId, saveNoteContent]);
 
-  const { aiEditState, handleAccept, handleReject, isLocked: isAIEditLocked } = useCanvasAIEditHandler({
+  const {
+    aiEditState,
+    handleAccept,
+    handleReject,
+    isLocked: isAIEditLocked,
+    checkpoint: aiCheckpoint,
+    rollbackCheckpoint,
+    dismissCheckpoint,
+  } = useCanvasAIEditHandler({
     noteId,
     editorApi,
     onSave: handleAISave,
@@ -939,6 +947,32 @@ export const NotesCrepeEditor: React.FC<NotesCrepeEditorProps> = ({
           onAccept={handleAccept}
           onReject={handleReject}
         />
+      )}
+
+      {/* ★ 2.1 AI 编辑检查点横幅：接受后仍可整轮回滚 */}
+      {aiCheckpoint && !aiEditState.isActive && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 flex items-center gap-2 rounded-full border border-border bg-background/95 py-1.5 pl-3.5 pr-1.5 shadow-md backdrop-blur-sm animate-in fade-in slide-in-from-top-2 duration-200">
+          <Robot size={14} className="text-primary shrink-0" />
+          <span className="text-xs text-foreground">{t('notes:aiCheckpoint.applied')}</span>
+          <NotionButton
+            variant="ghost"
+            size="sm"
+            className="h-6 px-2 text-xs text-muted-foreground hover:text-foreground"
+            onClick={() => { void rollbackCheckpoint(); }}
+          >
+            <ArrowCounterClockwise size={12} className="mr-1" />
+            {t('notes:aiCheckpoint.rollback')}
+          </NotionButton>
+          <NotionButton
+            variant="ghost"
+            size="icon"
+            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+            onClick={dismissCheckpoint}
+            aria-label={t('notes:aiCheckpoint.keep')}
+          >
+            <X size={12} />
+          </NotionButton>
+        </div>
       )}
 
       {/* 远程桌面模式：当编辑器被 Portal 到白板时，显示占位符 */}

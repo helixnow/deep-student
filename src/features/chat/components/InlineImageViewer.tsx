@@ -26,6 +26,7 @@ import { fileManager } from '@/utils/fileManager';
 import { useViewStore } from '@/stores/viewStore';
 import { isAndroid } from '@/utils/platform';
 import { getCurrentWindow } from '@tauri-apps/api/window';
+import { registerBackHandler, BACK_PRIORITY } from '@/app/navigation/androidBackCoordinator';
 
 // ============================================================================
 // 类型定义
@@ -172,6 +173,17 @@ export const InlineImageViewer: React.FC<InlineImageViewerProps> = ({
       onClose();
     }
   }, [isOpen, currentView, onClose]);
+
+  // Android 系统返回键 = 关闭查看器（全屏浮层是非 Radix 自绘，协调器兜底覆盖不到）
+  const onCloseRef = React.useRef(onClose);
+  onCloseRef.current = onClose;
+  useEffect(() => {
+    if (!isOpen) return;
+    return registerBackHandler(() => {
+      onCloseRef.current();
+      return true;
+    }, BACK_PRIORITY.overlay);
+  }, [isOpen]);
 
   // 打开时锁定页面滚动，避免背景跟随滚动
   useEffect(() => {

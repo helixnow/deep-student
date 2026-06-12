@@ -2,7 +2,9 @@ import React, { useCallback, useEffect, useRef, useState, useMemo } from 'react'
 // 初始化思维导图模块（注册布局、样式、预设）
 import './init';
 import { useMindMapStore } from './store';
+import { MindMapActiveContext } from './MindMapActiveContext';
 import { MindMapErrorBoundary } from './MindMapErrorBoundary';
+import { dstu } from '@/dstu';
 import { StyleRegistry } from './registry';
 import { exportToOpml, exportToMarkdown, exportToJson, exportToImage } from './utils/exporters';
 import { importMindMap } from './utils/importers';
@@ -152,6 +154,49 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
   useEffect(() => {
     void tryLoadMindMap();
   }, [tryLoadMindMap]);
+
+  // ★ 监听 DSTU watch 事件：chat_v2 工具（mindmap_update/edit_nodes 等）或其他入口
+  // 修改导图后，已打开的编辑器自动刷新（参照 NoteContentView 的 R3 实现）。
+  // 无未保存修改时静默重载；有未保存修改时不强刷（交给保存时的 OCC 冲突流程），仅提示。
+  useEffect(() => {
+    if (!resourceId) return;
+    const unwatch = dstu.watch('*', (event) => {
+      if (event.type !== 'updated' || !event.node) return;
+      if (event.node.id !== resourceId) return;
+
+      const state = useMindMapStore.getState();
+      if (state.mindmapId !== resourceId) return;
+      // 自身保存进行中触发的事件由 save() 完成基线同步，跳过
+      if (state.isSaving) return;
+
+      const known = Date.parse(state.metadata?.updatedAt || '') || 0;
+      const incoming = event.node.updatedAt ?? 0;
+      // 等于/早于已知基线的事件来自自身保存回声或重复派发，忽略
+      if (incoming <= known) return;
+
+      if (state.isDirty) {
+        showGlobalNotification('info', t('mindmap:store.externalUpdatedDirty'));
+        return;
+      }
+
+      // 静默重载，保留用户当前视图与焦点位置
+      const prevView = state.currentView;
+      const prevFocusedNodeId = state.focusedNodeId;
+      void state
+        .loadMindMap(resourceId)
+        .then(() => {
+          if (useMindMapStore.getState().mindmapId !== resourceId) return;
+          useMindMapStore.setState({
+            currentView: prevView,
+            focusedNodeId: prevFocusedNodeId,
+          });
+        })
+        .catch((err) => {
+          console.error('[MindMapContentView] watch-triggered reload failed:', err);
+        });
+    });
+    return unwatch;
+  }, [resourceId, t]);
 
   // 同步标题变更到外部
   // ★ 标签页：仅活跃标签页同步标题，防止其他 MindMap 标签页加载时覆盖当前标题
@@ -372,8 +417,15 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
     void tryLoadMindMap();
   }, [tryLoadMindMap]);
 
+  const activeContextValue = useMemo(
+    () => ({ isActive: isActive !== false, resourceId: resourceId || null }),
+    [isActive, resourceId]
+  );
+
   return (
     <MindMapErrorBoundary onReset={handleErrorReset} fallbackMessage={t('mindmap:errorBoundary')}>
+    {/* isActive 下发到画布内的全局键盘/剪贴板监听器，非活跃保活实例忽略按键 */}
+    <MindMapActiveContext.Provider value={activeContextValue}>
     <div ref={containerRef} className={cn("flex flex-col h-full w-full bg-[var(--mm-bg)] mindmap-container", className)}>
       {/* Notion-style Topbar */}
       <div className="notion-topbar">
@@ -772,6 +824,7 @@ export const MindMapContentView: React.FC<MindMapContentViewProps> = ({
         )}
       </div>
     </div>
+    </MindMapActiveContext.Provider>
     </MindMapErrorBoundary>
   );
 };

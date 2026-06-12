@@ -1261,6 +1261,34 @@ impl VfsMindMapRepo {
             ],
         )?;
 
+        // ★ 版本保留策略：编辑器自动保存（source='manual'，约 1.5s debounce 一次）
+        // 每次内容变化都产生快照，无限增长会膨胀存储。仅保留最近 N 个 manual/NULL
+        // 版本；chat_* 来源的版本被聊天消息中的 mv_* 引用永久指向，不参与清理。
+        // 快照 resource 按 hash 去重共享，此处只清理版本行，不删除底层 resource。
+        const MAX_AUTOSAVE_VERSIONS: usize = 20;
+        let is_chat_source = source.map(|s| s.starts_with("chat")).unwrap_or(false);
+        if !is_chat_source {
+            if let Err(e) = conn.execute(
+                r#"
+                DELETE FROM mindmap_versions
+                WHERE mindmap_id = ?1
+                  AND (source IS NULL OR source NOT LIKE 'chat%')
+                  AND version_id NOT IN (
+                    SELECT version_id FROM mindmap_versions
+                    WHERE mindmap_id = ?1 AND (source IS NULL OR source NOT LIKE 'chat%')
+                    ORDER BY created_at DESC
+                    LIMIT ?2
+                  )
+                "#,
+                params![mindmap_id, MAX_AUTOSAVE_VERSIONS as i64],
+            ) {
+                warn!(
+                    "[VFS::MindMapRepo] Failed to prune autosave versions for {}: {}",
+                    mindmap_id, e
+                );
+            }
+        }
+
         debug!(
             "[VFS::MindMapRepo] Created version {} for mindmap {}",
             version_id, mindmap_id

@@ -1613,6 +1613,30 @@ impl PdfProcessingService {
         if has_text {
             ready_modes.push("text".to_string());
         }
+        // ★ 2026-06-12（第二轮审阅）：已有压缩版本且物理存在时直接跳过。
+        // 旧实现每次流水线重跑都重新压缩并 store_blob(+1)，旧引用不递减，
+        // 反复 reprocess 会让压缩 blob 引用计数只增不减（虚引用泄漏）。
+        // hash 已设但物理缺失时不跳过，走重压缩修复并在下方配平旧引用。
+        let existing_compressed: Option<String> = conn
+            .query_row(
+                "SELECT compressed_blob_hash FROM files WHERE id = ?1",
+                params![file_id],
+                |row| row.get(0),
+            )
+            .optional()?
+            .flatten();
+        if let Some(ref existing) = existing_compressed {
+            if !existing.trim().is_empty()
+                && VfsBlobRepo::get_blob_path_with_conn(&conn, blobs_dir, existing)?.is_some()
+            {
+                debug!(
+                    "[MediaProcessingService] Image {} already compressed ({}), skipping",
+                    file_id, existing
+                );
+                return Ok(true);
+            }
+        }
+
         let blob_path = VfsBlobRepo::get_blob_path_with_conn(&conn, blobs_dir, blob_hash)?
             .ok_or_else(|| VfsError::NotFound {
                 resource_type: "Blob".to_string(),
@@ -1683,6 +1707,29 @@ impl PdfProcessingService {
             "UPDATE files SET compressed_blob_hash = ?1, updated_at = datetime('now') WHERE id = ?2",
             params![final_hash, file_id],
         )?;
+
+        // ★ 2026-06-12（第二轮审阅）修复路径配平：旧压缩 hash（物理缺失）的
+        // 引用转移到新值。压缩有效时 store_blob 已 +1（新旧相同则净零重建文件）；
+        // 不划算时引用转移到原始 blob（等值不计数）。
+        // 注意与原始 blob 等值的旧 hash 不可能走到这里（原始缺失会提前 NotFound）。
+        if let Some(ref stale) = existing_compressed {
+            if !stale.trim().is_empty() && stale != blob_hash {
+                match VfsBlobRepo::decrement_ref_with_conn(&conn, blobs_dir, stale) {
+                    Ok(remaining) => {
+                        info!(
+                            "[MediaProcessingService] Repaired missing compressed blob for {} (stale {} -> remaining {})",
+                            file_id, stale, remaining
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            "[MediaProcessingService] Failed to decrement stale compressed blob {}: {}",
+                            stale, e
+                        );
+                    }
+                }
+            }
+        }
 
         // 返回 true 表示压缩阶段已完成（无论是否真正压缩）
         Ok(true)
@@ -1769,9 +1816,20 @@ impl PdfProcessingService {
             }
 
             // 跳过已经有压缩版本的页面
-            if page.compressed_blob_hash.is_some() {
-                skipped_count += 1;
-                continue;
+            // ★ 2026-06-12（第二轮审阅）：仅当压缩 blob 物理存在时才跳过。
+            // 旧实现只看 hash 是否已设，而检测端 check_pdf_pages_need_compression
+            // 还会校验物理文件 → hash 已设但 blob 丢失（历史误清扫/磁盘损坏）时
+            // 每次启动都被标记"需要压缩"却永远不被修复，死循环不自愈。
+            let mut stale_compressed_hash: Option<String> = None;
+            if let Some(ref existing) = page.compressed_blob_hash {
+                if !existing.trim().is_empty()
+                    && VfsBlobRepo::get_blob_path_with_conn(&conn, blobs_dir, existing)?.is_some()
+                {
+                    skipped_count += 1;
+                    continue;
+                }
+                // 物理缺失：记录旧 hash 用于配平引用计数，走重压缩修复
+                stale_compressed_hash = Some(existing.clone());
             }
 
             // 获取原始页面图片
@@ -1856,6 +1914,28 @@ impl PdfProcessingService {
                     compressed_size,
                     (1.0 - compressed_size as f64 / original_size as f64) * 100.0
                 );
+            }
+
+            // ★ 2026-06-12（第二轮审阅）修复路径配平：旧压缩 hash 的引用已转移。
+            // - 压缩有效：store_blob 已为新 hash +1（重压缩结果与旧 hash 相同时
+            //   净零，仅重建物理文件——两阶段删除不会删掉刚写入的文件）；
+            // - 压缩不划算：引用转移到原始页图（按惯例等值不额外计数）。
+            // 两种情况旧 hash 都要 -1，否则丢失的 blob 行残留虚引用永不回收。
+            if let Some(ref stale) = stale_compressed_hash {
+                match VfsBlobRepo::decrement_ref_with_conn(&conn, blobs_dir, stale) {
+                    Ok(remaining) => {
+                        info!(
+                            "[PdfProcessingService] Repaired missing compressed blob for page {} (stale {} -> remaining {})",
+                            index, stale, remaining
+                        );
+                    }
+                    Err(e) => {
+                        warn!(
+                            "[PdfProcessingService] Failed to decrement stale compressed blob {}: {}",
+                            stale, e
+                        );
+                    }
+                }
             }
 
             // 发送进度事件（统一事件）

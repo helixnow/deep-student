@@ -130,6 +130,7 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
     }
 
     setTestingApi(api.id);
+    const testStartedAt = performance.now();
 
     try {
       if (invoke) {
@@ -152,7 +153,12 @@ export function useSettingsVendorState(deps: UseSettingsVendorStateDeps) {
         });
         
         if (result) {
-          showGlobalNotification('success', t('settings:notifications.api_test_success', { name: api.name, model: api.model }));
+          const latencyMs = Math.round(performance.now() - testStartedAt);
+          showGlobalNotification(
+            'success',
+            t('settings:notifications.api_test_success', { name: api.name, model: api.model }),
+            t('settings:notifications.api_test_latency', { latency: latencyMs, defaultValue: '耗时 {{latency}} ms' })
+          );
         } else {
           showGlobalNotification('error', t('settings:notifications.api_test_failed', { name: api.name, model: api.model }));
         }

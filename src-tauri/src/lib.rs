@@ -1044,6 +1044,9 @@ pub fn run() {
             crate::cmd::enhanced_anki::recover_stuck_document_tasks,
             crate::cmd::enhanced_anki::list_document_sessions,
             crate::cmd::enhanced_anki::get_anki_stats,
+            // ★ 4.2 防休眠（制卡等长任务）
+            crate::cmd::power::set_prevent_sleep,
+            crate::cmd::power::get_prevent_sleep,
             // 状态恢复相关命令
             crate::commands::get_recent_document_tasks,
             crate::commands::get_all_recent_cards,
@@ -1473,9 +1476,12 @@ pub fn run() {
             ,crate::vfs::todo_handlers::todo_list_today
             ,crate::vfs::todo_handlers::todo_list_overdue
             ,crate::vfs::todo_handlers::todo_list_upcoming
+            ,crate::vfs::todo_handlers::todo_list_reminders
+            ,crate::vfs::todo_handlers::todo_list_all_pending
             ,crate::vfs::todo_handlers::todo_list_completed
             ,crate::vfs::todo_handlers::todo_search
             ,crate::vfs::todo_handlers::todo_get_active_summary
+            ,crate::vfs::todo_handlers::todo_ai_breakdown
             // 待办回收站命令
             ,crate::vfs::todo_handlers::todo_list_deleted_lists
             ,crate::vfs::todo_handlers::todo_restore_list
@@ -1491,6 +1497,7 @@ pub fn run() {
             ,crate::vfs::todo_handlers::pomodoro_list_by_todo
             ,crate::vfs::todo_handlers::pomodoro_today_stats
             ,crate::vfs::todo_handlers::pomodoro_list_today
+            ,crate::vfs::todo_handlers::pomodoro_daily_stats
             // 索引诊断命令
             ,crate::vfs::handlers::vfs_debug_index_status
             ,crate::vfs::handlers::vfs_reset_disabled_to_pending
@@ -1504,6 +1511,7 @@ pub fn run() {
             ,crate::llm_usage::handlers::llm_usage_by_model
             ,crate::llm_usage::handlers::llm_usage_by_caller
             ,crate::llm_usage::handlers::llm_usage_summary
+            ,crate::llm_usage::handlers::llm_usage_session_summary
             ,crate::llm_usage::handlers::llm_usage_recent
             ,crate::llm_usage::handlers::llm_usage_daily
             ,crate::llm_usage::handlers::llm_usage_cleanup
@@ -1595,6 +1603,8 @@ pub fn run() {
             // =================================================
             ,crate::cmd::textbooks::textbooks_add
             ,crate::cmd::textbooks::textbooks_update_bookmarks
+            ,crate::cmd::textbooks::textbooks_relink
+            ,crate::cmd::textbooks::vfs_get_file_blob_path
             // =================================================
             // 智能题目集命令（Question Bank V2）
             // =================================================

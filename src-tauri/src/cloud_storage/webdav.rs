@@ -225,6 +225,89 @@ impl WebDavStorage {
             .await
     }
 
+    /// 发送 PROPFIND 请求（带 120s 响应头超时、60s 响应体超时、网络错误重试）。
+    ///
+    /// 返回 `Ok(None)` 表示目标不存在（404）；非 2xx/404 状态码立即报错不重试
+    /// （客户端错误重试无意义）；网络层失败与超时按指数退避重试。
+    /// 此前 list_outcome/stat 的 PROPFIND 直接裸调 `self.http.send()`，
+    /// 无任何超时——服务器收下连接后沉默会让整个同步流程永久挂起。
+    async fn propfind_with_retry(
+        &self,
+        url: Url,
+        depth: &str,
+        context: &str,
+    ) -> Result<Option<String>> {
+        const PROPFIND_BODY: &str = r#"<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/><d:getlastmodified/><d:getcontentlength/></d:prop></d:propfind>"#;
+        let max_retries = 3;
+        let mut last_error: Option<String> = None;
+
+        for attempt in 0..max_retries {
+            if attempt > 0 {
+                let delay = Duration::from_millis(500 * (1 << attempt));
+                tokio::time::sleep(delay).await;
+                tracing::debug!(
+                    "WebDAV PROPFIND {} 重试 {}/{}",
+                    context,
+                    attempt + 1,
+                    max_retries
+                );
+            }
+
+            let send_result = tokio::time::timeout(
+                Duration::from_secs(120),
+                self.http
+                    .request(Self::propfind_method()?, url.clone())
+                    .header("Authorization", self.auth_header())
+                    .header("Depth", depth)
+                    .header("Content-Type", "application/xml")
+                    .body(PROPFIND_BODY)
+                    .send(),
+            )
+            .await;
+
+            let res = match send_result {
+                Ok(Ok(res)) => res,
+                Ok(Err(e)) => {
+                    last_error = Some(e.to_string());
+                    continue;
+                }
+                Err(_) => {
+                    last_error = Some("等待响应头超时（120 秒）".to_string());
+                    continue;
+                }
+            };
+
+            if res.status() == StatusCode::NOT_FOUND {
+                return Ok(None);
+            }
+            if !res.status().is_success() {
+                return Err(AppError::network(format!(
+                    "WebDAV PROPFIND 失败: {} {}",
+                    res.status(),
+                    res.status().canonical_reason().unwrap_or(""),
+                )));
+            }
+
+            // PROPFIND 响应是有限大小的 XML，60 秒读不完视为连接停滞。
+            match tokio::time::timeout(Duration::from_secs(60), res.text()).await {
+                Ok(Ok(xml)) => return Ok(Some(xml)),
+                Ok(Err(e)) => {
+                    last_error = Some(format!("读取 PROPFIND 响应失败: {e}"));
+                }
+                Err(_) => {
+                    last_error = Some("读取 PROPFIND 响应超时（60 秒）".to_string());
+                }
+            }
+        }
+
+        Err(AppError::network(format!(
+            "WebDAV PROPFIND {} 失败（已重试 {} 次）: {}",
+            context,
+            max_retries,
+            last_error.unwrap_or_default()
+        )))
+    }
+
     /// 确保目录存在（递归创建）
     async fn ensure_directory(&self, path: &str) -> Result<()> {
         let parts: Vec<&str> = path
@@ -521,52 +604,79 @@ impl CloudStorage for WebDavStorage {
         .await
         .map_err(|e| AppError::internal(format!("计算校验和任务失败: {e}")))??;
 
-        let file = tokio::fs::File::open(local_path)
-            .await
-            .map_err(|e| AppError::file_system(format!("打开文件失败: {e}")))?;
-
-        let uploaded = Arc::new(AtomicU64::new(0));
-        let progress_cb = progress.clone();
-        let stream = ReaderStream::new(file).map(move |chunk| {
-            if let Ok(ref bytes) = chunk {
-                let new_total =
-                    uploaded.fetch_add(bytes.len() as u64, Ordering::SeqCst) + bytes.len() as u64;
-                if let Some(cb) = progress_cb.as_ref() {
-                    cb(new_total, file_size);
-                }
-            }
-            chunk
-        });
-
         let url = self.build_url(key)?;
         // 流式上传的 send() 覆盖整个请求体传输：用按体积放缩的超时做停滞保护
         // （下限 64KB/s + 120 秒余量），避免固定超时杀死慢速大文件上传。
-        let upload_timeout =
-            std::time::Duration::from_secs(120 + file_size / (64 * 1024)).max(
-                std::time::Duration::from_secs(300),
-            );
-        let res = self
-            .http
-            .request(Method::PUT, url)
-            .header("Authorization", self.auth_header())
-            .timeout(upload_timeout)
-            .body(reqwest::Body::wrap_stream(stream))
-            .send()
-            .await
-            .map_err(|e| AppError::network(format!("WebDAV 上传失败: {e}")))?;
+        let upload_timeout = std::time::Duration::from_secs(120 + file_size / (64 * 1024))
+            .max(std::time::Duration::from_secs(300));
 
-        if res.status().is_success() {
-            if let Some(cb) = progress.as_ref() {
-                cb(file_size, file_size);
+        // 流式 PUT 无法复用 request_with_path 的重试（body 不可克隆），这里
+        // 显式按尝试重建文件流重试：网络错误/超时/5xx 可重试，4xx 立即失败。
+        // PUT 是整文件覆盖写，重传天然幂等。
+        let max_retries = 3;
+        let mut last_error: Option<AppError> = None;
+
+        for attempt in 0..max_retries {
+            if attempt > 0 {
+                let delay = std::time::Duration::from_millis(500 * (1 << attempt));
+                tokio::time::sleep(delay).await;
+                tracing::debug!("WebDAV PUT {} 重试 {}/{}", key, attempt + 1, max_retries);
             }
-            Ok(checksum)
-        } else {
-            Err(AppError::network(format!(
-                "WebDAV 上传失败: {} {}",
-                res.status(),
-                res.status().canonical_reason().unwrap_or("")
-            )))
+
+            let file = tokio::fs::File::open(local_path)
+                .await
+                .map_err(|e| AppError::file_system(format!("打开文件失败: {e}")))?;
+
+            let uploaded = Arc::new(AtomicU64::new(0));
+            let progress_cb = progress.clone();
+            let stream = ReaderStream::new(file).map(move |chunk| {
+                if let Ok(ref bytes) = chunk {
+                    let new_total = uploaded.fetch_add(bytes.len() as u64, Ordering::SeqCst)
+                        + bytes.len() as u64;
+                    if let Some(cb) = progress_cb.as_ref() {
+                        cb(new_total, file_size);
+                    }
+                }
+                chunk
+            });
+
+            let send_result = self
+                .http
+                .request(Method::PUT, url.clone())
+                .header("Authorization", self.auth_header())
+                .timeout(upload_timeout)
+                .body(reqwest::Body::wrap_stream(stream))
+                .send()
+                .await;
+
+            match send_result {
+                Ok(res) if res.status().is_success() => {
+                    if let Some(cb) = progress.as_ref() {
+                        cb(file_size, file_size);
+                    }
+                    return Ok(checksum);
+                }
+                Ok(res) => {
+                    let err = AppError::network(format!(
+                        "WebDAV 上传失败: {} {}",
+                        res.status(),
+                        res.status().canonical_reason().unwrap_or("")
+                    ));
+                    // 4xx 是确定性失败（认证/路径/配额等），重试无意义
+                    if !res.status().is_server_error() {
+                        return Err(err);
+                    }
+                    last_error = Some(err);
+                }
+                Err(e) => {
+                    last_error = Some(AppError::network(format!("WebDAV 上传失败: {e}")));
+                }
+            }
         }
+
+        Err(last_error.unwrap_or_else(|| {
+            AppError::network(format!("WebDAV 上传失败（已重试 {max_retries} 次）"))
+        }))
     }
 
     async fn get_file(
@@ -695,9 +805,11 @@ impl CloudStorage for WebDavStorage {
             )));
         }
 
-        let bytes = res
-            .bytes()
+        // get() 用于 manifest/变更文件等内存级对象：读体加总超时，
+        // 防止 request() 的响应头超时通过后、响应体传输中途停滞导致永久挂起。
+        let bytes = tokio::time::timeout(std::time::Duration::from_secs(300), res.bytes())
             .await
+            .map_err(|_| AppError::network("读取响应体超时（300 秒）".to_string()))?
             .map_err(|e| AppError::network(format!("读取响应体失败: {e}")))?;
         Ok(Some(bytes.to_vec()))
     }
@@ -712,8 +824,6 @@ impl CloudStorage for WebDavStorage {
         } else {
             prefix.trim_matches('/').to_string()
         };
-
-        let propfind_body = r#"<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/><d:getlastmodified/><d:getcontentlength/></d:prop></d:propfind>"#;
 
         let mut all_files = Vec::new();
         let mut dirs_to_visit = vec![start_path];
@@ -740,32 +850,10 @@ impl CloudStorage for WebDavStorage {
             };
             let url = self.build_url(&dir_with_slash)?;
 
-            let res = self
-                .http
-                .request(Self::propfind_method()?, url)
-                .header("Authorization", self.auth_header())
-                .header("Depth", "1")
-                .header("Content-Type", "application/xml")
-                .body(propfind_body)
-                .send()
-                .await
-                .map_err(|e| AppError::network(format!("WebDAV PROPFIND 请求失败: {e}")))?;
-
-            if res.status() == StatusCode::NOT_FOUND {
+            let Some(xml) = self.propfind_with_retry(url, "1", &dir_with_slash).await? else {
+                // 404：目录不存在，跳过
                 continue;
-            }
-            if !res.status().is_success() {
-                return Err(AppError::network(format!(
-                    "WebDAV PROPFIND 失败: {} {}",
-                    res.status(),
-                    res.status().canonical_reason().unwrap_or(""),
-                )));
-            }
-
-            let xml = res
-                .text()
-                .await
-                .map_err(|e| AppError::network(format!("读取 PROPFIND 响应失败: {e}")))?;
+            };
 
             let (files, subdirs) = self.parse_propfind_entries(&xml, prefix, &dir);
 
@@ -809,32 +897,9 @@ impl CloudStorage for WebDavStorage {
     async fn stat(&self, key: &str) -> Result<Option<FileInfo>> {
         let url = self.build_url(key)?;
 
-        let res = self
-            .http
-            .request(Self::propfind_method()?, url)
-            .header("Authorization", self.auth_header())
-            .header("Depth", "0")
-            .header("Content-Type", "application/xml")
-            .body(r#"<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/><d:getlastmodified/><d:getcontentlength/></d:prop></d:propfind>"#)
-            .send()
-            .await
-            .map_err(|e| AppError::network(format!("WebDAV PROPFIND 请求失败: {e}")))?;
-
-        if res.status() == StatusCode::NOT_FOUND {
+        let Some(xml) = self.propfind_with_retry(url, "0", key).await? else {
             return Ok(None);
-        }
-        if !res.status().is_success() {
-            return Err(AppError::network(format!(
-                "WebDAV PROPFIND 失败: {} {}",
-                res.status(),
-                res.status().canonical_reason().unwrap_or(""),
-            )));
-        }
-
-        let xml = res
-            .text()
-            .await
-            .map_err(|e| AppError::network(format!("读取 PROPFIND 响应失败: {e}")))?;
+        };
 
         let files = self.parse_propfind_response(&xml, "");
         Ok(files.into_iter().next())
