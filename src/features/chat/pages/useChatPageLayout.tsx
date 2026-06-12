@@ -124,6 +124,7 @@ export function useChatPageLayout(deps: UseChatPageLayoutDeps) {
     showBackArrow: true,
     onMenuClick: () => setMobileResourcePanelOpen(false),
   } : {
+    hidden: sessionSheetOpen,
     title: headerTitle,
     showMenu: viewMode !== 'browser',
     showBackArrow: viewMode === 'browser',
